@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts, utils
 
 
 def _input_fn(shape, cur_dtype, device):
@@ -12,10 +11,10 @@ def _input_fn(shape, cur_dtype, device):
 
 @pytest.mark.functional_sym_constrain_range_for_size
 def test_functional_sym_constrain_range_for_size():
-    bench = utils.GenericBenchmark(
+    bench = base.GenericBenchmark(
         op_name="functional_sym_constrain_range_for_size",
         torch_op=torch.ops.aten._functional_sym_constrain_range_for_size,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         input_fn=_input_fn,
     )
     bench.run()

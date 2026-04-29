@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as utils
+from . import base
 
 try:
     import os
@@ -47,7 +47,7 @@ def _input_fn(shape, dtype, device):
     )
 
 
-class MoeAlignBlockSizeBenchmark(utils.GenericBenchmark4DOnly):
+class MoeAlignBlockSizeBenchmark(base.GenericBenchmark4DOnly):
     def set_shapes(self, shape_file_path: None):
         moe_align_block_size_shape = [
             (512, 64, 16384, 10),
@@ -65,7 +65,7 @@ class MoeAlignBlockSizeBenchmark(utils.GenericBenchmark4DOnly):
         self.shapes = moe_align_block_size_shape
 
     def set_more_shapes(self):
-        return None
+        return []
 
 
 @pytest.mark.moe_align_block_size_triton

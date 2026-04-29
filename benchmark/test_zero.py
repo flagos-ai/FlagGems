@@ -3,14 +3,13 @@ from typing import Generator
 import pytest
 import torch
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts, utils
 
 
 class ZeroBenchmark(base.Benchmark):
     def get_input_iter(self, dtype) -> Generator:
         for shape in self.shapes:
-            inp = base.generate_tensor_input(shape, dtype, self.device)
+            inp = utils.generate_tensor_input(shape, dtype, self.device)
             yield inp,
 
 
@@ -19,7 +18,7 @@ def test_zero():
     bench = ZeroBenchmark(
         op_name="zero",
         torch_op=torch.ops.aten.zero,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
     bench.run()

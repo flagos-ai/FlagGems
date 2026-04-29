@@ -3,13 +3,13 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
-class RWKVSparsityBenchmark(utils.GenericBenchmark):
+# TODO(Qiming): Remove this class
+class RWKVSparsityBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
-        return None
+        return []
 
 
 def _input_fn(shape, dtype, device):
@@ -39,7 +39,7 @@ def test_rwkv_mm_sparsity():
         op_name="rwkv_mm_sparsity",
         torch_op=torch_rwkv_mm_sparsity,
         gems_op=flag_gems.rwkv_mm_sparsity,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()

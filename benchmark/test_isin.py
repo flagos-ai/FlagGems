@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts, utils
 
 
 def _input_fn(shape, dtype, device):
@@ -11,7 +10,7 @@ def _input_fn(shape, dtype, device):
 
     yield elements, test_elements
 
-    if utils.Config.bench_level == utils.BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         # assume_unique set to True
         uniq_elements = torch.unique(utils.generate_tensor_input(shape, dtype, device))
         uniq_test_elements = torch.unique(
@@ -22,11 +21,11 @@ def _input_fn(shape, dtype, device):
 
 @pytest.mark.isin
 def test_isin():
-    bench = utils.GenericBenchmark2DOnly(
+    bench = base.GenericBenchmark2DOnly(
         op_name="isin",
         input_fn=_input_fn,
         torch_op=torch.isin,
-        dtypes=attr_utils.INT_DTYPES,
+        dtypes=consts.INT_DTYPES,
     )
 
     bench.run()

@@ -1,5 +1,5 @@
 import gc
-import importlib
+import math
 import os
 import time
 from typing import Any, Generator, List, Optional, Tuple
@@ -12,7 +12,8 @@ import yaml
 import flag_gems
 from flag_gems.utils import shape_utils
 
-from .attri_util import (
+from .conftest import Config, emit_record_logger
+from .consts import (
     BOOL_DTYPES,
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
@@ -27,7 +28,6 @@ from .attri_util import (
     check_metric_dependencies,
     model_shapes,
 )
-from .conftest import Config, emit_record_logger
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
@@ -44,31 +44,6 @@ else:
         torch_backend_device.matmul.allow_tf32 = False
     except Exception:
         pass
-
-
-def SkipVersion(module_name, skip_pattern):
-    if importlib.util.find_spec(module_name) is None:
-        return True
-    cmp = skip_pattern[0]
-    assert cmp in ("=", "<", ">"), f"Invalid comparison operator: {cmp}"
-    try:
-        M, N = skip_pattern[1:].split(".")
-        M, N = int(M), int(N)
-    except Exception:
-        raise ValueError("Cannot parse version number from skip_pattern.")
-
-    try:
-        version = importlib.metadata.version(module_name)
-        major, minor = map(int, version.split(".")[:2])
-    except Exception:
-        raise ImportError(f"Cannot determine version of module: {module_name}")
-
-    if cmp == "=":
-        return major == M and minor == N
-    elif cmp == "<":
-        return (major, minor) < (M, N)
-    else:
-        return (major, minor) > (M, N)
 
 
 class Benchmark:
@@ -167,10 +142,10 @@ class Benchmark:
 
     def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
         # Validate user-spicified shapes files
-        import os
 
         if not os.path.isfile(shape_file_path):
             raise FileNotFoundError(f"Shape file '{shape_file_path}' does not exist.")
+
         try:
             with open(shape_file_path, "r") as file:
                 yaml_config = yaml.safe_load(file)
@@ -199,13 +174,12 @@ class Benchmark:
             if vendor_name == "kunlunxin":
                 if self.op_name in ["isin", "nonzero"]:
                     # isin oom  # nonzero oot
-                    import math
-
                     self.shapes = [
                         shape for shape in self.shapes if math.prod(shape) < 1024 * 1024
                     ]
 
-            # merge shapes from subclass If subclass has `set_more_shapes`, call it to merge shapes
+            # merge shapes from subclass If subclass has `set_more_shapes`,
+            # call it to merge shapes
             if (
                 hasattr(self, "set_more_shapes")
                 and callable(getattr(self, "set_more_shapes"))
@@ -221,11 +195,9 @@ class Benchmark:
                 # self.shapes = additional_shapes
                 if additional_shapes:
                     self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
+
                 if vendor_name == "enflame":
                     if self.op_name in ["isin"]:
-                        # isin shapelimit
-                        import math
-
                         self.shapes = [
                             shape for shape in self.shapes if math.prod(shape) < 2**28
                         ]
@@ -234,9 +206,10 @@ class Benchmark:
                 f"Shape file '{shape_file_path}' is not a valid YAML file. Error: {e}"
             )
 
-    def set_more_shapes(self) -> Optional[List[List[int]]]:
-        """Base method (optional to override in subclasses). Returns additional shapes if applicable."""
-        return None
+    def set_more_shapes(self) -> Optional[list[list[Any] | tuple[Any]]]:
+        """Base method (optional to override in subclasses).
+        Returns additional shapes if applicable."""
+        return []
 
     def record_shapes(self, *args, **kwargs):
         def deep_parse(item):
@@ -343,7 +316,7 @@ class Benchmark:
         return flop_counter.get_total_flops()
 
     def get_input_iter(self, dtype) -> Generator:
-        # """Return the dynamic input iterator for each Operator."""
+        """Return the dynamic input iterator for each Operator."""
         raise NotImplementedError(
             "Each Benchmark must implement its own input iterator."
         )
@@ -351,6 +324,7 @@ class Benchmark:
     def get_inputs(self, dtype):
         if self._input_iter is None:
             self._input_iter = self.get_input_iter(dtype)
+
         try:
             return next(self._input_iter)
         except StopIteration:
@@ -392,6 +366,7 @@ class Benchmark:
             print(attri)
             emit_record_logger(attri.to_dict())
             return
+
         self.init_user_config()
         for dtype in self.to_bench_dtypes:
             metrics = []
@@ -431,18 +406,21 @@ class Benchmark:
                                         self.torch_op, *args, **kwargs
                                     )
                             else:
-                                # exclude flaggems' zero_ to avoid the overhead of zero_ in do_bench's clear_cache
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
                                 with flag_gems.use_gems(exclude=["zero_"]):
                                     metric.latency = self.get_latency(
                                         self.torch_op, *args, **kwargs
                                     )
                     if "speedup" in self.to_bench_metrics:
                         metric.speedup = metric.latency_base / metric.latency
+
                     if "gbps" in self.to_bench_metrics:
                         metric.gbps_base = self.get_gbps(
                             args, latency=metric.latency_base
                         )
                         metric.gbps = self.get_gbps(args, latency=metric.latency)
+
                     if "tflops" in self.to_bench_metrics:
                         metric.tflops = (
                             self.get_tflops(self.torch_op, *args, **kwargs)
@@ -457,6 +435,7 @@ class Benchmark:
                 finally:
                     metrics.append(metric)
                     gc.collect()
+
             result = BenchmarkResult(
                 level=Config.bench_level.value,
                 op_name=self.op_name,

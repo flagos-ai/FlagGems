@@ -5,7 +5,7 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as utils
+from . import base, utils
 
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
@@ -16,8 +16,8 @@ except ImportError:
     pass
 
 
-class ScaledSoftmaxBenchmark(utils.GenericBenchmark):
-    def get_input_iter(self, cur_dtype) -> Generator:
+class ScaledSoftmaxBenchmark(base.GenericBenchmark):
+    def get_input_iter(self, dtype) -> Generator:
         # shape: [batch, heads, query_len, key_len]
         shapes_small = [
             (1, 4, 64, 64),
@@ -36,7 +36,7 @@ class ScaledSoftmaxBenchmark(utils.GenericBenchmark):
         ]
         shapes_4d = shapes_small + shapes_medium + shapes_large
         for shape in shapes_4d:
-            yield from self.input_fn(shape, cur_dtype, self.device)
+            yield from self.input_fn(shape, dtype, self.device)
 
 
 def scaled_softmax_forward_input_fn(shape, dtype, device):
@@ -75,5 +75,7 @@ def test_perf_scaled_softmax_backward():
         torch_op=tex.scaled_softmax_backward,
         dtypes=[torch.float16, torch.bfloat16],
     )
+
     bench.set_gems(flag_gems.scaled_softmax_backward)
+
     bench.run()

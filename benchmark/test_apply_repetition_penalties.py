@@ -3,8 +3,9 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts, utils
+
+vendor_name = flag_gems.vendor_name
 
 
 class RepetitionPenaltyBenchmark(base.Benchmark):
@@ -26,7 +27,7 @@ class RepetitionPenaltyBenchmark(base.Benchmark):
 
     def get_input_iter(self, dtype):
         for shape in self.shapes:
-            num_seqs, vocab_size = shape
+            num_seqs, _ = shape
             yield (
                 torch.randn(shape, dtype=dtype, device=self.device),
                 torch.randint(0, 2, shape, dtype=torch.bool, device=self.device),
@@ -50,11 +51,9 @@ UNSUPPORTED_VENDORS = {
 }
 
 
-@pytest.mark.skipif(base.SkipVersion("vllm", "<0.4"), reason="vLLM <0.4 not supported")
+@pytest.mark.skipif(utils.SkipVersion("vllm", "<0.4"), reason="vLLM <0.4 not supported")
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.skipif(
-    flag_gems.vendor_name in UNSUPPORTED_VENDORS, reason="Vendor not supported"
-)
+@pytest.mark.skipif(vendor_name in UNSUPPORTED_VENDORS, reason="Vendor not supported")
 @pytest.mark.apply_repetition_penalties
 def test_apply_repetition_penalties():
     vllm_ops = pytest.importorskip("vllm._custom_ops")
@@ -62,7 +61,7 @@ def test_apply_repetition_penalties():
     bench = RepetitionPenaltyBenchmark(
         op_name="apply_repetition_penalties",
         torch_op=vllm_ops.apply_repetition_penalties,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.apply_repetition_penalties)
     bench.run()

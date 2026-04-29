@@ -1,11 +1,10 @@
 import pytest
 import torch
 
-from benchmark.attri_util import FLOAT_DTYPES
-from benchmark.performance_utils import GenericBenchmark, generate_tensor_input
+from . import base, consts, utils
 
 
-class TileBenchmark(GenericBenchmark):
+class TileBenchmark(base.GenericBenchmark):
     """
     TileBenchmark designed to evaluate tensor repeat operations along specified dimensions.
     Due to potential memory limitations, benchmark sizes need to be carefully controlled.
@@ -25,8 +24,8 @@ class TileBenchmark(GenericBenchmark):
         return more_shapes
 
 
-def _input_fn(shape, cur_dtype, device):
-    inp = generate_tensor_input(shape, cur_dtype, device)
+def _input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
     dim = [1] * len(shape)
     dim[0] = 2
     yield inp, {"dims": dim}
@@ -38,6 +37,6 @@ def test_tile():
         op_name="tile",
         input_fn=_input_fn,
         torch_op=torch.tile,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

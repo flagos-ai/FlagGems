@@ -1,0 +1,93 @@
+---
+name: Random Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Label for selecting runners"
+        required: true
+        type: string
+      operators:
+        description: "Operators (comma separated names)"
+        required: true
+        type: string
+      gpus:
+        description: "GPUs (comma separated numbers)"
+        required: true
+        type: string
+    secrets:
+      RUNNER_SSH_KEY:
+        required: true
+      PROXYC:
+        required: true
+      PROXYG:
+        required: true
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      # - name: Set global proxy
+      #   if: False
+      #   shell: bash
+      #   env:
+      #     RUNNER_LABEL: ${{ inputs.runner }}
+      #     PROXY: ${{ secrets.PROXYG }}
+      #   run: |
+      #     # Setup proxy for git checkout
+      #     case "${RUNNER_LABEL}" in
+      #       h20|metax|hygon)
+      #         ;;
+      #       *)
+      #         echo "HTTP_PROXY=${PROXY}" >> $GITHUB_ENV
+      #         echo "HTTPS_PROXY=${PROXY}" >> $GITHUB_ENV
+      #         ;;
+      #     esac
+
+      - uses: actions/checkout@v6
+        # with:
+        #  ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
+
+      - name: Setup FlagGems
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ inputs.runner }}
+        run: |
+          # Validate vendor names
+          case "${RUNNER_LABEL}" in
+            h20)
+              VENDOR="nvidia"
+              ;;
+            moore)
+              VENDOR="mthreads"
+              ;;
+            *)
+              VENDOR="${RUNNER_LABEL}"
+              ;;
+          esac
+
+          echo "VENDOR=${VENDOR}"
+          echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
+
+          ./setup.sh ${VENDOR}
+
+      - name: Check GPU availability
+        shell: bash
+        run: |
+          bash "tools/gpu_check_${VENDOR}.sh"
+
+      - name: Run tests
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          source tools/set-env.sh ${VENDOR}
+          tools/run_tests.py --ops ${{ inputs.operators }} --gpus ${{ inputs.gpus }}
+
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: random-test
+          path: results/

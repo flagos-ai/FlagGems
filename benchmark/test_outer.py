@@ -3,8 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from . import performance_utils as base
-from .attri_util import FLOAT_DTYPES
+from . import base, consts
 
 
 class OuterBenchmark(base.GenericBenchmark2DOnly):
@@ -28,6 +27,6 @@ def test_outer():
         op_name="outer",
         input_fn=_input_fn,
         torch_op=torch.Tensor.outer,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

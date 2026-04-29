@@ -1,12 +1,11 @@
 import pytest
 import torch
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts, utils
 
 
 def _input_fn(shape, cur_dtype, device):
-    inp = base.generate_tensor_input(shape, cur_dtype, device)
+    inp = utils.generate_tensor_input(shape, cur_dtype, device)
     inp.view(-1)[0] = float("nan")
     if inp.numel() > 1:
         inp.view(-1)[1] = float("inf")
@@ -22,6 +21,6 @@ def test_nan_to_num():
         op_name="nan_to_num",
         input_fn=_input_fn,
         torch_op=torch.nan_to_num,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

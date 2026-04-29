@@ -4,12 +4,11 @@ import torch
 import flag_gems
 from flag_gems.utils import shape_utils
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts, utils
 
 
 # TODO(Qiming): Move this to an abstraction layer
-class TensorSelectBenchmark(utils.GenericBenchmark2DOnly):
+class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
     def set_more_metrics(self):
         return ["gbps"]
 
@@ -49,7 +48,7 @@ def test_masked_scatter():
         op_name="masked_scatter",
         torch_op=torch.masked_scatter,
         input_fn=_input_fn,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         get_gbps=_get_gbps,
     )
     bench.run()
@@ -61,7 +60,7 @@ def test_masked_scatter_inplace():
         op_name="masked_scatter_",
         torch_op=torch.Tensor.masked_scatter_,
         input_fn=_input_fn,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         get_gbps=_get_gbps,
         is_inplace=True,
     )

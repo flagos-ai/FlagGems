@@ -3,8 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts, utils
 
 
 class BitwiseRightShiftBenchmark(base.Benchmark):
@@ -15,7 +14,7 @@ class BitwiseRightShiftBenchmark(base.Benchmark):
 
     def get_input_iter(self, dtype) -> Generator:
         for shape in self.shapes:
-            inp1 = base.generate_tensor_input(shape, dtype, self.device)
+            inp1 = utils.generate_tensor_input(shape, dtype, self.device)
             shift_amount = torch.randint(0, 8, shape, dtype=dtype, device="cpu").to(
                 self.device
             )
@@ -27,7 +26,7 @@ def test_bitwise_right_shift():
     bench = BitwiseRightShiftBenchmark(
         op_name="bitwise_right_shift",
         torch_op=torch.bitwise_right_shift,
-        dtypes=attrs.INT_DTYPES,
+        dtypes=consts.INT_DTYPES,
     )
 
     bench.run()

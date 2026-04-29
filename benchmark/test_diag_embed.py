@@ -1,20 +1,19 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts, utils
 
 
-class EmbeddingBenchmark(utils.GenericBenchmark2DOnly):
+class EmbeddingBenchmark(base.GenericBenchmark2DOnly):
     def set_more_shapes(self):
-        return None
+        return []
 
 
 def _input_fn(shape, dtype, device):
     inp = utils.generate_tensor_input(shape, dtype, device)
     yield {"input": inp},
 
-    if utils.Config.bench_level == utils.BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         yield {"input": inp, "offset": 1, "dim1": 0, "dim2": -1},
 
 
@@ -24,7 +23,7 @@ def test_diag_embed():
         op_name="diag_embed",
         input_fn=_input_fn,
         torch_op=torch.diag_embed,
-        dtypes=attr_utils.FLOAT_DTYPES + attr_utils.INT_DTYPES + attr_utils.BOOL_DTYPES,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
 
     bench.run()

@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from . import performance_utils as utils
+from . import base
 
 
 def _input_fn(shape, dtype, device):
@@ -12,7 +12,7 @@ def _input_fn(shape, dtype, device):
 
 @pytest.mark.multinomial
 def test_multinomial_with_replacement():
-    bench = utils.GenericBenchmark2DOnly(
+    bench = base.GenericBenchmark2DOnly(
         input_fn=_input_fn,
         op_name="multinomial",
         torch_op=torch.multinomial,

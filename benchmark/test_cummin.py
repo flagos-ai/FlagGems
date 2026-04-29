@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts, utils
 
 
 def input_fn(shape, cur_dtype, device):
@@ -12,10 +11,10 @@ def input_fn(shape, cur_dtype, device):
 
 @pytest.mark.cummin
 def test_cummin():
-    bench = utils.GenericBenchmark2DOnly(
+    bench = base.GenericBenchmark2DOnly(
         op_name="cummin",
         input_fn=input_fn,
         torch_op=torch.cummin,
-        dtypes=attr_utils.FLOAT_DTYPES + attr_utils.INT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
     )
     bench.run()

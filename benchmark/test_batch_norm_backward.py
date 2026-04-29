@@ -3,12 +3,11 @@ import torch
 
 import flag_gems
 
-from . import attr_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 # TODO(Qiming): Consolidate this to a base package
-class NormBenchmark(utils.GenericBenchmark):
+class NormBenchmark(base.GenericBenchmark):
     # TODO: add new metric
 
     def set_more_shapes(self):
@@ -36,7 +35,7 @@ def batchnorm_input_fn(shape, dtype, device):
     cudnn_enabled = True
     yield inp, weight, bias, running_mean, running_var, training, momentum, eps, cudnn_enabled
 
-    if utils.Config.bench_level == utils.BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         running_mean = torch.randn((C,), dtype=dtype, device=device)
         running_var = torch.randn((C,), dtype=dtype, device=device)
         yield inp, weight, bias, running_mean, running_var, training, momentum, eps, cudnn_enabled
@@ -83,13 +82,16 @@ def test_batch_norm_backward():
                 output_mask,
             )
 
+    if flag_gems.vendor_name == "mthreads":
+        dtypes = [torch.float32]
+    else:
+        dtypes = consts.FLOAT_DTYPES
+
     bench = NormBenchmark(
         input_fn=batch_norm_backward_input_fn,
         op_name="native_batch_norm_backward",
         torch_op=torch.ops.aten.native_batch_norm_backward,
-        dtypes=[torch.float32]
-        if flag_gems.vendor_name == "mthreads"
-        else attr_utils.FLOAT_DTYPES,
+        dtypes=dtypes,
     )
     bench.set_gems(flag_gems.batch_norm_backward)
 

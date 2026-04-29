@@ -4,11 +4,10 @@ import torch
 import flag_gems
 from flag_gems.utils import shape_utils
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts, utils
 
 
-class TensorSelectBenchmark(utils.GenericBenchmark2DOnly):
+class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
     def set_more_metrics(self):
         return ["gbps"]
 
@@ -47,7 +46,7 @@ def test_masked_select():
         op_name="masked_select",
         input_fn=_input_fn,
         torch_op=torch.masked_select,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         get_gbps=_get_gbps,
     )
 

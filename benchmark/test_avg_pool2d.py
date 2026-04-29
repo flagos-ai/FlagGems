@@ -5,12 +5,11 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts, utils
 
 
-class AvgPool2dBenchmark(utils.GenericBenchmark):
-    def get_input_iter(self, cur_dtype) -> Generator:
+class AvgPool2dBenchmark(base.GenericBenchmark):
+    def get_input_iter(self, dtype) -> Generator:
         shapes_4d = [
             (4, 3, 224, 224),  # Typical input image size
             (16, 64, 56, 56),  # Early ResNet layer output
@@ -20,7 +19,7 @@ class AvgPool2dBenchmark(utils.GenericBenchmark):
         ]
 
         for shape in shapes_4d:
-            yield from self.input_fn(shape, cur_dtype, self.device)
+            yield from self.input_fn(shape, dtype, self.device)
 
 
 def avg_pool2d_input_fn(shape, dtype, device):
@@ -36,7 +35,7 @@ def avg_pool2d_input_fn(shape, dtype, device):
         "divisor_override": None,
     }
 
-    if utils.Config.bench_level == utils.BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         # With count_include_pad=False
         yield inp, {
             "kernel_size": 3,
@@ -75,23 +74,22 @@ def test_avg_pool2d():
         input_fn=avg_pool2d_input_fn,
         op_name="avg_pool2d",
         torch_op=torch.ops.aten.avg_pool2d,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
-@pytest.mark.skip(reason="Test case fails due to missing parameter self.")
 @pytest.mark.avg_pool2d_backward
 def test_avg_pool2d_backward():
     if flag_gems.vendor_name == "mthreads":
         dtypes = [torch.float32]
     else:
-        dtypes = (attr_utils.FLOAT_DTYPES,)
+        dtypes = consts.FLOAT_DTYPES
 
     bench = AvgPool2dBenchmark(
         input_fn=avg_pool2d_input_fn,
         op_name="avg_pool2d_backward",
-        torch_op=torch.ops.aten.avg_pool2d_backward,
+        torch_op=torch.ops.aten.avg_pool2d,
         dtypes=dtypes,
         is_backward=True,
     )
