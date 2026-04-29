@@ -18,7 +18,7 @@ class UpsampleNearestExact1dBenchmark(base.Benchmark):
             yield x, out_size, None
 
 
-@pytest.mark.upsample_nearest_exact1d
+@pytest.mark._upsample_nearest_exact1d
 def test_upsample_nearest_exact1d():
     bench = UpsampleNearestExact1dBenchmark(
         op_name="_upsample_nearest_exact1d",
