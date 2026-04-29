@@ -8,7 +8,8 @@ fi
 # TODO: Check if this is necessary
 # export TRITON_ALL_BLOCKS_PARALLEL=1
 
-uv pip install -e . .[ascend,test]
+uv pip install -e .
+uv pip install ".[ascend,test]"
 
 uv pip install --index ${FLAGOS_PYPI} \
     "flagtree==0.5.0+ascend3.2" \
