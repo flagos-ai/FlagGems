@@ -4,6 +4,8 @@
 
 extern std::vector<std::string> registered_ops;
 
-#define REGISTER_AND_LOG(opname, func) \
-  m.impl(opname, TORCH_FN(func));      \
-  registered_ops.push_back(opname);
+void register_cpp_ops(const std::vector<std::string>& op_names);
+void register_all_cpp_ops();
+
+std::vector<std::string> get_available_ops();
+std::vector<std::string> get_registered_ops();

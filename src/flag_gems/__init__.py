@@ -5,7 +5,12 @@ from packaging import version
 
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
-from flag_gems.config import aten_patch_list, resolve_user_setting
+from flag_gems.config import (
+    get_available_cpp_ops,
+    get_registered_cpp_ops,
+    register_cpp_ops,
+    resolve_user_setting,
+)
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
@@ -527,11 +532,17 @@ def enable(
     """
     global current_work_registrar
     exclude_ops = resolve_user_setting(unused, "exclude")
+
+    available_cpp_ops = get_available_cpp_ops()
+    if available_cpp_ops:
+        cpp_ops_to_register = [op for op in available_cpp_ops if op not in exclude_ops]
+        register_cpp_ops(cpp_ops_to_register)
+
     current_work_registrar = registrar(
         _FULL_CONFIG,
         user_include_ops=[],
         user_exclude_ops=exclude_ops,
-        cpp_patched_ops=list(set(aten_patch_list)),
+        cpp_patched_ops=list(set(get_registered_cpp_ops())),
         lib=lib,
     )
     setup_flaggems_logging(path=path, record=record, once=once)
@@ -580,12 +591,17 @@ def only_enable(
         )
         return
 
+    available_cpp_ops = get_available_cpp_ops()
+    if available_cpp_ops:
+        cpp_ops_to_register = [op for op in available_cpp_ops if op in include_ops]
+        register_cpp_ops(cpp_ops_to_register)
+
     global current_work_registrar
     current_work_registrar = registrar(
         _FULL_CONFIG,
         user_include_ops=include_ops,
         user_exclude_ops=[],
-        cpp_patched_ops=list(set(aten_patch_list)),
+        cpp_patched_ops=list(set(get_registered_cpp_ops())),
         full_config_by_func=FULL_CONFIG_BY_FUNC,
         lib=lib,
     )
