@@ -1,6 +1,7 @@
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from .chunk_gated_delta import FlagOS_ChunkGatedDelta
 from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
