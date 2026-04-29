@@ -130,6 +130,8 @@ class Register:
                 self.lib.impl(key, fn, device_key)
         else:
             self.lib.impl(key, fn, device_key)
+            if key in ("ctc_loss.IntList", "ctc_loss.Tensor"):
+                self.lib.impl(key, fn, "Autograd")
 
     def for_each(self):
         for key, func in self.config:
