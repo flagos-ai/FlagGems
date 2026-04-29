@@ -488,6 +488,7 @@ def gemv_kernel(
     stride_bk,
     BLOCK_M: tl.constexpr,
     BLOCK_K: tl.constexpr,
+    IS_FP64: tl.constexpr = False,
 ):
     """Optimized kernel for matrix-vector multiplication (N=1 case)"""
     pid = tl.program_id(0)
@@ -498,7 +499,10 @@ def gemv_kernel(
     row_mask = row_offset < M
 
     # Accumulator for this block of rows
-    acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
+    if IS_FP64:
+        acc = tl.zeros((BLOCK_M,), dtype=tl.float64)
+    else:
+        acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
 
     # Iterate over K dimension
     for k_start in range(0, K, BLOCK_K):
@@ -545,6 +549,7 @@ def gemv_mm(a, b, c, M, K):
             a.stride(0),
             a.stride(1),
             b.stride(0),
+            IS_FP64=a.dtype == torch.float64,
         )
     return c
 
