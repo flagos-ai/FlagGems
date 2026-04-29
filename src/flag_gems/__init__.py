@@ -314,6 +314,7 @@ _FULL_CONFIG = (
     ("min", min),
     ("min.dim", min_dim),
     ("minimum", minimum),
+    ("median.dim", median_dim),
     ("mm", mm),
     ("mm.out", mm_out),
     ("mse_loss", mse_loss),

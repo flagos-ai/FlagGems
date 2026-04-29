@@ -440,7 +440,7 @@ class Conv2d(torch.autograd.Function):
     @staticmethod
     def backward(ctx, out_grad):
         logger.debug("GEMS CONV2D VJP")
-        (weight, input, bias) = ctx.saved_tensors
+        weight, input, bias = ctx.saved_tensors
         # (out_c equals origin cout divide groups)
         out_c, weight_c, weight_height, weight_width = ctx.weight_info
         in_n, input_height, input_width = ctx.input_info
