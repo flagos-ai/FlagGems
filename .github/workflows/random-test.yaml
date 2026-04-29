@@ -47,6 +47,11 @@ jobs:
       #         ;;
       #     esac
 
+      - name: Dump context
+        env:
+          GITHUB_CONTEXT: ${{ toJSON(github) }}
+        run: echo "$GITHUB_CONTEXT"
+
       - uses: actions/checkout@v6
         # with:
         #  ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
