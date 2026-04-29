@@ -292,7 +292,7 @@ _index_func = IndexFunction()
 
 
 def index(inp, indices):
-    logger.debug("GEMS INDEX")
+    logger.debug("GEMS_KUNLUNXIN INDEX")
     original_indices = list(indices)  # Save original indices for later checks
     indices = list(indices)
 
@@ -300,9 +300,11 @@ def index(inp, indices):
         raise ValueError("at least one index must be provided")
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
 
