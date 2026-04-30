@@ -125,6 +125,7 @@ test = [
     "openpyxl==3.1.5",
     "pytest==9.0.3",
     "scipy>=1.15.3",
+    "fla @ git+https://github.com/sustcsonglin/flash-linear-attention@v0.4.1",
 ]
 
 # Package for running example tests
