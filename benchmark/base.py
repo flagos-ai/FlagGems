@@ -294,10 +294,36 @@ class Benchmark:
                 fn()
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
+        elif Config.mode == BenchMode.ALL:
+            # To maintain consistency with the results of the previous branch,
+            # the method of separately counting kernel and wrapper time is adopted.
+            do_bench = (
+                triton.musa_testing.do_bench
+                if device == "musa"
+                else triton.testing.do_bench
+            )
+            # kernel time
+            latency_kernel = do_bench(
+                fn,
+                warmup=Config.warm_up,
+                rep=Config.repetition,
+                return_mode="median",
+                grad_to_none=xs if self.is_backward else None,
+            )
+
+            start = time.time()
+            for _ in range(Config.repetition):
+                fn()
+            end = time.time()
+            # wrapper time
+            latency_wrapper = (end - start) / Config.repetition * 1000
+            # operator time
+            latency_op = latency_kernel + latency_wrapper
+            latency = (latency_kernel, latency_op, latency_wrapper)
         else:
             raise ValueError("Undefined Value of Benchmark Mode.")
         # average latency in ms
-        return latency
+        return latency if isinstance(latency, tuple) else (latency,)
 
     def get_gbps(self, args, latency=None):
         # """Return the dynamic input iterator for each Operator."""
@@ -413,18 +439,21 @@ class Benchmark:
                                         self.torch_op, *args, **kwargs
                                     )
                     if "speedup" in self.to_bench_metrics:
-                        metric.speedup = metric.latency_base / metric.latency
-
+                        metric.speedup = tuple(
+                            latency_base / latency
+                            for latency_base, latency in zip(
+                                metric.latency_base, metric.latency
+                            )
+                        )
                     if "gbps" in self.to_bench_metrics:
                         metric.gbps_base = self.get_gbps(
-                            args, latency=metric.latency_base
+                            args, latency=metric.latency_base[0]
                         )
-                        metric.gbps = self.get_gbps(args, latency=metric.latency)
-
+                        metric.gbps = self.get_gbps(args, latency=metric.latency[0])
                     if "tflops" in self.to_bench_metrics:
                         metric.tflops = (
                             self.get_tflops(self.torch_op, *args, **kwargs)
-                            / metric.latency
+                            / metric.latency[0]
                             / 1e12
                             * 1e3
                         )

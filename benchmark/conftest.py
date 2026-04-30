@@ -68,9 +68,9 @@ def pytest_addoption(parser):
             "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
         ),  # TODO: fix pytest-* common --mode args
         action="store",
-        default="kernel",
+        default="all",
         required=False,
-        choices=["kernel", "operator", "wrapper"],
+        choices=["kernel", "operator", "wrapper", "all"],
         help=(
             "Specify how to measure latency, 'kernel' for device kernel, "
             "'operator' for end2end operator or 'wrapper' for runtime wrapper."

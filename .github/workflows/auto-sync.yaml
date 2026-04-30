@@ -1,4 +1,5 @@
 name: Sync to remote site
+if: false
 on:
 
   workflow_dispatch:
