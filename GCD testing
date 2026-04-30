@@ -1,0 +1,454 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "6e5d355c",
+   "metadata": {
+    "_cell_guid": "b1076dfc-b9ad-4769-8c92-a6c4dae69d19",
+    "_uuid": "8f2839f25d086af736a60e9eeb907d3b93b6e0e5",
+    "execution": {
+     "iopub.execute_input": "2026-04-23T07:37:22.323694Z",
+     "iopub.status.busy": "2026-04-23T07:37:22.323354Z",
+     "iopub.status.idle": "2026-04-23T07:37:26.905988Z",
+     "shell.execute_reply": "2026-04-23T07:37:26.904994Z"
+    },
+    "papermill": {
+     "duration": 4.587178,
+     "end_time": "2026-04-23T07:37:26.907538+00:00",
+     "exception": false,
+     "start_time": "2026-04-23T07:37:22.320360+00:00",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Is CUDA available? True\n",
+      "GPU Name: Tesla T4\n"
+     ]
+    }
+   ],
+   "source": [
+    "import torch\n",
+    "print(f\"Is CUDA available? {torch.cuda.is_available()}\")\n",
+    "print(f\"GPU Name: {torch.cuda.get_device_name(0)}\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "b808b659",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-04-23T07:37:26.911646Z",
+     "iopub.status.busy": "2026-04-23T07:37:26.911289Z",
+     "iopub.status.idle": "2026-04-23T07:39:25.490949Z",
+     "shell.execute_reply": "2026-04-23T07:39:25.489872Z"
+    },
+    "papermill": {
+     "duration": 118.583859,
+     "end_time": "2026-04-23T07:39:25.492995+00:00",
+     "exception": false,
+     "start_time": "2026-04-23T07:37:26.909136+00:00",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Requirement already satisfied: triton in /usr/local/lib/python3.12/dist-packages (3.6.0)\r\n",
+      "Requirement already satisfied: torch in /usr/local/lib/python3.12/dist-packages (2.10.0+cu128)\r\n",
+      "Collecting torch\r\n",
+      "  Downloading torch-2.11.0-cp312-cp312-manylinux_2_28_x86_64.whl.metadata (29 kB)\r\n",
+      "Requirement already satisfied: filelock in /usr/local/lib/python3.12/dist-packages (from torch) (3.24.3)\r\n",
+      "Requirement already satisfied: typing-extensions>=4.10.0 in /usr/local/lib/python3.12/dist-packages (from torch) (4.15.0)\r\n",
+      "Requirement already satisfied: setuptools<82 in /usr/local/lib/python3.12/dist-packages (from torch) (75.2.0)\r\n",
+      "Requirement already satisfied: sympy>=1.13.3 in /usr/local/lib/python3.12/dist-packages (from torch) (1.14.0)\r\n",
+      "Requirement already satisfied: networkx>=2.5.1 in /usr/local/lib/python3.12/dist-packages (from torch) (3.6.1)\r\n",
+      "Requirement already satisfied: jinja2 in /usr/local/lib/python3.12/dist-packages (from torch) (3.1.6)\r\n",
+      "Requirement already satisfied: fsspec>=0.8.5 in /usr/local/lib/python3.12/dist-packages (from torch) (2026.2.0)\r\n",
+      "Collecting cuda-toolkit==13.0.2 (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == \"Linux\"->torch)\r\n",
+      "  Downloading cuda_toolkit-13.0.2-py2.py3-none-any.whl.metadata (9.4 kB)\r\n",
+      "Collecting cuda-bindings<14,>=13.0.3 (from torch)\r\n",
+      "  Downloading cuda_bindings-13.2.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (2.3 kB)\r\n",
+      "Collecting nvidia-cudnn-cu13==9.19.0.56 (from torch)\r\n",
+      "  Downloading nvidia_cudnn_cu13-9.19.0.56-py3-none-manylinux_2_27_x86_64.whl.metadata (1.9 kB)\r\n",
+      "Collecting nvidia-cusparselt-cu13==0.8.0 (from torch)\r\n",
+      "  Downloading nvidia_cusparselt_cu13-0.8.0-py3-none-manylinux2014_x86_64.whl.metadata (12 kB)\r\n",
+      "Collecting nvidia-nccl-cu13==2.28.9 (from torch)\r\n",
+      "  Downloading nvidia_nccl_cu13-2.28.9-py3-none-manylinux_2_18_x86_64.whl.metadata (2.0 kB)\r\n",
+      "Collecting nvidia-nvshmem-cu13==3.4.5 (from torch)\r\n",
+      "  Downloading nvidia_nvshmem_cu13-3.4.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.1 kB)\r\n",
+      "Collecting nvidia-cublas==13.1.0.3.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == \"Linux\"->torch)\r\n",
+      "  Downloading nvidia_cublas-13.1.0.3-py3-none-manylinux_2_27_x86_64.whl.metadata (1.7 kB)\r\n",
+      "Collecting nvidia-cuda-runtime==13.0.96.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == \"Linux\"->torch)\r\n",
+      "  Downloading nvidia_cuda_runtime-13.0.96-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.7 kB)\r\n",
+      "Collecting nvidia-cufft==12.0.0.61.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == \"Linux\"->torch)\r\n",
+      "  Downloading nvidia_cufft-12.0.0.61-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.8 kB)\r\n",
+      "Collecting nvidia-cufile==1.15.1.6.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == \"Linux\"->torch)\r\n",
+      "  Downloading nvidia_cufile-1.15.1.6-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.7 kB)\r\n",
+      "Collecting nvidia-cuda-cupti==13.0.85.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == \"Linux\"->torch)\r\n",
+      "  Downloading nvidia_cuda_cupti-13.0.85-py3-none-manylinux_2_25_x86_64.whl.metadata (1.7 kB)\r\n",
+      "Collecting nvidia-curand==10.4.0.35.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == \"Linux\"->torch)\r\n",
+      "  Downloading nvidia_curand-10.4.0.35-py3-none-manylinux_2_27_x86_64.whl.metadata (1.7 kB)\r\n",
+      "Collecting nvidia-cusolver==12.0.4.66.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == \"Linux\"->torch)\r\n",
+      "  Downloading nvidia_cusolver-12.0.4.66-py3-none-manylinux_2_27_x86_64.whl.metadata (1.8 kB)\r\n",
+      "Collecting nvidia-cusparse==12.6.3.3.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == \"Linux\"->torch)\r\n",
+      "  Downloading nvidia_cusparse-12.6.3.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.8 kB)\r\n",
+      "Collecting nvidia-nvjitlink==13.0.88.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == \"Linux\"->torch)\r\n",
+      "  Downloading nvidia_nvjitlink-13.0.88-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl.metadata (1.7 kB)\r\n",
+      "Collecting nvidia-cuda-nvrtc==13.0.88.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == \"Linux\"->torch)\r\n",
+      "  Downloading nvidia_cuda_nvrtc-13.0.88-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl.metadata (1.7 kB)\r\n",
+      "Collecting nvidia-nvtx==13.0.85.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2; platform_system == \"Linux\"->torch)\r\n",
+      "  Downloading nvidia_nvtx-13.0.85-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.whl.metadata (1.8 kB)\r\n",
+      "Requirement already satisfied: cuda-pathfinder~=1.1 in /usr/local/lib/python3.12/dist-packages (from cuda-bindings<14,>=13.0.3->torch) (1.3.5)\r\n",
+      "Requirement already satisfied: mpmath<1.4,>=1.1.0 in /usr/local/lib/python3.12/dist-packages (from sympy>=1.13.3->torch) (1.3.0)\r\n",
+      "Requirement already satisfied: MarkupSafe>=2.0 in /usr/local/lib/python3.12/dist-packages (from jinja2->torch) (3.0.3)\r\n",
+      "Downloading torch-2.11.0-cp312-cp312-manylinux_2_28_x86_64.whl (530.7 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m530.7/530.7 MB\u001b[0m \u001b[31m3.5 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading cuda_toolkit-13.0.2-py2.py3-none-any.whl (2.4 kB)\r\n",
+      "Downloading nvidia_cudnn_cu13-9.19.0.56-py3-none-manylinux_2_27_x86_64.whl (366.1 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m366.1/366.1 MB\u001b[0m \u001b[31m5.0 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading nvidia_cusparselt_cu13-0.8.0-py3-none-manylinux2014_x86_64.whl (169.9 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m169.9/169.9 MB\u001b[0m \u001b[31m10.8 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading nvidia_nccl_cu13-2.28.9-py3-none-manylinux_2_18_x86_64.whl (196.5 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m196.5/196.5 MB\u001b[0m \u001b[31m9.5 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading nvidia_nvshmem_cu13-3.4.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (60.4 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m60.4/60.4 MB\u001b[0m \u001b[31m32.0 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading nvidia_cublas-13.1.0.3-py3-none-manylinux_2_27_x86_64.whl (423.1 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m423.1/423.1 MB\u001b[0m \u001b[31m2.9 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading nvidia_cuda_cupti-13.0.85-py3-none-manylinux_2_25_x86_64.whl (10.7 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m10.7/10.7 MB\u001b[0m \u001b[31m110.2 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading nvidia_cuda_nvrtc-13.0.88-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl (90.2 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m90.2/90.2 MB\u001b[0m \u001b[31m20.8 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading nvidia_cuda_runtime-13.0.96-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (2.2 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m2.2/2.2 MB\u001b[0m \u001b[31m81.8 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading nvidia_cufft-12.0.0.61-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (214.1 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m214.1/214.1 MB\u001b[0m \u001b[31m1.5 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading nvidia_cufile-1.15.1.6-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (1.2 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m1.2/1.2 MB\u001b[0m \u001b[31m65.8 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading nvidia_curand-10.4.0.35-py3-none-manylinux_2_27_x86_64.whl (59.5 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m59.5/59.5 MB\u001b[0m \u001b[31m31.8 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading nvidia_cusolver-12.0.4.66-py3-none-manylinux_2_27_x86_64.whl (200.9 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m200.9/200.9 MB\u001b[0m \u001b[31m9.0 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading nvidia_cusparse-12.6.3.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (145.9 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m145.9/145.9 MB\u001b[0m \u001b[31m12.6 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading nvidia_nvjitlink-13.0.88-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl (40.7 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m40.7/40.7 MB\u001b[0m \u001b[31m46.8 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading nvidia_nvtx-13.0.85-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.whl (148 kB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m148.0/148.0 kB\u001b[0m \u001b[31m9.7 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hDownloading cuda_bindings-13.2.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (6.3 MB)\r\n",
+      "\u001b[2K   \u001b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m \u001b[32m6.3/6.3 MB\u001b[0m \u001b[31m102.5 MB/s\u001b[0m eta \u001b[36m0:00:00\u001b[0m\r\n",
+      "\u001b[?25hInstalling collected packages: nvidia-cusparselt-cu13, cuda-toolkit, nvidia-nvtx, nvidia-nvshmem-cu13, nvidia-nvjitlink, nvidia-nccl-cu13, nvidia-curand, nvidia-cufile, nvidia-cuda-runtime, nvidia-cuda-nvrtc, nvidia-cuda-cupti, nvidia-cublas, cuda-bindings, nvidia-cusparse, nvidia-cufft, nvidia-cudnn-cu13, nvidia-cusolver, torch\r\n",
+      "  Attempting uninstall: cuda-toolkit\r\n",
+      "    Found existing installation: cuda-toolkit 12.8.1\r\n",
+      "    Uninstalling cuda-toolkit-12.8.1:\r\n",
+      "      Successfully uninstalled cuda-toolkit-12.8.1\r\n",
+      "  Attempting uninstall: cuda-bindings\r\n",
+      "    Found existing installation: cuda-bindings 12.9.4\r\n",
+      "    Uninstalling cuda-bindings-12.9.4:\r\n",
+      "      Successfully uninstalled cuda-bindings-12.9.4\r\n",
+      "  Attempting uninstall: torch\r\n",
+      "    Found existing installation: torch 2.10.0+cu128\r\n",
+      "    Uninstalling torch-2.10.0+cu128:\r\n",
+      "      Successfully uninstalled torch-2.10.0+cu128\r\n",
+      "\u001b[31mERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.\r\n",
+      "libcuml-cu12 26.2.0 requires cuda-toolkit[cublas,cufft,curand,cusolver,cusparse]==12.*, but you have cuda-toolkit 13.0.2 which is incompatible.\r\n",
+      "cuml-cu12 26.2.0 requires cuda-toolkit[cublas,cufft,curand,cusolver,cusparse]==12.*, but you have cuda-toolkit 13.0.2 which is incompatible.\r\n",
+      "cuda-python 12.9.4 requires cuda-bindings~=12.9.4, but you have cuda-bindings 13.2.0 which is incompatible.\r\n",
+      "torchaudio 2.10.0+cu128 requires torch==2.10.0, but you have torch 2.11.0 which is incompatible.\r\n",
+      "torchvision 0.25.0+cu128 requires torch==2.10.0, but you have torch 2.11.0 which is incompatible.\r\n",
+      "cudf-cu12 26.2.1 requires cuda-toolkit[nvcc,nvrtc]==12.*, but you have cuda-toolkit 13.0.2 which is incompatible.\r\n",
+      "libcuvs-cu12 26.2.0 requires cuda-toolkit[cublas,curand,cusolver,cusparse]==12.*, but you have cuda-toolkit 13.0.2 which is incompatible.\r\n",
+      "libraft-cu12 26.2.0 requires cuda-toolkit[cublas,curand,cusolver,cusparse]==12.*, but you have cuda-toolkit 13.0.2 which is incompatible.\u001b[0m\u001b[31m\r\n",
+      "\u001b[0mSuccessfully installed cuda-bindings-13.2.0 cuda-toolkit-13.0.2 nvidia-cublas-13.1.0.3 nvidia-cuda-cupti-13.0.85 nvidia-cuda-nvrtc-13.0.88 nvidia-cuda-runtime-13.0.96 nvidia-cudnn-cu13-9.19.0.56 nvidia-cufft-12.0.0.61 nvidia-cufile-1.15.1.6 nvidia-curand-10.4.0.35 nvidia-cusolver-12.0.4.66 nvidia-cusparse-12.6.3.3 nvidia-cusparselt-cu13-0.8.0 nvidia-nccl-cu13-2.28.9 nvidia-nvjitlink-13.0.88 nvidia-nvshmem-cu13-3.4.5 nvidia-nvtx-13.0.85 torch-2.11.0\r\n",
+      "Note: you may need to restart the kernel to use updated packages.\n"
+     ]
+    }
+   ],
+   "source": [
+    "pip install -U triton torch"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "9b9ea7d1",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-04-23T07:39:25.550518Z",
+     "iopub.status.busy": "2026-04-23T07:39:25.550083Z",
+     "iopub.status.idle": "2026-04-23T07:39:30.388101Z",
+     "shell.execute_reply": "2026-04-23T07:39:30.387052Z"
+    },
+    "papermill": {
+     "duration": 4.8685,
+     "end_time": "2026-04-23T07:39:30.389667+00:00",
+     "exception": false,
+     "start_time": "2026-04-23T07:39:25.521167+00:00",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Running on: Tesla T4\n",
+      "✅ Functional Correctness: PASSED\n",
+      "PyTorch Time: 0.000040s\n",
+      "Triton Time:  0.000042s\n",
+      "🚀 Speedup: 0.95x\n"
+     ]
+    }
+   ],
+   "source": [
+    "import torch\n",
+    "import triton\n",
+    "import triton.language as tl\n",
+    "import time\n",
+    "\n",
+    "# --- 1. TRITON KERNEL IMPLEMENTATION ---\n",
+    "@triton.jit\n",
+    "def gcd_kernel(\n",
+    "    x_ptr, y_ptr, out_ptr, \n",
+    "    n_elements, \n",
+    "    BLOCK_SIZE: tl.constexpr\n",
+    "):\n",
+    "    pid = tl.program_id(0)\n",
+    "    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)\n",
+    "    mask = offsets < n_elements\n",
+    "\n",
+    "    a = tl.load(x_ptr + offsets, mask=mask)\n",
+    "    b = tl.load(y_ptr + offsets, mask=mask)\n",
+    "\n",
+    "    # Use absolute values for mathematical consistency (PyTorch standard)\n",
+    "    a = tl.abs(a)\n",
+    "    b = tl.abs(b)\n",
+    "\n",
+    "    # Parallel Euclidean Algorithm\n",
+    "    while tl.max(b) > 0:\n",
+    "        cond = b > 0\n",
+    "        new_a = tl.where(cond, b, a)\n",
+    "        new_b = tl.where(cond, a % b, b)\n",
+    "        a, b = new_a, new_b\n",
+    "    \n",
+    "    tl.store(out_ptr + offsets, a, mask=mask)\n",
+    "\n",
+    "# --- 2. PYTHON WRAPPER ---\n",
+    "def triton_gcd(x: torch.Tensor, y: torch.Tensor):\n",
+    "    x, y = x.contiguous(), y.contiguous()\n",
+    "    output = torch.empty_like(x)\n",
+    "    n_elements = x.numel()\n",
+    "    \n",
+    "    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)\n",
+    "    \n",
+    "    gcd_kernel[grid](\n",
+    "        x, y, output, \n",
+    "        n_elements, \n",
+    "        BLOCK_SIZE=1024\n",
+    "    )\n",
+    "    return output\n",
+    "\n",
+    "# --- 3. VERIFICATION & BENCHMARK ---\n",
+    "if torch.cuda.is_available():\n",
+    "    print(f\"Running on: {torch.cuda.get_device_name(0)}\")\n",
+    "    \n",
+    "    # Create Test Data\n",
+    "    size = 100_000\n",
+    "    x = torch.randint(1, 10000, (size,), device='cuda', dtype=torch.int32)\n",
+    "    y = torch.randint(1, 10000, (size,), device='cuda', dtype=torch.int32)\n",
+    "\n",
+    "    # Correctness Check\n",
+    "    torch_res = torch.gcd(x, y)\n",
+    "    triton_res = triton_gcd(x, y)\n",
+    "    \n",
+    "    if torch.equal(torch_res, triton_res):\n",
+    "        print(\"✅ Functional Correctness: PASSED\")\n",
+    "        \n",
+    "        # Performance Benchmark\n",
+    "        def get_runtime(fn, *args):\n",
+    "            for _ in range(20): fn(*args) # Warmup\n",
+    "            torch.cuda.synchronize()\n",
+    "            start = time.time()\n",
+    "            for _ in range(100): fn(*args)\n",
+    "            torch.cuda.synchronize()\n",
+    "            return (time.time() - start) / 100\n",
+    "\n",
+    "        t_torch = get_runtime(torch.gcd, x, y)\n",
+    "        t_triton = get_runtime(triton_gcd, x, y)\n",
+    "\n",
+    "        print(f\"PyTorch Time: {t_torch:.6f}s\")\n",
+    "        print(f\"Triton Time:  {t_triton:.6f}s\")\n",
+    "        print(f\"🚀 Speedup: {t_torch / t_triton:.2f}x\")\n",
+    "    else:\n",
+    "        print(\"❌ Functional Correctness: FAILED\")\n",
+    "else:\n",
+    "    print(\"❌ GPU not detected. Please ensure T4 is enabled in settings.\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "c8ccf6f0",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-04-23T07:39:30.446752Z",
+     "iopub.status.busy": "2026-04-23T07:39:30.446516Z",
+     "iopub.status.idle": "2026-04-23T07:39:33.434063Z",
+     "shell.execute_reply": "2026-04-23T07:39:33.433200Z"
+    },
+    "papermill": {
+     "duration": 3.017932,
+     "end_time": "2026-04-23T07:39:33.435524+00:00",
+     "exception": false,
+     "start_time": "2026-04-23T07:39:30.417592+00:00",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "✅ Data successfully loaded from /kaggle/input/competitions/flag-os-open-computing-global-challenge\n",
+      "Training rows: 15000 | Testing rows: 10000\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "/usr/local/lib/python3.12/dist-packages/xgboost/training.py:200: UserWarning: [07:39:33] WARNING: /__w/xgboost/xgboost/src/learner.cc:782: \n",
+      "Parameters: { \"use_label_encoder\" } are not used.\n",
+      "\n",
+      "  bst.update(dtrain, iteration=i, fobj=obj)\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "✅ Model Training Complete.\n",
+      "🚀 submission.csv created! You are ready to click 'Save Version'.\n"
+     ]
+    }
+   ],
+   "source": [
+    "import pandas as pd\n",
+    "import os\n",
+    "from xgboost import XGBClassifier\n",
+    "\n",
+    "# 1. Define the base path based on your verified input\n",
+    "BASE_PATH = '/kaggle/input/competitions/flag-os-open-computing-global-challenge'\n",
+    "train_path = os.path.join(BASE_PATH, 'train.csv')\n",
+    "test_path = os.path.join(BASE_PATH, 'test.csv')\n",
+    "\n",
+    "# 2. Safety Load\n",
+    "try:\n",
+    "    train = pd.read_csv(train_path)\n",
+    "    test = pd.read_csv(test_path)\n",
+    "    print(f\"✅ Data successfully loaded from {BASE_PATH}\")\n",
+    "    print(f\"Training rows: {len(train)} | Testing rows: {len(test)}\")\n",
+    "except Exception as e:\n",
+    "    print(f\"❌ Still hitting an error: {e}\")\n",
+    "    print(\"Try running: !ls /kaggle/input/competitions/flag-os-open-computing-global-challenge/\")\n",
+    "\n",
+    "# 3. Quick Preprocessing\n",
+    "def preprocess(df):\n",
+    "    # Drop columns that don't help the model learn\n",
+    "    df = df.drop(columns=['id', 'CustomerId', 'Surname'], errors='ignore')\n",
+    "    # One-hot encode Geography and Gender\n",
+    "    df = pd.get_dummies(df, columns=['Geography', 'Gender'], drop_first=True)\n",
+    "    return df\n",
+    "\n",
+    "X = preprocess(train.drop(columns=['Exited']))\n",
+    "y = train['Exited']\n",
+    "X_test = preprocess(test)\n",
+    "\n",
+    "# Align columns to ensure the test set has exactly the same features as train\n",
+    "X, X_test = X.align(X_test, join='left', axis=1, fill_value=0)\n",
+    "\n",
+    "# 4. Train XGBoost Model\n",
+    "model = XGBClassifier(\n",
+    "    n_estimators=200, \n",
+    "    learning_rate=0.05, \n",
+    "    max_depth=6, \n",
+    "    random_state=42,\n",
+    "    use_label_encoder=False,\n",
+    "    eval_metric='logloss'\n",
+    ")\n",
+    "model.fit(X, y)\n",
+    "print(\"✅ Model Training Complete.\")\n",
+    "\n",
+    "# 5. Generate Submission\n",
+    "probs = model.predict_proba(X_test)[:, 1]\n",
+    "submission = pd.DataFrame({\n",
+    "    'id': test['id'],\n",
+    "    'Exited': probs\n",
+    "})\n",
+    "\n",
+    "submission.to_csv('submission.csv', index=False)\n",
+    "print(\"🚀 submission.csv created! You are ready to click 'Save Version'.\")"
+   ]
+  }
+ ],
+ "metadata": {
+  "kaggle": {
+   "accelerator": "nvidiaTeslaT4",
+   "dataSources": [
+    {
+     "databundleVersionId": 13695654,
+     "isSourceIdPinned": false,
+     "sourceId": 114765,
+     "sourceType": "competition"
+    }
+   ],
+   "dockerImageVersionId": 31329,
+   "isGpuEnabled": true,
+   "isInternetEnabled": true,
+   "language": "python",
+   "sourceType": "notebook"
+  },
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.12.12"
+  },
+  "papermill": {
+   "default_parameters": {},
+   "duration": 137.075888,
+   "end_time": "2026-04-23T07:39:36.877510+00:00",
+   "environment_variables": {},
+   "exception": null,
+   "input_path": "__notebook__.ipynb",
+   "output_path": "__notebook__.ipynb",
+   "parameters": {},
+   "start_time": "2026-04-23T07:37:19.801622+00:00",
+   "version": "2.7.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
