@@ -1,3 +1,4 @@
+from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -354,6 +355,7 @@ from flag_gems.ops.zeros_like import zeros_like
 __all__ = [
     "_assert_async",
     "_conv_depthwise2d",
+    "_dyn_quant_pack_4bit_weight",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
     "_is_all_true",
