@@ -66,7 +66,7 @@ iluvatar = [
     "torch==2.7.1+corex.4.4.0",
     "torchaudio==2.7.1+corex.4.4.0",
     "torchvision==0.22.1+corex.4.4.0",
-    "flagtree==0.5.0+iluvatar3.1"
+    "flagtree==0.5.1+iluvatar3.1"
 ]
 
 kunlunxin = [
@@ -123,7 +123,7 @@ test = [
     "distro==1.9.0",
     "coverage==7.13.5",
     "openpyxl==3.1.5",
-    "pytest==9.0.2",
+    "pytest==9.0.3",
     "scipy>=1.15.3",
 ]
 
@@ -201,6 +201,7 @@ explicit = true
 [[tool.uv.index]]
 name = "metax-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-metax/simple"
+explicit = true
 
 # Source for Mthreads packages
 [[tool.uv.index]]

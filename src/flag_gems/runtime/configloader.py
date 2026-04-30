@@ -1,66 +1,10 @@
 import copy
-import os
 import warnings
 
 import triton
 
-from . import backend
+from . import backend, common
 from .backend.device import DeviceDetector
-
-DEFAULT_EXPAND_CONFIG_PATH = os.path.normpath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "utils",
-        "configs",
-        "general_ops_expand_configs.yaml",
-    )
-)
-
-
-DEFAULT_STRATEGIES = {
-    "bmm": ["log", "log", "log", "align32", "align32"],
-    "addmm": ["align32", "align32", "align32"],
-    "baddbmm": ["align32", "align32", "align32"],
-    "mv": ["align32", "align32"],
-    "w8a8_block_fp8_general": [
-        "align32",
-        "align32",
-        "align32",
-        "align32",
-        "align32",
-    ],
-    "w8a8_block_fp8_general_tma": [
-        "align32",
-        "align32",
-        "align32",
-        "align32",
-        "align32",
-        "default",
-    ],
-    "mm_general_tma": [
-        "align32",
-        "align32",
-        "align32",
-        "align32",
-        "align32",
-        "default",
-    ],
-    "gemv": ["align32", "align32", "align32", "default"],
-    "sparse_attention": ["align32", "align32", "align32"],
-}
-
-OP_KEY_ORDERS = {
-    "bmm": ["M", "N", "K", "stride_am", "stride_bk"],
-    "addmm": ["M", "N", "K"],
-    "baddbmm": ["M", "N", "K"],
-    "mv": ["M", "N"],
-    "w8a8_block_fp8_general": ["M", "N", "K", "stride_am", "stride_bk"],
-    "w8a8_block_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    "gemv": ["M", "K", "stride_am", "stride_bk"],
-    "sparse_attention": ["topk", "H_ACTUAL", "D"],
-}
 
 
 class ConfigLoader(object):
@@ -83,16 +27,7 @@ class ConfigLoader(object):
             self.default_primitive_yaml_config = self.get_default_tune_config()
             self.vendor_heuristics_config = self.get_vendor_heuristics_config()
             self.default_heuristics_config = self.get_default_heuristics_config()
-            try:
-                if backend.BackendArchEvent().has_arch:
-                    self.arch_specialized_yaml_config = (
-                        backend.BackendArchEvent().autotune_configs
-                    )
-                    self.arch_heuristics_config = (
-                        backend.BackendArchEvent().heuristics_configs
-                    )
-            except Exception as err:
-                print(f"[INFO] : {err}")
+            self.update_config_from_arch()
 
             if self.vendor_heuristics_config is None:
                 vendorname = self.device.vendor_name
@@ -108,15 +43,41 @@ class ConfigLoader(object):
                 "num_warps": 4,
                 "num_ctas": 1,
             }
-            if self.device.vendor_name in ["hygon"]:
-                self.triton_config_default = {
-                    "num_stages": 2,
-                    "num_warps": 4,
-                    "num_ctas": 1,
-                    "num_ldmatrixes": 0,
-                }
+            if self.device.vendor_name == "hygon":
+                self.triton_config_default["num_ldmatrixes"] = 0
             self.expand_config_registry = self._build_expand_registry()
             self.load_all()
+
+    def update_config_from_arch(self):
+        try:
+            archEvent = backend.BackendArchEvent()
+            if archEvent.has_arch:
+                self.arch_specialized_yaml_config = archEvent.autotune_configs
+                self.arch_heuristics_config = archEvent.heuristics_configs
+        except Exception as err:
+            print(f"[INFO] : {err}")
+
+    def _get_op_configs(self, op_name):
+        """Get config for op_name from available config sources."""
+        for config in (
+            self.arch_specialized_yaml_config,
+            self.vendor_primitive_yaml_config,
+            self.default_primitive_yaml_config,
+        ):
+            if config and op_name in config:
+                return config[op_name]
+        return []
+
+    def _create_triton_config(self, single_config, current_config):
+        """Create a triton.Config with appropriate parameters."""
+        kwargs = {
+            "num_warps": current_config["num_warps"],
+            "num_stages": current_config["num_stages"],
+            "num_ctas": current_config["num_ctas"],
+        }
+        if self.device.vendor_name == "hygon":
+            kwargs["num_ldmatrixes"] = current_config["num_ldmatrixes"]
+        return triton.Config(single_config["META"], **kwargs)
 
     def _build_configs_by_op(self, op_name, ranges, pre_hook=None):
         if op_name == "bmm":
@@ -214,6 +175,44 @@ class ConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name in ("mm", "mm_sqmma"):
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name in ("bmm_sqmma", "addmm_sqmma"):
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_SIZE_M": block_m,
+                        "BLOCK_SIZE_N": block_n,
+                        "BLOCK_SIZE_K": block_k,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
         if op_name == "gemv":
             return [
                 triton.Config(
@@ -286,6 +285,27 @@ class ConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name == "w8a8_block_fp8_general_splitk":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        "SPLIT_K": split_k,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for split_k in ranges["SPLIT_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
         return []
 
     def _build_single_expand_spec(
@@ -296,12 +316,13 @@ class ConfigLoader(object):
     ):
         return {
             "yaml_op_name": yaml_op_name or op_name,
-            "key": OP_KEY_ORDERS[op_name],
-            "default_strategy": DEFAULT_STRATEGIES[op_name],
+            "key": common.OP_KEY_ORDERS[op_name],
+            "default_strategy": common.DEFAULT_STRATEGIES[op_name],
             "expand_yaml_path": expand_yaml_path,
         }
 
     def _build_expand_registry(self):
+        DEFAULT_EXPAND_CONFIG_PATH = common.DEFAULT_EXPAND_CONFIG_PATH
         return {
             "bmm": self._build_single_expand_spec(
                 "bmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
@@ -318,12 +339,18 @@ class ConfigLoader(object):
             "w8a8_block_fp8_general": self._build_single_expand_spec(
                 "w8a8_block_fp8_general"
             ),
+            "w8a8_block_fp8_general_splitk": self._build_single_expand_spec(
+                "w8a8_block_fp8_general_splitk"
+            ),
             "w8a8_block_fp8_general_tma": self._build_single_expand_spec(
                 "w8a8_block_fp8_general_tma"
             ),
             "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
             "gemv": self._build_single_expand_spec("gemv"),
             "sparse_attention": self._build_single_expand_spec("sparse_attention"),
+            "mm": self._build_single_expand_spec("mm"),
+            "bmm_sqmma": self._build_single_expand_spec("bmm_sqmma"),
+            "addmm_sqmma": self._build_single_expand_spec("addmm_sqmma"),
         }
 
     def load_all(self):
@@ -499,19 +526,11 @@ class ConfigLoader(object):
         if op_name in self.loaded_triton_config:
             return self.loaded_triton_config[op_name]
 
-        if (
-            self.arch_specialized_yaml_config
-            and op_name in self.arch_specialized_yaml_config
-        ):
-            current_op_configs = self.arch_specialized_yaml_config[op_name]
-        elif op_name in self.vendor_primitive_yaml_config:
-            current_op_configs = self.vendor_primitive_yaml_config[op_name]
-        else:
-            current_op_configs = self.default_primitive_yaml_config[op_name]
+        current_op_configs = self._get_op_configs(op_name)
+        if not current_op_configs:
+            return []
 
         configs = []
-        if len(current_op_configs) == 0:
-            return configs
 
         for single_config in current_op_configs:
             if self.gen_key in single_config:
@@ -523,23 +542,5 @@ class ConfigLoader(object):
                 if default_param in single_config:
                     current_config[default_param] = single_config[default_param]
 
-            if self.device.vendor_name in ["hygon"]:
-                configs.append(
-                    triton.Config(
-                        single_config["META"],
-                        num_warps=current_config["num_warps"],
-                        num_stages=current_config["num_stages"],
-                        num_ctas=current_config["num_ctas"],
-                        num_ldmatrixes=current_config["num_ldmatrixes"],
-                    )
-                )
-            else:
-                configs.append(
-                    triton.Config(
-                        single_config["META"],
-                        num_warps=current_config["num_warps"],
-                        num_stages=current_config["num_stages"],
-                        num_ctas=current_config["num_ctas"],
-                    )
-                )
+            configs.append(self._create_triton_config(single_config, current_config))
         return configs
