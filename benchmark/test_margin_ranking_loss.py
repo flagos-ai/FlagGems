@@ -33,7 +33,7 @@ def test_margin_ranking_loss():
     bench.run()
 
 
-@pytest.mark.margin_ranking_loss
+@pytest.mark.margin_ranking_loss_backward
 def test_margin_ranking_loss_backward():
     bench = base.GenericBenchmark(
         op_name="margin_ranking_loss",
