@@ -39,6 +39,7 @@ def test_accuracy_conv_transpose2d(
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
 
+    # Issue 2801: The environment variable is not enforced in operator logic.
     if flag_gems.vendor_name == "hygon":
         monkeypatch.env("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
 

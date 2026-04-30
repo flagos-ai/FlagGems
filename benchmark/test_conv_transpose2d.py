@@ -50,6 +50,7 @@ def _input_fn(shape, dtype, device):
 
 @pytest.mark.conv_transpose2d
 def test_perf_conv_transpose2d(monkeypatch):
+    # Issue 2801: The environment variable is not enforced in operator logic.
     if flag_gems.vendor_name == "hygon":
         monkeypatch.env("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
 
