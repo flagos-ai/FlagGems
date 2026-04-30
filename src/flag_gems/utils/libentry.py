@@ -473,7 +473,10 @@ class LibTuner(triton.runtime.Autotuner):
                 f"{self.bench_time:.2f}s; key info: {key}, best config selected: {self.best_config};"
             )
         full_nargs = {**self.nargs, **kwargs, **config.all_kwargs()}
-        if hasattr(self, "shared_config_pre_hook") and self.shared_config_pre_hook is not None:
+        if (
+            hasattr(self, "shared_config_pre_hook")
+            and self.shared_config_pre_hook is not None
+        ):
             self.shared_config_pre_hook(full_nargs)
         elif config.pre_hook is not None:
             config.pre_hook(full_nargs)
