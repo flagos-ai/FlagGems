@@ -1,5 +1,6 @@
 import pytest
 import torch
+from packaging import version
 
 import flag_gems
 
@@ -93,3 +94,65 @@ def test_addmm_out(M, N, K, scalar, dtype):
         torch.addmm(bias2, mat1, mat2, alpha=alpha, beta=beta, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.addmm_dtype
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.skipif(
+    version.parse(torch.__version__) < version.parse("2.8"),
+    reason="The operator addmm.dtype was added starting from 2.8.0",
+)
+def test_aten_addmm_dtype_fp32_accum(M, N, K):
+    dtype = torch.float16
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((M, N), dtype=torch.float32, device=flag_gems.device)
+
+    # CPU eager may not implement ``aten.addmm.dtype``; match fp32 accumulation explicitly.
+    ref_out = torch.addmm(
+        bias.detach().cpu().float(),
+        mat1.detach().cpu().float(),
+        mat2.detach().cpu().float(),
+        beta=1.0,
+        alpha=1.0,
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.addmm.dtype(
+            bias, mat1, mat2, torch.float32, beta=1.0, alpha=1.0
+        )
+
+    utils.gems_assert_close(
+        res_out, ref_out.to(flag_gems.device), torch.float32, reduce_dim=K
+    )
+
+
+@pytest.mark.addmm_dtype_out
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.skipif(
+    version.parse(torch.__version__) < version.parse("2.8"),
+    reason="The operator addmm.dtype_out was added starting from 2.8.0",
+)
+def test_aten_addmm_dtype_out_fp32_accum(M, N, K):
+    dtype = torch.float16
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((M, N), dtype=torch.float32, device=flag_gems.device)
+    out = torch.empty((M, N), dtype=torch.float32, device=flag_gems.device)
+
+    ref_out = torch.addmm(
+        bias.detach().cpu().float(),
+        mat1.detach().cpu().float(),
+        mat2.detach().cpu().float(),
+        beta=1.0,
+        alpha=1.0,
+    )
+
+    with flag_gems.use_gems():
+        torch.ops.aten.addmm.dtype_out(
+            bias, mat1, mat2, torch.float32, beta=1.0, alpha=1.0, out=out
+        )
+
+    utils.gems_assert_close(
+        out, ref_out.to(flag_gems.device), torch.float32, reduce_dim=K
+    )

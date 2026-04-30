@@ -281,16 +281,14 @@ def softmax_backward_kernel_inner(
             offsets += TILE_N
 
 
-def softmax(self, dim, half_to_float=False):
-    logger.debug("GEMS SOFTMAX")
+def softmax_out(self, dim, half_to_float=False, *, out):
+    logger.debug("GEMS SOFTMAX_OUT")
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
 
-    # special handling for dim = 0 and empty tensor
     if self.numel() == 0:
-        # empty tensor, return the same shape with 1's
-        out_shape = list(self.shape)
-        out = torch.empty(out_shape, dtype=self.dtype, device=self.device)
+        if tuple(out.shape) != tuple(self.shape):
+            out.resize_(self.shape)
         zero_(out)
         return out
 
@@ -298,14 +296,14 @@ def softmax(self, dim, half_to_float=False):
     M = 1
     N = self.shape[dim]
     for i in range(dim):
-        M *= self.shape[i]  # pre_dim
+        M *= self.shape[i]
     self = self.contiguous()
-    if half_to_float:
-        dtype = torch.float32
-    else:
-        dtype = self.dtype
-    out = torch.empty_like(self, dtype=dtype)
-    K = self.numel() // M // N  # post_dim
+    dtype = torch.float32 if half_to_float else self.dtype
+    if tuple(out.shape) != tuple(self.shape):
+        out.resize_(self.shape)
+    if out.dtype != dtype:
+        raise RuntimeError(f"_softmax.out: expected out dtype {dtype}, got {out.dtype}")
+    K = self.numel() // M // N
 
     with torch_device_fn.device(self.device):
         if K > 1:
@@ -328,8 +326,24 @@ def softmax(self, dim, half_to_float=False):
     return out
 
 
-def softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS SOFTMAX VJP")
+def softmax(self, dim, half_to_float=False):
+    logger.debug("GEMS SOFTMAX")
+
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+
+    if self.numel() == 0:
+        out_shape = list(self.shape)
+        out = torch.empty(out_shape, dtype=self.dtype, device=self.device)
+        zero_(out)
+        return out
+
+    dtype = torch.float32 if half_to_float else self.dtype
+    out = torch.empty_like(self, dtype=dtype)
+    return softmax_out(self, dim, half_to_float, out=out)
+
+
+def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
+    logger.debug("GEMS SOFTMAX_BACKWARD_OUT")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
@@ -339,16 +353,21 @@ def softmax_backward(grad_output, output, dim, input_dtype):
         M *= output.shape[i]
 
     grad_output = grad_output.contiguous()
-    in_grad = torch.empty_like(output, dtype=input_dtype)
+    if tuple(grad_input.shape) != tuple(output.shape):
+        grad_input.resize_(output.shape)
+    if grad_input.dtype != input_dtype:
+        raise RuntimeError(
+            f"_softmax_backward_data.out: expected grad_input dtype {input_dtype}, got {grad_input.dtype}"
+        )
     K = output.numel() // M // N
 
-    with torch_device_fn.device(in_grad.device):
+    with torch_device_fn.device(grad_input.device):
         if K > 1:
             grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
             softmax_backward_kernel_non_inner[grid](
                 output,
                 grad_output,
-                in_grad,
+                grad_input,
                 M,
                 N,
                 K,
@@ -358,8 +377,16 @@ def softmax_backward(grad_output, output, dim, input_dtype):
             softmax_backward_kernel_inner[grid](
                 output,
                 grad_output,
-                in_grad,
+                grad_input,
                 M,
                 N,
             )
-    return in_grad
+    return grad_input
+
+
+def softmax_backward(grad_output, output, dim, input_dtype):
+    logger.debug("GEMS SOFTMAX_BACKWARD")
+    in_grad = torch.empty_like(output, dtype=input_dtype)
+    return softmax_backward_out(
+        grad_output, output, dim, input_dtype, grad_input=in_grad
+    )

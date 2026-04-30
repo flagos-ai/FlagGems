@@ -27,25 +27,50 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  check-permission:
+    runs-on: ubuntu-latest
+    outputs:
+      authorized: ${{ steps.makeDecision.outputs.continue }}
+    steps:
+      - id: checkUser
+        uses: tspascoal/get-user-teams-membership@v3
+        with:
+          username: ${{ github.actor }}
+          team: 'FlagGems'
+          GITHUB_TOKEN: ${{ secrets.TEAMMEMBER_TOKEN }}
+
+      - id: makeDecision
+        env:
+          IS_MEMBER: ${{ steps.checkUser.outputs.isTeamMember }}
+        run: |
+          if [[ "${IS_MEMBER}" == "false" ]]; then
+            echo "Unauthorized user: ${{ github.actor }}"
+            echo "continue=false" >> $GITHUB_OUTPUT
+          else
+            echo "continue=true" >> $GITHUB_OUTPUT
+          fi
+
+  test-operator:
+    needs: check-permission
+    if: needs.check-permission.outputs.authorized == 'true'
     runs-on: ${{ inputs.runner }}
     steps:
-      - name: Set global proxy
-        if: False
-        shell: bash
-        env:
-          RUNNER_LABEL: ${{ inputs.runner }}
-          PROXY: ${{ secrets.PROXYG }}
-        run: |
-          # Setup proxy for git checkout
-          case "${RUNNER_LABEL}" in
-            h20|metax|hygon)
-              ;;
-            *)
-              echo "HTTP_PROXY=${PROXY}" >> $GITHUB_ENV
-              echo "HTTPS_PROXY=${PROXY}" >> $GITHUB_ENV
-              ;;
-          esac
+      # - name: Set global proxy
+      #   if: False
+      #   shell: bash
+      #   env:
+      #     RUNNER_LABEL: ${{ inputs.runner }}
+      #     PROXY: ${{ secrets.PROXYG }}
+      #   run: |
+      #     # Setup proxy for git checkout
+      #     case "${RUNNER_LABEL}" in
+      #       h20|metax|hygon)
+      #         ;;
+      #       *)
+      #         echo "HTTP_PROXY=${PROXY}" >> $GITHUB_ENV
+      #         echo "HTTPS_PROXY=${PROXY}" >> $GITHUB_ENV
+      #         ;;
+      #     esac
 
       - uses: actions/checkout@v6
         # with:
@@ -55,25 +80,17 @@ jobs:
         shell: bash
         env:
           RUNNER_LABEL: ${{ inputs.runner }}
-          PROXY: ${{ secrets.PROXYC }}
         run: |
-          # Setup proxy for install if needed
+          # Validate vendor names
           case "${RUNNER_LABEL}" in
-            h20|metax|hygon)
-              if [[ "${RUNNER_LABEL}" == "h20" ]]; then
-                VENDOR="nvidia"
-              else
-                VENDOR="${RUNNER_LABEL}"
-              fi
+            h20)
+              VENDOR="nvidia"
+              ;;
+            moore)
+              VENDOR="mthreads"
               ;;
             *)
-              # export HTTP_PROXY="${PROXY}"
-              # export HTTPS_PROXY="${PROXY}"
-              if [[ "${RUNNER_LABEL}" == "moore" ]]; then
-                VENDOR="mthreads"
-              else
-                VENDOR="${RUNNER_LABEL}"
-              fi
+              VENDOR="${RUNNER_LABEL}"
               ;;
           esac
 
