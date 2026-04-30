@@ -8,7 +8,7 @@ from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
 from flag_gems.ops.act_quant import act_quant_triton
-from flag_gems.ops.add import add, add_
+from flag_gems.ops.add import add, add_, add_out
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
 from flag_gems.ops.addcmul import addcmul, addcmul_out
 from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
@@ -210,7 +210,7 @@ from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.mm import mm, mm_out
 from flag_gems.ops.mse_loss import mse_loss
-from flag_gems.ops.mul import mul, mul_
+from flag_gems.ops.mul import mul, mul_, mul_out
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.mv import mv
 from flag_gems.ops.nan_to_num import nan_to_num
@@ -308,7 +308,7 @@ from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
 from flag_gems.ops.stack import stack
 from flag_gems.ops.std import std
-from flag_gems.ops.sub import sub, sub_
+from flag_gems.ops.sub import sub, sub_, sub_out
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.tan import tan, tan_
@@ -369,6 +369,7 @@ __all__ = [
     "acos",
     "add",
     "add_",
+    "add_out",
     "addcdiv",
     "addcdiv_out",
     "addcmul",
@@ -623,6 +624,7 @@ __all__ = [
     "mse_loss",
     "mul",
     "mul_",
+    "mul_out",
     "multinomial",
     "mv",
     "nan_to_num",
@@ -746,6 +748,7 @@ __all__ = [
     "std",
     "sub",
     "sub_",
+    "sub_out",
     "sum",
     "sum_dim",
     "sum_dim_out",

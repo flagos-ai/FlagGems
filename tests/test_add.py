@@ -26,6 +26,34 @@ def test_add(shape, alpha, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.add_out
+@pytest.mark.parametrize(
+    "shape1, shape2, out_shape",
+    [
+        ((64, 128), (64, 128), (64, 128)),
+        ((1, 128), (64, 128), (64, 128)),
+        ((64, 1), (1, 128), (1,)),
+    ],
+)
+@pytest.mark.parametrize("alpha", [0.5, 1.0])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_add_tensor_tensor_out(shape1, shape2, out_shape, alpha, dtype):
+    inp1 = torch.randn(shape1, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape2, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1, True)
+    ref_inp2 = utils.to_reference(inp2, True)
+
+    ref_out = torch.empty(out_shape, dtype=dtype, device=ref_inp1.device)
+    torch.ops.aten.add.out(ref_inp1, ref_inp2, alpha=alpha, out=ref_out)
+
+    out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.add.out(inp1, inp2, alpha=alpha, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype)
+
+
 @pytest.mark.add
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)

@@ -93,6 +93,29 @@ def add(A, B, *, alpha=1):
         return torch.tensor(A + B * alpha)
 
 
+def add_out(A, B, *, alpha=1, out):
+    logger.debug("GEMS ADD_OUT")
+    if not (isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor)):
+        raise TypeError("aten::add.out expects tensor operands")
+    A_is_c = A.is_complex()
+    B_is_c = B.is_complex()
+    if A_is_c or B_is_c:
+        if B.device != A.device:
+            B = B.to(A.device)
+        tmp = add(A, B, alpha=alpha)
+        if list(out.shape) != list(tmp.shape):
+            out.resize_(tmp.shape)
+        out.copy_(tmp)
+        return out
+    if B.device != A.device:
+        B = B.to(A.device)
+    broadcast_shape = torch.broadcast_shapes(A.shape, B.shape)
+    if list(out.shape) != list(broadcast_shape):
+        out.resize_(broadcast_shape)
+    add_func(A, B, alpha, out0=out)
+    return out
+
+
 def add_(A, B, *, alpha=1):
     logger.debug("GEMS ADD_")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
