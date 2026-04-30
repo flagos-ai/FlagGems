@@ -37,6 +37,7 @@ def test_conv2d(
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
 
+    # Issue 2801: The environment variable is not enforced in operator logic.
     if flag_gems.vendor_name == "hygon":
         monkeypatch.env("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
 
@@ -106,8 +107,12 @@ def test_conv2d(
 
 
 @pytest.mark.conv2d_padding
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "hygon", reason="#2802: operator doesn't work"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin", reason="#2803: operator doesn't work"
+)
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1])
 @pytest.mark.parametrize("padding", ["valid", "same"])

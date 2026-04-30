@@ -40,7 +40,7 @@ AVGPOOL3D_CONFIGS = [
     AVGPOOL3D_CONFIGS,
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_avg_pool3d_forward(
+def test_avg_pool3d(
     shape,
     kernel_size,
     stride,
@@ -77,13 +77,13 @@ def test_accuracy_avg_pool3d_forward(
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.avg_pool3d_bwd
+@pytest.mark.avg_pool3d_backward
 @pytest.mark.parametrize(
     "shape, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override",
     AVGPOOL3D_CONFIGS,
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_avg_pool3d_backward(
+def test_avg_pool3d_backward(
     shape,
     kernel_size,
     stride,

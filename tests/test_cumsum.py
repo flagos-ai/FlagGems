@@ -36,6 +36,7 @@ def test_cumsum(shape, dtype):
         ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.cumsum(ref_inp, dim=dim)
+    # Issue 2806: This customization doesn't look correct.
     if flag_gems.vendor_name == "kunlunxin":
         from flag_gems.runtime.backend._kunlunxin import ops as kl_ops
 

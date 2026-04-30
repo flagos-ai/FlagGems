@@ -28,7 +28,7 @@ def test_argmax(shape, dim, keepdim, dtype):
 
     if dim is not None:
         if rank == 0 or dim >= rank or dim < -rank:
-            pytest.skip(f"Dimension {dim} is out of bounds for shape {shape}")
+            pytest.skip(f"Dimension {dim} is out of bound for shape {shape}")
 
     if is_empty_tensor:
         if dim is None:

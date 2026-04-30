@@ -9,7 +9,7 @@ from . import accuracy_utils as utils
 @pytest.mark.asinh
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
-def test_accuracy_asinh(shape, dtype):
+def test_asinh(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.asinh(ref_inp)
@@ -24,7 +24,7 @@ def test_accuracy_asinh(shape, dtype):
     [(1, 1), (8, 8), (64, 64), (256, 256), (1024, 1024), (4096, 4096)],
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_asinh_various_sizes(shape, dtype):
+def test_asinh_various_sizes(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.asinh(ref_inp)
@@ -35,7 +35,7 @@ def test_accuracy_asinh_various_sizes(shape, dtype):
 
 @pytest.mark.asinh
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_asinh_edge_cases(dtype):
+def test_asinh_edge_cases(dtype):
     vals = [
         0.0,
         -0.0,
@@ -56,7 +56,7 @@ def test_accuracy_asinh_edge_cases(dtype):
 
 
 @pytest.mark.asinh
-def test_accuracy_asinh_empty_tensor():
+def test_asinh_empty_tensor():
     inp = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.asinh(ref_inp)
