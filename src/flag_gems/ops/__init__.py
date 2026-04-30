@@ -200,10 +200,6 @@ from flag_gems.ops.max_pool2d_with_indices import (
     max_pool2d_backward,
     max_pool2d_with_indices,
 )
-from flag_gems.ops.max_pool3d_with_indices import (
-    max_pool3d_backward,
-    max_pool3d_with_indices,
-)
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.min import min, min_dim
@@ -330,6 +326,7 @@ from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_
 from flag_gems.ops.upsample_linear1d import upsample_linear1d
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
+from flag_gems.ops.upsample_nearest2d_backward import upsample_nearest2d_backward
 from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
 from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
@@ -610,8 +607,6 @@ __all__ = [
     "max_dim",
     "max_pool2d_with_indices",
     "max_pool2d_backward",
-    "max_pool3d_with_indices",
-    "max_pool3d_backward",
     "maximum",
     "mean",
     "mean_dim",
@@ -779,6 +774,7 @@ __all__ = [
     "upsample_linear1d",
     "upsample_nearest1d",
     "upsample_nearest2d",
+    "upsample_nearest2d_backward",
     "upsample_nearest3d",
     "var_mean",
     "var",
