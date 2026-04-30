@@ -135,6 +135,7 @@ from flag_gems.ops.gather import gather, gather_backward
 from flag_gems.ops.gcd import gcd, gcd_out
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
+from flag_gems.ops.gemm import gemm, gemm_out
 from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
@@ -524,6 +525,8 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "gemm",
+    "gemm_out",
     "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
