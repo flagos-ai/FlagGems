@@ -268,6 +268,17 @@ Conv2DBenchmark:
     - [16, 32, 24, 24, 24, 3, 3, 1, 1, 2]
   shape_desc: "N, C_in, H, W, C_out, K_h, K_w, stride, padding, groups"
 
+# default conv_transpose2d shape for input and weight stride padding groups
+# default Ni Ci Hi Wi  Co Hk Wk stride padding groups
+ConvTranspose2DBenchmark:
+  shapes:
+    - [32, 64, 16, 16, 32, 3, 3, 1, 1, 1]
+    - [32, 64, 16, 16, 32, 3, 3, 2, 1, 1]
+    - [16, 32, 32, 32, 64, 3, 3, 2, 1, 1]
+    - [16, 32, 8, 8, 24, 5, 5, 2, 2, 1]
+    - [8, 128, 4, 4, 64, 4, 4, 2, 1, 1]
+  shape_desc: "N, C_in, H, W, C_out, K_h, K_w, stride, padding, groups"
+
 Conv3DBenchmark:
   shapes:
     - [32, 64, 64, 64, 64, 32, 3, 3, 3, 1, 1, 1]  # standard dimensions, common parameters
