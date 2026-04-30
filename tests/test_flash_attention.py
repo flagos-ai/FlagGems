@@ -119,6 +119,7 @@ def sparse_attention_ref(q, kv, attn_sink, topk_idxs, scale):
     return out.to(q.dtype)
 
 
+
 @pytest.mark.skip(reason="#2809: The operator fails this test on Nvidia at least.")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.sparse_attention
