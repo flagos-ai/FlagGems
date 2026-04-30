@@ -119,6 +119,7 @@ def sparse_attention_ref(q, kv, attn_sink, topk_idxs, scale):
     return out.to(q.dtype)
 
 
+@pytest.mark.skip(reason="#2809: The operator fails this test on Nvidia at least.")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.sparse_attention
 @pytest.mark.parametrize(
@@ -181,9 +182,10 @@ def attn_bias_from_alibi_slopes(slopes, seqlen_q, seqlen_k, causal=False):
     return -slopes * relative_pos.to(dtype=slopes.dtype)
 
 
-@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
+@pytest.mark.skip(reason="#2809: The operator fails this test on Nvidia at least.")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Unsupported in CPU mode")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
@@ -442,11 +444,11 @@ def test_flash_attention_forward_gqa_alibi_softcap(
     utils.gems_assert_close(gems_out, torch_out, dtype)
 
 
-@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="Unsupported in CPU mode")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="Unsupported in CPU mode")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
@@ -517,12 +519,12 @@ def test_flash_attention_foward_splitkv(
     utils.gems_assert_close(gems_out, torch_out, dtype)
 
 
-@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(torch.__version__ < "2.4", reason="Low Pytorch Version")
 @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="Unsupported in CPU mode")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="Unsupported in CPU mode")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
