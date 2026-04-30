@@ -19,7 +19,7 @@ else:
 @pytest.mark.parametrize("dim", DIM_LIST + [None])
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES)
-def test_accuracy_argmin(shape, dim, keepdim, dtype):
+def test_argmin(shape, dim, keepdim, dtype):
     if dtype in utils.INT_DTYPES:
         inp = torch.randint(-1024, 1024, size=shape, device=flag_gems.device).to(dtype)
     else:

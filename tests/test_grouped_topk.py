@@ -131,7 +131,7 @@ def test_grouped_topk(
 @pytest.mark.parametrize("renormalize", [True, False])
 @pytest.mark.parametrize("scoring_func", [0, 1])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-def test_accuracy_grouped_topk_large_scale(
+def test_grouped_topk_large_scale(
     n_token,
     n_expert,
     n_group,
@@ -187,8 +187,9 @@ def test_accuracy_grouped_topk_large_scale(
 @pytest.mark.skipif(not HAS_VLLM, reason="vLLM is not installed")
 @pytest.mark.parametrize("routed_scaling_factor", [1.0, 2.5])
 @pytest.mark.parametrize("renormalize", [True, False])
-def test_accuracy_grouped_topk_scaling_factor(routed_scaling_factor, renormalize):
+def test_grouped_topk_scaling_factor(routed_scaling_factor, renormalize):
     """Test grouped_topk with different scaling factors"""
+
     torch.manual_seed(45)
     torch.cuda.manual_seed(45)
 
@@ -221,6 +222,7 @@ def test_accuracy_grouped_topk_scaling_factor(routed_scaling_factor, renormalize
 @pytest.mark.parametrize("scoring_func", [0, 1])
 def test_grouped_topk_single_token(renormalize, scoring_func):
     """Test grouped_topk with single token"""
+
     torch.manual_seed(45)
     torch.cuda.manual_seed(45)
 

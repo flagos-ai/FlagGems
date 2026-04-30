@@ -32,7 +32,7 @@ def test_addcdiv(shape, dtype):
 
 @pytest.mark.addcdiv_out
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_addcdiv_out(dtype):
+def test_addcdiv_out(dtype):
     shape = (64, 128)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     t1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
