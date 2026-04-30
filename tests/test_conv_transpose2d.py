@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import gems_assert_close, to_reference
+from . import accuracy_utils as utils
 
 SHAPE_CONV_TRANSPOSE2D = [
     # (input_shape, weight_shape [C_in, C_out/groups, kH, kW], groups)
@@ -25,8 +25,23 @@ SHAPE_CONV_TRANSPOSE2D = [
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 @pytest.mark.parametrize("bias", [True, False])
 def test_accuracy_conv_transpose2d(
-    shape, kernel, groups, stride, padding, output_padding, dilation, dtype, bias
+    monkeypatch,
+    shape,
+    kernel,
+    groups,
+    stride,
+    padding,
+    output_padding,
+    dilation,
+    dtype,
+    bias,
 ):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
+
+    if flag_gems.vendor_name == "hygon":
+        monkeypatch.env("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
+
     if output_padding >= stride:
         pytest.skip("output_padding must be < stride")
     kH, kW = kernel[2], kernel[3]
@@ -34,14 +49,14 @@ def test_accuracy_conv_transpose2d(
         pytest.skip("effective padding would be negative")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(inp, True)
+    ref_inp = utils.to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    ref_weight = to_reference(weight, True)
+    ref_weight = utils.to_reference(weight, True)
 
     if bias:
         b = torch.randn(kernel[1] * groups, dtype=dtype, device=flag_gems.device)
-        ref_b = to_reference(b, True)
+        ref_b = utils.to_reference(b, True)
     else:
         b = None
         ref_b = None
@@ -68,4 +83,4 @@ def test_accuracy_conv_transpose2d(
         dilation=dilation,
     )
 
-    gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out, ref_out, dtype)

@@ -51,7 +51,7 @@ def _input_fn(shape, dtype, device):
 @pytest.mark.conv_transpose2d
 def test_perf_conv_transpose2d(monkeypatch):
     if flag_gems.vendor_name == "hygon":
-        monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
+        monkeypatch.env("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
 
     torch.backends.cudnn.allow_tf32 = False
     bench = ConvTranspose2DBenchmark(
