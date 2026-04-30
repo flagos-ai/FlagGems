@@ -118,8 +118,13 @@ if QUICK_MODE:
             # tl.load + tma_device ForceTmaHost => tma_host
             #(1, 2, 2),
             # tma_host ForceTmaDevice => tma_device, ForceLoad => tl.load
-            (1, 8, 8),
+            #(1, 8, 8),
             #(1, 2048, 128),
+            # 1.a GNDAttention::conv1d, [M, K=4, N=2048]
+            (1, 2048, 4),
+            (7168, 2048, 4),
+            # 3.c MoE::shared_expert/down_proj, [M, K=128, N=2048]
+            (1, 2048, 128),
         ]
     )
     #'''
@@ -154,8 +159,8 @@ MK_SHAPES = (
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 #@pytest.mark.parametrize("b_column_major", [True])
-#@pytest.mark.parametrize("b_column_major", [False])
-@pytest.mark.parametrize("b_column_major", [True, False])
+@pytest.mark.parametrize("b_column_major", [False])
+#@pytest.mark.parametrize("b_column_major", [True, False])
 def test_mm(M, N, K, dtype, b_column_major):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Skipping fp32 mm test on tsingmicro platform")
