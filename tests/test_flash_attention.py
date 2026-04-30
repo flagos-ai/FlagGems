@@ -119,7 +119,6 @@ def sparse_attention_ref(q, kv, attn_sink, topk_idxs, scale):
     return out.to(q.dtype)
 
 
-
 @pytest.mark.skip(reason="#2809: The operator fails this test on Nvidia at least.")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.sparse_attention
@@ -183,14 +182,6 @@ def attn_bias_from_alibi_slopes(slopes, seqlen_q, seqlen_k, causal=False):
     return -slopes * relative_pos.to(dtype=slopes.dtype)
 
 
-<<<<<<< HEAD
-=======
-@pytest.skip(reason="#2809: The operator fails this test on Nvidia at least.")
-@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
-@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="Unsupported in CPU mode")
->>>>>>> 0977aeb7 (Skip `sparse_attention` accuracy test)
 @pytest.mark.flash_attention_forward
 @pytest.mark.skip(reason="#2809: The operator fails this test on Nvidia at least.")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
