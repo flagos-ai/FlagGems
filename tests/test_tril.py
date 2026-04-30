@@ -24,9 +24,31 @@ def test_tril(shape, diagonal, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.tril
+@pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_tril_noncontiguous(shape, diagonal, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = utils.unsqueeze_tensor(inp, 2)
+
+    if inp.dim() >= 2:
+        inp = inp.transpose(-2, -1)
+
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.tril(ref_inp, diagonal)
+
+    with flag_gems.use_gems():
+        res_out = torch.tril(inp, diagonal)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    assert res_out.is_contiguous(), "tril output should be contiguous"
+
+
 # Extra 2D coverage (KernelGen tril path): non-square last two dims, same style as above.
 SHAPES_2D_SMALL = [
     (1, 1),
+    (3, 11),
+    (11, 3),
     (8, 16),
     (32, 24),
 ]
