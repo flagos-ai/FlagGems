@@ -100,13 +100,13 @@ endif()
 
 # ------------------------------- Helper Function ------------------------------
 function(target_link_npu_libraries target)
-    target_link_libraries(${target} PRIVATE Ascend::ascendcl Ascend::runtime)
-    target_include_directories(${target} PRIVATE ${ASCEND_INCLUDE_DIRS})
+    target_link_libraries(${target} PUBLIC Ascend::ascendcl Ascend::runtime)
+    target_include_directories(${target} PUBLIC ${ASCEND_INCLUDE_DIRS})
     if(TORCH_NPU_PATH)
-        target_include_directories(${target} PRIVATE "${TORCH_NPU_PATH}/include")
+        target_include_directories(${target} PUBLIC "${TORCH_NPU_PATH}/include")
     endif()
     if(TORCH_NPU_LIB)
-        target_link_libraries(${target} PRIVATE ${TORCH_NPU_LIB})
+        target_link_libraries(${target} PUBLIC ${TORCH_NPU_LIB})
     endif()
 endfunction()
 

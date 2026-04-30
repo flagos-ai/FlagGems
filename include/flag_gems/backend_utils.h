@@ -150,7 +150,8 @@ namespace backend {
 #if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
     return torch::cuda::is_available();
 #elif defined(FLAGGEMS_USE_NPU)
-    return torch::custom_class_available("npu");
+    uint32_t device_count = 0;
+    return aclrtGetDeviceCount(&device_count) == ACL_SUCCESS && device_count > 0;
 #elif defined(FLAGGEMS_USE_MUSA)
     return true;
 #else

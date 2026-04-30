@@ -1,6 +1,6 @@
 # MUSA backend: force-link libtorch_python.so (needed by libmusa_kernels.so
 # at runtime) and allow unresolved MPI/numa symbols from libtorch_cpu.so.
-if(FLAGGEMS_BACKEND STREQUAL "MUSA")
+if(FLAGGEMS_BACKEND STREQUAL "MUSA" OR FLAGGEMS_BACKEND STREQUAL "NPU")
     link_libraries("-Wl,--no-as-needed" ${torch_python_lib} "-Wl,--as-needed" ${Python_LIBRARIES})
     add_link_options("-Wl,--allow-shlib-undefined")
 endif()
