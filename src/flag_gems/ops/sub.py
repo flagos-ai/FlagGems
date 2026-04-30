@@ -92,6 +92,25 @@ def sub(A, B, *, alpha=1):
         return torch.tensor(A - B * alpha)
 
 
+def sub_out(A, B, *, alpha=1, out):
+    logger.debug("GEMS SUB_OUT")
+    if not (isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor)):
+        raise TypeError("aten::sub.out expects tensor operands")
+    A_is_c = A.is_complex()
+    B_is_c = B.is_complex()
+    if A_is_c or B_is_c:
+        tmp = sub(A, B, alpha=alpha)
+        if list(out.shape) != list(tmp.shape):
+            out.resize_(tmp.shape)
+        out.copy_(tmp)
+        return out
+    broadcast_shape = torch.broadcast_shapes(A.shape, B.shape)
+    if list(out.shape) != list(broadcast_shape):
+        out.resize_(broadcast_shape)
+    sub_func(A, B, alpha, out0=out)
+    return out
+
+
 def sub_(A, B, *, alpha=1):
     logger.debug("GEMS SUB_")
     if isinstance(B, torch.Tensor):
