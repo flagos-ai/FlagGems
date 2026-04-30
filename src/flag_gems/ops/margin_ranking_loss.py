@@ -225,6 +225,7 @@ class MarginRankingLossOp(torch.autograd.Function):
             Tuple of gradients (grad_x1, grad_x2, None, None, None)
             where None corresponds to target, margin, and reduction (no gradients needed)
         """
+        logger.debug("GEMS MARGIN_RANKING_LOSS_BACKWARD")
 
         x1, x2, y = ctx.saved_tensors
         margin = ctx.margin
