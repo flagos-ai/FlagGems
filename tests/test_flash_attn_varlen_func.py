@@ -93,9 +93,9 @@ def ref_paged_attn(
     return torch.cat(outputs, dim=0)
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.flash_attn_varlen_func
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="#2815: Not supported")
+@pytest.mark.skipif(vendor_name == "hygon", reason="#2816: Not working")
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (5, 18), (129, 463)]])
 @pytest.mark.parametrize("num_heads", [(4, 4), (8, 2), (16, 2)])
 @pytest.mark.parametrize("head_size", [128, 192, 256])
@@ -251,8 +251,8 @@ def test_flash_attn_varlen_func(
         torch.testing.assert_close(output, ref_output, atol=2e-2, rtol=1e-2, msg=msg)
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(vendor_name == "hygon", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="#2815: Not working")
+@pytest.mark.skipif(vendor_name == "hygon", reason="#2816: Not working")
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (1, 18), (1, 463)]])
 @pytest.mark.parametrize("num_heads", [(8, 2)])

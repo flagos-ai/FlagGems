@@ -21,7 +21,7 @@ SHAPE_DEPTHWISE = [
 ]
 
 
-@pytest.mark.skipif(True, reason="This operator currently fails the test.")
+@pytest.mark.skip(reason="This operator currently fails the test.")
 @pytest.mark.conv_depthwise2d
 @pytest.mark.parametrize("shape_input, shape_weight, kernel", SHAPE_DEPTHWISE)
 @pytest.mark.parametrize("stride", [[1, 1], [2, 2]])
