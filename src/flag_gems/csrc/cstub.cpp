@@ -138,6 +138,7 @@ PYBIND11_MODULE(c_operators, m) {
         py::arg("b"),
         py::arg("b_s"),
         py::arg("scale_dtype") = at::kFloat);
+  m.def("int8_mm", &flag_gems::int8_mm);
 }
 namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {

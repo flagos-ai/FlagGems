@@ -1938,3 +1938,26 @@ grid_sample_3d_trilinear_tiled:
       BLOCK_W: 32
     num_warps: 32
     num_stages: 2
+
+int8_mm:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+      num_warps: 4
+      num_stages: stages
+    block_m:
+      - 32
+      - 128
+    block_n:
+      - 32
+      - 64
+    block_k:
+      - 32
+      - 128
+      - 256
+    stages:
+      - 1
+      - 2

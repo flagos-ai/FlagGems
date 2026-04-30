@@ -125,6 +125,11 @@ target_link_libraries(test_triton_copy
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_copy COMMAND test_triton_copy)
 
+add_executable(test_triton_int8_mm test_triton_int8_mm.cpp)
+target_link_libraries(test_triton_int8_mm
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_int8_mm COMMAND test_triton_int8_mm)
+
 # Set FLAGGEMS_SOURCE_DIR for all tests that load Triton kernels at runtime.
 # Compute it from the project source directory.
 set(_FLAGGEMS_SRC_DIR "${CMAKE_SOURCE_DIR}/src/flag_gems")

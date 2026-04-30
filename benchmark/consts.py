@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 import torch
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
-INT_DTYPES = [torch.int16, torch.int32]
+INT_DTYPES = [torch.int8, torch.int16, torch.int32]
 BOOL_DTYPES = [torch.bool]
 COMPLEX_DTYPES = [torch.complex64]
 

@@ -188,6 +188,10 @@ class Benchmark:
 
                 # self.shapes = additional_shapes
                 if additional_shapes:
+                    additional_shapes = [
+                        tuple(shape) if isinstance(shape, list) else shape
+                        for shape in additional_shapes
+                    ]
                     self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
 
                 if vendor_name == "enflame":

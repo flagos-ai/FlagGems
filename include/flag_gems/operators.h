@@ -256,4 +256,7 @@ at::Tensor to_copy(const at::Tensor &self,
 
 at::Tensor &copy_(at::Tensor &dst, const at::Tensor &src, bool non_blocking = false);
 
+at::Tensor int8_mm(const at::Tensor &mat1, const at::Tensor &mat2);
+at::Tensor &int8_mm_out(const at::Tensor &mat1, const at::Tensor &mat2, at::Tensor &out);
+
 }  // namespace flag_gems

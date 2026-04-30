@@ -159,6 +159,7 @@ from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
 from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_select import index_select
+from flag_gems.ops.int8_mm import int8_mm, int8_mm_out
 from flag_gems.ops.isclose import allclose, isclose
 from flag_gems.ops.isfinite import isfinite
 from flag_gems.ops.isin import isin
@@ -561,6 +562,8 @@ __all__ = [
     "isnan",
     "isneginf",
     "isneginf_out",
+    "int8_mm",
+    "int8_mm_out",
     "kron",
     "layer_norm",
     "layer_norm_backward",
