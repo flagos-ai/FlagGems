@@ -6,7 +6,7 @@ import torch
 import flag_gems
 from flag_gems.utils.device_info import get_device_capability
 
-from .performance_utils import GenericBenchmark
+from . import base
 
 M = [1, 40, 164, 512, 3454, 12027, 38594]
 N = [128, 896, 2048, 8192]
@@ -74,11 +74,11 @@ def torch_act_quant(
     return y, s
 
 
-class ActQuantBenchmark(GenericBenchmark):
+class ActQuantBenchmark(base.GenericBenchmark):
     # Only 2D shapes make sense for act_quant
     def set_more_shapes(self):
         self.shapes = SHAPES
-        return None
+        return []
 
 
 @pytest.mark.act_quant
@@ -97,7 +97,7 @@ def test_act_quant_perf(block_size, scale_fmt):
         op_name="act_quant",
         torch_op=torch_act_quant,
         input_fn=input_fn,
-        dtypes=[torch.bfloat16],
         gems_op=flag_gems.act_quant_triton,
+        dtypes=[torch.bfloat16],
     )
     bench.run()
