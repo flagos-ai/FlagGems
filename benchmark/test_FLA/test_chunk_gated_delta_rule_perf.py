@@ -249,21 +249,134 @@ class ChunkGatedDeltaRuleBenchmark(Benchmark):
                     },
                 )
 
+    def run(self):
+        """
+        Override run() to handle unavailable reference implementations.
+
+        When reference is unavailable:
+        - Set latency_base to None (displays "N/A" in table)
+        - Skip speedup calculation
+        - Continue testing FlagGems implementation normally
+        """
+        import gc
+
+        from .conftest import Config, emit_record_logger
+        from .consts import BenchmarkMetrics, BenchmarkResult, OperationAttribute
+
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+
+        self.init_user_config()
+
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        f"dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+
+                    # Check if reference is available before measuring latency
+                    if "latency_base" in self.to_bench_metrics:
+                        # Try to call torch_op once to check availability
+                        try:
+                            ref_result = self.torch_op(*args, **kwargs)
+                            if ref_result is None:
+                                # Reference unavailable or failed
+                                metric.latency_base = None
+                            else:
+                                # Reference available, measure latency
+                                metric.latency_base = self.get_latency(
+                                    self.torch_op, *args, **kwargs
+                                )
+                        except (RuntimeError, Exception):
+                            # Reference failed during execution
+                            metric.latency_base = None
+
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            with flag_gems.use_gems(exclude=["zero_"]):
+                                metric.latency = self.get_latency(
+                                    self.torch_op, *args, **kwargs
+                                )
+
+                    # Skip speedup calculation if latency_base is None
+                    if "speedup" in self.to_bench_metrics:
+                        if metric.latency_base is not None:
+                            metric.speedup = metric.latency_base / metric.latency
+                        else:
+                            metric.speedup = None
+
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+
+                except (RuntimeError, Exception) as e:
+                    metric.error_msg = str(e)
+                    pytest.fail(str(e))
+                finally:
+                    metrics.append(metric)
+                    gc.collect()
+
+            result = BenchmarkResult(
+                level=Config.bench_level.value,
+                op_name=self.op_name,
+                dtype=str(dtype),
+                mode=Config.mode.value,
+                result=metrics,
+            )
+            print(result)
+            emit_record_logger(result.to_json())
+
 
 def _torch_op_wrapper(*args, **kwargs):
     """
     Wrapper for torch/reference implementation.
 
-    Uses available reference implementation (GatedDeltaNet or FLA) if available,
-    otherwise falls back to FlagGems implementation for comparison.
-
-    When reference implementation is unavailable or fails for certain parameters,
-    the function returns a result with an error message in the latency_base field,
-    which will be displayed in the benchmark results table.
+    Uses available reference implementation (GatedDeltaNet or FLA) if available.
+    Returns None when reference is unavailable or fails, which signals the benchmark
+    to skip latency measurement for the reference implementation.
 
     This allows the benchmark to:
     1. Compare FlagGems against reference implementations when available
-    2. Show "Reference not implemented" in the table when reference is unavailable
+    2. Skip reference measurement when unavailable (displays "N/A" in table)
     3. Continue benchmarking FlagGems even when reference fails
     """
     # Unpack positional arguments (tensors and scalars)
@@ -273,19 +386,6 @@ def _torch_op_wrapper(*args, **kwargs):
     # Unpack keyword arguments (backend and BT passed via dict)
     backend = kwargs.get("backend", "gateddnet")
     BT = kwargs.get("BT", 64)
-
-    # Helper function to create a "not implemented" result
-    def _not_implemented_result(reason):
-        """Return a result indicating reference implementation is not available."""
-        # Return a dummy result that will show as "N/A" or "Not Implemented" in table
-        # The output tensor shape matches the expected output shape
-        output_shape = v.shape if backend == "gateddnet" else v.shape
-        o_dummy = torch.zeros(output_shape, dtype=v.dtype, device=v.device)
-        # Return in the same format as chunk_gated_delta_rule_fwd
-        if backend == "gateddnet":
-            return g, o_dummy, None, None, None, None, None
-        else:  # 'fla'
-            return None, o_dummy, None, None, None, None, None
 
     # Try to use reference implementation if available
     if backend == "fla" and FLA_AVAILABLE:
@@ -306,13 +406,12 @@ def _torch_op_wrapper(*args, **kwargs):
         except RuntimeError as e:
             # Check for CUDA OOM specifically
             if "out of memory" in str(e).lower() or "out of resource" in str(e).lower():
-                return _not_implemented_result("FLA reference OOM")
-            # Other errors
-            return _not_implemented_result(f"FLA reference error: {str(e)[:50]}")
-        except Exception as e:
-            # Reference implementation exists but failed for these parameters
-            # Return not implemented result to show in table
-            return _not_implemented_result(f"FLA reference error: {str(e)[:50]}")
+                return None  # Signal: reference failed (OOM)
+            # Other runtime errors - let them propagate
+            raise
+        except Exception:
+            # Unexpected errors - let them propagate
+            raise
 
     elif backend == "gateddnet" and GATEDDELTANET_AVAILABLE:
         # GatedDeltaNet uses: (q, k, v, beta, g, BT, ...)
@@ -332,26 +431,17 @@ def _torch_op_wrapper(*args, **kwargs):
         except RuntimeError as e:
             # Check for CUDA OOM specifically
             if "out of memory" in str(e).lower() or "out of resource" in str(e).lower():
-                return _not_implemented_result("GatedDeltaNet reference OOM")
-            # Other errors
-            return _not_implemented_result(
-                f"GatedDeltaNet reference error: {str(e)[:50]}"
-            )
-        except Exception as e:
-            # Reference implementation exists but failed for these parameters
-            # Return not implemented result to show in table
-            return _not_implemented_result(
-                f"GatedDeltaNet reference error: {str(e)[:50]}"
-            )
+                return None  # Signal: reference failed (OOM)
+            # Other runtime errors - let them propagate
+            raise
+        except Exception:
+            # Unexpected errors - let them propagate
+            raise
 
     else:
         # Reference implementation not available at all
-        # Return not implemented result to show in table
-        if backend == "fla":
-            reason = "FLA reference not installed"
-        else:  # 'gateddnet'
-            reason = "GatedDeltaNet reference not installed"
-        return _not_implemented_result(reason)
+        # Return None to signal benchmark to skip latency measurement
+        return None
 
 
 # ============================================================================
