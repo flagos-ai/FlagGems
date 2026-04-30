@@ -13,6 +13,8 @@ def test_pow_tensor_tensor(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
+    # Issue #2841
+    # Issue #2842
     if flag_gems.vendor_name == "kunlunxin" or flag_gems.vendor_name == "ascend":
         inp1 = inp1.uniform_(-1, 1)
         inp2 = inp2.uniform_(-1, 1)

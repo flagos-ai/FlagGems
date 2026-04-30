@@ -14,7 +14,7 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("gen_nan", [0, 1, 2, 3, 4])
 def test_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.int32:
-        pytest.skip("Skiping bool isclose test on tsingmicro platform")
+        pytest.skip("#2822: Skiping bool isclose test on tsingmicro platform")
 
     # [gen_nan] 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
     rtol = (
