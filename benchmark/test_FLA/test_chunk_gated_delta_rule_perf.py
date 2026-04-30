@@ -260,8 +260,12 @@ class ChunkGatedDeltaRuleBenchmark(Benchmark):
         """
         import gc
 
-        from .conftest import Config, emit_record_logger
-        from .consts import BenchmarkMetrics, BenchmarkResult, OperationAttribute
+        from benchmark.conftest import Config, emit_record_logger
+        from benchmark.consts import (
+            BenchmarkMetrics,
+            BenchmarkResult,
+            OperationAttribute,
+        )
 
         if Config.query:
             self.init_default_config()
