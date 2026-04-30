@@ -167,10 +167,10 @@ def test_scaled_dot_product_attention_legacy(
     utils.gems_assert_close(gems_result, torch_result, dtype)
 
 
-@pytest.mark.skipif(True, reason="Something wrong here, disable it for temp")
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skip(reason="#2848: Something wrong here, disable it for temp")
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="#2849: Not working")
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="#2849: RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="#2849: Not working")
 @pytest.mark.skipif(
     torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
 )

@@ -29,11 +29,13 @@ def test_topk(batch_size, hiddensize, topk, largest, dtype):
         x[bsz, :] = x[bsz, col_indices]
     ref_x = utils.to_reference(x)
 
+    # Bug #2856
     if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float16:
         ref_x = ref_x.cuda()
 
     ref_value, ref_index = torch.topk(ref_x, topk, largest=largest)
 
+    # Bug #2856
     if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float16:
         if cfg.TO_CPU:
             ref_value = ref_value.cpu()

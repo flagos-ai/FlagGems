@@ -32,6 +32,7 @@ def test_pad(shape, dtype, pad_mode, contiguous):
 
     x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     if not contiguous:
+        # BUG #2835
         if flag_gems.vendor_name == "kunlunxin":
             x = x.cpu()[::2, ::2].to(flag_gems.device)
         else:

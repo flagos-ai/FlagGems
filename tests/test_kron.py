@@ -26,8 +26,8 @@ def test_kron(shape, dtype):
         inp1 = torch.randint(0, 2, size=shape[0], dtype=dtype, device=flag_gems.device)
         inp2 = torch.randint(0, 2, size=shape[1], dtype=dtype, device=flag_gems.device)
 
+    # BUG: #2823 # Pytorch 2.0.1 Bfloat16 CPU Backend Precision fails
     if flag_gems.vendor_name == "kunlunxin" and dtype == torch.bfloat16:
-        # Pytorch 2.0.1 Bfloat16 CPU Backend Precision Failed
         inp1 = torch.randn(shape[0], dtype=torch.float32, device=flag_gems.device)
         inp2 = torch.randn(shape[1], dtype=torch.float32, device=flag_gems.device)
 

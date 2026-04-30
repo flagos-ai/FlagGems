@@ -54,7 +54,7 @@ def test_max_all_neg_inf(shape, dtype):
 @pytest.mark.max
 @pytest.mark.skipif(
     flag_gems.vendor_name not in ["cambricon", "metax"],
-    reason="Cambricon and Metax test only",
+    reason="#2829: Cambricon and Metax test only",
 )
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + [[1]])
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES)
@@ -92,7 +92,7 @@ def test_max_uncontiguous(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-# TODO: failed at (200, 40999, 3), while successed at this shape in mean_dim
+# Issue #2831: failed at (200, 40999, 3), while successed at this shape in mean_dim
 @pytest.mark.max_dim
 @pytest.mark.parametrize("shape", utils.REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("keepdim", KEEPDIM)

@@ -52,7 +52,7 @@ def test_min_all_inf(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-# TODO: failed at (200, 40999, 3), while successed at this shape in mean_dim
+# Issue #2832: fails at (200, 40999, 3), while successed at this shape in mean_dim
 @pytest.mark.min_dim
 @pytest.mark.parametrize("shape", utils.REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("keepdim", KEEPDIM)

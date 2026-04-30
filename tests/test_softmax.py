@@ -23,7 +23,7 @@ else:
 random.seed(time.time() // 100)
 
 
-# TODO: failed at (1, 2) (200, 40999, 3)
+# Issue 2852: This fails at (1, 2) (200, 40999, 3)
 @pytest.mark.softmax
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -52,7 +52,7 @@ def test_softmax(shape, dtype, dim, neg_inf):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("neg_inf", [True, False])
-def test_accuracy_softmax_out(shape, dtype, dim, neg_inf):
+def test_softmax_out(shape, dtype, dim, neg_inf):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if neg_inf:
         inp = torch.where(inp < 0.0, float("-inf"), inp)
@@ -67,17 +67,17 @@ def test_accuracy_softmax_out(shape, dtype, dim, neg_inf):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.softmax_backward_data_out
+@pytest.mark.softmax_backward_out
 @pytest.mark.parametrize(
     "shape", [(1, 256)] if cfg.QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("neg_inf", [True, False])
-def test_accuracy_softmax_backward_out(shape, dtype, dim, neg_inf):
+def test_softmax_backward_out(shape, dtype, dim, neg_inf):
     if shape[dim] == 1 and flag_gems.vendor_name == "kunlunxin":
         pytest.skip(
-            "XPU _softmax_backward_data short-circuits to zero when reduction dim "
+            "#2851 _softmax_backward_data short-circuits to zero when reduction dim "
             "is 1, while the Triton kernel computes normally with synthetic inputs, "
             "causing a mismatch that does not reflect a real correctness issue."
         )
@@ -104,12 +104,12 @@ def test_accuracy_softmax_backward_out(shape, dtype, dim, neg_inf):
     )
 
 
-@pytest.mark.softmax
+@pytest.mark.softmax_backward
 @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("neg_inf", [True, False])
-def test_accuracy_softmax_backward(shape, dtype, dim, neg_inf):
+def test_softmax_backward(shape, dtype, dim, neg_inf):
     if shape[dim] == 1 and flag_gems.vendor_name == "kunlunxin":
         pytest.skip(
             "XPU _softmax_backward_data short-circuits to zero when reduction dim "
