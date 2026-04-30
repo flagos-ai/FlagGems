@@ -81,7 +81,7 @@ def ref_mla(
     return out, lse
 
 
-@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(vendor_name == "hygon", reason="#2817: RuntimeError")
 @pytest.mark.flash_mla
 @pytest.mark.parametrize("seqlen", [1024, 2048, 4096, 8192])
 @pytest.mark.parametrize("dtype", [torch.bfloat16])

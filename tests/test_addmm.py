@@ -102,7 +102,7 @@ def test_addmm_out(M, N, K, scalar, dtype):
     version.parse(torch.__version__) < version.parse("2.8"),
     reason="The operator addmm.dtype was added starting from 2.8.0",
 )
-def test_aten_addmm_dtype_fp32_accum(M, N, K):
+def test_addmm_dtype_fp32_accum(M, N, K):
     dtype = torch.float16
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
@@ -133,7 +133,7 @@ def test_aten_addmm_dtype_fp32_accum(M, N, K):
     version.parse(torch.__version__) < version.parse("2.8"),
     reason="The operator addmm.dtype_out was added starting from 2.8.0",
 )
-def test_aten_addmm_dtype_out_fp32_accum(M, N, K):
+def test_addmm_dtype_out_fp32_accum(M, N, K):
     dtype = torch.float16
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)

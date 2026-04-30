@@ -30,7 +30,7 @@ def test_addcmul(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.addcmul
+@pytest.mark.addcmul_out
 @pytest.mark.parametrize(
     "inp_shape, t1_shape, t2_shape, out_shape",
     [

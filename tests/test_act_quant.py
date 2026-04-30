@@ -12,6 +12,7 @@ device = flag_gems.device
 
 M = [1, 40, 164, 512, 3454, 12027, 38594]
 N = [128, 896, 2048, 8192]
+
 # Test parameters
 SHAPES = [(m, n) for m in M for n in N]
 BLOCK_SIZES = [64, 128]
@@ -84,13 +85,8 @@ def torch_act_quant(
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("block_size", BLOCK_SIZES)
 @pytest.mark.parametrize("scale_fmt", SCALE_FMTS)
-@pytest.mark.parametrize(
-    "dtype",
-    [
-        torch.bfloat16,
-    ],
-)
-def test_act_quant_accuracy(
+@pytest.mark.parametrize("dtype", [torch.bfloat16])
+def test_act_quant(
     shape: Tuple[int, int], block_size: int, scale_fmt: Any, dtype: torch.dtype
 ):
     torch.manual_seed(0)

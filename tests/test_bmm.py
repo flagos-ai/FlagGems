@@ -1,4 +1,3 @@
-import os
 import random
 
 import numpy as np
@@ -27,12 +26,12 @@ else:
 @pytest.mark.bmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_bmm(M, N, K, dtype):
+def test_bmm(monkeypatch, M, N, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skiping fp32 bmm test on tsingmicro platform")
+        pytest.skip("#2799: Skipping fp32 bmm test on tsingmicro platform.")
 
     if flag_gems.vendor_name == "mthreads":
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
@@ -52,16 +51,13 @@ def test_bmm(M, N, K, dtype):
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
-    if flag_gems.vendor_name == "mthreads":
-        del os.environ["MUSA_ENABLE_SQMMA"]
-
 
 @pytest.mark.bmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_bmm_non_contiguous(M, N, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skiping fp32 bmm test on tsingmicro platform")
+        pytest.skip("#2799: Skipping fp32 bmm test on tsingmicro platform.")
 
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
@@ -93,7 +89,7 @@ def test_bmm_non_contiguous(M, N, K, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_bmm_out(M, N, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skiping fp32 bmm test on tsingmicro platform")
+        pytest.skip("#2799: Skipping fp32 bmm test on tsingmicro platform.")
 
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)

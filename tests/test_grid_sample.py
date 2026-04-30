@@ -411,6 +411,7 @@ class TestGridSampleValidation:
 class TestGridSampleBilinear4D:
     """Test 4D bilinear mode."""
 
+    @pytest.mark.grid_sample
     @pytest.mark.parametrize("shape", [(1, 1, 8, 8), (2, 3, 16, 16)])
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_bilinear_zeros_4d_small(self, shape, dtype):
@@ -434,6 +435,7 @@ class TestGridSampleBilinear4D:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.grid_sample
     @pytest.mark.parametrize("shape", [(1, 1, 8, 8), (2, 3, 16, 16)])
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_bilinear_zeros_4d_small_align_corners(self, shape, dtype):
@@ -457,6 +459,7 @@ class TestGridSampleBilinear4D:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.grid_sample
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_bilinear_all_padding_modes(self, padding_mode, align_corners):
@@ -489,6 +492,7 @@ class TestGridSampleBilinear4D:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.grid_sample
     def test_bilinear_upsample(self):
         """Test bilinear mode for upsampling."""
         if not torch.cuda.is_available():
@@ -515,6 +519,7 @@ class TestGridSampleBilinear4D:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.grid_sample
     def test_bilinear_downsample(self):
         """Test bilinear mode for downsampling."""
         if not torch.cuda.is_available():
@@ -545,6 +550,7 @@ class TestGridSampleBilinear4D:
 class TestGridSampleBicubic4D:
     """Test 4D bicubic mode."""
 
+    @pytest.mark.grid_sample
     @pytest.mark.parametrize("shape", [(2, 3, 16, 16)])
     @pytest.mark.parametrize(
         "dtype", [torch.float32]
@@ -571,6 +577,7 @@ class TestGridSampleBicubic4D:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.grid_sample
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_bicubic_all_padding_modes(self, padding_mode, align_corners):
@@ -608,6 +615,7 @@ class TestGridSampleBicubic4D:
 class TestGridSample5D:
     """Test 5D input support."""
 
+    @pytest.mark.grid_sample
     @pytest.mark.parametrize("shape", [(1, 2, 8, 8, 8), (2, 3, 8, 8, 8)])
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_5d_nearest_zeros_small(self, shape, dtype):
@@ -631,6 +639,7 @@ class TestGridSample5D:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.grid_sample
     @pytest.mark.parametrize(
         "mode", ["nearest", "bilinear"]
     )  # bilinear = trilinear for 5D
@@ -658,6 +667,7 @@ class TestGridSample5D:
 
         assert_close(y_gems, y_torch, dtype=dtype)
 
+    @pytest.mark.grid_sample
     def test_5d_bicubic_not_supported(self):
         """Test 5D does not support bicubic."""
         if not torch.cuda.is_available():
