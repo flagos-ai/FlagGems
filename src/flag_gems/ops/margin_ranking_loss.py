@@ -14,87 +14,197 @@ logger = logging.getLogger(__name__)
 def _margin_ranking_loss_kernel(
     x1_ptr, x2_ptr, target_ptr, out_ptr, n_elements, margin, BLOCK_SIZE: tl.constexpr
 ):
+    """
+    Triton kernel for computing margin ranking loss forward pass.
+
+    Computes: loss = max(0, -y * (x1 - x2) + margin)
+    where y is the target (typically +1 or -1).
+
+    Args:
+        x1_ptr: Pointer to first input tensor
+        x2_ptr: Pointer to second input tensor
+        target_ptr: Pointer to target tensor (labels)
+        out_ptr: Pointer to output loss tensor
+        n_elements: Total number of elements to process
+        margin: Margin value for the loss
+        BLOCK_SIZE: Number of elements processed per thread block
+    """
+    # Get the program ID for this block
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
 
+    # Load input tensors with boundary checking
     x1 = tl.load(x1_ptr + offsets, mask=mask, other=0)
     x2 = tl.load(x2_ptr + offsets, mask=mask, other=0)
     y = tl.load(target_ptr + offsets, mask=mask, other=0)
 
+    # Compute margin ranking loss: max(0, -y * (x1 - x2) + margin)
     diff = x1 - x2
-    m = tl.full([BLOCK_SIZE], margin, x1.dtype)
+    m = tl.full([BLOCK_SIZE], margin, tl.float32)
     val = -y * diff + m
-    zero = tl.zeros([BLOCK_SIZE], dtype=val.dtype)
+    zero = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
     loss = tl.maximum(val, zero)
 
-    tl.store(out_ptr + offsets, loss, mask=mask)
+    # Store the result (cast back to input dtype)
+    tl.store(out_ptr + offsets, loss.to(x1.dtype), mask=mask)
 
 
-def margin_ranking_loss(*args, **kwargs):
-    logger.debug("GEMS MARGIN_RANKING_LOSS")
-    # Parse inputs: (input1, input2, target, margin=0.0, reduction='mean')
-    if len(args) < 3 and not all(k in kwargs for k in ("self", "other", "target")):
-        raise TypeError(
-            "margin_ranking_loss requires at least three positional arguments: input1, input2, target"
+@triton.jit
+def _margin_ranking_loss_backward_kernel(
+    grad_output_ptr,
+    x1_ptr,
+    x2_ptr,
+    y_ptr,
+    grad_x1_ptr,
+    grad_x2_ptr,
+    margin,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """
+    Triton kernel for computing margin ranking loss backward pass.
+
+    Computes gradients:
+        grad_x1 = -y * grad_output  (where loss > 0)
+        grad_x2 = y * grad_output   (where loss > 0)
+
+    Args:
+        grad_output_ptr: Pointer to gradient from upstream
+        x1_ptr: Pointer to first input tensor
+        x2_ptr: Pointer to second input tensor
+        y_ptr: Pointer to target tensor
+        grad_x1_ptr: Pointer to gradient output for x1
+        grad_x2_ptr: Pointer to gradient output for x2
+        margin: Margin value used in forward pass
+        n_elements: Total number of elements to process
+        BLOCK_SIZE: Number of elements processed per thread block
+    """
+
+    # print("\n.......test for mutibackend specific margin_ranking_loss backward........\n")
+    # Get the program ID for this block
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    # Load tensors with boundary checking
+    grad_output = tl.load(grad_output_ptr + offsets, mask=mask, other=0.0)
+    x1 = tl.load(x1_ptr + offsets, mask=mask, other=0.0)
+    x2 = tl.load(x2_ptr + offsets, mask=mask, other=0.0)
+    y = tl.load(y_ptr + offsets, mask=mask, other=0.0)
+
+    # Recompute forward pass to determine active elements (where loss > 0)
+    diff = x1 - x2
+    m = tl.full([BLOCK_SIZE], margin, tl.float32)
+    val = -y * diff + m
+    active_mask = val > 0
+
+    # Compute gradients only for active elements
+    # d(loss)/d(x1) = -y when loss > 0, else 0
+    # d(loss)/d(x2) = y when loss > 0, else 0
+    grad_x1 = tl.where(active_mask, -y * grad_output, 0.0)
+    grad_x2 = tl.where(active_mask, y * grad_output, 0.0)
+
+    tl.store(grad_x1_ptr + offsets, grad_x1.to(x1.dtype), mask=mask)
+    tl.store(grad_x2_ptr + offsets, grad_x2.to(x1.dtype), mask=mask)
+
+
+class MarginRankingLossOp(torch.autograd.Function):
+    """
+    Custom autograd function for margin ranking loss with Triton kernel acceleration.
+
+    Implements the margin ranking loss: loss = max(0, -y * (x1 - x2) + margin)
+    This loss is used to learn rankings where x1 should be ranked higher than x2
+    when y = 1, and x2 should be ranked higher than x1 when y = -1.
+    """
+
+    @staticmethod
+    def forward(ctx, x1, x2, target, margin=0.0, reduction="mean"):
+        """
+        Forward pass for margin ranking loss.
+
+        Args:
+            ctx: Context object for saving tensors for backward pass
+            x1: First input tensor
+            x2: Second input tensor
+            target: Target tensor with values typically +1 or -1
+            margin: Margin value (default: 0.0)
+            reduction: Reduction mode - 'none', 'mean', or 'sum' (default: 'mean')
+
+        Returns:
+            Loss tensor with shape depending on reduction mode
+        """
+        logger.debug("GEMS MARGIN_RANKING_LOSS")
+
+        if not (
+            x1.is_floating_point()
+            and x2.is_floating_point()
+            and target.is_floating_point()
+        ):
+            raise ValueError("All inputs must be floating point tensors")
+
+        # Normalize reduction parameter (handle both string and int formats)
+        if isinstance(reduction, int):
+            reduction = {0: "none", 1: "mean", 2: "sum"}.get(reduction, "mean")
+        if reduction not in ("none", "mean", "sum"):
+            raise ValueError("reduction must be one of 'none', 'mean', or 'sum'")
+
+        # Check device compatibility and fallback to PyTorch if needed
+        device = x1.device
+        if not (isinstance(device, torch.device) and device.type == flag_gems.device):
+            # Fallback to PyTorch implementation for non-CUDA tensors
+            return torch.ops.aten.margin_ranking_loss(
+                x1,
+                x2,
+                target,
+                float(margin),
+                {"none": 0, "mean": 1, "sum": 2}[reduction],
+            )
+
+        # Broadcast tensors to ensure compatible shapes
+        x1_b, x2_b, tgt_b = torch.broadcast_tensors(x1, x2, target)
+
+        # Ensure all tensors have the same floating point dtype
+        common_dtype = x1_b.dtype if x1_b.is_floating_point() else torch.float32
+        x1_b = x1_b.to(dtype=common_dtype)
+        x2_b = x2_b.to(dtype=common_dtype)
+        tgt_b = tgt_b.to(dtype=common_dtype)
+
+        # Flatten tensors to 1D for efficient kernel processing
+        x1_c = x1_b.contiguous().view(-1)
+        x2_c = x2_b.contiguous().view(-1)
+        tgt_c = tgt_b.contiguous().view(-1)
+
+        # Allocate output buffer
+        out = torch.empty_like(x1_c)
+
+        n_elements = out.numel()
+        if n_elements == 0:
+            # Handle empty tensors gracefully
+            if reduction == "none":
+                return out.view(x1_b.shape)
+            elif reduction == "sum":
+                return out.sum()
+            else:
+                return out.mean()
+
+        # Launch Triton kernel for forward computation
+        BLOCK_SIZE = 1024
+        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        _margin_ranking_loss_kernel[grid](
+            x1_c, x2_c, tgt_c, out, n_elements, float(margin), BLOCK_SIZE=BLOCK_SIZE
         )
 
-    # Positional extraction
-    if len(args) >= 3:
-        x1, x2, target = args[0], args[1], args[2]
-    else:
-        # Fallback to keyword names similar to ATen signature
-        x1 = kwargs["self"]
-        x2 = kwargs["other"]
-        target = kwargs["target"]
+        # Save tensors needed for backward pass
+        ctx.save_for_backward(x1_c, x2_c, tgt_c)
+        ctx.reduction = reduction
+        ctx.margin = margin
+        ctx.n_elements = n_elements
+        ctx.original_shape = x1_b.shape
 
-    # margin and reduction extraction
-    margin = 0.0
-    reduction = "mean"
-    if len(args) >= 4:
-        margin = args[3]
-    if len(args) >= 5:
-        reduction = args[4]
-    if "margin" in kwargs:
-        margin = kwargs["margin"]
-    if "reduction" in kwargs:
-        reduction = kwargs["reduction"]
-
-    # Normalize reduction
-    if isinstance(reduction, int):
-        reduction = {0: "none", 1: "mean", 2: "sum"}.get(reduction, "mean")
-    if reduction not in ("none", "mean", "sum"):
-        raise ValueError("reduction must be one of 'none', 'mean', or 'sum'")
-
-    # Device check and fallback
-    device = x1.device
-    if not (isinstance(device, torch.device) and device.type == flag_gems.device):
-        # Fallback to PyTorch implementation for non-CUDA tensors
-        return torch.ops.aten.margin_ranking_loss(
-            x1, x2, target, float(margin), {"none": 0, "mean": 1, "sum": 2}[reduction]
-        )
-
-    # Broadcast tensors
-    x1_b, x2_b, tgt_b = torch.broadcast_tensors(x1, x2, target)
-
-    # Choose dtype (prefer input dtype; fall back to float32 if non-floating)
-    common_dtype = x1_b.dtype if x1_b.is_floating_point() else torch.float32
-    x1_b = x1_b.to(dtype=common_dtype)
-    x2_b = x2_b.to(dtype=common_dtype)
-    tgt_b = tgt_b.to(dtype=common_dtype)
-
-    # Flatten contiguous buffers
-    x1_c = x1_b.contiguous().view(-1)
-    x2_c = x2_b.contiguous().view(-1)
-    tgt_c = tgt_b.contiguous().view(-1)
-
-    # Output buffer
-    out = torch.empty_like(x1_c)
-
-    n_elements = out.numel()
-    if n_elements == 0:
-        # Handle empty tensors
+        # Apply reduction operation
         if reduction == "none":
             return out.view(x1_b.shape)
         elif reduction == "sum":
@@ -102,17 +212,99 @@ def margin_ranking_loss(*args, **kwargs):
         else:
             return out.mean()
 
-    # Launch Triton kernel
-    BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    _margin_ranking_loss_kernel[grid](
-        x1_c, x2_c, tgt_c, out, n_elements, float(margin), BLOCK_SIZE=BLOCK_SIZE
-    )
+    @staticmethod
+    def backward(ctx, grad_output):
+        """
+        Backward pass for margin ranking loss.
 
-    # Apply reduction
-    if reduction == "none":
-        return out.view(x1_b.shape)
-    elif reduction == "sum":
-        return out.sum()
-    else:
-        return out.mean()
+        Args:
+            ctx: Context object with saved tensors from forward pass
+            grad_output: Gradient from upstream layers
+
+        Returns:
+            Tuple of gradients (grad_x1, grad_x2, None, None, None)
+            where None corresponds to target, margin, and reduction (no gradients needed)
+        """
+        logger.debug("GEMS MARGIN_RANKING_LOSS_BACKWARD")
+
+        x1, x2, y = ctx.saved_tensors
+        margin = ctx.margin
+        reduction = ctx.reduction
+        n_elements = ctx.n_elements
+
+        # Handle empty tensor case
+        if n_elements == 0:
+            grad_x1 = torch.zeros_like(x1)
+            grad_x2 = torch.zeros_like(x2)
+            grad_target = torch.zeros_like(y)
+            return grad_x1, grad_x2, grad_target, None, None
+
+        # Scale gradient based on reduction mode and expand to match flat tensor shape
+        if reduction == "mean":
+            grad_output = grad_output.expand(n_elements) / n_elements
+        elif reduction == "sum":
+            grad_output = grad_output.expand(n_elements)
+        else:
+            grad_output = grad_output.contiguous().view(-1)
+
+        grad_output = grad_output.contiguous()
+
+        # Allocate gradient buffers
+        grad_x1 = torch.empty_like(x1)
+        grad_x2 = torch.empty_like(x2)
+
+        # Launch Triton kernel for backward computation
+        BLOCK_SIZE = 1024
+        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        _margin_ranking_loss_backward_kernel[grid](
+            grad_output,
+            x1,
+            x2,
+            y,
+            grad_x1,
+            grad_x2,
+            float(margin),
+            n_elements,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
+
+        # Reshape gradients back to original input shape
+        original_shape = ctx.original_shape
+        grad_x1 = grad_x1.view(original_shape)
+        grad_x2 = grad_x2.view(original_shape)
+
+        # Return gradients (zero grad for target to support autograd.grad with allow_unused=False)
+        grad_target = torch.zeros_like(y).view(original_shape)
+        return grad_x1, grad_x2, grad_target, None, None
+
+
+def margin_ranking_loss(x1, x2, target, margin=0.0, reduction="mean"):
+    """
+    Compute margin ranking loss using Triton-accelerated kernels.
+
+    The margin ranking loss is defined as:
+        loss = max(0, -y * (x1 - x2) + margin)
+
+    This loss encourages x1 to be ranked higher than x2 when y = 1,
+    and x2 to be ranked higher than x1 when y = -1.
+
+    Args:
+        x1: First input tensor
+        x2: Second input tensor
+        target: Target tensor with values typically +1 or -1
+        margin: Margin value (default: 0.0)
+        reduction: Specifies the reduction to apply to the output:
+                  'none': no reduction
+                  'mean': mean of all elements
+                  'sum': sum of all elements
+
+    Returns:
+        Loss tensor with shape depending on reduction mode
+
+    Example:
+        >>> x1 = torch.randn(4, device='cuda')
+        >>> x2 = torch.randn(4, device='cuda')
+        >>> target = torch.ones(4, device='cuda')
+        >>> loss = margin_ranking_loss(x1, x2, target, margin=1.0)
+    """
+    return MarginRankingLossOp.apply(x1, x2, target, margin, reduction)
