@@ -21,7 +21,7 @@ def generate_test_params():
     return params
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="#2857: RuntimeError")
 @pytest.mark.topk_softmax
 @pytest.mark.parametrize("index_dtype", generate_test_params())
 @pytest.mark.parametrize(
@@ -43,7 +43,7 @@ def test_topk_softmax(
     num_tokens, num_experts, topk, input_dtype, index_dtype, renormalize
 ):
     if flag_gems.vendor_name == "mthreads" and index_dtype == torch.uint32:
-        # torch musa unsupport uint32
+        # Issue #2858: torch musa does not support uint32
         index_dtype = torch.int64
 
     try:

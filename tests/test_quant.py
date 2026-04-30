@@ -66,9 +66,9 @@ def convert_fp8(
         dst.copy_(src)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.concat_and_cache_mla
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="#2843: RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="#2844: RuntimeError")
 @pytest.mark.parametrize("kv_lora_rank", KV_LORA_RANKS)
 @pytest.mark.parametrize("qk_rope_head_dim", QK_ROPE_HEAD_DIMS)
 @pytest.mark.parametrize("num_tokens", NUM_TOKENS_MLA)
