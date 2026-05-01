@@ -8,10 +8,10 @@ import torch  # noqa: E402
 import triton  # noqa: E402, F401
 
 import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.smooth_l1_loss import (  # noqa: E402
+from flag_gems.ops.smooth_l1_loss import (  # noqa: E402
     smooth_l1_loss as gems_smooth_l1_loss,
 )
-from flag_gems.experimental_ops.smooth_l1_loss import (  # noqa: E402
+from flag_gems.ops.smooth_l1_loss import (  # noqa: E402
     smooth_l1_loss_out as gems_smooth_l1_loss_out,
 )
 
@@ -85,6 +85,8 @@ def test_smooth_l1_loss_out(shape, dtype, reduction, beta):
 
     with flag_gems.use_gems():
         act_out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
-        act_out = gems_smooth_l1_loss_out(self, target, reduction, beta, act_out)
+        act_out = gems_smooth_l1_loss_out(
+            self, target, reduction, beta, out=act_out
+        )
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
