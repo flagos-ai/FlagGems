@@ -21,6 +21,35 @@ else:
 random.seed(time.time() // 100)
 
 
+def _scatter_reduce_name(reduce):
+    if reduce == "add":
+        return "sum"
+    if reduce == "multiply":
+        return "prod"
+    return reduce
+
+
+def _reference_scatter_reduce(inp, dim, index, src, reduce):
+    return torch.scatter_reduce(
+        inp,
+        dim,
+        index,
+        src,
+        reduce=_scatter_reduce_name(reduce),
+        include_self=True,
+    )
+
+
+def _reference_scatter_reduce_(inp, dim, index, src, reduce):
+    return inp.scatter_reduce_(
+        dim,
+        index,
+        src,
+        reduce=_scatter_reduce_name(reduce),
+        include_self=True,
+    )
+
+
 @pytest.mark.scatter_src
 @pytest.mark.parametrize("src_shape", SOURCE_SHAPES)
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
@@ -92,7 +121,7 @@ def test_scatter_reduce_add(src_shape, inp_shape, dim, dtype):
     ref_inp = utils.to_reference(inp, upcast=True)
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src, upcast=True)
-    ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src, reduce="add")
+    ref_out = _reference_scatter_reduce(ref_inp, dim, ref_index, ref_src, "add")
     with flag_gems.use_gems():
         res_out = torch.scatter(inp, dim, index, src, reduce="add")
 
@@ -170,7 +199,9 @@ def test_scatter_reduce_multiply(src_shape, inp_shape, dim, dtype):
     ref_inp = utils.to_reference(inp)
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src)
-    ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src, reduce="multiply")
+    ref_out = _reference_scatter_reduce(
+        ref_inp, dim, ref_index, ref_src, "multiply"
+    )
     with flag_gems.use_gems():
         res_out = torch.scatter(inp, dim, index, src, reduce="multiply")
 
@@ -249,7 +280,9 @@ def test_scatter_reduce_add_(src_shape, inp_shape, dim, dtype):
     ref_inp = utils.to_reference(inp, upcast=True)
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src, upcast=True)
-    ref_out = ref_inp.clone().scatter_(dim, ref_index, ref_src, reduce="add")
+    ref_out = _reference_scatter_reduce_(
+        ref_inp.clone(), dim, ref_index, ref_src, "add"
+    )
     with flag_gems.use_gems():
         res_out = inp.clone().scatter_(dim, index, src, reduce="add")
 
@@ -287,7 +320,9 @@ def test_scatter_reduce_multiply_(src_shape, inp_shape, dim, dtype):
     ref_inp = utils.to_reference(inp)
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src)
-    ref_out = ref_inp.clone().scatter_(dim, ref_index, ref_src, reduce="multiply")
+    ref_out = _reference_scatter_reduce_(
+        ref_inp.clone(), dim, ref_index, ref_src, "multiply"
+    )
     with flag_gems.use_gems():
         res_out = inp.clone().scatter_(dim, index, src, reduce="multiply")
 

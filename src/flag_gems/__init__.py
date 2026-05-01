@@ -25,6 +25,14 @@ runtime.replace_customized_ops(globals())
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 
 
+def _filter_torch_override_warning():
+    warnings.filterwarnings(
+        "ignore",
+        message="Warning only once for all operators.*",
+        category=UserWarning,
+    )
+
+
 def torch_ge(v):
     return version.parse(torch.__version__) >= version.parse(v)
 
@@ -579,13 +587,15 @@ def enable(
     """
     global current_work_registrar
     exclude_ops = resolve_user_setting(unused, "exclude")
-    current_work_registrar = registrar(
-        _FULL_CONFIG,
-        user_include_ops=[],
-        user_exclude_ops=exclude_ops,
-        cpp_patched_ops=list(set(aten_patch_list)),
-        lib=lib,
-    )
+    with warnings.catch_warnings():
+        _filter_torch_override_warning()
+        current_work_registrar = registrar(
+            _FULL_CONFIG,
+            user_include_ops=[],
+            user_exclude_ops=exclude_ops,
+            cpp_patched_ops=list(set(aten_patch_list)),
+            lib=lib,
+        )
     setup_flaggems_logging(path=path, record=record, once=once)
 
 
@@ -633,14 +643,16 @@ def only_enable(
         return
 
     global current_work_registrar
-    current_work_registrar = registrar(
-        _FULL_CONFIG,
-        user_include_ops=include_ops,
-        user_exclude_ops=[],
-        cpp_patched_ops=list(set(aten_patch_list)),
-        full_config_by_func=FULL_CONFIG_BY_FUNC,
-        lib=lib,
-    )
+    with warnings.catch_warnings():
+        _filter_torch_override_warning()
+        current_work_registrar = registrar(
+            _FULL_CONFIG,
+            user_include_ops=include_ops,
+            user_exclude_ops=[],
+            cpp_patched_ops=list(set(aten_patch_list)),
+            full_config_by_func=FULL_CONFIG_BY_FUNC,
+            lib=lib,
+        )
     setup_flaggems_logging(path=path, record=record, once=once)
 
 
