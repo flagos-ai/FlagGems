@@ -129,7 +129,17 @@ class Register:
                 # Older torch versions don't support allow_override
                 self.lib.impl(key, fn, device_key)
         else:
-            self.lib.impl(key, fn, device_key)
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=(
+                        r"Warning only once for all operators,  other operators "
+                        r"may also be overridden\..*"
+                    ),
+                    category=UserWarning,
+                    module=r"torch\.library",
+                )
+                self.lib.impl(key, fn, device_key)
 
     def for_each(self):
         for key, func in self.config:

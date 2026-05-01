@@ -27,6 +27,7 @@ from typing import (
 )
 
 import triton
+import triton.testing
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
@@ -245,13 +246,29 @@ class LibTuner(triton.runtime.Autotuner):
         do_bench=None,
         strategy=None,
     ):
-        # NOTE(zhengyang): See discussion in https://github.com/triton-lang/triton/pull/4496
-        if major_version == 2 or (major_version == 3 and minor_version <= 1):
+        def _make_do_bench():
+            if do_bench is not None:
+                return do_bench
+            if use_cuda_graph:
+                return lambda kernel_call, quantiles: triton.testing.do_bench_cudagraph(
+                    kernel_call,
+                    rep=rep if rep is not None else 100,
+                    quantiles=quantiles,
+                )
+            if warmup is not None or rep is not None:
+                return lambda kernel_call, quantiles: triton.testing.do_bench(
+                    kernel_call,
+                    warmup=warmup if warmup is not None else 25,
+                    rep=rep if rep is not None else 100,
+                    quantiles=quantiles,
+                )
+            return None
+
+        if major_version == 2:
             if warmup is None:
                 warmup = 25
             if rep is None:
                 rep = 100
-        if major_version == 2:
             super().__init__(
                 fn,
                 arg_names,
@@ -266,7 +283,11 @@ class LibTuner(triton.runtime.Autotuner):
             self.base_fn = fn
             while not inspect.isfunction(self.base_fn):
                 self.base_fn = self.base_fn.fn
-        else:
+        elif major_version == 3 and minor_version <= 1:
+            if warmup is None:
+                warmup = 25
+            if rep is None:
+                rep = 100
             super().__init__(
                 fn,
                 arg_names,
@@ -280,6 +301,19 @@ class LibTuner(triton.runtime.Autotuner):
                 warmup,
                 rep,
                 use_cuda_graph,
+            )
+        else:
+            super().__init__(
+                fn,
+                arg_names,
+                configs,
+                key,
+                reset_to_zero,
+                restore_value,
+                pre_hook,
+                post_hook,
+                prune_configs_by,
+                do_bench=_make_do_bench(),
             )
         self.__name__ = self.base_fn.__name__
         self.keys = key
