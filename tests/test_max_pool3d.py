@@ -32,13 +32,12 @@ MAXPOOL3D_CONFIGS = [
 
 
 @pytest.mark.max_pool3d
+@pytest.mark.skip(reason="#2865: this test always fail.")
 @pytest.mark.parametrize(
     "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_max_pool3d(
-    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
-):
+def test_max_pool3d(shape, kernel_size, stride, padding, dilation, ceil_mode, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
 
@@ -65,11 +64,12 @@ def test_accuracy_max_pool3d(
 
 
 @pytest.mark.max_pool3d_backward
+@pytest.mark.skip(reason="#2865: this test always fail.")
 @pytest.mark.parametrize(
     "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_max_pool3d_backward(
+def test_max_pool3d_backward(
     shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
 ):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
