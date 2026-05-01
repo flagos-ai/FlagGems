@@ -4,6 +4,8 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
+import triton
+import triton.language as tl
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
@@ -14,6 +16,227 @@ from flag_gems.utils.shape_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@triton.jit
+def _scatter_add_2d_lastdim_pow2_kernel(
+    src,
+    index,
+    out,
+    n_elements,
+    INDEX_DIM_N: tl.constexpr,
+    OUT_DIM_N: tl.constexpr,
+    SRC_STRIDE_0: tl.constexpr,
+    INDEX_LOG2_N: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < n_elements
+    rows = offsets >> INDEX_LOG2_N
+    cols = offsets & (INDEX_DIM_N - 1)
+
+    src_offsets = rows * SRC_STRIDE_0 + cols
+    cur_src = tl.load(src + src_offsets, mask=mask, other=0.0)
+    cur_index = tl.load(index + offsets, mask=mask, other=0).to(tl.int32)
+    out_offsets = rows * OUT_DIM_N + cur_index
+    tl.atomic_add(out + out_offsets, cur_src, mask=mask, sem="relaxed")
+
+
+@triton.jit
+def _scatter_mul_2d_lastdim_pow2_kernel(
+    src,
+    index,
+    out,
+    n_elements,
+    INDEX_DIM_N: tl.constexpr,
+    OUT_DIM_N: tl.constexpr,
+    SRC_STRIDE_0: tl.constexpr,
+    INDEX_LOG2_N: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < n_elements
+    rows = offsets >> INDEX_LOG2_N
+    cols = offsets & (INDEX_DIM_N - 1)
+
+    src_offsets = rows * SRC_STRIDE_0 + cols
+    cur_src = tl.load(src + src_offsets, mask=mask, other=1.0)
+    cur_index = tl.load(index + offsets, mask=mask, other=0).to(tl.int32)
+    out_offsets = rows * OUT_DIM_N + cur_index
+    stop = tl.where(mask, 0, 1).to(tl.int1)
+    block_stop = False
+    while not block_stop:
+        cur_out = tl.load(out + out_offsets, mask=mask, other=1.0)
+        res = tl.where(stop, cur_out, cur_out * cur_src)
+        cas_res = tl.atomic_cas(out + out_offsets, cur_out, res, sem="relaxed")
+        stop |= (cur_out == cas_res) | ((cur_out != cur_out) & (cas_res != cas_res))
+        block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
+
+
+def _is_power_of_2(x: int) -> bool:
+    return x > 0 and (x & (x - 1)) == 0
+
+
+def _can_scatter_add_2d_lastdim_pow2(inp, dim, index, src, out, reduce) -> bool:
+    if reduce != "add" or inp.ndim != 2:
+        return False
+    if not (-inp.ndim <= dim < inp.ndim) or dim % inp.ndim != inp.ndim - 1:
+        return False
+    if index.ndim != 2 or src.ndim != 2:
+        return False
+    index_dim_n = index.size(1)
+    if index_dim_n <= inp.size(1):
+        return False
+    if index_dim_n < 131072:
+        tiny_f32 = (
+            inp.dtype == torch.float32
+            and index_dim_n <= 128
+            and index.numel() <= 8192
+        )
+        small_f32_2x = (
+            inp.dtype == torch.float32
+            and inp.size(1) == 256
+            and index_dim_n == 512
+            and index.size(0) <= 256
+            and index.numel() <= 131072
+        )
+        medium = index_dim_n >= 2048 and index.numel() <= 2097152
+        if not (tiny_f32 or small_f32_2x or medium):
+            return False
+    if not _is_power_of_2(index.size(1)):
+        return False
+    if index.size(0) > inp.size(0) or src.size(0) < index.size(0):
+        return False
+    if src.size(1) < index.size(1):
+        return False
+    return (
+        inp.is_contiguous()
+        and out.is_contiguous()
+        and index.is_contiguous()
+        and src.is_contiguous()
+    )
+
+
+def _can_scatter_add_2d_lastdim_pow2_inplace(inp, dim, index, src, reduce) -> bool:
+    if reduce != "add" or inp.ndim != 2:
+        return False
+    if not (-inp.ndim <= dim < inp.ndim) or dim % inp.ndim != inp.ndim - 1:
+        return False
+    if index.ndim != 2 or src.ndim != 2:
+        return False
+    if not _is_power_of_2(index.size(1)):
+        return False
+    if inp.dtype == torch.float16:
+        if index.numel() > 65536:
+            return False
+    elif inp.dtype == torch.float32:
+        if 4096 < index.numel() < 1048576:
+            return False
+    else:
+        return False
+    if index.size(0) > inp.size(0) or src.size(0) < index.size(0):
+        return False
+    if src.size(1) < index.size(1):
+        return False
+    return inp.is_contiguous() and index.is_contiguous() and src.is_contiguous()
+
+
+def _can_scatter_mul_2d_lastdim_pow2(inp, dim, index, src, out, reduce) -> bool:
+    if reduce != "multiply" or inp.ndim != 2:
+        return False
+    if not (-inp.ndim <= dim < inp.ndim) or dim % inp.ndim != inp.ndim - 1:
+        return False
+    if index.ndim != 2 or src.ndim != 2:
+        return False
+    if not _is_power_of_2(index.size(1)):
+        return False
+    if inp.dtype not in (torch.float16, torch.float32):
+        return False
+    if index.numel() > 65536:
+        return False
+    if index.numel() % 128 != 0:
+        return False
+    if index.size(0) > inp.size(0) or src.size(0) < index.size(0):
+        return False
+    if src.size(1) < index.size(1):
+        return False
+    return (
+        inp.is_contiguous()
+        and out.is_contiguous()
+        and index.is_contiguous()
+        and src.is_contiguous()
+    )
+
+
+def _can_scatter_mul_2d_lastdim_pow2_inplace(inp, dim, index, src, reduce) -> bool:
+    if reduce != "multiply" or inp.ndim != 2:
+        return False
+    if not (-inp.ndim <= dim < inp.ndim) or dim % inp.ndim != inp.ndim - 1:
+        return False
+    if index.ndim != 2 or src.ndim != 2:
+        return False
+    if not _is_power_of_2(index.size(1)):
+        return False
+    if inp.dtype not in (torch.float16, torch.float32):
+        return False
+    if index.numel() > 65536:
+        return False
+    if index.numel() % 128 != 0:
+        return False
+    if index.size(0) > inp.size(0) or src.size(0) < index.size(0):
+        return False
+    if src.size(1) < index.size(1):
+        return False
+    return inp.is_contiguous() and index.is_contiguous() and src.is_contiguous()
+
+
+def _scatter_add_2d_lastdim_pow2_launch(inp, index, src, out, block, num_warps):
+    index_dim_n = index.size(1)
+    grid = (triton.cdiv(index.numel(), block),)
+    _scatter_add_2d_lastdim_pow2_kernel[grid](
+        src,
+        index,
+        out,
+        index.numel(),
+        INDEX_DIM_N=index_dim_n,
+        OUT_DIM_N=inp.size(1),
+        SRC_STRIDE_0=src.stride(0),
+        INDEX_LOG2_N=index_dim_n.bit_length() - 1,
+        BLOCK=block,
+        num_warps=num_warps,
+    )
+    return out
+
+
+def _scatter_add_2d_lastdim_pow2(inp, index, src, out):
+    return _scatter_add_2d_lastdim_pow2_launch(inp, index, src, out, 256, 8)
+
+
+def _scatter_add_2d_lastdim_pow2_inplace(inp, index, src, out):
+    return _scatter_add_2d_lastdim_pow2_launch(inp, index, src, out, 128, 4)
+
+
+def _scatter_mul_2d_lastdim_pow2_inplace(inp, index, src, out):
+    index_dim_n = index.size(1)
+    block = 128
+    grid = (triton.cdiv(index.numel(), block),)
+    _scatter_mul_2d_lastdim_pow2_kernel[grid](
+        src,
+        index,
+        out,
+        index.numel(),
+        INDEX_DIM_N=index_dim_n,
+        OUT_DIM_N=inp.size(1),
+        SRC_STRIDE_0=src.stride(0),
+        INDEX_LOG2_N=index_dim_n.bit_length() - 1,
+        BLOCK=block,
+        num_warps=4,
+    )
+    return out
+
+
+def _scatter_mul_2d_lastdim_pow2(inp, index, src, out):
+    return _scatter_mul_2d_lastdim_pow2_inplace(inp, index, src, out)
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -34,6 +257,8 @@ def generate_scatter_kernel(
     rank: int,
     kernel_name: str,
     code: IndentedBuffer,
+    block_value: int = 128,
+    loop_count_value: int = 4,
 ) -> IndentedBuffer:
     # make the inlined function visible in the context
     code.newline()
@@ -45,13 +270,13 @@ def generate_scatter_kernel(
         code.writeline("if(flag_gems.vendor_name in ['metax', 'iluvatar']):")
         with code.indent():
             code.writeline("return 256")
-        code.writeline("return 128")
+        code.writeline(f"return {block_value}")
     code.newline()
     code.newline()
 
     code.writeline("def loop_count(args):")
     with code.indent():
-        code.writeline("return 4")
+        code.writeline(f"return {loop_count_value}")
     code.newline()
     code.newline()
 
@@ -228,7 +453,7 @@ def generate_destination_passing_wrapper(
 
         code.writeline('IS_ADD = reduce == "add"')
         code.writeline('IS_MUL = reduce == "multiply"')
-        code.writeline("int32_offset = int32_offset or True")
+        code.writeline("int32_offset = True if int32_offset is None else int32_offset")
 
         # kernel launch
         code.writeline("grid = lambda meta: (")
@@ -272,13 +497,17 @@ def generate_code(
     wrapper_name: str,
     kernel_name: str,
     code: IndentedBuffer,
+    block_value: int = 128,
+    loop_count_value: int = 4,
 ) -> IndentedBuffer:
     # inputs: [src_strided, index, inp, out, dim, M, N, reduce]
     shape = inputs[1].shape
     rank = len(shape)
 
     code = generate_imports(code)
-    code = generate_scatter_kernel(rank, kernel_name, code)
+    code = generate_scatter_kernel(
+        rank, kernel_name, code, block_value, loop_count_value
+    )
     code = generate_destination_passing_wrapper(rank, wrapper_name, kernel_name, code)
     return code
 
@@ -289,7 +518,7 @@ class ScatterFunction:
         self.overloads: Mapping[str, Callable] = {}
 
     def __call__(self, *args, **kwargs):
-        key = f"{self.arg_key(*args)}"
+        key, block_value, loop_count_value = self.arg_key(*args)
         if key in self.overloads:
             overload = self.overloads[key]
         else:
@@ -299,6 +528,8 @@ class ScatterFunction:
                 "_scatter_wrapper",
                 "_scatter_jit_function",
                 code,
+                block_value,
+                loop_count_value,
             )
 
             file_name = f"scatter_rank_{key}.py"
@@ -321,7 +552,45 @@ class ScatterFunction:
     def arg_key(self, *args):
         tensors = [item for item in args if torch.is_tensor(item)]
         max_rank = max(item.ndim for item in tensors)
-        return max_rank
+        if self._use_block64_rank2_mul_f32_256x512(args):
+            return f"{max_rank}_mul_f32_256x512_b64", 64, 4
+        if self._use_rank2_mul_1024x2048_f32(args):
+            return f"{max_rank}_mul_f32_1024x2048_b64", 64, 4
+        return str(max_rank), 128, 4
+
+    @staticmethod
+    def _use_block64_rank2_mul_f32_256x512(args) -> bool:
+        src_strided, index, _inp, out, _dim_size, _dim_stride, n_elements, reduce = (
+            args[:8]
+        )
+        return (
+            reduce == "multiply"
+            and n_elements == 131072
+            and src_strided.ndim == 2
+            and index.ndim == 2
+            and out.ndim == 2
+            and src_strided.dtype == torch.float32
+            and out.dtype == torch.float32
+            and tuple(index.shape) == (256, 512)
+            and tuple(out.shape) == (256, 256)
+        )
+
+    @staticmethod
+    def _use_rank2_mul_1024x2048_f32(args) -> bool:
+        src_strided, index, _inp, out, _dim_size, _dim_stride, n_elements, reduce = (
+            args[:8]
+        )
+        return (
+            reduce == "multiply"
+            and n_elements == 2097152
+            and src_strided.ndim == 2
+            and index.ndim == 2
+            and out.ndim == 2
+            and src_strided.dtype == torch.float32
+            and out.dtype == torch.float32
+            and tuple(index.shape) == (1024, 2048)
+            and tuple(out.shape) == (1024, 1024)
+        )
 
 
 _scatter_func = ScatterFunction()
@@ -339,13 +608,21 @@ def scatter(inp, dim, index, src, reduce=None):
     if has_internal_overlapping(out) == MemOverlap.Yes:
         out = out.contiguous()
 
+    if _can_scatter_add_2d_lastdim_pow2(inp, dim, index, src, out, reduce):
+        return _scatter_add_2d_lastdim_pow2(inp, index, src, out)
+
+    if _can_scatter_mul_2d_lastdim_pow2(inp, dim, index, src, out, reduce):
+        return _scatter_mul_2d_lastdim_pow2(inp, index, src, out)
+
     src_strided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(inp, dim, index.shape)
     dim_size = inp.size(dim)
     dim_stride = inp.stride(dim)
     N = index.numel()
 
-    int32_size_dim = lambda x: x.stride(dim) * x.size(dim) < 2**32
+    def int32_size_dim(x):
+        return x.stride(dim) * x.size(dim) < 2**32
+
     use_int32_offset = all(map(int32_size_dim, (inp, index, src)))
     _scatter_func(
         src_strided,
@@ -375,13 +652,21 @@ def scatter_(inp, dim, index, src, reduce=None):
         has_internal_overlapping(out) != MemOverlap.Yes
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
 
+    if _can_scatter_add_2d_lastdim_pow2_inplace(inp, dim, index, src, reduce):
+        return _scatter_add_2d_lastdim_pow2_inplace(inp, index, src, out)
+
+    if _can_scatter_mul_2d_lastdim_pow2_inplace(inp, dim, index, src, reduce):
+        return _scatter_mul_2d_lastdim_pow2_inplace(inp, index, src, out)
+
     src_restrided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(inp, dim, index.shape)
     dim_size = inp.size(dim)
     dim_stride = inp.stride(dim)
     N = index.numel()
 
-    int32_size_dim = lambda x: x.stride(dim) * x.size(dim) < 2**32
+    def int32_size_dim(x):
+        return x.stride(dim) * x.size(dim) < 2**32
+
     use_int32_offset = all(map(int32_size_dim, (inp, index, src)))
     _scatter_func(
         src_restrided,
