@@ -40,14 +40,14 @@ while true; do
         free_i=$((total_i - used_i))
 
         printf "%4d%'13d%'12d%'12d\n" $i ${total_i} ${used_i} ${free_i}
-        if [ $free_i -lt $mem_threshold]; then
+        if [[ $free_i -lt $mem_threshold ]]; then
             need_wait=true
             echo "GPU $i: Used ${used_i}MB / Total ${total}MB (Available: ${free_i}MB < ${mem_threshold}MB)"
             break
         fi
     done
 
-    if [ "$need_wait" = false ]; then
+    if [ "$need_wait" = "false" ]; then
         echo "All Moore Threads GPUs have sufficient memory, proceeding with execution."
         break
     fi
