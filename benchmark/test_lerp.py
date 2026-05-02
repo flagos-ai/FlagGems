@@ -22,12 +22,12 @@ def lerp_input_fn(shape, dtype, device):
     yield {"input": input, "end": end, "weight": weight},
 
 
-@pytest.mark.lerp
+@pytest.mark.lerp_tensor
 @pytest.mark.skipif(
     vendor_name == "kunlunxin" and utils.SkipVersion("torch", "<2.5"),
     reason="The half dtype is only supported on torch >= 2.5.",
 )
-def test_lerp():
+def test_lerp_tensor():
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
         op_name="lerp",
@@ -38,12 +38,12 @@ def test_lerp():
     bench.run()
 
 
-@pytest.mark.lerp_
+@pytest.mark.lerp_tensor_
 @pytest.mark.skipif(
     vendor_name == "kunlunxin" and utils.SkipVersion("torch", "<2.5"),
     reason="The half dtype is only supported on torch >= 2.5.",
 )
-def test_lerp_inplace():
+def test_lerp_tensor_inplace():
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
         op_name="lerp_",
