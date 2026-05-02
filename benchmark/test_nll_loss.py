@@ -18,12 +18,12 @@ def nll_loss_input_fn(shape, cur_dtype, device):
         yield inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
 
 
-@pytest.mark.nll_loss
+@pytest.mark.nll_loss_forward
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin" and utils.SkipVersion("torch", "<2.5"),
     reason="INT16 is not supported in XPytorch 2.0. Please upgrade your PyTorch version >= 2.5",
 )
-def test_nll_loss():
+def test_nll_loss_forward():
     bench = base.GenericBenchmark2DOnly(
         op_name="nll_loss",
         input_fn=nll_loss_input_fn,

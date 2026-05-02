@@ -104,9 +104,9 @@ def _gems_fused_moe_wrapper(hidden_states, w1, w2, topk_weights, topk_ids):
     )
 
 
-@pytest.mark.fused_moe
+@pytest.mark.fused_experts_impl
 @pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vLLM not installed")
-def test_perf_fused_moe_gems_vs_vllm():
+def test_fused_moe_impl_gems_vs_vllm():
     """
     Benchmark FlagGems fused_experts_impl vs vLLM fused_experts_impl (bf16/fp16).
     """
