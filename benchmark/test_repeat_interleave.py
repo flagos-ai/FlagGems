@@ -30,7 +30,7 @@ def repeat_interleave_self_int_input_fn(shape, dtype, device):
     yield inp, repeats,
 
 
-@pytest.mark.repeat_interleave
+@pytest.mark.repeat_interleave_self_int
 def test_repeat_interleave_self_int():
     bench = RepeatInterleaveBenchmark(
         input_fn=repeat_interleave_self_int_input_fn,
@@ -57,7 +57,7 @@ def repeat_interleave_self_tensor_input_fn(shape, dtype, device):
 
 
 @pytest.mark.skip(reason="This test case runs out of memory: issue #2674")
-@pytest.mark.repeat_interleave
+@pytest.mark.repeat_interleave_self_tensor
 def test_repeat_interleave_self_tensor():
     bench = RepeatInterleaveBenchmark(
         op_name="repeat_interleave.self_tensor",
@@ -82,7 +82,7 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
 
 
 @pytest.mark.skip(reason="This test case runs out of memory: issue #2674")
-@pytest.mark.repeat_interleave
+@pytest.mark.repeat_interleave_tensor
 def test_repeat_interleave_tensor():
     bench = RepeatInterleaveBenchmark(
         op_name="repeat_interleave.tensor",

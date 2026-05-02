@@ -161,7 +161,7 @@ def _gems_fused_moe_int4_w4a16_wrapper(
     )
 
 
-@pytest.mark.fused_moe
+@pytest.mark.fused_experts_impl
 @pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires NVIDIA Hopper architecture")
 def test_fused_moe_int4_w4a16():
     """
