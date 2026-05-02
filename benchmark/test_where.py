@@ -12,8 +12,8 @@ def _input_fn(shape, cur_dtype, device):
     yield condition, inp1, inp2
 
 
-@pytest.mark.where
-def test_where():
+@pytest.mark.where_self
+def test_where_self():
     bench = base.GenericBenchmark(
         op_name="where",
         input_fn=_input_fn,

@@ -4,7 +4,7 @@ import torch
 from . import base, consts
 
 
-@pytest.mark.bitwise_or
+@pytest.mark.bitwise_or_tensor
 def test_bitwise_or():
     bench = base.BinaryPointwiseBenchmark(
         op_name="bitwise_or",
@@ -14,7 +14,7 @@ def test_bitwise_or():
     bench.run()
 
 
-@pytest.mark.bitwise_or_
+@pytest.mark.bitwise_or_tensor_
 def test_bitwise_or_inplace():
     bench = base.BinaryPointwiseBenchmark(
         op_name="bitwise_or_",

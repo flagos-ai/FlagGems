@@ -45,8 +45,8 @@ def nll_loss_nd_input_fn(shape, cur_dtype, device):
                 }
 
 
-@pytest.mark.nll_loss_nd
-def test_nll_loss_nd():
+@pytest.mark.nll_loss_nd_foward
+def test_nll_loss_nd_forward():
     bench = NLLLossNDBenchmark(
         input_fn=nll_loss_nd_input_fn,
         op_name="nll_loss_nd",

@@ -24,7 +24,7 @@ except ImportError:
 @pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine not installed")
 @pytest.mark.skipif(TE_OP is None, reason="'dswiglu' not found in TransformerEngine")
 @pytest.mark.skipif(GEMS_OP is None, reason="'dswiglu' not found in FlagGems")
-def test_swigglu():
+def test_dswiglu():
     bench = base.TexGluBackwardBenchmark(
         op_name="dswiglu",
         torch_op=TE_OP,

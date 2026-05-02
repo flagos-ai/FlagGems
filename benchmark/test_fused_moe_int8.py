@@ -161,9 +161,9 @@ def _gems_fused_moe_int8_wrapper(
     )
 
 
-@pytest.mark.fused_moe
+@pytest.mark.fused_experts_impl
 @pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vllm not installed")
-def test_fused_moe_int8():
+def test_fused_experts_impl_int8():
     """
     Benchmark FlagGems vs vLLM fused_experts_impl with INT8 W8A8 quantization.
     """

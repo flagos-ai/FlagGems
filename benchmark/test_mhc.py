@@ -155,8 +155,8 @@ class MHCSplitSinkhornBenchmark(base.Benchmark):
 
 
 # TODO(Qiming): Find out where this is implemented
-@pytest.mark.hc_split_sinkhorn
-def test_hc_split_sinkhorn():
+@pytest.mark.hc_split_sinkhorn_forward
+def test_hc_split_sinkhorn_forward():
     bench = MHCSplitSinkhornBenchmark(
         op_name="hc_split_sinkhorn",
         torch_op=mhc_split_sinkhorn_torch_ref,

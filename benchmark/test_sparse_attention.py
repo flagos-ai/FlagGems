@@ -71,8 +71,8 @@ class SparseAttentionBenchmark(base.Benchmark):
 
 @pytest.mark.skip(reason="The test case fails with many exceptions: #2669")
 @pytest.mark.skipif(flag_gems.device == "cpu", reason="Unsupported in CPU mode")
-@pytest.mark.sparse_attention
-def test_sparse_attention():
+@pytest.mark.sparse_attn_triton
+def test_sparse_attn_triton():
     bench = SparseAttentionBenchmark(
         op_name="sparse_attention",
         torch_op=torch_sparse_attention,

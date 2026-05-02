@@ -6,6 +6,7 @@ import flag_gems
 from . import base, consts, utils
 
 
+@pytest.mark.nonzero
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin" and utils.SkipVersion("torch", "<2.5"),
     reason="Not supported in XPytorch 2.0. Please upgrade your PyTorch version >= 2.5",

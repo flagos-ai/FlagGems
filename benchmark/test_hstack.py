@@ -32,8 +32,8 @@ class HStackBenchmark(base.Benchmark):
 
 
 @pytest.mark.skip("Benchmark test fails: issue #2673")
-@pytest.mark.vstack
-def test_vstack():
+@pytest.mark.hstack
+def test_hstack():
     bench = HStackBenchmark(
         op_name="hstack",
         input_fn=_input_fn,
