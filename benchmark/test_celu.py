@@ -3,16 +3,12 @@ import torch
 
 import flag_gems
 
-from . import base, consts, utils
+from . import base, consts
 
 vendor_name = flag_gems.vendor_name
 
 
 @pytest.mark.celu
-@pytest.mark.skipif(
-    vendor_name == "kunlunxin" and utils.SkipVersion("torch", "<2.5"),
-    reason="There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead",
-)
 def test_celu():
     bench = base.UnaryPointwiseBenchmark(
         op_name="celu", torch_op=torch.nn.functional.celu, dtypes=consts.FLOAT_DTYPES
@@ -21,10 +17,6 @@ def test_celu():
 
 
 @pytest.mark.celu_
-@pytest.mark.skipif(
-    vendor_name == "kunlunxin" and utils.SkipVersion("torch", "<2.5"),
-    reason="There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead",
-)
 def test_celu_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="celu_",

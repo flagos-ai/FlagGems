@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts, utils
+from . import base, consts
 
 
 class NormBenchmark(base.GenericBenchmark):
@@ -40,11 +40,6 @@ def input_fn(shape, dtype, device):
 
 @pytest.mark.instance_norm
 def test_instance_norm(monkeypatch):
-    if flag_gems.vendor_name == "kunlunxin" and utils.SkipVersion("torch", "<2.5"):
-        pytest.skip(
-            "BF16 is not supported in XPytorch 2.0. Please upgrade your PyTorch version >= 2.5"
-        )
-
     if flag_gems.vendor_name == "mthreads":
         # Compatible with older versions of LLVM
         monkeypatch.setenv("DISABLE_LLVM_OPT", "1")
