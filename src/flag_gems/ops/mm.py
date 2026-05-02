@@ -135,15 +135,6 @@ def get_higher_dtype(a, b):
 
 
 def general_mm(a, b, c, M, N, K):
-    logger.debug(
-        "GEMS MM, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s",
-        M,
-        N,
-        K,
-        a.stride(0) == 1,
-        b.stride(0) == 1,
-    )
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
@@ -295,6 +286,8 @@ def streamk_scenario(a, b, M, N, K):
 
 
 def mm(a, b):
+    logger.debug("GEMS MM")
+
     device = a.device
     if is_syrk_transpose_pair(a, b):
         M, K = a.shape
@@ -321,6 +314,8 @@ def mm(a, b):
 
 
 def mm_out(a, b, *, out):
+    logger.debug("GEMS MM_OUT")
+
     if is_syrk_transpose_pair(a, b):
         M, K = a.shape
         return syrk_mm(a, out, M, K)
