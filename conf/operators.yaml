@@ -1112,7 +1112,6 @@ ops:
   - id: contiguous
     description: |
       Returns a contiguous in memory tensor containing the same data as `self` tensor.
-      Introduced in v2.2 and removed from exposed list in v4.1.
     for:
       - contiguous
     labels:
@@ -1207,7 +1206,6 @@ ops:
       - Tensor
     stages:
       - beta: '4.2'
-    exposed: False
   - id: copy_
     description: Copies the elements from `src` into `self` tensor and returns `self`.
     for:
@@ -1598,7 +1596,6 @@ ops:
     description: |
       Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead of
       the sigmoid function for gating. This is the backward case.
-      This operator was introduced in v4.2 but not exposed.
     for:
       - dreglu
     labels:
@@ -4294,7 +4291,6 @@ ops:
   - id: reglu
     description: |
       Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead of the sigmoid function for gating.
-      This operator was introduced in v4.2 release but not exposed.
     for:
       - reglu
     labels:
