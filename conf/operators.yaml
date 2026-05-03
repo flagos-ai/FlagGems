@@ -295,11 +295,11 @@ ops:
       - LinearAlg
     stages:
       - stable: '4.0'
-  - id: addcmul_
+  - id: addcmul_out
     description: |
-      The in-place version of `addcmul`.
+      A variant of `addcmul` that assigns the result to `out`.
     for:
-      - addcmul_
+      - addcmul.out
     labels:
       - aten
       - pointwise
@@ -321,10 +321,31 @@ ops:
     stages:
       - stable: '1.0'
     cpp: '4.0'
+  - id: addmm_dtype
+    description: |
+      A variant of `addmm` that allows the dtype of the output tensor to be specified.
+      This is supported only on CUDA and for `torch.float32` given `torch.float16` or `torch.bfloat16` input dtypes.
+    for:
+      - addmm.dtype
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
+  - id: addmm_dtype_out
+    description: A variant of `addmm_dtype()` that allows the output to be saved to the provided `out` parameter.
+    for:
+      - addmm.dtype_out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
   - id: addmm_out
     description: |
-      Performs a matrix multiplication of the matrices `mat1` and `mat2`.
-      The matrix `input` is added to the final result.
+      A variant of `addmm` that assigns to the output to the provided `out` parameter.
     for:
       - addmm.out
     labels:
@@ -708,6 +729,28 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.1'
+  - id: avg_pool3d
+    description: |
+      Applies 3D average-pooling operation in `kD \times kH \times kW` regions by step size
+      `sD \times sH \times sW` steps.
+    for:
+      - avg_pool3d
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: avg_pool3d_backward
+    description: This is the backward version of `avg_pool3d()`.
+    for:
+      - avg_pool3d_backward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: baddbmm
     description: |
       Performs a batch matrix-matrix product of matrices in `batch1` and `batch2`.
@@ -721,6 +764,16 @@ ops:
       - BLAS
     stages:
       - stable: '4.1'
+  - id: baddbmm_backward
+    description: This is the backward version of `baddbmm()`.
+    for:
+      - baddbmm_backward
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
   - id: batch_norm
     description: An internal operator used for implementing the `BatchNorm` functionality.
     for:
@@ -741,6 +794,16 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: bernoulli_
+    description: Draws binary random numbers (0 or 1) from a Bernoulli distribution.
+    for:
+      - bernoulli_.float
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: bincount
     description: Count the frequency of each value in an array of non-negative integers.
     for:
@@ -2212,6 +2275,19 @@ ops:
       - Math
     stages:
       - stable: '5.1'
+  - id: grid_sample
+    description: |
+      Given an `input` and a flow-field `grid`, computes the `output` using `input` values and
+      pixel locations from `grid`.
+    for:
+      - nn.functional.grid_sample
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: group_norm
     description: An internal IR for applying Group Normalization for last certain number of dimensions.
     for:
