@@ -28,7 +28,7 @@ def normal_inplace_input_fn(shape, dtype, device):
     yield self, loc, scale
 
 
-@pytest.mark.normal_tensor_tensor_
+@pytest.mark.normal_float_float_
 def test_normal_inplace():
     bench = base.GenericBenchmark(
         input_fn=normal_inplace_input_fn,
