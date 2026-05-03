@@ -290,11 +290,7 @@ def _use_wide_exact_row(M: int, N: int, batch: int):
     # One exact-row program covers one matrix row with BLOCK_N == N.  Use it for
     # wide power-of-two rows where it avoids the flat kernel's div/mod indexing,
     # but require enough row programs to keep occupancy reasonable.
-    if (
-        N < _WIDE_EXACT_ROW_MIN_N
-        or N > _WIDE_EXACT_ROW_MAX_N
-        or not _is_power_of_2(N)
-    ):
+    if N < _WIDE_EXACT_ROW_MIN_N or N > _WIDE_EXACT_ROW_MAX_N or not _is_power_of_2(N):
         return False
 
     rows = M * batch

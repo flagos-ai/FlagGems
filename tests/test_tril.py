@@ -321,8 +321,11 @@ def test_tril_inplace_extreme_diagonal(diagonal, dtype):
 def test_tril_invalid_rank():
     inp = torch.tensor(1.0, device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises(
-        RuntimeError, match="tril: input tensor must have at least 2 dimensions"
+    with (
+        flag_gems.use_gems(),
+        pytest.raises(
+            RuntimeError, match="tril: input tensor must have at least 2 dimensions"
+        ),
     ):
         torch.tril(inp)
 
@@ -332,7 +335,10 @@ def test_tril_invalid_rank():
 def test_tril_inplace_invalid_rank():
     inp = torch.tensor(1.0, device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises(
-        RuntimeError, match="tril: input tensor must have at least 2 dimensions"
+    with (
+        flag_gems.use_gems(),
+        pytest.raises(
+            RuntimeError, match="tril: input tensor must have at least 2 dimensions"
+        ),
     ):
         inp.tril_()
