@@ -60,9 +60,7 @@ def test_smooth_l1_loss_aten_out_mean(dtype):
     ref_target = utils.to_reference(target, True)
 
     rout = torch.empty((), dtype=dtype, device="cpu")
-    torch.ops.aten.smooth_l1_loss.out(
-        ref_inp, ref_target, 1, 1.0, out=rout
-    )
+    torch.ops.aten.smooth_l1_loss.out(ref_inp, ref_target, 1, 1.0, out=rout)
 
     out = torch.empty((), dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():

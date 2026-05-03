@@ -85,8 +85,6 @@ def test_smooth_l1_loss_out(shape, dtype, reduction, beta):
 
     with flag_gems.use_gems():
         act_out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
-        act_out = gems_smooth_l1_loss_out(
-            self, target, reduction, beta, out=act_out
-        )
+        act_out = gems_smooth_l1_loss_out(self, target, reduction, beta, out=act_out)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
