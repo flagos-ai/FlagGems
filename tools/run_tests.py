@@ -604,9 +604,6 @@ def get_ops_to_test(ops_file, ops_list, stages):
         stage = next(iter(stages[-1].keys()), None)
         if stage not in effective_stages:
             continue
-        # Always skip operators not exposed.
-        if "exposed" in op and op["exposed"] is False:
-            continue
         ops.append(op["id"].lstrip("_"))
 
     return ops
