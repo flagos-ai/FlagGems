@@ -21,7 +21,6 @@ def test_sqrt(shape, dtype):
 
 
 @pytest.mark.sqrt_
-@pytest.mark.inplace
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test_sqrt_(shape, dtype):

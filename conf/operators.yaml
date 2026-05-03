@@ -122,6 +122,20 @@ ops:
       - LinearAlg
     stages:
       - stable: '4.0'
+  - id: addcdiv_out
+    description: |
+      A variant of `addcdiv()` that assigns the output to the given `out` parameter..
+    for:
+      - addcdiv.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.0'
+      - stable: '5.1'
   - id: addcmul
     description: |
       Performs the element-wise multiplication of `tensor1` by `tensor2`,
@@ -395,7 +409,6 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.0'
-    exposed: False
   - id: arange
     description: |
       Returns a 1-D tensor of size `ceiling((end−start)/step)` with values from the interval `[start, end)`
@@ -866,21 +879,31 @@ ops:
       - stable: '5.0'
     cpp: '4.0'
   - id: bucket_sort_topk
-    description:
+    description: A wrapper of the TLE version and the Triton version bucket-sort topk operation.
     for:
-      -
+      - None
     labels:
       - fused
       - DSA
     kind:
       - NeuralNetwork
     stages:
-      -
-
+      - beta: '5.1'
   - id: cat
     description: Concatenates the given sequence of tensors in tensors in the given dimension.
     for:
       - cat
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+    cpp: '4.0'
+  - id: cat_out
+    description: A variant of `cat` that assigns the result to the provided `out` parameter.
+    for:
+      - cat.out
     labels:
       - aten
     kind:
@@ -961,7 +984,6 @@ ops:
       - Attention
     stages:
       - alpha: '5.0'
-    exposed: false
   - id: clamp
     description: Clamps all elements in `input` into the range `[min, max]`.
     for:
@@ -1101,7 +1123,6 @@ ops:
       - alpha: '2.2'
       - removed: '4.1'
     cpp: '4.0'
-    exposed: False
   - id: conv1d
     description: Applies a 1D convolution over a quantized 1D input composed of several input planes.
     for:
@@ -1126,7 +1147,6 @@ ops:
     description: Applies a 2D convolution over a quantized 2D input composed of several input planes.
     for:
       - conv2d
-      - conv2d.padding
     labels:
       - aten
     kind:
@@ -1623,10 +1643,20 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.0'
-  - id: dunder_ior
-    description: The in-place version of bitwise or operation for tensor and scalar.
+  - id: dunder_ior_scalar
+    description: The scalar version of `dunder_ior_tensor`.
     for:
       - __ior__.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: dunder_ior_tensor
+    description: The in-place version of bitwise or operation for tensor and scalar.
+    for:
       - __ior__.Tensor
     labels:
       - aten
@@ -1635,10 +1665,20 @@ ops:
       - Math
     stages:
       - beta: '5.1'
-  - id: dunder_or
-    description: The in-place version of bitwise or operation for tensor and scalar.
+  - id: dunder_or_scalar
+    description: The scalar version of `dunder_or_tensor`.
     for:
       - __or__.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: dunder_or_tensor
+    description: The in-place version of bitwise or operation for tensor and scalar.
+    for:
       - __or__.Tensor
     labels:
       - aten
@@ -2666,7 +2706,6 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
-
   - id: index_put_
     description: The in-place version of `index_put()`.
     for:
@@ -2985,7 +3024,7 @@ ops:
     labels:
       - aten
     kind:
-      - Data
+      - Tensor
     stages:
       - stable: '2.2'
   - id: log
@@ -3810,7 +3849,7 @@ ops:
     stages:
       - stable: '2.1'
     cpp: '4.0'
-  - id: normal_tensor_tensor_
+  - id: normal_float_float_
     description: |
       Returns a tensor of random numbers drawn from separate normal distributions
       whose mean and standard deviation are given.
@@ -4322,18 +4361,6 @@ ops:
     description: This is the in-place version of `remainder()`.
     for:
       - remainder_.Scalar
-    labels:
-      - aten
-    kind:
-      - Math
-    stages:
-      - stable: '2.2'
-  - id: remainder_scalar
-    description: |
-      Computes Python’s modulus operation entrywise. The result has the same sign
-      as the divisor `other` and its absolute value is less than that of `other`.
-    for:
-      - remainder.Scalar
     labels:
       - aten
     kind:
@@ -5149,7 +5176,9 @@ ops:
     stages:
       - beta: '5.1'
   - id: sparse_mla_fwd_interface
-    description: A generic interface for sparse MLA (Multi-head Latent Attention) for DeepSeek v3/v3.2.
+    description: |
+      A generic interface for sparse MLA (Multi-head Latent Attention) for DeepSeek v3/v3.2.
+      It is currently not exposed as a standalone operator for use.
     for:
       - sparse_mla_fwd
     labels:
@@ -5552,13 +5581,14 @@ ops:
     stages:
       - beta: '5.0'
   - id: triton_lighting_indexer_k_tiled_interface
-    description: Part of FP8 MQA framework.
+    description: Part of FP8 MQA framework. It is currently not exposed as an operator for use.
     for:
       - None
     labels:
       - fused
-    kind:
       - DSA
+    kind:
+      - NeuralNetwork
     stages:
       - alpha: '5.1'
   - id: triu
@@ -5593,7 +5623,16 @@ ops:
       - Math
     stages:
       - stable: '2.1'
-    exposed: False
+  - id: trunc_divide_
+    description: The in-place version of `trunc_divide`.
+    for:
+      - div
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.1'
   - id: unfold_backward
     description: |
       An operator for calculating the gradient of the `unfold` operation during backpropagation.

@@ -84,7 +84,7 @@ MHC_SPLIT_SINKHORN_CONFIGS = [
 ]
 
 
-@pytest.mark.hc_split_sinkhorn
+@pytest.mark.hc_split_sinkhorn_forward
 @pytest.mark.parametrize(
     "batch, seqlen, hc_mult",
     MHC_SPLIT_SINKHORN_CONFIGS,

@@ -121,11 +121,11 @@ def test_pow_tensor_scalar_(scalar, shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.pow_scalar_tensor
+@pytest.mark.pow_scalar
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_pow_scalar_tensor(scalar, shape, dtype):
+def test_pow_scalar(scalar, shape, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Skiping fp32 pow test on tsingmicro platform")
 

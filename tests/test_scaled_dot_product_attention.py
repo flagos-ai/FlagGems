@@ -72,7 +72,7 @@ def torch_sdpa(q, k, v, scale, is_causal, enable_gqa=False):
 @pytest.mark.skipif(
     torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
 )
-@pytest.mark.scaled_dot_product_attention
+@pytest.mark.scaled_dot_product_attention_forward
 @pytest.mark.parametrize(
     "batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len, head_size, enable_gqa",
     [
@@ -208,7 +208,7 @@ def test_scaled_dot_product_attention_legacy(
 )
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_scaled_dot_product_attention_legacy_legacy_backward(
+def test_scaled_dot_product_attention_legacy_backward(
     batch,
     num_q_head,
     num_kv_head,

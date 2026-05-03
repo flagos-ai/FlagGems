@@ -20,13 +20,13 @@ else:
 random.seed(time.time() // 100)
 
 
-@pytest.mark.nll_loss_nd
+@pytest.mark.nll_loss_nd_foward
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("weight", [True, False])
 @pytest.mark.parametrize("shape", NLL_LOSS_ND_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("ignore_index", [1, 200, -100])
-def test_nll_loss_nd(shape, dtype, ignore_index, reduction, weight):
+def test_nll_loss_nd_forward(shape, dtype, ignore_index, reduction, weight):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)

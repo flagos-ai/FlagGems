@@ -62,11 +62,11 @@ def test_accuracy_log_softmax_out(shape, dtype, dim):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.log_softmax_backward
+@pytest.mark.log_softmax_backward_data
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
-def test_log_softmax_backward(shape, dtype, dim):
+def test_log_softmax_backward_data(shape, dtype, dim):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)

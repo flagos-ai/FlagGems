@@ -10,6 +10,7 @@ device = flag_gems.device
 
 
 @pytest.mark.arange_start
+@pytest.mark.arange_start_step
 @pytest.mark.parametrize("start", utils.ARANGE_START)
 @pytest.mark.parametrize("step", [1, 2, 5])
 @pytest.mark.parametrize("end", [128, 256, 1024])

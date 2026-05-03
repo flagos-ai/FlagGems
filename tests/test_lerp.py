@@ -6,7 +6,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.lerp
+@pytest.mark.lerp_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_lerp(shape, dtype):
@@ -36,7 +36,7 @@ def test_lerp(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.lerp_
+@pytest.mark.lerp_tensor_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_lerp_(shape, dtype):
