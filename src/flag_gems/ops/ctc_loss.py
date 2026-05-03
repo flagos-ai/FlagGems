@@ -117,6 +117,4 @@ def ctc_loss_tensor(
     logger.debug("GEMS CTC_LOSS Tensor")
     il = _tensor_to_int_list(input_lengths)
     tl = _tensor_to_int_list(target_lengths)
-    return _ctc_forward(
-        log_probs, targets, il, tl, blank, reduction, zero_infinity
-    )
+    return _ctc_forward(log_probs, targets, il, tl, blank, reduction, zero_infinity)
