@@ -302,10 +302,9 @@ def flash_attn_varlen_func_ref(*args, **kwargs):
     utils.SkipVersion("torch", "<2.7"),
     reason="Torch version prior to 2.7 is not compatible with VLLM.",
 )
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="Torch < 2.7")
-@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="#2887: Not working")
+@pytest.mark.skipif(vendor_name == "hygon", reason="#2888: RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="#2889: TypeError")
 def test_flash_attn_varlen_opt_func(monkeypatch):
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
 
