@@ -89,9 +89,7 @@ def _can_scatter_add_2d_lastdim_pow2(inp, dim, index, src, out, reduce) -> bool:
         return False
     if index_dim_n < 131072:
         tiny_f32 = (
-            inp.dtype == torch.float32
-            and index_dim_n <= 128
-            and index.numel() <= 8192
+            inp.dtype == torch.float32 and index_dim_n <= 128 and index.numel() <= 8192
         )
         small_f32_2x = (
             inp.dtype == torch.float32
@@ -601,9 +599,9 @@ def scatter(inp, dim, index, src, reduce=None):
     out = inp.clone()
 
     if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
+        assert inp.dtype not in (torch.bfloat16,), (
+            "Unsupported operation: reduce scatter bfloat tensors."
+        )
 
     if has_internal_overlapping(out) == MemOverlap.Yes:
         out = out.contiguous()
@@ -644,13 +642,13 @@ def scatter_(inp, dim, index, src, reduce=None):
     out = inp
 
     if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
+        assert inp.dtype not in (torch.bfloat16,), (
+            "Unsupported operation: reduce scatter bfloat tensors."
+        )
 
-    assert (
-        has_internal_overlapping(out) != MemOverlap.Yes
-    ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
+    assert has_internal_overlapping(out) != MemOverlap.Yes, (
+        "Unsupported operation: trying to inplace write to an internally overlapping tensor."
+    )
 
     if _can_scatter_add_2d_lastdim_pow2_inplace(inp, dim, index, src, reduce):
         return _scatter_add_2d_lastdim_pow2_inplace(inp, index, src, out)

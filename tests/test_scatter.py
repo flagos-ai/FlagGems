@@ -199,9 +199,7 @@ def test_scatter_reduce_multiply(src_shape, inp_shape, dim, dtype):
     ref_inp = utils.to_reference(inp)
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src)
-    ref_out = _reference_scatter_reduce(
-        ref_inp, dim, ref_index, ref_src, "multiply"
-    )
+    ref_out = _reference_scatter_reduce(ref_inp, dim, ref_index, ref_src, "multiply")
     with flag_gems.use_gems():
         res_out = torch.scatter(inp, dim, index, src, reduce="multiply")
 
