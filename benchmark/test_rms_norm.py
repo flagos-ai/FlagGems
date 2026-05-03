@@ -1,14 +1,10 @@
 import pytest
 import torch
 
-from . import base, utils
+from . import base
 
 
 @pytest.mark.rms_norm
-@pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.4"),
-    reason="The version prior to 2.4 does not include the rms_norm API in torch.",
-)
 def test_rms_norm():
     def rms_norm_input_fn(shape, dtype, device):
         _, N = shape

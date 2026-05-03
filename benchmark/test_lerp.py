@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts, utils
+from . import base, consts
 
 vendor_name = flag_gems.vendor_name
 
@@ -23,14 +23,10 @@ def lerp_input_fn(shape, dtype, device):
 
 
 @pytest.mark.lerp_tensor
-@pytest.mark.skipif(
-    vendor_name == "kunlunxin" and utils.SkipVersion("torch", "<2.5"),
-    reason="The half dtype is only supported on torch >= 2.5.",
-)
 def test_lerp_tensor():
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
-        op_name="lerp",
+        op_name="lerp_tensor",
         torch_op=torch.lerp,
         dtypes=consts.FLOAT_DTYPES,
     )
@@ -39,14 +35,10 @@ def test_lerp_tensor():
 
 
 @pytest.mark.lerp_tensor_
-@pytest.mark.skipif(
-    vendor_name == "kunlunxin" and utils.SkipVersion("torch", "<2.5"),
-    reason="The half dtype is only supported on torch >= 2.5.",
-)
 def test_lerp_tensor_inplace():
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
-        op_name="lerp_",
+        op_name="lerp_tensor_",
         torch_op=lambda input, end, weight: input.lerp_(end, weight),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,

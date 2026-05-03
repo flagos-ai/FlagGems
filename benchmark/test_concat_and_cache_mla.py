@@ -41,7 +41,7 @@ def torch_concat_and_cache_mla_ref(
         kv_cache.copy_(temp_cache)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="#2885: RuntimeError")
 @pytest.mark.concat_and_cache_mla
 def test_concat_and_cache_mla():
     def input_kwargs(shape, dtype, device):
