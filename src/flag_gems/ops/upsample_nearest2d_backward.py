@@ -47,8 +47,11 @@ def _x2_nchw_kernel(
     g01 = tl.load(grad_out + base + 1, mask=mask, other=0.0)
     g10 = tl.load(grad_out + base + OW, mask=mask, other=0.0)
     g11 = tl.load(grad_out + base + OW + 1, mask=mask, other=0.0)
-    acc = g00.to(tl.float32) + g01.to(tl.float32) + g10.to(tl.float32) + g11.to(
-        tl.float32
+    acc = (
+        g00.to(tl.float32)
+        + g01.to(tl.float32)
+        + g10.to(tl.float32)
+        + g11.to(tl.float32)
     )
 
     tl.store(grad_in + offsets, acc.to(grad_in.dtype.element_ty), mask=mask)
@@ -291,8 +294,11 @@ def _x2_nhwc_kernel(
     g01 = tl.load(grad_out + go_base + C, mask=mask, other=0.0)
     g10 = tl.load(grad_out + go_base + OW * C, mask=mask, other=0.0)
     g11 = tl.load(grad_out + go_base + OW * C + C, mask=mask, other=0.0)
-    acc = g00.to(tl.float32) + g01.to(tl.float32) + g10.to(tl.float32) + g11.to(
-        tl.float32
+    acc = (
+        g00.to(tl.float32)
+        + g01.to(tl.float32)
+        + g10.to(tl.float32)
+        + g11.to(tl.float32)
     )
 
     gi_base = (
@@ -480,7 +486,9 @@ def _empty_grad_input(
     grad_output: torch.Tensor, input_size: Tuple[int, int, int, int]
 ) -> torch.Tensor:
     if grad_output.is_contiguous():
-        return torch.empty(input_size, device=grad_output.device, dtype=grad_output.dtype)
+        return torch.empty(
+            input_size, device=grad_output.device, dtype=grad_output.dtype
+        )
     if grad_output.is_contiguous(memory_format=torch.channels_last):
         return torch.empty(
             input_size,
@@ -529,18 +537,24 @@ def upsample_nearest2d_backward(
     )
 
     if grad_output.dtype not in (torch.float16, torch.bfloat16, torch.float32):
-        return _native_fallback(grad_output, output_size, input_size, scales_h, scales_w)
+        return _native_fallback(
+            grad_output, output_size, input_size, scales_h, scales_w
+        )
     if N == 0 or C == 0 or IH == 0 or IW == 0:
         return _empty_grad_input(grad_output, (N, C, IH, IW))
     if OH <= 0 or OW <= 0 or IH < 0 or IW < 0:
-        return _native_fallback(grad_output, output_size, input_size, scales_h, scales_w)
+        return _native_fallback(
+            grad_output, output_size, input_size, scales_h, scales_w
+        )
 
     scale_h = _nearest_scale(IH, OH, scales_h)
     scale_w = _nearest_scale(IW, OW, scales_w)
     span_h = _max_range_span(scale_h)
     span_w = _max_range_span(scale_w)
     if span_h > _MAX_RANGE_SPAN or span_w > _MAX_RANGE_SPAN:
-        return _native_fallback(grad_output, output_size, input_size, scales_h, scales_w)
+        return _native_fallback(
+            grad_output, output_size, input_size, scales_h, scales_w
+        )
 
     grad_input = _empty_grad_input(grad_output, (N, C, IH, IW))
     total = grad_input.numel()
@@ -548,9 +562,10 @@ def upsample_nearest2d_backward(
         return grad_input
     use_int32_idx = _use_int32_idx(N, C, IH, IW, OH, OW, total)
 
-    is_channels_last_only = grad_output.is_contiguous(
-        memory_format=torch.channels_last
-    ) and not grad_output.is_contiguous()
+    is_channels_last_only = (
+        grad_output.is_contiguous(memory_format=torch.channels_last)
+        and not grad_output.is_contiguous()
+    )
     reciprocal_scale_h = _nearest_reciprocal_scale(IH, OH, scales_h)
     reciprocal_scale_w = _nearest_reciprocal_scale(IW, OW, scales_w)
     use_x2 = _is_x2(IH, IW, OH, OW, reciprocal_scale_h, reciprocal_scale_w)

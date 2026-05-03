@@ -503,7 +503,10 @@ def upsample_nearest2d(
 
     memory_format = torch.channels_last if channels_last else torch.contiguous_format
     output = torch.empty(
-        (N, C, OH, OW), device=input.device, dtype=input.dtype, memory_format=memory_format
+        (N, C, OH, OW),
+        device=input.device,
+        dtype=input.dtype,
+        memory_format=memory_format,
     )
     output_total = N * C * OH * OW
     if output_total == 0:
@@ -603,7 +606,7 @@ def upsample_nearest2d(
                 return (
                     triton.cdiv(OH * OW, meta["BLOCK_SIZE"]),
                     triton.cdiv(N * C, nc_group),
-            )
+                )
 
             with torch_device_fn.device(input.device):
                 nearest2d_contiguous_spatial_tiles_kernel[grid](
