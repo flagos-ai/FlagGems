@@ -259,8 +259,7 @@ def _conv_transpose2d_blocker_fp16_kernel(
             )
             input_block = tl.load(
                 input_pointer
-                + ((n[:, None] * 256 + ci_offsets[None, :]) * 8 + (i[:, None] + 1))
-                * 8
+                + ((n[:, None] * 256 + ci_offsets[None, :]) * 8 + (i[:, None] + 1)) * 8
                 + iw[:, None],
                 mask=(m_offsets[:, None] < plane_m) & (ci_offsets[None, :] < 256),
                 other=0.0,
@@ -322,8 +321,7 @@ def _conv_transpose2d_blocker_fp16_kernel(
             )
             input_block = tl.load(
                 input_pointer
-                + ((n[:, None] * 256 + ci_offsets[None, :]) * 8 + (i[:, None] + 1))
-                * 8
+                + ((n[:, None] * 256 + ci_offsets[None, :]) * 8 + (i[:, None] + 1)) * 8
                 + j[:, None],
                 mask=(m_offsets[:, None] < plane_m) & (ci_offsets[None, :] < 256),
                 other=0.0,
@@ -337,8 +335,7 @@ def _conv_transpose2d_blocker_fp16_kernel(
             )
             input_block = tl.load(
                 input_pointer
-                + ((n[:, None] * 256 + ci_offsets[None, :]) * 8 + (i[:, None] + 1))
-                * 8
+                + ((n[:, None] * 256 + ci_offsets[None, :]) * 8 + (i[:, None] + 1)) * 8
                 + (j[:, None] + 1),
                 mask=(m_offsets[:, None] < plane_m) & (ci_offsets[None, :] < 256),
                 other=0.0,
@@ -400,12 +397,11 @@ def _conv_transpose2d_k4_fp16_kernel(
                     & (iw_unstrided >= 0)
                     & (iw < 4)
                 )
-                input_offsets = ((n[:, None] * 128 + ci_offsets[None, :]) * 4)
+                input_offsets = (n[:, None] * 128 + ci_offsets[None, :]) * 4
                 input_offsets = (input_offsets + ih[:, None]) * 4 + iw[:, None]
                 weight_offsets = (
-                    ((ci_offsets[:, None] * 64 + co_offsets[None, :]) * 4 + kh) * 4
-                    + kw
-                )
+                    (ci_offsets[:, None] * 64 + co_offsets[None, :]) * 4 + kh
+                ) * 4 + kw
                 input_block = tl.load(
                     input_pointer + input_offsets,
                     mask=valid_hw[:, None] & ci_mask[None, :],
@@ -588,8 +584,7 @@ def _conv_transpose2d_blocker_fp32_kernel(
             )
             input_block = tl.load(
                 input_pointer
-                + ((n[:, None] * 256 + ci_offsets[None, :]) * 8 + (i[:, None] + 1))
-                * 8
+                + ((n[:, None] * 256 + ci_offsets[None, :]) * 8 + (i[:, None] + 1)) * 8
                 + iw[:, None],
                 mask=(m_offsets[:, None] < plane_m) & (ci_offsets[None, :] < 256),
                 other=0.0,
@@ -663,8 +658,7 @@ def _conv_transpose2d_blocker_fp32_kernel(
             )
             input_block = tl.load(
                 input_pointer
-                + ((n[:, None] * 256 + ci_offsets[None, :]) * 8 + (i[:, None] + 1))
-                * 8
+                + ((n[:, None] * 256 + ci_offsets[None, :]) * 8 + (i[:, None] + 1)) * 8
                 + j[:, None],
                 mask=(m_offsets[:, None] < plane_m) & (ci_offsets[None, :] < 256),
                 other=0.0,
@@ -682,8 +676,7 @@ def _conv_transpose2d_blocker_fp32_kernel(
             )
             input_block = tl.load(
                 input_pointer
-                + ((n[:, None] * 256 + ci_offsets[None, :]) * 8 + (i[:, None] + 1))
-                * 8
+                + ((n[:, None] * 256 + ci_offsets[None, :]) * 8 + (i[:, None] + 1)) * 8
                 + (j[:, None] + 1),
                 mask=(m_offsets[:, None] < plane_m) & (ci_offsets[None, :] < 256),
                 other=0.0,
@@ -796,9 +789,8 @@ def _conv_transpose2d_direct_kernel(
                         input_mask = valid_hw[:, None] & (
                             ci_offsets[None, :] < input_channels
                         )
-                        weight_mask = (
-                            (ci_offsets[:, None] < input_channels)
-                            & (co_offsets[None, :] < output_channels)
+                        weight_mask = (ci_offsets[:, None] < input_channels) & (
+                            co_offsets[None, :] < output_channels
                         )
                         input_block = tl.load(
                             input_pointer + input_offsets, mask=input_mask, other=0.0
@@ -871,13 +863,11 @@ def _conv_transpose2d_fp32_16_32_kernel(
                         & (oh < 63)
                         & (ow < 63)
                     )
-                    input_offsets = ((n[:, None] * 32 + ci_offsets[None, :]) * 32)
+                    input_offsets = (n[:, None] * 32 + ci_offsets[None, :]) * 32
                     input_offsets = (input_offsets + ih[:, None]) * 32 + iw[:, None]
                     weight_offsets = (
-                        ((ci_offsets[:, None] * 64 + co_offsets[None, :]) * 3 + kh)
-                        * 3
-                        + kw
-                    )
+                        (ci_offsets[:, None] * 64 + co_offsets[None, :]) * 3 + kh
+                    ) * 3 + kw
                     input_block = tl.load(
                         input_pointer + input_offsets,
                         mask=valid_hw[:, None],
@@ -894,7 +884,7 @@ def _conv_transpose2d_fp32_16_32_kernel(
                         input_precision="tf32x3",
                     )
 
-    output_offsets = ((n[:, None] * 64 + co_offsets[None, :]) * 63 + oh[:, None])
+    output_offsets = (n[:, None] * 64 + co_offsets[None, :]) * 63 + oh[:, None]
     output_offsets = output_offsets * 63 + ow[:, None]
     output_mask = (n[:, None] < 16) & (oh[:, None] < 63)
     output_mask = output_mask & (ow[:, None] < 63) & (co_offsets[None, :] < 64)
@@ -951,13 +941,11 @@ def _conv_transpose2d_fp32_32_64_kernel(
                     )
                     for ci_base in range(0, 64, BLOCK_CI):
                         ci_offsets = ci_base + ci_offsets_base
-                        input_offsets = ((n[:, None] * 64 + ci_offsets[None, :]) * 16)
+                        input_offsets = (n[:, None] * 64 + ci_offsets[None, :]) * 16
                         input_offsets = (input_offsets + ih[:, None]) * 16 + iw[:, None]
                         weight_offsets = (
-                            ((ci_offsets[:, None] * 32 + co_offsets[None, :]) * 3 + kh)
-                            * 3
-                            + kw
-                        )
+                            (ci_offsets[:, None] * 32 + co_offsets[None, :]) * 3 + kh
+                        ) * 3 + kw
                         input_block = tl.load(
                             input_pointer + input_offsets,
                             mask=valid_hw[:, None] & (ci_offsets[None, :] < 64),
@@ -975,7 +963,7 @@ def _conv_transpose2d_fp32_32_64_kernel(
                             input_precision="tf32x3",
                         )
 
-    output_offsets = ((n[:, None] * 32 + co_offsets[None, :]) * 31 + oh[:, None])
+    output_offsets = (n[:, None] * 32 + co_offsets[None, :]) * 31 + oh[:, None]
     output_offsets = output_offsets * 31 + ow[:, None]
     output_mask = (n[:, None] < 32) & (oh[:, None] < 31)
     output_mask = output_mask & (ow[:, None] < 31) & (co_offsets[None, :] < 32)
