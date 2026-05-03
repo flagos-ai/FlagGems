@@ -33,7 +33,6 @@ def test_accuracy_clip(shape, maxi, mini, isnone, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.inplace
 @pytest.mark.clip_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("maxi", SCALARS)
