@@ -81,7 +81,7 @@ class ActQuantBenchmark(base.GenericBenchmark):
         return []
 
 
-@pytest.mark.act_quant
+@pytest.mark.act_quant_triton
 # https://github.com/triton-lang/triton/blob/v3.6.0/third_party/nvidia/backend/compiler.py#L188
 @pytest.mark.skipif(
     not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
@@ -94,7 +94,7 @@ def test_act_quant_perf(block_size, scale_fmt):
         yield x, {"block_size": block_size, "scale_fmt": scale_fmt}
 
     bench = ActQuantBenchmark(
-        op_name="act_quant",
+        op_name="act_quant_triton",
         torch_op=torch_act_quant,
         input_fn=input_fn,
         gems_op=flag_gems.act_quant_triton,
