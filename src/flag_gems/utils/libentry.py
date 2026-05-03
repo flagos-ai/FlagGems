@@ -179,12 +179,10 @@ class LibCache(object):
         self.model: PersistantModel = SQLPersistantModel(self.db_url)
 
     @overload
-    def __getitem__(self, key: str) -> ConfigCache:
-        ...
+    def __getitem__(self, key: str) -> ConfigCache: ...
 
     @overload
-    def __getitem__(self, key: Tuple[Union[int, float, str]]) -> BenchmarkCache:
-        ...
+    def __getitem__(self, key: Tuple[Union[int, float, str]]) -> BenchmarkCache: ...
 
     def __getitem__(
         self, key: Union[str, Tuple[Union[int, float, str], ...]]
@@ -323,9 +321,9 @@ class LibTuner(triton.runtime.Autotuner):
             strategy = LibTuner.get_strategy(strategy)
         if not isinstance(strategy, (list, tuple)):
             strategy = [strategy] * len(self.keys)
-        assert len(strategy) == len(
-            self.keys
-        ), f"the length of strategy {len(strategy)} must match the length of keys {len(self.keys)}"
+        assert len(strategy) == len(self.keys), (
+            f"the length of strategy {len(strategy)} must match the length of keys {len(self.keys)}"
+        )
         strategy: List[Callable[[Any], Any]] = [
             LibTuner.get_strategy(s) if isinstance(s, str) else s for s in strategy
         ]
@@ -631,9 +629,9 @@ def libtuner(
 
     if isinstance(policy, str):
         policy = LibTuner.get(policy)
-    assert issubclass(
-        policy, LibTuner
-    ), f"the class of {policy.__name__} is {policy.__class__.__name__}, not a subclass of {LibTuner.__name__}"
+    assert issubclass(policy, LibTuner), (
+        f"the class of {policy.__name__} is {policy.__class__.__name__}, not a subclass of {LibTuner.__name__}"
+    )
 
     def decorator(fn):
         return policy(
