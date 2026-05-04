@@ -558,9 +558,16 @@ class ScatterFunction:
 
     @staticmethod
     def _use_block64_rank2_mul_f32_256x512(args) -> bool:
-        src_strided, index, _inp, out, _dim_size, _dim_stride, n_elements, reduce = (
-            args[:8]
-        )
+        (
+            src_strided,
+            index,
+            _inp,
+            out,
+            _dim_size,
+            _dim_stride,
+            n_elements,
+            reduce,
+        ) = args[:8]
         return (
             reduce == "multiply"
             and n_elements == 131072
@@ -575,9 +582,16 @@ class ScatterFunction:
 
     @staticmethod
     def _use_rank2_mul_1024x2048_f32(args) -> bool:
-        src_strided, index, _inp, out, _dim_size, _dim_stride, n_elements, reduce = (
-            args[:8]
-        )
+        (
+            src_strided,
+            index,
+            _inp,
+            out,
+            _dim_size,
+            _dim_stride,
+            n_elements,
+            reduce,
+        ) = args[:8]
         return (
             reduce == "multiply"
             and n_elements == 2097152
@@ -599,9 +613,9 @@ def scatter(inp, dim, index, src, reduce=None):
     out = inp.clone()
 
     if reduce is not None:
-        assert inp.dtype not in (torch.bfloat16,), (
-            "Unsupported operation: reduce scatter bfloat tensors."
-        )
+        assert inp.dtype not in (
+            torch.bfloat16,
+        ), "Unsupported operation: reduce scatter bfloat tensors."
 
     if has_internal_overlapping(out) == MemOverlap.Yes:
         out = out.contiguous()
@@ -642,13 +656,13 @@ def scatter_(inp, dim, index, src, reduce=None):
     out = inp
 
     if reduce is not None:
-        assert inp.dtype not in (torch.bfloat16,), (
-            "Unsupported operation: reduce scatter bfloat tensors."
-        )
+        assert inp.dtype not in (
+            torch.bfloat16,
+        ), "Unsupported operation: reduce scatter bfloat tensors."
 
-    assert has_internal_overlapping(out) != MemOverlap.Yes, (
-        "Unsupported operation: trying to inplace write to an internally overlapping tensor."
-    )
+    assert (
+        has_internal_overlapping(out) != MemOverlap.Yes
+    ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
 
     if _can_scatter_add_2d_lastdim_pow2_inplace(inp, dim, index, src, reduce):
         return _scatter_add_2d_lastdim_pow2_inplace(inp, index, src, out)
