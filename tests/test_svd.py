@@ -16,6 +16,15 @@ else:
     SOME_OPTS = [True, False]
 
 
+def _singular_values_dtype(inp_dtype: torch.dtype) -> torch.dtype:
+    """Singular values are real; dtype matches ``svd._s_dtype_for_orig``."""
+    if inp_dtype.is_complex:
+        return torch.float32 if inp_dtype == torch.complex64 else torch.float64
+    if inp_dtype in (torch.float16, torch.bfloat16):
+        return torch.float32
+    return inp_dtype
+
+
 @pytest.mark.svd
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -36,8 +45,9 @@ def test_svd_matches_cpu(shape, dtype, some):
     with flag_gems.use_gems():
         u, s, v = torch.svd(inp, some=some, compute_uv=True)
 
+    s_dtype = _singular_values_dtype(dtype)
     utils.gems_assert_close(u, ref_u.to(inp.device), dtype, equal_nan=True)
-    utils.gems_assert_close(s, ref_s.to(inp.device), dtype, equal_nan=True)
+    utils.gems_assert_close(s, ref_s.to(inp.device), s_dtype, equal_nan=True)
     utils.gems_assert_close(v, ref_v.to(inp.device), dtype, equal_nan=True)
 
 
@@ -67,8 +77,9 @@ def test_linalg_svd_matches_cpu(shape, dtype):
     with flag_gems.use_gems():
         u, s, vh = torch.linalg.svd(inp, full_matrices=True)
 
+    s_dtype = _singular_values_dtype(dtype)
     utils.gems_assert_close(u, ref_u.to(inp.device), dtype, equal_nan=True)
-    utils.gems_assert_close(s, ref_s.to(inp.device), dtype, equal_nan=True)
+    utils.gems_assert_close(s, ref_s.to(inp.device), s_dtype, equal_nan=True)
     utils.gems_assert_close(vh, ref_vh.to(inp.device), dtype, equal_nan=True)
 
 
