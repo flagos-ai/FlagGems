@@ -338,6 +338,7 @@ _FULL_CONFIG = (
     ("max_pool3d_backward", max_pool3d_backward),
     ("max_pool3d_with_indices", max_pool3d_with_indices),
     ("maximum", maximum),
+    ("median.dim", median),
     ("mean", mean),
     ("mean.dim", mean_dim),
     ("min", min),
