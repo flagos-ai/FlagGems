@@ -532,9 +532,9 @@ def upsample_nearest2d_backward(
     N, C, IH, IW = (int(dim) for dim in input_size)
     OH, OW = (int(dim) for dim in output_size)
     expected = (N, C, OH, OW)
-    assert tuple(grad_output.shape) == expected, (
-        f"grad_output shape {tuple(grad_output.shape)} != expected {expected}"
-    )
+    assert (
+        tuple(grad_output.shape) == expected
+    ), f"grad_output shape {tuple(grad_output.shape)} != expected {expected}"
 
     if grad_output.dtype not in (torch.float16, torch.bfloat16, torch.float32):
         return _native_fallback(
