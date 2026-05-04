@@ -3,6 +3,10 @@ import torch
 
 from . import base
 
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:Warning only once for all operators.*:UserWarning"
+)
+
 
 class SvdBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "(*B), M, N"
