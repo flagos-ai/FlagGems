@@ -98,6 +98,7 @@ def tril_out(input: torch.Tensor, diagonal: int = 0, out: torch.Tensor = None):
     assert out is not None, "tril_out: out tensor is required"
     assert out.shape == input.shape, "Input and output must have the same shape"
     assert out.dtype == input.dtype, "Input and output must have the same dtype"
+    assert out.device == input.device, "Input and output must be on the same device"
 
     input = input.contiguous()
     if not out.is_contiguous():

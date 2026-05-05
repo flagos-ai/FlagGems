@@ -92,6 +92,7 @@ def test_tril_empty_tensor():
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.tril
 @pytest.mark.tril_out
 @pytest.mark.parametrize("shape", [(32, 32), (64, 128), (128, 64), (5, 7, 13)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
