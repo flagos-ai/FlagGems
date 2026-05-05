@@ -296,22 +296,6 @@ def get_env(gpu_ids):
     return env
 
 
-def dedup(fn):
-    with open(fn) as f:
-        lines = f.readlines()
-
-    # Compress verbose output
-    seen = set()
-    uniq = []
-    for line in lines:
-        if line not in seen:
-            seen.add(line)
-            uniq.append(line)
-
-    with open(fn, "w") as f:
-        f.writelines(uniq)
-
-
 def run_accuracy(gpu_id, start, index, count):
     op = OP_LIST[start + index].strip()
     n = (index + 1) * 10 // count
@@ -356,60 +340,30 @@ def run_accuracy(gpu_id, start, index, count):
     return result
 
 
-def parse_perf_log(op_dir):
-    record = {}
+def parse_perf_data(op, op_dir):
+    result_file = op_dir / "performance_result.json"
+    raw_data = {}
+    with result_file.open("r") as f:
+        raw_data = json.load(f)
 
-    # Parse log output first
-    perf_log_file = op_dir / "performance_output.log"
-    lines = []
-    with perf_log_file.open("r") as f:
-        lines = f.readlines()
-    line_no = 0
-    data = {}
-    while line_no < len(lines):
-        line = lines[line_no]
-        if "deselected / 0 selected" in line:
-            record = {"status": "UNKNOWN", "error": "No test case.", "data": {}}
-            return record
+    data = raw_data.get(op, {})
+    if not data:
+        return {
+            "status": "NotFound",
+        }
 
-        if "FAILED" in line and "Operator" in line and "dtype" in line:
-            # skip stack trace
-            if "print" in line:
-                continue
-            pos1 = line.find("dtype=")
-            pos2 = line.find(" ", pos1)
-            dtype = line[pos1 + 6 : pos2]
-            dtype = DTYPE_MAP.get(dtype, dtype)
-            pos1 = line.find("<<<") + 3
-            pos2 = line.find(">>>")
-            err_str = line[pos1:pos2]
-            while (pos2 < 0) and line_no < len(lines):
-                line_no += 1
-                line = lines[line_no]
-                pos2 = line.find(">>>")
-                err_str += line[:pos2]
-            data[dtype] = {
-                "result": "FAILED",
-                "error": err_str,
-            }
-        line_no += 1
+    result = data.get("result", "NotFound")
+    if result in ["failed", "skipped"]:
+        return {
+            "status": result.title(),
+            "reason": data.get("reason", "Unknown"),
+            "test_case": data.get("test_case", "Unknown"),
+        }
 
-    # Check if there are usable records
-    perf_res_file = op_dir / "performance_result.log"
-    log_lines = []
-    with perf_res_file.open("r") as f:
-        log_lines = [
-            line for line in f.read().strip().split("\n") if line.startswith("[INFO] {")
-        ]
+    bench_res = {}
+    records = data.get("details", [])
 
-    for line in log_lines:
-        item = {}
-        try:
-            item = json.loads(line[7:])
-        except Exception:
-            # Bad (corrupted) JSON or empty string
-            continue
-
+    for item in records:
         dtype = DTYPE_MAP.get(item["dtype"], item["dtype"])
         details = {}
         total = 0.0
@@ -426,20 +380,22 @@ def parse_perf_log(op_dir):
             total += speedup
 
         if details:
-            data[dtype] = {
+            bench_res[dtype] = {
                 "result": "OK",
                 "details": details,
                 "speedup": total / count,
             }
         else:
-            data[dtype] = {
-                "result": "UNKNOWN",
-                "details": details,
+            bench_res[dtype] = {
+                "result": "Unknown",
+                "details": {},
                 "speedup": 0,
             }
 
     return {
-        "data": data,
+        "status": result.title(),
+        "data": bench_res,
+        "test_case": data.get("test_case", "Unknown"),
     }
 
 
@@ -459,62 +415,36 @@ def run_benchmark(gpu_id, start, index, count):
     env = get_env(str(gpu_id))
 
     benchmark_dir = ROOT / "benchmark"
-    pattern = f"result-m_{op}--level_core--record_log.log"
-    for p in benchmark_dir.glob(pattern):
-        try:
-            p.unlink()
-        except Exception:
-            pass
+    result_file = benchmark_dir / f"benchmark_{op}.json"
+    if result_file.exists():
+        result_file.unlink()
 
     start = time.time()
-    cmd = f'pytest -m "{op}" --level core --record log'
+    cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
     stdout, stderr, code = run_cmd_capture(cmd, cwd=benchmark_dir, env=env)
     end = time.time()
 
-    # Write raw command output
-    op_dir = OUTPUT_DIR.joinpath(op)
-    output_file = op_dir.joinpath("performance_output.log")
-    with open(output_file, "w") as f:
-        f.write(stdout + "\n---\n" + stderr)
-
-    # Search for record logs which may and may not be there
-    result_file = None
-    for p in benchmark_dir.glob(pattern):
-        result_file = str(p)
-        break
-
-    status = "No Result"
-    if code == TIMEOUT:
-        status = "TIMEOUT"
-
     # Not found
-    if not result_file:
+    if not result_file.exists():
         return {
-            "status": status,
-            "duration": end - start,
+            "status": "NotFound",
             "exit_code": code,
-            "log_file": str(output_file.relative_to(OUTPUT_DIR)),
-            "result_file": None,
             "data": [],
         }
 
     # Move record log to output directory
-    dest = op_dir / "performance_result.log"
+    op_dir = OUTPUT_DIR.joinpath(op)
+    dest = op_dir / "performance_result.json"
     shutil.move(result_file, str(dest))
     result_file = dest
 
-    # Remove duplicate lines in the result file
-    dedup(result_file)
-
     record = {
-        "status": "OK",
         "duration": end - start,
         "exit_code": code,
-        "log_file": str(output_file.relative_to(OUTPUT_DIR)),
         "result_file": str(result_file.relative_to(OUTPUT_DIR)),
         "data": [],
     }
-    record.update(parse_perf_log(op_dir))
+    record.update(parse_perf_data(op, op_dir))
 
     return record
 
@@ -685,7 +615,7 @@ def main():
 
     json_path = OUTPUT_DIR.joinpath("summary.json")
     with json_path.open("w") as f:
-        f.write(json.dumps(final_data))
+        json.dump(final_data, f, indent=2)
 
     pinfo("Test completed.")
 
