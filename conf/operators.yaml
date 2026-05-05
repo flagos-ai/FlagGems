@@ -1084,6 +1084,19 @@ ops:
       - Attention
     stages:
       - beta: '3.0'
+  - id: ctc_loss
+    description: |
+      Computes connectionist temporal classification loss for aligned log-probability sequences.
+    for:
+      - ctc_loss.IntList
+      - ctc_loss.Tensor
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: conj_physical
     description: |
       Computes the element-wise conjugate of the given `input` tensor.

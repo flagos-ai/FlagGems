@@ -267,20 +267,59 @@ class LibTuner(triton.runtime.Autotuner):
             while not inspect.isfunction(self.base_fn):
                 self.base_fn = self.base_fn.fn
         else:
-            super().__init__(
-                fn,
-                arg_names,
-                configs,
-                key,
-                reset_to_zero,
-                restore_value,
-                pre_hook,
-                post_hook,
-                prune_configs_by,
-                warmup,
-                rep,
-                use_cuda_graph,
+            uses_new_bench_api = major_version > 3 or (
+                major_version == 3 and minor_version >= 2
             )
+            if uses_new_bench_api:
+                if do_bench is None:
+                    if use_cuda_graph:
+                        from triton.testing import do_bench_cudagraph
+
+                        def do_bench(kernel_call, quantiles):
+                            return do_bench_cudagraph(
+                                kernel_call,
+                                rep=rep if rep is not None else 100,
+                                quantiles=quantiles,
+                            )
+
+                    else:
+                        import triton.testing
+
+                        def do_bench(kernel_call, quantiles):
+                            return triton.testing.do_bench(
+                                kernel_call,
+                                warmup=warmup if warmup is not None else 25,
+                                rep=rep if rep is not None else 100,
+                                quantiles=quantiles,
+                            )
+
+                super().__init__(
+                    fn,
+                    arg_names,
+                    configs,
+                    key,
+                    reset_to_zero,
+                    restore_value,
+                    pre_hook,
+                    post_hook,
+                    prune_configs_by,
+                    do_bench=do_bench,
+                )
+            else:
+                super().__init__(
+                    fn,
+                    arg_names,
+                    configs,
+                    key,
+                    reset_to_zero,
+                    restore_value,
+                    pre_hook,
+                    post_hook,
+                    prune_configs_by,
+                    warmup,
+                    rep,
+                    use_cuda_graph,
+                )
         self.__name__ = self.base_fn.__name__
         self.keys = key
         if isinstance(strategy, str):
