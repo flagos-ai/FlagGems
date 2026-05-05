@@ -121,7 +121,7 @@ def test_flash_attn_varlen_func(
     optimize_init: bool,
 ) -> None:
     if vendor_name == "mthreads":
-        monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     # (Issue) numerical stability concern
     if alibi is True and soft_cap is not None:
@@ -275,7 +275,7 @@ def test_flash_attn_varlen_func_swap_qg(
     num_blocks: int,
 ) -> None:
     if vendor_name == "mthreads":
-        monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     with torch.device(flag_gems.device):
         utils.init_seed(1234567890)
