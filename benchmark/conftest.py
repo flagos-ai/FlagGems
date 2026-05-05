@@ -15,6 +15,7 @@ device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 recordLogger = logging.getLogger("flag_gems_benchmark")
 recordLogger.propagate = False
+Config = None
 
 BUILTIN_MARKS = (
     "parametrize",
@@ -33,12 +34,18 @@ REPORT_FILE = "benchmark_result.json"
 
 
 def update_result(op, data):
+    if not Config.record_json:
+        return
+
     TEST_RESULTS.setdefault(op, {})
     TEST_RESULTS[op].setdefault("details", [])
     TEST_RESULTS[op]["details"].append(data)
 
 
 def emit_record_logger(message: str) -> None:
+    if not Config.record_log:
+        return
+
     if recordLogger.handlers:
         handler = recordLogger.handlers[0]
         if getattr(handler, "stream", None) is None:
@@ -64,14 +71,12 @@ class BenchConfig:
             self.repetition = 1
 
         self.record_log = False
+        self.record_json = False
         self.user_desired_dtypes = None
         self.user_desired_metrics = None
         self.shape_file = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
         self.query = False
         self.parallel = 0
-
-
-Config = BenchConfig()
 
 
 def pytest_addoption(parser):
@@ -158,8 +163,13 @@ def pytest_addoption(parser):
             action="store",
             default="none",
             required=False,
-            choices=["none", "log"],
-            help="Benchmark info recorded in log files or not",
+            choices=["none", "log", "json"],
+            help="Benchmark info recorded in log/json files or not",
+        )
+        parser.addoption(
+            "--output",
+            default=REPORT_FILE,
+            help="Path to report file for JSON output",
         )
     except ValueError:
         # Mixed test+benchmark pytest runs may already register --record in
@@ -192,7 +202,10 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     global Config  # noqa: F824
+    global REPORT_FILE
     global REGISTERED_MARKS
+
+    Config = BenchConfig()
 
     REGISTERED_MARKS = {
         marker.split(":")[0].strip() for marker in config.getini("markers")
@@ -225,7 +238,13 @@ def pytest_configure(config):
     Config.shape_file = shape_file_str
 
     Config.record_log = config.getoption("--record") == "log"
+    Config.record_json = config.getoption("--record") == "json"
+
     Config.parallel = int(config.getoption("--parallel") or 0)
+    if Config.record_json:
+        Config.output = config.getoption("--output")
+        REPORT_FILE = Config.output
+
     if Config.record_log:
         cmd_args = [
             arg.replace(".py", "").replace("=", "_").replace("/", "_")
@@ -327,6 +346,9 @@ def pytest_runtest_makereport(item, call):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_logreport(report):
+    if not Config.record_json:
+        return
+
     op = report.opid
     TEST_RESULTS.setdefault(op, {})
 
@@ -348,8 +370,10 @@ def pytest_runtest_logreport(report):
             TEST_RESULTS[op]["reason"] = None
 
 
-def pytest_terminal_summary(terminalreporter):
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Combine and dump the result into JSON."""
+    if not Config.record_json:
+        return
 
     data = TEST_RESULTS
     if os.path.exists(REPORT_FILE):
