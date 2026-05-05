@@ -7,24 +7,35 @@ import torch
 import yaml
 
 import flag_gems
-from benchmark.consts import (
-    ALL_AVAILABLE_METRICS,
-    BOOL_DTYPES,
-    DEFAULT_ITER_COUNT,
-    DEFAULT_WARMUP_COUNT,
-    FLOAT_DTYPES,
-    INT_DTYPES,
-    BenchLevel,
-    BenchMode,
-    OperationAttribute,
-    get_recommended_shapes,
-)
 from flag_gems.runtime import torch_device_fn
+
+from . import consts
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 recordLogger = logging.getLogger("flag_gems_benchmark")
 recordLogger.propagate = False
+
+BUILTIN_MARKS = (
+    "parametrize",
+    "skip",
+    "skipif",
+    "xfail",
+    "usefixtures",
+    "filterwarnings",
+    "timeout",
+    "tryfirst",
+    "trylast",
+)
+REGISTERED_MARKS = []
+TEST_RESULTS = {}
+REPORT_FILE = "benchmark_result.json"
+
+
+def update_result(op, data):
+    TEST_RESULTS.setdefault(op, {})
+    TEST_RESULTS[op].setdefault("details", [])
+    TEST_RESULTS[op]["details"].append(data)
 
 
 def emit_record_logger(message: str) -> None:
@@ -36,20 +47,22 @@ def emit_record_logger(message: str) -> None:
                 handler.stream = handler._open()
             finally:
                 handler.release()
+
     recordLogger.info(message)
 
 
 class BenchConfig:
     def __init__(self):
-        self.mode = BenchMode.KERNEL
-        self.bench_level = BenchLevel.COMPREHENSIVE
-        self.warm_up = DEFAULT_WARMUP_COUNT
-        self.repetition = DEFAULT_ITER_COUNT
-        if (
-            vendor_name == "kunlunxin"
-        ):  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
+        self.mode = consts.BenchMode.KERNEL
+        self.bench_level = consts.BenchLevel.COMPREHENSIVE
+        self.warm_up = consts.DEFAULT_WARMUP_COUNT
+        self.repetition = consts.DEFAULT_ITER_COUNT
+
+        # Speed Up Benchmark Test, Big Shape Will Cause Timeout
+        if vendor_name == "kunlunxin":
             self.warm_up = 1
             self.repetition = 1
+
         self.record_log = False
         self.user_desired_dtypes = None
         self.user_desired_metrics = None
@@ -59,7 +72,6 @@ class BenchConfig:
 
 
 Config = BenchConfig()
-REGISTERED_MARKS = []
 
 
 def pytest_addoption(parser):
@@ -82,19 +94,19 @@ def pytest_addoption(parser):
         action="store",
         default="comprehensive",
         required=False,
-        choices=[level.value for level in BenchLevel],
+        choices=[level.value for level in consts.BenchLevel],
         help="Specify the benchmark level: comprehensive, or core.",
     )
 
     parser.addoption(
         "--warmup",
-        default=DEFAULT_WARMUP_COUNT,
+        default=consts.DEFAULT_WARMUP_COUNT,
         help="Number of warmup runs before benchmark run.",
     )
 
     parser.addoption(
         "--iter",
-        default=DEFAULT_ITER_COUNT,
+        default=consts.DEFAULT_ITER_COUNT,
         help="Number of reps for each benchmark run.",
     )
 
@@ -107,7 +119,7 @@ def pytest_addoption(parser):
         action="append",
         default=None,
         required=False,
-        choices=ALL_AVAILABLE_METRICS,
+        choices=consts.ALL_AVAILABLE_METRICS,
         help=(
             "Specify the metrics we want to benchmark. "
             "If not specified, the metric items will vary according to the specified operation's category and name."
@@ -121,7 +133,10 @@ def pytest_addoption(parser):
         required=False,
         choices=[
             str(ele).split(".")[-1]
-            for ele in FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES + [torch.cfloat]
+            for ele in consts.FLOAT_DTYPES
+            + consts.INT_DTYPES
+            + consts.BOOL_DTYPES
+            + [torch.cfloat]
         ],
         help=(
             "Specify the data types for benchmarks. "
@@ -186,12 +201,12 @@ def pytest_configure(config):
     mode_value = config.getoption(
         "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
     )
-    Config.mode = BenchMode(mode_value)
+    Config.mode = consts.BenchMode(mode_value)
 
     Config.query = config.getoption("--query")
 
     level_value = config.getoption("--level")
-    Config.bench_level = BenchLevel(level_value)
+    Config.bench_level = consts.BenchLevel(level_value)
 
     warmup_value = config.getoption("--warmup")
     Config.warm_up = int(warmup_value)
@@ -236,29 +251,10 @@ def pytest_configure(config):
         emit_record_logger("Benchmark record logger enabled")
 
 
-BUILTIN_MARKS = {
-    "parametrize",
-    "skip",
-    "skipif",
-    "xfail",
-    "usefixtures",
-    "filterwarnings",
-    "timeout",
-    "tryfirst",
-    "trylast",
-}
-
-
 @pytest.fixture(scope="session", autouse=True)
 def setup_once(request):
     if request.config.getoption("--query"):
         print("\nThis is query mode; all benchmark functions will be skipped.")
-    # else:
-    #     note_info = (
-    #         "\n\nNote: The 'size' field below is for backward compatibility with previous versions of the benchmark. "
-    #         "\nThis field will be removed in a future release."
-    #     )
-    #     print(note_info)
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -284,10 +280,10 @@ def extract_and_log_op_attributes(request):
             continue
         op_specified_shapes = mark.kwargs.get("recommended_shapes")
         shape_desc = mark.kwargs.get("shape_desc", "M, N")
-        rec_core_shapes = get_recommended_shapes(mark.name, op_specified_shapes)
+        rec_core_shapes = consts.get_recommended_shapes(mark.name, op_specified_shapes)
 
         if rec_core_shapes:
-            attri = OperationAttribute(
+            attri = consts.OperationAttribute(
                 op_name=mark.name,
                 recommended_core_shapes=rec_core_shapes,
                 shape_desc=shape_desc,
@@ -304,31 +300,95 @@ def extract_and_log_op_attributes(request):
         emit_record_logger(json.dumps(op_attributes, indent=2))
 
 
+def get_reason(report):
+    """Get reason for skipped or failed test."""
+
+    if hasattr(report.longrepr, "reprcrash"):
+        return report.longrepr.reprcrash.message
+
+    if isinstance(report.longrepr, tuple):
+        return report.longrepr[2]
+
+    return str(report.longrepr)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    out = yield
+    report = out.get_result()
+    all_marks = [mark.name for mark in item.iter_markers()]
+    # exclude builtin marks
+    marks = [mark for mark in all_marks if mark not in BUILTIN_MARKS]
+    # Assume the first mark is the operator's ID
+    opid = marks[0] if marks else item.nodeid
+    # Set the operator ID for the next function to use
+    report.opid = opid
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_logreport(report):
+    op = report.opid
+    TEST_RESULTS.setdefault(op, {})
+
+    if report.when == "setup":
+        if report.outcome == "skipped":
+            reason = get_reason(report)
+            TEST_RESULTS[op]["result"] = "skipped"
+            TEST_RESULTS[op]["reason"] = reason
+            TEST_RESULTS[op]["test_case"] = report.nodeid
+
+    elif report.when == "call":
+        TEST_RESULTS[op]["result"] = report.outcome
+        TEST_RESULTS[op]["test_case"] = report.nodeid
+
+        if report.outcome in ["skipped", "failed"]:
+            reason = get_reason(report)
+            TEST_RESULTS[op]["reason"] = reason
+        else:
+            TEST_RESULTS[op]["reason"] = None
+
+
+def pytest_terminal_summary(terminalreporter):
+    """Combine and dump the result into JSON."""
+
+    data = TEST_RESULTS
+    if os.path.exists(REPORT_FILE):
+        with open(REPORT_FILE, "r") as f:
+            existing_data = json.load(f)
+        existing_data.update(TEST_RESULTS)
+        data = existing_data
+
+    with open(REPORT_FILE, "w") as f:
+        json.dump(data, f, indent=2, default=str)
+
+
 def pytest_collection_modifyitems(session, config, items):
-    if config.getoption("--collect-marks"):
-        report = []
-        for item in items:
-            data = {}
+    if not config.getoption("--collect-marks"):
+        return
 
-            # Collect some general information
-            if item.cls:
-                data["class"] = item.cls.__name__
-            data["test_case"] = item.name
-            if item.originalname:
-                data["function"] = item.originalname
-            data["file"] = item.location[0]
+    report = []
+    for item in items:
+        data = {}
 
-            all_marks = list(item.iter_markers())
-            op_marks = [
-                mark.name
-                for mark in all_marks
-                if mark.name not in BUILTIN_MARKS and mark.name not in REGISTERED_MARKS
-            ]
+        # Collect some general information
+        if item.cls:
+            data["class"] = item.cls.__name__
+        data["test_case"] = item.name
+        if item.originalname:
+            data["function"] = item.originalname
+        data["file"] = item.location[0]
 
-            data["marks"] = op_marks
-            report.append(data)
+        all_marks = list(item.iter_markers())
+        op_marks = [
+            mark.name
+            for mark in all_marks
+            if mark.name not in BUILTIN_MARKS and mark.name not in REGISTERED_MARKS
+        ]
 
-        print(yaml.dump(report, indent=2))
+        data["marks"] = op_marks
+        report.append(data)
 
-        # Skip all tests
-        items.clear()
+    print(yaml.dump(report, indent=2))
+
+    # Skip all tests
+    items.clear()
