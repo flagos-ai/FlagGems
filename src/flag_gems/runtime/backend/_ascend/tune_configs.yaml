@@ -699,6 +699,32 @@ conv2d_backward_weight:
     BLOCK_CO: 256
     BLOCK_NO: 32
 
+conv_transpose2d_forward:
+- META:
+    BLOCK_NHW: 32
+    BLOCK_CO: 32
+    BLOCK_CI: 32
+- META:
+    BLOCK_NHW: 64
+    BLOCK_CO: 32
+    BLOCK_CI: 32
+- META:
+    BLOCK_NHW: 64
+    BLOCK_CO: 64
+    BLOCK_CI: 32
+- META:
+    BLOCK_NHW: 128
+    BLOCK_CO: 32
+    BLOCK_CI: 32
+- META:
+    BLOCK_NHW: 128
+    BLOCK_CO: 64
+    BLOCK_CI: 32
+- META:
+    BLOCK_NHW: 256
+    BLOCK_CO: 32
+    BLOCK_CI: 32
+
 batch_norm:
 - gen: true
   param_map:
