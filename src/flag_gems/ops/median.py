@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Supported dtypes for the median operator
 _SUPPORTED_FLOAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
-_SUPPORTED_INT_DTYPES = (torch.int32, torch.int64)
+_SUPPORTED_INT_DTYPES = (torch.int16, torch.int32, torch.int64)
 _SUPPORTED_DTYPES = _SUPPORTED_FLOAT_DTYPES + _SUPPORTED_INT_DTYPES
 
 
@@ -50,38 +50,45 @@ def median_kernel_float(
     cols = tl.arange(0, PADDED_N)
     mask = cols < N
 
-    # Load values with padding - use max float (not inf, which breaks tl.sort in Triton 3.1)
+    # Load values with padding - use max float (not inf, which breaks tl.sort on Iluvatar)
     pad_val = tl.full([PADDED_N], dtype=tl.float32, value=3.4028235e38)
     vals = tl.load(inp_row_ptr + cols, mask=mask, other=0.0).to(tl.float32)
+
+    # Detect NaN: NaN != NaN is True in IEEE 754
+    has_nan = mask & (vals != vals)
+    any_nan = tl.sum(has_nan.to(tl.int32)) > 0
+
+    # Clamp inf/-inf to large finite values before sorting (tl.sort corrupts special floats on Iluvatar)
+    max_f = tl.full([PADDED_N], dtype=tl.float32, value=3.4028235e38)
+    neg_max_f = tl.full([PADDED_N], dtype=tl.float32, value=-3.4028235e38)
+    has_pos_inf = mask & (vals > 3.4028235e38)
+    has_neg_inf = mask & (vals < -3.4028235e38)
+    vals = tl.where(has_pos_inf, max_f, vals)
+    vals = tl.where(has_neg_inf, neg_max_f, vals)
+    # Also clamp NaN to max_float to prevent sort corruption
+    vals = tl.where(has_nan, max_f, vals)
     vals = tl.where(mask, vals, pad_val)
 
-    # Replace inf/-inf with large finite values to avoid tl.sort corruption
-    has_neg_inf = mask & (vals == float('-inf'))
-    has_inf = mask & (vals == float('inf'))
-    vals = tl.where(has_neg_inf, -3.4028235e38, vals)
-    vals = tl.where(has_inf, 3.4028235e38, vals)
-
-    # Sort ascending - tl.sort is cross-platform compatible via FlagTree
+    # Sort ascending
     sorted_vals = tl.sort(vals, dim=0, descending=False)
 
     # Extract median value using positional mask
     med_val = tl.sum(tl.where(cols == MED_POS, sorted_vals, 0.0))
 
-    # Restore inf/-inf for median value if needed
-    count_neg_inf = tl.sum(has_neg_inf.to(tl.int32))
-    count_inf = tl.sum(has_inf.to(tl.int32))
-    # If MED_POS is in the neg_inf range, median is -inf
-    med_val = tl.where(MED_POS < count_neg_inf, float('-inf'), med_val)
-    # If MED_POS is in the inf range, median is inf
-    med_val = tl.where(MED_POS >= PADDED_N - count_inf, float('inf'), med_val)
+    # Restore inf: if the median equals max_float and input had +inf, restore to inf
+    any_pos_inf = tl.sum(has_pos_inf.to(tl.int32)) > 0
+    any_neg_inf = tl.sum(has_neg_inf.to(tl.int32)) > 0
+    med_val = tl.where(any_pos_inf & (med_val >= 3.4028235e38), tl.full([], dtype=tl.float32, value=float('inf')), med_val)
+    med_val = tl.where(any_neg_inf & (med_val <= -3.4028235e38), tl.full([], dtype=tl.float32, value=float('-inf')), med_val)
+
+    # If any NaN in input, propagate NaN to output
+    med_val = tl.where(any_nan, tl.full([], dtype=tl.float32, value=float('nan')), med_val)
 
     # Find original index of med_val in the input
     # For duplicates, we need the (MED_POS - count_less + 1)-th occurrence
-    # Handle inf/-inf: use the replaced values for comparison
-    search_val = tl.where(med_val == float('-inf'), -3.4028235e38, med_val)
-    search_val = tl.where(med_val == float('inf'), 3.4028235e38, search_val)
-    matches = mask & (vals == search_val)
-    is_less = mask & (vals < search_val)
+    # Use clamped values for comparison since inf/nan were replaced before sort
+    matches = mask & (vals == med_val)
+    is_less = mask & (vals < med_val)
     count_less = tl.sum(is_less.to(tl.int32))
     # cumsum is 1-based, so +1 to match
     occurrence = MED_POS - count_less + 1
@@ -148,6 +155,53 @@ def median_kernel_int(
     tl.store(out_idx_ptr_pid, orig_idx.to(tl.int64))
 
 
+def _median_fallback(inp, dim, keepdim):
+    """Fallback for large N where tl.sort exceeds shared memory.
+
+    Implements median using torch.sort + indexing to avoid calling torch.median
+    (which would be overridden by flag_gems and cause recursion).
+    """
+    if dim is None:
+        flat = inp.contiguous().view(-1)
+        n = flat.shape[0]
+        if n == 0:
+            return torch.tensor(float("nan"), dtype=inp.dtype, device=inp.device)
+        sorted_vals, sorted_idx = torch.sort(flat)
+        med_pos = n // 2 - 1 if n % 2 == 0 else (n - 1) // 2
+        return sorted_vals[med_pos].to(inp.dtype)
+
+    dim = dim % inp.ndim
+    n = inp.shape[dim]
+    if n == 0:
+        out_shape = list(inp.shape)
+        if keepdim:
+            out_shape[dim] = 1
+        else:
+            del out_shape[dim]
+        return (
+            torch.full(out_shape, float("nan"), dtype=inp.dtype, device=inp.device),
+            torch.zeros(out_shape, dtype=torch.int64, device=inp.device),
+        )
+
+    sorted_vals, sorted_idx = torch.sort(inp, dim=dim)
+    is_even = n % 2 == 0
+    med_pos = n // 2 - 1 if is_even else (n - 1) // 2
+
+    out_val = sorted_vals.select(dim, med_pos)
+    out_idx = sorted_idx.select(dim, med_pos)
+
+    if keepdim:
+        out_val = out_val.unsqueeze(dim)
+        out_idx = out_idx.unsqueeze(dim)
+
+    return out_val, out_idx
+
+
+# Maximum N for which tl.sort fits in shared memory (128KB limit on Iluvatar BI-V150)
+# PADDED_N=4096 uses ~256KB, PADDED_N=2048 uses ~128KB
+_MAX_SORT_N = 2048
+
+
 def median(inp, dim=None, keepdim=False):
     """Compute the median of a tensor along a given dimension.
 
@@ -170,19 +224,36 @@ def median(inp, dim=None, keepdim=False):
     # Validate dtype
     assert inp.dtype in _SUPPORTED_DTYPES, (
         f"median: unsupported dtype {inp.dtype}. "
-        f"Supported: float16, bfloat16, float32, int32, int64"
+        f"Supported: float16, bfloat16, float32, int16, int32, int64"
     )
 
+    # Cast int16 to int32 for processing (Triton doesn't natively sort int16)
+    orig_dtype = inp.dtype
+    if inp.dtype == torch.int16:
+        inp = inp.to(torch.int32)
+
     is_float = inp.dtype.is_floating_point
+
+    # Check if N exceeds shared memory limit for tl.sort
+    if dim is not None:
+        N = inp.shape[dim % inp.ndim]
+    else:
+        N = inp.numel()
+
+    if N > _MAX_SORT_N:
+        result = _median_fallback(inp, dim, keepdim)
+        if dim is None:
+            return result.to(orig_dtype)
+        return result[0].to(orig_dtype), result[1]
 
     if dim is None:
         # Global median: flatten and compute single median
         inp_flat = inp.contiguous().view(-1)
         N = inp_flat.shape[0]
         if N == 0:
-            return torch.tensor(float("nan"), dtype=inp.dtype, device=inp.device)
+            return torch.tensor(float("nan"), dtype=orig_dtype, device=inp.device)
         if N == 1:
-            return inp_flat[0].to(inp.dtype)
+            return inp_flat[0].to(orig_dtype)
 
         PADDED_N = triton.next_power_of_2(N)
         IS_EVEN = N % 2 == 0
@@ -214,7 +285,7 @@ def median(inp, dim=None, keepdim=False):
                     IS_INT64=(inp.dtype == torch.int64),
                 )
 
-        return out_val.squeeze().to(inp.dtype)
+        return out_val.squeeze().to(orig_dtype)
     else:
         # Dimension-wise median: returns (values, indices)
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
@@ -228,12 +299,12 @@ def median(inp, dim=None, keepdim=False):
             else:
                 del out_shape[dim]
             return (
-                torch.full(out_shape, float("nan"), dtype=inp.dtype, device=inp.device),
+                torch.full(out_shape, float("nan"), dtype=orig_dtype, device=inp.device),
                 torch.zeros(out_shape, dtype=torch.int64, device=inp.device),
             )
 
         if N == 1:
-            out_val = inp.select(dim, 0)
+            out_val = inp.select(dim, 0).to(orig_dtype)
             out_idx = torch.zeros_like(out_val, dtype=torch.int64)
             if keepdim:
                 out_val = out_val.unsqueeze(dim)
@@ -279,7 +350,7 @@ def median(inp, dim=None, keepdim=False):
                 )
 
         out_shape = list(inp.shape[:-1])
-        out_val = out_val.reshape(out_shape).to(inp.dtype)
+        out_val = out_val.reshape(out_shape).to(orig_dtype)
         out_idx = out_idx.reshape(out_shape)
 
         if keepdim:
