@@ -78,8 +78,10 @@ def median_kernel_float(
     # Restore inf: if the median equals max_float and input had +inf, restore to inf
     any_pos_inf = tl.sum(has_pos_inf.to(tl.int32)) > 0
     any_neg_inf = tl.sum(has_neg_inf.to(tl.int32)) > 0
-    med_val = tl.where(any_pos_inf & (med_val >= 3.4028235e38), tl.full([], dtype=tl.float32, value=float('inf')), med_val)
-    med_val = tl.where(any_neg_inf & (med_val <= -3.4028235e38), tl.full([], dtype=tl.float32, value=float('-inf')), med_val)
+    inf_val = tl.full([], dtype=tl.float32, value=float('inf'))
+    neg_inf_val = tl.full([], dtype=tl.float32, value=float('-inf'))
+    med_val = tl.where(any_pos_inf & (med_val >= 3.4028235e38), inf_val, med_val)
+    med_val = tl.where(any_neg_inf & (med_val <= -3.4028235e38), neg_inf_val, med_val)
 
     # If any NaN in input, propagate NaN to output
     med_val = tl.where(any_nan, tl.full([], dtype=tl.float32, value=float('nan')), med_val)
