@@ -55,16 +55,33 @@ def median_kernel_float(
     vals = tl.load(inp_row_ptr + cols, mask=mask, other=0.0).to(tl.float32)
     vals = tl.where(mask, vals, pad_val)
 
+    # Replace inf/-inf with large finite values to avoid tl.sort corruption
+    has_neg_inf = mask & (vals == float('-inf'))
+    has_inf = mask & (vals == float('inf'))
+    vals = tl.where(has_neg_inf, -3.4028235e38, vals)
+    vals = tl.where(has_inf, 3.4028235e38, vals)
+
     # Sort ascending - tl.sort is cross-platform compatible via FlagTree
     sorted_vals = tl.sort(vals, dim=0, descending=False)
 
     # Extract median value using positional mask
     med_val = tl.sum(tl.where(cols == MED_POS, sorted_vals, 0.0))
 
+    # Restore inf/-inf for median value if needed
+    count_neg_inf = tl.sum(has_neg_inf.to(tl.int32))
+    count_inf = tl.sum(has_inf.to(tl.int32))
+    # If MED_POS is in the neg_inf range, median is -inf
+    med_val = tl.where(MED_POS < count_neg_inf, float('-inf'), med_val)
+    # If MED_POS is in the inf range, median is inf
+    med_val = tl.where(MED_POS >= PADDED_N - count_inf, float('inf'), med_val)
+
     # Find original index of med_val in the input
     # For duplicates, we need the (MED_POS - count_less + 1)-th occurrence
-    matches = mask & (vals == med_val)
-    is_less = mask & (vals < med_val)
+    # Handle inf/-inf: use the replaced values for comparison
+    search_val = tl.where(med_val == float('-inf'), -3.4028235e38, med_val)
+    search_val = tl.where(med_val == float('inf'), 3.4028235e38, search_val)
+    matches = mask & (vals == search_val)
+    is_less = mask & (vals < search_val)
     count_less = tl.sum(is_less.to(tl.int32))
     # cumsum is 1-based, so +1 to match
     occurrence = MED_POS - count_less + 1

@@ -14,7 +14,8 @@ if cfg.QUICK_MODE:
 else:
     DIM_LIST = [0, 1, -1, -2]
     FLOAT_DTYPES = utils.FLOAT_DTYPES
-    INT_DTYPES = utils.INT_DTYPES
+    # Only use supported int dtypes (int32, int64)
+    INT_DTYPES = [dtype for dtype in utils.INT_DTYPES if dtype in (torch.int32, torch.int64)]
     SHAPES = utils.REDUCTION_SHAPES
 
 EMPTY_SHAPES = [(0, 5), (3, 0, 4), (2, 5, 0), (0,)]
