@@ -2,8 +2,10 @@ import gc
 import math
 import os
 import time
+from dataclasses import asdict
 from typing import Any, Generator, List, Optional, Tuple
 
+import consts
 import pytest
 import torch
 import triton
@@ -12,18 +14,10 @@ import yaml
 import flag_gems
 from flag_gems.utils import shape_utils
 
-from .conftest import Config, emit_record_logger
+from .conftest import Config, emit_record_logger, update_result
 from .consts import (
-    BOOL_DTYPES,
-    COMPLEX_DTYPES,
-    DEFAULT_METRICS,
-    DEFAULT_SHAPES,
-    FLOAT_DTYPES,
-    INT_DTYPES,
-    BenchLevel,
     BenchmarkMetrics,
     BenchmarkResult,
-    BenchMode,
     OperationAttribute,
     check_metric_dependencies,
     model_shapes,
@@ -48,9 +42,9 @@ else:
 
 class Benchmark:
     device: str = device
-    DEFAULT_METRICS = DEFAULT_METRICS
-    DEFAULT_DTYPES = FLOAT_DTYPES
-    DEFAULT_SHAPES = DEFAULT_SHAPES
+    DEFAULT_METRICS = consts.DEFAULT_METRICS
+    DEFAULT_DTYPES = consts.FLOAT_DTYPES
+    DEFAULT_SHAPES = consts.DEFAULT_SHAPES
     DEFAULT_SHAPE_DESC = "M, N"
     DEFAULT_SHAPE_FILES = "core_shapes.yaml"
     """
@@ -113,7 +107,7 @@ class Benchmark:
         if (
             hasattr(self, "set_more_metrics")
             and callable(getattr(self, "set_more_metrics"))
-            and Config.bench_level == BenchLevel.COMPREHENSIVE
+            and Config.bench_level == consts.BenchLevel.COMPREHENSIVE
             and not Config.query
         ):
             for metric in self.set_more_metrics():
@@ -183,7 +177,7 @@ class Benchmark:
             if (
                 hasattr(self, "set_more_shapes")
                 and callable(getattr(self, "set_more_shapes"))
-                and Config.bench_level == BenchLevel.COMPREHENSIVE
+                and Config.bench_level == consts.BenchLevel.COMPREHENSIVE
                 and not Config.query
             ):
                 # Merge shapes using subclass-specific logic
@@ -262,7 +256,7 @@ class Benchmark:
             fn = lambda: torch.autograd.grad(
                 (out,), xs, grad_outputs=(dout,), retain_graph=True
             )
-        if Config.mode == BenchMode.OPERATOR:
+        if Config.mode == consts.BenchMode.OPERATOR:
             for i in range(Config.warm_up):
                 fn()
             torch_device_fn.synchronize()
@@ -272,7 +266,7 @@ class Benchmark:
             torch_device_fn.synchronize()
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
-        elif Config.mode == BenchMode.KERNEL:
+        elif Config.mode == consts.BenchMode.KERNEL:
             do_bench = (
                 triton.musa_testing.do_bench
                 if device == "musa"
@@ -285,7 +279,7 @@ class Benchmark:
                 return_mode="median",
                 grad_to_none=xs if self.is_backward else None,
             )
-        elif Config.mode == BenchMode.WRAPPER:
+        elif Config.mode == consts.BenchMode.WRAPPER:
             for i in range(Config.warm_up):
                 fn()
             torch_device_fn.synchronize()
@@ -444,6 +438,7 @@ class Benchmark:
                 result=metrics,
             )
             print(result)
+            update_result(self.op_name, asdict(result))
             emit_record_logger(result.to_json())
 
 
@@ -561,7 +556,7 @@ class UnaryReductionBenchmark(Benchmark):
 
 
 class TexGluBenchmark(Benchmark):
-    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+    DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
     # Triton grid_y is capped at 65535, BLOCK_SIZE_H=64 -> last dim <= 8388480.
     MAX_LAST_DIM = 2 * 64 * 65535
 
@@ -626,7 +621,7 @@ class BlasBenchmark(Benchmark):
     benchmark for blas
     """
 
-    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+    DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
     def __init__(self, *args, input_fn, **kwargs):
         super().__init__(*args, **kwargs)
@@ -636,7 +631,7 @@ class BlasBenchmark(Benchmark):
         for b, m, n, k in self.shapes:
             yield from self.input_fn(b, m, n, k, dtype, self.device, False)
 
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
             for b, m, n, k in self.shapes:
                 yield from self.input_fn(b, m, n, k, dtype, self.device, True)
 
@@ -681,7 +676,7 @@ class BinaryPointwiseBenchmark(Benchmark):
     Base class for benchmarking binary pointwise operations.
     """
 
-    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+    DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
     def set_more_shapes(self):
         special_shapes_2d = [[1024, 2**i] for i in range(0, 20, 4)]
@@ -705,7 +700,7 @@ class ScalarBinaryPointwiseBenchmark(Benchmark):
     Base class for benchmarking binary pointwise operations with scalar input.
     """
 
-    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+    DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
     def set_more_shapes(self):
         special_shapes_2d = [[1024, 2**i] for i in range(0, 20, 4)]
@@ -728,7 +723,7 @@ class UnaryPointwiseBenchmark(Benchmark):
     Base class for benchmarking unary pointwise operations.
     """
 
-    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+    DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
     def set_more_shapes(self):
         special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
@@ -754,9 +749,9 @@ class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
 
 
 def generate_tensor_input(shape, dtype, device):
-    if dtype in FLOAT_DTYPES:
+    if dtype in consts.FLOAT_DTYPES:
         return torch.randn(shape, dtype=dtype, device=device)
-    elif dtype in INT_DTYPES:
+    elif dtype in consts.INT_DTYPES:
         return torch.randint(
             torch.iinfo(dtype).min,
             torch.iinfo(dtype).max,
@@ -764,9 +759,9 @@ def generate_tensor_input(shape, dtype, device):
             dtype=dtype,
             device="cpu",
         ).to(device)
-    elif dtype in BOOL_DTYPES:
+    elif dtype in consts.BOOL_DTYPES:
         return torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(device)
-    elif dtype in COMPLEX_DTYPES:
+    elif dtype in consts.COMPLEX_DTYPES:
         return torch.randn(shape, dtype=dtype, device=device)
 
 
