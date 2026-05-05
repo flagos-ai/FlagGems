@@ -8,6 +8,7 @@ from flag_gems.fused.FLA import (
     chunk_gated_delta_rule_fwd,
     fused_recurrent_gated_delta_rule_fwd,
 )
+from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
 from flag_gems.fused.flash_mla import flash_mla
 from flag_gems.fused.flashmla_sparse import flash_mla_sparse_fwd
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
@@ -59,6 +60,7 @@ __all__ = [
     "apply_rotary_pos_emb",
     "bincount",
     "bucket_sort_topk",
+    "chunk_gated_delta_rule",
     "chunk_gated_delta_rule_fwd",
     "concat_and_cache_mla",
     "cutlass_scaled_mm",
