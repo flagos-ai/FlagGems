@@ -160,15 +160,15 @@ def median_kernel_int(
 def _median_fallback(inp, dim, keepdim):
     """Fallback for large N where tl.sort exceeds shared memory.
 
-    Implements median using torch.sort + indexing to avoid calling torch.median
-    (which would be overridden by flag_gems and cause recursion).
+    Uses torch.ops.aten.sort to bypass flag_gems override of torch.sort,
+    avoiding the slow Triton sort for large tensors.
     """
     if dim is None:
         flat = inp.contiguous().view(-1)
         n = flat.shape[0]
         if n == 0:
             return torch.tensor(float("nan"), dtype=inp.dtype, device=inp.device)
-        sorted_vals, sorted_idx = torch.sort(flat)
+        sorted_vals, sorted_idx = torch.ops.aten.sort(flat)
         med_pos = n // 2 - 1 if n % 2 == 0 else (n - 1) // 2
         return sorted_vals[med_pos].to(inp.dtype)
 
@@ -185,7 +185,7 @@ def _median_fallback(inp, dim, keepdim):
             torch.zeros(out_shape, dtype=torch.int64, device=inp.device),
         )
 
-    sorted_vals, sorted_idx = torch.sort(inp, dim=dim)
+    sorted_vals, sorted_idx = torch.ops.aten.sort(inp, dim=dim)
     is_even = n % 2 == 0
     med_pos = n // 2 - 1 if is_even else (n - 1) // 2
 
@@ -199,8 +199,10 @@ def _median_fallback(inp, dim, keepdim):
     return out_val, out_idx
 
 
-# Maximum N for which tl.sort fits in shared memory (128KB limit on Iluvatar BI-V150)
-# PADDED_N=4096 uses ~256KB, PADDED_N=2048 uses ~128KB
+# Maximum N for which tl.sort fits in shared memory
+# PADDED_N=4096 uses 16KB, PADDED_N=2048 uses 8KB
+# On Iluvatar BI-V150: 128KB shared memory limit
+# On NVIDIA 4090: 48KB shared memory limit
 _MAX_SORT_N = 2048
 
 
