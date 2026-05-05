@@ -31,7 +31,7 @@ def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
         pytest.skip("Skiping fp32 addmm test on tsingmicro platform")
 
     if flag_gems.vendor_name == "mthreads":
-        monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     if b_column_major:

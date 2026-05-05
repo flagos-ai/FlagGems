@@ -119,7 +119,7 @@ def test_scaled_dot_product_attention_legacy(
     enable_gqa,
 ):
     if flag_gems.vendor_name == "hygon":
-        monkeypatch.env("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
+        monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
 
     device = torch_device_fn.current_device()
     q, k, v = make_input(
@@ -295,7 +295,7 @@ def test_scaled_dot_product_attention_square_qk_even_mn(
     monkeypatch, batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
     if flag_gems.vendor_name == "mthreads":
-        monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     device = torch_device_fn.current_device()
 
@@ -326,10 +326,10 @@ def test_scaled_dot_product_attention_nonsquare_qk(
     monkeypatch, batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
     if flag_gems.vendor_name == "mthreads":
-        monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     if flag_gems.vendor_name == "hygon":
-        monkeypatch.env("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
+        monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
 
     device = torch_device_fn.current_device()
 
