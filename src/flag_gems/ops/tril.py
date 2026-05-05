@@ -1,126 +1,102 @@
 import logging
 
 import torch
+import triton
+import triton.language as tl
 
-try:
-    import triton
-    import triton.language as tl
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as tle
 
-    HAS_TRITON = True
-except ImportError:
-    HAS_TRITON = False
-    logging.warning("Triton is not installed. Fallback to PyTorch implementation.")
-
-
-def tril(input: torch.Tensor, diagonal: int = 0) -> torch.Tensor:
-    """
-    Returns the lower triangular part of a matrix (2-D tensor) or batch of matrices.
-    
-    Args:
-        input (torch.Tensor): Input tensor, must be at least 2-dimensional.
-        diagonal (int, optional): Diagonal to keep. Defaults to 0, the main diagonal.
-            - diagonal = 0: Keep the main diagonal and all elements below it
-            - diagonal > 0: Additionally include diagonals above the main diagonal
-            - diagonal < 0: Exclude the main diagonal and diagonals below it
-    
-    Returns:
-        torch.Tensor: Resultant tensor with lower triangular part preserved, other elements are 0
-    
-    Raises:
-        ValueError: If input tensor has fewer than 2 dimensions
-        TypeError: If input is not a tensor
-    
-    Example:
-        >>> a = torch.randn(3, 3)
-        >>> torch.tril(a)  # diagonal=0, keep main diagonal and below
-        >>> torch.tril(a, diagonal=1)  # additionally include one diagonal above main
-        >>> torch.tril(a, diagonal=-1)  # exclude main diagonal itself
-    """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"input must be a torch.Tensor, got {type(input).__name__}")
-    
-    if input.ndim < 2:
-        raise ValueError(f"tril expects a tensor with at least 2 dimensions, got {input.ndim}")
-
-    if not HAS_TRITON:
-        return tril_pytorch_fallback(input, diagonal)
-
-    output = torch.empty_like(input)
-    n_rows, n_cols = input.shape[-2], input.shape[-1]
-    total_elements = input.numel()
-
-    BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(total_elements, meta["BLOCK_SIZE"]),)
-
-    _tril_kernel[grid](
-        input,
-        output,
-        n_rows,
-        n_cols,
-        diagonal,
-        total_elements,
-        BLOCK_SIZE=BLOCK_SIZE,
-    )
-
-    return output
+logger = logging.getLogger(__name__)
 
 
-if HAS_TRITON:
+@libentry()
+@triton.autotune(configs=runtime.get_tuned_config("tril"), key=["M", "N"])
+@triton.jit(do_not_specialize=["diagonal"])
+def tril_kernel(
+    X,
+    Y,
+    M,
+    N,
+    diagonal,
+    M_BLOCK_SIZE: tl.constexpr,
+    N_BLOCK_SIZE: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    row = pid * M_BLOCK_SIZE + tl.arange(0, M_BLOCK_SIZE)[:, None]
+    m_mask = row < M
+    X += row * N
+    Y += row * N
 
-    @triton.jit
-    def _tril_kernel(
-        input_ptr,
-        output_ptr,
-        n_rows,
-        n_cols,
-        diagonal,
-        n_elements,
-        BLOCK_SIZE: tl.constexpr,
-    ):
-        pid = tl.program_id(axis=0)
-        block_start = pid * BLOCK_SIZE
-        offsets = block_start + tl.arange(0, BLOCK_SIZE)
-        mask = offsets < n_elements
+    for n_offset in range(0, N, N_BLOCK_SIZE):
+        cols = n_offset + tl.arange(0, N_BLOCK_SIZE)[None, :]
+        n_mask = cols < N
+        mask = m_mask and n_mask
 
-        row_idx = offsets // n_cols
-        col_idx = offsets % n_cols
-
-        keep = col_idx <= row_idx + diagonal
-
-        val = tl.load(input_ptr + offsets, mask=mask, other=0.0)
-        result = tl.where(keep, val, 0.0)
-
-        tl.store(output_ptr + offsets, result, mask=mask)
+        x = tl.load(X + cols, mask, other=0.0)
+        y = tl.where(row + diagonal >= cols, x, 0.0)
+        tl.store(Y + cols, y, mask=mask)
 
 
-def tril_pytorch_fallback(input: torch.Tensor, diagonal: int = 0) -> torch.Tensor:
-    """
-    PyTorch fallback implementation of tril, used when Triton is not available.
-    
-    Args:
-        input (torch.Tensor): Input tensor
-        diagonal (int): Diagonal parameter
-    
-    Returns:
-        torch.Tensor: Lower triangular part of input tensor
-    """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"input must be a torch.Tensor, got {type(input).__name__}")
-    
-    if input.ndim < 2:
-        raise ValueError(f"tril expects a tensor with at least 2 dimensions, got {input.ndim}")
+@libentry()
+@triton.autotune(
+    configs=runtime.get_tuned_config("tril_batch"),
+    key=["batch", "MN", "N", "diagonal"],
+)
+@triton.jit(do_not_specialize=["diagonal"])
+def tril_batch_kernel(
+    X,
+    Y,
+    batch,
+    MN,
+    N,
+    diagonal,
+    BATCH_BLOCK_SIZE: tl.constexpr,
+    MN_BLOCK_SIZE: tl.constexpr,
+):
+    batch_id = tle.program_id(0)
+    mn_id = tle.program_id(1)
+    row = batch_id * BATCH_BLOCK_SIZE + tl.arange(0, BATCH_BLOCK_SIZE)[:, None]
+    batch_mask = row < batch
+    X += row * MN
+    Y += row * MN
 
-    n_rows, n_cols = input.shape[-2], input.shape[-1]
-    batch_shape = input.shape[:-2]
+    cols = mn_id * MN_BLOCK_SIZE + tl.arange(0, MN_BLOCK_SIZE)[None, :]
+    mn_mask = cols < MN
+    mask = batch_mask and mn_mask
+    x = tl.load(X + cols, mask, other=0.0)
+    m = cols // N
+    n = cols % N
+    y = tl.where(m + diagonal >= n, x, 0.0)
+    tl.store(Y + cols, y, mask=mask)
 
-    row_idx = torch.arange(n_rows, device=input.device).unsqueeze(1)
-    col_idx = torch.arange(n_cols, device=input.device).unsqueeze(0)
 
-    if len(batch_shape) > 0:
-        row_idx = row_idx.unsqueeze(0).expand(*batch_shape, n_rows, n_cols)
-        col_idx = col_idx.unsqueeze(0).expand(*batch_shape, n_rows, n_cols)
-
-    keep_mask = col_idx <= row_idx + diagonal
-
-    output = torch.where(keep_mask, input, torch.zeros_like(input))
-    return output
+def tril(A, diagonal=0):
+    logger.debug("GEMS TRIL")
+    A = A.contiguous()
+    out = torch.empty_like(A)
+    assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
+    M, N = A.shape[-2:]
+    with torch_device_fn.device(A.device):
+        if len(A.shape) == 2:
+            grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
+            tril_kernel[grid](A, out, M, N, diagonal)
+        else:
+            batch = int(torch.numel(A) / M / N)
+            B = A.view(batch, -1)
+            grid = lambda meta: (
+                triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
+                triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
+            )
+            tril_batch_kernel[grid](
+                B,
+                out,
+                batch,
+                M * N,
+                N,
+                diagonal,
+            )
+            out = out.view(A.shape)
+    return out
