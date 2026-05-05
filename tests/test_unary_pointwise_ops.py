@@ -270,6 +270,35 @@ def test_accuracy_cos_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.cosh
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.cosh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.cosh_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = torch.cosh_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh_(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.exp
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -2220,3 +2249,24 @@ def test_accuracy_special_i0e_out(shape, dtype):
         act_out = torch.ops.aten.special_i0e.out(x, out=out_act)
     gems_assert_close(act_out, ref_out, dtype)
     gems_assert_close(out_act, out_ref, dtype)
+
+
+@pytest.mark.parametrize("shape", [(1024,), (32, 256), (4, 16, 128)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_accuracy_log10(shape, dtype):
+    x = torch.rand(shape, dtype=dtype, device="cuda") + 1e-6
+    ref_out = torch.log10(x)
+    with flag_gems.use_gems():
+        res_out = torch.log10(x)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize("shape", [(1024,), (32, 256), (4, 16, 128)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_accuracy_log10_(shape, dtype):
+    x = torch.rand(shape, dtype=dtype, device="cuda") + 1e-6
+    ref_out = x.clone().log10_()
+    x_copy = x.clone()
+    with flag_gems.use_gems():
+        x_copy.log10_()
+    gems_assert_close(x_copy, ref_out, dtype)

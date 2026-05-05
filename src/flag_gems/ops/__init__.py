@@ -73,6 +73,7 @@ from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.cos import cos, cos_
+from flag_gems.ops.cosh import cosh, cosh_
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
@@ -147,6 +148,7 @@ from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tens
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
+from flag_gems.ops.log10 import log10, log10_
 from flag_gems.ops.log1p_ import log1p_
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import log_softmax, log_softmax_backward
@@ -385,6 +387,8 @@ __all__ = [
     "copy_",
     "cos",
     "cos_",
+    "cosh",
+    "cosh_",
     "count_nonzero",
     "cummax",
     "cummin",
