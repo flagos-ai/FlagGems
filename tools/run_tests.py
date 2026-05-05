@@ -256,6 +256,7 @@ def parse_accuracy_log(text):
 
 def get_env(gpu_ids):
     env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
     vendor = ENV_INFO.get("flag_gems", {}).get("vendor", "")
 
     if vendor == "ascend":
