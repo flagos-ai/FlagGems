@@ -5,7 +5,6 @@ import time
 from dataclasses import asdict
 from typing import Any, Generator, List, Optional, Tuple
 
-import consts
 import pytest
 import torch
 import triton
@@ -14,6 +13,7 @@ import yaml
 import flag_gems
 from flag_gems.utils import shape_utils
 
+from . import consts
 from .conftest import Config, emit_record_logger, update_result
 from .consts import (
     BenchmarkMetrics,
