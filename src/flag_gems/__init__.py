@@ -321,6 +321,7 @@ _FULL_CONFIG = (
     ("maximum", maximum),
     ("mean", mean),
     ("mean.dim", mean_dim),
+    ("median.dim", medianV2_dim),
     ("min", min),
     ("min.dim", min_dim),
     ("minimum", minimum),
