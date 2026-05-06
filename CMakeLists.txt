@@ -40,16 +40,18 @@ endif()
 # ==============================================================================
 # Backend Selection
 # ==============================================================================
-set(FLAGGEMS_BACKEND "CUDA" CACHE STRING "Target backend: CUDA, IX, MUSA, NPU")
-set_property(CACHE FLAGGEMS_BACKEND PROPERTY STRINGS "CUDA" "IX" "MUSA" "NPU")
+set(FLAGGEMS_BACKEND "CUDA" CACHE STRING "Target backend: CUDA, IX, MUSA, NPU, GCU")
+set_property(CACHE FLAGGEMS_BACKEND PROPERTY STRINGS "CUDA" "IX" "MUSA" "NPU" "GCU")
 
-if(NOT FLAGGEMS_BACKEND MATCHES "^(CUDA|IX|MUSA|NPU)$")
+if(NOT FLAGGEMS_BACKEND MATCHES "^(CUDA|IX|MUSA|NPU|GCU)$")
     message(FATAL_ERROR "Invalid FLAGGEMS_BACKEND: ${FLAGGEMS_BACKEND}")
 endif()
 message(STATUS "Building FlagGems with backend: ${FLAGGEMS_BACKEND}")
 
-# NPU and MUSA do not need CUDA language
-if(FLAGGEMS_BACKEND STREQUAL "NPU" OR FLAGGEMS_BACKEND STREQUAL "MUSA")
+# NPU, MUSA and GCU do not need CUDA language
+if(FLAGGEMS_BACKEND STREQUAL "NPU"
+   OR FLAGGEMS_BACKEND STREQUAL "MUSA"
+   OR FLAGGEMS_BACKEND STREQUAL "GCU")
     project(FlagGems LANGUAGES CXX VERSION 0.1.0)
 else()
     project(FlagGems LANGUAGES CUDA CXX VERSION 0.1.0)
@@ -64,6 +66,8 @@ elseif(FLAGGEMS_BACKEND STREQUAL "NPU")
     add_compile_definitions(FLAGGEMS_USE_NPU)
 elseif(FLAGGEMS_BACKEND STREQUAL "MUSA")
     add_compile_definitions(FLAGGEMS_USE_MUSA)
+elseif(FLAGGEMS_BACKEND STREQUAL "GCU")
+    add_compile_definitions(FLAGGEMS_USE_GCU)
 endif()
 
 message(STATUS "Building flag gems with C extensions")
@@ -79,6 +83,8 @@ elseif(FLAGGEMS_BACKEND STREQUAL "NPU")
     include(BackendNPU)
 elseif(FLAGGEMS_BACKEND STREQUAL "MUSA")
     include(BackendMUSA)
+elseif(FLAGGEMS_BACKEND STREQUAL "GCU")
+    include(BackendGCU)
 endif()
 
 # torch
@@ -90,9 +96,9 @@ else()
   set(TRITON_JIT_INSTALL ON) # install triton jit
   set(BACKEND ${FLAGGEMS_BACKEND} CACHE STRING "Backend for TritonJIT" FORCE)
   FetchContent_Declare(TritonJIT
-    GIT_REPOSITORY https://github.com/flagos-ai/libtriton_jit
-    GIT_TAG master
-    # SOURCE_DIR <your local source dir of libtriton_jit>
+    SOURCE_DIR /home/baoqi.liu/github/flag-ai/libtriton_jit
+    # GIT_REPOSITORY https://github.com/flagos-ai/libtriton_jit
+    # GIT_TAG master
   )
   FetchContent_MakeAvailable(TritonJIT)
 endif()

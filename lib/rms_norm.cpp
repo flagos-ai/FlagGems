@@ -45,9 +45,16 @@ at::Tensor rms_norm(const at::Tensor& input, const at::Tensor& weight, double ep
   at::Tensor out = at::empty(input.sizes(), input.options());
   at::Tensor inv_rms = at::empty({M}, at::TensorOptions().dtype(torch::kFloat32).device(input.device()));
 
+#if defined(FLAGGEMS_USE_GCU)
+  const TritonJITFunction& f =
+      TritonJITFunction::get_instance(
+          std::string(utils::get_flag_gems_src_path() / "runtime" / "backend" / "_enflame" / "gcu400" / "ops" / "rms_norm.py"),
+          "rms_norm_kernel");
+#else
   const TritonJITFunction& f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "rms_norm.py"),
                                       "rms_norm_kernel");
+#endif
 
   // getCurrentCUDAStream ensures that the stream is initialized, a default stream for each device
   c10::DeviceGuard guard(out.device());
@@ -68,6 +75,32 @@ at::Tensor rms_norm(const at::Tensor& input, const at::Tensor& weight, double ep
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr
   ) */
+#if defined(FLAGGEMS_USE_GCU)
+  int64_t BLOCK_SIZE_M = 1;
+  int64_t grid_m = M;
+  if (M > 48) {
+    grid_m = 48;
+    BLOCK_SIZE_M = (M + 48 - 1) / 48;
+  }
+  f(raw_stream,
+    grid_m,
+    1,
+    1,
+    /* num_warps */ get_rms_norm_num_warps(BLOCK_SIZE),
+    /* num_stages */ 1,
+    out,
+    inv_rms,
+    contig_input,
+    contig_weight,
+    N,
+    1,
+    N,
+    1,
+    N,
+    epsilon_val,
+    BLOCK_SIZE,
+    BLOCK_SIZE_M);
+#else
   f(raw_stream,
     M,
     1,
@@ -85,6 +118,7 @@ at::Tensor rms_norm(const at::Tensor& input, const at::Tensor& weight, double ep
     N,
     epsilon_val,
     BLOCK_SIZE);
+#endif
 
   return out;
 }

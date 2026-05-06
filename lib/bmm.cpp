@@ -80,7 +80,8 @@ at::Tensor bmm(const at::Tensor& A_in, const at::Tensor& B_in) {
       /* BLOCK_M = */ BLOCK_M,
       /* BLOCK_N = */ BLOCK_N,
       /* BLOCK_K = */ BLOCK_K,
-      /* GROUP_M = */ GROUP_M);
+      /* GROUP_M = */ GROUP_M,
+      /* IS_FP64 = */ false);
   }
 #else
   const TritonJITFunction& f =
@@ -127,7 +128,8 @@ at::Tensor bmm(const at::Tensor& A_in, const at::Tensor& B_in) {
     GROUP_M,
     DIVISIBLE_M,
     DIVISIBLE_N,
-    DIVISIBLE_K);
+    DIVISIBLE_K,
+    /* IS_FP64 = */ false);
 #endif
   return out;
 }
