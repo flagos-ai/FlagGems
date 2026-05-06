@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts, utils
 
 _BASE_2D_SIZE = 1024
 _BASE_3D_SIZE = 64
@@ -15,7 +14,7 @@ _DEFAULT_SELECT_DIM = 1
 _INDEX_DIVISOR = 2
 
 
-class SelectBackwardBenchmark(utils.Benchmark):
+class SelectBackwardBenchmark(base.Benchmark):
     """
     Benchmark for select_backward operator.
     """
@@ -53,7 +52,7 @@ class SelectBackwardBenchmark(utils.Benchmark):
 @pytest.mark.select_backward
 @pytest.mark.parametrize(
     "dtype",
-    attr_utils.FLOAT_DTYPES,
+    consts.FLOAT_DTYPES,
 )
 def test_select_backward_perf(dtype):
     bench = SelectBackwardBenchmark(
