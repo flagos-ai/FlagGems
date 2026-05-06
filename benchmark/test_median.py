@@ -17,18 +17,25 @@ class MedianNoDimBenchmark(base.Benchmark):
 
 class MedianReductionBenchmark(base.Benchmark):
     DEFAULT_SHAPE_FILES = "benchmark/core_shapes.yaml"
-    DEFAULT_SHAPE_DESC = "input shape; benchmark alternates dim/keepdim"
+    DEFAULT_SHAPE_DESC = "input shape or [input shape, dim, keepdim]"
 
     def get_input_iter(self, cur_dtype) -> Generator:
-        for case_id, shape in enumerate(self.shapes):
-            inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
-            if inp.ndim == 1:
-                dim = 0
-            elif case_id % 2 == 0:
-                dim = inp.ndim - 1
+        for case_id, shape_spec in enumerate(self.shapes):
+            if shape_spec and isinstance(shape_spec[0], (list, tuple)):
+                shape = tuple(shape_spec[0])
+                dim = int(shape_spec[1])
+                keepdim = bool(shape_spec[2]) if len(shape_spec) > 2 else False
             else:
-                dim = 0
-            yield inp, dim, {"keepdim": case_id % 3 == 0}
+                shape = shape_spec
+                keepdim = case_id % 3 == 0
+                if len(shape) == 1:
+                    dim = 0
+                elif case_id % 2 == 0:
+                    dim = len(shape) - 1
+                else:
+                    dim = 0
+            inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp, dim, {"keepdim": keepdim}
 
 
 @pytest.mark.median

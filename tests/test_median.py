@@ -987,6 +987,109 @@ def test_median_non_lastdim_fallback_nan_first_index(dtype, keepdim):
 @pytest.mark.parametrize(
     "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.int16, torch.int32]
 )
+@pytest.mark.parametrize("keepdim", KEEPDIM)
+def test_median_strided_nonlast_large_reduction_semantics(dtype, keepdim):
+    width = 384
+    rank = (width - 1) // 2
+    vals = torch.arange(3 * width * 5, dtype=torch.int64, device=flag_gems.device)
+    vals = ((vals * 37) % (5 * width)) - 2 * width
+    inp = vals.reshape(3, width, 5).to(dtype)
+
+    if dtype.is_floating_point:
+        inp[0, 0, 0] = float("nan")
+        inp[0, 17, 0] = float("nan")
+        inp[2, width - 1, 1] = float("nan")
+        zero_row = torch.empty((width,), dtype=dtype, device=flag_gems.device)
+        zero_row[:rank] = -1.0
+        zero_row[rank] = -0.0
+        zero_row[rank + 1] = 0.0
+        zero_row[rank + 2 :] = 1.0
+        inp[1, :, 3] = zero_row
+    else:
+        info = torch.iinfo(dtype)
+        inp[0, 0, 0] = info.min
+        inp[0, width - 1, 0] = info.max
+        inp[1, rank + 1, 3] = inp[1, rank, 3]
+
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.median(ref_inp, dim=1, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.median(inp, dim=1, keepdim=keepdim)
+
+    _assert_median_dim_equal(
+        res_out,
+        ref_out,
+        dtype,
+        equal_nan=dtype.is_floating_point,
+        exact_indices=False,
+        inp=inp,
+        dim=1,
+        keepdim=keepdim,
+    )
+
+    if dtype.is_floating_point:
+        observed_indices = res_out.indices.squeeze(1) if keepdim else res_out.indices
+        observed_values = res_out.values.squeeze(1) if keepdim else res_out.values
+        assert observed_indices[0, 0].item() == 0
+        assert observed_indices[2, 1].item() == width - 1
+        assert torch.isnan(observed_values[0, 0]).item()
+        assert torch.isnan(observed_values[2, 1]).item()
+        assert torch.signbit(observed_values[1, 3]).item()
+
+
+@pytest.mark.median
+@pytest.mark.parametrize("keepdim", KEEPDIM)
+def test_median_strided_nonlast_large_reduction_out(keepdim):
+    inp = torch.randn((384, 7), dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+    ref_shape = (1, 7) if keepdim else (7,)
+    ref_values = torch.empty(ref_shape, dtype=torch.float32, device=flag_gems.device)
+    ref_indices = torch.empty(ref_shape, dtype=torch.int64, device=flag_gems.device)
+    values = torch.empty_like(ref_values)
+    indices = torch.empty_like(ref_indices)
+
+    ref_out = torch.median(
+        ref_inp, dim=0, keepdim=keepdim, out=(ref_values, ref_indices)
+    )
+    with flag_gems.use_gems():
+        res_out = torch.median(inp, dim=0, keepdim=keepdim, out=(values, indices))
+
+    assert res_out.values.data_ptr() == values.data_ptr()
+    assert res_out.indices.data_ptr() == indices.data_ptr()
+    _assert_median_dim_equal(
+        res_out, ref_out, torch.float32, inp=inp, dim=0, keepdim=keepdim
+    )
+
+
+@pytest.mark.median
+@pytest.mark.parametrize("keepdim", KEEPDIM)
+def test_median_strided_nonlast_named_dim_preserves_names(keepdim):
+    inp = torch.randn((2, 384, 5), dtype=torch.float32, device=flag_gems.device)
+    inp = inp.refine_names("batch", "reduce", "feature")
+    ref_inp = utils.to_reference(inp.rename(None))
+
+    ref_out = torch.median(ref_inp, dim=1, keepdim=keepdim)
+    res_out = gems_median_dim(inp, dim="reduce", keepdim=keepdim)
+
+    expected_names = (
+        ("batch", "reduce", "feature") if keepdim else ("batch", "feature")
+    )
+    assert res_out.values.names == expected_names
+    assert res_out.indices.names == expected_names
+    _assert_median_dim_equal(
+        (res_out.values.rename(None), res_out.indices.rename(None)),
+        ref_out,
+        torch.float32,
+        inp=inp.rename(None),
+        dim=1,
+        keepdim=keepdim,
+    )
+
+
+@pytest.mark.median
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.int16, torch.int32]
+)
 def test_median_large_width_duplicate_indices_select_value(dtype):
     width = 257
     midpoint = width // 2

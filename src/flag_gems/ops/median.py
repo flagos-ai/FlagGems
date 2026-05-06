@@ -38,6 +38,8 @@ _FP32_KEY_SELECT_MIN = 257
 _FP32_KEY_SELECT_LIMIT = 2048
 _INT_LASTDIM_SELECT_LIMIT = 2048
 _INT_LASTDIM_SELECT_DTYPES = {torch.int16, torch.int32}
+_STRIDED_SELECT_MIN = _DIRECT_REDUCTION_LIMIT + 1
+_STRIDED_SELECT_LIMIT = 2048
 
 
 @libentry()
@@ -358,6 +360,154 @@ def median_fp32_key_select_kernel(
     tl.store(indices + row, first_match.to(tl.int64))
 
 
+@libentry()
+@triton.jit
+def median_f16_strided_key_select_kernel(
+    inp,
+    values,
+    indices,
+    total_outputs,
+    reduction_size,
+    inner_size,
+    BLOCK: tl.constexpr,
+    BLOCK_OUT: tl.constexpr,
+):
+    out_offsets = tl.program_id(0) * BLOCK_OUT + tl.arange(0, BLOCK_OUT)
+    out_mask = out_offsets < total_outputs
+    inner_offsets = out_offsets % inner_size
+    outer_offsets = out_offsets // inner_size
+    cols = tl.arange(0, BLOCK)
+    valid = (cols[None, :] < reduction_size) & out_mask[:, None]
+    ptrs = (
+        inp
+        + outer_offsets[:, None] * reduction_size * inner_size
+        + cols[None, :] * inner_size
+        + inner_offsets[:, None]
+    )
+    data = tl.load(ptrs, mask=valid, other=0.0)
+
+    nan_mask = valid & (data != data)
+    nan_i32 = nan_mask.to(tl.int32)
+    has_nan = tl.max(nan_i32, axis=1) != 0
+    first_nan = tl.argmax(nan_i32, axis=1)
+    nan_value = tl.load(
+        inp
+        + outer_offsets * reduction_size * inner_size
+        + first_nan * inner_size
+        + inner_offsets,
+        mask=out_mask,
+        other=0.0,
+    )
+
+    keys = _f16_order_key(data)
+    finite = valid & ~nan_mask
+    key_min_fill = tl.full((), 0xFFFF, dtype=tl.uint16)
+    key_max_fill = tl.full((), 0, dtype=tl.uint16)
+    row_min = tl.min(tl.where(finite, keys, key_min_fill), axis=1)
+    row_max = tl.max(tl.where(finite, keys, key_max_fill), axis=1)
+
+    lo = row_min
+    hi = row_max
+    rank = (reduction_size - 1) // 2
+    for _ in tl.static_range(0, 16):
+        mid = lo + ((hi - lo) >> 1)
+        le_count = tl.sum((finite & (keys <= mid[:, None])).to(tl.int32), axis=1)
+        take_left = le_count > rank
+        hi = tl.where(take_left, mid, hi)
+        lo = tl.where(take_left, lo, mid + 1)
+
+    selected_key = lo
+    key_match = finite & (keys == selected_key[:, None])
+    selected_key_first = tl.argmax(key_match.to(tl.int32), axis=1)
+    selected_value = tl.load(
+        inp
+        + outer_offsets * reduction_size * inner_size
+        + selected_key_first * inner_size
+        + inner_offsets,
+        mask=out_mask,
+        other=0.0,
+    )
+
+    selected_value = tl.where(has_nan, nan_value, selected_value)
+    first_match = tl.where(has_nan, first_nan, selected_key_first)
+    tl.store(values + out_offsets, selected_value, mask=out_mask)
+    tl.store(indices + out_offsets, first_match.to(tl.int64), mask=out_mask)
+
+
+@libentry()
+@triton.jit
+def median_fp32_strided_key_select_kernel(
+    inp,
+    values,
+    indices,
+    total_outputs,
+    reduction_size,
+    inner_size,
+    BLOCK: tl.constexpr,
+    BLOCK_OUT: tl.constexpr,
+):
+    out_offsets = tl.program_id(0) * BLOCK_OUT + tl.arange(0, BLOCK_OUT)
+    out_mask = out_offsets < total_outputs
+    inner_offsets = out_offsets % inner_size
+    outer_offsets = out_offsets // inner_size
+    cols = tl.arange(0, BLOCK)
+    valid = (cols[None, :] < reduction_size) & out_mask[:, None]
+    ptrs = (
+        inp
+        + outer_offsets[:, None] * reduction_size * inner_size
+        + cols[None, :] * inner_size
+        + inner_offsets[:, None]
+    )
+    data = tl.load(ptrs, mask=valid, other=0.0)
+
+    nan_mask = valid & (data != data)
+    nan_i32 = nan_mask.to(tl.int32)
+    has_nan = tl.max(nan_i32, axis=1) != 0
+    first_nan = tl.argmax(nan_i32, axis=1)
+    nan_value = tl.load(
+        inp
+        + outer_offsets * reduction_size * inner_size
+        + first_nan * inner_size
+        + inner_offsets,
+        mask=out_mask,
+        other=0.0,
+    )
+
+    keys = _fp32_order_key(data)
+    finite = valid & ~nan_mask
+    key_min_fill = tl.full((), 0xFFFFFFFF, dtype=tl.uint32)
+    key_max_fill = tl.full((), 0, dtype=tl.uint32)
+    row_min = tl.min(tl.where(finite, keys, key_min_fill), axis=1)
+    row_max = tl.max(tl.where(finite, keys, key_max_fill), axis=1)
+
+    lo = row_min
+    hi = row_max
+    rank = (reduction_size - 1) // 2
+    for _ in tl.static_range(0, 32):
+        mid = lo + ((hi - lo) >> 1)
+        le_count = tl.sum((finite & (keys <= mid[:, None])).to(tl.int32), axis=1)
+        take_left = le_count > rank
+        hi = tl.where(take_left, mid, hi)
+        lo = tl.where(take_left, lo, mid + 1)
+
+    selected_key = lo
+    key_match = finite & (keys == selected_key[:, None])
+    selected_key_first = tl.argmax(key_match.to(tl.int32), axis=1)
+    selected_value = tl.load(
+        inp
+        + outer_offsets * reduction_size * inner_size
+        + selected_key_first * inner_size
+        + inner_offsets,
+        mask=out_mask,
+        other=0.0,
+    )
+
+    selected_value = tl.where(has_nan, nan_value, selected_value)
+    first_match = tl.where(has_nan, first_nan, selected_key_first)
+    tl.store(values + out_offsets, selected_value, mask=out_mask)
+    tl.store(indices + out_offsets, first_match.to(tl.int64), mask=out_mask)
+
+
 def _has_names(inp):
     return any(name is not None for name in inp.names)
 
@@ -499,6 +649,13 @@ def _use_fp32_key_select(dtype, width):
     )
 
 
+def _use_strided_select(dtype, width):
+    return (
+        _STRIDED_SELECT_MIN <= width <= _STRIDED_SELECT_LIMIT
+        and dtype in (_F16_KEY_SELECT_DTYPES | {torch.float32})
+    )
+
+
 def _median_int_lastdim_select(row_data, output_shape):
     width = row_data.shape[-1]
     rows = row_data.numel() // width
@@ -538,6 +695,30 @@ def _median_f16_key_select(row_data, output_shape):
     return values, indices
 
 
+def _median_f16_strided_key_select(inp, dim, output_shape):
+    reduction_size = inp.shape[dim]
+    inner_size = math.prod(inp.shape[dim + 1 :])
+    total_outputs = math.prod(output_shape)
+    values = torch.empty(output_shape, dtype=inp.dtype, device=inp.device)
+    indices = torch.empty(output_shape, dtype=torch.int64, device=inp.device)
+    block = triton.next_power_of_2(reduction_size)
+    block_out = 2
+    num_warps = 1 if block <= 1024 else 2 if block <= 2048 else 4
+    with torch_device_fn.device(inp.device):
+        median_f16_strided_key_select_kernel[(triton.cdiv(total_outputs, block_out),)](
+            inp,
+            values.reshape(-1),
+            indices.reshape(-1),
+            total_outputs,
+            reduction_size,
+            inner_size,
+            BLOCK=block,
+            BLOCK_OUT=block_out,
+            num_warps=num_warps,
+        )
+    return values, indices
+
+
 def _median_fp32_key_select(row_data, output_shape):
     width = row_data.shape[-1]
     rows = row_data.numel() // width
@@ -552,6 +733,30 @@ def _median_fp32_key_select(row_data, output_shape):
             indices.reshape(rows),
             WIDTH=width,
             BLOCK=block,
+            num_warps=num_warps,
+        )
+    return values, indices
+
+
+def _median_fp32_strided_key_select(inp, dim, output_shape):
+    reduction_size = inp.shape[dim]
+    inner_size = math.prod(inp.shape[dim + 1 :])
+    total_outputs = math.prod(output_shape)
+    values = torch.empty(output_shape, dtype=inp.dtype, device=inp.device)
+    indices = torch.empty(output_shape, dtype=torch.int64, device=inp.device)
+    block = triton.next_power_of_2(reduction_size)
+    block_out = 2
+    num_warps = 2 if block <= 1024 else 8
+    with torch_device_fn.device(inp.device):
+        median_fp32_strided_key_select_kernel[(triton.cdiv(total_outputs, block_out),)](
+            inp,
+            values.reshape(-1),
+            indices.reshape(-1),
+            total_outputs,
+            reduction_size,
+            inner_size,
+            BLOCK=block,
+            BLOCK_OUT=block_out,
             num_warps=num_warps,
         )
     return values, indices
@@ -670,6 +875,19 @@ def median_dim(inp, dim=0, keepdim=False):
             and work.dtype in _DIRECT_REDUCTION_DTYPES
         ):
             values, indices = _median_direct_dim(work.contiguous(), dim, output_shape)
+        elif (
+            dim != work.ndim - 1
+            and work.is_contiguous()
+            and _use_strided_select(work.dtype, work.shape[dim])
+        ):
+            if work.dtype in _F16_KEY_SELECT_DTYPES:
+                values, indices = _median_f16_strided_key_select(
+                    work, dim, output_shape
+                )
+            elif work.dtype == torch.float32:
+                values, indices = _median_fp32_strided_key_select(
+                    work, dim, output_shape
+                )
         elif dim == work.ndim - 1 and _use_f16_key_select(work.dtype, work.shape[dim]):
             values, indices = _median_f16_key_select(work.contiguous(), output_shape)
         elif dim == work.ndim - 1 and _use_lastdim_sort(work.dtype, work.shape[dim]):

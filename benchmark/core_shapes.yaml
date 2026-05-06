@@ -160,7 +160,10 @@ median_dim:
     - [144, 8192]
     - [768, 1536]
     - [32, 384, 128]
-  shape_desc: "input shape; benchmark alternates dim/keepdim"
+    - [[32, 384, 128], 1, false]
+    - [[640, 1536], 0, false]
+    - [[8, 64, 384, 64], 2, false]
+  shape_desc: "input shape or [input shape, dim, keepdim]"
 
 BlasBenchmark:
   shapes:
