@@ -119,6 +119,52 @@ def test_tril_wide_exact_row_dispatch(shape, diagonal, dtype):
 
 
 @pytest.mark.tril
+@pytest.mark.parametrize(
+    "shape, expected",
+    [
+        ((1024, 16, 16), True),
+        ((512, 32, 32), True),
+        ((128, 64, 64), False),
+        ((4, 16, 16), False),
+    ],
+)
+def test_tril_tiny_batched_tile_dispatch(shape, expected):
+    tril_mod = importlib.import_module("flag_gems.ops.tril")
+    batch = 1
+    for size in shape[:-2]:
+        batch *= size
+
+    assert tril_mod._use_tiny_batched_tile(shape[-2], shape[-1], batch) is expected
+
+
+@pytest.mark.tril
+@pytest.mark.parametrize(
+    "shape, diagonal, dtype",
+    [
+        ((1024, 16, 16), 0, torch.float32),
+        ((512, 32, 32), -1, torch.int32),
+        ((256, 16, 16), 1, torch.bool),
+    ],
+)
+def test_tril_tiny_batched_tile_correctness(shape, diagonal, dtype):
+    tril_mod = importlib.import_module("flag_gems.ops.tril")
+    batch = 1
+    for size in shape[:-2]:
+        batch *= size
+    assert tril_mod._use_tiny_batched_tile(shape[-2], shape[-1], batch)
+
+    inp = _make_tril_input(shape, dtype)
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.tril(ref_inp, diagonal)
+
+    with flag_gems.use_gems():
+        res_out = torch.tril(inp, diagonal)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.is_contiguous()
+
+
+@pytest.mark.tril
 @pytest.mark.tril_out
 @pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
 @pytest.mark.parametrize("dtype", TRIL_DTYPES)
@@ -205,6 +251,84 @@ def test_tril_out_noncontiguous_out(diagonal, dtype):
     assert out.data_ptr() == original_data_ptr
     assert out.stride() == original_stride
     assert res.data_ptr() == original_data_ptr
+
+
+@pytest.mark.tril
+@pytest.mark.tril_out
+@pytest.mark.parametrize("diagonal", [-2, 0, 3])
+@pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
+def test_tril_out_sliced_leading_batch_out(diagonal, dtype):
+    _skip_if_dtype_unsupported(dtype)
+    inp = _make_sequence((2, 5, 7), dtype)
+    out_base = torch.empty((4, 5, 7), dtype=dtype, device=flag_gems.device)
+    out = out_base[::2]
+    assert not out.is_contiguous()
+
+    ref_inp = utils.to_reference(inp)
+    ref_out_base = torch.empty((4, 5, 7), dtype=dtype, device=ref_inp.device)
+    ref_out = ref_out_base[::2]
+    torch.tril(ref_inp, diagonal, out=ref_out)
+
+    original_data_ptr = out.data_ptr()
+    original_stride = out.stride()
+    with flag_gems.use_gems():
+        res = torch.tril(inp, diagonal, out=out)
+
+    utils.gems_assert_equal(out, ref_out)
+    assert out.data_ptr() == original_data_ptr
+    assert out.stride() == original_stride
+    assert res.data_ptr() == original_data_ptr
+
+
+@pytest.mark.tril
+@pytest.mark.tril_out
+@pytest.mark.parametrize("diagonal", [-99, 99])
+@pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
+def test_tril_out_extreme_diagonal_noncontiguous_out(diagonal, dtype):
+    _skip_if_dtype_unsupported(dtype)
+    inp = _make_sequence((2, 5, 7), dtype)
+    out_base = torch.empty((2, 7, 5), dtype=dtype, device=flag_gems.device)
+    out = out_base.transpose(-2, -1)
+
+    ref_inp = utils.to_reference(inp)
+    ref_out_base = torch.empty((2, 7, 5), dtype=dtype, device=ref_inp.device)
+    ref_out = ref_out_base.transpose(-2, -1)
+    torch.tril(ref_inp, diagonal, out=ref_out)
+
+    original_data_ptr = out.data_ptr()
+    original_stride = out.stride()
+    with flag_gems.use_gems():
+        res = torch.tril(inp, diagonal, out=out)
+
+    utils.gems_assert_equal(out, ref_out)
+    assert out.data_ptr() == original_data_ptr
+    assert out.stride() == original_stride
+    assert res.data_ptr() == original_data_ptr
+
+
+@pytest.mark.tril
+@pytest.mark.tril_out
+def test_tril_out_strided_dispatch_guards():
+    tril_mod = importlib.import_module("flag_gems.ops.tril")
+    inp = torch.empty((2, 5, 7), dtype=torch.float32, device=flag_gems.device)
+
+    transposed = torch.empty((2, 7, 5), dtype=inp.dtype, device=inp.device).transpose(
+        -2, -1
+    )
+    sliced_batch = torch.empty((4, 5, 7), dtype=inp.dtype, device=inp.device)[::2]
+    expanded = torch.empty((1, 5, 7), dtype=inp.dtype, device=inp.device).expand(
+        2, 5, 7
+    )
+    overlapping = torch.as_strided(
+        torch.empty((96,), dtype=inp.dtype, device=inp.device),
+        inp.shape,
+        (35, 1, 1),
+    )
+
+    assert tril_mod._can_use_strided_out_kernel(inp, transposed)
+    assert tril_mod._can_use_strided_out_kernel(inp, sliced_batch)
+    assert not tril_mod._can_use_strided_out_kernel(inp, expanded)
+    assert not tril_mod._can_use_strided_out_kernel(inp, overlapping)
 
 
 @pytest.mark.tril

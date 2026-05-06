@@ -257,6 +257,72 @@ def _tril_inplace_zero_strided_tile_kernel(
     tl.store(ptr + idxs, 0.0, mask=mask & zero)
 
 
+@triton.jit
+def _tril_strided_out_tile_kernel(
+    in_ptr,
+    out_ptr,
+    diag,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    B0: tl.constexpr,
+    B1: tl.constexpr,
+    B2: tl.constexpr,
+    B3: tl.constexpr,
+    B4: tl.constexpr,
+    B5: tl.constexpr,
+    S0: tl.constexpr,
+    S1: tl.constexpr,
+    S2: tl.constexpr,
+    S3: tl.constexpr,
+    S4: tl.constexpr,
+    S5: tl.constexpr,
+    STRIDE_M: tl.constexpr,
+    STRIDE_N: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    pid_b = tl.program_id(2)
+
+    b = pid_b
+    i5 = b % B5
+    b = b // B5
+    i4 = b % B4
+    b = b // B4
+    i3 = b % B3
+    b = b // B3
+    i2 = b % B2
+    b = b // B2
+    i1 = b % B1
+    i0 = b // B1
+    out_batch_offset = i0 * S0 + i1 * S1 + i2 * S2 + i3 * S3 + i4 * S4 + i5 * S5
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
+    mask = (offs_m < M) & (offs_n < N)
+    in_idxs = pid_b * (M * N) + offs_m * N + offs_n
+    out_idxs = out_batch_offset + offs_m * STRIDE_M + offs_n * STRIDE_N
+
+    row_start = pid_m * BLOCK_M
+    row_end = row_start + BLOCK_M - 1
+    col_start = pid_n * BLOCK_N
+    col_end = col_start + BLOCK_N - 1
+
+    if col_start > row_end + diag:
+        tl.store(out_ptr + out_idxs, 0.0, mask=mask)
+        return
+
+    if col_end <= row_start + diag:
+        x = tl.load(in_ptr + in_idxs, mask=mask, other=0.0)
+        tl.store(out_ptr + out_idxs, x, mask=mask)
+        return
+
+    keep = offs_n <= (offs_m + diag)
+    x = tl.load(in_ptr + in_idxs, mask=mask & keep, other=0.0)
+    tl.store(out_ptr + out_idxs, x, mask=mask)
+
+
 def _check_input(input: torch.Tensor):
     if input.dim() < 2:
         raise RuntimeError("tril: input tensor must have at least 2 dimensions")
@@ -280,10 +346,44 @@ def _is_power_of_2(value: int):
     return value > 0 and (value & (value - 1)) == 0
 
 
+def _has_internal_overlap_from_strides(tensor: torch.Tensor):
+    span = 1
+    strides_and_sizes = sorted(
+        (stride, size)
+        for size, stride in zip(tensor.shape, tensor.stride())
+        if size > 1
+    )
+    for stride, size in strides_and_sizes:
+        if stride < span:
+            return True
+        span += stride * (size - 1)
+    return False
+
+
+def _tensors_overlap(left: torch.Tensor, right: torch.Tensor):
+    try:
+        return torch._C._overlaps(left, right)
+    except AttributeError:
+        return True
+
+
+def _can_use_strided_out_kernel(input: torch.Tensor, out: torch.Tensor):
+    if out.is_contiguous() or out.numel() == 0:
+        return False
+    if out.dim() - 2 > 6:
+        return False
+    if _has_internal_overlap_from_strides(out):
+        return False
+    if input.is_contiguous() and _tensors_overlap(input, out):
+        return False
+    return True
+
+
 _WIDE_EXACT_ROW_MIN_N = 2048
 _WIDE_EXACT_ROW_MAX_N = 8192
 _WIDE_EXACT_ROW_MIN_ROWS = 256
 _WIDE_EXACT_ROW_ALWAYS_ROW_M = 512
+_TINY_BATCHED_TILE_MIN_BATCH = 128
 
 
 def _use_wide_exact_row(M: int, N: int, batch: int):
@@ -297,6 +397,10 @@ def _use_wide_exact_row(M: int, N: int, batch: int):
     if M >= _WIDE_EXACT_ROW_ALWAYS_ROW_M:
         return True
     return N <= 4096 and rows >= _WIDE_EXACT_ROW_MIN_ROWS
+
+
+def _use_tiny_batched_tile(M: int, N: int, batch: int):
+    return batch >= _TINY_BATCHED_TILE_MIN_BATCH and M <= 32 and N <= 32
 
 
 def _wide_exact_row_warps(N: int):
@@ -546,6 +650,60 @@ def _launch_tril_inplace_strided(
     return input
 
 
+def _launch_tril_strided_out(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    block_m: int = 32,
+    block_n: int = 64,
+    num_warps: int = 4,
+    num_stages: int = 2,
+):
+    M, N = input.shape[-2:]
+    if input.numel() == 0:
+        return out
+
+    input_to_use = input if input.is_contiguous() else input.contiguous()
+    batch_shape = list(out.shape[:-2])
+    batch_strides = list(out.stride()[:-2])
+    batch = 1
+    for size in batch_shape:
+        batch *= size
+
+    batch_shape.extend([1] * (6 - len(batch_shape)))
+    batch_strides.extend([0] * (6 - len(batch_strides)))
+    stride_m, stride_n = out.stride()[-2:]
+
+    grid = (triton.cdiv(M, block_m), triton.cdiv(N, block_n), batch)
+    with torch_device_fn.device(input.device):
+        _tril_strided_out_tile_kernel[grid](
+            input_to_use,
+            out,
+            int(diagonal),
+            M,
+            N,
+            B0=batch_shape[0],
+            B1=batch_shape[1],
+            B2=batch_shape[2],
+            B3=batch_shape[3],
+            B4=batch_shape[4],
+            B5=batch_shape[5],
+            S0=batch_strides[0],
+            S1=batch_strides[1],
+            S2=batch_strides[2],
+            S3=batch_strides[3],
+            S4=batch_strides[4],
+            S5=batch_strides[5],
+            STRIDE_M=stride_m,
+            STRIDE_N=stride_n,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            num_warps=num_warps,
+            num_stages=num_stages,
+        )
+    return out
+
+
 def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
     M, N = input.shape[-2:]
     if input.numel() == 0:
@@ -581,6 +739,15 @@ def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
             block_m=16,
             block_n=128,
             num_warps=4,
+        )
+    if _use_tiny_batched_tile(M, N, batch):
+        return _launch_tile(
+            input_to_use,
+            out,
+            diagonal,
+            block_m=16,
+            block_n=64,
+            num_warps=2,
         )
     if M <= 64 and N <= 64:
         return _launch_rows(
@@ -702,6 +869,35 @@ def tril_out(input: torch.Tensor, diagonal: int = 0, *, out: torch.Tensor = None
     if diagonal >= N - 1:
         out.copy_(input)
         return out
+
+    if _can_use_strided_out_kernel(input, out):
+        batch = input.numel() // (M * N)
+        if M <= 64 and N <= 64:
+            return _launch_tril_strided_out(
+                input,
+                out,
+                int(diagonal),
+                block_m=16,
+                block_n=64,
+                num_warps=2,
+            )
+        if batch > 1 and M >= 256 and N >= 256:
+            return _launch_tril_strided_out(
+                input,
+                out,
+                int(diagonal),
+                block_m=16,
+                block_n=64,
+                num_warps=4,
+            )
+        return _launch_tril_strided_out(
+            input,
+            out,
+            int(diagonal),
+            block_m=32,
+            block_n=64,
+            num_warps=4,
+        )
 
     tmp = _empty_contiguous_like(input)
     _launch_tril(input, tmp, int(diagonal))
