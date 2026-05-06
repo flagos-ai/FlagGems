@@ -25,9 +25,7 @@ def _build_range_lut(
     return starts, ends
 
 
-def _is_integer_scale(
-    output_size: int, input_size: int, scale: Optional[float]
-) -> int:
+def _is_integer_scale(output_size: int, input_size: int, scale: Optional[float]) -> int:
     if scale is not None:
         s = int(scale)
         return s if float(s) == scale else 0
@@ -86,9 +84,7 @@ def upsample_nearest2d_backward_kernel(
                         for dw in range(SCALE_W_INT):
                             ow = ow_base + dw
                             active = mask & (ow < OW)
-                            g = tl.load(
-                                ptr_go + row_off + ow, mask=active, other=0.0
-                            )
+                            g = tl.load(ptr_go + row_off + ow, mask=active, other=0.0)
                             grad += g.to(tl.float32)
                 else:
                     oh_s = tl.load(ptr_h_start + ih, mask=mask, other=0)
