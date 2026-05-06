@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.sort import radix_sort
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -160,17 +161,18 @@ def median_kernel_int(
 def _median_fallback(inp, dim, keepdim):
     """Fallback for large N where tl.sort exceeds shared memory.
 
-    Uses torch.ops.aten.sort to bypass flag_gems override of torch.sort,
-    avoiding the slow Triton sort for large tensors.
+    Uses Triton radix_sort (from flag_gems.ops.sort) to sort rows,
+    then extracts the median value and index.
     """
     if dim is None:
         flat = inp.contiguous().view(-1)
         n = flat.shape[0]
         if n == 0:
             return torch.tensor(float("nan"), dtype=inp.dtype, device=inp.device)
-        sorted_vals, sorted_idx = torch.ops.aten.sort(flat)
+        num_bits_per_pass = 1 if inp.dtype == torch.bool else 4
+        sorted_vals, sorted_idx = radix_sort(flat.unsqueeze(0), num_bits_per_pass)
         med_pos = n // 2 - 1 if n % 2 == 0 else (n - 1) // 2
-        return sorted_vals[med_pos].to(inp.dtype)
+        return sorted_vals[0, med_pos].to(inp.dtype)
 
     dim = dim % inp.ndim
     n = inp.shape[dim]
@@ -185,16 +187,39 @@ def _median_fallback(inp, dim, keepdim):
             torch.zeros(out_shape, dtype=torch.int64, device=inp.device),
         )
 
-    sorted_vals, sorted_idx = torch.ops.aten.sort(inp, dim=dim)
+    # Move target dim to last for radix_sort
+    inp = inp.contiguous()
+    original_dim = dim
+    if dim != inp.ndim - 1:
+        inp = torch.movedim(inp, dim, -1).contiguous()
+
+    M = inp.numel() // n
+    inp_2d = inp.reshape(M, n)
+
+    num_bits_per_pass = 1 if inp.dtype == torch.bool else 4
+    sorted_vals, sorted_idx = radix_sort(inp_2d, num_bits_per_pass)
+
     is_even = n % 2 == 0
     med_pos = n // 2 - 1 if is_even else (n - 1) // 2
 
-    out_val = sorted_vals.select(dim, med_pos)
-    out_idx = sorted_idx.select(dim, med_pos)
+    out_val = sorted_vals[:, med_pos]
+    out_idx = sorted_idx[:, med_pos]
+
+    out_shape = list(inp.shape[:-1])
+    out_val = out_val.reshape(out_shape).to(inp.dtype)
+    out_idx = out_idx.reshape(out_shape)
 
     if keepdim:
-        out_val = out_val.unsqueeze(dim)
-        out_idx = out_idx.unsqueeze(dim)
+        out_val = out_val.unsqueeze(-1)
+        out_idx = out_idx.unsqueeze(-1)
+
+    if original_dim != inp.ndim - 1:
+        if keepdim:
+            out_val = out_val.movedim(-1, original_dim).contiguous()
+            out_idx = out_idx.movedim(-1, original_dim).contiguous()
+        else:
+            out_val = out_val.movedim(-1, original_dim).contiguous()
+            out_idx = out_idx.movedim(-1, original_dim).contiguous()
 
     return out_val, out_idx
 
