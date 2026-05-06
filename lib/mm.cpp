@@ -209,8 +209,9 @@ void general_mm_tensor(
   bool EVEN_K = (K % BLOCK_K) == 0;
 
   const TritonJITFunction &f =
-      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "mm_gcu_wrapper.py"),
-                                      "mm_kernel_gcu");
+      TritonJITFunction::get_instance(
+          std::string(utils::get_flag_gems_src_path() / "runtime" / "backend" / "_enflame" / "gcu400" / "ops" / "mm.py"),
+          "mm_kernel");
 
   unsigned int grid_x = cdiv(M, BLOCK_M) * cdiv(N, BLOCK_N);
   f(/* stream = */ raw_stream,
@@ -231,6 +232,7 @@ void general_mm_tensor(
     b.stride(1),
     c.stride(0),
     c.stride(1),
+    /* dot_out_dtype = */ "tl.float32",
     /* BLOCK_M = */ BLOCK_M,
     /* BLOCK_N = */ BLOCK_N,
     /* BLOCK_K = */ BLOCK_K,
