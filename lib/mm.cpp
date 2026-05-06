@@ -240,6 +240,7 @@ void general_mm_tensor(
     /* SPLIT_K = */ SPLIT_K,
     /* EVEN_K = */ EVEN_K);
 #else
+  // CUDA/other path: use ops/mm.py with mm_kernel_general
   const int BLOCK_M = 64;
   const int BLOCK_N = 128;
   const int BLOCK_K = 64;
