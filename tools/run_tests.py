@@ -5,12 +5,13 @@ import datetime
 import json
 import os
 import platform
-import re
+import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
-from decimal import Decimal, getcontext
+from decimal import getcontext
 from importlib import metadata
 from multiprocessing import Process
 from pathlib import Path
@@ -50,12 +51,6 @@ DTYPE_MAP = {
     "torch.complex64": "cf64",
 }
 
-# Regex for numeric validator
-NUM_RE = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$")
-
-# Regex for ANSI
-ANSI_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
-
 
 def pinfo(str, **args):
     print(f"\033[32m[INFO]\033[0m {str}", **args)
@@ -71,14 +66,6 @@ def pwarn(str, **args):
 
 def ensure_dir(p):
     p.mkdir(parents=True, exist_ok=True)
-
-
-def to_decimal(s):
-    stripped = s.strip()
-    is_number = bool(NUM_RE.match(stripped))
-    if not is_number:
-        raise ValueError(f"Not numeric: {s}")
-    return Decimal(stripped)
 
 
 def get_ops_from_inventory():
@@ -100,11 +87,12 @@ def init():
     ENV_INFO["os_release"] = distro.version()
     ENV_INFO["python"] = platform.python_version()
 
+    ENV_INFO.setdefault("torch", {})
     try:
         import torch
 
         version = torch.__version__
-        ENV_INFO["torch"] = {"version": version}
+        ENV_INFO["torch"]["version"] = version
         pinfo(f"PyTorch detected ... {version}")
 
     except Exception as e:
@@ -202,27 +190,17 @@ def init():
         sys.exit(-1)
 
 
-def run_cmd_capture(cmd, cwd=None, env=None):
-    p = subprocess.Popen(
-        cmd,
-        cwd=str(cwd),
-        env=env,
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    # TODO(Qiming): chk if pytest-timeout is more suitable for this purpose
+def run_cmd(cmd, cwd=None, env=None, timeout=600):
     try:
-        out, err = p.communicate(timeout=300)
+        p = subprocess.Popen(shlex.split(cmd), cwd=str(cwd), env=env)
+        p.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
-        p.kill()
-        out, err = p.communicate()
-        return out or "", err or "", TIMEOUT
-    return out or "", err or "", p.returncode
+        os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+        return TIMEOUT
+    return p.returncode
 
 
-def parse_accuracy_data(op, result_file):
+def parse_accuracy_data(result_file):
     raw_data = {}
     with result_file.open("r") as f:
         raw_data = json.load(f)
@@ -283,6 +261,8 @@ def parse_accuracy_data(op, result_file):
 
 def get_env(gpu_ids):
     env = os.environ.copy()
+
+    # Ensure python output are unbuffered
     env["PYTHONUNBUFFERED"] = "1"
     vendor = ENV_INFO.get("flag_gems", {}).get("vendor", "")
 
@@ -313,9 +293,8 @@ def get_env(gpu_ids):
         env["CUDA_VISIBLE_DEVICES"] = gpu_ids
         return env
 
-    # TODO(Qiming): check T-Head vendor name
     if vendor == "thead":
-        env["PPU_VISIBLE_DEVICES"] = gpu_ids
+        env["CUDA_VISIBLE_DEVICES"] = gpu_ids
         return env
 
     env["CUDA_VISIBLE_DEVICES"] = gpu_ids
@@ -345,7 +324,7 @@ def run_accuracy(gpu_id, start, index, count):
         result_file.unlink()
 
     start = time.time()
-    stdout, stderr, code = run_cmd_capture(cmd, cwd=accuracy_dir, env=env)
+    code = run_cmd(cmd, cwd=accuracy_dir, env=env)
     end = time.time()
 
     if code == TIMEOUT:  # Timeout
@@ -365,7 +344,7 @@ def run_accuracy(gpu_id, start, index, count):
     shutil.move(result_file, str(dest))
     result_file = dest
 
-    result = parse_accuracy_data(op, result_file)
+    result = parse_accuracy_data(result_file)
     result["exit_code"] = code
     result["duration"] = end - start
     result["data_file"] = str(result_file.relative_to(OUTPUT_DIR))
@@ -453,7 +432,7 @@ def run_benchmark(gpu_id, start, index, count):
 
     start = time.time()
     cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
-    stdout, stderr, code = run_cmd_capture(cmd, cwd=benchmark_dir, env=env)
+    code = run_cmd(cmd, cwd=benchmark_dir, env=env)
     end = time.time()
 
     # Not found
@@ -577,7 +556,7 @@ def main():
     global OP_LIST
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--op-list", required=False)
+    parser.add_argument("--op-list-file", required=False)
     parser.add_argument("--ops", required=False)
     parser.add_argument("--gpus", default="0")
     parser.add_argument("--output-dir", default=None)
@@ -587,7 +566,7 @@ def main():
     # Probe environment setttings
     init()
 
-    ops = get_ops_to_test(args.op_list, args.ops, args.stages)
+    ops = get_ops_to_test(args.op_list_file, args.ops, args.stages)
     op_count = len(ops)
     if op_count == 0:
         pwarn("No operators to test. Please specify at lease one operator.")
@@ -609,8 +588,6 @@ def main():
     if gpu_count == 1:
         worker_proc(gpu_ids[0], 0, op_count)
     else:
-        # with ThreadPoolExecutor(max_workers=gpu_count) as exe:
-        #    futures = []
         processes = []
         m, n = divmod(op_count, gpu_count)
         start = 0
@@ -619,7 +596,6 @@ def main():
                 count = m + 1
             else:
                 count = m
-            # futures.append(exe.submit(worker_proc, gpu, start, count))
             p = Process(target=worker_proc, args=(gpu, start, count))
             p.start()
             processes.append(p)
