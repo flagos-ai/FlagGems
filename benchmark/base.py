@@ -748,6 +748,38 @@ class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
             yield inp, {"out": out}
 
 
+class MarginRankingLossBenchmark(GenericBenchmark):
+    """
+    A benchmark class specifically for margin_ranking_loss to avoid OOM issues.
+
+    margin_ranking_loss requires 3 input tensors (x1, x2, target) of the same shape,
+    which triples memory usage compared to unary ops. This class limits both the
+    base shapes and the additional shapes to avoid GPU memory exhaustion.
+    """
+
+    # Maximum number of elements per tensor to avoid OOM.
+    # With 3 inputs + 1 output + backward buffers, effective memory is ~8x per shape.
+    # 2**24 elements * 4 bytes (float32) * 8 tensors ~ 512MB per shape, safe for most GPUs.
+    MAX_ELEMENTS = 2**24  # ~16M elements
+
+    def set_more_shapes(self):
+        # Use smaller shapes to avoid OOM since margin_ranking_loss
+        # allocates 3 input tensors + 1 output tensor per shape.
+        more_shapes_1d = [
+            (2**20,),
+        ]
+        more_shapes_2d = [(1024, 2**i) for i in (0, 8, 12)]
+        more_shapes_3d = [(64, 2**i, 64) for i in (0, 4, 8)]
+        return more_shapes_1d + more_shapes_2d + more_shapes_3d
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        # Filter out shapes that would cause OOM with multiple tensors
+        self.shapes = [
+            shape for shape in self.shapes if math.prod(shape) <= self.MAX_ELEMENTS
+        ]
+
+
 def generate_tensor_input(shape, dtype, device):
     if dtype in consts.FLOAT_DTYPES:
         return torch.randn(shape, dtype=dtype, device=device)
