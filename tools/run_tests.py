@@ -230,6 +230,9 @@ def parse_accuracy_data(op, result_file):
     passed = []
     skipped = {}
     failed = {}
+    num_skipped = 0
+    num_failed = 0
+    num_passed = 0
     for test_case, item in raw_data.items():
         case_str = test_case[: test_case.find("[")]
         result = item.get("result", "")
@@ -240,21 +243,23 @@ def parse_accuracy_data(op, result_file):
 
         if result == "passed":
             passed.append(param_str)
+            num_passed += 1
         elif result == "skipped":
             reason = item.get("reason", "Unknown")
             skipped.setdefault(reason, set())
             skipped[reason].add(param_str)
+            num_skipped += 1
         else:
             reason = item.get("reason", "Unknown")
             failed.setdefault(reason, set())
             failed[reason].add(param_str)
+            num_failed += 1
 
-    # TODO: Add errors
     result = {
-        "total": len(skipped) + len(failed) + len(passed),
-        "skipped": len(skipped),
-        "failed": len(failed),
-        "passed": len(passed),
+        "total": num_passed + num_skipped + num_failed,
+        "skipped": num_skipped,
+        "failed": num_failed,
+        "passed": num_passed,
         "details": {},
     }
     if len(skipped) == 0 and len(failed) == 0:
