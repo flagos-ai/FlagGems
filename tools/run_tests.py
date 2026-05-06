@@ -33,6 +33,7 @@ HAS_FLAGTREE = False
 ROOT = Path(__file__).parent.parent
 OUPUT_DIR = None
 OP_LIST = []
+KERNELGEN_OPS = set()
 TIMEOUT = -100
 
 NO_CPU_LIST = [
@@ -79,6 +80,16 @@ def get_ops_from_inventory():
     except Exception as e:
         perror(f"Failed to load operator inventory: {e}")
 
+    return catalog
+
+
+def load_kernelgen_ops():
+    global KERNELGEN_OPS
+    catalog = get_ops_from_inventory()
+    for op_entry in catalog:
+        labels = op_entry.get("labels", [])
+        if "KernelGen" in labels:
+            KERNELGEN_OPS.add(op_entry.get("id", ""))
     return catalog
 
 
@@ -165,6 +176,7 @@ def init():
         repo = git.Repo(search_parent_directories=True)
         sha = repo.head.object.hexsha
         pinfo(f"flag_gems detected ... {version}+git{sha[:8]}")
+        ENV_INFO["flag_gems"]["commit_id"] = sha 
     except RuntimeError as e:
         perror(f"{e}")
         sys.exit(-1)
@@ -194,19 +206,35 @@ def init():
         sys.exit(-1)
 
 
-def run_cmd(cmd, cwd=None, env=None, timeout=600):
+def run_cmd(cmd, cwd=None, env=None, timeout=600, stdout_file=None, stderr_file=None):
+    stdout_target = subprocess.DEVNULL
+    stderr_target = subprocess.DEVNULL
+    stdout_fh = None
+    stderr_fh = None
     try:
+        if stdout_file:
+            stdout_fh = open(stdout_file, "w")
+            stdout_target = stdout_fh
+        if stderr_file:
+            stderr_fh = open(stderr_file, "w")
+            stderr_target = stderr_fh
+
         p = subprocess.Popen(
             shlex.split(cmd),
             cwd=str(cwd),
             env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=stdout_target,
+            stderr=stderr_target,
         )
         p.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         os.killpg(os.getpgid(p.pid), signal.SIGTERM)
         return TIMEOUT
+    finally:
+        if stdout_fh:
+            stdout_fh.close()
+        if stderr_fh:
+            stderr_fh.close()
     return p.returncode
 
 
@@ -333,8 +361,16 @@ def run_accuracy(gpu_id, start, index, count):
     if result_file.exists():
         result_file.unlink()
 
+    op_dir = OUTPUT_DIR.joinpath(op)
+    ensure_dir(op_dir)
+    stdout_log = op_dir / f"accuracy_{op}_stdout.log"
+    stderr_log = op_dir / f"accuracy_{op}_stderr.log"
+
     start = time.time()
-    code = run_cmd(cmd, cwd=accuracy_dir, env=env)
+    code = run_cmd(
+        cmd, cwd=accuracy_dir, env=env,
+        stdout_file=str(stdout_log), stderr_file=str(stderr_log),
+    )
     end = time.time()
 
     if code == TIMEOUT:  # Timeout
@@ -349,7 +385,6 @@ def run_accuracy(gpu_id, start, index, count):
             "duration": end - start,
         }
 
-    op_dir = OUTPUT_DIR.joinpath(op)
     dest = op_dir / "accuracy_result.json"
     shutil.move(result_file, str(dest))
     result_file = dest
@@ -440,9 +475,17 @@ def run_benchmark(gpu_id, start, index, count):
     if result_file.exists():
         result_file.unlink()
 
+    op_dir = OUTPUT_DIR.joinpath(op)
+    ensure_dir(op_dir)
+    stdout_log = op_dir / f"performance_{op}_stdout.log"
+    stderr_log = op_dir / f"performance_{op}_stderr.log"
+
     start = time.time()
     cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
-    code = run_cmd(cmd, cwd=benchmark_dir, env=env)
+    code = run_cmd(
+        cmd, cwd=benchmark_dir, env=env,
+        stdout_file=str(stdout_log), stderr_file=str(stderr_log),
+    )
     end = time.time()
 
     # Not found
@@ -454,7 +497,6 @@ def run_benchmark(gpu_id, start, index, count):
         }
 
     # Move record log to output directory
-    op_dir = OUTPUT_DIR.joinpath(op)
     dest = op_dir / "performance_result.json"
     shutil.move(result_file, str(dest))
     result_file = dest
@@ -471,6 +513,10 @@ def run_benchmark(gpu_id, start, index, count):
 
 
 def worker_proc(gpu_id, start, count):
+    # Ensure KERNELGEN_OPS is populated in subprocess (needed for spawn mode)
+    if not KERNELGEN_OPS:
+        load_kernelgen_ops()
+
     worker_result = {}
     for i in range(count):
         op = OP_LIST[start + i].strip()
@@ -488,6 +534,7 @@ def worker_proc(gpu_id, start, count):
         ]
         result = {
             "customized": op in customized_ops,
+            "kernelgen": op in KERNELGEN_OPS,
             "accuracy": acc,
             "performance": perf,
         }
@@ -575,6 +622,9 @@ def main():
 
     # Probe environment setttings
     init()
+
+    # Load KernelGen ops from inventory
+    load_kernelgen_ops()
 
     ops = get_ops_to_test(args.op_list_file, args.ops, args.stages)
     op_count = len(ops)
