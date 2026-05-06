@@ -6,21 +6,21 @@ from datetime import datetime
 import pytest
 
 # TODO(Qiming): Try remove this line
-import torch  # noqa: F401
+# import torch  # noqa: F401
 import yaml
 
 import flag_gems
 
 BUILTIN_MARKS = {
+    "filterwarnings",
     "parametrize",
     "skip",
     "skipif",
-    "xfail",
-    "usefixtures",
-    "filterwarnings",
     "timeout",
     "tryfirst",
     "trylast",
+    "usefixtures",
+    "xfail",
 }
 REGISTERED_MARKS = []
 TEST_RESULTS = {}
