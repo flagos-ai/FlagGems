@@ -200,10 +200,8 @@ def _median_fallback(inp, dim, keepdim):
 
 
 # Maximum N for which tl.sort fits in shared memory
-# PADDED_N=4096 uses 16KB, PADDED_N=2048 uses 8KB
-# On Iluvatar BI-V150: 128KB shared memory limit
-# On NVIDIA 4090: 48KB shared memory limit
-_MAX_SORT_N = 2048
+# PADDED_N=8192 uses 32KB (fits in 48KB NVIDIA, 128KB Iluvatar)
+_MAX_SORT_N = 8192
 
 
 def median(inp, dim=None, keepdim=False):
