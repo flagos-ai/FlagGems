@@ -12,6 +12,7 @@ device = flag_gems.device
 
 M = [1, 40, 164, 512, 3454, 12027, 38594]
 N = [128, 896, 2048, 8192]
+
 # Test parameters
 SHAPES = [(m, n) for m in M for n in N]
 BLOCK_SIZES = [64, 128]
@@ -76,7 +77,7 @@ def torch_act_quant(
     return y, s
 
 
-@pytest.mark.act_quant
+@pytest.mark.act_quant_triton
 # https://github.com/triton-lang/triton/blob/v3.6.0/third_party/nvidia/backend/compiler.py#L188
 @pytest.mark.skipif(
     not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
@@ -84,13 +85,8 @@ def torch_act_quant(
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("block_size", BLOCK_SIZES)
 @pytest.mark.parametrize("scale_fmt", SCALE_FMTS)
-@pytest.mark.parametrize(
-    "dtype",
-    [
-        torch.bfloat16,
-    ],
-)
-def test_act_quant_accuracy(
+@pytest.mark.parametrize("dtype", [torch.bfloat16])
+def test_act_quant_triton(
     shape: Tuple[int, int], block_size: int, scale_fmt: Any, dtype: torch.dtype
 ):
     torch.manual_seed(0)

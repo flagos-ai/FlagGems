@@ -35,7 +35,7 @@ def test_gcd(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.gcd
+@pytest.mark.gcd_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES)
 def test_gcd_out(shape, dtype):
