@@ -10,9 +10,13 @@ class UpsampleNearest2dBackwardBenchmark(base.Benchmark):
         self._cfgs = [
             (4, 16, 64, 64, 128, 128, "contiguous", None, None, "x2 nchw"),
             (1, 3, 127, 127, 255, 255, "contiguous", None, None, "non-integer"),
+            (4, 16, 64, 64, 256, 256, "contiguous", None, None, "x4 nchw"),
+            (4, 32, 256, 256, 128, 128, "contiguous", None, None, "downsample x2"),
             (4, 32, 128, 128, 64, 64, "contiguous", None, None, "downsample"),
+            (1, 8, 64, 64, 128, 192, "contiguous", None, None, "asymmetric"),
             (4, 16, 64, 64, 128, 128, "channels_last", None, None, "x2 nhwc"),
             (1, 64, 64, 64, 128, 128, "channels_last", None, None, "x2 nhwc C64"),
+            (1, 128, 64, 64, 135, 147, "channels_last", 2.1, 2.3, "generic nhwc C128"),
             (1, 3, 64, 64, 135, 147, "contiguous", 2.1, 2.3, "explicit scales"),
         ]
 

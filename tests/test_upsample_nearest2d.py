@@ -65,6 +65,24 @@ def test_upsample_nearest2d_explicit_scales_x2_output(dtype):
 
 
 @pytest.mark.upsample_nearest2d
+def test_upsample_nearest2d_preserves_legacy_nearest_not_nearest_exact():
+    input = torch.arange(1 * 2 * 3 * 4, dtype=torch.float32, device=flag_gems.device)
+    input = input.reshape(1, 2, 3, 4)
+    output_size = (5, 7)
+
+    nearest_out = torch._C._nn.upsample_nearest2d(input, output_size=output_size)
+    nearest_exact_out = torch.ops.aten._upsample_nearest_exact2d(
+        input, output_size, None, None
+    )
+    assert not torch.equal(nearest_out, nearest_exact_out)
+
+    with flag_gems.use_gems():
+        res_out = torch._C._nn.upsample_nearest2d(input, output_size=output_size)
+
+    utils.gems_assert_close(res_out, nearest_out, torch.float32)
+
+
+@pytest.mark.upsample_nearest2d
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_upsample_nearest2d_identity_fresh_copy_and_layout(dtype):
     input = torch.randn((2, 3, 8, 9), dtype=dtype, device=flag_gems.device)
@@ -101,6 +119,8 @@ def test_upsample_nearest2d_c1_ambiguous_channels_last_uses_contiguous(dtype):
         ((2, 4, 5, 7), (11, 9), None, None),
         ((2, 4, 9, 11), (4, 5), None, None),
         ((2, 4, 5, 7), (10, 14), 1.7, 2.3),
+        ((1, 17, 7, 5), (13, 11), None, None),
+        ((1, 64, 5, 6), (11, 14), 2.1, 2.3),
     ],
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

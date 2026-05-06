@@ -595,6 +595,10 @@ def upsample_nearest2d_backward(
                     grad_output.dtype, span_h, span_w
                 )
                 block_c = _nhwc_channel_block(C)
+                if C >= 64 and span_h * span_w > 4:
+                    block_hw, block_c, num_warps = _nhwc_dense_launch_config(
+                        grad_output.dtype, C
+                    )
                 grid = (triton.cdiv(N * IH * IW, block_hw), triton.cdiv(C, block_c))
                 _range_nhwc_kernel[grid](
                     grad_output,

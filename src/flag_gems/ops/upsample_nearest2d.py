@@ -254,6 +254,74 @@ def nearest2d_2x_nhwc_source_kernel(
 
 
 @triton.jit
+def nearest2d_nhwc_channel_block_kernel(
+    out_ptr,
+    in_ptr,
+    N: tl.constexpr,
+    C: tl.constexpr,
+    OH: tl.constexpr,
+    OW: tl.constexpr,
+    IH: tl.constexpr,
+    IW: tl.constexpr,
+    reciprocal_scale_h,
+    reciprocal_scale_w,
+    input_stride_n,
+    input_stride_h,
+    input_stride_w,
+    output_stride_n,
+    output_stride_h,
+    output_stride_w,
+    BLOCK_HW: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+    SAME_H: tl.constexpr,
+    SAME_W: tl.constexpr,
+    USE_INT32_IDX: tl.constexpr,
+):
+    hw_offsets = tl.program_id(axis=0) * BLOCK_HW + tl.arange(0, BLOCK_HW)
+    if not USE_INT32_IDX:
+        hw_offsets = hw_offsets.to(tl.int64)
+    c_offsets = tl.program_id(axis=1) * BLOCK_C + tl.arange(0, BLOCK_C)
+
+    hw_total: tl.constexpr = N * OH * OW
+    hw_mask = hw_offsets < hw_total
+    c_mask = c_offsets < C
+    mask = hw_mask[:, None] & c_mask[None, :]
+
+    out_w = hw_offsets % OW
+    out_h = (hw_offsets // OW) % OH
+    batch = hw_offsets // (OH * OW)
+
+    if SAME_H:
+        source_h = out_h
+    else:
+        source_h = tl.minimum(
+            (out_h.to(tl.float32) * reciprocal_scale_h).to(tl.int32), IH - 1
+        )
+    if SAME_W:
+        source_w = out_w
+    else:
+        source_w = tl.minimum(
+            (out_w.to(tl.float32) * reciprocal_scale_w).to(tl.int32), IW - 1
+        )
+
+    channel = c_offsets[None, :]
+    input_offset = (
+        batch[:, None].to(tl.int64) * input_stride_n
+        + source_h[:, None].to(tl.int64) * input_stride_h
+        + source_w[:, None].to(tl.int64) * input_stride_w
+        + channel
+    )
+    output_offset = (
+        batch[:, None].to(tl.int64) * output_stride_n
+        + out_h[:, None].to(tl.int64) * output_stride_h
+        + out_w[:, None].to(tl.int64) * output_stride_w
+        + channel
+    )
+    data = tl.load(in_ptr + input_offset, mask=mask)
+    tl.store(out_ptr + output_offset, data, mask=mask)
+
+
+@triton.jit
 def upsample_nearest2d_spatial_strided_kernel(
     ptr_o,
     ptr_i,
@@ -441,6 +509,18 @@ def _nhwc_2x_source_config(dtype: torch.dtype) -> tuple[int, int]:
     return 512, 4
 
 
+def _nhwc_channel_block_config(
+    dtype: torch.dtype, channel_count: int
+) -> Optional[tuple[int, int, int]]:
+    if channel_count < 16:
+        return None
+    if dtype is torch.float32:
+        return 32, 32, 4
+    if channel_count >= 64:
+        return 32, 64, 4
+    return 32, 32, 4
+
+
 def _nchw_2x_output_config(
     dtype: torch.dtype, channel_count: int, input_total: int
 ) -> Optional[tuple[int, int]]:
@@ -540,6 +620,45 @@ def upsample_nearest2d(
                 output.stride(3),
                 USE_INT32_IDX=use_int32_idx,
                 BLOCK_SIZE=block_size,
+                num_warps=num_warps,
+            )
+        return output
+
+    nhwc_channel_block_config = (
+        _nhwc_channel_block_config(input.dtype, C) if channels_last else None
+    )
+    if nhwc_channel_block_config is not None:
+        block_hw, block_c, num_warps = nhwc_channel_block_config
+
+        def grid(meta):
+            return (
+                triton.cdiv(N * OH * OW, meta["BLOCK_HW"]),
+                triton.cdiv(C, meta["BLOCK_C"]),
+            )
+
+        with torch_device_fn.device(input.device):
+            nearest2d_nhwc_channel_block_kernel[grid](
+                output,
+                input,
+                N,
+                C,
+                OH,
+                OW,
+                IH,
+                IW,
+                reciprocal_scale_h,
+                reciprocal_scale_w,
+                input.stride(0),
+                input.stride(2),
+                input.stride(3),
+                output.stride(0),
+                output.stride(2),
+                output.stride(3),
+                SAME_H=same_h,
+                SAME_W=same_w,
+                USE_INT32_IDX=use_int32_idx,
+                BLOCK_HW=block_hw,
+                BLOCK_C=block_c,
                 num_warps=num_warps,
             )
         return output

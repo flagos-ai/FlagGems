@@ -38,9 +38,12 @@ def _make_grad(shape, dtype, layout):
         ((2, 3, 8, 9), (16, 18), "contiguous", (None, None)),
         ((1, 4, 7, 9), (13, 17), "contiguous", (None, None)),
         ((2, 5, 16, 18), (5, 7), "contiguous", (None, None)),
+        ((1, 3, 4, 5), (16, 20), "contiguous", (None, None)),
+        ((1, 8, 5, 7), (10, 21), "contiguous", (None, None)),
         ((1, 7, 6, 8), (12, 16), "transpose", (None, None)),
         ((2, 16, 8, 8), (16, 16), "channels_last", (None, None)),
         ((1, 64, 5, 6), (10, 12), "channels_last", (None, None)),
+        ((1, 17, 5, 6), (11, 14), "channels_last", (2.1, 2.3)),
         ((1, 3, 5, 6), (11, 14), "contiguous", (2.1, 2.3)),
     ],
 )
