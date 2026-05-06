@@ -17,6 +17,7 @@ from multiprocessing import Process
 from pathlib import Path
 
 import distro
+import git
 import yaml
 
 import flag_gems
@@ -160,7 +161,10 @@ def init():
 
         version = flag_gems.__version__
         ENV_INFO["flag_gems"] = {"version": version}
-        pinfo(f"flag_gems detected ... {version}")
+
+        repo = git.Repo(search_parent_directories=True)
+        sha = repo.head.object.hexsha
+        pinfo(f"flag_gems detected ... {version}+git{sha[:8]}")
     except RuntimeError as e:
         perror(f"{e}")
         sys.exit(-1)
