@@ -222,36 +222,63 @@ def run_cmd_capture(cmd, cwd=None, env=None):
     return out or "", err or "", p.returncode
 
 
-def parse_accuracy_log(text):
-    record = {
-        "status": "",
-        "total": 0,
-        "passed": 0,
-        "failed": 0,
-        "skipped": 0,
-        "errors": 0,
+def parse_accuracy_data(op, result_file):
+    raw_data = {}
+    with result_file.open("r") as f:
+        raw_data = json.load(f)
+
+    passed = []
+    skipped = {}
+    failed = {}
+    num_skipped = 0
+    num_failed = 0
+    num_passed = 0
+    for test_case, item in raw_data.items():
+        case_str = test_case[: test_case.find("[")]
+        result = item.get("result", "")
+        params = [case_str]
+        for k, v in item.get("params", {}).items():
+            params.append(str(v).replace(" ", ""))
+        param_str = ":".join(params)
+
+        if result == "passed":
+            passed.append(param_str)
+            num_passed += 1
+        elif result == "skipped":
+            reason = item.get("reason", "Unknown")
+            skipped.setdefault(reason, set())
+            skipped[reason].add(param_str)
+            num_skipped += 1
+        else:
+            reason = item.get("reason", "Unknown")
+            failed.setdefault(reason, set())
+            failed[reason].add(param_str)
+            num_failed += 1
+
+    result = {
+        "total": num_passed + num_skipped + num_failed,
+        "skipped": num_skipped,
+        "failed": num_failed,
+        "passed": num_passed,
+        "details": {},
     }
-
-    clean = ANSI_RE.sub("", text)
-    for m in re.finditer(r"(\d+)\s+([A-Za-z_]+)", clean):
-        num = int(m.group(1))
-        key = m.group(2).lower()
-        if key in record:
-            record[key] = num
-
-    total = record["failed"] + record["passed"] + record["skipped"]
-    record["total"] = total
-
-    if record["failed"] > 0:
-        record["status"] = "FAIL"
-    elif record["errors"] > 0 and total == 0:
-        record["status"] = "FAIL"  # pytest failed to start
-    elif record["passed"] == 0:
-        record["status"] = "FAIL"
+    if len(skipped) == 0 and len(failed) == 0:
+        if len(passed) == 0:
+            result["status"] = "NotFound"
+        else:
+            result["status"] = "Passed"
     else:
-        record["status"] = "PASS"
+        result["status"] = "Failed"
+        if len(skipped):
+            for k, v in skipped.items():
+                skipped[k] = list(v)
+            result["details"]["skipped"] = skipped
+        if len(failed):
+            for k, v in failed.items():
+                failed[k] = list(v)
+            result["details"]["failed"] = failed
 
-    return record
+    return result
 
 
 def get_env(gpu_ids):
@@ -306,12 +333,19 @@ def run_accuracy(gpu_id, start, index, count):
     env = get_env(str(gpu_id))
 
     if op in NO_CPU_LIST:
-        cmd = f'pytest -m "{op}" -vs'
+        cmd = f'pytest -m "{op}" --record json --output accuracy_{op}.json -vs'
     else:
-        cmd = f'pytest -m "{op}" --ref cpu -vs'
+        cmd = (
+            f'pytest -m "{op}" --record json --output accuracy_{op}.json --ref cpu -vs'
+        )
+
+    accuracy_dir = ROOT.joinpath("tests")
+    result_file = accuracy_dir / f"accuracy_{op}.json"
+    if result_file.exists():
+        result_file.unlink()
 
     start = time.time()
-    stdout, stderr, code = run_cmd_capture(cmd, cwd=ROOT.joinpath("tests"), env=env)
+    stdout, stderr, code = run_cmd_capture(cmd, cwd=accuracy_dir, env=env)
     end = time.time()
 
     if code == TIMEOUT:  # Timeout
@@ -326,22 +360,20 @@ def run_accuracy(gpu_id, start, index, count):
             "duration": end - start,
         }
 
-    combined = stdout + "\n---\n" + stderr
     op_dir = OUTPUT_DIR.joinpath(op)
-    log_file = op_dir.joinpath("accuracy.log")
-    with open(log_file, "w") as f:
-        f.write(combined)
+    dest = op_dir / "accuracy_result.json"
+    shutil.move(result_file, str(dest))
+    result_file = dest
 
-    result = parse_accuracy_log(combined)
+    result = parse_accuracy_data(op, result_file)
     result["exit_code"] = code
     result["duration"] = end - start
-    result["log_file"] = str(log_file.relative_to(OUTPUT_DIR))
+    result["data_file"] = str(result_file.relative_to(OUTPUT_DIR))
 
     return result
 
 
-def parse_perf_data(op, op_dir):
-    result_file = op_dir / "performance_result.json"
+def parse_perf_data(op, result_file):
     raw_data = {}
     with result_file.open("r") as f:
         raw_data = json.load(f)
@@ -441,10 +473,10 @@ def run_benchmark(gpu_id, start, index, count):
     record = {
         "duration": end - start,
         "exit_code": code,
-        "result_file": str(result_file.relative_to(OUTPUT_DIR)),
+        "data_file": str(result_file.relative_to(OUTPUT_DIR)),
         "data": [],
     }
-    record.update(parse_perf_data(op, op_dir))
+    record.update(parse_perf_data(op, result_file))
 
     return record
 

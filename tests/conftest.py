@@ -6,33 +6,34 @@ from datetime import datetime
 import pytest
 
 # TODO(Qiming): Try remove this line
-import torch  # noqa: F401
+# import torch  # noqa: F401
 import yaml
 
 import flag_gems
 
 BUILTIN_MARKS = {
+    "filterwarnings",
     "parametrize",
     "skip",
     "skipif",
-    "xfail",
-    "usefixtures",
-    "filterwarnings",
     "timeout",
     "tryfirst",
     "trylast",
+    "usefixtures",
+    "xfail",
 }
 REGISTERED_MARKS = []
 TEST_RESULTS = {}
 RUNTEST_INFO = {}
 RECORD_LOG = False
+RECORD_JSON = False
 TO_CPU = False
 QUICK_MODE = False
 
 device = flag_gems.device
 
 TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
-REPORT_FILE = f"report_{TIMESTAMP}.json"
+REPORT_FILE = "accuracy_result.json"
 
 
 def pytest_addoption(parser):
@@ -57,9 +58,14 @@ def pytest_addoption(parser):
             action="store",
             default="none",
             required=False,
-            choices=["none", "log"],
-            help="tests function param recorded in log files or not",
+            choices=["none", "log", "json"],
+            help="record test results in log/json files or not",
         )
+        parser.addoption(
+            "--output",
+            help="path to the result file",
+        )
+
     except ValueError:
         # Mixed test+benchmark pytest runs may already register --record in
         # benchmark/conftest.py. Reuse the existing option in that case.
@@ -79,6 +85,8 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     global RECORD_LOG
+    global RECORD_JSON
+    global REPORT_FILE
     global REGISTERED_MARKS
     global RUNTEST_INFO
     global TO_CPU
@@ -89,8 +97,14 @@ def pytest_configure(config):
     }
 
     RECORD_LOG = config.getoption("--record") == "log"
+    RECORD_JSON = config.getoption("--record") == "json"
     TO_CPU = config.getoption("--ref") == "cpu"
     QUICK_MODE = config.getoption("--quick") is True
+
+    if RECORD_JSON:
+        report_file = config.getoption("--output")
+        if report_file:
+            REPORT_FILE = report_file
 
     if RECORD_LOG:
         RUNTEST_INFO = {}
@@ -183,7 +197,7 @@ def pytest_terminal_summary(terminalreporter):
         existing_data.update(TEST_RESULTS)
         data = existing_data
 
-    with open(f"result_{TIMESTAMP}.json", "w") as json_file:
+    with open(REPORT_FILE, "w") as json_file:
         json.dump(data, json_file, indent=2, default=str)
 
 
