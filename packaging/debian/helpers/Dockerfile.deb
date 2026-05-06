@@ -1,22 +1,5 @@
 # Two-stage Docker build for FlagGems Phase 1.
-#
-# Stage 1 (wheel-builder):
-#   - Ubuntu 22.04 + CUDA-aware PyTorch (CPU torch is fine for *building*)
-#   - libtriton-jit-dev installed from a local .deb (mounted in via build context)
-#   - scikit-build-core invokes cmake which builds liboperators.so and links to
-#     external libtriton-jit
-#   - Output: /wheels/flag_gems-*.whl
-#
-# Stage 2 (deb-assembler):
-#   - Light Ubuntu 22.04 + debhelper
-#   - dpkg-buildpackage assembles python3-flag-gems_*.deb from the wheel
-#
-# Build:
-#   cp <local libtriton-jit*.deb> packaging/debian/helpers/local-deps/
-#   docker build -f packaging/debian/helpers/Dockerfile.deb \
-#     --target deb-output \
-#     --output type=local,dest=./dist \
-#     .
+# Single-chain (single-arch x86_64, single-OS Ubuntu 22.04, single-backend nvidia).
 
 # ---------- Stage 1: build the wheel ----------
 FROM ubuntu:22.04 AS wheel-builder
@@ -29,33 +12,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wget curl ca-certificates \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Build deps from pyproject.toml (build-system.requires) — must be installed
+# explicitly because we use --no-build-isolation. Versions pinned per FlagGems'
+# pyproject.toml.
 RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel build && \
+    pip3 install --no-cache-dir \
+        "scikit-build-core==0.12.2" \
+        "pybind11==3.0.3" \
+        "cmake>=3.20,<4.0" \
+        "ninja==1.13.0" && \
     pip3 install --no-cache-dir torch==2.5.0 --index-url https://download.pytorch.org/whl/cpu
 
-# Install libtriton-jit-dev from a locally-staged .deb (avoids requiring
-# a working flagos-packaging APT source during this scaffold). When the
-# central repo goes live, switch to:
+# Install libtriton-jit-dev from a locally-staged .deb. When the central
+# flagos-packaging repo goes live, switch to:
 #   echo "deb [signed-by=...] https://flagos-ai.github.io/flagos-packaging/apt stable main" \
 #     > /etc/apt/sources.list.d/flagos.list && apt-get update && apt-get install -y libtriton-jit-dev
 COPY packaging/debian/helpers/local-deps/*.deb /tmp/deps/
 RUN dpkg -i /tmp/deps/*.deb 2>&1 | tail -20 || apt-get install -f -y --no-install-recommends
 
 WORKDIR /src
+# Narrow COPY: only paths the wheel build needs (skip packaging/, docs/, etc.
+# so packaging-only edits don't bust the wheel cache).
 COPY CMakeLists.txt pyproject.toml setup.sh LICENSE README.md /src/
 COPY cmake /src/cmake
 COPY include /src/include
 COPY lib /src/lib
 COPY src /src/src
 COPY conf /src/conf
-COPY ctests /src/ctests
-COPY benchmark /src/benchmark
-COPY requirements /src/requirements
-# Python sources live where? FlagGems uses scikit-build-core wheel.install-dir = "flag_gems"
-# So Python sources are in src/flag_gems most likely; let me allow either layout.
 
-RUN cd /src && ls -la && \
-    pip3 wheel . --no-build-isolation -w /wheels -v 2>&1 | tail -100 && \
-    ls -lh /wheels/
+RUN cd /src && pip3 wheel . --no-build-isolation -w /wheels -v && \
+    ls -lh /wheels/ && \
+    test -n "$(ls /wheels/flag_gems-*.whl 2>/dev/null)"
 
 # ---------- Stage 2: assemble the .deb ----------
 FROM ubuntu:22.04 AS deb-assembler
