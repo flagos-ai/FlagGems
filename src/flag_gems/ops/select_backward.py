@@ -9,33 +9,6 @@ _SMALL_NUMEL_THRESHOLD = 4096
 
 
 @triton.jit
-def _cuda_select_backward_kernel(
-    grad_ptr,
-    out_ptr,
-    outer_size,
-    inner_size,
-    dim_stride,
-    index,
-    BLOCK: tl.constexpr,
-):
-    pid = tl.program_id(0)
-
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    total = outer_size * inner_size
-
-    mask = offs < total
-
-    outer = offs // inner_size
-    inner = offs % inner_size
-
-    grad_vals = tl.load(grad_ptr + outer * inner_size + inner, mask=mask)
-
-    out_offset = outer * dim_stride + index * inner_size + inner
-
-    tl.store(out_ptr + out_offset, grad_vals, mask=mask)
-
-
-@triton.jit
 def _select_backward_kernel(
     grad_ptr,
     out_ptr,
@@ -245,67 +218,7 @@ def _launch_select_backward(grad, input_sizes, dim, index, out=None):
     return out
 
 
-def _cuda_launch_select_backward(grad, input_sizes, dim, index, out=None):
-    dim = int(dim)
-    index = int(index)
-
-    sizes = tuple(input_sizes)
-    ndim = len(sizes)
-
-    if dim < 0:
-        dim += ndim
-        if dim < 0:
-            raise ValueError("invalid dim")
-    elif dim >= ndim:
-        raise ValueError("invalid dim")
-
-    dim_size = sizes[dim]
-
-    if index < 0 or index >= dim_size:
-        raise ValueError("index out of range")
-
-    outer_size = math.prod(sizes[:dim]) if dim > 0 else 1
-    inner_size = math.prod(sizes[dim + 1 :]) if dim < ndim - 1 else 1
-
-    grad_view = grad.contiguous().view(outer_size, inner_size)
-
-    if out is None:
-        out = torch.zeros(
-            sizes,
-            dtype=grad.dtype,
-            device=grad.device,
-        )
-    else:
-        if out.shape != sizes:
-            raise ValueError("out shape mismatch")
-        if out.dtype != grad.dtype:
-            raise ValueError("dtype mismatch")
-        if out.device != grad.device:
-            raise ValueError("device mismatch")
-
-        out.zero_()
-
-    dim_stride = dim_size * inner_size
-
-    n_elements = outer_size * inner_size
-    grid = (triton.cdiv(n_elements, _BLOCK_SIZE),)
-
-    _cuda_select_backward_kernel[grid](
-        grad_view,
-        out,
-        outer_size,
-        inner_size,
-        dim_stride,
-        index,
-        BLOCK=_BLOCK_SIZE,
-    )
-
-    return out
-
-
 def select_backward(grad, input_sizes, dim, index, out=None):
     if grad.device.type == "npu":
         return _ascend_launch_select_backward(grad, input_sizes, dim, index, out=out)
-    if grad.is_cuda:
-        return _cuda_launch_select_backward(grad, input_sizes, dim, index, out=out)
     return _launch_select_backward(grad, input_sizes, dim, index, out=out)
