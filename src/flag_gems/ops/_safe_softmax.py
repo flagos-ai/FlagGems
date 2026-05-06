@@ -7,6 +7,7 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
+
 @triton.jit
 def _safe_softmax_kernel(
     input_ptr, output_ptr, n_rows, n_cols, BLOCK_SIZE: tl.constexpr
@@ -30,6 +31,7 @@ def _safe_softmax_kernel(
     softmax = tl.where(all_neginf, tl.zeros([BLOCK_SIZE], dtype=tl.float32), softmax)
 
     tl.store(output_ptr + row_offset + cols, softmax, mask=mask)
+
 
 def _safe_softmax(x: torch.Tensor, dim: int = -1, dtype: torch.dtype = None):
     logger.debug("GEMS _SAFE_SOFTMAX")
@@ -62,7 +64,7 @@ def _safe_softmax(x: torch.Tensor, dim: int = -1, dtype: torch.dtype = None):
         return 1 << (v - 1).bit_length()
 
     BLOCK_SIZE = _next_pow2(n_cols)
-    
+
     num_warps = 4
     if BLOCK_SIZE >= 2048:
         num_warps = 8
@@ -74,9 +76,7 @@ def _safe_softmax(x: torch.Tensor, dim: int = -1, dtype: torch.dtype = None):
     grid = lambda meta: (n_rows,)
 
     _safe_softmax_kernel[grid](
-        y_fp32, out_fp32, n_rows, n_cols, 
-        num_warps=num_warps, 
-        BLOCK_SIZE=BLOCK_SIZE
+        y_fp32, out_fp32, n_rows, n_cols, num_warps=num_warps, BLOCK_SIZE=BLOCK_SIZE
     )
 
     out = out_fp32
