@@ -280,6 +280,11 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
     logger.debug("GEMS GATHER")
     if dim < 0:
         dim += inp.ndim
+    if inp.ndim != index.ndim:
+        raise IndexError(
+            f"Index tensor must have the same number of dimensions as input tensor. "
+            f"Got {index.ndim} and {inp.ndim}."
+        )
     inp = inp.contiguous()
     index = index.contiguous()
     if out is None:
