@@ -192,7 +192,13 @@ def init():
 
 def run_cmd(cmd, cwd=None, env=None, timeout=600):
     try:
-        p = subprocess.Popen(shlex.split(cmd), cwd=str(cwd), env=env)
+        p = subprocess.Popen(
+            shlex.split(cmd),
+            cwd=str(cwd),
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         p.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         os.killpg(os.getpgid(p.pid), signal.SIGTERM)
