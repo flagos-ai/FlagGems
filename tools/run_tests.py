@@ -202,6 +202,7 @@ def run_cmd(cmd, cwd=None, env=None, timeout=600):
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
         p.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -272,8 +273,6 @@ def parse_accuracy_data(result_file):
 def get_env(gpu_ids):
     env = os.environ.copy()
 
-    # Ensure python output are unbuffered
-    env["PYTHONUNBUFFERED"] = "1"
     vendor = ENV_INFO.get("flag_gems", {}).get("vendor", "")
 
     if vendor == "ascend":
@@ -463,7 +462,7 @@ def run_benchmark(gpu_id, start, index, count):
         "duration": end - start,
         "exit_code": code,
         "data_file": str(result_file.relative_to(OUTPUT_DIR)),
-        "data": [],
+        "data": {},
     }
     record.update(parse_perf_data(op, result_file))
 
@@ -471,6 +470,9 @@ def run_benchmark(gpu_id, start, index, count):
 
 
 def worker_proc(gpu_id, start, count):
+    # Ensure python output are unbuffered
+    os.environ["PYTHONUNBUFFERED"] = "1"
+
     worker_result = {}
     for i in range(count):
         op = OP_LIST[start + i].strip()
