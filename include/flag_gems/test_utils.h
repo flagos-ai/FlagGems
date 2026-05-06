@@ -11,16 +11,16 @@ namespace flag_gems::test {
 #if defined(FLAGGEMS_USE_GCU)
 namespace detail {
 
-inline int gcu_init_backend() {
-  // Intentionally leaked — avoids segfault from static destruction order
-  // conflicts between pybind11 interpreter and PyTorch statics on exit.
-  new pybind11::scoped_interpreter();
-  pybind11::module_::import("torch");
-  pybind11::module_::import("torch_gcu");
-  return 0;
-}
+  inline int gcu_init_backend() {
+    // Intentionally leaked — avoids segfault from static destruction order
+    // conflicts between pybind11 interpreter and PyTorch statics on exit.
+    new pybind11::scoped_interpreter();
+    pybind11::module_::import("torch");
+    pybind11::module_::import("torch_gcu");
+    return 0;
+  }
 
-static int gcu_init_ = gcu_init_backend();
+  static int gcu_init_ = gcu_init_backend();
 
 }  // namespace detail
 #endif

@@ -47,9 +47,9 @@ at::Tensor rms_norm(const at::Tensor& input, const at::Tensor& weight, double ep
 
 #if defined(FLAGGEMS_USE_GCU)
   const TritonJITFunction& f =
-      TritonJITFunction::get_instance(
-          std::string(utils::get_flag_gems_src_path() / "runtime" / "backend" / "_enflame" / "gcu400" / "ops" / "rms_norm.py"),
-          "rms_norm_kernel");
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "runtime" / "backend" /
+                                                  "_enflame" / "gcu400" / "ops" / "rms_norm.py"),
+                                      "rms_norm_kernel");
 #else
   const TritonJITFunction& f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "rms_norm.py"),
