@@ -26,7 +26,7 @@ def weight_norm_input_fn(shape, dtype, device):
 
 
 @pytest.mark.weight_norm_interface
-def test_weight_vector_norm_benchmark():
+def test_weight_norm_interface():
     bench = base.GenericBenchmarkExcluse1D(
         op_name="weight_norm_interface",
         input_fn=weight_norm_input_fn,

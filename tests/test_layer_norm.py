@@ -66,7 +66,7 @@ def test_layer_norm_backward(monkeypatch, shape, dtype, wb_none):
 
     if flag_gems.vendor_name == "mthreads":
         # Compatible with older versions of LLVM
-        monkeypatch.env("DISABLE_LLVM_OPT", "1")
+        monkeypatch.setenv("DISABLE_LLVM_OPT", "1")
 
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_grad = torch.randn_like(res_inp)

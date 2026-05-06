@@ -4,7 +4,9 @@ export MACA_PATH=/opt/maca
 export LD_LIBRARY_PATH=$MACA_PATH/lib:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=$MACA_PATH/mxgpu_llvm/lib:$LD_LIBRARY_PATH
 
-uv pip install -e . .[metax,test]
+uv pip install -e  .
+uv pip install ".[metax]"
+uv pip install ".[test]"
 
 uv pip install --index ${FLAGOS_PYPI} \
     "torch==2.8.0+metax3.5.3.9" \
