@@ -911,6 +911,26 @@ ops:
     stages:
       - stable: '2.2'
     cpp: '4.0'
+  - id: cauchy
+    description: Draws random numbers from a Cauchy distribution.
+    for:
+      - cauchy_.float
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: cauchy_
+    description: Fills the tensor with numbers drawn from the Cauchy distribution.
+    for:
+      - cauchy_.float
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: ceil
     description: |
       Returns a new tensor with the ceil of the elements of `input`, the smallest integer greater than

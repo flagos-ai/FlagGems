@@ -131,6 +131,8 @@ _FULL_CONFIG = (
     ("bmm.out", bmm_out),
     ("cat", cat),
     ("cat.out", cat_out),
+    ("cauchy", cauchy),
+    ("cauchy_", cauchy_),
     ("celu", celu),
     ("celu_", celu_),
     ("ceil", ceil),
