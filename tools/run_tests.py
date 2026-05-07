@@ -337,8 +337,6 @@ def parse_accuracy_data(result_file):
 def get_env(gpu_ids):
     env = os.environ.copy()
 
-    # Ensure python output are unbuffered
-    env["PYTHONUNBUFFERED"] = "1"
     vendor = ENV_INFO.get("flag_gems", {}).get("vendor", "")
 
     if vendor == "ascend":
@@ -542,7 +540,7 @@ def run_benchmark(gpu_id, start, index, count):
         "duration": end - start,
         "exit_code": code,
         "data_file": str(result_file.relative_to(OUTPUT_DIR)),
-        "data": [],
+        "data": {},
     }
     record.update(parse_perf_data(op, result_file))
 
@@ -553,6 +551,8 @@ def worker_proc(gpu_id, start, count):
     # Ensure OP_LABELS is populated in subprocess (needed for spawn mode)
     if not OP_LABELS:
         load_op_labels()
+    # Ensure python output are unbuffered
+    os.environ["PYTHONUNBUFFERED"] = "1"
 
     worker_result = {}
     for i in range(count):
