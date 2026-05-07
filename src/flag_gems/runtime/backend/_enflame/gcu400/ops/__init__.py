@@ -87,6 +87,7 @@ from .index_add import index_add, index_add_
 from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
+from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
 from .le import le, le_scalar
@@ -337,6 +338,7 @@ __all__ = [
     "gelu_",
     "gelu_backward",
     "glu",
+    "isin",
     "isinf",
     "isnan",
     "log",
