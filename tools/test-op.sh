@@ -40,12 +40,15 @@ TEST_CASES=()
 PERF_TEST_CASES=()
 TEST_CASES_CPU=()
 for item in $CHANGED_FILES; do
+  file_name=$(basename "$item")
   case $item in
     tests/test_quant.py)
       # skip because it always fail
       ;;
-    tests/test*)
-      TEST_CASES+=($item)
+    tests/*.py)
+      if [[ "$file_name" == test*.py ]]; then
+        TEST_CASES+=($item)
+      fi
       ;;
     benchmark/test*)
       PERF_TEST_CASES+=($item)
@@ -62,7 +65,11 @@ for item in $CHANGED_FILES; do
   done
   if (( $found == 0 )); then
     case $item in
-      tests/*) TEST_CASES_CPU+=($item) ;;
+      tests/*.py)
+        if [[ "$file_name" == test*.py ]]; then
+          TEST_CASES_CPU+=($item)
+        fi
+        ;;
     esac
   fi
 done
