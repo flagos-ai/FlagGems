@@ -154,11 +154,10 @@ class MHCSplitSinkhornBenchmark(base.Benchmark):
             yield mixes, hc_scale, hc_base, hc_mult, self.sinkhorn_iters, self.eps
 
 
-# TODO(Qiming): Find out where this is implemented
 @pytest.mark.hc_split_sinkhorn_forward
 def test_hc_split_sinkhorn_forward():
     bench = MHCSplitSinkhornBenchmark(
-        op_name="hc_split_sinkhorn",
+        op_name="hc_split_sinkhorn_forward",
         torch_op=mhc_split_sinkhorn_torch_ref,
         dtypes=[torch.float32],
     )

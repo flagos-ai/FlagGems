@@ -24,7 +24,7 @@ def torch_op(inp, residual, layer_shape, weight, bias):
 def test_skip_layernorm():
     bench = base.GenericBenchmarkExcluse1D(
         input_fn=_input_fn,
-        op_name="skip_layernorm",
+        op_name="skip_layer_norm",
         gems_op=flag_gems.skip_layer_norm,
         torch_op=torch_op,
         dtypes=consts.FLOAT_DTYPES,

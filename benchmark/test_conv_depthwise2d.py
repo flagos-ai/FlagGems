@@ -49,7 +49,7 @@ def test_conv_depthwise2d():
     torch.backends.cudnn.allow_tf32 = False
 
     bench = ConvDepthwise2DBenchmark(
-        op_name="_conv_depthwise2d",
+        op_name="conv_depthwise2d",
         input_fn=_input_fn,
         torch_op=torch.ops.aten._conv_depthwise2d,
         gems_op=flag_gems._conv_depthwise2d,

@@ -15,7 +15,7 @@ def _input_fn(shape, cur_dtype, device):
 @pytest.mark.where_self
 def test_where_self():
     bench = base.GenericBenchmark(
-        op_name="where",
+        op_name="where_self",
         input_fn=_input_fn,
         torch_op=torch.where,
         dtypes=consts.FLOAT_DTYPES,

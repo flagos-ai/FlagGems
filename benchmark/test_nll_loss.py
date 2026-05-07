@@ -19,7 +19,7 @@ def nll_loss_input_fn(shape, cur_dtype, device):
 @pytest.mark.nll_loss_forward
 def test_nll_loss_forward():
     bench = base.GenericBenchmark2DOnly(
-        op_name="nll_loss",
+        op_name="nll_loss_forward",
         input_fn=nll_loss_input_fn,
         torch_op=torch.nn.functional.nll_loss,
         dtypes=consts.FLOAT_DTYPES,
