@@ -65,12 +65,6 @@ def select_backward(grad, input_sizes, dim, index, out=None):
 
         out.zero_()
 
-    if grad.device.type == "npu":
-        # Ascend 910B: CANN's native zero + strided copy is faster than launching
-        # a Triton scatter kernel for this op.
-        out.select(dim, index).copy_(grad)
-        return out
-
     outer_size = math.prod(sizes[:dim]) if dim > 0 else 1
     inner_size = math.prod(sizes[dim + 1 :]) if dim < ndim - 1 else 1
     total = outer_size * inner_size
