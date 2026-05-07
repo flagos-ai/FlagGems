@@ -23,7 +23,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
     key=["n_elements"],
 )
 @triton.jit
-def neg_kernel(
+def neg_func(
     X_ptr,
     OUT_ptr,
     n_elements,
@@ -50,7 +50,7 @@ def neg(A):
         return out
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
     with torch_device_fn.device(A.device):
-        neg_kernel[grid_fn](A, out, N)
+        neg_func[grid_fn](A, out, N)
     return out
 
 
@@ -62,7 +62,7 @@ def neg_(A):
         return A
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
     with torch_device_fn.device(A.device):
-        neg_kernel[grid_fn](A_contig, A_contig, N)
+        neg_func[grid_fn](A_contig, A_contig, N)
     if not A.is_contiguous():
         A.copy_(A_contig)
     return A
