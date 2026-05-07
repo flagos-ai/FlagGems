@@ -1,6 +1,5 @@
 import pytest
 import torch
-
 from benchmark.attri_util import FLOAT_DTYPES
 from benchmark.performance_utils import GenericBenchmark, generate_tensor_input
 

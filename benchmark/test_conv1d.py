@@ -1,8 +1,8 @@
 import pytest
 import torch
+from benchmark.performance_utils import GenericBenchmark
 
 import flag_gems
-from benchmark.performance_utils import GenericBenchmark
 
 
 class Conv1DBenchmark(GenericBenchmark):

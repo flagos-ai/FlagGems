@@ -1,9 +1,9 @@
 import pytest
 import torch
-
-import flag_gems
 from benchmark.attri_util import FLOAT_DTYPES
 from benchmark.performance_utils import GenericBenchmark, binary_input_fn
+
+import flag_gems
 
 
 @pytest.mark.gelu_and_mul

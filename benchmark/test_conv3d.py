@@ -1,9 +1,9 @@
 import pytest
 import torch
-
-import flag_gems
 from benchmark.attri_util import FLOAT_DTYPES
 from benchmark.performance_utils import GenericBenchmark
+
+import flag_gems
 
 
 class Conv3DBenchmark(GenericBenchmark):
