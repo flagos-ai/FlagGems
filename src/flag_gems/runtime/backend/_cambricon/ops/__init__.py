@@ -112,7 +112,6 @@ from .mm import mm, mm_out
 from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv
-from .nan_to_num import nan_to_num
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .nonzero import nonzero
@@ -343,7 +342,6 @@ __all__ = [
     "mul_",
     "multinomial",
     "mv",
-    "nan_to_num",
     "ne",
     "ne_scalar",
     "neg",

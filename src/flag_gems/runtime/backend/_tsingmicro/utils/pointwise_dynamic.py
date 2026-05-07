@@ -881,7 +881,7 @@ class WrapperGenerator:
                 code.writeline(f"tile_size = {max_tile_size}")
             code.writeline("")
             code.writeline(
-                f"num_tensors = {self.fx.num_input_tensors() +  self.fx.num_output_tensors()}"
+                f"num_tensors = {self.fx.num_input_tensors() + self.fx.num_output_tensors()}"
             )
             code.writeline(
                 f"available_spm_size = {SPM_SIZE} - {SYS_SPM_RESERVED_SIZE} - {OPS_SPM_RESERVED_SIZE}"

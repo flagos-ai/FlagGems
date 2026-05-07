@@ -54,6 +54,7 @@ def bmm_kernel(
     DIVISIBLE_M: tl.constexpr,
     DIVISIBLE_N: tl.constexpr,
     DIVISIBLE_K: tl.constexpr,
+    IS_FP64: tl.constexpr = False,
 ):
     # batch offsets
     pid_b = tle.program_id(2)
@@ -96,7 +97,10 @@ def bmm_kernel(
     o_ptrs = O + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
 
     num_iters = tl.cdiv(K, TILE_K)
-    o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
+    if IS_FP64:
+        o = tl.zeros((TILE_M, TILE_N), dtype=tl.float64)
+    else:
+        o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
     for _ in range(num_iters):
         if DIVISIBLE_K:
             if DIVISIBLE_M:
@@ -168,6 +172,7 @@ def bmm(A, B):
             out.stride(0),
             out.stride(1),
             out.stride(2),
+            IS_FP64=A.dtype == torch.float64,
         )
     return out
 
@@ -201,5 +206,6 @@ def bmm_out(A, B, out):
             out.stride(0),
             out.stride(1),
             out.stride(2),
+            IS_FP64=A.dtype == torch.float64,
         )
     return out
