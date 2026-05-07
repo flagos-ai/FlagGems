@@ -496,6 +496,13 @@ HEURISTICS_CONFIGS = {
         "INTEGER_SCALE": upsample_nearest2d_INTEGER_SCALE,
         "SCALE_2X": upsample_nearest2d_SCALE_2X,
     },
+    "upsample_nearest2d_backward": {
+        "SAME_H": upsample_nearest2d_SAME_H,
+        "SAME_W": upsample_nearest2d_SAME_W,
+        "USE_INT32_IDX": upsample_nearest2d_USE_INT32_IDX,
+        "INTEGER_SCALE": upsample_nearest2d_INTEGER_SCALE,
+        "SCALE_2X": upsample_nearest2d_SCALE_2X,
+    },
     "upsample_nearest3d": {
         "SAME_D": upsample_nearest3d_SAME_D,
         "SAME_H": upsample_nearest3d_SAME_H,
