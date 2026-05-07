@@ -11,7 +11,7 @@ def _input_fn(shape, cur_dtype, device):
 
     yield inp1, inp2, inp3
 
-    if base.Config.bench_level == base.BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         # scalar or None situation
         yield inp1, inp2, None
         yield inp1, None, 3.14
