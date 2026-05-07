@@ -4,7 +4,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.sort import radix_sort
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -158,21 +157,188 @@ def median_kernel_int(
     tl.store(out_idx_ptr_pid, orig_idx.to(tl.int64))
 
 
+# ============================================================
+# Histogram-based Radix Select: O(N) selection for large N
+# ============================================================
+
+
+def _to_sortable_bits(inp):
+    """Convert tensor values to sortable int32 bit representation.
+
+    For floats: sign-bit-flip on the 32-bit IEEE representation.
+    For int32: XOR with 0x80000000 to map signed range to unsigned.
+    Returns (int32_bits_tensor, num_bits=32).
+    """
+    if inp.dtype == torch.float32:
+        bits = inp.view(torch.int32)
+        # IEEE 754 sign-bit-flip: negative → invert all bits, positive → flip sign bit
+        sign = (bits >> 31) & 1
+        bits = torch.where(sign == 1, ~bits, bits ^ 0x80000000)
+        return bits, 32
+    elif inp.dtype in (torch.float16, torch.bfloat16):
+        bits = inp.float().view(torch.int32)
+        sign = (bits >> 31) & 1
+        bits = torch.where(sign == 1, ~bits, bits ^ 0x80000000)
+        return bits, 32
+    elif inp.dtype == torch.int32:
+        # Two's complement: simply flip sign bit to map signed → unsigned order
+        return inp ^ 0x80000000, 32
+    else:
+        return inp.to(torch.int64) ^ 0x8000000000000000, 64
+
+
+def _bits_to_value(bits, num_bits, orig_dtype):
+    """Convert sortable int32 bits back to original dtype values.
+
+    Reverse of sign-bit-flip: if top bit is 1, XOR with 0x80000000;
+    if top bit is 0, XOR with 0xFFFFFFFF (invert all bits).
+    """
+    if num_bits == 64:
+        return (bits ^ 0x8000000000000000).to(orig_dtype)
+
+    bits32 = bits.to(torch.int32)
+    if orig_dtype.is_floating_point:
+        sign = (bits32 >> 31) & 1
+        orig_bits = torch.where(sign == 1, bits32 ^ 0x80000000, ~bits32)
+        return orig_bits.view(torch.float32).to(orig_dtype)
+    else:
+        # Reverse of inp ^ 0x80000000
+        return (bits32 ^ 0x80000000).to(orig_dtype)
+
+
+@libentry()
+@triton.jit
+def _radix_select_kernel(
+    bits_ptr,
+    out_ptr,
+    k_val_ptr,
+    N: tl.constexpr,
+    CHUNK_SIZE: tl.constexpr,
+):
+    """Fused histogram-based radix select: find k-th smallest element per row.
+
+    Uses tl.histogram with per-chunk accumulation. Each program handles one row.
+    """
+    pid = tle.program_id(0)
+    row_start = bits_ptr + pid * N
+
+    rank = tl.load(k_val_ptr + pid)
+    prefix = tl.full([], dtype=tl.int32, value=0)
+
+    for pass_idx in tl.static_range(4):
+        shift = 24 - pass_idx * 8
+
+        # Phase 1: Compute histogram across all chunks
+        hist = tl.zeros([256], dtype=tl.int32)
+        valid_zero_total = tl.full([], dtype=tl.int32, value=0)
+
+        for chunk_start in range(0, N, CHUNK_SIZE):
+            cols = tl.arange(0, CHUNK_SIZE)
+            idx = chunk_start + cols
+            mask = idx < N
+            vals = tl.load(row_start + idx, mask=mask, other=0)
+
+            # Check if element matches accumulated prefix
+            # prefix stores bytes found so far in LSB-first order:
+            # after pass P: byte[P-1]...(byte[1]<<8)|byte[0]
+            # Extract bytes above current pass position and mask to avoid sign extension
+            if pass_idx == 0:
+                valid = mask
+            else:
+                check_shift = shift + 8
+                check_mask = (1 << (pass_idx * 8)) - 1
+                elem_prefix = (vals >> check_shift) & check_mask
+                valid = mask & (elem_prefix == prefix)
+
+            # Extract byte, zero invalid (they go to bin 0)
+            byte_val = ((vals >> shift) & 0xFF).to(tl.int32)
+            byte_val = tl.where(valid, byte_val, tl.zeros([], dtype=tl.int32))
+
+            # Count valid elements with byte_val == 0 (for bin 0 correction)
+            valid_zero_total += tl.sum((valid & (byte_val == 0)).to(tl.int32))
+
+            # Accumulate histogram (includes padding in bin 0)
+            hist += tl.histogram(byte_val, num_bins=256)
+
+        # Correct bin 0: replace with actual count of valid elements with byte 0
+        hist_corr = tl.where(
+            tl.arange(0, 256) == 0,
+            valid_zero_total,
+            hist,
+        )
+
+        # Phase 2: Compute cumsum, find target bin
+        cumsum = tl.cumsum(hist_corr, axis=0)
+
+        # Find first bin where cumsum > rank (side="right")
+        # Use argmax on comparison mask
+        bin_idx = tl.argmax(cumsum > rank, axis=0)
+        bin_idx = tl.minimum(bin_idx, 255)
+
+        # Update rank: subtract elements in bins before target
+        cols256b = tl.arange(0, 256)
+        prev = tl.sum(tl.where(cols256b == bin_idx - 1, cumsum, 0))
+        rank = rank - prev
+        prefix = (prefix << 8) | bin_idx
+
+    # Store raw sortable bits for host-side conversion
+    tl.store(out_ptr + pid, prefix)
+
+
+def _histogram_radix_select(inp_2d, k_val):
+    """Find k-th smallest element per row using fused Triton histogram radix select.
+
+    Uses a single Triton kernel with 4 passes of 8-bit histograms for 32-bit values.
+    Falls back to torch.sort for int64 (64-bit values).
+    """
+    M, N = inp_2d.shape
+    orig_dtype = inp_2d.dtype
+    device = inp_2d.device
+
+    # int64 needs 64-bit radix (8 passes) which isn't supported by the fused kernel
+    if inp_2d.dtype == torch.int64:
+        sorted_vals = torch.sort(inp_2d, dim=-1).values
+        if isinstance(k_val, int):
+            return sorted_vals[:, k_val]
+        else:
+            idx = k_val.unsqueeze(1).expand(-1, 1)
+            return sorted_vals.gather(1, idx).squeeze(1)
+
+    bits, num_bits = _to_sortable_bits(inp_2d)
+
+    if isinstance(k_val, int):
+        k_tensor = torch.full((M,), k_val, dtype=torch.int32, device=device)
+    else:
+        k_tensor = k_val.to(torch.int32)
+
+    CHUNK_SIZE = 4096
+    raw_bits = torch.empty(M, dtype=torch.int32, device=device)
+
+    with torch_device_fn.device(device):
+        _radix_select_kernel[(M,)](
+            bits, raw_bits, k_tensor, N=N, CHUNK_SIZE=CHUNK_SIZE,
+        )
+
+    # Convert raw sortable bits back to original dtype
+    return _bits_to_value(raw_bits, num_bits, orig_dtype)
+
+
 def _median_fallback(inp, dim, keepdim):
     """Fallback for large N where tl.sort exceeds shared memory.
 
-    Uses Triton radix_sort (from flag_gems.ops.sort) to sort rows,
-    then extracts the median value and index.
+    Uses torch.kthvalue (O(N) selection) to find median values and indices.
     """
     if dim is None:
         flat = inp.contiguous().view(-1)
         n = flat.shape[0]
         if n == 0:
             return torch.tensor(float("nan"), dtype=inp.dtype, device=inp.device)
-        num_bits_per_pass = 1 if inp.dtype == torch.bool else 4
-        sorted_vals, sorted_idx = radix_sort(flat.unsqueeze(0), num_bits_per_pass)
+        if n == 1:
+            return flat[0].to(inp.dtype)
+
         med_pos = n // 2 - 1 if n % 2 == 0 else (n - 1) // 2
-        return sorted_vals[0, med_pos].to(inp.dtype)
+        sorted_vals = torch.sort(flat).values
+        return sorted_vals[med_pos].to(inp.dtype)
 
     dim = dim % inp.ndim
     n = inp.shape[dim]
@@ -187,27 +353,21 @@ def _median_fallback(inp, dim, keepdim):
             torch.zeros(out_shape, dtype=torch.int64, device=inp.device),
         )
 
-    # Move target dim to last for radix_sort
+    # Move target dim to last (same pattern as sort-kernel path)
     inp = inp.contiguous()
     original_dim = dim
     if dim != inp.ndim - 1:
         inp = torch.movedim(inp, dim, -1).contiguous()
 
     M = inp.numel() // n
+    pre_shape = list(inp.shape[:-1])
     inp_2d = inp.reshape(M, n)
 
-    num_bits_per_pass = 1 if inp.dtype == torch.bool else 4
-    sorted_vals, sorted_idx = radix_sort(inp_2d, num_bits_per_pass)
+    k = n // 2 if n % 2 == 0 else (n + 1) // 2
+    out_val, out_idx = torch.kthvalue(inp_2d, k, dim=-1)
 
-    is_even = n % 2 == 0
-    med_pos = n // 2 - 1 if is_even else (n - 1) // 2
-
-    out_val = sorted_vals[:, med_pos]
-    out_idx = sorted_idx[:, med_pos]
-
-    out_shape = list(inp.shape[:-1])
-    out_val = out_val.reshape(out_shape).to(inp.dtype)
-    out_idx = out_idx.reshape(out_shape)
+    out_val = out_val.reshape(pre_shape).to(inp.dtype)
+    out_idx = out_idx.reshape(pre_shape)
 
     if keepdim:
         out_val = out_val.unsqueeze(-1)
@@ -217,16 +377,13 @@ def _median_fallback(inp, dim, keepdim):
         if keepdim:
             out_val = out_val.movedim(-1, original_dim).contiguous()
             out_idx = out_idx.movedim(-1, original_dim).contiguous()
-        else:
-            out_val = out_val.movedim(-1, original_dim).contiguous()
-            out_idx = out_idx.movedim(-1, original_dim).contiguous()
 
     return out_val, out_idx
 
 
 # Maximum N for which tl.sort fits in shared memory
 # PADDED_N=8192 uses 32KB (fits in 48KB NVIDIA, 128KB Iluvatar)
-_MAX_SORT_N = 8192
+_MAX_SORT_N = 2048
 
 
 def median(inp, dim=None, keepdim=False):
@@ -267,7 +424,10 @@ def median(inp, dim=None, keepdim=False):
     else:
         N = inp.numel()
 
-    if N > _MAX_SORT_N:
+    # For half-precision, tl.sort is slower than kthvalue for most N,
+    # so use kthvalue fallback for N > 64
+    sort_limit = 64 if inp.dtype in (torch.float16, torch.bfloat16) else _MAX_SORT_N
+    if N > sort_limit:
         result = _median_fallback(inp, dim, keepdim)
         if dim is None:
             return result.to(orig_dtype)
@@ -344,6 +504,7 @@ def median(inp, dim=None, keepdim=False):
             inp = torch.movedim(inp, dim, -1).contiguous()
 
         M = inp.numel() // N
+        pre_shape = list(inp.shape[:-1])
         inp_2d = inp.reshape(M, N)
 
         PADDED_N = triton.next_power_of_2(N)
@@ -376,7 +537,7 @@ def median(inp, dim=None, keepdim=False):
                     IS_INT64=(inp.dtype == torch.int64),
                 )
 
-        out_shape = list(inp.shape[:-1])
+        out_shape = pre_shape
         out_val = out_val.reshape(out_shape).to(orig_dtype)
         out_idx = out_idx.reshape(out_shape)
 
