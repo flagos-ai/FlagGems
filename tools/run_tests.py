@@ -34,6 +34,7 @@ ROOT = Path(__file__).parent.parent
 OUPUT_DIR = None
 OP_LIST = []
 OP_LABELS = {}
+DUMP_OUTPUT = False
 TIMEOUT = -100
 
 NO_CPU_LIST = [
@@ -398,13 +399,13 @@ def run_accuracy(gpu_id, start, index, count):
 
     op_dir = OUTPUT_DIR.joinpath(op)
     ensure_dir(op_dir)
-    stdout_log = op_dir / f"accuracy_{op}_stdout.log"
-    stderr_log = op_dir / f"accuracy_{op}_stderr.log"
+    stdout_log = str(op_dir / f"accuracy_{op}_stdout.log") if DUMP_OUTPUT else None
+    stderr_log = str(op_dir / f"accuracy_{op}_stderr.log") if DUMP_OUTPUT else None
 
     start = time.time()
     code = run_cmd(
         cmd, cwd=accuracy_dir, env=env,
-        stdout_file=str(stdout_log), stderr_file=str(stderr_log),
+        stdout_file=stdout_log, stderr_file=stderr_log,
     )
     end = time.time()
 
@@ -512,14 +513,14 @@ def run_benchmark(gpu_id, start, index, count):
 
     op_dir = OUTPUT_DIR.joinpath(op)
     ensure_dir(op_dir)
-    stdout_log = op_dir / f"performance_{op}_stdout.log"
-    stderr_log = op_dir / f"performance_{op}_stderr.log"
+    stdout_log = str(op_dir / f"performance_{op}_stdout.log") if DUMP_OUTPUT else None
+    stderr_log = str(op_dir / f"performance_{op}_stderr.log") if DUMP_OUTPUT else None
 
     start = time.time()
     cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
     code = run_cmd(
         cmd, cwd=benchmark_dir, env=env,
-        stdout_file=str(stdout_log), stderr_file=str(stderr_log),
+        stdout_file=stdout_log, stderr_file=stderr_log,
     )
     end = time.time()
 
@@ -648,6 +649,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
 def main():
     global OUTPUT_DIR
     global OP_LIST
+    global DUMP_OUTPUT
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--op-list-file", required=False)
@@ -655,7 +657,11 @@ def main():
     parser.add_argument("--gpus", default="0")
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--stages", required=False, default="stable")
+    parser.add_argument("--dump-output", action="store_true", default=False,
+                        help="Dump stdout/stderr of each test to log files")
     args = parser.parse_args()
+
+    DUMP_OUTPUT = args.dump_output
 
     # Probe environment setttings
     init()
