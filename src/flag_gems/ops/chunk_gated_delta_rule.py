@@ -209,7 +209,7 @@ def _fla_fast_forward(
     # FLA returns ``(g_out, o, A, final_state, ...)``.  We only need o + final_state.
     if not isinstance(ret, tuple) or len(ret) < 4:
         return None
-    _g_out, o, _A, final_state = ret[0], ret[1], ret[2], ret[3]
+    o, final_state = ret[1], ret[3]
     # Sanity guard: some Triton/arch combinations (notably Blackwell SM12.0
     # under early Triton 3.6) produce non-finite or astronomically scaled
     # outputs from these kernels.  Reject so the caller can fall back to

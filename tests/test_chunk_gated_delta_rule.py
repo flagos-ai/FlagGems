@@ -10,9 +10,10 @@ Covers:
     * Zero-length and singleton edge cases
 """
 
-import flag_gems  # noqa: F401  (registers the operator)
 import pytest
 import torch
+
+import flag_gems  # noqa: F401  (registers the operator)
 from flag_gems.ops.chunk_gated_delta_rule import (
     _eager_chunk_gated_delta_rule as eager_ref,
 )

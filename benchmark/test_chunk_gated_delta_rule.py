@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import time
 
-import flag_gems  # noqa: F401
 import torch
 import triton
+
+import flag_gems  # noqa: F401
 from flag_gems.ops.chunk_gated_delta_rule import (
     _eager_chunk_gated_delta_rule as eager_ref,
 )
