@@ -244,8 +244,9 @@ def parse_accuracy_data(result_file):
             failed[reason].add(param_str)
             num_failed += 1
 
+    num_total = num_passed + num_skipped + num_failed
     result = {
-        "total": num_passed + num_skipped + num_failed,
+        "total": num_total,
         "skipped": num_skipped,
         "failed": num_failed,
         "passed": num_passed,
@@ -257,12 +258,14 @@ def parse_accuracy_data(result_file):
         else:
             result["status"] = "Passed"
     else:
-        result["status"] = "Failed"
         if len(skipped):
+            if len(skipped) == num_total:
+                result["status"] = "Skipped"
             for k, v in skipped.items():
                 skipped[k] = list(v)
             result["details"]["skipped"] = skipped
         if len(failed):
+            result["status"] = "Failed"
             for k, v in failed.items():
                 failed[k] = list(v)
             result["details"]["failed"] = failed
