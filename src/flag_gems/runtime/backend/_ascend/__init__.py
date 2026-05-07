@@ -25,7 +25,7 @@ vendor_info = VendorInfoBase(
 )
 
 CUSTOMIZED_UNUSED_OPS = (
-    "_to_copy",
+    "to_copy",
     "contiguous",
     "copy_",
     "sort",
