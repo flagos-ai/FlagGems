@@ -3,8 +3,11 @@ echo "Setting up environment variable for vendor $VENDOR"
 
 case $VENDOR in
   ascend)
+    # This script is provided by the Huawei Ascend CANN toolkit installation.
     if [ -f /usr/local/Ascend/ascend-toolkit/set_env.sh ]; then
       source /usr/local/Ascend/ascend-toolkit/set_env.sh
+      # TODO: Check if this is necessary
+      # export TRITON_ALL_BLOCKS_PARALLEL=1
     fi
     ;;
   hygon)
@@ -41,6 +44,9 @@ case $VENDOR in
     export LLVM_BINARY_DIR=${LLVM_SYSPATH}/bin
     export PYTHONPATH=${LLVM_SYSPATH}/python_packages/mlir_core:$PYTHONPATH
     export LD_LIBRARY_PATH=$TX8_DEPS_ROOT/lib:/usr/local/kuiper/lib:$LD_LIBRARY_PATH
+    # NOTE: The following setting may be needed if there are exceptions
+    # related to txops.
+    # export LD_LIBRARY_PATH=$SITE_PACKAGES/txops/lib:$LD_LIBRARY_PATH
     if [ -n "${USE_TRITON}" ]; then
       SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
       export PYTHONPATH=$SITE_PACKAGES/triton/backends/tsingmicro/llvm/python_packages/mlir_core
