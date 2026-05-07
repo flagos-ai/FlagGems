@@ -109,7 +109,7 @@ def test_tril_integer_dtypes(dtype):
 @pytest.mark.tril
 def test_tril_bool_dtype():
     """torch.tril supports bool tensors — verify."""
-    inp = (torch.randn((16, 16), device=flag_gems.device) > 0)
+    inp = torch.randn((16, 16), device=flag_gems.device) > 0
     ref_inp = utils.to_reference(inp)
     for diagonal in [-1, 0, 1]:
         ref_out = torch.tril(ref_inp, diagonal)
