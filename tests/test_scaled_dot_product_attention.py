@@ -72,7 +72,7 @@ def torch_sdpa(q, k, v, scale, is_causal, enable_gqa=False):
 @pytest.mark.skipif(
     torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
 )
-@pytest.mark.scaled_dot_product_attention
+@pytest.mark.scaled_dot_product_attention_forward
 @pytest.mark.parametrize(
     "batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len, head_size, enable_gqa",
     [
@@ -119,7 +119,7 @@ def test_scaled_dot_product_attention_legacy(
     enable_gqa,
 ):
     if flag_gems.vendor_name == "hygon":
-        monkeypatch.env("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
+        monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
 
     device = torch_device_fn.current_device()
     q, k, v = make_input(
@@ -167,10 +167,10 @@ def test_scaled_dot_product_attention_legacy(
     utils.gems_assert_close(gems_result, torch_result, dtype)
 
 
-@pytest.mark.skipif(True, reason="Something wrong here, disable it for temp")
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skip(reason="#2848: Something wrong here, disable it for temp")
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="#2849: Not working")
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="#2849: RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="#2849: Not working")
 @pytest.mark.skipif(
     torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
 )
@@ -208,7 +208,7 @@ def test_scaled_dot_product_attention_legacy(
 )
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_scaled_dot_product_attention_legacy_legacy_backward(
+def test_scaled_dot_product_attention_legacy_backward(
     batch,
     num_q_head,
     num_kv_head,
@@ -295,7 +295,7 @@ def test_scaled_dot_product_attention_square_qk_even_mn(
     monkeypatch, batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
     if flag_gems.vendor_name == "mthreads":
-        monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     device = torch_device_fn.current_device()
 
@@ -326,10 +326,10 @@ def test_scaled_dot_product_attention_nonsquare_qk(
     monkeypatch, batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
     if flag_gems.vendor_name == "mthreads":
-        monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     if flag_gems.vendor_name == "hygon":
-        monkeypatch.env("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
+        monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
 
     device = torch_device_fn.current_device()
 

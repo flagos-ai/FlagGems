@@ -3,7 +3,7 @@ import pytest
 from . import base, consts
 
 
-@pytest.mark.dunder_ior
+@pytest.mark.dunder_ior_tensor
 def test_dunder_ior_inplace():
     bench = base.BinaryPointwiseBenchmark(
         op_name="dunder_ior",

@@ -145,7 +145,7 @@ def debug_topk_results(actual, expected, inputs, test_name=""):
         ([7, 31, 63], [700, 900, 1024]),
     ],
 )
-def test_bucket_sort_topk_public_entrypoint_matches_torch_topk(starts_list, ends_list):
+def test_bucket_sort_topk(starts_list, ends_list):
     batch_size = len(starts_list)
     seq_len = 1024
     topk = 32
@@ -167,7 +167,7 @@ def test_bucket_sort_topk_public_entrypoint_matches_torch_topk(starts_list, ends
 
 
 @pytest.mark.skip(
-    "RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
 )
 @pytest.mark.bucket_sort_topk
 @pytest.mark.parametrize("batch_size", [1, 4, 16])
@@ -202,7 +202,7 @@ def test_bucket_sort_topk_forward(
 
 
 @pytest.mark.skip(
-    "RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
 )
 @pytest.mark.bucket_sort_topk
 @pytest.mark.parametrize(
@@ -237,7 +237,7 @@ def test_bucket_sort_topk_edge_cases(config):
 
 
 @pytest.mark.skip(
-    "RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
 )
 @pytest.mark.bucket_sort_topk
 @pytest.mark.parametrize(
@@ -275,7 +275,7 @@ def test_bucket_sort_topk_large_scale(config):
 
 
 @pytest.mark.skip(
-    "RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
 )
 @pytest.mark.bucket_sort_topk
 def test_bucket_sort_topk_variable_length():
@@ -306,7 +306,7 @@ def test_bucket_sort_topk_variable_length():
 
 
 @pytest.mark.skip(
-    "RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+    "#2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
 )
 @pytest.mark.bucket_sort_topk
 def test_bucket_sort_topk_correctness():

@@ -21,6 +21,9 @@ except ImportError:
 
 @dataclasses.dataclass
 class TestParam:
+    # Instruct pytest to ignore this class
+    __test__ = False
+
     s_q: int
     s_kv: int
     topk: int

@@ -13,6 +13,8 @@ def test_pow_tensor_tensor(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
+    # Issue #2841
+    # Issue #2842
     if flag_gems.vendor_name == "kunlunxin" or flag_gems.vendor_name == "ascend":
         inp1 = inp1.uniform_(-1, 1)
         inp2 = inp2.uniform_(-1, 1)
@@ -119,11 +121,11 @@ def test_pow_tensor_scalar_(scalar, shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.pow_scalar_tensor
+@pytest.mark.pow_scalar
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_pow_scalar_tensor(scalar, shape, dtype):
+def test_pow_scalar(scalar, shape, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Skiping fp32 pow test on tsingmicro platform")
 

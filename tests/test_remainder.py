@@ -11,7 +11,7 @@ def replace_zeros(inp):
     return torch.where(inp == 0, 1, inp)
 
 
-@pytest.mark.remainder
+@pytest.mark.remainder_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
 def test_remainder(shape, dtype):
@@ -56,7 +56,7 @@ def test_remainder(shape, dtype):
         utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.remainder_
+@pytest.mark.remainder_tensor_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
 def test_remainder_(shape, dtype):

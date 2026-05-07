@@ -81,13 +81,13 @@ def ref_mla(
     return out, lse
 
 
-@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(vendor_name == "hygon", reason="#2817: RuntimeError")
 @pytest.mark.flash_mla
 @pytest.mark.parametrize("seqlen", [1024, 2048, 4096, 8192])
 @pytest.mark.parametrize("dtype", [torch.bfloat16])
 def test_flash_mla(monkeypatch, seqlen, dtype):
     if vendor_name == "mthreads":
-        monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     b = 128
     s_q = 1

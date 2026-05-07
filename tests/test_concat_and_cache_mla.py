@@ -38,7 +38,7 @@ def convert_fp8(
         dst.copy_(src)
 
 
-@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(vendor_name == "hygon", reason="#2800: RuntimeError")
 @pytest.mark.concat_and_cache_mla
 @pytest.mark.parametrize("kv_lora_rank", [512])
 @pytest.mark.parametrize("qk_rope_head_dim", [64])

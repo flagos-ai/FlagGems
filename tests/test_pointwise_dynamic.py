@@ -22,7 +22,7 @@ USE_BLOCK_POINTER = [True, False]
 triton_version_less_than3 = int(triton.__version__[0]) < 3
 
 if flag_gems.vendor_name == "kunlunxin":
-    pytestmark = pytest.mark.skip("Test Files for Operators Not Pending Testing")
+    pytestmark = pytest.mark.skip("#2836: Test Files for Operators Not Pending Testing")
 
 
 def test_function_schema_with_non_tensor_input():
@@ -833,7 +833,7 @@ def test_dynamic_function_0d_task(use_1d_tile, use_block_pointer):
 
 @pytest.mark.parametrize("use_1d_tile", [True, False])
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="AssertionError")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="#2837: AssertionError")
 def test_dynamic_function_zero_sized_task_unary(use_1d_tile, use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
@@ -856,7 +856,7 @@ def test_dynamic_function_zero_sized_task_unary(use_1d_tile, use_block_pointer):
 
 @pytest.mark.parametrize("use_1d_tile", [True, False])
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="AssertionError")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="#2837: AssertionError")
 def test_dynamic_function_zero_sized_task_binary(use_1d_tile, use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,

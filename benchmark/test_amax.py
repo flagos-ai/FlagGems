@@ -4,7 +4,7 @@ import torch
 from . import base, consts
 
 
-@pytest.mark.test_amax
+@pytest.mark.amax
 def test_amax():
     bench = base.UnaryReductionBenchmark(
         op_name="amax", torch_op=torch.amax, dtypes=consts.FLOAT_DTYPES
