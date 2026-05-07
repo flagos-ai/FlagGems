@@ -33,7 +33,7 @@ HAS_FLAGTREE = False
 ROOT = Path(__file__).parent.parent
 OUPUT_DIR = None
 OP_LIST = []
-KERNELGEN_OPS = set()
+OP_LABELS = {}
 TIMEOUT = -100
 
 NO_CPU_LIST = [
@@ -83,13 +83,13 @@ def get_ops_from_inventory():
     return catalog
 
 
-def load_kernelgen_ops():
-    global KERNELGEN_OPS
+def load_op_labels():
+    global OP_LABELS
     catalog = get_ops_from_inventory()
     for op_entry in catalog:
+        op_id = op_entry.get("id", "")
         labels = op_entry.get("labels", [])
-        if "KernelGen" in labels:
-            KERNELGEN_OPS.add(op_entry.get("id", ""))
+        OP_LABELS[op_id] = labels
     return catalog
 
 
@@ -206,37 +206,74 @@ def init():
         sys.exit(-1)
 
 
-def run_cmd(cmd, cwd=None, env=None, timeout=600, stdout_file=None, stderr_file=None):
-    stdout_target = subprocess.DEVNULL
-    stderr_target = subprocess.DEVNULL
+def run_cmd(
+    cmd,
+    cwd=None,
+    env=None,
+    timeout=600,
+    stdout_file=None,
+    stderr_file=None,
+):
+    """
+    Safe subprocess runner:
+    - No PIPE (avoid deadlock)
+    - Support timeout
+    - Kill full process group
+    - Persist stdout/stderr to file
+    """
+
     stdout_fh = None
     stderr_fh = None
+
     try:
         if stdout_file:
-            stdout_fh = open(stdout_file, "w")
-            stdout_target = stdout_fh
+            stdout_fh = open(stdout_file, "w", buffering=1)
         if stderr_file:
-            stderr_fh = open(stderr_file, "w")
-            stderr_target = stderr_fh
+            stderr_fh = open(stderr_file, "w", buffering=1)
+
+        stdout_target = stdout_fh if stdout_fh else subprocess.DEVNULL
+        stderr_target = stderr_fh if stderr_fh else subprocess.DEVNULL
 
         p = subprocess.Popen(
             shlex.split(cmd),
-            cwd=str(cwd),
+            cwd=str(cwd) if cwd else None,
             env=env,
             stdout=stdout_target,
             stderr=stderr_target,
+            start_new_session=True,
         )
-        p.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        os.killpg(os.getpgid(p.pid), signal.SIGTERM)
-        return TIMEOUT
+
+        try:
+            p.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(p.pid, signal.SIGTERM)
+            except Exception:
+                p.terminate()
+
+            try:
+                p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(p.pid, signal.SIGKILL)
+                except Exception:
+                    p.kill()
+
+            return TIMEOUT
+
+        return p.returncode
+
+    except Exception as e:
+        perror(f"run_cmd failed: {e}")
+        return -1
+
     finally:
         if stdout_fh:
+            stdout_fh.flush()
             stdout_fh.close()
         if stderr_fh:
+            stderr_fh.flush()
             stderr_fh.close()
-    return p.returncode
-
 
 def parse_accuracy_data(result_file):
     raw_data = {}
@@ -513,9 +550,9 @@ def run_benchmark(gpu_id, start, index, count):
 
 
 def worker_proc(gpu_id, start, count):
-    # Ensure KERNELGEN_OPS is populated in subprocess (needed for spawn mode)
-    if not KERNELGEN_OPS:
-        load_kernelgen_ops()
+    # Ensure OP_LABELS is populated in subprocess (needed for spawn mode)
+    if not OP_LABELS:
+        load_op_labels()
 
     worker_result = {}
     for i in range(count):
@@ -534,7 +571,7 @@ def worker_proc(gpu_id, start, count):
         ]
         result = {
             "customized": op in customized_ops,
-            "kernelgen": op in KERNELGEN_OPS,
+            "labels": OP_LABELS.get(op, []),
             "accuracy": acc,
             "performance": perf,
         }
@@ -623,8 +660,8 @@ def main():
     # Probe environment setttings
     init()
 
-    # Load KernelGen ops from inventory
-    load_kernelgen_ops()
+    # Load operator labels from inventory
+    load_op_labels()
 
     ops = get_ops_to_test(args.op_list_file, args.ops, args.stages)
     op_count = len(ops)
