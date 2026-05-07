@@ -19,10 +19,10 @@ def double(in_ptr, out_ptr, n, TILE_SIZE: tl.constexpr):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin",
-    reason="Test Files for Operators Not Pending Testing",
+    reason="#2853: Test Files for Operators Not Pending Testing",
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads", reason="torch.complex not impl"
+    flag_gems.vendor_name == "mthreads", reason="#2854: torch.complex not impl"
 )
 def test_typed_pointer():
     real = torch.randn(10, 10, device=flag_gems.device)
@@ -44,10 +44,10 @@ def test_typed_pointer():
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin",
-    reason="Test Files for Operators Not Pending Testing",
+    reason="#2853: Test Files for Operators Not Pending Testing",
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads", reason="torch.complex not impl"
+    flag_gems.vendor_name == "mthreads", reason="#2854: torch.complex not impl"
 )
 def test_typed_pointer_reinterpret_with_offset():
     real = torch.randn(100, device=flag_gems.device)
@@ -72,7 +72,7 @@ def test_typed_pointer_reinterpret_with_offset():
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin",
-    reason="Test Files for Operators Not Pending Testing",
+    reason="#2853: Test Files for Operators Not Pending Testing",
 )
 def test_typed_pointer_as_is():
     x = torch.randn(100, device=flag_gems.device)
@@ -92,7 +92,7 @@ def test_typed_pointer_as_is():
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin",
-    reason="Test Files for Operators Not Pending Testing",
+    reason="#2853: Test Files for Operators Not Pending Testing",
 )
 def test_strided_buffer_slice():
     x = torch.randn(100, 100, device=flag_gems.device)

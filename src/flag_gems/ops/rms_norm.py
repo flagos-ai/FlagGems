@@ -227,6 +227,12 @@ def rms_norm_grad_dw_kernel(
     )
 
 
+def rms_norm_out(result, x, normalized_shape, weight, eps=1e-5):
+    y, _ = rms_norm_forward(x, normalized_shape, weight, eps=eps)
+    result.copy_(y)
+    return result
+
+
 def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
     logger.debug("GEMS RMS_NORM FORWARD")
     dim = x.ndim - len(normalized_shape)
