@@ -36,6 +36,8 @@ from .repeat_interleave import (
 from .resolve_conj import resolve_conj
 from .sort import sort, sort_stable
 from .tile import tile
+from .unique import _unique2
+from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
@@ -90,6 +92,8 @@ __all__ = [
     "sort",
     "sort_stable",
     "tile",
+    "_unique2",
+    "w8a8_block_fp8_matmul",
     "zero_",
     "zeros",
     "zeros_like",

@@ -85,10 +85,10 @@ class CatKernelGenerator(IndentedBuffer):
         self.writeline("import triton.language as tl")
         self.newline()
         self.writeline("from flag_gems.runtime import torch_device_fn")
-        self.writeline("from flag_gems.runtime.backend import vendor_module")
+        self.writeline("from flag_gems.runtime.backend import _state")
         self.writeline("from flag_gems.utils import libentry, libtuner")
         self.newline()
-        self.writeline("TOTAL_CORE_NUM = vendor_module.TOTAL_CORE_NUM")
+        self.writeline("TOTAL_CORE_NUM = _state.vendor_module.TOTAL_CORE_NUM")
         self.newline()
         self.newline()
 
