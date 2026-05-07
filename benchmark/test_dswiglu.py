@@ -12,25 +12,17 @@ try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
     TE_OP = getattr(tex, "dswiglu")
-    TE_AVAILABLE = True
-    GEMS_OP = getattr(flag_gems, "dswiglu")
 except ImportError:
-    TE_AVAILABLE = False
     TE_OP = None
-    GEMS_OP = None
 
 
 @pytest.mark.dswiglu
-@pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine not installed")
-@pytest.mark.skipif(TE_OP is None, reason="'dswiglu' not found in TransformerEngine")
-@pytest.mark.skipif(GEMS_OP is None, reason="'dswiglu' not found in FlagGems")
+@pytest.mark.skipif(TE_OP is None, reason="TransformerEngine not installed")
 def test_dswiglu():
     bench = base.TexGluBackwardBenchmark(
         op_name="dswiglu",
         torch_op=TE_OP,
-        gems_op=GEMS_OP,
+        gems_op=flag_gems.dswiglu,
         dtypes=consts.FLOAT_DTYPES,
-        # TODO(Qiming): Is this flag correct?
-        is_backward=False,
     )
     bench.run()
