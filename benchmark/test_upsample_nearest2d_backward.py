@@ -1,14 +1,13 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
-class UpsampleNearest2dBackwardBenchmark(utils.GenericBenchmark):
+class UpsampleNearest2dBackwardBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
-        # (N, C, H, W) — the input shape; output shape is scaled up.
-        return None
+        # (N, C, H, W) for the input shape; output shape is scaled up.
+        return []
 
 
 def _input_fn(shape, dtype, device):
@@ -30,10 +29,14 @@ def _input_fn(shape, dtype, device):
 
 
 def _torch_ref(grad_output, output_size, input_size, scales_h, scales_w):
-    # Reference: build the forward graph once and use autograd to get the
-    # backward, so the comparison reflects what PyTorch users actually see.
-    x = torch.zeros(input_size, device=grad_output.device,
-                    dtype=grad_output.dtype, requires_grad=True)
+    """Build the forward graph once and use autograd to get the backward;
+    that way the comparison reflects what PyTorch users actually see."""
+    x = torch.zeros(
+        input_size,
+        device=grad_output.device,
+        dtype=grad_output.dtype,
+        requires_grad=True,
+    )
     y = torch._C._nn.upsample_nearest2d(x, output_size, scales_h, scales_w)
     return torch.autograd.grad(y, x, grad_output)[0]
 
@@ -44,6 +47,6 @@ def test_upsample_nearest2d_backward():
         op_name="upsample_nearest2d_backward",
         input_fn=_input_fn,
         torch_op=_torch_ref,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
