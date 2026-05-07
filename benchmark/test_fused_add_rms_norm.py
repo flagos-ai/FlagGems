@@ -1,9 +1,9 @@
 import pytest
 import torch
-from benchmark.attri_util import FLOAT_DTYPES
-from benchmark.performance_utils import GenericBenchmarkExcluse1D
 
 import flag_gems
+from benchmark.attri_util import FLOAT_DTYPES
+from benchmark.performance_utils import GenericBenchmarkExcluse1D
 
 
 def _input_fn(shape, dtype, device):

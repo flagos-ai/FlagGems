@@ -5,6 +5,8 @@ import os
 import pytest
 import torch
 import yaml
+
+import flag_gems
 from benchmark.attri_util import (
     ALL_AVAILABLE_METRICS,
     BOOL_DTYPES,
@@ -17,8 +19,6 @@ from benchmark.attri_util import (
     OperationAttribute,
     get_recommended_shapes,
 )
-
-import flag_gems
 from flag_gems.runtime import torch_device_fn
 
 device = flag_gems.device

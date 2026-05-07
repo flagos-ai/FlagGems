@@ -12,6 +12,8 @@ from typing import Generator
 import pytest
 import torch
 import yaml
+
+import flag_gems
 from benchmark.attri_util import (
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
@@ -24,8 +26,6 @@ from benchmark.attri_util import (
 )
 from benchmark.conftest import Config, emit_record_logger
 from benchmark.performance_utils import Benchmark, GenericBenchmark2DOnly
-
-import flag_gems
 
 try:
     from vllm.model_executor.layers.quantization.utils.fp8_utils import (

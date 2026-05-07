@@ -2,6 +2,7 @@ from typing import Generator
 
 import pytest
 import torch
+
 from benchmark.attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from benchmark.performance_utils import Benchmark, Config, generate_tensor_input
 

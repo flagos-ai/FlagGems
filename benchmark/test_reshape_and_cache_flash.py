@@ -3,9 +3,9 @@ from typing import Any
 
 import pytest
 import torch
-from benchmark.attri_util import FLOAT_DTYPES
 
 import flag_gems
+from benchmark.attri_util import FLOAT_DTYPES
 
 from .performance_utils import GenericBenchmark
 
