@@ -93,6 +93,46 @@ def test_tril_empty_tensor():
 
 
 @pytest.mark.tril
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64, torch.int16, torch.int8])
+def test_tril_integer_dtypes(dtype):
+    """torch.tril supports integer tensors — cover them too."""
+    for shape in [(8, 8), (32, 16), (16, 32), (4, 5, 7)]:
+        inp = torch.randint(-100, 100, shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        for diagonal in [-1, 0, 1]:
+            ref_out = torch.tril(ref_inp, diagonal)
+            with flag_gems.use_gems():
+                res_out = torch.tril(inp, diagonal)
+            utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.tril
+def test_tril_bool_dtype():
+    """torch.tril supports bool tensors — verify."""
+    inp = (torch.randn((16, 16), device=flag_gems.device) > 0)
+    ref_inp = utils.to_reference(inp)
+    for diagonal in [-1, 0, 1]:
+        ref_out = torch.tril(ref_inp, diagonal)
+        with flag_gems.use_gems():
+            res_out = torch.tril(inp, diagonal)
+        utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.tril
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_tril_large_shapes(dtype):
+    """Stress test: tile-boundary fast paths must hold for large matrices."""
+    for shape in [(2048, 2048), (4096, 1024), (1024, 4096)]:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        for diagonal in [-100, 0, 100]:
+            ref_out = torch.tril(ref_inp, diagonal)
+            with flag_gems.use_gems():
+                res_out = torch.tril(inp, diagonal)
+            utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.tril
 @pytest.mark.tril_out
 @pytest.mark.parametrize("shape", [(32, 32), (64, 128), (128, 64), (5, 7, 13)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
