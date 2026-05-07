@@ -1,5 +1,5 @@
 import torch_ptpu  # noqa: F401
-from backend_utils import VendorInfoBase
+from backend_utils import VendorInfoBase  # noqa: E402
 
 vendor_info = VendorInfoBase(
     vendor_name="sunrise",
