@@ -1,8 +1,8 @@
 import pytest
-
-import flag_gems
 from benchmark.attri_util import FLOAT_DTYPES
 from benchmark.performance_utils import TexGluBackwardBenchmark
+
+import flag_gems
 
 # Note: Importing transformer_engine (especially in some versions like py 3.10) may automatically
 # configure the Root Logger (adding handlers). This may cause subsequent `logging.basicConfig`
