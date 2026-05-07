@@ -11,14 +11,14 @@ of production shapes, including ``cu_seqlens`` packed batches.
 from __future__ import annotations
 
 import time
-import triton
-import torch
 
 import flag_gems  # noqa: F401
+import torch
+import triton
 from flag_gems.ops.chunk_gated_delta_rule import (
     _eager_chunk_gated_delta_rule as eager_ref,
-    chunk_gated_delta_rule,
 )
+from flag_gems.ops.chunk_gated_delta_rule import chunk_gated_delta_rule
 
 
 def _bench(fn, n_warmup=5, n_repeat=20):
@@ -40,8 +40,18 @@ def _fwd_only(B, T, H, K, V, dtype):
     beta = torch.sigmoid(torch.randn(B, T, H, device="cuda", dtype=torch.float32))
 
     t_op = _bench(lambda: chunk_gated_delta_rule(q, k, v, g, beta))
-    t_eager = _bench(lambda: eager_ref(q, k, v, g, beta, scale=K**-0.5,
-                                       initial_state=None, output_final_state=False))
+    t_eager = _bench(
+        lambda: eager_ref(
+            q,
+            k,
+            v,
+            g,
+            beta,
+            scale=K**-0.5,
+            initial_state=None,
+            output_final_state=False,
+        )
+    )
     return t_op, t_eager
 
 
@@ -49,8 +59,12 @@ def _fwd_and_bwd(B, T, H, K, V, dtype):
     q = torch.randn(B, T, H, K, device="cuda", dtype=dtype, requires_grad=True)
     k = (torch.randn(B, T, H, K, device="cuda", dtype=dtype) * 0.3).requires_grad_(True)
     v = torch.randn(B, T, H, V, device="cuda", dtype=dtype, requires_grad=True)
-    g = (-torch.rand(B, T, H, device="cuda", dtype=torch.float32) * 0.1).requires_grad_(True)
-    beta = torch.sigmoid(torch.randn(B, T, H, device="cuda", dtype=torch.float32)).requires_grad_(True)
+    g = (-torch.rand(B, T, H, device="cuda", dtype=torch.float32) * 0.1).requires_grad_(
+        True
+    )
+    beta = torch.sigmoid(
+        torch.randn(B, T, H, device="cuda", dtype=torch.float32)
+    ).requires_grad_(True)
 
     def step():
         for t in (q, k, v, g, beta):
@@ -63,7 +77,9 @@ def _fwd_and_bwd(B, T, H, K, V, dtype):
 
 
 def main():
-    print(f"device: {torch.cuda.get_device_name(0)}  cap: {torch.cuda.get_device_capability(0)}")
+    print(
+        f"device: {torch.cuda.get_device_name(0)}  cap: {torch.cuda.get_device_capability(0)}"
+    )
     print(f"triton: {triton.__version__}  torch: {torch.__version__}")
     print()
     print("--- forward only (us) ---")
@@ -80,7 +96,9 @@ def main():
                 t_op, t_eager = _fwd_only(B, T, H, K, V, dtype)
                 shape = f"B={B} T={T} H={H} K={K} V={V}"
                 spd = f"{t_eager/t_op:.2f}x"
-                print(f"{shape:40s} {str(dtype).split('.')[-1]:10s} {t_op:10.1f} {t_eager:10.1f} {spd:>10s}")
+                print(
+                    f"{shape:40s} {str(dtype).split('.')[-1]:10s} {t_op:10.1f} {t_eager:10.1f} {spd:>10s}"
+                )
             except Exception as e:
                 print(f"  failed: {e}")
 

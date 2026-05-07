@@ -184,7 +184,9 @@ def _ensure_triton_allocator():
     _ALLOCATOR_INSTALLED = True
 
 
-def _fla_fast_forward(q, k, v, g, beta, scale, initial_state, output_final_state, cu_seqlens):
+def _fla_fast_forward(
+    q, k, v, g, beta, scale, initial_state, output_final_state, cu_seqlens
+):
     try:
         from flag_gems.fused.FLA.chunk import chunk_gated_delta_rule_fwd as _fla_fwd
     except Exception:
@@ -257,7 +259,14 @@ class _ChunkGatedDeltaRuleFn(torch.autograd.Function):
                 q, k, v, g, beta, scale, initial_state, output_final_state
             )
 
-        ctx.save_for_backward(q, k, v, g, beta, initial_state if initial_state is not None else q.new_empty(0))
+        ctx.save_for_backward(
+            q,
+            k,
+            v,
+            g,
+            beta,
+            initial_state if initial_state is not None else q.new_empty(0),
+        )
         ctx.scale = scale
         ctx.has_initial_state = initial_state is not None
         ctx.output_final_state = output_final_state
@@ -277,8 +286,17 @@ class _ChunkGatedDeltaRuleFn(torch.autograd.Function):
             # cu_seqlens backward is not supported by the eager rerun yet.
             # Fall back to per-sequence eager — correct but slow.
             return _backward_cu_seqlens(
-                q, k, v, g, beta, h0, scale,
-                ctx.output_final_state, cu_seqlens, do, dfinal_state,
+                q,
+                k,
+                v,
+                g,
+                beta,
+                h0,
+                scale,
+                ctx.output_final_state,
+                cu_seqlens,
+                do,
+                dfinal_state,
             )
 
         with torch.enable_grad():
@@ -303,7 +321,11 @@ class _ChunkGatedDeltaRuleFn(torch.autograd.Function):
 
             outputs = [o_ref]
             grad_outputs = [do.to(o_ref.dtype)]
-            if ctx.output_final_state and fs_ref is not None and dfinal_state is not None:
+            if (
+                ctx.output_final_state
+                and fs_ref is not None
+                and dfinal_state is not None
+            ):
                 outputs.append(fs_ref)
                 grad_outputs.append(dfinal_state.to(fs_ref.dtype))
             grads = torch.autograd.grad(
@@ -328,13 +350,23 @@ class _ChunkGatedDeltaRuleFn(torch.autograd.Function):
         else:
             out_grads.append(None)
         # scale, output_final_state, cu_seqlens — non-tensor or non-grad.
-        out_grads = [out_grads[0], out_grads[1], out_grads[2], out_grads[3], out_grads[4],
-                     None, out_grads[5], None, None]
+        out_grads = [
+            out_grads[0],
+            out_grads[1],
+            out_grads[2],
+            out_grads[3],
+            out_grads[4],
+            None,
+            out_grads[5],
+            None,
+            None,
+        ]
         return tuple(out_grads)
 
 
-def _backward_cu_seqlens(q, k, v, g, beta, h0, scale,
-                         output_final_state, cu_seqlens, do, dfinal_state):
+def _backward_cu_seqlens(
+    q, k, v, g, beta, h0, scale, output_final_state, cu_seqlens, do, dfinal_state
+):
     """Per-sequence backward for variable-length inputs (slow but correct).
 
     Inputs shaped ``[1, total_T, H, .]`` with ``cu_seqlens`` of length N+1.
@@ -357,7 +389,7 @@ def _backward_cu_seqlens(q, k, v, g, beta, h0, scale,
             gi = g[:, sl].detach().clone().requires_grad_(True)
             bi = beta[:, sl].detach().clone().requires_grad_(True)
             h0i = (
-                h0[i:i+1].detach().clone().requires_grad_(grads_h0 is not None)
+                h0[i : i + 1].detach().clone().requires_grad_(grads_h0 is not None)
                 if h0 is not None
                 else None
             )
@@ -368,20 +400,21 @@ def _backward_cu_seqlens(q, k, v, g, beta, h0, scale,
             grad_outputs = [do[:, sl].to(o_i.dtype)]
             if output_final_state and dfinal_state is not None and fs_i is not None:
                 outputs.append(fs_i)
-                grad_outputs.append(dfinal_state[i:i+1].to(fs_i.dtype))
+                grad_outputs.append(dfinal_state[i : i + 1].to(fs_i.dtype))
             inputs = [qi, ki, vi, gi, bi]
             if h0i is not None and h0i.requires_grad:
                 inputs.append(h0i)
-            grads = torch.autograd.grad(outputs, inputs, grad_outputs, allow_unused=True)
+            grads = torch.autograd.grad(
+                outputs, inputs, grad_outputs, allow_unused=True
+            )
             grads_q[:, sl] = grads[0] if grads[0] is not None else 0
             grads_k[:, sl] = grads[1] if grads[1] is not None else 0
             grads_v[:, sl] = grads[2] if grads[2] is not None else 0
             grads_g[:, sl] = grads[3] if grads[3] is not None else 0
             grads_beta[:, sl] = grads[4] if grads[4] is not None else 0
             if grads_h0 is not None and len(grads) > 5 and grads[5] is not None:
-                grads_h0[i:i+1] = grads[5]
-    return (grads_q, grads_k, grads_v, grads_g, grads_beta,
-            None, grads_h0, None, None)
+                grads_h0[i : i + 1] = grads[5]
+    return (grads_q, grads_k, grads_v, grads_g, grads_beta, None, grads_h0, None, None)
 
 
 # ---------------------------------------------------------------------------

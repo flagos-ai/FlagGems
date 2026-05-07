@@ -10,14 +10,13 @@ Covers:
     * Zero-length and singleton edge cases
 """
 
+import flag_gems  # noqa: F401  (registers the operator)
 import pytest
 import torch
-
-import flag_gems  # noqa: F401  (registers the operator)
 from flag_gems.ops.chunk_gated_delta_rule import (
     _eager_chunk_gated_delta_rule as eager_ref,
-    chunk_gated_delta_rule,
 )
+from flag_gems.ops.chunk_gated_delta_rule import chunk_gated_delta_rule
 
 if not torch.cuda.is_available():
     pytest.skip("chunk_gated_delta_rule requires CUDA", allow_module_level=True)
@@ -53,19 +52,22 @@ def _make_inputs(B, T, H, K, V, dtype, requires_grad=False, seed=0):
 def test_forward_matches_eager(dtype, B, T, H, K, V):
     q, k, v, g, beta = _make_inputs(B, T, H, K, V, dtype)
     o_ours, _ = chunk_gated_delta_rule(q, k, v, g, beta)
-    o_ref, _ = eager_ref(q, k, v, g, beta, scale=K**-0.5, initial_state=None,
-                         output_final_state=False)
+    o_ref, _ = eager_ref(
+        q, k, v, g, beta, scale=K**-0.5, initial_state=None, output_final_state=False
+    )
     atol = {torch.float32: 1e-1, torch.bfloat16: 5e-1, torch.float16: 5e-1}[dtype]
     rtol = {torch.float32: 1e-2, torch.bfloat16: 1e-1, torch.float16: 1e-1}[dtype]
-    assert torch.allclose(o_ours.float(), o_ref.float(), atol=atol, rtol=rtol), \
-        f"forward diverges: max diff {(o_ours.float()-o_ref.float()).abs().max().item()}"
+    assert torch.allclose(
+        o_ours.float(), o_ref.float(), atol=atol, rtol=rtol
+    ), f"forward diverges: max diff {(o_ours.float()-o_ref.float()).abs().max().item()}"
 
 
 def test_padding_not_multiple_of_chunk():
     q, k, v, g, beta = _make_inputs(1, 73, 2, 16, 16, torch.float32)
     o_ours, _ = chunk_gated_delta_rule(q, k, v, g, beta)
-    o_ref, _ = eager_ref(q, k, v, g, beta, scale=16**-0.5, initial_state=None,
-                         output_final_state=False)
+    o_ref, _ = eager_ref(
+        q, k, v, g, beta, scale=16**-0.5, initial_state=None, output_final_state=False
+    )
     assert o_ours.shape == (1, 73, 2, 16)
     assert torch.allclose(o_ours, o_ref, atol=5e-3, rtol=5e-3)
 
@@ -92,12 +94,21 @@ def test_initial_state_chaining_equivalence():
     o_full, fs_full = chunk_gated_delta_rule(q, k, v, g, beta, output_final_state=True)
 
     o1, fs1 = chunk_gated_delta_rule(
-        q[:, :64], k[:, :64], v[:, :64], g[:, :64], beta[:, :64],
+        q[:, :64],
+        k[:, :64],
+        v[:, :64],
+        g[:, :64],
+        beta[:, :64],
         output_final_state=True,
     )
     o2, fs2 = chunk_gated_delta_rule(
-        q[:, 64:], k[:, 64:], v[:, 64:], g[:, 64:], beta[:, 64:],
-        initial_state=fs1, output_final_state=True,
+        q[:, 64:],
+        k[:, 64:],
+        v[:, 64:],
+        g[:, 64:],
+        beta[:, 64:],
+        initial_state=fs1,
+        output_final_state=True,
     )
     o_chained = torch.cat([o1, o2], dim=1)
     assert torch.allclose(o_full, o_chained, atol=1e-4, rtol=1e-4)
@@ -111,10 +122,17 @@ def test_gradcheck_small_fp64():
     B, T, H, K, V = 1, 8, 1, 4, 4
     torch.manual_seed(0)
     q = torch.randn(B, T, H, K, device=DEV, dtype=torch.float64, requires_grad=True)
-    k = torch.randn(B, T, H, K, device=DEV, dtype=torch.float64, requires_grad=True) * 0.3
+    k = (
+        torch.randn(B, T, H, K, device=DEV, dtype=torch.float64, requires_grad=True)
+        * 0.3
+    )
     v = torch.randn(B, T, H, V, device=DEV, dtype=torch.float64, requires_grad=True)
-    g = (-torch.rand(B, T, H, device=DEV, dtype=torch.float64) * 0.1).requires_grad_(True)
-    beta = torch.sigmoid(torch.randn(B, T, H, device=DEV, dtype=torch.float64)).requires_grad_(True)
+    g = (-torch.rand(B, T, H, device=DEV, dtype=torch.float64) * 0.1).requires_grad_(
+        True
+    )
+    beta = torch.sigmoid(
+        torch.randn(B, T, H, device=DEV, dtype=torch.float64)
+    ).requires_grad_(True)
 
     def fn(q, k, v, g, beta):
         o, _ = chunk_gated_delta_rule(q, k, v, g, beta)
@@ -127,16 +145,30 @@ def test_gradcheck_small_fp64():
 
 def test_backward_matches_eager_grads():
     B, T, H, K, V = 2, 64, 2, 16, 16
-    q, k, v, g, beta = _make_inputs(B, T, H, K, V, torch.float32, requires_grad=True, seed=42)
+    q, k, v, g, beta = _make_inputs(
+        B, T, H, K, V, torch.float32, requires_grad=True, seed=42
+    )
     o, fs = chunk_gated_delta_rule(q, k, v, g, beta, output_final_state=True)
     do = torch.randn_like(o)
     dfs = torch.randn_like(fs)
     grads_ours = torch.autograd.grad([o, fs], [q, k, v, g, beta], [do, dfs])
 
-    q2, k2, v2, g2, beta2 = _make_inputs(B, T, H, K, V, torch.float32, requires_grad=True, seed=42)
-    o2, fs2 = eager_ref(q2, k2, v2, g2, beta2, scale=K**-0.5,
-                        initial_state=None, output_final_state=True)
-    grads_ref = torch.autograd.grad([o2, fs2], [q2, k2, v2, g2, beta2], [do.clone(), dfs.clone()])
+    q2, k2, v2, g2, beta2 = _make_inputs(
+        B, T, H, K, V, torch.float32, requires_grad=True, seed=42
+    )
+    o2, fs2 = eager_ref(
+        q2,
+        k2,
+        v2,
+        g2,
+        beta2,
+        scale=K**-0.5,
+        initial_state=None,
+        output_final_state=True,
+    )
+    grads_ref = torch.autograd.grad(
+        [o2, fs2], [q2, k2, v2, g2, beta2], [do.clone(), dfs.clone()]
+    )
 
     for name, a, b in zip(["dq", "dk", "dv", "dg", "dbeta"], grads_ours, grads_ref):
         diff = (a - b).abs().max().item()
@@ -151,8 +183,11 @@ def test_cu_seqlens_forward():
     T = sum(seq_lens)
     H, K, V = 2, 16, 16
     q, k, v, g, beta = _make_inputs(1, T, H, K, V, torch.float32)
-    cu = torch.tensor([0] + list(torch.tensor(seq_lens).cumsum(0).tolist()),
-                      device=DEV, dtype=torch.long)
+    cu = torch.tensor(
+        [0] + list(torch.tensor(seq_lens).cumsum(0).tolist()),
+        device=DEV,
+        dtype=torch.long,
+    )
     o, _ = chunk_gated_delta_rule(q, k, v, g, beta, cu_seqlens=cu)
     assert o.shape == (1, T, H, V)
     assert torch.isfinite(o).all()
@@ -162,8 +197,14 @@ def test_cu_seqlens_forward():
     for i in range(len(seq_lens)):
         s, e = cu[i].item(), cu[i + 1].item()
         oi, _ = eager_ref(
-            q[:, s:e], k[:, s:e], v[:, s:e], g[:, s:e], beta[:, s:e],
-            scale=K**-0.5, initial_state=None, output_final_state=False,
+            q[:, s:e],
+            k[:, s:e],
+            v[:, s:e],
+            g[:, s:e],
+            beta[:, s:e],
+            scale=K**-0.5,
+            initial_state=None,
+            output_final_state=False,
         )
         parts.append(oi)
     o_ref = torch.cat(parts, dim=1)
@@ -176,8 +217,11 @@ def test_cu_seqlens_backward_finite():
     T = sum(seq_lens)
     H, K, V = 2, 8, 8
     q, k, v, g, beta = _make_inputs(1, T, H, K, V, torch.float32, requires_grad=True)
-    cu = torch.tensor([0] + list(torch.tensor(seq_lens).cumsum(0).tolist()),
-                      device=DEV, dtype=torch.long)
+    cu = torch.tensor(
+        [0] + list(torch.tensor(seq_lens).cumsum(0).tolist()),
+        device=DEV,
+        dtype=torch.long,
+    )
     o, _ = chunk_gated_delta_rule(q, k, v, g, beta, cu_seqlens=cu)
     do = torch.randn_like(o)
     grads = torch.autograd.grad(o, (q, k, v, g, beta), do)
