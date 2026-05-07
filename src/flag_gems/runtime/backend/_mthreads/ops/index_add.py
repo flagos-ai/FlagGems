@@ -3,32 +3,18 @@ import logging
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
 )
 
 
-def cfggen():
-    """Generate autotune configurations for index_add kernel."""
-    block_m = [1, 2, 4, 8, 16]
-    block_n = [64, 128, 256, 512, 1024, 2048]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-        if m * n <= 16384  # Limit total block size
-    ]
-    return configs
-
-
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics(runtime.get_heuristic_config("index_add"))
 @triton.jit
 def index_add_kernel(
     inp_ptr,

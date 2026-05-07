@@ -1,3 +1,4 @@
+# This package contains no operator invocation
 import pytest
 import torch
 

@@ -21,6 +21,56 @@ gelu_backward:
     - [64, 512, 512]
     - [256, 1024, 1024]
 
+cosh:
+  shapes:
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
+cosh_:
+  shapes:
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
+cosh_out:
+  shapes:
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
+log10:
+  shapes:
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
+log10_:
+  shapes:
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
+log10_out:
+  shapes:
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
+gcd:
+  shapes:
+    - [65536]
+    - [1024, 1024]
+    - [256, 4096]
+    - [64, 256, 256]
+  shape_desc: "(B), M, N"
+
 softmax_backward:
   shapes:
     - [1048576] # 1024 * 1024
@@ -54,6 +104,13 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
+groupmm:
+  shapes:
+    - [16, 512, 2048]
+    - [16, 2560, 2048]
+    - [64, 2048, 128]
+  shape_desc: "Groups, N, K"   # shapes are defined as (Groups, N, K)
+
 MvAndOuterBenchmark:
   shapes:
     - [384, 384]
@@ -61,6 +118,19 @@ MvAndOuterBenchmark:
     - [4096, 4096]
     - [8192, 8192]
     - [10240, 10240]  #from perf
+
+mm_self_transpose:
+  shapes:
+    - [257, 96]
+    - [384, 384]
+    - [1536, 320]
+    - [3072, 768]
+    - [1024, 1024]
+    - [4096, 1024]
+    - [5333, 71]
+    - [8192, 2048]
+    - [10240, 4096]
+  shape_desc: "M, K"
 
 # NORM shapes can be either 3D or 4D:
 # - 3D shapes are represented as [batch_size, channels, hidden_size]
@@ -206,6 +276,16 @@ Conv3DBenchmark:
     - [64, 32, 18, 18, 18, 32, 5, 5, 5, 1, 2, 1]  # larger kernel size
     - [16, 32, 12, 12, 12, 24, 3, 3, 3, 1, 2, 1]  # smaller input, different padding
   shape_desc: "N, C_in, D, H, W, C_out, K_d, K_h, K_w, stride, padding, groups"
+
+# Depthwise Conv2D: (batch, channels, input_h, input_w, kernel_h, kernel_w, stride, padding, dilation)
+ConvDepthwise2DBenchmark:
+  shapes:
+    - [32, 32, 64, 64, 3, 3, 1, 1, 1]
+    - [16, 64, 128, 128, 3, 3, 2, 1, 1]
+    - [8, 128, 56, 56, 5, 5, 1, 2, 1]
+    - [4, 256, 28, 28, 3, 3, 1, 1, 2]
+    - [2, 512, 14, 14, 3, 3, 1, 1, 1]
+  shape_desc: "N, C, H, W, K_h, K_w, stride, padding, dilation"
 
 AttentionBenchmark:
   shapes:
