@@ -16,8 +16,8 @@ def nll_loss_input_fn(shape, cur_dtype, device):
         yield inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
 
 
-@pytest.mark.nll_loss2d
-def test_nll_loss2d():
+@pytest.mark.nll_loss2d_forward
+def test_nll_loss2d_forward():
     bench = base.GenericBenchmark4DOnly(
         input_fn=nll_loss_input_fn,
         op_name="nll_loss2d",

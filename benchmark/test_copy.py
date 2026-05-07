@@ -15,10 +15,6 @@ class CopyInplaceBenchmark(base.Benchmark):
 
 
 @pytest.mark.copy_
-@pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.4"),
-    reason="The copy operator requires torch >= 2.4",
-)
 def test_copy_inplace():
     bench = CopyInplaceBenchmark(
         op_name="copy_",

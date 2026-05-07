@@ -14,7 +14,6 @@ device = flag_gems.device
 
 
 @pytest.mark.pad
-@pytest.mark.skip("The operator now has infinite recurrsion calls: #2493")
 @pytest.mark.parametrize(
     "shape",
     [[1024, 1024], [64, 64, 64, 64], [1, 64, 112, 112], [4, 64, 128]],
@@ -33,6 +32,7 @@ def test_pad(shape, dtype, pad_mode, contiguous):
 
     x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     if not contiguous:
+        # BUG #2835
         if flag_gems.vendor_name == "kunlunxin":
             x = x.cpu()[::2, ::2].to(flag_gems.device)
         else:

@@ -4,8 +4,8 @@ import torch
 from . import base, consts
 
 
-@pytest.mark.pow
-def test_pow():
+@pytest.mark.pow_tensor_tensor
+def test_pow_tensor_tensor():
     bench = base.ScalarBinaryPointwiseBenchmark(
         op_name="pow",
         torch_op=torch.pow,
@@ -14,7 +14,7 @@ def test_pow():
     bench.run()
 
 
-@pytest.mark.pow_
+@pytest.mark.pow_tensor_tensor_
 def test_pow_inplace():
     bench = base.BinaryPointwiseBenchmark(
         op_name="pow_",
