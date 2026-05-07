@@ -54,15 +54,15 @@ DTYPE_MAP = {
 
 
 def pinfo(str, **args):
-    print(f"\033[32m[INFO]\033[0m {str}", **args)
+    print(f"\033[32m[INFO]\033[0m {str}", flush=True, **args)
 
 
 def perror(str, **args):
-    print(f"\033[31m[ERROR]\033[0m {str}", **args)
+    print(f"\033[31m[ERROR]\033[0m {str}", flush=True, **args)
 
 
 def pwarn(str, **args):
-    print(f"\033[93m[WARN]\033[0m {str}", **args)
+    print(f"\033[93m[WARN]\033[0m {str}", flush=True, **args)
 
 
 def ensure_dir(p):
@@ -244,8 +244,9 @@ def parse_accuracy_data(result_file):
             failed[reason].add(param_str)
             num_failed += 1
 
+    num_total = num_passed + num_skipped + num_failed
     result = {
-        "total": num_passed + num_skipped + num_failed,
+        "total": num_total,
         "skipped": num_skipped,
         "failed": num_failed,
         "passed": num_passed,
@@ -257,12 +258,14 @@ def parse_accuracy_data(result_file):
         else:
             result["status"] = "Passed"
     else:
-        result["status"] = "Failed"
         if len(skipped):
+            if len(skipped) == num_total:
+                result["status"] = "Skipped"
             for k, v in skipped.items():
                 skipped[k] = list(v)
             result["details"]["skipped"] = skipped
         if len(failed):
+            result["status"] = "Failed"
             for k, v in failed.items():
                 failed[k] = list(v)
             result["details"]["failed"] = failed
@@ -390,7 +393,7 @@ def parse_perf_data(op, result_file):
         count = 0
         # Iterate through shapes
         for res in item.get("result", []):
-            shape = str(res.get("shape_detail", "UNKNOWN")).replace(" ", "")
+            shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
             details.setdefault(shape, {})
             details[shape]["base"] = res.get("latency_base", 0.0)
             details[shape]["gems"] = res.get("latency", 0.0)
@@ -470,9 +473,6 @@ def run_benchmark(gpu_id, start, index, count):
 
 
 def worker_proc(gpu_id, start, count):
-    # Ensure python output are unbuffered
-    os.environ["PYTHONUNBUFFERED"] = "1"
-
     worker_result = {}
     for i in range(count):
         op = OP_LIST[start + i].strip()
