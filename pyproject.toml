@@ -97,7 +97,7 @@ mthreads = [
     "flagtree==0.5.0+mthreads3.1",
     # "triton==3.1.0+musa1.4.6",
     "numpy==1.26.4",
-    "mkl==2024.0.0",
+    "mkl==2024.2.0",
 ]
 
 nvidia = [
