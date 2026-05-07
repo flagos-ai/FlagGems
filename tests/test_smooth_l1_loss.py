@@ -1,7 +1,6 @@
+import flag_gems
 import pytest
 import torch
-
-import flag_gems
 
 from . import accuracy_utils as utils
 
@@ -64,7 +63,8 @@ def test_smooth_l1_loss_quadratic_branch(dtype):
     assert torch.allclose(
         res.float(),
         torch.full_like(res, expect, dtype=torch.float32),
-        atol=1e-3, rtol=1e-3,
+        atol=1e-3,
+        rtol=1e-3,
     )
 
 
@@ -81,7 +81,8 @@ def test_smooth_l1_loss_linear_branch(dtype):
     assert torch.allclose(
         res.float(),
         torch.full_like(res, expect, dtype=torch.float32),
-        atol=1e-2, rtol=1e-2,
+        atol=1e-2,
+        rtol=1e-2,
     )
 
 
@@ -111,7 +112,9 @@ def test_smooth_l1_loss_empty_tensor():
 def test_smooth_l1_loss_backward(shape, dtype, reduction, beta):
     """Backward grads should match a torch autograd reference."""
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    target = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    target = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
     ref_inp = utils.to_reference(inp, True).detach().requires_grad_(True)
     ref_target = utils.to_reference(target, True).detach().requires_grad_(True)
 
@@ -153,12 +156,20 @@ def test_smooth_l1_loss_backward_kink(dtype):
     """Differences exactly at the |diff|=beta boundary use the linear branch
     (PyTorch convention).  Verify the backward grad sign there."""
     beta = 1.0
-    inp = torch.tensor([-2.0, -1.0, 0.0, 1.0, 2.0],
-                       dtype=dtype, device=flag_gems.device, requires_grad=True)
+    inp = torch.tensor(
+        [-2.0, -1.0, 0.0, 1.0, 2.0],
+        dtype=dtype,
+        device=flag_gems.device,
+        requires_grad=True,
+    )
     target = torch.zeros_like(inp).requires_grad_(False)
     with flag_gems.use_gems():
-        loss = torch.nn.functional.smooth_l1_loss(inp, target, reduction="sum", beta=beta)
+        loss = torch.nn.functional.smooth_l1_loss(
+            inp, target, reduction="sum", beta=beta
+        )
         loss.backward()
     # |diff|<beta -> diff/beta;  |diff|>=beta -> sign(diff)
-    expected = torch.tensor([-1.0, -1.0, 0.0, 1.0, 1.0], dtype=dtype, device=flag_gems.device)
+    expected = torch.tensor(
+        [-1.0, -1.0, 0.0, 1.0, 1.0], dtype=dtype, device=flag_gems.device
+    )
     torch.testing.assert_close(inp.grad.float(), expected.float(), atol=1e-3, rtol=1e-3)

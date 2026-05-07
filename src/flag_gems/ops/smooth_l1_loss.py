@@ -22,7 +22,6 @@ from enum import Enum
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, pointwise_dynamic
 from flag_gems.utils import triton_lang_extension as tle
@@ -215,13 +214,24 @@ def smooth_l1_loss_backward(
     with torch_device_fn.device(inp.device):
         if reduction == Reduction.NONE.value:
             smooth_l1_loss_backward_none_kernel[grid](
-                grad_output, inp, target, grad_input,
-                M, beta, BLOCK_SIZE=BLOCK_SIZE,
+                grad_output,
+                inp,
+                target,
+                grad_input,
+                M,
+                beta,
+                BLOCK_SIZE=BLOCK_SIZE,
             )
         else:
             inv_N = 1.0 / M if reduction == Reduction.MEAN.value else 1.0
             smooth_l1_loss_backward_reduced_kernel[grid](
-                grad_output, inp, target, grad_input,
-                M, beta, inv_N, BLOCK_SIZE=BLOCK_SIZE,
+                grad_output,
+                inp,
+                target,
+                grad_input,
+                M,
+                beta,
+                inv_N,
+                BLOCK_SIZE=BLOCK_SIZE,
             )
     return grad_input
