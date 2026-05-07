@@ -8,7 +8,7 @@ from . import base, consts
 @pytest.mark.div_tensor
 def test_div():
     bench = base.BinaryPointwiseBenchmark(
-        op_name="div",
+        op_name="div_tensor",
         torch_op=torch.div,
         dtypes=consts.FLOAT_DTYPES,
     )
@@ -18,7 +18,7 @@ def test_div():
 @pytest.mark.div_tensor_
 def test_div_inplace():
     bench = base.BinaryPointwiseBenchmark(
-        op_name="div_",
+        op_name="div_tensor_",
         torch_op=lambda a, b: a.div_(b),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
