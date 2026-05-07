@@ -25,6 +25,23 @@ attention:
   - 2
   - 3
   - 4
+attention_bwd:
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: warps
+      num_stages: stages
+    metas:
+      - {BLOCK_M1: 32, BLOCK_N1: 128, BLOCK_M2: 128, BLOCK_N2: 32}
+      - {BLOCK_M1: 64, BLOCK_N1: 128, BLOCK_M2: 64, BLOCK_N2: 64}
+      - {BLOCK_M1: 64, BLOCK_N1: 128, BLOCK_M2: 64, BLOCK_N2: 32}
+    warps:
+      - 4
+      - 8
+    stages:
+      - 2
+      - 3
+      - 4
 bmm:
 - META:
     TILE_M: 32
@@ -124,114 +141,134 @@ log_softmax:
     BLOCK_N: 512
   num_warps: 8
 mm:
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 256
-    BLOCK_K: 32
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_M: 256
-    BLOCK_N: 128
-    BLOCK_K: 32
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_M: 256
-    BLOCK_N: 64
-    BLOCK_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 256
-    BLOCK_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 128
-    BLOCK_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 128
-    BLOCK_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 32
-    BLOCK_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 32
-    BLOCK_K: 32
-  num_stages: 5
-  num_warps: 2
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+    num_warps: warps
+  block_m:
+  - 32
+  - 64
+  block_n:
+  - 32
+  - 64
+  - 128
+  block_k:
+  - 32
+  - 64
+  warps:
+  - 4
+  - 8
 # - META:
 #     BLOCK_M: 128
 #     BLOCK_N: 256
 #     BLOCK_K: 32
-#     SPLIT_K: 1
 #   num_stages: 3
 #   num_warps: 8
 # - META:
 #     BLOCK_M: 256
 #     BLOCK_N: 128
-#     BLOCK_K: 128
-#     SPLIT_K: 1
+#     BLOCK_K: 32
 #   num_stages: 3
 #   num_warps: 8
 # - META:
 #     BLOCK_M: 256
 #     BLOCK_N: 64
-#     BLOCK_K: 128
-#     SPLIT_K: 1
+#     BLOCK_K: 32
 #   num_stages: 4
 #   num_warps: 4
 # - META:
 #     BLOCK_M: 64
 #     BLOCK_N: 256
-#     BLOCK_K: 128
-#     SPLIT_K: 1
+#     BLOCK_K: 32
 #   num_stages: 4
 #   num_warps: 4
 # - META:
 #     BLOCK_M: 128
 #     BLOCK_N: 128
-#     BLOCK_K: 128
-#     SPLIT_K: 1
+#     BLOCK_K: 32
 #   num_stages: 4
 #   num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 64
-    BLOCK_K: 64
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 128
-    BLOCK_K: 64
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 32
-    BLOCK_K: 64
-    SPLIT_K: 1
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 32
-    BLOCK_K: 64
-  num_stages: 5
-  num_warps: 2
+# - META:
+#     BLOCK_M: 64
+#     BLOCK_N: 128
+#     BLOCK_K: 32
+#   num_stages: 4
+#   num_warps: 4
+# - META:
+#     BLOCK_M: 128
+#     BLOCK_N: 32
+#     BLOCK_K: 32
+#   num_stages: 4
+#   num_warps: 4
+# - META:
+#     BLOCK_M: 64
+#     BLOCK_N: 32
+#     BLOCK_K: 32
+#   num_stages: 5
+#   num_warps: 2
+# # - META:
+# #     BLOCK_M: 128
+# #     BLOCK_N: 256
+# #     BLOCK_K: 32
+# #     SPLIT_K: 1
+# #   num_stages: 3
+# #   num_warps: 8
+# # - META:
+# #     BLOCK_M: 256
+# #     BLOCK_N: 128
+# #     BLOCK_K: 128
+# #     SPLIT_K: 1
+# #   num_stages: 3
+# #   num_warps: 8
+# # - META:
+# #     BLOCK_M: 256
+# #     BLOCK_N: 64
+# #     BLOCK_K: 128
+# #     SPLIT_K: 1
+# #   num_stages: 4
+# #   num_warps: 4
+# # - META:
+# #     BLOCK_M: 64
+# #     BLOCK_N: 256
+# #     BLOCK_K: 128
+# #     SPLIT_K: 1
+# #   num_stages: 4
+# #   num_warps: 4
+# # - META:
+# #     BLOCK_M: 128
+# #     BLOCK_N: 128
+# #     BLOCK_K: 128
+# #     SPLIT_K: 1
+# #   num_stages: 4
+# #   num_warps: 4
+# - META:
+#     BLOCK_M: 128
+#     BLOCK_N: 64
+#     BLOCK_K: 64
+#   num_stages: 4
+#   num_warps: 4
+# - META:
+#     BLOCK_M: 64
+#     BLOCK_N: 128
+#     BLOCK_K: 64
+#   num_stages: 4
+#   num_warps: 4
+# # - META:
+# #     BLOCK_M: 128
+# #     BLOCK_N: 32
+# #     BLOCK_K: 64
+# #     SPLIT_K: 1
+# #   num_stages: 4
+# #   num_warps: 4
+# - META:
+#     BLOCK_M: 64
+#     BLOCK_N: 32
+#     BLOCK_K: 64
+#   num_stages: 5
+#   num_warps: 2
 softmax_non_inner:
 - META:
     TILE_K: 32
@@ -819,54 +856,18 @@ conv2d_forward:
     BLOCK_CI: 32
   num_warps: 16
   num_stages: 3
-- META:
-    BLOCK_NI_HO_WO: 128
-    BLOCK_CO: 256
-    BLOCK_CI: 32
-  num_stages: 3
-  num_warps: 32
-- META:
-    BLOCK_NI_HO_WO: 256
-    BLOCK_CO: 128
-    BLOCK_CI: 32
-  num_stages: 3
-  num_warps: 32
-- META:
-    BLOCK_NI_HO_WO: 256
-    BLOCK_CO: 64
-    BLOCK_CI: 32
-  num_stages: 4
-  num_warps: 16
-- META:
-    BLOCK_NI_HO_WO: 64
-    BLOCK_CO: 256
-    BLOCK_CI: 32
-  num_stages: 4
-  num_warps: 16
-- META:
-    BLOCK_NI_HO_WO: 128
-    BLOCK_CO: 128
-    BLOCK_CI: 32
-  num_stages: 4
-  num_warps: 16
-- META:
-    BLOCK_NI_HO_WO: 64
-    BLOCK_CO: 128
-    BLOCK_CI: 32
-  num_stages: 4
-  num_warps: 16
-- META:
-    BLOCK_NI_HO_WO: 128
-    BLOCK_CO: 32
-    BLOCK_CI: 32
-  num_stages: 4
-  num_warps: 16
-- META:
-    BLOCK_NI_HO_WO: 64
-    BLOCK_CO: 32
-    BLOCK_CI: 32
-  num_stages: 5
-  num_warps: 8
+# - META:
+#     BLOCK_NI_HO_WO: 128
+#     BLOCK_CO: 256
+#     BLOCK_CI: 32
+#   num_stages: 3
+#   num_warps: 32
+# - META:
+#     BLOCK_NI_HO_WO: 256
+#     BLOCK_CO: 128
+#     BLOCK_CI: 32
+#   num_stages: 3
+#   num_warps: 32
 
 conv2d_backward_weight:
 - META:
@@ -924,6 +925,57 @@ batch_norm:
   - 8
   - 16
   - 32
+
+conv3d_forward:
+  - META:
+      BLOCK_NI_DO_HO_WO: 512
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 16
+    num_stages: 2
+  - META:
+      BLOCK_NI_DO_HO_WO: 256
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 16
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_NI_DO_HO_WO: 256
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_NI_DO_HO_WO: 256
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK_NI_DO_HO_WO: 256
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 8
+    num_stages: 1
+
 kron:
 - gen: true
   param_map:
@@ -965,11 +1017,14 @@ index:
     META:
       BLOCK_SIZE0: block_size0
       BLOCK_SIZE1: block_size1
+    num_warps: warps
   block_size0:
   - 1
   - 2
   - 4
   block_size1:
+  - 512
   - 1024
-  - 2048
-  - 4096
+  warps:
+  - 8
+  - 16
