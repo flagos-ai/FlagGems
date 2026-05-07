@@ -37,7 +37,7 @@ jobs:
           github_api_url: 'https://api.github.com'
           files_to_ignore: ''
       - id: identify-pr-type
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const prTitle = context.payload.pull_request.title

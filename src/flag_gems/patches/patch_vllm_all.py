@@ -490,6 +490,9 @@ def custom_gems_flashattn_mla_forward_decode(
 
 # use gems flash attention in vit attention
 def patch_vllm_vit_to_attn(vitw):
+    if not hasattr(vitw, "vit_xformers_attn_wrapper"):
+        return
+
     _orig_vit = vitw.vit_xformers_attn_wrapper
 
     def _seqlens_to_cu_seqlens(seqlens: torch.Tensor) -> torch.Tensor:
@@ -552,6 +555,12 @@ def patch_vllm_vit_to_attn(vitw):
     vitw.vit_xformers_attn_wrapper = _wrapped_vit_xformers_attn_wrapper
 
 
+def custom_rms_norm_out(result, input, weight, epsilon):
+    from flag_gems.ops.rms_norm import rms_norm_out
+
+    rms_norm_out(result, input, list(weight.size()), weight, epsilon)
+
+
 def apply_gems_patches_to_vllm(verbose=True):
     import vllm  # noqa: F401
     import vllm._custom_ops as ops  # noqa: F401
@@ -583,6 +592,7 @@ def apply_gems_patches_to_vllm(verbose=True):
         patch_module_method(cls, method_name, new_method, verbose)
 
     lib_patches = [
+        ("_C", "rms_norm", custom_rms_norm_out),
         ("_C", "silu_and_mul", custom_silu_and_mul),
         ("_C", "cutlass_scaled_mm", custom_cutlass_scaled_mm),
         ("_moe_C", "moe_align_block_size", custom_moe_align_block_size),

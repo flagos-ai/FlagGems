@@ -12,7 +12,15 @@ from flag_gems.utils.shape_utils import c_contiguous_stride
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
+)
+
+# repeat_interleave.self_{int,Tensor} are CompositeImplicitAutograd;
+# Direct coverage will cause the gradient to break;
+# Redispatch to this keyset to run the decomposed forward (and backward)
+# when gradients may be needed.
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeImplicitAutograd
 )
 
 
@@ -24,6 +32,10 @@ def copy_func(x):
 
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
     logger.debug("GEMS_MTHREADS REPEAT_INTERLEAVE_SELF_INT")
+    if torch.is_grad_enabled():
+        return torch.ops.aten.repeat_interleave.self_int.redispatch(
+            _FALLBACK_KEYSET, inp, repeats, dim, output_size=output_size
+        )
     if dim is None:
         inp = inp.flatten()
         dim = 0
@@ -436,6 +448,13 @@ def fused_repeat_interleave_dim0(inp, repeats, dim):
 
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
     logger.debug("GEMS_MTHREADS REPEAT_INTERLEAVE_SELF_TENSOR")
+    if torch.is_grad_enabled():
+        return torch.ops.aten.repeat_interleave.self_Tensor.redispatch(
+            _FALLBACK_KEYSET, inp, repeats, dim, output_size=output_size
+        )
+
+    if repeats.numel() == 0:
+        return inp.clone()
 
     if dim is None:
         inp = inp.flatten()
