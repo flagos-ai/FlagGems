@@ -33,7 +33,7 @@ jobs:
       authorized: ${{ steps.makeDecision.outputs.continue }}
     steps:
       - id: checkUser
-        uses: tspascoal/get-user-teams-membership@v3
+        uses: tspascoal/get-user-teams-membership@v4
         with:
           username: ${{ github.actor }}
           team: 'FlagGems'
