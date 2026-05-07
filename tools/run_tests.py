@@ -258,13 +258,13 @@ def parse_accuracy_data(result_file):
         else:
             result["status"] = "Passed"
     else:
-        if len(skipped):
-            if len(skipped) == num_total:
+        if num_skipped > 0:
+            if num_skipped == num_total:
                 result["status"] = "Skipped"
             for k, v in skipped.items():
                 skipped[k] = list(v)
             result["details"]["skipped"] = skipped
-        if len(failed):
+        if num_failed > 0:
             result["status"] = "Failed"
             for k, v in failed.items():
                 failed[k] = list(v)
