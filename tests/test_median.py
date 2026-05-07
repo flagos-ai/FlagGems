@@ -1,7 +1,6 @@
+import flag_gems
 import pytest
 import torch
-
-import flag_gems
 
 from . import accuracy_utils as utils
 
@@ -25,7 +24,9 @@ def test_accuracy_median_dim(shape, dtype, dim, keepdim):
     utils.gems_assert_close(res_values, ref_values, dtype)
     # The indices must produce the same value when used to index the input,
     # not necessarily be the same integer (ties are valid for either pick).
-    ref_pick = torch.gather(ref_inp, dim, ref_idx if keepdim else ref_idx.unsqueeze(dim))
+    ref_pick = torch.gather(
+        ref_inp, dim, ref_idx if keepdim else ref_idx.unsqueeze(dim)
+    )
     res_pick = torch.gather(inp, dim, res_idx if keepdim else res_idx.unsqueeze(dim))
     utils.gems_assert_close(res_pick, ref_pick, dtype)
 
@@ -135,7 +136,7 @@ def test_median_negative_dim(dim, dtype):
 def test_median_non_contiguous(dtype):
     full = torch.randn((32, 64), dtype=dtype, device=flag_gems.device)
     inp = full[::2, ::2].contiguous()  # actually contiguous
-    inp_nc = full[::2, ::2]            # non-contiguous slice
+    inp_nc = full[::2, ::2]  # non-contiguous slice
     ref_v, _ = torch.median(utils.to_reference(inp, True), dim=-1)
     with flag_gems.use_gems():
         res_v, _ = torch.median(inp_nc, dim=-1)
