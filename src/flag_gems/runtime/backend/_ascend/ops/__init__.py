@@ -22,6 +22,7 @@ from .full import full
 from .full_like import full_like
 from .gather import gather
 from .groupnorm import group_norm, group_norm_backward
+from .hadamard_transform import hadamard_transform
 from .hstack import hstack
 from .index import index
 from .index_add import index_add
@@ -31,6 +32,8 @@ from .linspace import linspace
 from .log_softmax import log_softmax, log_softmax_backward
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
+from .matmul_bf16 import matmul_bf16
+from .matmul_int8 import matmul_int8
 from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
@@ -102,6 +105,7 @@ __all__ = [
     "group_norm",
     "group_norm_backward",
     "hstack",
+    "hadamard_transform",
     "index",
     "index_add",
     "index_select",
@@ -119,6 +123,8 @@ __all__ = [
     "min",
     "min_dim",
     "mm",
+    "matmul_bf16",
+    "matmul_int8",
     "multinomial",
     "normed_cumsum",
     "ones",

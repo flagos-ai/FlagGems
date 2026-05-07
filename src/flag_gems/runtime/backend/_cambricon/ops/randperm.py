@@ -11,7 +11,7 @@ from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 device_ = device
 
 _MIN_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).min)
@@ -508,6 +508,8 @@ def sort_by_key(key, value, valid_bits, generator=None):
     else:
         # bitonic method
         BLOCK_SIZE = triton.next_power_of_2(n_elements)
+        if value.dtype == torch.int64 and BLOCK_SIZE >= 2048:
+            BLOCK_SIZE = 1024
         grid = (1,)
         k_out = torch.empty_like(key)
         v_out = torch.empty_like(value)

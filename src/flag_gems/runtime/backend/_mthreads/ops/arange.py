@@ -13,7 +13,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
 )
 
 device_ = runtime.device
@@ -139,6 +139,19 @@ def arange_start(
         device = torch.device(device_.name)
     else:
         device = torch.device(device)
+
+    # Handle int64 dtype with float parameters - convert to int
+    if dtype is torch.int64:
+        if (
+            isinstance(start, float)
+            or isinstance(end, float)
+            or isinstance(step, float)
+        ):
+            start = int(start) if isinstance(start, float) else start
+            end = int(end) if isinstance(end, float) else end
+            step = int(step) if isinstance(step, float) else step
+            if step == 0:
+                raise RuntimeError("step must be nonzero")
 
     is_float_dtype = torch.is_floating_point(torch.tensor(0, dtype=dtype))
     use_int64 = dtype == torch.int64

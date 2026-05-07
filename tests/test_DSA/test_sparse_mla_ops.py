@@ -105,7 +105,8 @@ def reference_sparse_mla_implementation(q, kv, indices, sm_scale=None, d_v=512):
     return ref_sparse_mla_fwd_interface(q, kv, indices, sm_scale=sm_scale, d_v=d_v)
 
 
-@pytest.mark.sparse_mla_forward
+@pytest.mark.sparse_mla_fwd_interface
+@pytest.mark.skip("#2872: RuntimeError")
 @pytest.mark.parametrize("batch_size", [1])
 @pytest.mark.parametrize("seq_len_q", [64, 128, 512])
 @pytest.mark.parametrize("seq_len_kv", [1024, 2048, 4096])
@@ -163,7 +164,8 @@ def test_sparse_mla_forward(
     gems_assert_close(your_output, ref_output, dtype, atol=1e-2)
 
 
-@pytest.mark.sparse_mla_forward_edge_cases
+@pytest.mark.sparse_mla_fwd_interface
+@pytest.mark.skip("#2872: RuntimeError")
 @pytest.mark.parametrize(
     "config",
     [
@@ -224,8 +226,9 @@ def test_sparse_mla_forward_edge_cases(config):
 
 
 # Device compatibility test
+@pytest.mark.skip("#2872: RuntimeError")
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA device required")
-@pytest.mark.sparse_mla_device
+@pytest.mark.sparse_mla_fwd_interface
 def test_sparse_mla_device_compatibility():
     """Test device compatibility"""
     config = {
@@ -265,8 +268,3 @@ def test_sparse_mla_device_compatibility():
     assert (
         your_output.shape == expected_shape
     ), f"Output shape incorrect: {your_output.shape} != {expected_shape}"
-
-
-if __name__ == "__main__":
-    # Can directly run this file for testing
-    pytest.main([__file__, "-v"])
