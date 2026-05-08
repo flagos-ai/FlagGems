@@ -81,8 +81,8 @@ def test_logaddexp_edge_cases(dtype):
 def test_logaddexp_empty_tensor():
     x = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     y = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
-    ref_x = utils.to_reference(x, True)
-    ref_y = utils.to_reference(y, True)
+    ref_x = utils.to_reference(x)
+    ref_y = utils.to_reference(y)
     ref_out = torch.logaddexp(ref_x, ref_y)
     with flag_gems.use_gems():
         res_out = torch.logaddexp(x, y)
