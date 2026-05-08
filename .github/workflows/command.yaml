@@ -1,0 +1,82 @@
+name: "ondemand test"
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  checks: read
+  contents: read
+
+jobs:
+  process-command:
+    runs-on: ubuntu-latest
+    outputs:
+      op: ${{ steps.parse-command.outputs.op}}
+      runner: ${{ steps.parse-command.outputs.runner }}
+      continue: ${{ steps.check.outputs.continue }}
+    steps:
+      - id: check
+        uses: github/command@v2.0.3
+        with:
+          command: "/test"
+          allowed_contexts: pull_request
+          permissions: "write,admin"
+
+      - id: parse-command
+        if: ${{ steps.check.outputs.continue == 'true' }}
+        run: |
+          # params is op:runner
+          params=${{ steps.check.outputs.params }}
+          op=$(echo $params | cut -d ':' -f 1)
+          runner=$(echo $params | cut -d ':' -f 2)
+          echo "op=${op}" >> $GITHUB_OUTPUT
+          echo "runner=${op}" >> $GITHUB_OUTPUT
+
+  test-operator:
+    needs: process-command
+    if: needs.process-command.outputs.continue == 'true'
+    runs-on: ${{ needs.process-command.outputs.runner }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup FlagGems
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ needs.process-command.outputs.runner }}
+        run: |
+          # Validate vendor names
+          case "${RUNNER_LABEL}" in
+            h20)
+              VENDOR="nvidia"
+              ;;
+            moore)
+              VENDOR="mthreads"
+              ;;
+            *)
+              VENDOR="${RUNNER_LABEL}"
+              ;;
+          esac
+
+          echo "VENDOR=${VENDOR}"
+          echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
+
+          ./setup.sh ${VENDOR}
+
+      - name: Check GPU availability
+        shell: bash
+        run: |
+          bash "tools/gpu_check_${VENDOR}.sh"
+
+      - name: Run tests
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          source tools/set-env.sh ${VENDOR}
+          tools/run_tests.py --ops ${{ needs.process-command.outputs.op }}
+
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: ondemand-test
+          path: results/
