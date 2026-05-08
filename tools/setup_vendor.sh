@@ -1,5 +1,6 @@
 VENDOR=$1
-echo "Install vendor extension for $VENDOR"
+
+export FLAGOS_PYPI="https://resource.flagos.net/repository/flagos-pypi-${VENDOR}/simple"
 
 case $VENDOR in
   ascend)
@@ -135,7 +136,8 @@ case $VENDOR in
     uv pip install --index ${FLAGOS_PYPI} \
         "torch==2.9.0+cu128" \
         "torchvision==0.24.0+cu128" \
-        "torchaudio==2.9.0+cu128"
+        "torchaudio==2.9.0+cu128" \
+        "flagtree==0.5.0+3.5"
 
     if [ -n "${USE_TRITON}" ]; then
       uv pip uninstall flagtree
