@@ -6,7 +6,7 @@ from . import base, consts
 
 class UpsampleNearest2dBackwardBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
-        # (N, C, H, W) for the input shape; output shape is scaled up.
+        # (N, C, H, W) input shape; output is scaled up.
         return []
 
 
@@ -19,12 +19,18 @@ def _input_fn(shape, dtype, device):
         device=device,
         dtype=dtype,
     )
-    yield grad_output, output_size, (batch, channel, height, width), None, None
+    yield grad_output, {
+        "output_size": output_size,
+        "input_size": (batch, channel, height, width),
+        "scales_h": None,
+        "scales_w": None,
+    }
 
 
 def _torch_ref(grad_output, output_size, input_size, scales_h, scales_w):
-    """Build the forward graph once and use autograd to get the backward;
-    that way the comparison reflects what PyTorch users actually see."""
+    """Build the forward graph and use autograd to derive the gradient — that
+    way the benchmark compares Triton against what the eager PyTorch user
+    actually sees, not a hand-rolled scatter loop."""
     x = torch.zeros(
         input_size,
         device=grad_output.device,
