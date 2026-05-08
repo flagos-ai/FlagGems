@@ -1,8 +1,8 @@
 import pytest
 import torch
-from benchmark.performance_utils import Benchmark
 
 import flag_gems
+from benchmark.performance_utils import Benchmark
 
 try:
     from vllm.model_executor.layers.fla.ops import (
