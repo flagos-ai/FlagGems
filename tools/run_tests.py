@@ -398,7 +398,7 @@ def run_accuracy(gpu_id, start, index, count):
 
     if code == TIMEOUT:  # Timeout
         return {
-            "status": "TIMEOUT",
+            "status": "Timeout",
             "exit_code": TIMEOUT,
             "total": 0,
             "passed": 0,
@@ -408,6 +408,23 @@ def run_accuracy(gpu_id, start, index, count):
             "duration": end - start,
         }
 
+
+    # There are rare cases where the pytest process aborts
+    # with no result file generated.
+    if not result_file.exists:
+        return {
+            "status": "Error",
+            "exit_code": code,
+            "total": 0,
+            "passed": 0,
+            "failed": 0,
+            "skipped": 0,
+            "errors": 1,
+            "duration": end - start,
+            "data_file": None,
+        }
+
+    op_dir = OUTPUT_DIR.joinpath(op)
     dest = op_dir / "accuracy_result.json"
     shutil.move(result_file, str(dest))
     result_file = dest
