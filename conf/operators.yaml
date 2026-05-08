@@ -918,7 +918,7 @@ ops:
     labels:
       - aten
     kind:
-      - Math
+      - Distribution
     stages:
       - beta: '5.1'
   - id: cauchy_
@@ -928,7 +928,7 @@ ops:
     labels:
       - aten
     kind:
-      - Tensor
+      - Distribution
     stages:
       - beta: '5.1'
   - id: ceil
