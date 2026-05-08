@@ -2,9 +2,9 @@ from typing import List, Optional, Tuple
 
 import pytest
 import torch
+from modules_tests.module_test_util import init_seed
 
 import flag_gems
-from modules_tests.module_test_util import init_seed
 
 try:
     import vllm.vllm_flash_attn.flash_attn_interface as _vllm  # noqa: F401
