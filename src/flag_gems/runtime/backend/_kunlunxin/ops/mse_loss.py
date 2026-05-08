@@ -61,7 +61,7 @@ class Reduction(Enum):
 
 
 def mse_loss(inp, target, reduction=Reduction.MEAN.value):
-    logger.debug("GEMS MSE LOSS")
+    logger.debug("GEMS_KUNLUNXIN MSE LOSS")
     if reduction == Reduction.NONE.value:
         return func(inp, target)
 
@@ -85,13 +85,15 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
 
     mid = torch.empty(
         (mid_size,),
-        dtype=torch.float32
-        if (
-            dtype == torch.bfloat16
-            and mid_size > 1024
-            and reduction == Reduction.MEAN.value
-        )
-        else dtype,
+        dtype=(
+            torch.float32
+            if (
+                dtype == torch.bfloat16
+                and mid_size > 1024
+                and reduction == Reduction.MEAN.value
+            )
+            else dtype
+        ),
         device=inp.device,
     )
     out = torch.empty([], dtype=dtype, device=inp.device)
