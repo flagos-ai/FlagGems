@@ -180,3 +180,4 @@ def test_median_n_equals_one(dtype):
         v, i = torch.median(x, dim=-1)
     torch.testing.assert_close(v, x.squeeze(-1))
     assert torch.all(i == 0)
+# Median operator test suite.
