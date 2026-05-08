@@ -1,5 +1,6 @@
 import random
 from math import ceil
+from typing import Optional
 
 import pytest
 import torch
@@ -243,6 +244,7 @@ def test_fused_moe_vs_vllm(config, dtype):
 
 
 FUSED_MOE_BLOCK_SHAPES = [None, [128, 128], [64, 128], [128, 64]]
+
 
 def _fake_quantize_fp8_block(tensor: torch.Tensor, group_size: int):
     """Simulate FP8 group-wise quantization on the last dimension."""

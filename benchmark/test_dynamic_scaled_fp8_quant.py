@@ -41,4 +41,3 @@ def test_dynamic_scaled_fp8_quant():
     )
     bench.set_gems(flag_gems.dynamic_scaled_fp8_quant)
     bench.run()
-

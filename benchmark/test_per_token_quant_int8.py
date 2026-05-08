@@ -39,4 +39,3 @@ def test_per_token_quant_int8():
     )
     bench.set_gems(flag_gems.per_token_quant_int8)
     bench.run()
-

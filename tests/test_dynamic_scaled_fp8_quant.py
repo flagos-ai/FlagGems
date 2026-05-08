@@ -9,7 +9,7 @@ from . import accuracy_utils as utils
 def native_dynamic_scaled_fp8_quant(x, dtype=None):
     if dtype is None:
         dtype = flag_gems.SUPPORTED_FP8_DTYPE
-        
+
     assert x.ndim == 2 and x.stride(-1) == 1
     fp8_max = float(torch.finfo(torch.float8_e4m3fn).max)
     fp8_min = float(torch.finfo(torch.float8_e4m3fn).min)
