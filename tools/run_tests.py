@@ -50,15 +50,15 @@ DTYPE_MAP = {
 
 
 def pinfo(str, **args):
-    print(f"\033[32m[INFO]\033[0m {str}", **args)
+    print(f"\033[32m[INFO]\033[0m {str}", flush=True, **args)
 
 
 def perror(str, **args):
-    print(f"\033[31m[ERROR]\033[0m {str}", **args)
+    print(f"\033[31m[ERROR]\033[0m {str}", flush=True, **args)
 
 
 def pwarn(str, **args):
-    print(f"\033[93m[WARN]\033[0m {str}", **args)
+    print(f"\033[93m[WARN]\033[0m {str}", flush=True, **args)
 
 
 def ensure_dir(p):
