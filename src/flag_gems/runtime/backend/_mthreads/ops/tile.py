@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
 
 logger = logging.getLogger(__name__)
@@ -44,8 +44,8 @@ def tile_kernel_2d(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid_m = tle.program_id(0)
-    pid_n = tle.program_id(1)
+    pid_m = ext.program_id(0)
+    pid_n = ext.program_id(1)
 
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -89,7 +89,7 @@ def tile_kernel_1d(
     out_shape0,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offs < out_shape0
 
@@ -133,8 +133,8 @@ def tile_kernel_3d(
     BLOCK_K: tl.constexpr,
 ):
     """Process 3D tile: one program handles one (m, n_block, k_block)"""
-    pid_m = tle.program_id(0)
-    pid_nk = tle.program_id(1)
+    pid_m = ext.program_id(0)
+    pid_nk = ext.program_id(1)
 
     num_k_blocks = tl.cdiv(out_shape2, BLOCK_K)
     pid_n = pid_nk // num_k_blocks
@@ -209,8 +209,8 @@ def tile_kernel_4d(
     BLOCK_L: tl.constexpr,
 ):
     """Process 4D tile: one program handles one (m, n, k_block, l_block)"""
-    pid_mn = tle.program_id(0)
-    pid_kl = tle.program_id(1)
+    pid_mn = ext.program_id(0)
+    pid_kl = ext.program_id(1)
 
     num_l_blocks = tl.cdiv(out_shape3, BLOCK_L)
     pid_k = pid_kl // num_l_blocks
@@ -285,8 +285,8 @@ def tile_kernel_nd_flat(
     BLOCK_SIZE: tl.constexpr,
 ):
     """Generic N-D tile kernel (up to 5D) using flat indexing with modulo"""
-    pid = tle.program_id(0)
-    num_ctas = tle.num_programs(0)
+    pid = ext.program_id(0)
+    num_ctas = ext.num_programs(0)
 
     for idx in range(pid * BLOCK_SIZE, num_tasks, num_ctas * BLOCK_SIZE):
         offs = idx + tl.arange(0, BLOCK_SIZE)
