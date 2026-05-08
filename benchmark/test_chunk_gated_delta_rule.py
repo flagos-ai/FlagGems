@@ -1,3 +1,5 @@
+from typing import Generator
+
 import pytest
 import torch
 
@@ -5,14 +7,17 @@ from . import base, consts
 
 
 class ChunkGatedDeltaRuleBenchmark(base.GenericBenchmark):
-    def set_more_shapes(self):
-        # Each shape encodes (B, T, H, K, V) = (batch, seq_len, heads, K, V).
-        return [
+    def get_input_iter(self, dtype) -> Generator:
+        # Fully override the default shape iteration: each "shape" encodes
+        # ``(B, T, H, K, V)`` for chunk_gated_delta_rule and is not 4D.
+        shapes = [
             (1, 256, 4, 64, 64),
             (2, 1024, 4, 64, 64),
             (1, 4096, 8, 128, 128),
             (4, 512, 16, 128, 128),
         ]
+        for shape in shapes:
+            yield from self.input_fn(shape, dtype, self.device)
 
 
 def _input_fn(shape, dtype, device):
@@ -39,13 +44,6 @@ def _torch_ref(q, k, v, g, beta):
         initial_state=None,
         output_final_state=False,
     )
-    return o
-
-
-def _gems_op(q, k, v, g, beta):
-    from flag_gems.ops.chunk_gated_delta_rule import chunk_gated_delta_rule
-
-    o, _ = chunk_gated_delta_rule(q, k, v, g, beta)
     return o
 
 
