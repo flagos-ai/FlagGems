@@ -23,6 +23,7 @@ jobs:
           command: "/test"
           allowed_contexts: pull_request
           allow_forks: "true"
+          fork_review_bypass: "true"
           permissions: "write,admin"
 
       - id: parse-command
