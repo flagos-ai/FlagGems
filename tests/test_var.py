@@ -40,7 +40,8 @@ def test_accuracy_var(shape, dim, correction, keepdim, dtype):
         dims_to_check = dim
 
     if any(d >= len(shape) or d < -len(shape) for d in dims_to_check):
-        pytest.skip("Dimension out of range for the given shape.")
+        # Invalid input: Dimension out of range for the given shape.
+        return
 
     if correction == 1:
         if dim is not None:
@@ -49,9 +50,11 @@ def test_accuracy_var(shape, dim, correction, keepdim, dtype):
             for d in positive_dims:
                 reduction_size *= shape[d]
             if reduction_size < 2:
-                pytest.skip("Correction=1 requires reduction size of at least 2.")
+                # Skip the test: correction=1 requires reduction size of at least 2.
+                return
         elif inp.numel() < 2:
-            pytest.skip("Correction=1 requires numel >= 2 for global reduction.")
+            # Skip the test: correction=1 requires numel >= 2 for global reduction.
+            return
 
     ref_inp = utils.to_reference(inp)
 

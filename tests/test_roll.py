@@ -22,7 +22,8 @@ def test_roll_single_dim(shape, dtype, shifts_dims):
     ndim = len(shape)
     # Adjust dims if it's out of range for this shape
     if dims >= ndim or dims < -ndim:
-        pytest.skip(f"dims {dims} out of range for shape {shape}")
+        # Skip test if dims is out of range for the specified shape
+        return
 
     if dtype in utils.ALL_FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -54,7 +55,8 @@ def test_roll_multi_dims(shape, dtype, shifts_dims):
     # Check all dims are valid for this shape
     for d in dims:
         if d >= ndim or d < -ndim:
-            pytest.skip(f"dims {d} out of range for shape {shape}")
+            # Skip the case when dims is out of range for the shape
+            return
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
@@ -90,7 +92,8 @@ def test_roll_flatten(shape, dtype, shifts):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_roll_with_non_dense_input(shape, dtype):
     if len(shape) < 2:
-        pytest.skip("Need at least 2D for non-dense test")
+        # Need at least 2D for non-dense test
+        return
 
     shape_dilated = tuple(item * 2 for item in shape)
     inp = torch.randn(shape_dilated, dtype=dtype, device=flag_gems.device)[::2, ::2]

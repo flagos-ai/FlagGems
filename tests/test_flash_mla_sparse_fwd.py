@@ -295,19 +295,21 @@ class FlashmlaSparseTestKit:
 
 @pytest.mark.flash_mla_sparse_fwd
 @pytest.mark.parametrize("param", FlashmlaSparseTestKit.get_correctness_test_params())
-def test_flashmla_sparse(param: Flashmla_Sparse_Test_Param):
+def test_flashmla_sparse(param):
     """Sparse MLA forward propagation test"""
     # Skip FlashMLA unsupported cases
     if param.h_q != 64 and param.h_q != 128:
         # RuntimeError: Unsupported h_q: 256
         # FlashMLA csrc/api/sparse_fwd.h:197
-        pytest.skip("h_q unsupported by FlashMLA")
+        # FlashMLA requires that h_q is 64 or 128
+        return
 
     if param.topk % 128 != 0:
         # Assertion `params.topk % (2*B_TOPK) == 0` failed
         # FlashMLA csrc/sm90/prefill/sparse/phase1.cuh:577
         # FlashMLA csrc/sm90/prefill/sparse/config.h:27 "B_TOPK = 64"
-        pytest.skip("topk unsupported by FlashMLA")
+        # topk not divisible by 128, not supported by FlashMLA
+        return
 
     # Create input
     q, kv, indices = FlashmlaSparseTestKit.make_input(param)
