@@ -144,10 +144,13 @@ def test_smooth_l1_loss_backward(shape, dtype, reduction, beta):
     rtol = 5e-2 if dtype in (torch.bfloat16, torch.float16) else 1e-3
     atol = 1e-2 if dtype in (torch.bfloat16, torch.float16) else 1e-4
     torch.testing.assert_close(
-        inp.grad.float(), ref_inp.grad.float(), rtol=rtol, atol=atol
+        inp.grad.float().cpu(), ref_inp.grad.float().cpu(), rtol=rtol, atol=atol
     )
     torch.testing.assert_close(
-        target.grad.float(), ref_target.grad.float(), rtol=rtol, atol=atol
+        target.grad.float().cpu(),
+        ref_target.grad.float().cpu(),
+        rtol=rtol,
+        atol=atol,
     )
 
 
