@@ -33,11 +33,16 @@ HAS_FLAGTREE = False
 ROOT = Path(__file__).parent.parent
 OUPUT_DIR = None
 OP_LIST = []
-OP_LABELS = {}
 DUMP_OUTPUT = False
 TIMEOUT = -100
-# A list of operators that can only run on GPU/DCUs
-NO_CPU_LIST = []
+
+NO_CPU_LIST = [
+    "flash_attention_forward",
+    "get_scheduler_metadata",
+    "grouped_topk",
+    "per_token_group_quant_fp8",
+]
+
 DTYPE_MAP = {
     "torch.float16": "fp16",
     "torch.float32": "fp32",
@@ -50,15 +55,15 @@ DTYPE_MAP = {
 
 
 def pinfo(str, **args):
-    print(f"\033[32m[INFO]\033[0m {str}", flush=True, **args)
+    print(f"\033[32m[INFO]\033[0m {str}", **args)
 
 
 def perror(str, **args):
-    print(f"\033[31m[ERROR]\033[0m {str}", flush=True, **args)
+    print(f"\033[31m[ERROR]\033[0m {str}", **args)
 
 
 def pwarn(str, **args):
-    print(f"\033[93m[WARN]\033[0m {str}", flush=True, **args)
+    print(f"\033[93m[WARN]\033[0m {str}", **args)
 
 
 def ensure_dir(p):
@@ -75,16 +80,6 @@ def get_ops_from_inventory():
     except Exception as e:
         perror(f"Failed to load operator inventory: {e}")
 
-    return catalog
-
-
-def load_op_labels():
-    global OP_LABELS
-    catalog = get_ops_from_inventory()
-    for op_entry in catalog:
-        op_id = op_entry.get("id", "")
-        labels = op_entry.get("labels", [])
-        OP_LABELS[op_id] = labels
     return catalog
 
 
@@ -303,9 +298,8 @@ def parse_accuracy_data(result_file):
             failed[reason].add(param_str)
             num_failed += 1
 
-    num_total = num_passed + num_skipped + num_failed
     result = {
-        "total": num_total,
+        "total": num_passed + num_skipped + num_failed,
         "skipped": num_skipped,
         "failed": num_failed,
         "passed": num_passed,
@@ -317,14 +311,12 @@ def parse_accuracy_data(result_file):
         else:
             result["status"] = "Passed"
     else:
-        if num_skipped > 0:
-            if num_skipped == num_total:
-                result["status"] = "Skipped"
+        result["status"] = "Failed"
+        if len(skipped):
             for k, v in skipped.items():
                 skipped[k] = list(v)
             result["details"]["skipped"] = skipped
-        if num_failed > 0:
-            result["status"] = "Failed"
+        if len(failed):
             for k, v in failed.items():
                 failed[k] = list(v)
             result["details"]["failed"] = failed
@@ -459,7 +451,7 @@ def parse_perf_data(op, result_file):
         count = 0
         # Iterate through shapes
         for res in item.get("result", []):
-            shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
+            shape = str(res.get("shape_detail", "UNKNOWN")).replace(" ", "")
             details.setdefault(shape, {})
             details[shape]["base"] = res.get("latency_base", 0.0)
             details[shape]["gems"] = res.get("latency", 0.0)
@@ -563,7 +555,6 @@ def worker_proc(gpu_id, start, count):
         ]
         result = {
             "customized": op in customized_ops,
-            "labels": OP_LABELS.get(op, []),
             "accuracy": acc,
             "performance": perf,
         }
@@ -577,14 +568,6 @@ def worker_proc(gpu_id, start, count):
 
 
 def get_ops_to_test(ops_file, ops_list, stages):
-    # Build list of operators which do NOT support CPU mode
-    op_catalog = get_ops_from_inventory()
-    for op in op_catalog:
-        labels = op.get("labels", [])
-        if "NoCPU" in labels:
-            NO_CPU_LIST.append(op["id"])
-
-    # This is the highest priority
     if ops_list:
         ops = []
         for op in ops_list.split(","):
@@ -593,7 +576,6 @@ def get_ops_to_test(ops_file, ops_list, stages):
 
         return ops
 
-    # Parse the op list file if specified
     if ops_file:
         lines = []
         try:
@@ -631,6 +613,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
     if not effective_stages:
         effective_stages = ["stable"]
 
+    op_catalog = get_ops_from_inventory()
     ops = []
     for op in op_catalog:
         stages = op.get("stages", [])
@@ -640,7 +623,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
         stage = next(iter(stages[-1].keys()), None)
         if stage not in effective_stages:
             continue
-        ops.append(op["id"])
+        ops.append(op["id"].lstrip("_"))
 
     return ops
 
@@ -664,9 +647,6 @@ def main():
 
     # Probe environment setttings
     init()
-
-    # Load operator labels from inventory
-    load_op_labels()
 
     ops = get_ops_to_test(args.op_list_file, args.ops, args.stages)
     op_count = len(ops)
