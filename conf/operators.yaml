@@ -2354,6 +2354,26 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: geometric
+    description: Draws random numbers from a geometric distribution.
+    for:
+      - geometric_.float
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
+  - id: geometric_
+    description: Fills self tensor with elements drawn from the geometric distribution.
+    for:
+      - geometric_.float
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
   - id: get_paged_mqa_logits_metadata
     description: Build scheduling metadata for paged MQA logits.
     for:
