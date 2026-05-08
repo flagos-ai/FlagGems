@@ -22,6 +22,7 @@ jobs:
         with:
           command: "/test"
           allowed_contexts: pull_request
+          allow_forks: "true"
           permissions: "write,admin"
 
       - id: parse-command
