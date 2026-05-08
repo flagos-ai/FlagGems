@@ -12,17 +12,13 @@ def select_backward(grad, input_sizes, dim, index, out=None):
     sizes = list(input_sizes)
     ndim = len(sizes)
 
-    if dim < 0:
-        dim += ndim
-    if dim < 0 or dim >= ndim:
-        raise ValueError("invalid dim")
+    assert dim >= -ndim and dim < ndim, "Invalid dim"
+    dim %= ndim
 
     dim_size = sizes[dim]
 
-    if index < 0:
-        index += dim_size
-    if index < 0 or index >= dim_size:
-        raise ValueError("index out of range")
+    assert index >= -dim_size and index < dim_size, "Invalid index"
+    index %= dim_size
 
     if out is None:
         out = torch.empty(
@@ -31,12 +27,9 @@ def select_backward(grad, input_sizes, dim, index, out=None):
             device=grad.device,
         )
     else:
-        if tuple(out.shape) != tuple(sizes):
-            raise ValueError("out shape mismatch")
-        if out.dtype != grad.dtype:
-            raise ValueError("dtype mismatch")
-        if out.device != grad.device:
-            raise ValueError("device mismatch")
+        assert tuple(out.shape) == tuple(sizes), "out shape mismatch"
+        assert out.dtype == grad.dtype, "dtype mismatch"
+        assert out.device == grad.device, "device mismatch"
 
     out.zero_()
     out.select(dim, index).copy_(grad)

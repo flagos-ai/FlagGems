@@ -1,3 +1,4 @@
+import logging
 import math
 
 import torch
@@ -5,6 +6,7 @@ import triton
 import triton.language as tl
 
 _BLOCK = 1024
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -32,6 +34,7 @@ def _select_backward_kernel(
 
 
 def select_backward(grad, input_sizes, dim, index, out=None):
+    logger.debug("GEMS SELECT_BACKWARD")
     dim = int(dim)
     index = int(index)
     sizes = list(input_sizes)

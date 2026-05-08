@@ -3,16 +3,6 @@ import torch
 
 from . import base, consts, utils
 
-_BASE_2D_SIZE = 1024
-_BASE_3D_SIZE = 64
-_MIN_EXPONENT = 0
-_MAX_2D_EXPONENT = 20
-_MAX_3D_EXPONENT = 15
-_EXPONENT_STEP = 4
-_FIRST_DIM = 0
-_DEFAULT_SELECT_DIM = 1
-_INDEX_DIVISOR = 2
-
 
 class SelectBackwardBenchmark(base.Benchmark):
     """
@@ -20,14 +10,8 @@ class SelectBackwardBenchmark(base.Benchmark):
     """
 
     def set_more_shapes(self):
-        special_shapes_2d = [
-            (_BASE_2D_SIZE, 2**exponent)
-            for exponent in range(_MIN_EXPONENT, _MAX_2D_EXPONENT, _EXPONENT_STEP)
-        ]
-        special_shapes_3d = [
-            (_BASE_3D_SIZE, _BASE_3D_SIZE, 2**exponent)
-            for exponent in range(_MIN_EXPONENT, _MAX_3D_EXPONENT, _EXPONENT_STEP)
-        ]
+        special_shapes_2d = [(1024, 2**exponent) for exponent in range(0, 20, 4)]
+        special_shapes_3d = [(64, 64, 2**exponent) for exponent in range(0, 15, 4)]
         return special_shapes_2d + special_shapes_3d
 
     def get_input_iter(self, cur_dtype):
@@ -35,9 +19,9 @@ class SelectBackwardBenchmark(base.Benchmark):
             x = utils.generate_tensor_input(shape, cur_dtype, self.device)
             ndim = len(shape)
 
-            dim = _DEFAULT_SELECT_DIM if ndim > _DEFAULT_SELECT_DIM else _FIRST_DIM
+            dim = 1 if ndim > 1 else 0
             actual_dim = dim if dim >= 0 else dim + ndim
-            index = shape[actual_dim] // _INDEX_DIVISOR
+            index = shape[actual_dim] // 2
 
             y = torch.select(x, actual_dim, index)
             grad = torch.randn_like(y)
@@ -50,15 +34,11 @@ class SelectBackwardBenchmark(base.Benchmark):
 
 
 @pytest.mark.select_backward
-@pytest.mark.parametrize(
-    "dtype",
-    consts.FLOAT_DTYPES,
-)
-def test_select_backward_perf(dtype):
+def test_select_backward():
     bench = SelectBackwardBenchmark(
         op_name="select_backward",
         torch_op=torch.ops.aten.select_backward,
-        dtypes=[dtype],
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()
