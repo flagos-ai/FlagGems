@@ -118,7 +118,6 @@ from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .normal import normal_, normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .one_hot import one_hot
-from .outer import outer
 from .ones import ones
 from .ones_like import ones_like
 from .pad import pad
@@ -382,7 +381,6 @@ __all__ = [
     "slice_scatter",
     "select_scatter",
     "one_hot",
-    "outer",
     "ones",
     "ones_like",
     "zeros_like",

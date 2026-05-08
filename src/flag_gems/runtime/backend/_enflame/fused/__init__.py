@@ -28,7 +28,7 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.fused_add_rms_norm import fused_add_rms_norm
     from .gcu400.gelu_and_mul import gelu_and_mul
     from .gcu400.moe_sum import moe_sum
-    from ..gcu400.ops.outer import outer
+    from .gcu400.outer import outer
     from .gcu400.rotary_embedding import apply_rotary_pos_emb  # noqa: F401
     from .gcu400.silu_and_mul import silu_and_mul
     from .gcu400.skip_layernorm import skip_layer_norm

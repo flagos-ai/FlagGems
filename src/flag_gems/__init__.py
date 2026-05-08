@@ -285,7 +285,6 @@ _FULL_CONFIG = (
     ("ones", ones),
     ("ones_like", ones_like),
     ("one_hot", one_hot),
-    ("outer", outer),
     ("pad", pad),
     ("polar", polar),
     ("pow.Scalar", pow_scalar),
