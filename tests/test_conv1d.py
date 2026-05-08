@@ -28,7 +28,7 @@ SHAPE_CONV1D_DILATION = [
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_conv1d(monkeypatch, shape, kernel, stride, padding, dtype):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)
@@ -50,9 +50,9 @@ def test_conv1d(monkeypatch, shape, kernel, stride, padding, dtype):
 @pytest.mark.parametrize("stride", [1])
 @pytest.mark.parametrize("padding", ["valid", "same"])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
-def test_accuracy_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dtype):
+def test_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dtype):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)
@@ -74,7 +74,7 @@ def test_accuracy_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dt
 @pytest.mark.parametrize("padding", [0, 2])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 @pytest.mark.parametrize("dilation", [1, 2, (1,), (2,)])
-def test_accuracy_conv1d_dilation(shape, kernel, stride, padding, dtype, dilation):
+def test_conv1d_dilation(shape, kernel, stride, padding, dtype, dilation):
     """Test conv1d with various dilation values, including tuple form.
 
     This specifically tests the fix where conv1d must properly convert dilation

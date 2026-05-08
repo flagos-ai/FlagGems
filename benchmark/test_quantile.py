@@ -18,7 +18,6 @@ def quantile_input_fn(shape, cur_dtype, device):
     yield inp, q, 0
 
 
-# @pytest.mark.skipif(True, reason="Skipping Triton version due to poor performance")
 @pytest.mark.quantile
 def test_quantile():
     bench = QuantileBenchmark(
