@@ -35,9 +35,8 @@ OUPUT_DIR = None
 OP_LIST = []
 DUMP_OUTPUT = False
 TIMEOUT = -100
-
+# A list of operators that can only run on GPU/DCUs
 NO_CPU_LIST = []
-
 DTYPE_MAP = {
     "torch.float16": "fp16",
     "torch.float32": "fp32",
@@ -161,7 +160,7 @@ def init():
         repo = git.Repo(search_parent_directories=True)
         sha = repo.head.object.hexsha
         pinfo(f"flag_gems detected ... {version}+git{sha[:8]}")
-        ENV_INFO["flag_gems"]["commit_id"] = sha 
+        ENV_INFO["flag_gems"]["commit_id"] = sha
     except RuntimeError as e:
         perror(f"{e}")
         sys.exit(-1)
@@ -260,6 +259,7 @@ def run_cmd(
             stderr_fh.flush()
             stderr_fh.close()
 
+
 def parse_accuracy_data(result_file):
     raw_data = {}
     with result_file.open("r") as f:
@@ -293,8 +293,9 @@ def parse_accuracy_data(result_file):
             failed[reason].add(param_str)
             num_failed += 1
 
+    num_total = num_passed + num_skipped + num_failed
     result = {
-        "total": num_passed + num_skipped + num_failed,
+        "total": num_total,
         "skipped": num_skipped,
         "failed": num_failed,
         "passed": num_passed,
@@ -306,12 +307,14 @@ def parse_accuracy_data(result_file):
         else:
             result["status"] = "Passed"
     else:
-        result["status"] = "Failed"
-        if len(skipped):
+        if num_skipped > 0:
+            if num_skipped == num_total:
+                result["status"] = "Skipped"
             for k, v in skipped.items():
                 skipped[k] = list(v)
             result["details"]["skipped"] = skipped
-        if len(failed):
+        if num_failed > 0:
+            result["status"] = "Failed"
             for k, v in failed.items():
                 failed[k] = list(v)
             result["details"]["failed"] = failed
@@ -446,7 +449,7 @@ def parse_perf_data(op, result_file):
         count = 0
         # Iterate through shapes
         for res in item.get("result", []):
-            shape = str(res.get("shape_detail", "UNKNOWN")).replace(" ", "")
+            shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
             details.setdefault(shape, {})
             details[shape]["base"] = res.get("latency_base", 0.0)
             details[shape]["gems"] = res.get("latency", 0.0)
