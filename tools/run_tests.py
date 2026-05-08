@@ -34,14 +34,8 @@ ROOT = Path(__file__).parent.parent
 OUPUT_DIR = None
 OP_LIST = []
 TIMEOUT = -100
-
-NO_CPU_LIST = [
-    "flash_attention_forward",
-    "get_scheduler_metadata",
-    "grouped_topk",
-    "per_token_group_quant_fp8",
-]
-
+# A list of operators that can only run on GPU/DCUs
+NO_CPU_LIST = []
 DTYPE_MAP = {
     "torch.float16": "fp16",
     "torch.float32": "fp32",
@@ -503,6 +497,14 @@ def worker_proc(gpu_id, start, count):
 
 
 def get_ops_to_test(ops_file, ops_list, stages):
+    # Build list of operators which do NOT support CPU mode
+    op_catalog = get_ops_from_inventory()
+    for op in op_catalog:
+        labels = op.get("labels", [])
+        if "NoCPU" in labels:
+            NO_CPU_LIST.append(op["id"])
+
+    # This is the highest priority
     if ops_list:
         ops = []
         for op in ops_list.split(","):
@@ -511,6 +513,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
 
         return ops
 
+    # Parse the op list file if specified
     if ops_file:
         lines = []
         try:
@@ -548,7 +551,6 @@ def get_ops_to_test(ops_file, ops_list, stages):
     if not effective_stages:
         effective_stages = ["stable"]
 
-    op_catalog = get_ops_from_inventory()
     ops = []
     for op in op_catalog:
         stages = op.get("stages", [])
@@ -558,7 +560,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
         stage = next(iter(stages[-1].keys()), None)
         if stage not in effective_stages:
             continue
-        ops.append(op["id"].lstrip("_"))
+        ops.append(op["id"])
 
     return ops
 

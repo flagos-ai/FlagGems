@@ -1189,6 +1189,7 @@ ops:
     labels:
       - aten
       - Convolution
+      - NoCPU
     kind:
       - NeuralNetwork
     stages:
@@ -1738,6 +1739,7 @@ ops:
       - embedding_backward
     labels:
       - aten
+      - NoCPU
     kind:
       - NeuralNetwork
     stages:
@@ -2001,6 +2003,7 @@ ops:
       - _flash_attention_forward
     labels:
       - aten
+      - NoCPU
     kind:
       - NeuralNetwork
     stages:
@@ -2372,6 +2375,7 @@ ops:
     for:
       - get_scheduler_metadata
     labels:
+      - NoCPU
       - vLLM
     kind:
       - Attention
@@ -2496,6 +2500,7 @@ ops:
       - _moe_C.grouped_topk
     labels:
       - fused
+      - NoCPU
       - vLLM
     kind:
       - MoE
@@ -3996,6 +4001,7 @@ ops:
     for:
       - _C.per_token_group_fp8_quant
     labels:
+      - NoCPU
       - vLLM
     kind:
       - Quantization
