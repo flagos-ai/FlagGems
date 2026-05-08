@@ -11,7 +11,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 config_ = CodeGenConfig(
-    512,
+    1024,
     (65536, 65536, 65536),
     32,
     True,
@@ -32,7 +32,7 @@ def le_func(x, y):
 
 
 def le(A, B):
-    logger.debug("GEMS LE")
+    logger.debug("GEMS_KUNLUNXIN LE")
     os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = le_func(A, B)
@@ -52,6 +52,6 @@ def le_func_scalar(x, y):
 
 
 def le_scalar(A, B):
-    logger.debug("GEMS LE SCALAR")
+    logger.debug("GEMS_KUNLUNXIN LE SCALAR")
     res = le_func_scalar(A, B)
     return res
