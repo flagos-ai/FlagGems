@@ -418,6 +418,8 @@ class LibTuner(triton.runtime.Autotuner):
         return decorator
 
     def run(self, *args, **kwargs):
+        if hasattr(self, "seen_tuned_metas"):
+            self.seen_tuned_metas = {}  # flagtree aabs: deduplicate tuned meta
         # `arg_names` corresponds to the arguments of the `JITFunction`'s signature,
         # so please make sure the orders of `arg_names` and `args` match.
         self.nargs = dict(zip(self.arg_names, args))
