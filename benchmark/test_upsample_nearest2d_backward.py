@@ -19,13 +19,7 @@ def _input_fn(shape, dtype, device):
         device=device,
         dtype=dtype,
     )
-    yield {
-        "grad_output": grad_output,
-        "output_size": output_size,
-        "input_size": (batch, channel, height, width),
-        "scales_h": None,
-        "scales_w": None,
-    },
+    yield grad_output, output_size, (batch, channel, height, width), None, None
 
 
 def _torch_ref(grad_output, output_size, input_size, scales_h, scales_w):
