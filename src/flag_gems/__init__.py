@@ -239,6 +239,8 @@ _FULL_CONFIG = (
     ("gelu", gelu),
     ("gelu_", gelu_),
     ("gelu_backward", gelu_backward),
+    ("geometric", geometric),
+    ("geometric_", geometric_),
     ("glu", glu),
     ("glu_backward", glu_backward),
     ("greater.Scalar", greater_scalar),
