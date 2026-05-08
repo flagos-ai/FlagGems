@@ -51,14 +51,12 @@ def test_upsample_linear1d_boundaries(dtype, case):
             input_tensor = input_tensor.transpose(0, 2)
     ref_i = to_reference(input_tensor).to(torch.float32)
 
-    try:
-        ref_out = torch._C._nn.upsample_linear1d(
-            ref_i,
-            output_size=output_size,
-            align_corners=align_corners,
-        ).to(dtype)
-    except Exception as e:
-        pytest.skip(f"PyTorch reference raised error: {e}")
+    ref_out = torch._C._nn.upsample_linear1d(
+        ref_i,
+        output_size=output_size,
+        align_corners=align_corners,
+    ).to(dtype)
+
     with flag_gems.use_gems():
         res_out = torch._C._nn.upsample_linear1d(
             input_tensor,
@@ -80,7 +78,7 @@ def test_upsample_linear1d_boundaries(dtype, case):
 
 
 @pytest.mark.upsample_linear1d
-@pytest.mark.skipif(True, reason="Result not close.")
+@pytest.mark.skip(reason="Issue #2498: Result not close.")
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("scale", [2, 2.5, 0.3, 0.7])
 @pytest.mark.parametrize("shape", UPSAMPLE_SHAPES_1D)
