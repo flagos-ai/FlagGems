@@ -36,14 +36,8 @@ OP_LIST = []
 OP_LABELS = {}
 DUMP_OUTPUT = False
 TIMEOUT = -100
-
-NO_CPU_LIST = [
-    "flash_attention_forward",
-    "get_scheduler_metadata",
-    "grouped_topk",
-    "per_token_group_quant_fp8",
-]
-
+# A list of operators that can only run on GPU/DCUs
+NO_CPU_LIST = []
 DTYPE_MAP = {
     "torch.float16": "fp16",
     "torch.float32": "fp32",
@@ -56,15 +50,15 @@ DTYPE_MAP = {
 
 
 def pinfo(str, **args):
-    print(f"\033[32m[INFO]\033[0m {str}", **args)
+    print(f"\033[32m[INFO]\033[0m {str}", flush=True, **args)
 
 
 def perror(str, **args):
-    print(f"\033[31m[ERROR]\033[0m {str}", **args)
+    print(f"\033[31m[ERROR]\033[0m {str}", flush=True, **args)
 
 
 def pwarn(str, **args):
-    print(f"\033[93m[WARN]\033[0m {str}", **args)
+    print(f"\033[93m[WARN]\033[0m {str}", flush=True, **args)
 
 
 def ensure_dir(p):
@@ -309,8 +303,9 @@ def parse_accuracy_data(result_file):
             failed[reason].add(param_str)
             num_failed += 1
 
+    num_total = num_passed + num_skipped + num_failed
     result = {
-        "total": num_passed + num_skipped + num_failed,
+        "total": num_total,
         "skipped": num_skipped,
         "failed": num_failed,
         "passed": num_passed,
@@ -322,12 +317,14 @@ def parse_accuracy_data(result_file):
         else:
             result["status"] = "Passed"
     else:
-        result["status"] = "Failed"
-        if len(skipped):
+        if num_skipped > 0:
+            if num_skipped == num_total:
+                result["status"] = "Skipped"
             for k, v in skipped.items():
                 skipped[k] = list(v)
             result["details"]["skipped"] = skipped
-        if len(failed):
+        if num_failed > 0:
+            result["status"] = "Failed"
             for k, v in failed.items():
                 failed[k] = list(v)
             result["details"]["failed"] = failed
@@ -462,7 +459,7 @@ def parse_perf_data(op, result_file):
         count = 0
         # Iterate through shapes
         for res in item.get("result", []):
-            shape = str(res.get("shape_detail", "UNKNOWN")).replace(" ", "")
+            shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
             details.setdefault(shape, {})
             details[shape]["base"] = res.get("latency_base", 0.0)
             details[shape]["gems"] = res.get("latency", 0.0)
@@ -549,12 +546,6 @@ def run_benchmark(gpu_id, start, index, count):
 
 
 def worker_proc(gpu_id, start, count):
-    # Ensure OP_LABELS is populated in subprocess (needed for spawn mode)
-    if not OP_LABELS:
-        load_op_labels()
-    # Ensure python output are unbuffered
-    os.environ["PYTHONUNBUFFERED"] = "1"
-
     worker_result = {}
     for i in range(count):
         op = OP_LIST[start + i].strip()
@@ -586,6 +577,14 @@ def worker_proc(gpu_id, start, count):
 
 
 def get_ops_to_test(ops_file, ops_list, stages):
+    # Build list of operators which do NOT support CPU mode
+    op_catalog = get_ops_from_inventory()
+    for op in op_catalog:
+        labels = op.get("labels", [])
+        if "NoCPU" in labels:
+            NO_CPU_LIST.append(op["id"])
+
+    # This is the highest priority
     if ops_list:
         ops = []
         for op in ops_list.split(","):
@@ -594,6 +593,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
 
         return ops
 
+    # Parse the op list file if specified
     if ops_file:
         lines = []
         try:
@@ -631,7 +631,6 @@ def get_ops_to_test(ops_file, ops_list, stages):
     if not effective_stages:
         effective_stages = ["stable"]
 
-    op_catalog = get_ops_from_inventory()
     ops = []
     for op in op_catalog:
         stages = op.get("stages", [])
@@ -641,7 +640,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
         stage = next(iter(stages[-1].keys()), None)
         if stage not in effective_stages:
             continue
-        ops.append(op["id"].lstrip("_"))
+        ops.append(op["id"])
 
     return ops
 
