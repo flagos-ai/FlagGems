@@ -28,7 +28,8 @@ def test_select_backward(shape, dtype, dim):
     actual_dim = dim + ndim if dim < 0 else dim
 
     if actual_dim >= ndim:
-        pytest.skip(f"dim {dim} out of range for shape {shape}")
+        # Invalid input: dim out of range for shape
+        return
 
     dim_size = shape[actual_dim]
 

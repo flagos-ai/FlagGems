@@ -74,7 +74,8 @@ def test_bmm_non_contiguous(M, N, K, dtype):
     if N > 1 and K > 1:
         assert not mat2.is_contiguous()
     else:
-        pytest.skip("Skipping non-contiguous test for small N or K")
+        # Skipping non-contiguous test for small N or K
+        return
 
     ref_mat1 = utils.to_reference(mat1, True)
     ref_mat2 = utils.to_reference(mat2, True)

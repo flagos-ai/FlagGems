@@ -347,7 +347,7 @@ def run_accuracy(gpu_id, start, index, count):
 
     # There are rare cases where the pytest process aborts
     # with no result file generated.
-    if not result_file.exists:
+    if not result_file.exists():
         return {
             "status": "Error",
             "exit_code": code,
