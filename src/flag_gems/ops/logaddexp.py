@@ -29,7 +29,15 @@ def logaddexp_func(x, y):
     m = tl.maximum(x_fp32, y_fp32)
     delta = tl.abs(x_fp32 - y_fp32)
     correction = tl.log(1.0 + tl.exp(-delta))
-    return tl.where(delta == delta, m + correction, m)
+    # Inf - Inf (same sign) makes ``delta`` NaN; the limit is the signed
+    # infinity itself, which equals ``m``.
+    base = tl.where(delta == delta, m + correction, m)
+    # ``tl.maximum`` follows IEEE 754 fmax semantics and does NOT propagate
+    # NaN — a NaN input would silently return the other operand here, but
+    # torch.logaddexp returns NaN.  Force NaN propagation explicitly:
+    # ``x + y`` is NaN whenever either input is NaN.
+    nan_mask = (x_fp32 != x_fp32) | (y_fp32 != y_fp32)
+    return tl.where(nan_mask, x_fp32 + y_fp32, base)
 
 
 def logaddexp(self, other):
