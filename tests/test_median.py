@@ -166,7 +166,7 @@ def test_median_integer_dtypes(dtype):
     ref_v, _ = torch.median(ref, dim=-1)
     with flag_gems.use_gems():
         res_v, _ = torch.median(x, dim=-1)
-    assert torch.equal(res_v, ref_v)
+    assert torch.equal(res_v.cpu(), ref_v.cpu())
 
 
 # ---------------------------------------------------------------------------
