@@ -13,41 +13,24 @@ def _safe_softmax_kernel(
     input_ptr, output_ptr, n_rows, n_cols, BLOCK_SIZE: tl.constexpr
 ):
     row_id = tl.program_id(0)
-    row_start = input_ptr + row_id * n_cols
-    out_start = output_ptr + row_id * n_cols
+    cols = tl.arange(0, BLOCK_SIZE)
+    mask = cols < n_cols
 
-    m_i = -float("inf")
-    l_i = 0.0
+    row_offset = row_id * n_cols
+    x = tl.load(input_ptr + row_offset + cols, mask=mask, other=-float("inf"))
+    x_fp32 = x.to(tl.float32)
 
-    # Pass 1: Online maximum and sum of exponentials
-    for col_offset in range(0, n_cols, BLOCK_SIZE):
-        cols = col_offset + tl.arange(0, BLOCK_SIZE)
-        mask = cols < n_cols
-        x = tl.load(row_start + cols, mask=mask, other=-float("inf"))
-        x_fp32 = x.to(tl.float32)
+    x_max = tl.max(x_fp32, axis=0)
+    all_neginf = x_max == -float("inf")
 
-        m_ij = tl.max(x_fp32, axis=0)
-        m_i_new = tl.maximum(m_i, m_ij)
+    x_shifted = x_fp32 - x_max
+    exp_x = tl.exp(x_shifted)
+    sum_exp = tl.sum(exp_x, axis=0)
+    softmax = exp_x / sum_exp
 
-        alpha = tl.where(m_i == -float("inf"), 0.0, tl.exp(m_i - m_i_new))
-        beta = tl.exp(x_fp32 - m_i_new)
+    softmax = tl.where(all_neginf, tl.zeros([BLOCK_SIZE], dtype=tl.float32), softmax)
 
-        sum_block = tl.sum(tl.where(mask, beta, 0.0), axis=0)
-        l_i = l_i * alpha + sum_block
-        m_i = m_i_new
-
-    all_neginf = m_i == -float("inf")
-
-    # Pass 2: Compute Softmax and Store
-    for col_offset in range(0, n_cols, BLOCK_SIZE):
-        cols = col_offset + tl.arange(0, BLOCK_SIZE)
-        mask = cols < n_cols
-        x = tl.load(row_start + cols, mask=mask, other=-float("inf"))
-        x_fp32 = x.to(tl.float32)
-
-        p = tl.exp(x_fp32 - m_i) / l_i
-        p = tl.where(all_neginf, 0.0, p)
-        tl.store(out_start + cols, p, mask=mask)
+    tl.store(output_ptr + row_offset + cols, softmax, mask=mask)
 
 
 def _safe_softmax(x: torch.Tensor, dim: int = -1, dtype: torch.dtype = None):
@@ -81,18 +64,9 @@ def _safe_softmax(x: torch.Tensor, dim: int = -1, dtype: torch.dtype = None):
         return 1 << (v - 1).bit_length()
 
     BLOCK_SIZE = min(4096, _next_pow2(n_cols))
-
-    num_warps = 4
-    if BLOCK_SIZE >= 2048:
-        num_warps = 8
-    if BLOCK_SIZE >= 4096:
-        num_warps = 16
-
     grid = lambda meta: (n_rows,)
 
-    _safe_softmax_kernel[grid](
-        y_fp32, out_fp32, n_rows, n_cols, num_warps=num_warps, BLOCK_SIZE=BLOCK_SIZE
-    )
+    _safe_softmax_kernel[grid](y_fp32, out_fp32, n_rows, n_cols, BLOCK_SIZE=BLOCK_SIZE)
 
     out = out_fp32
     if dtype is not None:
