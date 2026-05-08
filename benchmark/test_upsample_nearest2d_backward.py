@@ -1,13 +1,24 @@
+from typing import Generator
+
 import pytest
 import torch
 
 from . import base, consts
 
 
-class UpsampleNearest2dBackwardBenchmark(base.GenericBenchmark4DOnly):
-    def set_more_shapes(self):
-        # (N, C, H, W) input shape; output is scaled up.
-        return []
+class UpsampleNearest2dBackwardBenchmark(base.GenericBenchmark):
+    def get_input_iter(self, dtype) -> Generator:
+        # Override default shapes — explicit 4D tensors small enough that
+        # `output = input * 2` does not push past 1.5GB at bf16.
+        shapes_4d = [
+            (4, 3, 224, 224),
+            (16, 64, 56, 56),
+            (32, 128, 28, 28),
+            (64, 256, 14, 14),
+            (128, 512, 7, 7),
+        ]
+        for shape in shapes_4d:
+            yield from self.input_fn(shape, dtype, self.device)
 
 
 def _input_fn(shape, dtype, device):
