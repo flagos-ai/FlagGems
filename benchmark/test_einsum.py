@@ -3,12 +3,12 @@ from typing import Generator
 import pytest
 import torch
 
-from benchmark.attri_util import DEFAULT_METRICS, FLOAT_DTYPES
-from benchmark.performance_utils import Benchmark
+from . import consts
+from . import base
 
 
-class EinsumBenchmark(Benchmark):
-    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+class EinsumBenchmark(base.Benchmark):
+    DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
     def __init__(self, *args, batched=False, **kwargs):
         self.batched = batched
@@ -69,7 +69,7 @@ def ellipsis_input_fn(shape, dtype, device):
 def test_einsum_matmul():
     bench = EinsumBenchmark(
         input_fn=None,
-        op_name="einsum_matmul",
+        op_name="einsum",
         torch_op=lambda A, B: torch.einsum("ij,jk->ik", A, B),
         dtypes=FLOAT_DTYPES,
     )
@@ -80,7 +80,7 @@ def test_einsum_matmul():
 def test_einsum_bmm():
     bench = EinsumBenchmark(
         input_fn=None,
-        op_name="einsum_bmm",
+        op_name="einsum",
         torch_op=lambda A, B: torch.einsum("bij,bjk->bik", A, B),
         dtypes=FLOAT_DTYPES,
         batched=True,
@@ -92,7 +92,7 @@ def test_einsum_bmm():
 def test_einsum_dot():
     bench = Benchmark(
         input_fn=dot_input_fn,
-        op_name="einsum_dot",
+        op_name="einsum",
         torch_op=lambda A, B: torch.einsum("i,i->", A, B),
         dtypes=FLOAT_DTYPES,
     )
@@ -104,7 +104,7 @@ def test_einsum_dot():
 def test_einsum_outer():
     bench = Benchmark(
         input_fn=outer_input_fn,
-        op_name="einsum_outer",
+        op_name="einsum",
         torch_op=lambda A, B: torch.einsum("i,j->ij", A, B),
         dtypes=FLOAT_DTYPES,
     )
@@ -116,7 +116,7 @@ def test_einsum_outer():
 def test_einsum_trace():
     bench = Benchmark(
         input_fn=unary_2d_input_fn,
-        op_name="einsum_trace",
+        op_name="einsum",
         torch_op=lambda A: torch.einsum("ii->", A),
         dtypes=FLOAT_DTYPES,
     )
@@ -128,7 +128,7 @@ def test_einsum_trace():
 def test_einsum_diagonal():
     bench = Benchmark(
         input_fn=unary_2d_input_fn,
-        op_name="einsum_diagonal",
+        op_name="einsum",
         torch_op=lambda A: torch.einsum("ii->i", A),
         dtypes=FLOAT_DTYPES,
     )
@@ -140,7 +140,7 @@ def test_einsum_diagonal():
 def test_einsum_transpose():
     bench = Benchmark(
         input_fn=unary_2d_input_fn,
-        op_name="einsum_transpose",
+        op_name="einsum",
         torch_op=lambda A: torch.einsum("ij->ji", A),
         dtypes=FLOAT_DTYPES,
     )
@@ -152,7 +152,7 @@ def test_einsum_transpose():
 def test_einsum_sum_all():
     bench = Benchmark(
         input_fn=unary_3d_input_fn,
-        op_name="einsum_sum_all",
+        op_name="einsum",
         torch_op=lambda A: torch.einsum("ijk->", A),
         dtypes=FLOAT_DTYPES,
     )
@@ -164,7 +164,7 @@ def test_einsum_sum_all():
 def test_einsum_sum_dim():
     bench = Benchmark(
         input_fn=unary_3d_input_fn,
-        op_name="einsum_sum_dim",
+        op_name="einsum",
         torch_op=lambda A: torch.einsum("ijk->j", A),
         dtypes=FLOAT_DTYPES,
     )
@@ -176,7 +176,7 @@ def test_einsum_sum_dim():
 def test_einsum_ellipsis():
     bench = Benchmark(
         input_fn=ellipsis_input_fn,
-        op_name="einsum_ellipsis",
+        op_name="einsum",
         torch_op=lambda A, B: torch.einsum("...ij,...jk->...ik", A, B),
         dtypes=FLOAT_DTYPES,
     )
