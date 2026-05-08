@@ -4,7 +4,7 @@ import torch
 from . import base, consts
 
 
-class UpsampleNearest2dBackwardBenchmark(base.GenericBenchmark):
+class UpsampleNearest2dBackwardBenchmark(base.GenericBenchmark4DOnly):
     def set_more_shapes(self):
         # (N, C, H, W) input shape; output is scaled up.
         return []
