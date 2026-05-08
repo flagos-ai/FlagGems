@@ -1,17 +1,22 @@
+import torch
 import triton
 import triton.language as tl
-import torch
+
 from flag_gems.utils import libentry
 
 # Optimized softmax kernel for FlagGems
 # Supports fp16, bf16, fp32 via Python-level dtype casting
 # Uses triton.next_power_of_2 to ensure full row fits in one block
 
+
 @triton.jit
 def softmax_kernel(
-    out_ptr, inp_ptr,
-    inp_row_stride, out_row_stride,
-    N, BLOCK_SIZE: tl.constexpr,
+    out_ptr,
+    inp_ptr,
+    inp_row_stride,
+    out_row_stride,
+    N,
+    BLOCK_SIZE: tl.constexpr,
 ):
     # One program handles one row of the input tensor
     row_idx = tl.program_id(axis=0)
@@ -74,17 +79,20 @@ def softmax(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
     # Select num_warps based on block size for optimal occupancy
     # float16 and bfloat16 inputs benefit from more warps at large N
     if BLOCK_SIZE <= 256:
-        num_warps = 2   # small rows: 2 warps sufficient
+        num_warps = 2  # small rows: 2 warps sufficient
     elif BLOCK_SIZE <= 1024:
-        num_warps = 4   # medium rows: 4 warps
+        num_warps = 4  # medium rows: 4 warps
     else:
-        num_warps = 8   # large rows: 8 warps for fp16 bf16 workloads
+        num_warps = 8  # large rows: 8 warps for fp16 bf16 workloads
 
     # Launch one program per row
     softmax_kernel[(num_rows,)](
-        out, x2d,
-        x2d.stride(0), out.stride(0),
-        N, BLOCK_SIZE=BLOCK_SIZE,
+        out,
+        x2d,
+        x2d.stride(0),
+        out.stride(0),
+        N,
+        BLOCK_SIZE=BLOCK_SIZE,
         num_warps=num_warps,
     )
 
