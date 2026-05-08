@@ -34,7 +34,7 @@ jobs:
           op=$(echo $params | cut -d ':' -f 1)
           runner=$(echo $params | cut -d ':' -f 2)
           echo "op=${op}" >> $GITHUB_OUTPUT
-          echo "runner=${op}" >> $GITHUB_OUTPUT
+          echo "runner=${runner}" >> $GITHUB_OUTPUT
 
   test-operator:
     needs: process-command
