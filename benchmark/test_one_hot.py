@@ -31,7 +31,7 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.one_hot
-def test_perf_one_hot():
+def test_one_hot():
     bench = base.GenericBenchmark(
         op_name="one_hot",
         input_fn=_input_fn,

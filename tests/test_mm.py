@@ -109,7 +109,7 @@ def test_mm_self_transpose(M, K, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
-@pytest.mark.mm
+@pytest.mark.mm_out
 @pytest.mark.parametrize("M, K", MK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mm_out_self_transpose(M, K, dtype):
