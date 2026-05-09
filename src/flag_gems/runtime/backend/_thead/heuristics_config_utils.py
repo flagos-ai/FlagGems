@@ -100,7 +100,7 @@ def softmax_heur_tile_k(args):
     MAX_TILE_K = 8192
     tile_k = 1
     upper_bound = min(args["K"], MAX_TILE_K)
-    
+
     # Get PPU SM count (if available, otherwise use default)
     try:
         NUM_SMS = torch.cuda.get_device_properties(
@@ -108,17 +108,17 @@ def softmax_heur_tile_k(args):
         ).multi_processor_count
     except Exception:
         NUM_SMS = 128  # Default for Zhenwu 810E
-    
+
     while tile_k <= upper_bound:
         num_blocks = args["M"] * triton.cdiv(args["K"], tile_k)
         num_waves = num_blocks / NUM_SMS
-        
+
         # PPU benefits from higher occupancy
         if (num_waves > 2) and (tile_k * 2 <= upper_bound):
             tile_k *= 2
         else:
             break
-    
+
     return tile_k
 
 
