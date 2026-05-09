@@ -1062,8 +1062,17 @@ upsample_nearest2d:
       META:
         BLOCK_SIZE: block_n
       num_warps: warps
-    block_n: [1024, 2048]
-    warps: [4, 8]
+    block_n: [1024, 2048, 4096]
+    warps: [4, 8, 16]
+
+upsample_nearest2d_backward:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: block_n
+      num_warps: warps
+    block_n: [1024, 2048, 4096]
+    warps: [4, 8, 16]
 
 upsample_nearest3d:
   - gen: true

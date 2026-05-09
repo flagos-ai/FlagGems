@@ -171,6 +171,15 @@ UpsampleBenchmark:
     - [16, 16, 1024, 1024]
   shape_desc: "N, C, H, W"
 
+UpsampleBackwardBenchmark:
+  shapes:
+    - [1, 3, 512, 512]
+    - [8, 16, 128, 128]
+    - [2, 3, 1024, 1024]
+    - [16, 16, 512, 512]
+    - [16, 16, 1024, 1024]
+  shape_desc: "N, C, H, W"
+
 ConcatBenchmark:
   shapes:
     - [64, 64]

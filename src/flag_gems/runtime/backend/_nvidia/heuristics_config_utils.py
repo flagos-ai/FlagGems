@@ -315,6 +315,16 @@ def upsample_nearest2d_USE_INT32_IDX(args):
     return args["N"] * args["C"] * args["OH"] * args["OW"] <= (2**31 - 1)  # INT32 MAX
 
 
+def upsample_nearest2d_INTEGER_SCALE(args):
+    OH, OW = args["OH"], args["OW"]
+    IH, IW = args["IH"], args["IW"]
+    return OH % IH == 0 and OW % IW == 0 and (OH // IH > 1 or OW // IW > 1)
+
+
+def upsample_nearest2d_SCALE_2X(args):
+    return args["OH"] == 2 * args["IH"] and args["OW"] == 2 * args["IW"]
+
+
 def upsample_nearest3d_SAME_D(args):
     return args["OD"] == args["ID"]
 
@@ -483,6 +493,15 @@ HEURISTICS_CONFIGS = {
         "SAME_H": upsample_nearest2d_SAME_H,
         "SAME_W": upsample_nearest2d_SAME_W,
         "USE_INT32_IDX": upsample_nearest2d_USE_INT32_IDX,
+        "INTEGER_SCALE": upsample_nearest2d_INTEGER_SCALE,
+        "SCALE_2X": upsample_nearest2d_SCALE_2X,
+    },
+    "upsample_nearest2d_backward": {
+        "SAME_H": upsample_nearest2d_SAME_H,
+        "SAME_W": upsample_nearest2d_SAME_W,
+        "USE_INT32_IDX": upsample_nearest2d_USE_INT32_IDX,
+        "INTEGER_SCALE": upsample_nearest2d_INTEGER_SCALE,
+        "SCALE_2X": upsample_nearest2d_SCALE_2X,
     },
     "upsample_nearest3d": {
         "SAME_D": upsample_nearest3d_SAME_D,
