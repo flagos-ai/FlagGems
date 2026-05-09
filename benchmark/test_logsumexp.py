@@ -11,7 +11,7 @@ def _input_fn(shape, dtype, device):
 
 @pytest.mark.logsumexp
 def test_logsumexp():
-    bench = base.GenericBenchmark(
+    bench = base.GenericBenchmarkExcluse1D(
         input_fn=_input_fn,
         op_name="logsumexp",
         torch_op=torch.logsumexp,
