@@ -110,12 +110,17 @@ class ChunkGatedDeltaRuleBenchmark(Benchmark):
         v = (0.125 * torch.randn(B, T, H, V, device=device, dtype=torch.float32)).to(
             dtype
         )
-        beta = torch.empty(B, T, H, device=device, dtype=torch.float32).uniform_(
-            -2.0, 2.0
-        ).sigmoid().to(dtype)
-        decay = torch.empty(B, T, H, device=device, dtype=torch.float32).uniform_(
-            -4.605170185988091, -3.506557897319982
-        ).exp()
+        beta = (
+            torch.empty(B, T, H, device=device, dtype=torch.float32)
+            .uniform_(-2.0, 2.0)
+            .sigmoid()
+            .to(dtype)
+        )
+        decay = (
+            torch.empty(B, T, H, device=device, dtype=torch.float32)
+            .uniform_(-4.605170185988091, -3.506557897319982)
+            .exp()
+        )
         g = torch.log1p(-decay).to(dtype)
         initial_state = (
             0.125 * torch.randn(B, H, K, V, device=device, dtype=torch.float32)

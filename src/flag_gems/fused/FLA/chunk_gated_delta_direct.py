@@ -11,7 +11,6 @@ import triton.language as tl
 from flag_gems.fused.FLA.triton_ops_helper import exp
 from flag_gems.utils import libentry
 
-
 _DIRECT_MAX_T = 128
 _DIRECT_MAX_K = 128
 _DIRECT_MAX_V = 128
@@ -61,10 +60,7 @@ def _chunk_gated_delta_rule_direct_fwd_kernel(
     b_h = tl.zeros([BK, BV], dtype=tl.float32)
     if USE_INITIAL_STATE:
         p_h0 = (
-            initial_state
-            + ((i_b * H + i_h) * K * V)
-            + o_k[:, None] * V
-            + o_v[None, :]
+            initial_state + ((i_b * H + i_h) * K * V) + o_k[:, None] * V + o_v[None, :]
         )
         b_h += tl.load(p_h0, mask=mask_h, other=0.0).to(tl.float32)
 
@@ -81,9 +77,7 @@ def _chunk_gated_delta_rule_direct_fwd_kernel(
         b_k = tl.load(k_base + i_t * Hg * K + o_k, mask=mask_k, other=0.0).to(
             tl.float32
         )
-        b_v = tl.load(v_base + i_t * H * V + o_v, mask=mask_v, other=0.0).to(
-            tl.float32
-        )
+        b_v = tl.load(v_base + i_t * H * V + o_v, mask=mask_v, other=0.0).to(tl.float32)
         b_g = tl.load(g_base + i_t * H).to(tl.float32)
         b_beta = tl.load(beta_base + i_t * H).to(tl.float32)
 
@@ -98,12 +92,7 @@ def _chunk_gated_delta_rule_direct_fwd_kernel(
         )
 
     if STORE_FINAL_STATE:
-        p_ht = (
-            final_state
-            + ((i_b * H + i_h) * K * V)
-            + o_k[:, None] * V
-            + o_v[None, :]
-        )
+        p_ht = final_state + ((i_b * H + i_h) * K * V) + o_k[:, None] * V + o_v[None, :]
         tl.store(p_ht, b_h.to(p_ht.dtype.element_ty), mask=mask_h)
 
 

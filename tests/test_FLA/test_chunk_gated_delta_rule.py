@@ -5,7 +5,6 @@ import triton
 
 import flag_gems
 
-
 _TRITON_ALLOCATOR_READY = False
 
 
@@ -41,17 +40,22 @@ def _public_layout(x: torch.Tensor, head_first: bool) -> torch.Tensor:
 
 def _stable_decay(shape: tuple[int, ...], dtype: torch.dtype) -> torch.Tensor:
     device = flag_gems.device
-    decay = torch.empty(shape, device=device, dtype=torch.float32).uniform_(
-        -4.605170185988091, -3.506557897319982
-    ).exp()
+    decay = (
+        torch.empty(shape, device=device, dtype=torch.float32)
+        .uniform_(-4.605170185988091, -3.506557897319982)
+        .exp()
+    )
     return torch.log1p(-decay).to(dtype)
 
 
 def _stable_beta(shape: tuple[int, ...], dtype: torch.dtype) -> torch.Tensor:
     device = flag_gems.device
-    return torch.empty(shape, device=device, dtype=torch.float32).uniform_(
-        -2.0, 2.0
-    ).sigmoid().to(dtype)
+    return (
+        torch.empty(shape, device=device, dtype=torch.float32)
+        .uniform_(-2.0, 2.0)
+        .sigmoid()
+        .to(dtype)
+    )
 
 
 def _strided_last_dim(data: torch.Tensor) -> torch.Tensor:
@@ -85,9 +89,9 @@ def _make_inputs(
         dim=-1,
         eps=1e-6,
     ).to(dtype)
-    v_data = (
-        0.125 * torch.randn(B, T, H, V, device=device, dtype=torch.float32)
-    ).to(dtype)
+    v_data = (0.125 * torch.randn(B, T, H, V, device=device, dtype=torch.float32)).to(
+        dtype
+    )
     if non_contiguous:
         q = _strided_last_dim(q_data)
         k = _strided_last_dim(k_data)
@@ -200,7 +204,9 @@ def _assert_close(
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("head_first", [True, False])
-def test_chunk_gated_delta_rule_matches_reference_without_final_state(dtype, head_first):
+def test_chunk_gated_delta_rule_matches_reference_without_final_state(
+    dtype, head_first
+):
     torch.manual_seed(1000 + int(head_first))
     q, k, v, beta, g = _make_inputs(
         B=1, T=64, Hg=2, H=4, K=64, V=32, dtype=dtype, head_first=head_first
@@ -233,8 +239,8 @@ def test_chunk_gated_delta_rule_uses_initial_state_and_returns_final_state():
     q, k, v, beta, g = _make_inputs(
         B=2, T=33, Hg=2, H=4, K=64, V=32, dtype=dtype, head_first=False
     )
-    initial_state = (
-        0.125 * torch.randn(2, 4, 64, 32, device=flag_gems.device, dtype=dtype)
+    initial_state = 0.125 * torch.randn(
+        2, 4, 64, 32, device=flag_gems.device, dtype=dtype
     )
 
     actual, actual_final = flag_gems.chunk_gated_delta_rule(

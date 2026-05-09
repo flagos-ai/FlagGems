@@ -1,11 +1,11 @@
 import torch
 import torch.nn.functional as F
 
+from flag_gems.fused.FLA import chunk_gated_delta_rule_fwd
 from flag_gems.fused.FLA.chunk_gated_delta_direct import (
     can_use_chunk_gated_delta_rule_direct,
     chunk_gated_delta_rule_direct_fwd,
 )
-from flag_gems.fused.FLA import chunk_gated_delta_rule_fwd
 
 
 def _as_seq_first(
