@@ -23,6 +23,7 @@ jobs:
           command: "/test"
           allowed_contexts: pull_request
           allow_forks: "true"
+          skip_reviews: "true"
           fork_review_bypass: "true"
           permissions: "write,admin"
 
