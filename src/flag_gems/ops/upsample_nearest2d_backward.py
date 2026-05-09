@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 import triton
@@ -13,13 +13,14 @@ logger = logging.getLogger(__name__)
 
 
 @triton.autotune(
-    configs=runtime.get_tuned_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"]
+    configs=runtime.get_tuned_config("upsample_nearest2d_backward"),
+    key=["N", "C", "IH", "IW"],
 )
-@triton.heuristics(runtime.get_heuristic_config("upsample_nearest2d"))
+@triton.heuristics(runtime.get_heuristic_config("upsample_nearest2d_backward"))
 @triton.jit
-def upsample_nearest2d_kernel(
-    ptr_o,
-    ptr_i,
+def upsample_nearest2d_backward_kernel(
+    ptr_grad_input,
+    ptr_grad_output,
     N,
     C,
     OH,
@@ -54,33 +55,41 @@ def upsample_nearest2d_kernel(
 
         if SCALE_2X:
             while nc_iter < NC:
+                o_base = nc_iter * OH * OW + ih * 2 * OW + iw * 2
+                g_top = tl.load(
+                    ptr_grad_output + o_base[:, None] + tl.arange(0, 2)[None, :],
+                    mask=mask[:, None],
+                    other=0.0,
+                    cache_modifier=".cg",
+                )
+                g_bottom = tl.load(
+                    ptr_grad_output + (o_base + OW)[:, None] + tl.arange(0, 2)[None, :],
+                    mask=mask[:, None],
+                    other=0.0,
+                    cache_modifier=".cg",
+                )
+                grad = g_top[:, 0] + g_top[:, 1] + g_bottom[:, 0] + g_bottom[:, 1]
                 i_offset = nc_iter * IH * IW + ih * IW + iw
-                data = tl.load(ptr_i + i_offset, mask=mask, cache_modifier=".cg")
-                oh0 = ih * 2
-                oh1 = oh0 + 1
-                ow0 = iw * 2
-                o_base = nc_iter * OH * OW + oh0 * OW + ow0
-                tl.store(
-                    ptr_o + o_base[:, None] + tl.arange(0, 2)[None, :],
-                    data[:, None], mask=mask[:, None], cache_modifier=".cg",
-                )
-                o_base1 = o_base + OW
-                tl.store(
-                    ptr_o + o_base1[:, None] + tl.arange(0, 2)[None, :],
-                    data[:, None], mask=mask[:, None], cache_modifier=".cg",
-                )
+                tl.store(ptr_grad_input + i_offset, grad, mask=mask)
                 nc_iter += nc_stride
         else:
             while nc_iter < NC:
+                grad = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
                 i_offset = nc_iter * IH * IW + ih * IW + iw
-                data = tl.load(ptr_i + i_offset, mask=mask, cache_modifier=".cg")
                 oh_base = ih * sh
                 ow_base = iw * sw
                 for hh in range(sh):
                     oh = oh_base + hh
                     o_row_offset = nc_iter * OH * OW + oh * OW + ow_base
                     for ww in range(sw):
-                        tl.store(ptr_o + o_row_offset + ww, data, mask=mask)
+                        g = tl.load(
+                            ptr_grad_output + o_row_offset + ww,
+                            mask=mask,
+                            other=0.0,
+                            cache_modifier=".cg",
+                        )
+                        grad += g
+                tl.store(ptr_grad_input + i_offset, grad, mask=mask)
                 nc_iter += nc_stride
     else:
         total_spatial = OH * OW
@@ -91,7 +100,6 @@ def upsample_nearest2d_kernel(
         if SAME_H:
             ih = oh
         else:
-            # tl.floor() cannot be found in 2.3.1, using int trunc
             ih = tl.minimum((oh * reciprocal_scale_h).to(tl.int32), IH - 1)
         if SAME_W:
             iw = ow
@@ -100,28 +108,32 @@ def upsample_nearest2d_kernel(
 
         offset_o = (nc_iter * OH + oh) * OW + ow
         offset_i = (nc_iter * IH + ih) * IW + iw
-        src_index_stride = nc_stride * IH * IW
-        dst_index_stride = nc_stride * OH * OW
+        src_index_stride = nc_stride * OH * OW
+        dst_index_stride = nc_stride * IH * IW
         while nc_iter < NC:
-            data = tl.load(ptr_i + offset_i, mask=mask, cache_modifier=".ca")
-            tl.store(ptr_o + offset_o, data, mask=mask)
-            ptr_i += src_index_stride
-            ptr_o += dst_index_stride
+            data = tl.load(ptr_grad_output + offset_o, mask=mask, cache_modifier=".cg")
+            tl.atomic_add(ptr_grad_input + offset_i, data, mask=mask, sem="relaxed")
+            ptr_grad_output += src_index_stride
+            ptr_grad_input += dst_index_stride
             nc_iter += nc_stride
 
 
-def upsample_nearest2d(
-    input: torch.Tensor,
-    output_size: Tuple[int],
+def upsample_nearest2d_backward(
+    grad_output: torch.Tensor,
+    output_size: list,
+    input_size: list,
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS UPSAMPLE NEAREST2D")
-    assert input.device.type == device
-    assert input.ndim == 4, "The ndim of input must be 4"
-    assert len(output_size) == 2, "The len of output_size must be 2"
+    logger.debug("GEMS UPSAMPLE NEAREST2D BACKWARD")
+    assert grad_output.device.type == device
+    assert grad_output.ndim == 4, "The ndim of grad_output must be 4"
+    N, C, IH, IW = input_size
     OH, OW = output_size
-    N, C, IH, IW = input.shape
+    assert grad_output.shape == (N, C, OH, OW), (
+        f"grad_output shape {grad_output.shape} != expected ({N}, {C}, {OH}, {OW})"
+    )
+
     if scales_h is not None:
         reciprocal_scale_h = 1 / scales_h
     else:
@@ -130,21 +142,24 @@ def upsample_nearest2d(
         reciprocal_scale_w = 1 / scales_w
     else:
         reciprocal_scale_w = IW / OW
-    # allocate output
-    output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
+
     is_integer_scale = (
         OH % IH == 0 and OW % IW == 0 and (OH // IH > 1 or OW // IW > 1)
     )
+    if is_integer_scale:
+        grad_input = torch.empty((N, C, IH, IW), device=grad_output.device, dtype=grad_output.dtype)
+    else:
+        grad_input = torch.zeros((N, C, IH, IW), device=grad_output.device, dtype=grad_output.dtype)
     total_threads = (IH * IW) if is_integer_scale else (OH * OW)
     grid = lambda META: (
         triton.cdiv(total_threads, META["BLOCK_SIZE"]),
         triton.cdiv(N * C, 4),
     )
 
-    with torch_device_fn.device(input.device):
-        upsample_nearest2d_kernel[grid](
-            output,
-            input,
+    with torch_device_fn.device(grad_output.device):
+        upsample_nearest2d_backward_kernel[grid](
+            grad_input,
+            grad_output,
             N,
             C,
             OH,
@@ -154,4 +169,4 @@ def upsample_nearest2d(
             reciprocal_scale_h,
             reciprocal_scale_w,
         )
-    return output
+    return grad_input
