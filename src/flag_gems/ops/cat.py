@@ -21,10 +21,10 @@ def cat_copy_func_kernel_4(
     dim_size_in_d,
     dim_size_out,
     dim_prod_post,
-    dim_offset_a,
-    dim_offset_b,
-    dim_offset_c,
-    dim_offset_d,
+    dim_offset_a: tl.int64,
+    dim_offset_b: tl.int64,
+    dim_offset_c: tl.int64,
+    dim_offset_d: tl.int64,
     total_elements_a,
     total_elements_b,
     total_elements_c,
@@ -37,22 +37,22 @@ def cat_copy_func_kernel_4(
     if pid_y == 0:
         in_ptr = in_ptr_a
         dim_size_in = dim_size_in_a
-        dim_offset = dim_offset_a
+        dim_offset = tl.cast(dim_offset_a, tl.int64)
         total_elements = total_elements_a
     elif pid_y == 1:
         in_ptr = in_ptr_b
         dim_size_in = dim_size_in_b
-        dim_offset = dim_offset_b
+        dim_offset = tl.cast(dim_offset_b, tl.int64)
         total_elements = total_elements_b
     elif pid_y == 2:
         in_ptr = in_ptr_c
         dim_size_in = dim_size_in_c
-        dim_offset = dim_offset_c
+        dim_offset = tl.cast(dim_offset_c, tl.int64)
         total_elements = total_elements_c
     else:
         in_ptr = in_ptr_d
         dim_size_in = dim_size_in_d
-        dim_offset = dim_offset_d
+        dim_offset = tl.cast(dim_offset_d, tl.int64)
         total_elements = total_elements_d
 
     block_start = pid_x * BLOCK_X
