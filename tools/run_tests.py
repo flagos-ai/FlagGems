@@ -391,8 +391,11 @@ def run_accuracy(gpu_id, start, index, count):
 
     start = time.time()
     code = run_cmd(
-        cmd, cwd=accuracy_dir, env=env,
-        stdout_file=stdout_log, stderr_file=stderr_log,
+        cmd,
+        cwd=accuracy_dir,
+        env=env,
+        stdout_file=stdout_log,
+        stderr_file=stderr_log,
     )
     end = time.time()
 
@@ -407,8 +410,6 @@ def run_accuracy(gpu_id, start, index, count):
             "errors": 0,
             "duration": end - start,
         }
-
-
     # There are rare cases where the pytest process aborts
     # with no result file generated.
     if not result_file.exists:
@@ -523,8 +524,11 @@ def run_benchmark(gpu_id, start, index, count):
     start = time.time()
     cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
     code = run_cmd(
-        cmd, cwd=benchmark_dir, env=env,
-        stdout_file=stdout_log, stderr_file=stderr_log,
+        cmd,
+        cwd=benchmark_dir,
+        env=env,
+        stdout_file=stdout_log,
+        stderr_file=stderr_log,
     )
     end = time.time()
 
@@ -662,8 +666,12 @@ def main():
     parser.add_argument("--gpus", default="0")
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--stages", required=False, default="stable")
-    parser.add_argument("--dump-output", action="store_true", default=False,
-                        help="Dump stdout/stderr of each test to log files")
+    parser.add_argument(
+        "--dump-output",
+        action="store_true",
+        default=False,
+        help="Dump stdout/stderr of each test to log files",
+    )
     args = parser.parse_args()
 
     DUMP_OUTPUT = args.dump_output
