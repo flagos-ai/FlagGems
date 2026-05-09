@@ -17,11 +17,21 @@ logger = logging.getLogger(__name__)
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
+DEFAULT_BLOCK_SIZE = 1024
+CUDA_SMALL_SCAN_LIMIT = 1024 * 4
+ASCEND_SCAN_LIMIT = 1024
+DEFAULT_NUM_SMS = 40
 
 
 @functools.lru_cache
 def get_num_sms(idx: int) -> int:
-    return get_device_properties(idx).multi_processor_count
+    return get_device_properties(idx).multi_processor_count or DEFAULT_NUM_SMS
+
+
+def _get_device_index(torch_device):
+    if torch_device.index is not None:
+        return torch_device.index
+    return torch_device_fn.current_device()
 
 
 @tl.constexpr
@@ -149,9 +159,7 @@ def multiply_base_product_abc_kernel(
 
 
 def scan_then_fan_col(inp, out, n_ele, dtype):
-    BLOCK_SIZE = 1024
-    if n_ele <= 1024 * 4:
-        BLOCK_SIZE = triton.next_power_of_2(n_ele)
+    BLOCK_SIZE = _scan_block_size(n_ele)
     part_num = math.ceil(n_ele / BLOCK_SIZE)
     partial_product = torch.empty(part_num, dtype=dtype, device=inp.device)
 
@@ -162,17 +170,16 @@ def scan_then_fan_col(inp, out, n_ele, dtype):
         )
 
     if part_num >= 2:
-        scan_then_fan_col(partial_product, partial_product, part_num, dtype)
+        partial_prefix = torch.empty_like(partial_product)
+        scan_then_fan_col(partial_product, partial_prefix, part_num, dtype)
         with torch_device_fn.device(inp.device):
             multiply_base_product_kernel[grid](
-                out, partial_product, n_ele, part_num, BLOCK_SIZE
+                out, partial_prefix, n_ele, part_num, BLOCK_SIZE
             )
 
 
 def scan_then_fan(inp, out, A, B, C, dtype):
-    BLOCK_SIZE = 1024
-    if B <= 1024 * 4:
-        BLOCK_SIZE = triton.next_power_of_2(B)
+    BLOCK_SIZE = _scan_block_size(B)
     part_num = math.ceil(B / BLOCK_SIZE)
     partial_product = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
 
@@ -183,10 +190,11 @@ def scan_then_fan(inp, out, A, B, C, dtype):
         )
 
     if part_num >= 2:
-        scan_then_fan(partial_product, partial_product, A, part_num, C, dtype)
+        partial_prefix = torch.empty_like(partial_product)
+        scan_then_fan(partial_product, partial_prefix, A, part_num, C, dtype)
         with torch_device_fn.device(inp.device):
             multiply_base_product_abc_kernel[grid](
-                out, partial_product, B, C, part_num, BLOCK_SIZE
+                out, partial_prefix, B, C, part_num, BLOCK_SIZE
             )
 
 
@@ -210,6 +218,17 @@ def _should_redispatch_on_ascend(dtype):
     return runtime_device.vendor_name == "ascend" and (
         is_integer_dtype(dtype) or is_boolean_dtype(dtype)
     )
+
+
+def _scan_block_size(length):
+    limit = (
+        ASCEND_SCAN_LIMIT
+        if runtime_device.vendor_name == "ascend"
+        else CUDA_SMALL_SCAN_LIMIT
+    )
+    if length <= limit:
+        return triton.next_power_of_2(length)
+    return DEFAULT_BLOCK_SIZE
 
 
 def cumprod_wrapper(inp, dim, dtype=None, out=None):
@@ -239,7 +258,10 @@ def cumprod_wrapper(inp, dim, dtype=None, out=None):
 
 
 def reduce_then_scan_row(x, out, M, N, compute_dtype):
-    if N <= 16384:
+    persistent_limit = (
+        ASCEND_SCAN_LIMIT if runtime_device.vendor_name == "ascend" else 16384
+    )
+    if N <= persistent_limit:
         TILE_SIZE = triton.next_power_of_2(N)
         num_warps = 8 if TILE_SIZE > 2048 else 4
         reduce_then_scan_root_scan_kernel_row[(M, 1, 1)](
@@ -247,10 +269,10 @@ def reduce_then_scan_row(x, out, M, N, compute_dtype):
         )
         return out
 
-    TILE_SIZE = min(4096, triton.next_power_of_2(N))
+    TILE_SIZE = min(_scan_block_size(N), triton.next_power_of_2(N))
     num_warps = 8 if TILE_SIZE > 2048 else 4
     num_tiles = triton.cdiv(N, TILE_SIZE)
-    max_ctas = get_num_sms(x.device.index) * 4
+    max_ctas = get_num_sms(_get_device_index(x.device)) * 4
     num_ctas = min(num_tiles, max_ctas)
     ROOT_SCAN_TILE_SIZE = triton.next_power_of_2(num_ctas)
     tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
@@ -374,9 +396,6 @@ def cumprod_(inp, dim, *, dtype=None):
         return torch.ops.aten.cumprod_.default.redispatch(
             _FALLBACK_KEYSET, inp, dim, dtype=dtype
         )
-    if inp.is_contiguous():
-        return cumprod_wrapper(inp, dim, inp.dtype, inp)
-
     out = cumprod_wrapper(inp, dim, inp.dtype)
     inp.copy_(out)
     return inp
