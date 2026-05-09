@@ -1,9 +1,25 @@
 import pytest
 import torch
 import torch.nn.functional as F
+import triton
 
 import flag_gems
 from benchmark.base import Benchmark
+
+_TRITON_ALLOCATOR_READY = False
+
+
+@pytest.fixture(autouse=True)
+def _install_triton_allocator():
+    global _TRITON_ALLOCATOR_READY
+    if _TRITON_ALLOCATOR_READY or not torch.cuda.is_available():
+        return
+
+    def _alloc(size: int, _alignment: int, _stream: int | None):
+        return torch.empty((size,), dtype=torch.uint8, device=flag_gems.device)
+
+    triton.set_allocator(_alloc)
+    _TRITON_ALLOCATOR_READY = True
 
 
 def _recurrent_wrapper(
