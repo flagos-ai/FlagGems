@@ -271,14 +271,16 @@ def test_ctc_loss_padded_and_concatenated_targets_equivalent(reduction):
         reduction=reduction,
         zero_infinity=False,
     )
-    utils.gems_assert_close(padded_out, concatenated_out, torch.float32, reduce_dim=9)
+    flag_gems.testing.assert_close(
+        padded_out, concatenated_out, torch.float32, reduce_dim=9
+    )
 
     grad = torch.randn_like(padded_out)
     (padded_grad,) = torch.autograd.grad(padded_out, padded_log_probs, grad)
     (concatenated_grad,) = torch.autograd.grad(
         concatenated_out, concatenated_log_probs, grad
     )
-    utils.gems_assert_close(
+    flag_gems.testing.assert_close(
         padded_grad, concatenated_grad, torch.float32, reduce_dim=36
     )
 
