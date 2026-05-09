@@ -42,7 +42,7 @@ def gen_cat_shapes_dim(shapes):
 @pytest.mark.concatenate
 @pytest.mark.parametrize("shape, dim", gen_cat_shapes_dim(CAT_SHAPES))
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
-def test_accuracy_concatenate(shape, dim, dtype):
+def test_concatenate(shape, dim, dtype):
     if dtype in FLOAT_DTYPES:
         inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
     else:
