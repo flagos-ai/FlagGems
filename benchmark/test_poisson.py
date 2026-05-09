@@ -1,12 +1,12 @@
 import pytest
 import torch
 
-from . import base, consts, utils
+from . import base, consts
 
 
 def _input_fn(shape, dtype, device):
-    inp = utils.generate_tensor_input(shape, dtype, device)
-    yield inp
+    inp = torch.rand(shape, dtype=dtype, device=device)
+    yield (inp,)
 
 
 @pytest.mark.poisson
