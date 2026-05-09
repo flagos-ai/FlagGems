@@ -351,3 +351,71 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
             os.environ.pop("MUSA_ENABLE_SQMMA", None)
         else:
             os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+
+
+def addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1):
+    logger.debug("GEMS_MTHREADS ADDMM_DTYPE")
+    out = torch.empty(
+        (mat1.shape[0], mat2.shape[1]),
+        device=mat1.device,
+        dtype=out_dtype,
+    )
+    return addmm_dtype_out(bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha, out=out)
+
+
+def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
+    logger.debug("GEMS_MTHREADS ADDMM_DTYPE_OUT")
+    if mat1.dtype != mat2.dtype:
+        raise RuntimeError(
+            f"mat1 and mat2 must have the same dtype, but got {mat1.dtype} and {mat2.dtype}"
+        )
+    if out.dtype != out_dtype:
+        raise RuntimeError(
+            "out_dtype must be the same as the dtype of the provided out tensor"
+        )
+    if not (
+        out_dtype == mat1.dtype
+        or (
+            out_dtype == torch.float32 and mat1.dtype in (torch.float16, torch.bfloat16)
+        )
+    ):
+        raise RuntimeError(
+            "out_dtype must be the same as input dtype or fp32 for fp16/bf16 inputs"
+        )
+    if bias.dtype != out_dtype and bias.dtype != mat1.dtype:
+        raise RuntimeError("self dtype must match either out_dtype or mat1 dtype")
+
+    bias_c = bias.to(out_dtype)
+    M, K = mat1.shape
+    _, N = mat2.shape
+    a_dtype = mat1.dtype
+    b_dtype = mat2.dtype
+
+    need_sqmma = a_dtype != torch.float32 and b_dtype != torch.float32
+    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
+    if need_sqmma:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+    else:
+        os.environ.pop("MUSA_ENABLE_SQMMA", None)
+    try:
+        if is_sqmma_compatible(mat1, mat2, N, K):
+            result = addmm_sqmma(
+                mat1,
+                mat2,
+                bias_c,
+                a_dtype,
+                alpha,
+                beta,
+                M,
+                N,
+                K,
+            )
+        else:
+            result = addmm_fma(bias_c, mat1, mat2, alpha=alpha, beta=beta)
+        out.copy_(result)
+        return out
+    finally:
+        if prev_sqmma is None:
+            os.environ.pop("MUSA_ENABLE_SQMMA", None)
+        else:
+            os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
