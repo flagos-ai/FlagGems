@@ -35,4 +35,3 @@ def test_accuracy_t_copy_out(shape, dtype):
         act_out = torch.ops.aten.t_copy(x, out=act_out_buf)
 
     utils.gems_assert_close(act_out, ref_out, dtype)
-

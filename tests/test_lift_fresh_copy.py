@@ -18,4 +18,3 @@ def test_accuracy_lift_fresh_copy(shape, dtype):
         res_out = torch.ops.aten.lift_fresh_copy(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
-

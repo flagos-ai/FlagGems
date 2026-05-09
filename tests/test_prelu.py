@@ -29,4 +29,3 @@ def test_prelu(shape, dtype, weight_kind):
         res_out = torch.ops.aten.prelu(x, w)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
-

@@ -50,4 +50,3 @@ def test_zero_out(shape, dtype):
         act_out = torch.ops.aten.zero.out(act_x, out=act_x)
 
     utils.gems_assert_close(act_out, ref_out, dtype)
-
