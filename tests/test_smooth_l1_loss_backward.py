@@ -45,3 +45,32 @@ def test_smooth_l1_loss_backward(shape, dtype, reduction, beta):
     gem_grad = inp.grad
 
     utils.gems_assert_close(gem_grad, ref_grad, dtype, equal_nan=True)
+
+# ===========================================================================
+# smooth_l1_loss_backward.grad_input — out variant
+# ===========================================================================
+@pytest.mark.smooth_l1_loss_backward_out
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("reduction", [0, 1, 2])
+@pytest.mark.parametrize("beta", [1.0])
+@pytest.mark.parametrize("shape", [(64,), (32, 32), (128, 256)])
+def test_smooth_l1_loss_backward_out(shape, dtype, reduction, beta):
+    grad_output = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_go = utils.to_reference(grad_output, True)
+    ref_inp = utils.to_reference(inp, True)
+    ref_target = utils.to_reference(target, True)
+
+    ref_grad_input = torch.empty(shape, dtype=dtype, device=ref_inp.device)
+    torch.ops.aten.smooth_l1_loss_backward.grad_input(
+        ref_go, ref_inp, ref_target, reduction, beta, grad_input=ref_grad_input
+    )
+
+    grad_input = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        torch.ops.aten.smooth_l1_loss_backward.grad_input(
+            grad_output, inp, target, reduction, beta, grad_input=grad_input
+        )
+    utils.gems_assert_close(grad_input, ref_grad_input, dtype, equal_nan=True)

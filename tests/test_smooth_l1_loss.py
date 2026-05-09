@@ -141,3 +141,31 @@ def test_smooth_l1_loss_small_diff(dtype, reduction):
         res_out = torch.ops.aten.smooth_l1_loss(inp, target, reduction, 1.0)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+# ===========================================================================
+# smooth_l1_loss.out — out variant
+# ===========================================================================
+@pytest.mark.smooth_l1_loss_out
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("reduction", [0, 1, 2])
+@pytest.mark.parametrize("shape", [(64,), (32, 32), (64, 128)])
+def test_smooth_l1_loss_out(shape, dtype, reduction):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp, True)
+    ref_target = utils.to_reference(target, True)
+
+    if reduction == 0:
+        out_shape = shape
+    else:
+        out_shape = ()
+    ref_out = torch.empty(out_shape, dtype=dtype, device=ref_inp.device)
+    torch.ops.aten.smooth_l1_loss.out(
+        ref_inp, ref_target, reduction, 1.0, out=ref_out
+    )
+
+    out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        torch.ops.aten.smooth_l1_loss.out(inp, target, reduction, 1.0, out=out)
+    utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)

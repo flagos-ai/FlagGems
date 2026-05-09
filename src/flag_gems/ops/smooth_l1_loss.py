@@ -206,3 +206,17 @@ def smooth_l1_loss(
     )
 
     return out
+
+
+def smooth_l1_loss_out(
+    input: torch.Tensor,
+    target: torch.Tensor,
+    reduction: int = 1,
+    beta: float = 1.0,
+    *,
+    out: torch.Tensor,
+):
+    log.debug("GEMS SMOOTH_L1_LOSS OUT")
+    result = smooth_l1_loss(input, target, reduction, beta)
+    out.copy_(result)
+    return out

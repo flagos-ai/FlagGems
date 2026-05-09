@@ -89,3 +89,18 @@ def smooth_l1_loss_backward(
     )
 
     return grad_input
+
+
+def smooth_l1_loss_backward_out(
+    grad_output: torch.Tensor,
+    self: torch.Tensor,
+    target: torch.Tensor,
+    reduction: int,
+    beta: float,
+    *,
+    grad_input: torch.Tensor,
+):
+    log.debug("GEMS SMOOTH_L1_LOSS BACKWARD GRAD_INPUT")
+    result = smooth_l1_loss_backward(grad_output, self, target, reduction, beta)
+    grad_input.copy_(result)
+    return grad_input
