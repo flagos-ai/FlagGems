@@ -298,9 +298,12 @@ from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.sinh_ import sinh_
 from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_scatter import slice_scatter
+from flag_gems.ops.smooth_l1_loss import smooth_l1_loss, smooth_l1_loss_out
+from flag_gems.ops.smooth_l1_loss_backward import (
+    smooth_l1_loss_backward,
+    smooth_l1_loss_backward_out,
+)
 from flag_gems.ops.soft_margin_loss import soft_margin_loss, soft_margin_loss_out
-from flag_gems.ops.smooth_l1_loss import smooth_l1_loss
-from flag_gems.ops.smooth_l1_loss_backward import smooth_l1_loss_backward
 from flag_gems.ops.softmax import (
     softmax,
     softmax_backward,

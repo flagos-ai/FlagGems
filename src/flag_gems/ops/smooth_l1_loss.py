@@ -37,9 +37,7 @@ def _smooth_l1_loss_none_kernel(
     abs_diff = tl.abs(diff)
 
     half_beta = 0.5 * beta
-    loss = tl.where(
-        abs_diff < beta, 0.5 * diff * diff / beta, abs_diff - half_beta
-    )
+    loss = tl.where(abs_diff < beta, 0.5 * diff * diff / beta, abs_diff - half_beta)
 
     tl.store(out_ptr + offsets, loss, mask=mask)
 
@@ -68,9 +66,7 @@ def _smooth_l1_loss_reduce_kernel(
     abs_diff = tl.abs(diff)
 
     half_beta = 0.5 * beta
-    vals = tl.where(
-        abs_diff < beta, 0.5 * diff * diff / beta, abs_diff - half_beta
-    )
+    vals = tl.where(abs_diff < beta, 0.5 * diff * diff / beta, abs_diff - half_beta)
     vals = tl.where(mask, vals, 0.0)
 
     acc = tl.sum(vals, axis=0)
@@ -121,9 +117,7 @@ def _normalize_reduction(reduction):
 def _check_tensors(input: torch.Tensor, target: torch.Tensor):
     """Validate that input and target tensors are on the same device."""
     if not (input.is_cuda and target.is_cuda):
-        raise AssertionError(
-            "smooth_l1_loss: input and target must be CUDA tensors."
-        )
+        raise AssertionError("smooth_l1_loss: input and target must be CUDA tensors.")
     if input.device != target.device:
         raise AssertionError(
             "smooth_l1_loss: input and target must be on the same device."
@@ -164,9 +158,7 @@ def smooth_l1_loss(
     # Handle device fallback for non-CUDA tensors
     device = input.device
     if not (isinstance(device, torch.device) and device.type == flag_gems.device):
-        return torch.ops.aten.smooth_l1_loss(
-            input, target, reduction, beta
-        )
+        return torch.ops.aten.smooth_l1_loss(input, target, reduction, beta)
 
     input, target = _check_tensors(input, target)
     red = _normalize_reduction(reduction)
@@ -191,9 +183,7 @@ def smooth_l1_loss(
         if red == 2:
             return torch.zeros((), device=input.device, dtype=dtype)
         else:
-            return torch.full(
-                (), float("nan"), device=input.device, dtype=dtype
-            )
+            return torch.full((), float("nan"), device=input.device, dtype=dtype)
 
     # Two-stage reduction: partial sums -> mid array -> final sum
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
@@ -208,7 +198,9 @@ def smooth_l1_loss(
     )
 
     _smooth_l1_loss_final_kernel[(1, 1, 1)](
-        mid, out, mid_size,
+        mid,
+        out,
+        mid_size,
         n_elements if red == 1 else 0,
         BLOCK_MID=block_mid,
     )
