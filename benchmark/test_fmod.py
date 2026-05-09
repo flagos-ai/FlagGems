@@ -16,33 +16,33 @@ def _scalar_input_fn(shape, dtype, device):
     yield inp1, 0.5
 
 
-@pytest.mark.fmod
+@pytest.mark.fmod_tensor
 def test_fmod_tensor():
     bench = base.GenericBenchmark(
         input_fn=_tensor_input_fn,
-        op_name="fmod.Tensor",
+        op_name="fmod_tensor",
         torch_op=torch.fmod,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
-@pytest.mark.fmod
+@pytest.mark.fmod_scalar
 def test_fmod_scalar():
     bench = base.GenericBenchmark(
         input_fn=_scalar_input_fn,
-        op_name="fmod.Scalar",
+        op_name="fmod_scalar",
         torch_op=torch.fmod,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
-@pytest.mark.fmod
+@pytest.mark.fmod_tensor_
 def test_fmod_tensor_():
     bench = base.GenericBenchmark(
         input_fn=_tensor_input_fn,
-        op_name="fmod_.Tensor",
+        op_name="fmod_tensor_",
         torch_op=torch.Tensor.fmod_,
         dtypes=consts.FLOAT_DTYPES,
         inplace=True,
@@ -50,11 +50,11 @@ def test_fmod_tensor_():
     bench.run()
 
 
-@pytest.mark.fmod
+@pytest.mark.fmod_scalar_
 def test_fmod_scalar_():
     bench = base.GenericBenchmark(
         input_fn=_scalar_input_fn,
-        op_name="fmod_.Scalar",
+        op_name="fmod_scalar_",
         torch_op=torch.Tensor.fmod_,
         dtypes=consts.FLOAT_DTYPES,
         inplace=True,
