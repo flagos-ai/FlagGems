@@ -1181,7 +1181,13 @@ def _svd_gram_eigh(self):
     )
     v = torch.gather(eigvecs, -1, gather_index)
     s = torch.sqrt(evals)
-    u = inp.float() @ v / s.clamp_min(1.0e-20).unsqueeze(-2)
+    s_max = s.amax(dim=-1, keepdim=True)
+    rel_cutoff = 1.0e-4 if self.dtype in (torch.float16, torch.bfloat16) else 1.0e-7
+    s_cutoff = (s_max * rel_cutoff).clamp_min(1.0e-12)
+    valid_s = s > s_cutoff
+    safe_s = torch.where(valid_s, s, torch.ones_like(s))
+    u = inp.float() @ v / safe_s.unsqueeze(-2)
+    u = torch.where(valid_s.unsqueeze(-2), u, torch.zeros_like(u))
 
     if transpose:
         return v.to(self.dtype), s.to(self.dtype), u.to(self.dtype)
