@@ -28,7 +28,7 @@ def test_silu_and_mul_with_clamp():
     bench.run()
 
 
-@pytest.mark.silu_and_mul_with_clamp
+@pytest.mark.silu_and_mul_with_clamp_out
 def test_silu_and_mul_with_clamp_out():
     limit = 7.0
 

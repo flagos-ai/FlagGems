@@ -38,7 +38,7 @@ def test_silu_and_mul_with_clamp(shape, dtype, limit):
     utils.gems_assert_close(res_inp2_grad, ref_inp2_grad, dtype)
 
 
-@pytest.mark.silu_and_mul_with_clamp
+@pytest.mark.silu_and_mul_with_clamp_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("limit", SILU_AND_MUL_WITH_CLAMP_LIMITS)
