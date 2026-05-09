@@ -4972,7 +4972,7 @@ ops:
     kind:
       - Activation
     stages:
-      - stable: '2.0'
+      - stable: '5.1'
   - id: silu_and_mul_with_clamp_out
     description: A variant of `silu_and_mul_with_clamp` with an extra `out` argument.
     for:
@@ -4984,7 +4984,7 @@ ops:
     kind:
       - Activation
     stages:
-      - stable: '2.0'
+      - stable: '5.1'
   - id: silu_backward
     description: A variant of `silu()` for backward case.
     for:

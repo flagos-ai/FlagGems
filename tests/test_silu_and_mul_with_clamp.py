@@ -36,3 +36,25 @@ def test_silu_and_mul_with_clamp(shape, dtype, limit):
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_inp1_grad, ref_inp1_grad, dtype)
     utils.gems_assert_close(res_inp2_grad, ref_inp2_grad, dtype)
+
+
+@pytest.mark.silu_and_mul_with_clamp
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("limit", SILU_AND_MUL_WITH_CLAMP_LIMITS)
+def test_silu_and_mul_with_clamp_out(shape, dtype, limit):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1, False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_gate = torch.clamp(ref_inp1, max=limit)
+    ref_up = torch.clamp(ref_inp2, min=-limit, max=limit)
+    ref_out = torch.mul(torch.nn.functional.silu(ref_gate), ref_up)
+
+    out = torch.empty_like(inp1)
+    with flag_gems.use_gems():
+        ret = flag_gems.silu_and_mul_with_clamp_out(inp1, inp2, out, limit)
+
+    assert ret is out
+    utils.gems_assert_close(out, ref_out, dtype)
