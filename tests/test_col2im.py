@@ -37,7 +37,7 @@ def test_accuracy_col2im(config, dtype):
     inp = torch.randn(
         batch, channels * kernel_h * kernel_w, L, device=flag_gems.device, dtype=dtype
     )
-    ref_inp = to_reference(inp)
+    ref_inp = to_reference(inp, True)
 
     ref_out = torch.ops.aten.col2im(
         ref_inp, output_size, kernel_size, dilation, padding, stride
@@ -47,4 +47,4 @@ def test_accuracy_col2im(config, dtype):
             inp, output_size, kernel_size, dilation, padding, stride
         )
 
-    gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_h * kernel_w)
