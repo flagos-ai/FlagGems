@@ -32,7 +32,7 @@ def fmod_func_tensor_scalar(x, y):
 
 
 def fmod_tensor(A, B):
-    logger.debug("GEMS FMOD TENSOR")
+    logger.debug("GEMS FMOD_TENSOR")
     return fmod_func(A, B)
 
 
