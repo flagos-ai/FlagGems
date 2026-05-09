@@ -20,9 +20,7 @@ def _reference_ctc_loss(
     **kwargs,
 ):
     work = log_probs if log_probs.dtype == torch.float32 else log_probs.float()
-    out = F.ctc_loss(
-        work, targets, input_lengths, target_lengths, *args, **kwargs
-    )
+    out = F.ctc_loss(work, targets, input_lengths, target_lengths, *args, **kwargs)
     return out.to(log_probs.dtype)
 
 
@@ -33,9 +31,9 @@ def _make_targets(batch, max_target, classes, device, *, concatenated):
     for row in range(batch):
         length = max(1, max_target - (row % 5))
         target_lengths[row] = length
-        values = (
-            torch.arange(length, device=device, dtype=torch.long) + row
-        ) % (classes - 1)
+        values = (torch.arange(length, device=device, dtype=torch.long) + row) % (
+            classes - 1
+        )
         values = values + 1
         padded[row, :length] = values
         pieces.append(values)
@@ -46,13 +44,9 @@ def _make_targets(batch, max_target, classes, device, *, concatenated):
 
 def ctc_loss_input_fn(shape, dtype, device):
     t_steps, batch, classes, max_target = shape
-    raw = torch.randn(
-        t_steps, batch, classes, dtype=torch.float32, device=device
-    )
+    raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
     log_probs = raw.log_softmax(-1).to(dtype)
-    input_lengths = torch.full(
-        (batch,), t_steps, dtype=torch.long, device=device
-    )
+    input_lengths = torch.full((batch,), t_steps, dtype=torch.long, device=device)
 
     for concatenated in (False, True):
         targets, target_lengths = _make_targets(

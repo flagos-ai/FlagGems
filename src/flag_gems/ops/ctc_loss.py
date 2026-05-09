@@ -44,9 +44,7 @@ def _length_stats(tensor):
         if cached is not None and cached[0] is tensor:
             return cached[1]
 
-    stats_tensor = torch.stack(
-        (tensor.min(), tensor.max(), tensor.sum())
-    ).cpu()
+    stats_tensor = torch.stack((tensor.min(), tensor.max(), tensor.sum())).cpu()
     stats = tuple(int(value) for value in stats_tensor.tolist())
     if key is not None:
         _cache_put(_LENGTH_STATS_CACHE, key, (tensor, stats))
@@ -86,9 +84,7 @@ def _length_tensor(lengths, name, batch, device):
         return result.to(device=device, dtype=torch.long).contiguous()
 
     if not isinstance(lengths, (list, tuple)):
-        raise RuntimeError(
-            f"{name} must be a Tensor or a sequence of integers"
-        )
+        raise RuntimeError(f"{name} must be a Tensor or a sequence of integers")
     if len(lengths) != batch:
         raise RuntimeError(f"{name} must have batch size {batch}")
     return torch.tensor(lengths, device=device, dtype=torch.long)
@@ -115,15 +111,11 @@ def _check_inputs(log_probs, targets, input_lengths, target_lengths, blank):
     if log_probs.ndim not in (2, 3):
         raise RuntimeError("ctc_loss expects 2D or 3D log_probs")
     if not torch.is_floating_point(log_probs):
-        raise RuntimeError(
-            '"ctc_loss" not implemented for non-floating log_probs'
-        )
+        raise RuntimeError('"ctc_loss" not implemented for non-floating log_probs')
     if not torch.is_tensor(targets):
         raise RuntimeError("ctc_loss expects targets to be a Tensor")
     if not log_probs.is_cuda:
-        raise RuntimeError(
-            "ctc_loss Triton implementation expects CUDA log_probs"
-        )
+        raise RuntimeError("ctc_loss Triton implementation expects CUDA log_probs")
 
     unbatched = log_probs.ndim == 2
     if unbatched:
@@ -150,9 +142,7 @@ def _check_inputs(log_probs, targets, input_lengths, target_lengths, blank):
     targets = targets.to(device=log_probs.device).contiguous()
     if targets.ndim == 2:
         if targets.shape[0] != batch:
-            raise RuntimeError(
-                "padded targets must have one row per batch item"
-            )
+            raise RuntimeError("padded targets must have one row per batch item")
         if tgt_max > targets.shape[1]:
             raise RuntimeError("target_lengths exceed padded target width")
         target_ndim = 2
@@ -218,9 +208,7 @@ def _fetch_targets(
     mask,
 ):
     if target_ndim == 2:
-        return tl.load(
-            targets + n * stride_n + j * stride_s, mask=mask, other=0
-        )
+        return tl.load(targets + n * stride_n + j * stride_s, mask=mask, other=0)
     start = tl.load(offsets + n)
     return tl.load(targets + start + j, mask=mask, other=0)
 
@@ -306,10 +294,7 @@ def _ctc_forward_kernel(
         (target_pos > 0) & state_mask,
     ).to(tl.int64)
     skip_allowed = (
-        (states > 1)
-        & ((states % 2) == 1)
-        & (target_pos > 0)
-        & (labels != prev_labels)
+        (states > 1) & ((states % 2) == 1) & (target_pos > 0) & (labels != prev_labels)
     )
 
     base = log_probs + n * stride_n
@@ -435,10 +420,7 @@ def _ctc_forward_full_length_reduce_kernel(
         (target_pos > 0) & state_mask,
     ).to(tl.int64)
     skip_allowed = (
-        (states > 1)
-        & ((states % 2) == 1)
-        & (target_pos > 0)
-        & (labels != prev_labels)
+        (states > 1) & ((states % 2) == 1) & (target_pos > 0) & (labels != prev_labels)
     )
 
     base = log_probs + n * stride_n
@@ -846,7 +828,9 @@ def _ctc_backward_kernel(
                 prob_base + t * stride_t + labels_1 * stride_c,
                 mask=state_mask & (states + 1 < n_states),
                 other=-float("inf"),
-            ).to(tl.float32)
+            ).to(
+                tl.float32
+            )
 
             move2 = tl.load(
                 cur_beta_base + states + 2,
@@ -856,7 +840,9 @@ def _ctc_backward_kernel(
                 prob_base + t * stride_t + labels_2 * stride_c,
                 mask=state_mask & skip_from_state,
                 other=-float("inf"),
-            ).to(tl.float32)
+            ).to(
+                tl.float32
+            )
 
             beta_next = _logaddexp3(stay, move1, move2, skip_from_state)
             beta = tl.where(state_mask, beta_next, -float("inf"))
@@ -903,9 +889,7 @@ class _CtcLoss(torch.autograd.Function):
             max_target,
             block_states,
             full_input_lengths,
-        ) = _check_inputs(
-            log_probs, targets, input_lengths, target_lengths, blank
-        )
+        ) = _check_inputs(log_probs, targets, input_lengths, target_lengths, blank)
 
         work_log_probs = log_probs.contiguous()
         if unbatched:
@@ -914,9 +898,7 @@ class _CtcLoss(torch.autograd.Function):
         t_steps, batch, classes = work_log_probs.shape
         max_states = 2 * max_target + 1
         target_stride_n = targets.stride(0) if targets.ndim == 2 else 0
-        target_stride_s = (
-            targets.stride(1) if targets.ndim == 2 else targets.stride(0)
-        )
+        target_stride_s = targets.stride(1) if targets.ndim == 2 else targets.stride(0)
 
         if (
             not ctx.needs_input_grad[0]
@@ -961,9 +943,7 @@ class _CtcLoss(torch.autograd.Function):
                 )
             return contrib.sum().to(log_probs.dtype)
 
-        losses = torch.empty(
-            (batch,), dtype=torch.float32, device=log_probs.device
-        )
+        losses = torch.empty((batch,), dtype=torch.float32, device=log_probs.device)
         log_alpha = torch.empty(
             (batch, t_steps, max_states),
             dtype=torch.float32,
