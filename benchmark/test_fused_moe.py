@@ -111,7 +111,7 @@ def test_fused_moe_impl_gems_vs_vllm():
     Benchmark FlagGems fused_experts_impl vs vLLM fused_experts_impl (bf16/fp16).
     """
     bench = FusedMoEBenchmark(
-        op_name="fused_moe_gems_vs_vllm",
+        op_name="fused_experts_impl",
         torch_op=_vllm_fused_moe_wrapper,
         dtypes=[torch.bfloat16, torch.float16],
     )
