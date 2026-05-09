@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import libentry
+# from flag_gems.utils import libentry
 
 # Optimized softmax kernel for FlagGems
 # Supports fp16, bf16, fp32 via Python-level dtype casting
@@ -47,7 +47,6 @@ def softmax_kernel(
     tl.store(row_out + cols, out, mask=mask)
 
 
-@libentry()
 def softmax(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
     """
     FlagGems optimized softmax.
