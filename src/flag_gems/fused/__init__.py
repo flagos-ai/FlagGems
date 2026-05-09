@@ -42,6 +42,10 @@ from flag_gems.fused.rotary_embedding import apply_rotary_pos_emb
 from flag_gems.fused.rwkv_ka_fusion import rwkv_ka_fusion
 from flag_gems.fused.rwkv_mm_sparsity import rwkv_mm_sparsity
 from flag_gems.fused.silu_and_mul import silu_and_mul, silu_and_mul_out
+from flag_gems.fused.silu_and_mul_with_clamp import (
+    silu_and_mul_with_clamp,
+    silu_and_mul_with_clamp_out,
+)
 from flag_gems.fused.skip_layernorm import skip_layer_norm
 from flag_gems.fused.sparse_attention import sparse_attn_triton
 from flag_gems.fused.swiglu import dswiglu, swiglu
@@ -88,6 +92,8 @@ __all__ = [
     "rwkv_mm_sparsity",
     "silu_and_mul",
     "silu_and_mul_out",
+    "silu_and_mul_with_clamp",
+    "silu_and_mul_with_clamp_out",
     "sinkhorn_forward",
     "skip_layer_norm",
     "swiglu",
