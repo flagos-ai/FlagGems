@@ -14,7 +14,12 @@ from .index_add import index_add, index_add_
 from .index_put import index_put, index_put_
 from .index_select import index_select
 from .log import log
-from .log_softmax import log_softmax, log_softmax_backward
+from .log_softmax import (
+    log_softmax,
+    log_softmax_backward,
+    log_softmax_backward_out,
+    log_softmax_out,
+)
 from .max import max, max_dim
 from .min import min, min_dim
 from .normal import normal_
@@ -69,6 +74,8 @@ __all__ = [
     "log",
     "log_softmax",
     "log_softmax_backward",
+    "log_softmax_backward_out",
+    "log_softmax_out",
     "max",
     "max_dim",
     "min",
@@ -99,8 +106,9 @@ __all__ = [
     "zeros_like",
 ]
 
+
 if get_device_capability(current_device())[0] >= 3:
-    from .addmm import addmm  # noqa: F401
+    from .addmm import addmm, addmm_dtype, addmm_dtype_out  # noqa: F401
     from .bmm import bmm  # noqa: F401
     from .gelu import gelu  # noqa: F401
     from .mm import mm  # noqa: F401
@@ -109,6 +117,8 @@ if get_device_capability(current_device())[0] >= 3:
     __all__.extend(
         [
             "addmm",
+            "addmm_dtype",
+            "addmm_dtype_out",
             "bmm",
             "gelu",
             "mm",

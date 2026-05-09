@@ -197,6 +197,37 @@ GenericBenchmarkExcluse1D:
     - [64, 512, 512]
     - [1024, 1024, 1024]
 
+tril:
+  shapes:
+    - [64, 64]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 1024, 1024]
+    - [1024, 16, 16]
+    - [512, 32, 32]
+    - [128, 64, 64]
+  shape_desc: "(B), M, N"
+
+tril_extreme_diagonal:
+  shapes:
+    - [4096, 4096]
+  shape_desc: "M, N"
+
+tril_out_transposed:
+  shapes:
+    - [1024, 1024]
+    - [16, 128, 128]
+    - [512, 32, 32]
+  shape_desc: "(B), M, N"
+
+tril_out_sliced:
+  shapes:
+    - [1024, 1024]
+    - [16, 128, 128]
+    - [512, 32, 32]
+  shape_desc: "(B), M, N"
+
 GenericBenchmarkExcluse3D:
   shapes:
     - [1048576] # 1024 * 1024
