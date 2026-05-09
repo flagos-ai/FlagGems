@@ -6,7 +6,7 @@ import flag_gems
 from . import base, consts, utils
 
 
-@pytest.mark.silu_and_mul
+@pytest.mark.silu_and_mul_with_clamp
 def test_silu_and_mul_with_clamp():
     limit = 7.0
 

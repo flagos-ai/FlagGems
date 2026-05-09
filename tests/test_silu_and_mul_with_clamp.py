@@ -5,11 +5,10 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 SILU_AND_MUL_WITH_CLAMP_LIMITS = [3.0, 7.0]
 
 
-@pytest.mark.silu_and_mul
+@pytest.mark.silu_and_mul_with_clamp
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("limit", SILU_AND_MUL_WITH_CLAMP_LIMITS)
