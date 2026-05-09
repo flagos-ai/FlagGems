@@ -6,9 +6,9 @@ This backend provides support for Alibaba Cloud's T-Head Zhenwu PPU (Processing 
 
 ## Hardware Information
 
-**Product**: Zhenwu 810E PPU  
-**Architecture**: Proprietary T-Head AI accelerator  
-**SDK**: PPU SDK v2.0.0+  
+**Product**: Zhenwu 810E PPU
+**Architecture**: Proprietary T-Head AI accelerator
+**SDK**: PPU SDK v2.0.0+
 **Device Management**: `ppu-smi` (similar to nvidia-smi)
 
 ### Key Features
