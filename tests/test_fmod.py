@@ -12,10 +12,10 @@ from .accuracy_utils import (
 )
 
 
-@pytest.mark.fmod
+@pytest.mark.fmod_tensor
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_fmod(shape, dtype):
+def test_fmod_tensor(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.where(inp2 == 0, torch.ones_like(inp2), inp2)
@@ -27,11 +27,11 @@ def test_accuracy_fmod(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.fmod
+@pytest.mark.fmod_scalar
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_fmod_tensor_scalar(shape, scalar, dtype):
+def test_fmod_scalar(shape, scalar, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar if scalar != 0 else 1.0
     ref_inp1 = to_reference(inp1, True)
@@ -42,11 +42,10 @@ def test_accuracy_fmod_tensor_scalar(shape, scalar, dtype):
     gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
 
-@pytest.mark.inplace
-@pytest.mark.fmod_
+@pytest.mark.fmod_tensor_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_fmod_(shape, dtype):
+def test_fmod_tensor_inplace(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.where(inp2 == 0, torch.ones_like(inp2), inp2)
@@ -58,8 +57,7 @@ def test_accuracy_fmod_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.inplace
-@pytest.mark.fmod_
+@pytest.mark.fmod_scalar_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
