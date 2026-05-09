@@ -8,13 +8,17 @@ from . import base, consts
 
 class EinsumBenchmark(base.Benchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
+    DEFAULT_SHAPES = [(1, 512, 512, 512), (1, 1024, 1024, 1024), (16, 512, 512, 512)]
 
-    def __init__(self, *args, batched=False, **kwargs):
+    def __init__(self, *args, batched=False, input_fn=None, **kwargs):
         self.batched = batched
         super().__init__(*args, **kwargs)
 
     def set_more_shapes(self):
         return []
+
+    def set_shapes(self, *args, **kwargs):
+        self.shapes = self.DEFAULT_SHAPES
 
     def get_input_iter(self, dtype) -> Generator:
         for b, m, n, k in self.shapes:
@@ -31,6 +35,11 @@ class EinsumBenchmark(base.Benchmark):
         if self.batched:
             return A.shape[0] * A.shape[1] * B.shape[2] * A.shape[2] * 2
         return A.shape[0] * B.shape[1] * A.shape[1] * 2
+
+
+class EinsumGenericBenchmark(base.GenericBenchmark):
+    def set_shapes(self, *args, **kwargs):
+        pass  # keep shapes set by caller
 
 
 def dot_input_fn(shape, dtype, device):
@@ -89,7 +98,7 @@ def test_einsum_bmm():
 
 @pytest.mark.einsum
 def test_einsum_dot():
-    bench = base.Benchmark(
+    bench = EinsumGenericBenchmark(
         input_fn=dot_input_fn,
         op_name="einsum",
         torch_op=lambda A, B: torch.einsum("i,i->", A, B),
@@ -101,7 +110,7 @@ def test_einsum_dot():
 
 @pytest.mark.einsum
 def test_einsum_outer():
-    bench = base.Benchmark(
+    bench = EinsumGenericBenchmark(
         input_fn=outer_input_fn,
         op_name="einsum",
         torch_op=lambda A, B: torch.einsum("i,j->ij", A, B),
@@ -113,7 +122,7 @@ def test_einsum_outer():
 
 @pytest.mark.einsum
 def test_einsum_trace():
-    bench = base.Benchmark(
+    bench = EinsumGenericBenchmark(
         input_fn=unary_2d_input_fn,
         op_name="einsum",
         torch_op=lambda A: torch.einsum("ii->", A),
@@ -125,7 +134,7 @@ def test_einsum_trace():
 
 @pytest.mark.einsum
 def test_einsum_diagonal():
-    bench = base.Benchmark(
+    bench = EinsumGenericBenchmark(
         input_fn=unary_2d_input_fn,
         op_name="einsum",
         torch_op=lambda A: torch.einsum("ii->i", A),
@@ -137,7 +146,7 @@ def test_einsum_diagonal():
 
 @pytest.mark.einsum
 def test_einsum_transpose():
-    bench = base.Benchmark(
+    bench = EinsumGenericBenchmark(
         input_fn=unary_2d_input_fn,
         op_name="einsum",
         torch_op=lambda A: torch.einsum("ij->ji", A),
@@ -149,7 +158,7 @@ def test_einsum_transpose():
 
 @pytest.mark.einsum
 def test_einsum_sum_all():
-    bench = base.Benchmark(
+    bench = EinsumGenericBenchmark(
         input_fn=unary_3d_input_fn,
         op_name="einsum",
         torch_op=lambda A: torch.einsum("ijk->", A),
@@ -161,7 +170,7 @@ def test_einsum_sum_all():
 
 @pytest.mark.einsum
 def test_einsum_sum_dim():
-    bench = base.Benchmark(
+    bench = EinsumGenericBenchmark(
         input_fn=unary_3d_input_fn,
         op_name="einsum",
         torch_op=lambda A: torch.einsum("ijk->j", A),
@@ -173,7 +182,7 @@ def test_einsum_sum_dim():
 
 @pytest.mark.einsum
 def test_einsum_ellipsis():
-    bench = base.Benchmark(
+    bench = EinsumGenericBenchmark(
         input_fn=ellipsis_input_fn,
         op_name="einsum",
         torch_op=lambda A, B: torch.einsum("...ij,...jk->...ik", A, B),
