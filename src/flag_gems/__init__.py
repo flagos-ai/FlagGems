@@ -1,3 +1,4 @@
+# ruff: noqa: F405
 import warnings
 
 import torch
@@ -144,6 +145,7 @@ _FULL_CONFIG = (
     ("clamp_min_", clamp_min_),
     ("clip", clip),
     ("clip_", clip_),
+    ("concatenate", concatenate),
     ("conj_physical", conj_physical),
     ("constant_pad_nd", constant_pad_nd),
     # ("contiguous", contiguous),
@@ -192,6 +194,7 @@ _FULL_CONFIG = (
     ("divide_.Tensor", true_divide_),
     ("divide_.Tensor_mode", div_mode_),
     ("dot", dot),
+    ("einsum", einsum),
     ("elu", elu),
     ("elu_", elu_),
     ("elu_backward", elu_backward),
@@ -212,6 +215,8 @@ _FULL_CONFIG = (
     ("expm1_", expm1_),
     ("expm1.out", expm1_out),
     ("exponential_", exponential_),
+    ("feature_dropout", feature_dropout),
+    ("feature_dropout_", feature_dropout_),
     ("eye", eye),
     ("eye.m", eye_m),
     ("fill.Scalar", fill_scalar),
@@ -410,6 +415,8 @@ _FULL_CONFIG = (
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
     ("rsqrt", rsqrt),
     ("rsqrt_", rsqrt_),
+    ("rsub.Scalar", rsub_scalar),
+    ("rsub.Tensor", rsub_tensor),
     ("scaled_softmax_backward", scaled_softmax_backward),
     ("scaled_softmax_forward", scaled_softmax_forward),
     ("scatter.reduce", scatter),
@@ -417,6 +424,7 @@ _FULL_CONFIG = (
     ("scatter_.reduce", scatter_),
     ("scatter_.src", scatter_),
     ("scatter_add_", scatter_add_),
+    ("scatter_reduce_.two", scatter_reduce_),
     ("select_backward", select_backward),
     ("select_scatter", select_scatter),
     ("selu", selu),
@@ -471,6 +479,8 @@ _FULL_CONFIG = (
     ("topk", topk),
     ("trace", trace),
     ("tril", tril),
+    ("tril.out", tril_out),
+    ("tril_", tril_),
     ("triu", triu),
     ("triu_", triu_),
     ("true_divide.Scalar", true_divide),
@@ -484,6 +494,7 @@ _FULL_CONFIG = (
     ("upsample_linear1d", upsample_linear1d),
     ("upsample_nearest1d", upsample_nearest1d),
     ("upsample_nearest2d", upsample_nearest2d),
+    ("upsample_nearest2d_backward", upsample_nearest2d_backward),
     ("upsample_nearest3d", upsample_nearest3d),
     ("var_mean.correction", var_mean),
     ("var", var),

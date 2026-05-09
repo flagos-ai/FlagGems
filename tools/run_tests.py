@@ -33,15 +33,10 @@ HAS_FLAGTREE = False
 ROOT = Path(__file__).parent.parent
 OUPUT_DIR = None
 OP_LIST = []
+DUMP_OUTPUT = False
 TIMEOUT = -100
-
-NO_CPU_LIST = [
-    "flash_attention_forward",
-    "get_scheduler_metadata",
-    "grouped_topk",
-    "per_token_group_quant_fp8",
-]
-
+# A list of operators that can only run on GPU/DCUs
+NO_CPU_LIST = []
 DTYPE_MAP = {
     "torch.float16": "fp16",
     "torch.float32": "fp32",
@@ -165,6 +160,7 @@ def init():
         repo = git.Repo(search_parent_directories=True)
         sha = repo.head.object.hexsha
         pinfo(f"flag_gems detected ... {version}+git{sha[:8]}")
+        ENV_INFO["flag_gems"]["commit_id"] = sha
     except RuntimeError as e:
         perror(f"{e}")
         sys.exit(-1)
@@ -194,21 +190,74 @@ def init():
         sys.exit(-1)
 
 
-def run_cmd(cmd, cwd=None, env=None, timeout=600):
+def run_cmd(
+    cmd,
+    cwd=None,
+    env=None,
+    timeout=600,
+    stdout_file=None,
+    stderr_file=None,
+):
+    """
+    Safe subprocess runner:
+    - No PIPE (avoid deadlock)
+    - Support timeout
+    - Kill full process group
+    - Persist stdout/stderr to file
+    """
+
+    stdout_fh = None
+    stderr_fh = None
+
     try:
+        if stdout_file:
+            stdout_fh = open(stdout_file, "w", buffering=1)
+        if stderr_file:
+            stderr_fh = open(stderr_file, "w", buffering=1)
+
+        stdout_target = stdout_fh if stdout_fh else subprocess.DEVNULL
+        stderr_target = stderr_fh if stderr_fh else subprocess.DEVNULL
+
         p = subprocess.Popen(
             shlex.split(cmd),
-            cwd=str(cwd),
+            cwd=str(cwd) if cwd else None,
             env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=stdout_target,
+            stderr=stderr_target,
             start_new_session=True,
         )
-        p.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        os.killpg(os.getpgid(p.pid), signal.SIGTERM)
-        return TIMEOUT
-    return p.returncode
+
+        try:
+            p.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(p.pid, signal.SIGTERM)
+            except Exception:
+                p.terminate()
+
+            try:
+                p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(p.pid, signal.SIGKILL)
+                except Exception:
+                    p.kill()
+
+            return TIMEOUT
+
+        return p.returncode
+
+    except Exception as e:
+        perror(f"run_cmd failed: {e}")
+        return -1
+
+    finally:
+        if stdout_fh:
+            stdout_fh.flush()
+            stdout_fh.close()
+        if stderr_fh:
+            stderr_fh.flush()
+            stderr_fh.close()
 
 
 def parse_accuracy_data(result_file):
@@ -258,13 +307,13 @@ def parse_accuracy_data(result_file):
         else:
             result["status"] = "Passed"
     else:
-        if len(skipped):
-            if len(skipped) == num_total:
+        if num_skipped > 0:
+            if num_skipped == num_total:
                 result["status"] = "Skipped"
             for k, v in skipped.items():
                 skipped[k] = list(v)
             result["details"]["skipped"] = skipped
-        if len(failed):
+        if num_failed > 0:
             result["status"] = "Failed"
             for k, v in failed.items():
                 failed[k] = list(v)
@@ -335,13 +384,24 @@ def run_accuracy(gpu_id, start, index, count):
     if result_file.exists():
         result_file.unlink()
 
+    op_dir = OUTPUT_DIR.joinpath(op)
+    ensure_dir(op_dir)
+    stdout_log = str(op_dir / f"accuracy_{op}_stdout.log") if DUMP_OUTPUT else None
+    stderr_log = str(op_dir / f"accuracy_{op}_stderr.log") if DUMP_OUTPUT else None
+
     start = time.time()
-    code = run_cmd(cmd, cwd=accuracy_dir, env=env)
+    code = run_cmd(
+        cmd,
+        cwd=accuracy_dir,
+        env=env,
+        stdout_file=stdout_log,
+        stderr_file=stderr_log,
+    )
     end = time.time()
 
     if code == TIMEOUT:  # Timeout
         return {
-            "status": "TIMEOUT",
+            "status": "Timeout",
             "exit_code": TIMEOUT,
             "total": 0,
             "passed": 0,
@@ -349,6 +409,20 @@ def run_accuracy(gpu_id, start, index, count):
             "skipped": 0,
             "errors": 0,
             "duration": end - start,
+        }
+    # There are rare cases where the pytest process aborts
+    # with no result file generated.
+    if not result_file.exists():
+        return {
+            "status": "Error",
+            "exit_code": code,
+            "total": 0,
+            "passed": 0,
+            "failed": 0,
+            "skipped": 0,
+            "errors": 1,
+            "duration": end - start,
+            "data_file": None,
         }
 
     op_dir = OUTPUT_DIR.joinpath(op)
@@ -442,9 +516,20 @@ def run_benchmark(gpu_id, start, index, count):
     if result_file.exists():
         result_file.unlink()
 
+    op_dir = OUTPUT_DIR.joinpath(op)
+    ensure_dir(op_dir)
+    stdout_log = str(op_dir / f"performance_{op}_stdout.log") if DUMP_OUTPUT else None
+    stderr_log = str(op_dir / f"performance_{op}_stderr.log") if DUMP_OUTPUT else None
+
     start = time.time()
     cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
-    code = run_cmd(cmd, cwd=benchmark_dir, env=env)
+    code = run_cmd(
+        cmd,
+        cwd=benchmark_dir,
+        env=env,
+        stdout_file=stdout_log,
+        stderr_file=stderr_log,
+    )
     end = time.time()
 
     # Not found
@@ -456,7 +541,6 @@ def run_benchmark(gpu_id, start, index, count):
         }
 
     # Move record log to output directory
-    op_dir = OUTPUT_DIR.joinpath(op)
     dest = op_dir / "performance_result.json"
     shutil.move(result_file, str(dest))
     result_file = dest
@@ -503,6 +587,14 @@ def worker_proc(gpu_id, start, count):
 
 
 def get_ops_to_test(ops_file, ops_list, stages):
+    # Build list of operators which do NOT support CPU mode
+    op_catalog = get_ops_from_inventory()
+    for op in op_catalog:
+        labels = op.get("labels", [])
+        if "NoCPU" in labels:
+            NO_CPU_LIST.append(op["id"])
+
+    # This is the highest priority
     if ops_list:
         ops = []
         for op in ops_list.split(","):
@@ -511,6 +603,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
 
         return ops
 
+    # Parse the op list file if specified
     if ops_file:
         lines = []
         try:
@@ -548,7 +641,6 @@ def get_ops_to_test(ops_file, ops_list, stages):
     if not effective_stages:
         effective_stages = ["stable"]
 
-    op_catalog = get_ops_from_inventory()
     ops = []
     for op in op_catalog:
         stages = op.get("stages", [])
@@ -558,7 +650,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
         stage = next(iter(stages[-1].keys()), None)
         if stage not in effective_stages:
             continue
-        ops.append(op["id"].lstrip("_"))
+        ops.append(op["id"])
 
     return ops
 
@@ -566,6 +658,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
 def main():
     global OUTPUT_DIR
     global OP_LIST
+    global DUMP_OUTPUT
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--op-list-file", required=False)
@@ -573,7 +666,15 @@ def main():
     parser.add_argument("--gpus", default="0")
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--stages", required=False, default="stable")
+    parser.add_argument(
+        "--dump-output",
+        action="store_true",
+        default=False,
+        help="Dump stdout/stderr of each test to log files",
+    )
     args = parser.parse_args()
+
+    DUMP_OUTPUT = args.dump_output
 
     # Probe environment setttings
     init()
