@@ -161,9 +161,7 @@ def test_smooth_l1_loss_out(shape, dtype, reduction):
     else:
         out_shape = ()
     ref_out = torch.empty(out_shape, dtype=dtype, device=ref_inp.device)
-    torch.ops.aten.smooth_l1_loss.out(
-        ref_inp, ref_target, reduction, 1.0, out=ref_out
-    )
+    torch.ops.aten.smooth_l1_loss.out(ref_inp, ref_target, reduction, 1.0, out=ref_out)
 
     out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
