@@ -81,3 +81,4 @@ def test_reflection_pad2d_3d_input(padding):
         act_out = flag_gems.reflection_pad2d(x, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+

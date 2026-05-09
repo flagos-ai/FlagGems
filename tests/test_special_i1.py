@@ -16,3 +16,4 @@ def test_special_i1(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.special.i1(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
+

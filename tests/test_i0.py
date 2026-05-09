@@ -28,3 +28,4 @@ def test_i0_(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.ops.aten.i0_(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
+
