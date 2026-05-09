@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,8 +32,8 @@ def arcsinh_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 def _ensure_cuda_tensor(t):
     if not isinstance(t, torch.Tensor):
         raise TypeError("Expected a torch.Tensor")
-    if not t.is_cuda:
-        raise ValueError("Input tensors must be on CUDA device")
+    if t.device.type != flag_gems.device:
+        raise ValueError(f"Input tensors must be on {flag_gems.device} device")
     if t.is_complex():
         raise NotImplementedError(
             "Complex dtypes are not supported by this Triton kernel"

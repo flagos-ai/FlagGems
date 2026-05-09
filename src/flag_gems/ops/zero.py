@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,7 +28,8 @@ def zero_kernel(
 
 def _launch_zero_kernel(tensor: torch.Tensor):
     assert isinstance(tensor, torch.Tensor), "Expected a torch.Tensor"
-    assert tensor.is_cuda, "Tensor must be on CUDA device"
+    if tensor.device.type != flag_gems.device:
+        raise ValueError(f"Tensor must be on {flag_gems.device} device")
     assert tensor.is_contiguous(), "Tensor must be contiguous"
     assert tensor.numel() >= 0
     n_elements = tensor.numel()

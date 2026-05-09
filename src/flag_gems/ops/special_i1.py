@@ -5,6 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,8 @@ def special_i1_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def _launch_special_i1(x: torch.Tensor, out: torch.Tensor):
-    assert x.is_cuda and out.is_cuda, "Tensors must be CUDA tensors"
+    if x.device.type != flag_gems.device or out.device.type != flag_gems.device:
+        raise ValueError(f"Tensors must be {flag_gems.device} tensors")
     assert (
         x.numel() == out.numel()
     ), "Input and output must have the same number of elements"
