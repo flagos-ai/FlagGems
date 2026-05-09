@@ -73,7 +73,7 @@ def test_concatenate(shape, dim, dtype):
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_accuracy_concatenate_empty_tensor(shape, dim, dtype):
+def test_concatenate_empty_tensor(shape, dim, dtype):
     inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
     ref_inp = [to_reference(_) for _ in inp]
     ref_out = torch.concatenate(ref_inp, dim)
