@@ -30,7 +30,9 @@ def _input_fn(shape, dtype, device):
     },
 
 
-def torch_backward_op(grad_output, output_size, input_size, scales_h=None, scales_w=None):
+def torch_backward_op(
+    grad_output, output_size, input_size, scales_h=None, scales_w=None
+):
     return torch.ops.aten.upsample_nearest2d_backward(
         grad_output, output_size, input_size, scales_h, scales_w
     )

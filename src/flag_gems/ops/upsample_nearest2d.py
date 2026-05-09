@@ -62,12 +62,16 @@ def upsample_nearest2d_kernel(
                 o_base = nc_iter * OH * OW + oh0 * OW + ow0
                 tl.store(
                     ptr_o + o_base[:, None] + tl.arange(0, 2)[None, :],
-                    data[:, None], mask=mask[:, None], cache_modifier=".cg",
+                    data[:, None],
+                    mask=mask[:, None],
+                    cache_modifier=".cg",
                 )
                 o_base1 = o_base + OW
                 tl.store(
                     ptr_o + o_base1[:, None] + tl.arange(0, 2)[None, :],
-                    data[:, None], mask=mask[:, None], cache_modifier=".cg",
+                    data[:, None],
+                    mask=mask[:, None],
+                    cache_modifier=".cg",
                 )
                 nc_iter += nc_stride
         else:
@@ -132,9 +136,7 @@ def upsample_nearest2d(
         reciprocal_scale_w = IW / OW
     # allocate output
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
-    is_integer_scale = (
-        OH % IH == 0 and OW % IW == 0 and (OH // IH > 1 or OW // IW > 1)
-    )
+    is_integer_scale = OH % IH == 0 and OW % IW == 0 and (OH // IH > 1 or OW // IW > 1)
     total_threads = (IH * IW) if is_integer_scale else (OH * OW)
     grid = lambda META: (
         triton.cdiv(total_threads, META["BLOCK_SIZE"]),

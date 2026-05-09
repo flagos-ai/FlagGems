@@ -130,9 +130,12 @@ def upsample_nearest2d_backward(
     assert grad_output.ndim == 4, "The ndim of grad_output must be 4"
     N, C, IH, IW = input_size
     OH, OW = output_size
-    assert grad_output.shape == (N, C, OH, OW), (
-        f"grad_output shape {grad_output.shape} != expected ({N}, {C}, {OH}, {OW})"
-    )
+    assert grad_output.shape == (
+        N,
+        C,
+        OH,
+        OW,
+    ), f"grad_output shape {grad_output.shape} != expected ({N}, {C}, {OH}, {OW})"
 
     if scales_h is not None:
         reciprocal_scale_h = 1 / scales_h
@@ -143,13 +146,15 @@ def upsample_nearest2d_backward(
     else:
         reciprocal_scale_w = IW / OW
 
-    is_integer_scale = (
-        OH % IH == 0 and OW % IW == 0 and (OH // IH > 1 or OW // IW > 1)
-    )
+    is_integer_scale = OH % IH == 0 and OW % IW == 0 and (OH // IH > 1 or OW // IW > 1)
     if is_integer_scale:
-        grad_input = torch.empty((N, C, IH, IW), device=grad_output.device, dtype=grad_output.dtype)
+        grad_input = torch.empty(
+            (N, C, IH, IW), device=grad_output.device, dtype=grad_output.dtype
+        )
     else:
-        grad_input = torch.zeros((N, C, IH, IW), device=grad_output.device, dtype=grad_output.dtype)
+        grad_input = torch.zeros(
+            (N, C, IH, IW), device=grad_output.device, dtype=grad_output.dtype
+        )
     total_threads = (IH * IW) if is_integer_scale else (OH * OW)
     grid = lambda META: (
         triton.cdiv(total_threads, META["BLOCK_SIZE"]),
