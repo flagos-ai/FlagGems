@@ -113,7 +113,7 @@ class ConfigLoader(object):
                     "num_stages": 2,
                     "num_warps": 4,
                     "num_ctas": 1,
-                    "num_ldmatrixes": 0,
+                    #"num_ldmatrixes": 0,
                 }
             self.expand_config_registry = self._build_expand_registry()
             self.load_all()
@@ -530,7 +530,7 @@ class ConfigLoader(object):
                         num_warps=current_config["num_warps"],
                         num_stages=current_config["num_stages"],
                         num_ctas=current_config["num_ctas"],
-                        num_ldmatrixes=current_config["num_ldmatrixes"],
+                        #num_ldmatrixes=current_config["num_ldmatrixes"],
                     )
                 )
             else:
