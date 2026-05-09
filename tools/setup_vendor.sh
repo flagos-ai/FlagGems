@@ -173,7 +173,7 @@ case $VENDOR in
     if [ -n "${USE_TRITON}" ]; then
       uv pip uninstall flagtree
       uv pip install --index ${FLAGOS_PYPI} \
-        "triton==3.3.0++gitfe2a28fa"
+        "triton==3.3.0+gitfe2a28fa"
     fi
     ;;
 
