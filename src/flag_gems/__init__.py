@@ -1,3 +1,4 @@
+# ruff: noqa: F405
 import warnings
 
 import torch
@@ -478,6 +479,8 @@ _FULL_CONFIG = (
     ("topk", topk),
     ("trace", trace),
     ("tril", tril),
+    ("tril.out", tril_out),
+    ("tril_", tril_),
     ("triu", triu),
     ("triu_", triu_),
     ("true_divide.Scalar", true_divide),
