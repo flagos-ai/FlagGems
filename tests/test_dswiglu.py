@@ -33,7 +33,7 @@ VALID_POINTWISE_SHAPES = filter_valid_shapes(utils.SWIGLU_SPECIAL_SHAPES)
 
 
 @pytest.mark.dswiglu
-@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
+@pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine is required")
 @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_dswiglu(shape: tuple[int, ...], dtype: torch.dtype):

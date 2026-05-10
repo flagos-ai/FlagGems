@@ -109,7 +109,7 @@ def test_floor_divide_float_(shape, dtype):
 
 
 @pytest.mark.floor_divide_tensor
-@pytest.mark.skipif(flag_gems.vendor_name == "aipu", reason="TODO")
+@pytest.mark.skipif(flag_gems.vendor_name == "aipu", reason="Issue #3025")
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
 def test_floor_divide_int(shape, dtype):

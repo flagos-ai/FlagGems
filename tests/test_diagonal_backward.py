@@ -33,7 +33,7 @@ def get_shape_and_dims():
 
 
 @pytest.mark.diagonal_backward
-@pytest.mark.skipif(flag_gems.device == "kunlunxin", reason="Temporary skip")
+@pytest.mark.skipif(flag_gems.device == "kunlunxin", reason="Issue #3024")
 @pytest.mark.parametrize("shape, dim1, dim2", get_shape_and_dims())
 @pytest.mark.parametrize("offset", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

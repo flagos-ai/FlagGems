@@ -176,7 +176,7 @@ class CutlassScaledMMTestKit:
 @pytest.mark.cutlass_scaled_mm
 @pytest.mark.skipif(
     not (VLLM_AVAILABLE and CUDA_AVAILABLE),
-    reason="requires vLLM and NVIDIA Hopper architecture",
+    reason="Feature requires vLLM and NVIDIA Hopper architecture",
 )
 @pytest.mark.parametrize("p", CutlassScaledMMTestKit.get_test_params())
 def test_cutlass_scaled_mm(p):

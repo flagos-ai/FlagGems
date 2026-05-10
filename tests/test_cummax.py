@@ -22,7 +22,7 @@ random.seed(time.time() // 100)
 @pytest.mark.cummax
 @pytest.mark.skipif(
     utils.SkipVersion("triton", "<3.0"),
-    reason="Skipping when associative_scan only support single tensor input.",
+    reason="Feature requires Triton >= 3.0.",
 )
 @pytest.mark.parametrize("shape", CUMMAX_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES)

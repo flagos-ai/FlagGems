@@ -159,7 +159,6 @@ def test_tril_tiny_batched_tile_correctness(shape, diagonal, dtype):
     assert res_out.is_contiguous()
 
 
-@pytest.mark.tril
 @pytest.mark.tril_out
 @pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
 @pytest.mark.parametrize("dtype", TRIL_DTYPES)
@@ -178,7 +177,6 @@ def test_tril_out(shape, diagonal, dtype):
     assert res.data_ptr() == out.data_ptr()
 
 
-@pytest.mark.tril
 @pytest.mark.tril_out
 @pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL[:3])
 @pytest.mark.parametrize("dtype", TRIL_DTYPES)
@@ -198,7 +196,6 @@ def test_tril_out_resizes(shape, diagonal, dtype):
     assert res.data_ptr() == out.data_ptr()
 
 
-@pytest.mark.tril
 @pytest.mark.tril_out
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
@@ -224,7 +221,6 @@ def test_tril_out_aliases_input(diagonal, dtype):
     assert res.data_ptr() == original_data_ptr
 
 
-@pytest.mark.tril
 @pytest.mark.tril_out
 @pytest.mark.parametrize("diagonal", [-2, 0, 3])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
@@ -254,7 +250,6 @@ def test_tril_out_noncontiguous_out(diagonal, dtype):
     assert res.data_ptr() == original_data_ptr
 
 
-@pytest.mark.tril
 @pytest.mark.tril_out
 @pytest.mark.parametrize("diagonal", [-2, 0, 3])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
@@ -284,7 +279,6 @@ def test_tril_out_sliced_leading_batch_out(diagonal, dtype):
     assert res.data_ptr() == original_data_ptr
 
 
-@pytest.mark.tril
 @pytest.mark.tril_out
 @pytest.mark.parametrize("diagonal", [-99, 99])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
@@ -313,7 +307,6 @@ def test_tril_out_extreme_diagonal_noncontiguous_out(diagonal, dtype):
     assert res.data_ptr() == original_data_ptr
 
 
-@pytest.mark.tril
 @pytest.mark.tril_out
 def test_tril_out_strided_dispatch_guards():
     tril_mod = importlib.import_module("flag_gems.ops.tril")
@@ -338,7 +331,6 @@ def test_tril_out_strided_dispatch_guards():
     assert not tril_mod._can_use_strided_out_kernel(inp, overlapping)
 
 
-@pytest.mark.tril
 @pytest.mark.tril_
 @pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
 @pytest.mark.parametrize("dtype", TRIL_DTYPES)
@@ -347,7 +339,6 @@ def test_tril_inplace(shape, diagonal, dtype):
     _assert_tril_inplace_matches_reference(inp, diagonal)
 
 
-@pytest.mark.tril
 @pytest.mark.tril_
 @pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
 @pytest.mark.parametrize("dtype", TRIL_DTYPES)
@@ -356,7 +347,6 @@ def test_tril_inplace_noncontiguous(shape, diagonal, dtype):
     _assert_tril_inplace_matches_reference(inp, diagonal)
 
 
-@pytest.mark.tril
 @pytest.mark.tril_
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
@@ -366,7 +356,6 @@ def test_tril_inplace_strided_batched_view(diagonal, dtype):
     _assert_tril_inplace_matches_reference(inp, diagonal)
 
 
-@pytest.mark.tril
 @pytest.mark.tril_
 @pytest.mark.parametrize("diagonal", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
@@ -390,7 +379,6 @@ def test_tril_inplace_expanded_view(diagonal, dtype):
     assert inp.stride() == original_stride
 
 
-@pytest.mark.tril
 @pytest.mark.tril_
 @pytest.mark.parametrize("diagonal", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
@@ -430,7 +418,6 @@ def test_tril_empty(shape, dtype):
     assert res_out.shape == inp.shape
 
 
-@pytest.mark.tril
 @pytest.mark.tril_
 @pytest.mark.parametrize("shape", [(0, 0), (0, 7), (5, 0), (2, 0, 7), (2, 5, 0)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
@@ -439,7 +426,6 @@ def test_tril_inplace_empty(shape, dtype):
     _assert_tril_inplace_matches_reference(inp, -1)
 
 
-@pytest.mark.tril
 @pytest.mark.tril_
 @pytest.mark.parametrize("diagonal", [-99, 99])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
@@ -461,7 +447,6 @@ def test_tril_invalid_rank():
         torch.tril(inp)
 
 
-@pytest.mark.tril
 @pytest.mark.tril_
 def test_tril_inplace_invalid_rank():
     inp = torch.tensor(1.0, device=flag_gems.device)

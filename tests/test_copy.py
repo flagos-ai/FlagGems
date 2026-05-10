@@ -15,10 +15,6 @@ from . import accuracy_utils as utils
     if flag_gems.vendor_name == "cambricon"
     else utils.FLOAT_DTYPES,
 )
-@pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.4"),
-    reason="The copy operator implement required for torch >= 2.4",
-)
 def test_copy_inplace_same_dtype(shape, dtype):
     if flag_gems.vendor_name == "cambricon":
         if dtype in utils.FLOAT_DTYPES:
@@ -46,10 +42,6 @@ def test_copy_inplace_same_dtype(shape, dtype):
 
 
 @pytest.mark.copy_
-@pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.4"),
-    reason="The copy operator implement required for torch >= 2.4",
-)
 def test_copy_inplace_broadcast():
     dst_shape = (2, 3)
     src = torch.arange(0, 3, dtype=torch.float32, device=flag_gems.device)
@@ -67,10 +59,6 @@ def test_copy_inplace_broadcast():
 
 
 @pytest.mark.copy_
-@pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.4"),
-    reason="The copy operator implement required for torch >= 2.4",
-)
 def test_copy_inplace_dtype_fallback():
     src = torch.arange(0, 8, dtype=torch.int32, device=flag_gems.device)
     ref_src = utils.to_reference(src)
@@ -87,10 +75,6 @@ def test_copy_inplace_dtype_fallback():
 
 
 @pytest.mark.copy_
-@pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.4"),
-    reason="The copy operator implement required for torch >= 2.4",
-)
 @pytest.mark.parametrize(
     "src_dtype,dst_dtype",
     [

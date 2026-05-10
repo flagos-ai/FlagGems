@@ -1,6 +1,5 @@
 import pytest
 import torch
-from packaging import version
 
 import flag_gems
 
@@ -25,13 +24,6 @@ device = flag_gems.device
     "dtype", utils.ALL_INT_DTYPES + utils.ALL_FLOAT_DTYPES + utils.BOOL_TYPES
 )
 def test_eye(shape, dtype):
-    if (
-        cfg.TO_CPU
-        and dtype == torch.bfloat16
-        and version.parse(torch.__version__) < version.parse("2.5.0")
-    ):
-        pytest.skip("BFloat16 not supported on CPU in torch<2.5.0")
-
     n, m = shape
 
     # test eye(n, m) without dtype
