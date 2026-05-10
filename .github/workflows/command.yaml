@@ -44,8 +44,10 @@ jobs:
     steps:
       - name: dump
         shell: bash
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
         run: |
-          echo ${{ github.event }}
+          echo "${GITHUB_CONTEXT}"
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
