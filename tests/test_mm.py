@@ -45,7 +45,7 @@ MK_SHAPES = (
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_mm(M, N, K, dtype, b_column_major):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("#2834: Skipping fp32 mm test on tsingmicro platform")
+        pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")
 
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     if b_column_major:
@@ -91,7 +91,7 @@ def test_mm_broadcast_stride_zero(dtype):
 def test_mm_self_transpose(M, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip(
-            "#2834: Skipping fp32 mm self-transpose test on tsingmicro platform"
+            "Issue #2834: Skipping fp32 mm self-transpose test on tsingmicro platform"
         )
 
     torch.manual_seed(0)
@@ -115,7 +115,7 @@ def test_mm_self_transpose(M, K, dtype):
 def test_mm_out_self_transpose(M, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip(
-            "#2834: Skipping fp32 mm.out self-transpose test on tsingmicro platform"
+            "Issue #2834: Skipping fp32 mm.out self-transpose test on tsingmicro platform"
         )
 
     torch.manual_seed(0)

@@ -117,7 +117,9 @@ def test_max_dim(shape, dim, keepdim, dtype):
 
 
 @pytest.mark.max_dim
-@pytest.mark.skipif(flag_gems.vendor_name == "aipu", reason="Big shape run slowly.")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "aipu", reason="Issue #3009: Big shape run slowly."
+)
 @pytest.mark.parametrize("shape", [(4, 1048577, 4)])
 @pytest.mark.parametrize("keepdim, dim", [(True, 1), (False, 1)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.ALL_INT_DTYPES)

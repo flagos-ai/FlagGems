@@ -15,7 +15,7 @@ from .accuracy_utils import (
 )
 
 if flag_gems.vendor_name == "kunlunxin":
-    pytestmark = pytest.mark.skip("#2838: Test Files for Operators Not Pending Testing")
+    pytestmark = pytest.mark.skip("Issue #2838: Not working")
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -111,7 +111,9 @@ def test_type_promotion_complex_to_long(shape, float_type):
     gems_assert_equal(res_out1, ref_out1)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="#2839: RuntimeError")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "hygon", reason="Issue #2839: RuntimeError"
+)
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("float_dtype", FLOAT_DTYPES)
 def test_type_promotion_bool_to_long(shape, float_dtype):

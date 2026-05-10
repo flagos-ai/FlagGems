@@ -20,7 +20,7 @@ def test_logspace(start, end, steps, base, dtype, pin_memory):
         and dtype is torch.half
         and torch.__version__ < "2.5"
     ):
-        pytest.skip("#2828: Implementation for lerp cpu half is not ready")
+        pytest.skip("Issue #2828: Implementation for lerp cpu half is not ready")
 
     temp = torch.logspace(
         start,
