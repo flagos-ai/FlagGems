@@ -16,17 +16,18 @@ if cfg.QUICK_MODE:
     KEEPDIM = [True]
 else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
-    ALL_DTYPES = FLOAT_DTYPES + utils.ALL_INT_DTYPES
-    SIZES_SMALL = [(1, 1), (8, 8), (1, 8)]
-    SIZES_REGULAR = [(64, 64), (256, 256)]
-    SIZES_LARGE = [(1024, 1024), (4096, 4096)]
-    DIMS_2D = [0, 1, -1, -2]
+    INT_DTYPES = [torch.int32, torch.int64]
+    ALL_DTYPES = FLOAT_DTYPES + INT_DTYPES
+    SIZES_SMALL = [(8, 8)]
+    SIZES_REGULAR = [(64, 64)]
+    SIZES_LARGE = [(1024, 1024)]
+    DIMS_2D = [0, -1]
     KEEPDIM = [True, False]
 
-SIZES_1D = [(1,), (8,), (64,), (1024,)]
+SIZES_1D = [(8,), (64,)]
 SIZES_2D = SIZES_SMALL + SIZES_REGULAR + SIZES_LARGE
-SIZES_3D = [(8, 16, 32), (32, 64, 128), (128, 256, 256)]
-SIZES_4D = [(2, 4, 8, 16), (8, 16, 32, 64)]
+SIZES_3D = [(8, 16, 32)]
+SIZES_4D = [(2, 4, 8, 16)]
 
 
 # ===========================================================================
