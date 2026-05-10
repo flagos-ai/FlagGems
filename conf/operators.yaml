@@ -5427,7 +5427,7 @@ ops:
     kind:
       - LinearAlg
     stages:
-      - stable: '2.0'
+      - stable: '5.1'
   - id: swiglu
     description: Swish-Gated Linear Unit, a variant of GLU with the Swish activation function.
     for:

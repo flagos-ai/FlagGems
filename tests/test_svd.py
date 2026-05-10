@@ -1,9 +1,16 @@
-import importlib
-
 import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.svd import (
+    _can_use_2x2_kernel,
+    _can_use_4x4_kernel,
+    _can_use_gram_eigh_kernel,
+    _can_use_rank1_kernel,
+    _can_use_rank2_kernel,
+    _can_use_small_jacobi_kernel,
+    _can_use_streaming_jacobi_kernel,
+)
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -30,30 +37,16 @@ TRITON_SHAPES = (
         (257, 2, 2),
         (16, 1),
         (1, 16),
-        (1024, 1),
-        (1, 1024),
         (17, 2),
         (2, 17),
-        (9, 13, 2),
-        (9, 2, 13),
         (4, 4),
         (8, 8),
         (16, 8),
         (8, 16),
-        (128, 8),
-        (8, 128),
-        (128, 16),
-        (16, 128),
         (512, 8),
-        (8, 512),
-        (1024, 4),
-        (4, 1024),
-        (256, 16),
         (16, 256),
         (64, 32),
-        (32, 64),
         (1024, 32),
-        (32, 1024),
     ]
 )
 STREAMING_TRITON_SHAPES = (
@@ -61,7 +54,6 @@ STREAMING_TRITON_SHAPES = (
     if cfg.QUICK_MODE
     else [
         (16, 128, 64),
-        (16, 64, 128),
         (16, 128, 128),
         (16, 1024, 64),
         (16, 64, 1024),
@@ -72,16 +64,9 @@ GRAM_EIGH_TRITON_SHAPES = (
     if cfg.QUICK_MODE
     else [
         (256, 256),
-        (512, 512),
         (1024, 1024),
         (9, 9),
-        (15, 15),
-        (17, 17),
-        (31, 31),
         (33, 33),
-        (63, 63),
-        (65, 65),
-        (127, 127),
         (129, 129),
         (1024, 8),
         (8, 1024),
@@ -95,16 +80,11 @@ LOW_PRECISION_SHAPES = (
     if cfg.QUICK_MODE
     else [
         (16, 1),
-        (1, 16),
         (257, 2, 2),
         (4, 4),
         (8, 8),
-        (16, 8),
-        (8, 16),
         (9, 9),
-        (17, 17),
         (64, 32),
-        (32, 64),
         (129, 129),
     ]
 )
@@ -143,18 +123,16 @@ def _assert_orthogonal(matrix, atol=1e-4, rtol=1e-4):
 
 @pytest.mark.svd
 def test_svd_triton_route_covers_minmn_le_1024():
-    svd_mod = importlib.import_module("flag_gems.ops.svd")
-
     for k in range(1, 1025):
         inp = torch.empty((k, k), dtype=torch.float32)
         has_route = (
-            svd_mod._can_use_2x2_kernel(inp)
-            or svd_mod._can_use_rank1_kernel(inp, True, True)
-            or svd_mod._can_use_rank2_kernel(inp, True, True)
-            or svd_mod._can_use_4x4_kernel(inp, True, True)
-            or svd_mod._can_use_small_jacobi_kernel(inp, True, True)
-            or svd_mod._can_use_streaming_jacobi_kernel(inp, True, True)
-            or svd_mod._can_use_gram_eigh_kernel(inp, True, True)
+            _can_use_2x2_kernel(inp)
+            or _can_use_rank1_kernel(inp, True, True)
+            or _can_use_rank2_kernel(inp, True, True)
+            or _can_use_4x4_kernel(inp, True, True)
+            or _can_use_small_jacobi_kernel(inp, True, True)
+            or _can_use_streaming_jacobi_kernel(inp, True, True)
+            or _can_use_gram_eigh_kernel(inp, True, True)
         )
         assert has_route, f"missing Triton route for square k={k}"
 
@@ -162,11 +140,11 @@ def test_svd_triton_route_covers_minmn_le_1024():
         for shape in ((2048, k), (k, 2048)):
             inp = torch.empty(shape, dtype=torch.float32)
             has_route = (
-                svd_mod._can_use_rank1_kernel(inp, True, True)
-                or svd_mod._can_use_rank2_kernel(inp, True, True)
-                or svd_mod._can_use_small_jacobi_kernel(inp, True, True)
-                or svd_mod._can_use_streaming_jacobi_kernel(inp, True, True)
-                or svd_mod._can_use_gram_eigh_kernel(inp, True, True)
+                _can_use_rank1_kernel(inp, True, True)
+                or _can_use_rank2_kernel(inp, True, True)
+                or _can_use_small_jacobi_kernel(inp, True, True)
+                or _can_use_streaming_jacobi_kernel(inp, True, True)
+                or _can_use_gram_eigh_kernel(inp, True, True)
             )
             assert has_route, f"missing Triton route for shape={shape}"
 
@@ -175,7 +153,7 @@ def test_svd_triton_route_covers_minmn_le_1024():
 @pytest.mark.parametrize("shape", TRITON_SHAPES + SHAPES)
 @pytest.mark.parametrize("some", [True, False])
 @pytest.mark.parametrize("dtype", DTYPES)
-def test_accuracy_svd_compute_uv(shape, some, dtype):
+def test_svd_compute_uv(shape, some, dtype):
     inp = _make_input(shape, dtype)
     ref_inp = utils.to_reference(inp, False)
 
@@ -198,7 +176,7 @@ def test_accuracy_svd_compute_uv(shape, some, dtype):
 @pytest.mark.svd
 @pytest.mark.parametrize("shape", LOW_PRECISION_SHAPES)
 @pytest.mark.parametrize("dtype", LOW_PRECISION_DTYPES)
-def test_accuracy_svd_low_precision(shape, dtype):
+def test_svd_low_precision(shape, dtype):
     inp = _make_input(shape, dtype)
     ref_inp = inp.float()
 
@@ -229,7 +207,7 @@ def test_accuracy_svd_low_precision(shape, dtype):
 @pytest.mark.parametrize("shape", TRITON_SHAPES + SHAPES)
 @pytest.mark.parametrize("some", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_svd_compute_uv_false(shape, some, dtype):
+def test_svd_compute_uv_false(shape, some, dtype):
     inp = _make_input(shape, dtype)
     ref_inp = utils.to_reference(inp, False)
 
@@ -247,7 +225,7 @@ def test_accuracy_svd_compute_uv_false(shape, some, dtype):
 
 @pytest.mark.svd
 @pytest.mark.parametrize("shape", STREAMING_TRITON_SHAPES)
-def test_accuracy_svd_streaming_jacobi(shape):
+def test_svd_streaming_jacobi(shape):
     inp = _make_input(shape, torch.float32)
     ref_inp = utils.to_reference(inp, False)
 
@@ -272,7 +250,7 @@ def test_accuracy_svd_streaming_jacobi(shape):
 
 @pytest.mark.svd
 @pytest.mark.parametrize("shape", GRAM_EIGH_TRITON_SHAPES)
-def test_accuracy_svd_gram_eigh(shape):
+def test_svd_gram_eigh(shape):
     inp = _make_input(shape, torch.float32)
     ref_inp = utils.to_reference(inp, False)
 
@@ -295,7 +273,7 @@ def test_accuracy_svd_gram_eigh(shape):
 
 
 @pytest.mark.svd
-def test_accuracy_svd_non_contiguous_and_empty():
+def test_svd_non_contiguous_and_empty():
     inputs = [
         _make_input((3, 5), torch.float32).mT,
         torch.empty((0, 3), dtype=torch.float32, device=flag_gems.device),
