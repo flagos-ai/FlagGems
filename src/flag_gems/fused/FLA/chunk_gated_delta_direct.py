@@ -139,7 +139,10 @@ def chunk_gated_delta_rule_direct_fwd(
     B, T, Hg, K = q.shape
     H, V = v.shape[2], v.shape[3]
     BK = triton.next_power_of_2(K)
-    BV = min(triton.next_power_of_2(V), _DIRECT_BV)
+    use_one_warp = (K <= 16 and V <= 16) or (
+        q.dtype == torch.float32 and K <= 32 and V <= 32
+    )
+    BV = min(triton.next_power_of_2(V), 16 if use_one_warp else _DIRECT_BV)
 
     o = torch.empty_like(v)
     final_state = (
@@ -168,7 +171,7 @@ def chunk_gated_delta_rule_direct_fwd(
         V=V,
         BK=BK,
         BV=BV,
-        num_warps=4 if K >= 128 else 2,
-        num_stages=3,
+        num_warps=1 if use_one_warp else (4 if K >= 128 else 2),
+        num_stages=1 if K <= 16 and V <= 16 else (2 if use_one_warp else 3),
     )
     return o, final_state
