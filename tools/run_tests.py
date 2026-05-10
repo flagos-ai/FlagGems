@@ -77,12 +77,7 @@ def get_ops_from_inventory():
     return catalog
 
 
-def init():
-    ENV_INFO["architecture"] = platform.machine()
-    ENV_INFO["os_name"] = distro.id()
-    ENV_INFO["os_release"] = distro.version()
-    ENV_INFO["python"] = platform.python_version()
-
+def _probe_torch():
     ENV_INFO.setdefault("torch", {})
     try:
         import torch
@@ -116,6 +111,10 @@ def init():
     except Exception:
         ENV_INFO["torch"]["device_count"] = 0
 
+    return
+
+
+def _probe_triton():
     try:
         version = metadata.version("flagtree")
         ENV_INFO["flagtree"] = version
@@ -151,16 +150,18 @@ def init():
             perror("Neither FlagTree nor Triton is installed, please fix it.")
             sys.exit(-1)
 
+    return
+
+
+def _probe_flaggems():
     try:
         # This may print an error "no device detected on your machine."
-
         version = flag_gems.__version__
-        ENV_INFO["flag_gems"] = {"version": version}
-
         repo = git.Repo(search_parent_directories=True)
         sha = repo.head.object.hexsha
-        pinfo(f"flag_gems detected ... {version}+git{sha[:8]}")
-        ENV_INFO["flag_gems"]["commit_id"] = sha
+        ver_str = f"{version}+git{sha[:8]}"
+        ENV_INFO["flag_gems"] = {"version": ver_str}
+        pinfo(f"flag_gems detected ... {ver_str}")
     except RuntimeError as e:
         perror(f"{e}")
         sys.exit(-1)
@@ -189,75 +190,55 @@ def init():
         perror("flag_gems failed to detect device info.`")
         sys.exit(-1)
 
+    return
 
-def run_cmd(
-    cmd,
-    cwd=None,
-    env=None,
-    timeout=600,
-    stdout_file=None,
-    stderr_file=None,
-):
-    """
-    Safe subprocess runner:
-    - No PIPE (avoid deadlock)
-    - Support timeout
-    - Kill full process group
-    - Persist stdout/stderr to file
-    """
 
-    stdout_fh = None
-    stderr_fh = None
+def probe_env():
+    ENV_INFO["architecture"] = platform.machine()
+    ENV_INFO["os_name"] = distro.id()
+    ENV_INFO["os_release"] = distro.version()
+    ENV_INFO["python"] = platform.python_version()
+
+    _probe_torch()
+    _probe_triton()
+    _probe_flaggems()
+
+
+def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
+    stdout = subprocess.DEVNULL
+    stderr = subprocess.DEVNULL
+    if DUMP_OUTPUT:
+        op_dir = OUTPUT_DIR.joinpath(op)
+        stdout_log = str(op_dir / f"{flavor}_stdout.log")
+        stderr_log = str(op_dir / f"{flavor}_stderr.log")
+        try:
+            stdout = open(stdout_log, "w")
+            stderr = open(stderr_log, "w")
+        except Exception:
+            pass
+
+    p = subprocess.Popen(
+        shlex.split(cmd),
+        cwd=cwd,
+        env=env,
+        stdout=stdout,
+        stderr=stderr,
+        start_new_session=True,
+    )
 
     try:
-        if stdout_file:
-            stdout_fh = open(stdout_file, "w", buffering=1)
-        if stderr_file:
-            stderr_fh = open(stderr_file, "w", buffering=1)
-
-        stdout_target = stdout_fh if stdout_fh else subprocess.DEVNULL
-        stderr_target = stderr_fh if stderr_fh else subprocess.DEVNULL
-
-        p = subprocess.Popen(
-            shlex.split(cmd),
-            cwd=str(cwd) if cwd else None,
-            env=env,
-            stdout=stdout_target,
-            stderr=stderr_target,
-            start_new_session=True,
-        )
-
+        p.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        pgid = os.getpgid(p.pid)
         try:
-            p.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(p.pid, signal.SIGTERM)
-            except Exception:
-                p.terminate()
-
-            try:
-                p.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(p.pid, signal.SIGKILL)
-                except Exception:
-                    p.kill()
-
-            return TIMEOUT
+            os.killpg(pgid, signal.SIGTERM)
+        except Exception:
+            os.killpg(pgid, signal.SIGKILL)
 
         return p.returncode
-
     except Exception as e:
         perror(f"run_cmd failed: {e}")
         return -1
-
-    finally:
-        if stdout_fh:
-            stdout_fh.flush()
-            stdout_fh.close()
-        if stderr_fh:
-            stderr_fh.flush()
-            stderr_fh.close()
 
 
 def parse_accuracy_data(result_file):
@@ -271,6 +252,7 @@ def parse_accuracy_data(result_file):
     num_skipped = 0
     num_failed = 0
     num_passed = 0
+    skipped_with_issue = False
     for test_case, item in raw_data.items():
         case_str = test_case[: test_case.find("[")]
         result = item.get("result", "")
@@ -284,6 +266,8 @@ def parse_accuracy_data(result_file):
             num_passed += 1
         elif result == "skipped":
             reason = item.get("reason", "Unknown")
+            if reason.find("Issue"):
+                skipped_with_issue = True
             skipped.setdefault(reason, set())
             skipped[reason].add(param_str)
             num_skipped += 1
@@ -306,18 +290,25 @@ def parse_accuracy_data(result_file):
             result["status"] = "NotFound"
         else:
             result["status"] = "Passed"
+        return result
+
+    # Something is wrong ... check failed first
+    if num_failed > 0:
+        result["status"] = "Failed"
+        for k, v in failed.items():
+            failed[k] = list(v)
+        result["details"]["failed"] = failed
+        return result
+
+    # There are skipped tests
+    if skipped_with_issue:
+        result["status"] = "Failed"
     else:
-        if num_skipped > 0:
-            if num_skipped == num_total:
-                result["status"] = "Skipped"
-            for k, v in skipped.items():
-                skipped[k] = list(v)
-            result["details"]["skipped"] = skipped
-        if num_failed > 0:
-            result["status"] = "Failed"
-            for k, v in failed.items():
-                failed[k] = list(v)
-            result["details"]["failed"] = failed
+        result["status"] = "Skipped"
+
+    for k, v in skipped.items():
+        skipped[k] = list(v)
+    result["details"]["skipped"] = skipped
 
     return result
 
@@ -386,17 +377,8 @@ def run_accuracy(gpu_id, start, index, count):
 
     op_dir = OUTPUT_DIR.joinpath(op)
     ensure_dir(op_dir)
-    stdout_log = str(op_dir / f"accuracy_{op}_stdout.log") if DUMP_OUTPUT else None
-    stderr_log = str(op_dir / f"accuracy_{op}_stderr.log") if DUMP_OUTPUT else None
-
     start = time.time()
-    code = run_cmd(
-        cmd,
-        cwd=accuracy_dir,
-        env=env,
-        stdout_file=stdout_log,
-        stderr_file=stderr_log,
-    )
+    code = run_cmd(op, cmd, cwd=accuracy_dir, env=env, flavor="accuracy")
     end = time.time()
 
     if code == TIMEOUT:  # Timeout
@@ -518,18 +500,10 @@ def run_benchmark(gpu_id, start, index, count):
 
     op_dir = OUTPUT_DIR.joinpath(op)
     ensure_dir(op_dir)
-    stdout_log = str(op_dir / f"performance_{op}_stdout.log") if DUMP_OUTPUT else None
-    stderr_log = str(op_dir / f"performance_{op}_stderr.log") if DUMP_OUTPUT else None
 
     start = time.time()
     cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
-    code = run_cmd(
-        cmd,
-        cwd=benchmark_dir,
-        env=env,
-        stdout_file=stdout_log,
-        stderr_file=stderr_log,
-    )
+    code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     end = time.time()
 
     # Not found
@@ -677,7 +651,7 @@ def main():
     DUMP_OUTPUT = args.dump_output
 
     # Probe environment setttings
-    init()
+    probe_env()
 
     ops = get_ops_to_test(args.op_list_file, args.ops, args.stages)
     op_count = len(ops)
