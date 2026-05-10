@@ -42,10 +42,15 @@ jobs:
     if: needs.process-command.outputs.continue == 'true'
     runs-on: ${{ needs.process-command.outputs.runner }}
     steps:
+      - name: dump
+        shell: bash
+        run: |
+          echo ${{ github.event }}
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
       - name: Setup FlagGems
         shell: bash
         env:
