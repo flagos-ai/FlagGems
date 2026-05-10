@@ -18,7 +18,7 @@ def test_randperm(n, dtype):
 
     # Skip int16 for Moore Threads backend due to runtime crash
     if flag_gems.vendor_name == "mthreads" and dtype == torch.int16:
-        pytest.skip("Moore Threads int16 randperm causes runtime crash")
+        pytest.skip("Issue #2845: Moore Threads int16 randperm causes runtime crash")
 
     ref_out = torch.randperm(n, dtype=dtype, device="cpu" if cfg.TO_CPU else device)
     with flag_gems.use_gems():

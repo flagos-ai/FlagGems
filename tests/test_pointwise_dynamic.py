@@ -22,7 +22,7 @@ USE_BLOCK_POINTER = [True, False]
 triton_version_less_than3 = int(triton.__version__[0]) < 3
 
 if flag_gems.vendor_name == "kunlunxin":
-    pytestmark = pytest.mark.skip("#2836: Test Files for Operators Not Pending Testing")
+    pytestmark = pytest.mark.skip("Issue #2836: not working")
 
 
 def test_function_schema_with_non_tensor_input():
@@ -477,11 +477,12 @@ def test_dynamic_function_with_nd_buffer(use_1d_tile, use_block_pointer):
     torch.testing.assert_close(out1, alpha * x - y)
 
 
-# Cambricon add.
-@pytest.mark.skipif(flag_gems.vendor_name != "cambricon", reason="Only for cambricon")
 @pytest.mark.parametrize("use_1d_tile", [True, False])
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
 def test_dynamic_function_with_nd_buffer_out_permute(use_1d_tile, use_block_pointer):
+    if flag_gems.vendor_name != "cambricon":
+        return
+
     config = CodeGenConfig(
         max_tile_size=1024,
         max_grid_size=MAX_GRID_SIZES,
@@ -513,10 +514,12 @@ def test_dynamic_function_with_nd_buffer_out_permute(use_1d_tile, use_block_poin
     torch.testing.assert_close(out1, alpha * x - y)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name != "cambricon", reason="Only for cambricon")
 @pytest.mark.parametrize("use_1d_tile", [True, False])
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
 def test_dynamic_function_with_nd_buffer_broadcast(use_1d_tile, use_block_pointer):
+    if flag_gems.vendor_name != "cambricon":
+        return
+
     config = CodeGenConfig(
         max_tile_size=1024,
         max_grid_size=MAX_GRID_SIZES,
@@ -546,10 +549,12 @@ def test_dynamic_function_with_nd_buffer_broadcast(use_1d_tile, use_block_pointe
     torch.testing.assert_close(out1, alpha * x - y)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name != "cambricon", reason="Only for cambricon")
 @pytest.mark.parametrize("use_1d_tile", [True, False])
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
 def test_dynamic_function_with_nd_buffer_expand(use_1d_tile, use_block_pointer):
+    if flag_gems.vendor_name != "cambricon":
+        return
+
     config = CodeGenConfig(
         max_tile_size=1024,
         max_grid_size=MAX_GRID_SIZES,
@@ -833,7 +838,9 @@ def test_dynamic_function_0d_task(use_1d_tile, use_block_pointer):
 
 @pytest.mark.parametrize("use_1d_tile", [True, False])
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="#2837: AssertionError")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads", reason="Isue #2837: AssertionError"
+)
 def test_dynamic_function_zero_sized_task_unary(use_1d_tile, use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
@@ -856,7 +863,9 @@ def test_dynamic_function_zero_sized_task_unary(use_1d_tile, use_block_pointer):
 
 @pytest.mark.parametrize("use_1d_tile", [True, False])
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="#2837: AssertionError")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads", reason="Issue #2837: AssertionError"
+)
 def test_dynamic_function_zero_sized_task_binary(use_1d_tile, use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,

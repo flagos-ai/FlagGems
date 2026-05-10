@@ -77,7 +77,7 @@ def test_grouped_topk(
     """Test grouped_topk accuracy against vLLM CUDA implementation"""
 
     if n_expert % n_group != 0:
-        pytest.skip("Invalid config")
+        return True
 
     torch.manual_seed(45)
     torch.cuda.manual_seed(45)

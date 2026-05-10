@@ -33,10 +33,10 @@ def test_vdot(M, is_conj, dtype, stride):
         inp2 = torch.randn(M, dtype=dtype, device="cpu")
 
     elif vendor_name == "ascend" and dtype == torch.cfloat:
-        pytest.skip("#2859: Skipping torch.cfloat tests on Ascend platform")
+        pytest.skip("Issue #2859: Skipping torch.cfloat tests on Ascend platform")
 
     elif vendor_name == "tsingmicro" and dtype == torch.cfloat:
-        pytest.skip("#2859: Skipping torch.cfloa tests on tsingmicro platform")
+        pytest.skip("Issue #2859: Skipping torch.cfloa tests on tsingmicro platform")
 
     elif vendor_name == "kunlunxin" and dtype == torch.cfloat:
         inp1 = torch.randn(M, dtype=dtype, device="cpu")

@@ -77,7 +77,7 @@ def test_softmax_out(shape, dtype, dim, neg_inf):
 def test_softmax_backward_out(shape, dtype, dim, neg_inf):
     if shape[dim] == 1 and flag_gems.vendor_name == "kunlunxin":
         pytest.skip(
-            "#2851 _softmax_backward_data short-circuits to zero when reduction dim "
+            "Issue #2851 _softmax_backward_data short-circuits to zero when reduction dim "
             "is 1, while the Triton kernel computes normally with synthetic inputs, "
             "causing a mismatch that does not reflect a real correctness issue."
         )
@@ -112,7 +112,7 @@ def test_softmax_backward_out(shape, dtype, dim, neg_inf):
 def test_softmax_backward(shape, dtype, dim, neg_inf):
     if shape[dim] == 1 and flag_gems.vendor_name == "kunlunxin":
         pytest.skip(
-            "XPU _softmax_backward_data short-circuits to zero when reduction dim "
+            "Issue #2851: XPU _softmax_backward_data short-circuits to zero when reduction dim "
             "is 1, while the Triton kernel computes normally with synthetic inputs, "
             "causing a mismatch that does not reflect a real correctness issue."
         )

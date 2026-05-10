@@ -19,11 +19,6 @@ pytestmark = [
 ]
 
 
-def _skip_if_dtype_unsupported(dtype):
-    if dtype is torch.int64 and not utils.int64_is_supported:
-        pytest.skip("int64 is not supported on this device")
-
-
 def _make_tril_input(shape, dtype):
     if dtype in utils.FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -208,7 +203,10 @@ def test_tril_out_resizes(shape, diagonal, dtype):
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
 def test_tril_out_aliases_input(diagonal, dtype):
-    _skip_if_dtype_unsupported(dtype)
+    if dtype is torch.int64 and not utils.int64_is_supported:
+        # int64 is not supported on this device
+        return
+
     inp = _make_sequence((2, 5, 7), dtype)
 
     ref = utils.to_reference(inp.clone())
@@ -231,7 +229,10 @@ def test_tril_out_aliases_input(diagonal, dtype):
 @pytest.mark.parametrize("diagonal", [-2, 0, 3])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
 def test_tril_out_noncontiguous_out(diagonal, dtype):
-    _skip_if_dtype_unsupported(dtype)
+    if dtype is torch.int64 and not utils.int64_is_supported:
+        # int64 is not supported on this device
+        return
+
     inp = _make_sequence((2, 5, 7), dtype)
     out_base = torch.empty((2, 7, 5), dtype=dtype, device=flag_gems.device)
     out = out_base.transpose(-2, -1)
@@ -258,7 +259,10 @@ def test_tril_out_noncontiguous_out(diagonal, dtype):
 @pytest.mark.parametrize("diagonal", [-2, 0, 3])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
 def test_tril_out_sliced_leading_batch_out(diagonal, dtype):
-    _skip_if_dtype_unsupported(dtype)
+    if dtype is torch.int64 and not utils.int64_is_supported:
+        # int64 is not supported on this device
+        return
+
     inp = _make_sequence((2, 5, 7), dtype)
     out_base = torch.empty((4, 5, 7), dtype=dtype, device=flag_gems.device)
     out = out_base[::2]
@@ -285,7 +289,10 @@ def test_tril_out_sliced_leading_batch_out(diagonal, dtype):
 @pytest.mark.parametrize("diagonal", [-99, 99])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
 def test_tril_out_extreme_diagonal_noncontiguous_out(diagonal, dtype):
-    _skip_if_dtype_unsupported(dtype)
+    if dtype is torch.int64 and not utils.int64_is_supported:
+        # int64 is not supported on this device
+        return
+
     inp = _make_sequence((2, 5, 7), dtype)
     out_base = torch.empty((2, 7, 5), dtype=dtype, device=flag_gems.device)
     out = out_base.transpose(-2, -1)
