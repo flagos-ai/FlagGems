@@ -15,6 +15,7 @@ jobs:
     outputs:
       op: ${{ steps.parse-command.outputs.op}}
       runner: ${{ steps.parse-command.outputs.runner }}
+      pull: ${{ steps.parse-command.outputs.pull }}
       continue: ${{ steps.check.outputs.continue }}
     steps:
       - id: check
@@ -29,6 +30,8 @@ jobs:
 
       - id: parse-command
         if: ${{ steps.check.outputs.continue == 'true' }}
+        env:
+          PULL_NUMBER: ${{ github.event.issue.number }}
         run: |
           # params is op:runner
           params=${{ steps.check.outputs.params }}
@@ -36,13 +39,25 @@ jobs:
           runner=$(echo $params | cut -d ':' -f 2)
           echo "op=${op}" >> $GITHUB_OUTPUT
           echo "runner=${runner}" >> $GITHUB_OUTPUT
+          echo "pull=${PULL_NUMBER}" >> $GITHUB_OUTPUT
 
   test-operator:
     needs: process-command
     if: needs.process-command.outputs.continue == 'true'
     runs-on: ${{ needs.process-command.outputs.runner }}
     steps:
-      - uses: actions/checkout@v6
+      - name: Install GitHub CLI
+        uses: ksivamuthu/actions-setup-gh-cli@v2
+        with:
+          version: 2.92.0
+      - id: checkout-repo
+        uses: actions/checkout@v6
+      - id: checkout-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "checking out ${{ needs.process-command.outputs.pull }}"
+          gh pr checkout ${{ needs.process-command.outputs.pull }}
       - name: Setup FlagGems
         shell: bash
         env:
