@@ -43,6 +43,9 @@ jobs:
     runs-on: ${{ needs.process-command.outputs.runner }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
       - name: Setup FlagGems
         shell: bash
         env:
