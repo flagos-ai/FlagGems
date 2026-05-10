@@ -46,13 +46,17 @@ jobs:
     if: needs.process-command.outputs.continue == 'true'
     runs-on: ${{ needs.process-command.outputs.runner }}
     steps:
+      - name: Install GitHub CLI
+        uses: ksivamuthu/actions-setup-gh-cli@v2
+        with:
+          version: latest
       - id: checkout-repo
         uses: actions/checkout@v6
       - id: checkout-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "checking out ${{ needs.process-command.outputs.null }}"
+          echo "checking out ${{ needs.process-command.outputs.pull }}"
           gh pr checkout ${{ needs.process-command.outputs.pull }}
       - name: Setup FlagGems
         shell: bash
