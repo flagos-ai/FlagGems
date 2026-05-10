@@ -49,17 +49,11 @@ jobs:
       - id: checkout-repo
         uses: actions/checkout@v6
       - id: checkout-pr
-        uses: actions/github-script@v7
         env:
-          PULL_NUMBER: ${{ needs.process-command.outputs.pull }}
-        with:
-          script: |
-            const pull_number = process.env.PULL_NUMBER;
-            const pr = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: pull_number,
-            });
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "checking out ${{ needs.process-command.outputs.null }}"
+          gh pr checkout ${{ needs.process-command.outputs.pull }}
       - name: Setup FlagGems
         shell: bash
         env:
