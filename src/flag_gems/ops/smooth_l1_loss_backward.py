@@ -112,6 +112,38 @@ def smooth_l1_loss_backward_out(
     grad_input: torch.Tensor,
 ):
     log.debug("GEMS SMOOTH_L1_LOSS BACKWARD GRAD_INPUT")
-    result = smooth_l1_loss_backward(grad_output, self, target, reduction, beta)
-    grad_input.copy_(result)
+    device = self.device
+    if not (isinstance(device, torch.device) and device.type == "cuda"):
+        result = torch.ops.aten.smooth_l1_loss_backward(
+            grad_output, self, target, reduction, beta
+        )
+        grad_input.copy_(result)
+        return grad_input
+
+    if not self.is_contiguous():
+        self = self.contiguous()
+    if not target.is_contiguous():
+        target = target.contiguous()
+    if not grad_output.is_contiguous():
+        grad_output = grad_output.contiguous()
+
+    n_elements = self.numel()
+
+    if n_elements == 0:
+        return grad_input
+
+    inv_n = 1.0 / n_elements
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
+    _smooth_l1_loss_backward_kernel[grid](
+        grad_output,
+        self,
+        target,
+        grad_input,
+        n_elements,
+        inv_n,
+        beta,
+        REDUCTION=reduction,
+    )
+
     return grad_input

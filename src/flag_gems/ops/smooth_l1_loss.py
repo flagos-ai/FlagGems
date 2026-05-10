@@ -217,6 +217,43 @@ def smooth_l1_loss_out(
     out: torch.Tensor,
 ):
     log.debug("GEMS SMOOTH_L1_LOSS OUT")
-    result = smooth_l1_loss(input, target, reduction, beta)
-    out.copy_(result)
+    device = input.device
+    if not (isinstance(device, torch.device) and device.type == flag_gems.device):
+        result = torch.ops.aten.smooth_l1_loss(input, target, reduction, beta)
+        out.copy_(result)
+        return out
+
+    input, target = _check_tensors(input, target)
+    red = _normalize_reduction(reduction)
+    n_elements = input.numel()
+    dtype = input.dtype
+
+    if red == 0:
+        if n_elements == 0:
+            return out
+        BLOCK_SIZE = 1024
+        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        _smooth_l1_loss_none_kernel[grid](
+            input, target, out, n_elements, beta, BLOCK_SIZE=BLOCK_SIZE
+        )
+        return out
+
+    if n_elements == 0:
+        if red == 2:
+            out.copy_(torch.zeros((), device=input.device, dtype=dtype))
+        else:
+            out.copy_(torch.full((), float("nan"), device=input.device, dtype=dtype))
+        return out
+
+    block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
+    mid_size = triton.cdiv(n_elements, block_size)
+    block_mid = triton.next_power_of_2(mid_size)
+    mid = torch.empty((mid_size,), dtype=torch.float32, device=input.device)
+
+    _smooth_l1_loss_reduce_kernel[(mid_size, 1, 1)](
+        input, target, mid, n_elements, beta, BLOCK_SIZE=block_size
+    )
+    _smooth_l1_loss_final_kernel[(1, 1, 1)](
+        mid, out, mid_size, n_elements if red == 1 else 0, BLOCK_MID=block_mid
+    )
     return out
