@@ -504,7 +504,11 @@ def log2_strategy(key: Union[int, float]) -> float:
 
 @LibTuner.register_strategy("align32")
 def align32_strategy(key: Union[int, float]) -> int:
-    return log2_strategy(key) if key < 32 else math.ceil(key / 32) * 32
+    if key == 0:
+        return 0
+    if key < 32:
+        return 2 ** math.ceil(math.log2(key))
+    return math.ceil(key / 32) * 32
 
 
 @LibTuner.register_policy("default")
