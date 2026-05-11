@@ -1443,6 +1443,18 @@ ops:
       - LinearAlg
     stages:
       - stable: '2.2'
+  - id: diff
+    description: |
+      Computes the n-th forward difference along the given dimension.
+    for:
+      - diff
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: digamma_
     description: |
       Computes the in-place digamma function, which is the logarithmic derivative of the Gamma function.
@@ -6032,15 +6044,3 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
-  - id: diff
-    description: |
-      Computes the n-th forward difference along the given dimension.
-    for:
-      - diff
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - beta: '5.1'
