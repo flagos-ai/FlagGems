@@ -16,11 +16,13 @@ def test_geometric_(shape, dtype):
         x.geometric_(p)
 
     # Check that all values are positive integers (>= 1)
-    assert (x >= 1).all()
+    positive_mask = (x >= 1).float().to(dtype)
+    utils.gems_assert_equal(positive_mask, torch.ones_like(x))
 
-    # Check that the mean is approximately 1/p (statistical test)
-    mean = x.float().mean().item()
-    assert abs(mean - 1.0 / p) < 0.2
+    # Check that the mean is approximately 1/p
+    mean = x.float().mean()
+    expected = torch.tensor(1.0 / p, dtype=torch.float32, device=flag_gems.device)
+    utils.gems_assert_close(mean, expected, dtype=torch.float32, atol=0.2)
 
 
 @pytest.mark.geometric_
@@ -33,11 +35,13 @@ def test_geometric_various_p(shape, dtype, p):
         x.geometric_(p)
 
     # Check that all values are positive integers (>= 1)
-    assert (x >= 1).all()
+    positive_mask = (x >= 1).float().to(dtype)
+    utils.gems_assert_equal(positive_mask, torch.ones_like(x))
 
     # Check that the mean is approximately 1/p
-    mean = x.float().mean().item()
-    assert abs(mean - 1.0 / p) < 0.3
+    mean = x.float().mean()
+    expected = torch.tensor(1.0 / p, dtype=torch.float32, device=flag_gems.device)
+    utils.gems_assert_close(mean, expected, dtype=torch.float32, atol=0.3)
 
 
 @pytest.mark.geometric
@@ -53,8 +57,10 @@ def test_geometric(shape, dtype):
     assert y is not x
 
     # Check that all values are positive integers (>= 1)
-    assert (y >= 1).all()
+    positive_mask = (y >= 1).float().to(dtype)
+    utils.gems_assert_equal(positive_mask, torch.ones_like(y))
 
     # Check that the mean is approximately 1/p
-    mean = y.float().mean().item()
-    assert abs(mean - 1.0 / p) < 0.2
+    mean = y.float().mean()
+    expected = torch.tensor(1.0 / p, dtype=torch.float32, device=flag_gems.device)
+    utils.gems_assert_close(mean, expected, dtype=torch.float32, atol=0.2)
