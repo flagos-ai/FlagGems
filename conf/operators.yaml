@@ -2696,6 +2696,30 @@ ops:
       - Tensor
     stages:
       - stable: '4.0'
+  - id: index_copy
+    description: |
+      Copies the elements from `source` into `input` at the positions specified by
+      `index` along the given `dim`.
+    for:
+      - index_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: index_copy_
+    description: The in-place version of `index_copy()`.
+    for:
+      - index_copy_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: index_put
     description: |
       Puts values from the tensor `values` into the tensor `input` using the indices specified
@@ -4961,6 +4985,30 @@ ops:
       - Activation
     stages:
       - stable: '2.0'
+  - id: silu_and_mul_with_clamp
+    description: A custom operator in vLLM as activation function for SwiGLU.
+    for:
+      - silu_and_mul_with_clamp
+    labels:
+      - fused
+      - pointwise
+      - vLLM
+    kind:
+      - Activation
+    stages:
+      - stable: '5.1'
+  - id: silu_and_mul_with_clamp_out
+    description: A variant of `silu_and_mul_with_clamp` with an extra `out` argument.
+    for:
+      - silu_and_mul_with_clamp.out
+    labels:
+      - fused
+      - pointwise
+      - vLLM
+    kind:
+      - Activation
+    stages:
+      - stable: '5.1'
   - id: silu_backward
     description: A variant of `silu()` for backward case.
     for:
