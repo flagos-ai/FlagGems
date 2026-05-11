@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.utils import broadcastable_to, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -23,7 +23,7 @@ def masked_fill_kernel(
     BLOCK_SIZE: tl.constexpr,
     BLOCK_SIZE_SUB: tl.constexpr,
 ):
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
     base_offset = pid * BLOCK_SIZE
 
     # 计算需要处理的总块数
@@ -57,7 +57,7 @@ def masked_fill_kernel(
 def masked_fill_kernel_self(
     inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr, BLOCK_SIZE_SUB: tl.constexpr
 ):
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
     base_offset = pid * BLOCK_SIZE
 
     # 计算需要处理的总块数

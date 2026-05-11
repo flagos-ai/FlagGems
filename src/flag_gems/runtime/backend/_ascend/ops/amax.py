@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_min
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
@@ -22,7 +22,7 @@ def amax_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
 
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
@@ -61,8 +61,8 @@ def amax_kernel(
     min_value = get_dtype_min(dtype)
 
     # Map the program id to the row of inp it should compute.
-    workers = tle.num_programs(0)
-    pid = tle.program_id(0)
+    workers = ext.num_programs(0)
+    pid = ext.program_id(0)
 
     total_workloads = tl.cdiv(M, BLOCK_M)
     workloads = tl.cdiv(total_workloads, workers)

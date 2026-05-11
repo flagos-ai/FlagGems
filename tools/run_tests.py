@@ -349,6 +349,14 @@ def get_env(gpu_ids):
         env["CUDA_VISIBLE_DEVICES"] = gpu_ids
         return env
 
+    if vendor == "cambricon":
+        env["MLU_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
+    if vendor == "kunlunxin":
+        env["XPU_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
     env["CUDA_VISIBLE_DEVICES"] = gpu_ids
 
     return env

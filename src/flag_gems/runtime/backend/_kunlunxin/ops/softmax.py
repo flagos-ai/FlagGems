@@ -8,7 +8,7 @@ from flag_gems import runtime
 from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -36,7 +36,7 @@ def softmax_kernel_inner(
     TILE_N: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
-    pid_m = tle.program_id(0)
+    pid_m = ext.program_id(0)
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
         offset = pid_m * N + n_offsets
@@ -145,7 +145,7 @@ def softmax_backward_kernel_inner(
     TILE_N: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
-    pid_m = tle.program_id(0)
+    pid_m = ext.program_id(0)
     m_offsets = pid_m * TILE_M + tl.arange(0, TILE_M)
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
