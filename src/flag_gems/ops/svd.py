@@ -192,40 +192,217 @@ def _jacobi_eig_col_kernel(
         tl.store(V_ptr + v_off + off * K + ii, c_val * vi + s_val * vj, mask=mask)
         tl.store(V_ptr + v_off + off * K + jj, -s_val * vi + c_val * vj, mask=mask)
 
+import torch
+import triton
+import triton.language as tl
 
-def _jacobi_eigh_gpu(G, max_sweeps=5):
+
+@triton.jit
+def _eigh2d_jacobi_kernel(
+    A_ptr,
+    L_ptr,
+    Q_ptr,
+    K: tl.constexpr,
+    SWEEPS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """
+    A_ptr: [K, K] float32, 会被原地修改为近似对角矩阵
+    L_ptr: [K]
+    Q_ptr: [K, K]
+    适合 K <= BLOCK 的小矩阵。
+    """
+
+    offs = tl.arange(0, BLOCK)
+    mask = offs < K
+
+    # ------------------------------------------------------------
+    # 1. 初始化 Q = I
+    # ------------------------------------------------------------
+    for r in range(K):
+        q_vals = tl.where(offs == r, 1.0, 0.0)
+        tl.store(Q_ptr + r * K + offs, q_vals, mask=mask)
+
+    # ------------------------------------------------------------
+    # 2. Jacobi sweeps
+    # ------------------------------------------------------------
+    for _ in range(SWEEPS):
+        for i in range(K):
+            for j in range(i + 1, K):
+
+                aii = tl.load(A_ptr + i * K + i)
+                ajj = tl.load(A_ptr + j * K + j)
+                aij = tl.load(A_ptr + i * K + j)
+
+                abs_aij = tl.abs(aij)
+                do_rot = abs_aij > 1.0e-8
+
+                # 稳定 Jacobi 公式
+                # tau = (ajj - aii) / (2 * aij)
+                safe_aij = tl.where(do_rot, aij, 1.0)
+                tau = (ajj - aii) / (2.0 * safe_aij)
+
+                sign_tau = tl.where(tau >= 0.0, 1.0, -1.0)
+                t = sign_tau / (tl.abs(tau) + tl.sqrt(1.0 + tau * tau))
+                c = 1.0 / tl.sqrt(1.0 + t * t)
+                s = t * c
+
+                c = tl.where(do_rot, c, 1.0)
+                s = tl.where(do_rot, s, 0.0)
+
+                # ------------------------------------------------
+                # 2.1 左乘 J^T：更新第 i、j 行
+                # ------------------------------------------------
+                row_i = tl.load(A_ptr + i * K + offs, mask=mask, other=0.0)
+                row_j = tl.load(A_ptr + j * K + offs, mask=mask, other=0.0)
+
+                new_row_i = c * row_i - s * row_j
+                new_row_j = s * row_i + c * row_j
+
+                tl.store(A_ptr + i * K + offs, new_row_i, mask=mask)
+                tl.store(A_ptr + j * K + offs, new_row_j, mask=mask)
+
+                # ------------------------------------------------
+                # 2.2 右乘 J：更新第 i、j 列
+                # ------------------------------------------------
+                col_i = tl.load(A_ptr + offs * K + i, mask=mask, other=0.0)
+                col_j = tl.load(A_ptr + offs * K + j, mask=mask, other=0.0)
+
+                new_col_i = c * col_i - s * col_j
+                new_col_j = s * col_i + c * col_j
+
+                tl.store(A_ptr + offs * K + i, new_col_i, mask=mask)
+                tl.store(A_ptr + offs * K + j, new_col_j, mask=mask)
+
+                # 可以显式压低当前非对角元，提升数值稳定性
+                tl.store(A_ptr + i * K + j, 0.0)
+                tl.store(A_ptr + j * K + i, 0.0)
+
+                # ------------------------------------------------
+                # 2.3 累计特征向量 Q = QJ
+                # ------------------------------------------------
+                q_i = tl.load(Q_ptr + offs * K + i, mask=mask, other=0.0)
+                q_j = tl.load(Q_ptr + offs * K + j, mask=mask, other=0.0)
+
+                new_q_i = c * q_i - s * q_j
+                new_q_j = s * q_i + c * q_j
+
+                tl.store(Q_ptr + offs * K + i, new_q_i, mask=mask)
+                tl.store(Q_ptr + offs * K + j, new_q_j, mask=mask)
+
+    # ------------------------------------------------------------
+    # 3. 保存特征值
+    # ------------------------------------------------------------
+    vals = tl.load(A_ptr + offs * K + offs, mask=mask, other=0.0)
+    tl.store(L_ptr + offs, vals, mask=mask)
+
+
+def _next_power_of_2(x: int):
+    return 1 << (x - 1).bit_length()
+
+
+def _triton_eigh2d_optimized(A, max_sweeps=8):
+    """
+    A: [K, K] 对称矩阵
+    返回:
+        L: [K]
+        Q: [K, K]
+    """
+    assert A.dim() == 2
+    assert A.shape[0] == A.shape[1]
+
+    K = A.shape[0]
+    device = A.device
+    out_dtype = A.dtype
+
+    # Jacobi 会原地修改矩阵，不能直接改用户输入
+    A_work = A.float().contiguous().clone()
+
+    L = torch.empty((K,), device=device, dtype=torch.float32)
+    Q = torch.empty((K, K), device=device, dtype=torch.float32)
+
+    BLOCK = _next_power_of_2(K)
+    BLOCK = max(BLOCK, 16)
+
+    _eigh2d_jacobi_kernel[(1,)](
+        A_work,
+        L,
+        Q,
+        K=K,
+        SWEEPS=max_sweeps,
+        BLOCK=BLOCK,
+        num_warps=1,
+    )
+
+    return L.clamp_min(0.0).to(out_dtype), Q.to(out_dtype)
+
+def _jacobi_eigh_gpu(G, max_sweeps=8):
+    orig_ndim = G.dim()
+
+    if orig_ndim == 2:
+        return _triton_eigh2d_optimized(G, max_sweeps=max_sweeps)
+
     batch, K, _ = G.shape
     device, dtype = G.device, G.dtype
-    G_work = G.float().clone()
-    V = torch.eye(K, device=device, dtype=torch.float32).unsqueeze(0).expand(batch, K, K).clone()
+
+    if batch == 1:
+        L, Q = _triton_eigh2d_optimized(G[0], max_sweeps=max_sweeps)
+        return L.to(dtype), Q.to(dtype)
+
+    # 这里必须 clone / repeat，不能 expand
+    # expand 只是视图，batch 维 stride=0，不适合作为 kernel 输出矩阵
+    G_work = G.float().contiguous()
+    V = torch.eye(K, device=device, dtype=torch.float32).unsqueeze(0).repeat(batch, 1, 1)
 
     steps = _brent_luk_pairs(K)
     if not steps:
-        return G.diagonal(dim1=-2, dim2=-1).clamp_min(0.0), V.to(dtype)
+        return G_work.diagonal(dim1=-2, dim2=-1).clamp_min(0.0).to(dtype), V.to(dtype)
 
-    # Pre-build index tensors for all steps
-    step_tensors = []
-    for i_l, j_l in steps:
-        step_tensors.append((
-            torch.tensor(i_l, device=device, dtype=torch.int32),
-            torch.tensor(j_l, device=device, dtype=torch.int32),
-            len(i_l)
-        ))
+    # 建议：step_tensors 做缓存，不要每次函数调用都重新创建 GPU tensor
+    step_tensors = [
+        (
+            torch.tensor(i, device=device, dtype=torch.int64),
+            torch.tensor(j, device=device, dtype=torch.int64),
+            len(i),
+        )
+        for i, j in steps
+    ]
 
-    BLK = 64
-    # Single c/s buffer reused across all steps (max size = K/2 * batch)
-    max_pairs = max(len(il) for il, _ in steps)
+    max_pairs = max(n for _, _, n in step_tensors)
     cs_buf_c = torch.empty(batch * max_pairs, device=device, dtype=torch.float32)
     cs_buf_s = torch.empty(batch * max_pairs, device=device, dtype=torch.float32)
+
+    BLK = 64
+
     for _ in range(max_sweeps):
         for i_t, j_t, npairs in step_tensors:
-            _jacobi_eig_row_kernel[(npairs * batch,)](G_work, K, i_t, j_t, cs_buf_c, cs_buf_s,
-                                                       num_pairs=npairs, BLK=BLK)
-            _jacobi_eig_col_kernel[(npairs * batch,)](G_work, V, K, i_t, j_t, cs_buf_c, cs_buf_s,
-                                                       num_pairs=npairs, BLK=BLK)
+            grid = (npairs * batch,)
+
+            _jacobi_eig_row_kernel[grid](
+                G_work,
+                K,
+                i_t,
+                j_t,
+                cs_buf_c,
+                cs_buf_s,
+                num_pairs=npairs,
+                BLK=BLK,
+            )
+
+            _jacobi_eig_col_kernel[grid](
+                G_work,
+                V,
+                K,
+                i_t,
+                j_t,
+                cs_buf_c,
+                cs_buf_s,
+                num_pairs=npairs,
+                BLK=BLK,
+            )
 
     S_sq = G_work.diagonal(dim1=-2, dim2=-1).clamp_min(0.0)
-    return S_sq, V.to(dtype)
+    return S_sq.to(dtype), V.to(dtype)
 
 
 def _svd_gram_jacobi(x, full=True):
