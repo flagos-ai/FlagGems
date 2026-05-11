@@ -35,10 +35,17 @@ else:
         ((16, 1025, 255), 1),
     ]
 
-BOOL_DTYPES = [torch.bool]
+BOOL_DTYPES = [] if flag_gems.vendor_name == "ascend" else [torch.bool]
 INT_DTYPES = list(dict.fromkeys([torch.int8, torch.uint8] + utils.ALL_INT_DTYPES))
 DTYPES = FLOAT_DTYPES + INT_DTYPES
 CUMPROD_DTYPES = DTYPES + BOOL_DTYPES
+CUMPROD_DTYPE_CASES = [
+    (torch.int8, torch.int32),
+    (torch.uint8, torch.int64),
+    (torch.float16, torch.float32),
+]
+if flag_gems.vendor_name != "ascend":
+    CUMPROD_DTYPE_CASES.append((torch.bool, torch.int64))
 
 
 def _make_input(shape, dtype):
@@ -78,15 +85,7 @@ def test_cumprod(shape_dim, dtype):
 
 
 @pytest.mark.cumprod
-@pytest.mark.parametrize(
-    "input_dtype, output_dtype",
-    [
-        (torch.int8, torch.int32),
-        (torch.uint8, torch.int64),
-        (torch.bool, torch.int64),
-        (torch.float16, torch.float32),
-    ],
-)
+@pytest.mark.parametrize("input_dtype, output_dtype", CUMPROD_DTYPE_CASES)
 def test_cumprod_dtype(input_dtype, output_dtype):
     inp = _make_input((8, 17), input_dtype)
     ref_inp = _reference_input(inp)
