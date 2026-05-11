@@ -95,7 +95,8 @@ case $VENDOR in
 
   metax)
     uv pip install -e  .
-    uv pip install ".[metax,test]"
+    uv pip install ".[metax]"
+    uv pip install ".[test]"
 
     uv pip install --index ${FLAGOS_PYPI} \
         "torch==2.8.0+metax3.5.3.9" \
@@ -173,7 +174,7 @@ case $VENDOR in
     if [ -n "${USE_TRITON}" ]; then
       uv pip uninstall flagtree
       uv pip install --index ${FLAGOS_PYPI} \
-        "triton==3.3.0++gitfe2a28fa"
+        "triton==3.3.0+gitfe2a28fa"
     fi
     ;;
 
