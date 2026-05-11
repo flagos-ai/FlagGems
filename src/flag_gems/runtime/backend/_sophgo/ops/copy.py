@@ -4,7 +4,7 @@ from flag_gems.utils.codegen_config_utils import CodeGenConfig
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
 config_ = CodeGenConfig(
-    256,
+    64,
     (512, 1, 1),
     32,
     False,

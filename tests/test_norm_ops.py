@@ -67,6 +67,9 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sophgo", reason="Not support groupnorm backward"
+)
 @pytest.mark.group_norm
 @pytest.mark.native_group_norm
 @pytest.mark.parametrize(

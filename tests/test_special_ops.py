@@ -231,9 +231,19 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    res_indices = torch.randint(
-        0, EmbeddingSize, (Batch, M), device=flag_gems.device, requires_grad=False
-    )
+    if flag_gems.vendor_name == "sophgo":
+        res_indices = torch.randint(
+            0,
+            EmbeddingSize,
+            (Batch, M),
+            device=flag_gems.device,
+            requires_grad=False,
+            dtype=torch.int32,
+        )
+    else:
+        res_indices = torch.randint(
+            0, EmbeddingSize, (Batch, M), device=flag_gems.device, requires_grad=False
+        )
     res_embedding = torch.randn(
         (EmbeddingSize, N), device=flag_gems.device, dtype=dtype, requires_grad=True
     )
@@ -253,6 +263,9 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sophgo", reason="Not support embedding backward"
+)
 @pytest.mark.embedding
 @pytest.mark.parametrize("EmbeddingSize", [1024] if TO_CPU else [4096])
 @pytest.mark.parametrize("Batch", [2] if TO_CPU else [2, 4])

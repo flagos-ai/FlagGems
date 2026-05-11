@@ -1,5 +1,5 @@
 from .addmm import addmm
-from .all import all
+from .all import all, all_dim, all_dims
 from .any import any, any_dim, any_dims
 from .batch_norm import batch_norm
 from .cat import cat
@@ -14,6 +14,7 @@ from .diagonal import diagonal
 from .dropout import dropout
 from .exponential_ import exponential_
 from .flip import flip
+from .full import full
 from .gelu import gelu, gelu_
 from .groupnorm import group_norm
 from .hstack import hstack
@@ -23,6 +24,10 @@ from .isfinite import isfinite
 from .isinf import isinf
 from .isnan import isnan
 from .kron import kron
+from .logical_and import logical_and
+from .logical_not import logical_not
+from .logical_or import logical_or
+from .logical_xor import logical_xor
 from .max import max, max_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
@@ -56,6 +61,8 @@ from .vdot import vdot
 __all__ = [
     "addmm",
     "all",
+    "all_dim",
+    "all_dims",
     "any",
     "any_dim",
     "any_dims",
@@ -75,6 +82,7 @@ __all__ = [
     "dropout",
     "exponential_",
     "flip",
+    "full",
     "gelu",
     "gelu_",
     "group_norm",
@@ -85,6 +93,10 @@ __all__ = [
     "isinf",
     "isnan",
     "kron",
+    "logical_and",
+    "logical_not",
+    "logical_or",
+    "logical_xor",
     "max",
     "max_dim",
     "min",

@@ -268,7 +268,7 @@ any:
   # - 4
   # - 8
   block_n:
-  - 32
+  - 128
 
 index_select:
 - gen: true
@@ -1002,7 +1002,7 @@ groupnorm:
       num_warps: warps
       num_stages: stages
     block_hw:
-    - 64
+    - 32
     warps:
     - 2
     stages:
