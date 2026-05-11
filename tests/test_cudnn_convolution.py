@@ -18,7 +18,7 @@ SHAPE_CUDNN_CONV2D = [
 @pytest.mark.parametrize("padding", [0, 1])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("dilation", [1, 2])
-def test_accuracy_cudnn_convolution_2d(
+def test_cudnn_convolution_2d(
     shape, kernel, stride, padding, groups, dtype, dilation, monkeypatch
 ):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
@@ -70,7 +70,7 @@ SHAPE_CUDNN_CONV1D = [
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_accuracy_cudnn_convolution_1d(
+def test_cudnn_convolution_1d(
     shape, kernel, stride, padding, dtype, monkeypatch
 ):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
@@ -121,7 +121,7 @@ SHAPE_CUDNN_CONV3D = [
 @pytest.mark.parametrize("padding", [0, 1])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("dilation", [1, 2])
-def test_accuracy_cudnn_convolution_3d(
+def test_cudnn_convolution_3d(
     shape, kernel, stride, padding, groups, dtype, dilation, monkeypatch
 ):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
