@@ -845,7 +845,9 @@ def median(inp):
         return _median_small_flat(flat)
 
     row_data = flat.reshape(1, inp.numel())
-    if inp.dtype in _FLAT_SORT_DTYPES and inp.numel() <= _FLAT_SORT_LIMIT:
+    if _use_f16_key_select(inp.dtype, inp.numel()):
+        values, _ = _median_f16_key_select(row_data, ())
+    elif inp.dtype in _FLAT_SORT_DTYPES and inp.numel() <= _FLAT_SORT_LIMIT:
         values, _ = _median_lastdim_sort(row_data, ())
     else:
         values, _ = _median_from_rows(row_data)
