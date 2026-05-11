@@ -8,9 +8,13 @@ from . import conftest as cfg
 
 if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
+    BOOL_DTYPES = [torch.bool]
+    INT_DTYPES = [torch.int32]
     CUMPROD_SHAPE_DIMS = [((2, 32), 1), ((2, 5, 3), 1)]
 else:
     FLOAT_DTYPES = utils.ALL_FLOAT_DTYPES
+    BOOL_DTYPES = [torch.bool]
+    INT_DTYPES = list(dict.fromkeys([torch.int8, torch.uint8] + utils.ALL_INT_DTYPES))
     CUMPROD_SHAPE_DIMS = [
         ((0,), 0),
         ((0, 7), 0),
@@ -35,16 +39,15 @@ else:
         ((16, 1025, 255), 1),
     ]
 
-BOOL_DTYPES = [torch.bool]
-INT_DTYPES = list(dict.fromkeys([torch.int8, torch.uint8] + utils.ALL_INT_DTYPES))
+
 DTYPES = FLOAT_DTYPES + INT_DTYPES
 CUMPROD_DTYPES = DTYPES + BOOL_DTYPES
 CUMPROD_DTYPE_CASES = [
     (torch.int8, torch.int32),
     (torch.uint8, torch.int64),
     (torch.float16, torch.float32),
+    (torch.bool, torch.int64),
 ]
-CUMPROD_DTYPE_CASES.append((torch.bool, torch.int64))
 
 
 def _make_input(shape, dtype):
