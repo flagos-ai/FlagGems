@@ -133,6 +133,7 @@ class BackendArchEvent:
         try:
             if ops_module is None:
                 ops_module = importlib.import_module(f"{self.arch}.ops")
+                arch_specialized_ops.extend(self.get_functions_from_module(ops_module))
         except Exception:
             try:
                 sys.path.append(self.current_arch_path)
@@ -190,16 +191,15 @@ res = {tensor}.{attr_name}
 
 
 def set_tl_extra_backend_module(vendor_name=None):
-    global device_name, tl_extra_backend_module
     #TODO: enflame locally
     if importlib.util.find_spec("triton.backends.enflame") is None:
-        tl_extra_backend_module = importlib.import_module("triton_gcu.triton.libdevice")
+        _state.tl_extra_backend_module = importlib.import_module("triton_gcu.triton.libdevice")
     else:
         vendor_info = get_vendor_info(vendor_name)
-        device_name = device_name or vendor_info.device_name
-        extra_name = vendor_info.triton_extra_name or device_name
+        _state.device_name = _state.device_name or vendor_info.device_name
+        extra_name = vendor_info.triton_extra_name or _state.device_name
         module_str = f"triton.language.extra.{extra_name}.libdevice"
-        tl_extra_backend_module = importlib.import_module(module_str)
+        _state.tl_extra_backend_module = importlib.import_module(module_str)
 
 def get_tl_extra_backend_module():
     return _state.tl_extra_backend_module

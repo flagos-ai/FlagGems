@@ -1,4 +1,4 @@
-__all__ = ["any", "any_dim", "any_dims"]
+# __all__ = ["any", "any_dim", "any_dims"]
 from .all import all, all_dim, all_dims
 from .abs import abs, abs_
 from .add import add, add_
@@ -110,6 +110,7 @@ from .max import max, max_dim
 from .maximum import maximum
 from .max_pool2d_with_indices import max_pool2d_with_indices, max_pool2d_backward
 from .mean import mean_dim
+from .min import min, min_dim
 from .minimum import minimum
 from .mm import mm
 from .mse_loss import mse_loss
@@ -248,6 +249,8 @@ __all__ = [
     "pow_tensor_scalar_",
     "pow_scalar",
     "maximum",
+    "min",
+    "min_dim",
     "minimum",
     "sub",
     "sub_",
