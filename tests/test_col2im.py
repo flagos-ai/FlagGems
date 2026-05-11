@@ -22,7 +22,7 @@ if QUICK_MODE:
 @pytest.mark.col2im
 @pytest.mark.parametrize("config", COL2IM_CONFIGS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_col2im(config, dtype):
+def test_col2im(config, dtype):
     batch, channels, kernel_size, output_size, stride, padding, dilation = config
     kernel_h, kernel_w = kernel_size
     output_h, output_w = output_size
