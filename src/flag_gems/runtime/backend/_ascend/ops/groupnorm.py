@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -29,7 +29,7 @@ def group_norm_backward_kernel(
     BLOCK_GROUP_SIZE: tl.constexpr,
     BLOCK_HW_SIZE: tl.constexpr = 128,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     group = pid % num_groups
     num_elements = group_size * HW
 
@@ -96,7 +96,7 @@ def weight_bias_backward_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_HW: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     group = pid // group_size
     n_offset = tl.arange(0, BLOCK_N)
     mr_mask = n_offset < N

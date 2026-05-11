@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 MAX_BLOCK_SIZE_N = 16384
@@ -28,7 +28,7 @@ def fused_add_rms_norm_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     X += (pid * BLOCK_SIZE_M - 1) * x_stride_r
     R += (pid * BLOCK_SIZE_M - 1) * r_stride_r
     for i in range(BLOCK_SIZE_M):

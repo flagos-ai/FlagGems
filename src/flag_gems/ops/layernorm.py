@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def layer_norm_persistent_kernel(
 ):
     # using 1d tile makes code clean
     # Map the program id to the row of X and Y it should compute.
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
 
     n_offsets = tl.arange(0, TILE_N)
     mask = n_offsets < N
@@ -88,7 +88,7 @@ def layer_norm_persistent_kernel_multiline(
     TILE_N: tl.constexpr,
 ):
     # Map the program id to the row of X and Y it should compute.
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     m_offsets = pid * TILE_M + tl.arange(0, TILE_M)
     m_mask = m_offsets < M
 
@@ -141,7 +141,7 @@ def layer_norm_loop_kernel(
     TILE_N: tl.constexpr,
 ):
     # Map the program id to the row of X and Y it should compute.
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
 
     # Compute mean
     m = tl.zeros((TILE_N,), dtype=tl.float32)  # mean
@@ -237,7 +237,7 @@ def layer_norm_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0) * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
+    pid = ext.program_id(0) * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
     row_mask = pid < M
     dY += pid * N
     X += pid * N
@@ -305,7 +305,7 @@ def weight_bias_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)
+    pid = ext.program_id(0) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)
     col_mask = pid < N
     dY += pid[None, :]
     X += pid[None, :]

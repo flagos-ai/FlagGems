@@ -61,7 +61,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems.utils.shape_utils import volume")
     code.writeline("from flag_gems.utils.libentry import libentry")
     code.writeline("from flag_gems.utils.type_utils import type_promotion")
-    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+    code.writeline("from flag_gems.utils import triton_lang_extension as ext")
     code.newline()
     code.newline()
     return code
@@ -77,7 +77,7 @@ def gcu_generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems.utils.shape_utils import volume")
     code.writeline("from flag_gems.utils.libentry import libentry")
     code.writeline("from flag_gems.utils.type_utils import type_promotion")
-    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+    code.writeline("from flag_gems.utils import triton_lang_extension as ext")
     code.writeline("from flag_gems.utils.shape_utils import (")
     code.writeline("    heuristics_for_tile_size,")
     code.writeline(")")

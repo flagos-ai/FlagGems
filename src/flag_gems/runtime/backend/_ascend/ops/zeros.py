@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.shape_utils import volume
 
 device_ = device
@@ -19,7 +19,7 @@ def zeros_kernel(
     BLOCK_SIZE: tl.constexpr,
     BLOCK_SIZE_SUB: tl.constexpr,
 ):
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
 
     for sub_block_start_idx in range(0, BLOCK_SIZE, BLOCK_SIZE_SUB):
         sub_offset = (

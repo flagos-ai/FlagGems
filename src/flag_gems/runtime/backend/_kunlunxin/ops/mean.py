@@ -8,7 +8,7 @@ import triton.language as tl
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
 
@@ -77,7 +77,7 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
       kernelConsts[4] = BLOCK_M (constexpr), kernelConsts[5] = BLOCK_N (constexpr)
     """
     # Map the program id to the row of X it should compute.
-    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Mean = Mean + pid
     row_mask = pid < M

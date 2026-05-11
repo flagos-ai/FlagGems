@@ -8,7 +8,7 @@ from flag_gems import runtime
 from flag_gems.ops.mm_streamk import streamk_mm
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.device_info import get_device_capability, get_sm_count
 
 CACHE_USAGE_THRESHOLD = 0.8
@@ -52,7 +52,7 @@ def mm_kernel_general(
     IS_FP64: tl.constexpr = False,
 ):
     # matrix multiplication
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
     # re-order program ID for better L2 performance

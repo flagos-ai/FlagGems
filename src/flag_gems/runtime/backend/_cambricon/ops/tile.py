@@ -68,7 +68,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems.runtime.backend import _state")
     code.writeline("MAX_GRID_SIZE_X = _state.vendor_module.MAX_GRID_SIZE_X")
     code.writeline("from flag_gems.utils.type_utils import type_promotion")
-    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+    code.writeline("from flag_gems.utils import triton_lang_extension as ext")
     code.newline()
     code.newline()
     return code

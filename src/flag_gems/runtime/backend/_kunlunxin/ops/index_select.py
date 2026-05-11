@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -24,8 +24,8 @@ def index_select_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid_x = tle.program_id(axis=0)
-    pid_y = tle.program_id(axis=1)
+    pid_x = ext.program_id(axis=0)
+    pid_y = ext.program_id(axis=1)
     rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     rows_mask = rows_offsets < M
     cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)

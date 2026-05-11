@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, tl_extra_shim
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 pow = tl_extra_shim.pow
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 @triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = ext.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
     row_mask = pid < M
@@ -40,7 +40,7 @@ def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 @libentry()
 @triton.jit
 def l2_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
-    pid = tle.program_id(0).to(tl.int64)
+    pid = ext.program_id(0).to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     X = X + offset
     Mid = Mid + pid
@@ -66,7 +66,7 @@ def l2_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 @triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = ext.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
     row_mask = pid < M
@@ -88,7 +88,7 @@ def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 @libentry()
 @triton.jit
 def max_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
-    pid = tle.program_id(0).to(tl.int64)
+    pid = ext.program_id(0).to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     X = X + offset
     Mid = Mid + pid
@@ -114,7 +114,7 @@ def max_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 @triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = ext.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
     row_mask = pid < M
@@ -136,7 +136,7 @@ def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 @libentry()
 @triton.jit
 def min_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
-    pid = tle.program_id(0).to(tl.int64)
+    pid = ext.program_id(0).to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     X = X + offset
     Mid = Mid + pid
@@ -162,7 +162,7 @@ def min_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 @triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
     row_mask = pid < M
@@ -183,7 +183,7 @@ def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 @libentry()
 @triton.jit
 def l0_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
-    pid = tle.program_id(0).to(tl.int64)
+    pid = ext.program_id(0).to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     X = X + offset
     Mid = Mid + pid
@@ -210,7 +210,7 @@ def l0_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 @triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit(do_not_specialize=["ord"])
 def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = ext.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
     row_mask = pid < M
@@ -231,7 +231,7 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
 @libentry()
 @triton.jit(do_not_specialize=["ord"])
 def l1_norm_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr):
-    pid = tle.program_id(0).to(tl.int64)
+    pid = ext.program_id(0).to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     X = X + offset
     Mid = Mid + pid

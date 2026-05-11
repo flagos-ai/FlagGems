@@ -8,7 +8,7 @@ import triton.language as tl
 from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import libentry, libtuner
-from ..utils import triton_lang_extension as tle
+from ..utils import triton_lang_extension as ext
 from .bmm import bmm
 from .mul import mul
 
@@ -52,20 +52,20 @@ def baddbmm_kernel(
     IS_FP64: tl.constexpr = False,
 ):
     # batch offsets
-    pid_b = tle.program_id(2)
+    pid_b = ext.program_id(2)
     A += pid_b * M * K
     B += pid_b * K * N
     O += pid_b * M * N
     bias += pid_b * bias_batch_stride
 
-    pidx = tle.program_id(0)
-    pidy = tle.program_id(1)
+    pidx = ext.program_id(0)
+    pidy = ext.program_id(1)
 
     if GROUP_M == 1:
         pid_m, pid_n = pidx, pidy
     else:
-        gridx = tle.num_programs(0)
-        gridy = tle.num_programs(1)
+        gridx = ext.num_programs(0)
+        gridy = ext.num_programs(1)
         pid = pidx + pidy * gridx
         num_CTA_per_group = gridy * GROUP_M
         group_id = pid // num_CTA_per_group

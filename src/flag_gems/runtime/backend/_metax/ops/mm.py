@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems." + __name__)
 
@@ -73,8 +73,8 @@ def mm_kernel(
 ):
     # matrix multiplication
     if UPGRADE:
-        pid = tle.program_id(0)
-        pid_z = tle.program_id(1)
+        pid = ext.program_id(0)
+        pid_z = ext.program_id(1)
     else:
         pid = tl.program_id(0)
         pid_z = tl.program_id(1)

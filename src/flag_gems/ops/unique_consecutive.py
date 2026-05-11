@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
 
 logger = logging.getLogger(__name__)
@@ -97,8 +97,8 @@ def output_counts_kernel(
     tiles_per_cta: int,
     tile_size: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    ctas_num = tle.num_programs(0)
+    pid = ext.program_id(0)
+    ctas_num = ext.num_programs(0)
     for j in range(0, tiles_per_cta):
         global_pid = pid + j * ctas_num
         output_counts_impl(
@@ -154,8 +154,8 @@ def local_ne_consecutive_kernel(
     tiles_per_cta: int,
     tile_size: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    ctas_num = tle.num_programs(0)
+    pid = ext.program_id(0)
+    ctas_num = ext.num_programs(0)
     for j in range(0, tiles_per_cta):
         global_pid = pid + j * ctas_num
         local_ne_consecutive_impl(
@@ -260,8 +260,8 @@ def global_cumsum_consecutive_kernel(
     return_inverse: tl.constexpr,
     return_counts: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    ctas_num = tle.num_programs(0)
+    pid = ext.program_id(0)
+    ctas_num = ext.num_programs(0)
     if one_tile_per_cta:
         global_cumsum_consecutive_impl(
             pid,

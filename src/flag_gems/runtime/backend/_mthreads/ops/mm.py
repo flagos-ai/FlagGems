@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 from .utils import create_tma_device_descriptor, get_cached_tma_device_descriptor
 
@@ -85,7 +85,7 @@ def mm_kernel(
     GROUP_M: tl.constexpr,
 ):
     # matrix multiplication
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
     # re-order program ID for better L2 performance
@@ -165,7 +165,7 @@ def gemv_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_K: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
 
     row_start = pid * BLOCK_M
     row_offset = row_start + tl.arange(0, BLOCK_M)
@@ -378,7 +378,7 @@ def mm_sqmma_kernel(
     is_transpose_a: tl.constexpr = False,
     is_transpose_b: tl.constexpr = False,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
     width = GROUP_M * grid_n

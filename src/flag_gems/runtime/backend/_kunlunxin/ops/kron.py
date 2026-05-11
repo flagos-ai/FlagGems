@@ -6,7 +6,7 @@ import triton.language as tl
 
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 
 def prepare_tensor_for_kron(tensor_a, tensor_b):
@@ -102,7 +102,7 @@ def kron_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     num_blocks_n = tl.cdiv(N, BLOCK_N)
     num_blocks_m = tl.cdiv(M, BLOCK_M)
     num_blocks_per_batch = num_blocks_m * num_blocks_n

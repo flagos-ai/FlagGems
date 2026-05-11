@@ -510,7 +510,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_with_bptr(self, code):
-        code.writeline("num_ctas = tle.num_programs(0)")
+        code.writeline("num_ctas = ext.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -586,7 +586,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_without_bptr(self, code):
-        code.writeline("num_ctas = tle.num_programs(0)")
+        code.writeline("num_ctas = ext.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -605,7 +605,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tle.program_id(0)")
+            code.writeline("pid = ext.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -631,7 +631,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tle.program_id(0)")
+            code.writeline("pid = ext.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -705,7 +705,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_1d_tile(self, code):
-        code.writeline("num_ctas = tle.num_programs(0)")
+        code.writeline("num_ctas = ext.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -724,7 +724,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tle.program_id(0)")
+            code.writeline("pid = ext.program_id(0)")
             # code.writeline("num_ctas = te.num_programs(0)")
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -1065,7 +1065,7 @@ class ModuleGenerator:
         code.writeline(")")
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
         code.writeline("from flag_gems.utils.libentry import libentry")
-        code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+        code.writeline("from flag_gems.utils import triton_lang_extension as ext")
         code.writeline("from flag_gems.runtime import torch_device_fn")
         code.newline()
         code.newline()

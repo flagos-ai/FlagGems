@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -39,7 +39,7 @@ def moe_sum_kernel(
     - Reduced loop overhead for small topk
     - Vectorized accumulation pattern
     """
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
 
     # Task partition
     num_hidden_blocks = tl.cdiv(hidden_size, BLOCK_SIZE)
@@ -123,7 +123,7 @@ def moe_sum_kernel_topk2(
     BLOCK_SIZE_SUB: tl.constexpr,
 ):
     """Specialized kernel for topk=2 with fully unrolled expert loop."""
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
 
     num_hidden_blocks = tl.cdiv(hidden_size, BLOCK_SIZE)
     token_idx = pid // num_hidden_blocks

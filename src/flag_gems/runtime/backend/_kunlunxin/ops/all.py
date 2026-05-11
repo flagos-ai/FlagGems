@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -71,7 +71,7 @@ def all_kernel_dim(
     BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of inp it should compute.
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + rows * N
     out = out + rows
