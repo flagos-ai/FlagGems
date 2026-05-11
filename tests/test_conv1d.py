@@ -28,7 +28,7 @@ SHAPE_CONV1D_DILATION = [
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_conv1d(monkeypatch, shape, kernel, stride, padding, dtype):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)
@@ -45,14 +45,14 @@ def test_conv1d(monkeypatch, shape, kernel, stride, padding, dtype):
 
 
 @pytest.mark.conv1d_padding
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Issue #3022")
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV1D)
 @pytest.mark.parametrize("stride", [1])
 @pytest.mark.parametrize("padding", ["valid", "same"])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dtype):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)

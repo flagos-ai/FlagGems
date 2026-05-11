@@ -10,6 +10,10 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.fused.mhc.hc_head_fused_kernel import (
+    hc_head_fused_kernel,
+    hc_head_fused_kernel_ref,
+)
 from flag_gems.fused.mhc.hc_split_sinkhorn import (
     hc_split_sinkhorn,
     mhc_split_sinkhorn_torch_ref,
@@ -214,3 +218,74 @@ def test_mhc_bwd_vs_ref(seqlen, n_stream, sinkhorn_iters):
     out_ref = mhc_bwd_ref(R.cpu(), dR.cpu())
 
     torch.testing.assert_close(out_triton.cpu(), out_ref, rtol=1e-4, atol=1e-4)
+
+
+MHC_HC_HEAD_FUSED_CONFIGS = [
+    (256, 1280, 2),
+    (256, 1280, 4),
+    (512, 1280, 2),
+    (512, 1280, 4),
+    (512, 2560, 2),
+    (512, 2560, 4),
+    (1024, 2560, 2),
+    (1024, 2560, 4),
+    (2048, 4096, 2),
+    (2048, 4096, 4),
+    (4096, 1280, 2),
+    (4096, 1280, 4),
+]
+
+
+def generate_hc_head_fused_data(
+    n: int,
+    hidden_size: int,
+    hc_mult: int,
+    dtype: torch.dtype,
+    device: str = flag_gems.device,
+):
+    torch.manual_seed(42)
+    hs_flat = torch.randn((n, hc_mult, hidden_size), dtype=dtype, device=device)
+    fn = torch.randn(
+        (hc_mult, hc_mult * hidden_size), dtype=torch.float32, device=device
+    )
+    hc_scale = torch.randn((1,), dtype=torch.float32, device=device) * 0.1
+    hc_base = torch.randn((hc_mult,), dtype=torch.float32, device=device) * 0.1
+    out = torch.empty((n, hidden_size), dtype=dtype, device=device)
+    return dict(
+        hs_flat=hs_flat,
+        fn=fn,
+        hc_scale=hc_scale,
+        hc_base=hc_base,
+        out=out,
+        hidden_size=hidden_size,
+        rms_eps=1e-6,
+        hc_eps=1e-6,
+        hc_mult=hc_mult,
+    )
+
+
+@pytest.mark.hc_head_fused_kernel
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.float32, torch.float16, torch.bfloat16],
+    ids=["fp32", "fp16", "bf16"],
+)
+@pytest.mark.parametrize(
+    "n, hidden_size, hc_mult",
+    MHC_HC_HEAD_FUSED_CONFIGS,
+    ids=[f"n{n}_h{h}_hc{hc}" for n, h, hc in MHC_HC_HEAD_FUSED_CONFIGS],
+)
+def test_hc_head_fused_kernel_vs_ref(n, hidden_size, hc_mult, dtype):
+    data = generate_hc_head_fused_data(n, hidden_size, hc_mult, dtype=dtype)
+    data_ref = generate_hc_head_fused_data(n, hidden_size, hc_mult, dtype=dtype)
+
+    tol_map = {
+        torch.float32: (1e-4, 1e-4),
+        torch.float16: (2e-2, 2e-2),
+        torch.bfloat16: (2e-2, 2e-2),
+    }
+    rtol, atol = tol_map[dtype]
+
+    out_triton = hc_head_fused_kernel(**data)
+    out_ref = hc_head_fused_kernel_ref(**data_ref)
+    torch.testing.assert_close(out_triton, out_ref, rtol=rtol, atol=atol)

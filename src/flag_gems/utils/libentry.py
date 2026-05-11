@@ -451,6 +451,8 @@ class LibTuner(triton.runtime.Autotuner):
         return decorator
 
     def run(self, *args, **kwargs):
+        if hasattr(self, "seen_tuned_metas"):
+            self.seen_tuned_metas = {}  # flagtree aabs: deduplicate tuned meta
         # `arg_names` corresponds to the arguments of the `JITFunction`'s signature,
         # so please make sure the orders of `arg_names` and `args` match.
         self.nargs = dict(zip(self.arg_names, args))
@@ -505,8 +507,13 @@ class LibTuner(triton.runtime.Autotuner):
                 f"Triton autotuning for function {self.base_fn.__name__} finished after "
                 f"{self.bench_time:.2f}s; key info: {key}, best config selected: {self.best_config};"
             )
-        if config.pre_hook is not None:
-            full_nargs = {**self.nargs, **kwargs, **config.all_kwargs()}
+        full_nargs = {**self.nargs, **kwargs, **config.all_kwargs()}
+        if (
+            hasattr(self, "shared_config_pre_hook")
+            and self.shared_config_pre_hook is not None
+        ):
+            self.shared_config_pre_hook(full_nargs)
+        elif config.pre_hook is not None:
             config.pre_hook(full_nargs)
         ret = self.fn.run(
             *args,
@@ -530,6 +537,10 @@ def log2_strategy(key: Union[int, float]) -> float:
 
 @LibTuner.register_strategy("align32")
 def align32_strategy(key: Union[int, float]) -> int:
+    if key == 0:
+        return 0
+    if key < 32:
+        return 2 ** math.ceil(math.log2(key))
     return math.ceil(key / 32) * 32
 
 
