@@ -171,6 +171,8 @@ _FULL_CONFIG = (
     ("count_nonzero", count_nonzero),
     ("cummax", cummax),
     ("cummin", cummin),
+    ("cumprod", cumprod),
+    ("cumprod_", cumprod_),
     ("cumsum", cumsum),
     ("cumsum.out", cumsum_out),
     ("diag", diag),
