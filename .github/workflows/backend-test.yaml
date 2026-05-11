@@ -51,19 +51,12 @@ jobs:
         op-test-${{ inputs.vendor }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
-      # - name: Set global proxy
-      #   shell: bash
-      #   env:
-      #     RUNNER_LABEL: ${{ inputs.runner_label }}
-      #     PROXY: ${{ secrets.PROXYG }}
-      #   run: |
-      #     if [[ "${RUNNER_LABEL}" != "h20" ]]; then
-      #       echo "HTTP_PROXY=${PROXY}" >> $GITHUB_ENV
-      #       echo "HTTPS_PROXY=${PROXY}" >> $GITHUB_ENV
-      #     fi
-      - uses: actions/checkout@v6
-      #   with:
-      #     ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
+      - uses: Wandalen/wretry.action@v3.8.0
+        with:
+          action: actions/checkout@v6
+          attempt_limit: 5
+          # with:
+          # ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
       - name: Setup FlagGems
         shell: bash
         env:

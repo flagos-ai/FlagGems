@@ -155,6 +155,7 @@ from flag_gems.ops.gt import gt, gt_scalar
 from flag_gems.ops.hadamard_transform import hadamard_transform
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
 from flag_gems.ops.hardswish_ import hardswish_
+from flag_gems.ops.histc import histc
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.i0 import i0, i0_out
@@ -194,6 +195,7 @@ from flag_gems.ops.logical_xor import logical_xor
 from flag_gems.ops.logit import logit, logit_out
 from flag_gems.ops.logit_ import logit_
 from flag_gems.ops.logspace import logspace
+from flag_gems.ops.logsumexp import logsumexp
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.margin_ranking_loss import margin_ranking_loss
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
@@ -229,6 +231,7 @@ from flag_gems.ops.nllloss import (
     nll_loss_forward,
 )
 from flag_gems.ops.nonzero import nonzero
+from flag_gems.ops.nonzero_numpy import nonzero_numpy
 from flag_gems.ops.normal import (
     normal_,
     normal_float_tensor,
@@ -553,6 +556,7 @@ __all__ = [
     "hardsigmoid",
     "hardsigmoid_out",
     "hardswish_",
+    "histc",
     "hstack",
     "hypot",
     "hypot_out",
@@ -609,6 +613,7 @@ __all__ = [
     "logit_out",
     "logit_",
     "logspace",
+    "logsumexp",
     "lt",
     "lt_scalar",
     "margin_ranking_loss",
@@ -649,6 +654,7 @@ __all__ = [
     "nll_loss_nd_forward",
     "nll_loss_nd_backward",
     "nonzero",
+    "nonzero_numpy",
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
