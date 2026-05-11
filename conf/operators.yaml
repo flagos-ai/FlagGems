@@ -1365,6 +1365,28 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: cumprod
+    description: Returns the cumulative product of elements of `input` in the dimension `dim`.
+    for:
+      - cumprod
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: cumprod_
+    description: This is the in-place version of `cumprod()`.
+    for:
+      - cumprod_
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: cumsum
     destination: Returns the cumulative sum of elements of `input` in the dimension `dim`.
     for:

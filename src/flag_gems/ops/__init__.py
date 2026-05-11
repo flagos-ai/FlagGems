@@ -91,6 +91,7 @@ from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
+from flag_gems.ops.cumprod import cumprod, cumprod_
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
@@ -109,7 +110,6 @@ from flag_gems.ops.div import (
 )
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
-from flag_gems.ops.einsum import einsum
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
@@ -482,6 +482,8 @@ __all__ = [
     "count_nonzero",
     "cummax",
     "cummin",
+    "cumprod",
+    "cumprod_",
     "cumsum",
     "cumsum_out",
     "conj_physical",
@@ -494,7 +496,6 @@ __all__ = [
     "dot",
     "dropout",
     "dropout_backward",
-    "einsum",
     "elu",
     "elu_",
     "elu_backward",
