@@ -294,6 +294,7 @@ class LibTuner(triton.runtime.Autotuner):
                         )
 
                 elif warmup is not None or rep is not None:
+
                     def do_bench(kernel_call, quantiles):
                         return triton.testing.do_bench(
                             kernel_call,

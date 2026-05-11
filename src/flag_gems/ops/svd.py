@@ -44,10 +44,7 @@ def _svd_shape(input):
 
 
 def _should_guard_gram_spectrum(batch, k):
-    return (
-        batch <= _GRAM_CONDITION_GUARD_MAX_BATCH
-        and k <= _GRAM_CONDITION_GUARD_MAX_K
-    )
+    return batch <= _GRAM_CONDITION_GUARD_MAX_BATCH and k <= _GRAM_CONDITION_GUARD_MAX_K
 
 
 def _gram_spectrum_needs_fallback(vals):
@@ -92,13 +89,7 @@ def _can_use_2x2_kernel(input):
 
 def _can_use_4x4_kernel(input, some=True, compute_uv=True):
     _, m, n = _svd_shape(input)
-    return (
-        _is_float32_cuda_matrix(input)
-        and some
-        and compute_uv
-        and m == 4
-        and n == 4
-    )
+    return _is_float32_cuda_matrix(input) and some and compute_uv and m == 4 and n == 4
 
 
 def _can_use_small_jacobi_kernel(input, some=True, compute_uv=True):
@@ -229,12 +220,7 @@ def _can_use_streaming_jacobi_kernel(input, some=True, compute_uv=True):
 
 def _can_use_gram_eigh_kernel(input, some=True, compute_uv=True):
     _, m, n = _svd_shape(input)
-    return (
-        _is_float32_cuda_matrix(input)
-        and some
-        and compute_uv
-        and min(m, n) <= 1024
-    )
+    return _is_float32_cuda_matrix(input) and some and compute_uv and min(m, n) <= 1024
 
 
 @triton.jit
@@ -303,17 +289,9 @@ def _small4_square_svd_kernel(
     s1 = tl.sqrt(tl.sum(c1 * c1, axis=1))
     s2 = tl.sqrt(tl.sum(c2 * c2, axis=1))
     s3 = tl.sqrt(tl.sum(c3 * c3, axis=1))
-    r0 = ((s1 > s0).to(tl.int32) + (s2 > s0).to(tl.int32) + (s3 > s0).to(tl.int32))
-    r1 = (
-        ((s0 >= s1).to(tl.int32))
-        + (s2 > s1).to(tl.int32)
-        + (s3 > s1).to(tl.int32)
-    )
-    r2 = (
-        ((s0 >= s2).to(tl.int32))
-        + ((s1 >= s2).to(tl.int32))
-        + (s3 > s2).to(tl.int32)
-    )
+    r0 = (s1 > s0).to(tl.int32) + (s2 > s0).to(tl.int32) + (s3 > s0).to(tl.int32)
+    r1 = ((s0 >= s1).to(tl.int32)) + (s2 > s1).to(tl.int32) + (s3 > s1).to(tl.int32)
+    r2 = ((s0 >= s2).to(tl.int32)) + ((s1 >= s2).to(tl.int32)) + (s3 > s2).to(tl.int32)
     r3 = (
         ((s0 >= s3).to(tl.int32))
         + ((s1 >= s3).to(tl.int32))
@@ -326,10 +304,26 @@ def _small4_square_svd_kernel(
     tl.store(S + b * 4 + r2, s2, mask=mask)
     tl.store(S + b * 4 + r3, s3, mask=mask)
 
-    tl.store(U + bb * 16 + rr * 4 + r0[:, None], c0 / tl.maximum(s0[:, None], eps), mask=full_mask)
-    tl.store(U + bb * 16 + rr * 4 + r1[:, None], c1 / tl.maximum(s1[:, None], eps), mask=full_mask)
-    tl.store(U + bb * 16 + rr * 4 + r2[:, None], c2 / tl.maximum(s2[:, None], eps), mask=full_mask)
-    tl.store(U + bb * 16 + rr * 4 + r3[:, None], c3 / tl.maximum(s3[:, None], eps), mask=full_mask)
+    tl.store(
+        U + bb * 16 + rr * 4 + r0[:, None],
+        c0 / tl.maximum(s0[:, None], eps),
+        mask=full_mask,
+    )
+    tl.store(
+        U + bb * 16 + rr * 4 + r1[:, None],
+        c1 / tl.maximum(s1[:, None], eps),
+        mask=full_mask,
+    )
+    tl.store(
+        U + bb * 16 + rr * 4 + r2[:, None],
+        c2 / tl.maximum(s2[:, None], eps),
+        mask=full_mask,
+    )
+    tl.store(
+        U + bb * 16 + rr * 4 + r3[:, None],
+        c3 / tl.maximum(s3[:, None], eps),
+        mask=full_mask,
+    )
 
     tl.store(V + bb * 16 + rr * 4 + r0[:, None], v0, mask=full_mask)
     tl.store(V + bb * 16 + rr * 4 + r1[:, None], v1, mask=full_mask)
@@ -630,9 +624,9 @@ def _gram_svd(input):
         at_3d = a.transpose(-2, -1).reshape(batch, n, m)
         gram = _aten_bmm(at_3d, a_3d, (*a.shape[:-2], n, n))
         vals, v = torch.linalg.eigh(gram)
-        if _should_guard_gram_spectrum(
-            batch, n
-        ) and _gram_spectrum_needs_fallback(vals):
+        if _should_guard_gram_spectrum(batch, n) and _gram_spectrum_needs_fallback(
+            vals
+        ):
             return _fallback_svd(input, True, True)
         vals = vals.flip(-1).clamp_min_(0.0)
         v = v.flip(-1)
@@ -648,9 +642,7 @@ def _gram_svd(input):
     at_3d = a.transpose(-2, -1).reshape(batch, n, m)
     gram = _aten_bmm(a_3d, at_3d, (*a.shape[:-2], m, m))
     vals, u = torch.linalg.eigh(gram)
-    if _should_guard_gram_spectrum(batch, m) and _gram_spectrum_needs_fallback(
-        vals
-    ):
+    if _should_guard_gram_spectrum(batch, m) and _gram_spectrum_needs_fallback(vals):
         return _fallback_svd(input, True, True)
     vals = vals.flip(-1).clamp_min_(0.0)
     u = u.flip(-1)
@@ -659,7 +651,9 @@ def _gram_svd(input):
         at_3d,
         u.reshape(batch, m, m),
         (*a.shape[:-2], n, m),
-    ) / s.clamp_min(finfo.eps).unsqueeze(-2)
+    ) / s.clamp_min(
+        finfo.eps
+    ).unsqueeze(-2)
     return u, s, v
 
 
@@ -765,9 +759,7 @@ def _gram16_svd(input):
         at_3d = a.transpose(-2, -1).reshape(batch, n, m)
         gram = _aten_bmm(a, at_3d, (batch, m, m))
     vals, basis = torch.linalg.eigh(gram)
-    if _should_guard_gram_spectrum(batch, 16) and _gram_spectrum_needs_fallback(
-        vals
-    ):
+    if _should_guard_gram_spectrum(batch, 16) and _gram_spectrum_needs_fallback(vals):
         return _fallback_svd(input, True, True)
 
     block_r = 64 if m >= n else 128
@@ -797,7 +789,9 @@ def _gram16_svd(input):
 
 
 def _gesvda_svd(input):
-    u, s, vh = torch.linalg.svd(input.contiguous(), full_matrices=False, driver="gesvda")
+    u, s, vh = torch.linalg.svd(
+        input.contiguous(), full_matrices=False, driver="gesvda"
+    )
     return u, s, vh.mH
 
 

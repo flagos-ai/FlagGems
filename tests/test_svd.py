@@ -5,7 +5,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 FAST_SHAPES = [(2, 2), (8, 2), (2, 8), (16, 8), (8, 16), (64, 32), (32, 64)]
 FALLBACK_SHAPES = [(5, 3), (3, 5), (2, 4, 4)]
 
@@ -15,14 +14,10 @@ def _make_spectrum_input(shape, singular_values, seed=0):
     *batch_shape, m, n = shape
     k = min(m, n)
     left, _ = torch.linalg.qr(
-        torch.randn(
-            (*batch_shape, m, m), dtype=torch.float32, device=flag_gems.device
-        )
+        torch.randn((*batch_shape, m, m), dtype=torch.float32, device=flag_gems.device)
     )
     right, _ = torch.linalg.qr(
-        torch.randn(
-            (*batch_shape, n, n), dtype=torch.float32, device=flag_gems.device
-        )
+        torch.randn((*batch_shape, n, n), dtype=torch.float32, device=flag_gems.device)
     )
     sigma = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
     diag = torch.as_tensor(
