@@ -43,7 +43,7 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - uses: Wandalen/wretry.action@v3.8.0
+      - uses: Wandalen/wretry.action/main@v3.8.0
         with:
           action: actions/checkout@v6
           attempt_limit: 5
