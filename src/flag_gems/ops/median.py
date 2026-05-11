@@ -283,10 +283,10 @@ def median_f16_key_select_kernel(
     first_nan = tl.argmax(nan_i32, axis=0)
     nan_value = tl.load(base + first_nan, mask=has_nan, other=0.0)
 
-    keys = _f16_order_key(data)
+    keys = _f16_order_key(data).to(tl.uint32)
     finite = valid & ~nan_mask
-    key_min_fill = tl.full((), 0xFFFF, dtype=tl.uint16)
-    key_max_fill = tl.full((), 0, dtype=tl.uint16)
+    key_min_fill = tl.full((), 0xFFFF, dtype=tl.uint32)
+    key_max_fill = tl.full((), 0, dtype=tl.uint32)
     row_min = tl.min(tl.where(finite, keys, key_min_fill), axis=0)
     row_max = tl.max(tl.where(finite, keys, key_max_fill), axis=0)
 
@@ -399,10 +399,10 @@ def median_f16_strided_key_select_kernel(
         other=0.0,
     )
 
-    keys = _f16_order_key(data)
+    keys = _f16_order_key(data).to(tl.uint32)
     finite = valid & ~nan_mask
-    key_min_fill = tl.full((), 0xFFFF, dtype=tl.uint16)
-    key_max_fill = tl.full((), 0, dtype=tl.uint16)
+    key_min_fill = tl.full((), 0xFFFF, dtype=tl.uint32)
+    key_max_fill = tl.full((), 0, dtype=tl.uint32)
     row_min = tl.min(tl.where(finite, keys, key_min_fill), axis=1)
     row_max = tl.max(tl.where(finite, keys, key_max_fill), axis=1)
 
