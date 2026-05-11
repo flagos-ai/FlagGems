@@ -70,9 +70,7 @@ SHAPE_CUDNN_CONV1D = [
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_cudnn_convolution_1d(
-    shape, kernel, stride, padding, dtype, monkeypatch
-):
+def test_cudnn_convolution_1d(shape, kernel, stride, padding, dtype, monkeypatch):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
