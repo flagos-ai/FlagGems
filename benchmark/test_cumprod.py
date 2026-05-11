@@ -5,7 +5,7 @@ import flag_gems
 
 from . import base, consts
 
-CUMPROD_BOOL_DTYPES = [] if flag_gems.vendor_name == "ascend" else [torch.bool]
+CUMPROD_BOOL_DTYPES = [torch.bool]
 CUMPROD_DTYPES = (
     consts.FLOAT_DTYPES
     + CUMPROD_BOOL_DTYPES
