@@ -283,13 +283,12 @@ def get_unused_ops(vendor_name=None):
 
 def get_heuristic_config(vendor_name=None):
     config_name = "heuristics_config_utils"
-    default_backend = "nvidia"
-    for backend in (vendor_name, default_backend):
-        mod_name = f"_{backend}.{config_name}"
-        try:
-            _state.heuristic_config_module = importlib.import_module(mod_name)
-        except Exception:
-            continue
+    mod_name = f"_{vendor_name}.{config_name}"
+    try:
+        _state.heuristic_config_module = importlib.import_module(mod_name)
+    except Exception:
+        mod_name = f"_nvidia.{config_name}"
+        _state.heuristic_config_module = importlib.import_module(mod_name)
     return getattr(_state.heuristic_config_module, "HEURISTICS_CONFIGS", None)
 
 
