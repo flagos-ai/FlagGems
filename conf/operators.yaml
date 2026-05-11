@@ -920,7 +920,7 @@ ops:
     kind:
       - Distribution
     stages:
-      - beta: '5.1'
+      - beta: '1.0'
   - id: cauchy_
     description: Fills the tensor with numbers drawn from the Cauchy distribution.
     for:
@@ -930,7 +930,7 @@ ops:
     kind:
       - Distribution
     stages:
-      - beta: '5.1'
+      - beta: '1.0'
   - id: ceil
     description: |
       Returns a new tensor with the ceil of the elements of `input`, the smallest integer greater than
