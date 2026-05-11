@@ -283,27 +283,49 @@ def median_f16_key_select_kernel(
     first_nan = tl.argmax(nan_i32, axis=0)
     nan_value = tl.load(base + first_nan, mask=has_nan, other=0.0)
 
-    keys = _f16_order_key(data).to(tl.uint32)
     finite = valid & ~nan_mask
+    neg_inf_mask = finite & (data == -float("inf"))
+    pos_inf_mask = finite & (data == float("inf"))
+    real_finite = finite & ~(neg_inf_mask | pos_inf_mask)
+    neg_inf_count = tl.sum(neg_inf_mask.to(tl.int32), axis=0)
+    real_finite_count = tl.sum(real_finite.to(tl.int32), axis=0)
+
+    rank = (WIDTH - 1) // 2
+    search_rank = rank - neg_inf_count
+    take_neg_inf = rank < neg_inf_count
+    take_pos_inf = search_rank >= real_finite_count
+
+    keys = _f16_order_key(data).to(tl.uint32)
     key_min_fill = tl.full((), 0xFFFF, dtype=tl.uint32)
     key_max_fill = tl.full((), 0, dtype=tl.uint32)
-    row_min = tl.min(tl.where(finite, keys, key_min_fill), axis=0)
-    row_max = tl.max(tl.where(finite, keys, key_max_fill), axis=0)
+    row_min = tl.min(tl.where(real_finite, keys, key_min_fill), axis=0)
+    row_max = tl.max(tl.where(real_finite, keys, key_max_fill), axis=0)
+    has_real_finite = real_finite_count != 0
+    row_min = tl.where(has_real_finite, row_min, 0)
+    row_max = tl.where(has_real_finite, row_max, 0)
 
     lo = row_min
     hi = row_max
-    rank = (WIDTH - 1) // 2
     for _ in tl.static_range(0, 16):
         mid = lo + ((hi - lo) >> 1)
-        le_count = tl.sum((finite & (keys <= mid)).to(tl.int32), axis=0)
-        take_left = le_count > rank
+        le_count = tl.sum((real_finite & (keys <= mid)).to(tl.int32), axis=0)
+        take_left = le_count > search_rank
         hi = tl.where(take_left, mid, hi)
         lo = tl.where(take_left, lo, mid + 1)
 
     selected_key = lo
-    key_match = finite & (keys == selected_key)
+    key_match = real_finite & (keys == selected_key)
     selected_key_first = tl.argmax(key_match.to(tl.int32), axis=0)
     selected_value = tl.load(base + selected_key_first)
+
+    first_neg_inf = tl.argmax(neg_inf_mask.to(tl.int32), axis=0)
+    neg_inf_value = tl.load(base + first_neg_inf, mask=take_neg_inf, other=0.0)
+    first_pos_inf = tl.argmax(pos_inf_mask.to(tl.int32), axis=0)
+    pos_inf_value = tl.load(base + first_pos_inf, mask=take_pos_inf, other=0.0)
+    selected_value = tl.where(take_neg_inf, neg_inf_value, selected_value)
+    selected_value = tl.where(take_pos_inf, pos_inf_value, selected_value)
+    selected_key_first = tl.where(take_neg_inf, first_neg_inf, selected_key_first)
+    selected_key_first = tl.where(take_pos_inf, first_pos_inf, selected_key_first)
 
     selected_value = tl.where(has_nan, nan_value, selected_value)
     first_match = tl.where(has_nan, first_nan, selected_key_first)
