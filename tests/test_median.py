@@ -182,4 +182,22 @@ def test_median_n_equals_one(dtype):
         v, i = torch.median(x, dim=-1)
     torch.testing.assert_close(v, x.squeeze(-1))
     assert torch.all(i == 0)
+
+
 # Median operator test suite.
+
+
+# ---------------------------------------------------------------------------
+# Stress: very large matrices.
+# ---------------------------------------------------------------------------
+@pytest.mark.median
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_median_very_large(dtype):
+    """Multi-megabyte input — exercises stable sort throughput."""
+    for shape in [(2048, 2048), (4096, 4096), (1024, 16384)]:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref = utils.to_reference(inp, True)
+        ref_v, _ = torch.median(ref, dim=-1)
+        with flag_gems.use_gems():
+            res_v, _ = torch.median(inp, dim=-1)
+        utils.gems_assert_close(res_v, ref_v, dtype)
