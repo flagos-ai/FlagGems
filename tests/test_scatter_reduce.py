@@ -43,7 +43,7 @@ def _make_scatter_reduce_tensors(inp_shape, src_shape, dim, dtype):
     return inp, index, src
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two
 @pytest.mark.parametrize("inp_shape, src_shape", SCATTER_REDUCE_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("include_self", [True, False])
@@ -66,7 +66,7 @@ def test_scatter_reduce(inp_shape, src_shape, dim, include_self, reduce, dtype):
     _assert_scatter_reduce_result(res_out, ref_out, dtype)
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two_
 @pytest.mark.parametrize("inp_shape, src_shape", SCATTER_REDUCE_SHAPES[:1])
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("include_self", [True, False])
@@ -89,7 +89,7 @@ def test_scatter_reduce_(inp_shape, src_shape, dim, include_self, reduce, dtype)
     _assert_scatter_reduce_result(res_out, ref_out, dtype)
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two_out
 @pytest.mark.parametrize("inp_shape, src_shape", SCATTER_REDUCE_SHAPES[:1])
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("include_self", [True, False])
@@ -127,7 +127,7 @@ def test_scatter_reduce_out(inp_shape, src_shape, dim, include_self, reduce, dty
     _assert_scatter_reduce_result(out_tensor, ref_out_tensor, dtype)
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two
 @pytest.mark.parametrize("dim", [-1, -2, -3])
 @pytest.mark.parametrize("include_self", [True, False])
 @pytest.mark.parametrize("reduce", SCATTER_REDUCE_REDUCTIONS)
@@ -149,7 +149,7 @@ def test_scatter_reduce_negative_dim(dim, include_self, reduce, dtype):
     _assert_scatter_reduce_result(res_out, ref_out, dtype)
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two
 @pytest.mark.parametrize("dim", [3, -4])
 def test_scatter_reduce_invalid_dim(dim):
     inp, index, src = _make_scatter_reduce_tensors(
@@ -166,7 +166,7 @@ def test_scatter_reduce_invalid_dim(dim):
             torch.scatter_reduce(inp, dim, index, src, "sum")
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two
 @pytest.mark.parametrize("dim", [-1, 0])
 @pytest.mark.parametrize("include_self", [True, False])
 @pytest.mark.parametrize("reduce", SCATTER_REDUCE_REDUCTIONS)
@@ -194,7 +194,7 @@ def test_scatter_reduce_scalar(dim, include_self, reduce, dtype):
     _assert_scatter_reduce_result(res_out, ref_out, dtype)
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two_out
 @pytest.mark.parametrize("reduce", ["sum", "amax"])
 @pytest.mark.parametrize("include_self", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
@@ -255,7 +255,7 @@ def test_scatter_reduce_noncontiguous(reduce, include_self, dtype):
     _assert_scatter_reduce_result(out_tensor, ref_out_tensor, dtype)
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two
 @pytest.mark.parametrize("reduce", SCATTER_REDUCE_REDUCTIONS)
 @pytest.mark.parametrize("include_self", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
@@ -283,7 +283,7 @@ def test_scatter_reduce_empty_src(reduce, include_self, dtype):
     _assert_scatter_reduce_result(res_out, ref_out, dtype)
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two_out
 @pytest.mark.parametrize("reduce", SCATTER_REDUCE_REDUCTIONS)
 @pytest.mark.parametrize("include_self", [True, False])
 def test_scatter_reduce_special_values(reduce, include_self):
@@ -333,7 +333,7 @@ def test_scatter_reduce_special_values(reduce, include_self):
     _assert_scatter_reduce_result(out_tensor, ref_out_tensor, dtype, equal_nan=True)
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two_out
 @pytest.mark.parametrize("reduce", SCATTER_REDUCE_REDUCTIONS)
 @pytest.mark.parametrize("include_self", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
@@ -371,7 +371,7 @@ def test_scatter_reduce_empty_self_out(reduce, include_self, dtype):
     _assert_scatter_reduce_result(out_tensor, ref_out_tensor, dtype)
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two_out
 @pytest.mark.parametrize("reduce", SCATTER_REDUCE_REDUCTIONS)
 @pytest.mark.parametrize("include_self", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
@@ -406,7 +406,7 @@ def test_scatter_reduce_out_alias_input(reduce, include_self, dtype):
     _assert_scatter_reduce_result(inp, ref_inp, dtype)
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two
 @pytest.mark.parametrize(
     "case",
     [

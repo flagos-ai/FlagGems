@@ -4860,6 +4860,31 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: scatter_reduce_two
+    description: |
+      Writes all values from the tensor `src` into the input tensor at the indices
+      specified in the `index` tensor, with the reduction operation and include_self
+      behavior specified separately.
+    for:
+      - scatter_reduce.two
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
+  - id: scatter_reduce_two_out
+    description: This is the out variant of `scatter_reduce.two`.
+    for:
+      - scatter_reduce.two_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
   - id: scatter_reduce_
     description: This is the in-place version of `scatter_reduce()`.
     for:
