@@ -5,6 +5,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+vendor_name = flag_gems.vendor_name
 SHAPE_CONV3D = [
     ((1, 2, 5, 5, 5), (1, 2, 3, 3, 3), 1),
     ((2, 3, 9, 9, 9), (1, 3, 3, 3, 3), 1),
@@ -34,7 +35,7 @@ SHAPE_CONV3D = [
 def test_conv3d(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+    if vendor_name == "mthreads" and dtype == torch.float16:
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
@@ -77,7 +78,7 @@ def test_conv3d(
 
 
 @pytest.mark.conv3d_padding
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #3023")
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV3D)
 @pytest.mark.parametrize("stride", [1])
 @pytest.mark.parametrize("padding", ["valid", "same"])
@@ -87,7 +88,7 @@ def test_conv3d(
 def test_conv3d_padding(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+    if vendor_name == "mthreads" and dtype == torch.float16:
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)

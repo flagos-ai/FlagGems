@@ -42,9 +42,6 @@ def test_all(shape, dtype, kind):
 
 
 @pytest.mark.all_dims
-@pytest.mark.skipif(
-    utils.SkipVersion("torch", "<2.2"), reason="Skipping Pytorch version."
-)
 @pytest.mark.parametrize("kind, keepdim, dim, shape", KIND_KEEPDIM_DIMS_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.bool])
 def test_all_dims(shape, dim, keepdim, dtype, kind):
