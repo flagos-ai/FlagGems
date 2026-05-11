@@ -172,18 +172,19 @@ class IndexCopyFunction:
     def __call__(self, *args, **kwargs):
         key = f"{self.arg_key(*args)}"
         if key in self.overloads:
-            overload = self.overloads[key]
-        else:
-            code = IndentedBuffer()
-            code = generate_code(
-                args,
-                "_index_copy_wrapper",
-                "_index_copy_jit_function",
-                code,
-            )
+            return self.overloads[key](*args, **kwargs)
 
-            file_name = f"index_copy_rank_{key}_pid_{self.pid}.py"
+        code = IndentedBuffer()
+        code = generate_code(
+            args,
+            "_index_copy_wrapper",
+            "_index_copy_jit_function",
+            code,
+        )
 
+        file_name = f"index_copy_rank_{key}_pid_{self.pid}.py"
+
+        try:
             with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
                 f.write(code.getvalue())
 
@@ -197,6 +198,10 @@ class IndexCopyFunction:
             spec.loader.exec_module(m)
             overload = getattr(m, "_index_copy_wrapper")
             self.overloads[key] = overload
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to generate or load index_copy kernel: {e}"
+            ) from e
 
         return overload(*args, **kwargs)
 

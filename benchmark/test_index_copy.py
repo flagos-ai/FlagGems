@@ -24,10 +24,6 @@ def _tensor_input_fn(shape, dtype, device):
     yield inp, dim, index, src
 
 
-def _inplace_input_fn(shape, dtype, device):
-    yield from _tensor_input_fn(shape, dtype, device)
-
-
 @pytest.mark.index_copy
 def test_index_copy():
     bench = base.GenericBenchmark2DOnly(
