@@ -379,6 +379,10 @@ def reduce_then_scan_block_scan_kernel_row(
 def cumprod(inp, dim, *, dtype=None):
     logger.debug("GEMS CUMPROD")
     out_dtype = _get_output_dtype(inp, dtype)
+    if is_boolean_dtype(inp.dtype) and is_boolean_dtype(out_dtype):
+        return torch.ops.aten.cumprod.default.redispatch(
+            _FALLBACK_KEYSET, inp, dim, dtype=dtype
+        )
     if _should_redispatch_on_ascend(out_dtype):
         return torch.ops.aten.cumprod.default.redispatch(
             _FALLBACK_KEYSET, inp, dim, dtype=dtype
@@ -391,6 +395,10 @@ def cumprod_(inp, dim, *, dtype=None):
     if dtype is not None and dtype != inp.dtype:
         raise RuntimeError(
             "Bad in-place call: input tensor dtype and output tensor dtype should match"
+        )
+    if is_boolean_dtype(inp.dtype):
+        return torch.ops.aten.cumprod_.default.redispatch(
+            _FALLBACK_KEYSET, inp, dim, dtype=dtype
         )
     if _should_redispatch_on_ascend(inp.dtype):
         return torch.ops.aten.cumprod_.default.redispatch(

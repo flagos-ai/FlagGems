@@ -35,14 +35,20 @@ else:
         ((16, 1025, 255), 1),
     ]
 
+BOOL_DTYPES = [torch.bool]
 INT_DTYPES = list(dict.fromkeys([torch.int8, torch.uint8] + utils.ALL_INT_DTYPES))
 DTYPES = FLOAT_DTYPES + INT_DTYPES
+CUMPROD_DTYPES = DTYPES + BOOL_DTYPES
 
 
 def _make_input(shape, dtype):
     if dtype.is_floating_point:
         return torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(
             0.99, 1.01
+        )
+    if dtype is torch.bool:
+        return torch.randint(0, 2, shape, dtype=torch.int8, device="cpu").to(
+            flag_gems.device, dtype=dtype
         )
     if dtype is torch.uint8:
         return torch.randint(0, 4, shape, dtype=dtype, device="cpu").to(
@@ -57,7 +63,7 @@ def _reference_input(inp):
 
 @pytest.mark.cumprod
 @pytest.mark.parametrize("shape_dim", CUMPROD_SHAPE_DIMS)
-@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("dtype", CUMPROD_DTYPES)
 def test_cumprod(shape_dim, dtype):
     shape, dim = shape_dim
     inp = _make_input(shape, dtype)
@@ -67,7 +73,7 @@ def test_cumprod(shape_dim, dtype):
     with flag_gems.use_gems():
         res_out = torch.cumprod(inp, dim=dim)
 
-    check_dtype = ref_out.dtype if dtype in INT_DTYPES else dtype
+    check_dtype = ref_out.dtype if dtype in INT_DTYPES + BOOL_DTYPES else dtype
     utils.gems_assert_close(res_out, ref_out, check_dtype, reduce_dim=shape[dim])
 
 
@@ -77,6 +83,7 @@ def test_cumprod(shape_dim, dtype):
     [
         (torch.int8, torch.int32),
         (torch.uint8, torch.int64),
+        (torch.bool, torch.int64),
         (torch.float16, torch.float32),
     ],
 )
@@ -144,3 +151,12 @@ def test_cumprod_inplace_dtype_mismatch():
     with flag_gems.use_gems():
         with pytest.raises(RuntimeError, match="Bad in-place call"):
             inp.cumprod_(1, dtype=torch.int64)
+
+
+@pytest.mark.cumprod_
+def test_cumprod_inplace_bool_unsupported():
+    inp = _make_input((4, 9), torch.bool)
+
+    with flag_gems.use_gems():
+        with pytest.raises((RuntimeError, NotImplementedError)):
+            inp.cumprod_(1)
