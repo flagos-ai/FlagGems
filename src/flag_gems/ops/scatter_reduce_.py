@@ -42,7 +42,7 @@ def generate_scatter_reduce_kernel(
         code.writeline("if(flag_gems.vendor_name in ['metax', 'iluvatar']):")
         with code.indent():
             code.writeline("return 256")
-        code.writeline("return 128")
+        code.writeline("return 512")
     code.newline()
     code.newline()
 
