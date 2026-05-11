@@ -51,7 +51,10 @@ jobs:
         with:
           version: 2.92.0
       - id: checkout-repo
-        uses: actions/checkout@v6
+        uses: Wandalen/wretry.action@v3.8.0
+        with:
+          action: actions/checkout@v6
+          attempt_limit: 5
       - id: checkout-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
