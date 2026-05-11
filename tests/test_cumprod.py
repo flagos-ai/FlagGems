@@ -12,7 +12,23 @@ if cfg.QUICK_MODE:
 else:
     FLOAT_DTYPES = utils.ALL_FLOAT_DTYPES
     CUMPROD_SHAPE_DIMS = [
+        ((0,), 0),
+        ((0, 7), 0),
+        ((3, 0, 5), 1),
+        ((1,), 0),
         ((1, 2), -1),
+        ((1, 1, 1), -1),
+        ((1023,), 0),
+        ((1024,), 0),
+        ((1025,), 0),
+        ((2049,), 0),
+        ((33, 17), 0),
+        ((4, 5, 6), -2),
+        ((2, 1023, 3), 1),
+        ((2, 1024, 3), 1),
+        ((2, 1025, 3), 1),
+        ((2, 7, 1031), -1),
+        ((3, 1, 4097), -1),
         ((4096, 256), 1),
         ((200, 2560, 3), 1),
         ((2637,), 0),
@@ -92,8 +108,9 @@ def test_cumprod_inplace(shape_dim, dtype):
 
 
 @pytest.mark.cumprod_
-def test_cumprod_inplace_non_contiguous():
-    base = _make_input((4, 9), torch.float32)
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_cumprod_inplace_non_contiguous(dtype):
+    base = _make_input((4, 9), dtype)
     inp = base.t()
     ref_inp = _reference_input(inp)
     ref_out = torch.cumprod(ref_inp, dim=1).to(inp.dtype)
@@ -103,6 +120,21 @@ def test_cumprod_inplace_non_contiguous():
 
     assert res_out.data_ptr() == inp.data_ptr()
     utils.gems_assert_close(res_out, ref_out, inp.dtype, reduce_dim=inp.shape[1])
+
+
+@pytest.mark.cumprod_
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_cumprod_inplace_non_contiguous_tile_boundary(dtype):
+    base = _make_input((7, 1025, 3), dtype)
+    inp = base.transpose(0, 1)
+    ref_inp = _reference_input(inp)
+    ref_out = torch.cumprod(ref_inp, dim=0).to(inp.dtype)
+
+    with flag_gems.use_gems():
+        res_out = inp.cumprod_(0)
+
+    assert res_out.data_ptr() == inp.data_ptr()
+    utils.gems_assert_close(res_out, ref_out, inp.dtype, reduce_dim=inp.shape[0])
 
 
 @pytest.mark.cumprod_
