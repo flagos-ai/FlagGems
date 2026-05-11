@@ -282,6 +282,8 @@ class LibTuner(triton.runtime.Autotuner):
                 use_cuda_graph,
             )
         else:
+            # Triton 3.2+ removed warmup/rep/use_cuda_graph positional arguments.
+            # Preserve FlagGems tuning behavior by translating them into do_bench.
             if do_bench is None:
                 if use_cuda_graph:
                     from triton.testing import do_bench_cudagraph
