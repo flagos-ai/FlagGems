@@ -1,3 +1,5 @@
+"""Test suite covers torch.median value+index, edge cases, and dtype variants."""
+
 import pytest
 import torch
 
