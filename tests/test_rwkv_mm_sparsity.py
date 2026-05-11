@@ -8,7 +8,7 @@ from . import accuracy_utils as utils
 
 @pytest.mark.rwkv_mm_sparsity
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_rwkv_mmsparsity(dtype):
+def test_rwkv_mmsparsity(dtype):
     n = 16384
     embedding_dim = 4096
 

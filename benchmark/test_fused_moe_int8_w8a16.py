@@ -164,9 +164,9 @@ def _gems_fused_moe_int8_w8a16_wrapper(
     )
 
 
-@pytest.mark.fused_moe
+@pytest.mark.fused_experts_impl
 @pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires NVIDIA Hopper architecture")
-def test_fused_moe_int8_w8a16():
+def test_fused_experts_impl_int8_w8a16():
     """
     Benchmark FlagGems fused_experts_impl with INT8 W8A16 quantization.
 

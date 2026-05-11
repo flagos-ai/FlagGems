@@ -6,6 +6,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.testing import RESOLUTION
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -48,8 +49,6 @@ def test_dropout(shape, p, dtype):
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
 
     if cfg.TO_CPU:
-        from flag_gems.testing import RESOLUTION
-
         zero_equal = torch.eq(res_out, torch.zeros_like(res_out))
         num_zero = torch.sum(zero_equal).item()
         assert abs(num_zero / res_inp.numel() - p) <= 0.05

@@ -43,7 +43,11 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - uses: actions/checkout@v6
+      - uses: Wandalen/wretry.action@v3.8.0
+        with:
+          action: actions/checkout@v6
+          attempt_limit: 5
+          attempt_delay: 5000  # in ms
       - run: |
           pip install pytest-md-report
       - shell: bash
