@@ -7,24 +7,15 @@ from flag_gems.ops import cumprod as flag_gems_cumprod
 from . import base, consts
 
 CUMPROD_BOOL_DTYPES = [torch.bool]
-CUMPROD_DTYPES = (
-    consts.FLOAT_DTYPES
-    + CUMPROD_BOOL_DTYPES
-    + [
-        torch.int8,
-        torch.uint8,
-        torch.int16,
-        torch.int32,
-        torch.int64,
-    ]
-)
-CUMPROD_INPLACE_DTYPES = consts.FLOAT_DTYPES + [
+CUMPROD_INT_DTYPES = [
     torch.int8,
     torch.uint8,
     torch.int16,
     torch.int32,
     torch.int64,
 ]
+CUMPROD_DTYPES = consts.FLOAT_DTYPES + CUMPROD_BOOL_DTYPES + CUMPROD_INT_DTYPES
+CUMPROD_INPLACE_DTYPES = consts.FLOAT_DTYPES + CUMPROD_INT_DTYPES
 
 
 def _make_input(shape, dtype, device):
@@ -50,16 +41,9 @@ def torch_cumprod(inp, dim):
     return torch.cumprod(inp, dim)
 
 
-class CumprodBenchmark(base.GenericBenchmark2DOnly):
-    def set_more_shapes(self):
-        if flag_gems.vendor_name == "kunlunxin":
-            return []
-        return super().set_more_shapes()
-
-
 @pytest.mark.cumprod
 def test_cumprod_perf():
-    bench = CumprodBenchmark(
+    bench = base.GenericBenchmark2DOnly(
         op_name="cumprod",
         input_fn=input_fn,
         torch_op=torch_cumprod,
@@ -71,7 +55,7 @@ def test_cumprod_perf():
 
 @pytest.mark.cumprod_
 def test_cumprod_inplace_perf():
-    bench = CumprodBenchmark(
+    bench = base.GenericBenchmark2DOnly(
         op_name="cumprod_",
         input_fn=input_fn,
         torch_op=torch.Tensor.cumprod_,
