@@ -307,6 +307,7 @@ _FULL_CONFIG = (
     ("logit.out", logit_out),
     ("logit_", logit_),
     ("logspace", logspace),
+    ("logsumexp", logsumexp),
     ("lt.Scalar", lt_scalar),
     ("lt.Tensor", lt),
     ("margin_ranking_loss", margin_ranking_loss),
