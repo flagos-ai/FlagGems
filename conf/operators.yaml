@@ -3579,6 +3579,21 @@ ops:
       - Reduction
     stages:
       - stable: '2.0'
+  - id: hc_head_fused_kernel
+    description: |
+      The head fusion kernel for MHC (Manifold-Constrained Hyper-Connections).
+      This fused implementation computes RMS-normalized hidden states and applies
+      per-head weighted mixing to produce the output activations.
+    for:
+      - mhc_head_fused_kernel
+    labels:
+      - fused
+      - vLLM
+      - DSA
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.2'
   - id: mhc_bwd
     description: |
       The backward case for MHC (Manifold-Constrained Hyper-Connections).
