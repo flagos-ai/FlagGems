@@ -2,6 +2,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops import cumprod as flag_gems_cumprod
 
 from . import base, consts
 
@@ -43,6 +44,12 @@ def input_fn(shape, dtype, device):
     yield inp, 1
 
 
+def torch_cumprod(inp, dim):
+    if flag_gems.vendor_name == "ascend" and inp.dtype is torch.bool:
+        return torch.cumprod(inp.to(torch.uint8), dim)
+    return torch.cumprod(inp, dim)
+
+
 class CumprodBenchmark(base.GenericBenchmark2DOnly):
     def set_more_shapes(self):
         if flag_gems.vendor_name == "kunlunxin":
@@ -55,7 +62,8 @@ def test_cumprod_perf():
     bench = CumprodBenchmark(
         op_name="cumprod",
         input_fn=input_fn,
-        torch_op=torch.cumprod,
+        torch_op=torch_cumprod,
+        gems_op=flag_gems_cumprod,
         dtypes=CUMPROD_DTYPES,
     )
     bench.run()

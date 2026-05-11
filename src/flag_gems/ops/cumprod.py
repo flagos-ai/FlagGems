@@ -384,7 +384,12 @@ def cumprod(inp, dim, *, dtype=None):
             return torch.ops.aten.cumprod.default.redispatch(
                 _FALLBACK_KEYSET, inp, dim, dtype=dtype
             )
-        return cumprod_wrapper(inp.to(torch.uint8), dim, out_dtype)
+        uint8_inp = inp.to(torch.uint8)
+        if runtime_device.vendor_name == "ascend":
+            return torch.ops.aten.cumprod.default.redispatch(
+                _FALLBACK_KEYSET, uint8_inp, dim, dtype=dtype
+            )
+        return cumprod_wrapper(uint8_inp, dim, out_dtype)
     if _should_redispatch_on_ascend(out_dtype):
         return torch.ops.aten.cumprod.default.redispatch(
             _FALLBACK_KEYSET, inp, dim, dtype=dtype
