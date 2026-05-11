@@ -1182,6 +1182,18 @@ ops:
       - Convolution
     stages:
       - stable: '4.2'
+  - id: conv_transpose1d
+    description: |
+      Applies a 1D transposed convolution operator over an input image composed of several input planes.
+    for:
+      - conv_transpose1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - beta: '5.1'
   - id: conv_depthwise2d
     description: A depthwise convolution for the conv2d neural network function.
     for:
