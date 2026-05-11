@@ -56,6 +56,10 @@ def sunrise_heuristics_for_num_warps(tile_size):
 def enflame_heuristics_for_num_warps(tile_size):
     return 4
 
+def enflame_heuristics_for_num_warps(tile_size):
+    return 4
+
+
 @dataclass
 class CodeGenConfig:
     max_tile_size: int

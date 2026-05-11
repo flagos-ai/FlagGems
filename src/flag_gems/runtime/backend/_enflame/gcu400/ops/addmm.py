@@ -1,17 +1,53 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
-from flag_gems.utils import broadcastable_to, libentry, libtuner
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import broadcastable_to, libentry
+
+logger = logging.getLogger(__name__)
+
+GCU_MAX_GRID_Y = 255
+
+
+def _select_block_sizes(M, N, K):
+    if M <= 16:
+        BLOCK_M = 16
+    elif M <= 32:
+        BLOCK_M = 32
+    elif M <= 64:
+        BLOCK_M = 64
+    else:
+        BLOCK_M = 128
+
+    if N <= 16:
+        BLOCK_N = 16
+    elif N <= 32:
+        BLOCK_N = 32
+    elif N <= 64:
+        BLOCK_N = 64
+    else:
+        BLOCK_N = 128
+
+    if K <= 32:
+        BLOCK_K = 32
+    elif K <= 64:
+        BLOCK_K = 64
+    else:
+        BLOCK_K = 64
+
+    grid_m = triton.cdiv(M, BLOCK_M)
+    grid_n = triton.cdiv(N, BLOCK_N)
+    if grid_n > GCU_MAX_GRID_Y:
+        BLOCK_N = triton.cdiv(N, GCU_MAX_GRID_Y)
+        BLOCK_N = max(triton.next_power_of_2(BLOCK_N), 16)
+
+    return BLOCK_M, BLOCK_N, BLOCK_K
 
 
 @libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("addmm"),
-    key=["M", "N", "K"],
-    strategy=["log", "log", "log"],
-)
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_kernel(
     a_ptr,
@@ -23,15 +59,14 @@ def addmm_kernel(
     M,
     N,
     K,
-    stride_am: tl.constexpr,
-    stride_ak: tl.constexpr,
-    stride_bk: tl.constexpr,
-    stride_bn: tl.constexpr,
-    stride_im: tl.constexpr,
-    stride_in: tl.constexpr,
-    stride_cm: tl.constexpr,
-    stride_cn: tl.constexpr,
-    dot_out_dtype: tl.constexpr,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_im,
+    stride_in,
+    stride_cm,
+    stride_cn,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -54,7 +89,7 @@ def addmm_kernel(
     a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
     b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
 
-    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=dot_out_dtype)
+    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         k_remaining = K - k * BLOCK_SIZE_K
         a = tl.load(
@@ -67,7 +102,7 @@ def addmm_kernel(
             mask=(offs_k[:, None] < k_remaining) & (offs_bn[None, :] < N),
             other=0.0,
         )
-        accumulator += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
+        accumulator += tl.dot(a, b, allow_tf32=False)
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
 
@@ -96,32 +131,35 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     if mat2.stride(0) > 1 and mat2.stride(1) > 1:
         mat2 = mat2.contiguous()
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    bias = bias.broadcast_to(out.shape)
+    bias = bias.broadcast_to(out.shape).contiguous()
 
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
-    )
-    addmm_kernel[grid](
-        mat1,
-        mat2,
-        bias,
-        out,
-        alpha,
-        beta,
-        M,
-        N,
-        K,
-        mat1.stride(0),
-        mat1.stride(1),
-        mat2.stride(0),
-        mat2.stride(1),
-        bias.stride(0),
-        bias.stride(1),
-        out.stride(0),
-        out.stride(1),
-        dot_out_dtype=tl.float32,
-        GROUP_M=8,
-    )
+    BLOCK_M, BLOCK_N, BLOCK_K = _select_block_sizes(M, N, K)
+
+    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
+    with torch_device_fn.device(mat1.device):
+        addmm_kernel[grid](
+            mat1,
+            mat2,
+            bias,
+            out,
+            alpha,
+            beta,
+            M,
+            N,
+            K,
+            mat1.stride(0),
+            mat1.stride(1),
+            mat2.stride(0),
+            mat2.stride(1),
+            bias.stride(0),
+            bias.stride(1),
+            out.stride(0),
+            out.stride(1),
+            BLOCK_SIZE_M=BLOCK_M,
+            BLOCK_SIZE_N=BLOCK_N,
+            BLOCK_SIZE_K=BLOCK_K,
+            GROUP_M=8,
+        )
     return out
 
 
@@ -141,30 +179,33 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
         mat1 = mat1.contiguous()
     if mat2.stride(0) > 1 and mat2.stride(1) > 1:
         mat2 = mat2.contiguous()
-    bias = bias.broadcast_to(out.shape)
+    bias = bias.broadcast_to(out.shape).contiguous()
 
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
-    )
-    addmm_kernel[grid](
-        mat1,
-        mat2,
-        bias,
-        out,
-        alpha,
-        beta,
-        M,
-        N,
-        K,
-        mat1.stride(0),
-        mat1.stride(1),
-        mat2.stride(0),
-        mat2.stride(1),
-        bias.stride(0),
-        bias.stride(1),
-        out.stride(0),
-        out.stride(1),
-        dot_out_dtype=tl.float32,
-        GROUP_M=8,
-    )
+    BLOCK_M, BLOCK_N, BLOCK_K = _select_block_sizes(M, N, K)
+
+    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
+    with torch_device_fn.device(mat1.device):
+        addmm_kernel[grid](
+            mat1,
+            mat2,
+            bias,
+            out,
+            alpha,
+            beta,
+            M,
+            N,
+            K,
+            mat1.stride(0),
+            mat1.stride(1),
+            mat2.stride(0),
+            mat2.stride(1),
+            bias.stride(0),
+            bias.stride(1),
+            out.stride(0),
+            out.stride(1),
+            BLOCK_SIZE_M=BLOCK_M,
+            BLOCK_SIZE_N=BLOCK_N,
+            BLOCK_SIZE_K=BLOCK_K,
+            GROUP_M=8,
+        )
     return out

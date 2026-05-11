@@ -75,7 +75,7 @@ def addmv_kernel(
 
 
 def addmv(self, mat, vec, *, beta=1, alpha=1):
-    logger.debug("GEMS ADDMV")
+    logger.debug("GEMS_KUNLUNXIN ADDMV")
     assert mat.shape[1] == vec.shape[0], "incompatible dimensions"
     assert broadcastable_to(self.shape, (mat.shape[0],)), "Incompatible self shape"
     N, M = mat.shape
@@ -102,7 +102,7 @@ def addmv(self, mat, vec, *, beta=1, alpha=1):
 
 
 def addmv_out(self, mat, vec, *, beta=1, alpha=1, out=None):
-    logger.debug("GEMS ADDMV OUT")
+    logger.debug("GEMS_KUNLUNXIN ADDMV_OUT")
     assert mat.shape[1] == vec.shape[0], "incompatible dimensions"
     assert broadcastable_to(self.shape, (mat.shape[0],)), "Incompatible self shape"
     N, M = mat.shape
