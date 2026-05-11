@@ -105,7 +105,7 @@ class Register:
 
     def get_vendor_unused_op(self):
         if self.device.vendor != common.vendors.NVIDIA:
-            return backend.get_curent_device_unused_op(self.device.vendor_name)
+            return backend.get_unused_ops(self.device.vendor_name)
         return []
 
     def register_impl(self, key, fn):
