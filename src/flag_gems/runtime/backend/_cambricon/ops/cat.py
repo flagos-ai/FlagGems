@@ -85,10 +85,10 @@ class CatKernelGenerator(IndentedBuffer):
         self.writeline("import triton.language as tl")
         self.newline()
         self.writeline("from flag_gems.runtime import torch_device_fn")
-        self.writeline("from flag_gems.runtime.backend import vendor_module")
+        self.writeline("from flag_gems.runtime.backend import _state")
         self.writeline("from flag_gems.utils import libentry, libtuner")
         self.newline()
-        self.writeline("TOTAL_CORE_NUM = vendor_module.TOTAL_CORE_NUM")
+        self.writeline("TOTAL_CORE_NUM = _state.vendor_module.TOTAL_CORE_NUM")
         self.newline()
         self.newline()
 
@@ -259,6 +259,21 @@ def cat(
         raise RuntimeError(
             "Expected a non-empty list or tuple/list of non-empty torch.Tensor"
         )
+    if len(tensors) == 1:
+        return tensors[0]
+
+    # remove torch.Size([0]) tensors
+    device = tensors[0].device
+    dtype = tensors[0].dtype
+    tensors = list(tensors)
+
+    for i in range(len(tensors) - 1, -1, -1):
+        if tensors[i].shape == torch.Size([0]):
+            tensors.pop(i)
+    if len(tensors) == 0:
+        return torch.tensor([], dtype=dtype, device=device)
+    elif len(tensors) == 1:
+        return tensors[0]
 
     # Check dimensions.
     ndim = tensors[0].ndim

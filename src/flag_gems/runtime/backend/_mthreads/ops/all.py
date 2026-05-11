@@ -9,11 +9,10 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+shortname = __name__.split(".")[-1]
+logger = logging.getLogger(f"flag_gems.runtime.backend._mthreads.ops.{shortname}")
 
 NAIVE_REDUCTION_CONFIGS = [
     triton.Config({"BLOCK_M": 4, "BLOCK_N": 1024}, num_warps=4),
@@ -129,7 +128,7 @@ def all_kernel_dim(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + rows * N
     out = out + rows
@@ -156,7 +155,7 @@ def all_kernel_1(
     mid_size,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < n_elements

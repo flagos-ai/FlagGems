@@ -1,0 +1,18 @@
+# op_black_list.yaml
+# Description: List of operators unsupported (FALSE) in the current environment
+# test based: 2026-03-11
+# Source: Operator Compatibility Test Table
+#
+unsupported_operators:
+  - name: grouped_topk
+    reason: All dtypes failed
+
+  - name: topk_softmax
+    reason: vllm not supported
+
+summary:
+  total_unsupported: 2
+  note: |
+    This list is based on items explicitly marked as FALSE in the provided table.
+    Certain operators (e.g., `conv1d`, `index_add`) have blank entries in some columns and
+    are therefore excluded; their support status requires further verification.

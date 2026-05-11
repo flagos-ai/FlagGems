@@ -1,13 +1,19 @@
+#include "flag_gems/backend_utils.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 
 #include <iostream>
 #include "ATen/WrapDimUtils.h"
-#include "c10/cuda/CUDAStream.h"
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
 using namespace triton_jit;
+
+#if defined(FLAGGEMS_USE_MUSA)
+static const char* SORT_KERNEL_PATH = "runtime/backend/_mthreads/ops/sort.py";
+#else
+static const char* SORT_KERNEL_PATH = "ops/sort.py";
+#endif
 
 int64_t get_num_bits(const at::ScalarType& dtype) {
   if (dtype == torch::kBool) {
@@ -36,12 +42,12 @@ std::tuple<at::Tensor, at::Tensor> radix_sort(const at::Tensor& arr, int64_t k_b
   unsigned int grid_x_hist = m * grid_n_hist;
 
   const TritonJITFunction& hist_kernel =
-      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "sort.py"),
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / SORT_KERNEL_PATH),
                                       "compute_global_hist_kernel");
 
   c10::DeviceGuard guard(arr.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   at::Tensor global_hist =
       at::zeros({m, n_passes, num_bins}, at::TensorOptions().device(arr.device()).dtype(torch::kInt32));
@@ -84,7 +90,7 @@ std::tuple<at::Tensor, at::Tensor> radix_sort(const at::Tensor& arr, int64_t k_b
       at::empty({m, num_bins, grid_n_sweep}, at::TensorOptions().device(arr.device()).dtype(torch::kInt32));
 
   const TritonJITFunction& sweep_kernel =
-      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "sort.py"),
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / SORT_KERNEL_PATH),
                                       "sweep");
 
   for (int64_t i = 0; i < n_passes; ++i) {

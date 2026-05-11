@@ -1,10 +1,9 @@
 #include <ATen/ATen.h>
-#include <cuda_runtime_api.h>
 #include <cmath>
 #include <limits>
 #include <tuple>
-#include "c10/cuda/CUDAStream.h"
 #include "c10/util/Optional.h"
+#include "flag_gems/backend_utils.h"
 #include "flag_gems/device_info.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
@@ -378,8 +377,8 @@ mha_varlan_fwd_internal(const at::Tensor& q,
     const triton_jit::TritonJITFunction& f = triton_jit::TritonJITFunction::get_instance(
         (flag_gems::utils::get_flag_gems_src_path() / "ops" / "flash_kernel.py").string(),
         "flash_varlen_fwd_kernel");
-    c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-    CUstream raw_stream = stream.stream();
+    flag_gems::backend::StreamType stream = flag_gems::backend::getCurrentStream();
+    flag_gems::backend::RawStreamType raw_stream = flag_gems::backend::getRawStream(stream);
 
     f(raw_stream,
       grid_x,
@@ -441,6 +440,8 @@ mha_varlan_fwd_internal(const at::Tensor& q,
       params.window_size_left,
       params.window_size_right,
       params.seqlenq_ngroups_swapped,
+      // is_paged: page_table is always defined in this function
+      true,
       // alibi
       params.is_alibi,
       params.alibi_slopes,

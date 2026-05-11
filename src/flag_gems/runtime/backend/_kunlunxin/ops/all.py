@@ -4,13 +4,11 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.min import min_kernel_1, min_kernel_2
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
-# import math
 
 
 # torch.all: Tests if all elements in input evaluate to True. If the dtype of input
@@ -19,17 +17,8 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 cluster_num = 12
 core_num = 64
-thread_num = core_num * cluster_num
 buf_len_per_core = 2048
 vector_size = 16
-
-
-def get_block(n: int) -> int:
-    if n < cluster_num:
-        res = cluster_num
-    else:
-        res = cluster_num * triton.cdiv(n, cluster_num)
-    return res
 
 
 def heur_m_block_size(args):
@@ -45,18 +34,27 @@ def reduce_all(a, b):
     return a and b
 
 
-# def heur_m_block_size(args):
-#     return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
-
-
-# def heur_n_block_size(args):
-#     import builtins
-
-#     return builtins.min(triton.next_power_of_2(args["N"]), 8192 * 4)
+@libentry()
+@triton.jit
+def all_global_kernel(
+    inp,
+    out,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Global all over all elements. C++ handler replaces with api::all<T,bool>.
+    Triton fallback: single program loops over chunks of BLOCK_SIZE."""
+    _all = tl.full([BLOCK_SIZE], value=1, dtype=tl.int1)
+    for off in range(0, n_elements, BLOCK_SIZE):
+        offset = off + tl.arange(0, BLOCK_SIZE)
+        mask = offset < n_elements
+        val = tl.load(inp + offset, mask=mask, other=1.0)
+        _all = _all and (val != 0)
+    result = tl.reduce(_all, axis=0, combine_fn=reduce_all)
+    tl.store(out, result)
 
 
 @libentry()
-# @triton.autotune(configs=runtime.get_tuned_config("all"), key=["M", "N"])
 @triton.heuristics(
     values={
         "BLOCK_M": heur_m_block_size,
@@ -73,7 +71,7 @@ def all_kernel_dim(
     BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of inp it should compute.
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + rows * N
     out = out + rows
@@ -91,112 +89,18 @@ def all_kernel_dim(
     tl.store(out, all[:, None], row_mask)
 
 
-@libentry()
-@triton.heuristics(
-    values={
-        "BLOCK_M": heur_m_block_size,
-        "BLOCK_N": heur_n_block_size,
-    },
-)
-@triton.jit
-def min_kernel_dim(
-    in_ptr,
-    out_ptr,
-    M,
-    N,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    xoffset = tl.program_id(0) * BLOCK_M
-    xindex = xoffset + tl.arange(0, BLOCK_M)[:, None]
-    xmask = xindex < M
-    rbase = tl.arange(0, BLOCK_N)[None, :]
-    _min = tl.full([BLOCK_M, BLOCK_N], float("inf"), tl.float32)
-    for roffset in range(0, N, BLOCK_N):
-        rindex = roffset + rbase
-        rmask = rindex < N
-        r1 = rindex
-        inp = tl.load(
-            in_ptr + (r1 + (N * xindex)), rmask & xmask, other=float("inf")
-        ).to(tl.float32)
-        inpb = tl.broadcast_to(inp, [BLOCK_M, BLOCK_N])
-        _min = tl.minimum(_min, inpb)
-    tmp2 = tl.min(_min, axis=1, return_indices=False)[:, None]
-    tl.store(out_ptr + xindex, tmp2, xmask)
-
-
-@libentry()
-@triton.jit
-def all_kernel_1(
-    inp,
-    mid,
-    n_elements,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < n_elements
-    inp_val = tl.load(inp_ptrs, mask=mask, other=1.0)
-    all_val = tl.reduce(inp_val != 0, axis=0, combine_fn=reduce_all)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, all_val)
-
-
-@libentry()
-@triton.jit
-def all_kernel_2(
-    mid,
-    out,
-    MID_SIZE,
-    BLOCK_MID: tl.constexpr,
-):
-    offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
-    mask = offset < MID_SIZE
-    mid_val = tl.load(mid_ptrs, mask=mask, other=1).to(tl.int1)
-    all_val = tl.reduce(mid_val, axis=0, combine_fn=reduce_all)
-    tl.store(out, all_val)
-
-
 def all(inp):
     logger.debug("GEMS ALL")
     n_elements = inp.numel()
-    block_size = min(
-        triton.cdiv(get_block(n_elements), cluster_num),
-        triton.cdiv(buf_len_per_core * core_num, 4),
-    )
-    mid_size = triton.cdiv(n_elements, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
-
-    if n_elements >= vector_size * thread_num:
-        # according to api, op == all, use min to calculate
-        inpf = inp.to(torch.float)
-        midf = torch.empty((mid_size,), dtype=torch.float, device=inp.device)
-        outf = torch.empty([], dtype=torch.float, device=inp.device)
-
-        with torch_device_fn.device(inp.device):
-            min_kernel_1[(mid_size, 1)](
-                inpf, midf, n_elements, block_size, buffer_size_limit=2048
-            )
-            if mid_size == 1:
-                return midf.to(torch.bool).reshape([])
-            min_kernel_2[(1, 1)](
-                midf, outf, mid_size, block_mid, buffer_size_limit=2048
-            )
-        out = outf.to(torch.bool)
-    else:
-        mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
-        out = torch.empty([], dtype=torch.bool, device=inp.device)
-
-        with torch_device_fn.device(inp.device):
-            all_kernel_1[(mid_size, 1)](
-                inp, mid, n_elements, block_size, buffer_size_limit=2048
-            )
-            if mid_size == 1:
-                return mid.reshape([])
-            all_kernel_2[(1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
-
+    # BLOCK_SIZE must fit in XPU per-core local buffer so the Triton fallback
+    # kernel always compiles.  The C++ handler (api::all<T,bool>) ignores this
+    # value and handles any n_elements internally.
+    BLOCK_SIZE = min(triton.next_power_of_2(n_elements), buf_len_per_core)
+    out = torch.empty([], dtype=torch.bool, device=inp.device)
+    with torch_device_fn.device(inp.device):
+        all_global_kernel[(1, 1)](
+            inp, out, n_elements, BLOCK_SIZE, buffer_size_limit=2048
+        )
     return out
 
 
@@ -215,15 +119,10 @@ def all_dim(inp, dim=None, keepdim=False):
         shape[dim] = 1
         M = inp.numel() // N
 
-        if N >= vector_size * vector_size:
-            # according to api, op == all, use min to calculate
-            inpf = inp.to(torch.float)
-            outf = torch.empty(shape, dtype=torch.float, device=inp.device)
-
-            grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-            with torch_device_fn.device(inp.device):
-                min_kernel_dim[grid](inpf, outf, M, N, buffer_size_limit=2048)
-            out = outf.to(torch.bool)
+        if N == 1:
+            # N==1: each row has a single element; avoid kernel dispatch for
+            # trivial case that some hardware configs cannot handle.
+            out = (inp.reshape(M) != 0).reshape(shape)
         else:
             out = torch.empty(shape, dtype=torch.bool, device=inp.device)
             grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
@@ -251,15 +150,8 @@ def all_dims(inp, dim=None, keepdim=False):
         shape[i] = 1
     M = inp.numel() // N
 
-    if N >= vector_size * core_num:
-        # according to api, op == all, use min to calculate
-        inpf = inp.to(torch.float)
-        outf = torch.empty(shape, dtype=torch.float, device=inp.device)
-
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        with torch_device_fn.device(inp.device):
-            min_kernel_dim[grid](inpf, outf, M, N, buffer_size_limit=2048)
-        out = outf.to(torch.bool)
+    if N == 1:
+        out = (inp.reshape(M) != 0).reshape(shape)
     else:
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)

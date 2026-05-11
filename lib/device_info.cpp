@@ -1,16 +1,18 @@
 #include "flag_gems/device_info.h"
 
-#include <ATen/cuda/CUDAContext.h>
-#include <cuda_runtime_api.h>
-
 #include <mutex>
 #include <unordered_map>
+
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+#include <cuda_runtime_api.h>
+#endif
 
 namespace flag_gems::device {
 namespace {
   DeviceInfo query_device(int device_id) {
     DeviceInfo info {};
     info.device_id = device_id;
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
     cudaDeviceProp props {};
     if (cudaGetDeviceProperties(&props, device_id) == cudaSuccess) {
 #if CUDART_VERSION >= 11020
@@ -25,6 +27,11 @@ namespace {
       info.sm_count = 108;
       info.major = 8;
     }
+#else
+    info.l2_cache_size = 40ull * 1024 * 1024;
+    info.sm_count = 108;
+    info.major = 0;
+#endif
     return info;
   }
 
@@ -58,9 +65,11 @@ const DeviceInfo &get_device_info(int device_id) {
 
 const DeviceInfo &get_current_device_info() {
   int device_id = 0;
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
   if (cudaGetDevice(&device_id) != cudaSuccess) {
     device_id = 0;
   }
+#endif
   return get_device_info(device_id);
 }
 
