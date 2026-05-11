@@ -11,10 +11,38 @@ namespace py = pybind11;
 PYBIND11_MODULE(c_operators, m) {
 #ifdef FLAGGEMS_POINTWISE_DYNAMIC
   // add
-  m.def("add_tensor", &flag_gems::add_tensor);
-  m.def("add_scalar", &flag_gems::add_scalar);
-  m.def("add_tensor_inplace", &flag_gems::add_tensor_inplace);
-  m.def("add_scalar_inplace", &flag_gems::add_scalar_inplace);
+  m.def(
+      "add_tensor",
+      [](const at::Tensor &self, const at::Tensor &other, double alpha) {
+        return flag_gems::add_tensor(self, other, alpha);
+      },
+      py::arg("self"),
+      py::arg("other"),
+      py::arg("alpha") = 1.0);
+  m.def(
+      "add_scalar",
+      [](const at::Tensor &self, const at::Scalar &other, double alpha) {
+        return flag_gems::add_scalar(self, other, alpha);
+      },
+      py::arg("self"),
+      py::arg("other"),
+      py::arg("alpha") = 1.0);
+  m.def(
+      "add_tensor_inplace",
+      [](at::Tensor &self, const at::Tensor &other, double alpha) {
+        return flag_gems::add_tensor_inplace(self, other, alpha);
+      },
+      py::arg("self"),
+      py::arg("other"),
+      py::arg("alpha") = 1.0);
+  m.def(
+      "add_scalar_inplace",
+      [](at::Tensor &self, const at::Scalar &other, double alpha) {
+        return flag_gems::add_scalar_inplace(self, other, alpha);
+      },
+      py::arg("self"),
+      py::arg("other"),
+      py::arg("alpha") = 1.0);
   // div
   m.def("div.Tensor", &flag_gems::true_div);
   m.def("div_.Tensor", &flag_gems::true_div_);
@@ -36,6 +64,11 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("fill_.Scalar", &flag_gems::fill_scalar_);
   m.def("fill_.Tensor", &flag_gems::fill_tensor_);
 #endif
+  m.def("act_quant",
+        &flag_gems::act_quant_triton,
+        py::arg("x"),
+        py::arg("block_size") = 128,
+        py::arg("scale_fmt") = py::none());
   m.def("exponential_", &flag_gems::exponential_);
   m.def("addmm", &flag_gems::addmm);
   m.def("mm", &flag_gems::mm_tensor);
@@ -91,6 +124,20 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
   m.def("copy_", &flag_gems::copy_);
   m.def("to_copy", &flag_gems::to_copy);
+  m.def("fp8_matmul",
+        &flag_gems::fp8_matmul,
+        py::arg("a"),
+        py::arg("a_s"),
+        py::arg("b"),
+        py::arg("b_s"),
+        py::arg("scale_dtype") = at::kFloat);
+  m.def("fp8_matmul_direct",
+        &flag_gems::fp8_matmul_direct,
+        py::arg("a"),
+        py::arg("a_s"),
+        py::arg("b"),
+        py::arg("b_s"),
+        py::arg("scale_dtype") = at::kFloat);
 }
 namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {

@@ -122,6 +122,24 @@ namespace backend {
 #endif
   }
 
+  // Get the current device index for the active backend.
+  inline c10::DeviceIndex getCurrentDeviceIndex() {
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+    return at::cuda::current_device();
+#elif defined(FLAGGEMS_USE_MUSA)
+    return c10::musa::current_device();
+#elif defined(FLAGGEMS_USE_NPU)
+    return 0;  // TODO: NPU current device query
+#else
+    return 0;
+#endif
+  }
+
+  // Get the current torch device for the active backend.
+  inline at::Device getCurrentDevice() {
+    return at::Device(getBackendDeviceType(), getCurrentDeviceIndex());
+  }
+
   // Get the default torch device for tensors allocated by this backend.
   inline at::Device getDefaultDevice(int index = 0) {
     return at::Device(getBackendDeviceType(), static_cast<c10::DeviceIndex>(index));

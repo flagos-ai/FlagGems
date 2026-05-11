@@ -11,6 +11,8 @@
 # TODO(Qiming): Enable daily tests for benchmark and all backends
 
 name: daily
+permissions:
+  contents: read
 
 on:
   workflow_dispatch:

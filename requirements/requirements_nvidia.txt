@@ -1,0 +1,13 @@
+--index-url https://resource.flagos.net/repository/flagos-pypi-hosted/simple
+--extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple
+--trusted-host resource.flagos.net pypi.tuna.tsinghua.edu.cn
+torch>=2.2.0
+<<<<<<< HEAD:flag_tree_requirements/requirements_nvidia.txt
+flagtree==0.4.0+3.3
+=======
+flagtree==0.5.0
+scikit-build-core>=0.11
+pybind11
+ninja
+cmake
+>>>>>>> origin/FlagGemsV5.0.2:requirements/requirements_nvidia.txt

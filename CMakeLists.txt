@@ -91,7 +91,7 @@ else()
   set(BACKEND ${FLAGGEMS_BACKEND} CACHE STRING "Backend for TritonJIT" FORCE)
   FetchContent_Declare(TritonJIT
     GIT_REPOSITORY https://github.com/flagos-ai/libtriton_jit
-    GIT_TAG multi-backend
+    GIT_TAG master
     # SOURCE_DIR <your local source dir of libtriton_jit>
   )
   FetchContent_MakeAvailable(TritonJIT)
@@ -123,7 +123,7 @@ endif()
 execute_process(
   #COMMAND ${Python_EXECUTABLE}
   COMMAND ${CMAKE_COMMAND} -E env --unset=LD_PRELOAD ${Python_EXECUTABLE}
-          -c "import triton, sys; sys.stdout.write(triton.__version__)"
+          -c "import torch; import triton, sys; sys.stdout.write(triton.__version__)"
   RESULT_VARIABLE _ret
   OUTPUT_VARIABLE TRITON_VERSION
   OUTPUT_STRIP_TRAILING_WHITESPACE

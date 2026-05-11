@@ -6,6 +6,7 @@ from .angle import angle
 from .any import any, any_dim, any_dims
 from .atan import atan, atan_
 from .addcmul import addcmul
+from .addmm import addmm, addmm_out
 from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
@@ -83,6 +84,7 @@ from .gelu import gelu, gelu_, gelu_backward
 from .glu import glu
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
+from .index import index
 from .index_add import index_add, index_add_
 from .index_select import index_select
 from .isclose import allclose, isclose
@@ -162,6 +164,7 @@ from .sum import sum, sum_out, sum_dim, sum_dim_out
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .to import to_dtype
+from .topk import topk
 from .unique import (
     _unique2,
     simple_unique_flat,
@@ -189,6 +192,8 @@ __all__ = [
     "zero_",
     "scatter",
     "scatter_",
+    "topk",
+    "topk_backward",
     "ScaleDotProductAttention",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
@@ -307,6 +312,7 @@ __all__ = [
     "contiguous",
     "eye_m",
     "dropout",
+    "index",
     "index_add",
     "index_add_",
     "bmm",
@@ -317,6 +323,8 @@ __all__ = [
     "abs",
     "abs_",
     "addcmul",
+    "addmm",
+    "addmm_out",
     "angle",
     "bitwise_not",
     "bitwise_not_",

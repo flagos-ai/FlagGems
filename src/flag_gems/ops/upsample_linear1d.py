@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,9 +17,8 @@ def upsample_linear1d_kernel(
     NC,
     W_in,
     W_out,
-    align_corners,
-    scale_ac,
-    scale_nc,
+    scale,
+    bias,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid_nc = tl.program_id(0)
@@ -31,11 +32,7 @@ def upsample_linear1d_kernel(
 
     offs_w_f = offs_w.to(tl.float32)
 
-    src = tl.where(
-        align_corners != 0,
-        offs_w_f * scale_ac,
-        (offs_w_f + 0.5) * scale_nc - 0.5,
-    )
+    src = offs_w_f * scale + bias
 
     src = tl.maximum(0.0, tl.minimum(src, W_in - 1.0))
 
@@ -55,7 +52,6 @@ def upsample_linear1d_kernel(
     out = w0 * x0_f + w1 * x1_f
 
     out = out.to(x0.dtype)
-
     tl.store(output_ptr + base_out + offs_w, out, mask=mask)
 
 
@@ -65,9 +61,9 @@ def upsample_linear1d(
     align_corners: bool,
     scales: float = None,
 ):
-    logger.debug("GEMS UPSAMPLE LINEAR1D")
+    logger.debug("GEMS UPSAMPLE LINEAR1D OPTIMIZED")
     assert self.ndim == 3, "Input must be [N, C, W]"
-    assert self.is_cuda
+    assert self.device.type == flag_gems.device
 
     N, C, W_in = self.shape
     NC = N * C
@@ -84,11 +80,19 @@ def upsample_linear1d(
     out = torch.empty((NC, W_out), device=self.device, dtype=self.dtype)
 
     if align_corners:
-        scale_ac = (W_in - 1) / (W_out - 1) if W_out > 1 else 0.0
-        scale_nc = 0.0
+        if W_out > 1:
+            scale_val = (W_in - 1.0) / (W_out - 1.0)
+        else:
+            scale_val = 0.0
+        bias_val = 0.0
     else:
-        scale_nc = 1.0 / scales if scales is not None else W_in / W_out
-        scale_ac = 0.0
+        if scales is not None:
+            real_scale = 1.0 / scales
+        else:
+            real_scale = W_in / W_out
+
+        scale_val = real_scale
+        bias_val = 0.5 * real_scale - 0.5
 
     BLOCK_SIZE = 256
     grid = (NC, triton.cdiv(W_out, BLOCK_SIZE))
@@ -99,9 +103,8 @@ def upsample_linear1d(
         NC,
         W_in,
         W_out,
-        int(align_corners),
-        float(scale_ac),
-        float(scale_nc),
+        scale_val,
+        bias_val,
         BLOCK_SIZE=BLOCK_SIZE,
     )
 

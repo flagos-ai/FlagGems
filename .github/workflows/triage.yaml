@@ -36,8 +36,8 @@ jobs:
             Note this PR might be rejected due to its size.
           github_api_url: 'https://api.github.com'
           files_to_ignore: ''
-      - id: attach-competition-label
-        uses: actions/github-script@v8
+      - id: identify-pr-type
+        uses: actions/github-script@v9
         with:
           script: |
             const prTitle = context.payload.pull_request.title
@@ -48,5 +48,13 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 labels: ['competition']
+              });
+            }
+            if (prTitle.includes('KernelGen')) {
+              await github.rest.issues.addLabels({
+                issue_number: prNumber,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['KernelGen']
               });
             }
