@@ -57,7 +57,7 @@ def _assert_orthonormal(actual, atol=2e-2, rtol=2e-2):
     k = actual.shape[-1]
     eye = torch.eye(k, dtype=actual.dtype, device=actual.device)
     gram = actual.mH @ actual
-    expected = eye.expand_as(gram)
+    expected = utils.to_reference(eye.expand_as(gram), False)
     torch.testing.assert_close(
         utils.to_cpu(gram, expected),
         expected,
