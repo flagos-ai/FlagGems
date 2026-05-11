@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -66,6 +66,10 @@ def _is_float32_cuda_matrix(input):
     return input.is_cuda and input.dtype == torch.float32 and input.dim() >= 2
 
 
+def _is_iluvatar_backend():
+    return device.vendor_name == "iluvatar"
+
+
 def _can_use_rank1_kernel(input, some=True, compute_uv=True):
     _, m, n = _svd_shape(input)
     return _is_float32_cuda_matrix(input) and some and compute_uv and min(m, n) == 1
@@ -98,6 +102,7 @@ def _can_use_small_jacobi_kernel(input, some=True, compute_uv=True):
         _is_float32_cuda_matrix(input)
         and some
         and compute_uv
+        and not _is_iluvatar_backend()
         and min(m, n) <= 16
         and max(m, n) <= 1024
     )
@@ -830,6 +835,8 @@ def svd(input, some=True, compute_uv=True):
         if k == 4 and m == 4 and n == 4 and batch >= 16:
             return SVDResult(*_small4_square_svd(input))
         if k <= 8 and max(m, n) <= 1024:
+            if _is_iluvatar_backend():
+                return SVDResult(*_fallback_svd(input, some, compute_uv))
             return SVDResult(*_small_jacobi_svd(input))
         if _should_use_gram16(batch, m, n):
             return SVDResult(*_gram16_svd(input))
