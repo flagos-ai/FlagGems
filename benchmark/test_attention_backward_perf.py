@@ -7,7 +7,7 @@ import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import set_philox_state
 
-from .performance_utils import GenericBenchmark
+from . import base
 
 _SAFE_HEAD_SIZES = (64, 128)
 
@@ -221,7 +221,7 @@ def _make_philox(device="cuda"):
     )
 
 
-class FlashAttentionBackwardBenchmark(GenericBenchmark):
+class FlashAttentionBackwardBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = []
 
@@ -392,7 +392,7 @@ def test_perf_flash_attention_backward():
     bench.run()
 
 
-class SdpFlashAttentionBackwardBenchmark(GenericBenchmark):
+class SdpFlashAttentionBackwardBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = []
         for head_size in _SAFE_HEAD_SIZES:
@@ -566,7 +566,7 @@ def test_perf_scaled_dot_product_flash_attention_backward(is_causal):
     bench.run()
 
 
-class CudnnAttentionBackwardBenchmark(GenericBenchmark):
+class CudnnAttentionBackwardBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = []
 
@@ -752,7 +752,7 @@ def test_perf_scaled_dot_product_cudnn_attention_backward():
     bench.run()
 
 
-class EfficientAttentionBackwardBenchmark(GenericBenchmark):
+class EfficientAttentionBackwardBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = []
 
@@ -956,7 +956,7 @@ def test_perf_efficient_attention_backward():
     bench.run()
 
 
-class SdpEfficientAttentionBackwardBenchmark(GenericBenchmark):
+class SdpEfficientAttentionBackwardBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = []
         _full_grad = (True, True, True, False)

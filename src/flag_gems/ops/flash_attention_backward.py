@@ -1461,7 +1461,7 @@ def scaled_dot_product_cudnn_attention_backward(
     dQ = dQ_bshd.permute(0, 2, 1, 3).contiguous()
     dK = dK_bshd.permute(0, 2, 1, 3).contiguous()
     dV = dV_bshd.permute(0, 2, 1, 3).contiguous()
-    return dQ, dK, dV, dBias
+    return dQ, dK, dV
 
 
 def efficient_attention_backward(

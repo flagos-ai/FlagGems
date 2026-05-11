@@ -7,10 +7,7 @@ import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import set_philox_state
 
-from .accuracy_utils import gems_assert_close
-from .conftest import TO_CPU
-
-device = flag_gems.device
+from . import accuracy_utils as utils
 
 
 def make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
@@ -182,10 +179,6 @@ def efficient_attn_sdp_forward_native(
     return out_bhsd, Q_bhsd, K_bhsd, V_bhsd, lse.float(), philox_seed, philox_offset
 
 
-@pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="Unsupported")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.flash_attention_backward
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
@@ -228,7 +221,9 @@ def test_flash_attention_backward(
     scale = float(1.0 / math.sqrt(head_size))
 
     Q, K, V = make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, dev)
-    dOut = torch.randn(batch, q_seq_len, num_head, head_size, dtype=dtype, device=dev)
+    dOut = torch.randn(
+        batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+    )
 
     wl = -1 if window_size_left is None else window_size_left
     wr = -1 if window_size_right is None else window_size_right
@@ -242,8 +237,6 @@ def test_flash_attention_backward(
         window_size_left=wl,
         window_size_right=wr,
     )
-
-    rng_state = torch.stack([philox_seed, philox_offset])
 
     extra_bwd = {}
     if window_size_left is not None:
@@ -270,35 +263,31 @@ def test_flash_attention_backward(
         **extra_bwd,
     )
 
-    dQ, dK, dV = flag_gems.ops.flash_attention_backward(
-        dOut,
-        Q,
-        K,
-        V,
-        out,
-        lse,
-        cum_seq_q=None,
-        cum_seq_k=None,
-        max_q=q_seq_len,
-        max_k=kv_seq_len,
-        dropout_p=0.0,
-        is_causal=is_causal,
-        rng_state=rng_state,
-        unused=None,
-        scale=scale,
-        window_size_left=window_size_left,
-        window_size_right=window_size_right,
-    )
+    with flag_gems.use_gems():
+        dQ, dK, dV = torch.ops.aten._flash_attention_backward(
+            dOut,
+            Q,
+            K,
+            V,
+            out,
+            lse,
+            None,
+            None,
+            q_seq_len,
+            kv_seq_len,
+            0.0,
+            is_causal,
+            philox_seed,
+            philox_offset,
+            scale=scale,
+            **extra_bwd,
+        )
 
-    gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
-    gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
-    gems_assert_close(dV, ref_dV, dtype, equal_nan=True)
+    utils.gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
+    utils.gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
+    utils.gems_assert_close(dV, ref_dV, dtype, equal_nan=True)
 
 
-@pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="Unsupported")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_cudnn_attention_backward
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
@@ -336,7 +325,9 @@ def test_scaled_dot_product_cudnn_attention_backward(
     scale = float(1.0 / math.sqrt(head_size))
 
     Q, K, V = make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, dev)
-    dOut = torch.randn(batch, q_seq_len, num_head, head_size, dtype=dtype, device=dev)
+    dOut = torch.randn(
+        batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+    )
 
     attn_bias = None
     if has_attn_bias:
@@ -347,7 +338,7 @@ def test_scaled_dot_product_cudnn_attention_backward(
                 q_seq_len,
                 kv_seq_len,
                 dtype=dtype,
-                device=dev,
+                device=flag_gems.device,
             )
             * 0.1
         )
@@ -394,44 +385,39 @@ def test_scaled_dot_product_cudnn_attention_backward(
     ref_dK = ref_dK_bhsd.permute(0, 2, 1, 3).contiguous()
     ref_dV = ref_dV_bhsd.permute(0, 2, 1, 3).contiguous()
 
-    (
-        dQ_bhsd,
-        dK_bhsd,
-        dV_bhsd,
-        dBias_gems,
-    ) = flag_gems.ops.scaled_dot_product_cudnn_attention_backward(
-        dOut_bhsd,
-        Q_bhsd,
-        K_bhsd,
-        V_bhsd,
-        out_bhsd,
-        lse_4d,
-        philox_seed,
-        philox_offset,
-        attn_bias,
-        None,
-        None,
-        q_seq_len,
-        kv_seq_len,
-        0.0,
-        is_causal,
-        scale=scale,
-        bias_requires_grad=bias_requires_grad and has_attn_bias,
-    )
+    with flag_gems.use_gems():
+        (
+            dQ_bhsd,
+            dK_bhsd,
+            dV_bhsd,
+        ) = torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
+            dOut_bhsd,
+            Q_bhsd,
+            K_bhsd,
+            V_bhsd,
+            out_bhsd,
+            lse_4d,
+            philox_seed,
+            philox_offset,
+            attn_bias,
+            None,
+            None,
+            q_seq_len,
+            kv_seq_len,
+            0.0,
+            is_causal,
+            scale=scale,
+        )
 
     dQ = dQ_bhsd.permute(0, 2, 1, 3).contiguous()
     dK = dK_bhsd.permute(0, 2, 1, 3).contiguous()
     dV = dV_bhsd.permute(0, 2, 1, 3).contiguous()
 
-    gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
-    gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
-    gems_assert_close(dV, ref_dV, dtype, equal_nan=True)
+    utils.gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
+    utils.gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
+    utils.gems_assert_close(dV, ref_dV, dtype, equal_nan=True)
 
 
-@pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="Unsupported")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.efficient_attention_backward
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
@@ -473,7 +459,9 @@ def test_efficient_attention_backward(
     scale = float(1.0 / math.sqrt(head_size))
 
     Q, K, V = make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, dev)
-    dOut = torch.randn(batch, q_seq_len, num_head, head_size, dtype=dtype, device=dev)
+    dOut = torch.randn(
+        batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+    )
 
     bias = None
     if has_bias:
@@ -484,7 +472,7 @@ def test_efficient_attention_backward(
                 q_seq_len,
                 kv_seq_len,
                 dtype=dtype,
-                device=dev,
+                device=flag_gems.device,
             )
             * 0.1
         )
@@ -519,42 +507,38 @@ def test_efficient_attention_backward(
         num_splits_key=None,
     )
 
-    dQ, dK, dV, dBias_gems = flag_gems.ops.efficient_attention_backward(
-        dOut,
-        Q,
-        K,
-        V,
-        bias,
-        out,
-        cu_seqlens_q=None,
-        cu_seqlens_k=None,
-        max_seqlen_q=q_seq_len,
-        max_seqlen_k=kv_seq_len,
-        logsumexp=lse,
-        dropout_p=0.0,
-        philox_seed=philox_seed,
-        philox_offset=philox_offset,
-        custom_mask_type=custom_mask_type,
-        bias_requires_grad=bias_requires_grad and has_bias,
-        scale=scale,
-        num_splits_key=None,
-        window_size=None,
-    )
+    with flag_gems.use_gems():
+        dQ, dK, dV, dBias_gems = torch.ops.aten._efficient_attention_backward(
+            dOut,
+            Q,
+            K,
+            V,
+            bias,
+            out,
+            None,
+            None,
+            q_seq_len,
+            kv_seq_len,
+            lse_aligned,
+            0.0,
+            philox_seed,
+            philox_offset,
+            custom_mask_type,
+            bias_requires_grad and has_bias,
+            scale=scale,
+            num_splits_key=None,
+        )
 
-    gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
-    gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
-    gems_assert_close(dV, ref_dV, dtype, equal_nan=True)
+    utils.gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
+    utils.gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
+    utils.gems_assert_close(dV, ref_dV, dtype, equal_nan=True)
 
     if has_bias and bias_requires_grad:
         assert dBias_gems is not None, "dBias should not be None"
         assert ref_dBias is not None, "ref dBias should not be None"
-        gems_assert_close(dBias_gems, ref_dBias, dtype, equal_nan=True)
+        utils.gems_assert_close(dBias_gems, ref_dBias, dtype, equal_nan=True)
 
 
-@pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="Unsupported")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_efficient_attention_backward
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
@@ -603,7 +587,9 @@ def test_scaled_dot_product_efficient_attention_backward(
     scale = float(1.0 / math.sqrt(head_size))
 
     Q, K, V = make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, dev)
-    dOut = torch.randn(batch, q_seq_len, num_head, head_size, dtype=dtype, device=dev)
+    dOut = torch.randn(
+        batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+    )
 
     attn_bias = None
     if has_attn_bias:
@@ -614,7 +600,7 @@ def test_scaled_dot_product_efficient_attention_backward(
                 q_seq_len,
                 kv_seq_len,
                 dtype=dtype,
-                device=dev,
+                device=flag_gems.device,
             )
             * 0.1
         )
@@ -661,33 +647,34 @@ def test_scaled_dot_product_efficient_attention_backward(
     ref_dK = ref_dK_bhsd.permute(0, 2, 1, 3).contiguous()
     ref_dV = ref_dV_bhsd.permute(0, 2, 1, 3).contiguous()
 
-    (
-        dQ_bhsd_gems,
-        dK_bhsd_gems,
-        dV_bhsd_gems,
-        dBias_gems,
-    ) = flag_gems.ops.scaled_dot_product_efficient_attention_backward(
-        dOut_bhsd,
-        Q_bhsd,
-        K_bhsd,
-        V_bhsd,
-        attn_bias,
-        out_bhsd,
-        lse,
-        philox_seed=philox_seed,
-        philox_offset=philox_offset,
-        dropout_p=0.0,
-        grad_input_mask=grad_input_mask,
-        is_causal=is_causal,
-        scale=scale,
-    )
+    with flag_gems.use_gems():
+        (
+            dQ_bhsd_gems,
+            dK_bhsd_gems,
+            dV_bhsd_gems,
+            dBias_gems,
+        ) = torch.ops.aten._scaled_dot_product_efficient_attention_backward(
+            dOut_bhsd,
+            Q_bhsd,
+            K_bhsd,
+            V_bhsd,
+            attn_bias,
+            out_bhsd,
+            lse,
+            philox_seed,
+            philox_offset,
+            0.0,
+            grad_input_mask,
+            is_causal,
+            scale=scale,
+        )
 
     dQ = dQ_bhsd_gems.permute(0, 2, 1, 3).contiguous()
     dK = dK_bhsd_gems.permute(0, 2, 1, 3).contiguous()
     dV = dV_bhsd_gems.permute(0, 2, 1, 3).contiguous()
 
     if need_dq:
-        gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
+        utils.gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
     else:
         assert torch.all(dQ_bhsd_gems == 0), (
             f"dQ should be zero when need_dq=False, "
@@ -695,7 +682,7 @@ def test_scaled_dot_product_efficient_attention_backward(
         )
 
     if need_dk:
-        gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
+        utils.gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
     else:
         assert torch.all(dK_bhsd_gems == 0), (
             f"dK should be zero when need_dk=False, "
@@ -703,7 +690,7 @@ def test_scaled_dot_product_efficient_attention_backward(
         )
 
     if need_dv:
-        gems_assert_close(dV, ref_dV, dtype, equal_nan=True)
+        utils.gems_assert_close(dV, ref_dV, dtype, equal_nan=True)
     else:
         assert torch.all(dV_bhsd_gems == 0), (
             f"dV should be zero when need_dv=False, "
@@ -713,7 +700,7 @@ def test_scaled_dot_product_efficient_attention_backward(
     if need_dbias and has_attn_bias:
         assert dBias_gems is not None, "dBias should not be None"
         assert ref_dBias is not None, "ref dBias should not be None"
-        gems_assert_close(dBias_gems, ref_dBias, dtype, equal_nan=True)
+        utils.gems_assert_close(dBias_gems, ref_dBias, dtype, equal_nan=True)
     else:
         assert dBias_gems is None, (
             f"dBias should be None when need_dbias=False or no bias, "
