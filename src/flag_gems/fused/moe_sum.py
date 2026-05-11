@@ -1,6 +1,10 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.autotune(
@@ -53,6 +57,7 @@ def moe_sum(
     input: torch.Tensor,
     output: torch.Tensor,
 ):
+    logger.debug("GEMS MOE SUM")
     num_tokens, topk, hidden_size = input.shape
     input_strides = input.stride()
     output_strides = output.stride()

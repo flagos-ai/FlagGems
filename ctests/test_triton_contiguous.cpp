@@ -1,10 +1,11 @@
 #include <gtest/gtest.h>
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 TEST(contiguous_op_test, contiguous) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor inp = torch::randn({10, 10, 10}, device);
   inp = inp.index({torch::indexing::Slice(torch::indexing::None, torch::indexing::None, 2)});
   torch::Tensor ref_inp = flag_gems::accuracy_utils::to_reference(inp);

@@ -133,6 +133,14 @@ UPSAMPLE_SHAPES = [
 # 1D upsample uses (N, C, W) shapes derived from the 2D cases above.
 UPSAMPLE_SHAPES_1D = [s[:3] for s in UPSAMPLE_SHAPES]
 
+UPSAMPLE_SHAPES_3D = [
+    (4, 8, 32, 32, 32),
+    (3, 5, 17, 19, 23),
+    (2, 16, 8, 64, 64),
+    (12, 24, 16, 16, 16),
+    (1, 2, 63, 65, 67),
+]
+
 SWIGLU_SPECIAL_SHAPES = (
     [(2, 19, 8)]
     if QUICK_MODE
@@ -212,14 +220,16 @@ def to_reference(inp, upcast=False):
         ref_inp = ref_inp.to("cpu")
     if upcast:
         if ref_inp.is_complex():
-            ref_inp = ref_inp.to(torch.complex128)
+            ref_inp = ref_inp.to(
+                torch.complex128 if fp64_is_supported else torch.complex64
+            )
         else:
-            ref_inp = ref_inp.to(torch.float64)
+            ref_inp = ref_inp.to(torch.float64 if fp64_is_supported else torch.float32)
     return ref_inp
 
 
 def to_cpu(res, ref):
-    if TO_CPU:
+    if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
         res = res.to("cpu")
         assert ref.device == torch.device("cpu")
     return res

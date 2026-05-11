@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -7,16 +8,26 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("bmm"),
+    configs=runtime.ops_get_configs("bmm", pre_hook=None)
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else runtime.get_tuned_config("bmm"),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=["log", "log", "log", "align32", "align32"],
+    strategy=runtime.get_expand_config("bmm")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else [
+        "log",
+        "log",
+        "log",
+        "align32",
+        "align32",
+    ],
 )
 @triton.heuristics(runtime.get_heuristic_config("bmm"))
 @triton.jit
@@ -43,22 +54,23 @@ def bmm_kernel(
     DIVISIBLE_M: tl.constexpr,
     DIVISIBLE_N: tl.constexpr,
     DIVISIBLE_K: tl.constexpr,
+    IS_FP64: tl.constexpr = False,
 ):
     # batch offsets
-    pid_b = tle.program_id(2)
+    pid_b = ext.program_id(2)
     A += pid_b * stride_ab
     B += pid_b * stride_bb
     O += pid_b * stride_ob
 
-    pidx = tle.program_id(0)
-    pidy = tle.program_id(1)
+    pidx = ext.program_id(0)
+    pidy = ext.program_id(1)
 
     if GROUP_M == 1:
         pid_m, pid_n = pidx, pidy
     else:
         # reorder CTAs
-        gridx = tle.num_programs(0)
-        gridy = tle.num_programs(1)
+        gridx = ext.num_programs(0)
+        gridy = ext.num_programs(1)
         pid = pidx + pidy * gridx
 
         num_CTA_per_group = gridy * GROUP_M
@@ -85,7 +97,10 @@ def bmm_kernel(
     o_ptrs = O + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
 
     num_iters = tl.cdiv(K, TILE_K)
-    o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
+    if IS_FP64:
+        o = tl.zeros((TILE_M, TILE_N), dtype=tl.float64)
+    else:
+        o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
     for _ in range(num_iters):
         if DIVISIBLE_K:
             if DIVISIBLE_M:
@@ -157,6 +172,7 @@ def bmm(A, B):
             out.stride(0),
             out.stride(1),
             out.stride(2),
+            IS_FP64=A.dtype == torch.float64,
         )
     return out
 
@@ -190,5 +206,6 @@ def bmm_out(A, B, out):
             out.stride(0),
             out.stride(1),
             out.stride(2),
+            IS_FP64=A.dtype == torch.float64,
         )
     return out

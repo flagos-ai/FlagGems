@@ -1,4 +1,4 @@
-#include "c10/cuda/CUDAStream.h"
+#include "flag_gems/backend_utils.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 #include "triton_jit/triton_jit_function.h"
@@ -61,8 +61,8 @@ at::Tensor cat(const at::TensorList& tensors, int64_t dim) {
       TritonJITFunction::get_instance(std::string(utils::get_triton_src_path() / "cat_copy.py"),
                                       "strided_copy_kernel");
   c10::DeviceGuard guard(out.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   for (size_t i = 0; i < tensors.size(); ++i) {
     const auto& input_tensor = tensors[i];

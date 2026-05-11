@@ -1,0 +1,104 @@
+name: "ondemand test"
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  checks: read
+  contents: read
+
+jobs:
+  process-command:
+    runs-on: ubuntu-latest
+    outputs:
+      op: ${{ steps.parse-command.outputs.op}}
+      runner: ${{ steps.parse-command.outputs.runner }}
+      pull: ${{ steps.parse-command.outputs.pull }}
+      continue: ${{ steps.check.outputs.continue }}
+    steps:
+      - id: check
+        uses: github/command@v2.0.3
+        with:
+          command: "/test"
+          allowed_contexts: pull_request
+          allow_forks: "true"
+          skip_reviews: "true"
+          fork_review_bypass: "true"
+          permissions: "write,admin"
+
+      - id: parse-command
+        if: ${{ steps.check.outputs.continue == 'true' }}
+        env:
+          PULL_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          # params is op:runner
+          params=${{ steps.check.outputs.params }}
+          op=$(echo $params | cut -d ':' -f 1)
+          runner=$(echo $params | cut -d ':' -f 2)
+          echo "op=${op}" >> $GITHUB_OUTPUT
+          echo "runner=${runner}" >> $GITHUB_OUTPUT
+          echo "pull=${PULL_NUMBER}" >> $GITHUB_OUTPUT
+
+  test-operator:
+    needs: process-command
+    if: needs.process-command.outputs.continue == 'true'
+    runs-on: ${{ needs.process-command.outputs.runner }}
+    steps:
+      - name: Install GitHub CLI
+        uses: ksivamuthu/actions-setup-gh-cli@v2
+        with:
+          version: 2.92.0
+      - id: checkout-repo
+        uses: Wandalen/wretry.action@v3.8.0
+        with:
+          action: actions/checkout@v6
+          attempt_limit: 5
+          attempt_delay: 20000
+      - id: checkout-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "checking out ${{ needs.process-command.outputs.pull }}"
+          gh pr checkout ${{ needs.process-command.outputs.pull }}
+      - name: Setup FlagGems
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ needs.process-command.outputs.runner }}
+        run: |
+          # Validate vendor names
+          case "${RUNNER_LABEL}" in
+            h20)
+              VENDOR="nvidia"
+              ;;
+            moore)
+              VENDOR="mthreads"
+              ;;
+            *)
+              VENDOR="${RUNNER_LABEL}"
+              ;;
+          esac
+
+          echo "VENDOR=${VENDOR}"
+          echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
+
+          ./setup.sh ${VENDOR}
+
+      - name: Check GPU availability
+        shell: bash
+        run: |
+          bash "tools/gpu_check_${VENDOR}.sh"
+
+      - name: Run tests
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          source tools/set-env.sh ${VENDOR}
+          tools/run_tests.py --ops ${{ needs.process-command.outputs.op }}
+
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: ondemand-test
+          path: results/

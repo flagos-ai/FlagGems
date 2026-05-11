@@ -22,7 +22,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.newline()
     code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems import runtime")
-    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+    code.writeline("from flag_gems.utils import triton_lang_extension as ext")
 
     code.newline()
     code.newline()
@@ -104,6 +104,7 @@ def generate_gather_kernel(
 
             code.writeline("dim: tl.constexpr,")
             code.writeline("stride_dim: tl.constexpr,")
+            code.writeline("inp_dim_size: tl.constexpr,")
             code.writeline("M: tl.constexpr,")
             code.writeline("N: tl.constexpr,")
             code.writeline("BLOCK_M: tl.constexpr,")
@@ -112,8 +113,8 @@ def generate_gather_kernel(
 
     # Kernel Code
     with code.indent():
-        code.writeline("pid_x = tle.program_id(0)")
-        code.writeline("pid_y = tle.program_id(1)")
+        code.writeline("pid_x = ext.program_id(0)")
+        code.writeline("pid_y = ext.program_id(1)")
         code.writeline(
             "rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]"
         )
@@ -151,7 +152,7 @@ def generate_gather_kernel(
 
 
 def parameter_for_wrapper() -> str:
-    # inp_strided, out, index, dim, stride_dim, M, N
+    # inp_strided, out, index, dim, stride_dim, inp_dim_size, M, N
     parameters: List[str] = []
 
     parameters.append("inp_strided")
@@ -159,6 +160,7 @@ def parameter_for_wrapper() -> str:
     parameters.append("index")
     parameters.append("dim")
     parameters.append("stride_dim")
+    parameters.append("inp_dim_size")
     parameters.append("M")
     parameters.append("N")
 
@@ -204,6 +206,7 @@ def generate_gather_wrapper(
 
                 code.writeline("dim,")
                 code.writeline("stride_dim,")
+                code.writeline("inp_dim_size,")
                 code.writeline("M,")
                 code.writeline("N,")
         code.writeline(")")
@@ -218,7 +221,7 @@ def generate_code(
     kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
-    # inputs: inp_strided, out, index, dim, stride_dim, M, N
+    # inputs: inp_strided, out, index, dim, stride_dim, inp_dim_size, M, N
     shape = inputs[2].shape
     rank = len(shape)
 
@@ -275,6 +278,13 @@ _gather_func = GatherFunction()
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
     logger.debug("GEMS GATHER")
+    if dim < 0:
+        dim += inp.ndim
+    if inp.ndim != index.ndim:
+        raise IndexError(
+            f"Index tensor must have the same number of dimensions as input tensor. "
+            f"Got {index.ndim} and {inp.ndim}."
+        )
     inp = inp.contiguous()
     index = index.contiguous()
     if out is None:
@@ -286,8 +296,9 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
     # plain_idx = torch.arange(0, index.numel(), device=inp.device).reshape(index.shape)
     N = list(index.shape)[index.ndim - 1]
     M = index.numel() // N
+    inp_dim_size = inp.size(dim)
 
-    _gather_func(inp_strided, out, index, dim, stride_dim, M, N)
+    _gather_func(inp_strided, out, index, dim, stride_dim, inp_dim_size, M, N)
     return out
 
 

@@ -9,6 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
 
 from ..utils import MAX_GRID_SIZE_X, TOTAL_CORE_NUM, cfggen_reduce_op
+from .zeros import zero_
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -95,6 +96,7 @@ def sum_kernel(
 
 def sum(inp, *, dtype=None):
     logger.debug("GEMS_CAMBRICON SUM")
+    inp = inp.contiguous()
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -126,12 +128,17 @@ def sum_out(inp, *, dtype=None, out):
     return out.to(dtype)
 
 
-def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS_CAMBRICON SUM DIM")
+def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
             dtype = torch.int64
+
+    if dim is None:
+        result = torch.sum(inp, dtype=dtype)
+        if keepdim:
+            result = result.reshape([1] * inp.ndim)
+        return result
 
     if dim == []:
         if not keepdim:
@@ -139,52 +146,71 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
         else:
             dim_num = inp.ndim
             return torch.reshape(sum(inp, dtype=dtype), [1] * dim_num)
-
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
+
     inp = dim_compress(inp, dim)
     N = 1
     for i in dim:
         N *= shape[i]
         shape[i] = 1
     M = inp.numel() // N
-
-    out = torch.empty(shape, dtype=dtype, device=inp.device)
-
+    _out_provided = out is not None
+    if _out_provided:
+        dim_set = set(dim)
+        if keepdim:
+            out.resize_(shape)
+        else:
+            out.resize_([s for i, s in enumerate(shape) if i not in dim_set])
+    else:
+        out = torch.empty(shape, dtype=dtype, device=inp.device)
     grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), MAX_GRID_SIZE_X // 4),)
     with torch_device_fn.device(inp.device):
         sum_kernel[grid](inp, out, M, N)
-    if not keepdim:
-        out = out.squeeze(dim=dim)
+    if not keepdim and not _out_provided:
+        for d in sorted(dim, reverse=True):
+            out = out.squeeze(dim=d)
     return out
+
+
+def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
+    logger.debug("GEMS_CAMBRICON SUM DIM")
+    # support dim = 0, which are consistent with PyTorch
+    if inp.numel() == 0:
+        if dtype is None:
+            dtype = inp.dtype
+        if dtype is torch.bool:
+            dtype = torch.int64
+
+        out_shape = list(inp.shape)
+        if dim is None:
+            if keepdim:
+                out_shape = [1] * len(out_shape)
+            else:
+                out_shape = []
+        elif isinstance(dim, (list, tuple)) and len(dim) == 0:
+            if keepdim:
+                out_shape = [1] * len(out_shape)
+            else:
+                out_shape = []
+        else:
+            dims_to_reduce = dim if isinstance(dim, (list, tuple)) else [dim]
+            if keepdim:
+                for d in dims_to_reduce:
+                    out_shape[d % inp.ndim] = 1
+            else:
+                sorted_dims_to_remove = sorted(
+                    dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True
+                )
+                for d in sorted_dims_to_remove:
+                    index_to_remove = d % inp.ndim
+                    out_shape.pop(index_to_remove)
+        out = torch.empty(out_shape, dtype=dtype, device=inp.device)
+        zero_(out)
+        return out
+    return sum_dim_comm(inp, dim, keepdim, dtype=dtype)
 
 
 def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
     logger.debug("GEMS_CAMBRICON SUM_DIM_OUT")
-    if dtype is None:
-        dtype = inp.dtype
-        if dtype is torch.bool:
-            dtype = torch.int64
-
-    if dim == []:
-        if not keepdim:
-            return sum_out(inp, dtype=dtype, out=out)
-        else:
-            dim_num = inp.ndim
-            return torch.reshape(sum_out(inp, dtype=dtype, out=out), [1] * dim_num)
-
-    shape = list(inp.shape)
-    dim = [d % inp.ndim for d in dim]
-    inp = dim_compress(inp, dim)
-    N = 1
-    for i in dim:
-        N *= shape[i]
-        shape[i] = 1
-    M = inp.numel() // N
-
-    grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), MAX_GRID_SIZE_X // 4),)
-    with torch_device_fn.device(inp.device):
-        sum_kernel[grid](inp, out, M, N)
-    if not keepdim:
-        out.squeeze_(dim=dim)
-    return out
+    return sum_dim_comm(inp, dim, keepdim, dtype=dtype, out=out)

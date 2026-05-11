@@ -1,11 +1,19 @@
 #include "flag_gems/accuracy_utils.h"
+#include "flag_gems/backend_utils.h"
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
 #include <c10/cuda/CUDAGuard.h>
+#include <cuda_runtime_api.h>
+#endif
 #include <torch/torch.h>
 #include <sstream>
 
 namespace flag_gems::accuracy_utils {
 
+#if defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_NPU)
+bool TO_CPU = true;
+#else
 bool TO_CPU = false;
+#endif
 
 float resolution_for_dtype(c10::ScalarType dtype) {
   switch (dtype) {
@@ -64,40 +72,47 @@ torch::Tensor to_reference(torch::Tensor inp, bool upcast) {
   return ref_inp;
 }
 
-torch::Tensor to_cpu(torch::Tensor res, const torch::Tensor& ref) {
+std::pair<torch::Tensor, torch::Tensor> to_cpu(torch::Tensor res, torch::Tensor ref) {
   if (TO_CPU) {
-    TORCH_CHECK(ref.device().is_cpu(),
-                "to_cpu: reference tensor must be on CPU when TO_CPU is enabled, "
-                "but got device = ",
-                ref.device().str());
     res = res.to(torch::kCPU);
+    ref = ref.to(torch::kCPU);
   }
-  return res;
+  return {res, ref};
 }
 
 static std::pair<torch::Tensor, torch::Tensor> _maybe_move_to_cpu(torch::Tensor res, torch::Tensor ref) {
-  if (!(res.is_cuda() && ref.is_cuda())) {
+  bool both_on_device = backend::isOnDevice(res) && backend::isOnDevice(ref);
+  if (!both_on_device) {
     return {res, ref};
   }
 
   const int64_t required = res.numel() * static_cast<int64_t>(res.element_size());
 
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
   int64_t free_mem = -1;
 
   try {
     size_t free_mem_u = 0, total_mem_u = 0;
     c10::cuda::CUDAGuard device_guard(res.device());
-    cudaMemGetInfo(&free_mem_u, &total_mem_u);
-    free_mem = static_cast<int64_t>(free_mem_u);
+    if (cudaMemGetInfo(&free_mem_u, &total_mem_u) == cudaSuccess) {
+      free_mem = static_cast<int64_t>(free_mem_u);
+    }
   } catch (...) {
     free_mem = -1;
   }
+#endif
 
   constexpr int64_t HUGE_TENSOR_BYTES = int64_t(1) << 30;  // 1 GiB
 
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
   if ((free_mem >= 0 && required >= free_mem) || (required >= HUGE_TENSOR_BYTES)) {
     return {res.cpu(), ref.cpu()};
   }
+#else
+  if (required >= HUGE_TENSOR_BYTES) {
+    return {res.cpu(), ref.cpu()};
+  }
+#endif
 
   return {res, ref};
 }
@@ -108,7 +123,7 @@ CheckCloseResult gems_assert_close(torch::Tensor res,
                                    bool equal_nan,
                                    int64_t reduce_dim,
                                    float atol) {
-  res = to_cpu(res, ref);
+  std::tie(res, ref) = to_cpu(res, ref);
 
   if (dtype == c10::ScalarType::Undefined) {
     // dtype = c10::kFloat;
@@ -152,7 +167,7 @@ CheckCloseResult gems_assert_close(torch::Tensor res,
 }
 
 CheckCloseResult gems_assert_equal(torch::Tensor res, torch::Tensor ref, bool equal_nan) {
-  res = to_cpu(res, ref);
+  std::tie(res, ref) = to_cpu(res, ref);
 
   bool ok = torch::allclose(res, ref, 0.0, 0.0, equal_nan);
 
@@ -221,7 +236,7 @@ CheckCloseResult gems_assert_close_div_factor(torch::Tensor res,
                                               int64_t reduce_dim,
                                               float atol,
                                               bool inplace) {
-  res = to_cpu(res, ref);
+  std::tie(res, ref) = to_cpu(res, ref);
 
   if (dtype == c10::ScalarType::Undefined) {
     // dtype = c10::kFloat;

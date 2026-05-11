@@ -11,7 +11,40 @@ at::Tensor zeros(at::IntArrayRef size,
                  c10::optional<at::Layout> layout = ::std::nullopt,
                  c10::optional<at::Device> device = ::std::nullopt,
                  c10::optional<bool> pin_memory = ::std::nullopt);
-at::Tensor add_tensor(const at::Tensor &a_, const at::Tensor &b_);
+#ifdef FLAGGEMS_POINTWISE_DYNAMIC
+// add.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor
+at::Tensor add_tensor(const at::Tensor &self, const at::Tensor &other, const at::Scalar &alpha = 1);
+// add.Scalar(Tensor self, Scalar other, Scalar alpha=1) -> Tensor
+at::Tensor add_scalar(const at::Tensor &self, const at::Scalar &other, const at::Scalar &alpha = 1);
+// add_.Tensor(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)
+at::Tensor &add_tensor_inplace(at::Tensor &self, const at::Tensor &other, const at::Scalar &alpha = 1);
+// add_.Scalar(Tensor(a!) self, Scalar other, Scalar alpha=1) -> Tensor(a!)
+at::Tensor &add_scalar_inplace(at::Tensor &self, const at::Scalar &other, const at::Scalar &alpha = 1);
+
+at::Tensor true_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor true_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor trunc_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor trunc_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor floor_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor floor_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor div_mode(const at::Tensor &a,
+                    const at::Tensor &b,
+                    const c10::optional<std::string> &rounding_mode);
+at::Tensor div_mode_(at::Tensor &a, const at::Tensor &b, const c10::optional<std::string> &rounding_mode);
+at::Tensor remainder_tt(const at::Tensor &a, const at::Tensor &b);
+at::Tensor remainder_ts(const at::Tensor &a, double b_scalar);
+at::Tensor remainder_st(double a_scalar, const at::Tensor &b);
+at::Tensor remainder(const at::Tensor &a, const at::Tensor &b);
+at::Tensor remainder_(at::Tensor &a, const at::Tensor &b);
+
+at::Tensor fill_scalar(const at::Tensor &input, const c10::Scalar &value);
+at::Tensor fill_tensor(const at::Tensor &input, const at::Tensor &value);
+at::Tensor &fill_scalar_(at::Tensor &input, const c10::Scalar &value);
+at::Tensor &fill_tensor_(at::Tensor &input, const at::Tensor &value);
+#endif
+std::vector<at::Tensor> act_quant_triton(const at::Tensor &x,
+                                         int block_size = 128,
+                                         std::optional<std::string> scale_fmt = std::nullopt);
 at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2);
 at::Tensor &mm_out_tensor(const at::Tensor &mat1, const at::Tensor &mat2, at::Tensor &out);
 at::Tensor sum_dim(const at::Tensor &self,
@@ -71,34 +104,11 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
                               bool scale_grad_by_freq = false,
                               bool sparse = false);
 at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim = std::nullopt, bool keepdim = false);
-at::Tensor true_div(const at::Tensor &a, const at::Tensor &b);
-at::Tensor true_div_(at::Tensor &a, const at::Tensor &b);
-at::Tensor trunc_div(const at::Tensor &a, const at::Tensor &b);
-at::Tensor trunc_div_(at::Tensor &a, const at::Tensor &b);
-at::Tensor floor_div(const at::Tensor &a, const at::Tensor &b);
-at::Tensor floor_div_(at::Tensor &a, const at::Tensor &b);
-at::Tensor div_mode(const at::Tensor &a,
-                    const at::Tensor &b,
-                    const c10::optional<std::string> &rounding_mode);
-at::Tensor div_mode_(at::Tensor &a, const at::Tensor &b, const c10::optional<std::string> &rounding_mode);
-at::Tensor remainder_tt(const at::Tensor &a, const at::Tensor &b);
-at::Tensor remainder_ts(const at::Tensor &a, double b_scalar);
-at::Tensor remainder_st(double a_scalar, const at::Tensor &b);
-at::Tensor remainder(const at::Tensor &a, const at::Tensor &b);
-at::Tensor remainder_(at::Tensor &a, const at::Tensor &b);
 std::tuple<at::Tensor, at::Tensor> sort(const at::Tensor &self, int64_t dim = -1, bool descending = false);
 std::tuple<at::Tensor, at::Tensor> sort_stable(const at::Tensor &inp,
                                                c10::optional<bool> stable,
                                                int64_t dim = -1,
                                                bool descending = false);
-
-at::Tensor fill_scalar(const at::Tensor &input, const c10::Scalar &value);
-
-at::Tensor fill_tensor(const at::Tensor &input, const at::Tensor &value);
-
-at::Tensor &fill_scalar_(at::Tensor &input, const c10::Scalar &value);
-
-at::Tensor &fill_tensor_(at::Tensor &input, const at::Tensor &value);
 
 at::Tensor softmax(const at::Tensor &input, int64_t dim, bool half_to_float);
 
@@ -106,6 +116,16 @@ at::Tensor softmax_backward(const at::Tensor &grad_output,
                             const at::Tensor &output,
                             int64_t dim,
                             at::ScalarType input_dtype);
+at::Tensor fp8_matmul(const at::Tensor &a,
+                      const at::Tensor &a_s,
+                      const at::Tensor &b,
+                      const at::Tensor &b_s,
+                      const at::ScalarType scale_dtype = at::kFloat);
+at::Tensor fp8_matmul_direct(const at::Tensor &a,
+                             const at::Tensor &a_s,
+                             const at::Tensor &b,
+                             const at::Tensor &b_s,
+                             const at::ScalarType scale_dtype = at::kFloat);
 
 void reshape_and_cache_flash(const at::Tensor &key,
                              const at::Tensor &value,

@@ -5,13 +5,16 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+
 jobs:
   build-wheels:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Pull manylinux2_28 image
         run: docker pull quay.io/pypa/manylinux_2_28_x86_64
@@ -55,7 +58,7 @@ jobs:
           "
 
       - name: Upload wheel as artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: built-wheel-${{ github.ref_name }}
           path: ${{ runner.temp }}/wheelhouse/*.whl
@@ -72,10 +75,10 @@ jobs:
       id-token: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Download built wheel
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: built-wheel-${{ github.ref_name }}
           path: dist

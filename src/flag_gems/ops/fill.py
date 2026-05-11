@@ -33,6 +33,15 @@ def fill_scalar(input, value):
         return fill_scalar_func(input, value, out0=out)
 
 
+def fill_scalar_out(input, value, *, out=None):
+    logger.debug("GEMS FILL_SCALAR_OUT")
+    if out is None:
+        return fill_scalar(input, value)
+    with torch_device_fn.device(input.device):
+        fill_scalar_func(input, value, out0=out)
+    return out
+
+
 def fill_tensor(input, value):
     if not value.is_cuda:
         return fill_scalar(input, value.item())
@@ -44,6 +53,21 @@ def fill_tensor(input, value):
     out = torch.empty_like(input)
     with torch_device_fn.device(input.device):
         return fill_tensor_func(input, value, out0=out)
+
+
+def fill_tensor_out(input, value, *, out=None):
+    logger.debug("GEMS FILL_TENSOR_OUT")
+    if out is None:
+        return fill_tensor(input, value)
+    if not value.is_cuda:
+        return fill_scalar_out(input, value.item(), out=out)
+    if value.ndim != 0:
+        raise RuntimeError(
+            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
+        )
+    with torch_device_fn.device(input.device):
+        fill_tensor_func(input, value, out0=out)
+    return out
 
 
 def fill_tensor_(self, value):

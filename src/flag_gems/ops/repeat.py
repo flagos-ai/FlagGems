@@ -61,7 +61,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems.utils.shape_utils import volume")
     code.writeline("from flag_gems.utils.libentry import libentry")
     code.writeline("from flag_gems.utils.type_utils import type_promotion")
-    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+    code.writeline("from flag_gems.utils import triton_lang_extension as ext")
     code.newline()
     code.newline()
     return code
@@ -102,7 +102,7 @@ def generate_functional_repeat_wrapper(
                 "assert(sizes_shape[i] >= 0), 'the number of repetitions per dimension out of range (expected to >= 0) \
                 but got {}'.format(sizes_shape[i])"
             )
-            code.writeline("if sizes_shape[i] == 0: ")
+            code.writeline("if in0_shape[i] * sizes_shape[i] == 0: ")
             with code.indent():
                 code.writeline("is_empty = True")
             code.writeline("out_shape.append(in0_shape[i] * sizes_shape[i])")
@@ -264,10 +264,10 @@ def generate_repeat_kernel(
     with code.indent():
         # get pid
         code.writeline("# task id & masking")
-        pid_stmt = "pid = tle.program_id(0)"
+        pid_stmt = "pid = ext.program_id(0)"
         code.writeline(pid_stmt)
 
-        code.writeline("num_ctas = tle.num_programs(0)")
+        code.writeline("num_ctas = ext.num_programs(0)")
 
         # get tid (a.k.a task id)
         tid_stmt = "init_tid = pid * tile_size + tl.arange(0, tile_size)"

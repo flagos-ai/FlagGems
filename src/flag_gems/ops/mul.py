@@ -4,6 +4,7 @@ import torch
 import triton
 
 from flag_gems.utils import pointwise_dynamic
+from flag_gems.utils.pointwise_dynamic import ComplexMode
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,25 @@ def mul_func(x, y):
 @triton.jit
 def mul_func_scalar(x, y):
     return x * y
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, True, True],  # ar, ai, br, bi
+    num_outputs=2,
+    promotion_methods=[(0, 1, 2, 3, "DEFAULT"), (0, 1, 2, 3, "DEFAULT")],
+)
+@triton.jit
+def mul_complex_kernel(ar, ai, br, bi):
+    real = ar * br - ai * bi
+    imag = ar * bi + ai * br
+    return real, imag
+
+
+# Register complex support
+mul_func.register_complex(mode=ComplexMode.CROSS, cross_kernel=mul_complex_kernel)
+mul_func_scalar.register_complex(
+    mode=ComplexMode.CROSS, tensorize_scalars=True, fallback_target=mul_func
+)
 
 
 def mul(A, B):
