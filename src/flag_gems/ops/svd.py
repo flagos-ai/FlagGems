@@ -16,6 +16,10 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeImplicitAutograd
 )
 
+_GRAM_CONDITION_GUARD_MAX_BATCH = 16
+_GRAM_CONDITION_GUARD_MAX_K = 32
+_GRAM_CONDITION_EIGEN_RATIO = 1.0e-8
+
 
 def _fallback_svd(input, some=True, compute_uv=True):
     return torch.ops.aten.svd.default.redispatch(
@@ -37,6 +41,28 @@ def _svd_shape(input):
     for dim in input.shape[:-2]:
         batch *= dim
     return batch, m, n
+
+
+def _should_guard_gram_spectrum(batch, k):
+    return (
+        batch <= _GRAM_CONDITION_GUARD_MAX_BATCH
+        and k <= _GRAM_CONDITION_GUARD_MAX_K
+    )
+
+
+def _gram_spectrum_needs_fallback(vals):
+    if vals.numel() == 0:
+        return False
+
+    largest = vals[..., -1]
+    smallest = vals[..., 0]
+    suspicious = (
+        (~torch.isfinite(largest))
+        | (~torch.isfinite(smallest))
+        | (largest <= 0)
+        | (smallest <= largest * _GRAM_CONDITION_EIGEN_RATIO)
+    )
+    return bool(torch.any(suspicious).item())
 
 
 def _is_float32_cuda_matrix(input):
@@ -604,6 +630,10 @@ def _gram_svd(input):
         at_3d = a.transpose(-2, -1).reshape(batch, n, m)
         gram = _aten_bmm(at_3d, a_3d, (*a.shape[:-2], n, n))
         vals, v = torch.linalg.eigh(gram)
+        if _should_guard_gram_spectrum(
+            batch, n
+        ) and _gram_spectrum_needs_fallback(vals):
+            return _fallback_svd(input, True, True)
         vals = vals.flip(-1).clamp_min_(0.0)
         v = v.flip(-1)
         s = torch.sqrt(vals)
@@ -618,6 +648,10 @@ def _gram_svd(input):
     at_3d = a.transpose(-2, -1).reshape(batch, n, m)
     gram = _aten_bmm(a_3d, at_3d, (*a.shape[:-2], m, m))
     vals, u = torch.linalg.eigh(gram)
+    if _should_guard_gram_spectrum(batch, m) and _gram_spectrum_needs_fallback(
+        vals
+    ):
+        return _fallback_svd(input, True, True)
     vals = vals.flip(-1).clamp_min_(0.0)
     u = u.flip(-1)
     s = torch.sqrt(vals)
@@ -731,6 +765,10 @@ def _gram16_svd(input):
         at_3d = a.transpose(-2, -1).reshape(batch, n, m)
         gram = _aten_bmm(a, at_3d, (batch, m, m))
     vals, basis = torch.linalg.eigh(gram)
+    if _should_guard_gram_spectrum(batch, 16) and _gram_spectrum_needs_fallback(
+        vals
+    ):
+        return _fallback_svd(input, True, True)
 
     block_r = 64 if m >= n else 128
     with torch_device_fn.device(input.device):

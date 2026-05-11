@@ -10,6 +10,29 @@ FAST_SHAPES = [(2, 2), (8, 2), (2, 8), (16, 8), (8, 16), (64, 32), (32, 64)]
 FALLBACK_SHAPES = [(5, 3), (3, 5), (2, 4, 4)]
 
 
+def _make_spectrum_input(shape, singular_values, seed=0):
+    torch.manual_seed(seed)
+    *batch_shape, m, n = shape
+    k = min(m, n)
+    left, _ = torch.linalg.qr(
+        torch.randn(
+            (*batch_shape, m, m), dtype=torch.float32, device=flag_gems.device
+        )
+    )
+    right, _ = torch.linalg.qr(
+        torch.randn(
+            (*batch_shape, n, n), dtype=torch.float32, device=flag_gems.device
+        )
+    )
+    sigma = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
+    diag = torch.as_tensor(
+        singular_values[:k], dtype=torch.float32, device=flag_gems.device
+    )
+    idx = torch.arange(k, device=flag_gems.device)
+    sigma[..., idx, idx] = diag
+    return left @ sigma @ right.mH
+
+
 def _make_input(shape, dtype):
     if dtype.is_complex:
         real = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
@@ -33,6 +56,22 @@ def _assert_close(actual, expected, atol=5e-4, rtol=5e-4):
     )
 
 
+def _assert_orthonormal(actual, atol=2e-2, rtol=2e-2):
+    if actual.numel() == 0:
+        return
+    k = actual.shape[-1]
+    eye = torch.eye(k, dtype=actual.dtype, device=actual.device)
+    gram = actual.mH @ actual
+    expected = eye.expand_as(gram)
+    torch.testing.assert_close(
+        utils.to_cpu(gram, expected),
+        expected,
+        atol=atol,
+        rtol=rtol,
+        check_dtype=False,
+    )
+
+
 @pytest.mark.svd
 @pytest.mark.parametrize("shape", FAST_SHAPES)
 def test_accuracy_svd_fast_float32(shape):
@@ -43,6 +82,91 @@ def test_accuracy_svd_fast_float32(shape):
     with flag_gems.use_gems(include=["svd"]):
         res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
 
+    assert res_u.shape == ref_u.shape
+    assert res_s.shape == ref_s.shape
+    assert res_v.shape == ref_v.shape
+    _assert_close(res_s, ref_s, atol=2e-3, rtol=2e-3)
+    _assert_close(_reconstruct(res_u, res_s, res_v), ref_inp, atol=2e-3, rtol=2e-3)
+
+
+@pytest.mark.svd
+@pytest.mark.parametrize("shape", [(17, 17), (16, 16, 16)])
+def test_accuracy_svd_gram_ill_conditioned_orthonormal(shape):
+    k = min(shape[-2:])
+    singular_values = torch.logspace(0, -5, steps=k).tolist()
+    inp = _make_spectrum_input(shape, singular_values, seed=7)
+    ref_inp = utils.to_reference(inp, False)
+    ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
+
+    with flag_gems.use_gems(include=["svd"]):
+        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+
+    assert res_u.shape == ref_u.shape
+    assert res_s.shape == ref_s.shape
+    assert res_v.shape == ref_v.shape
+    _assert_close(res_s, ref_s, atol=2e-3, rtol=2e-3)
+    _assert_close(_reconstruct(res_u, res_s, res_v), ref_inp, atol=2e-3, rtol=2e-3)
+    _assert_orthonormal(res_u)
+    _assert_orthonormal(res_v)
+
+
+@pytest.mark.svd
+@pytest.mark.parametrize("case", ["zero", "repeated"])
+def test_accuracy_svd_gram_zero_and_repeated_singular_values(case):
+    if case == "zero":
+        inp = torch.zeros((17, 17), dtype=torch.float32, device=flag_gems.device)
+    else:
+        inp = _make_spectrum_input((17, 17), [4, 4, 2, 2, *([1] * 13)], seed=11)
+    ref_inp = utils.to_reference(inp, False)
+    ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
+
+    with flag_gems.use_gems(include=["svd"]):
+        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+
+    assert res_u.shape == ref_u.shape
+    assert res_s.shape == ref_s.shape
+    assert res_v.shape == ref_v.shape
+    _assert_close(res_s, ref_s, atol=2e-3, rtol=2e-3)
+    _assert_close(_reconstruct(res_u, res_s, res_v), ref_inp, atol=2e-3, rtol=2e-3)
+    _assert_orthonormal(res_u)
+    _assert_orthonormal(res_v)
+
+
+@pytest.mark.svd
+@pytest.mark.parametrize(
+    "case",
+    ["zero_2x2", "repeated_2x2", "zero_column_8x2", "zero_row_2x8"],
+)
+def test_accuracy_svd_tiny_rank_degenerate_inputs(case):
+    if case == "zero_2x2":
+        inp = torch.zeros((2, 2), dtype=torch.float32, device=flag_gems.device)
+    elif case == "repeated_2x2":
+        inp = torch.diag(torch.ones(2, dtype=torch.float32, device=flag_gems.device))
+    elif case == "zero_column_8x2":
+        inp = torch.cat(
+            [
+                torch.ones((8, 1), dtype=torch.float32, device=flag_gems.device),
+                torch.zeros((8, 1), dtype=torch.float32, device=flag_gems.device),
+            ],
+            dim=-1,
+        )
+    else:
+        inp = torch.cat(
+            [
+                torch.ones((1, 8), dtype=torch.float32, device=flag_gems.device),
+                torch.zeros((1, 8), dtype=torch.float32, device=flag_gems.device),
+            ],
+            dim=-2,
+        )
+    ref_inp = utils.to_reference(inp, False)
+    ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
+
+    with flag_gems.use_gems(include=["svd"]):
+        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+
+    assert torch.isfinite(res_u).all()
+    assert torch.isfinite(res_s).all()
+    assert torch.isfinite(res_v).all()
     assert res_u.shape == ref_u.shape
     assert res_s.shape == ref_s.shape
     assert res_v.shape == ref_v.shape
