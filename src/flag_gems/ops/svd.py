@@ -1360,7 +1360,7 @@ def _jacobi_eigh_gpu(G, max_sweeps=2):
     device = G.device
 
     # Use torch.linalg.eigh when available (K >= 32 on this platform)
-    if K >= 32:
+    if batch <= 4 and K >= 32:
         try:
             eigvals, eigvecs = torch.linalg.eigh(G)
             return eigvals.flip(-1).clamp_min(0.0), eigvecs.flip(-1)
