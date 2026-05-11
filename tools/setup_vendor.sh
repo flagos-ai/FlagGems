@@ -95,7 +95,8 @@ case $VENDOR in
 
   metax)
     uv pip install -e  .
-    uv pip install ".[metax,test]"
+    uv pip install ".[metax]"
+    uv pip install ".[test]"
 
     uv pip install --index ${FLAGOS_PYPI} \
         "torch==2.8.0+metax3.5.3.9" \
@@ -118,14 +119,18 @@ case $VENDOR in
         "torch==2.7.1+musa.4.0.0" \
         "torch_musa==2.7.1" \
         "numpy==1.26.4" \
-        "flagtree==0.5.0+mthreads3.1" \
         "mkl==2024.0.0"
 
     # Replace flagtree with Triton if requested
     if [ -n "${USE_TRITON}" ]; then
       uv pip uninstall flagtree
+      uv pip uninstall triton
       uv pip install --index $FLAGOS_PYPI \
         "triton==3.1.0+musa1.4.6"
+    else
+      uv pip uninstall triton
+      uv pip install --index $FLAGOS_PYPI \
+        "flagtree==0.5.0+mthreads3.1"
     fi
     ;;
 
@@ -169,7 +174,7 @@ case $VENDOR in
     if [ -n "${USE_TRITON}" ]; then
       uv pip uninstall flagtree
       uv pip install --index ${FLAGOS_PYPI} \
-        "triton==3.3.0++gitfe2a28fa"
+        "triton==3.3.0+gitfe2a28fa"
     fi
     ;;
 

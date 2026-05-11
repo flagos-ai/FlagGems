@@ -34,7 +34,7 @@ def test_pow_tensor_tensor(shape, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_pow_tensor_tensor_(shape, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skiping fp32 pow test on tsingmicro platform")
+        pytest.skip("Issue #3008: Skiping fp32 pow test on tsingmicro platform")
 
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -63,7 +63,7 @@ def test_pow_tensor_tensor_(shape, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_pow_tensor_scalar(scalar, shape, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skiping fp32 pow test on tsingmicro platform")
+        pytest.skip("Issue #3008: Skiping fp32 pow test on tsingmicro platform")
 
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(1)
@@ -95,7 +95,7 @@ def test_pow_tensor_scalar(scalar, shape, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_pow_tensor_scalar_(scalar, shape, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skiping fp32 pow test on tsingmicro platform")
+        pytest.skip("Issue #3008: Skiping fp32 pow test on tsingmicro platform")
 
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(1)
@@ -127,7 +127,7 @@ def test_pow_tensor_scalar_(scalar, shape, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_pow_scalar(scalar, shape, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skiping fp32 pow test on tsingmicro platform")
+        pytest.skip("Issue #3008: Skiping fp32 pow test on tsingmicro platform")
 
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
