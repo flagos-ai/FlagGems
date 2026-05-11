@@ -76,6 +76,7 @@ from flag_gems.ops.clamp import (
     clamp_tensor_,
 )
 from flag_gems.ops.clip import clip, clip_
+from flag_gems.ops.col2im import col2im
 from flag_gems.ops.concatenate import concatenate
 from flag_gems.ops.conj_physical import conj_physical
 from flag_gems.ops.contiguous import contiguous
@@ -449,6 +450,7 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "col2im",
     "clamp",
     "clamp_",
     "clamp_min",
