@@ -55,6 +55,7 @@ jobs:
         with:
           action: actions/checkout@v6
           attempt_limit: 5
+          attempt_delay: 10000
       - id: checkout-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
