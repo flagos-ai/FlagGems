@@ -70,7 +70,9 @@ def _torch_topk_softplus_sqrt_reference(
     return topk_weights.to(torch.float32), topk_ids.to(torch.int32)
 
 
-def _check_topk_results(res_weights, res_ids, ref_weights, ref_ids, atol=2e-2, rtol=1e-2):
+def _check_topk_results(
+    res_weights, res_ids, ref_weights, ref_ids, atol=2e-2, rtol=1e-2
+):
     """Compare topk results by sorting indices first."""
     sorted_ids, idx_ops = res_ids.sort(dim=-1)
     sorted_ref_ids, idx_ref = ref_ids.sort(dim=-1)
@@ -104,12 +106,20 @@ def test_topk_softplus_sqrt_standard(
     correction_bias = torch.randn((num_experts,), dtype=torch.float32, device=device)
 
     ref_weights, ref_ids = _torch_topk_softplus_sqrt_reference(
-        gating_output, topk, renormalize, routed_scaling_factor, correction_bias=correction_bias
+        gating_output,
+        topk,
+        renormalize,
+        routed_scaling_factor,
+        correction_bias=correction_bias,
     )
 
     with flag_gems.use_gems():
         res_weights, res_ids, _ = flag_gems.topk_softplus_sqrt(
-            gating_output, topk, renormalize, routed_scaling_factor, correction_bias=correction_bias
+            gating_output,
+            topk,
+            renormalize,
+            routed_scaling_factor,
+            correction_bias=correction_bias,
         )
 
     _check_topk_results(res_weights, res_ids, ref_weights, ref_ids)
@@ -134,15 +144,27 @@ def test_topk_softplus_sqrt_hash(
     tid2eid = torch.stack(
         [torch.randperm(num_experts)[:topk] for _ in range(vocab_size)]
     ).to(device=device, dtype=torch.int32)
-    input_ids = torch.randint(0, vocab_size, (num_tokens,), dtype=torch.int32, device=device)
+    input_ids = torch.randint(
+        0, vocab_size, (num_tokens,), dtype=torch.int32, device=device
+    )
 
     ref_weights, ref_ids = _torch_topk_softplus_sqrt_reference(
-        gating_output, topk, renormalize, routed_scaling_factor, input_ids=input_ids, tid2eid=tid2eid
+        gating_output,
+        topk,
+        renormalize,
+        routed_scaling_factor,
+        input_ids=input_ids,
+        tid2eid=tid2eid,
     )
 
     with flag_gems.use_gems():
         res_weights, res_ids, _ = flag_gems.topk_softplus_sqrt(
-            gating_output, topk, renormalize, routed_scaling_factor, input_ids=input_ids, tid2eid=tid2eid
+            gating_output,
+            topk,
+            renormalize,
+            routed_scaling_factor,
+            input_ids=input_ids,
+            tid2eid=tid2eid,
         )
 
     _check_topk_results(res_weights, res_ids, ref_weights, ref_ids)
@@ -169,14 +191,25 @@ def test_topk_softplus_sqrt_vs_vllm(num_tokens, num_experts, topk, renormalize):
     vllm_ids = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
     vllm_tei = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
     vllm_topk_softplus_sqrt(
-        vllm_weights, vllm_ids, vllm_tei, gating_output, renormalize, routed_scaling_factor,
-        correction_bias, None, None
+        vllm_weights,
+        vllm_ids,
+        vllm_tei,
+        gating_output,
+        renormalize,
+        routed_scaling_factor,
+        correction_bias,
+        None,
+        None,
     )
 
     # FlagGems Triton kernel
     with flag_gems.use_gems():
         res_weights, res_ids, _ = flag_gems.topk_softplus_sqrt(
-            gating_output, topk, renormalize, routed_scaling_factor, correction_bias=correction_bias
+            gating_output,
+            topk,
+            renormalize,
+            routed_scaling_factor,
+            correction_bias=correction_bias,
         )
 
     _check_topk_results(res_weights, res_ids, vllm_weights, vllm_ids)

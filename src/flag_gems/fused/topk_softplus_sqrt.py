@@ -36,7 +36,9 @@ def _get_output_tensors(num_tokens, topk, device):
         return cached
     topk_weights = torch.empty((num_tokens, topk), dtype=torch.float32, device=device)
     topk_indices = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
-    token_expert_indices = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
+    token_expert_indices = torch.empty(
+        (num_tokens, topk), dtype=torch.int32, device=device
+    )
     _tensor_cache[key] = (topk_weights, topk_indices, token_expert_indices)
     return topk_weights, topk_indices, token_expert_indices
 
@@ -64,7 +66,9 @@ def _fused_topk_kernel(
     emask = expert_offsets < num_experts
 
     row_base = pid * num_experts
-    x = tl.load(gating_ptr + row_base + expert_offsets, mask=emask, other=0.0).to(tl.float32)
+    x = tl.load(gating_ptr + row_base + expert_offsets, mask=emask, other=0.0).to(
+        tl.float32
+    )
 
     # Fused softplus + sqrt
     x = tl.where(x > 20.0, x, tl.log(1.0 + tl.exp(x)))
@@ -72,7 +76,9 @@ def _fused_topk_kernel(
 
     # Scores for top-k selection (with optional bias)
     if HAS_BIAS:
-        bias = tl.load(correction_bias_ptr + expert_offsets, mask=emask, other=0.0).to(tl.float32)
+        bias = tl.load(correction_bias_ptr + expert_offsets, mask=emask, other=0.0).to(
+            tl.float32
+        )
         scores = raw + bias
     else:
         scores = raw
@@ -84,7 +90,7 @@ def _fused_topk_kernel(
     for k_idx in tl.static_range(topk):
         # tl.max is a fast builtin reduction; recover index via compare
         max_score = tl.max(scores, axis=0)
-        is_max = (scores == max_score)
+        is_max = scores == max_score
         match_priority = tl.where(is_max, BLOCK_E - expert_offsets, 0)
         best_slot = BLOCK_E - tl.max(match_priority, axis=0)
         eidx = best_slot.to(tl.int32)
@@ -98,7 +104,10 @@ def _fused_topk_kernel(
         weight_sum += w
         tl.store(topk_weights_ptr + out_base + k_idx, w)
         tl.store(topk_indices_ptr + out_base + k_idx, eidx)
-        tl.store(token_expert_indices_ptr + out_base + k_idx, (pid * topk + k_idx).to(tl.int32))
+        tl.store(
+            token_expert_indices_ptr + out_base + k_idx,
+            (pid * topk + k_idx).to(tl.int32),
+        )
 
         # Zero out winner
         scores = tl.where(expert_offsets == eidx, -float("inf"), scores)
@@ -141,7 +150,9 @@ def _hash_kernel(
     emask = expert_offsets < num_experts
 
     row_base = pid * num_experts
-    x = tl.load(gating_ptr + row_base + expert_offsets, mask=emask, other=0.0).to(tl.float32)
+    x = tl.load(gating_ptr + row_base + expert_offsets, mask=emask, other=0.0).to(
+        tl.float32
+    )
 
     # Fused softplus + sqrt
     x = tl.where(x > 20.0, x, tl.log(1.0 + tl.exp(x)))

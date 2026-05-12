@@ -16,7 +16,7 @@ Usage:
 """
 
 import time
-import sys
+
 import torch
 
 from flag_gems.fused.topk_softplus_sqrt import topk_softplus_sqrt as triton_topk
@@ -24,14 +24,23 @@ from flag_gems.fused.topk_softplus_sqrt import topk_softplus_sqrt as triton_topk
 # Import vLLM CUDA kernel directly (bypass fused_topk_bias dispatch)
 try:
     from vllm._custom_ops import topk_hash_softplus_sqrt as _cuda_topk_softplus_sqrt
+
     HAS_CUDA = True
 except Exception as e:
     HAS_CUDA = False
     print(f"WARNING: vLLM CUDA kernel not available ({e}), skipping CUDA comparison.\n")
 
 
-def cuda_topk_call(gating_output, topk, renormalize, routed_scaling_factor,
-                   correction_bias, topk_weights, topk_indices, token_expert_indices):
+def cuda_topk_call(
+    gating_output,
+    topk,
+    renormalize,
+    routed_scaling_factor,
+    correction_bias,
+    topk_weights,
+    topk_indices,
+    token_expert_indices,
+):
     """Direct CUDA kernel call with pre-allocated output tensors."""
     _cuda_topk_softplus_sqrt(
         topk_weights,
@@ -46,8 +55,17 @@ def cuda_topk_call(gating_output, topk, renormalize, routed_scaling_factor,
     )
 
 
-def cuda_hash_call(gating_output, topk, renormalize, routed_scaling_factor,
-                   input_ids, tid2eid, topk_weights, topk_indices, token_expert_indices):
+def cuda_hash_call(
+    gating_output,
+    topk,
+    renormalize,
+    routed_scaling_factor,
+    input_ids,
+    tid2eid,
+    topk_weights,
+    topk_indices,
+    token_expert_indices,
+):
     """Direct CUDA kernel call for hash mode with pre-allocated output tensors."""
     _cuda_topk_softplus_sqrt(
         topk_weights,
@@ -62,17 +80,28 @@ def cuda_hash_call(gating_output, topk, renormalize, routed_scaling_factor,
     )
 
 
-def triton_topk_wrapper(gating_output, topk, renormalize, routed_scaling_factor, correction_bias):
+def triton_topk_wrapper(
+    gating_output, topk, renormalize, routed_scaling_factor, correction_bias
+):
     return triton_topk(
-        gating_output, topk, renormalize, routed_scaling_factor,
+        gating_output,
+        topk,
+        renormalize,
+        routed_scaling_factor,
         correction_bias=correction_bias,
     )
 
 
-def triton_hash_wrapper(gating_output, topk, renormalize, routed_scaling_factor, input_ids, tid2eid):
+def triton_hash_wrapper(
+    gating_output, topk, renormalize, routed_scaling_factor, input_ids, tid2eid
+):
     return triton_topk(
-        gating_output, topk, renormalize, routed_scaling_factor,
-        input_ids=input_ids, tid2eid=tid2eid,
+        gating_output,
+        topk,
+        renormalize,
+        routed_scaling_factor,
+        input_ids=input_ids,
+        tid2eid=tid2eid,
     )
 
 
@@ -139,24 +168,47 @@ def main():
 
     # --- Standard mode (bias routing) ---
     for num_tokens, num_experts, topk, label, weight in BENCH_SHAPES:
-        gating_output = torch.randn((num_tokens, num_experts), dtype=dtype, device="cuda")
-        correction_bias = torch.randn((num_experts,), dtype=torch.float32, device="cuda")
+        gating_output = torch.randn(
+            (num_tokens, num_experts), dtype=dtype, device="cuda"
+        )
+        correction_bias = torch.randn(
+            (num_experts,), dtype=torch.float32, device="cuda"
+        )
 
-        tri_us = bench_fn(triton_topk_wrapper, gating_output, topk, True, 1.0, correction_bias)
+        tri_us = bench_fn(
+            triton_topk_wrapper, gating_output, topk, True, 1.0, correction_bias
+        )
 
         if HAS_CUDA:
             # Pre-allocate output tensors for fair comparison
-            topk_weights = torch.empty((num_tokens, topk), dtype=torch.float32, device="cuda")
-            topk_indices = torch.empty((num_tokens, topk), dtype=torch.int32, device="cuda")
-            token_expert_indices = torch.empty((num_tokens, topk), dtype=torch.int32, device="cuda")
+            topk_weights = torch.empty(
+                (num_tokens, topk), dtype=torch.float32, device="cuda"
+            )
+            topk_indices = torch.empty(
+                (num_tokens, topk), dtype=torch.int32, device="cuda"
+            )
+            token_expert_indices = torch.empty(
+                (num_tokens, topk), dtype=torch.int32, device="cuda"
+            )
 
             cuda_us = bench_fn(
-                cuda_topk_call, gating_output, topk, True, 1.0, correction_bias,
-                topk_weights, topk_indices, token_expert_indices,
+                cuda_topk_call,
+                gating_output,
+                topk,
+                True,
+                1.0,
+                correction_bias,
+                topk_weights,
+                topk_indices,
+                token_expert_indices,
             )
             speedup = cuda_us / tri_us if tri_us > 0 else 0
             print(f"  {label:>25s}  {tri_us:10.1f}  {cuda_us:10.1f}  {speedup:7.4f}x")
-            results[label] = {"triton_us": tri_us, "cuda_us": cuda_us, "speedup": speedup}
+            results[label] = {
+                "triton_us": tri_us,
+                "cuda_us": cuda_us,
+                "speedup": speedup,
+            }
         else:
             print(f"  {label:>25s}  {tri_us:10.1f}")
             results[label] = {"triton_us": tri_us}
@@ -172,27 +224,50 @@ def main():
 
     vocab_size = 1024
     for num_tokens, num_experts, topk, label, weight in HASH_BENCH_SHAPES:
-        gating_output = torch.randn((num_tokens, num_experts), dtype=dtype, device="cuda")
+        gating_output = torch.randn(
+            (num_tokens, num_experts), dtype=dtype, device="cuda"
+        )
         tid2eid = torch.stack(
             [torch.randperm(num_experts)[:topk] for _ in range(vocab_size)]
         ).to(device="cuda", dtype=torch.int32)
-        input_ids = torch.randint(0, vocab_size, (num_tokens,), dtype=torch.int32, device="cuda")
+        input_ids = torch.randint(
+            0, vocab_size, (num_tokens,), dtype=torch.int32, device="cuda"
+        )
 
-        tri_us = bench_fn(triton_hash_wrapper, gating_output, topk, True, 2.5, input_ids, tid2eid)
+        tri_us = bench_fn(
+            triton_hash_wrapper, gating_output, topk, True, 2.5, input_ids, tid2eid
+        )
 
         if HAS_CUDA:
-            topk_weights = torch.empty((num_tokens, topk), dtype=torch.float32, device="cuda")
-            topk_indices = torch.empty((num_tokens, topk), dtype=torch.int32, device="cuda")
-            token_expert_indices = torch.empty((num_tokens, topk), dtype=torch.int32, device="cuda")
+            topk_weights = torch.empty(
+                (num_tokens, topk), dtype=torch.float32, device="cuda"
+            )
+            topk_indices = torch.empty(
+                (num_tokens, topk), dtype=torch.int32, device="cuda"
+            )
+            token_expert_indices = torch.empty(
+                (num_tokens, topk), dtype=torch.int32, device="cuda"
+            )
 
             cuda_us = bench_fn(
-                cuda_hash_call, gating_output, topk, True, 2.5,
-                input_ids, tid2eid,
-                topk_weights, topk_indices, token_expert_indices,
+                cuda_hash_call,
+                gating_output,
+                topk,
+                True,
+                2.5,
+                input_ids,
+                tid2eid,
+                topk_weights,
+                topk_indices,
+                token_expert_indices,
             )
             speedup = cuda_us / tri_us if tri_us > 0 else 0
             print(f"  {label:>25s}  {tri_us:10.1f}  {cuda_us:10.1f}  {speedup:7.4f}x")
-            results[label] = {"triton_us": tri_us, "cuda_us": cuda_us, "speedup": speedup}
+            results[label] = {
+                "triton_us": tri_us,
+                "cuda_us": cuda_us,
+                "speedup": speedup,
+            }
         else:
             print(f"  {label:>25s}  {tri_us:10.1f}")
             results[label] = {"triton_us": tri_us}
