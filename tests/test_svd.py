@@ -51,7 +51,7 @@ def test_svd_2d(shape, some, compute_uv):
 
     if compute_uv and min(shape[-2], shape[-1]) > 0:
         recon = _reconstruct(res_u, res_s, res_v)
-        utils.gems_assert_close(recon, inp, DTYPE, equal_nan=True)
+        utils.gems_assert_close(recon, ref_inp, DTYPE, equal_nan=True)
 
 
 # ---------------------------------------------------------------------------
@@ -112,13 +112,14 @@ def test_svd_special_matrices(n, mat_type):
     else:
         inp = torch.diag(torch.arange(1, n + 1, dtype=DTYPE, device=device))
 
-    ref_u, ref_s, ref_v = torch.svd(inp.cpu())
+    ref_inp = utils.to_reference(inp, True)
+    ref_u, ref_s, ref_v = torch.svd(ref_inp)
     with flag_gems.use_gems(include=["svd"]):
         res_u, res_s, res_v = torch.svd(inp)
 
-    utils.gems_assert_close(res_s, ref_s.to(device), torch.float32, equal_nan=True)
+    utils.gems_assert_close(res_s, ref_s, torch.float32, equal_nan=True)
     recon = _reconstruct(res_u, res_s, res_v)
-    utils.gems_assert_close(recon, inp, DTYPE, equal_nan=True)
+    utils.gems_assert_close(recon, ref_inp, DTYPE, equal_nan=True)
 
 
 # ---------------------------------------------------------------------------
