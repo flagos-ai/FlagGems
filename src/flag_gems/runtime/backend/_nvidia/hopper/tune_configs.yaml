@@ -180,3 +180,10 @@ sqrt:
       BLOCK_SIZE: 2048
     num_stages: 4
     num_warps: 1
+flash_varlen_fwd_v3:
+  - META: {BLOCK_M: 128, BLOCK_N: 128}
+    num_warps: 8
+    num_stages: 3
+  - META: {BLOCK_M: 128, BLOCK_N: 64}
+    num_warps: 8
+    num_stages: 4
