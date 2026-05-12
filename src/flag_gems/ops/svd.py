@@ -27,6 +27,17 @@ def _fallback_svd(input, some=True, compute_uv=True):
     )
 
 
+def _is_iluvatar_backend():
+    return device.vendor_name == "iluvatar"
+
+
+def _stable_fallback_svd(input, some=True, compute_uv=True):
+    if _is_iluvatar_backend() and input.is_cuda:
+        u, s, v = torch.svd(input.detach().cpu(), some=some, compute_uv=compute_uv)
+        return u.to(input.device), s.to(input.device), v.to(input.device)
+    return _fallback_svd(input, some, compute_uv)
+
+
 def _aten_bmm(left, right, out_shape):
     out = torch.ops.aten.bmm.default.redispatch(_FALLBACK_KEYSET, left, right)
     return out.reshape(out_shape)
@@ -63,10 +74,6 @@ def _gram_spectrum_needs_fallback(vals):
 
 def _is_float32_cuda_matrix(input):
     return input.is_cuda and input.dtype == torch.float32 and input.dim() >= 2
-
-
-def _is_iluvatar_backend():
-    return device.vendor_name == "iluvatar"
 
 
 def _can_use_rank1_kernel(input, some=True, compute_uv=True):
@@ -631,7 +638,7 @@ def _gram_svd(input):
         if _should_guard_gram_spectrum(batch, n) and _gram_spectrum_needs_fallback(
             vals
         ):
-            return _fallback_svd(input, True, True)
+            return _stable_fallback_svd(input, True, True)
         vals = vals.flip(-1).clamp_min_(0.0)
         v = v.flip(-1)
         s = torch.sqrt(vals)
@@ -647,7 +654,7 @@ def _gram_svd(input):
     gram = _aten_bmm(a_3d, at_3d, (*a.shape[:-2], m, m))
     vals, u = torch.linalg.eigh(gram)
     if _should_guard_gram_spectrum(batch, m) and _gram_spectrum_needs_fallback(vals):
-        return _fallback_svd(input, True, True)
+        return _stable_fallback_svd(input, True, True)
     vals = vals.flip(-1).clamp_min_(0.0)
     u = u.flip(-1)
     s = torch.sqrt(vals)
@@ -764,7 +771,7 @@ def _gram16_svd(input):
         gram = _aten_bmm(a, at_3d, (batch, m, m))
     vals, basis = torch.linalg.eigh(gram)
     if _should_guard_gram_spectrum(batch, 16) and _gram_spectrum_needs_fallback(vals):
-        return _fallback_svd(input, True, True)
+        return _stable_fallback_svd(input, True, True)
 
     block_r = 64 if m >= n else 128
     with torch_device_fn.device(input.device):
