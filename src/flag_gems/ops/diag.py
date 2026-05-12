@@ -1,16 +1,20 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
-from ..runtime import torch_device_fn
-from ..utils import triton_lang_extension as tle
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import triton_lang_extension as ext
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
 def diag_1d_to_2d_kernel(
     data_ptr, output_ptr, N, M, stride, diagonal: tl.constexpr, BLOCK_SIZE: tl.constexpr
 ):
-    idx = tle.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    idx = ext.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 
     if diagonal >= 0:
         row_idx = idx
@@ -38,7 +42,7 @@ def diag_2d_to_1d_kernel(
     diagonal: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    idx = tle.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    idx = ext.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 
     if diagonal >= 0:
         row_idx = idx
@@ -94,6 +98,7 @@ def diag_2d_to_1d(x, diagonal=0):
 
 
 def diag(x, diagonal=0):
+    logger.debug("GEMS DIAG")
     if x.dim() == 1:
         return diag_1d_to_2d(x, diagonal)
     elif x.dim() == 2:

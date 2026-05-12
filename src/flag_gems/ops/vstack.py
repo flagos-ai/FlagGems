@@ -4,10 +4,12 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import libentry
-from ..utils import triton_lang_extension as tle
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as ext
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -37,8 +39,8 @@ def vstack_kernel(
     max_tile_elems,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_x = tle.program_id(axis=0)
-    tensor_idx = tle.program_id(axis=1)
+    pid_x = ext.program_id(axis=0)
+    tensor_idx = ext.program_id(axis=1)
     col_idx = tl.arange(0, BLOCK_SIZE)
 
     intensor_ptr = tl.where(tensor_idx == 0, itensor_ptr0, itensor_ptr1)
@@ -62,7 +64,7 @@ def vstack_kernel(
 
 
 def vstack(tensors: list):
-    logging.debug("GEMS VSTACK")
+    logger.debug("GEMS VSTACK")
 
     tensors = torch.atleast_2d(tensors)
     num_tensors = len(tensors)

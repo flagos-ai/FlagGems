@@ -7,17 +7,29 @@ bin-release/
 # Other files and folders
 .settings/
 __pycache__/
+.vscode/
+.DS_Store
+
+# Python venv directory
+.venv
 
 # Distribution files
 build/
 *.egg-info/
+.eggs/
+dist/
+
+# scikit-build-core
+.skbuild-info.json
+CMakeInit.txt
+
+# An auxiliary product of unittests
+/*.json
+tests/*.json
+
 
 # Executables
 *.swf
 *.air
 *.ipa
 *.apk
-
-# Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
-# should NOT be excluded as they contain compiler settings and other important
-# information for Eclipse / Flash Builder.

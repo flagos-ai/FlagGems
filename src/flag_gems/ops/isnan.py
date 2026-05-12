@@ -3,9 +3,11 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
 _isnan = tl_extra_shim.isnan
+
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
@@ -15,5 +17,5 @@ def isnan_func(x):
 
 
 def isnan(A):
-    logging.debug("GEMS ISNAN")
+    logger.debug("GEMS ISNAN")
     return isnan_func(A)

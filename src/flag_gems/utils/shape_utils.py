@@ -7,12 +7,17 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils.codegen_config_utils import get_heuristics_for_num_warps
 
 Shape = Tuple[int]
 Stride = Tuple[int]
 MultiIndex = Tuple[int]
 Perm = Tuple[int]
+
+
+def bracket_next_power_of_2(N, lower, upper):
+    return min(max(triton.next_power_of_2(N), lower), upper)
 
 
 def broadcast(s1: Shape, s2: Shape) -> Shape:
@@ -190,12 +195,7 @@ def heuristics_for_tile_size(max_tile_size, *sizes):
 
 # This should be part of CodeGenConfig
 def heuristics_for_num_warps(tile_size):
-    if tile_size < 2048:
-        return 4
-    elif tile_size < 4096:
-        return 8
-    else:
-        return 16
+    return get_heuristics_for_num_warps(tile_size)
 
 
 def dim_compress(inp, dims):
@@ -272,8 +272,8 @@ def add_on_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid_x = tle.program_id(axis=0)
-    pid_y = tle.program_id(axis=1)
+    pid_x = ext.program_id(axis=0)
+    pid_y = ext.program_id(axis=1)
     rows_offset = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     rows_mask = rows_offset < M
 
@@ -286,6 +286,37 @@ def add_on_kernel(
     mod = cur_idx % cur_shape
     res = mod * cur_strides
     tl.store(add_on + offsets, res, mask=block_mask)
+
+
+def check_tensor_attributes(data_list, is_tensor_list):
+    """
+    Checks if each element in data_list is a tensor and validates whether the corresponding
+    boolean value in is_tensor_list is correct.
+    Parameters:
+    - data_list: A list containing tensor and non-tensor objects.
+    - is_tensor_list: A list of boolean values indicating whether the corresponding element in data_list is a tensor.
+    Returns:
+    - True if all elements' types match their corresponding boolean values in is_tensor_list.
+    - Raise Error otherwise, and prints the index and element that do not match.
+    """
+    # Check if both lists have the same length
+    if len(data_list) != len(is_tensor_list):
+        raise ValueError(
+            "Error: The lists of inputs and is_tensor must have the same length."
+        )
+
+    for i, (data, is_tensor) in enumerate(zip(data_list, is_tensor_list)):
+        actual_is_tensor = isinstance(data, torch.Tensor)
+
+        if actual_is_tensor != is_tensor:
+            raise ValueError(
+                f"Element at index {i} is incorrect. Expected {is_tensor}, but got {actual_is_tensor}."
+            )
+
+    return True
+
+
+_initial_missing = object()
 
 
 def offset_calculator(inp, idx, strides, dim, isInp):

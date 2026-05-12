@@ -1,0 +1,66 @@
+# op_black_list.yaml
+# Description: List of operators unsupported (FALSE) in the current environment
+# test based: 2026-01-27
+# Source: Operator Compatibility Test Table
+
+unsupported_operators:
+  - name: acos
+    reason: "All dtypes failed"
+
+  - name: copy_
+    reason: "All dtypes failed"
+
+  - name: cutlass_scaled_mm
+    reason: "All dtypes failed"
+
+  - name: flash_attention_forward
+    reason: "All dtypes failed"
+
+  - name: flash_attn_varlen_func
+    reason: "All dtypes failed"
+
+  - name: geglu
+    reason: "All dtypes failed"
+
+  - name: grouped_topk
+    reason: "All dtypes failed"
+
+  - name: masked_scatter
+    reason: "All dtypes failed"
+
+  - name: masked_scatter_
+    reason: "All dtypes failed"
+
+  - name: nll_loss2d
+    reason: "All dtypes failed"
+
+  - name: per_token_group_quant_fp8
+    reason: "All dtypes failed"
+
+  - name: reglu
+    reason: "All dtypes failed"
+
+  - name: scaled_softmax
+    reason: "All dtypes failed"
+
+  - name: std
+    reason: "All dtypes failed"
+
+  - name: swiglu
+    reason: "All dtypes failed"
+
+  - name: topk_softmax
+    reason: "All dtypes failed"
+
+  - name: trace
+    reason: "All dtypes failed"
+
+  - name: upsample_bicubic2d_aa
+    reason: "All dtypes failed"
+
+  - name: upsample_nearest1d
+    reason: "All dtypes failed"
+
+summary:
+  total_unsupported: 19
+  note: "Testing is currently not required."

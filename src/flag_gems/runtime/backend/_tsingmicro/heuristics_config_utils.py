@@ -1,0 +1,508 @@
+import torch
+import triton
+
+_MIN_TILE_N = 64
+_MAX_TILE_N_PER_ROW = 4096
+_MAX_ONE_TILE_N = 2048
+
+
+def simple_elementwise_blocksize_heur(args):
+    return 1024
+
+
+def argmax_heur_tile_k(args):
+    MAX_TILE_K = 512
+    NUM_SMS = torch.txda.get_device_properties(
+        torch.txda.current_device()
+    ).multi_processor_count
+
+    K = args["K"]
+    M = args["M"]
+    dtype = "fp32" if args["inp"].dtype == torch.float32 else "fp16"
+
+    if M == 64 and K == 512:
+        return 64 if dtype == "fp32" else 128
+
+    if K <= 128:
+        return 1 << (K.bit_length() - 1) if K > 0 else 1
+
+    tile_k = 64
+    upper_bound = min(K, MAX_TILE_K)
+
+    while tile_k <= upper_bound:
+        num_blocks = M * triton.cdiv(K, tile_k)
+        num_waves = num_blocks / NUM_SMS
+
+        if num_waves > 1 and (tile_k * 2 <= upper_bound):
+            tile_k *= 2
+        else:
+            break
+
+    return tile_k
+
+
+def argmax_heur_tile_n_non_inner(args):
+    n = args["N"]
+    tile_k = args["TILE_K"]
+
+    if n <= 128:
+        return n
+
+    target_tile = min(8192, n)
+    tile_n = triton.next_power_of_2(target_tile)
+    tile_n = max(64, min(tile_n, 4096))
+
+    if tile_n * tile_k > 32768:
+        tile_n = max(64, 32768 // tile_k)
+
+    return tile_n
+
+
+def argmax_heur_one_tile_per_cta(args):
+    return args["TILE_N"] >= args["N"]
+
+
+def argmax_heur_num_warps_non_inner(args):
+    # tile_n = args["TILE_N"]
+    # dtype = "fp32" if args["inp"].dtype == torch.float32 else "fp16"
+
+    # if tile_n <= 32:
+    #     num_warps = 2
+    # elif tile_n <= 64:
+    #     num_warps = 4
+    # elif tile_n <= 128:
+    #     num_warps = 4
+    # else:
+    #     num_warps = 8
+
+    # if dtype == "fp32":
+    #     num_warps = min(num_warps, 4)
+
+    # return num_warps
+
+    return 1
+
+
+def argmax_heur_tile_n_inner(args):
+    if args["N"] <= (32 * 1024):
+        return triton.next_power_of_2(args["N"])
+    else:
+        return 4096
+
+
+def argmax_heur_num_warps_inner(args):
+    # tile_size = args["TILE_N"]
+    # if tile_size < 2048:
+    #     return 4
+    # elif tile_size < 4096:
+    #     return 8
+    # else:
+    #     return 16
+
+    return 1
+
+
+def argmin_heur_block_m(args):
+    return 16 if args["M"] < 4096 else 32
+
+
+def argmin_heur_block_n(args):
+    return min(16384, triton.next_power_of_2(args["N"]))
+
+
+def bmm_heur_divisible_m(args):
+    return args["M"] % args["TILE_M"] == 0
+
+
+def bmm_heur_divisible_n(args):
+    return args["N"] % args["TILE_N"] == 0
+
+
+def bmm_heur_divisible_k(args):
+    return args["K"] % args["TILE_K"] == 0
+
+
+def baddbmm_heur_divisible_m(args):
+    return args["M"] % args["TILE_M"] == 0
+
+
+def baddbmm_heur_divisible_n(args):
+    return args["N"] % args["TILE_N"] == 0
+
+
+def baddbmm_heur_divisible_k(args):
+    return args["K"] % args["TILE_K"] == 0
+
+
+def dropout_heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    else:
+        return 1024
+
+
+def dropout_heur_num_warps(args):
+    if args["N"] <= 512:
+        return 4
+    elif args["N"] <= 1024:
+        return 8
+    else:
+        return 16
+
+
+def exponential_heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    else:
+        return 1024
+
+
+def exponential_heur_num_warps(args):
+    if args["N"] <= 512:
+        return 4
+    elif args["N"] <= 1024:
+        return 8
+    else:
+        return 16
+
+
+def gather_heur_block_m(args):
+    return min(4, triton.next_power_of_2(triton.cdiv(args["N"], 2048)))
+
+
+def gather_heur_block_n(args):
+    return min(2048, triton.next_power_of_2(args["N"]))
+
+
+def index_select_heur_block_m(args):
+    return min(4, triton.next_power_of_2(triton.cdiv(256, args["N"])))
+
+
+def index_select_heur_block_n(args):
+    m = min(triton.next_power_of_2(triton.cdiv(args["N"], 16)), 512)
+    return max(m, 16)
+
+
+def mm_heur_even_k(args):
+    return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
+
+
+def rand_heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    else:
+        return 1024
+
+
+def rand_heur_num_warps(args):
+    if args["N"] <= 512:
+        return 4
+    elif args["N"] <= 1024:
+        return 8
+    else:
+        return 16
+
+
+def randn_heur_block(args):
+    bs = triton.next_power_of_2(args["N"] // (16 * 4))
+    if bs > 32768:
+        bs = 32768
+    elif bs < 512:
+        bs = 512
+    return bs
+
+
+def randn_heur_num_warps(args):
+    return 1
+
+
+def softmax_heur_tile_k(args):
+    MAX_TILE_K = 8192
+    NUM_SMS = torch.txda.get_device_properties(
+        torch.txda.current_device()
+    ).multi_processor_count
+    tile_k = 1
+    upper_bound = min(args["K"], MAX_TILE_K)
+    while tile_k <= upper_bound:
+        num_blocks = args["M"] * triton.cdiv(args["K"], tile_k)
+        num_waves = num_blocks / NUM_SMS
+        if (num_waves > 1) and (tile_k * 2 <= upper_bound):
+            tile_k *= 2
+        else:
+            break
+    return tile_k
+
+
+def softmax_heur_tile_n_non_inner(args):
+    return triton.cdiv(8192, args["TILE_K"])
+
+
+def softmax_heur_one_tile_per_cta(args):
+    return args["TILE_N"] >= args["N"]
+
+
+def softmax_heur_num_warps_non_inner(args):
+    tile_size = args["TILE_N"] * args["TILE_K"]
+    if tile_size < 2048:
+        return 4
+    elif tile_size < 4096:
+        return 8
+    else:
+        return 16
+
+
+def softmax_heur_tile_n_inner(args):
+    if args["N"] <= (32 * 1024):
+        return triton.next_power_of_2(args["N"])
+    else:
+        return 4096
+
+
+def softmax_heur_num_warps_inner(args):
+    tile_size = args["TILE_N"]
+    if tile_size < 2048:
+        return 4
+    elif tile_size < 4096:
+        return 8
+    else:
+        return 16
+
+
+def softmax_heur_tile_n_bwd_non_inner(args):
+    return max(1, 1024 // args["TILE_K"])
+
+
+def softmax_heur_tile_m(args):
+    return max(1, 1024 // args["TILE_N"])
+
+
+def uniform_heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    else:
+        return 1024
+
+
+def uniform_heur_num_warps(args):
+    if args["N"] <= 512:
+        return 4
+    elif args["N"] <= 1024:
+        return 8
+    else:
+        return 16
+
+
+def var_mean_heur_block_n(args):
+    return triton.next_power_of_2(args["BLOCK_NUM"])
+
+
+def upsample_nearest1d_SAME_L(args):
+    return args["OL"] == args["IL"]
+
+
+def upsample_nearest1d_USE_INT32_IDX(args):
+    return args["N"] * args["C"] * args["OL"] <= (2**31 - 1)  # INT32 MAX
+
+
+def upsample_nearest2d_SAME_H(args):
+    return args["OH"] == args["IH"]
+
+
+def upsample_nearest2d_SAME_W(args):
+    return args["OW"] == args["IW"]
+
+
+def upsample_nearest2d_USE_INT32_IDX(args):
+    return args["N"] * args["C"] * args["OH"] * args["OW"] <= (2**31 - 1)  # INT32 MAX
+
+
+def batch_norm_heur_block_m(args):
+    return min(2048, triton.next_power_of_2(args["batch_dim"]))
+
+
+def batch_norm_heur_block_n(args):
+    # A maximum of 16384 elements are loaded at once.
+    BLOCK_M = batch_norm_heur_block_m(args)
+    BLOCK_N = triton.next_power_of_2(args["spatial_dim"])
+    return min(BLOCK_N, max(1, 2**14 // BLOCK_M))
+
+
+def vdot_heur_block_size(args):
+    n = args["n_elements"]
+    if n < 1024:
+        return 32
+    elif n < 8192:
+        return 256
+    else:
+        return 1024
+
+
+def mean_heur_tile_k(args):
+    MAX_TILE_K = 512
+    NUM_SMS = torch.txda.get_device_properties(
+        torch.txda.current_device()
+    ).multi_processor_count
+    tile_k = 1
+    upper_bound = min(args["K"], MAX_TILE_K)
+    max_tile_k_allowed_by_tile_n = max(1, _MAX_TILE_N_PER_ROW // _MIN_TILE_N)
+    upper_bound = min(upper_bound, max_tile_k_allowed_by_tile_n)
+    while tile_k <= upper_bound:
+        num_blocks = args["M"] * triton.cdiv(args["K"], tile_k)
+        num_waves = num_blocks / NUM_SMS
+        if (num_waves > 1) and (tile_k * 2 <= upper_bound):
+            tile_k *= 2
+        else:
+            break
+    return tile_k
+
+
+def mean_heur_tile_n_non_inner(args):
+    tile_k = args.get("TILE_K", 1)
+    limit_by_k = max(1, _MAX_TILE_N_PER_ROW // tile_k)
+    N = args.get("N", 1)
+    desired = min(max(N, _MIN_TILE_N), limit_by_k)
+    desired = min(desired, _MAX_ONE_TILE_N, limit_by_k)
+    tile_n = triton.next_power_of_2(desired)
+    if tile_n > limit_by_k:
+        tile_n = limit_by_k
+    tile_n = max(tile_n, _MIN_TILE_N)
+    return tile_n
+
+
+def mean_heur_one_tile_per_cta(args):
+    return args["TILE_N"] >= args["N"]
+
+
+def mha_varlen_heur_block_m(params):
+    if params.seqlen_q == 1:
+        return 1
+    elif params.seqlen_q >= 1024:
+        return 512
+    elif params.seqlen_q >= 512:
+        return 256
+    elif params.seqlen_q >= 256:
+        return 128
+    elif params.seqlen_q >= 128:
+        return 64
+    elif params.seqlen_q >= 64:
+        return 32
+    else:
+        return 16
+
+
+def mha_varlen_heur_block_n(params):
+    return 16
+
+
+HEURISTICS_CONFIGS = {
+    "argmax_non_inner": {
+        "TILE_K": argmax_heur_tile_k,
+        "TILE_N": argmax_heur_tile_n_non_inner,
+        "ONE_TILE_PER_CTA": argmax_heur_one_tile_per_cta,
+        "num_warps": argmax_heur_num_warps_non_inner,
+    },
+    "argmax_inner": {
+        "TILE_N": argmax_heur_tile_n_inner,
+        "ONE_TILE_PER_CTA": argmax_heur_one_tile_per_cta,
+        "num_warps": argmax_heur_num_warps_inner,
+    },
+    "argmin": {
+        "BLOCK_M": argmin_heur_block_m,
+        "BLOCK_N": argmin_heur_block_n,
+    },
+    "bmm": {
+        "DIVISIBLE_M": bmm_heur_divisible_m,
+        "DIVISIBLE_N": bmm_heur_divisible_n,
+        "DIVISIBLE_K": bmm_heur_divisible_k,
+    },
+    "baddbmm": {
+        "DIVISIBLE_M": baddbmm_heur_divisible_m,
+        "DIVISIBLE_N": baddbmm_heur_divisible_n,
+        "DIVISIBLE_K": baddbmm_heur_divisible_k,
+    },
+    "dropout": {
+        "BLOCK": dropout_heur_block,
+        "num_warps": dropout_heur_num_warps,
+    },
+    "exponential_": {
+        "BLOCK": exponential_heur_block,
+        "num_warps": exponential_heur_num_warps,
+    },
+    "gather": {
+        "BLOCK_M": gather_heur_block_m,
+        "BLOCK_N": gather_heur_block_n,
+    },
+    "index_select": {
+        "BLOCK_M": index_select_heur_block_m,
+        "BLOCK_N": index_select_heur_block_n,
+    },
+    "mm": {
+        "EVEN_K": mm_heur_even_k,
+    },
+    "rand": {
+        "BLOCK": rand_heur_block,
+        "num_warps": rand_heur_num_warps,
+    },
+    "randn": {
+        "BLOCK": randn_heur_block,
+        "num_warps": randn_heur_num_warps,
+    },
+    "softmax_non_inner": {
+        "TILE_K": softmax_heur_tile_k,
+        "TILE_N": softmax_heur_tile_n_non_inner,
+        "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
+        "num_warps": softmax_heur_num_warps_non_inner,
+    },
+    "mean_non_inner": {
+        "TILE_K": mean_heur_tile_k,
+        "TILE_N": mean_heur_tile_n_non_inner,
+        "ONE_TILE_PER_CTA": mean_heur_one_tile_per_cta,
+        "num_warps": softmax_heur_num_warps_non_inner,
+    },
+    "softmax_inner": {
+        "TILE_N": softmax_heur_tile_n_inner,
+        "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
+        "num_warps": softmax_heur_num_warps_inner,
+    },
+    "softmax_backward_non_inner": {
+        "TILE_N": softmax_heur_tile_n_bwd_non_inner,
+        "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
+    },
+    "softmax_backward_inner": {
+        "TILE_M": softmax_heur_tile_m,
+        "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
+    },
+    "uniform": {
+        "BLOCK": uniform_heur_block,
+        "num_warps": uniform_heur_num_warps,
+    },
+    "upsample_nearest1d": {
+        "SAME_L": upsample_nearest1d_SAME_L,
+        "USE_INT32_IDX": upsample_nearest1d_USE_INT32_IDX,
+    },
+    "upsample_nearest2d": {
+        "SAME_H": upsample_nearest2d_SAME_H,
+        "SAME_W": upsample_nearest2d_SAME_W,
+        "USE_INT32_IDX": upsample_nearest2d_USE_INT32_IDX,
+    },
+    "var_mean": {
+        "BLOCK_N": var_mean_heur_block_n,
+    },
+    "batch_norm": {
+        "BLOCK_M": batch_norm_heur_block_m,
+        "BLOCK_N": batch_norm_heur_block_n,
+    },
+    "vdot": {
+        "BLOCK_SIZE": vdot_heur_block_size,
+    },
+    "mha_varlen_fwd": {
+        "BLOCK_M": mha_varlen_heur_block_m,
+        "BLOCK_N": mha_varlen_heur_block_n,
+        "num_warps": lambda args: 1,
+        "num_stages": lambda args: 1,
+    },
+    "elementwise_generic": {
+        "BLOCK_SIZE": simple_elementwise_blocksize_heur,
+        "num_warps": lambda args: 8,
+    },
+}

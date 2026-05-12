@@ -5,9 +5,11 @@ import torch
 import triton
 import triton.language as tl
 
-from ..runtime import torch_device_fn
-from ..utils import libentry
-from ..utils import triton_lang_extension as tle
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as ext
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -28,7 +30,7 @@ def skip_layer_norm_kernel(
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     Y += pid * y_stride_r
     X += pid * x_stride_r
     R += pid * r_stride_r
@@ -60,7 +62,7 @@ def skip_layer_norm_kernel(
 class SkipLayerNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, residual, normalized_shape, weight, bias, eps=1e-5):
-        logging.debug("GEMS SKIP LAYERNORM FORWARD")
+        logger.debug("GEMS SKIP LAYERNORM FORWARD")
         dim = x.ndim - len(normalized_shape)
         M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)

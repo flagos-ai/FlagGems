@@ -1,0 +1,7 @@
+vllm>=0.8.5
+datasets
+pandas
+scikit-build-core>=0.11
+pybind11
+ninja
+cmake

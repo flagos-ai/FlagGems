@@ -4,10 +4,14 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
-_isfinited = tl_extra_shim.isfinited
-_finitef = tl_extra_shim.finitef
+try:
+    _isfinited = tl_extra_shim.isfinited
+    _finitef = tl_extra_shim.finitef
+except Exception:
+    pass
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "ALWAYS_BOOL")])
@@ -19,7 +23,7 @@ def isfinite_func(x):
 def isfinite(
     A: torch.Tensor,
 ) -> torch.Tensor:
-    logging.debug("GEMS ISFINITE")
+    logger.debug("GEMS ISFINITE")
     if A.is_floating_point():
         return isfinite_func(A)
     else:

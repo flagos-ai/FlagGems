@@ -4,19 +4,16 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import libentry
-from ..utils import triton_lang_extension as tle
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as ext
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("nonzero"),
-    key=[
-        "n_elements",
-    ],
-)
+@triton.heuristics(runtime.get_heuristic_config("elementwise_generic"))
 @triton.jit
 def nonzero_kernel(
     inp,
@@ -27,15 +24,15 @@ def nonzero_kernel(
     ndim: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
 
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
-    inp_vals = tl.load(inp + offset, mask=mask)
+    inp_vals = tl.load(inp + offset, mask=mask).to(tl.int1)
     out_offset = tl.load(prefix_sum + offset, mask=mask) - 1
 
-    nonzero_mask = mask and inp_vals == True  # noqa
+    nonzero_mask = mask and inp_vals  # noqa
 
     idx_flat = offset
     for dim in range(ndim - 1, -1, -1):
@@ -46,7 +43,7 @@ def nonzero_kernel(
 
 
 def nonzero(inp, *, as_tuple=False):
-    logging.debug("GEMS NONZERO")
+    logger.debug("GEMS NONZERO")
 
     inp_ndim = inp.ndim
 

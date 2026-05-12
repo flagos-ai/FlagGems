@@ -3,7 +3,9 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic
+from flag_gems.utils import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
@@ -13,5 +15,16 @@ def exp_func(x):
 
 
 def exp(A):
-    logging.debug("GEMS EXP")
+    logger.debug("GEMS EXP")
     return exp_func(A)
+
+
+def exp_(A):
+    logger.debug("GEMS EXP_")
+    return exp_func(A, out0=A)
+
+
+# exp.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+def exp_out(A, out):
+    logger.debug("GEMS EXP_OUT")
+    return exp_func(A, out0=out)

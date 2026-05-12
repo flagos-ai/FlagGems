@@ -3,14 +3,15 @@ import logging
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,
 )
 from flag_gems.utils.shape_utils import volume
 
-from .. import runtime
-from ..runtime import torch_device_fn
+logger = logging.getLogger(__name__)
 
 
 @triton.heuristics(runtime.get_heuristic_config("uniform"))
@@ -50,12 +51,14 @@ UNROLL = 4
 
 
 def uniform_(self, from_=0.0, to=1.0, *, generator=None):
-    logging.debug("GEMS UNIFORM")
+    logger.debug("GEMS UNIFORM")
     N = volume(self.shape)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
 
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(increment)
+    philox_seed, philox_offset = philox_backend_seed_offset(
+        increment, generator=generator
+    )
     with torch_device_fn.device(self.device):
         uniform_kernel[grid_fn](self, N, philox_seed, philox_offset, from_, to)
     return self

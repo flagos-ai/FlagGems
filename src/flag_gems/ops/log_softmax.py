@@ -4,10 +4,12 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import libentry
-from ..utils import triton_lang_extension as tle
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as ext
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -21,8 +23,8 @@ def log_softmax_kernel(
     BLOCK_M: tl.constexpr = 8,
     BLOCK_N: tl.constexpr = 256,
 ):
-    pid_m = tle.program_id(0)
-    pid_k = tle.program_id(1)
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
     # TODO(chenfeiyu): consider float64 add add a utility function to get accumulator type
@@ -66,8 +68,8 @@ def log_softmax_backward_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid_m = tle.program_id(0)
-    pid_k = tle.program_id(1)
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
     scale = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
@@ -93,73 +95,89 @@ def log_softmax_backward_kernel(
         tl.store(in_grad_ptrs, in_grad, mask=mask)
 
 
-class LogSoftmax(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, dim, dtype):
-        logging.debug("GEMS LOG_SOFTMAX")
+def log_softmax_out(self, dim, half_to_float=False, *, out):
+    logger.debug("GEMS LOG_SOFTMAX_OUT")
 
-        assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
-        dim = dim % x.ndim
-        M = 1
-        N = x.shape[dim]
-        for i in range(dim):
-            M *= x.shape[i]
-        inp = x.contiguous()
-        if dtype is None:
-            dtype = x.dtype
-        out = torch.empty_like(inp, dtype=dtype)
-        K = inp.numel() // M // N
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+    dim = dim % self.ndim
+    M = 1
+    N = self.shape[dim]
+    for i in range(dim):
+        M *= self.shape[i]
+    inp = self.contiguous()
+    if half_to_float:
+        dtype = torch.float32
+    else:
+        dtype = self.dtype
+    if tuple(out.shape) != tuple(inp.shape):
+        out.resize_(inp.shape)
+    if out.dtype != dtype:
+        raise RuntimeError(
+            f"_log_softmax.out: expected out dtype {dtype}, got {out.dtype}"
+        )
+    K = inp.numel() // M // N
 
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        K,
+    )
+    with torch_device_fn.device(inp.device):
+        log_softmax_kernel[grid](
+            out,
+            inp,
+            M,
+            N,
+            K,
+            num_warps=8,
+        )
+    return out
+
+
+def log_softmax(self, dim, half_to_float=False):
+    logger.debug("GEMS LOG_SOFTMAX")
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+    dim = dim % self.ndim
+    dtype = torch.float32 if half_to_float else self.dtype
+    out = torch.empty_like(self.contiguous(), dtype=dtype)
+    return log_softmax_out(self, dim, half_to_float, out=out)
+
+
+def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
+    logger.debug("GEMS LOG_SOFTMAX_BACKWARD_OUT")
+
+    assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
+    dim = dim % output.ndim
+    M = 1
+    N = output.shape[dim]
+    for i in range(dim):
+        M *= output.shape[i]
+
+    grad_output = grad_output.contiguous()
+    if tuple(out.shape) != tuple(output.shape):
+        out.resize_(output.shape)
+    if out.dtype != input_dtype:
+        raise RuntimeError(
+            f"_log_softmax_backward_data.out: expected out dtype {input_dtype}, got {out.dtype}"
+        )
+    K = output.numel() // M // N
+
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        K,
+    )
+    with torch_device_fn.device(out.device):
+        log_softmax_backward_kernel[grid](
+            output,
+            grad_output,
+            out,
+            M,
+            N,
             K,
         )
-        with torch_device_fn.device(inp.device):
-            log_softmax_kernel[grid](
-                out,
-                inp,
-                M,
-                N,
-                K,
-                num_warps=8,
-            )
-        ctx.save_for_backward(out)
-        ctx.dim = dim
-        return out
-
-    @staticmethod
-    def backward(ctx, out_grad):
-        logging.debug("GEMS LOG_SOFTMAX VJP")
-
-        dim = ctx.dim
-        (out,) = ctx.saved_tensors
-
-        assert dim >= -out.ndim and dim < out.ndim, "Invalid dim"
-        dim = dim % out.ndim
-        M = 1
-        N = out.shape[dim]
-        for i in range(dim):
-            M *= out.shape[i]
-
-        out_grad = out_grad.contiguous()
-        in_grad = torch.empty_like(out)
-        K = out.numel() // M // N
-
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            K,
-        )
-        with torch_device_fn.device(in_grad.device):
-            log_softmax_backward_kernel[grid](
-                out,
-                out_grad,
-                in_grad,
-                M,
-                N,
-                K,
-            )
-        return in_grad, None, None
+    return out
 
 
-def log_softmax(x, dim=-1, dtype=None):
-    return LogSoftmax.apply(x, dim, dtype)
+def log_softmax_backward(grad_output, output, dim, input_dtype):
+    logger.debug("GEMS LOG_SOFTMAX_BACKWARD")
+    in_grad = torch.empty_like(output, dtype=input_dtype)
+    return log_softmax_backward_out(grad_output, output, dim, input_dtype, out=in_grad)

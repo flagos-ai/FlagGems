@@ -1,217 +1,101 @@
-[中文版](./README_cn.md)
+[<img width="2182" height="602" alt="github+banner-20260130" src="https://github.com/flagos-ai/FlagGems/blob/master/.github/assets/banner-20260130.png" />](https://flagos.io/)
 
-![img_v3_02gp_8115f603-cc89-4e96-ae9d-f01b4fef796g](https://github.com/user-attachments/assets/97950fc6-62bb-4b6a-b8d5-5751c14492fa)
+[中文版](./README_cn.md) | English
 
+<div align="right">
+  <a href="https://www.linkedin.com/company/flagos-community" target="_blank">
+    <img src="https://github.com/flagos-ai/FlagGems/blob/master/docs/assets/Linkedin.png" alt="LinkIn" width="32" height="32" />
+  </a>
 
-## Introduction
+  <a href="https://www.youtube.com/@FlagOS_Official" target="_blank">
+    <img src="https://github.com/flagos-ai/FlagGems/blob/master/docs/assets/youtube.png" alt="YouTube" width="32" height="32" />
+  </a>
 
-FlagGems is a high-performance general operator library implemented in [OpenAI Triton](https://github.com/openai/triton). It aims to provide a suite of kernel functions to accelerate LLM training and inference.
+  <a href="https://x.com/FlagOS_Official" target="_blank">
+    <img src="https://github.com/flagos-ai/FlagGems/blob/master/docs/assets/x.png" alt="X" width="32" height="32" />
+  </a>
 
-By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless transition, allowing users to switch to the Triton function library without the need to modify their model code. Users can still utilize the ATen backend as usual while experiencing significant performance enhancement. The Triton language offers benefits in readability, user-friendliness and performance comparable to CUDA. This convenience allows developers to engage in the development of FlagGems with minimal learning investment.
+  <a href="https://www.facebook.com/flagosglobalcommunity/" target="_blank">
+    <img src="https://github.com/flagos-ai/FlagGems/blob/master/docs/assets/Facebook.png" alt="Facebook" width="32" height="32" />
+  </a>
 
-We created WeChat group for FlagGems. Scan the QR code to join the group chat! To get the first hand message about our updates and new release, or having any questions or ideas, join us now!
+  <a href="https://discord.com/invite/ubqGuFMTNE" target="_blank">
+    <img src="https://github.com/flagos-ai/FlagGems/blob/master/docs/assets/discord.png" alt="Discord" width="32" height="32" />
+  </a>
+</div>
 
- <img src="https://github.com/user-attachments/assets/69019a23-0550-44b1-ac42-e73f06cb55d6" alt="bge_wechat_group" class="center" width="200">
+## About
 
+FlagGems is part of [FlagOS](https://flagos.io/), a fully open-source system software stack
+designed to unify the model–system–chip layers and foster an open and collaborative ecosystem.
+It enables a "develop once, run anywhere" workflow across diverse AI accelerators,
+unlocking hardware performance, eliminating fragmentation among AI chipset-specific software stacks,
+and substantially lowering the cost of porting and maintaining AI workloads.
 
+FlagGems is a high-performance, generic operator library implemented in [Triton](https://github.com/openai/triton) language.
+It is built on a collection of backend-neutral kernels that aims to accelerate LLM (Large-Language Models) training
+and inference across diverse hardware platforms.
 
-## Feature
+By registering with the ATen backend of [PyTorch](https://pytorch.org/), FlagGems facilitates a seamless transition,
+allowing model developers to switch to Triton without changing the low level APIs.
+Users can continue using their familiar Pytorch APIs while at the same time benefit from new hardware acceleration technologies.
+For kernel developers, the Triton language offers readability, user-friendliness and performance comparable to CUDA.
+This convenience allows developers to engage in the development of FlagGems with minimal learning investment.
 
-### Automatic Codegen
+## Features
 
-In FlagGems, we provide automatic code generation that developers can use to conveniently generate pointwise single operators and pointwise fused operators. Automatic code generation can handle various needs such as normal pointwise computations, non-tensor arguments, and specifying output data types.
+FlagGems provides the following technical features.
 
-#### Normal Pointwise Operator
+- A large collection of PyTorch compatible operators
+- Hand-optimized performance for selective operators
+- Eager-mode ready, independent of `torch.compile`
+- Automatic pointwise operator codegen supporting arbitrary input types and layout
+- Fast per-function runtime kernel dispatching
+- Multi-backend interface enabling support of diverse hardware platforms
+- Over 10 supported backends
+- C++ Triton function dispatcher (working in progress)
 
-Decorating the pointwise operator function with `pointwise_dynamic` can save the manual handling of tensor addressing, tensor read/write, parallel tiling, tensor broadcasting, dynamic dimensions, non-contiguous storage, etc. For example, in the following code, developers only need to describe the computational logic to generate flexible and efficient Triton code.
+Check the [features](https://flagos-ai.github.io/FlagGems/overview/features/) documentation for more details.
 
-```python
-@pointwise_dynamic(promotion_methods=[(0, "COMPLEX_TO_FLOAT")])
-@triton.jit
-def abs_func(x):
-    return tl.abs(x)
-```
+## Getting Started
 
-#### Non-Tensor Argument
+- Refer to the [Getting Started](https://flagos-ai.github.io/FlagGems/getting-started/) for a quick start.
+- Refer to the [usage](https://flagos-ai.github.io/FlagGems/usage/) documentation for some details on using the software.
 
-By default, `pointwise_dynamic` treats all parameters as tensors, and by passing a list of boolean values to the parameter `is_tensor`, developers can specify which parameters are tensors and which are not. Additionally, developers can pass in `dtypes` to indicate the data types of non-tensor parameters, but this is not required. For example, in the following code, the `alpha` parameter is defined as a non-tensor floating point number, while the `x` and `y` parameters are defined as tensors.
-
-```python
-@pointwise_dynamic(
-    is_tensor=[True, True, False],
-    dtypes=[None, None, float],
-    promotion_methods=[(0,"DEFAULT")]
-)
-@triton.jit
-def add_func(x, y, alpha):
-    return x + y * alpha
-```
-
-#### Output Data Type
-
-Furthermore, developers MUST provide promotion_methods to specify how type promotion should be handled for the operation to achieve the correct output type during computation.
-
-```python
-@pointwise_dynamic(output_dtypes=[torch.bool])
-@triton.jit
-def ge(x, y):
-    return x > y
-```
-
-In `promotion_methods`, an `int` is used to indicate the position of the parameter requiring type promotion, while a `str` denotes the method of type promotion. The `str` corresponds to the following enumerated types:
-
-```python
-class ELEMENTWISE_TYPE_PROMOTION_KIND(Enum):
-    DEFAULT = (0,)
-    NO_OPMATH = (1,)
-    INT_TO_FLOAT = (2,)
-    ALWAYS_BOOL = (3,)
-    COMPLEX_TO_FLOAT = (4,)
-    BOOL_TO_LONG = (5,)
-```
-
-Examples：
-
-- `DEFAULT` ：add
-- `NO_OPMATH` ： where, nextafter, cat
-- `INT_TO_FLOAT` ：sin
-- `ALWAYS_BOOL` ：eq
-- `COMPLEX_TO_FLOAT` ：abs
-- `BOOL_TO_LONG` ：pow
-
-## Changelog
-
-### v1.0
-- support BLAS operators: addmm, bmm, mm
-- support pointwise operators: abs, add, div, dropout, exp, gelu, mul, pow, reciprocal, relu, rsqrt, silu, sub, triu
-- support reduction operators: cumsum, layernorm, mean, softmax
-
-### v2.0
-- support BLAS operators: mv, outer
-- support pointwise operators: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid
-- support reduction operators: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm
-- support fused operators: skip_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
-
-### v2.1
-- support Tensor operators: where, arange, repeat, masked_fill, tile, unique, index_select, masked_select, ones, ones_like, zeros, zeros_like, full, full_like, flip, pad
-- support neural network operator: embedding
-- support basic math operators: allclose, isclose, isfinite, floor_divide, trunc_divide, maximum, minimum
-- support distribution operators: normal, uniform_, exponential_, multinomial, nonzero, topk, rand, randn, rand_like, randn_like
-- support science operators: erf, resolve_conj, resolve_neg
-
-## Quick Start
-
-### Requirements
-
-1. Triton >= 2.2.0
-2. PyTorch >= 2.2.0
-3. Transformers >= 4.40.2
-
-### Installation
-
-```shell
-git clone https://github.com/FlagOpen/FlagGems.git
-cd FlagGems
-pip install .
-```
-
-## Usage
-
-### Import
-
-1. Enable permanently
-    ```python
-    import flag_gems
-    flag_gems.enable()
-    ```
-
-2. Enable temporarily
-    ```python
-    import flag_gems
-    with flag_gems.use_gems():
-        pass
-    ```
-
-3. Example
-    ```python
-    import torch
-    import flag_gems
-
-    M, N, K = 1024, 1024, 1024
-    A = torch.randn((M, K), dtype=torch.float16, device=flag_gems.device)
-    B = torch.randn((K, N), dtype=torch.float16, device=flag_gems.device)
-    with flag_gems.use_gems():
-        C = torch.mm(A, B)
-    ```
-
-### Execute
-
-1. Test Operator Accuracy
-    - Run reference on specific backend like cuda
-        ```shell
-        cd tests
-        pytest test_xx_ops.py
-        ```
-    - Run reference on cpu
-        ```shell
-        cd tests
-        pytest test_xx_ops.py --ref cpu
-        ```
-
-2. Test Model Accuracy
-    ```shell
-    cd examples
-    pytest model_xx_test.py
-    ```
-
-3. Test Operator Performance
-    - Test CUDA performance
-        ```shell
-        cd benchmark
-        pytest test_xx_perf.py -s
-        ```
-    - Test end-to-end performance
-        ```shell
-        cd benchmark
-        pytest test_xx_perf.py -s --mode cpu
-        ```
-
-4. Run tests with logging infomation
-    ```shell
-    pytest program.py --log-cli-level debug
-    ```
-    Not recommended in performance testing.
-
-## Supported Operators
-
-Operators will be implemented according to [OperatorList.md](./OperatorList.md).
-
-## Supported Models
+## Sample models for testing
 
 - Bert-base-uncased
 - Llama-2-7b
 - Llava-1.5-7b
 
-## Supported Platforms
+## Contribution
 
-| Platform | float16 | float32 | bfloat16 |
-| :---: | :---: | :---: | :---: |
-| Nvidia A100 | ✓ | ✓ | ✓ |
+<!--TODO(Qiming): replicate this to other repo.-->
 
-## Performance
+- If you are interested in contributing to the FlagGems project, please refer to
+  [contribution guide](https://flagos-ai.github.io/FlagGems/contribution/overview/).
+  Any contributions would be highly appreciated.
+- Please file an issue for feature requests or bug reports.
+- Drop us an email at <a href="mailto:contact@flagos.io">contact@flagos.io</a> when you have questions or suggestions to share.
+- Join the FlagGems WeChat group by scanning the QR code below. You will receive first-hand messages about updates and new releases.
+  Let the team know your questions or ideas!
 
-The following chart shows the speedup of FlagGems compared with PyTorch ATen library in eager mode. The speedup is calculated by averaging the speedup on each shape, representing the overall performance of the operator.
+  <img width="204" height="180" alt="开源小助手" src="https://github.com/user-attachments/assets/da42799f-c7f7-43f0-91c3-f4935b24e968" />
 
-![Operator Speedup](./assets/speedup-1218-eng.png)
+## Citation
 
-## Contributions
+If you find our work useful, please consider citing our project:
 
-If you are interested in contributing to the FlagGems project, please refer to [CONTRIBUTING.md](./CONTRIBUTING.md). Any contributions would be highly appreciated.
-
-## Contact us
-
-If you have any questions about our project, please submit an issue, or contact us through <a href="mailto:flaggems@baai.ac.cn">flaggems@baai.ac.cn</a>.
+```bibtex
+@misc{flaggems2024,
+    title={FlagOS/FlagGems: An operator library for large language models implemented in the Triton language.},
+    url={https://github.com/flagos-ai/FlagGems},
+    journal={GitHub},
+    author={The FlagOS contributors},
+    year={2024}
+}
+```
 
 ## License
 
-The FlagGems project is based on [Apache 2.0](./LICENSE).
+The FlagGems project is licensed under the [Apache License (Version 2.0)](https://github.com/flagos-ai/FlagGems/blob/master/LICENSE).

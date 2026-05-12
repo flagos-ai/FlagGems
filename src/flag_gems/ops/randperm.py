@@ -4,27 +4,27 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+from flag_gems.ops.topk import argsort
+from flag_gems.runtime import device, torch_device_fn
+from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 
-from .. import runtime
-from ..runtime import device, torch_device_fn
-from ..utils import libentry
-from .topk import argsort
-
+logger = logging.getLogger(__name__)
 device_ = device
 
-_MIN_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).min
-_MAX_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).max
-_MIN_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).min
-_MAX_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).max
-_MIN_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).min
-_MAX_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).max
-_MIN_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).min
-_MAX_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).max
-_MAX_UINT32_VAL: tl.constexpr = (1 << 32) - 1
-_MIN_UINT32_VAL: tl.constexpr = 0
-_MIN_INT24_VAL: tl.constexpr = -(2**23)
-_MAX_INT24_VAL: tl.constexpr = 2**23 - 1
+_MIN_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).min)
+_MAX_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).max)
+_MIN_INT16_VAL = tl.constexpr(torch.iinfo(torch.int16).min)
+_MAX_INT16_VAL = tl.constexpr(torch.iinfo(torch.int16).max)
+_MIN_INT32_VAL = tl.constexpr(torch.iinfo(torch.int32).min)
+_MAX_INT32_VAL = tl.constexpr(torch.iinfo(torch.int32).max)
+_MIN_INT64_VAL = tl.constexpr(torch.iinfo(torch.int64).min)
+_MAX_INT64_VAL = tl.constexpr(torch.iinfo(torch.int64).max)
+_MAX_UINT32_VAL = tl.constexpr((1 << 32) - 1)
+_MIN_UINT32_VAL = tl.constexpr(0)
+_MIN_INT24_VAL = tl.constexpr(-(2**23))
+_MAX_INT24_VAL = tl.constexpr(2**23 - 1)
 
 
 @triton.jit
@@ -95,20 +95,17 @@ def bitonic_sortbykey_kernel(
 
 @triton.jit
 def radix_type_convert(k):
+    ik = k.to(tl.int64)
     if tl.constexpr(k.dtype == tl.int8):
-        ik = k.to(tl.int8, bitcast=True)
         mask = (ik >> 7) & 0x1
         o = tl.where(mask, ik & 0x7F, ik | 0x80)
     elif tl.constexpr(k.dtype == tl.int16):
-        ik = k.to(tl.int16, bitcast=True)
         mask = (ik >> 15) & 0x1
         o = tl.where(mask, ik & 0x7FFF, ik | 0x8000)
     elif tl.constexpr(k.dtype == tl.int32):
-        ik = k.to(tl.int32, bitcast=True)
         mask = (ik >> 31) & 0x1
         o = tl.where(mask, ik & 0x7FFFFFFF, ik | 0x80000000)
     elif tl.constexpr(k.dtype == tl.int64):
-        ik = k.to(tl.int64, bitcast=True)
         mask = (ik >> 63) & 0x1
         o = tl.where(mask, ik & 0x7FFFFFFFFFFFFFFF, ik | 0x8000000000000000)
     else:
@@ -215,7 +212,7 @@ def radix_sortbykey_scatter_kernel(
             + ((portion_id * passes + p) * max_tiles_per_portion + pid0) * bins
             + bin_id,
             partial_counter,
-            cache_modifier=".wt",
+            cache_modifier=".cg",
         )
         bin_offset = p * (bins + 1) + bin_id
         prefix_offsets = tl.load(
@@ -242,7 +239,7 @@ def radix_sortbykey_scatter_kernel(
             + ((portion_id * passes + p) * max_tiles_per_portion + pid0) * bins
             + bin_id,
             global_counter,
-            cache_modifier=".wt",
+            cache_modifier=".cg",
         )
         inc_bucket_offset = prefix_offsets.to(tl.int64) + inc_sum.to(tl.int64)
         if last_block and portion_id < num_portions - 1:
@@ -287,7 +284,7 @@ def duplicate_keys_shuffle_kernel(
     tl.store(value_in + store_offset, value_data, mask=store_offset < n_elements)
 
 
-def sort_by_key(key, value, valid_bits):
+def sort_by_key(key, value, valid_bits, generator=None):
     n_elements = key.numel()
     if n_elements > 2 * 1024:
         # radix method
@@ -384,7 +381,9 @@ def sort_by_key(key, value, valid_bits):
         # last step, shuffle inner-block data
         BLOCK_SIZE_SHUFFLE = 512
         grid_shuffle = (triton.cdiv(n_elements, BLOCK_SIZE_SHUFFLE),)
-        philox_seed, philox_offset = philox_backend_seed_offset(n_elements)
+        philox_seed, philox_offset = philox_backend_seed_offset(
+            n_elements, generator=generator
+        )
         with torch_device_fn.device(key.device):
             duplicate_keys_shuffle_kernel[grid_shuffle](
                 v_out,
@@ -419,7 +418,7 @@ def randperm(
     requires_grad=False,
     pin_memory=False,
 ):
-    logging.debug("GEMS RANDPERM")
+    logger.debug("GEMS RANDPERM")
     assert dtype == torch.int16 or dtype == torch.int32 or dtype == torch.int64
     assert n <= _MAX_INT64_VAL, "n exceeds maximum int64"
 
@@ -461,5 +460,5 @@ def randperm(
     rand_key = torch.randint(
         low=keymin, high=keymax, size=[n], dtype=key_dtype, device=device
     )
-    perm_range = sort_by_key(rand_key, in_range, valid_bits)
+    perm_range = sort_by_key(rand_key, in_range, valid_bits, generator=generator)
     return perm_range

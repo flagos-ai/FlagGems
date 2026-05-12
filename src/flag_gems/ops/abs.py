@@ -3,7 +3,9 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic
+from flag_gems.utils import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "COMPLEX_TO_FLOAT")])
@@ -13,5 +15,11 @@ def abs_func(x):
 
 
 def abs(A):
-    logging.debug("GEMS ABS")
+    logger.debug("GEMS ABS")
     return abs_func(A)
+
+
+def abs_(A):
+    logger.debug("GEMS ABS_")
+    abs_func(A, out0=A)
+    return A

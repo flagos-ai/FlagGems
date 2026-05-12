@@ -5,10 +5,12 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import dim_compress, libentry
-from ..utils import triton_lang_extension as tle
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import dim_compress, libentry, libtuner
+from flag_gems.utils import triton_lang_extension as ext
+
+logger = logging.getLogger(__name__)
 
 # torch.all: Tests if all elements in input evaluate to True. If the dtype of input
 #            is not BOOL, then test if all elements in input evaluate to non-zero value
@@ -21,7 +23,10 @@ def reduce_all(a, b):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("all"), key=["M", "N"])
+@libtuner(
+    configs=runtime.get_tuned_config("naive_reduction"),
+    key=["M", "N"],
+)
 @triton.jit
 def all_kernel_dim(
     inp,
@@ -32,7 +37,7 @@ def all_kernel_dim(
     BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of inp it should compute.
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + rows * N
     out = out + rows
@@ -59,7 +64,7 @@ def all_kernel_1(
     mid_size,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < n_elements
@@ -81,7 +86,7 @@ def all_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def all(inp):
-    logging.debug("GEMS ALL")
+    logger.debug("GEMS ALL")
     n_elements = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     mid_size = triton.cdiv(n_elements, block_size)
@@ -98,7 +103,7 @@ def all(inp):
 
 
 def all_dim(inp, dim=None, keepdim=False):
-    logging.debug("GEMS ALL DIM")
+    logger.debug("GEMS ALL DIM")
     shape = list(inp.shape)
     if dim is None:
         out = all(inp)
@@ -123,7 +128,7 @@ def all_dim(inp, dim=None, keepdim=False):
 
 
 def all_dims(inp, dim=None, keepdim=False):
-    logging.debug("GEMS ALL DIMS")
+    logger.debug("GEMS ALL DIMS")
 
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)

@@ -5,15 +5,17 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
-from ..utils import libentry
-from ..utils import triton_lang_extension as tle
+from flag_gems import runtime
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as ext
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
 @triton.jit
 def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     y_ptr += pid * BLOCK_SIZE
     step_offset = pid * BLOCK_SIZE * step
 
@@ -26,12 +28,26 @@ def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
 def arange_start(
     start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None
 ):
-    logging.debug("GEMS ARANGE")
+    logger.debug("GEMS ARANGE")
     if dtype is torch.int64:
+        start = int(start)
+        end = int(end)
+        step = int(step)
+        if step == 0:
+            raise RuntimeError("step must be nonzero")
         sgn = (step > 0) - (step < 0)
         size = (end - start + step - sgn) // step
     else:
+        if dtype is torch.int64 and (
+            isinstance(step, float)
+            or isinstance(start, float)
+            or isinstance(end, float)
+        ):
+            int_step = int(step)
+            if int_step == 0:
+                raise RuntimeError("step must be nonzero")
         size = math.ceil((end - start) / step)
+    size = int(size)
 
     BLOCK_SIZE = 128
     grid = triton.cdiv(size, BLOCK_SIZE)

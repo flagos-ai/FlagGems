@@ -1,4 +1,4 @@
-from . import backend, commom_utils
+from . import backend, common, error
 from .backend.device import DeviceDetector
 from .configloader import ConfigLoader
 
@@ -22,13 +22,37 @@ def get_tuned_config(op_name):
 
 
 def get_heuristic_config(op_name):
-    return config_loader.heuristics_config[op_name]
+    return config_loader.get_heuristics_config(op_name)
 
 
-__all__ = [
-    "commom_utils",
-    "backend",
-    "device",
-    "get_tuned_config",
-    "get_heuristic_config",
-]
+def replace_customized_ops(_globals):
+    event = backend.BackendArchEvent()
+    arch_specific_ops = event.get_arch_ops() if event.has_arch else None
+    extended_ops = backend.get_customized_ops(device.vendor_name)
+    if device.vendor != common.vendors.NVIDIA:
+        try:
+            for fn_name, fn in extended_ops:
+                _globals[fn_name] = fn
+        except RuntimeError as e:
+            error.customized_op_replace_error(e)
+    if arch_specific_ops:
+        try:
+            for fn_name, fn in arch_specific_ops:
+                _globals[fn_name] = fn
+        except RuntimeError as e:
+            error.customized_op_replace_error(e)
+
+
+def get_expand_config(op_name, yaml_path=None):
+    return config_loader.get_expand_config(op_name=op_name, yaml_path=yaml_path)
+
+
+def ops_get_configs(op_name, pre_hook=None, yaml_path=None):
+    return config_loader.ops_get_configs(
+        op_name=op_name,
+        pre_hook=pre_hook,
+        yaml_path=yaml_path,
+    )
+
+
+__all__ = ["*"]

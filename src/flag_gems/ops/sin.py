@@ -3,7 +3,9 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic
+from flag_gems.utils import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
@@ -13,5 +15,11 @@ def sin_func(x):
 
 
 def sin(A):
-    logging.debug("GEMS SIN")
+    logger.debug("GEMS SIN")
     return sin_func(A)
+
+
+def sin_(A):
+    logger.debug("GEMS SIN_")
+    sin_func(A, out0=A)
+    return A

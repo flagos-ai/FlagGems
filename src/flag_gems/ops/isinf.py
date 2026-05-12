@@ -3,9 +3,11 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
 _isinf = tl_extra_shim.isinf
+
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
@@ -15,5 +17,5 @@ def isinf_func(x):
 
 
 def isinf(A):
-    logging.debug("GEMS ISINF")
+    logger.debug("GEMS ISINF")
     return isinf_func(A)

@@ -10,6 +10,12 @@ def device_not_found():
 
 
 def register_error(e):
+    import logging
+
+    logging.warning(f"Skipped registering operator: {e}")
+
+
+def customized_op_replace_error(e):
     raise RuntimeError(
-        e, "An error was encountered while registering the triton operator."
+        e, "An exception occurred while replacing the customization operator."
     )

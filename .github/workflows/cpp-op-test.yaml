@@ -1,0 +1,25 @@
+name: cpp-ops
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: cpp
+    steps:
+      - uses: Wandalen/wretry.action@3.8.0
+        with:
+          action: actions/checkout@v6
+          attempt_limit: 5
+          attempt_delay: 20000
+      - shell: bash
+        run: |
+          CXX=/usr/bin/g++-11 CC=/usr/bin/gcc-11 SKBUILD_CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON" pip install --no-build-isolation -v -e .
+      - shell: bash
+        run: |
+          cd build/cpython-311/ctests
+          export FLAGGEMS_SOURCE_DIR=$(python -c "import os;import flag_gems;print(os.path.dirname(flag_gems.__file__))")
+          ctest -V
