@@ -35,6 +35,7 @@ Backward path:
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 import torch
@@ -431,7 +432,6 @@ def _backward_cu_seqlens(
 # fast path is just an optimization.
 # ---------------------------------------------------------------------------
 _FLA_AUTOGRAD_AVAILABLE = None  # tri-state cache: None=unchecked, True/False=cached
-import os
 
 
 def _try_fla_autograd():
