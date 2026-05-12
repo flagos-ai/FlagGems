@@ -212,7 +212,6 @@ def generate_destination_passing_padding_wrapper(
                     code.writeline("IS_REPLICATE, ")
                     code.writeline("IS_CIRCULAR, ")
                     code.writeline("BLOCK_SIZE, ")
-                    code.writeline("num_warps=4, ")
             code.writeline(")")
 
         code.writeline("return out0")
@@ -456,53 +455,8 @@ class PadFunction:
 _pad_func = PadFunction()
 
 
-def _constant_pad_optimized(inp, pad_list, value):
-    ndim = inp.ndim
-    pad_pairs = len(pad_list) // 2
-
-    pad_before = [0] * ndim
-    pad_after = [0] * ndim
-    for i in range(pad_pairs):
-        pad_before[ndim - i - 1] = pad_list[2 * i]
-        pad_after[ndim - i - 1] = pad_list[2 * i + 1]
-
-    dst_shape = [inp.shape[i] + pad_before[i] + pad_after[i] for i in range(ndim)]
-    if not inp.is_contiguous():
-        inp = inp.contiguous()
-
-    slices = tuple(
-        slice(pad_before[d], pad_before[d] + inp.shape[d]) for d in range(ndim)
-    )
-
-    out_numel = 1
-    for s in dst_shape:
-        out_numel *= s
-
-    use_narrow = False
-    if ndim == 1:
-        use_narrow = True
-    elif ndim == 2 and out_numel >= 100_000_000:
-        use_narrow = True
-    elif ndim == 3 and out_numel >= 100_000_000:
-        use_narrow = dst_shape[0] * dst_shape[1] <= 2_000_000
-
-    if use_narrow:
-        out = torch.empty(dst_shape, device=inp.device, dtype=inp.dtype)
-        out[slices].copy_(inp)
-        for dim in range(ndim):
-            if pad_before[dim] > 0:
-                out.narrow(dim, 0, pad_before[dim]).fill_(value)
-            if pad_after[dim] > 0:
-                out.narrow(dim, dst_shape[dim] - pad_after[dim], pad_after[dim]).fill_(value)
-        return out
-
-    out = inp.new_full(dst_shape, value)
-    out[slices].copy_(inp)
-    return out
-
-
 def pad(self, pad, mode="constant", value=None):
-    logger.debug("GEMS CONSTANT PAD ND GCU400")
+    logger.debug("GEMS CONSTANT PAD ND")
 
     ndim = self.ndim
 
@@ -527,17 +481,6 @@ def pad(self, pad, mode="constant", value=None):
             assert (
                 pad_l <= input_size and pad_r <= input_size
             ), "Padding value causes wrapping around more than once."
-
-    if mode == "constant" and ndim <= 3:
-        out_numel = 1
-        for i in range(ndim):
-            dim_idx = ndim - 1 - i
-            if i < pad_pairs:
-                out_numel *= self.shape[dim_idx] + pad[2 * i] + pad[2 * i + 1]
-            else:
-                out_numel *= self.shape[dim_idx]
-        if out_numel >= 32768:
-            return _constant_pad_optimized(self, pad, float(value))
 
     out = _pad_func(self, pad, mode, float(value))
     return out

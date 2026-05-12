@@ -69,14 +69,9 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     residual = residual.contiguous()
     weight = weight.contiguous()
 
-    if N == 1:
-        import torch
-        residual.add_(x)
-        x.copy_(residual * weight.flatten()[0])
-        return x, residual
-
+    # Keep Triton launch parameters bounded on GCU400 while preserving correctness.
+    # For large N, use a numerically equivalent fallback.
     if N > MAX_BLOCK_SIZE_N:
-        import torch
         x_2d = x.reshape(M, N)
         residual_2d = residual.reshape(M, N)
         residual_2d.add_(x_2d)
@@ -86,13 +81,12 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
         x_2d.copy_((residual_2d.float() * rrms).to(x.dtype) * weight.reshape(1, N))
         return x, residual
 
+    grid = (M,)
     BLOCK_SIZE_N = min(triton.next_power_of_2(N), MAX_BLOCK_SIZE_N)
     BLOCK_SIZE_M = 1
-    grid_size = M
     if M > 65535:
-        grid_size = min(M, 65535)
-        BLOCK_SIZE_M = (M + grid_size - 1) // grid_size
-    grid = (grid_size,)
+        grid = (128,)
+        BLOCK_SIZE_M = (M + 128 - 1) // 128
 
     with torch_device_fn.device(x.device):
         fused_add_rms_norm_kernel[grid](

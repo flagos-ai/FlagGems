@@ -73,7 +73,7 @@ from .exp2 import exp2, exp2_
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
-from .fill import fill_scalar, fill_scalar_, fill_scalar_out, fill_tensor, fill_tensor_, fill_tensor_out
+from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .full import full
 from .full_like import full_like
@@ -117,7 +117,6 @@ from .nan_to_num import nan_to_num
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .normal import normal_, normal_float_tensor, normal_tensor_float, normal_tensor_tensor
-from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
 from .pad import pad
@@ -134,7 +133,6 @@ from .randn_like import randn_like
 from .reciprocal import reciprocal, reciprocal_
 from .replication_pad3d import replication_pad3d
 from .relu import relu, relu_
-from .repeat import repeat
 from .repeat_interleave import (
     repeat_interleave_self_int,
     repeat_interleave_self_tensor,
@@ -266,10 +264,8 @@ __all__ = [
     "masked_select",
     "fill_scalar",
     "fill_scalar_",
-    "fill_scalar_out",
     "fill_tensor",
     "fill_tensor_",
-    "fill_tensor_out",
     "pad",
     "eye",
     "normed_cumsum",
@@ -354,7 +350,6 @@ __all__ = [
     "reciprocal_",
     "relu",
     "relu_",
-    "repeat",
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
@@ -379,7 +374,6 @@ __all__ = [
     "arange_start",
     "slice_scatter",
     "select_scatter",
-    "one_hot",
     "ones",
     "ones_like",
     "zeros_like",
