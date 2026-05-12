@@ -299,8 +299,7 @@ def parse_single(fmt):
     lines = parse_env(fmt)
 
     data = DATA.get("result", {})
-    # op = list(data.keys())[0]
-    op = "all"
+    op = list(data.keys())[0]
 
     op_data = data.get(op, {}).get("accuracy", {})
     lines.extend(parse_single_accuracy(fmt, op_data))
