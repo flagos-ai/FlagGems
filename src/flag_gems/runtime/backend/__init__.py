@@ -141,6 +141,9 @@ class BackendArchEvent:
             except Exception as err_msg:
                 self.error_msgs.append(err_msg)
 
+        if ops_module is not None:
+            arch_specialized_ops.extend(self.get_functions_from_module(ops_module))
+
         return arch_specialized_ops
 
 
