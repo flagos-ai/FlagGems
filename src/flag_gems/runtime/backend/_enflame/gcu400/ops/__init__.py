@@ -150,7 +150,6 @@ from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .softplus import softplus
-from .stack import stack
 from .hstack import hstack
 from .vstack import vstack
 from .slice_scatter import slice_scatter
@@ -418,7 +417,6 @@ __all__ = [
     "softplus",
     "atan",
     "atan_",
-    "stack",
     "hstack",
     "vstack",
     "uniform_",
