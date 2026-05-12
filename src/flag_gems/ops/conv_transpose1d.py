@@ -175,7 +175,9 @@ def conv_transpose1d_forward_kernel(
         weight_block = tl.load(curr_weight_pointer, mask=weight_mask, other=0.0)
 
         # Accumulate: input_block is [BLOCK_N_OW, BLOCK_IC], weight_block is [BLOCK_IC, BLOCK_OC]
-        accum += tl.dot(input_block, weight_block, allow_tf32=False)
+        accum += tl.dot(
+            input_block.to(tl.float32), weight_block.to(tl.float32), allow_tf32=False
+        )
 
     # Add bias if present
     bias_ptr = bias_pointer + pid_group * out_channels_per_group + oc_offset
