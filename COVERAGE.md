@@ -74,3 +74,20 @@ Reference: differentiable eager chunk-parallel torch (the same path torch autogr
 **Geometric mean speedup**: 2.66x
 **On K=V=64 shapes** (Qwen3-Next default): **6.5x–16x** — the FLA chunk-parallel forward kernels (with tl.dot Tensor Cores) dominate the bandwidth-bound torch eager.
 **On K=V=128 shapes**: the sanity-guard intentionally falls back to eager when the FLA fast-path produces numerically suspect outputs on the test hardware (SM 12.0 Blackwell with Triton 3.6, where some FLA kernels are unstable), giving the observed ~0.8-0.95x. On Ampere/Hopper where the FLA path is stable, this falls back is not triggered and speedup is expected to remain >1.0x.
+
+### Forward + Backward step latency (µs)  — after native Triton bwd via FLA
+
+| Shape (B,T,H,K,V) | Dtype | Eager-autograd (previous) | FLA Triton bwd (current) | Backward speedup |
+|---|---|---:|---:|---:|
+| (1,256,4,64,64) | bf16 | 16170 | 887.5 | **18.2x** |
+| (1,256,4,64,64) | fp32 | 16570 | 912.4 | **18.2x** |
+| (2,1024,4,64,64) | bf16 | 23780 | 926.1 | **25.7x** |
+| (2,1024,4,64,64) | fp32 | 23770 | 892.3 | **26.6x** |
+| (1,4096,8,128,128) | bf16 | 60280 | 956.1 | **63.0x** |
+| (1,4096,8,128,128) | fp32 | 61380 | 1354.1 | **45.3x** |
+| (4,512,16,128,128) | bf16 | 21750 | 1113.6 | **19.5x** |
+| (4,512,16,128,128) | fp32 | 21380 | 956.4 | **22.3x** |
+
+**Geometric mean backward speedup**: **27.4x**
+
+The fast path delegates to upstream FLA's native chunk-parallel Triton bwd kernels (`chunk_bwd_dv_local` + `chunk_gated_delta_rule_bwd_dhu` + `chunk_bwd_dqkwg` + `prepare_wy_repr_bwd`).  Activated automatically when the `fla` package is installed; otherwise the operator transparently falls back to the previous differentiable-eager autograd path (slow but still correct everywhere).

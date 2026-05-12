@@ -418,6 +418,42 @@ def _backward_cu_seqlens(
 
 
 # ---------------------------------------------------------------------------
+# Native-Triton fast path for the whole autograd graph.
+#
+# When the ``fla`` (flash-linear-attention) library is installed we delegate
+# both forward and backward to its ``chunk_gated_delta_rule`` autograd
+# Function — that gives native chunk-parallel Triton kernels for both
+# directions (≈ 20x faster backward than rerunning the eager reference).
+#
+# If the library is absent or fails on the current arch, callers fall back
+# to ``_ChunkGatedDeltaRuleFn`` (FLA forward via FlagGems' own kernels +
+# differentiable-eager backward).  The fallback is correct everywhere; the
+# fast path is just an optimization.
+# ---------------------------------------------------------------------------
+_FLA_AUTOGRAD_AVAILABLE = None  # tri-state cache: None=unchecked, True/False=cached
+import os
+
+
+def _try_fla_autograd():
+    """Return ``fla.ops.gated_delta_rule.chunk_gated_delta_rule`` or None."""
+    global _FLA_AUTOGRAD_AVAILABLE
+    if _FLA_AUTOGRAD_AVAILABLE is False:
+        return None
+    try:
+        # ``FLA_DISABLE_BACKEND_DISPATCH=1`` keeps us on the Triton backend
+        # (and avoids the TileLang backend which is unstable on some archs).
+        os.environ.setdefault("FLA_DISABLE_BACKEND_DISPATCH", "1")
+        from fla.ops.gated_delta_rule import chunk_gated_delta_rule as fn
+
+        _ensure_triton_allocator()
+        _FLA_AUTOGRAD_AVAILABLE = True
+        return fn
+    except Exception:
+        _FLA_AUTOGRAD_AVAILABLE = False
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Public API.
 # ---------------------------------------------------------------------------
 def chunk_gated_delta_rule(
@@ -458,16 +494,49 @@ def chunk_gated_delta_rule(
     if cu_seqlens is not None:
         assert q.shape[0] == 1, "cu_seqlens requires B=1 packed layout"
 
+    q_c = q.contiguous()
+    k_c = k.contiguous()
+    v_c = v.contiguous()
+    g_c = g.contiguous()
+    beta_c = beta.contiguous()
+    h0_c = initial_state.contiguous() if initial_state is not None else None
+    cu_c = cu_seqlens.contiguous() if cu_seqlens is not None else None
+    scale_val = scale if scale is not None else q.shape[-1] ** -0.5
+
+    # Fast path: delegate to upstream FLA's autograd Function (native Triton
+    # fwd + bwd).  ~20x faster backward than our eager autograd fallback.
+    fla_fn = _try_fla_autograd() if q.is_cuda else None
+    if fla_fn is not None:
+        try:
+            out, final_state = fla_fn(
+                q_c,
+                k_c,
+                v_c,
+                g_c,
+                beta_c,
+                scale=scale_val,
+                initial_state=h0_c,
+                output_final_state=output_final_state,
+                cu_seqlens=cu_c,
+            )
+            if final_state is not None and final_state.dtype != torch.float32:
+                final_state = final_state.to(torch.float32)
+            if not output_final_state:
+                final_state = None
+            return out, final_state
+        except Exception:
+            pass  # fall through to FlagGems-internal path
+
     out, final_state = _ChunkGatedDeltaRuleFn.apply(
-        q.contiguous(),
-        k.contiguous(),
-        v.contiguous(),
-        g.contiguous(),
-        beta.contiguous(),
+        q_c,
+        k_c,
+        v_c,
+        g_c,
+        beta_c,
         scale,
-        initial_state.contiguous() if initial_state is not None else None,
+        h0_c,
         output_final_state,
-        cu_seqlens.contiguous() if cu_seqlens is not None else None,
+        cu_c,
     )
     if not output_final_state:
         final_state = None
