@@ -13,22 +13,19 @@ try:
 
     TE_OP = getattr(tex, "dgeglu")
     TE_AVAILABLE = True
-    GEMS_OP = getattr(flag_gems, "dgeglu")
 except ImportError:
     TE_AVAILABLE = False
     TE_OP = None
-    GEMS_OP = None
 
 
 @pytest.mark.dgeglu
 @pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine not installed")
 @pytest.mark.skipif(TE_OP is None, reason="'dgeglu' not found in TransformerEngine")
-@pytest.mark.skipif(GEMS_OP is None, reason="'dgeglu' not found in FlagGems")
 def test_dgeglu():
     bench = base.TexGluBackwardBenchmark(
         op_name="dgeglu",
         torch_op=TE_OP,
-        gems_op=GEMS_OP,
+        gems_op=flag_gems.dgeglu,
         dtypes=consts.FLOAT_DTYPES,
         # TODO(Qiming): Is this flag correct?
         is_backward=False,

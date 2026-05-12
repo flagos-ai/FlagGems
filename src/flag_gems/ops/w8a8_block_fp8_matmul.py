@@ -119,9 +119,6 @@ def get_w8a8_block_fp8_configs(
         return None
 
     device_name = torch.cuda.get_device_name().replace(" ", "_")
-    name_parts = device_name.split("_")
-    if any(part.startswith("H20") for part in name_parts):
-        device_name = "NVIDIA_H20"
     file_name = f"fp8_w8a8-{block_n}-{block_k}.yaml"
 
     config_dir = os.path.join(os.path.dirname(__file__), "..", "utils", "configs")

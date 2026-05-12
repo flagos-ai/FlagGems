@@ -161,14 +161,14 @@ def _gems_fused_moe_int8_wrapper(
     )
 
 
-@pytest.mark.fused_moe
+@pytest.mark.fused_experts_impl
 @pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vllm not installed")
-def test_fused_moe_int8():
+def test_fused_experts_impl_int8():
     """
     Benchmark FlagGems vs vLLM fused_experts_impl with INT8 W8A8 quantization.
     """
     bench = FusedMoEINT8Benchmark(
-        op_name="fused_moe_int8_gems_vs_vllm",
+        op_name="fused_experts_impl",
         torch_op=_vllm_fused_moe_int8_wrapper,
         dtypes=[torch.bfloat16],
     )
