@@ -71,7 +71,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.newline()
     code.writeline("from flag_gems.utils.libentry import libentry")
     code.writeline("from flag_gems.runtime import torch_device_fn")
-    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+    code.writeline("from flag_gems.utils import triton_lang_extension as ext")
     code.writeline("from flag_gems.utils.type_utils import type_promotion")
     code.newline()
     code.newline()
@@ -282,7 +282,7 @@ def generate_pad_kernel(
     code.writeline("):")
 
     with code.indent():
-        code.writeline("pid = tle.program_id(0)")
+        code.writeline("pid = ext.program_id(0)")
         code.writeline("block_offset = pid * BLOCK_SIZE")
         code.writeline("offset = block_offset + tl.arange(0, BLOCK_SIZE)")
         code.newline()
