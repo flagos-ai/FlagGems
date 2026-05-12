@@ -4689,6 +4689,28 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: scaled_mm
+    description: |
+      Performs a scaled matrix multiplication. The result of `self @ mat2` is
+      multiplied by `scale_a` and `scale_b`, then an optional bias is added.
+    for:
+      - _scaled_mm
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
+  - id: scaled_mm_out
+    description: A variant of `_scaled_mm` that writes the result into `out`.
+    for:
+      - _scaled_mm.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
   - id: scaled_softmax_backward
     description: |
       The backward pass for a scaled softmax function, commonly used in Scaled Dot-Product Attention (SDPA)

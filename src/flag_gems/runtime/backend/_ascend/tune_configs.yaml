@@ -81,6 +81,20 @@ mm:
     BLOCK_N: 256
     BLOCK_K: 256
 
+scaled_mm:
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 32
+    BLOCK_K: 32
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 64
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 128
+
 softmax_non_inner:
 - META:
     TILE_K: 1024
