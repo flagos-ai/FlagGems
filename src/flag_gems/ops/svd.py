@@ -1367,13 +1367,11 @@ def _jacobi_eigh_gpu(G, max_sweeps=2):
     batch, K, _ = G.shape
     device = G.device
 
-    # Use torch.linalg.eigh when available (K >= 32 on this platform)
-    if batch <= 4 and K >= 32:
-        try:
-            eigvals, eigvecs = torch.linalg.eigh(G)
-            return eigvals.flip(-1).clamp_min(0.0), eigvecs.flip(-1)
-        except RuntimeError:
-            pass  # fall through to GPU Jacobi
+    try:
+        eigvals, eigvecs = torch.linalg.eigh(G)
+        return eigvals.flip(-1).clamp_min(0.0), eigvecs.flip(-1)
+    except RuntimeError:
+        pass  # fall through to GPU Jacobi
 
     G_work = G.contiguous()
     V = _empty_batched_eye(batch, K, device)
