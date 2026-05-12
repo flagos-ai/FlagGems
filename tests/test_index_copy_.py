@@ -3,14 +3,15 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import REDUCTION_SHAPES, gems_assert_close, to_reference
+from .accuracy_utils import gems_assert_close, to_reference
 from .conftest import QUICK_MODE
 
 DIM_LIST = [1] if QUICK_MODE else [0, 1]
+INDEX_COPY_SHAPES = [(2, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 40999, 3)]
 
 
 @pytest.mark.index_copy
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("shape", INDEX_COPY_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_index_copy(shape, dim, dtype):
@@ -30,7 +31,7 @@ def test_index_copy(shape, dim, dtype):
 
 
 @pytest.mark.index_copy_
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("shape", INDEX_COPY_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_index_copy_(shape, dim, dtype):
