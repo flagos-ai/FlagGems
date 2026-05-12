@@ -4,7 +4,7 @@ import torch
 from . import base, consts, utils
 
 
-class IndexCopyBenchmark(base.GenericBenchmark2DOnly):
+class IndexCopyBenchmark(base.GenericBenchmark):
     def get_gbps(self, bench_fn_args, latency):
         index = bench_fn_args[2]
         src = bench_fn_args[3]
@@ -26,24 +26,22 @@ def _tensor_input_fn(shape, dtype, device):
 
 @pytest.mark.index_copy
 def test_index_copy():
-    bench = base.GenericBenchmark2DOnly(
+    bench = IndexCopyBenchmark(
         input_fn=_tensor_input_fn,
         op_name="index_copy",
         torch_op=torch.index_copy,
         dtypes=consts.FLOAT_DTYPES,
-        get_gbps=IndexCopyBenchmark.get_gbps,
     )
     bench.run()
 
 
 @pytest.mark.index_copy_
 def test_index_copy_():
-    bench = base.GenericBenchmark2DOnly(
+    bench = IndexCopyBenchmark(
         input_fn=_tensor_input_fn,
         op_name="index_copy_",
         torch_op=torch.Tensor.index_copy_,
         dtypes=consts.FLOAT_DTYPES,
-        get_gbps=IndexCopyBenchmark.get_gbps,
         inplace=True,
     )
     bench.run()
