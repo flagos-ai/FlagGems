@@ -4689,6 +4689,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: scaled_grouped_mm
+    description: |
+      Performs grouped matrix multiplication with row-wise and column-wise scaling,
+      commonly used by quantized Mixture-of-Experts (MoE) workloads.
+    for:
+      - _scaled_grouped_mm
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
   - id: scaled_softmax_backward
     description: |
       The backward pass for a scaled softmax function, commonly used in Scaled Dot-Product Attention (SDPA)
