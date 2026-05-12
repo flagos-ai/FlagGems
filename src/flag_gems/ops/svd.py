@@ -31,6 +31,13 @@ def _is_iluvatar_backend():
     return device.vendor_name == "iluvatar"
 
 
+def _native_linalg_svd(input, some=True, compute_uv=True):
+    if not compute_uv:
+        return _fallback_svd(input, some, compute_uv)
+    u, s, vh = torch.linalg.svd(input.contiguous(), full_matrices=not some)
+    return u, s, vh.mH
+
+
 def _aten_bmm(left, right, out_shape):
     out = torch.ops.aten.bmm.default.redispatch(_FALLBACK_KEYSET, left, right)
     return out.reshape(out_shape)
@@ -838,7 +845,7 @@ def svd(input, some=True, compute_uv=True):
                 return SVDResult(*_fallback_svd(input, some, compute_uv))
             return SVDResult(*_small_jacobi_svd(input))
         if _is_iluvatar_backend() and _should_guard_gram_spectrum(batch, k):
-            return SVDResult(*_fallback_svd(input, some, compute_uv))
+            return SVDResult(*_native_linalg_svd(input, some, compute_uv))
         if _should_use_gram16(batch, m, n):
             return SVDResult(*_gram16_svd(input))
         if _should_use_gram(batch, m, n):
