@@ -25,9 +25,9 @@ def test_accuracy_conv_transpose1d(shape, kernel, stride, padding, dtype, monkey
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
-    ref_inp = to_reference(inp, False)
+    ref_inp = to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    ref_weight = to_reference(weight, False)
+    ref_weight = to_reference(weight, True)
     ref_out = torch.nn.functional.conv_transpose1d(
         ref_inp, ref_weight, bias=None, stride=stride, padding=padding, dilation=1
     )
@@ -35,7 +35,6 @@ def test_accuracy_conv_transpose1d(shape, kernel, stride, padding, dtype, monkey
     res_out = flag_gems.conv_transpose1d(
         inp, weight, bias=None, stride=stride, padding=padding, dilation=1
     )
-    # Use reduce_dim to account for accumulation precision (in_channels * kernel_width)
     in_channels = kernel[0]
     out_channels = kernel[1]
     kernel_width = kernel[2]
@@ -59,14 +58,13 @@ def test_accuracy_conv_transpose1d_bias(
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
-    ref_inp = to_reference(inp, False)
+    ref_inp = to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    ref_weight = to_reference(weight, False)
-    # weight shape is (in_channels, out_channels/groups, kernel_width)
+    ref_weight = to_reference(weight, True)
     out_channels = kernel[1]
     kernel_width = kernel[2]
     bias = torch.randn(out_channels, dtype=dtype, device=flag_gems.device)
-    ref_bias = to_reference(bias, False)
+    ref_bias = to_reference(bias, True)
 
     ref_out = torch.nn.functional.conv_transpose1d(
         ref_inp, ref_weight, bias=ref_bias, stride=stride, padding=padding, dilation=1
@@ -75,7 +73,6 @@ def test_accuracy_conv_transpose1d_bias(
     res_out = flag_gems.conv_transpose1d(
         inp, weight, bias=bias, stride=stride, padding=padding, dilation=1
     )
-    # Use reduce_dim to account for accumulation precision (in_channels * kernel_width)
     in_channels = kernel[0]
     out_channels = kernel[1]
     gems_assert_close(
@@ -90,8 +87,8 @@ def test_accuracy_conv_transpose1d_bias(
 @pytest.mark.parametrize(
     "shape, kernel, groups",
     [
-        ((2, 8, 16), (8, 4, 3), 2),  # 8 in_channels, 2 groups, 4 out_channels per group
-        ((4, 12, 32), (12, 4, 3), 3),  # 12 in_channels, 3 groups
+        ((2, 8, 16), (8, 4, 3), 2),
+        ((4, 12, 32), (12, 4, 3), 3),
     ],
 )
 @pytest.mark.parametrize("stride", [1, 2])
@@ -104,9 +101,9 @@ def test_accuracy_conv_transpose1d_groups(
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
-    ref_inp = to_reference(inp, False)
+    ref_inp = to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    ref_weight = to_reference(weight, False)
+    ref_weight = to_reference(weight, True)
 
     ref_out = torch.nn.functional.conv_transpose1d(
         ref_inp,
@@ -127,7 +124,6 @@ def test_accuracy_conv_transpose1d_groups(
         dilation=1,
         groups=groups,
     )
-    # Use reduce_dim to account for accumulation precision (in_channels_per_group * kernel_width)
     in_channels_per_group = kernel[0] // groups
     kernel_width = kernel[2]
     gems_assert_close(
