@@ -46,17 +46,27 @@ jobs:
     if: needs.process-command.outputs.continue == 'true'
     runs-on: ${{ needs.process-command.outputs.runner }}
     steps:
-      # The gh tool is pre-installed on all runners
-      # - name: Install GitHub CLI
-      #   uses: ksivamuthu/actions-setup-gh-cli@v2
-      #   with:
-      #     version: 2.92.0
-      - id: checkout-repo
-        uses: Wandalen/wretry.action@v3.8.0
-        with:
-          action: actions/checkout@v6
-          attempt_limit: 5
-          attempt_delay: 20000
+      - id: checkout-attempt-1
+        uses: actions/checkout@v6
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@v6
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@v6
+
       - id: checkout-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
