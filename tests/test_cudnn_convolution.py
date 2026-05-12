@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import gems_assert_close, to_reference
+from .accuracy_utils import gems_assert_close
 
 SHAPE_CUDNN_CONV2D = [
     ((1, 2, 5, 5), (1, 2, 3, 3), 1),
@@ -25,14 +25,11 @@ def test_cudnn_convolution_2d(
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(inp)
-    torch.backends.cudnn.allow_tf32 = False
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    ref_weight = to_reference(weight)
 
     ref_out = torch.cudnn_convolution(
-        ref_inp,
-        ref_weight,
+        inp,
+        weight,
         padding=[padding, padding],
         stride=[stride, stride],
         dilation=[dilation, dilation],
@@ -75,13 +72,11 @@ def test_cudnn_convolution_1d(shape, kernel, stride, padding, dtype, monkeypatch
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(inp)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    ref_weight = to_reference(weight)
 
     ref_out = torch.cudnn_convolution(
-        ref_inp,
-        ref_weight,
+        inp,
+        weight,
         padding=[padding],
         stride=[stride],
         dilation=[1],
@@ -126,14 +121,11 @@ def test_cudnn_convolution_3d(
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(inp)
-    torch.backends.cudnn.allow_tf32 = False
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    ref_weight = to_reference(weight)
 
     ref_out = torch.cudnn_convolution(
-        ref_inp,
-        ref_weight,
+        inp,
+        weight,
         padding=[padding, padding, padding],
         stride=[stride, stride, stride],
         dilation=[dilation, dilation, dilation],
