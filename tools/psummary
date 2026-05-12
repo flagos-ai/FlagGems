@@ -243,7 +243,7 @@ def parse_single_performance(fmt, op_data):
         perf_data = op_data.get("data", {})
         for dtype, ddata in perf_data.items():
             speedup = ddata.get("speedup", 0)
-            lines.append(f"| {dtype} | **{speedup:6.3f}** | - | - | - |")
+            lines.append(f"| {dtype} | **{speedup:.3f}** | - | - | - |")
             for shp, res in ddata.get("details", {}).items():
                 spd = res.get("speedup", 0)
                 base = res.get("base", 0)
