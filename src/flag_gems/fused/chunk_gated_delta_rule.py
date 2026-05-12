@@ -1,11 +1,13 @@
 import torch
 import torch.nn.functional as F
 
+from flag_gems import runtime
 from flag_gems.fused.FLA import chunk_gated_delta_rule_fwd
 from flag_gems.fused.FLA.chunk_gated_delta_direct import (
     can_use_chunk_gated_delta_rule_direct,
     chunk_gated_delta_rule_direct_fwd,
 )
+from flag_gems.fused.FLA.fused_recurrent import fused_recurrent_gated_delta_rule_fwd
 
 
 def _as_seq_first(
@@ -89,6 +91,140 @@ def _direct_contiguous(x: torch.Tensor) -> torch.Tensor:
     return x if x.is_contiguous() else x.contiguous()
 
 
+def _is_iluvatar_backend() -> bool:
+    return getattr(runtime.device, "vendor_name", "").lower() == "iluvatar"
+
+
+def _torch_recurrent_fwd(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    beta: torch.Tensor,
+    g: torch.Tensor,
+    scale: float,
+    initial_state: torch.Tensor | None,
+    output_final_state: bool,
+    cu_seqlens: torch.Tensor | None,
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    q_float = q.float()
+    k_float = k.float()
+    v_float = v.float()
+    beta_float = beta.float()
+    g_float = g.float()
+    B, T, Hg, K = q.shape
+    H, V = v.shape[2], v.shape[3]
+    heads_per_group = H // Hg
+    out = torch.empty_like(v_float)
+    final_state = None
+    if output_final_state:
+        n_state = B if cu_seqlens is None else cu_seqlens.numel() - 1
+        final_state = torch.empty(
+            n_state, H, K, V, device=v.device, dtype=torch.float32
+        )
+
+    if cu_seqlens is None:
+        spans = [(batch, batch, 0, T) for batch in range(B)]
+    else:
+        cu_cpu = cu_seqlens.detach().cpu().tolist()
+        spans = [(0, seq, cu_cpu[seq], cu_cpu[seq + 1]) for seq in range(len(cu_cpu) - 1)]
+
+    for batch_idx, state_idx, start, end in spans:
+        if initial_state is None:
+            h = torch.zeros(H, K, V, device=v.device, dtype=torch.float32)
+        else:
+            h = initial_state[state_idx].float().clone()
+        for t in range(start, end):
+            q_t = q_float[batch_idx, t]
+            k_t = k_float[batch_idx, t]
+            for h_idx in range(H):
+                qk_head = h_idx // heads_per_group
+                h[h_idx] *= torch.exp(g_float[batch_idx, t, h_idx])
+                k_vec = k_t[qk_head]
+                residual = v_float[batch_idx, t, h_idx] - torch.matmul(k_vec, h[h_idx])
+                update = residual * beta_float[batch_idx, t, h_idx]
+                h[h_idx] += k_vec[:, None] * update[None, :]
+                out[batch_idx, t, h_idx] = torch.matmul(q_t[qk_head] * scale, h[h_idx])
+        if final_state is not None:
+            final_state[state_idx] = h
+
+    return out.to(v.dtype), final_state
+
+
+def _recurrent_kernel_fwd(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    beta: torch.Tensor,
+    g: torch.Tensor,
+    scale: float,
+    initial_state: torch.Tensor | None,
+    output_final_state: bool,
+    cu_seqlens: torch.Tensor | None,
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    B, T, _, K = q.shape
+    H, V = v.shape[2], v.shape[3]
+    if cu_seqlens is None:
+        q_recurrent = q.contiguous().reshape(1, B * T, q.shape[2], K)
+        k_recurrent = k.contiguous().reshape(1, B * T, k.shape[2], K)
+        v_recurrent = v.contiguous().reshape(1, B * T, H, V)
+        beta_recurrent = beta.contiguous().reshape(1, B * T, H)
+        g_recurrent = g.contiguous().reshape(1, B * T, H)
+        cu_recurrent = torch.arange(
+            0, (B + 1) * T, T, device=q.device, dtype=torch.long
+        )
+        ssm_state_indices = (
+            torch.arange(B, device=q.device, dtype=torch.long)
+            .view(B, 1)
+            .expand(B, T)
+            .contiguous()
+        )
+        state_count = B
+    else:
+        q_recurrent = q.contiguous()
+        k_recurrent = k.contiguous()
+        v_recurrent = v.contiguous()
+        beta_recurrent = beta.contiguous()
+        g_recurrent = g.contiguous()
+        cu_recurrent = cu_seqlens
+        ssm_state_indices = None
+        state_count = cu_seqlens.numel() - 1
+
+    if initial_state is None:
+        recurrent_state = q.new_zeros(state_count, H, K, V)
+    else:
+        recurrent_state = initial_state.contiguous().clone()
+
+    if cu_seqlens is not None:
+        return _torch_recurrent_fwd(
+            q=q_recurrent,
+            k=k_recurrent,
+            v=v_recurrent,
+            beta=beta_recurrent,
+            g=g_recurrent,
+            scale=scale,
+            initial_state=recurrent_state,
+            output_final_state=output_final_state,
+            cu_seqlens=cu_recurrent,
+        )
+
+    out, final_state = fused_recurrent_gated_delta_rule_fwd(
+        q=q_recurrent,
+        k=k_recurrent,
+        v=v_recurrent,
+        g=g_recurrent,
+        beta=beta_recurrent,
+        scale=float(scale),
+        initial_state=recurrent_state,
+        inplace_final_state=output_final_state,
+        cu_seqlens=cu_recurrent,
+        ssm_state_indices=ssm_state_indices,
+        num_accepted_tokens=None,
+        use_qk_l2norm_in_kernel=False,
+    )
+    out = out.reshape(B, T, H, V)
+    return out, final_state if output_final_state else None
+
+
 def chunk_gated_delta_rule(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -166,6 +302,22 @@ def chunk_gated_delta_rule(
             if head_first:
                 o = o.transpose(1, 2)
             return o, final_state
+
+    if _is_iluvatar_backend():
+        o, final_state = _recurrent_kernel_fwd(
+            q=q_seq,
+            k=k_seq,
+            v=v_seq,
+            beta=beta_seq,
+            g=g_seq,
+            scale=float(scale),
+            initial_state=initial_state,
+            output_final_state=output_final_state,
+            cu_seqlens=cu_seqlens,
+        )
+        if head_first:
+            o = o.transpose(1, 2)
+        return o, final_state
 
     _, o, _, final_state, _, _, _ = chunk_gated_delta_rule_fwd(
         q=q_seq,

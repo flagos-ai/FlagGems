@@ -12,15 +12,22 @@ def _cuda_available() -> bool:
     return torch.cuda.is_available() and flag_gems.device == "cuda"
 
 
-pytestmark = pytest.mark.skipif(
-    not _cuda_available(), reason="chunk gated delta rule tests require CUDA"
-)
+pytestmark = [
+    pytest.mark.chunk_gated_delta_rule,
+    pytest.mark.skipif(
+        not _cuda_available(), reason="chunk gated delta rule tests require CUDA"
+    ),
+]
 
 
 @pytest.fixture(autouse=True)
 def _install_triton_allocator():
     global _TRITON_ALLOCATOR_READY
-    if _TRITON_ALLOCATOR_READY or not _cuda_available():
+    if (
+        _TRITON_ALLOCATOR_READY
+        or not _cuda_available()
+        or not hasattr(triton, "set_allocator")
+    ):
         return
 
     def _alloc(size: int, _alignment: int, _stream: int | None):

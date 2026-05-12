@@ -12,7 +12,11 @@ _TRITON_ALLOCATOR_READY = False
 @pytest.fixture(autouse=True)
 def _install_triton_allocator():
     global _TRITON_ALLOCATOR_READY
-    if _TRITON_ALLOCATOR_READY or not torch.cuda.is_available():
+    if (
+        _TRITON_ALLOCATOR_READY
+        or not torch.cuda.is_available()
+        or not hasattr(triton, "set_allocator")
+    ):
         return
 
     def _alloc(size: int, _alignment: int, _stream: int | None):
