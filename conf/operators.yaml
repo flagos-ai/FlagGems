@@ -1365,6 +1365,28 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: cumprod
+    description: Returns the cumulative product of elements of `input` in the dimension `dim`.
+    for:
+      - cumprod
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: cumprod_
+    description: This is the in-place version of `cumprod()`.
+    for:
+      - cumprod_
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: cumsum
     destination: Returns the cumulative sum of elements of `input` in the dimension `dim`.
     for:
@@ -1454,6 +1476,18 @@ ops:
       - LinearAlg
     stages:
       - stable: '2.2'
+  - id: diff
+    description: |
+      Computes the n-th forward difference along the given dimension.
+    for:
+      - diff
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: digamma_
     description: |
       Computes the in-place digamma function, which is the logarithmic derivative of the Gamma function.
@@ -3557,6 +3591,21 @@ ops:
       - Reduction
     stages:
       - stable: '2.0'
+  - id: hc_head_fused_kernel
+    description: |
+      The head fusion kernel for MHC (Manifold-Constrained Hyper-Connections).
+      This fused implementation computes RMS-normalized hidden states and applies
+      per-head weighted mixing to produce the output activations.
+    for:
+      - mhc_head_fused_kernel
+    labels:
+      - fused
+      - vLLM
+      - DSA
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.2'
   - id: mhc_bwd
     description: |
       The backward case for MHC (Manifold-Constrained Hyper-Connections).
@@ -3695,6 +3744,30 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: smooth_l1_loss
+    description: Compute the smooth L1 loss between input and target tensors.
+    for:
+      - smooth_l1_loss
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: smooth_l1_loss_backward
+    description: Compute the gradient of smooth L1 loss with respect to the input tensor.
+    for:
+      - smooth_l1_loss_backward
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: mul
     description: Multiplies `input` by `other`.
     for:

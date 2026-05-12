@@ -77,6 +77,7 @@ from flag_gems.ops.clamp import (
     clamp_tensor_,
 )
 from flag_gems.ops.clip import clip, clip_
+from flag_gems.ops.col2im import col2im
 from flag_gems.ops.concatenate import concatenate
 from flag_gems.ops.conj_physical import conj_physical
 from flag_gems.ops.contiguous import contiguous
@@ -91,10 +92,12 @@ from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
+from flag_gems.ops.cumprod import cumprod, cumprod_
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
+from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma_
 from flag_gems.ops.div import (
     div_mode,
@@ -109,7 +112,6 @@ from flag_gems.ops.div import (
 )
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
-from flag_gems.ops.einsum import einsum
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
@@ -133,6 +135,7 @@ from flag_gems.ops.fill import (
 from flag_gems.ops.flip import flip
 from flag_gems.ops.floor_ import floor_
 from flag_gems.ops.fmin import fmin, fmin_out
+from flag_gems.ops.fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
@@ -156,6 +159,7 @@ from flag_gems.ops.gt import gt, gt_scalar
 from flag_gems.ops.hadamard_transform import hadamard_transform
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
 from flag_gems.ops.hardswish_ import hardswish_
+from flag_gems.ops.histc import histc
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.i0 import i0, i0_out
@@ -195,6 +199,7 @@ from flag_gems.ops.logical_xor import logical_xor
 from flag_gems.ops.logit import logit, logit_out
 from flag_gems.ops.logit_ import logit_
 from flag_gems.ops.logspace import logspace
+from flag_gems.ops.logsumexp import logsumexp
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.margin_ranking_loss import margin_ranking_loss
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
@@ -230,6 +235,7 @@ from flag_gems.ops.nllloss import (
     nll_loss_forward,
 )
 from flag_gems.ops.nonzero import nonzero
+from flag_gems.ops.nonzero_numpy import nonzero_numpy
 from flag_gems.ops.normal import (
     normal_,
     normal_float_tensor,
@@ -299,6 +305,11 @@ from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.sinh_ import sinh_
 from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_scatter import slice_scatter
+from flag_gems.ops.smooth_l1_loss import (
+    smooth_l1_loss,
+    smooth_l1_loss_backward,
+    smooth_l1_loss_out,
+)
 from flag_gems.ops.soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 from flag_gems.ops.softmax import (
     softmax,
@@ -448,6 +459,7 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "col2im",
     "clamp",
     "clamp_",
     "clamp_min",
@@ -474,19 +486,21 @@ __all__ = [
     "count_nonzero",
     "cummax",
     "cummin",
+    "cumprod",
+    "cumprod_",
     "cumsum",
     "cumsum_out",
     "conj_physical",
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diff",
     "digamma_",
     "div_mode",
     "div_mode_",
     "dot",
     "dropout",
     "dropout_backward",
-    "einsum",
     "elu",
     "elu_",
     "elu_backward",
@@ -526,6 +540,10 @@ __all__ = [
     "floor_divide_",
     "fmin",
     "fmin_out",
+    "fmod_scalar",
+    "fmod_scalar_",
+    "fmod_tensor",
+    "fmod_tensor_",
     "full",
     "full_like",
     "gather",
@@ -555,6 +573,7 @@ __all__ = [
     "hardsigmoid",
     "hardsigmoid_out",
     "hardswish_",
+    "histc",
     "hstack",
     "hypot",
     "hypot_out",
@@ -611,6 +630,7 @@ __all__ = [
     "logit_out",
     "logit_",
     "logspace",
+    "logsumexp",
     "lt",
     "lt_scalar",
     "margin_ranking_loss",
@@ -651,6 +671,7 @@ __all__ = [
     "nll_loss_nd_forward",
     "nll_loss_nd_backward",
     "nonzero",
+    "nonzero_numpy",
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
@@ -738,6 +759,9 @@ __all__ = [
     "sinh_",
     "slice_backward",
     "slice_scatter",
+    "smooth_l1_loss",
+    "smooth_l1_loss_backward",
+    "smooth_l1_loss_out",
     "soft_margin_loss",
     "soft_margin_loss_out",
     "softmax",
