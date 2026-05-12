@@ -844,6 +844,8 @@ def svd(input, some=True, compute_uv=True):
             if _is_iluvatar_backend():
                 return SVDResult(*_fallback_svd(input, some, compute_uv))
             return SVDResult(*_small_jacobi_svd(input))
+        if _is_iluvatar_backend() and _should_guard_gram_spectrum(batch, k):
+            return SVDResult(*_stable_fallback_svd(input, some, compute_uv))
         if _should_use_gram16(batch, m, n):
             return SVDResult(*_gram16_svd(input))
         if _should_use_gram(batch, m, n):
