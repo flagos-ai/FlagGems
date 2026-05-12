@@ -7,7 +7,6 @@ from flag_gems.fused.FLA.chunk_gated_delta_direct import (
     can_use_chunk_gated_delta_rule_direct,
     chunk_gated_delta_rule_direct_fwd,
 )
-from flag_gems.fused.FLA.fused_recurrent import fused_recurrent_gated_delta_rule_fwd
 
 
 def _as_seq_first(
@@ -123,27 +122,36 @@ def _torch_recurrent_fwd(
         )
 
     if cu_seqlens is None:
-        spans = [(batch, batch, 0, T) for batch in range(B)]
-    else:
-        cu_cpu = cu_seqlens.detach().cpu().tolist()
-        spans = [(0, seq, cu_cpu[seq], cu_cpu[seq + 1]) for seq in range(len(cu_cpu) - 1)]
+        if initial_state is None:
+            h = torch.zeros(B, H, K, V, device=v.device, dtype=torch.float32)
+        else:
+            h = initial_state.float().clone()
+        for t in range(T):
+            q_heads = q_float[:, t].repeat_interleave(heads_per_group, dim=1)
+            k_heads = k_float[:, t].repeat_interleave(heads_per_group, dim=1)
+            h *= torch.exp(g_float[:, t, :, None, None])
+            residual = v_float[:, t] - torch.einsum("bhk,bhkv->bhv", k_heads, h)
+            update = residual * beta_float[:, t, :, None]
+            h += k_heads[..., :, None] * update[..., None, :]
+            out[:, t] = torch.einsum("bhk,bhkv->bhv", q_heads * scale, h)
+        if final_state is not None:
+            final_state.copy_(h)
+        return out.to(v.dtype), final_state
 
-    for batch_idx, state_idx, start, end in spans:
+    cu_cpu = cu_seqlens.detach().cpu().tolist()
+    for state_idx, (start, end) in enumerate(zip(cu_cpu, cu_cpu[1:])):
         if initial_state is None:
             h = torch.zeros(H, K, V, device=v.device, dtype=torch.float32)
         else:
             h = initial_state[state_idx].float().clone()
         for t in range(start, end):
-            q_t = q_float[batch_idx, t]
-            k_t = k_float[batch_idx, t]
-            for h_idx in range(H):
-                qk_head = h_idx // heads_per_group
-                h[h_idx] *= torch.exp(g_float[batch_idx, t, h_idx])
-                k_vec = k_t[qk_head]
-                residual = v_float[batch_idx, t, h_idx] - torch.matmul(k_vec, h[h_idx])
-                update = residual * beta_float[batch_idx, t, h_idx]
-                h[h_idx] += k_vec[:, None] * update[None, :]
-                out[batch_idx, t, h_idx] = torch.matmul(q_t[qk_head] * scale, h[h_idx])
+            q_heads = q_float[0, t].repeat_interleave(heads_per_group, dim=0)
+            k_heads = k_float[0, t].repeat_interleave(heads_per_group, dim=0)
+            h *= torch.exp(g_float[0, t, :, None, None])
+            residual = v_float[0, t] - torch.einsum("hk,hkv->hv", k_heads, h)
+            update = residual * beta_float[0, t, :, None]
+            h += k_heads[..., :, None] * update[..., None, :]
+            out[0, t] = torch.einsum("hk,hkv->hv", q_heads * scale, h)
         if final_state is not None:
             final_state[state_idx] = h
 
@@ -161,68 +169,17 @@ def _recurrent_kernel_fwd(
     output_final_state: bool,
     cu_seqlens: torch.Tensor | None,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
-    B, T, _, K = q.shape
-    H, V = v.shape[2], v.shape[3]
-    if cu_seqlens is None:
-        q_recurrent = q.contiguous().reshape(1, B * T, q.shape[2], K)
-        k_recurrent = k.contiguous().reshape(1, B * T, k.shape[2], K)
-        v_recurrent = v.contiguous().reshape(1, B * T, H, V)
-        beta_recurrent = beta.contiguous().reshape(1, B * T, H)
-        g_recurrent = g.contiguous().reshape(1, B * T, H)
-        cu_recurrent = torch.arange(
-            0, (B + 1) * T, T, device=q.device, dtype=torch.long
-        )
-        ssm_state_indices = (
-            torch.arange(B, device=q.device, dtype=torch.long)
-            .view(B, 1)
-            .expand(B, T)
-            .contiguous()
-        )
-        state_count = B
-    else:
-        q_recurrent = q.contiguous()
-        k_recurrent = k.contiguous()
-        v_recurrent = v.contiguous()
-        beta_recurrent = beta.contiguous()
-        g_recurrent = g.contiguous()
-        cu_recurrent = cu_seqlens
-        ssm_state_indices = None
-        state_count = cu_seqlens.numel() - 1
-
-    if initial_state is None:
-        recurrent_state = q.new_zeros(state_count, H, K, V)
-    else:
-        recurrent_state = initial_state.contiguous().clone()
-
-    if cu_seqlens is not None:
-        return _torch_recurrent_fwd(
-            q=q_recurrent,
-            k=k_recurrent,
-            v=v_recurrent,
-            beta=beta_recurrent,
-            g=g_recurrent,
-            scale=scale,
-            initial_state=recurrent_state,
-            output_final_state=output_final_state,
-            cu_seqlens=cu_recurrent,
-        )
-
-    out, final_state = fused_recurrent_gated_delta_rule_fwd(
-        q=q_recurrent,
-        k=k_recurrent,
-        v=v_recurrent,
-        g=g_recurrent,
-        beta=beta_recurrent,
-        scale=float(scale),
-        initial_state=recurrent_state,
-        inplace_final_state=output_final_state,
-        cu_seqlens=cu_recurrent,
-        ssm_state_indices=ssm_state_indices,
-        num_accepted_tokens=None,
-        use_qk_l2norm_in_kernel=False,
+    return _torch_recurrent_fwd(
+        q=q,
+        k=k,
+        v=v,
+        beta=beta,
+        g=g,
+        scale=scale,
+        initial_state=initial_state,
+        output_final_state=output_final_state,
+        cu_seqlens=cu_seqlens,
     )
-    out = out.reshape(B, T, H, V)
-    return out, final_state if output_final_state else None
 
 
 def chunk_gated_delta_rule(
