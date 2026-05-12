@@ -9,21 +9,14 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.base import Benchmark
-from benchmark.consts import FLOAT_DTYPES
-from benchmark.utils import generate_tensor_input
+from flag_gems.utils import shape_utils
 
-# Import grid_sample operator
-from flag_gems.ops import grid_sample
+from . import base, consts, utils
 
 vendor_name = flag_gems.vendor_name
 
 
-class GridSampleBenchmark(Benchmark):
-    """
-    Benchmark class for grid_sample operations.
-    """
-
+class GridSampleBenchmark(base.Benchmark):
     def __init__(
         self,
         op_name,
@@ -63,7 +56,6 @@ class GridSampleBenchmark(Benchmark):
 
         For grid_sample: input + grid + output
         """
-        from flag_gems.utils import shape_utils
 
         inp = args[0]
         grid = args[1]
@@ -126,7 +118,7 @@ class GridSampleBenchmark(Benchmark):
     def get_input_iter(self, cur_dtype):
         """Generate input tensors with various grid_sample parameters."""
         for shape in self.shapes:
-            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
 
             # Determine if 4D or 5D
             is_5d = len(shape) == 5
@@ -300,37 +292,13 @@ class GridSampleBenchmark(Benchmark):
 
 
 @pytest.mark.grid_sample
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_grid_sample(dtype):
+@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
+def test_grid_sample(dtype):
     """Benchmark grid_sample forward operation."""
     bench = GridSampleBenchmark(
         op_name="grid_sample",
         torch_op=torch.nn.functional.grid_sample,
+        gems_op=flag_gems.ops.grid_sample,
         dtypes=[dtype],
     )
-    # Set gems operator explicitly
-    bench.set_gems(grid_sample)
     bench.run()
-
-
-if __name__ == "__main__":
-    print(f"Using device: {flag_gems.device}")
-    if torch.cuda.is_available():
-        print(f"GPU: {torch.cuda.get_device_name(0)}")
-        print(f"CUDA Version: {torch.version.cuda}")
-
-    # Run benchmark
-    print("\n" + "=" * 80)
-    print("GRID_SAMPLE PERFORMANCE BENCHMARK")
-    print("=" * 80)
-    test_perf_grid_sample(torch.float32)
-
-    print("\n" + "=" * 80)
-    print("GRID_SAMPLE PERFORMANCE BENCHMARK (float16)")
-    print("=" * 80)
-    test_perf_grid_sample(torch.float16)
-
-    print("\n" + "=" * 80)
-    print("GRID_SAMPLE PERFORMANCE BENCHMARK (bfloat16)")
-    print("=" * 80)
-    test_perf_grid_sample(torch.bfloat16)
