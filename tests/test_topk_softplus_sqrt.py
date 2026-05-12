@@ -112,6 +112,8 @@ def test_topk_softplus_sqrt_standard(
         routed_scaling_factor,
         correction_bias=correction_bias,
     )
+    ref_weights = utils.to_reference(ref_weights)
+    ref_ids = utils.to_reference(ref_ids)
 
     with flag_gems.use_gems():
         res_weights, res_ids, _ = flag_gems.topk_softplus_sqrt(
@@ -156,6 +158,8 @@ def test_topk_softplus_sqrt_hash(
         input_ids=input_ids,
         tid2eid=tid2eid,
     )
+    ref_weights = utils.to_reference(ref_weights)
+    ref_ids = utils.to_reference(ref_ids)
 
     with flag_gems.use_gems():
         res_weights, res_ids, _ = flag_gems.topk_softplus_sqrt(
@@ -201,6 +205,8 @@ def test_topk_softplus_sqrt_vs_vllm(num_tokens, num_experts, topk, renormalize):
         None,
         None,
     )
+    vllm_weights = utils.to_reference(vllm_weights)
+    vllm_ids = utils.to_reference(vllm_ids)
 
     # FlagGems Triton kernel
     with flag_gems.use_gems():
