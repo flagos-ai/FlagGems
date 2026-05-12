@@ -68,25 +68,25 @@ def scatter_reduce_gpu_dtypes(reduce):
 
 
 FORWARD_CASES = [
-    ("scatter_reduce.forward.sum", "sum", True),
-    ("scatter_reduce.forward.mean", "mean", False),
-    ("scatter_reduce.forward.prod", "prod", True),
-    ("scatter_reduce.forward.amax", "amax", False),
-    ("scatter_reduce.forward.amin", "amin", True),
+    ("scatter_reduce_two", "sum", True),
+    ("scatter_reduce_two", "mean", False),
+    ("scatter_reduce_two", "prod", True),
+    ("scatter_reduce_two", "amax", False),
+    ("scatter_reduce_two", "amin", True),
 ]
 
 INPLACE_CASES = [
-    ("scatter_reduce_.sum", "sum", True),
-    ("scatter_reduce_.prod", "prod", False),
-    ("scatter_reduce_.amax", "amax", False),
-    ("scatter_reduce_.amin", "amin", True),
-    ("scatter_reduce_.mean", "mean", True),
+    ("scatter_reduce_two_", "sum", True),
+    ("scatter_reduce_two_", "prod", False),
+    ("scatter_reduce_two_", "amax", False),
+    ("scatter_reduce_two_", "amin", True),
+    ("scatter_reduce_two_", "mean", True),
 ]
 
 OUT_CASES = [
-    ("scatter_reduce.out.mean", "mean", True),
-    ("scatter_reduce.out.prod", "prod", True),
-    ("scatter_reduce.out.amin", "amin", False),
+    ("scatter_reduce_two_out", "mean", True),
+    ("scatter_reduce_two_out", "prod", True),
+    ("scatter_reduce_two_out", "amin", False),
 ]
 
 
