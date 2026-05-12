@@ -33,7 +33,10 @@ def _is_iluvatar_backend():
 
 def _stable_fallback_svd(input, some=True, compute_uv=True):
     if _is_iluvatar_backend() and input.is_cuda:
-        u, s, v = torch.svd(input.detach().cpu(), some=some, compute_uv=compute_uv)
+        if not compute_uv:
+            return _fallback_svd(input, some, compute_uv)
+        u, s, vh = torch.linalg.svd(input.detach().cpu(), full_matrices=not some)
+        v = vh.mH
         return u.to(input.device), s.to(input.device), v.to(input.device)
     return _fallback_svd(input, some, compute_uv)
 
