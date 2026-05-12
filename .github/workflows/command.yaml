@@ -97,6 +97,12 @@ jobs:
           source .venv/bin/activate
           source tools/set-env.sh ${VENDOR}
           tools/run_tests.py --ops ${{ needs.process-command.outputs.op }}
+          tools/psummary --format markdown --single results > results.md
+
+      - name: comment
+        uses: mshick/add-pr-comment@v3
+        with:
+          message-path: results.md
 
       - name: Upload results
         uses: actions/upload-artifact@v7
