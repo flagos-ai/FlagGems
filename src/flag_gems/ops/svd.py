@@ -54,8 +54,7 @@ def _gram_spectrum_needs_fallback(vals):
     largest = vals[..., -1]
     smallest = vals[..., 0]
     suspicious = (
-        (~torch.isfinite(largest))
-        | (~torch.isfinite(smallest))
+        (~torch.isfinite(vals).all(dim=-1))
         | (largest <= 0)
         | (smallest <= largest * _GRAM_CONDITION_EIGEN_RATIO)
     )
