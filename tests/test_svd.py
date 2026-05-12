@@ -41,30 +41,14 @@ def _reconstruct(u, s, v):
     return u[..., :, :k] @ torch.diag_embed(s).to(u.dtype) @ v[..., :, :k].mH
 
 
-def _assert_close(actual, expected, atol=5e-4, rtol=5e-4):
-    torch.testing.assert_close(
-        utils.to_cpu(actual, expected),
-        expected,
-        atol=atol,
-        rtol=rtol,
-        check_dtype=False,
-    )
-
-
-def _assert_orthonormal(actual, atol=2e-2, rtol=2e-2):
+def _assert_orthonormal(actual, atol=2e-2):
     if actual.numel() == 0:
         return
     k = actual.shape[-1]
     eye = torch.eye(k, dtype=actual.dtype, device=actual.device)
     gram = actual.mH @ actual
     expected = utils.to_reference(eye.expand_as(gram), False)
-    torch.testing.assert_close(
-        utils.to_cpu(gram, expected),
-        expected,
-        atol=atol,
-        rtol=rtol,
-        check_dtype=False,
-    )
+    utils.gems_assert_close(gram, expected, gram.dtype, atol=atol)
 
 
 @pytest.mark.svd
@@ -80,8 +64,9 @@ def test_accuracy_svd_fast_float32(shape):
     assert res_u.shape == ref_u.shape
     assert res_s.shape == ref_s.shape
     assert res_v.shape == ref_v.shape
-    _assert_close(res_s, ref_s, atol=2e-3, rtol=2e-3)
-    _assert_close(_reconstruct(res_u, res_s, res_v), ref_inp, atol=2e-3, rtol=2e-3)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
+    reconstructed = _reconstruct(res_u, res_s, res_v)
+    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
 
 
 @pytest.mark.svd
@@ -99,8 +84,9 @@ def test_accuracy_svd_gram_ill_conditioned_orthonormal(shape):
     assert res_u.shape == ref_u.shape
     assert res_s.shape == ref_s.shape
     assert res_v.shape == ref_v.shape
-    _assert_close(res_s, ref_s, atol=2e-3, rtol=2e-3)
-    _assert_close(_reconstruct(res_u, res_s, res_v), ref_inp, atol=2e-3, rtol=2e-3)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
+    reconstructed = _reconstruct(res_u, res_s, res_v)
+    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
     _assert_orthonormal(res_u)
     _assert_orthonormal(res_v)
 
@@ -121,8 +107,9 @@ def test_accuracy_svd_gram_zero_and_repeated_singular_values(case):
     assert res_u.shape == ref_u.shape
     assert res_s.shape == ref_s.shape
     assert res_v.shape == ref_v.shape
-    _assert_close(res_s, ref_s, atol=2e-3, rtol=2e-3)
-    _assert_close(_reconstruct(res_u, res_s, res_v), ref_inp, atol=2e-3, rtol=2e-3)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
+    reconstructed = _reconstruct(res_u, res_s, res_v)
+    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
     _assert_orthonormal(res_u)
     _assert_orthonormal(res_v)
 
@@ -165,8 +152,9 @@ def test_accuracy_svd_tiny_rank_degenerate_inputs(case):
     assert res_u.shape == ref_u.shape
     assert res_s.shape == ref_s.shape
     assert res_v.shape == ref_v.shape
-    _assert_close(res_s, ref_s, atol=2e-3, rtol=2e-3)
-    _assert_close(_reconstruct(res_u, res_s, res_v), ref_inp, atol=2e-3, rtol=2e-3)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
+    reconstructed = _reconstruct(res_u, res_s, res_v)
+    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
 
 
 @pytest.mark.svd
@@ -183,7 +171,7 @@ def test_accuracy_svd_fallback_modes(shape, some):
     assert res_u.shape == ref_u.shape
     assert res_s.shape == ref_s.shape
     assert res_v.shape == ref_v.shape
-    _assert_close(res_s, ref_s)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=5e-4)
 
 
 @pytest.mark.svd
@@ -204,4 +192,4 @@ def test_accuracy_svd_non_contiguous_empty_and_complex():
         assert res_u.shape == ref_u.shape
         assert res_s.shape == ref_s.shape
         assert res_v.shape == ref_v.shape
-        _assert_close(res_s, ref_s, atol=2e-3, rtol=2e-3)
+        utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
