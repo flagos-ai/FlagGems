@@ -46,10 +46,11 @@ jobs:
     if: needs.process-command.outputs.continue == 'true'
     runs-on: ${{ needs.process-command.outputs.runner }}
     steps:
-      - name: Install GitHub CLI
-        uses: ksivamuthu/actions-setup-gh-cli@v2
-        with:
-          version: 2.92.0
+      # The gh tool is pre-installed on all runners
+      # - name: Install GitHub CLI
+      #   uses: ksivamuthu/actions-setup-gh-cli@v2
+      #   with:
+      #     version: 2.92.0
       - id: checkout-repo
         uses: Wandalen/wretry.action@v3.8.0
         with:
@@ -96,6 +97,12 @@ jobs:
           source .venv/bin/activate
           source tools/set-env.sh ${VENDOR}
           tools/run_tests.py --ops ${{ needs.process-command.outputs.op }}
+          tools/psummary --format markdown --single results > results.md
+
+      - name: comment
+        uses: mshick/add-pr-comment@v3
+        with:
+          message-path: results.md
 
       - name: Upload results
         uses: actions/upload-artifact@v7
