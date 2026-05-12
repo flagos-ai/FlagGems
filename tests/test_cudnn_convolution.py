@@ -52,7 +52,7 @@ def test_cudnn_convolution_2d(
             allow_tf32=False,
         )
 
-    gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_out, ref_out.cpu(), dtype)
 
 
 SHAPE_CUDNN_CONV1D = [
@@ -99,7 +99,7 @@ def test_cudnn_convolution_1d(shape, kernel, stride, padding, dtype, monkeypatch
             allow_tf32=False,
         )
 
-    gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_out, ref_out.cpu(), dtype)
 
 
 SHAPE_CUDNN_CONV3D = [
@@ -148,4 +148,4 @@ def test_cudnn_convolution_3d(
             allow_tf32=False,
         )
 
-    gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_out, ref_out.cpu(), dtype)
