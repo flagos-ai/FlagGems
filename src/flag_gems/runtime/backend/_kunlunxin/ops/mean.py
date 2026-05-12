@@ -8,7 +8,7 @@ import triton.language as tl
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
 
@@ -17,31 +17,22 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 @libentry()
 @triton.jit
-def mean_kernel_1(
-    inp,
-    mid,
-    M,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=0.0)
-    sum_val = tl.sum(inp_val, axis=0)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, sum_val)
-
-
-@libentry()
-@triton.jit
-def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
-    mask = offset < MID_SIZE
-    mid_val = tl.load(mid_ptrs, mask=mask, other=0.0)
-    sum_val = tl.sum(mid_val, axis=0) / M
-    tl.store(out, sum_val)
+def mean_scalar_kernel(inp, out, M, BLOCK_SIZE: tl.constexpr):
+    """Scalar mean over all M elements.
+    On XPU (USE_XHPC): intercepted by baidu::xpu::api::mean binding.
+    Triton fallback (single CTA): sequential accumulation for correctness.
+    Params for binding:
+      kernelParams[0] = inp, kernelParams[1] = out
+      kernelConsts[2] = M,   kernelConsts[3] = BLOCK_SIZE
+    """
+    acc = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    for off in range(0, M, BLOCK_SIZE):
+        offset = off + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        v = tl.load(inp + offset, mask=mask, other=0.0).to(tl.float32)
+        acc += v
+    result = tl.sum(acc) / M
+    tl.store(out, result)
 
 
 def mean(inp, *, dtype=None):
@@ -49,21 +40,11 @@ def mean(inp, *, dtype=None):
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
-    # block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    block_size = get_block_size_1d(M, inp.element_size())
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
-
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    BLOCK_SIZE = get_block_size_1d(M, inp.element_size())
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size, buffer_size_limit=2048)
-        if mid_size == 1:
-            return (mid / M).reshape([])
-        mean_kernel_2[(1, 1, 1)](
-            mid, out, M, mid_size, block_mid, buffer_size_limit=2048
-        )
+        mean_scalar_kernel[(1, 1, 1)](inp, out, M, BLOCK_SIZE, buffer_size_limit=2048)
     return out
 
 
@@ -72,7 +53,7 @@ def heur_m_block_size(args):
 
 
 def heur_n_block_size(args):
-    return builtins.min(args["N"], 8192)
+    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
 
 
 @libentry()
@@ -88,8 +69,15 @@ def heur_n_block_size(args):
 )
 @triton.jit
 def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
+    """2-D reduction: reduce N-dim for each of M rows.
+    On XPU (USE_XHPC): intercepted by baidu::xpu::api::mean_dim binding.
+    Params for binding:
+      kernelParams[0] = X,    kernelParams[1] = Mean
+      kernelParams[2] = M,    kernelParams[3] = N  (runtime scalars)
+      kernelConsts[4] = BLOCK_M (constexpr), kernelConsts[5] = BLOCK_N (constexpr)
+    """
     # Map the program id to the row of X it should compute.
-    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Mean = Mean + pid
     row_mask = pid < M
@@ -127,6 +115,25 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         N *= shape[i]
         shape[i] = 1
     M = x.numel() // N
+
+    # Edge case: M=1 means all dims are reduced → global mean over N elements.
+    # mean_dim XPU API does not support M=1.
+    if M == 1:
+        scalar_out = mean(x, dtype=dtype)  # 0-d tensor
+        out = scalar_out.reshape(shape)
+        if not keepdim:
+            out = out.squeeze(dim)
+        return out
+
+    # Edge case: N=1 means reducing a trivial (size-1) dimension.
+    # mean of 1 element = that element; just copy with dtype conversion.
+    # mean_dim XPU API does not support N=1.
+    if N == 1:
+        out = x.to(dtype=dtype).reshape(shape)
+        if not keepdim:
+            out = out.squeeze(dim)
+        return out
+
     out = torch.empty(shape, dtype=dtype, device=x.device)
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
 

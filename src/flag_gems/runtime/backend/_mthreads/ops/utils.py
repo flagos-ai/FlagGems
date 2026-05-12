@@ -9,6 +9,15 @@ import triton.language as tl
 _TMA_DESCRIPTOR_CACHE_MAXSIZE = 256
 _tma_descriptor_cache = OrderedDict()
 
+# Detect once whether fill_2d_tma_descriptor expects a pointer (int) or numpy array.
+# triton >= 3.2 changed the last parameter from numpy array to int pointer.
+_fill_2d_tma = triton.runtime.driver.active.utils.fill_2d_tma_descriptor
+_tma_desc_wants_ptr = tuple(int(x) for x in triton.__version__.split(".")[:2]) >= (3, 2)
+
+
+def _tma_desc_arg(desc_np):
+    return int(desc_np.ctypes.data) if _tma_desc_wants_ptr else desc_np
+
 
 def create_tma_device_descriptor(tensor, block_m, block_n, device):
     assert tensor.dim() == 2, "TMA descriptor only supports 2D tensors"
@@ -20,14 +29,14 @@ def create_tma_device_descriptor(tensor, block_m, block_n, device):
             tensor.stride(0) == 1 and tensor.stride(1) == tensor.shape[0]
         ), "TMA descriptor only supports contiguous or transposed 2D tensors"
         shapes.reverse()
-    triton.runtime.driver.active.utils.fill_2d_tma_descriptor(
+    _fill_2d_tma(
         tensor.data_ptr(),
         shapes[0],
         shapes[1],
         block_m,
         block_n,
         tensor.element_size(),
-        desc_np,
+        _tma_desc_arg(desc_np),
     )
     desc = torch.tensor(desc_np, device=device)
     return desc

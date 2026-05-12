@@ -10,7 +10,7 @@ from flag_gems import runtime
 from flag_gems.ops.mm_streamk import streamk_mm
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.device_info import get_device_capability, get_sm_count
 
 logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.mm")
@@ -18,6 +18,25 @@ CACHE_USAGE_THRESHOLD = 0.8
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "mm_hopper_expand.yaml")
 )
+_SHARED_MEM_SAFETY_MARGIN_BYTES = 1024
+
+
+def _get_shared_memory_limit_bytes():
+    """Return per-block opt-in shared-memory limit for current CUDA device."""
+    try:
+        if not torch.cuda.is_available():
+            return None
+        return torch.cuda.get_device_properties(
+            torch.cuda.current_device()
+        ).shared_memory_per_block_optin
+    except Exception:
+        return None
+
+
+def _estimate_tma_shared_memory_bytes(block_m, block_n, block_k, num_stages):
+    bytes_per_element = 4
+    tile_bytes = (block_m * block_k + block_k * block_n) * bytes_per_element
+    return tile_bytes * num_stages + _SHARED_MEM_SAFETY_MARGIN_BYTES
 
 
 def is_tma_compatible(a, b, N, K):
@@ -100,9 +119,10 @@ def mm_kernel_general(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
+    IS_FP64: tl.constexpr = False,
 ):
     # matrix multiplication
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
     # re-order program ID for better L2 performance
@@ -148,11 +168,17 @@ def mm_kernel_general(
             block_shape=[BLOCK_M, BLOCK_N],
         )
 
-        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+        if IS_FP64:
+            acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
+        else:
+            acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
         for k in range(0, tl.cdiv(K, BLOCK_K)):
             a = a_desc.load([offset_am.to(tl.int32), offset_k.to(tl.int32)])
             b = b_desc.load([offset_k.to(tl.int32), offset_bn.to(tl.int32)])
-            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+            if IS_FP64:
+                acc += tl.dot(a, b, allow_tf32=False)
+            else:
+                acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
             offset_k += BLOCK_K
 
         acc = acc.to(a_desc.dtype)
@@ -168,7 +194,10 @@ def mm_kernel_general(
         rn = rn.to(tl.int64)
         prev_multiple = prev_multiple_of(K, BLOCK_K)
 
-        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+        if IS_FP64:
+            acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
+        else:
+            acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
         for start_k in range(0, prev_multiple, BLOCK_K):
             rk = (start_k + tl.arange(0, BLOCK_K)).to(tl.int64)
             a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
@@ -176,7 +205,10 @@ def mm_kernel_general(
             if a.dtype != b.dtype:
                 a = a.to(C.dtype.element_ty)
                 b = b.to(C.dtype.element_ty)
-            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+            if IS_FP64:
+                acc += tl.dot(a, b, allow_tf32=False)
+            else:
+                acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
         # loop peeling
         rk = (prev_multiple + tl.arange(0, BLOCK_K)).to(tl.int64)
@@ -194,7 +226,10 @@ def mm_kernel_general(
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
-        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+        if IS_FP64:
+            acc += tl.dot(a, b, allow_tf32=False)
+        else:
+            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
         acc = acc.to(C.dtype.element_ty)
         # rematerialize rm and rn to save registers
@@ -207,7 +242,7 @@ def mm_kernel_general(
 
 
 def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
-    return [
+    configs = [
         triton.Config(
             {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
             num_stages=s,
@@ -220,6 +255,28 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
         for s in [2, 3, 4]
         for w in [4, 8]
     ]
+    shared_mem_limit = _get_shared_memory_limit_bytes()
+    if shared_mem_limit is None:
+        return configs
+
+    filtered_configs = [
+        cfg
+        for cfg in configs
+        if _estimate_tma_shared_memory_bytes(
+            cfg.kwargs["BLOCK_M"],
+            cfg.kwargs["BLOCK_N"],
+            cfg.kwargs["BLOCK_K"],
+            cfg.num_stages,
+        )
+        <= shared_mem_limit
+    ]
+    if not filtered_configs:
+        logger.warning(
+            "No mm_general_tma config fits shared memory limit (%s bytes); falling back to unfiltered configs.",
+            shared_mem_limit,
+        )
+        return configs
+    return filtered_configs
 
 
 @libentry()
@@ -302,7 +359,7 @@ def mm_kernel_general_host_tma(
 
 
 def get_higher_dtype(a, b):
-    _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
+    _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
 
     if a is b:
         return a
@@ -328,6 +385,11 @@ def general_mm(a, b, c, M, N, K):
         a.stride(0) == 1,
         b.stride(0) == 1,
     )
+    # Broadcast tensors from expand() have stride=0, incompatible with TMA
+    if 0 in a.stride():
+        a = a.contiguous()
+    if 0 in b.stride():
+        b = b.contiguous()
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
@@ -394,6 +456,7 @@ def general_mm(a, b, c, M, N, K):
                 c.stride(0),
                 c.stride(1),
                 GROUP_M=8,
+                IS_FP64=a.dtype == torch.float64,
             )
     return c
 
@@ -430,6 +493,7 @@ def gemv_kernel(
     stride_bk,
     BLOCK_M: tl.constexpr,
     BLOCK_K: tl.constexpr,
+    IS_FP64: tl.constexpr = False,
 ):
     """Optimized kernel for matrix-vector multiplication (N=1 case)"""
     pid = tl.program_id(0)
@@ -440,7 +504,10 @@ def gemv_kernel(
     row_mask = row_offset < M
 
     # Accumulator for this block of rows
-    acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
+    if IS_FP64:
+        acc = tl.zeros((BLOCK_M,), dtype=tl.float64)
+    else:
+        acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
 
     # Iterate over K dimension
     for k_start in range(0, K, BLOCK_K):
@@ -456,7 +523,10 @@ def gemv_kernel(
         b = tl.load(b_ptrs, mask=k_mask, other=0.0)
 
         # Accumulate: sum over K dimension
-        acc += tl.sum(a * b[None, :], axis=1)
+        if IS_FP64:
+            acc += tl.sum(a * b[None, :], axis=1)
+        else:
+            acc += tl.sum(a.to(tl.float32) * b.to(tl.float32)[None, :], axis=1)
 
     # Store result
     c_ptrs = C + row_offset
@@ -484,6 +554,7 @@ def gemv_mm(a, b, c, M, K):
             a.stride(0),
             a.stride(1),
             b.stride(0),
+            IS_FP64=a.dtype == torch.float64,
         )
     return c
 

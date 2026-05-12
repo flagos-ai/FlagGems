@@ -24,7 +24,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems import runtime")
     code.writeline("import flag_gems")
-    # code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+    # code.writeline("from flag_gems.utils import triton_lang_extension as ext")
     code.newline()
     code.newline()
     return code
@@ -320,6 +320,8 @@ _scatter_func = ScatterFunction()
 
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER")
+    if dim < 0:
+        dim += inp.ndim
     out = inp.clone()
 
     if reduce is not None:
@@ -355,6 +357,8 @@ def scatter(inp, dim, index, src, reduce=None):
 
 def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER_")
+    if dim < 0:
+        dim += inp.ndim
     out = inp
 
     if reduce is not None:
