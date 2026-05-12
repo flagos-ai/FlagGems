@@ -5,6 +5,9 @@ from . import base, consts, utils
 
 
 class IndexCopyBenchmark(base.GenericBenchmark):
+    def set_more_shapes(self):
+        return [(1, 2), (4096, 256), (200, 40999, 3)]
+
     def get_gbps(self, bench_fn_args, latency):
         index = bench_fn_args[2]
         src = bench_fn_args[3]
