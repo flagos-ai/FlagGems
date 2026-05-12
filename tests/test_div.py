@@ -10,7 +10,7 @@ from . import accuracy_utils as utils
 
 
 # div.Tensor with true_divide
-@pytest.mark.true_divide
+@pytest.mark.div_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_div_tensor_tensor(shape, dtype):
@@ -27,7 +27,7 @@ def test_div_tensor_tensor(shape, dtype):
 
 
 # div_.Tensor with true_divide_
-@pytest.mark.div_
+@pytest.mark.div_tensor_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_div_tensor_tensor_(shape, dtype):
@@ -44,7 +44,7 @@ def test_div_tensor_tensor_(shape, dtype):
 
 
 # div.Tensor with true_divide
-@pytest.mark.div
+@pytest.mark.div_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -61,7 +61,7 @@ def test_div_tensor_scalar(shape, scalar, dtype):
 
 
 # div_.Tensor with true_divide_
-@pytest.mark.div_
+@pytest.mark.div_tensor_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -78,7 +78,7 @@ def test_div_tensor_scalar_(shape, scalar, dtype):
 
 
 # div.Scalar with true_divide
-@pytest.mark.div
+@pytest.mark.div_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -95,7 +95,7 @@ def test_div_scalar_tensor(shape, scalar, dtype):
 
 
 # div.Scalar with true_divide
-@pytest.mark.div
+@pytest.mark.div_scalar
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_div_scalar_scalar(dtype):
     if dtype == torch.float32:
@@ -105,9 +105,9 @@ def test_div_scalar_scalar(dtype):
         inp1 = random.randint(1, 100)
         inp2 = random.randint(1, 100)
 
-    ref_out = torch.mul(inp1, inp2)
+    ref_out = torch.div(inp1, inp2)
     with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+        res_out = torch.div(inp1, inp2)
 
     if dtype == torch.int64:
         utils.gems_assert_equal(res_out, ref_out)
@@ -117,7 +117,7 @@ def test_div_scalar_scalar(dtype):
 
 # div.Tensor
 # Complex
-@pytest.mark.div
+@pytest.mark.div_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_div_complex_complex(shape, complex_dtype):
@@ -136,7 +136,7 @@ def test_div_complex_complex(shape, complex_dtype):
 
 # div.Tensor
 # Complex
-@pytest.mark.div
+@pytest.mark.div_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_div_complex_float_tensor(shape, complex_dtype):
@@ -163,10 +163,10 @@ def test_div_complex_float_tensor(shape, complex_dtype):
 
 # div.Tensor
 # Complex
-@pytest.mark.div
+@pytest.mark.div_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
-def test_div_complex_int_tensor(shape, complex_dtype):
+def test_div_tensor_int(shape, complex_dtype):
     inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
     inp2 = torch.randint(1, 20, shape, device=flag_gems.device)
 
@@ -180,7 +180,7 @@ def test_div_complex_int_tensor(shape, complex_dtype):
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
 
 
-@pytest.mark.div
+@pytest.mark.div_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_div_complex_int_scalar(shape, complex_dtype):

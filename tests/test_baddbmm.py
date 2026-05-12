@@ -55,7 +55,7 @@ def test_baddbmm(monkeypatch, M, N, K, scalar, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
-@pytest.mark.baddbmm_backward
+@pytest.mark.baddbmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

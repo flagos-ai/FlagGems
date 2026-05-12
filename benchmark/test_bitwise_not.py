@@ -12,6 +12,7 @@ def test_bitwise_not():
     bench.run()
 
 
+@pytest.mark.bitwise_not_
 def test_bitwise_not_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="bitwise_not_",

@@ -10,11 +10,11 @@ def normal_input_fn(shape, cur_dtype, device):
     yield loc, scale
 
 
-@pytest.mark.normal
-def test_normal():
+@pytest.mark.normal_tensor_tensor
+def test_normal_tensor_tensor():
     bench = base.GenericBenchmark(
         input_fn=normal_input_fn,
-        op_name="normal",
+        op_name="normal_tensor_tensor",
         torch_op=torch.normal,
         dtypes=consts.FLOAT_DTYPES,
     )
@@ -28,11 +28,11 @@ def normal_inplace_input_fn(shape, dtype, device):
     yield self, loc, scale
 
 
-@pytest.mark.normal_
+@pytest.mark.normal_float_float_
 def test_normal_inplace():
     bench = base.GenericBenchmark(
         input_fn=normal_inplace_input_fn,
-        op_name="normal_",
+        op_name="normal_float_float_",
         torch_op=torch.Tensor.normal_,
         dtypes=consts.FLOAT_DTYPES,
     )

@@ -35,12 +35,12 @@ REGLU_SHAPES = [
 @pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
 def test_reglu(shape, dtype):
     if len(shape) == 0:
-        pytest.skip("reglu does not support 0-dim scalar tensors.")
+        # reglu does not support 0-dim scalar tensors.
+        return
 
     if shape[-1] % 2 != 0:
-        pytest.skip(
-            f"reglu requires the last dimension to be even, but got shape {shape}."
-        )
+        # reglu requires the last dimension to be even, but got shape {shape}.
+        return
 
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
