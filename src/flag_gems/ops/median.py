@@ -53,6 +53,30 @@ def _median_flat_native(flat):
     return sorted_values[(flat.numel() - 1) // 2].reshape(()).clone()
 
 
+def _median_dim_native(inp, dim, keepdim):
+    rank = (inp.shape[dim] - 1) // 2
+    sorted_values, sorted_indices = torch.sort(inp, dim=dim)
+    values = sorted_values.select(dim, rank)
+    indices = sorted_indices.select(dim, rank).to(torch.int64)
+
+    if inp.is_floating_point():
+        nan_mask_full = torch.isnan(inp)
+        has_nan = nan_mask_full.any(dim=dim)
+        if has_nan.any():
+            first_nan = torch.argmax(nan_mask_full.to(torch.int64), dim=dim)
+            values = torch.where(
+                has_nan,
+                torch.full_like(values, float("nan")),
+                values,
+            )
+            indices = torch.where(has_nan, first_nan.to(torch.int64), indices)
+
+    if keepdim:
+        values = values.unsqueeze(dim)
+        indices = indices.unsqueeze(dim)
+    return values, indices
+
+
 @libentry()
 @triton.jit
 def median_small_dim_kernel(
@@ -911,7 +935,12 @@ def median_dim(inp, dim=0, keepdim=False):
             work.shape[dim] <= _DIRECT_REDUCTION_LIMIT
             and work.dtype in _DIRECT_REDUCTION_DTYPES
         ):
-            values, indices = _median_direct_dim(work.contiguous(), dim, output_shape)
+            if _is_iluvatar_backend():
+                values, indices = _median_dim_native(work.contiguous(), dim, keepdim)
+            else:
+                values, indices = _median_direct_dim(
+                    work.contiguous(), dim, output_shape
+                )
         elif (
             dim != work.ndim - 1
             and work.is_contiguous()
