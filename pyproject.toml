@@ -122,6 +122,7 @@ tsingmicro = [
 test = [
     "distro==1.9.0",
     "coverage==7.13.5",
+    "gitpython==3.1.50",
     "openpyxl==3.1.5",
     "pytest==9.0.3",
     "scipy>=1.15.3",

@@ -58,17 +58,17 @@ class TopKSoftmaxBenchmark(base.Benchmark):
 @pytest.mark.topk_softmax
 @pytest.mark.skipif(
     utils.SkipVersion("vllm", "<0.9"),
-    reason="The version prior to 0.9 does not include the topk_softmax kernel in vllm._custom_ops.",
+    reason="vLLM prior to 0.9 does not include the topk_softmax kernel in vllm._custom_ops.",
 )
 @pytest.mark.skipif(
     utils.SkipVersion("torch", "<2.7"),
     reason="The version prior to 2.7 is not compatible with VLLM.",
 )
-@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="RESULT TODOFIX")
-@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(vendor_name == "cambricon", reason="TypeError")
+@pytest.mark.skipif(vendor_name == "metax", reason="#2857: Not working")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="#2880: Not working")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="#2881: Not working")
+@pytest.mark.skipif(vendor_name == "hygon", reason="#2882: RuntimeError")
+@pytest.mark.skipif(vendor_name == "cambricon", reason="#2883: TypeError")
 def test_topk_softmax(monkeypatch):
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
     try:

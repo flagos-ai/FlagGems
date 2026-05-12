@@ -7,7 +7,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.codegen_config_utils import get_heuristics_for_num_warps
 
 Shape = Tuple[int]
@@ -272,8 +272,8 @@ def add_on_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid_x = tle.program_id(axis=0)
-    pid_y = tle.program_id(axis=1)
+    pid_x = ext.program_id(axis=0)
+    pid_y = ext.program_id(axis=1)
     rows_offset = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     rows_mask = rows_offset < M
 

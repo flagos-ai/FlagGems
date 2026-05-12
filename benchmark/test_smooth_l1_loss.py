@@ -4,20 +4,56 @@ import torch
 from . import base, consts
 
 
-def _input_fn(shape, dtype, device):
-    inp = torch.randn(shape, dtype=dtype, device=device)
-    target = torch.randn(shape, dtype=dtype, device=device)
-    yield inp, target
+class SmoothL1LossBenchmark(base.Benchmark):
+    DEFAULT_SHAPE_FILES = "benchmark/core_shapes.yaml"
+    DEFAULT_SHAPES = [
+        (262144,),
+        (1024, 1024),
+        (4096, 4096),
+        (64, 512, 512),
+    ]
+    DEFAULT_SHAPE_DESC = "(B), M, N"
+
+    def get_input_iter(self, dtype):
+        for shape in self.shapes:
+            inp = torch.randn(shape, device=self.device, dtype=dtype)
+            target = torch.randn(shape, device=self.device, dtype=dtype)
+            yield inp, target, 1, 1.0
 
 
 @pytest.mark.smooth_l1_loss
-def test_perf_smooth_l1_loss():
-    bench = base.GenericBenchmark(
-        input_fn=_input_fn,
+def test_smooth_l1_loss():
+    bench = SmoothL1LossBenchmark(
         op_name="smooth_l1_loss",
-        torch_op=lambda inp, target: torch.nn.functional.smooth_l1_loss(
-            inp, target, reduction="mean", beta=1.0
-        ),
+        torch_op=torch.ops.aten.smooth_l1_loss,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class SmoothL1LossBackwardBenchmark(base.Benchmark):
+    DEFAULT_SHAPE_FILES = "benchmark/core_shapes.yaml"
+    DEFAULT_SHAPES = [
+        (262144,),
+        (1024, 1024),
+        (4096, 4096),
+        (64, 512, 512),
+    ]
+    DEFAULT_SHAPE_DESC = "(B), M, N"
+
+    def get_input_iter(self, dtype):
+        for shape in self.shapes:
+            inp = torch.randn(shape, device=self.device, dtype=dtype)
+            target = torch.randn(shape, device=self.device, dtype=dtype)
+            grad_output = torch.randn((), device=self.device, dtype=dtype)
+            yield grad_output, inp, target, 1, 1.0
+
+
+@pytest.mark.smooth_l1_loss_backward
+def test_smooth_l1_loss_backward():
+    bench = SmoothL1LossBackwardBenchmark(
+        op_name="smooth_l1_loss_backward",
+        torch_op=torch.ops.aten.smooth_l1_loss_backward,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

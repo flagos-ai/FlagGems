@@ -1938,3 +1938,41 @@ grid_sample_3d_trilinear_tiled:
       BLOCK_W: 32
     num_warps: 32
     num_stages: 2
+
+fp8_paged_mqa_logits:
+  - META: {BLOCK_KV: 64, BLOCK_D: 128, NUM_D_TILES: 1, BLOCK_H: 32}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_KV: 64, BLOCK_D: 128, NUM_D_TILES: 1, BLOCK_H: 16}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_KV: 64, BLOCK_D: 128, NUM_D_TILES: 1, BLOCK_H: 8}
+    num_warps: 4
+    num_stages: 2
+  - META: {BLOCK_KV: 128, BLOCK_D: 128, NUM_D_TILES: 1, BLOCK_H: 32}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_KV: 128, BLOCK_D: 128, NUM_D_TILES: 1, BLOCK_H: 16}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_KV: 32, BLOCK_D: 128, NUM_D_TILES: 1, BLOCK_H: 32}
+    num_warps: 4
+    num_stages: 2
+  - META: {BLOCK_KV: 64, BLOCK_D: 64, NUM_D_TILES: 2, BLOCK_H: 16}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_KV: 64, BLOCK_D: 64, NUM_D_TILES: 2, BLOCK_H: 8}
+    num_warps: 4
+    num_stages: 2
+  - META: {BLOCK_KV: 128, BLOCK_D: 64, NUM_D_TILES: 2, BLOCK_H: 16}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_KV: 64, BLOCK_D: 64, NUM_D_TILES: 1, BLOCK_H: 16}
+    num_warps: 4
+    num_stages: 2
+  - META: {BLOCK_KV: 64, BLOCK_D: 64, NUM_D_TILES: 1, BLOCK_H: 8}
+    num_warps: 4
+    num_stages: 2
+  - META: {BLOCK_KV: 128, BLOCK_D: 64, NUM_D_TILES: 1, BLOCK_H: 16}
+    num_warps: 8
+    num_stages: 2

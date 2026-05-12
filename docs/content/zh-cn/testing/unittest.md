@@ -55,7 +55,7 @@ To test operator performance on CUDA:
 在 CUDA 平台上测试算子的性能：
 
 ```shell
-pytest benchmark/test_xx_perf.py -s
+pytest benchmark/test_foo.py -s
 ```
 
 <!--
@@ -64,26 +64,5 @@ To benchmark the end-to-end performance for operators:
 下面的命令对算子执行端到端的性能基准测试：
 
 ```shell
-pytest benchmark/test_xx_perf.py -s --mode cpu
+pytest benchmark/test_foo.py -s --ref cpu
 ```
-
-<!--
-## 4. Run tests with logging infomation
--->
-## 4. 执行测试时输出日志信息
-
-```bash
-pytest program.py --log-cli-level debug
-```
-
-<!--
-This is NOT recommended when conducting performance benchmarks.
--->
-在执行性能基准测试时不建议启用日志输出。
-
-<!--
-## 5. The daily full-range unit tests
--->
-## 5. 每日全量单元测试
-
-(TBD)

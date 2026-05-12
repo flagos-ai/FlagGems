@@ -259,6 +259,30 @@ def custom_silu_and_mul(out: torch.Tensor, input: torch.Tensor):
     flag_gems.silu_and_mul_out(x, y, out)
 
 
+def custom_silu_and_mul_with_clamp(
+    out: torch.Tensor, input: torch.Tensor, limit: float
+):
+    d = input.size(-1) // 2
+    x, y = input.split(d, dim=-1)
+    flag_gems.silu_and_mul_with_clamp_out(x, y, out, limit)
+
+
+def custom_hc_head_fused_kernel(
+    hs_flat: torch.Tensor,
+    fn: torch.Tensor,
+    hc_scale: torch.Tensor,
+    hc_base: torch.Tensor,
+    out: torch.Tensor,
+    hidden_size: int,
+    rms_eps: float,
+    hc_eps: float,
+    hc_mult: int,
+):
+    return flag_gems.hc_head_fused_kernel(
+        hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
+    )
+
+
 def custom_moe_align_block_size(
     topk_ids: torch.Tensor,
     num_experts: int,
@@ -594,6 +618,8 @@ def apply_gems_patches_to_vllm(verbose=True):
     lib_patches = [
         ("_C", "rms_norm", custom_rms_norm_out),
         ("_C", "silu_and_mul", custom_silu_and_mul),
+        ("_C", "silu_and_mul_with_clamp", custom_silu_and_mul_with_clamp),
+        ("_C", "hc_head_fused_kernel", custom_hc_head_fused_kernel),
         ("_C", "cutlass_scaled_mm", custom_cutlass_scaled_mm),
         ("_moe_C", "moe_align_block_size", custom_moe_align_block_size),
         ("_moe_C", "topk_softmax", custom_topk_softmax),
