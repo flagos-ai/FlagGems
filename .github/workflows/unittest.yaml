@@ -82,7 +82,7 @@ jobs:
         uses: actions/checkout@v6
         continue-on-error: true
       - id: sleep-1
-        if: steps.checkout.outcome == 'failure'
+        if: steps.checkout-attempt-1.outcome == 'failure'
         shell: bash
         run: sleep 30s
 
