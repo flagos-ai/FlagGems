@@ -519,7 +519,7 @@ def run_benchmark(gpu_id, start, index, count):
         return {
             "status": "NotFound",
             "exit_code": code,
-            "data": [],
+            "data": {},
         }
 
     # Move record log to output directory
