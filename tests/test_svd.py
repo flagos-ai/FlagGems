@@ -47,7 +47,7 @@ def test_svd_2d(shape, some, compute_uv):
     assert res_s.shape == ref_s.shape, f"S shape: {res_s.shape} vs {ref_s.shape}"
     assert res_v.shape == ref_v.shape, f"V shape: {res_v.shape} vs {ref_v.shape}"
 
-    utils.gems_assert_close(res_s, ref_s.to(inp.device), torch.float32, equal_nan=True)
+    utils.gems_assert_close(res_s, ref_s, torch.float32, equal_nan=True)
 
     if compute_uv and min(shape[-2], shape[-1]) > 0:
         recon = _reconstruct(res_u, res_s, res_v)
@@ -74,7 +74,7 @@ def test_svd_batched(shape, some, compute_uv):
     assert res_u.shape == ref_u.shape
     assert res_s.shape == ref_s.shape
     assert res_v.shape == ref_v.shape
-    utils.gems_assert_close(res_s, ref_s.to(inp.device), torch.float32, equal_nan=True)
+    utils.gems_assert_close(res_s, ref_s, torch.float32, equal_nan=True)
 
 
 # ---------------------------------------------------------------------------
@@ -137,4 +137,4 @@ def test_svd_non_contiguous(shape):
         res_u, res_s, res_v = torch.svd(inp)
 
     assert res_u.shape == ref_u.shape
-    utils.gems_assert_close(res_s, ref_s.to(inp.device), torch.float32, equal_nan=True)
+    utils.gems_assert_close(res_s, ref_s, torch.float32, equal_nan=True)
