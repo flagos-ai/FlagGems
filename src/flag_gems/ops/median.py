@@ -876,6 +876,8 @@ def median(inp):
         return inp.reshape(()).clone()
 
     flat = inp.contiguous().reshape(-1)
+    if _is_iluvatar_backend():
+        return _median_flat_native(flat)
     if inp.dtype in _DIRECT_REDUCTION_DTYPES and inp.numel() <= _DIRECT_FLAT_LIMIT:
         if _is_iluvatar_backend():
             return _median_flat_native(flat)
@@ -931,16 +933,13 @@ def median_dim(inp, dim=0, keepdim=False):
     else:
         if work.dtype == torch.bool or work.dtype.is_complex:
             _raise_dim_dtype(work.dtype)
-        if (
+        if _is_iluvatar_backend():
+            values, indices = _median_dim_native(work.contiguous(), dim, keepdim)
+        elif (
             work.shape[dim] <= _DIRECT_REDUCTION_LIMIT
             and work.dtype in _DIRECT_REDUCTION_DTYPES
         ):
-            if _is_iluvatar_backend():
-                values, indices = _median_dim_native(work.contiguous(), dim, keepdim)
-            else:
-                values, indices = _median_direct_dim(
-                    work.contiguous(), dim, output_shape
-                )
+            values, indices = _median_direct_dim(work.contiguous(), dim, output_shape)
         elif (
             dim != work.ndim - 1
             and work.is_contiguous()
