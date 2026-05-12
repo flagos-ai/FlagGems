@@ -7,7 +7,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.topk import _get_finfo_val, _get_iinfo_val
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,17 @@ _INT_LASTDIM_SELECT_LIMIT = 2048
 _INT_LASTDIM_SELECT_DTYPES = {torch.int16, torch.int32}
 _STRIDED_SELECT_MIN = _DIRECT_REDUCTION_LIMIT + 1
 _STRIDED_SELECT_LIMIT = 2048
+
+
+def _is_iluvatar_backend():
+    return device.vendor_name == "iluvatar"
+
+
+def _median_flat_native(flat):
+    if flat.dtype.is_floating and torch.isnan(flat).any():
+        return torch.full((), float("nan"), dtype=flat.dtype, device=flat.device)
+    sorted_values = torch.sort(flat).values
+    return sorted_values[(flat.numel() - 1) // 2].reshape(()).clone()
 
 
 @libentry()
@@ -842,6 +853,8 @@ def median(inp):
 
     flat = inp.contiguous().reshape(-1)
     if inp.dtype in _DIRECT_REDUCTION_DTYPES and inp.numel() <= _DIRECT_FLAT_LIMIT:
+        if _is_iluvatar_backend():
+            return _median_flat_native(flat)
         return _median_small_flat(flat)
 
     row_data = flat.reshape(1, inp.numel())
