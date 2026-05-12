@@ -10,7 +10,7 @@ from torch._prims_common import is_boolean_dtype, is_integer_dtype
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import get_device_properties, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ def scan_part_product_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -80,7 +80,7 @@ def multiply_base_product_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -104,9 +104,9 @@ def scan_part_product_abc_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = tle.program_id(0)
-    pid_b = tle.program_id(1)
-    pid_c = tle.program_id(2)
+    pid_a = ext.program_id(0)
+    pid_b = ext.program_id(1)
+    pid_c = ext.program_id(2)
 
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -136,9 +136,9 @@ def multiply_base_product_abc_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = tle.program_id(0)
-    pid_b = tle.program_id(1)
-    pid_c = tle.program_id(2)
+    pid_a = ext.program_id(0)
+    pid_b = ext.program_id(1)
+    pid_c = ext.program_id(2)
 
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
