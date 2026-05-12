@@ -4784,6 +4784,28 @@ ops:
       - Tensor
     stages:
       - stable: '3.0'
+  - id: _segment_reduce_backward
+    description: Computes gradients for `segment_reduce` with lengths or offsets based segment definitions.
+    for:
+      - _segment_reduce_backward
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - beta: '5.1'
+  - id: segment_reduce
+    description: |
+      Reduces contiguous segments of a tensor along the specified axis. Segments are described
+      by `lengths` or `offsets`, and supported reductions include sum, mean, max, min, and prod.
+    for:
+      - segment_reduce
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - beta: '5.1'
   - id: select_backward
     description: Calculate the gradient during the backward pass in the neural network.
     for:
