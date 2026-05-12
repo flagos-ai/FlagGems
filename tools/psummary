@@ -3,20 +3,21 @@
 import argparse
 import json
 import sys
+from pathlib import Path
 
-# ROOT = Path(__file__).parent.parent
+ROOT = Path(__file__).parent.parent
 DATA = {}
+DEBUG = False
 
 
 def load_data(data_path):
-    global DATA
     try:
-        with open(data_path, "r") as f:
-            DATA = json.load(f)
-        return True
+        with data_path.open("r") as f:
+            data = json.load(f)
+        return data, True
     except Exception as ex:
         print(f"Failed to load data: {ex}")
-    return False
+    return {}, False
 
 
 def format_record(fields, fmt):
@@ -83,29 +84,233 @@ def parse_lines(fmt):
     return sorted(lines)
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("data", help="the data file to process")
-    parser.add_argument(
-        "-f",
-        "--format",
-        choices=["csv", "markdown", "html"],
-        default="csv",
-        help="the output format",
+def parse_env(fmt):
+    timestamp = DATA.get("timestamp", "?")
+    env = DATA.get("env", {})
+    arch = env.get("architecture", "?")
+    os = env.get("os_name") + " " + env.get("os_release")
+    pyver = env.get("python", "?")
+    torch_obj = env.get("torch", {})
+    torch_ver = torch_obj.get("version", "?")
+    flagtree_ver = env.get("flagtree", "?")
+    triton_ver = env.get("triton", {}).get("version", "?")
+    flaggems_ver = env.get("flag_gems", {}).get("version", "?")
+    flaggems_vendor = env.get("flag_gems", {}).get("vendor", "?")
+    flaggems_device = env.get("flag_gems", {}).get("device", "?")
+
+    lines = []
+    if fmt == "markdown":
+        lines.append("### Test Environment")
+        lines.append("")
+        lines.append("| Env | Setting |")
+        lines.append("| --- | ------- |")
+        lines.append(f"| Time | `{timestamp}` |")
+        lines.append(f"| Architecture | `{arch}` |")
+        lines.append(f"| OS | `{os}` |")
+        lines.append(f"| Python | `{pyver}` |")
+        lines.append(f"| Torch | `{torch_ver}` |")
+        lines.append(f"| FlagTree | `{flagtree_ver}` |")
+        lines.append(f"| Triton | `{triton_ver}` |")
+        lines.append(f"| FlagGems | `{flaggems_ver}` |")
+        lines.append(f"| Vendor | `{flaggems_vendor}` |")
+        lines.append(f"| Device | `{flaggems_device}` |")
+        lines.append("")
+    elif fmt == "html":
+        lines.append("<H3>Test Environment</H3>")
+        lines.append("<table><thead><tr><th>Env></th><th>Setting</th><tr></thead>")
+        lines.append("<tbody>")
+        lines.append(f"<tr><td>Time</td><td><tt>{timestamp}</tt></td></tr>")
+        lines.append(f"<tr><td>Architecture</td><td><tt>{arch}</tt></td></tr>")
+        lines.append(f"<tr><td>OS</td><td><tt>{os}</tt></td></tr>")
+        lines.append(f"<tr><td>Python</td><td><tt>{pyver}</tt></td></tr>")
+        lines.append(f"<tr><td>Torch</td><td><tt>{torch_ver}</tt></td></tr>")
+        lines.append(f"<tr><td>FlagTree</td><td><tt>{flagtree_ver}</tt></td></tr>")
+        lines.append(f"<tr><td>Triton</td><td><tt>{triton_ver}</tt></td></tr>")
+        lines.append(f"<tr><td>FlagGems</td><td><tt>{flaggems_ver}</tt></td></tr>")
+        lines.append(f"<tr><td>Vendor</td><td><tt>{flaggems_vendor}</tt></td></tr>")
+        lines.append(f"<tr><td>Device</td><td><tt>{flaggems_device}</tt></td></tr>")
+        lines.append("</tbody></table>")
+        lines.append("")
+
+    return lines
+
+
+def parse_single_accuracy_details(fmt, details, num, kind):
+    lines = []
+    if num == 0:
+        return lines
+
+    lines.append(f"#### {kind.title()} Cases")
+    lines.append("")
+
+    for reason, cases in details.get(kind, {}).items():
+        reason_strs = reason.split("\n")
+        lines.append("- **Reason**")
+        lines.append("")
+        for s in reason_strs:
+            lines.append(f"  > {s}")
+        lines.append("")
+        lines.append("  **Test cases**")
+        lines.append("")
+        for case in cases:
+            lines.append(f"  - `{case}`")
+        lines.append("")
+
+    return lines
+
+
+def parse_single_accuracy(fmt, op_data):
+    lines = []
+    f = 0
+    k = 0
+    if fmt == "markdown":
+        lines.append("### Accuracy Result")
+        lines.append("")
+        lines.append("#### Summary")
+        lines.append("")
+        lines.append("| Status | Duration | Total | Passed | Skipped | Failed |")
+        lines.append("|--------|----------|-------|--------|---------|--------|")
+
+        s = op_data.get("status", "?")
+        d = op_data.get("duration", 0)
+        t = op_data.get("total", 0)
+        p = op_data.get("passed", 0)
+        k = op_data.get("skipped", 0)
+        f = op_data.get("failed", 0)
+        lines.append(f"| {s} | {d:6.2f} sec | {t} | {p} | {k} | {f} |")
+        lines.append("")
+
+    elif fmt == "html":
+        lines.append("<H3>Accuracy Result</H3>")
+        lines.append("<H4>Summary</H4>")
+        lines.append("<table><thead><tr>")
+        lines.append("<th>Status</th><th>Duration (s)</th><th>Total</th>")
+        lines.append(
+            "<th>Passed</th><th>Skipped</th><th>Failed</th></tr></thead><tbody>"
+        )
+        lines.append(f"<tr><td>{op_data.get('status', '?')}</td>")
+        lines.append(f"<td>{op_data.get('duration', '?')}</td>")
+        lines.append(f"<td>{op_data.get('total', 0)}</td>")
+        lines.append(f"<td>{op_data.get('passed', 0)}</td>")
+        k = op_data.get("skipped", 0)
+        lines.append(f"<td>{k}</td>")
+        f = op_data.get("failed", 0)
+        lines.append(f"<td>{f}</td></tr></tbody><table>")
+
+    # Append failed and skipped cases if any
+    details = op_data.get("details", {})
+    f_lines = parse_single_accuracy_details(fmt, details, f, "failed")
+    lines.extend(f_lines)
+    k_lines = parse_single_accuracy_details(fmt, details, k, "skipped")
+    lines.extend(k_lines)
+
+    return lines
+
+
+def parse_single_performance(fmt, op_data):
+    lines = []
+
+    status = op_data.get("status", "OK")
+    if fmt == "markdown":
+        lines.append("### Performance Result")
+        lines.append("")
+        lines.append("#### Summary")
+        lines.append("")
+        lines.append("| Status | Duration | Reason |")
+        lines.append("|--------|----------|--------|")
+        duration = op_data.get("duration", 0)
+        if status in ["Skipped", "Failed"]:
+            reason = op_data.get("reason", "Unknown")
+            reason = "<blockquote>" + reason.replace("\n", "<br/>") + "</blockquote>"
+            lines.append(f"| {status} | {duration:6.2f} seconds | {reason} |")
+        elif status == "NotFound":
+            lines.append(
+                f"| {status} | {duration:6.2f} seconds | *No test case found.* |"
+            )
+        else:
+            lines.append(
+                f"| {status} | {duration:6.2f} seconds | *All tests completed.* |"
+            )
+
+        lines.append("")
+        if status != "Passed":
+            return lines
+
+        lines.append("#### Benchmark data")
+        lines.append("")
+        lines.append("| Dtype  | Speedup | Base | Gems    | Shape |")
+        lines.append("|--------|---------|------|---------|-------|")
+        perf_data = op_data.get("data", {})
+        for dtype, ddata in perf_data.items():
+            speedup = ddata.get("speedup", 0)
+            lines.append(f"| {dtype} | **{speedup:6.3f}** | - | - | - |")
+            for shp, res in ddata.get("details", {}).items():
+                spd = res.get("speedup", 0)
+                base = res.get("base", 0)
+                gems = res.get("gems", 0)
+                lines.append(f"| | {spd:6.3f} | {base:6.3f} | {gems:6.3f} | `{shp}` |")
+        lines.append("")
+        return lines
+
+    elif fmt == "html":
+        duration = op_data.get("duration", 0)
+        lines.append("<H3>Performance Result</H3>")
+        lines.append("<H4>Summary</H4>")
+        lines.append("<table><thead><tr>")
+        lines.append("<th>Status</th><th>Duration</th><th>Reason</th>")
+        lines.append(f"<tr><td>{status}</td>")
+        lines.append(f"<td>{duration:6.2f}</td>")
+        if status in ["Skipped", "Failed"]:
+            reason = op_data.get("reason", "Unknown")
+            reason = "<blockquote>" + reason.replace("\n", "<br/>") + "</blockquote>"
+            lines.append("<td>{reason}</td></tr>")
+        elif status == "NotFound":
+            lines.append("<td><i>No test case found.</i></td></tr>")
+        else:
+            lines.append("<td><i>All tests completed.</i></td</tr>")
+        lines.append("</tbody></table>")
+
+    if status != "Passed":
+        return lines
+
+    lines.append("<H4>Benchmark data</H4>")
+    lines.append("<table><thead><tr>")
+    lines.append(
+        "<th>Dtype</th><th>Speedup</th><th>Base</th><th>Gems</th><th>Shape</th>"
     )
-    parser.add_argument(
-        "-o", "--output", default="<stdout>", help="path to the output file."
-    )
+    lines.append("</thead><tbody>")
+    perf_data = op_data.get("data", {})
+    for dtype, ddata in perf_data.items():
+        speedup = ddata.get("speedup", 0)
+        lines.append(
+            f"<tr><td>{dtype}</td><td><B>{speedup:6.3f}</B></td><td>-</td><td>-</td><td>-</td></tr>"
+        )
+        for shp, res in ddata.get("details", {}).items():
+            spd = res.get("speedup", 0)
+            base = res.get("base", 0)
+            gems = res.get("gems", 0)
+            lines.append(f"<tr><td></td><td>{spd:6.3f}</td><td>{base:6.3f}</td>")
+            lines.append(f"  <td>{gems:6.3f}</td><td><tt>{shp}</tt></td></tr>")
+    lines.append("</tbody></table>")
+    return lines
 
-    args = parser.parse_args()
-    if args.data is None:
-        parser.print_help()
-        return 0
 
-    if not load_data(args.data):
-        return 1
+def parse_single(fmt):
+    lines = parse_env(fmt)
 
-    lines = parse_lines(args.format)
+    data = DATA.get("result", {})
+    # op = list(data.keys())[0]
+    op = "all"
+
+    op_data = data.get(op, {}).get("accuracy", {})
+    lines.extend(parse_single_accuracy(fmt, op_data))
+    op_data = data.get(op, {}).get("performance", {})
+    lines.extend(parse_single_performance(fmt, op_data))
+    return lines
+
+
+def parse_multi(fmt):
+    lines = parse_lines(fmt)
     header_fields = [
         "ID",
         "AccRes",
@@ -120,14 +325,15 @@ def main():
         "I64",
         "Note",
     ]
-    if args.format == "csv":
+
+    if fmt == "csv":
         lines.insert(0, ",".join(header_fields))
-    elif args.format == "markdown":
+    elif fmt == "markdown":
         header = "|" + "----|" * 12
         lines.insert(0, header)
         header = "| " + " | ".join(header_fields) + " |"
         lines.insert(0, header)
-    elif args.format == "html":
+    elif fmt == "html":
         header = ["<table>", "<thead>", "<tr>"]
         for field in header_fields:
             header.append(f"<th>{field}</th>")
@@ -135,7 +341,50 @@ def main():
         lines = header + lines
         lines.append("</tbody></table")
 
-    if args.output == "<stdout>":
+    return lines
+
+
+def main():
+    global DATA
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("dir", default="result", help="the data directory to process")
+    parser.add_argument(
+        "-f",
+        "--format",
+        choices=["csv", "markdown", "html"],
+        default="csv",
+        help="the output format",
+    )
+    parser.add_argument(
+        "-o", "--output", default="<stdout>", help="path to the output file."
+    )
+    parser.add_argument(
+        "--single",
+        action=argparse.BooleanOptionalAction,
+        help="only parse the result from the first operator",
+    )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action=argparse.BooleanOptionalAction,
+        help="flag for printing verbose information for debugging",
+    )
+
+    args = parser.parse_args()
+
+    data_path = Path(args.dir) / "summary.json"
+    DATA, res = load_data(data_path)
+    if not res:
+        return 1
+
+    if args.single:
+        lines = parse_single(args.format)
+    else:
+        lines = parse_multi(args.format)
+
+    # never dump debug information to result file
+    if args.output == "<stdout>" or args.debug:
         for ln in lines:
             print(ln)
     else:
