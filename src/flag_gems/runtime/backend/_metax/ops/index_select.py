@@ -6,7 +6,7 @@ import triton.language as tl
 
 import flag_gems.runtime as runtime
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems." + __name__)
 
@@ -17,8 +17,8 @@ logger = logging.getLogger("flag_gems." + __name__)
 def index_select_kernel(
     inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
 ):
-    pid_x = tle.program_id(axis=0)
-    pid_y = tle.program_id(axis=1)
+    pid_x = ext.program_id(axis=0)
+    pid_y = ext.program_id(axis=1)
     rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     rows_mask = rows_offsets < M
     cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -36,7 +36,7 @@ def index_select_kernel(
 @libentry()
 @triton.jit
 def index_select_2d_opt_kernel(inp, out, M, N, index, BLOCK_SIZE: tl.constexpr):
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
 
     row_index = tl.load(index + pid)
     row_offset = row_index * M

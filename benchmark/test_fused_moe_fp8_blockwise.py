@@ -189,7 +189,7 @@ def test_fused_moe_fp8_blockwise():
     Benchmark FlagGems vs vLLM fused_experts_impl with FP8 W8A8 block-wise quantization.
     """
     bench = FusedMoEFP8BlockwiseBenchmark(
-        op_name="fused_moe_fp8_blockwise_gems_vs_vllm",
+        op_name="fused_experts_impl",
         torch_op=_vllm_fused_moe_fp8_blockwise_wrapper,
         dtypes=[torch.bfloat16],
     )

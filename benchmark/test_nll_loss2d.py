@@ -20,7 +20,7 @@ def nll_loss_input_fn(shape, cur_dtype, device):
 def test_nll_loss2d_forward():
     bench = base.GenericBenchmark4DOnly(
         input_fn=nll_loss_input_fn,
-        op_name="nll_loss2d",
+        op_name="nll_loss2d_forward",
         torch_op=torch.nn.functional.nll_loss,
         dtypes=consts.FLOAT_DTYPES,
     )

@@ -57,7 +57,7 @@ def test_bmm(monkeypatch, M, N, K, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_bmm_non_contiguous(M, N, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("#2799: Skipping fp32 bmm test on tsingmicro platform.")
+        pytest.skip("Issue #2799: Skipping fp32 bmm test on tsingmicro.")
 
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
@@ -74,7 +74,8 @@ def test_bmm_non_contiguous(M, N, K, dtype):
     if N > 1 and K > 1:
         assert not mat2.is_contiguous()
     else:
-        pytest.skip("Skipping non-contiguous test for small N or K")
+        # Skipping non-contiguous test for small N or K
+        return
 
     ref_mat1 = utils.to_reference(mat1, True)
     ref_mat2 = utils.to_reference(mat2, True)
@@ -89,7 +90,7 @@ def test_bmm_non_contiguous(M, N, K, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_bmm_out(M, N, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("#2799: Skipping fp32 bmm test on tsingmicro platform.")
+        pytest.skip("Issue #2799: Skipping fp32 bmm test on tsingmicro.")
 
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
