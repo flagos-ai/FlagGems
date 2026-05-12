@@ -133,6 +133,7 @@ _VENDOR_TORCH_ATTR = {
     "ascend": "npu",
     "sunrise": "ptpu",
     "enflame": "gcu",
+    "hygon": "__hcu_version__",
 }
 
 __all__ = [
