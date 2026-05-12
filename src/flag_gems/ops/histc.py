@@ -89,11 +89,8 @@ def histc_kernel_simple(
     # Convert to float32 for computation
     inp_val = inp_val.to(tl.float32)
 
-    # Compute bin width
-    bin_width = (max_val - min_val) / bins
-
-    # Compute bin indices
-    bin_idx = ((inp_val - min_val) / bin_width).to(tl.int64)
+    # Compute bin indices using multiplication to avoid float division precision loss
+    bin_idx = tl.floor((inp_val - min_val) * bins / (max_val - min_val)).to(tl.int64)
 
     # Handle edge case: elements exactly equal to max go to last bin
     bin_idx = tl.where(inp_val == max_val, bins - 1, bin_idx)
