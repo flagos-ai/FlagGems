@@ -47,7 +47,7 @@ def _is_iluvatar_backend():
 
 
 def _median_flat_native(flat):
-    if flat.dtype.is_floating and torch.isnan(flat).any():
+    if flat.is_floating_point() and torch.isnan(flat).any():
         return torch.full((), float("nan"), dtype=flat.dtype, device=flat.device)
     sorted_values = torch.sort(flat).values
     return sorted_values[(flat.numel() - 1) // 2].reshape(()).clone()
