@@ -23,3 +23,13 @@ def test_pow_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+@pytest.mark.pow_scalar
+def test_pow_scalar():
+    bench = base.ScalarBinaryPointwiseBenchmark(
+        op_name="pow_scalar",
+        torch_op=torch.pow,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
