@@ -195,3 +195,53 @@ def test_div_complex_int_scalar(shape, complex_dtype):
         res_out = torch.div(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
+
+
+# div.out with true_divide
+@pytest.mark.div_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_out_tensor_tensor(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1, False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = torch.div(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        torch.div(inp1, inp2, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.div_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_out_tensor_scalar(shape, scalar, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1, False)
+
+    ref_out = torch.div(ref_inp1, scalar)
+    with flag_gems.use_gems():
+        torch.div(inp1, scalar, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.div_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_out_scalar_tensor(shape, scalar, dtype):
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = torch.div(scalar, ref_inp2)
+    with flag_gems.use_gems():
+        torch.div(scalar, inp2, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
