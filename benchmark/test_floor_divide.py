@@ -23,3 +23,20 @@ def test_floor_divide_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+def floor_divide_scalar_inplace_input_fn(shape, dtype, device):
+    inp = base.generate_tensor_input(shape, dtype, device)
+    yield inp, 3
+
+
+@pytest.mark.floor_divide_scalar_
+def test_floor_divide_scalar_inplace():
+    bench = base.GenericBenchmark(
+        op_name="floor_divide_scalar_",
+        torch_op=lambda a, b: a.floor_divide_(b),
+        input_fn=floor_divide_scalar_inplace_input_fn,
+        dtypes=consts.INT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()
