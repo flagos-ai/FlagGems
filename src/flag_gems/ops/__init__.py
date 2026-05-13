@@ -111,6 +111,7 @@ from flag_gems.ops.div import (
 )
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
+from flag_gems.ops.dynamic_scaled_fp8_quant import dynamic_scaled_fp8_quant
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
@@ -250,6 +251,8 @@ from flag_gems.ops.per_token_group_quant_fp8 import (
     SUPPORTED_FP8_DTYPE,
     per_token_group_quant_fp8,
 )
+from flag_gems.ops.per_token_group_quant_int8 import per_token_group_quant_int8
+from flag_gems.ops.per_token_quant_int8 import per_token_quant_int8
 from flag_gems.ops.pixel_shuffle import pixel_shuffle
 from flag_gems.ops.pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from flag_gems.ops.polar import polar
@@ -681,7 +684,10 @@ __all__ = [
     "ones_like",
     "one_hot",
     "pad",
+    "dynamic_scaled_fp8_quant",
+    "per_token_group_quant_int8",
     "per_token_group_quant_fp8",
+    "per_token_quant_int8",
     "pixel_shuffle",
     "pixel_unshuffle",
     "pixel_unshuffle_out",

@@ -1,5 +1,6 @@
 import random
 from math import ceil
+from typing import Optional
 
 import pytest
 import torch
@@ -242,13 +243,107 @@ def test_fused_moe_vs_vllm(config, dtype):
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 
 
+FUSED_MOE_BLOCK_SHAPES = [None, [128, 128], [64, 128], [128, 64]]
+
+
+def _fake_quantize_fp8_block(tensor: torch.Tensor, group_size: int):
+    """Simulate FP8 group-wise quantization on the last dimension."""
+    finfo = torch.finfo(torch.float8_e4m3fn)
+    fp8_max = finfo.max
+    eps = 1e-10
+    original_shape = tensor.shape
+    assert original_shape[-1] % group_size == 0
+    grouped = tensor.float().reshape(-1, original_shape[-1] // group_size, group_size)
+    amax = grouped.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
+    scale = amax / fp8_max
+    q = (grouped / scale).clamp(finfo.min, finfo.max).to(torch.float8_e4m3fn)
+    return (q.float() * scale).reshape(original_shape)
+
+
+def _fake_quantize_int8_block(tensor: torch.Tensor, group_size: int):
+    """Simulate INT8 group-wise quantization on the last dimension."""
+    eps = 1e-10
+    original_shape = tensor.shape
+    assert original_shape[-1] % group_size == 0
+    grouped = tensor.float().reshape(-1, original_shape[-1] // group_size, group_size)
+    amax = grouped.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
+    scale = amax / 127.0
+    q = (grouped / scale).clamp(-128, 127).to(torch.int8)
+    return (q.float() * scale).reshape(original_shape)
+
+
+def _quantize_fp8_blockwise(
+    tensor: torch.Tensor,
+    block_n: int,
+    block_k: int,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Quantize weights block-wise and return quantized, scales, dequantized tensors."""
+    finfo = torch.finfo(torch.float8_e4m3fn)
+    fp8_max = finfo.max
+    eps = 1e-10
+
+    num_experts, n_dim, k_dim = tensor.shape
+    assert n_dim % block_n == 0
+    assert k_dim % block_k == 0
+
+    grouped = tensor.reshape(
+        num_experts,
+        n_dim // block_n,
+        block_n,
+        k_dim // block_k,
+        block_k,
+    ).permute(0, 1, 3, 2, 4)
+    amax = grouped.abs().amax(dim=(-1, -2), keepdim=True).clamp(min=eps)
+    scale = amax / fp8_max
+    q = (grouped / scale).clamp(finfo.min, finfo.max).to(torch.float8_e4m3fn)
+    deq = q.float() * scale
+
+    return (
+        q.permute(0, 1, 3, 2, 4).reshape_as(tensor),
+        scale.squeeze(-1).squeeze(-1),
+        deq.permute(0, 1, 3, 2, 4).reshape_as(tensor),
+    )
+
+
+def _quantize_int8_blockwise(
+    tensor: torch.Tensor,
+    block_n: int,
+    block_k: int,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Quantize weights block-wise and return quantized, scales, dequantized tensors."""
+    eps = 1e-10
+
+    num_experts, n_dim, k_dim = tensor.shape
+    assert n_dim % block_n == 0
+    assert k_dim % block_k == 0
+
+    grouped = tensor.reshape(
+        num_experts,
+        n_dim // block_n,
+        block_n,
+        k_dim // block_k,
+        block_k,
+    ).permute(0, 1, 3, 2, 4)
+    amax = grouped.abs().amax(dim=(-1, -2), keepdim=True).clamp(min=eps)
+    scale = amax / 127.0
+    q = (grouped / scale).round().clamp(-128, 127).to(torch.int8)
+    deq = q.float() * scale
+
+    return (
+        q.permute(0, 1, 3, 2, 4).reshape_as(tensor),
+        scale.squeeze(-1).squeeze(-1),
+        deq.permute(0, 1, 3, 2, 4).reshape_as(tensor),
+    )
+
+
 @pytest.mark.fused_experts_impl
 @pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
+@pytest.mark.parametrize("block_shape", FUSED_MOE_BLOCK_SHAPES)
 @pytest.mark.skipif(
     not CUDA_AVAILABLE,
     reason="FP8 quantization requires NVIDIA Hopper architecture",
 )
-def test_accuracy_fused_moe_fp8(config):
+def test_fused_moe_fp8(config, block_shape):
     """Test FlagGems fused_moe with FP8 W8A8 quantization."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
     device = flag_gems.device
@@ -270,34 +365,49 @@ def test_accuracy_fused_moe_fp8(config):
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
     ) * (1.0 / intermediate_size**0.5)
 
-    # Per-tensor quantization of weights
-    finfo = torch.finfo(torch.float8_e4m3fn)
-    fp8_max = finfo.max
-    eps = 1e-10
+    if block_shape is None:
+        finfo = torch.finfo(torch.float8_e4m3fn)
+        fp8_max = finfo.max
+        eps = 1e-10
 
-    # Quantize w1 per-expert
-    w1_scales = []
-    w1_fp8_list = []
-    for e in range(num_experts):
-        amax = w1_fp32[e].abs().amax().clamp(min=eps)
-        scale = amax / fp8_max
-        w1_q = (w1_fp32[e] / scale).clamp(finfo.min, finfo.max).to(torch.float8_e4m3fn)
-        w1_fp8_list.append(w1_q)
-        w1_scales.append(scale)
-    w1_fp8 = torch.stack(w1_fp8_list)
-    w1_scale = torch.tensor(w1_scales, device=device, dtype=torch.float32)
+        w1_scales = []
+        w1_fp8_list = []
+        for e in range(num_experts):
+            amax = w1_fp32[e].abs().amax().clamp(min=eps)
+            scale = amax / fp8_max
+            w1_q = (
+                (w1_fp32[e] / scale).clamp(finfo.min, finfo.max).to(torch.float8_e4m3fn)
+            )
+            w1_fp8_list.append(w1_q)
+            w1_scales.append(scale)
+        w1_fp8 = torch.stack(w1_fp8_list)
+        w1_scale = torch.tensor(w1_scales, device=device, dtype=torch.float32)
 
-    # Quantize w2 per-expert
-    w2_scales = []
-    w2_fp8_list = []
-    for e in range(num_experts):
-        amax = w2_fp32[e].abs().amax().clamp(min=eps)
-        scale = amax / fp8_max
-        w2_q = (w2_fp32[e] / scale).clamp(finfo.min, finfo.max).to(torch.float8_e4m3fn)
-        w2_fp8_list.append(w2_q)
-        w2_scales.append(scale)
-    w2_fp8 = torch.stack(w2_fp8_list)
-    w2_scale = torch.tensor(w2_scales, device=device, dtype=torch.float32)
+        w2_scales = []
+        w2_fp8_list = []
+        for e in range(num_experts):
+            amax = w2_fp32[e].abs().amax().clamp(min=eps)
+            scale = amax / fp8_max
+            w2_q = (
+                (w2_fp32[e] / scale).clamp(finfo.min, finfo.max).to(torch.float8_e4m3fn)
+            )
+            w2_fp8_list.append(w2_q)
+            w2_scales.append(scale)
+        w2_fp8 = torch.stack(w2_fp8_list)
+        w2_scale = torch.tensor(w2_scales, device=device, dtype=torch.float32)
+
+        w1_deq = torch.zeros_like(w1_fp32).to(dtype)
+        for e in range(num_experts):
+            w1_deq[e] = (w1_fp8[e].float() * w1_scales[e]).to(dtype)
+        w2_deq = torch.zeros_like(w2_fp32).to(dtype)
+        for e in range(num_experts):
+            w2_deq[e] = (w2_fp8[e].float() * w2_scales[e]).to(dtype)
+    else:
+        block_n, block_k = block_shape
+        w1_fp8, w1_scale, w1_deq = _quantize_fp8_blockwise(w1_fp32, block_n, block_k)
+        w2_fp8, w2_scale, w2_deq = _quantize_fp8_blockwise(w2_fp32, block_n, block_k)
+        w1_deq = w1_deq.to(dtype)
+        w2_deq = w2_deq.to(dtype)
 
     # Generate routing
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
@@ -315,18 +425,17 @@ def test_accuracy_fused_moe_fp8(config):
         use_fp8_w8a8=True,
         w1_scale=w1_scale,
         w2_scale=w2_scale,
+        block_shape=block_shape,
     )
 
-    # Reference: use the dequantized weights (fp8 → float) for reference
-    w1_deq = torch.zeros_like(w1_fp32).to(dtype)
-    for e in range(num_experts):
-        w1_deq[e] = (w1_fp8[e].float() * w1_scales[e]).to(dtype)
-    w2_deq = torch.zeros_like(w2_fp32).to(dtype)
-    for e in range(num_experts):
-        w2_deq[e] = (w2_fp8[e].float() * w2_scales[e]).to(dtype)
-
     ref = torch_fused_moe_quantized_reference(
-        hidden_states, w1_deq, w2_deq, topk_weights, topk_ids, quant_mode="fp8"
+        hidden_states,
+        w1_deq,
+        w2_deq,
+        topk_weights,
+        topk_ids,
+        quant_mode="fp8",
+        block_shape=block_shape,
     )
 
     torch.cuda.synchronize()
@@ -368,6 +477,7 @@ def torch_fused_moe_quantized_reference(
     topk_weights: torch.Tensor,
     topk_ids: torch.Tensor,
     quant_mode: str = "fp8",
+    block_shape: Optional[list[int]] = None,
 ) -> torch.Tensor:
     """Reference fused MoE with simulated quantization noise.
 
@@ -378,10 +488,14 @@ def torch_fused_moe_quantized_reference(
     topk = topk_ids.shape[1]
     output = torch.zeros(M, K, device=hidden_states.device, dtype=hidden_states.dtype)
 
-    if quant_mode == "fp8":
-        fake_quant = _fake_quantize_fp8
+    if block_shape is not None:
+        group_size = block_shape[1]
+        if quant_mode == "fp8":
+            fake_quant = lambda tensor: _fake_quantize_fp8_block(tensor, group_size)
+        else:
+            fake_quant = lambda tensor: _fake_quantize_int8_block(tensor, group_size)
     else:
-        fake_quant = _fake_quantize_int8
+        fake_quant = _fake_quantize_fp8 if quant_mode == "fp8" else _fake_quantize_int8
 
     for m in range(M):
         for j in range(topk):
@@ -632,7 +746,8 @@ def test_fused_moe_fp8_blockwise(config, block_shape):
 
 @pytest.mark.fused_experts_impl
 @pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
-def test_fused_moe_int8(config):
+@pytest.mark.parametrize("block_shape", FUSED_MOE_BLOCK_SHAPES)
+def test_fused_moe_int8(config, block_shape):
     """Test FlagGems fused_moe with INT8 W8A8 per-channel quantization."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
     device = flag_gems.device
@@ -654,20 +769,27 @@ def test_fused_moe_int8(config):
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
     ) * (1.0 / intermediate_size**0.5)
 
-    eps = 1e-10
+    if block_shape is None:
+        eps = 1e-10
 
-    # Per-channel quantization of weights: scale per [expert, output_dim]
-    # w1 shape: [E, 2D, K] → scale shape: [E, 2D, 1]
-    w1_amax = w1_fp32.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
-    w1_scale_full = w1_amax / 127.0
-    w1_int8 = (w1_fp32 / w1_scale_full).round().clamp(-128, 127).to(torch.int8)
-    # For the kernel: w1_scale shape [E, 2D] (per-channel: one scale per output dim)
-    w1_scale = w1_scale_full.squeeze(-1)
+        w1_amax = w1_fp32.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
+        w1_scale_full = w1_amax / 127.0
+        w1_int8 = (w1_fp32 / w1_scale_full).round().clamp(-128, 127).to(torch.int8)
+        w1_scale = w1_scale_full.squeeze(-1)
 
-    w2_amax = w2_fp32.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
-    w2_scale_full = w2_amax / 127.0
-    w2_int8 = (w2_fp32 / w2_scale_full).round().clamp(-128, 127).to(torch.int8)
-    w2_scale = w2_scale_full.squeeze(-1)
+        w2_amax = w2_fp32.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
+        w2_scale_full = w2_amax / 127.0
+        w2_int8 = (w2_fp32 / w2_scale_full).round().clamp(-128, 127).to(torch.int8)
+        w2_scale = w2_scale_full.squeeze(-1)
+
+        w1_deq = (w1_int8.float() * w1_scale_full).to(dtype)
+        w2_deq = (w2_int8.float() * w2_scale_full).to(dtype)
+    else:
+        block_n, block_k = block_shape
+        w1_int8, w1_scale, w1_deq = _quantize_int8_blockwise(w1_fp32, block_n, block_k)
+        w2_int8, w2_scale, w2_deq = _quantize_int8_blockwise(w2_fp32, block_n, block_k)
+        w1_deq = w1_deq.to(dtype)
+        w2_deq = w2_deq.to(dtype)
 
     # Generate routing
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
@@ -683,17 +805,20 @@ def test_fused_moe_int8(config):
         topk_weights,
         topk_ids,
         use_int8_w8a8=True,
-        per_channel_quant=True,
+        per_channel_quant=block_shape is None,
         w1_scale=w1_scale,
         w2_scale=w2_scale,
+        block_shape=block_shape,
     )
 
-    # Reference: use dequantized weights
-    w1_deq = (w1_int8.float() * w1_scale_full).to(dtype)
-    w2_deq = (w2_int8.float() * w2_scale_full).to(dtype)
-
     ref = torch_fused_moe_quantized_reference(
-        hidden_states, w1_deq, w2_deq, topk_weights, topk_ids, quant_mode="int8"
+        hidden_states,
+        w1_deq,
+        w2_deq,
+        topk_weights,
+        topk_ids,
+        quant_mode="int8",
+        block_shape=block_shape,
     )
 
     torch.cuda.synchronize()
