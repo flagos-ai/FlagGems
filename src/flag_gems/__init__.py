@@ -12,6 +12,7 @@ from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
+from flag_gems.ops.scatter import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime.register import Register
 
@@ -447,6 +448,9 @@ _FULL_CONFIG = (
     ("scatter.src", scatter),
     ("scatter_.reduce", scatter_),
     ("scatter_.src", scatter_),
+    ("scatter_reduce.two", scatter_reduce),
+    ("scatter_reduce.two_out", scatter_reduce_out),
+    ("scatter_reduce_.two", scatter_reduce_),
     ("scatter_add_", scatter_add_),
     ("scatter_reduce_.two", scatter_reduce_),
     ("select_backward", select_backward),
@@ -553,6 +557,7 @@ for _alias, _target in (
     ("softmax_backward", "softmax_backward_out"),
     ("log_softmax", "log_softmax_out"),
     ("log_softmax_backward", "log_softmax_backward_out"),
+    ("scatter_reduce", "scatter_reduce_out"),
 ):
     if _target in FULL_CONFIG_BY_FUNC:
         FULL_CONFIG_BY_FUNC.setdefault(_alias, []).extend(FULL_CONFIG_BY_FUNC[_target])
