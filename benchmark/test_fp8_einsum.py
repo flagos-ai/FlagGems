@@ -39,7 +39,8 @@ class FP8EinsumBenchmark(base.Benchmark):
                 )
                 + 0.5
             )
-            yield a, a_scale, b, b_scale
+            out = torch.empty((B, H, D), device=self.device, dtype=torch.bfloat16)
+            yield a, a_scale, b, b_scale, out
 
 
 @pytest.mark.fp8_einsum

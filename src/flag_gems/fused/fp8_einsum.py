@@ -101,20 +101,32 @@ def fp8_einsum(
     a_scale: torch.Tensor,
     b: torch.Tensor,
     b_scale: torch.Tensor,
-) -> torch.Tensor:
+    out: torch.Tensor,
+    equation: str = "bhr,hdr->bhd",
+    recipe: tuple | None = None,
+) -> None:
     """FP8 block-scaled einsum for DeepSeek V4 O-projection.
 
-    Equation: bhr,hdr->bhd
-        a: [B, H, R] float8_e4m3fn, a_scale: [B, H, ceil(R/128)] float32
-        b: [H, D, R] float8_e4m3fn, b_scale: [H, ceil(D/128), ceil(R/128)] float32
-        out: [B, H, D] bfloat16
+    Aligned with vLLM's deepseek_v4_fp8_einsum API.
+
+    Args:
+        a: [B, H, R] float8_e4m3fn input tensor
+        a_scale: [B, H, ceil(R/128)] float32 block scales for a
+        b: [H, D, R] float8_e4m3fn weight tensor
+        b_scale: [H, ceil(D/128), ceil(R/128)] float32 block scales for b
+        out: [B, H, D] bfloat16 pre-allocated output tensor (modified in-place)
+        equation: Einsum equation (currently only "bhr,hdr->bhd" supported)
+        recipe: Optional tuning recipe (sfa_gran_k, sfb_gran_k, sfb_gran_mn)
     """
+    if equation != "bhr,hdr->bhd":
+        raise NotImplementedError(
+            f"Only 'bhr,hdr->bhd' is supported, got '{equation}'"
+        )
+
     logger.debug("GEMS FP8 EINSUM FORWARD")
 
     B, H, R = a.shape
     _, D, _ = b.shape
-
-    out = torch.empty((B, H, D), device=a.device, dtype=torch.bfloat16)
 
     BLOCK_K = 128
     N_K_BLOCKS = (R + BLOCK_K - 1) // BLOCK_K
@@ -167,20 +179,20 @@ def fp8_einsum(
         num_stages=num_stages,
     )
 
-    return out
-
 
 def fp8_einsum_ref(
     a: torch.Tensor,
     a_scale: torch.Tensor,
     b: torch.Tensor,
     b_scale: torch.Tensor,
-) -> torch.Tensor:
+    out: torch.Tensor,
+    equation: str = "bhr,hdr->bhd",
+    recipe: tuple | None = None,
+) -> None:
     """Reference implementation via DeepGEMM CUDA kernel. Used as performance baseline."""
     from vllm.utils.deep_gemm import fp8_einsum as deepgemm_fp8_einsum
 
-    B, H, R = a.shape
-    _, D, _ = b.shape
-    out = torch.empty((B, H, D), device=a.device, dtype=torch.bfloat16)
-    deepgemm_fp8_einsum("bhr,hdr->bhd", (a, a_scale), (b, b_scale), out, recipe=(1, 128, 128))
-    return out
+    if recipe is None:
+        recipe = (1, 128, 128)
+
+    deepgemm_fp8_einsum(equation, (a, a_scale), (b, b_scale), out, recipe=recipe)

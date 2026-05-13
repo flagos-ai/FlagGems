@@ -32,7 +32,9 @@ def generate_fp8_einsum_data(
         torch.rand((H, n_d_blocks, n_k_blocks), dtype=torch.float32, device=device) + 0.5
     )
 
-    return dict(a=a, a_scale=a_scale, b=b, b_scale=b_scale)
+    out = torch.empty((B, H, D), device=device, dtype=torch.bfloat16)
+
+    return dict(a=a, a_scale=a_scale, b=b, b_scale=b_scale, out=out)
 
 
 FP8_EINSUM_CONFIGS = list(
@@ -54,9 +56,12 @@ FP8_EINSUM_CONFIGS = list(
 def test_fp8_einsum_vs_ref(B, H, R, D):
     """Test Triton fp8_einsum against DeepGEMM CUDA reference."""
     data = generate_fp8_einsum_data(B, H, R, D)
-    out_triton = fp8_einsum(**data)
-    out_ref = fp8_einsum_ref(**data)
-    torch.testing.assert_close(out_triton, out_ref, rtol=1e-2, atol=1e-2)
+    out_ref = torch.empty_like(data["out"])
+
+    fp8_einsum(**data)
+    fp8_einsum_ref(data["a"], data["a_scale"], data["b"], data["b_scale"], out_ref)
+
+    torch.testing.assert_close(data["out"], out_ref, rtol=1e-2, atol=1e-2)
 
 
 SMALL_CONFIGS = list(
@@ -78,17 +83,20 @@ SMALL_CONFIGS = list(
 def test_fp8_einsum_small(B, H, R, D):
     """Test with smaller dimensions for quick validation."""
     data = generate_fp8_einsum_data(B, H, R, D)
-    out_triton = fp8_einsum(**data)
-    out_ref = fp8_einsum_ref(**data)
-    torch.testing.assert_close(out_triton, out_ref, rtol=1e-2, atol=1e-2)
+    out_ref = torch.empty_like(data["out"])
+
+    fp8_einsum(**data)
+    fp8_einsum_ref(data["a"], data["a_scale"], data["b"], data["b_scale"], out_ref)
+
+    torch.testing.assert_close(data["out"], out_ref, rtol=1e-2, atol=1e-2)
 
 
 @pytest.mark.fp8_einsum
 def test_fp8_einsum_output_dtype():
     """Verify output is bfloat16."""
     data = generate_fp8_einsum_data(4, 8, 4096, 1024)
-    out = fp8_einsum(**data)
-    assert out.dtype == torch.bfloat16
+    fp8_einsum(**data)
+    assert data["out"].dtype == torch.bfloat16
 
 
 @pytest.mark.fp8_einsum
@@ -96,5 +104,5 @@ def test_fp8_einsum_output_shape():
     """Verify output shape is [B, H, D]."""
     B, H, R, D = 16, 8, 4096, 1024
     data = generate_fp8_einsum_data(B, H, R, D)
-    out = fp8_einsum(**data)
-    assert out.shape == (B, H, D)
+    fp8_einsum(**data)
+    assert data["out"].shape == (B, H, D)
