@@ -37,10 +37,10 @@ def test_accuracy_conv_transpose2d(
     bias,
 ):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     if flag_gems.vendor_name == "hygon":
-        monkeypatch.env("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
+        monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
 
     if output_padding >= stride:
         pytest.skip("output_padding must be < stride")
