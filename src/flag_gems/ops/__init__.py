@@ -148,7 +148,13 @@ from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.group_gemm import group_mm
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
 from flag_gems.ops.gt import gt, gt_scalar
-from flag_gems.ops.hadamard_transform import hadamard_transform
+from flag_gems.ops.hadamard_transform import (
+    hadamard_transform,
+    hadamard_transform_12N,
+    hadamard_transform_20N,
+    hadamard_transform_28N,
+    hadamard_transform_40N,
+)
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
 from flag_gems.ops.hardswish_ import hardswish_
 from flag_gems.ops.hstack import hstack
@@ -539,6 +545,10 @@ __all__ = [
     "gt",
     "gt_scalar",
     "hadamard_transform",
+    "hadamard_transform_12N",
+    "hadamard_transform_20N",
+    "hadamard_transform_28N",
+    "hadamard_transform_40N",
     "hardsigmoid",
     "hardsigmoid_out",
     "hardswish_",
