@@ -94,6 +94,7 @@ def test__adaptive_avg_pool3d_benchmark_tensor(shape, output_size, dtype):
 
 
 @pytest.mark.adaptive_avg_pool3d
+@pytest.mark.adaptive_avg_pool3d_out
 @pytest.mark.parametrize(
     "shape,output_size",
     [
