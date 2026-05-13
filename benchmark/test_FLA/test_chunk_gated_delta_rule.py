@@ -2,16 +2,11 @@
 
 import pytest
 import torch
+import triton
 
 import flag_gems
+import flag_gems.fused.FLA.utils as fla_utils
 from benchmark.base import Benchmark
-
-try:
-    import triton
-
-    HAS_TRITON = True
-except ImportError:
-    HAS_TRITON = False
 
 
 def _naive_recurrent_reference(q, k, v, beta, g, scale=None):
@@ -48,25 +43,6 @@ def _naive_recurrent_reference(q, k, v, beta, g, scale=None):
     return o.to(orig_dtype)
 
 
-def _torch_reference_wrapper(*args, **kwargs):
-    """Wrapper that unpacks benchmark args and calls the naive reference."""
-    q, k, v, beta, g, scale = args
-    return _naive_recurrent_reference(q, k, v, beta, g, scale)
-
-
-def _gems_wrapper(*args, **kwargs):
-    """Wrapper that unpacks benchmark args and calls the FlagGems chunked op."""
-    q, k, v, beta, g, scale = args
-    return flag_gems.chunk_gated_delta_rule(
-        q=q,
-        k=k,
-        v=v,
-        beta=beta,
-        g=g,
-        scale=scale,
-    )[0]
-
-
 class ChunkGatedDeltaRuleBenchmark(Benchmark):
     """Benchmark for chunk_gated_delta_rule operator.
 
@@ -99,19 +75,16 @@ class ChunkGatedDeltaRuleBenchmark(Benchmark):
 
     @staticmethod
     def _setup_device_flags():
-        import flag_gems.fused.FLA.utils as fla_utils
-
         if torch.cuda.is_available():
             major, _ = torch.cuda.get_device_capability()
             if major >= 10:  # Blackwell and newer
                 fla_utils.is_tma_supported = False
                 fla_utils.is_nvidia_hopper = False
-        if HAS_TRITON:
 
-            def _alloc_fn(size, align, stream):
-                return torch.empty(size, dtype=torch.int8, device=flag_gems.device)
+        def _alloc_fn(size, align, stream):
+            return torch.empty(size, dtype=torch.int8, device=flag_gems.device)
 
-            triton.set_allocator(_alloc_fn)
+        triton.set_allocator(_alloc_fn)
 
     def set_more_shapes(self):
         """Provide additional sequence lengths for comprehensive benchmarking."""
@@ -150,7 +123,7 @@ class ChunkGatedDeltaRuleBenchmark(Benchmark):
 def test_perf_chunk_gated_delta_rule():
     bench = ChunkGatedDeltaRuleBenchmark(
         op_name="chunk_gated_delta_rule",
-        torch_op=_torch_reference_wrapper,
+        torch_op=_naive_recurrent_reference,
     )
-    bench.set_gems(_gems_wrapper)
+    bench.set_gems(lambda *a, **kw: flag_gems.chunk_gated_delta_rule(*a, **kw)[0])
     bench.run()
