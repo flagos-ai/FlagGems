@@ -21,7 +21,7 @@ class UpsampleNearestExact1dBenchmark(base.Benchmark):
 @pytest.mark.upsample_nearest_exact1d
 def test_upsample_nearest_exact1d():
     bench = UpsampleNearestExact1dBenchmark(
-        op_name="_upsample_nearest_exact1d",
+        op_name="upsample_nearest_exact1d",
         torch_op=torch.ops.aten._upsample_nearest_exact1d,
         dtypes=consts.FLOAT_DTYPES,
     )
