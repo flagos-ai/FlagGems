@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  process-command:
+  preprocess:
     runs-on: ubuntu-latest
     outputs:
       op: ${{ steps.parse-command.outputs.op}}
@@ -42,31 +42,41 @@ jobs:
           echo "pull=${PULL_NUMBER}" >> $GITHUB_OUTPUT
 
   test-operator:
-    needs: process-command
-    if: needs.process-command.outputs.continue == 'true'
-    runs-on: ${{ needs.process-command.outputs.runner }}
+    needs: preprocess
+    if: needs.preprocess.outputs.continue == 'true'
+    runs-on: ${{ needs.preprocess.outputs.runner }}
     steps:
-      # The gh tool is pre-installed on all runners
-      # - name: Install GitHub CLI
-      #   uses: ksivamuthu/actions-setup-gh-cli@v2
-      #   with:
-      #     version: 2.92.0
-      - id: checkout-repo
-        uses: Wandalen/wretry.action@v3.8.0
-        with:
-          action: actions/checkout@v6
-          attempt_limit: 5
-          attempt_delay: 20000
+      - id: checkout-attempt-1
+        uses: actions/checkout@v6
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@v6
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@v6
+
       - id: checkout-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "checking out ${{ needs.process-command.outputs.pull }}"
-          gh pr checkout ${{ needs.process-command.outputs.pull }}
+          echo "checking out ${{ needs.preprocess.outputs.pull }}"
+          gh pr checkout ${{ needs.preprocess.outputs.pull }}
       - name: Setup FlagGems
         shell: bash
         env:
-          RUNNER_LABEL: ${{ needs.process-command.outputs.runner }}
+          RUNNER_LABEL: ${{ needs.preprocess.outputs.runner }}
         run: |
           # Validate vendor names
           case "${RUNNER_LABEL}" in
@@ -96,7 +106,15 @@ jobs:
         run: |
           source .venv/bin/activate
           source tools/set-env.sh ${VENDOR}
-          tools/run_tests.py --ops ${{ needs.process-command.outputs.op }}
+          tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }}
+          tools/psummary --format markdown --single results > results.md
+
+      - name: comment
+        uses: mshick/add-pr-comment@v3
+        with:
+          message-path: results.md
+          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
+          allow-repeats: True
 
       - name: Upload results
         uses: actions/upload-artifact@v7
