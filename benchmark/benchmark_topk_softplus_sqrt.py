@@ -81,7 +81,11 @@ def cuda_hash_call(
 
 
 def triton_topk_wrapper(
-    hidden_states, gating_output, topk, renormalize, routed_scaling_factor,
+    hidden_states,
+    gating_output,
+    topk,
+    renormalize,
+    routed_scaling_factor,
     e_score_correction_bias,
 ):
     return triton_topk(
@@ -95,8 +99,13 @@ def triton_topk_wrapper(
 
 
 def triton_hash_wrapper(
-    hidden_states, gating_output, topk, renormalize, routed_scaling_factor,
-    input_tokens, hash_indices_table,
+    hidden_states,
+    gating_output,
+    topk,
+    renormalize,
+    routed_scaling_factor,
+    input_tokens,
+    hash_indices_table,
 ):
     return triton_topk(
         hidden_states,
@@ -175,15 +184,18 @@ def main():
         gating_output = torch.randn(
             (num_tokens, num_experts), dtype=dtype, device="cuda"
         )
-        hidden_states = torch.randn(
-            (num_tokens, 128), dtype=dtype, device="cuda"
-        )
+        hidden_states = torch.randn((num_tokens, 128), dtype=dtype, device="cuda")
         e_score_correction_bias = torch.randn(
             (num_experts,), dtype=torch.float32, device="cuda"
         )
 
         tri_us = bench_fn(
-            triton_topk_wrapper, hidden_states, gating_output, topk, True, 1.0,
+            triton_topk_wrapper,
+            hidden_states,
+            gating_output,
+            topk,
+            True,
+            1.0,
             e_score_correction_bias,
         )
 
@@ -235,9 +247,7 @@ def main():
         gating_output = torch.randn(
             (num_tokens, num_experts), dtype=dtype, device="cuda"
         )
-        hidden_states = torch.randn(
-            (num_tokens, 128), dtype=dtype, device="cuda"
-        )
+        hidden_states = torch.randn((num_tokens, 128), dtype=dtype, device="cuda")
         hash_indices_table = torch.stack(
             [torch.randperm(num_experts)[:topk] for _ in range(vocab_size)]
         ).to(device="cuda", dtype=torch.int32)
@@ -246,8 +256,14 @@ def main():
         )
 
         tri_us = bench_fn(
-            triton_hash_wrapper, hidden_states, gating_output, topk, True, 2.5,
-            input_tokens, hash_indices_table,
+            triton_hash_wrapper,
+            hidden_states,
+            gating_output,
+            topk,
+            True,
+            2.5,
+            input_tokens,
+            hash_indices_table,
         )
 
         if HAS_CUDA:

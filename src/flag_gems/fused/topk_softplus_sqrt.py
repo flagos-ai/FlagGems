@@ -76,9 +76,9 @@ def _fused_topk_kernel(
 
     # Scores for top-k selection (with optional bias)
     if HAS_BIAS:
-        bias = tl.load(e_score_correction_bias_ptr + expert_offsets, mask=emask, other=0.0).to(
-            tl.float32
-        )
+        bias = tl.load(
+            e_score_correction_bias_ptr + expert_offsets, mask=emask, other=0.0
+        ).to(tl.float32)
         scores = raw + bias
     else:
         scores = raw
@@ -162,7 +162,9 @@ def _hash_kernel(
     token_id = tl.load(input_tokens_ptr + pid)
     k_offsets = tl.arange(0, BLOCK_K)
     kmask = k_offsets < topk
-    expert_ids = tl.load(hash_indices_table_ptr + token_id * topk + k_offsets, mask=kmask, other=0)
+    expert_ids = tl.load(
+        hash_indices_table_ptr + token_id * topk + k_offsets, mask=kmask, other=0
+    )
 
     # Gather weights for each selected expert
     weight_sum = 0.0
@@ -243,7 +245,9 @@ def topk_softplus_sqrt(
             topk_weights,
             topk_indices,
             token_expert_indices,
-            e_score_correction_bias if e_score_correction_bias is not None else gating_output,
+            e_score_correction_bias
+            if e_score_correction_bias is not None
+            else gating_output,
             input_tokens,
             hash_indices_table,
             num_tokens=num_tokens,
@@ -265,7 +269,9 @@ def topk_softplus_sqrt(
         topk_weights,
         topk_indices,
         token_expert_indices,
-        e_score_correction_bias if e_score_correction_bias is not None else gating_output,
+        e_score_correction_bias
+        if e_score_correction_bias is not None
+        else gating_output,
         num_tokens=num_tokens,
         num_experts=num_experts,
         topk=topk,
