@@ -195,3 +195,28 @@ def test_div_complex_int_scalar(shape, complex_dtype):
         res_out = torch.div(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
+
+
+# div.Scalar_mode with rounding_mode
+@pytest.mark.div_scalar_mode
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
+def test_div_scalar_mode(shape, scalar, dtype, rounding_mode):
+    if dtype in (torch.float16, torch.bfloat16):
+        pytest.xfail(
+            "Operator bug: trunc/floor div scalar kernels fail to compile with half-precision dtypes"
+        )
+    if rounding_mode == "trunc" and abs(scalar) < 0.01:
+        pytest.xfail(
+            "Operator bug: trunc mode has off-by-one precision issues with very small divisors"
+        )
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_out = torch.div(ref_inp, scalar, rounding_mode=rounding_mode)
+    with flag_gems.use_gems():
+        res_out = torch.div(inp, scalar, rounding_mode=rounding_mode)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
