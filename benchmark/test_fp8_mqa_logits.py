@@ -1,14 +1,3 @@
-"""
-Benchmark tests for FP8 MQA (Multi-Query Attention) Logits operation.
-
-This module provides performance benchmarks comparing FlagGems' Triton-based
-FP8 MQA logits kernel against vLLM's DeepGEMM implementation on NVIDIA
-Hopper architecture (SM90+).
-
-The FP8 MQA logits operation computes weighted attention logits with FP8
-quantization, commonly used in LLM inference for efficient attention computation.
-"""
-
 import random
 from typing import Optional
 
@@ -43,9 +32,9 @@ def is_hopper_available() -> bool:
 def has_deep_gemm() -> bool:
     """Check if vLLM's DeepGEMM is available."""
     try:
-        from vllm.utils.import_utils import has_deep_gemm as check_deep_gemm
+        from vllm.utils.import_utils import has_deep_gemm
 
-        return check_deep_gemm()
+        return has_deep_gemm()
     except ImportError:
         return False
 
@@ -94,7 +83,7 @@ def _build_case(
     return (q_fp8, k_fp8, k_scales, weights, cu_seqlen_ks, cu_seqlen_ke)
 
 
-class FP8MQALogitsCompareBenchmark(base.Benchmark):
+class FP8MQALogitsBenchmark(base.Benchmark):
     """
     Benchmark comparing FlagGems vs vLLM DeepGEMM for FP8 MQA logits.
 
@@ -143,57 +132,31 @@ class FP8MQALogitsCompareBenchmark(base.Benchmark):
                 dtype,
             )
 
-    def __init__(self):
-        super().__init__(
-            op_name="fp8_mqa_logits_gems_vs_deepgemm",
-            torch_op=self._vllm_wrapper,
-            dtypes=[torch.bfloat16, torch.float16],
-        )
-        self.set_gems(self._gems_wrapper)
 
-    @staticmethod
-    def _vllm_wrapper(
+def _vllm_wrapper(q_fp8, k_fp8, k_scales, weights, cu_seqlen_ks, cu_seqlen_ke, q_dtype):
+    from vllm.utils.deep_gemm import fp8_mqa_logits
+
+    return fp8_mqa_logits(
         q_fp8,
-        k_fp8,
-        k_scales,
+        (k_fp8, k_scales),
         weights,
         cu_seqlen_ks,
         cu_seqlen_ke,
-        q_dtype,
-    ):
-        """Wrapper for vLLM DeepGEMM FP8 MQA logits."""
-        from vllm.utils.deep_gemm import fp8_mqa_logits as vllm_fp8_mqa_logits
+        clean_logits=True,
+    )
 
-        return vllm_fp8_mqa_logits(
-            q_fp8,
-            (k_fp8, k_scales),
-            weights,
-            cu_seqlen_ks,
-            cu_seqlen_ke,
-            clean_logits=True,
-        )
 
-    @staticmethod
-    def _gems_wrapper(
+def _gems_wrapper(q_fp8, k_fp8, k_scales, weights, cu_seqlen_ks, cu_seqlen_ke, q_dtype):
+    from flag_gems.ops import fp8_mqa_logits
+
+    return fp8_mqa_logits(
         q_fp8,
-        k_fp8,
-        k_scales,
+        (k_fp8, k_scales),
         weights,
         cu_seqlen_ks,
         cu_seqlen_ke,
-        q_dtype,
-    ):
-        """Wrapper for FlagGems FP8 MQA logits."""
-        from flag_gems.ops.fp8_mqa_logits import fp8_mqa_logits as gems_fp8_mqa_logits
-
-        return gems_fp8_mqa_logits(
-            q_fp8,
-            (k_fp8, k_scales),
-            weights,
-            cu_seqlen_ks,
-            cu_seqlen_ke,
-            clean_logits=True,
-        )
+        clean_logits=True,
+    )
 
 
 @pytest.mark.skipif(
@@ -205,13 +168,12 @@ class FP8MQALogitsCompareBenchmark(base.Benchmark):
     reason="requires vLLM with DeepGEMM support",
 )
 @pytest.mark.fp8_mqa_logits
-@pytest.mark.performance
-def test_perf_fp8_mqa_logits_gems_vs_deepgemm():
-    """
-    Benchmark FlagGems FP8 MQA logits vs vLLM DeepGEMM implementation.
+def test_fp8_mqa_logits():
+    bench = FP8MQALogitsBenchmark(
+        op_name="fp8_mqa_logits",
+        torch_op=_vllm_wrapper,
+        gems_op=_gems_wrapper,
+        dtypes=[torch.bfloat16, torch.float16],
+    )
 
-    This test compares the performance of FlagGems' Triton-based FP8 MQA logits
-    kernel against vLLM's DeepGEMM implementation on NVIDIA Hopper GPUs.
-    """
-    bench = FP8MQALogitsCompareBenchmark()
     bench.run()
