@@ -1,8 +1,0 @@
-SegmentReduceBenchmark:
-  shapes:
-    - [1048576]
-    - [64, 64]
-    - [4096, 4096]
-    - [64, 512, 512]
-    - [1024, 1024, 1024]
-  shape_desc: "data shape"

@@ -1,5 +1,4 @@
 import math
-import os
 
 import pytest
 import torch
@@ -43,17 +42,14 @@ def _segment_reduce_op(reduce):
 
 
 class SegmentReduceBenchmark(base.Benchmark):
-    DEFAULT_SHAPES = [(1024,), (512, 128), (64, 128, 128)]
+    DEFAULT_SHAPES = [
+        (1048576,),
+        (64, 64),
+        (4096, 4096),
+        (64, 512, 512),
+        (1024, 1024, 1024),
+    ]
     DEFAULT_SHAPE_DESC = "data shape"
-    DEFAULT_SHAPE_FILES = os.path.join(os.path.dirname(__file__), "segment_reduce.yaml")
-
-    def init_user_config(self):
-        super().init_user_config()
-        default_shape_file = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
-        )
-        if os.path.abspath(base.Config.shape_file) == default_shape_file:
-            self.set_shapes(self.DEFAULT_SHAPE_FILES)
 
     def set_more_metrics(self):
         return ["gbps"]
