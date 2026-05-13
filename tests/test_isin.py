@@ -58,3 +58,25 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
     )
 
     utils.gems_assert_equal(res0_out, ref0_out)
+
+
+@pytest.mark.isin_tensor_scalar
+@pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+@pytest.mark.parametrize("assume_unique", [False, True])
+@pytest.mark.parametrize("invert", [False, True])
+def test_accuracy_isin_tensor_scalar(shape, dtype, assume_unique, invert):
+    inp1 = torch.randint(-100, 100, shape, device=flag_gems.device).to(dtype)
+
+    if assume_unique:
+        inp1 = torch.unique(inp1.cpu()).to(flag_gems.device)
+
+    inp2_s = 42
+
+    ref_inp1 = utils.to_reference(inp1, False)
+
+    ref_out = torch.isin(ref_inp1, inp2_s, assume_unique=assume_unique, invert=invert)
+    with flag_gems.use_gems():
+        res_out = torch.isin(inp1, inp2_s, assume_unique=assume_unique, invert=invert)
+
+    utils.gems_assert_equal(res_out, ref_out)

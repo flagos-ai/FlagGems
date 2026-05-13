@@ -29,3 +29,26 @@ def test_isin():
     )
 
     bench.run()
+
+
+def _input_fn_tensor_scalar(shape, dtype, device):
+    elements = utils.generate_tensor_input(shape, dtype, device)
+    test_value = 42
+
+    yield elements, test_value
+
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+        uniq_elements = torch.unique(utils.generate_tensor_input(shape, dtype, device))
+        yield uniq_elements, test_value, {"assume_unique": True}
+
+
+@pytest.mark.isin_tensor_scalar
+def test_isin_tensor_scalar():
+    bench = base.GenericBenchmark2DOnly(
+        op_name="isin_tensor_scalar",
+        input_fn=_input_fn_tensor_scalar,
+        torch_op=torch.isin,
+        dtypes=consts.INT_DTYPES,
+    )
+
+    bench.run()
