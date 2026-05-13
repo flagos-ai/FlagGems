@@ -37,3 +37,20 @@ def test_normal_inplace():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+def normal_float_tensor_input_fn(shape, cur_dtype, device):
+    mean = 3.0
+    scale = torch.full(shape, fill_value=10.0, dtype=cur_dtype, device=device)
+    yield mean, scale
+
+
+@pytest.mark.normal_float_tensor
+def test_normal_float_tensor():
+    bench = base.GenericBenchmark(
+        input_fn=normal_float_tensor_input_fn,
+        op_name="normal_float_tensor",
+        torch_op=torch.normal,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
