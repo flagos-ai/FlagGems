@@ -71,8 +71,11 @@ from flag_gems.runtime import device, torch_device_fn
 device = device.name
 logger = logging.getLogger(__name__)
 
-# Annotated as constexpr so the @triton.jit kernels can read it as a global.
-_NEG_INF: tl.constexpr = float("-inf")
+# Constructor-form constexpr so the @triton.jit kernels can read it as a
+# module-level global.  Newer Triton (>= 3.4) rejects the annotation form
+# `_NEG_INF: tl.constexpr = float("-inf")`; only the constructor form
+# `_NEG_INF = tl.constexpr(float("-inf"))` is officially supported.
+_NEG_INF = tl.constexpr(float("-inf"))
 # Supports target_length up to 1023 (S' = 2L+1 = 2047).
 _MAX_BLOCK_STATES = 2048
 
