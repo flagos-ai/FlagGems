@@ -31,18 +31,6 @@ def _is_iluvatar_backend():
     return device.vendor_name == "iluvatar"
 
 
-def _native_linalg_svd(input, some=True, compute_uv=True):
-    if not compute_uv:
-        return _fallback_svd(input, some, compute_uv)
-    u, s, vh = torch.linalg.svd(input.contiguous(), full_matrices=not some)
-    return u, s, vh.mH
-
-
-def _aten_bmm(left, right, out_shape):
-    out = torch.ops.aten.bmm.default.redispatch(_FALLBACK_KEYSET, left, right)
-    return out.reshape(out_shape)
-
-
 def _svd_shape(input):
     if input.dim() < 2:
         return 0, 0, 0
@@ -232,6 +220,91 @@ def _can_use_streaming_jacobi_kernel(input, some=True, compute_uv=True):
 def _can_use_gram_eigh_kernel(input, some=True, compute_uv=True):
     _, m, n = _svd_shape(input)
     return _is_float32_cuda_matrix(input) and some and compute_uv and min(m, n) <= 1024
+
+
+@libentry()
+@triton.jit
+def _triton_bmm_kernel(
+    A,
+    B,
+    C,
+    stride_ab,
+    stride_am,
+    stride_ak,
+    stride_bb,
+    stride_bk,
+    stride_bn,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    tile = tl.program_id(0)
+    batch = tl.program_id(1)
+    tiles_n = tl.cdiv(N, BLOCK_N)
+    tile_m = tile // tiles_n
+    tile_n = tile - tile_m * tiles_n
+
+    offs_m = tile_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = tile_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_k = tl.arange(0, BLOCK_K)
+
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    a_base = A + batch * stride_ab
+    b_base = B + batch * stride_bb
+    for k_start in range(0, K, BLOCK_K):
+        k = k_start + offs_k
+        a = tl.load(
+            a_base + offs_m[:, None] * stride_am + k[None, :] * stride_ak,
+            mask=(offs_m[:, None] < M) & (k[None, :] < K),
+            other=0.0,
+        )
+        b = tl.load(
+            b_base + k[:, None] * stride_bk + offs_n[None, :] * stride_bn,
+            mask=(k[:, None] < K) & (offs_n[None, :] < N),
+            other=0.0,
+        )
+        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+
+    tl.store(
+        C + batch * M * N + offs_m[:, None] * N + offs_n[None, :],
+        acc,
+        mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
+    )
+
+
+def _triton_bmm(left, right, out_shape):
+    batch, m, k = left.shape
+    right_batch, right_k, n = right.shape
+    assert batch == right_batch, "Batch dim mismatch"
+    assert k == right_k, "K dim mismatch"
+    out = torch.empty((batch, m, n), dtype=left.dtype, device=left.device)
+    block_m = 16 if m <= 16 else 32
+    block_n = 16 if n <= 16 else 32
+    block_k = 32
+    grid = (triton.cdiv(m, block_m) * triton.cdiv(n, block_n), batch)
+    with torch_device_fn.device(left.device):
+        _triton_bmm_kernel[grid](
+            left,
+            right,
+            out,
+            left.stride(0),
+            left.stride(1),
+            left.stride(2),
+            right.stride(0),
+            right.stride(1),
+            right.stride(2),
+            M=m,
+            N=n,
+            K=k,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            BLOCK_K=block_k,
+            num_warps=1 if block_m == 16 and block_n == 16 else 4,
+        )
+    return out.reshape(out_shape)
 
 
 @triton.jit
@@ -633,7 +706,7 @@ def _gram_svd(input):
     if m >= n:
         a_3d = a.reshape(batch, m, n)
         at_3d = a.transpose(-2, -1).reshape(batch, n, m)
-        gram = _aten_bmm(at_3d, a_3d, (*a.shape[:-2], n, n))
+        gram = _triton_bmm(at_3d, a_3d, (*a.shape[:-2], n, n))
         vals, v = torch.linalg.eigh(gram)
         if _should_guard_gram_spectrum(batch, n) and _gram_spectrum_needs_fallback(
             vals
@@ -642,7 +715,7 @@ def _gram_svd(input):
         vals = vals.flip(-1).clamp_min_(0.0)
         v = v.flip(-1)
         s = torch.sqrt(vals)
-        u = _aten_bmm(
+        u = _triton_bmm(
             a_3d,
             v.reshape(batch, n, n),
             (*a.shape[:-2], m, n),
@@ -651,14 +724,14 @@ def _gram_svd(input):
 
     a_3d = a.reshape(batch, m, n)
     at_3d = a.transpose(-2, -1).reshape(batch, n, m)
-    gram = _aten_bmm(a_3d, at_3d, (*a.shape[:-2], m, m))
+    gram = _triton_bmm(a_3d, at_3d, (*a.shape[:-2], m, m))
     vals, u = torch.linalg.eigh(gram)
     if _should_guard_gram_spectrum(batch, m) and _gram_spectrum_needs_fallback(vals):
         return _fallback_svd(input, True, True)
     vals = vals.flip(-1).clamp_min_(0.0)
     u = u.flip(-1)
     s = torch.sqrt(vals)
-    v = _aten_bmm(
+    v = _triton_bmm(
         at_3d,
         u.reshape(batch, m, m),
         (*a.shape[:-2], n, m),
@@ -765,10 +838,10 @@ def _gram16_svd(input):
     rows = max(m, n)
     if m >= n:
         at_3d = a.transpose(-2, -1).reshape(batch, n, m)
-        gram = _aten_bmm(at_3d, a, (batch, n, n))
+        gram = _triton_bmm(at_3d, a, (batch, n, n))
     else:
         at_3d = a.transpose(-2, -1).reshape(batch, n, m)
-        gram = _aten_bmm(a, at_3d, (batch, m, m))
+        gram = _triton_bmm(a, at_3d, (batch, m, m))
     vals, basis = torch.linalg.eigh(gram)
     if _should_guard_gram_spectrum(batch, 16) and _gram_spectrum_needs_fallback(vals):
         return _fallback_svd(input, True, True)
@@ -844,8 +917,6 @@ def svd(input, some=True, compute_uv=True):
             if _is_iluvatar_backend():
                 return SVDResult(*_fallback_svd(input, some, compute_uv))
             return SVDResult(*_small_jacobi_svd(input))
-        if _is_iluvatar_backend() and _should_guard_gram_spectrum(batch, k):
-            return SVDResult(*_native_linalg_svd(input, some, compute_uv))
         if _should_use_gram16(batch, m, n):
             return SVDResult(*_gram16_svd(input))
         if _should_use_gram(batch, m, n):
