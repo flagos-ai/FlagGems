@@ -45,9 +45,7 @@ def _segment_reduce_op(reduce):
 class SegmentReduceBenchmark(base.Benchmark):
     DEFAULT_SHAPES = [(1024,), (512, 128), (64, 128, 128)]
     DEFAULT_SHAPE_DESC = "data shape"
-    DEFAULT_SHAPE_FILES = os.path.join(
-        os.path.dirname(__file__), "test_segment_reduce.yaml"
-    )
+    DEFAULT_SHAPE_FILES = os.path.join(os.path.dirname(__file__), "segment_reduce.yaml")
 
     def init_user_config(self):
         super().init_user_config()
