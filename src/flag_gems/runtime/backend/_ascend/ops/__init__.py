@@ -54,6 +54,7 @@ from .randperm import randperm
 from .repeat_interleave import repeat_interleave_self_int
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
+from .select_backward import select_backward
 from .select_scatter import select_scatter
 from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward
@@ -140,6 +141,7 @@ __all__ = [
     "repeat_interleave_self_int",
     "resolve_neg",
     "rms_norm",
+    "select_backward",
     "select_scatter",
     "slice_scatter",
     "softmax",

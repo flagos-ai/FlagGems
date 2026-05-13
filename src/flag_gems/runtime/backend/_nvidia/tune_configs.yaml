@@ -1623,6 +1623,35 @@ gated_activation:
       - 8
     block_n:
       - 1024
+
+fp8_mqa_logits:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_D: block_d
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 8
+      - 16
+      - 32
+      - 64
+    block_n:
+      - 32
+      - 64
+      - 128
+    block_d:
+      - 32
+      - 64
+      - 128
+    warps:
+      - 4
+      - 8
+    stages:
+      - 2
+      - 3
 # Shared memory tiling kernel for large tensors
 # Optimized for memory bandwidth by caching input tiles# Grid sample operator configurations
 grid_sample_2d_nearest:
@@ -1937,4 +1966,42 @@ grid_sample_3d_trilinear_tiled:
       BLOCK_H: 32
       BLOCK_W: 32
     num_warps: 32
+    num_stages: 2
+
+fp8_paged_mqa_logits:
+  - META: {BLOCK_KV: 64, BLOCK_D: 128, NUM_D_TILES: 1, BLOCK_H: 32}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_KV: 64, BLOCK_D: 128, NUM_D_TILES: 1, BLOCK_H: 16}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_KV: 64, BLOCK_D: 128, NUM_D_TILES: 1, BLOCK_H: 8}
+    num_warps: 4
+    num_stages: 2
+  - META: {BLOCK_KV: 128, BLOCK_D: 128, NUM_D_TILES: 1, BLOCK_H: 32}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_KV: 128, BLOCK_D: 128, NUM_D_TILES: 1, BLOCK_H: 16}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_KV: 32, BLOCK_D: 128, NUM_D_TILES: 1, BLOCK_H: 32}
+    num_warps: 4
+    num_stages: 2
+  - META: {BLOCK_KV: 64, BLOCK_D: 64, NUM_D_TILES: 2, BLOCK_H: 16}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_KV: 64, BLOCK_D: 64, NUM_D_TILES: 2, BLOCK_H: 8}
+    num_warps: 4
+    num_stages: 2
+  - META: {BLOCK_KV: 128, BLOCK_D: 64, NUM_D_TILES: 2, BLOCK_H: 16}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_KV: 64, BLOCK_D: 64, NUM_D_TILES: 1, BLOCK_H: 16}
+    num_warps: 4
+    num_stages: 2
+  - META: {BLOCK_KV: 64, BLOCK_D: 64, NUM_D_TILES: 1, BLOCK_H: 8}
+    num_warps: 4
+    num_stages: 2
+  - META: {BLOCK_KV: 128, BLOCK_D: 64, NUM_D_TILES: 1, BLOCK_H: 16}
+    num_warps: 8
     num_stages: 2
