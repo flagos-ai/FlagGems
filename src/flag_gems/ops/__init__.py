@@ -229,6 +229,12 @@ from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.mv import mv
 from flag_gems.ops.nan_to_num import nan_to_num
+from flag_gems.ops.nanmedian import (
+    nanmedian,
+    nanmedian_dim,
+    nanmedian_dim_values,
+    nanmedian_out,
+)
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.new_full import new_full
@@ -675,6 +681,10 @@ __all__ = [
     "mul_",
     "multinomial",
     "mv",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "nan_to_num",
     "ne",
     "ne_scalar",
