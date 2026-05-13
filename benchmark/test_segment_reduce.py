@@ -1,4 +1,5 @@
 import math
+import os
 
 import pytest
 import torch
@@ -50,6 +51,22 @@ class SegmentReduceBenchmark(base.Benchmark):
         (1024, 1024, 1024),
     ]
     DEFAULT_SHAPE_DESC = "data shape"
+
+    def set_shapes(self, shape_file_path=None):
+        default_shape_file = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
+        )
+        if shape_file_path and os.path.abspath(shape_file_path) != default_shape_file:
+            super().set_shapes(shape_file_path)
+            return
+
+        self.shapes = self.DEFAULT_SHAPES
+        self.shape_desc = self.DEFAULT_SHAPE_DESC
+        if (
+            base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE
+            and not base.Config.query
+        ):
+            self.shapes = list(dict.fromkeys(self.shapes + self.set_more_shapes()))
 
     def set_more_metrics(self):
         return ["gbps"]
