@@ -94,7 +94,7 @@ def _is_iluvatar_backend() -> bool:
     return getattr(runtime.device, "vendor_name", "").lower() == "iluvatar"
 
 
-def _torch_recurrent_fwd(
+def _torch_semantic_fallback_recurrent_fwd(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -105,6 +105,7 @@ def _torch_recurrent_fwd(
     output_final_state: bool,
     cu_seqlens: torch.Tensor | None,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
+    """Reference torch recurrence used only as an explicit semantic fallback."""
     q_float = q.float()
     k_float = k.float()
     v_float = v.float()
@@ -158,7 +159,7 @@ def _torch_recurrent_fwd(
     return out.to(v.dtype), final_state
 
 
-def _recurrent_kernel_fwd(
+def _semantic_fallback_recurrent_fwd(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -169,7 +170,8 @@ def _recurrent_kernel_fwd(
     output_final_state: bool,
     cu_seqlens: torch.Tensor | None,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
-    return _torch_recurrent_fwd(
+    """Fallback dispatcher for supported semantics when direct/chunk kernels cannot run."""
+    return _torch_semantic_fallback_recurrent_fwd(
         q=q,
         k=k,
         v=v,
@@ -257,12 +259,14 @@ def chunk_gated_delta_rule(
                 o = o.transpose(1, 2)
             return o, final_state
 
+    # Unsupported direct cases use the semantic fallback path; the chunk kernels do
+    # not normalize q/k internally.
     if use_qk_l2norm_in_kernel:
         q_seq = F.normalize(q_seq, p=2.0, dim=-1, eps=1e-6)
         k_seq = F.normalize(k_seq, p=2.0, dim=-1, eps=1e-6)
 
     if _is_iluvatar_backend():
-        o, final_state = _recurrent_kernel_fwd(
+        o, final_state = _semantic_fallback_recurrent_fwd(
             q=q_seq,
             k=k_seq,
             v=v_seq,
