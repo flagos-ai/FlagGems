@@ -136,6 +136,7 @@ from flag_gems.ops.floor_ import floor_
 from flag_gems.ops.fmin import fmin, fmin_out
 from flag_gems.ops.fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from flag_gems.ops.fp8_matmul import fp8_matmul
+from flag_gems.ops.fp8_mqa_logits import fp8_mqa_logits
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
@@ -543,6 +544,7 @@ __all__ = [
     "fmod_scalar_",
     "fmod_tensor",
     "fmod_tensor_",
+    "fp8_mqa_logits",
     "full",
     "full_like",
     "gather",
