@@ -55,7 +55,7 @@ def test_addmm_dtype_out(monkeypatch):
         torch_op=lambda bias, mat1, mat2, out_dtype, out: torch.ops.aten.addmm.dtype_out(
             bias, mat1, mat2, out_dtype, beta=1.0, alpha=1.0, out=out
         ),
-        dtypes=[torch.float16, torch.bfloat16],
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
