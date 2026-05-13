@@ -106,7 +106,7 @@ jobs:
         run: |
           source .venv/bin/activate
           source tools/set-env.sh ${VENDOR}
-          tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }}
+          tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} --gpus 2 --dump-output
           tools/psummary --format markdown --single results > results.md
 
       - name: comment
