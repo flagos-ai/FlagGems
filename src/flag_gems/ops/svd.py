@@ -808,9 +808,7 @@ def _gram_svd(input):
         at_3d,
         u.reshape(batch, m, m),
         (*a.shape[:-2], n, m),
-    ) / s.clamp_min(
-        finfo.eps
-    ).unsqueeze(-2)
+    ) / s.clamp_min(finfo.eps).unsqueeze(-2)
     return u, s, v
 
 

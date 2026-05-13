@@ -5,10 +5,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-FAST_SHAPES = [(2, 2), (8, 2), (2, 8), (16, 8), (8, 16), (64, 32), (32, 64)]
-RANK1_SHAPES = [(8, 1), (1, 8), (2, 17, 1), (2, 1, 17), (1025, 1), (1, 1025)]
-FALLBACK_SHAPES = [(5, 3), (3, 5), (2, 4, 4)]
-
 
 def _make_spectrum_input(shape, singular_values, seed=0):
     torch.manual_seed(seed)
@@ -42,6 +38,19 @@ def _reconstruct(u, s, v):
     return u[..., :, :k] @ torch.diag_embed(s).to(u.dtype) @ v[..., :, :k].mH
 
 
+def _assert_same_shape(actual, expected):
+    actual_shape = torch.tensor(tuple(actual.shape))
+    expected_shape = torch.tensor(tuple(expected.shape))
+    utils.gems_assert_equal(actual_shape, expected_shape)
+
+
+def _assert_finite(*actuals):
+    for actual in actuals:
+        finite = torch.isfinite(actual)
+        expected = utils.to_reference(torch.ones_like(finite), False)
+        utils.gems_assert_equal(finite, expected)
+
+
 def _assert_orthonormal(actual, atol=2e-2):
     if actual.numel() == 0:
         return
@@ -53,7 +62,7 @@ def _assert_orthonormal(actual, atol=2e-2):
 
 
 @pytest.mark.svd
-@pytest.mark.parametrize("shape", FAST_SHAPES)
+@pytest.mark.parametrize("shape", utils.SVD_FAST_SHAPES)
 def test_accuracy_svd_fast_float32(shape):
     inp = _make_input(shape, torch.float32)
     ref_inp = utils.to_reference(inp, False)
@@ -62,16 +71,16 @@ def test_accuracy_svd_fast_float32(shape):
     with flag_gems.use_gems(include=["svd"]):
         res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
 
-    assert res_u.shape == ref_u.shape
-    assert res_s.shape == ref_s.shape
-    assert res_v.shape == ref_v.shape
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_v, ref_v)
     utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
     reconstructed = _reconstruct(res_u, res_s, res_v)
     utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
 
 
 @pytest.mark.svd
-@pytest.mark.parametrize("shape", RANK1_SHAPES)
+@pytest.mark.parametrize("shape", utils.SVD_RANK1_SHAPES)
 def test_accuracy_svd_rank1_float32(shape):
     inp = _make_input(shape, torch.float32)
     ref_inp = utils.to_reference(inp, False)
@@ -80,23 +89,24 @@ def test_accuracy_svd_rank1_float32(shape):
     with flag_gems.use_gems(include=["svd"]):
         res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
 
-    assert res_u.shape == ref_u.shape
-    assert res_s.shape == ref_s.shape
-    assert res_v.shape == ref_v.shape
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_v, ref_v)
     utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
     reconstructed = _reconstruct(res_u, res_s, res_v)
     utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
 
 
 @pytest.mark.svd
-@pytest.mark.parametrize("shape", RANK1_SHAPES)
+@pytest.mark.parametrize("shape", utils.SVD_RANK1_SHAPES)
 def test_accuracy_svd_rank1_zero_basis(shape):
     inp = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
 
     with flag_gems.use_gems(include=["svd"]):
         res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
 
-    assert torch.count_nonzero(res_s).item() == 0
+    expected_s = utils.to_reference(torch.zeros_like(res_s), False)
+    utils.gems_assert_equal(res_s, expected_s)
     if shape[-1] == 1:
         expected_u = utils.to_reference(torch.zeros_like(res_u), False)
         expected_v = utils.to_reference(torch.ones_like(res_v), False)
@@ -108,7 +118,7 @@ def test_accuracy_svd_rank1_zero_basis(shape):
 
 
 @pytest.mark.svd
-@pytest.mark.parametrize("shape", [(17, 17), (16, 16, 16)])
+@pytest.mark.parametrize("shape", utils.SVD_GRAM_ILL_CONDITIONED_SHAPES)
 def test_accuracy_svd_gram_ill_conditioned_orthonormal(shape):
     k = min(shape[-2:])
     singular_values = torch.logspace(0, -5, steps=k).tolist()
@@ -119,9 +129,9 @@ def test_accuracy_svd_gram_ill_conditioned_orthonormal(shape):
     with flag_gems.use_gems(include=["svd"]):
         res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
 
-    assert res_u.shape == ref_u.shape
-    assert res_s.shape == ref_s.shape
-    assert res_v.shape == ref_v.shape
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_v, ref_v)
     utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
     reconstructed = _reconstruct(res_u, res_s, res_v)
     utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
@@ -142,9 +152,9 @@ def test_accuracy_svd_gram_zero_and_repeated_singular_values(case):
     with flag_gems.use_gems(include=["svd"]):
         res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
 
-    assert res_u.shape == ref_u.shape
-    assert res_s.shape == ref_s.shape
-    assert res_v.shape == ref_v.shape
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_v, ref_v)
     utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
     reconstructed = _reconstruct(res_u, res_s, res_v)
     utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
@@ -153,10 +163,7 @@ def test_accuracy_svd_gram_zero_and_repeated_singular_values(case):
 
 
 @pytest.mark.svd
-@pytest.mark.parametrize(
-    "case",
-    ["zero_2x2", "repeated_2x2", "zero_column_8x2", "zero_row_2x8"],
-)
+@pytest.mark.parametrize("case", utils.SVD_TINY_RANK_DEGENERATE_CASES)
 def test_accuracy_svd_tiny_rank_degenerate_inputs(case):
     if case == "zero_2x2":
         inp = torch.zeros((2, 2), dtype=torch.float32, device=flag_gems.device)
@@ -184,19 +191,17 @@ def test_accuracy_svd_tiny_rank_degenerate_inputs(case):
     with flag_gems.use_gems(include=["svd"]):
         res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
 
-    assert torch.isfinite(res_u).all()
-    assert torch.isfinite(res_s).all()
-    assert torch.isfinite(res_v).all()
-    assert res_u.shape == ref_u.shape
-    assert res_s.shape == ref_s.shape
-    assert res_v.shape == ref_v.shape
+    _assert_finite(res_u, res_s, res_v)
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_v, ref_v)
     utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
     reconstructed = _reconstruct(res_u, res_s, res_v)
     utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
 
 
 @pytest.mark.svd
-@pytest.mark.parametrize("shape", FALLBACK_SHAPES)
+@pytest.mark.parametrize("shape", utils.SVD_FALLBACK_SHAPES)
 @pytest.mark.parametrize("some", [True, False])
 def test_accuracy_svd_fallback_modes(shape, some):
     inp = _make_input(shape, torch.float32)
@@ -206,9 +211,9 @@ def test_accuracy_svd_fallback_modes(shape, some):
     with flag_gems.use_gems(include=["svd"]):
         res_u, res_s, res_v = torch.svd(inp, some=some, compute_uv=False)
 
-    assert res_u.shape == ref_u.shape
-    assert res_s.shape == ref_s.shape
-    assert res_v.shape == ref_v.shape
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_v, ref_v)
     utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=5e-4)
 
 
@@ -227,7 +232,7 @@ def test_accuracy_svd_non_contiguous_empty_and_complex():
         with flag_gems.use_gems(include=["svd"]):
             res_u, res_s, res_v = torch.svd(inp)
 
-        assert res_u.shape == ref_u.shape
-        assert res_s.shape == ref_s.shape
-        assert res_v.shape == ref_v.shape
+        _assert_same_shape(res_u, ref_u)
+        _assert_same_shape(res_s, ref_s)
+        _assert_same_shape(res_v, ref_v)
         utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
