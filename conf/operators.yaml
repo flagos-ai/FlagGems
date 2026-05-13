@@ -2229,6 +2229,19 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: fp8_mqa_logits
+    description: |
+      For each token in the given E4M3 tensor, iterate all tokens from two other given tensors,
+      calculate the logit.
+    for:
+      - vllm.utils.deep_gemm.fp8_mqa_logits
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: full
     description: |
       Creates a tensor of size `size` filled with `fill_value`.
