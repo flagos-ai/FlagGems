@@ -19,7 +19,9 @@ import time
 
 import torch
 
-from flag_gems.fused.topk_softplus_sqrt import topk_softplus_sqrt as triton_topk
+from flag_gems.fused.topk_softplus_sqrt import (
+    _topk_softplus_sqrt_kernel as triton_topk_kernel,
+)
 
 # Import vLLM CUDA kernel directly (bypass fused_topk_bias dispatch)
 try:
@@ -81,17 +83,21 @@ def cuda_hash_call(
 
 
 def triton_topk_wrapper(
-    hidden_states,
     gating_output,
     topk,
     renormalize,
     routed_scaling_factor,
     e_score_correction_bias,
+    topk_weights,
+    topk_indices,
+    token_expert_indices,
 ):
-    return triton_topk(
-        hidden_states,
+    """Direct Triton kernel call with pre-allocated output tensors."""
+    triton_topk_kernel(
+        topk_weights,
+        topk_indices,
+        token_expert_indices,
         gating_output,
-        topk,
         renormalize,
         routed_scaling_factor,
         e_score_correction_bias=e_score_correction_bias,
@@ -99,18 +105,22 @@ def triton_topk_wrapper(
 
 
 def triton_hash_wrapper(
-    hidden_states,
     gating_output,
     topk,
     renormalize,
     routed_scaling_factor,
     input_tokens,
     hash_indices_table,
+    topk_weights,
+    topk_indices,
+    token_expert_indices,
 ):
-    return triton_topk(
-        hidden_states,
+    """Direct Triton kernel call for hash mode with pre-allocated output tensors."""
+    triton_topk_kernel(
+        topk_weights,
+        topk_indices,
+        token_expert_indices,
         gating_output,
-        topk,
         renormalize,
         routed_scaling_factor,
         input_tokens=input_tokens,
@@ -184,19 +194,29 @@ def main():
         gating_output = torch.randn(
             (num_tokens, num_experts), dtype=dtype, device="cuda"
         )
-        hidden_states = torch.randn((num_tokens, 128), dtype=dtype, device="cuda")
         e_score_correction_bias = torch.randn(
             (num_experts,), dtype=torch.float32, device="cuda"
         )
 
+        # Pre-allocate output tensors for Triton
+        topk_weights = torch.empty(
+            (num_tokens, topk), dtype=torch.float32, device="cuda"
+        )
+        topk_indices = torch.empty((num_tokens, topk), dtype=torch.int32, device="cuda")
+        token_expert_indices = torch.empty(
+            (num_tokens, topk), dtype=torch.int32, device="cuda"
+        )
+
         tri_us = bench_fn(
             triton_topk_wrapper,
-            hidden_states,
             gating_output,
             topk,
             True,
             1.0,
             e_score_correction_bias,
+            topk_weights,
+            topk_indices,
+            token_expert_indices,
         )
 
         if HAS_CUDA:
@@ -247,7 +267,6 @@ def main():
         gating_output = torch.randn(
             (num_tokens, num_experts), dtype=dtype, device="cuda"
         )
-        hidden_states = torch.randn((num_tokens, 128), dtype=dtype, device="cuda")
         hash_indices_table = torch.stack(
             [torch.randperm(num_experts)[:topk] for _ in range(vocab_size)]
         ).to(device="cuda", dtype=torch.int32)
@@ -255,15 +274,26 @@ def main():
             0, vocab_size, (num_tokens,), dtype=torch.int32, device="cuda"
         )
 
+        # Pre-allocate output tensors for Triton
+        topk_weights = torch.empty(
+            (num_tokens, topk), dtype=torch.float32, device="cuda"
+        )
+        topk_indices = torch.empty((num_tokens, topk), dtype=torch.int32, device="cuda")
+        token_expert_indices = torch.empty(
+            (num_tokens, topk), dtype=torch.int32, device="cuda"
+        )
+
         tri_us = bench_fn(
             triton_hash_wrapper,
-            hidden_states,
             gating_output,
             topk,
             True,
             2.5,
             input_tokens,
             hash_indices_table,
+            topk_weights,
+            topk_indices,
+            token_expert_indices,
         )
 
         if HAS_CUDA:

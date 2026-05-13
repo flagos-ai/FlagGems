@@ -26,22 +26,6 @@ import torch
 import triton
 import triton.language as tl
 
-_tensor_cache = {}
-
-
-def _get_output_tensors(num_tokens, topk, device):
-    key = (num_tokens, topk, device)
-    cached = _tensor_cache.get(key)
-    if cached is not None:
-        return cached
-    topk_weights = torch.empty((num_tokens, topk), dtype=torch.float32, device=device)
-    topk_indices = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
-    token_expert_indices = torch.empty(
-        (num_tokens, topk), dtype=torch.int32, device=device
-    )
-    _tensor_cache[key] = (topk_weights, topk_indices, token_expert_indices)
-    return topk_weights, topk_indices, token_expert_indices
-
 
 @triton.jit
 def _fused_topk_kernel(
@@ -88,7 +72,6 @@ def _fused_topk_kernel(
     weight_sum = 0.0
 
     for k_idx in tl.static_range(topk):
-        # tl.max is a fast builtin reduction; recover index via compare
         max_score = tl.max(scores, axis=0)
         is_max = scores == max_score
         match_priority = tl.where(is_max, BLOCK_E - expert_offsets, 0)
@@ -191,49 +174,37 @@ def _hash_kernel(
     tl.store(token_expert_indices_ptr + out_base + k_offsets, tei, mask=kmask)
 
 
-def topk_softplus_sqrt(
-    hidden_states,
+def _topk_softplus_sqrt_kernel(
+    topk_weights,
+    topk_indices,
+    token_expert_indices,
     gating_output,
-    topk,
     renormalize,
     routed_scaling_factor,
     e_score_correction_bias=None,
     input_tokens=None,
     hash_indices_table=None,
 ):
-    """Fused topk + softplus + sqrt kernel for MoE gating.
+    """Low-level kernel launcher matching vLLM CUDA operator interface.
 
-    This kernel fuses softplus activation, sqrt, top-k selection, and optional
-    renormalization for efficient MoE routing in models like DeepSeek-V3/V4.
-
-    API aligned with vLLM's fused_topk_bias (scoring_func="sqrtsoftplus").
+    Writes results in-place into pre-allocated output tensors.
 
     Args:
-        hidden_states: Input hidden states (not used in computation, kept for
-            API compatibility with vLLM's fused_topk_bias interface)
-        gating_output: Gating logits, shape (num_tokens, num_experts)
-        topk: Number of experts to select per token
-        renormalize: Whether to renormalize weights to sum to routed_scaling_factor
-        routed_scaling_factor: Scaling factor applied to final weights
-        e_score_correction_bias: Optional bias for expert selection, shape (num_experts,)
-        input_tokens: Token IDs for hash mode, shape (num_tokens,)
-        hash_indices_table: Token-to-expert lookup table for hash mode,
-            shape (vocab_size, topk)
-
-    Returns:
-        topk_weights: Selected expert weights, shape (num_tokens, topk), dtype float32
-        topk_indices: Selected expert indices, shape (num_tokens, topk), dtype int32
-        token_expert_indices: Flattened indices, shape (num_tokens, topk), dtype int32
+        topk_weights: Output tensor [num_tokens, topk], dtype float32
+        topk_indices: Output tensor [num_tokens, topk], dtype int32
+        token_expert_indices: Output tensor [num_tokens, topk], dtype int32
+        gating_output: Gating logits [num_tokens, num_experts]
+        renormalize: Whether to renormalize weights
+        routed_scaling_factor: Scaling factor for final weights
+        e_score_correction_bias: Optional bias for expert scores [num_experts]
+        input_tokens: Token IDs for hash mode [num_tokens]
+        hash_indices_table: Hash table mapping tokens to expert indices
     """
     num_tokens, num_experts = gating_output.shape
-    device = gating_output.device
-
-    topk_weights, topk_indices, token_expert_indices = _get_output_tensors(
-        num_tokens, topk, device
-    )
+    topk = topk_weights.shape[1]
 
     if num_tokens == 0:
-        return topk_weights, topk_indices, token_expert_indices
+        return
 
     BLOCK_E = triton.next_power_of_2(num_experts)
 
@@ -261,7 +232,7 @@ def topk_softplus_sqrt(
             num_warps=1,
             num_stages=1,
         )
-        return topk_weights, topk_indices, token_expert_indices
+        return
 
     grid = (num_tokens,)
     _fused_topk_kernel[grid](
@@ -282,4 +253,57 @@ def topk_softplus_sqrt(
         num_warps=1,
         num_stages=1,
     )
+
+
+def topk_softplus_sqrt(
+    hidden_states,
+    gating_output,
+    topk,
+    renormalize,
+    routed_scaling_factor,
+    e_score_correction_bias=None,
+    input_tokens=None,
+    hash_indices_table=None,
+):
+    """Fused topk + softplus + sqrt kernel for MoE gating.
+
+    API aligned with vLLM's fused_topk_bias (scoring_func="sqrtsoftplus").
+
+    Args:
+        hidden_states: Input hidden states (not used in computation, kept for
+            API compatibility with vLLM's fused_topk_bias interface)
+        gating_output: Gating logits, shape (num_tokens, num_experts)
+        topk: Number of experts to select per token
+        renormalize: Whether to renormalize weights to sum to routed_scaling_factor
+        routed_scaling_factor: Scaling factor applied to final weights
+        e_score_correction_bias: Optional bias for expert selection
+        input_tokens: Token IDs for hash mode
+        hash_indices_table: Token-to-expert lookup table for hash mode
+
+    Returns:
+        topk_weights: Selected expert weights, shape (num_tokens, topk)
+        topk_indices: Selected expert indices, shape (num_tokens, topk)
+        token_expert_indices: Flattened indices, shape (num_tokens, topk)
+    """
+    num_tokens = gating_output.shape[0]
+    device = gating_output.device
+
+    topk_weights = torch.empty((num_tokens, topk), dtype=torch.float32, device=device)
+    topk_indices = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
+    token_expert_indices = torch.empty(
+        (num_tokens, topk), dtype=torch.int32, device=device
+    )
+
+    _topk_softplus_sqrt_kernel(
+        topk_weights,
+        topk_indices,
+        token_expert_indices,
+        gating_output,
+        renormalize,
+        routed_scaling_factor,
+        e_score_correction_bias=e_score_correction_bias,
+        input_tokens=input_tokens,
+        hash_indices_table=hash_indices_table,
+    )
+
     return topk_weights, topk_indices, token_expert_indices
