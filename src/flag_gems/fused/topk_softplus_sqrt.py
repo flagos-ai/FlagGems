@@ -49,7 +49,7 @@ def _fused_topk_kernel(
     topk_weights_ptr,
     topk_indices_ptr,
     token_expert_indices_ptr,
-    correction_bias_ptr,
+    e_score_correction_bias_ptr,
     num_tokens,
     num_experts: tl.constexpr,
     topk: tl.constexpr,
@@ -76,7 +76,7 @@ def _fused_topk_kernel(
 
     # Scores for top-k selection (with optional bias)
     if HAS_BIAS:
-        bias = tl.load(correction_bias_ptr + expert_offsets, mask=emask, other=0.0).to(
+        bias = tl.load(e_score_correction_bias_ptr + expert_offsets, mask=emask, other=0.0).to(
             tl.float32
         )
         scores = raw + bias
@@ -96,7 +96,7 @@ def _fused_topk_kernel(
         eidx = best_slot.to(tl.int32)
 
         if HAS_BIAS:
-            bias_at_eidx = tl.load(correction_bias_ptr + eidx)
+            bias_at_eidx = tl.load(e_score_correction_bias_ptr + eidx)
             w = max_score - bias_at_eidx
         else:
             w = max_score
@@ -129,9 +129,9 @@ def _hash_kernel(
     topk_weights_ptr,
     topk_indices_ptr,
     token_expert_indices_ptr,
-    correction_bias_ptr,
-    input_ids_ptr,
-    tid2eid_ptr,
+    e_score_correction_bias_ptr,
+    input_tokens_ptr,
+    hash_indices_table_ptr,
     num_tokens,
     num_experts: tl.constexpr,
     topk: tl.constexpr,
@@ -159,10 +159,10 @@ def _hash_kernel(
     x = tl.sqrt(x)
 
     # Get expert indices from lookup table
-    token_id = tl.load(input_ids_ptr + pid)
+    token_id = tl.load(input_tokens_ptr + pid)
     k_offsets = tl.arange(0, BLOCK_K)
     kmask = k_offsets < topk
-    expert_ids = tl.load(tid2eid_ptr + token_id * topk + k_offsets, mask=kmask, other=0)
+    expert_ids = tl.load(hash_indices_table_ptr + token_id * topk + k_offsets, mask=kmask, other=0)
 
     # Gather weights for each selected expert
     weight_sum = 0.0
@@ -190,27 +190,33 @@ def _hash_kernel(
 
 
 def topk_softplus_sqrt(
+    hidden_states,
     gating_output,
     topk,
     renormalize,
     routed_scaling_factor,
-    correction_bias=None,
-    input_ids=None,
-    tid2eid=None,
+    e_score_correction_bias=None,
+    input_tokens=None,
+    hash_indices_table=None,
 ):
     """Fused topk + softplus + sqrt kernel for MoE gating.
 
     This kernel fuses softplus activation, sqrt, top-k selection, and optional
     renormalization for efficient MoE routing in models like DeepSeek-V3/V4.
 
+    API aligned with vLLM's fused_topk_bias (scoring_func="sqrtsoftplus").
+
     Args:
+        hidden_states: Input hidden states (not used in computation, kept for
+            API compatibility with vLLM's fused_topk_bias interface)
         gating_output: Gating logits, shape (num_tokens, num_experts)
         topk: Number of experts to select per token
         renormalize: Whether to renormalize weights to sum to routed_scaling_factor
         routed_scaling_factor: Scaling factor applied to final weights
-        correction_bias: Optional bias for expert selection, shape (num_experts,)
-        input_ids: Token IDs for hash mode, shape (num_tokens,)
-        tid2eid: Token-to-expert lookup table for hash mode, shape (vocab_size, topk)
+        e_score_correction_bias: Optional bias for expert selection, shape (num_experts,)
+        input_tokens: Token IDs for hash mode, shape (num_tokens,)
+        hash_indices_table: Token-to-expert lookup table for hash mode,
+            shape (vocab_size, topk)
 
     Returns:
         topk_weights: Selected expert weights, shape (num_tokens, topk), dtype float32
@@ -229,7 +235,7 @@ def topk_softplus_sqrt(
 
     BLOCK_E = triton.next_power_of_2(num_experts)
 
-    if input_ids is not None and tid2eid is not None:
+    if input_tokens is not None and hash_indices_table is not None:
         BLOCK_K = triton.next_power_of_2(topk)
         grid = (num_tokens,)
         _hash_kernel[grid](
@@ -237,15 +243,15 @@ def topk_softplus_sqrt(
             topk_weights,
             topk_indices,
             token_expert_indices,
-            correction_bias if correction_bias is not None else gating_output,
-            input_ids,
-            tid2eid,
+            e_score_correction_bias if e_score_correction_bias is not None else gating_output,
+            input_tokens,
+            hash_indices_table,
             num_tokens=num_tokens,
             num_experts=num_experts,
             topk=topk,
             renormalize=renormalize,
             routed_scaling_factor=routed_scaling_factor,
-            HAS_BIAS=correction_bias is not None,
+            HAS_BIAS=e_score_correction_bias is not None,
             BLOCK_E=BLOCK_E,
             BLOCK_K=BLOCK_K,
             num_warps=1,
@@ -259,13 +265,13 @@ def topk_softplus_sqrt(
         topk_weights,
         topk_indices,
         token_expert_indices,
-        correction_bias if correction_bias is not None else gating_output,
+        e_score_correction_bias if e_score_correction_bias is not None else gating_output,
         num_tokens=num_tokens,
         num_experts=num_experts,
         topk=topk,
         renormalize=renormalize,
         routed_scaling_factor=routed_scaling_factor,
-        HAS_BIAS=correction_bias is not None,
+        HAS_BIAS=e_score_correction_bias is not None,
         BLOCK_E=BLOCK_E,
         num_warps=1,
         num_stages=1,

@@ -36,7 +36,7 @@ def cuda_topk_call(
     topk,
     renormalize,
     routed_scaling_factor,
-    correction_bias,
+    e_score_correction_bias,
     topk_weights,
     topk_indices,
     token_expert_indices,
@@ -49,7 +49,7 @@ def cuda_topk_call(
         gating_output,
         renormalize,
         routed_scaling_factor,
-        correction_bias,
+        e_score_correction_bias,
         None,  # input_tokens
         None,  # hash_indices_table
     )
@@ -60,8 +60,8 @@ def cuda_hash_call(
     topk,
     renormalize,
     routed_scaling_factor,
-    input_ids,
-    tid2eid,
+    input_tokens,
+    hash_indices_table,
     topk_weights,
     topk_indices,
     token_expert_indices,
@@ -75,33 +75,37 @@ def cuda_hash_call(
         renormalize,
         routed_scaling_factor,
         None,  # e_score_correction_bias
-        input_ids,
-        tid2eid,
+        input_tokens,
+        hash_indices_table,
     )
 
 
 def triton_topk_wrapper(
-    gating_output, topk, renormalize, routed_scaling_factor, correction_bias
+    hidden_states, gating_output, topk, renormalize, routed_scaling_factor,
+    e_score_correction_bias,
 ):
     return triton_topk(
+        hidden_states,
         gating_output,
         topk,
         renormalize,
         routed_scaling_factor,
-        correction_bias=correction_bias,
+        e_score_correction_bias=e_score_correction_bias,
     )
 
 
 def triton_hash_wrapper(
-    gating_output, topk, renormalize, routed_scaling_factor, input_ids, tid2eid
+    hidden_states, gating_output, topk, renormalize, routed_scaling_factor,
+    input_tokens, hash_indices_table,
 ):
     return triton_topk(
+        hidden_states,
         gating_output,
         topk,
         renormalize,
         routed_scaling_factor,
-        input_ids=input_ids,
-        tid2eid=tid2eid,
+        input_tokens=input_tokens,
+        hash_indices_table=hash_indices_table,
     )
 
 
@@ -171,12 +175,16 @@ def main():
         gating_output = torch.randn(
             (num_tokens, num_experts), dtype=dtype, device="cuda"
         )
-        correction_bias = torch.randn(
+        hidden_states = torch.randn(
+            (num_tokens, 128), dtype=dtype, device="cuda"
+        )
+        e_score_correction_bias = torch.randn(
             (num_experts,), dtype=torch.float32, device="cuda"
         )
 
         tri_us = bench_fn(
-            triton_topk_wrapper, gating_output, topk, True, 1.0, correction_bias
+            triton_topk_wrapper, hidden_states, gating_output, topk, True, 1.0,
+            e_score_correction_bias,
         )
 
         if HAS_CUDA:
@@ -197,7 +205,7 @@ def main():
                 topk,
                 True,
                 1.0,
-                correction_bias,
+                e_score_correction_bias,
                 topk_weights,
                 topk_indices,
                 token_expert_indices,
@@ -227,15 +235,19 @@ def main():
         gating_output = torch.randn(
             (num_tokens, num_experts), dtype=dtype, device="cuda"
         )
-        tid2eid = torch.stack(
+        hidden_states = torch.randn(
+            (num_tokens, 128), dtype=dtype, device="cuda"
+        )
+        hash_indices_table = torch.stack(
             [torch.randperm(num_experts)[:topk] for _ in range(vocab_size)]
         ).to(device="cuda", dtype=torch.int32)
-        input_ids = torch.randint(
+        input_tokens = torch.randint(
             0, vocab_size, (num_tokens,), dtype=torch.int32, device="cuda"
         )
 
         tri_us = bench_fn(
-            triton_hash_wrapper, gating_output, topk, True, 2.5, input_ids, tid2eid
+            triton_hash_wrapper, hidden_states, gating_output, topk, True, 2.5,
+            input_tokens, hash_indices_table,
         )
 
         if HAS_CUDA:
@@ -255,8 +267,8 @@ def main():
                 topk,
                 True,
                 2.5,
-                input_ids,
-                tid2eid,
+                input_tokens,
+                hash_indices_table,
                 topk_weights,
                 topk_indices,
                 token_expert_indices,
