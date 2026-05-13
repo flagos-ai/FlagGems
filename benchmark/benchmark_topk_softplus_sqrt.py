@@ -19,9 +19,7 @@ import time
 
 import torch
 
-from flag_gems.fused.topk_softplus_sqrt import (
-    _topk_softplus_sqrt_kernel as triton_topk_kernel,
-)
+from flag_gems.fused.topk_softplus_sqrt import topk_softplus_sqrt as triton_topk_kernel
 
 # Import vLLM CUDA kernel directly (bypass fused_topk_bias dispatch)
 try:

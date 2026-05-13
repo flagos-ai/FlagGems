@@ -40,7 +40,6 @@ except ImportError:
 
 
 def _torch_topk_softplus_sqrt_reference(
-    hidden_states: torch.Tensor,
     gating_output: torch.Tensor,
     topk: int,
     renormalize: bool,
@@ -104,13 +103,11 @@ def test_topk_softplus_sqrt_standard(
     torch.manual_seed(0)
 
     gating_output = torch.randn((num_tokens, num_experts), dtype=dtype, device=device)
-    hidden_states = torch.randn((num_tokens, 128), dtype=dtype, device=device)
     e_score_correction_bias = torch.randn(
         (num_experts,), dtype=torch.float32, device=device
     )
 
     ref_weights, ref_ids = _torch_topk_softplus_sqrt_reference(
-        hidden_states,
         gating_output,
         topk,
         renormalize,
@@ -120,11 +117,16 @@ def test_topk_softplus_sqrt_standard(
     ref_weights = utils.to_reference(ref_weights)
     ref_ids = utils.to_reference(ref_ids)
 
+    res_weights = torch.empty((num_tokens, topk), dtype=torch.float32, device=device)
+    res_ids = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
+    res_tei = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
+
     with flag_gems.use_gems():
-        res_weights, res_ids, _ = flag_gems.topk_softplus_sqrt(
-            hidden_states,
+        flag_gems.topk_softplus_sqrt(
+            res_weights,
+            res_ids,
+            res_tei,
             gating_output,
-            topk,
             renormalize,
             routed_scaling_factor,
             e_score_correction_bias=e_score_correction_bias,
@@ -149,7 +151,6 @@ def test_topk_softplus_sqrt_hash(
 
     vocab_size = 1024
     gating_output = torch.randn((num_tokens, num_experts), dtype=dtype, device=device)
-    hidden_states = torch.randn((num_tokens, 128), dtype=dtype, device=device)
     hash_indices_table = torch.stack(
         [torch.randperm(num_experts)[:topk] for _ in range(vocab_size)]
     ).to(device=device, dtype=torch.int32)
@@ -158,7 +159,6 @@ def test_topk_softplus_sqrt_hash(
     )
 
     ref_weights, ref_ids = _torch_topk_softplus_sqrt_reference(
-        hidden_states,
         gating_output,
         topk,
         renormalize,
@@ -169,11 +169,16 @@ def test_topk_softplus_sqrt_hash(
     ref_weights = utils.to_reference(ref_weights)
     ref_ids = utils.to_reference(ref_ids)
 
+    res_weights = torch.empty((num_tokens, topk), dtype=torch.float32, device=device)
+    res_ids = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
+    res_tei = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
+
     with flag_gems.use_gems():
-        res_weights, res_ids, _ = flag_gems.topk_softplus_sqrt(
-            hidden_states,
+        flag_gems.topk_softplus_sqrt(
+            res_weights,
+            res_ids,
+            res_tei,
             gating_output,
-            topk,
             renormalize,
             routed_scaling_factor,
             input_tokens=input_tokens,
@@ -197,7 +202,6 @@ def test_topk_softplus_sqrt_vs_vllm(num_tokens, num_experts, topk, renormalize):
     dtype = torch.bfloat16
     routed_scaling_factor = 1.0
     gating_output = torch.randn((num_tokens, num_experts), dtype=dtype, device=device)
-    hidden_states = torch.randn((num_tokens, 128), dtype=dtype, device=device)
     e_score_correction_bias = torch.randn(
         (num_experts,), dtype=torch.float32, device=device
     )
@@ -221,11 +225,16 @@ def test_topk_softplus_sqrt_vs_vllm(num_tokens, num_experts, topk, renormalize):
     vllm_ids = utils.to_reference(vllm_ids)
 
     # FlagGems Triton kernel
+    res_weights = torch.empty((num_tokens, topk), dtype=torch.float32, device=device)
+    res_ids = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
+    res_tei = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
+
     with flag_gems.use_gems():
-        res_weights, res_ids, _ = flag_gems.topk_softplus_sqrt(
-            hidden_states,
+        flag_gems.topk_softplus_sqrt(
+            res_weights,
+            res_ids,
+            res_tei,
             gating_output,
-            topk,
             renormalize,
             routed_scaling_factor,
             e_score_correction_bias=e_score_correction_bias,

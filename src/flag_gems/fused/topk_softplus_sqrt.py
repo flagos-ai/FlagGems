@@ -22,7 +22,6 @@ Eliminates the store-load-store pattern for renormalization by storing weights
 during the loop and re-reading with scale at the end.
 """
 
-import torch
 import triton
 import triton.language as tl
 
@@ -174,7 +173,7 @@ def _hash_kernel(
     tl.store(token_expert_indices_ptr + out_base + k_offsets, tei, mask=kmask)
 
 
-def _topk_softplus_sqrt_kernel(
+def topk_softplus_sqrt(
     topk_weights,
     topk_indices,
     token_expert_indices,
@@ -185,7 +184,11 @@ def _topk_softplus_sqrt_kernel(
     input_tokens=None,
     hash_indices_table=None,
 ):
-    """Low-level kernel launcher matching vLLM CUDA operator interface.
+    """Fused topk + softplus + sqrt kernel for MoE gating.
+
+    Interface aligned with vLLM CUDA operator:
+        void topk_softplus_sqrt(Tensor& topk_weights, Tensor& topk_indices,
+            Tensor& token_expert_indices, Tensor& gating_output, ...)
 
     Writes results in-place into pre-allocated output tensors.
 
@@ -253,57 +256,3 @@ def _topk_softplus_sqrt_kernel(
         num_warps=1,
         num_stages=1,
     )
-
-
-def topk_softplus_sqrt(
-    hidden_states,
-    gating_output,
-    topk,
-    renormalize,
-    routed_scaling_factor,
-    e_score_correction_bias=None,
-    input_tokens=None,
-    hash_indices_table=None,
-):
-    """Fused topk + softplus + sqrt kernel for MoE gating.
-
-    API aligned with vLLM's fused_topk_bias (scoring_func="sqrtsoftplus").
-
-    Args:
-        hidden_states: Input hidden states (not used in computation, kept for
-            API compatibility with vLLM's fused_topk_bias interface)
-        gating_output: Gating logits, shape (num_tokens, num_experts)
-        topk: Number of experts to select per token
-        renormalize: Whether to renormalize weights to sum to routed_scaling_factor
-        routed_scaling_factor: Scaling factor applied to final weights
-        e_score_correction_bias: Optional bias for expert selection
-        input_tokens: Token IDs for hash mode
-        hash_indices_table: Token-to-expert lookup table for hash mode
-
-    Returns:
-        topk_weights: Selected expert weights, shape (num_tokens, topk)
-        topk_indices: Selected expert indices, shape (num_tokens, topk)
-        token_expert_indices: Flattened indices, shape (num_tokens, topk)
-    """
-    num_tokens = gating_output.shape[0]
-    device = gating_output.device
-
-    topk_weights = torch.empty((num_tokens, topk), dtype=torch.float32, device=device)
-    topk_indices = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
-    token_expert_indices = torch.empty(
-        (num_tokens, topk), dtype=torch.int32, device=device
-    )
-
-    _topk_softplus_sqrt_kernel(
-        topk_weights,
-        topk_indices,
-        token_expert_indices,
-        gating_output,
-        renormalize,
-        routed_scaling_factor,
-        e_score_correction_bias=e_score_correction_bias,
-        input_tokens=input_tokens,
-        hash_indices_table=hash_indices_table,
-    )
-
-    return topk_weights, topk_indices, token_expert_indices
