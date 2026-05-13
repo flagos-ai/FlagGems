@@ -3,26 +3,22 @@ import random
 import pytest
 import torch
 
+import flag_gems
+
+from .accuracy_utils import gems_assert_close
+
 try:
     from vllm.utils.deep_gemm import fp8_mqa_logits
 except ImportError:
     fp8_mqa_logits = None
 
-import flag_gems
 
-from .accuracy_utils import gems_assert_close
+try:
+    import vllm  # noqa: F401
 
-
-def is_vllm_available():
-    try:
-        import vllm  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
-
-
-VLLM_AVAILABLE = is_vllm_available()
+    VLLM_AVAILABLE = True
+except ImportError:
+    VLLM_AVAILABLE = False
 
 
 def is_hopper_available() -> bool:
@@ -39,9 +35,9 @@ HOPPER_AVAILABLE = is_hopper_available()
 def has_deep_gemm() -> bool:
     """Check if vLLM's DeepGEMM is available."""
     try:
-        from vllm.utils.import_utils import has_deep_gemm as check_deep_gemm
+        from vllm.utils.import_utils import has_deep_gemm
 
-        return check_deep_gemm()
+        return has_deep_gemm()
     except ImportError:
         return False
 
@@ -61,7 +57,7 @@ device = flag_gems.device
     reason="requires vLLM with DeepGEMM support",
 )
 @pytest.mark.parametrize("clean_logits", [True, False])
-def test_accuracy_fp8_mqa_logits(clean_logits: bool):
+def test_fp8_mqa_logits(clean_logits: bool):
     torch.manual_seed(0)
     random.seed(0)
 
@@ -114,7 +110,7 @@ def test_accuracy_fp8_mqa_logits(clean_logits: bool):
 )
 @pytest.mark.parametrize("M, N", [(32, 2048), (32, 4096), (32, 1024)])
 @pytest.mark.parametrize("H, D", [(32, 128)])
-def test_accuracy_fp8_mqa_logits_param(M: int, N: int, H: int, D: int):
+def test_fp8_mqa_logits_param(M: int, N: int, H: int, D: int):
     torch.manual_seed(0)
     random.seed(0)
     clean_logits = True
