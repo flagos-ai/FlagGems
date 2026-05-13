@@ -19,6 +19,7 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 _GRAM_CONDITION_GUARD_MAX_BATCH = 16
 _GRAM_CONDITION_GUARD_MAX_K = 32
 _GRAM_CONDITION_EIGEN_RATIO = 1.0e-8
+_RANK1_BLOCK_R_MAX = 1024
 
 
 def _fallback_svd(input, some=True, compute_uv=True):
@@ -681,19 +682,85 @@ def _small4_square_svd(input):
     )
 
 
+@libentry()
+@triton.jit
+def _rank1_svd_kernel(
+    A,
+    U,
+    S,
+    V,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    TALL: tl.constexpr,
+    BLOCK_R: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = tl.arange(0, BLOCK_R)
+    eps = 1.1920928955078125e-7
+    a_base = A + pid * M * N
+    norm_sq = tl.full((), 0.0, dtype=tl.float32)
+
+    if TALL:
+        for base in range(0, M, BLOCK_R):
+            rows = base + offsets
+            mask = rows < M
+            vals = tl.load(a_base + rows * N, mask=mask, other=0.0).to(tl.float32)
+            norm_sq += tl.sum(vals * vals)
+
+        norm = tl.sqrt(norm_sq)
+        denom = tl.maximum(norm, eps)
+        tl.store(S + pid, norm)
+        tl.store(V + pid, 1.0)
+
+        u_base = U + pid * M
+        for base in range(0, M, BLOCK_R):
+            rows = base + offsets
+            mask = rows < M
+            vals = tl.load(a_base + rows * N, mask=mask, other=0.0).to(tl.float32)
+            tl.store(u_base + rows, vals / denom, mask=mask)
+    else:
+        for base in range(0, N, BLOCK_R):
+            cols = base + offsets
+            mask = cols < N
+            vals = tl.load(a_base + cols, mask=mask, other=0.0).to(tl.float32)
+            norm_sq += tl.sum(vals * vals)
+
+        norm = tl.sqrt(norm_sq)
+        denom = tl.maximum(norm, eps)
+        tl.store(S + pid, norm)
+        tl.store(U + pid, 1.0)
+
+        v_base = V + pid * N
+        for base in range(0, N, BLOCK_R):
+            cols = base + offsets
+            mask = cols < N
+            vals = tl.load(a_base + cols, mask=mask, other=0.0).to(tl.float32)
+            tl.store(v_base + cols, vals / denom, mask=mask)
+
+
 def _rank1_svd(input):
     batch, m, n = _svd_shape(input)
     a = input.contiguous().reshape(batch, m, n)
-    if n == 1:
-        col = a[..., :, 0]
-        s = torch.linalg.vector_norm(col, dim=-1, keepdim=True)
-        u = col.unsqueeze(-1) / s.clamp_min(torch.finfo(input.dtype).eps).unsqueeze(-1)
-        v = torch.ones((batch, 1, 1), dtype=input.dtype, device=input.device)
-    else:
-        row = a[..., 0, :]
-        s = torch.linalg.vector_norm(row, dim=-1, keepdim=True)
-        u = torch.ones((batch, 1, 1), dtype=input.dtype, device=input.device)
-        v = row.unsqueeze(-1) / s.clamp_min(torch.finfo(input.dtype).eps).unsqueeze(-1)
+    u = torch.empty((batch, m, 1), dtype=input.dtype, device=input.device)
+    s = torch.empty((batch, 1), dtype=input.dtype, device=input.device)
+    v = torch.empty((batch, n, 1), dtype=input.dtype, device=input.device)
+    if batch != 0:
+        rows = max(m, n)
+        block_r = _RANK1_BLOCK_R_MAX
+        if rows <= _RANK1_BLOCK_R_MAX:
+            block_r = triton.next_power_of_2(rows)
+        with torch_device_fn.device(input.device):
+            _rank1_svd_kernel[(batch,)](
+                a,
+                u,
+                s,
+                v,
+                m,
+                n,
+                TALL=n == 1,
+                BLOCK_R=block_r,
+                num_warps=1 if block_r <= 64 else 4,
+            )
     return (
         u.reshape(*input.shape[:-2], m, 1),
         s.reshape(*input.shape[:-2], 1),

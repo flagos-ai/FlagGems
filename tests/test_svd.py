@@ -6,6 +6,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 FAST_SHAPES = [(2, 2), (8, 2), (2, 8), (16, 8), (8, 16), (64, 32), (32, 64)]
+RANK1_SHAPES = [(8, 1), (1, 8), (2, 17, 1), (2, 1, 17), (1025, 1), (1, 1025)]
 FALLBACK_SHAPES = [(5, 3), (3, 5), (2, 4, 4)]
 
 
@@ -67,6 +68,43 @@ def test_accuracy_svd_fast_float32(shape):
     utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
     reconstructed = _reconstruct(res_u, res_s, res_v)
     utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
+
+
+@pytest.mark.svd
+@pytest.mark.parametrize("shape", RANK1_SHAPES)
+def test_accuracy_svd_rank1_float32(shape):
+    inp = _make_input(shape, torch.float32)
+    ref_inp = utils.to_reference(inp, False)
+    ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
+
+    with flag_gems.use_gems(include=["svd"]):
+        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+
+    assert res_u.shape == ref_u.shape
+    assert res_s.shape == ref_s.shape
+    assert res_v.shape == ref_v.shape
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
+    reconstructed = _reconstruct(res_u, res_s, res_v)
+    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
+
+
+@pytest.mark.svd
+@pytest.mark.parametrize("shape", RANK1_SHAPES)
+def test_accuracy_svd_rank1_zero_basis(shape):
+    inp = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
+
+    with flag_gems.use_gems(include=["svd"]):
+        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+
+    assert torch.count_nonzero(res_s).item() == 0
+    if shape[-1] == 1:
+        expected_u = utils.to_reference(torch.zeros_like(res_u), False)
+        expected_v = utils.to_reference(torch.ones_like(res_v), False)
+    else:
+        expected_u = utils.to_reference(torch.ones_like(res_u), False)
+        expected_v = utils.to_reference(torch.zeros_like(res_v), False)
+    utils.gems_assert_close(res_u, expected_u, res_u.dtype)
+    utils.gems_assert_close(res_v, expected_v, res_v.dtype)
 
 
 @pytest.mark.svd
