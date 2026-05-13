@@ -47,13 +47,27 @@ jobs:
         op-test-${{ inputs.vendor }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: Wandalen/wretry.action@v3.8.0
-        with:
-          action: actions/checkout@v6
-          attempt_limit: 5
-          attempt_delay: 20000
-          # with:
-          # ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
+      - id: checkout-attempt-1
+        uses: actions/checkout@v6
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@v6
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@v6
+
       - name: Setup FlagGems
         shell: bash
         env:
