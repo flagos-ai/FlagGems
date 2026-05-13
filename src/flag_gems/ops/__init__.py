@@ -96,6 +96,7 @@ from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
+from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma_
 from flag_gems.ops.div import (
     div_mode,
@@ -135,6 +136,7 @@ from flag_gems.ops.floor_ import floor_
 from flag_gems.ops.fmin import fmin, fmin_out
 from flag_gems.ops.fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from flag_gems.ops.fp8_matmul import fp8_matmul
+from flag_gems.ops.fp8_mqa_logits import fp8_mqa_logits
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
@@ -303,6 +305,11 @@ from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.sinh_ import sinh_
 from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_scatter import slice_scatter
+from flag_gems.ops.smooth_l1_loss import (
+    smooth_l1_loss,
+    smooth_l1_loss_backward,
+    smooth_l1_loss_out,
+)
 from flag_gems.ops.soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 from flag_gems.ops.softmax import (
     softmax,
@@ -486,6 +493,7 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diff",
     "digamma_",
     "div_mode",
     "div_mode_",
@@ -535,6 +543,7 @@ __all__ = [
     "fmod_scalar_",
     "fmod_tensor",
     "fmod_tensor_",
+    "fp8_mqa_logits",
     "full",
     "full_like",
     "gather",
@@ -750,6 +759,9 @@ __all__ = [
     "sinh_",
     "slice_backward",
     "slice_scatter",
+    "smooth_l1_loss",
+    "smooth_l1_loss_backward",
+    "smooth_l1_loss_out",
     "soft_margin_loss",
     "soft_margin_loss_out",
     "softmax",
