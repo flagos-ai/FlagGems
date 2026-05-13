@@ -102,11 +102,12 @@ def _reference_scaled_mm(mat1, mat2, scale_a, scale_b, bias, out_dtype):
 
 def _assert_scaled_mm_close(res, ref, dtype, reduce_dim):
     if _is_float8(dtype):
-        torch.testing.assert_close(
-            res.float(), ref.to(res.device).float(), atol=1.25e-1, rtol=5e-1
-        )
+        res = res.float().cpu() if utils.TO_CPU else res.float()
+        ref = ref.float() if utils.TO_CPU else ref.to(res.device).float()
+        torch.testing.assert_close(res, ref, atol=1.25e-1, rtol=5e-1)
         return
-    utils.gems_assert_close(res, ref.to(flag_gems.device), dtype, reduce_dim=reduce_dim)
+    ref = ref if utils.TO_CPU else ref.to(flag_gems.device)
+    utils.gems_assert_close(res, ref, dtype, reduce_dim=reduce_dim)
 
 
 @pytest.mark.skipif(
