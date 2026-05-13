@@ -1,4 +1,4 @@
-__all__ = ["any", "any_dim", "any_dims"]
+# __all__ = ["any", "any_dim", "any_dims"]
 from .all import all, all_dim, all_dims
 from .abs import abs, abs_
 from .add import add, add_
@@ -6,6 +6,7 @@ from .angle import angle
 from .any import any, any_dim, any_dims
 from .atan import atan, atan_
 from .addcmul import addcmul
+from .addmm import addmm, addmm_out
 from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
@@ -83,6 +84,7 @@ from .gelu import gelu, gelu_, gelu_backward
 from .glu import glu
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
+from .index import index
 from .index_add import index_add, index_add_
 from .index_select import index_select
 from .isclose import allclose, isclose
@@ -108,6 +110,7 @@ from .max import max, max_dim
 from .maximum import maximum
 from .max_pool2d_with_indices import max_pool2d_with_indices, max_pool2d_backward
 from .mean import mean_dim
+from .min import min, min_dim
 from .minimum import minimum
 from .mm import mm
 from .mse_loss import mse_loss
@@ -159,6 +162,7 @@ from .sum import sum, sum_out, sum_dim, sum_dim_out
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .to import to_dtype
+from .topk import topk
 from .unique import (
     _unique2,
     simple_unique_flat,
@@ -186,6 +190,8 @@ __all__ = [
     "zero_",
     "scatter",
     "scatter_",
+    "topk",
+    "topk_backward",
     "ScaleDotProductAttention",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
@@ -240,6 +246,8 @@ __all__ = [
     "pow_tensor_scalar_",
     "pow_scalar",
     "maximum",
+    "min",
+    "min_dim",
     "minimum",
     "sub",
     "sub_",
@@ -302,6 +310,7 @@ __all__ = [
     "contiguous",
     "eye_m",
     "dropout",
+    "index",
     "index_add",
     "index_add_",
     "bmm",
@@ -312,6 +321,8 @@ __all__ = [
     "abs",
     "abs_",
     "addcmul",
+    "addmm",
+    "addmm_out",
     "angle",
     "bitwise_not",
     "bitwise_not_",

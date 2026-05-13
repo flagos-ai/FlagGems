@@ -24,9 +24,14 @@ class Register:
         self.reg_key = self.device.dispatch_key
         self.all_ops = []
         self.all_keys = []
+        if self.device.vendor == common.vendors.CAMBRICON:
+            # TODO: Cambricon specific, to avoid op deadlock question in libtuner.
+            # Should remove this in the future.
+            self.torch_ops_map = {}
 
         # optional mapping func_name -> list of config entries
         self.full_config_by_func = full_config_by_func
+        self.cpp_patched_ops = set(cpp_patched_ops or [])
 
         if user_include_ops:
             self.include_ops = list(user_include_ops or [])
@@ -41,7 +46,6 @@ class Register:
             self.exclude_ops = (
                 list(user_exclude_ops or []) + self.vendor_unused_ops_list
             )
-            self.cpp_patched_ops = set(cpp_patched_ops or [])
             self.config = config
             self.config_filter()
             self.for_each()
@@ -60,6 +64,8 @@ class Register:
                         condition_func = config_item[2]
                         if not condition_func():
                             continue
+                    if op_name in self.cpp_patched_ops:
+                        continue
                     self.include_config.append((op_name, func))
         else:
             # fallback: scan provided config and match by func name or op name
@@ -75,6 +81,8 @@ class Register:
                     condition_func = config_item[2]
                     if not condition_func():
                         continue
+                if op_name in self.cpp_patched_ops:
+                    continue
                 self.include_config.append((op_name, func))
 
         if not self.include_config:
@@ -97,7 +105,7 @@ class Register:
 
     def get_vendor_unused_op(self):
         if self.device.vendor != common.vendors.NVIDIA:
-            return backend.get_curent_device_unused_op(self.device.vendor_name)
+            return backend.get_unused_ops(self.device.vendor_name)
         return []
 
     def register_impl(self, key, fn):
@@ -106,7 +114,22 @@ class Register:
         device_key = self.reg_key
         self.all_ops.append(fn.__name__)
         self.all_keys.append(key)
-        self.lib.impl(key, fn, device_key)
+        if self.device.vendor == common.vendors.CAMBRICON:
+            import torch
+
+            try:
+                self.torch_ops_map["aten::" + key] = torch.library.get_kernel(
+                    "aten::" + key, device_key
+                )
+            except Exception:
+                pass
+            try:
+                self.lib.impl(key, fn, device_key, allow_override=True)
+            except TypeError:
+                # Older torch versions don't support allow_override
+                self.lib.impl(key, fn, device_key)
+        else:
+            self.lib.impl(key, fn, device_key)
 
     def for_each(self):
         for key, func in self.config:

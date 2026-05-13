@@ -220,14 +220,16 @@ def to_reference(inp, upcast=False):
         ref_inp = ref_inp.to("cpu")
     if upcast:
         if ref_inp.is_complex():
-            ref_inp = ref_inp.to(torch.complex128)
+            ref_inp = ref_inp.to(
+                torch.complex128 if fp64_is_supported else torch.complex64
+            )
         else:
-            ref_inp = ref_inp.to(torch.float64)
+            ref_inp = ref_inp.to(torch.float64 if fp64_is_supported else torch.float32)
     return ref_inp
 
 
 def to_cpu(res, ref):
-    if TO_CPU:
+    if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
         res = res.to("cpu")
         assert ref.device == torch.device("cpu")
     return res

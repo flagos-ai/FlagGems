@@ -14,10 +14,16 @@ from .index_add import index_add, index_add_
 from .index_put import index_put, index_put_
 from .index_select import index_select
 from .log import log
-from .log_softmax import log_softmax, log_softmax_backward
+from .log_softmax import (
+    log_softmax,
+    log_softmax_backward,
+    log_softmax_backward_out,
+    log_softmax_out,
+)
 from .max import max, max_dim
 from .min import min, min_dim
 from .normal import normal_
+from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
 from .prod import prod, prod_dim
@@ -26,6 +32,7 @@ from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
+from .repeat import repeat
 from .repeat_interleave import (
     repeat_interleave_self_int,
     repeat_interleave_self_tensor,
@@ -33,51 +40,30 @@ from .repeat_interleave import (
 )
 from .resolve_conj import resolve_conj
 from .sort import sort, sort_stable
+from .tile import tile
+from .unique import _unique2
+from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
     "amax",
-    "rand",
-    "rand_like",
-    "dropout",
-    "dropout_backward",
-    "celu",
-    # "celu_",
-    "ones",
-    "ones_like",
-    "randn",
-    "randn_like",
-    "zeros",
-    "zero_",
-    "zeros_like",
-    "log",
-    "log_softmax",
-    "log_softmax_backward",
-    "sort",
-    "arange",
-    "arange_start",
-    "sort_stable",
-    "randperm",
-    "repeat_interleave_self_int",
-    "repeat_interleave_self_tensor",
-    "repeat_interleave_tensor",
-    "conv2d",
     "all",
     "all_dim",
     "all_dims",
     "any",
     "any_dim",
     "any_dims",
+    "arange",
+    "arange_start",
     "argmin",
-    "prod",
-    "prod_dim",
-    "min",
-    "min_dim",
-    "max",
-    "max_dim",
     "batch_norm",
     "batch_norm_backward",
+    "celu",
+    # "celu_",
+    "conv2d",
+    "dropout",
+    "dropout_backward",
     "gather",
     "gather_backward",
     "index_add",
@@ -85,19 +71,57 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
-    "resolve_conj",
+    "log",
+    "log_softmax",
+    "log_softmax_backward",
+    "log_softmax_backward_out",
+    "log_softmax_out",
+    "max",
+    "max_dim",
+    "min",
+    "min_dim",
     "normal_",
+    "one_hot",
+    "ones",
+    "ones_like",
+    "prod",
+    "prod_dim",
+    "rand",
+    "rand_like",
+    "randn",
+    "randn_like",
+    "randperm",
+    "repeat",
+    "repeat_interleave_self_int",
+    "repeat_interleave_self_tensor",
+    "repeat_interleave_tensor",
+    "resolve_conj",
+    "sort",
+    "sort_stable",
+    "tile",
+    "_unique2",
+    "w8a8_block_fp8_matmul",
+    "zero_",
+    "zeros",
+    "zeros_like",
 ]
 
-if get_device_capability(current_device())[0] >= 3:
-    from .addmm import addmm
-    from .bmm import bmm
-    from .gelu import gelu
-    from .mm import mm
-    from .tanh import tanh
 
-    __all__ += ["gelu"]
-    __all__ += ["tanh"]
-    __all__ += ["mm"]
-    __all__ += ["addmm"]
-    __all__ += ["bmm"]
+if get_device_capability(current_device())[0] >= 3:
+    from .addmm import addmm, addmm_dtype, addmm_dtype_out  # noqa: F401
+    from .bmm import bmm  # noqa: F401
+    from .gelu import gelu  # noqa: F401
+    from .mm import mm  # noqa: F401
+    from .tanh import tanh  # noqa: F401
+
+    __all__.extend(
+        [
+            "addmm",
+            "addmm_dtype",
+            "addmm_dtype_out",
+            "bmm",
+            "gelu",
+            "mm",
+            "tanh",
+        ]
+    )

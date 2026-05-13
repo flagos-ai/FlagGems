@@ -3,19 +3,19 @@ name: mkdocs
 on:
   workflow_call:
 
-  schedule:
-    - cron: '0 16 * * *'
+permissions:
+  contents: read
 
 jobs:
   build-doc:
-    runs-on: docs
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - shell: bash
         run: |
-          mkdocs build
-          echo "Website: http://120.92.44.177/gems_docs/"
+          echo "To be revised"
       - if: github.event_name == 'schedule'
         shell: bash
         run: |
-          mkdocs build --config-file mkdocs.yml --site-dir /html/gems_docs
+          # mkdocs build --config-file mkdocs.yml --site-dir /html/gems_docs
+          echo "To be revised"

@@ -25,6 +25,8 @@ vendor_info = VendorInfoBase(
 )
 
 CUSTOMIZED_UNUSED_OPS = (
+    "masked_scatter",
+    "masked_scatter_",
     "scatter_add_",
     "masked_scatter",
     "masked_scatter_",

@@ -1,4 +1,20 @@
-from backend_utils import VendorInfoBase  # noqa: E402
+from flag_gems.runtime.backend.backend_utils import VendorInfoBase
+
+from .utils import CORE_NUM  # noqa: F401
+
+
+def get_triton_extra_name():
+    try:
+        import triton
+        from packaging import version
+
+        if version.parse(triton.__version__) < version.parse("3.2.0"):
+            return "ascend"
+        else:
+            return "cann"
+    except Exception:
+        return "ascend"
+
 
 from .utils import CORE_NUM  # noqa: F401
 
@@ -25,11 +41,11 @@ vendor_info = VendorInfoBase(
 )
 
 CUSTOMIZED_UNUSED_OPS = (
+    "to_copy",
     "contiguous",
+    "copy_",
     "sort",
     "sort_stable",
-    "copy_",
-    "_to_copy",
 )
 
 

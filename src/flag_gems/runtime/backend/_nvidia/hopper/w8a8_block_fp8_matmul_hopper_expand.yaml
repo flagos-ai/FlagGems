@@ -1,0 +1,115 @@
+w8a8_block_fp8_general:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        GROUP_M: group_m
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 16
+      - 64
+      - 128
+    block_n:
+      - 32
+      - 128
+    block_k:
+      - 128
+    group_m:
+      - 16
+      - 32
+      - 64
+    stages:
+      - 3
+      - 4
+      - 5
+    warps:
+      - 4
+      - 8
+  - strategy:
+     M: default
+     N: default
+     K: default
+     stride_am: default
+     stride_bk: default
+
+w8a8_block_fp8_general_splitk:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        SPLIT_K: split_k
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 16
+      - 64
+      - 128
+    block_n:
+      - 32
+      - 64
+    block_k:
+      - 128
+    split_k:
+      - 4
+      - 8
+      - 16
+      - 28
+    stages:
+      - 1
+      - 2
+      - 3
+    warps:
+      - 4
+      - 8
+  - strategy:
+      M: default
+      N: default
+      K: default
+      stride_am: default
+      stride_bk: default
+
+w8a8_block_fp8_general_tma:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        GROUP_M: group_m
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 16
+      - 64
+      - 128
+    block_n:
+      - 32
+      - 128
+    block_k:
+      - 128
+    group_m:
+      - 1
+      - 4
+      - 8
+      - 16
+      - 32
+      - 64
+    stages:
+      - 3
+      - 4
+      - 5
+    warps:
+      - 4
+      - 8
+  - strategy:
+     M: default
+     N: default
+     K: default
+     stride_am: default
+     stride_bk: default
+     dtype: default
