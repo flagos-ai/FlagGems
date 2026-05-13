@@ -583,10 +583,16 @@ def _rank2_svd(input):
     u = torch.empty((batch, m, 2), dtype=input.dtype, device=input.device)
     s = torch.empty((batch, 2), dtype=input.dtype, device=input.device)
     v = torch.empty((batch, n, 2), dtype=input.dtype, device=input.device)
-    block_r = triton.next_power_of_2(max(m, n))
+    largest = max(m, n)
+    block_r = triton.next_power_of_2(largest)
     with torch_device_fn.device(input.device):
-        if max(m, n) <= 16 and batch >= 16:
-            block_b = 16
+        if largest <= 16 and batch >= 16:
+            if largest <= 2:
+                block_b = 8
+            elif largest == 16:
+                block_b = 2 if m >= n else 8
+            else:
+                block_b = 16
             _rank2_svd_tiny_kernel[(triton.cdiv(batch, block_b),)](
                 a,
                 u,
@@ -631,7 +637,7 @@ def _small_jacobi_svd(input):
     v = torch.empty((batch, n, k), dtype=input.dtype, device=input.device)
     block_r = triton.next_power_of_2(rows)
     block_k = triton.next_power_of_2(k)
-    sweeps = 3 if k <= 4 else 6
+    sweeps = 3 if k <= 4 else 5
     with torch_device_fn.device(input.device):
         _small_jacobi_svd_kernel[(batch,)](
             a,
