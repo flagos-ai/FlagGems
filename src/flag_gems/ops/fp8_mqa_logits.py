@@ -112,7 +112,7 @@ def fp8_mqa_logits(
     cu_seqlen_ke: torch.Tensor,
     clean_logits: bool,
 ) -> torch.Tensor:
-    logger.debug("FP8 MQA LOGITS")
+    logger.debug("GEMS FP8_MQA_LOGITS")
 
     k_fp8, k_scales = kv
 
