@@ -29,7 +29,8 @@ def generate_fp8_einsum_data(
 
     a_scale = torch.rand((B, H, n_k_blocks), dtype=torch.float32, device=device) + 0.5
     b_scale = (
-        torch.rand((H, n_d_blocks, n_k_blocks), dtype=torch.float32, device=device) + 0.5
+        torch.rand((H, n_d_blocks, n_k_blocks), dtype=torch.float32, device=device)
+        + 0.5
     )
 
     out = torch.empty((B, H, D), device=device, dtype=torch.bfloat16)

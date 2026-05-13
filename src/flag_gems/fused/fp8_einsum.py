@@ -84,13 +84,19 @@ def _fp8_einsum_kernel(
         )
         a_scale_vals = tl.load(a_scale_ptrs, mask=offs_m < B, other=0.0)
         b_scale_val = tl.load(
-            b_scale_ptr + pid_h * stride_bsh + d_blk_idx * stride_bsd + k_blk * stride_bsk
+            b_scale_ptr
+            + pid_h * stride_bsh
+            + d_blk_idx * stride_bsd
+            + k_blk * stride_bsk
         )
 
         acc += dot_result * (a_scale_vals[:, None] * b_scale_val)
 
     out_ptrs = (
-        out_ptr + offs_m[:, None] * stride_ob + pid_h * stride_oh + offs_n[None, :] * stride_od
+        out_ptr
+        + offs_m[:, None] * stride_ob
+        + pid_h * stride_oh
+        + offs_n[None, :] * stride_od
     )
     out_mask = (offs_m[:, None] < B) & (offs_n[None, :] < D)
     tl.store(out_ptrs, acc.to(tl.bfloat16), mask=out_mask)
@@ -119,9 +125,7 @@ def fp8_einsum(
         recipe: Optional tuning recipe (sfa_gran_k, sfb_gran_k, sfb_gran_mn)
     """
     if equation != "bhr,hdr->bhd":
-        raise NotImplementedError(
-            f"Only 'bhr,hdr->bhd' is supported, got '{equation}'"
-        )
+        raise NotImplementedError(f"Only 'bhr,hdr->bhd' is supported, got '{equation}'")
 
     logger.debug("GEMS FP8 EINSUM FORWARD")
 
