@@ -23,3 +23,14 @@ def test_floor_divide_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+@pytest.mark.floor_divide_tensor_
+def test_floor_divide_tensor_inplace():
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="floor_divide_tensor_",
+        torch_op=lambda a, b: a.floor_divide_(b),
+        dtypes=consts.INT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()
