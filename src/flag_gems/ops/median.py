@@ -879,8 +879,6 @@ def median(inp):
     if _is_iluvatar_backend():
         return _median_flat_native(flat)
     if inp.dtype in _DIRECT_REDUCTION_DTYPES and inp.numel() <= _DIRECT_FLAT_LIMIT:
-        if _is_iluvatar_backend():
-            return _median_flat_native(flat)
         return _median_small_flat(flat)
 
     row_data = flat.reshape(1, inp.numel())
@@ -888,6 +886,13 @@ def median(inp):
         values, _ = _median_f16_key_select(row_data, ())
     elif inp.dtype in _FLAT_SORT_DTYPES and inp.numel() <= _FLAT_SORT_LIMIT:
         values, _ = _median_lastdim_sort(row_data, ())
+    elif _use_fp32_key_select(inp.dtype, inp.numel()):
+        values, _ = _median_fp32_key_select(row_data, ())
+    elif (
+        inp.numel() <= _INT_LASTDIM_SELECT_LIMIT
+        and inp.dtype in _INT_LASTDIM_SELECT_DTYPES
+    ):
+        values, _ = _median_int_lastdim_select(row_data, ())
     else:
         values, _ = _median_from_rows(row_data)
     return values.reshape(())
@@ -969,7 +974,21 @@ def median_dim(inp, dim=0, keepdim=False):
             )
         else:
             rows = torch.movedim(work, dim, -1).contiguous()
-            values, indices = _median_from_rows(rows)
+            row_output_shape = rows.shape[:-1]
+            row_width = rows.shape[-1]
+            if _use_f16_key_select(rows.dtype, row_width):
+                values, indices = _median_f16_key_select(rows, row_output_shape)
+            elif _use_lastdim_sort(rows.dtype, row_width):
+                values, indices = _median_lastdim_sort(rows, row_output_shape)
+            elif _use_fp32_key_select(rows.dtype, row_width):
+                values, indices = _median_fp32_key_select(rows, row_output_shape)
+            elif (
+                row_width <= _INT_LASTDIM_SELECT_LIMIT
+                and rows.dtype in _INT_LASTDIM_SELECT_DTYPES
+            ):
+                values, indices = _median_int_lastdim_select(rows, row_output_shape)
+            else:
+                values, indices = _median_from_rows(rows)
             if keepdim:
                 values = torch.movedim(values.unsqueeze(-1), -1, dim)
                 indices = torch.movedim(indices.unsqueeze(-1), -1, dim)
