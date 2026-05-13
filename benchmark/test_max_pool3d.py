@@ -74,6 +74,7 @@ def test_perf_max_pool3d():
 
 
 @pytest.mark.max_pool3d
+@pytest.mark.max_pool3d_backward
 def test_perf_max_pool3d_backward():
     def max_pool3d_backward_input_fn(shape, dtype, device):
         for forward_args in max_pool3d_input_fn(shape, dtype, device):
