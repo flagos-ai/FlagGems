@@ -1,0 +1,36 @@
+# auto_gen configuration
+
+# FlagGems project root (the git repo)
+flaggems_dir: /path/to/FlagGems
+
+# Python interpreter with FlagGems environment
+python_path: /path/to/python
+
+# Claude Code executable
+claude_bin: claude
+
+# Maximum retry attempts per operator (on failure)
+max_retries: 3
+
+# Maximum budget (USD) per operator per attempt
+budget_per_op: 10000000.0
+
+# Prompt template path (relative to this config file)
+template: templates/generate_op.md
+
+# Results directory (relative to this config file)
+results_dir: results
+
+# Device management
+device:
+  # Lock file directory for GPU allocation
+  lock_dir: /tmp/auto_gen_gpu_locks
+  # Set to null to auto-detect all GPUs
+  # Or specify a list of GPU IDs to use, e.g. [0, 1, 2, 3]
+  gpu_ids: null
+
+# Timeout (seconds) per operator task; 0 or null to disable
+timeout_per_op: 1800
+
+# Polling interval (seconds) for checking process status
+poll_interval: 10

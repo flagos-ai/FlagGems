@@ -1,0 +1,6 @@
+.env
+config.yaml
+__pycache__/
+results/
+test_*.txt
+*.backup
