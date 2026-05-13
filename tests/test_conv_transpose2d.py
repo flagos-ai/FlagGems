@@ -84,3 +84,19 @@ def test_accuracy_conv_transpose2d(
     )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.conv_transpose2d
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_conv_transpose2d_lowp_bias_dtype_mismatch_raises(dtype):
+    if torch.device(flag_gems.device).type != "cuda":
+        pytest.skip("lowp conv_transpose2d fallback path requires CUDA")
+    if dtype is torch.bfloat16 and not torch.cuda.is_bf16_supported():
+        pytest.skip("native BF16 conv_transpose2d is unsupported on this CUDA device")
+
+    inp = torch.randn((1, 2, 4, 4), dtype=dtype, device=flag_gems.device)
+    weight = torch.randn((2, 1, 3, 3), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((1,), dtype=torch.float32, device=flag_gems.device)
+
+    with pytest.raises(RuntimeError):
+        flag_gems.conv_transpose2d(inp, weight, bias=bias)

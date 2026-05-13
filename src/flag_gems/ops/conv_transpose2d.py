@@ -991,6 +991,21 @@ def _lowp_semantic_fallback_conv_transpose2d(
     dilation_h,
     dilation_w,
 ):
+    if bias is not None and bias.dtype != input.dtype:
+        return _semantic_fallback_conv_transpose2d(
+            input,
+            weight,
+            bias,
+            stride_h,
+            stride_w,
+            padding_h,
+            padding_w,
+            output_padding_h,
+            output_padding_w,
+            groups,
+            dilation_h,
+            dilation_w,
+        )
     bias_fp32 = bias.float() if bias is not None else None
     output = _semantic_fallback_conv_transpose2d(
         input.float(),
@@ -1188,6 +1203,14 @@ def conv_transpose2d(
     if fp16_shape_key == _K4_FP16_SHAPE:
         return _conv_transpose2d_k4_fp16(input, weight)
 
+    direct_lowp_dtypes = _TRITON_DIRECT_LOWP_DTYPES
+    if (
+        input.device.type == "cuda"
+        and input.dtype is torch.bfloat16
+        and not torch.cuda.is_bf16_supported()
+    ):
+        direct_lowp_dtypes = (torch.float16,)
+
     direct_shape_key = _exact_shape_key(
         input,
         weight,
@@ -1201,7 +1224,7 @@ def conv_transpose2d(
         groups,
         dilation_h,
         dilation_w,
-        _TRITON_DIRECT_LOWP_DTYPES,
+        direct_lowp_dtypes,
     )
     if direct_shape_key in _DIRECT_TRITON_SHAPES:
         return _conv_transpose2d_direct(
