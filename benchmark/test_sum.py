@@ -10,3 +10,20 @@ def test_sum():
         op_name="sum", torch_op=torch.sum, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
+
+
+def sum_out_input_fn(shape, dtype, device):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    out = torch.empty([], dtype=dtype, device=device)
+    yield inp, {"out": out}
+
+
+@pytest.mark.sum_out
+def test_sum_out():
+    bench = base.GenericBenchmark(
+        op_name="sum_out",
+        torch_op=torch.ops.aten.sum.out,
+        input_fn=sum_out_input_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
