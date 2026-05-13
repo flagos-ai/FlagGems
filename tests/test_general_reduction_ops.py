@@ -128,6 +128,7 @@ def test_accuracy_max_without_dim(shape, dtype):
 
 
 @pytest.mark.max
+@pytest.mark.skipif(flag_gems.vendor_name == "sophgo", reason="not supported")
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_max_without_dim_all_neg_inf(shape, dtype):

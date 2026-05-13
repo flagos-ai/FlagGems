@@ -83,7 +83,7 @@ def max_kernel_value_only(
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
     dtype = inp.type.element_ty
-    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
+    acc_type = tl.float32 if (dtype is tl.bfloat16 or dtype is tl.float16) else dtype
     min_value = get_dtype_min(dtype)
     result_value = tl.full([BLOCK_M], value=min_value, dtype=acc_type)
 
