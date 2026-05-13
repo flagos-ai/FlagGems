@@ -24,3 +24,20 @@ def test_remainder_tensor_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+def scalar_tensor_remainder_input_fn(shape, dtype, device):
+    inp = torch.randint(1, 100, shape, dtype=dtype, device=device)
+    scalar = 7
+    yield scalar, inp
+
+
+@pytest.mark.remainder_scalar_tensor
+def test_remainder_scalar_tensor():
+    bench = base.GenericBenchmark(
+        op_name="remainder_scalar_tensor",
+        torch_op=torch.remainder,
+        input_fn=scalar_tensor_remainder_input_fn,
+        dtypes=consts.INT_DTYPES,
+    )
+    bench.run()
