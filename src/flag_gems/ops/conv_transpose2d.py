@@ -12,7 +12,16 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
 
-_DIRECT_FP16_SHAPES = {
+_TRITON_DIRECT_LOWP_DTYPES = (torch.float16, torch.bfloat16)
+
+# Exact no-bias/group=1 shapes covered by the direct Triton kernel.
+_DIRECT_TRITON_SHAPES = {
+    (1, 64, 128, 128, 64, 3, 3, 1, 1),
+    (1, 64, 64, 64, 32, 3, 3, 2, 1),
+    (4, 32, 32, 32, 32, 3, 3, 2, 1),
+    (8, 16, 64, 64, 16, 5, 5, 2, 2),
+    (16, 32, 16, 16, 64, 3, 3, 2, 1),
+    (32, 64, 32, 32, 32, 3, 3, 1, 0),
     (32, 64, 16, 16, 32, 3, 3, 1, 1),
     (32, 64, 16, 16, 32, 3, 3, 2, 1),
     (16, 32, 32, 32, 64, 3, 3, 2, 1),
@@ -23,10 +32,6 @@ _BLOCKER_FP16_SHAPE = (4, 256, 8, 8, 128, 3, 3, 2, 1)
 
 _K4_FP16_SHAPE = (8, 128, 4, 4, 64, 4, 4, 2, 1)
 
-_NATIVE_FP16_SHAPES = {
-    (8, 128, 4, 4, 64, 4, 4, 2, 1),
-}
-
 
 def _pair(value):
     if isinstance(value, (list, tuple)):
@@ -34,7 +39,7 @@ def _pair(value):
     return int(value), int(value)
 
 
-def _exact_fp16_shape_key(
+def _exact_shape_key(
     input,
     weight,
     bias,
@@ -47,6 +52,7 @@ def _exact_fp16_shape_key(
     groups,
     dilation_h,
     dilation_w,
+    supported_dtypes,
 ):
     if bias is not None:
         return None
@@ -56,7 +62,7 @@ def _exact_fp16_shape_key(
         return None
     if (output_padding_h, output_padding_w) != (0, 0):
         return None
-    if input.dtype is not torch.float16 or weight.dtype is not torch.float16:
+    if input.dtype not in supported_dtypes or weight.dtype != input.dtype:
         return None
     if input.device.type != "cuda" or weight.device != input.device:
         return None
@@ -84,7 +90,7 @@ def _exact_fp16_shape_key(
     )
 
 
-def _aten_conv_transpose2d(
+def _semantic_fallback_conv_transpose2d(
     input,
     weight,
     bias,
@@ -98,6 +104,7 @@ def _aten_conv_transpose2d(
     dilation_h,
     dilation_w,
 ):
+    # Redispatch is kept for PyTorch semantic coverage outside Triton specializations.
     return torch.ops.aten.conv_transpose2d.input.redispatch(
         _FALLBACK_KEYSET,
         input,
@@ -970,7 +977,7 @@ def _conv_transpose2d_fp32_32_64_kernel(
     tl.store(output_pointer + output_offsets, accum, mask=output_mask)
 
 
-def _high_precision_lowp_conv_transpose2d(
+def _lowp_semantic_fallback_conv_transpose2d(
     input,
     weight,
     bias,
@@ -985,7 +992,7 @@ def _high_precision_lowp_conv_transpose2d(
     dilation_w,
 ):
     bias_fp32 = bias.float() if bias is not None else None
-    output = _aten_conv_transpose2d(
+    output = _semantic_fallback_conv_transpose2d(
         input.float(),
         weight.float(),
         bias_fp32,
@@ -1160,7 +1167,7 @@ def conv_transpose2d(
         ):
             return _conv_transpose2d_blocker_fp32(input, weight)
 
-    fp16_shape_key = _exact_fp16_shape_key(
+    fp16_shape_key = _exact_shape_key(
         input,
         weight,
         bias,
@@ -1173,6 +1180,7 @@ def conv_transpose2d(
         groups,
         dilation_h,
         dilation_w,
+        (torch.float16,),
     )
     if fp16_shape_key == _BLOCKER_FP16_SHAPE:
         return _conv_transpose2d_blocker_fp16(input, weight)
@@ -1180,8 +1188,23 @@ def conv_transpose2d(
     if fp16_shape_key == _K4_FP16_SHAPE:
         return _conv_transpose2d_k4_fp16(input, weight)
 
-    if fp16_shape_key in _DIRECT_FP16_SHAPES:
-        return _conv_transpose2d_direct_fp16(
+    direct_shape_key = _exact_shape_key(
+        input,
+        weight,
+        bias,
+        stride_h,
+        stride_w,
+        padding_h,
+        padding_w,
+        output_padding_h,
+        output_padding_w,
+        groups,
+        dilation_h,
+        dilation_w,
+        _TRITON_DIRECT_LOWP_DTYPES,
+    )
+    if direct_shape_key in _DIRECT_TRITON_SHAPES:
+        return _conv_transpose2d_direct(
             input,
             weight,
             stride_h,
@@ -1192,26 +1215,10 @@ def conv_transpose2d(
             dilation_w,
             output_padding_h,
             output_padding_w,
-        )
-
-    if fp16_shape_key in _NATIVE_FP16_SHAPES:
-        return _aten_conv_transpose2d(
-            input,
-            weight,
-            bias,
-            stride_h,
-            stride_w,
-            padding_h,
-            padding_w,
-            output_padding_h,
-            output_padding_w,
-            groups,
-            dilation_h,
-            dilation_w,
         )
 
     if input.dtype in (torch.float16, torch.bfloat16) and weight.dtype == input.dtype:
-        return _high_precision_lowp_conv_transpose2d(
+        return _lowp_semantic_fallback_conv_transpose2d(
             input,
             weight,
             bias,
@@ -1226,7 +1233,7 @@ def conv_transpose2d(
             dilation_w,
         )
 
-    return _aten_conv_transpose2d(
+    return _semantic_fallback_conv_transpose2d(
         input,
         weight,
         bias,
@@ -1242,7 +1249,7 @@ def conv_transpose2d(
     )
 
 
-def _conv_transpose2d_direct_fp16(
+def _conv_transpose2d_direct(
     input,
     weight,
     stride_h,
@@ -1295,7 +1302,11 @@ def _conv_transpose2d_direct_fp16(
     block_ci = 32
     block_co = 32
     num_warps = 4
-    if shape_key == (16, 32, 32, 32, 64, 3, 3, 2, 1):
+    if shape_key == (1, 64, 128, 128, 64, 3, 3, 1, 1):
+        block_nhw = 128
+        block_ci = 16
+        num_warps = 8
+    elif shape_key == (16, 32, 32, 32, 64, 3, 3, 2, 1):
         block_nhw = 128
         block_ci = 16
         block_co = 64
@@ -1305,6 +1316,12 @@ def _conv_transpose2d_direct_fp16(
         num_warps = 8
     elif shape_key == (16, 32, 8, 8, 24, 5, 5, 2, 2):
         num_warps = 8
+    elif shape_key == (32, 64, 32, 32, 32, 3, 3, 1, 0):
+        block_nhw = 128
+        block_ci = 16
+        num_warps = 8
+        if input.dtype is torch.float16:
+            block_co = 64
     elif input_channels >= 64 and output_channels <= 32:
         block_ci = 64
         if stride_h == 1:
