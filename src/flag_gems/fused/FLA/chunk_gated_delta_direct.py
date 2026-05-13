@@ -44,6 +44,7 @@ def _chunk_gated_delta_rule_direct_fwd_kernel(
     BV: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     STORE_FINAL_STATE: tl.constexpr,
+    USE_QK_L2NORM_IN_KERNEL: tl.constexpr,
 ):
     i_v = tl.program_id(0)
     i_bh = tl.program_id(1)
@@ -77,6 +78,9 @@ def _chunk_gated_delta_rule_direct_fwd_kernel(
         b_k = tl.load(k_base + i_t * Hg * K + o_k, mask=mask_k, other=0.0).to(
             tl.float32
         )
+        if USE_QK_L2NORM_IN_KERNEL:
+            b_q = b_q / tl.maximum(tl.sqrt(tl.sum(b_q * b_q)), 1e-6)
+            b_k = b_k / tl.maximum(tl.sqrt(tl.sum(b_k * b_k)), 1e-6)
         b_v = tl.load(v_base + i_t * H * V + o_v, mask=mask_v, other=0.0).to(tl.float32)
         b_g = tl.load(g_base + i_t * H).to(tl.float32)
         b_beta = tl.load(beta_base + i_t * H).to(tl.float32)
@@ -135,6 +139,7 @@ def chunk_gated_delta_rule_direct_fwd(
     scale: float,
     initial_state: torch.Tensor | None,
     output_final_state: bool,
+    use_qk_l2norm_in_kernel: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
     B, T, Hg, K = q.shape
     H, V = v.shape[2], v.shape[3]
@@ -171,6 +176,7 @@ def chunk_gated_delta_rule_direct_fwd(
         V=V,
         BK=BK,
         BV=BV,
+        USE_QK_L2NORM_IN_KERNEL=use_qk_l2norm_in_kernel,
         num_warps=1 if use_one_warp else (4 if K >= 128 else 2),
         num_stages=1 if K <= 16 and V <= 16 else (2 if use_one_warp else 3),
     )

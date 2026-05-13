@@ -218,10 +218,6 @@ def chunk_gated_delta_rule(
     if scale is None:
         scale = k_seq.shape[-1] ** -0.5
 
-    if use_qk_l2norm_in_kernel:
-        q_seq = F.normalize(q_seq, p=2.0, dim=-1, eps=1e-6)
-        k_seq = F.normalize(k_seq, p=2.0, dim=-1, eps=1e-6)
-
     B, T, Hg, K = q_seq.shape
     H, V = v_seq.shape[2], v_seq.shape[3]
     if (
@@ -255,10 +251,15 @@ def chunk_gated_delta_rule(
                 scale=float(scale),
                 initial_state=None,
                 output_final_state=output_final_state,
+                use_qk_l2norm_in_kernel=use_qk_l2norm_in_kernel,
             )
             if head_first:
                 o = o.transpose(1, 2)
             return o, final_state
+
+    if use_qk_l2norm_in_kernel:
+        q_seq = F.normalize(q_seq, p=2.0, dim=-1, eps=1e-6)
+        k_seq = F.normalize(k_seq, p=2.0, dim=-1, eps=1e-6)
 
     if _is_iluvatar_backend():
         o, final_state = _recurrent_kernel_fwd(
