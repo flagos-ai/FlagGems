@@ -53,3 +53,48 @@ def test_scaled_dot_product_attention(monkeypatch, dropout_p, is_causal):
         ],
     )
     bench.run()
+
+
+@pytest.mark.scaled_dot_product_attention_backward
+@pytest.mark.xfail(
+    reason="Operator bug: backward kernel triggers CUDA illegal memory access"
+)
+@pytest.mark.parametrize("dropout_p", [0.0])
+@pytest.mark.parametrize("is_causal", [True, False])
+def test_scaled_dot_product_attention_backward(monkeypatch, dropout_p, is_causal):
+    if flag_gems.vendor_name == "hygon":
+        monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
+
+    def scaled_dot_product_attention_backward_kwargs(shape, dtype, device):
+        query = torch.randn(shape, device=device, dtype=dtype, requires_grad=True)
+        key = torch.randn(shape, device=device, dtype=dtype, requires_grad=True)
+        value = torch.randn(shape, device=device, dtype=dtype, requires_grad=True)
+        yield query, key, value, None, dropout_p, is_causal
+
+    def sdpa_flash(
+        query, key, value, attn_mask=None, dropout_p=dropout_p, is_causal=is_causal
+    ):
+        from torch.nn.attention import SDPBackend, sdpa_kernel
+
+        with sdpa_kernel(backends=[SDPBackend.FLASH_ATTENTION]):
+            return torch.nn.functional.scaled_dot_product_attention(
+                query,
+                key,
+                value,
+                attn_mask=attn_mask,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+            )
+
+    bench = AttentionBenchmark(
+        op_name="scaled_dot_product_attention",
+        input_fn=scaled_dot_product_attention_backward_kwargs,
+        torch_op=sdpa_flash,
+        gems_op=flag_gems.scaled_dot_product_attention,
+        dtypes=[
+            torch.float16,
+            torch.bfloat16,
+        ],
+        is_backward=True,
+    )
+    bench.run()
