@@ -10,7 +10,7 @@ from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 config_ = CodeGenConfig(
-    256,
+    32,
     (512, 1, 1),
     32,
     False,
