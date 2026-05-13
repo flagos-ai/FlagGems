@@ -125,6 +125,7 @@ test = [
     "gitpython==3.1.50",
     "openpyxl==3.1.5",
     "pytest==9.0.3",
+    "pytest-md-report==0.8.0",
     "scipy>=1.15.3",
 ]
 
