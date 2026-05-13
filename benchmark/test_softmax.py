@@ -24,3 +24,21 @@ def test_softmax_backward():
     )
 
     bench.run()
+
+
+def softmax_out_input_fn(shape, dtype, device):
+    inp = base.generate_tensor_input(shape, dtype, device)
+    out = torch.empty(shape, dtype=dtype, device=device)
+    dim = 1 if inp.ndim > 1 else 0
+    yield inp, dim, False, {"out": out}
+
+
+@pytest.mark.softmax_out
+def test_softmax_out():
+    bench = base.GenericBenchmark(
+        op_name="softmax_out",
+        torch_op=torch.ops.aten._softmax.out,
+        input_fn=softmax_out_input_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
