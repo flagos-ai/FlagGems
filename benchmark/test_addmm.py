@@ -56,7 +56,7 @@ def test_addmm_dtype(monkeypatch):
         op_name="addmm_dtype",
         input_fn=_input_fn_dtype,
         torch_op=torch.ops.aten.addmm.dtype,
-        dtypes=[torch.float16, torch.bfloat16],
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
