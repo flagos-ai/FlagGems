@@ -25,3 +25,28 @@ def test_nll_loss_forward():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+def nll_loss_nd_backward_input_fn(shape, cur_dtype, device):
+    inp = torch.randn(shape, dtype=cur_dtype, device=device, requires_grad=True)
+    target_shape = list(shape)
+    del target_shape[1]
+    target = torch.randint(0, shape[1], target_shape, device=device)
+    yield inp, target
+
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+        weight = torch.randn(shape[1], dtype=cur_dtype, device=device)
+        inp2 = torch.randn(shape, dtype=cur_dtype, device=device, requires_grad=True)
+        yield inp2, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
+
+
+@pytest.mark.nll_loss_nd_backward
+def test_nll_loss_nd_backward():
+    bench = base.GenericBenchmark2DOnly(
+        op_name="nll_loss_nd_backward",
+        input_fn=nll_loss_nd_backward_input_fn,
+        torch_op=torch.nn.functional.nll_loss,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
