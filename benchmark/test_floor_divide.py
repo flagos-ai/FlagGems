@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from . import base, consts
+from . import base, consts, utils
 
 
 @pytest.mark.floor_divide
@@ -21,5 +21,21 @@ def test_floor_divide_inplace():
         torch_op=lambda a, b: a.floor_divide_(b),
         dtypes=consts.INT_DTYPES,
         is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.floor_divide_scalar
+def test_floor_divide_scalar():
+    def input_fn(shape, dtype, device):
+        inp = utils.generate_tensor_input(shape, dtype, device)
+        scalar = 3
+        yield inp, scalar
+
+    bench = base.GenericBenchmark(
+        op_name="floor_divide_scalar",
+        torch_op=torch.floor_divide,
+        input_fn=input_fn,
+        dtypes=consts.INT_DTYPES,
     )
     bench.run()
