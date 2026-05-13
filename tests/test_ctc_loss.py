@@ -321,12 +321,18 @@ def test_ctc_loss_padded_concat_equivalent(reduction):
         reduction=reduction,
         zero_infinity=False,
     )
-    utils.gems_assert_close(out_p, out_c, torch.float32, reduce_dim=7 * 4)
+    # Gems-vs-Gems self-consistency: padded and concatenated target layouts must
+    # produce the same numerical result. Use torch.testing.assert_close directly
+    # because the gems_assert_close framework wrapper assumes the second operand
+    # is a CPU reference under --ref=cpu mode, which doesn't apply here.
+    # Tolerance matches the framework's default fp32 atol (the backward uses
+    # tl.atomic_add whose accumulation order is non-deterministic across runs).
+    torch.testing.assert_close(out_p, out_c, rtol=1e-5, atol=1e-4)
 
     grad = torch.randn_like(out_p)
     (gp,) = torch.autograd.grad(out_p, lp_p, grad)
     (gc,) = torch.autograd.grad(out_c, lp_c, grad)
-    utils.gems_assert_close(gp, gc, torch.float32, reduce_dim=7 * 4)
+    torch.testing.assert_close(gp, gc, rtol=1e-5, atol=1e-4)
 
 
 # ---------------------------------------------------------------------------
