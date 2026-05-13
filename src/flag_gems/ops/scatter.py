@@ -654,7 +654,9 @@ def _valid_scatter_reduce_fast_shapes(inp, dim, index, src) -> bool:
     return True
 
 
-def _can_use_scatter_reduce_scatter_path(inp, dim, index, src, reduce, include_self) -> bool:
+def _can_use_scatter_reduce_scatter_path(
+    inp, dim, index, src, reduce, include_self
+) -> bool:
     return (
         include_self
         and _scatter_reduce_as_scatter_reduce(reduce) is not None
@@ -769,9 +771,7 @@ def scatter_reduce_out(inp, dim, index, src, reduce, *, include_self=True, out):
     ):
         result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
         return _copy_scatter_reduce_out(result, out)
-    return _scatter_reduce_out_fallback(
-        inp, dim, index, src, reduce, include_self, out
-    )
+    return _scatter_reduce_out_fallback(inp, dim, index, src, reduce, include_self, out)
 
 
 def scatter(inp, dim, index, src, reduce=None):
