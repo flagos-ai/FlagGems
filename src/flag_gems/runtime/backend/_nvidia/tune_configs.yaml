@@ -1623,6 +1623,35 @@ gated_activation:
       - 8
     block_n:
       - 1024
+
+fp8_mqa_logits:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_D: block_d
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 8
+      - 16
+      - 32
+      - 64
+    block_n:
+      - 32
+      - 64
+      - 128
+    block_d:
+      - 32
+      - 64
+      - 128
+    warps:
+      - 4
+      - 8
+    stages:
+      - 2
+      - 3
 # Shared memory tiling kernel for large tensors
 # Optimized for memory bandwidth by caching input tiles# Grid sample operator configurations
 grid_sample_2d_nearest:
