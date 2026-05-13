@@ -9,6 +9,8 @@ from . import base, consts
 def _cuda_fp8_available():
     if flag_gems.device != "cuda" or not torch.cuda.is_available():
         return False
+    if not flag_gems.runtime.device.support_bf16:
+        return False
     major, minor = torch.cuda.get_device_capability()
     return major * 10 + minor >= 89 and hasattr(torch, "float8_e4m3fn")
 
@@ -94,7 +96,7 @@ class ScaledMMBenchmark(base.Benchmark):
             if _is_fp8(dtype):
                 mat1 = (mat1 * 0.25).to(dtype)
                 mat2 = (mat2 * 0.25).to(dtype).t().contiguous().t()
-                out_dtype = torch.float16
+                out_dtype = torch.bfloat16
                 bias_dtype = out_dtype
             else:
                 mat1 = mat1.to(dtype)
