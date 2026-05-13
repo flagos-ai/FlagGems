@@ -55,3 +55,15 @@ def test_nll_loss_nd_forward():
     )
 
     bench.run()
+
+
+@pytest.mark.nll_loss_nd_forward
+def test_nll_loss_nd_forward_perf():
+    bench = NLLLossNDBenchmark(
+        input_fn=nll_loss_nd_input_fn,
+        op_name="nll_loss_nd",
+        torch_op=torch.nn.functional.nll_loss,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+
+    bench.run()
