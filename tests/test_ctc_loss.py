@@ -183,6 +183,26 @@ def test_ctc_loss_zero_length_targets_match_pytorch(dtype, layout, reduction):
 
 @pytest.mark.ctc_loss
 @pytest.mark.parametrize("layout", TARGET_LAYOUTS)
+@pytest.mark.parametrize("reduction", REDUCTIONS)
+def test_ctc_loss_zero_input_empty_target_matches_pytorch(layout, reduction):
+    utils.init_seed(2026051301)
+    log_probs = _make_log_probs((4, 1, 5), torch.float32)
+    targets, target_lengths = _targets_from_rows([[]], layout, max_target=0)
+    input_lengths = torch.tensor([0], device=flag_gems.device, dtype=torch.long)
+    _assert_forward_backward(
+        log_probs,
+        targets,
+        input_lengths,
+        target_lengths,
+        torch.float32,
+        blank=0,
+        reduction=reduction,
+        zero_infinity=False,
+    )
+
+
+@pytest.mark.ctc_loss
+@pytest.mark.parametrize("layout", TARGET_LAYOUTS)
 def test_ctc_loss_all_empty_targets_match_pytorch(layout):
     utils.init_seed(2026050602)
     log_probs = _make_log_probs((5, 2, 4), torch.float32)
@@ -370,3 +390,28 @@ def test_ctc_loss_invalid_lengths_raise():
     bad_input_lengths = torch.tensor([6.0, 6.0], device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.ctc_loss(log_probs, targets, bad_input_lengths, target_lengths)
+
+
+@pytest.mark.ctc_loss
+@pytest.mark.parametrize(
+    "shape,targets_shape,input_lengths,target_lengths",
+    [
+        ((0, 1, 3), (1, 0), [0], [0]),
+        ((4, 0, 3), (0, 0), [], []),
+        ((4, 1, 0), (1, 0), [4], [0]),
+        ((0, 3), (0,), [0], [0]),
+    ],
+)
+def test_ctc_loss_empty_log_probs_raise(
+    shape,
+    targets_shape,
+    input_lengths,
+    target_lengths,
+):
+    log_probs = torch.empty(
+        shape, dtype=torch.float32, device=flag_gems.device, requires_grad=True
+    )
+    targets = torch.empty(targets_shape, device=flag_gems.device, dtype=torch.long)
+
+    with pytest.raises(RuntimeError, match="log_probs tensor must not be empty"):
+        flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths)

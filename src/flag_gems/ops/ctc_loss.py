@@ -148,6 +148,9 @@ def _check_inputs(log_probs, targets, input_lengths, target_lengths, blank):
     else:
         t_steps, batch, classes = log_probs.shape
 
+    if log_probs.numel() == 0:
+        raise RuntimeError("log_probs tensor must not be empty")
+
     if blank < 0 or blank >= classes:
         raise RuntimeError("blank must be in label range")
 
@@ -378,7 +381,7 @@ def _ctc_forward_kernel(
     last_t = input_len - 1
     last_state = n_states - 1
     if input_len <= 0:
-        log_like = -float("inf")
+        log_like = tl.where(target_len == 0, 0.0, -float("inf"))
     elif target_len == 0:
         log_like = tl.load(alpha_base + last_t * max_states)
     else:
