@@ -195,3 +195,19 @@ def test_div_complex_int_scalar(shape, complex_dtype):
         res_out = torch.div(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
+
+
+# div_.Scalar with true_divide_ (in-place tensor / scalar)
+@pytest.mark.div_scalar_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_scalar_(shape, scalar, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone(), False)
+
+    ref_out = ref_inp.div_(scalar)
+    with flag_gems.use_gems():
+        res_out = inp.div_(scalar)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
