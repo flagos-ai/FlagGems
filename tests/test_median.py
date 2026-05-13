@@ -426,6 +426,47 @@ def test_median_bool_no_dim():
 
 
 @pytest.mark.median
+def test_median_bool_no_dim_full_registration():
+    if torch.device(flag_gems.device).type != "cuda":
+        pytest.skip("bool median no-dim is CUDA-specific in native PyTorch")
+
+    inp = torch.tensor([True, False, True, False, True], device=flag_gems.device)
+    ref_out = torch.median(inp)
+    with flag_gems.use_gems():
+        res_out = torch.median(inp)
+
+    assert res_out.dtype == ref_out.dtype
+    assert res_out.device == ref_out.device
+    assert res_out.item() == ref_out.item()
+
+
+@pytest.mark.median
+def test_median_iluvatar_sort_fallback_full_registration(monkeypatch):
+    import importlib
+
+    median_ops = importlib.import_module("flag_gems.ops.median")
+
+    monkeypatch.setattr(median_ops.device, "vendor_name", "iluvatar")
+    inp = torch.tensor(
+        [[3.0, 1.0, 2.0], [float("nan"), 4.0, 5.0]],
+        device=flag_gems.device,
+    )
+    ref_inp = utils.to_reference(inp)
+
+    ref_no_dim = torch.median(ref_inp)
+    with flag_gems.use_gems():
+        res_no_dim = torch.median(inp)
+    utils.gems_assert_equal(res_no_dim, ref_no_dim, equal_nan=True)
+
+    ref_dim = torch.median(ref_inp, dim=1)
+    with flag_gems.use_gems():
+        res_dim = torch.median(inp, dim=1)
+    _assert_median_dim_equal(
+        res_dim, ref_dim, torch.float32, equal_nan=True, inp=inp, dim=1
+    )
+
+
+@pytest.mark.median
 def test_median_empty_complex_no_dim():
     inp = torch.empty((0,), dtype=torch.complex64, device=flag_gems.device)
     with flag_gems.use_gems(include=MEDIAN_OPS):

@@ -13,6 +13,9 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 MedianResult = namedtuple("median", ["values", "indices"])
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
 
 _DIRECT_REDUCTION_LIMIT = 256
 _DIRECT_FLAT_LIMIT = 256
@@ -49,13 +52,17 @@ def _is_iluvatar_backend():
 def _median_flat_native(flat):
     if flat.is_floating_point() and torch.isnan(flat).any():
         return torch.full((), float("nan"), dtype=flat.dtype, device=flat.device)
-    sorted_values = torch.sort(flat).values
+    sorted_values = torch.ops.aten.sort.default.redispatch(
+        _FALLBACK_KEYSET, flat
+    ).values
     return sorted_values[(flat.numel() - 1) // 2].reshape(()).clone()
 
 
 def _median_dim_native(inp, dim, keepdim):
     rank = (inp.shape[dim] - 1) // 2
-    sorted_values, sorted_indices = torch.sort(inp, dim=dim)
+    sorted_values, sorted_indices = torch.ops.aten.sort.default.redispatch(
+        _FALLBACK_KEYSET, inp, dim, False
+    )
     values = sorted_values.select(dim, rank)
     indices = sorted_indices.select(dim, rank).to(torch.int64)
 
@@ -868,8 +875,10 @@ def median(inp):
     if inp.numel() == 0:
         return _empty_result_value(inp)
     if inp.dtype == torch.bool:
-        false_count = torch.count_nonzero(torch.logical_not(inp))
-        return (false_count <= (inp.numel() - 1) // 2).to(torch.bool)
+        true_count = torch.ops.aten.count_nonzero.default.redispatch(
+            _FALLBACK_KEYSET, inp
+        )
+        return (true_count > inp.numel() // 2).to(torch.bool)
     if inp.dtype.is_complex:
         raise RuntimeError("Sort does not support complex dtypes on CPU")
     if inp.numel() == 1:
