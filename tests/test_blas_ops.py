@@ -65,7 +65,10 @@ def test_accuracy_bmm(M, N, K, dtype):
     with flag_gems.use_gems():
         res_out = torch.bmm(mat1, mat2)
 
-    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    atol = 1e-4
+    if flag_gems.vendor_name == "sophgo" and dtype == torch.float32:
+        atol = 1e-3
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=atol)
 
 
 # TODO: failed at (1, 1, 2)

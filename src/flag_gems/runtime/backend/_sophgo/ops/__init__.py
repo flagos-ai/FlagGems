@@ -57,6 +57,8 @@ from .unique import _unique2
 from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
 from .vdot import vdot
+from .bmm import bmm
+
 
 __all__ = [
     "addmm",
@@ -67,6 +69,7 @@ __all__ = [
     "any_dim",
     "any_dims",
     "batch_norm",
+    "bmm",
     "cat",
     "clamp",
     "clamp_",
