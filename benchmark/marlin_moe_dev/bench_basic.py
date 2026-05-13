@@ -21,6 +21,30 @@ from flag_gems.fused.fused_marlin_moe import (
 )
 from flag_gems.fused.fused_moe import fused_experts_impl
 
+from vllm.model_executor.layers.quantization.utils.quant_utils import quantize_weights
+from vllm.scalar_type import scalar_types
+
+GROUP_SIZE = 128
+
+
+def _quantize_moe_weight(w_fp, quant_type=scalar_types.uint4b8, group_size=GROUP_SIZE):
+    """Per-expert GPTQ INT4 quant. Returns (packed uint8, dequant ref, 3D scales)."""
+    E, out_dim, in_dim = w_fp.shape
+    assert in_dim % group_size == 0
+    w_q = torch.empty(E, out_dim, in_dim // 2, device=w_fp.device, dtype=torch.uint8)
+    w_ref = torch.empty_like(w_fp)
+    scales = torch.empty(E, out_dim, in_dim // group_size, device=w_fp.device, dtype=w_fp.dtype)
+    for e in range(E):
+        ref_e, q_e, sc_e, _ = quantize_weights(w_fp[e].T, quant_type, group_size, False, False)
+        ref_e = ref_e.T
+        q_e = q_e.T.contiguous().to(torch.uint8)
+        sc_e = sc_e.T
+        q_e_packed = q_e[:, 1::2] * 16 + q_e[:, ::2]
+        w_q[e] = q_e_packed
+        w_ref[e] = ref_e
+        scales[e] = sc_e
+    return w_q, w_ref, scales
+
 
 # ---------------------------------------------------------------------------
 # Reference (slow but obvious). Only runs on small shapes (M*K*N small).
@@ -75,15 +99,17 @@ def bench(fn, n_warmup=3, n_iter=10):
 
 def make_inputs(M, K, N, E, topk, dtype, device='cuda', seed=0):
     torch.manual_seed(seed)
-    scale = 0.05
+    scale = 0.1
     hidden = torch.randn(M, K, dtype=dtype, device=device) * scale
-    w1 = torch.randn(E, 2 * N, K, dtype=dtype, device=device) * scale
-    w2 = torch.randn(E, K, N,    dtype=dtype, device=device) * scale
+    # FP16 weights for baseline GEMM.
+    w1_fp = torch.randn(E, 2 * N, K, dtype=dtype, device=device) * scale
+    w2_fp = torch.randn(E, K, N,    dtype=dtype, device=device) * scale
+    # Packed INT4 weights + 3D scales for fused_marlin_moe.
+    w1_q, _, w1_scale = _quantize_moe_weight(w1_fp)
+    w2_q, _, w2_scale = _quantize_moe_weight(w2_fp)
     topk_weights = torch.softmax(torch.randn(M, topk, device=device), dim=-1).float()
     topk_ids = torch.randint(0, E, (M, topk), dtype=torch.long, device=device)
-    w1_scale = torch.ones(E, 2 * N, dtype=dtype, device=device)
-    w2_scale = torch.ones(E, K,     dtype=dtype, device=device)
-    return hidden, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale
+    return hidden, w1_fp, w2_fp, w1_q, w2_q, topk_weights, topk_ids, w1_scale, w2_scale
 
 
 def call_wrapper(hidden, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale):
@@ -124,21 +150,21 @@ def main():
     print("-" * 100)
 
     for label, M, K, N, E, topk, run_naive in cases:
-        hidden, w1, w2, tw, ti, w1s, w2s = make_inputs(M, K, N, E, topk, dtype)
+        hidden, w1_fp, w2_fp, w1_q, w2_q, tw, ti, w1s, w2s = make_inputs(M, K, N, E, topk, dtype)
 
         wrap_ms = bench(
-            lambda: call_wrapper(hidden, w1, w2, tw, ti, w1s, w2s),
+            lambda: call_wrapper(hidden, w1_q, w2_q, tw, ti, w1s, w2s),
             n_iter=args.n_iter,
         )
         fp16_ms = bench(
-            lambda: call_fp16_baseline(hidden, w1, w2, tw, ti),
+            lambda: call_fp16_baseline(hidden, w1_fp, w2_fp, tw, ti),
             n_iter=args.n_iter,
         )
         ratio = wrap_ms / fp16_ms if fp16_ms > 0 else float('inf')
 
         if run_naive:
             naive_ms = bench(
-                lambda: reference_swiglu_moe(hidden, w1, w2, tw, ti),
+                lambda: reference_swiglu_moe(hidden, w1_fp, w2_fp, tw, ti),
                 n_warmup=1, n_iter=3,
             )
             naive_str = f"{naive_ms:>9.1f}"
