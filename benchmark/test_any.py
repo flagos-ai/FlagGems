@@ -10,3 +10,11 @@ def test_any():
         op_name="any", torch_op=torch.any, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
+
+
+@pytest.mark.any_dim
+def test_any_dim():
+    bench = base.UnaryReductionBenchmark(
+        op_name="any_dim", torch_op=torch.any, dtypes=consts.FLOAT_DTYPES
+    )
+    bench.run()

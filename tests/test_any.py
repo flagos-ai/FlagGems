@@ -56,3 +56,25 @@ def test_any_dims(shape, dim, keepdim, dtype, kind):
         res_out = torch.any(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.any_dim
+@pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.bool])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("kind", ["normal", "allFalse", "allTrue"])
+def test_any_dim(shape, dtype, keepdim, kind):
+    dim = 0
+    if kind == "allFalse":
+        inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+    elif kind == "allTrue":
+        inp = torch.ones(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        inp = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.any(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.any(inp, dim=dim, keepdim=keepdim)
+
+    utils.gems_assert_equal(res_out, ref_out)
