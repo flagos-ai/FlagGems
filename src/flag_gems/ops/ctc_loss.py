@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 _MAX_BLOCK_STATES = 1024
 _CACHE_LIMIT = 64
+_LENGTH_VALUES_CACHE = {}
 _LENGTH_STATS_CACHE = {}
 _TARGET_OFFSETS_CACHE = {}
 
@@ -35,8 +36,27 @@ def _cache_put(cache, key, value):
     cache[key] = value
 
 
-def _length_stats(tensor):
+def _host_length_values(tensor):
     if tensor.numel() == 0:
+        return ()
+    key = _tensor_cache_key(tensor)
+    if key is not None:
+        cached = _LENGTH_VALUES_CACHE.get(key)
+        if cached is not None and cached[0] is tensor:
+            return cached[1]
+
+    # Length tensors drive wrapper validation and Triton launch sizing.
+    values = tuple(
+        int(value) for value in tensor.detach().to(device="cpu").reshape(-1).tolist()
+    )
+    if key is not None:
+        _cache_put(_LENGTH_VALUES_CACHE, key, (tensor, values))
+    return values
+
+
+def _length_stats(tensor):
+    values = _host_length_values(tensor)
+    if not values:
         return 0, 0, 0
     key = _tensor_cache_key(tensor)
     if key is not None:
@@ -44,8 +64,7 @@ def _length_stats(tensor):
         if cached is not None and cached[0] is tensor:
             return cached[1]
 
-    stats_tensor = torch.stack((tensor.min(), tensor.max(), tensor.sum())).cpu()
-    stats = tuple(int(value) for value in stats_tensor.tolist())
+    stats = (min(values), max(values), sum(values))
     if key is not None:
         _cache_put(_LENGTH_STATS_CACHE, key, (tensor, stats))
     return stats
@@ -97,11 +116,16 @@ def _target_offsets(target_lengths):
         if cached is not None and cached[0] is target_lengths:
             return cached[1]
 
-    offsets = torch.empty_like(target_lengths)
-    if target_lengths.numel() > 0:
-        offsets[0] = 0
-    if target_lengths.numel() > 1:
-        offsets[1:] = torch.cumsum(target_lengths[:-1], dim=0)
+    offset_values = []
+    running = 0
+    for length in _host_length_values(target_lengths):
+        offset_values.append(running)
+        running += length
+    offsets = torch.tensor(
+        offset_values,
+        device=target_lengths.device,
+        dtype=target_lengths.dtype,
+    ).reshape(target_lengths.shape)
     if key is not None:
         _cache_put(_TARGET_OFFSETS_CACHE, key, (target_lengths, offsets))
     return offsets
