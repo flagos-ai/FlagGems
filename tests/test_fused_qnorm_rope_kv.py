@@ -3,6 +3,7 @@ Accuracy tests for fused DeepSeek V4 QNorm+RoPE+KV Insert kernel.
 
 Tests the Triton kernel against the vLLM CUDA reference implementation.
 """
+
 import pytest
 import torch
 
@@ -11,6 +12,12 @@ from flag_gems.fused.fused_qnorm_rope_kv import (
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert_ref,
 )
+from flag_gems.utils.device_info import get_device_capability
+
+
+def is_support_fp8e4nv():
+    major, minor = get_device_capability()
+    return major * 10 + minor >= 89
 
 
 def generate_test_data(
@@ -28,9 +35,7 @@ def generate_test_data(
 
     num_blocks = (N + cache_block_size - 1) // cache_block_size + 1
     cache_stride = cache_block_size * 576 + cache_block_size * 8
-    k_cache = torch.zeros(
-        (num_blocks, cache_stride), dtype=torch.uint8, device=device
-    )
+    k_cache = torch.zeros((num_blocks, cache_stride), dtype=torch.uint8, device=device)
 
     slot_mapping = torch.arange(N, dtype=torch.int32, device=device)
     position_ids = torch.randint(0, max_pos, (N,), dtype=torch.int64, device=device)
@@ -53,11 +58,16 @@ PREFILL_CONFIGS = [256, 1024, 2048]
 
 
 @pytest.mark.fused_qnorm_rope_kv
+@pytest.mark.skipif(
+    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
+)
 @pytest.mark.parametrize("N", DECODE_CONFIGS, ids=[f"N{n}" for n in DECODE_CONFIGS])
 def test_q_norm_rope_decode(N):
     """Test Q path (RMSNorm + RoPE) correctness in decode mode."""
     data = generate_test_data(N)
-    data_ref = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
+    data_ref = {
+        k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in data.items()
+    }
 
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(**data)
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert_ref(**data_ref)
@@ -66,11 +76,16 @@ def test_q_norm_rope_decode(N):
 
 
 @pytest.mark.fused_qnorm_rope_kv
+@pytest.mark.skipif(
+    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
+)
 @pytest.mark.parametrize("N", PREFILL_CONFIGS, ids=[f"N{n}" for n in PREFILL_CONFIGS])
 def test_q_norm_rope_prefill(N):
     """Test Q path (RMSNorm + RoPE) correctness in prefill mode."""
     data = generate_test_data(N)
-    data_ref = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
+    data_ref = {
+        k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in data.items()
+    }
 
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(**data)
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert_ref(**data_ref)
@@ -79,14 +94,20 @@ def test_q_norm_rope_prefill(N):
 
 
 @pytest.mark.fused_qnorm_rope_kv
+@pytest.mark.skipif(
+    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
+)
 @pytest.mark.parametrize(
-    "N", DECODE_CONFIGS + PREFILL_CONFIGS,
+    "N",
+    DECODE_CONFIGS + PREFILL_CONFIGS,
     ids=[f"N{n}" for n in DECODE_CONFIGS + PREFILL_CONFIGS],
 )
 def test_kv_cache_insert(N):
     """Test KV path (RoPE + FP8 quantize + cache insert) correctness."""
     data = generate_test_data(N)
-    data_ref = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
+    data_ref = {
+        k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in data.items()
+    }
 
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(**data)
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert_ref(**data_ref)
@@ -94,11 +115,15 @@ def test_kv_cache_insert(N):
     torch.testing.assert_close(
         data["k_cache"].view(-1).float(),
         data_ref["k_cache"].view(-1).float(),
-        rtol=0, atol=1,
+        rtol=0,
+        atol=1,
     )
 
 
 @pytest.mark.fused_qnorm_rope_kv
+@pytest.mark.skipif(
+    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
+)
 def test_inplace_modification():
     """Verify q is modified in-place."""
     data = generate_test_data(4)
@@ -108,6 +133,9 @@ def test_inplace_modification():
 
 
 @pytest.mark.fused_qnorm_rope_kv
+@pytest.mark.skipif(
+    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
+)
 def test_negative_slot_skipped():
     """Verify tokens with slot_mapping=-1 are skipped."""
     data = generate_test_data(4)
