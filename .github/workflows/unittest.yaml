@@ -78,9 +78,30 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - uses: actions/checkout@v6
+      - id: checkout-attempt-1
+        uses: actions/checkout@v6
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@v6
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@v6
+
       - shell: bash
         run: tools/gpu_check.sh
+
       - shell: bash
         env:
           CHANGED_FILES: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
@@ -95,7 +116,11 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - uses: actions/checkout@v6
+      - uses: Wandalen/wretry.action@v3.8.0
+        with:
+          action: actions/checkout@v6
+          attempt_limit: 5
+          attempt_delay: 20000
       - shell: bash
         run: tools/gpu_check.sh
       - shell: bash
@@ -116,8 +141,6 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-      PROXYC: ${{ secrets.PROXYC }}
-      PROXYG: ${{ secrets.PROXYG }}
 
   backend-hygon:
     needs: preprocess
@@ -131,8 +154,6 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-      PROXYC: ${{ secrets.PROXYC }}
-      PROXYG: ${{ secrets.PROXYG }}
 
   backend-iluvatar:
     needs: preprocess
@@ -146,8 +167,6 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-      PROXYC: ${{ secrets.PROXYC }}
-      PROXYG: ${{ secrets.PROXYG }}
 
   backend-kunlunxin:
     needs: preprocess
@@ -163,8 +182,6 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-      PROXYC: ${{ secrets.PROXYC }}
-      PROXYG: ${{ secrets.PROXYG }}
 
   backend-metax:
     needs: preprocess
@@ -178,8 +195,6 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-      PROXYC: ${{ secrets.PROXYC }}
-      PROXYG: ${{ secrets.PROXYG }}
 
   backend-mthreads:
     needs: preprocess
@@ -193,8 +208,6 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-      PROXYC: ${{ secrets.PROXYC }}
-      PROXYG: ${{ secrets.PROXYG }}
 
   backend-nvidia:
     needs: preprocess
@@ -208,8 +221,6 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-      PROXYC: ${{ secrets.PROXYC }}
-      PROXYG: ${{ secrets.PROXYG }}
 
   backend-tsingmicro:
     needs: preprocess
@@ -223,8 +234,6 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-      PROXYC: ${{ secrets.PROXYC }}
-      PROXYG: ${{ secrets.PROXYG }}
 
   backend-thead:
     needs: preprocess
@@ -238,8 +247,6 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-      PROXYC: ${{ secrets.PROXYC }}
-      PROXYG: ${{ secrets.PROXYG }}
 
   # TODO(Qiming): This job doesn't require an nvidia backend, the generic
   # test-op workflow should be fine.
@@ -255,5 +262,3 @@ jobs:
       changed_files: ${{ needs.preprocess.outputs.changed_files }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-      PROXYC: ${{ secrets.PROXYC }}
-      PROXYG: ${{ secrets.PROXYG }}

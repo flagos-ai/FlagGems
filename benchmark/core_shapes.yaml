@@ -79,6 +79,22 @@ softmax_backward:
     - [64, 512, 512]
     - [256, 1024, 1024]
 
+smooth_l1_loss:
+  shapes:
+    - [262144]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [64, 512, 512]
+  shape_desc: "(B), M, N"
+
+smooth_l1_loss_backward:
+  shapes:
+    - [262144]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [64, 512, 512]
+  shape_desc: "(B), M, N"
+
 diag:
   shapes:
     - [64]
@@ -163,15 +179,6 @@ EmbeddingBenchmark:
 
 # [N, C, H, W]
 UpsampleBenchmark:
-  shapes:
-    - [1, 3, 512, 512]
-    - [8, 16, 128, 128]
-    - [2, 3, 1024, 1024]
-    - [16, 16, 512, 512]
-    - [16, 16, 1024, 1024]
-  shape_desc: "N, C, H, W"
-
-UpsampleBackwardBenchmark:
   shapes:
     - [1, 3, 512, 512]
     - [8, 16, 128, 128]

@@ -1084,6 +1084,17 @@ ops:
       - Attention
     stages:
       - beta: '3.0'
+  - id: concatenate
+    description: An alias of `cat()`.
+    for:
+      - concatenate
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: conj_physical
     description: |
       Computes the element-wise conjugate of the given `input` tensor.
@@ -1354,6 +1365,28 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: cumprod
+    description: Returns the cumulative product of elements of `input` in the dimension `dim`.
+    for:
+      - cumprod
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: cumprod_
+    description: This is the in-place version of `cumprod()`.
+    for:
+      - cumprod_
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: cumsum
     destination: Returns the cumulative sum of elements of `input` in the dimension `dim`.
     for:
@@ -1443,6 +1476,18 @@ ops:
       - LinearAlg
     stages:
       - stable: '2.2'
+  - id: diff
+    description: |
+      Computes the n-th forward difference along the given dimension.
+    for:
+      - diff
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: digamma_
     description: |
       Computes the in-place digamma function, which is the logarithmic derivative of the Gamma function.
@@ -1685,6 +1730,19 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: einsum
+    description: |
+      Sums the product of the elements of the input `operands` along dimensions specified using a notation
+      based on the Einstein summation convention.
+    for:
+      - einsum
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
   - id: elu
     description: Apply the Exponential Linear Unit (ELU) function element-wise.
     for:
@@ -1928,6 +1986,30 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: feature_dropout
+    description: |
+      Applies feature dropout to the `input` tensor. Randomly zeroes out entire channels of the `input` tensor with probability `p`.
+      Each batch element has its own independent channel mask.
+    for:
+      - feature_dropout
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: feature_dropout_
+    description: The in-place version of `feature_dropout()`.
+    for:
+      - feature_dropout_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: fill_scalar
     description: Fills a scalar with the specified value.
     for:
@@ -2147,6 +2229,19 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: fp8_mqa_logits
+    description: |
+      For each token in the given E4M3 tensor, iterate all tokens from two other given tensors,
+      calculate the logit.
+    for:
+      - vllm.utils.deep_gemm.fp8_mqa_logits
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: full
     description: |
       Creates a tensor of size `size` filled with `fill_value`.
@@ -3509,6 +3604,21 @@ ops:
       - Reduction
     stages:
       - stable: '2.0'
+  - id: hc_head_fused_kernel
+    description: |
+      The head fusion kernel for MHC (Manifold-Constrained Hyper-Connections).
+      This fused implementation computes RMS-normalized hidden states and applies
+      per-head weighted mixing to produce the output activations.
+    for:
+      - mhc_head_fused_kernel
+    labels:
+      - fused
+      - vLLM
+      - DSA
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.2'
   - id: mhc_bwd
     description: |
       The backward case for MHC (Manifold-Constrained Hyper-Connections).
@@ -3647,6 +3757,30 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: smooth_l1_loss
+    description: Compute the smooth L1 loss between input and target tensors.
+    for:
+      - smooth_l1_loss
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: smooth_l1_loss_backward
+    description: Compute the gradient of smooth L1 loss with respect to the input tensor.
+    for:
+      - smooth_l1_loss_backward
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: mul
     description: Multiplies `input` by `other`.
     for:
@@ -4621,6 +4755,28 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: rsub_scalar
+    description: Substracts `other`, scaled by `alpha`, from `input`. This is the scalar version.
+    for:
+      - rsub.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: rsub_tensor
+    description: Substracts `other`, scaled by `alpha`, from `input`. This is the tensor version.
+    for:
+      - rsub.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: rwkv_ka_fusion
     description: |
       Merges, aligns, and enhances features from different data sources or spatial directions
@@ -4763,6 +4919,19 @@ ops:
       - Tensor
     stages:
       - stable: '3.0'
+  - id: scatter_reduce_two_
+    description: |
+      A specific low-level ATen operator primarily encountered during model compilation
+      or when using advanced backends like TensorRT or MPS.
+    for:
+      - scatter_reduce_.two
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
   - id: scatter_src
     description: |
       Writes all values from the tensor `src` into provided tensor at the indices
@@ -4961,6 +5130,30 @@ ops:
       - Activation
     stages:
       - stable: '2.0'
+  - id: silu_and_mul_with_clamp
+    description: A custom operator in vLLM as activation function for SwiGLU.
+    for:
+      - silu_and_mul_with_clamp
+    labels:
+      - fused
+      - pointwise
+      - vLLM
+    kind:
+      - Activation
+    stages:
+      - stable: '5.1'
+  - id: silu_and_mul_with_clamp_out
+    description: A variant of `silu_and_mul_with_clamp` with an extra `out` argument.
+    for:
+      - silu_and_mul_with_clamp.out
+    labels:
+      - fused
+      - pointwise
+      - vLLM
+    kind:
+      - Activation
+    stages:
+      - stable: '5.1'
   - id: silu_backward
     description: A variant of `silu()` for backward case.
     for:
@@ -5582,6 +5775,28 @@ ops:
       - BLAS
     stages:
       - beta: '5.0'
+  - id: tril_
+    description: |
+      The in-place version of `tril()`.
+    for:
+      - tril_
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
+  - id: tril_out
+    description: |
+      A variant of `tril()` that explicitly assigns the output to the `out` parameter.
+    for:
+      - tril.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
   - id: triton_lighting_indexer_k_tiled_interface
     description: Part of FP8 MQA framework. It is currently not exposed as an operator for use.
     for:

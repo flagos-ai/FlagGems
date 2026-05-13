@@ -10,7 +10,7 @@ from flag_gems import runtime
 from flag_gems.ops.arange import arange_start as default_arange_start
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(
     f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
@@ -44,7 +44,7 @@ def arange_kernel(
     USE_INT64: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     if USE_INT64:
         offsets = offsets.to(tl.int64)
