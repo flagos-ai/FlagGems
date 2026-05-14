@@ -1,17 +1,18 @@
+import importlib.util
 from typing import Any
 
 from backend_utils import VendorInfoBase  # noqa: E402
 
-from .utils.config_pre_hook import setup_triton_config
+if importlib.util.find_spec("triton.backends.spine_triton") is not None:
+    from .utils.config_pre_hook import setup_triton_config
 
-# from .heuristics_config_utils import HEURISTICS_CONFIGS
+    setup_triton_config()
 
-setup_triton_config()
+    import triton  # noqa: E402
+    from triton.backends.spine_triton.driver import CPUDriver  # noqa: E402
 
-import triton  # noqa: E402
-from triton.backends.spine_triton.driver import CPUDriver  # noqa: E402
+    triton.runtime.driver.set_active(CPUDriver())  # noqa: E402
 
-triton.runtime.driver.set_active(CPUDriver())  # noqa: E402
 
 vendor_info = VendorInfoBase(
     vendor_name="spacemit", device_name="cpu", device_query_cmd="lscpu"
