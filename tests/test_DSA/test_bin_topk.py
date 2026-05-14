@@ -357,7 +357,7 @@ def test_bucket_sort_topk_correctness():
 @pytest.mark.parametrize("seq_len", [512, 1024, 4096])
 @pytest.mark.parametrize("topk", [32, 128, 512])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-def test_bucket_sort_topk_accuracy(batch_size, seq_len, topk, dtype):
+def test_bucket_sort_topk(batch_size, seq_len, topk, dtype):
     """Accuracy test for bucket_sort_topk across dtypes and sizes."""
     if topk > seq_len:
         pytest.skip("topk cannot be larger than seq_len")
@@ -412,8 +412,3 @@ def test_bucket_sort_topk_variable_seq(batch_size, seq_len, topk):
 
     assert actual_indices.shape == (batch_size, topk)
     assert_set_similar(actual_indices, ref_indices, torch.float32)
-
-
-if __name__ == "__main__":
-    # Can directly run this file for testing
-    pytest.main([__file__, "-v"])
