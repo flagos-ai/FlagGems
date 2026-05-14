@@ -1337,6 +1337,18 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: cross_attention
+    description: |
+      Computes the cross_attention operation.
+    for:
+      - cross_attention
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: cross_entropy_loss
     description: Computes the cross entropy loss between input logits and target.
     for:
