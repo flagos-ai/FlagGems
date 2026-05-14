@@ -273,5 +273,6 @@ class BenchmarkResult:
     def to_dict(self) -> dict:
         return self.__dict__
 
+
 # Subset dtypes for specific operators
 FP16_BF16_DTYPES = [torch.float16, torch.bfloat16]
