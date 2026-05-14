@@ -324,15 +324,20 @@ class ConfigLoader(object):
     def _build_expand_registry(self):
         DEFAULT_EXPAND_CONFIG_PATH = common.DEFAULT_EXPAND_CONFIG_PATH
         return {
-            "bmm": self._build_single_expand_spec(
-                "bmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
-            ),
             "addmm": self._build_single_expand_spec(
                 "addmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
             ),
+            "addmm_sqmma": self._build_single_expand_spec("addmm_sqmma"),
             "baddbmm": self._build_single_expand_spec(
                 "baddbmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
             ),
+            "bmm": self._build_single_expand_spec(
+                "bmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
+            ),
+            "bmm_sqmma": self._build_single_expand_spec("bmm_sqmma"),
+            "gemv": self._build_single_expand_spec("gemv"),
+            "mm": self._build_single_expand_spec("mm"),
+            "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
             "mv": self._build_single_expand_spec(
                 "mv", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
             ),
@@ -345,12 +350,7 @@ class ConfigLoader(object):
             "w8a8_block_fp8_general_tma": self._build_single_expand_spec(
                 "w8a8_block_fp8_general_tma"
             ),
-            "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
-            "gemv": self._build_single_expand_spec("gemv"),
             "sparse_attention": self._build_single_expand_spec("sparse_attention"),
-            "mm": self._build_single_expand_spec("mm"),
-            "bmm_sqmma": self._build_single_expand_spec("bmm_sqmma"),
-            "addmm_sqmma": self._build_single_expand_spec("addmm_sqmma"),
         }
 
     def load_all(self):

@@ -43,11 +43,30 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - uses: actions/checkout@v6
-      - run: |
-          pip install pytest-md-report
+      - id: checkout-attempt-1
+        uses: actions/checkout@v6
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@v6
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@v6
+
       - shell: bash
         run: tools/gpu_check.sh
+
       - shell: bash
         env:
           CHANGED_FILES: '__ALL__'
