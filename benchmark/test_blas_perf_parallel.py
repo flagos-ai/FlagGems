@@ -1222,7 +1222,7 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
 def test_perf_w8a8_block_fp8_matmul():
     if not VLLM_W8A8_BLOCK_FP8_AVAILABLE:
         pytest.skip("w8a8_block_fp8_matmul benchmark requires vLLM baseline operator")
-    if len(consts.FP8_DTYPES) is None:
+    if len(consts.FP8_DTYPES) == 0:
         pytest.skip(
             "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
         )
@@ -1240,7 +1240,7 @@ def test_perf_w8a8_block_fp8_matmul():
 def test_perf_w8a8_block_fp8_matmul_deepgemm():
     if not DEEPGEMM_AVAILABLE:
         pytest.skip("DeepGEMM is not available on this platform")
-    if len(consts.FP8_DTYPES) is None:
+    if len(consts.FP8_DTYPES) == 0:
         pytest.skip(
             "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
         )
