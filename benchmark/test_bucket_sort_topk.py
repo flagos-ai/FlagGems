@@ -36,6 +36,7 @@ def _torch_topk_ref(inputs, starts, ends, topk):
     return torch.topk(inputs, topk, dim=-1)[1].to(torch.int32)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA device required")
 @pytest.mark.bucket_sort_topk
 def test_bucket_sort_topk_perf():
     bench = BucketSortTopKBenchmark(
