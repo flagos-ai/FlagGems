@@ -15,6 +15,19 @@ def _cuda_fp8_available():
     return major * 10 + minor >= 89 and hasattr(torch, "float8_e4m3fn")
 
 
+def _benchmark_dtypes():
+    dtypes = [torch.float16, torch.float32]
+    if flag_gems.runtime.device.support_bf16:
+        dtypes.append(torch.bfloat16)
+    if _cuda_fp8_available():
+        dtypes.append(torch.float8_e4m3fn)
+    return dtypes
+
+
+def _dtype_id(dtype):
+    return str(dtype).split(".")[-1]
+
+
 def _is_fp8(dtype):
     return hasattr(torch, "float8_e4m3fn") and dtype == torch.float8_e4m3fn
 
@@ -62,18 +75,52 @@ def torch_scaled_mm_baseline(
     return out.to(out_dtype or mat1.dtype)
 
 
+def torch_scaled_mm_out_baseline(
+    mat1,
+    mat2,
+    scale_a,
+    scale_b,
+    bias=None,
+    scale_result=None,
+    out_dtype=None,
+    use_fast_accum=False,
+    *,
+    out,
+):
+    if _is_fp8(mat1.dtype) and flag_gems.device == "cuda":
+        return torch.ops.aten._scaled_mm.out(
+            mat1,
+            mat2,
+            scale_a,
+            scale_b,
+            bias=bias,
+            scale_result=scale_result,
+            out_dtype=out_dtype,
+            use_fast_accum=use_fast_accum,
+            out=out,
+        )
+
+    result = torch_scaled_mm_baseline(
+        mat1,
+        mat2,
+        scale_a,
+        scale_b,
+        bias=bias,
+        scale_result=scale_result,
+        out_dtype=out_dtype,
+        use_fast_accum=use_fast_accum,
+    )
+    out.copy_(result)
+    return out
+
+
 class ScaledMMBenchmark(base.Benchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
-    def __init__(self):
-        dtypes = [torch.float16, torch.float32]
-        if flag_gems.runtime.device.support_bf16:
-            dtypes.append(torch.bfloat16)
-        if _cuda_fp8_available():
-            dtypes.append(torch.float8_e4m3fn)
-
-        super().__init__("scaled_mm", torch_scaled_mm_baseline, dtypes=dtypes)
-        self.set_gems(flag_gems.scaled_mm)
+    def __init__(self, op_name, torch_op, gems_op, dtype, use_out=False):
+        super().__init__(op_name, torch_op, dtypes=[dtype])
+        self.set_gems(gems_op)
+        self.use_out = use_out
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
@@ -111,7 +158,13 @@ class ScaledMMBenchmark(base.Benchmark):
                 1, N
             )
             bias = torch.randn((N,), dtype=bias_dtype, device=flag_gems.device)
-            yield mat1, mat2, scale_a, scale_b, bias, None, out_dtype, False
+            if self.use_out:
+                out = torch.empty((M, N), dtype=out_dtype, device=flag_gems.device)
+                yield mat1, mat2, scale_a, scale_b, bias, None, out_dtype, False, {
+                    "out": out
+                }
+            else:
+                yield mat1, mat2, scale_a, scale_b, bias, None, out_dtype, False
 
     def get_tflops(self, op, *args, **kwargs):
         M, K = args[0].shape
@@ -120,6 +173,22 @@ class ScaledMMBenchmark(base.Benchmark):
 
 
 @pytest.mark.scaled_mm
-def test_scaled_mm_benchmark():
-    bench = ScaledMMBenchmark()
+@pytest.mark.parametrize("dtype", _benchmark_dtypes(), ids=_dtype_id)
+def test_scaled_mm_benchmark(dtype):
+    bench = ScaledMMBenchmark(
+        "scaled_mm", torch_scaled_mm_baseline, flag_gems.scaled_mm, dtype
+    )
+    bench.run()
+
+
+@pytest.mark.scaled_mm_out
+@pytest.mark.parametrize("dtype", _benchmark_dtypes(), ids=_dtype_id)
+def test_scaled_mm_out_benchmark(dtype):
+    bench = ScaledMMBenchmark(
+        "scaled_mm_out",
+        torch_scaled_mm_out_baseline,
+        flag_gems.scaled_mm_out,
+        dtype,
+        use_out=True,
+    )
     bench.run()
