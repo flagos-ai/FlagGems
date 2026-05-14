@@ -60,7 +60,6 @@ def _cat_out_input_fn(shape, dtype, device):
         yield [inp1, inp2, inp3], {"dim": -1, "out": out_last},
 
 
-@pytest.mark.skip("Benchmark test fails: issue #2673")
 @pytest.mark.cat_out
 def test_cat_out():
     bench = CatBenchmark(
