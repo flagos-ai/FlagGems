@@ -357,18 +357,6 @@ W8A8_BLOCK_FP8_MNK_SHAPES = [
 W8A8_BLOCK_FP8_BLOCK_SIZE = [128, 128]
 
 
-def get_w8a8_block_fp8_dtype():
-    if flag_gems.device != "cuda" or not torch.cuda.is_available():
-        return None
-
-    major, _ = torch.cuda.get_device_capability()
-    if major > 8 and hasattr(torch, "float8_e4m3fn"):
-        return torch.float8_e4m3fn
-    if major == 8 and hasattr(torch, "float8_e5m2"):
-        return torch.float8_e5m2
-    return None
-
-
 def rand_fp8_tensor(shape, device, dtype):
     finfo = torch.finfo(dtype)
     return (
@@ -397,19 +385,13 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
         self.shape_desc = "M, N, K"
 
     def get_input_iter(self, cur_dtype) -> Generator:
-        fp8_dtype = get_w8a8_block_fp8_dtype()
-        if fp8_dtype is None:
-            raise RuntimeError(
-                "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
-            )
-
         block_n, block_k = self.block_size
         for m, n, k in self.shapes:
             num_k_groups = (k + block_k - 1) // block_k
             num_n_groups = (n + block_n - 1) // block_n
 
-            A = rand_fp8_tensor((m, k), self.device, fp8_dtype).contiguous()
-            B = rand_fp8_tensor((n, k), self.device, fp8_dtype).contiguous()
+            A = rand_fp8_tensor((m, k), self.device, cur_dtype).contiguous()
+            B = rand_fp8_tensor((n, k), self.device, cur_dtype).contiguous()
             As = (
                 0.01
                 * torch.rand((m, num_k_groups), dtype=torch.float32, device=self.device)
@@ -995,12 +977,6 @@ class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark)
         ]
 
     def get_input_iter(self, cur_dtype):
-        fp8_dtype = get_w8a8_block_fp8_dtype()
-        if fp8_dtype is None:
-            raise RuntimeError(
-                "DeepGEMM benchmark requires CUDA device with FP8 support"
-            )
-
         block_n, block_k = self.block_size
         recipe = (1, 128, 128)
 
@@ -1008,8 +984,8 @@ class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark)
             num_k_groups = (k + block_k - 1) // block_k
             num_n_groups = (n + block_n - 1) // block_n
 
-            A = rand_fp8_tensor((m, k), self.device, fp8_dtype).contiguous()
-            B = rand_fp8_tensor((n, k), self.device, fp8_dtype).contiguous()
+            A = rand_fp8_tensor((m, k), self.device, cur_dtype).contiguous()
+            B = rand_fp8_tensor((n, k), self.device, cur_dtype).contiguous()
             As = (
                 0.01
                 * torch.rand((m, num_k_groups), dtype=torch.float32, device=self.device)
@@ -1246,7 +1222,7 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
 def test_perf_w8a8_block_fp8_matmul():
     if not VLLM_W8A8_BLOCK_FP8_AVAILABLE:
         pytest.skip("w8a8_block_fp8_matmul benchmark requires vLLM baseline operator")
-    if get_w8a8_block_fp8_dtype() is None:
+    if len(consts.FP8_DTYPES) is None:
         pytest.skip(
             "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
         )
@@ -1264,7 +1240,7 @@ def test_perf_w8a8_block_fp8_matmul():
 def test_perf_w8a8_block_fp8_matmul_deepgemm():
     if not DEEPGEMM_AVAILABLE:
         pytest.skip("DeepGEMM is not available on this platform")
-    if get_w8a8_block_fp8_dtype() is None:
+    if len(consts.FP8_DTYPES) is None:
         pytest.skip(
             "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
         )
