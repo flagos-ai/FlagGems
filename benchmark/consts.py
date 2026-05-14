@@ -10,6 +10,7 @@ INT_DTYPES = [torch.int16, torch.int32]
 BOOL_DTYPES = [torch.bool]
 COMPLEX_DTYPES = [torch.complex64]
 EXTRA_INT_DTYPES = [torch.int8, torch.uint8, torch.int64]
+FP8_DTYPES=["fp8"]
 
 
 DEFAULT_WARMUP_COUNT = 1000
