@@ -165,6 +165,7 @@ from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
+from flag_gems.ops.igammac_ import exp, igammac, igammac_, igammac_func, lgamma, pow
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
 from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
@@ -582,6 +583,9 @@ __all__ = [
     "i0",
     "i0_out",
     "i0_",
+    "igammac",
+    "igammac_",
+    "igammac_func",
     "index",
     "index_add",
     "index_add_",
@@ -607,6 +611,7 @@ __all__ = [
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
+    "lgamma",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
     "linspace",
@@ -688,6 +693,7 @@ __all__ = [
     "pixel_unshuffle",
     "pixel_unshuffle_out",
     "polar",
+    "pow",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_scalar_",

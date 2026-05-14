@@ -2767,6 +2767,19 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: igammac_
+    description: |
+      Computes the igammac_ operation.
+    for:
+      - igammac
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: index
     description: |
       Extract, access or modify specific elements, slices, or subsets of data within a tensor.
@@ -2781,6 +2794,19 @@ ops:
       - alpha: '3.0'
       - beta: '4.0'
       - stable: '4.2'
+  - id: igammac_
+    description: |
+      Computes the igammac_ operation.
+    for:
+      - igammac
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: index_add
     description: |
       Accumulate the elements of `alpha` times `source` into the `input` tensor
@@ -2793,6 +2819,19 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: igammac_
+    description: |
+      Computes the igammac_ operation.
+    for:
+      - igammac
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: index_add_
     description: The in-place version of `index_add()`.
     for:
@@ -2803,6 +2842,19 @@ ops:
       - Tensor
     stages:
       - stable: '4.0'
+  - id: igammac_
+    description: |
+      Computes the igammac_ operation.
+    for:
+      - igammac
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: index_put
     description: |
       Puts values from the tensor `values` into the tensor `input` using the indices specified
@@ -2815,6 +2867,19 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: igammac_
+    description: |
+      Computes the igammac_ operation.
+    for:
+      - igammac
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: index_put_
     description: The in-place version of `index_put()`.
     for:
@@ -2825,6 +2890,19 @@ ops:
       - Tensor
     stages:
       - stable: '3.0'
+  - id: igammac_
+    description: |
+      Computes the igammac_ operation.
+    for:
+      - igammac
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: index_put_impl
     description: An internal C++ function that handles the heavy lifting for placing values into a tensor at specific indices.
     for:
@@ -2835,6 +2913,19 @@ ops:
       - Tensor
     stages:
       - beta: '5.1'
+  - id: igammac_
+    description: |
+      Computes the igammac_ operation.
+    for:
+      - igammac
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: index_select
     description: |
       Returns a new tensor which indexes the `input` tensor along dimension `dim`
