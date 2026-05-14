@@ -1205,6 +1205,18 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '2.2'
+  - id: conv_transpose1d
+    description: |
+      Applies a 1D transposed convolution operator over an input image composed of several input planes.
+    for:
+      - conv_transpose1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - beta: '5.1'
   - id: copy
     description: |
       As a wrapper of `copy_`, this operator copies elements from `src` to `out`
