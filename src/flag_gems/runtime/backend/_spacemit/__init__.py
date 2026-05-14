@@ -8,10 +8,10 @@ if importlib.util.find_spec("triton.backends.spine_triton") is not None:
 
     setup_triton_config()
 
-    import triton  # noqa: E402
-    from triton.backends.spine_triton.driver import CPUDriver  # noqa: E402
+    # import triton  # noqa: E402
+    # from triton.backends.spine_triton.driver import CPUDriver  # noqa: E402
 
-    triton.runtime.driver.set_active(CPUDriver())  # noqa: E402
+    # triton.runtime.driver.set_active(CPUDriver())  # noqa: E402
 
 
 vendor_info = VendorInfoBase(

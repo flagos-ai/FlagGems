@@ -23,7 +23,7 @@ def test_abs(shape, dtype):
 @pytest.mark.abs_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_abs_(shape, dtype):
+def test_abs_inplace(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp.clone())
 
