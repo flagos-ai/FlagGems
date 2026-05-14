@@ -159,6 +159,7 @@ def _torch_op_wrapper(*args, **kwargs):
 
 
 @pytest.mark.skipif(flag_gems.device != "cuda", reason="benchmark requires CUDA device")
+@pytest.mark.fused_recurrent_gated_delta_rule_fwd
 @pytest.mark.fused_recurrent_gated_delta_rule
 @pytest.mark.parametrize("qkv_contiguous", [False])
 def test_perf_fused_recurrent_gated_delta_rule(qkv_contiguous):
