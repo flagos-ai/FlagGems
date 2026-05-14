@@ -1,14 +1,30 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
-NANMEDIAN_DTYPES = consts.FLOAT_DTYPES + [
-    torch.int8,
-    torch.int16,
-    torch.int32,
-    torch.uint8,
-]
+ASCEND_UNSUPPORTED_REFERENCE_DTYPES = (torch.bfloat16, torch.float64)
+
+
+def _filter_reference_supported(dtypes):
+    if flag_gems.vendor_name == "ascend":
+        return [
+            dtype for dtype in dtypes if dtype not in ASCEND_UNSUPPORTED_REFERENCE_DTYPES
+        ]
+    return dtypes
+
+
+NANMEDIAN_DTYPES = _filter_reference_supported(
+    consts.FLOAT_DTYPES
+    + [
+        torch.int8,
+        torch.int16,
+        torch.int32,
+        torch.uint8,
+    ]
+)
 
 
 class NanMedianBenchmark(base.GenericBenchmark):

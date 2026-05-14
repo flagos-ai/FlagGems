@@ -34,6 +34,14 @@ RADIX_SELECT_DTYPES = (
 
 
 @triton.jit
+def _is_not_nan(vals, USE_ISNAN: tl.constexpr):
+    vals_fp32 = vals.to(tl.float32)
+    if USE_ISNAN:
+        return ~tl_extra_shim.isnan(vals_fp32)
+    return vals_fp32 == vals_fp32
+
+
+@triton.jit
 def _to_order_key(vals, valid):
     dtype = vals.dtype
     nbits: tl.constexpr = dtype.primitive_bitwidth
@@ -62,6 +70,7 @@ def count_valid_kernel(
     M,
     N: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    USE_ISNAN: tl.constexpr,
 ):
     pid = tle.program_id(0)
     offsets = tl.arange(0, BLOCK_N)
@@ -70,7 +79,7 @@ def count_valid_kernel(
         cols = start + offsets
         mask = cols < N
         vals = tl.load(inp + pid * N + cols, mask=mask, other=float("nan"))
-        valid = mask & ~tl_extra_shim.isnan(vals.to(tl.float32))
+        valid = mask & _is_not_nan(vals, USE_ISNAN)
         count += tl.sum(valid.to(tl.int32), axis=0)
     tl.store(valid_counts + pid, count)
 
@@ -84,6 +93,7 @@ def nanmedian_select_kernel(
     M,
     N: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    USE_ISNAN: tl.constexpr,
 ):
     pid = tle.program_id(0)
     offsets = tl.arange(0, BLOCK_N)
@@ -98,7 +108,7 @@ def nanmedian_select_kernel(
     vals = tl.load(inp + pid * N + offsets, mask=mask, other=max_value)
 
     if dtype.is_floating():
-        valid = mask & ~tl_extra_shim.isnan(vals.to(tl.float32))
+        valid = mask & _is_not_nan(vals, USE_ISNAN)
     else:
         valid = mask
     valid_count = tl.sum(valid.to(tl.int32), axis=0)
@@ -135,6 +145,7 @@ def nanmedian_radix_select_kernel(
     N: tl.constexpr,
     BLOCK_N: tl.constexpr,
     RADIX_BITS_: tl.constexpr,
+    USE_ISNAN: tl.constexpr,
     USE_HISTOGRAM: tl.constexpr,
 ):
     pid = tle.program_id(0)
@@ -152,7 +163,7 @@ def nanmedian_radix_select_kernel(
         mask = cols < N
         vals = tl.load(inp + pid * N + cols, mask=mask, other=0.0)
         if dtype.is_floating():
-            valid = mask & ~tl_extra_shim.isnan(vals.to(tl.float32))
+            valid = mask & _is_not_nan(vals, USE_ISNAN)
         else:
             valid = mask
         valid_count += tl.sum(valid.to(tl.int32), axis=0)
@@ -169,7 +180,7 @@ def nanmedian_radix_select_kernel(
             mask = cols < N
             vals = tl.load(inp + pid * N + cols, mask=mask, other=0.0)
             if dtype.is_floating():
-                valid = mask & ~tl_extra_shim.isnan(vals.to(tl.float32))
+                valid = mask & _is_not_nan(vals, USE_ISNAN)
             else:
                 valid = mask
             keys = _to_order_key(vals, valid)
@@ -202,7 +213,7 @@ def nanmedian_radix_select_kernel(
         mask = cols < N
         vals = tl.load(inp + pid * N + cols, mask=mask, other=0.0)
         if dtype.is_floating():
-            valid = mask & ~tl_extra_shim.isnan(vals.to(tl.float32))
+            valid = mask & _is_not_nan(vals, USE_ISNAN)
         else:
             valid = mask
         keys = _to_order_key(vals, valid)
@@ -246,17 +257,17 @@ def _empty_flat_value(inp):
     out = torch.empty((), dtype=inp.dtype, device=inp.device)
     if torch.is_floating_point(inp):
         out.fill_(float("nan"))
-    else:
+    elif inp.is_cuda:
         out.fill_(torch.iinfo(inp.dtype).min)
+    else:
+        out.zero_()
     return out
 
 
 def _use_radix_select(inp, n):
-    if inp.is_cuda and inp.dtype in RADIX_SELECT_DTYPES:
-        return n <= LONG_RADIX_REDUCTION_N
-    if inp.dtype in (torch.int8, torch.uint8, torch.int16, torch.int32, torch.float32):
-        return n <= LARGE_FLOAT_REDUCTION_N
-    if inp.dtype in (torch.float16, torch.bfloat16):
+    if not inp.is_cuda:
+        return False
+    if inp.dtype in RADIX_SELECT_DTYPES:
         return n <= LONG_RADIX_REDUCTION_N
     return False
 
@@ -318,7 +329,7 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
         valid_count = torch.empty((M,), dtype=torch.long, device=inp.device)
         block_n = _count_block_n(inp, N)
         with torch_device_fn.device(inp.device):
-            count_valid_kernel[(M,)](inp, valid_count, M, N, block_n)
+            count_valid_kernel[(M,)](inp, valid_count, M, N, block_n, inp.is_cuda)
         min_count = int(torch.min(valid_count).item())
         max_count = int(torch.max(valid_count).item())
         if min_count == max_count:
@@ -429,6 +440,7 @@ def _nanmedian_dim_impl(inp, dim, keepdim):
                 block_n,
                 _radix_bits(inp, N),
                 inp.is_cuda,
+                inp.is_cuda,
                 num_warps=num_warps,
                 num_stages=1,
             )
@@ -437,7 +449,9 @@ def _nanmedian_dim_impl(inp, dim, keepdim):
         flat_indices = indices.reshape(M)
         block_n = triton.next_power_of_2(N)
         with torch_device_fn.device(inp.device):
-            nanmedian_select_kernel[(M,)](inp, flat_values, flat_indices, M, N, block_n)
+            nanmedian_select_kernel[(M,)](
+                inp, flat_values, flat_indices, M, N, block_n, inp.is_cuda
+            )
     else:
         result = _nanmedian_kthvalue_fallback(inp, M, N)
         values = result.values.reshape(keepdim_shape)

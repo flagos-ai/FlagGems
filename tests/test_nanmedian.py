@@ -6,15 +6,30 @@ import flag_gems
 from . import accuracy_utils as utils
 
 EXTRA_INT_DTYPES = [torch.int8, torch.uint8]
-NANMEDIAN_DTYPES = utils.ALL_FLOAT_DTYPES + EXTRA_INT_DTYPES + utils.ALL_INT_DTYPES
-FLOAT_DTYPES = utils.ALL_FLOAT_DTYPES
-LARGE_RADIX_DTYPES = [
-    torch.float16,
-    torch.float32,
-    torch.bfloat16,
-    torch.int32,
-    torch.uint8,
-]
+ASCEND_UNSUPPORTED_REFERENCE_DTYPES = (torch.bfloat16, torch.float64)
+
+
+def _filter_reference_supported(dtypes):
+    if flag_gems.vendor_name == "ascend":
+        return [
+            dtype for dtype in dtypes if dtype not in ASCEND_UNSUPPORTED_REFERENCE_DTYPES
+        ]
+    return dtypes
+
+
+NANMEDIAN_DTYPES = _filter_reference_supported(
+    utils.ALL_FLOAT_DTYPES + EXTRA_INT_DTYPES + utils.ALL_INT_DTYPES
+)
+FLOAT_DTYPES = _filter_reference_supported(utils.ALL_FLOAT_DTYPES)
+LARGE_RADIX_DTYPES = _filter_reference_supported(
+    [
+        torch.float16,
+        torch.float32,
+        torch.bfloat16,
+        torch.int32,
+        torch.uint8,
+    ]
+)
 
 
 def _make_input(shape, dtype, with_nan=True):
