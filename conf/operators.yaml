@@ -4959,10 +4959,21 @@ ops:
       - Tensor
     stages:
       - stable: '3.0'
-  - id: _segment_reduce_backward
+  - id: segment_reduce_backward
     description: Computes gradients for `segment_reduce` with lengths or offsets based segment definitions.
     for:
       - _segment_reduce_backward
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - beta: '5.1'
+  - id: segment_reduce_backward_out
+    description: |
+      A variant of `_segment_reduce_backward` that assigns the gradient input to the `out` tensor.
+    for:
+      - _segment_reduce_backward.out
     labels:
       - aten
     kind:
@@ -4975,6 +4986,17 @@ ops:
       by `lengths` or `offsets`, and supported reductions include sum, mean, max, min, and prod.
     for:
       - segment_reduce
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - beta: '5.1'
+  - id: segment_reduce_out
+    description: |
+      A variant of `segment_reduce` that assigns the reduced segments to the `out` tensor.
+    for:
+      - segment_reduce.out
     labels:
       - aten
     kind:

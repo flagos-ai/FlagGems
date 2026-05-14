@@ -62,6 +62,69 @@ def _assert_segment_reduce(shape, kwargs, reduce, dtype, initial):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+def _assert_segment_reduce_out(shape, kwargs, reduce, dtype):
+    data = _make_data(shape, dtype)
+    ref_data = utils.to_reference(data)
+    ref_kwargs = _to_reference_kwargs(kwargs)
+
+    ref_expected = torch.segment_reduce(ref_data, reduce, **ref_kwargs)
+    ref_out = torch.empty_like(ref_expected)
+    out = torch.empty(tuple(ref_expected.shape), dtype=dtype, device=flag_gems.device)
+
+    ref_result = torch.ops.aten.segment_reduce.out(
+        ref_data,
+        reduce,
+        **ref_kwargs,
+        out=ref_out,
+    )
+    with flag_gems.use_gems():
+        res_result = torch.ops.aten.segment_reduce.out(
+            data,
+            reduce,
+            **kwargs,
+            out=out,
+        )
+
+    assert res_result.data_ptr() == out.data_ptr()
+    utils.gems_assert_close(res_result, ref_result, dtype, equal_nan=True)
+
+
+def _assert_segment_reduce_backward_out(shape, kwargs, reduce, dtype):
+    data = _make_data(shape, dtype)
+    ref_data = utils.to_reference(data)
+    ref_kwargs = _to_reference_kwargs(kwargs)
+
+    ref_output = torch.segment_reduce(ref_data, reduce, **ref_kwargs)
+    with flag_gems.use_gems():
+        output = torch.segment_reduce(data, reduce, **kwargs)
+
+    grad = _make_data(tuple(output.shape), dtype)
+    ref_grad = utils.to_reference(grad)
+    ref_out = torch.empty_like(ref_data)
+    out = torch.empty_like(data)
+
+    ref_result = torch.ops.aten._segment_reduce_backward.out(
+        ref_grad,
+        ref_output,
+        ref_data,
+        reduce,
+        **ref_kwargs,
+        out=ref_out,
+    )
+    with flag_gems.use_gems():
+        res_result = torch.ops.aten._segment_reduce_backward.out(
+            grad,
+            output,
+            data,
+            reduce,
+            **kwargs,
+            out=out,
+        )
+
+    assert res_result.data_ptr() == out.data_ptr()
+    utils.gems_assert_close(res_result, ref_result, dtype, equal_nan=True)
+
+
 @pytest.mark.segment_reduce
 @pytest.mark.parametrize("shape, axis, lengths", LENGTH_CASES)
 @pytest.mark.parametrize("reduce", REDUCTIONS)
@@ -114,6 +177,58 @@ def test_segment_reduce_backward_lengths(shape, axis, lengths, reduce, dtype, in
         (res_grad_input,) = torch.autograd.grad(res_out, data, grad)
 
     utils.gems_assert_close(res_grad_input, ref_grad_input, dtype, equal_nan=True)
+
+
+@pytest.mark.segment_reduce_out
+@pytest.mark.parametrize("reduce", REDUCTIONS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_segment_reduce_lengths_out(reduce, dtype):
+    shape, axis, lengths = (2, 3, 4), 1, [[1, 2], [2, 1]]
+    _assert_segment_reduce_out(
+        shape,
+        _make_lengths_kwargs(axis, lengths),
+        reduce,
+        dtype,
+    )
+
+
+@pytest.mark.segment_reduce_out
+@pytest.mark.parametrize("reduce", REDUCTIONS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_segment_reduce_offsets_out(reduce, dtype):
+    shape, axis, offsets = (2, 3, 4), 1, [[0, 1, 3], [0, 2, 3]]
+    _assert_segment_reduce_out(
+        shape,
+        _make_offsets_kwargs(axis, offsets),
+        reduce,
+        dtype,
+    )
+
+
+@pytest.mark.segment_reduce_backward_out
+@pytest.mark.parametrize("reduce", REDUCTIONS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_segment_reduce_backward_lengths_out(reduce, dtype):
+    shape, axis, lengths = (2, 3, 4), 1, [[1, 2], [2, 1]]
+    _assert_segment_reduce_backward_out(
+        shape,
+        _make_lengths_kwargs(axis, lengths),
+        reduce,
+        dtype,
+    )
+
+
+@pytest.mark.segment_reduce_backward_out
+@pytest.mark.parametrize("reduce", REDUCTIONS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_segment_reduce_backward_offsets_out(reduce, dtype):
+    shape, axis, offsets = (2, 3, 4), 1, [[0, 1, 3], [0, 2, 3]]
+    _assert_segment_reduce_backward_out(
+        shape,
+        _make_offsets_kwargs(axis, offsets),
+        reduce,
+        dtype,
+    )
 
 
 @pytest.mark.segment_reduce_backward

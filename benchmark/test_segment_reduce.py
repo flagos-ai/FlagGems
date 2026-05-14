@@ -42,6 +42,35 @@ def _segment_reduce_op(reduce):
     return inner
 
 
+def _segment_reduce_out_op(reduce):
+    def inner(data, lengths, axis, out):
+        return torch.ops.aten.segment_reduce.out(
+            data,
+            reduce,
+            lengths=lengths,
+            axis=axis,
+            unsafe=True,
+            out=out,
+        )
+
+    return inner
+
+
+def _segment_reduce_backward_out_op(reduce):
+    def inner(grad, output, data, lengths, axis, out):
+        return torch.ops.aten._segment_reduce_backward.out(
+            grad,
+            output,
+            data,
+            reduce,
+            lengths=lengths,
+            axis=axis,
+            out=out,
+        )
+
+    return inner
+
+
 class SegmentReduceBenchmark(base.Benchmark):
     DEFAULT_SHAPES = [
         (1048576,),
@@ -51,6 +80,9 @@ class SegmentReduceBenchmark(base.Benchmark):
         (1024, 1024, 1024),
     ]
     DEFAULT_SHAPE_DESC = "data shape"
+    reduce = None
+    use_backward_out = False
+    use_out = False
 
     def set_shapes(self, shape_file_path=None):
         default_shape_file = os.path.abspath(
@@ -79,20 +111,48 @@ class SegmentReduceBenchmark(base.Benchmark):
             axis = _select_axis(shape)
             data = torch.randn(shape, dtype=cur_dtype, device=self.device)
             lengths = _make_lengths(shape, axis, self.device)
+            output_shape = tuple(lengths.shape) + tuple(data.shape[axis + 1 :])
+            if self.use_backward_out:
+                output = torch.segment_reduce(
+                    data,
+                    self.reduce,
+                    lengths=lengths,
+                    axis=axis,
+                    unsafe=True,
+                )
+                grad = torch.randn_like(output)
+                out = torch.empty_like(data)
+                yield grad, output, data, lengths, axis, out
+                continue
+            if self.use_out:
+                out = torch.empty(output_shape, dtype=cur_dtype, device=self.device)
+                yield data, lengths, axis, out
+                continue
             yield data, lengths, axis
 
     def get_gbps(self, args, latency=None):
-        data, lengths, axis = args
-        output_shape = tuple(lengths.shape) + tuple(data.shape[axis + 1 :])
-        output = torch.empty(output_shape, dtype=data.dtype, device=data.device)
-        io_tensors = [data, lengths, output]
+        if self.use_backward_out:
+            grad, output, data, lengths, _, out = args
+            io_tensors = [grad, output, data, lengths, out]
+        else:
+            data, lengths, axis = args[:3]
+            output_shape = tuple(lengths.shape) + tuple(data.shape[axis + 1 :])
+            output = (
+                args[3]
+                if self.use_out
+                else torch.empty(output_shape, dtype=data.dtype, device=data.device)
+            )
+            io_tensors = [data, lengths, output]
         if self.is_backward:
             io_tensors.extend([output, data])
         io_amount = sum(shape_utils.size_in_bytes(item) for item in io_tensors)
         return io_amount * 1e-9 / (latency * 1e-3)
 
     def get_tflops(self, op, *args, **kwargs):
-        data, lengths, axis = args
+        if self.use_backward_out:
+            data, lengths, axis = args[2], args[3], args[4]
+        else:
+            data, lengths, axis = args[:3]
         segment_count = lengths.shape[-1]
         inner_size = math.prod(data.shape[axis + 1 :]) if axis + 1 < data.dim() else 1
         return data.numel() + segment_count * inner_size
@@ -109,6 +169,18 @@ def test_segment_reduce(reduce):
     bench.run()
 
 
+@pytest.mark.segment_reduce_out
+@pytest.mark.parametrize("reduce", REDUCTIONS)
+def test_segment_reduce_out(reduce):
+    bench = SegmentReduceBenchmark(
+        op_name=f"segment_reduce_out_{reduce}",
+        torch_op=_segment_reduce_out_op(reduce),
+        dtypes=consts.FLOAT_DTYPES,
+        use_out=True,
+    )
+    bench.run()
+
+
 @pytest.mark.segment_reduce_backward
 @pytest.mark.parametrize("reduce", REDUCTIONS)
 def test_segment_reduce_backward(reduce):
@@ -117,5 +189,18 @@ def test_segment_reduce_backward(reduce):
         torch_op=_segment_reduce_op(reduce),
         dtypes=consts.FLOAT_DTYPES,
         is_backward=True,
+    )
+    bench.run()
+
+
+@pytest.mark.segment_reduce_backward_out
+@pytest.mark.parametrize("reduce", REDUCTIONS)
+def test_segment_reduce_backward_out(reduce):
+    bench = SegmentReduceBenchmark(
+        op_name=f"_segment_reduce_backward_out_{reduce}",
+        torch_op=_segment_reduce_backward_out_op(reduce),
+        dtypes=consts.FLOAT_DTYPES,
+        reduce=reduce,
+        use_backward_out=True,
     )
     bench.run()
