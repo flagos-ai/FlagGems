@@ -1349,6 +1349,18 @@ ops:
     stages:
       - stable: '2.0'
       - removed: '3.0'
+  - id: cudnn_convolution
+    description: |
+      A wrapper for cuDNN convolution backend.
+    for:
+      - cudnn_convolution
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: cummax
     description: |
       Returns a named tuple `(values, indices)` where `values` is the cumulative maximum of elements
@@ -4188,6 +4200,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: poisson
+    description: |
+      Returns a tensor of the same size as `input` with each element sampled
+      from a Poisson distribution with rate given by the corresponding element in `input`.
+    for:
+      - poisson
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: polar
     description: |
       Constructs a complex tensor whose elements are Cartesian coordinates corresponding to

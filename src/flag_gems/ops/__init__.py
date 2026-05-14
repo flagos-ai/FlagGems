@@ -90,6 +90,7 @@ from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
+from flag_gems.ops.cudnn_convolution import cudnn_convolution
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_
@@ -124,6 +125,7 @@ from flag_gems.ops.exponential_ import exponential_
 from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
 from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
+from flag_gems.ops.fft import fft
 from flag_gems.ops.fill import (
     fill_scalar,
     fill_scalar_,
@@ -131,6 +133,13 @@ from flag_gems.ops.fill import (
     fill_tensor,
     fill_tensor_,
     fill_tensor_out,
+)
+from flag_gems.ops.flash_attention_backward import (
+    efficient_attention_backward,
+    flash_attention_backward,
+    scaled_dot_product_cudnn_attention_backward,
+    scaled_dot_product_efficient_attention_backward,
+    scaled_dot_product_flash_attention_backward,
 )
 from flag_gems.ops.flip import flip
 from flag_gems.ops.floor_ import floor_
@@ -253,6 +262,7 @@ from flag_gems.ops.per_token_group_quant_fp8 import (
 )
 from flag_gems.ops.pixel_shuffle import pixel_shuffle
 from flag_gems.ops.pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
+from flag_gems.ops.poisson import poisson
 from flag_gems.ops.polar import polar
 from flag_gems.ops.pow import (
     pow_scalar,
@@ -485,6 +495,7 @@ __all__ = [
     "cosh_",
     "cosh_out",
     "count_nonzero",
+    "cudnn_convolution",
     "cummax",
     "cummin",
     "cumprod",
@@ -505,6 +516,7 @@ __all__ = [
     "elu",
     "elu_",
     "elu_backward",
+    "efficient_attention_backward",
     "embedding",
     "embedding_backward",
     "embedding_dense_backward",
@@ -532,10 +544,12 @@ __all__ = [
     "fill_tensor",
     "fill_tensor_",
     "fill_tensor_out",
+    "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flip",
+    "fft",
     "floor_",
     "floor_divide",
     "floor_divide_",
@@ -687,6 +701,7 @@ __all__ = [
     "pixel_shuffle",
     "pixel_unshuffle",
     "pixel_unshuffle_out",
+    "poisson",
     "polar",
     "pow_scalar",
     "pow_tensor_scalar",
@@ -737,6 +752,9 @@ __all__ = [
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "scaled_dot_product_cudnn_attention_backward",
+    "scaled_dot_product_efficient_attention_backward",
+    "scaled_dot_product_flash_attention_backward",
     "scaled_softmax_backward",
     "scaled_softmax_forward",
     "scatter",
