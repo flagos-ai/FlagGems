@@ -9,7 +9,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ def mean_kernel_1(
     else:
         cdtype = inp.dtype.element_ty
 
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -102,8 +102,8 @@ def mean_dim_kernel_non_inner_vec(
         ACC_DTYPE = input_dtype
         # VEC_SIZE = 1 for FP32
 
-    pid_m = tle.program_id(0)
-    pid_k = tle.program_id(1)
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
 
     # Each thread handles VEC_SIZE consecutive elements
     k_base = pid_k * BLOCK_SIZE_K * VEC_SIZE
@@ -154,8 +154,8 @@ def mean_dim_kernel_non_inner(
     else:
         cdtype = input_ptr.dtype.element_ty
 
-    pid_m = tle.program_id(0)
-    pid_k = tle.program_id(1)
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
 
     k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
 
@@ -205,7 +205,7 @@ def mean_dim_kernel_inner(
     else:
         cdtype = input_ptr.dtype.element_ty
 
-    pid_m = tle.program_id(0)
+    pid_m = ext.program_id(0)
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
         inp_offset = pid_m * N + n_offsets
@@ -259,7 +259,7 @@ def mean_dim_kernel(
         cdtype = inp.dtype.element_ty
 
     # Map the program id to the row of inp it should compute.
-    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + pid * N
     out = out + pid
     row_mask = pid < M

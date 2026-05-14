@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 if runtime.device.vendor_name == "iluvatar":
     from flag_gems.runtime.backend._iluvatar.ops.bmm import bmm
@@ -51,20 +51,20 @@ def baddbmm_kernel(
     bias_N_stride: tl.constexpr,
 ):
     # batch offsets
-    pid_b = tle.program_id(2)
+    pid_b = ext.program_id(2)
     A += pid_b * M * K
     B += pid_b * K * N
     O += pid_b * M * N
     bias += pid_b * bias_batch_stride
 
-    pidx = tle.program_id(0)
-    pidy = tle.program_id(1)
+    pidx = ext.program_id(0)
+    pidy = ext.program_id(1)
 
     if GROUP_M == 1:
         pid_m, pid_n = pidx, pidy
     else:
-        gridx = tle.num_programs(0)
-        gridy = tle.num_programs(1)
+        gridx = ext.num_programs(0)
+        gridy = ext.num_programs(1)
         pid = pidx + pidy * gridx
         num_CTA_per_group = gridy * GROUP_M
         group_id = pid // num_CTA_per_group

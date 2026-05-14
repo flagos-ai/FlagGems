@@ -16,13 +16,6 @@ on:
         description: "GPUs (comma separated numbers)"
         required: true
         type: string
-    secrets:
-      RUNNER_SSH_KEY:
-        required: true
-      PROXYC:
-        required: true
-      PROXYG:
-        required: true
 permissions:
   contents: read
 
@@ -55,27 +48,11 @@ jobs:
     if: needs.check-permission.outputs.authorized == 'true'
     runs-on: ${{ inputs.runner }}
     steps:
-      # - name: Set global proxy
-      #   if: False
-      #   shell: bash
-      #   env:
-      #     RUNNER_LABEL: ${{ inputs.runner }}
-      #     PROXY: ${{ secrets.PROXYG }}
-      #   run: |
-      #     # Setup proxy for git checkout
-      #     case "${RUNNER_LABEL}" in
-      #       h20|metax|hygon)
-      #         ;;
-      #       *)
-      #         echo "HTTP_PROXY=${PROXY}" >> $GITHUB_ENV
-      #         echo "HTTPS_PROXY=${PROXY}" >> $GITHUB_ENV
-      #         ;;
-      #     esac
-
-      - uses: actions/checkout@v6
-        # with:
-        #  ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
-
+      - uses: Wandalen/wretry.action@v3.8.0
+        with:
+          action: actions/checkout@v6
+          attempt_limit: 5
+          attempt_delay: 20000
       - name: Setup FlagGems
         shell: bash
         env:
