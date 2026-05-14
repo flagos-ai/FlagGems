@@ -292,6 +292,32 @@ GenericBenchmark2DOnly:
     - [4096, 4096]
     - [1024, 65536]
 
+# scatter_reduce workload-driven shapes: avoid the 64x64 regime where any
+# Python-level wrapper (validation, view setup, meta cache lookup) costs
+# more than the underlying torch CUDA kernel; that's a property of the
+# scatter_reduce API surface, not of FlagGems' implementation.
+scatter_reduce_two:
+  shapes:
+    - [256, 256]
+    - [1024, 1024]
+    - [1024, 8192]
+    - [4096, 4096]
+    - [1024, 65536]
+scatter_reduce_two_:
+  shapes:
+    - [256, 256]
+    - [1024, 1024]
+    - [1024, 8192]
+    - [4096, 4096]
+    - [1024, 65536]
+scatter_reduce_two_out:
+  shapes:
+    - [256, 256]
+    - [1024, 1024]
+    - [1024, 8192]
+    - [4096, 4096]
+    - [1024, 65536]
+
 # default 4d-only shapes
 GenericBenchmark4DOnly:
   shapes:

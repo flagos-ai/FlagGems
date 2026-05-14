@@ -4958,12 +4958,40 @@ ops:
       - Tensor
     stages:
       - stable: '3.0'
+  - id: scatter_reduce_two
+    description: |
+      Writes values from `src` into a new tensor at indices given by `index`,
+      reducing concurrently into the same target position using the chosen
+      reduction (``sum`` / ``prod`` / ``mean`` / ``amax`` / ``amin``).
+      Out-of-place variant of ``Tensor.scatter_reduce_``.
+    for:
+      - scatter_reduce.two
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
   - id: scatter_reduce_two_
     description: |
       A specific low-level ATen operator primarily encountered during model compilation
       or when using advanced backends like TensorRT or MPS.
     for:
       - scatter_reduce_.two
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
+  - id: scatter_reduce_two_out
+    description: |
+      ``out``-tensor variant of ``scatter_reduce.two``: writes the reduction
+      result into the user-supplied ``out`` buffer.
+    for:
+      - scatter_reduce.two_out
     labels:
       - aten
       - KernelGen
