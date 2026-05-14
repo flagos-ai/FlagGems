@@ -181,6 +181,12 @@ from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
+from flag_gems.ops.linalg_slogdet import (
+    linalg_slogdet,
+    slogdet,
+    slogdet_,
+    slogdet_kernel,
+)
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
 from flag_gems.ops.log1p_ import log1p_
@@ -609,6 +615,7 @@ __all__ = [
     "lerp_tensor_",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
+    "linalg_slogdet",
     "linspace",
     "log",
     "log10",
@@ -761,6 +768,9 @@ __all__ = [
     "sinh_",
     "slice_backward",
     "slice_scatter",
+    "slogdet",
+    "slogdet_",
+    "slogdet_kernel",
     "smooth_l1_loss",
     "smooth_l1_loss_backward",
     "smooth_l1_loss_out",

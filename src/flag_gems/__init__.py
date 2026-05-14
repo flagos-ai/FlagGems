@@ -43,6 +43,7 @@ _FULL_CONFIG = (
     ("_grouped_mm", group_mm),
     ("_index_put_impl_", _index_put_impl_),
     ("_is_all_true", _is_all_true),
+    ("_linalg_slogdet", slogdet_kernel),
     ("_log_softmax", log_softmax),
     ("_log_softmax.out", log_softmax_out),
     ("_log_softmax_backward_data", log_softmax_backward),

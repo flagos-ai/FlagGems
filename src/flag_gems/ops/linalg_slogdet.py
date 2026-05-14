@@ -1,0 +1,210 @@
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as tle
+
+logger = logging.getLogger(__name__)
+
+
+@libentry()
+@triton.jit
+def slogdet_kernel(
+    A_input,
+    sign_out,
+    logabsdet_out,
+    LU_out,
+    pivots_out,
+    n,
+    M,
+    stride_a,
+    stride_sign,
+    stride_logabsdet,
+    stride_lu,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """
+    Compute slogdet for square matrices using Gaussian elimination.
+    Each program handles one matrix in the batch.
+    """
+    # Get the matrix index (batch index)
+    pid = tle.program_id(0)
+
+    # Initialize sign to 1.0 and logabsdet to 0.0
+    sign = 1.0
+    logabsdet = 0.0
+
+    # Get the starting pointer for this matrix
+    A_mat = A_input + pid * M * stride_a
+    sign_out_mat = sign_out + pid * stride_sign
+    logabsdet_out_mat = logabsdet_out + pid * stride_logabsdet
+    LU_out_mat = LU_out + pid * stride_lu
+
+    # Gaussian elimination
+    for k in range(1, n):
+        # Get pivot element
+        pivot = tl.load(A_mat + (k - 1) * stride_a + (k - 1)).to(tl.float32)
+        pivot_abs = tl.abs(pivot)
+
+        # Skip if pivot is zero (singular matrix)
+        if pivot_abs > 1e-10:
+            # Do elimination for rows below
+            for i in range(k, n):
+                # Compute multiplier
+                a_ik = tl.load(A_mat + i * stride_a + (k - 1)).to(tl.float32)
+                factor = a_ik / pivot
+
+                # Update remaining columns
+                for j in range(k, n):
+                    a_ij = tl.load(A_mat + i * stride_a + j).to(tl.float32)
+                    a_kj = tl.load(A_mat + (k - 1) * stride_a + j).to(tl.float32)
+                    new_val = a_ij - factor * a_kj
+                    tl.store(
+                        A_mat + i * stride_a + j,
+                        new_val.to(A_mat.dtype.element_ty),
+                    )
+
+    # Compute logabsdet from diagonal elements
+    for i in range(n):
+        diag = tl.load(A_mat + i * stride_a + i).to(tl.float32)
+        diag_abs = tl.abs(diag)
+
+        # Handle near-zero diagonal elements (singular matrix)
+        is_singular = diag_abs < 1e-10
+        diag_abs = tl.where(is_singular, 1.0, diag_abs)
+        sign = tl.where(is_singular, 0.0, sign)
+
+        # Update sign based on diagonal element
+        diag_sign = tl.where(diag > 0, 1.0, tl.where(diag < 0, -1.0, 0.0))
+        sign = sign * diag_sign
+
+        # Add to logabsdet
+        logabsdet = logabsdet + tl.log(diag_abs)
+
+    # Copy the LU decomposition to output
+    for i in range(n):
+        for j in range(n):
+            val = tl.load(A_mat + i * stride_a + j)
+            tl.store(LU_out_mat + i * stride_lu + j, val)
+
+    # Store results
+    tl.store(sign_out_mat, sign.to(sign_out_mat.dtype.element_ty))
+    tl.store(logabsdet_out_mat, logabsdet.to(logabsdet_out_mat.dtype.element_ty))
+
+
+def slogdet(A):
+    """
+    Compute the sign and natural logarithm of the absolute value of the determinant
+    of a square matrix.
+
+    Args:
+        A: tensor of shape (*, n, n) where * is zero or more batch dimensions.
+
+    Returns:
+        A tuple (sign, logabsdet, LU, pivots) where:
+        - sign has the same dtype as A
+        - logabsdet is always real-valued
+        - LU is the LU decomposition
+        - pivots is the pivot indices (not computed in this implementation)
+    """
+    logger.debug("GEMS slogdet")
+    assert A.dim() >= 2, "Input must be at least 2D"
+    assert A.shape[-1] == A.shape[-2], "Input must be square"
+
+    batch_shape = A.shape[:-2]
+    n = A.shape[-1]
+    batch_size = 1
+    for dim in batch_shape:
+        batch_size *= dim
+
+    # Output tensors
+    sign = torch.empty(batch_shape, dtype=A.dtype, device=A.device)
+    logabsdet = torch.empty(batch_shape, dtype=A.dtype, device=A.device)
+    LU = torch.empty(A.shape, dtype=A.dtype, device=A.device)
+    # pivots is not computed in this implementation, return a dummy tensor
+    pivots = torch.empty(batch_shape, dtype=torch.int32, device=A.device)
+
+    # Handle empty batch
+    if batch_size == 0:
+        return (
+            torch.zeros_like(sign),
+            torch.full_like(logabsdet, float("-inf")),
+            torch.empty_like(LU),
+            torch.zeros_like(pivots),
+        )
+
+    # Make a copy of input to avoid modifying the original
+    A_copy = A.clone()
+
+    # Get stride for batch
+    stride_a = A_copy.stride(-2)
+    stride_sign = sign.stride(-1) if sign.dim() > 0 else 0
+    stride_logabsdet = logabsdet.stride(-1) if logabsdet.dim() > 0 else 0
+    stride_lu = LU.stride(-2)
+
+    # Launch kernel
+    grid = (batch_size,)
+
+    # Choose block size based on matrix size
+    block_size = 32 if n <= 32 else 64
+
+    with torch_device_fn.device(A.device):
+        slogdet_kernel[grid](
+            A_copy,
+            sign,
+            logabsdet,
+            LU,
+            pivots,
+            n,
+            A_copy.shape[-2],
+            stride_a,
+            stride_sign,
+            stride_logabsdet,
+            stride_lu,
+            block_size,
+        )
+
+    return sign, logabsdet, LU, pivots
+
+
+# Wrapper for use with torch.linalg.slogdet interface
+def linalg_slogdet(A):
+    """
+    Wrapper that matches torch.linalg.slogdet interface.
+    Returns only (sign, logabsdet) named tuple.
+    """
+    sign, logabsdet, LU, pivots = slogdet(A)
+
+    # Return as named tuple like torch.linalg.slogdet
+    # Create a simple named tuple-like object
+    class SlogdetResult:
+        def __init__(self, sign, logabsdet):
+            self.sign = sign
+            self.logabsdet = logabsdet
+
+        def __getitem__(self, idx):
+            if idx == 0:
+                return self.sign
+            elif idx == 1:
+                return self.logabsdet
+            raise IndexError("SlogdetResult index out of range")
+
+        def __iter__(self):
+            yield self.sign
+            yield self.logabsdet
+
+        def __len__(self):
+            return 2
+
+    return SlogdetResult(sign, logabsdet)
+
+
+def slogdet_(A):
+    """
+    In-place version of slogdet (not supported, raises error).
+    """
+    raise NotImplementedError("In-place slogdet is not supported")
