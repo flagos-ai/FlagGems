@@ -16,7 +16,8 @@ class vendors(Enum):
     TSINGMICRO = 10
     SUNRISE = 11
     ENFLAME = 12
-    THEAD = 13
+    SPACEMIT = 13
+    THEAD = 14
 
     @classmethod
     def get_all_vendors(cls) -> dict:
@@ -36,6 +37,7 @@ UNSUPPORT_FP64 = frozenset(
         vendors.KUNLUNXIN,
         vendors.MTHREADS,
         vendors.SUNRISE,
+        vendors.SPACEMIT,
         vendors.TSINGMICRO,
     }
 )
@@ -44,6 +46,7 @@ UNSUPPORT_BF16 = frozenset(
     {
         vendors.AIPU,
         vendors.SUNRISE,
+        vendors.SPACEMIT,
     }
 )
 
@@ -51,6 +54,7 @@ UNSUPPORT_INT64 = frozenset(
     {
         vendors.AIPU,
         vendors.ENFLAME,
+        vendors.SPACEMIT,
         vendors.SUNRISE,
         vendors.TSINGMICRO,
     }

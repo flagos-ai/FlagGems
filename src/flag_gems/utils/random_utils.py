@@ -5,6 +5,8 @@ import triton.language as tl
 import flag_gems
 from flag_gems.runtime import torch_device_fn
 
+_SPACEMIT_CPU_GENERATOR = None
+
 try:
     uint_to_uniform_float = tl.uint_to_uniform_float
 except AttributeError:
@@ -36,13 +38,25 @@ except AttributeError:
 # It returns the current state of the default Philox RNG in seed and offset and
 # updates the next offset by adding `increment`.
 def philox_backend_seed_offset(increment, generator=None):
+    global _SPACEMIT_CPU_GENERATOR
+
     if generator is None:
         device = torch_device_fn.current_device()
-        generator = torch_device_fn.default_generators[device]
+        # SPACEMIT uses CPU generator
+        if flag_gems.vendor_name == "spacemit":
+            if _SPACEMIT_CPU_GENERATOR is None:
+                _SPACEMIT_CPU_GENERATOR = torch.Generator(device="cpu")
+            generator = _SPACEMIT_CPU_GENERATOR
+        else:
+            generator = torch_device_fn.default_generators[device]
     state_copy = generator.get_state()
     # TODO[kunlunxin]: we will upgrade torch version in 2025.04
     if flag_gems.vendor_name in ("kunlunxin", "aipu"):
         c0, c1 = state_copy.view(torch.int64)[-2], state_copy.view(torch.int64)[-1]
+    elif flag_gems.vendor_name == "spacemit":
+        state_view = state_copy.view(torch.int64)
+        c0 = state_view[-2].item()
+        c1 = state_view[-1].item()
     else:
         c0, c1 = state_copy.view(torch.int64)
 
@@ -55,13 +69,26 @@ def philox_backend_seed_offset(increment, generator=None):
 
 
 def set_philox_state(seed, offset, device=None):
+    global _SPACEMIT_CPU_GENERATOR
     assert offset % 4 == 0
-    device = device or torch_device_fn.current_device()
-    gen = torch_device_fn.default_generators[device]
-    state_copy = gen.get_state()
-    state_copy.view(torch.int64)[0] = seed
-    state_copy.view(torch.int64)[1] = offset
-    gen.set_state(state_copy)
+    if flag_gems.vendor_name == "spacemit":
+        if _SPACEMIT_CPU_GENERATOR is None:
+            _SPACEMIT_CPU_GENERATOR = torch.Generator(device="cpu")
+        gen = _SPACEMIT_CPU_GENERATOR
+        # CPU mt19937 state: write seed/offset into the last two int64 slots
+        # (matching the read positions in philox_backend_seed_offset)
+        state_copy = gen.get_state()
+        state_view = state_copy.view(torch.int64)
+        state_view[-2] = seed
+        state_view[-1] = offset
+        gen.set_state(state_copy)
+    else:
+        device = device or torch_device_fn.current_device()
+        gen = torch_device_fn.default_generators[device]
+        state_copy = gen.get_state()
+        state_copy.view(torch.int64)[0] = seed
+        state_copy.view(torch.int64)[1] = offset
+        gen.set_state(state_copy)
     return
 
 

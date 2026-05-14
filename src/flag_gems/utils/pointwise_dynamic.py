@@ -466,7 +466,14 @@ class KernelGenerator:
         code.writeline("# loads")
         for i in range(schema.num_input_tensors()):
             strides = _tuple_content(tuple(f"in{i}_stride{j}" for j in range(ndim)))
-            order = _tuple_content(tuple(f"in{i}_stride_order{j}" for j in range(ndim)))
+            import flag_gems
+
+            if flag_gems.vendor_name == "spacemit":
+                order = _tuple_content(tuple(f"{ndim - j - 1}" for j in range(ndim)))
+            else:
+                order = _tuple_content(
+                    tuple(f"in{i}_stride_order{j}" for j in range(ndim))
+                )
             code.writeline(
                 f"in{i}_bptr = tl.make_block_ptr("
                 f"in{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
