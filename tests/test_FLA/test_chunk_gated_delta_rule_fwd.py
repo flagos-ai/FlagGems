@@ -5,13 +5,6 @@ import torch.nn.functional as F
 import flag_gems
 
 
-def is_cuda_available() -> bool:
-    return torch.cuda.is_available() and flag_gems.device == "cuda"
-
-
-CUDA_AVAILABLE = is_cuda_available()
-
-
 def naive_chunk_gated_delta_rule_fwd(q, k, v, g, beta, scale, initial_state):
     """
     Naive reference implementation of chunk_gated_delta_rule_fwd.
@@ -65,7 +58,6 @@ def naive_chunk_gated_delta_rule_fwd(q, k, v, g, beta, scale, initial_state):
     return o, S
 
 
-@pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires CUDA device")
 @pytest.mark.chunk_gated_delta_rule_fwd
 @pytest.mark.xfail(
     reason="Triton 3.6.0 compilation error on Hopper: 'ttng.warp_group_dot' op pipeliner issue"
@@ -113,7 +105,6 @@ def test_chunk_gated_delta_rule_fwd_accuracy(B, T, H, K, V, dtype):
     )
 
 
-@pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires CUDA device")
 @pytest.mark.chunk_gated_delta_rule_fwd
 @pytest.mark.xfail(
     reason="Triton 3.6.0 compilation error on Hopper: 'ttng.warp_group_dot' op pipeliner issue"
@@ -150,7 +141,6 @@ def test_chunk_gated_delta_rule_fwd_no_initial_state(T):
     torch.testing.assert_close(res_o.float(), ref_o, rtol=1e-1, atol=2e-1)
 
 
-@pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires CUDA device")
 @pytest.mark.chunk_gated_delta_rule_fwd
 @pytest.mark.xfail(
     reason="Triton 3.6.0 compilation error on Hopper: 'ttng.warp_group_dot' op pipeliner issue"
