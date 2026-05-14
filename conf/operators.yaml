@@ -244,6 +244,18 @@ ops:
       - BLAS
     stages:
       - stable: '4.0'
+  - id: affine_grid_generator
+    description: |
+      Computes the affine_grid_generator operation.
+    for:
+      - affine_grid_generator
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: alias_copy
     description: |
       Creates a new tensor that shares the same storage data as the original tensor,
@@ -258,6 +270,18 @@ ops:
       - Tensor
     stages:
       - beta: '5.0'
+  - id: affine_grid_generator
+    description: |
+      Computes the affine_grid_generator operation.
+    for:
+      - affine_grid_generator
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: alias_copy_out
     description: A variant of `alias_copy()` that assigns the output to the `out` tensor.
     for:

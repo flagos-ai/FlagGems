@@ -1,0 +1,143 @@
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as tle
+
+logger = logging.getLogger(__name__)
+
+
+@libentry()
+@triton.jit
+def affine_grid_generator_kernel(
+    output_ptr,
+    theta_ptr,
+    N,
+    H,
+    W,
+    align_corners,
+    OUTPUT_STRIDE0,
+    OUTPUT_STRIDE1,
+    OUTPUT_STRIDE2,
+    OUTPUT_STRIDE3,
+    THETA_STRIDE0,
+    THETA_STRIDE1,
+    THETA_STRIDE2,
+    BLOCK_SIZE: tl.constexpr,
+):
+    # output has shape [N, H, W, 2]
+    # theta has shape [N, 2, 3]
+    pid = tle.program_id(0)
+    num_tasks = N * H * W * 2
+
+    if pid * BLOCK_SIZE >= num_tasks:
+        return
+
+    # Compute 4D index: (n, h, w, c)
+    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = idx < num_tasks
+
+    # Unflatten to 4D
+    tmp = idx // 2
+    c = idx % 2  # 0 for x, 1 for y
+
+    w = tmp % W
+    tmp = tmp // W
+    h = tmp % H
+    n = tmp // H
+
+    # Load theta for batch n
+    # theta[n, 0, 0], theta[n, 0, 1], theta[n, 0, 2]
+    # theta[n, 1, 0], theta[n, 1, 1], theta[n, 1, 2]
+    theta_base = n * THETA_STRIDE0
+
+    theta_00 = tl.load(
+        theta_ptr + theta_base + 0 * THETA_STRIDE1 + 0 * THETA_STRIDE2
+    ).to(tl.float32)
+    theta_01 = tl.load(
+        theta_ptr + theta_base + 0 * THETA_STRIDE1 + 1 * THETA_STRIDE2
+    ).to(tl.float32)
+    theta_02 = tl.load(
+        theta_ptr + theta_base + 0 * THETA_STRIDE1 + 2 * THETA_STRIDE2
+    ).to(tl.float32)
+    theta_10 = tl.load(
+        theta_ptr + theta_base + 1 * THETA_STRIDE1 + 0 * THETA_STRIDE2
+    ).to(tl.float32)
+    theta_11 = tl.load(
+        theta_ptr + theta_base + 1 * THETA_STRIDE1 + 1 * THETA_STRIDE2
+    ).to(tl.float32)
+    theta_12 = tl.load(
+        theta_ptr + theta_base + 1 * THETA_STRIDE1 + 2 * THETA_STRIDE2
+    ).to(tl.float32)
+
+    # Compute normalized coordinates
+    # align_corners=True: normalized = 2.0 * coord / (size - 1) - 1.0
+    # align_corners=False: normalized = (2.0 * coord + 1.0) / size - 1.0
+    h_float = h.to(tl.float32)
+    w_float = w.to(tl.float32)
+    H_float = H.to(tl.float32)
+    W_float = W.to(tl.float32)
+
+    if align_corners:
+        norm_x = 2.0 * w_float / (W_float - 1.0) - 1.0
+        norm_y = 2.0 * h_float / (H_float - 1.0) - 1.0
+    else:
+        norm_x = (2.0 * w_float + 1.0) / W_float - 1.0
+        norm_y = (2.0 * h_float + 1.0) / H_float - 1.0
+
+    # Apply affine transformation
+    # grid[n, h, w, 0] = theta[0,0] * norm_x + theta[0,1] * norm_y + theta[0,2]
+    # grid[n, h, w, 1] = theta[1,0] * norm_x + theta[1,1] * norm_y + theta[1,2]
+    result = tl.where(
+        c == 0,
+        theta_00 * norm_x + theta_01 * norm_y + theta_02,
+        theta_10 * norm_x + theta_11 * norm_y + theta_12,
+    )
+
+    # Store result
+    output_offset = (
+        n * OUTPUT_STRIDE0
+        + h * OUTPUT_STRIDE1
+        + w * OUTPUT_STRIDE2
+        + c * OUTPUT_STRIDE3
+    )
+    tl.store(output_ptr + output_offset, result, mask=mask)
+
+
+def affine_grid_generator(
+    theta: torch.Tensor, size: torch.Size, align_corners: bool
+) -> torch.Tensor:
+    logger.debug("GEMS AFFINE_GRID_GENERATOR")
+
+    assert len(size) == 4, f"size must be 4D [N, C, H, W], got {len(size)} dims"
+    N, C, H, W = size
+    assert theta.shape == (N, 2, 3), f"theta must be shape (N, 2, 3), got {theta.shape}"
+
+    # Output shape is [N, H, W, 2]
+    output = torch.empty((N, H, W, 2), dtype=theta.dtype, device=theta.device)
+
+    BLOCK_SIZE = 128
+    num_tasks = N * H * W * 2
+    grid = (triton.cdiv(num_tasks, BLOCK_SIZE),)
+
+    affine_grid_generator_kernel[grid](
+        output,
+        theta,
+        N,
+        H,
+        W,
+        align_corners,
+        output.stride(0),
+        output.stride(1),
+        output.stride(2),
+        output.stride(3),
+        theta.stride(0),
+        theta.stride(1),
+        theta.stride(2),
+        BLOCK_SIZE=BLOCK_SIZE,
+    )
+
+    return output
