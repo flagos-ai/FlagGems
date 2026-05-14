@@ -10,9 +10,9 @@ if cfg.QUICK_MODE:
     HADAMARD_MN_CASES = [(1536, 3, "12N"), (10240, 5, "20N"), (14336, 7, "28N")]
 else:
     HADAMARD_MN_CASES = [
-        (1536,  3, "12N"),
-        (3072,  3, "12N"),
-        (6144,  3, "12N"),
+        (1536, 3, "12N"),
+        (3072, 3, "12N"),
+        (6144, 3, "12N"),
         (12288, 3, "12N"),
         (10240, 5, "20N"),
         (20480, 5, "20N"),
@@ -41,12 +41,23 @@ def _ref_mn(x: torch.Tensor, M: int) -> torch.Tensor:
         rows = [a + b + c, a - b + c, a + b - c]
     elif M == 5:
         a, b, c, d, e = xm[:, 0], xm[:, 1], xm[:, 2], xm[:, 3], xm[:, 4]
-        rows = [a+b+c+d+e, a-b+c-d+e, a+b-c+d-e, a-b-c-d-e, a+b+c-d-e]
+        rows = [
+            a + b + c + d + e,
+            a - b + c - d + e,
+            a + b - c + d - e,
+            a - b - c - d - e,
+            a + b + c - d - e,
+        ]
     elif M == 7:
         a, b, c, d, e, f, g = (xm[:, i] for i in range(7))
         rows = [
-            a+b+c+d+e+f+g, a-b+c-d+e-f+g, a+b-c+d-e+f-g, a-b-c-d-e-f-g,
-            a+b+c-d-e-f-g, a-b+c+d-e+f+g, a+b-c-d+e+f-g,
+            a + b + c + d + e + f + g,
+            a - b + c - d + e - f + g,
+            a + b - c + d - e + f - g,
+            a - b - c - d - e - f - g,
+            a + b + c - d - e - f - g,
+            a - b + c + d - e + f + g,
+            a + b - c - d + e + f - g,
         ]
     else:
         raise ValueError(f"Unsupported M={M}")
@@ -54,7 +65,6 @@ def _ref_mn(x: torch.Tensor, M: int) -> torch.Tensor:
     ym = torch.stack(rows, dim=1).reshape(batch * M, n_cols)  # keep fp32
     ym = flag_gems.hadamard_transform(ym)  # FHT in fp32
     return ym.to(orig_dtype).reshape(*leading, dim)
-
 
 
 @pytest.mark.hadamard_transform_mn

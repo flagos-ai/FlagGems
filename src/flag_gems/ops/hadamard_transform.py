@@ -419,9 +419,15 @@ def _fht_kernel_2d(
 
 @triton.jit
 def _h3_fht_kernel(
-    X_ptr, OUT_ptr, stride_batch, stride_row,
-    SCALE: tl.constexpr, IS_FP16: tl.constexpr, IS_BF16: tl.constexpr,
-    N_COLS: tl.constexpr, LOG_N: tl.constexpr,
+    X_ptr,
+    OUT_ptr,
+    stride_batch,
+    stride_row,
+    SCALE: tl.constexpr,
+    IS_FP16: tl.constexpr,
+    IS_BF16: tl.constexpr,
+    N_COLS: tl.constexpr,
+    LOG_N: tl.constexpr,
 ):
     pid = tl.program_id(0)
     offs = tl.arange(0, N_COLS)
@@ -436,11 +442,17 @@ def _h3_fht_kernel(
         y0 = _butterfly_stage_1d(y0, N_COLS, 1 << (LOG_N - 1 - s_rev))
         y1 = _butterfly_stage_1d(y1, N_COLS, 1 << (LOG_N - 1 - s_rev))
         y2 = _butterfly_stage_1d(y2, N_COLS, 1 << (LOG_N - 1 - s_rev))
-    y0 = y0 * SCALE; y1 = y1 * SCALE; y2 = y2 * SCALE
+    y0 = y0 * SCALE
+    y1 = y1 * SCALE
+    y2 = y2 * SCALE
     if IS_FP16:
-        y0 = y0.to(tl.float16); y1 = y1.to(tl.float16); y2 = y2.to(tl.float16)
+        y0 = y0.to(tl.float16)
+        y1 = y1.to(tl.float16)
+        y2 = y2.to(tl.float16)
     elif IS_BF16:
-        y0 = y0.to(tl.bfloat16); y1 = y1.to(tl.bfloat16); y2 = y2.to(tl.bfloat16)
+        y0 = y0.to(tl.bfloat16)
+        y1 = y1.to(tl.bfloat16)
+        y2 = y2.to(tl.bfloat16)
     tl.store(OUT_ptr + base + 0 * stride_row + offs, y0, eviction_policy="evict_first")
     tl.store(OUT_ptr + base + 1 * stride_row + offs, y1, eviction_policy="evict_first")
     tl.store(OUT_ptr + base + 2 * stride_row + offs, y2, eviction_policy="evict_first")
@@ -448,9 +460,15 @@ def _h3_fht_kernel(
 
 @triton.jit
 def _h5_fht_kernel(
-    X_ptr, OUT_ptr, stride_batch, stride_row,
-    SCALE: tl.constexpr, IS_FP16: tl.constexpr, IS_BF16: tl.constexpr,
-    N_COLS: tl.constexpr, LOG_N: tl.constexpr,
+    X_ptr,
+    OUT_ptr,
+    stride_batch,
+    stride_row,
+    SCALE: tl.constexpr,
+    IS_FP16: tl.constexpr,
+    IS_BF16: tl.constexpr,
+    N_COLS: tl.constexpr,
+    LOG_N: tl.constexpr,
 ):
     pid = tl.program_id(0)
     offs = tl.arange(0, N_COLS)
@@ -471,13 +489,23 @@ def _h5_fht_kernel(
         y2 = _butterfly_stage_1d(y2, N_COLS, 1 << (LOG_N - 1 - s_rev))
         y3 = _butterfly_stage_1d(y3, N_COLS, 1 << (LOG_N - 1 - s_rev))
         y4 = _butterfly_stage_1d(y4, N_COLS, 1 << (LOG_N - 1 - s_rev))
-    y0 = y0 * SCALE; y1 = y1 * SCALE; y2 = y2 * SCALE; y3 = y3 * SCALE; y4 = y4 * SCALE
+    y0 = y0 * SCALE
+    y1 = y1 * SCALE
+    y2 = y2 * SCALE
+    y3 = y3 * SCALE
+    y4 = y4 * SCALE
     if IS_FP16:
-        y0 = y0.to(tl.float16); y1 = y1.to(tl.float16); y2 = y2.to(tl.float16)
-        y3 = y3.to(tl.float16); y4 = y4.to(tl.float16)
+        y0 = y0.to(tl.float16)
+        y1 = y1.to(tl.float16)
+        y2 = y2.to(tl.float16)
+        y3 = y3.to(tl.float16)
+        y4 = y4.to(tl.float16)
     elif IS_BF16:
-        y0 = y0.to(tl.bfloat16); y1 = y1.to(tl.bfloat16); y2 = y2.to(tl.bfloat16)
-        y3 = y3.to(tl.bfloat16); y4 = y4.to(tl.bfloat16)
+        y0 = y0.to(tl.bfloat16)
+        y1 = y1.to(tl.bfloat16)
+        y2 = y2.to(tl.bfloat16)
+        y3 = y3.to(tl.bfloat16)
+        y4 = y4.to(tl.bfloat16)
     tl.store(OUT_ptr + base + 0 * stride_row + offs, y0, eviction_policy="evict_first")
     tl.store(OUT_ptr + base + 1 * stride_row + offs, y1, eviction_policy="evict_first")
     tl.store(OUT_ptr + base + 2 * stride_row + offs, y2, eviction_policy="evict_first")
@@ -487,9 +515,15 @@ def _h5_fht_kernel(
 
 @triton.jit
 def _h7_fht_kernel(
-    X_ptr, OUT_ptr, stride_batch, stride_row,
-    SCALE: tl.constexpr, IS_FP16: tl.constexpr, IS_BF16: tl.constexpr,
-    N_COLS: tl.constexpr, LOG_N: tl.constexpr,
+    X_ptr,
+    OUT_ptr,
+    stride_batch,
+    stride_row,
+    SCALE: tl.constexpr,
+    IS_FP16: tl.constexpr,
+    IS_BF16: tl.constexpr,
+    N_COLS: tl.constexpr,
+    LOG_N: tl.constexpr,
 ):
     pid = tl.program_id(0)
     offs = tl.arange(0, N_COLS)
@@ -516,16 +550,29 @@ def _h7_fht_kernel(
         y4 = _butterfly_stage_1d(y4, N_COLS, 1 << (LOG_N - 1 - s_rev))
         y5 = _butterfly_stage_1d(y5, N_COLS, 1 << (LOG_N - 1 - s_rev))
         y6 = _butterfly_stage_1d(y6, N_COLS, 1 << (LOG_N - 1 - s_rev))
-    y0 = y0 * SCALE; y1 = y1 * SCALE; y2 = y2 * SCALE; y3 = y3 * SCALE
-    y4 = y4 * SCALE; y5 = y5 * SCALE; y6 = y6 * SCALE
+    y0 = y0 * SCALE
+    y1 = y1 * SCALE
+    y2 = y2 * SCALE
+    y3 = y3 * SCALE
+    y4 = y4 * SCALE
+    y5 = y5 * SCALE
+    y6 = y6 * SCALE
     if IS_FP16:
-        y0 = y0.to(tl.float16); y1 = y1.to(tl.float16)
-        y2 = y2.to(tl.float16); y3 = y3.to(tl.float16)
-        y4 = y4.to(tl.float16); y5 = y5.to(tl.float16); y6 = y6.to(tl.float16)
+        y0 = y0.to(tl.float16)
+        y1 = y1.to(tl.float16)
+        y2 = y2.to(tl.float16)
+        y3 = y3.to(tl.float16)
+        y4 = y4.to(tl.float16)
+        y5 = y5.to(tl.float16)
+        y6 = y6.to(tl.float16)
     elif IS_BF16:
-        y0 = y0.to(tl.bfloat16); y1 = y1.to(tl.bfloat16)
-        y2 = y2.to(tl.bfloat16); y3 = y3.to(tl.bfloat16)
-        y4 = y4.to(tl.bfloat16); y5 = y5.to(tl.bfloat16); y6 = y6.to(tl.bfloat16)
+        y0 = y0.to(tl.bfloat16)
+        y1 = y1.to(tl.bfloat16)
+        y2 = y2.to(tl.bfloat16)
+        y3 = y3.to(tl.bfloat16)
+        y4 = y4.to(tl.bfloat16)
+        y5 = y5.to(tl.bfloat16)
+        y6 = y6.to(tl.bfloat16)
     tl.store(OUT_ptr + base + 0 * stride_row + offs, y0, eviction_policy="evict_first")
     tl.store(OUT_ptr + base + 1 * stride_row + offs, y1, eviction_policy="evict_first")
     tl.store(OUT_ptr + base + 2 * stride_row + offs, y2, eviction_policy="evict_first")
