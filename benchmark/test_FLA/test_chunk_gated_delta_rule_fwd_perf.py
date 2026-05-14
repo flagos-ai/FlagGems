@@ -54,7 +54,6 @@ class ChunkGatedDeltaRuleFwdBenchmark(Benchmark):
         )
 
 
-@pytest.mark.skipif(flag_gems.device != "cuda", reason="benchmark requires CUDA device")
 @pytest.mark.chunk_gated_delta_rule_fwd
 @pytest.mark.xfail(
     reason="Triton 3.6.0 compilation error on Hopper: 'ttng.warp_group_dot' op pipeliner issue"
