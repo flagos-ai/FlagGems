@@ -46,9 +46,7 @@ def embedding(weight: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
     embedding_dim = weight.shape[1]
     out = torch.empty(n, embedding_dim, device=weight.device, dtype=weight.dtype)
     BLOCK_SIZE = triton.next_power_of_2(min(embedding_dim, 4096))
-    embedding_kernel[(n,)](
-        out, weight, indices_flat, n, embedding_dim, BLOCK_SIZE=BLOCK_SIZE
-    )
+    embedding_kernel[(n,)](out, weight, indices_flat, n, embedding_dim, BLOCK_SIZE=BLOCK_SIZE)
     return out.reshape(*orig_shape, embedding_dim)
 
 
@@ -64,10 +62,6 @@ def embedding_backward(
     # Use PyTorch's optimized scatter_add for backward
     indices_flat = indices.reshape(-1)
     grad_flat = grad.reshape(-1, grad.shape[-1])
-    grad_weight = torch.zeros(
-        num_weights, grad.shape[-1], device=grad.device, dtype=grad.dtype
-    )
-    grad_weight.scatter_add_(
-        0, indices_flat.unsqueeze(1).expand_as(grad_flat), grad_flat
-    )
+    grad_weight = torch.zeros(num_weights, grad.shape[-1], device=grad.device, dtype=grad.dtype)
+    grad_weight.scatter_add_(0, indices_flat.unsqueeze(1).expand_as(grad_flat), grad_flat)
     return grad_weight
