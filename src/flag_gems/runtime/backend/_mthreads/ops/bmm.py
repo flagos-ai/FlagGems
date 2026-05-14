@@ -196,26 +196,30 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "bmm_sqmma",
-        pre_hook=bmm_sqmma_descriptor_pre_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
-        triton.Config(
-            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
-            num_stages=1,
-            num_warps=4,
+    configs=(
+        runtime.ops_get_configs(
+            "bmm_sqmma",
             pre_hook=bmm_sqmma_descriptor_pre_hook,
+            yaml_path=EXPAND_CONFIG_FILENAME,
         )
-    ],
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else [
+            triton.Config(
+                {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
+                num_stages=1,
+                num_warps=4,
+                pre_hook=bmm_sqmma_descriptor_pre_hook,
+            )
+        ]
+    ),
     key=["M", "N", "K"],
-    strategy=runtime.get_expand_config("bmm_sqmma", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ][:3]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32"],
+    strategy=(
+        runtime.get_expand_config("bmm_sqmma", yaml_path=EXPAND_CONFIG_FILENAME)[
+            "strategy"
+        ][:3]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32"]
+    ),
     warmup=5,
     rep=5,
 )

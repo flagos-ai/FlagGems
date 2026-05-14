@@ -107,19 +107,23 @@ def _get_fixed_matmul_meta(M: int, N: int, K: int, block_n: int, block_k: int):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general",
-        pre_hook=None,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else _get_placeholder_tuner_configs(pre_hook=None),
+    configs=(
+        runtime.ops_get_configs(
+            "w8a8_block_fp8_general",
+            pre_hook=None,
+            yaml_path=EXPAND_CONFIG_FILENAME,
+        )
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else _get_placeholder_tuner_configs(pre_hook=None)
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=(
+        runtime.get_expand_config(
+            "w8a8_block_fp8_general", yaml_path=EXPAND_CONFIG_FILENAME
+        )["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "align32", "align32"]
+    ),
     warmup=5,
     rep=5,
 )
@@ -199,18 +203,22 @@ def w8a8_block_fp8_matmul_kernel_general(
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general_splitk",
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else _get_placeholder_tuner_configs(pre_hook=None),
+    configs=(
+        runtime.ops_get_configs(
+            "w8a8_block_fp8_general_splitk",
+            yaml_path=EXPAND_CONFIG_FILENAME,
+        )
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else _get_placeholder_tuner_configs(pre_hook=None)
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general_splitk", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=(
+        runtime.get_expand_config(
+            "w8a8_block_fp8_general_splitk", yaml_path=EXPAND_CONFIG_FILENAME
+        )["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "align32", "align32"]
+    ),
     warmup=5,
     rep=5,
 )

@@ -720,7 +720,11 @@ def sorted_indices_unique_flat_int64(
                 num_warps=num_warps,
             )
 
-    return data_out[:out_size], inverse_indices, counts  # 不需要转换为 int64，已经是 int64
+    return (
+        data_out[:out_size],
+        inverse_indices,
+        counts,
+    )  # 不需要转换为 int64，已经是 int64
 
 
 def simple_unique_flat_int64(

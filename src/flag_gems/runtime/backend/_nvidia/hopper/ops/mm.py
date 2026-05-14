@@ -305,19 +305,23 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "mm_general_tma",
-        pre_hook=matmul_tma_set_block_size_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else matmul_get_configs(),
+    configs=(
+        runtime.ops_get_configs(
+            "mm_general_tma",
+            pre_hook=matmul_tma_set_block_size_hook,
+            yaml_path=EXPAND_CONFIG_FILENAME,
+        )
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else matmul_get_configs()
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=runtime.get_expand_config(
-        "mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=(
+        runtime.get_expand_config("mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME)[
+            "strategy"
+        ]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "align32", "align32", "default"]
+    ),
     warmup=5,
     rep=5,
 )
@@ -487,21 +491,21 @@ def general_mm(a, b, c, M, N, K):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "gemv", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
-        triton.Config(
-            {"BLOCK_M": 32, "BLOCK_K": 256},
-        )
-    ],
+    configs=(
+        runtime.ops_get_configs("gemv", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME)
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else [
+            triton.Config(
+                {"BLOCK_M": 32, "BLOCK_K": 256},
+            )
+        ]
+    ),
     key=["M", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "default"],
+    strategy=(
+        runtime.get_expand_config("gemv", yaml_path=EXPAND_CONFIG_FILENAME)["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "default"]
+    ),
     warmup=5,
     rep=10,
 )

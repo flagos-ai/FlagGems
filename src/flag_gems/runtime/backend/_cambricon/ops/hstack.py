@@ -19,7 +19,7 @@ def copy_func(x):
 
 
 def hstack(
-    tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]]
+    tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
 ) -> torch.Tensor:
     logger.debug("GEMS_CAMBRICON HSTACK")
 

@@ -9,8 +9,14 @@ from flag_gems.utils import tl_extra_shim
 
 erf = tl_extra_shim.erf
 exp = tl_extra_shim.exp
-pow = tl_extra_shim.pow
-tanh = tl_extra_shim.tanh
+if hasattr(tl_extra_shim, "pow"):
+    pow = tl_extra_shim.pow
+else:
+    pow = tl.extra.libdevice.pow
+if hasattr(tl_extra_shim, "tanh"):
+    tanh = tl_extra_shim.tanh
+else:
+    tanh = tl.extra.libdevice.tanh
 
 logger = logging.getLogger(__name__)
 

@@ -11,9 +11,11 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    utils.FLOAT_DTYPES + [torch.int32, torch.int64]
-    if flag_gems.vendor_name == "cambricon"
-    else utils.FLOAT_DTYPES,
+    (
+        utils.FLOAT_DTYPES + [torch.int32, torch.int64]
+        if flag_gems.vendor_name == "cambricon"
+        else utils.FLOAT_DTYPES
+    ),
 )
 def test_copy_inplace_same_dtype(shape, dtype):
     if flag_gems.vendor_name == "cambricon":

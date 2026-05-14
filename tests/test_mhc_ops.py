@@ -4,6 +4,7 @@ Accuracy tests for mHC (Manifold Constrained Hyper-Connection) operators.
 Tests both mhc_post and mhc_pre against PyTorch reference implementations,
 and optionally compares with TileLang implementations.
 """
+
 from itertools import product
 
 import pytest

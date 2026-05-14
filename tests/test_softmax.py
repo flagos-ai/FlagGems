@@ -45,9 +45,11 @@ def test_softmax(shape, dtype, dim, neg_inf):
 @pytest.mark.softmax_out
 @pytest.mark.parametrize(
     "shape",
-    [(1, 256)]
-    if cfg.QUICK_MODE
-    else [(1, 256), (4096, 256), (200, 2560, 3), (1, 0, 128, 512)],
+    (
+        [(1, 256)]
+        if cfg.QUICK_MODE
+        else [(1, 256), (4096, 256), (200, 2560, 3), (1, 0, 128, 512)]
+    ),
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)

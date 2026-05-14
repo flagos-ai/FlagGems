@@ -107,10 +107,10 @@ def test_instance_norm(
     ref_grad = utils.to_reference(out_grad, True)
 
     if has_weight_bias:
-        (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+        ref_in_grad, ref_weight_grad, ref_bias_grad = torch.autograd.grad(
             ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
         )
-        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+        res_in_grad, res_weight_grad, res_bias_grad = torch.autograd.grad(
             res_out, (inp, weight, bias), out_grad
         )
     else:

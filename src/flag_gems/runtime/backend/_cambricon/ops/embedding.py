@@ -122,9 +122,11 @@ def embedding_backward(
     grad_inputs = torch.zeros(
         (num_weights, grad_outputs.shape[-1]),
         device=grad_outputs.device,
-        dtype=torch.float32
-        if grad_outputs.dtype is torch.bfloat16
-        else grad_outputs.dtype,
+        dtype=(
+            torch.float32
+            if grad_outputs.dtype is torch.bfloat16
+            else grad_outputs.dtype
+        ),
     )
 
     if scale_grad_by_freq:

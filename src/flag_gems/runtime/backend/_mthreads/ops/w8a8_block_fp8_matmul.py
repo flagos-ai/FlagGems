@@ -74,17 +74,21 @@ def matmul_get_configs():
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else matmul_get_configs(),
+    configs=(
+        runtime.ops_get_configs(
+            "w8a8_block_fp8_general", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
+        )
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else matmul_get_configs()
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=(
+        runtime.get_expand_config(
+            "w8a8_block_fp8_general", yaml_path=EXPAND_CONFIG_FILENAME
+        )["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "align32", "align32"]
+    ),
     warmup=5,
     rep=5,
 )
@@ -198,19 +202,23 @@ def sqmma_get_configs(pre_hook=sqmma_descriptor_pre_hook):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general_tma",
-        pre_hook=sqmma_descriptor_pre_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else sqmma_get_configs(),
+    configs=(
+        runtime.ops_get_configs(
+            "w8a8_block_fp8_general_tma",
+            pre_hook=sqmma_descriptor_pre_hook,
+            yaml_path=EXPAND_CONFIG_FILENAME,
+        )
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else sqmma_get_configs()
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=(
+        runtime.get_expand_config(
+            "w8a8_block_fp8_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
+        )["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "align32", "align32", "default"]
+    ),
     warmup=5,
     rep=5,
 )

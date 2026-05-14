@@ -179,26 +179,30 @@ def addmm_sqmma_descriptor_pre_hook(nargs):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "addmm_sqmma",
-        pre_hook=addmm_sqmma_descriptor_pre_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
-        triton.Config(
-            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
-            num_stages=1,
-            num_warps=4,
+    configs=(
+        runtime.ops_get_configs(
+            "addmm_sqmma",
             pre_hook=addmm_sqmma_descriptor_pre_hook,
+            yaml_path=EXPAND_CONFIG_FILENAME,
         )
-    ],
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else [
+            triton.Config(
+                {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
+                num_stages=1,
+                num_warps=4,
+                pre_hook=addmm_sqmma_descriptor_pre_hook,
+            )
+        ]
+    ),
     key=["M", "N", "K"],
-    strategy=runtime.get_expand_config("addmm_sqmma", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["default", "default", "default"],
+    strategy=(
+        runtime.get_expand_config("addmm_sqmma", yaml_path=EXPAND_CONFIG_FILENAME)[
+            "strategy"
+        ]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["default", "default", "default"]
+    ),
     warmup=5,
     rep=5,
 )

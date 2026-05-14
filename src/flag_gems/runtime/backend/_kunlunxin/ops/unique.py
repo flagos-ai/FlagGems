@@ -750,9 +750,9 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
                 tiles_per_cta,
                 tile_size,
                 num_warps=num_warps,
-                isCloseUnrollControl=True
-                if sorted_data.dtype == torch.int16
-                else False,
+                isCloseUnrollControl=(
+                    True if sorted_data.dtype == torch.int16 else False
+                ),
             )
 
     if return_counts:

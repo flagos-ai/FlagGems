@@ -286,9 +286,11 @@ def index_put(inp, indices, values, accumulate=False):
             values = values.reshape((K,)).expand(target_shape)
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
 
@@ -333,9 +335,11 @@ def index_put_(inp, indices, values, accumulate=False):
             values = values.reshape((K,)).expand(target_shape)
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
 

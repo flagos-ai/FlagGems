@@ -149,13 +149,15 @@ def config_prune(configs, named_args, **kwargs):
 )
 @triton.heuristics(
     values={
-        "TILE_NUM": lambda args: args["BLOCK_N"] // args["TILE_N"]
-        if args["BLOCK_N"] % args["TILE_N"] == 0
-        and args["BLOCK_N"] // args["TILE_N"] >= 1
-        else 1,
-        "TILE_N": lambda args: args["BLOCK_N"]
-        if args["TILE_NUM"] == 1
-        else args["TILE_N"],
+        "TILE_NUM": lambda args: (
+            args["BLOCK_N"] // args["TILE_N"]
+            if args["BLOCK_N"] % args["TILE_N"] == 0
+            and args["BLOCK_N"] // args["TILE_N"] >= 1
+            else 1
+        ),
+        "TILE_N": lambda args: (
+            args["BLOCK_N"] if args["TILE_NUM"] == 1 else args["TILE_N"]
+        ),
     },
 )
 @triton.jit
@@ -273,13 +275,15 @@ def config_prune_mid(configs, named_args, **kwargs):
 )
 @triton.heuristics(
     values={
-        "TILE_NUM": lambda args: args["BLOCK_N"] // args["TILE_N"]
-        if args["BLOCK_N"] % args["TILE_N"] == 0
-        and args["BLOCK_N"] // args["TILE_N"] >= 1
-        else 1,
-        "TILE_N": lambda args: args["BLOCK_N"]
-        if args["TILE_NUM"] == 1
-        else args["TILE_N"],
+        "TILE_NUM": lambda args: (
+            args["BLOCK_N"] // args["TILE_N"]
+            if args["BLOCK_N"] % args["TILE_N"] == 0
+            and args["BLOCK_N"] // args["TILE_N"] >= 1
+            else 1
+        ),
+        "TILE_N": lambda args: (
+            args["BLOCK_N"] if args["TILE_NUM"] == 1 else args["TILE_N"]
+        ),
     },
 )
 @triton.jit

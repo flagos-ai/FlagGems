@@ -27,17 +27,19 @@ def sparse_attention_get_configs():
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "sparse_attention", yaml_path=EXPAND_CONFIG_FILENAME
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else sparse_attention_get_configs(),
+    configs=(
+        runtime.ops_get_configs("sparse_attention", yaml_path=EXPAND_CONFIG_FILENAME)
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else sparse_attention_get_configs()
+    ),
     key=["topk", "H_ACTUAL", "D"],
-    strategy=runtime.get_expand_config(
-        "sparse_attention", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32"],
+    strategy=(
+        runtime.get_expand_config("sparse_attention", yaml_path=EXPAND_CONFIG_FILENAME)[
+            "strategy"
+        ]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32"]
+    ),
     warmup=5,
     rep=5,
 )

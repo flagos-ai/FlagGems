@@ -14,7 +14,7 @@ class PerTokenGroupQuantFp8Benchmark(base.GenericBenchmark):
 
 
 def _input_fn(shape, dtype, device):
-    (num_tokens, d, group_size) = shape
+    num_tokens, d, group_size = shape
     scale_ue8m0 = random.choice([True, False])
     x = torch.rand(num_tokens, d, dtype=dtype, device=device)
 

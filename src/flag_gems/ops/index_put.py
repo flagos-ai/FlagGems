@@ -279,9 +279,11 @@ def index_put_(inp, indices, values, accumulate=False):
         raise ValueError("At least one index tensor is required")
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
     # step 1: index preprocessing
@@ -391,9 +393,11 @@ def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
             values = values.reshape((K,)).expand(target_shape)
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
 

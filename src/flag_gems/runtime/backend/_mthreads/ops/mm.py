@@ -52,15 +52,17 @@ def prev_multiple_of(a, b):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs("mm", yaml_path=EXPAND_CONFIG_FILENAME)
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else runtime.get_tuned_config("mm"),
+    configs=(
+        runtime.ops_get_configs("mm", yaml_path=EXPAND_CONFIG_FILENAME)
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else runtime.get_tuned_config("mm")
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("mm", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=(
+        runtime.get_expand_config("mm", yaml_path=EXPAND_CONFIG_FILENAME)["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "align32", "align32"]
+    ),
     warmup=5,
     rep=5,
 )
@@ -149,15 +151,17 @@ def mm_kernel(
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs("gemv", yaml_path=EXPAND_CONFIG_FILENAME)
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [triton.Config({"BLOCK_M": 64, "BLOCK_K": 64})],
+    configs=(
+        runtime.ops_get_configs("gemv", yaml_path=EXPAND_CONFIG_FILENAME)
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else [triton.Config({"BLOCK_M": 64, "BLOCK_K": 64})]
+    ),
     key=["M", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "default"],
+    strategy=(
+        runtime.get_expand_config("gemv", yaml_path=EXPAND_CONFIG_FILENAME)["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "default"]
+    ),
     warmup=5,
     rep=5,
 )
@@ -342,26 +346,30 @@ def sqmma_descriptor_pre_hook(nargs):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "mm_general_tma",
-        pre_hook=sqmma_descriptor_pre_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64},
-            num_stages=1,
-            num_warps=4,
+    configs=(
+        runtime.ops_get_configs(
+            "mm_general_tma",
             pre_hook=sqmma_descriptor_pre_hook,
+            yaml_path=EXPAND_CONFIG_FILENAME,
         )
-    ],
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else [
+            triton.Config(
+                {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64},
+                num_stages=1,
+                num_warps=4,
+                pre_hook=sqmma_descriptor_pre_hook,
+            )
+        ]
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=runtime.get_expand_config(
-        "mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=(
+        runtime.get_expand_config("mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME)[
+            "strategy"
+        ]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "align32", "align32", "default"]
+    ),
     warmup=5,
     rep=5,
 )

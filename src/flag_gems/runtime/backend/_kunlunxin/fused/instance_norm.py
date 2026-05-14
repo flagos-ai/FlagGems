@@ -672,7 +672,7 @@ class InstanceNorm(torch.autograd.Function):
     def backward(ctx, out_grad):
         logger.debug("GEMS INSTANCENORM BACKWARD")
         out_grad = out_grad.contiguous()
-        (x, weight, mean, rstd) = ctx.saved_tensors
+        x, weight, mean, rstd = ctx.saved_tensors
         M = ctx.M
         N = ctx.N
         C = ctx.C
