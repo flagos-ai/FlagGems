@@ -5,6 +5,11 @@ from flag_gems.fused.fp8_einsum import fp8_einsum, fp8_einsum_ref
 
 from . import base
 
+pytestmark = pytest.mark.skipif(
+    not torch.cuda.is_available() or torch.cuda.get_device_capability()[0] < 9,
+    reason="fp8e4nv (torch.float8_e4m3fn) requires SM89+ (Hopper H100/H200)",
+)
+
 
 class FP8EinsumBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "B, H, R, D"
