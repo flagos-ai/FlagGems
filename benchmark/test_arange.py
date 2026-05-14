@@ -53,6 +53,8 @@ def _input_fn_start_step(shape, dtype, device):
 @pytest.mark.arange_start_step
 def test_arange_start_step():
     bench = base.GenericBenchmark(
-        op_name="arange_start_step", input_fn=_input_fn_start_step, torch_op=torch.arange
+        op_name="arange_start_step",
+        input_fn=_input_fn_start_step,
+        torch_op=torch.arange,
     )
     bench.run()
