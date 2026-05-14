@@ -195,3 +195,57 @@ def test_div_complex_int_scalar(shape, complex_dtype):
         res_out = torch.div(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
+
+
+# div_.Scalar_mode with rounding_mode=None (in-place true divide)
+@pytest.mark.div_scalar_mode_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_scalar_mode_none(shape, scalar, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone(), False)
+
+    ref_out = ref_inp.div_(scalar, rounding_mode=None)
+    with flag_gems.use_gems():
+        res_out = inp.div_(scalar, rounding_mode=None)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+# div_.Scalar_mode with rounding_mode="trunc" (in-place)
+@pytest.mark.div_scalar_mode_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize(
+    "scalar",
+    [-0.999, 100.001, -111.999],
+)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_div_scalar_mode_trunc(shape, scalar, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone(), True)
+
+    ref_out = ref_inp.div_(scalar, rounding_mode="trunc")
+    with flag_gems.use_gems():
+        res_out = inp.div_(scalar, rounding_mode="trunc")
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+# div_.Scalar_mode with rounding_mode="floor" (in-place)
+@pytest.mark.div_scalar_mode_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize(
+    "scalar",
+    [-0.999, 100.001, -111.999],
+)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_div_scalar_mode_floor(shape, scalar, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone(), True)
+
+    ref_out = ref_inp.div_(scalar, rounding_mode="floor")
+    with flag_gems.use_gems():
+        res_out = inp.div_(scalar, rounding_mode="floor")
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

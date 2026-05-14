@@ -24,3 +24,22 @@ def test_div_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+def div_scalar_mode_input_fn(shape, dtype, device):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    yield inp, 0.001, {"rounding_mode": None}
+
+
+@pytest.mark.div_scalar_mode_
+def test_div_scalar_mode_():
+    bench = base.GenericBenchmark(
+        op_name="div_scalar_mode_",
+        torch_op=lambda a, scalar, rounding_mode=None: a.div_(
+            scalar, rounding_mode=rounding_mode
+        ),
+        dtypes=consts.FLOAT_DTYPES,
+        input_fn=div_scalar_mode_input_fn,
+        is_inplace=True,
+    )
+    bench.run()
