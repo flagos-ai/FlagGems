@@ -43,7 +43,7 @@ def groupnorm_kernel(
     x_norm = diff * rstd
     c_idx = (pid % (C // group_size)) * group_size + offsets // HW
     w = tl.load(weight_ptr + c_idx, mask=mask & (c_idx < C), other=1.0)
-    b = tl.load(bias_ptr + c_idx, mask=mask & (c_idx < C), other=0.0)
+    b = tl.load(bias_ptr  + c_idx, mask=mask & (c_idx < C), other=0.0)
     out = x_norm * w + b
     tl.store(out_ptr + pid * group_size * HW + offsets, out, mask=mask)
 
