@@ -302,3 +302,107 @@ def test_grid_sample(dtype):
         dtypes=[dtype],
     )
     bench.run()
+
+
+# ---------------------------------------------------------------------------
+# Backward benchmark.  Compares grid_sampler_{2d,3d}_backward against the aten
+# reference of the same name.
+# ---------------------------------------------------------------------------
+_INTERP_ID = {"bilinear": 0, "nearest": 1, "bicubic": 2}
+_PAD_ID = {"zeros": 0, "border": 1, "reflection": 2}
+
+
+class GridSampleBackwardBenchmark(GridSampleBenchmark):
+    """Re-uses the forward shape catalogue but yields aten-backward signature."""
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
+            is_5d = len(shape) == 5
+
+            if is_5d:
+                N, C, D_in, H_in, W_in = shape
+                D_out, H_out, W_out = D_in, H_in, W_in
+                grid = torch.randn(
+                    N, D_out, H_out, W_out, 3, dtype=cur_dtype, device=self.device
+                )
+                grid = torch.clamp(grid, -0.9, 0.9)
+                go = torch.randn(
+                    N, C, D_out, H_out, W_out, dtype=cur_dtype, device=self.device
+                )
+            else:
+                N, C, H_in, W_in = shape
+                H_out, W_out = H_in, W_in
+                grid = torch.randn(
+                    N, H_out, W_out, 2, dtype=cur_dtype, device=self.device
+                )
+                grid = torch.clamp(grid, -0.9, 0.9)
+                go = torch.randn(
+                    N, C, H_out, W_out, dtype=cur_dtype, device=self.device
+                )
+
+            # Aten backward signature:
+            #   (grad_output, input, grid, interpolation_mode, padding_mode,
+            #    align_corners, output_mask)
+            common_modes = [
+                ("bilinear", "zeros"),
+                ("bilinear", "border"),
+                ("bilinear", "reflection"),
+                ("nearest", "zeros"),
+                ("nearest", "border"),
+                ("nearest", "reflection"),
+            ]
+            if not is_5d:
+                common_modes += [
+                    ("bicubic", "zeros"),
+                    ("bicubic", "border"),
+                    ("bicubic", "reflection"),
+                ]
+            for mode, pmode in common_modes:
+                yield (
+                    go,
+                    inp,
+                    grid,
+                    _INTERP_ID[mode],
+                    _PAD_ID[pmode],
+                    False,
+                    [True, True],
+                )
+            yield (
+                go,
+                inp,
+                grid,
+                _INTERP_ID["bilinear"],
+                _PAD_ID["zeros"],
+                True,
+                [True, True],
+            )
+
+
+@pytest.mark.grid_sampler_2d_backward
+@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
+def test_grid_sampler_2d_backward(dtype):
+    """Benchmark grid_sampler_2d_backward against torch's aten reference."""
+    bench = GridSampleBackwardBenchmark(
+        op_name="grid_sampler_2d_backward",
+        torch_op=torch.ops.aten.grid_sampler_2d_backward,
+        gems_op=flag_gems.ops.grid_sampler_2d_backward,
+        dtypes=[dtype],
+    )
+    # Filter to 4D shapes only.
+    bench.shapes = [s for s in bench.shapes if len(s) == 4]
+    bench.run()
+
+
+@pytest.mark.grid_sampler_3d_backward
+@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
+def test_grid_sampler_3d_backward(dtype):
+    """Benchmark grid_sampler_3d_backward (5D shapes only) against torch."""
+    bench = GridSampleBackwardBenchmark(
+        op_name="grid_sampler_3d_backward",
+        torch_op=torch.ops.aten.grid_sampler_3d_backward,
+        gems_op=flag_gems.ops.grid_sampler_3d_backward,
+        dtypes=[dtype],
+    )
+    bench.shapes = [s for s in bench.shapes if len(s) == 5]
+    bench.run()

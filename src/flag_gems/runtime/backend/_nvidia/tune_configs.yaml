@@ -1655,66 +1655,71 @@ fp8_mqa_logits:
 # Shared memory tiling kernel for large tensors
 # Optimized for memory bandwidth by caching input tiles# Grid sample operator configurations
 grid_sample_2d_nearest:
+  # Per-pixel kernels do scalar work per program; num_warps=1 amortises
+  # launch overhead better than the wider configs.
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 1
+    num_stages: 2
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 1
+    num_stages: 4
   - META:
       BLOCK_SIZE: 256
     num_warps: 4
     num_stages: 3
   - META:
       BLOCK_SIZE: 512
-    num_warps: 8
-    num_stages: 4
-  - META:
-      BLOCK_SIZE: 1024
     num_warps: 8
     num_stages: 4
 grid_sample_2d_bilinear:
   - META:
       BLOCK_SIZE: 256
+    num_warps: 1
+    num_stages: 2
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 1
+    num_stages: 4
+  - META:
+      BLOCK_SIZE: 256
     num_warps: 4
     num_stages: 3
   - META:
       BLOCK_SIZE: 512
-    num_warps: 8
-    num_stages: 4
-  - META:
-      BLOCK_SIZE: 1024
     num_warps: 8
     num_stages: 4
 grid_sample_2d_bicubic:
   - META:
       BLOCK_SIZE: 256
+    num_warps: 1
+    num_stages: 2
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 1
+    num_stages: 4
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 2
+    num_stages: 4
+  - META:
+      BLOCK_SIZE: 256
     num_warps: 4
     num_stages: 3
   - META:
       BLOCK_SIZE: 512
-    num_warps: 8
-    num_stages: 4
-  - META:
-      BLOCK_SIZE: 1024
     num_warps: 8
     num_stages: 4
 grid_sample_3d_nearest:
   - META:
       BLOCK_SIZE: 256
-    num_warps: 4
-    num_stages: 3
-  - META:
-      BLOCK_SIZE: 512
-    num_warps: 8
-    num_stages: 4
-  - META:
-      BLOCK_SIZE: 1024
-    num_warps: 8
-    num_stages: 4
-  - META:
-      BLOCK_SIZE: 2048
-    num_warps: 8
-    num_stages: 3
-  - META:
-      BLOCK_SIZE: 4096
-    num_warps: 16
+    num_warps: 1
     num_stages: 2
-grid_sample_3d_trilinear:
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 1
+    num_stages: 4
   - META:
       BLOCK_SIZE: 256
     num_warps: 4
@@ -1723,17 +1728,190 @@ grid_sample_3d_trilinear:
       BLOCK_SIZE: 512
     num_warps: 8
     num_stages: 4
+grid_sample_3d_trilinear:
   - META:
-      BLOCK_SIZE: 1024
-    num_warps: 8
+      BLOCK_SIZE: 256
+    num_warps: 1
+    num_stages: 2
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 1
     num_stages: 4
   - META:
-      BLOCK_SIZE: 2048
-    num_warps: 8
+      BLOCK_SIZE: 256
+    num_warps: 2
+    num_stages: 4
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 4
     num_stages: 3
   - META:
-      BLOCK_SIZE: 4096
-    num_warps: 16
+      BLOCK_SIZE: 512
+    num_warps: 8
+    num_stages: 4
+
+# 3D backward kernels: per-(n, dhw) program layout with a BLOCK_C inner loop.
+# BLOCK_C is autotuned alongside num_warps/num_stages because the optimal
+# channel-block size depends on C: small C wants BLOCK_C=8/16 (avoid masked
+# waste), big C tolerates BLOCK_C=32/64 (fewer loop iters, more ILP).
+grid_sample_3d_trilinear_bwd:
+  - META:
+      BLOCK_C: 8
+    num_warps: 1
+    num_stages: 2
+  - META:
+      BLOCK_C: 16
+    num_warps: 1
+    num_stages: 3
+  - META:
+      BLOCK_C: 16
+    num_warps: 2
+    num_stages: 3
+  - META:
+      BLOCK_C: 16
+    num_warps: 2
+    num_stages: 4
+  - META:
+      BLOCK_C: 32
+    num_warps: 2
+    num_stages: 4
+  - META:
+      BLOCK_C: 32
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_C: 64
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_C: 64
+    num_warps: 4
+    num_stages: 4
+
+grid_sample_3d_nearest_bwd:
+  # Nearest backward does 1 atomic_add per (channel, voxel); much lighter than
+  # trilinear's 8 corner accumulates, so smaller num_warps tends to win.
+  - META:
+      BLOCK_C: 8
+    num_warps: 1
+    num_stages: 2
+  - META:
+      BLOCK_C: 16
+    num_warps: 1
+    num_stages: 3
+  - META:
+      BLOCK_C: 16
+    num_warps: 2
+    num_stages: 3
+  - META:
+      BLOCK_C: 32
+    num_warps: 1
+    num_stages: 4
+  - META:
+      BLOCK_C: 32
+    num_warps: 2
+    num_stages: 4
+  - META:
+      BLOCK_C: 64
+    num_warps: 4
+    num_stages: 3
+
+grid_sample_3d_nearest_tiled_v2:
+  # Channel-reuse nearest: simpler inner loop (1 voxel load per iter) so we
+  # can use slightly bigger spatial tiles than trilinear v2.
+  - META:
+      BLOCK_D: 4
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 1
+    num_stages: 4
+  - META:
+      BLOCK_D: 4
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 2
+    num_stages: 4
+  - META:
+      BLOCK_D: 4
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_warps: 2
+    num_stages: 4
+  - META:
+      BLOCK_D: 2
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_D: 4
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_D: 8
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_warps: 4
+    num_stages: 2
+
+grid_sample_3d_trilinear_tiled_v2:
+  # C-loop variant — coord work is amortized over C iters, so smaller spatial
+  # tiles work better.  Multiple num_warps options for autotune to choose.
+  - META:
+      BLOCK_D: 2
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 1
+    num_stages: 4
+  - META:
+      BLOCK_D: 2
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 2
+    num_stages: 4
+  - META:
+      BLOCK_D: 2
+      BLOCK_H: 4
+      BLOCK_W: 8
+    num_warps: 2
+    num_stages: 4
+  - META:
+      BLOCK_D: 4
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK_D: 2
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_warps: 4
+    num_stages: 3
+
+grid_sample_2d_bicubic_tiled:
+  # Bicubic's 4x4 stencil is heavy on registers; keep tiles small but try a
+  # few warp counts so autotune can pick the best for each shape.
+  - META:
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 1
+    num_stages: 2
+  - META:
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 2
+    num_stages: 2
+  - META:
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_H: 4
+      BLOCK_W: 8
+    num_warps: 2
     num_stages: 2
 
 # Tiled grid sample kernels for medium-to-large inputs (multi-dimensional blocking)

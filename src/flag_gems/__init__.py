@@ -258,6 +258,8 @@ _FULL_CONFIG = (
     ("greater.Scalar_out", greater_scalar_out),
     ("greater.out", greater_out),
     ("grid_sample", grid_sample),
+    ("grid_sampler_2d_backward", grid_sampler_2d_backward),
+    ("grid_sampler_3d_backward", grid_sampler_3d_backward),
     ("gt.Scalar", gt_scalar),
     ("gt.Tensor", gt),
     ("hardsigmoid", hardsigmoid),
