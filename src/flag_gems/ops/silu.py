@@ -1,113 +1,45 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import libentry
+from flag_gems.utils import pointwise_dynamic
+from flag_gems.utils.triton_lang_extension import div_rn
 
 logger = logging.getLogger(__name__)
 
 
-@libentry()
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
-def silu_kernel(
-    x_ptr,
-    out_ptr,
-    n_elements,
-    BLOCK_SIZE: tl.constexpr,
-):
-    # Each program handles a contiguous block of elements
-    offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-
-    # Load input elements
-    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
-
-    # Compute sigmoid of x for SiLU activation
-    sigmoid_x = 1.0 / (1.0 + tl.exp(-x))
-
-    # SiLU is x multiplied by sigmoid of x
-    out = x * sigmoid_x
-
-    # Store result back to output buffer
-    tl.store(out_ptr + offsets, out, mask=mask)
+def silu_forward(x):
+    x_fp32 = x.to(tl.float32)
+    y = tl.fdiv(x_fp32, (1.0 + tl.exp(-x_fp32)))
+    return y
 
 
-@libentry()
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
-def silu_backward_kernel(
-    x_ptr,
-    dy_ptr,
-    dx_ptr,
-    n_elements,
-    BLOCK_SIZE: tl.constexpr,
-):
-    # Each program handles a contiguous block of elements
-    offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-
-    # Load inputs
-    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
-    dy = tl.load(dy_ptr + offsets, mask=mask, other=0.0)
-
-    # Compute sigmoid and its derivative for backward pass
-    sigmoid_x = 1.0 / (1.0 + tl.exp(-x))
-
-    # SiLU backward: d/dx(x * sigmoid(x)) = sigmoid(x) + x * sigmoid(x) * (1 - sigmoid(x))
-    dx = dy * (sigmoid_x + x * sigmoid_x * (1.0 - sigmoid_x))
-
-    # Store gradient
-    tl.store(dx_ptr + offsets, dx, mask=mask)
+def silu_backward_kernel(x, dy):
+    dy_fp32 = dy.to(tl.float32)
+    x_fp32 = x.to(tl.float32)
+    sigma = div_rn(1.0, 1.0 + tl.exp(-x_fp32))
+    dx = dy_fp32 * sigma * (1.0 + x_fp32 * (1.0 - sigma))
+    return dx
 
 
-def _silu_forward(x: torch.Tensor) -> torch.Tensor:
-    orig_dtype = x.dtype
-    x = x.contiguous().float()
-    out = torch.empty_like(x)
-    n_elements = x.numel()
-    BLOCK_SIZE = triton.next_power_of_2(min(n_elements, 4096))
-    if BLOCK_SIZE <= 256:
-        num_warps = 2
-    elif BLOCK_SIZE <= 1024:
-        num_warps = 4
-    else:
-        num_warps = 8
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    silu_kernel[grid](x, out, n_elements, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
-    return out.to(orig_dtype)
+def silu(self):
+    logger.debug("GEMS SILU FORWARD")
+    output = silu_forward(self)
+    return output
 
 
-def silu(x: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS SILU")
-    return _silu_forward(x)
-
-
-def silu_(x: torch.Tensor) -> torch.Tensor:
-    # In-place SiLU
-    logger.debug("GEMS SILU_")
-    result = _silu_forward(x)
-    x.copy_(result)
-    return x
-
-
-def silu_backward(x: torch.Tensor, dy: torch.Tensor) -> torch.Tensor:
-    # Backward pass for SiLU
+def silu_backward(grad_output, self):
     logger.debug("GEMS SILU BACKWARD")
-    orig_dtype = x.dtype
-    x = x.contiguous().float()
-    dy = dy.contiguous().float()
-    dx = torch.empty_like(x)
-    n_elements = x.numel()
-    BLOCK_SIZE = triton.next_power_of_2(min(n_elements, 4096))
-    if BLOCK_SIZE <= 256:
-        num_warps = 2
-    elif BLOCK_SIZE <= 1024:
-        num_warps = 4
-    else:
-        num_warps = 8
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    silu_backward_kernel[grid](
-        x, dy, dx, n_elements, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
-    )
-    return dx.to(orig_dtype)
+    grad_input = silu_backward_kernel(self, grad_output)
+    return grad_input
+
+
+def silu_(A):
+    logger.debug("GEMS SILU_ FORWARD")
+    out = silu_forward(A, out0=A)
+    return out
