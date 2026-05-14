@@ -180,3 +180,58 @@ def test_lighting_indexer_forward(
 
     # Accuracy comparison
     assert_close_inf(your_output, ref_output, 1e-2)
+
+
+@pytest.mark.triton_lighting_indexer_k_tiled_interface
+@pytest.mark.parametrize("seq_len_q", [64, 256, 1024])
+@pytest.mark.parametrize("seq_len_kv", [256, 1024, 2048])
+@pytest.mark.parametrize("num_heads", [4, 16])
+@pytest.mark.parametrize("qk_dim", [32, 64])
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_lighting_indexer_k_tiled_accuracy(
+    seq_len_q: int, seq_len_kv: int, num_heads: int, qk_dim: int, dtype: torch.dtype
+):
+    """Accuracy test for triton_lighting_indexer_k_tiled_interface."""
+    init_seed(42)
+    S = seq_len_q
+    H = num_heads
+    D = qk_dim
+    SKV = seq_len_kv
+
+    q = torch.randn((S, H, D), dtype=dtype, device=device)
+    kv = torch.randn((SKV, D), dtype=dtype, device=device)
+    weights = torch.randn((S, H), dtype=torch.float32, device=device)
+
+    ks, ke = generate_random_cu_seqlens(
+        per_cp_seqlen=S,
+        cp_size=3,
+        cp_rank=4,
+        kv_stride=1,
+        average_q_len=max(32, S // 4),
+    )
+
+    ref_output, _ = reference_lighting_indexer_implementation(q, kv, weights, ks, ke)
+    your_output = triton_lighting_indexer_k_tiled_interface(q, kv, weights, ks, ke)
+
+    assert_close_inf(your_output, ref_output, 1e-2)
+
+
+@pytest.mark.triton_lighting_indexer_k_tiled_interface
+@pytest.mark.parametrize("kv_stride", [1, 2, 4])
+def test_lighting_indexer_k_tiled_kv_stride(kv_stride: int):
+    """Test with different kv_stride values."""
+    init_seed(42)
+    S, H, D, SKV = 128, 8, 64, 512
+
+    q = torch.randn((S, H, D), dtype=torch.bfloat16, device=device)
+    kv = torch.randn((SKV, D), dtype=torch.bfloat16, device=device)
+    weights = torch.randn((S, H), dtype=torch.float32, device=device)
+
+    ks, ke = generate_random_cu_seqlens(
+        per_cp_seqlen=S, cp_size=3, cp_rank=4, kv_stride=kv_stride, average_q_len=64
+    )
+
+    ref_output, _ = reference_lighting_indexer_implementation(q, kv, weights, ks, ke)
+    your_output = triton_lighting_indexer_k_tiled_interface(q, kv, weights, ks, ke)
+
+    assert_close_inf(your_output, ref_output, 1e-2)
