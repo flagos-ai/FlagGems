@@ -126,6 +126,6 @@ def test_perf_w8a8_block_fp8_matmul():
         op_name="w8a8_block_fp8_matmul",
         torch_op=vllm_w8a8_triton_block_scaled_mm,
         gems_op=flag_gems.w8a8_block_fp8_matmul,
-        dtypes=["fp8"],
+        dtypes=consts.FP8_DTYPES,
     )
     bench.run()
