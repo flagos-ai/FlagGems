@@ -6,6 +6,16 @@ from flag_gems.ops import cumprod as flag_gems_cumprod
 
 from . import base, consts
 
+CUMPROD_DTYPES = (
+    consts.FLOAT_DTYPES
+    + consts.BOOL_DTYPES
+    + consts.INT_DTYPES
+    + consts.EXTRA_INT_DTYPES
+)
+CUMPROD_INPLACE_DTYPES = (
+    consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.EXTRA_INT_DTYPES
+)
+
 CUMPROD_DTYPES = consts.FLOAT_DTYPES + consts.BOOL_DTYPES + consts.INT_DTYPES + consts.EXTRA_INT_DTYPES
 CUMPROD_INPLACE_DTYPES = consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.EXTRA_INT_DTYPES
 
