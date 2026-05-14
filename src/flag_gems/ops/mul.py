@@ -2,34 +2,60 @@ import logging
 
 import torch
 import triton
-import triton.language as tl
 
-from flag_gems.utils import libentry
+from flag_gems.utils import pointwise_dynamic
+from flag_gems.utils.pointwise_dynamic import ComplexMode
 
 logger = logging.getLogger(__name__)
 
 
-@libentry()
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
-def mul_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-    offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
-    y = tl.load(y_ptr + offsets, mask=mask, other=0.0)
-    tl.store(out_ptr + offsets, x * y, mask=mask)
+def mul_func(x, y):
+    return x * y
 
 
-def _mul(x, y):
-    orig = x.dtype; x = x.contiguous().float(); y = y.contiguous().float()
-    out = torch.empty_like(x); n = x.numel()
-    if n == 0: return out.to(orig)
-    BS = triton.next_power_of_2(min(n, 4096))
-    mul_kernel[(triton.cdiv(n, BS),)](x, y, out, n, BLOCK_SIZE=BS, num_warps=4)
-    return out.to(orig)
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def mul_func_scalar(x, y):
+    return x * y
 
 
-def mul(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS MUL"); return _mul(x, y)
+@pointwise_dynamic(
+    is_tensor=[True, True, True, True],  # ar, ai, br, bi
+    num_outputs=2,
+    promotion_methods=[(0, 1, 2, 3, "DEFAULT"), (0, 1, 2, 3, "DEFAULT")],
+)
+@triton.jit
+def mul_complex_kernel(ar, ai, br, bi):
+    real = ar * br - ai * bi
+    imag = ar * bi + ai * br
+    return real, imag
 
-def mul_(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS MUL_"); r = _mul(x, y); x.copy_(r); return x
+
+# Register complex support
+mul_func.register_complex(mode=ComplexMode.CROSS, cross_kernel=mul_complex_kernel)
+mul_func_scalar.register_complex(
+    mode=ComplexMode.CROSS, tensorize_scalars=True, fallback_target=mul_func
+)
+
+
+def mul(A, B):
+    logger.debug("GEMS MUL")
+    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        return mul_func(A, B)
+    elif isinstance(A, torch.Tensor):
+        return mul_func_scalar(A, B)
+    elif isinstance(B, torch.Tensor):
+        return mul_func_scalar(B, A)
+    else:
+        # Both scalar
+        return torch.tensor(A * B)
+
+
+def mul_(A, B):
+    logger.debug("GEMS MUL_")
+    if isinstance(B, torch.Tensor):
+        return mul_func(A, B, out0=A)
+    else:
+        return mul_func_scalar(A, B, out0=A)
