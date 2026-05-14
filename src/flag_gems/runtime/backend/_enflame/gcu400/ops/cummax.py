@@ -8,7 +8,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_min
 
 Tensor = torch.Tensor
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def tl_cummax(input, index, axis=0):
     return tl.associative_scan(
-        (input, index), axis, tle.maximum_with_index_tie_break_right
+        (input, index), axis, ext.maximum_with_index_tie_break_right
     )
 
 
@@ -28,7 +28,7 @@ def tl_max_tie_break_right(input, index, axis=None, keep_dims=False):
     return tl.reduce(
         (input, index),
         axis,
-        tle.maximum_with_index_tie_break_right,
+        ext.maximum_with_index_tie_break_right,
         keep_dims=keep_dims,
     )
 

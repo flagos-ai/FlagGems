@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_max
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
@@ -23,7 +23,7 @@ def argmin_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -71,8 +71,8 @@ def argmin_kernel(
     BLOCK_N: tl.constexpr,
 ):
     # set offset
-    pid_m = tle.program_id(0)
-    # pid_k = tle.program_id(1)
+    pid_m = ext.program_id(0)
+    # pid_k = ext.program_id(1)
     for pid_k in range(K):
         m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 

@@ -27,9 +27,6 @@ else:
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skiping fp32 addmm test on tsingmicro platform")
-
     if flag_gems.vendor_name == "mthreads":
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
@@ -66,9 +63,6 @@ def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_addmm_out(M, N, K, scalar, dtype):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skiping fp32 addmm_out test on tsingmicro platform")
-
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
     bias1 = torch.randn((N,), dtype=dtype, device=flag_gems.device)

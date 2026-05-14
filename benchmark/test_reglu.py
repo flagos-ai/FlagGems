@@ -12,23 +12,17 @@ try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
     TE_OP = getattr(tex, "reglu")
-    TE_AVAILABLE = True
-    GEMS_OP = getattr(flag_gems, "reglu")
 except ImportError:
-    TE_AVAILABLE = False
     TE_OP = None
-    GEMS_OP = None
 
 
 @pytest.mark.reglu
-@pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine not installed")
-@pytest.mark.skipif(TE_OP is None, reason="'reglu' not found in TransformerEngine")
-@pytest.mark.skipif(GEMS_OP is None, reason="'reglu' not found in FlagGems")
+@pytest.mark.skipif(TE_OP is None, reason="TransformerEngine not installed")
 def test_reglu():
     bench = base.TexGluForwardBenchmark(
         op_name="reglu",
         torch_op=TE_OP,
-        gems_op=GEMS_OP,
+        gems_op=flag_gems.reglu,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

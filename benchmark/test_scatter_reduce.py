@@ -80,7 +80,7 @@ def gather_scatter_gbps(bench_fn_args, latency):
 @pytest.mark.scatter_reduce
 def test_scatter_reduce_add():
     bench = TensorSelectBenchmark(
-        op_name="scatter.reduce",
+        op_name="scatter_reduce",
         torch_op=torch.scatter,
         input_fn=scatter_input_fn_factory("add"),
         get_gbps=gather_scatter_gbps,
@@ -92,7 +92,7 @@ def test_scatter_reduce_add():
 @pytest.mark.scatter_reduce
 def test_scatter_reduce_multiply():
     bench = TensorSelectBenchmark(
-        op_name="scatter.reduce",
+        op_name="scatter_reduce",
         torch_op=torch.scatter,
         input_fn=scatter_input_fn_factory("multiply"),
         get_gbps=gather_scatter_gbps,
@@ -104,7 +104,7 @@ def test_scatter_reduce_multiply():
 @pytest.mark.scatter_reduce_
 def test_scatter_reduce_add_inplace():
     bench = TensorSelectBenchmark(
-        op_name="scatter_.reduce",
+        op_name="scatter_reduce_",
         torch_op=torch.Tensor.scatter_,
         input_fn=scatter_inplace_input_fn_factory("add"),
         get_gbps=gather_scatter_gbps,
@@ -117,7 +117,7 @@ def test_scatter_reduce_add_inplace():
 @pytest.mark.scatter_reduce_
 def test_scatter_reduce_multiply_inplace():
     bench = TensorSelectBenchmark(
-        op_name="scatter_.reduce",
+        op_name="scatter_reduce_",
         torch_op=torch.Tensor.scatter_,
         input_fn=scatter_inplace_input_fn_factory("multiply"),
         get_gbps=gather_scatter_gbps,

@@ -33,15 +33,10 @@ HAS_FLAGTREE = False
 ROOT = Path(__file__).parent.parent
 OUPUT_DIR = None
 OP_LIST = []
+DUMP_OUTPUT = False
 TIMEOUT = -100
-
-NO_CPU_LIST = [
-    "flash_attention_forward",
-    "get_scheduler_metadata",
-    "grouped_topk",
-    "per_token_group_quant_fp8",
-]
-
+# A list of operators that can only run on GPU/DCUs
+NO_CPU_LIST = []
 DTYPE_MAP = {
     "torch.float16": "fp16",
     "torch.float32": "fp32",
@@ -54,15 +49,15 @@ DTYPE_MAP = {
 
 
 def pinfo(str, **args):
-    print(f"\033[32m[INFO]\033[0m {str}", **args)
+    print(f"\033[32m[INFO]\033[0m {str}", flush=True, **args)
 
 
 def perror(str, **args):
-    print(f"\033[31m[ERROR]\033[0m {str}", **args)
+    print(f"\033[31m[ERROR]\033[0m {str}", flush=True, **args)
 
 
 def pwarn(str, **args):
-    print(f"\033[93m[WARN]\033[0m {str}", **args)
+    print(f"\033[93m[WARN]\033[0m {str}", flush=True, **args)
 
 
 def ensure_dir(p):
@@ -82,12 +77,7 @@ def get_ops_from_inventory():
     return catalog
 
 
-def init():
-    ENV_INFO["architecture"] = platform.machine()
-    ENV_INFO["os_name"] = distro.id()
-    ENV_INFO["os_release"] = distro.version()
-    ENV_INFO["python"] = platform.python_version()
-
+def _probe_torch():
     ENV_INFO.setdefault("torch", {})
     try:
         import torch
@@ -121,6 +111,10 @@ def init():
     except Exception:
         ENV_INFO["torch"]["device_count"] = 0
 
+    return
+
+
+def _probe_triton():
     try:
         version = metadata.version("flagtree")
         ENV_INFO["flagtree"] = version
@@ -156,15 +150,18 @@ def init():
             perror("Neither FlagTree nor Triton is installed, please fix it.")
             sys.exit(-1)
 
+    return
+
+
+def _probe_flaggems():
     try:
         # This may print an error "no device detected on your machine."
-
         version = flag_gems.__version__
-        ENV_INFO["flag_gems"] = {"version": version}
-
         repo = git.Repo(search_parent_directories=True)
         sha = repo.head.object.hexsha
-        pinfo(f"flag_gems detected ... {version}+git{sha[:8]}")
+        ver_str = f"{version}+git{sha[:8]}"
+        ENV_INFO["flag_gems"] = {"version": ver_str}
+        pinfo(f"flag_gems detected ... {ver_str}")
     except RuntimeError as e:
         perror(f"{e}")
         sys.exit(-1)
@@ -193,22 +190,55 @@ def init():
         perror("flag_gems failed to detect device info.`")
         sys.exit(-1)
 
+    return
 
-def run_cmd(cmd, cwd=None, env=None, timeout=600):
+
+def probe_env():
+    ENV_INFO["architecture"] = platform.machine()
+    ENV_INFO["os_name"] = distro.id()
+    ENV_INFO["os_release"] = distro.version()
+    ENV_INFO["python"] = platform.python_version()
+
+    _probe_torch()
+    _probe_triton()
+    _probe_flaggems()
+
+
+def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
+    stdout = subprocess.DEVNULL
+    stderr = subprocess.DEVNULL
+    if DUMP_OUTPUT:
+        op_dir = OUTPUT_DIR.joinpath(op)
+        stdout_log = str(op_dir / f"{flavor}_stdout.log")
+        stderr_log = str(op_dir / f"{flavor}_stderr.log")
+        try:
+            stdout = open(stdout_log, "w")
+            stderr = open(stderr_log, "w")
+        except Exception:
+            pass
+
+    p = subprocess.Popen(
+        shlex.split(cmd),
+        cwd=cwd,
+        env=env,
+        stdout=stdout,
+        stderr=stderr,
+        start_new_session=True,
+    )
+
     try:
-        p = subprocess.Popen(
-            shlex.split(cmd),
-            cwd=str(cwd),
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
         p.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
-        os.killpg(os.getpgid(p.pid), signal.SIGTERM)
-        return TIMEOUT
-    return p.returncode
+        pgid = os.getpgid(p.pid)
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+        except Exception:
+            os.killpg(pgid, signal.SIGKILL)
+
+        return p.returncode
+    except Exception as e:
+        perror(f"run_cmd failed: {e}")
+        return -1
 
 
 def parse_accuracy_data(result_file):
@@ -222,6 +252,7 @@ def parse_accuracy_data(result_file):
     num_skipped = 0
     num_failed = 0
     num_passed = 0
+    skipped_with_issue = False
     for test_case, item in raw_data.items():
         case_str = test_case[: test_case.find("[")]
         result = item.get("result", "")
@@ -235,6 +266,8 @@ def parse_accuracy_data(result_file):
             num_passed += 1
         elif result == "skipped":
             reason = item.get("reason", "Unknown")
+            if reason.find("Issue"):
+                skipped_with_issue = True
             skipped.setdefault(reason, set())
             skipped[reason].add(param_str)
             num_skipped += 1
@@ -244,8 +277,9 @@ def parse_accuracy_data(result_file):
             failed[reason].add(param_str)
             num_failed += 1
 
+    num_total = num_passed + num_skipped + num_failed
     result = {
-        "total": num_passed + num_skipped + num_failed,
+        "total": num_total,
         "skipped": num_skipped,
         "failed": num_failed,
         "passed": num_passed,
@@ -256,16 +290,25 @@ def parse_accuracy_data(result_file):
             result["status"] = "NotFound"
         else:
             result["status"] = "Passed"
-    else:
+        return result
+
+    # Something is wrong ... check failed first
+    if num_failed > 0:
         result["status"] = "Failed"
-        if len(skipped):
-            for k, v in skipped.items():
-                skipped[k] = list(v)
-            result["details"]["skipped"] = skipped
-        if len(failed):
-            for k, v in failed.items():
-                failed[k] = list(v)
-            result["details"]["failed"] = failed
+        for k, v in failed.items():
+            failed[k] = list(v)
+        result["details"]["failed"] = failed
+        return result
+
+    # There are skipped tests
+    if skipped_with_issue:
+        result["status"] = "Failed"
+    else:
+        result["status"] = "Skipped"
+
+    for k, v in skipped.items():
+        skipped[k] = list(v)
+    result["details"]["skipped"] = skipped
 
     return result
 
@@ -306,6 +349,14 @@ def get_env(gpu_ids):
         env["CUDA_VISIBLE_DEVICES"] = gpu_ids
         return env
 
+    if vendor == "cambricon":
+        env["MLU_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
+    if vendor == "kunlunxin":
+        env["XPU_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
     env["CUDA_VISIBLE_DEVICES"] = gpu_ids
 
     return env
@@ -332,13 +383,15 @@ def run_accuracy(gpu_id, start, index, count):
     if result_file.exists():
         result_file.unlink()
 
+    op_dir = OUTPUT_DIR.joinpath(op)
+    ensure_dir(op_dir)
     start = time.time()
-    code = run_cmd(cmd, cwd=accuracy_dir, env=env)
+    code = run_cmd(op, cmd, cwd=accuracy_dir, env=env, flavor="accuracy")
     end = time.time()
 
     if code == TIMEOUT:  # Timeout
         return {
-            "status": "TIMEOUT",
+            "status": "Timeout",
             "exit_code": TIMEOUT,
             "total": 0,
             "passed": 0,
@@ -346,6 +399,20 @@ def run_accuracy(gpu_id, start, index, count):
             "skipped": 0,
             "errors": 0,
             "duration": end - start,
+        }
+    # There are rare cases where the pytest process aborts
+    # with no result file generated.
+    if not result_file.exists():
+        return {
+            "status": "Error",
+            "exit_code": code,
+            "total": 0,
+            "passed": 0,
+            "failed": 0,
+            "skipped": 0,
+            "errors": 1,
+            "duration": end - start,
+            "data_file": None,
         }
 
     op_dir = OUTPUT_DIR.joinpath(op)
@@ -390,7 +457,7 @@ def parse_perf_data(op, result_file):
         count = 0
         # Iterate through shapes
         for res in item.get("result", []):
-            shape = str(res.get("shape_detail", "UNKNOWN")).replace(" ", "")
+            shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
             details.setdefault(shape, {})
             details[shape]["base"] = res.get("latency_base", 0.0)
             details[shape]["gems"] = res.get("latency", 0.0)
@@ -439,9 +506,12 @@ def run_benchmark(gpu_id, start, index, count):
     if result_file.exists():
         result_file.unlink()
 
+    op_dir = OUTPUT_DIR.joinpath(op)
+    ensure_dir(op_dir)
+
     start = time.time()
     cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
-    code = run_cmd(cmd, cwd=benchmark_dir, env=env)
+    code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     end = time.time()
 
     # Not found
@@ -449,11 +519,10 @@ def run_benchmark(gpu_id, start, index, count):
         return {
             "status": "NotFound",
             "exit_code": code,
-            "data": [],
+            "data": {},
         }
 
     # Move record log to output directory
-    op_dir = OUTPUT_DIR.joinpath(op)
     dest = op_dir / "performance_result.json"
     shutil.move(result_file, str(dest))
     result_file = dest
@@ -470,9 +539,6 @@ def run_benchmark(gpu_id, start, index, count):
 
 
 def worker_proc(gpu_id, start, count):
-    # Ensure python output are unbuffered
-    os.environ["PYTHONUNBUFFERED"] = "1"
-
     worker_result = {}
     for i in range(count):
         op = OP_LIST[start + i].strip()
@@ -503,6 +569,14 @@ def worker_proc(gpu_id, start, count):
 
 
 def get_ops_to_test(ops_file, ops_list, stages):
+    # Build list of operators which do NOT support CPU mode
+    op_catalog = get_ops_from_inventory()
+    for op in op_catalog:
+        labels = op.get("labels", [])
+        if "NoCPU" in labels:
+            NO_CPU_LIST.append(op["id"])
+
+    # This is the highest priority
     if ops_list:
         ops = []
         for op in ops_list.split(","):
@@ -511,6 +585,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
 
         return ops
 
+    # Parse the op list file if specified
     if ops_file:
         lines = []
         try:
@@ -548,7 +623,6 @@ def get_ops_to_test(ops_file, ops_list, stages):
     if not effective_stages:
         effective_stages = ["stable"]
 
-    op_catalog = get_ops_from_inventory()
     ops = []
     for op in op_catalog:
         stages = op.get("stages", [])
@@ -558,7 +632,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
         stage = next(iter(stages[-1].keys()), None)
         if stage not in effective_stages:
             continue
-        ops.append(op["id"].lstrip("_"))
+        ops.append(op["id"])
 
     return ops
 
@@ -566,6 +640,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
 def main():
     global OUTPUT_DIR
     global OP_LIST
+    global DUMP_OUTPUT
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--op-list-file", required=False)
@@ -573,10 +648,18 @@ def main():
     parser.add_argument("--gpus", default="0")
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--stages", required=False, default="stable")
+    parser.add_argument(
+        "--dump-output",
+        action="store_true",
+        default=False,
+        help="Dump stdout/stderr of each test to log files",
+    )
     args = parser.parse_args()
 
+    DUMP_OUTPUT = args.dump_output
+
     # Probe environment setttings
-    init()
+    probe_env()
 
     ops = get_ops_to_test(args.op_list_file, args.ops, args.stages)
     op_count = len(ops)
