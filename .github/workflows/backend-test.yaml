@@ -17,12 +17,18 @@ on:
         required: false
         type: string
         default: ''
-      test_script:
-        description: 'Path to test script under tools/'
-        required: true
-        type: string
       changed_files:
         description: 'List of changed files in a PR'
+        required: false
+        type: string
+        default: ''
+      pr_id:
+        description: 'ID of the PR'
+        required: false
+        type: string
+        default: ''
+      test_script:
+        description: "Temporary parameter for alpha-ops test"
         required: false
         type: string
         default: ''
@@ -38,21 +44,54 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
-        op-test-${{ inputs.vendor }}-
-        ${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.vendor }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
-      - name: Check GPU availability
+      - id: checkout-attempt-1
+        uses: actions/checkout@v6
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@v6
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@v6
+
+      - name: Setup FlagGems
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ inputs.runner_label }}
+        run: |
+          ./setup.sh ${{ inputs.vendor }}
+      - id: check-gpu
         if: ${{ inputs.gpu_check_script != '' }}
         shell: bash
         run: |
           bash ${{ inputs.gpu_check_script }}
-      - name: Run backend tests
+      - name: Test alpha ops
+        if: ${{ inputs.test_script != '' }}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
         shell: bash
         run: |
-          bash ${{ inputs.test_script }} ${{ inputs.vendor }}
+          bash ${{ inputs.test_script }} ${{ inputs.vendor }} ${{ inputs.pr_id }}
+      - name: Run backend tests
+        if: ${{ inputs.test_script == '' }}
+        shell: bash
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        run: |
+          source .venv/bin/activate
+          source tools/set-env.sh ${{ inputs.vendor }}
+          tools/test-op.sh ${{ inputs.pr_id }}
