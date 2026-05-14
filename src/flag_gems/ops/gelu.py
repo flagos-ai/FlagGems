@@ -42,7 +42,7 @@ def gelu_backward_kernel(
 ):
     offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    x  = tl.load(x_ptr  + offsets, mask=mask, other=0.0)
     dy = tl.load(dy_ptr + offsets, mask=mask, other=0.0)
     x3 = x * x * x
     inner = 0.7978845608028654 * (x + 0.044715 * x3)
@@ -62,9 +62,7 @@ def _gelu_fwd(x: torch.Tensor) -> torch.Tensor:
         return out.to(orig_dtype)
     BLOCK_SIZE = triton.next_power_of_2(min(n, 4096))
     num_warps = 2 if BLOCK_SIZE <= 256 else 4 if BLOCK_SIZE <= 1024 else 8
-    gelu_kernel[(triton.cdiv(n, BLOCK_SIZE),)](
-        x, out, n, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
-    )
+    gelu_kernel[(triton.cdiv(n, BLOCK_SIZE),)](x, out, n, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
     return out.to(orig_dtype)
 
 
@@ -83,15 +81,13 @@ def gelu_(x: torch.Tensor) -> torch.Tensor:
 def gelu_backward(x: torch.Tensor, dy: torch.Tensor) -> torch.Tensor:
     logger.debug("GEMS GELU BACKWARD")
     orig_dtype = x.dtype
-    x = x.contiguous().float()
+    x  = x.contiguous().float()
     dy = dy.contiguous().float()
     dx = torch.empty_like(x)
-    n = x.numel()
+    n  = x.numel()
     if n == 0:
         return dx.to(orig_dtype)
     BLOCK_SIZE = triton.next_power_of_2(min(n, 4096))
     num_warps = 2 if BLOCK_SIZE <= 256 else 4 if BLOCK_SIZE <= 1024 else 8
-    gelu_backward_kernel[(triton.cdiv(n, BLOCK_SIZE),)](
-        x, dy, dx, n, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
-    )
+    gelu_backward_kernel[(triton.cdiv(n, BLOCK_SIZE),)](x, dy, dx, n, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
     return dx.to(orig_dtype)
