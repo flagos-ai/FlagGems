@@ -8,7 +8,9 @@ import torch
 from flag_gems.fused.DSA.bin_topk import (
     bucket_sort_topk,  # Replace with actual module name
 )
-from flag_gems.fused.DSA.bin_topk import HAS_TLE
+from flag_gems.fused.DSA.bin_topk import (
+    HAS_TLE,
+)
 
 
 def assert_set_similar(actual, expected, dtype, equal_nan=False):
@@ -347,6 +349,69 @@ def test_bucket_sort_topk_correctness():
 
     overall_ratio = total_intersection / total_elements
     print(f"Overall intersection ratio: {overall_ratio:.4f}")
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA device required")
+@pytest.mark.bucket_sort_topk
+@pytest.mark.parametrize("batch_size", [1, 4, 16])
+@pytest.mark.parametrize("seq_len", [512, 1024, 4096])
+@pytest.mark.parametrize("topk", [32, 128, 512])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_bucket_sort_topk_accuracy(batch_size, seq_len, topk, dtype):
+    """Accuracy test for bucket_sort_topk across dtypes and sizes."""
+    if topk > seq_len:
+        pytest.skip("topk cannot be larger than seq_len")
+
+    init_seed(42)
+    inputs = torch.randn(batch_size, seq_len, dtype=dtype, device=device)
+    starts = torch.zeros(batch_size, dtype=torch.int32, device=device)
+    ends = torch.ones(batch_size, dtype=torch.int32, device=device) * seq_len
+
+    actual_indices = bucket_sort_topk(inputs, starts, ends, topk)
+
+    ref_indices = torch.topk(inputs, topk, dim=-1)[1].to(torch.int32)
+
+    assert actual_indices.shape == (batch_size, topk)
+    assert actual_indices.dtype == torch.int32
+
+    for i in range(batch_size):
+        actual_set = set(actual_indices[i].cpu().numpy())
+        ref_set = set(ref_indices[i].cpu().numpy())
+        intersection = actual_set & ref_set
+        intersection_ratio = len(intersection) / len(ref_set)
+        assert (
+            intersection_ratio >= 0.95
+        ), f"Batch {i}: Only {intersection_ratio:.4f} intersection, expected >= 0.95"
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA device required")
+@pytest.mark.bucket_sort_topk
+@pytest.mark.parametrize(
+    ("batch_size", "seq_len", "topk"),
+    [
+        (1, 256, 16),
+        (2, 512, 32),
+        (4, 1024, 64),
+        (4, 2048, 128),
+    ],
+)
+def test_bucket_sort_topk_variable_seq(batch_size, seq_len, topk):
+    """Accuracy test with variable-length sequences."""
+    init_seed(123)
+    inputs = torch.randn(batch_size, seq_len, dtype=torch.float32, device=device)
+    starts = torch.zeros(batch_size, dtype=torch.int32, device=device)
+    min_len = max(topk, seq_len // 2)
+    ends = torch.randint(
+        min_len, seq_len + 1, (batch_size,), dtype=torch.int32, device=device
+    )
+
+    ref_indices = reference_topk_implementation(
+        to_reference(inputs), to_reference(starts), to_reference(ends), topk
+    )
+    actual_indices = bucket_sort_topk(inputs, starts, ends, topk)
+
+    assert actual_indices.shape == (batch_size, topk)
+    assert_set_similar(actual_indices, ref_indices, torch.float32)
 
 
 if __name__ == "__main__":
