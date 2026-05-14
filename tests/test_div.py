@@ -195,3 +195,75 @@ def test_div_complex_int_scalar(shape, complex_dtype):
         res_out = torch.div(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
+
+
+@pytest.mark.div_tensor_mode_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_tensor_mode_inplace_none(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1.clone(), False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = ref_inp1.div_(ref_inp2, rounding_mode=None)
+    with flag_gems.use_gems():
+        res_out = inp1.div_(inp2, rounding_mode=None)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.div_tensor_mode_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
+@pytest.mark.xfail(
+    reason="Operator bug: trunc/floor div kernels fail Triton compilation for float dtypes"
+)
+def test_div_tensor_mode_inplace_trunc_floor(shape, dtype, rounding_mode):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1.clone(), False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = ref_inp1.div_(ref_inp2, rounding_mode=rounding_mode)
+    with flag_gems.use_gems():
+        res_out = inp1.div_(inp2, rounding_mode=rounding_mode)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.div_tensor_mode_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_tensor_mode_scalar_inplace_none(shape, scalar, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1.clone(), False)
+
+    ref_out = ref_inp1.div_(scalar, rounding_mode=None)
+    with flag_gems.use_gems():
+        res_out = inp1.div_(scalar, rounding_mode=None)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.div_tensor_mode_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
+@pytest.mark.xfail(
+    reason="Operator bug: trunc/floor div scalar kernels fail Triton compilation"
+)
+def test_div_tensor_mode_scalar_inplace_trunc_floor(
+    shape, scalar, dtype, rounding_mode
+):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1.clone(), False)
+
+    ref_out = ref_inp1.div_(scalar, rounding_mode=rounding_mode)
+    with flag_gems.use_gems():
+        res_out = inp1.div_(scalar, rounding_mode=rounding_mode)
+
+    utils.gems_assert_equal(res_out, ref_out)
