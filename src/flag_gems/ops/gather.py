@@ -43,11 +43,8 @@ def gather(x: torch.Tensor, dim: int, index: torch.Tensor) -> torch.Tensor:
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
         # For last dim gather, flatten and use kernel
         gather_kernel[grid](
-            out.reshape(-1),
-            x_c.reshape(-1),
-            idx_c.reshape(-1),
-            n_elements,
-            BLOCK_SIZE=BLOCK_SIZE,
+            out.reshape(-1), x_c.reshape(-1),
+            idx_c.reshape(-1), n_elements, BLOCK_SIZE=BLOCK_SIZE
         )
         return out
     return torch.gather(x, dim, index)
