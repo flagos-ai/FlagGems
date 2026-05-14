@@ -7,13 +7,34 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+def _get_bf16_is_supported():
+    value = getattr(utils, "bf16_is_supported", None)
+    if value is None:
+        value = getattr(cfg, "bf16_is_supported", None)
+    if callable(value):
+        return bool(value())
+    if value is not None:
+        return bool(value)
+
+    device = torch.device(flag_gems.device)
+    if device.type == "cuda" and torch.cuda.is_available():
+        return bool(torch.cuda.is_bf16_supported())
+    return False
+
+
+bf16_is_supported = _get_bf16_is_supported()
+PRIMARY_FLOAT_DTYPES = [torch.float16, torch.float32]
+FLOAT_DTYPES = (
+    PRIMARY_FLOAT_DTYPES + [torch.bfloat16]
+    if bf16_is_supported
+    else PRIMARY_FLOAT_DTYPES
+)
+
 if cfg.QUICK_MODE:
-    FLOAT_DTYPES = [torch.float32]
     CTC_SHAPES = [(8, 2, 10, 5)]
     CTC_REDUCTIONS = ["mean"]
     CTC_BLANKS = [0]
 else:
-    FLOAT_DTYPES = [torch.float32, torch.float64] if utils.fp64_is_supported else [torch.float32]
     CTC_SHAPES = [
         (5, 1, 10, 3),
         (8, 2, 10, 5),
@@ -28,6 +49,33 @@ else:
 def _int_reduction(reduction):
     mapping = {"none": 0, "mean": 1, "sum": 2}
     return mapping[reduction]
+
+
+def _ctc_loss_reference(
+    log_probs,
+    targets,
+    input_lengths,
+    target_lengths,
+    blank=0,
+    reduction="mean",
+    zero_infinity=False,
+):
+    """Reference path: compute fp16/bf16 CTC in fp32, then cast output back."""
+    original_dtype = log_probs.dtype
+    work_log_probs = log_probs
+    if work_log_probs.dtype in (torch.float16, torch.bfloat16):
+        work_log_probs = work_log_probs.float()
+
+    out = F.ctc_loss(
+        work_log_probs,
+        targets,
+        input_lengths,
+        target_lengths,
+        blank=blank,
+        reduction=reduction,
+        zero_infinity=zero_infinity,
+    )
+    return out.to(original_dtype) if out.dtype != original_dtype else out
 
 
 def _make_targets(batch, max_target, classes, device, target_layout, blank=0):
@@ -69,7 +117,7 @@ def test_ctc_loss_core(T, N, C, S, dtype, target_layout, reduction):
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction=reduction, zero_infinity=False)
 
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
@@ -82,7 +130,7 @@ def test_ctc_loss_core(T, N, C, S, dtype, target_layout, reduction):
         out_grad = torch.randn_like(res_out)
         ref_grad = utils.to_reference(out_grad, True)
         (ref_in_grad,) = torch.autograd.grad(ref_out, ref_lp, ref_grad)
-        (res_in_grad,) = torch.autograd.grad(res_out, raw, out_grad)
+        (res_in_grad,) = torch.autograd.grad(res_out, log_probs, out_grad)
         utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=max(C, 1), atol=0.02, equal_nan=True)
 
 
@@ -105,7 +153,7 @@ def test_ctc_loss_zero_infinity(T, N, C, S, dtype, target_layout, reduction):
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction=reduction, zero_infinity=True)
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
                                  blank=blank, reduction=_int_reduction(reduction), zero_infinity=True)
@@ -132,7 +180,7 @@ def test_ctc_loss_no_grad(T, N, C, S, dtype):
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction="mean")
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=max(C, 1), atol=1e-4)
 
@@ -156,7 +204,7 @@ def test_ctc_loss_unbatched(T, C, S, dtype):
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction="mean")
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
                                  blank=blank, reduction=1)
@@ -186,7 +234,7 @@ def test_ctc_loss_variable_lengths(T, N, C, S, dtype):
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction="mean")
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
                                  blank=blank, reduction=1)
@@ -212,7 +260,7 @@ def test_ctc_loss_concat_variable_lengths(T, N, C, S, dtype, reduction):
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction=reduction, zero_infinity=False)
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
                                  blank=blank, reduction=_int_reduction(reduction), zero_infinity=False)
@@ -239,7 +287,7 @@ def test_ctc_loss_backward(T, N, C, S, dtype, reduction):
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction=reduction)
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
                                  blank=blank, reduction=_int_reduction(reduction))
@@ -247,7 +295,7 @@ def test_ctc_loss_backward(T, N, C, S, dtype, reduction):
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad, True)
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_lp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, raw, out_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, log_probs, out_grad)
 
     tol = 0.05 if dtype == torch.float16 else 0.02
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=max(C, 1), atol=tol, equal_nan=True)
@@ -274,7 +322,7 @@ def test_ctc_loss_non_contiguous(T, N, C, S, dtype):
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction="mean")
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
                                  blank=blank, reduction=1)
@@ -358,7 +406,7 @@ def test_ctc_loss_blank_arg(T, N, C, S, dtype):
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction="mean")
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
                                  blank=blank, reduction=1)
@@ -386,7 +434,7 @@ def test_ctc_loss_empty_target(T, N, C, S, dtype):
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction="mean")
     # Check output is finite
     assert torch.isfinite(res_out).all()
@@ -412,7 +460,7 @@ def test_ctc_loss_lengths_as_python_list(target_layout, reduction):
     ref_targets = utils.to_reference(targets)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, input_lengths, target_lengths,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, input_lengths, target_lengths,
                              blank=blank, reduction=reduction, zero_infinity=False)
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
                                  blank=blank, reduction=_int_reduction(reduction), zero_infinity=False)
@@ -438,7 +486,7 @@ def test_ctc_loss_zero_infinity_impossible_alignment_forward_backward(reduction)
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction=reduction, zero_infinity=True)
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
                                  blank=blank, reduction=_int_reduction(reduction), zero_infinity=True)
@@ -447,7 +495,7 @@ def test_ctc_loss_zero_infinity_impossible_alignment_forward_backward(reduction)
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad, True)
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_lp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, raw, out_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, log_probs, out_grad)
     utils.gems_assert_close(res_in_grad, ref_in_grad, torch.float32, reduce_dim=C, atol=1e-4, equal_nan=True)
     assert torch.isfinite(res_out).all()
 
@@ -477,7 +525,7 @@ def test_ctc_loss_repeated_labels(target_layout, reduction):
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction=reduction, zero_infinity=False)
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
                                  blank=blank, reduction=_int_reduction(reduction), zero_infinity=False)
@@ -486,7 +534,7 @@ def test_ctc_loss_repeated_labels(target_layout, reduction):
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad, True)
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_lp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, raw, out_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, log_probs, out_grad)
     utils.gems_assert_close(res_in_grad, ref_in_grad, torch.float32, reduce_dim=C, atol=0.02, equal_nan=True)
 
 
@@ -512,7 +560,7 @@ def test_ctc_loss_all_empty_targets(target_layout):
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction="mean", zero_infinity=False)
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
                                  blank=blank, reduction=1, zero_infinity=False)
@@ -521,7 +569,7 @@ def test_ctc_loss_all_empty_targets(target_layout):
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad, True)
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_lp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, raw, out_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, log_probs, out_grad)
     utils.gems_assert_close(res_in_grad, ref_in_grad, torch.float32, reduce_dim=C, atol=0.02, equal_nan=True)
 
 
@@ -544,7 +592,7 @@ def test_ctc_loss_zero_input_length(target_len, zero_infinity):
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction="mean", zero_infinity=zero_infinity)
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
                                  blank=blank, reduction=1, zero_infinity=zero_infinity)
@@ -569,7 +617,7 @@ def test_ctc_loss_unbatched_scalar_lengths():
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction="mean", zero_infinity=False)
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
                                  blank=blank, reduction=1, zero_infinity=False)
@@ -577,7 +625,7 @@ def test_ctc_loss_unbatched_scalar_lengths():
 
 
 @pytest.mark.ctc_loss
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("dtype", [dt for dt in FLOAT_DTYPES if dt in (torch.float16, torch.bfloat16)])
 def test_ctc_loss_low_precision_forward(dtype):
     """Optional low-precision coverage. Reference is computed in fp32 for stability."""
     if dtype == torch.float16 and flag_gems.device == "cpu":
@@ -599,7 +647,7 @@ def test_ctc_loss_low_precision_forward(dtype):
     ref_tl = utils.to_reference(target_lengths)
 
     with torch.backends.cudnn.flags(enabled=False):
-        ref_out = F.ctc_loss(ref_lp, ref_targets, ref_il, ref_tl,
+        ref_out = _ctc_loss_reference(ref_lp, ref_targets, ref_il, ref_tl,
                              blank=blank, reduction="mean", zero_infinity=False)
     res_out = flag_gems.ctc_loss(log_probs, targets, input_lengths, target_lengths,
                                  blank=blank, reduction=1, zero_infinity=False)
