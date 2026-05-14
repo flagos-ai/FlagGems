@@ -1,4 +1,16 @@
 ops:
+  - id: _euclidean_dist
+    description: |
+      Computes the _euclidean_dist operation.
+    for:
+      - _euclidean_dist
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: abs
     description: |
       Computes the absolute value of each element in `input`.
@@ -12,6 +24,18 @@ ops:
       - Math
     stages:
       - stable: '1.0'
+  - id: _euclidean_dist
+    description: |
+      Computes the _euclidean_dist operation.
+    for:
+      - _euclidean_dist
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: abs_
     description: |
       The in-place version of `abs()`, which is a simple wrapper of the Torch `abs` operator.
@@ -24,6 +48,18 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: _euclidean_dist
+    description: |
+      Computes the _euclidean_dist operation.
+    for:
+      - _euclidean_dist
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: absolute
     description: |
       This is an alias for `abs()` with the low-level operations implemented

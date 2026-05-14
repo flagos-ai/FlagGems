@@ -1,0 +1,116 @@
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as tle
+
+logger = logging.getLogger(__name__)
+
+
+@libentry()
+@triton.jit
+def _euclidean_dist_kernel(
+    x1_ptr,
+    x2_ptr,
+    output_ptr,
+    N,
+    M,
+    D,
+    stride_x1,
+    stride_x2,
+    stride_out,
+    BLOCK_D: tl.constexpr,
+):
+    """Kernel for computing pairwise Euclidean distances between rows of x1 and x2.
+
+    Args:
+        x1_ptr: Pointer to x1 tensor of shape (N, D)
+        x2_ptr: Pointer to x2 tensor of shape (M, D)
+        output_ptr: Pointer to output tensor of shape (N, M)
+        N: Number of rows in x1
+        M: Number of rows in x2
+        D: Dimension of each row (columns)
+        stride_x1: Stride of x1 along row dimension
+        stride_x2: Stride of x2 along row dimension
+        stride_out: Stride of output along row dimension
+        BLOCK_D: Block size for processing dimension D
+    """
+    pid_n = tle.program_id(0)
+    pid_m = tle.program_id(1)
+
+    # Compute pointers to the rows
+    x1_row_ptr = x1_ptr + pid_n * stride_x1
+    x2_row_ptr = x2_ptr + pid_m * stride_x2
+    output_ptr_out = output_ptr + pid_n * stride_out + pid_m
+
+    # Load x1 row and compute partial squared distance
+    acc = tl.zeros([BLOCK_D], dtype=tl.float32)
+
+    for d_start in range(0, D, BLOCK_D):
+        d_offsets = d_start + tl.arange(0, BLOCK_D)
+        d_mask = d_offsets < D
+
+        # Load elements from x1 and x2 rows
+        x1_vals = tl.load(x1_row_ptr + d_offsets, mask=d_mask, other=0.0).to(tl.float32)
+        x2_vals = tl.load(x2_row_ptr + d_offsets, mask=d_mask, other=0.0).to(tl.float32)
+
+        # Compute squared difference and accumulate
+        diff = x1_vals - x2_vals
+        acc += diff * diff
+
+    # Sum all partial squared distances
+    sq_dist = tl.sum(acc, axis=0)
+
+    # Compute Euclidean distance (square root)
+    dist = tl.sqrt(sq_dist)
+
+    # Store result
+    tl.store(output_ptr_out, dist)
+
+
+def _euclidean_dist(x1, x2):
+    """Compute pairwise Euclidean distances between rows of x1 and x2.
+
+    Args:
+        x1: Tensor of shape (N, D)
+        x2: Tensor of shape (M, D)
+
+    Returns:
+        Tensor of shape (N, M) where output[i, j] = ||x1[i] - x2[j]||_2
+    """
+    logger.debug("GEMS _EUCLIDEAN_DIST")
+
+    assert x1.ndim == 2, "x1 must be a 2D tensor"
+    assert x2.ndim == 2, "x2 must be a 2D tensor"
+    assert x1.shape[1] == x2.shape[1], "x1 and x2 must have the same number of columns"
+
+    N, D = x1.shape
+    M = x2.shape[0]
+
+    x1 = x1.contiguous()
+    x2 = x2.contiguous()
+
+    output = torch.empty((N, M), dtype=x1.dtype, device=x1.device)
+
+    BLOCK_D = min(triton.next_power_of_2(D), 1024)
+
+    with torch_device_fn.device(x1.device):
+        grid = (N, M)
+        _euclidean_dist_kernel[grid](
+            x1,
+            x2,
+            output,
+            N,
+            M,
+            D,
+            x1.stride(0),
+            x2.stride(0),
+            output.stride(0),
+            BLOCK_D=BLOCK_D,
+        )
+
+    return output
