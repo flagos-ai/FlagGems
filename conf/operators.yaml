@@ -4959,6 +4959,18 @@ ops:
       - Tensor
     stages:
       - stable: '3.0'
+  - id: segment_reduce
+    description: |
+      Reduces contiguous segments of a tensor along the specified axis. Segments are described
+      by `lengths` or `offsets`, and supported reductions include sum, mean, max, min, and prod.
+    for:
+      - segment_reduce
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - beta: '5.1'
   - id: segment_reduce_backward
     description: Computes gradients for `segment_reduce` with lengths or offsets based segment definitions.
     for:
@@ -4974,18 +4986,6 @@ ops:
       A variant of `_segment_reduce_backward` that assigns the gradient input to the `out` tensor.
     for:
       - _segment_reduce_backward.out
-    labels:
-      - aten
-    kind:
-      - Reduction
-    stages:
-      - beta: '5.1'
-  - id: segment_reduce
-    description: |
-      Reduces contiguous segments of a tensor along the specified axis. Segments are described
-      by `lengths` or `offsets`, and supported reductions include sum, mean, max, min, and prod.
-    for:
-      - segment_reduce
     labels:
       - aten
     kind:
