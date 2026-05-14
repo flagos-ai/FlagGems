@@ -5447,6 +5447,18 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: special_logsumexp
+    description: |
+      Computes the special_logsumexp operation.
+    for:
+      - special_logsumexp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
@@ -5458,6 +5470,18 @@ ops:
       - Math
     stages:
       - stable: '4.0'
+  - id: special_logsumexp
+    description: |
+      Computes the special_logsumexp operation.
+    for:
+      - special_logsumexp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
   - id: sqrt_
     description: This is the in-place version of `sqrt()`.
     for:
