@@ -28,6 +28,11 @@ def _tril_extreme_diagonal_input_fn(shape, dtype, device):
         yield inp, diagonal
 
 
+def _torch_tril_inplace(inp, diagonal=0):
+    """Wrapper for tensor.tril_() method to match torch op signature."""
+    return inp.tril_(diagonal)
+
+
 @pytest.mark.tril
 def test_tril():
     bench = base.GenericBenchmarkExcluse1D(
@@ -70,5 +75,17 @@ def test_tril_out_sliced():
         op_name="tril_out_sliced",
         torch_op=torch.tril,
         dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.tril_
+def test_tril_inplace():
+    bench = base.GenericBenchmarkExcluse1D(
+        input_fn=utils.unary_input_fn,
+        op_name="tril_",
+        torch_op=_torch_tril_inplace,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
     )
     bench.run()
