@@ -35,7 +35,9 @@ def _mul(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         return out.to(orig_dtype)
     BLOCK_SIZE = triton.next_power_of_2(min(n, 4096))
     num_warps = 2 if BLOCK_SIZE <= 256 else 4 if BLOCK_SIZE <= 1024 else 8
-    mul_kernel[(triton.cdiv(n, BLOCK_SIZE),)](x, y, out, n, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
+    mul_kernel[(triton.cdiv(n, BLOCK_SIZE),)](
+        x, y, out, n, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
+    )
     return out.to(orig_dtype)
 
 
