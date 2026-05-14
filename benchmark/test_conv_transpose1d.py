@@ -40,7 +40,7 @@ class ConvTranspose1dBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.conv_transpose1d
-def test_perf_conv_transpose1d():
+def test_conv_transpose1d():
     bench = ConvTranspose1dBenchmark(
         input_fn=conv_transpose1d_input_fn,
         op_name="conv_transpose1d",
