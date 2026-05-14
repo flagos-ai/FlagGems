@@ -327,6 +327,8 @@ _FULL_CONFIG = (
     ("masked_scatter", masked_scatter),
     ("masked_scatter_", masked_scatter_),
     ("masked_select", masked_select),
+    ("matmuladd", matmuladd_kernel),
+    ("matmuladd.out", matmuladd_kernel),
     ("max", max),
     ("max.dim", max_dim),
     ("max_pool2d_backward", max_pool2d_backward),

@@ -206,6 +206,7 @@ from flag_gems.ops.margin_ranking_loss import margin_ranking_loss
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
 from flag_gems.ops.masked_select import masked_select
+from flag_gems.ops.MatMulAdd import matmuladd, matmuladd_kernel, matmuladd_out
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool2d_with_indices import (
     max_pool2d_backward,
@@ -641,6 +642,9 @@ __all__ = [
     "masked_scatter",
     "masked_scatter_",
     "masked_select",
+    "matmuladd",
+    "matmuladd_kernel",
+    "matmuladd_out",
     "max",
     "max_dim",
     "max_pool2d_with_indices",
