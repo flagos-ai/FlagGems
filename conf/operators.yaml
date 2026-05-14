@@ -316,6 +316,18 @@ ops:
       - Math
     stages:
       - stable: '2.1'
+  - id: alpha_dropout
+    description: |
+      Computes the alpha_dropout operation.
+    for:
+      - alpha_dropout
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: amax
     description: Returns the maximum value of each slice of the `input` tensor in the given dimension(s) `dim`.
     for:

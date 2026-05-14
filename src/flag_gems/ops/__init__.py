@@ -16,6 +16,11 @@ from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addr import addr
 from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
 from flag_gems.ops.all import all, all_dim, all_dims
+from flag_gems.ops.alpha_dropout import (
+    alpha_dropout,
+    alpha_dropout_forward_kernel,
+    compute_alpha_dropout_scales,
+)
 from flag_gems.ops.amax import amax
 from flag_gems.ops.aminmax import aminmax
 from flag_gems.ops.angle import angle
@@ -405,6 +410,8 @@ __all__ = [
     "all_dim",
     "all_dims",
     "allclose",
+    "alpha_dropout",
+    "alpha_dropout_forward_kernel",
     "amax",
     "aminmax",
     "angle",
@@ -468,6 +475,7 @@ __all__ = [
     "clamp_tensor_",
     "clip",
     "clip_",
+    "compute_alpha_dropout_scales",
     "concatenate",
     "constant_pad_nd",
     "contiguous",
