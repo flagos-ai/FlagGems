@@ -998,10 +998,6 @@ def test_outplace_fused_experts_vs_ref(config, dtype):
 
 @pytest.mark.outplace_fused_experts
 @pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
-@pytest.mark.skipif(
-    not CUDA_AVAILABLE,
-    reason="FP8 quantization requires NVIDIA Hopper architecture",
-)
 def test_outplace_fused_experts_fp8(config):
     """Test outplace_fused_experts with FP8 W8A8 quantization."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
