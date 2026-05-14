@@ -230,11 +230,15 @@ def test_scaled_grouped_mm(case_name, dtype, use_bias):
             use_fast_accum=True,
         )
 
+    ref = ref if utils.TO_CPU else ref.to(flag_gems.device)
+
     if _is_float8(dtype):
+        res = res.cpu() if utils.TO_CPU else res
         torch.testing.assert_close(
-            res.float(), ref.to(flag_gems.device).float(), atol=2.5e-1, rtol=5e-1
+            res.float(),
+            ref.float(),
+            atol=2.5e-1,
+            rtol=5e-1,
         )
     else:
-        utils.gems_assert_close(
-            res, ref.to(flag_gems.device), target_dtype, reduce_dim=mat_a.shape[-1]
-        )
+        utils.gems_assert_close(res, ref, target_dtype, reduce_dim=mat_a.shape[-1])
