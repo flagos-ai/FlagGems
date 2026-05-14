@@ -6,9 +6,33 @@ from typing import Dict, List
 import pytest
 import torch
 import triton
+from triton.runtime.autotuner import Autotuner as _Autotuner
 
 import flag_gems
 import flag_gems.fused.FLA.utils as _fla_utils
+from flag_gems.utils.libentry import LibTuner
+
+# Patch both Autotuner.run and LibTuner.run to skip autotuning loop.
+# LibTuner overrides Autotuner.run, so both must be patched for the patch to
+# take effect. Without this, cold Triton cache tests time out on CI.
+_original_autotuner_run = _Autotuner.run
+_original_libtuner_run = LibTuner.run
+
+
+def _no_autotune_run(self, *args, **kwargs):
+    if len(self.configs) > 1:
+        self.configs = self.configs[:1]
+    return _original_autotuner_run(self, *args, **kwargs)
+
+
+def _no_libtuner_run(self, *args, **kwargs):
+    if len(self.configs) > 1:
+        self.configs = self.configs[:1]
+    return _original_libtuner_run(self, *args, **kwargs)
+
+
+_Autotuner.run = _no_autotune_run
+LibTuner.run = _no_libtuner_run
 
 
 # Set up Triton allocator for global scratch memory (required by TMA ops)
@@ -60,7 +84,7 @@ def _naive_recurrent_reference(q, k, v, beta, g, scale=None):
     for i in range(T):
         k_i = k[:, i]
         q_i = q[:, i]
-        v_i = v[:, i].clone()
+        v_i = v[:, i]
         beta_i = beta[:, i]
         g_i = g[:, i]
 
