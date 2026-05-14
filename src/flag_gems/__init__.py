@@ -35,6 +35,8 @@ _FULL_CONFIG = (
     ("__or__.Tensor", bitwise_or_tensor),
     ("_assert_async", _assert_async),
     ("_conv_depthwise2d", _conv_depthwise2d),
+    ("_efficient_attention_backward", efficient_attention_backward),
+    ("_flash_attention_backward", flash_attention_backward),
     ("_flash_attention_forward", flash_attention_forward),
     (
         "_functional_sym_constrain_range_for_size",
@@ -48,6 +50,18 @@ _FULL_CONFIG = (
     ("_log_softmax_backward_data", log_softmax_backward),
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
     ("_safe_softmax", _safe_softmax),
+    (
+        "_scaled_dot_product_cudnn_attention_backward",
+        scaled_dot_product_cudnn_attention_backward,
+    ),
+    (
+        "_scaled_dot_product_efficient_attention_backward",
+        scaled_dot_product_efficient_attention_backward,
+    ),
+    (
+        "_scaled_dot_product_flash_attention_backward",
+        scaled_dot_product_flash_attention_backward,
+    ),
     ("_softmax", softmax),
     ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
