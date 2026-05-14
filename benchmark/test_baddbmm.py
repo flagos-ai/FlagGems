@@ -68,20 +68,16 @@ def _input_fn_out(b, m, n, k, dtype, device, b_column_major):
         inp2 = torch.randn([b, k, n], dtype=dtype, device=device)
 
     bias = torch.randn([b, m, n], dtype=dtype, device=device)
-    out = torch.empty([b, m, n], dtype=dtype, device=device)
 
-    yield bias, inp1, inp2, out
+    yield bias, inp1, inp2
 
 
 @pytest.mark.baddbmm_out
 def test_baddbmm_out():
-    def _baddbmm_out_wrapper(bias, inp1, inp2, out):
-        return torch.baddbmm(bias, inp1, inp2, out=out)
-
     bench = BaddbmmBenchmark(
         op_name="baddbmm_out",
         input_fn=_input_fn_out,
-        torch_op=_baddbmm_out_wrapper,
+        torch_op=torch.baddbmm,
         dtypes=consts.FLOAT_DTYPES,
     )
 
