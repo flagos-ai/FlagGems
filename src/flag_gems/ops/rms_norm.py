@@ -56,15 +56,15 @@ def rms_norm_backward_kernel(
     cols = tl.arange(0, BLOCK_SIZE)
     mask = cols < n_elements
 
-    x = tl.load(x_ptr + row_start + cols, mask=mask, other=0.0)
-    dy = tl.load(dy_ptr + row_start + cols, mask=mask, other=0.0)
-    w = tl.load(weight_ptr + cols, mask=mask, other=1.0)
+    x    = tl.load(x_ptr    + row_start + cols, mask=mask, other=0.0)
+    dy   = tl.load(dy_ptr   + row_start + cols, mask=mask, other=0.0)
+    w    = tl.load(weight_ptr + cols, mask=mask, other=1.0)
     rrms = tl.load(rrms_ptr + row_idx)
 
-    wdy = w * dy
+    wdy  = w * dy
     # dx = rrms * (wdy - x * rrms^2 * sum(wdy * x) / n)
-    c = tl.sum(tl.where(mask, wdy * x, 0.0), axis=0) * (rrms * rrms) / n_elements
-    dx = rrms * (wdy - x * c)
+    c    = tl.sum(tl.where(mask, wdy * x, 0.0), axis=0) * (rrms * rrms) / n_elements
+    dx   = rrms * (wdy - x * c)
 
     tl.store(dx_ptr + row_start + cols, dx, mask=mask)
 
@@ -72,11 +72,7 @@ def rms_norm_backward_kernel(
 def _forward(x: torch.Tensor, weight: torch.Tensor, eps: float):
     orig_dtype = x.dtype
     x = x.contiguous().float()
-    w = (
-        weight.contiguous().float()
-        if weight is not None
-        else torch.ones(x.shape[-1], device=x.device)
-    )
+    w = weight.contiguous().float() if weight is not None else torch.ones(x.shape[-1], device=x.device)
     n_elements = x.shape[-1]
     num_rows = x.numel() // n_elements
     x2d = x.reshape(num_rows, n_elements)
@@ -84,13 +80,8 @@ def _forward(x: torch.Tensor, weight: torch.Tensor, eps: float):
     BLOCK_SIZE = min(triton.next_power_of_2(n_elements), 65536)
     num_warps = 2 if BLOCK_SIZE <= 256 else 4 if BLOCK_SIZE <= 1024 else 8
     rms_norm_kernel[(num_rows,)](
-        out,
-        x2d,
-        w,
-        n_elements,
-        eps,
-        BLOCK_SIZE=BLOCK_SIZE,
-        num_warps=num_warps,
+        out, x2d, w, n_elements, eps,
+        BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps,
     )
     return out.view(x.shape).to(orig_dtype)
 
@@ -131,41 +122,27 @@ def rms_norm_backward(
 
     orig_dtype = dy.dtype
     dy = dy.contiguous().float()
-    x = x.contiguous().float()
-    w = (
-        weight.contiguous().float()
-        if weight is not None
-        else torch.ones(x.shape[-1], device=x.device)
-    )
+    x  = x.contiguous().float()
+    w  = weight.contiguous().float() if weight is not None else torch.ones(x.shape[-1], device=x.device)
 
     n_elements = x.shape[-1]
     num_rows = x.numel() // n_elements
-    x2d = x.reshape(num_rows, n_elements)
+    x2d  = x.reshape(num_rows, n_elements)
     dy2d = dy.reshape(num_rows, n_elements)
-    dx = torch.empty_like(x2d)
+    dx   = torch.empty_like(x2d)
 
     # Compute rrms for each row
     mean_sq = (x2d * x2d).mean(dim=1)
-    rrms = 1.0 / torch.sqrt(mean_sq + eps)
+    rrms    = 1.0 / torch.sqrt(mean_sq + eps)
 
     BLOCK_SIZE = min(triton.next_power_of_2(n_elements), 65536)
-    num_warps = 2 if BLOCK_SIZE <= 256 else 4 if BLOCK_SIZE <= 1024 else 8
+    num_warps  = 2 if BLOCK_SIZE <= 256 else 4 if BLOCK_SIZE <= 1024 else 8
 
     rms_norm_backward_kernel[(num_rows,)](
-        dx,
-        dy2d,
-        x2d,
-        w,
-        rrms,
-        n_elements,
-        BLOCK_SIZE=BLOCK_SIZE,
-        num_warps=num_warps,
+        dx, dy2d, x2d, w, rrms, n_elements,
+        BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps,
     )
 
     dx = dx.view(x.shape).to(orig_dtype)
-    dw = (
-        (dy2d * x2d * rrms[:, None]).sum(0).to(orig_dtype)
-        if weight is not None
-        else None
-    )
+    dw = (dy2d * x2d * rrms[:, None]).sum(0).to(orig_dtype) if weight is not None else None
     return dx, dw
