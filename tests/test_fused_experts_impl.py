@@ -950,6 +950,187 @@ def test_fused_moe_inplace(config, dtype):
     torch.testing.assert_close(result, ref, rtol=1e-3, atol=1e-3)
 
 
+@pytest.mark.outplace_fused_experts
+@pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_outplace_fused_experts_vs_ref(config, dtype):
+    """Test outplace_fused_experts against a pure PyTorch reference."""
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1 = torch.randn(
+        num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
+    ) * (1.0 / hidden_size**0.5)
+    w2 = torch.randn(
+        num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
+    ) * (1.0 / intermediate_size**0.5)
+
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+    topk_weights = topk_weights.to(dtype)
+
+    # Test outplace_fused_experts
+    result = flag_gems.outplace_fused_experts(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+    )
+
+    # Pure PyTorch reference
+    ref = torch_fused_moe_reference(hidden_states, w1, w2, topk_weights, topk_ids)
+
+    if flag_gems.vendor_name == "ascend":
+        torch.npu.synchronize()
+    else:
+        torch.cuda.synchronize()
+
+    rtol = 1e-1
+    atol = max(1e-2, ref.abs().max().item() * 1e-5)
+
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.outplace_fused_experts
+@pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
+@pytest.mark.skipif(
+    not CUDA_AVAILABLE,
+    reason="FP8 quantization requires NVIDIA Hopper architecture",
+)
+def test_outplace_fused_experts_fp8(config):
+    """Test outplace_fused_experts with FP8 W8A8 quantization."""
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+    dtype = torch.bfloat16
+
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+
+    w1_fp32 = torch.randn(
+        num_experts,
+        intermediate_size * 2,
+        hidden_size,
+        device=device,
+        dtype=torch.float32,
+    ) * (1.0 / hidden_size**0.5)
+    w2_fp32 = torch.randn(
+        num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
+    ) * (1.0 / intermediate_size**0.5)
+
+    finfo = torch.finfo(torch.float8_e4m3fn)
+    fp8_max = finfo.max
+    eps = 1e-10
+
+    w1_scales = []
+    w1_fp8_list = []
+    for e in range(num_experts):
+        amax = w1_fp32[e].abs().amax().clamp(min=eps)
+        scale = amax / fp8_max
+        w1_q = (w1_fp32[e] / scale).clamp(finfo.min, finfo.max).to(torch.float8_e4m3fn)
+        w1_fp8_list.append(w1_q)
+        w1_scales.append(scale)
+    w1_fp8 = torch.stack(w1_fp8_list)
+    w1_scale = torch.tensor(w1_scales, device=device, dtype=torch.float32)
+
+    w2_scales = []
+    w2_fp8_list = []
+    for e in range(num_experts):
+        amax = w2_fp32[e].abs().amax().clamp(min=eps)
+        scale = amax / fp8_max
+        w2_q = (w2_fp32[e] / scale).clamp(finfo.min, finfo.max).to(torch.float8_e4m3fn)
+        w2_fp8_list.append(w2_q)
+        w2_scales.append(scale)
+    w2_fp8 = torch.stack(w2_fp8_list)
+    w2_scale = torch.tensor(w2_scales, device=device, dtype=torch.float32)
+
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+    topk_weights = topk_weights.to(dtype)
+
+    result = flag_gems.outplace_fused_experts(
+        hidden_states,
+        w1_fp8,
+        w2_fp8,
+        topk_weights,
+        topk_ids,
+        use_fp8_w8a8=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+    )
+
+    w1_deq = torch.zeros_like(w1_fp32).to(dtype)
+    for e in range(num_experts):
+        w1_deq[e] = (w1_fp8[e].float() * w1_scales[e]).to(dtype)
+    w2_deq = torch.zeros_like(w2_fp32).to(dtype)
+    for e in range(num_experts):
+        w2_deq[e] = (w2_fp8[e].float() * w2_scales[e]).to(dtype)
+
+    ref = torch_fused_moe_quantized_reference(
+        hidden_states, w1_deq, w2_deq, topk_weights, topk_ids, quant_mode="fp8"
+    )
+
+    torch.cuda.synchronize()
+
+    rtol = 5e-1
+    atol = max(2e-1, ref.abs().max().item() * 1e-1)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.outplace_fused_experts
+@pytest.mark.parametrize(
+    "config",
+    [
+        (4, 8, 128, 256, 2),
+        (16, 8, 256, 512, 2),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_outplace_fused_experts_does_not_modify_input(config, dtype):
+    """Test that outplace_fused_experts does not modify the input tensor."""
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    hidden_states_copy = hidden_states.clone()
+    w1 = torch.randn(
+        num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
+    ) * (1.0 / hidden_size**0.5)
+    w2 = torch.randn(
+        num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
+    ) * (1.0 / intermediate_size**0.5)
+
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+    topk_weights = topk_weights.to(dtype)
+
+    result = flag_gems.outplace_fused_experts(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+    )
+
+    torch.cuda.synchronize()
+
+    # Input should not be modified
+    torch.testing.assert_close(hidden_states, hidden_states_copy, rtol=0, atol=0)
+    # Result should be a different tensor
+    assert (
+        result.data_ptr() != hidden_states.data_ptr()
+    ), "outplace should allocate new tensor"
+
+
 @pytest.mark.fused_experts_impl
 @pytest.mark.parametrize(
     "config",
