@@ -1,16 +1,25 @@
+import importlib
 import logging
-import math
+import os
+from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
-import triton
-import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-NUM_SIPS = 24
+
+def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
+    code.writeline("import triton")
+    code.writeline("import triton.language as tl")
+    code.writeline("from flag_gems.utils import libentry")
+
+    code.newline()
+    code.newline()
+
+    return code
 
 
 @libentry()
@@ -29,23 +38,30 @@ def index_add_row_kernel(
     pid = tl.program_id(0)
     num_progs = tl.num_programs(0)
 
-    col_range = tl.arange(0, BLOCK_COL)
+    # signature
+    code.writeline(f"def {kernel_name}(")
+    with code.indent():
+        if rank > 0:
+            code.writeline("index,")
+            code.writeline("src,")
+            code.writeline("out,")
+            code.writeline("N,")
+            code.writeline("inp_numel,")
+            code.writeline("inp_stride_dim,")
+            code.writeline("inp_shape_dim,")
+            code.writeline("src_shape_dim,")
+            code.writeline("delta,")
+            code.writeline("alpha,")
 
-    for row in tl.range(pid, M, num_progs):
-        src_base = row * N_src
-        out_base = row * N_out
+            stride_args = ", ".join(f"src_stride_{i}: int" for i in range(rank))
+            code.writeline(f"{stride_args}, # stride for src")
 
-        for col_off in tl.range(0, N_src, BLOCK_COL):
-            cols = col_off + col_range
-            col_mask = cols < N_src
+            shape_args = ", ".join(f"src_shape_{i}: int" for i in range(rank))
+            code.writeline(f"{shape_args}, # shape for src")
 
-            idx = tl.load(index + cols, mask=col_mask, other=0).to(tl.int32)
-            src_val = tl.load(src + src_base + cols, mask=col_mask, other=0.0)
+            code.writeline("BLOCK_SIZE: tl.constexpr,")
 
-            if ALPHA_ONE:
-                val = src_val
-            else:
-                val = src_val * alpha
+        code.writeline("):")
 
             out_off = out_base + idx
             tl.atomic_add(out + out_off, val, mask=col_mask, sem="relaxed")
@@ -100,14 +116,31 @@ def index_add_non_inner_kernel(
     num_progs = tl.num_programs(0)
     total_work = M * N_src
 
-    for work_id in tl.range(pid, total_work, num_progs):
-        m = work_id // N_src
-        j = work_id % N_src
+    with code.indent():
+        code.writeline("src_strides = list(src.stride())")
+        code.writeline("src_shapes = list(src.shape)")
 
-        idx_val = tl.load(index + j).to(tl.int32)
+        # kernel launch
+        code.writeline("BLOCK_SIZE = 256")  # BLOCK_SIZE setting
+        code.writeline("if N // BLOCK_SIZE > 65535:")
+        with code.indent():
+            code.writeline("BLOCK_SIZE = 16384")
+        code.writeline("grid = (triton.cdiv(N, BLOCK_SIZE),)")
+        kernel_launch: str = f"{kernel_name}[grid]("
+        code.writeline(kernel_launch)
+        with code.indent():
+            code.writeline(
+                "index, src, out, N, inp_numel, inp_stride_dim, inp_shape_dim, src_shape_dim, delta, alpha, "
+            )
+            if rank > 0:
+                s = ", ".join(f"src_strides[{i}]" for i in range(rank))
+                code.writeline(f"{s},")
 
-        src_base = (m * N_src + j) * K
-        out_base = (m * N_out + idx_val) * K
+                s = ", ".join(f"src_shapes[{i}]" for i in range(rank))
+                code.writeline(f"{s},")
+            code.writeline("BLOCK_SIZE=BLOCK_SIZE")
+        code.writeline(")")
+        code.writeline("return out")
 
         for k_off in tl.range(0, K, BLOCK_K):
             k = k_off + tl.arange(0, BLOCK_K)
@@ -140,13 +173,21 @@ def index_add(inp, dim, index, src, alpha=1):
     logger.debug("GEMS INDEX ADD")
     if index.dtype == torch.int64:
         index = index.to(torch.int32)
-
+    assert ((0 <= index) * (index < inp.size(dim))).equal(
+        torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
+    ), "0 <= index < self.size(dim)"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    dim = dim % inp.ndim
+    assert index.numel() == src.size(
+        dim
+    ), "The dimth dimension of source must have the same size as the length of index"
+    assert (
+        inp.ndim == src.ndim
+    ), "Self and source should have the same number of dimensions"
+    assert (
+        ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
+    ), "src.size(d) == self.size(d) for all dimensions d != dim"
 
-    inp_c = inp.contiguous()
-    out = inp_c.clone()
-    src = src.contiguous()
+    out = inp.clone()
 
     M = math.prod(inp.shape[:dim]) if dim > 0 else 1
     N_src = src.size(dim)
@@ -209,16 +250,38 @@ def index_add(inp, dim, index, src, alpha=1):
                 num_warps=4,
             )
 
+    _index_add_func(
+        out,
+        index,
+        src,
+        dim,
+        inp_stride_dim,
+        inp_shape_dim,
+        src_shape_dim,
+        delta,
+        N,
+        inp.numel(),
+        alpha,
+    )
     return out
-
 
 def index_add_(inp, dim, index, src, alpha=1):
     logger.debug("GEMS INDEX ADD_")
     if index.dtype == torch.int64:
         index = index.to(torch.int32)
-
+    assert ((0 <= index) * (index < inp.size(dim))).equal(
+        torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
+    ), "0 <= index < self.size(dim)"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    dim = dim % inp.ndim
+    assert index.numel() == src.size(
+        dim
+    ), "The dimth dimension of source must have the same size as the length of index"
+    assert (
+        inp.ndim == src.ndim
+    ), "Self and source should have the same number of dimensions"
+    assert (
+        ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
+    ), "src.size(d) == self.size(d) for all dimensions d != dim"
 
     if not inp.is_contiguous():
         result = index_add(inp, dim, index, src, alpha)
@@ -288,4 +351,17 @@ def index_add_(inp, dim, index, src, alpha=1):
                 num_warps=4,
             )
 
+    _index_add_func(
+        inp,
+        index,
+        src,
+        dim,
+        inp_stride_dim,
+        inp_shape_dim,
+        src_shape_dim,
+        delta,
+        N,
+        inp.numel(),
+        alpha,
+    )
     return inp

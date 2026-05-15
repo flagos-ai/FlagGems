@@ -4,8 +4,6 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
-import triton
-import triton.language as tl
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
@@ -91,7 +89,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems import runtime")
     code.writeline("import flag_gems")
-    # code.writeline("from flag_gems.utils import triton_lang_extension as ext")
+    # code.writeline("from flag_gems.utils import triton_lang_extension as tle")
     code.newline()
     code.newline()
     return code
@@ -124,6 +122,14 @@ def generate_scatter_kernel(
 
     # the decorators
     code.writeline("@libentry()")
+    code.writeline("@triton.heuristics(")
+    with code.indent():
+        code.writeline("{")
+        with code.indent():
+            code.writeline('"BLOCK": heur_block,')
+            code.writeline('"LOOP": loop_count,')
+        code.writeline("}")
+    code.writeline(")")
     inp_stride_vars = ",".join(f"'inp_stride_{i}'" for i in range(rank))
     index_stride_vars = ",".join(f"'index_stride_{i}'" for i in range(rank))
     src_stride_vars = ",".join(f"'src_stride_{i}'" for i in range(rank))
@@ -289,15 +295,7 @@ def generate_destination_passing_wrapper(
         code.writeline('IS_MUL = reduce == "multiply"')
         code.writeline("int32_offset = int32_offset or True")
 
-        code.writeline("import math")
-        code.writeline("BLOCK = 128")
-        code.writeline("LOOP = 4")
-        code.writeline("while math.ceil(N / (BLOCK * LOOP)) > 65535:")
-        code.writeline("    if BLOCK < 1024:")
-        code.writeline("        BLOCK *= 2")
-        code.writeline("    else:")
-        code.writeline("        LOOP *= 2")
-
+        # kernel launch
         code.writeline("grid = lambda meta: (")
         with code.indent():
             code.writeline('triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]), ')
@@ -324,10 +322,9 @@ def generate_destination_passing_wrapper(
                 code.writeline("inp_size_dim,")
                 code.writeline("stride_dim,")
                 code.writeline("N,")
+                # reduce options
                 code.writeline("IS_ADD,")
                 code.writeline("IS_MUL,")
-                code.writeline("BLOCK=BLOCK,")
-                code.writeline("LOOP=LOOP,")
                 code.writeline("INT32_OFFSET=int32_offset,")
         code.writeline(")")
         code.writeline("return out")
@@ -395,14 +392,6 @@ class ScatterFunction:
 _scatter_func = ScatterFunction()
 
 
-def _reduce_name_to_scatter_reduce(reduce):
-    if reduce == "add":
-        return "sum"
-    elif reduce == "multiply":
-        return "prod"
-    return reduce
-
-
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER")
 
@@ -412,20 +401,16 @@ def scatter(inp, dim, index, src, reduce=None):
         inp = inp.to(torch.float32)
         src = src.to(torch.float32)
 
-    if reduce is not None:
-        out = inp.clone()
-        scatter_(out, dim, index, src, reduce=reduce)
-        if needs_upcast:
-            out = out.to(orig_dtype)
-        return out
-
     out = inp.clone()
+
+    if reduce is not None:
+        assert inp.dtype not in (
+            torch.bfloat16,
+        ), "Unsupported operation: reduce scatter bfloat tensors."
 
     if has_internal_overlapping(out) == MemOverlap.Yes:
         out = out.contiguous()
 
-    if index.dtype == torch.int64:
-        index = index.to(torch.int32)
     src_strided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(inp, dim, index.shape)
     dim_size = inp.size(dim)
@@ -686,8 +671,6 @@ def scatter_(inp, dim, index, src, reduce=None):
         has_internal_overlapping(out) != MemOverlap.Yes
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
 
-    if index.dtype == torch.int64:
-        index = index.to(torch.int32)
     src_restrided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(out, dim, index.shape)
     dim_size = out.size(dim)
