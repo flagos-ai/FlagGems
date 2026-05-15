@@ -81,12 +81,8 @@ def _dim_values_input_fn(shape, dtype, device):
         yield inp, {"dim": -1, "out": (out_values, out_indices)}
 
 
-def _nanmedian_out(inp, *, out):
-    return torch.ops.aten.nanmedian.out(inp, out=out)
-
-
 @pytest.mark.nanmedian
-def test_nanmedian_benchmark():
+def test_nanmedian():
     bench = NanMedianBenchmark(
         input_fn=_input_fn,
         op_name="nanmedian",
@@ -98,11 +94,11 @@ def test_nanmedian_benchmark():
 
 
 @pytest.mark.nanmedian
-def test_nanmedian_out_benchmark():
+def test_nanmedian_out():
     bench = NanMedianBenchmark(
         input_fn=_out_input_fn,
         op_name="nanmedian.out",
-        torch_op=_nanmedian_out,
+        torch_op=torch.ops.aten.nanmedian.out,
         dtypes=NANMEDIAN_DTYPES,
     )
 
@@ -110,7 +106,7 @@ def test_nanmedian_out_benchmark():
 
 
 @pytest.mark.nanmedian
-def test_nanmedian_dim_benchmark():
+def test_nanmedian_dim():
     bench = NanMedianBenchmark(
         input_fn=_dim_input_fn,
         op_name="nanmedian.dim",
@@ -122,7 +118,7 @@ def test_nanmedian_dim_benchmark():
 
 
 @pytest.mark.nanmedian
-def test_nanmedian_dim_values_benchmark():
+def test_nanmedian_dim_values():
     bench = NanMedianBenchmark(
         input_fn=_dim_values_input_fn,
         op_name="nanmedian.dim_values",
