@@ -65,7 +65,7 @@ from .div import (
 from .remainder import remainder, remainder_
 from .ceil import ceil, ceil_
 from .celu import celu, celu_
-from .elu import elu, elu_, elu_backward
+from .elu import elu, elu_
 from .tile import tile
 from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
@@ -158,7 +158,6 @@ from .softmax import softmax_backward
 from .sort import sort, sort_stable
 from .sqrt import sqrt, sqrt_
 from .sub import sub, sub_
-from .sum import sum, sum_out, sum_dim, sum_dim_out
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .to import to_dtype
@@ -331,7 +330,6 @@ __all__ = [
     "diag_embed",
     "elu",
     "elu_",
-    "elu_backward",
     "erf",
     "erf_",
     "exp",
@@ -402,10 +400,6 @@ __all__ = [
     "max_pool2d_backward",
     "upsample_linear1d",
     "var_mean",
-    "sum",
-    "sum_out",
-    "sum_dim",
-    "sum_dim_out",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "scaled_dot_product_attention",

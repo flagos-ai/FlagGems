@@ -14,7 +14,7 @@ from ...gcu400.utils.config_utils import MAX_GRID_DIM
 logger = logging.getLogger(__name__)
 
 
-# tle.program_id to tl.program_id for gcu400 temply
+# ext.program_id to tl.program_id for gcu400 temply
 # change pid_d and pid_n in grid(celoss_probability_kernel, celoss_probability_bwd)@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("cross_entropy_loss"),

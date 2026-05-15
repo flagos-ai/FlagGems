@@ -1,6 +1,10 @@
 import pytest
 import torch
 
+from flag_gems.fused.mhc.hc_head_fused_kernel import (
+    hc_head_fused_kernel,
+    hc_head_fused_kernel_ref,
+)
 from flag_gems.fused.mhc.hc_split_sinkhorn import (
     hc_split_sinkhorn,
     mhc_split_sinkhorn_torch_ref,
@@ -203,5 +207,50 @@ def test_mhc_bwd():
         torch_op=mhc_bwd_ref,
         gems_op=mhc_bwd,
         dtypes=[torch.float32],
+    )
+    bench.run()
+
+
+class HCHeadFusedBenchmark(base.Benchmark):
+    DEFAULT_SHAPE_DESC = "N, hidden_size"
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (256, 1280, 2),
+            (256, 1280, 4),
+            (512, 1280, 2),
+            (512, 1280, 4),
+            (512, 2560, 2),
+            (512, 2560, 4),
+            (1024, 2560, 2),
+            (1024, 2560, 4),
+            (2048, 4096, 2),
+            (2048, 4096, 4),
+            (4096, 4096, 2),
+            (4096, 4096, 4),
+        ]
+
+    def get_input_iter(self, dtype):
+        for n, hidden_size, hc_mult in self.shapes:
+            device = self.device
+            torch.manual_seed(42)
+            hs_flat = torch.randn((n, hc_mult, hidden_size), dtype=dtype, device=device)
+            fn = torch.randn(
+                (hc_mult, hc_mult * hidden_size), dtype=torch.float32, device=device
+            )
+            hc_scale = torch.randn((1,), dtype=torch.float32, device=device) * 0.1
+            hc_base = torch.randn((hc_mult,), dtype=torch.float32, device=device) * 0.1
+            out = torch.empty((n, hidden_size), dtype=dtype, device=device)
+
+            yield hs_flat, fn, hc_scale, hc_base, out, hidden_size, 1e-6, 1e-6, hc_mult
+
+
+@pytest.mark.hc_head_fused_kernel
+def test_hc_head_fused_kernel():
+    bench = HCHeadFusedBenchmark(
+        op_name="hc_head_fused_kernel",
+        torch_op=hc_head_fused_kernel_ref,
+        gems_op=hc_head_fused_kernel,
+        dtypes=[torch.float32, torch.float16, torch.bfloat16],
     )
     bench.run()
