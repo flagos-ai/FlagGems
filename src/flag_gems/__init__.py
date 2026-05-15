@@ -22,6 +22,7 @@ aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None
 runtime.replace_customized_ops(globals())
+AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 
 
 def torch_ge(v):
@@ -184,6 +185,8 @@ _FULL_CONFIG = (
     ("copysign", copysign),
     ("copysign.out", copysign_out),
     ("count_nonzero", count_nonzero),
+    ("ctc_loss.IntList", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("ctc_loss.Tensor", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("cudnn_convolution", cudnn_convolution),
     ("cummax", cummax),
     ("cummin", cummin),
