@@ -33,10 +33,11 @@ def isclose_func(
         close = cast_x == cast_y
     else:
         close = x == y
-    # equal_nan is passed as int (0 or 1), compare with 1
+    x_nan = cast_x != cast_x
+    y_nan = cast_y != cast_y
+    close &= ~(x_nan | y_nan)
     if equal_nan == 1:
-        close |= (cast_x != cast_x) & (cast_y != cast_y)
-    # zero_tol is passed as int (0 or 1), compare with 0
+        close |= x_nan & y_nan
     if zero_tol == 0:
         allowed = atol + tl.abs(rtol * cast_y)
         actual = tl.abs(cast_x - cast_y)

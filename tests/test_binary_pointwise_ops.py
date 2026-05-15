@@ -1672,13 +1672,16 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
             inp2.view(-1)[0] = -nan_num if gen_nan >= 3 else nan_num
         atol = (
             torch.finfo(dtype).tiny
-            * torch.randint(0, 4, (1,), device=flag_gems.device).item()
+            * torch.randint(0, 4, (1,),
+                device=flag_gems.device,
+                dtype=torch.int32 if flag_gems.vendor_name == "sophgo" else None,
+            ).item()
             if not zero_tol
             else 0
         )
     else:
-        inp1 = torch.randint(-1000, 1000, shape, device=flag_gems.device).to(dtype)
-        inp2 = torch.randint(-1000, 1000, shape, device=flag_gems.device).to(dtype)
+        inp1 = torch.randint(-1000, 1000, shape, device=flag_gems.device, dtype=dtype)
+        inp2 = torch.randint(-1000, 1000, shape, device=flag_gems.device, dtype=dtype)
         if dtype in [torch.int64]:
             inp1.view(-1)[0] = 2**63 - 1
             inp2.view(-1)[0] = -(2**63)
@@ -1705,7 +1708,10 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
             atol = (
                 (
                     torch.finfo(torch.float16).eps
-                    * torch.randint(0, 10, (1,), device=flag_gems.device).item()
+                    * torch.randint(0, 10, (1,),
+                        device=flag_gems.device,
+                        dtype=torch.int32 if flag_gems.vendor_name == "sophgo" else None,
+                    ).item()
                 )
                 if not zero_tol
                 else 0
