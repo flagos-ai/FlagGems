@@ -6,7 +6,9 @@ import json
 import re
 import sys
 from pathlib import Path
+
 import consts
+
 DATA = {}
 DEBUG = False
 EMBED_LOGS = False
@@ -198,10 +200,12 @@ def wrap_html(lines):
     ]
     if STYLED:
         header.append(HTML_STYLE)
-    header.extend([
-        "</head>",
-        "<body>",
-    ])
+    header.extend(
+        [
+            "</head>",
+            "<body>",
+        ]
+    )
     footer = [
         "<script>",
         "function switchTab(containerId, idx) {",
@@ -272,7 +276,6 @@ def wrap_html(lines):
         "</html>",
     ]
     return header + lines + footer
-
 
 
 def read_log_files(op_name, prefix):
@@ -350,13 +353,17 @@ def parse_lines(fmt):
         perf_status = item["performance"]["status"]
         if perf_status == "NotFound":
             fields.append("NotFound")
-            fields.extend([""] * (len(consts.DTYPE_MAP) + 2))  # OPAverageSpeedUp + dtypes + note
+            fields.extend(
+                [""] * (len(consts.DTYPE_MAP) + 2)
+            )  # OPAverageSpeedUp + dtypes + note
 
         elif perf_status in ["Failed", "Skipped"]:
             reason = item["performance"]["reason"]
             reason = reason.split("\n")[0]
             fields.append(perf_status)
-            fields.extend([""] * (len(consts.DTYPE_MAP) + 1))  # OPAverageSpeedUp + dtypes
+            fields.extend(
+                [""] * (len(consts.DTYPE_MAP) + 1)
+            )  # OPAverageSpeedUp + dtypes
             fields.append(f'"{reason}"')
 
         else:
@@ -422,7 +429,7 @@ def _render_log_tabs(summary_text, log_files, uid):
         uid: Unique ID prefix for this tab group.
     """
     parts = []
-    parts.append(f'<details><summary>{html_module.escape(summary_text)}</summary>')
+    parts.append(f"<details><summary>{html_module.escape(summary_text)}</summary>")
     parts.append(f'<div class="log-tabs" id="tabs-{uid}">')
 
     # Tab buttons
@@ -431,21 +438,21 @@ def _render_log_tabs(summary_text, log_files, uid):
         active = " active" if idx == 0 else ""
         parts.append(
             f'<button class="tab-btn{active}" '
-            f'onclick="switchTab(\'tabs-{uid}\', {idx})">'
-            f'{html_module.escape(fname)}</button>'
+            f"onclick=\"switchTab('tabs-{uid}', {idx})\">"
+            f"{html_module.escape(fname)}</button>"
         )
-    parts.append('</div>')
+    parts.append("</div>")
 
     # Tab panels
     for idx, (fname, content) in enumerate(log_files):
-        display = "" if idx == 0 else " style=\"display:none\""
+        display = "" if idx == 0 else ' style="display:none"'
         escaped = html_module.escape(content)
         parts.append(f'<div class="tab-panel"{display}>')
         parts.append(f'<pre class="log-content">{escaped}</pre>')
-        parts.append('</div>')
+        parts.append("</div>")
 
-    parts.append('</div>')
-    parts.append('</details>')
+    parts.append("</div>")
+    parts.append("</details>")
     return "".join(parts)
 
 
@@ -664,7 +671,9 @@ def parse_single_performance(fmt, op_data):
             spd = res.get("speedup", 0)
             base = res.get("base", 0)
             gems = res.get("gems", 0)
-            lines.append(f"<tr><td></td><td>{spd:6.3f}</td><td>{base:6.3f}</td><td>{gems:6.3f}</td><td><tt>{shp}</tt></td></tr>")
+            lines.append(
+                f"<tr><td></td><td>{spd:6.3f}</td><td>{base:6.3f}</td><td>{gems:6.3f}</td><td><tt>{shp}</tt></td></tr>"
+            )
     lines.append("</tbody>")
     lines.append("</table>")
     return lines
@@ -685,7 +694,18 @@ def parse_single(fmt):
 
 def parse_multi(fmt):
     lines = parse_lines(fmt)
-    header_fields = ["No.", "ID", "AccRes", "AccStat(pass/fail/skip)", "PerfRes", "OPAverageSpeedUp"] + list(consts.DTYPE_MAP.values()) + ["Note"]
+    header_fields = (
+        [
+            "No.",
+            "ID",
+            "AccRes",
+            "AccStat(pass/fail/skip)",
+            "PerfRes",
+            "OPAverageSpeedUp",
+        ]
+        + list(consts.DTYPE_MAP.values())
+        + ["Note"]
+    )
 
     # Add sequence number to each sorted line
     numbered_lines = []
@@ -757,10 +777,17 @@ def _build_styled_html_table(header_fields, data_rows):
     lines = [
         f'<div class="table-stats">Total: <span id="total-count">{total}</span>'
         f' | Showing: <span id="visible-count">{total}</span></div>',
-        '<div class="table-wrapper">', '<table id="main-table">', "<thead>", "<tr>",
+        '<div class="table-wrapper">',
+        '<table id="main-table">',
+        "<thead>",
+        "<tr>",
     ]
     for i, field in enumerate(header_fields):
-        cls = ' class="sticky-col sticky-col-0"' if i == 0 else (' class="sticky-col sticky-col-1"' if i == 1 else "")
+        cls = (
+            ' class="sticky-col sticky-col-0"'
+            if i == 0
+            else (' class="sticky-col sticky-col-1"' if i == 1 else "")
+        )
         if i == acc_col:
             select = _build_filter_select("accFilter", sorted(acc_values))
             lines.append(f"<th{cls}>{field}<br>{select}</th>")
@@ -769,7 +796,7 @@ def _build_styled_html_table(header_fields, data_rows):
             lines.append(f"<th{cls}>{field}<br>{select}</th>")
         elif i == avg_col:
             lines.append(
-                f'<th{cls}>{field}<br>'
+                f"<th{cls}>{field}<br>"
                 f'<button class="sort-btn" onclick="sortTable({avg_col}, \'asc\')">&#9650;</button>'
                 f'<button class="sort-btn" onclick="sortTable({avg_col}, \'desc\')">&#9660;</button>'
                 f'<button class="sort-btn" onclick="sortTable({avg_col}, \'reset\')">&#8634;</button>'

@@ -15,6 +15,7 @@ from decimal import getcontext
 from importlib import metadata
 from multiprocessing import Process
 from pathlib import Path
+
 import consts
 import distro
 import git

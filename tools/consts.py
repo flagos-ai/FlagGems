@@ -10,5 +10,5 @@ DTYPE_MAP = {
     "torch.bool": "bool",
     "torch.complex64": "cf64",
     "torch.float8_e4m3fn": "float8_e4m3fn",
-    "torch.float8_e5m2": "float8_e5m2"
+    "torch.float8_e5m2": "float8_e5m2",
 }
