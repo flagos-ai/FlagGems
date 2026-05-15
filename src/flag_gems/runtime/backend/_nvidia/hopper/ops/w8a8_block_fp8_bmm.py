@@ -1,20 +1,18 @@
 from typing import List, Optional
+
 import torch
 import triton
-import triton.language as tl
-from triton.language.core import _aggregate as aggregate
 from triton.experimental import gluon
 from triton.experimental.gluon import language as gl
-from triton.experimental.gluon.nvidia.hopper import TensorDescriptor
 from triton.experimental.gluon.language.nvidia.hopper import (
-    tma,
-    mbarrier,
     fence_async_shared,
+    mbarrier,
+    tma,
     warpgroup_mma,
-    warpgroup_mma_init,
     warpgroup_mma_wait,
 )
-
+from triton.experimental.gluon.nvidia.hopper import TensorDescriptor
+from triton.language.core import _aggregate as aggregate
 
 _TORCH_TO_GL_DTYPE = {
     torch.float8_e4m3fn: gl.float8e4nv,
@@ -97,8 +95,25 @@ class Config:
     num_tiles: gl.constexpr
 
     @gluon.constexpr_function
-    def __init__(self, B, M, M_aligned, N, K, BLOCK_M, BLOCK_N, BLOCK_K, TILE_ORDER, SWAP_AB,
-                 num_warps, num_stages, num_sms, xs_sB, xs_sM, xs_sKb):
+    def __init__(
+        self,
+        B,
+        M,
+        M_aligned,
+        N,
+        K,
+        BLOCK_M,
+        BLOCK_N,
+        BLOCK_K,
+        TILE_ORDER,
+        SWAP_AB,
+        num_warps,
+        num_stages,
+        num_sms,
+        xs_sB,
+        xs_sM,
+        xs_sKb,
+    ):
         self.B = gl.constexpr(B)
         self.M = gl.constexpr(M)
         self.M_aligned = gl.constexpr(M_aligned)
@@ -178,10 +193,18 @@ class Channel:
     ):
         # x: 3D box [1, BLOCK_M, BLOCK_K] (x is permuted/non-contig at the global level).
         # y: 2D box. xs is loaded directly with gl.load (not staged through smem).
-        x_smem = gl.allocate_shared_memory(x_dtype, [num_stages, 1, BLOCK_M, BLOCK_K], x_layout)
-        y_smem = gl.allocate_shared_memory(y_dtype, [num_stages, BLOCK_N, BLOCK_K], y_layout)
-        ready_bars = gl.allocate_shared_memory(gl.int64, [num_stages, 1], mbarrier.MBarrierLayout())
-        empty_bars = gl.allocate_shared_memory(gl.int64, [num_stages, 1], mbarrier.MBarrierLayout())
+        x_smem = gl.allocate_shared_memory(
+            x_dtype, [num_stages, 1, BLOCK_M, BLOCK_K], x_layout
+        )
+        y_smem = gl.allocate_shared_memory(
+            y_dtype, [num_stages, BLOCK_N, BLOCK_K], y_layout
+        )
+        ready_bars = gl.allocate_shared_memory(
+            gl.int64, [num_stages, 1], mbarrier.MBarrierLayout()
+        )
+        empty_bars = gl.allocate_shared_memory(
+            gl.int64, [num_stages, 1], mbarrier.MBarrierLayout()
+        )
         for i in gl.static_range(num_stages):
             mbarrier.init(ready_bars.index(i), count=1)
             mbarrier.init(empty_bars.index(i), count=1)
@@ -216,17 +239,27 @@ def get_tile(tile_id, config):
 def compute_partition(channel, config, tensors):
     x_desc, y_desc, xs_ptr, z_desc, ys_ptr = tensors
     start_pid = gl.program_id(0)
-    counter = BarrierCounter(index=gl.to_tensor(0), phase=gl.to_tensor(0), num_barriers=config.num_stages)
+    counter = BarrierCounter(
+        index=gl.to_tensor(0), phase=gl.to_tensor(0), num_barriers=config.num_stages
+    )
 
     if config.SWAP_AB:
-        mma_layout: gl.constexpr = pick_wgmma_layout(x_desc.dtype, config.BLOCK_N, config.BLOCK_M, num_warps=config.num_warps)
+        mma_layout: gl.constexpr = pick_wgmma_layout(
+            x_desc.dtype, config.BLOCK_N, config.BLOCK_M, num_warps=config.num_warps
+        )
         xs_load_layout: gl.constexpr = gl.SliceLayout(0, mma_layout)
     else:
-        mma_layout: gl.constexpr = pick_wgmma_layout(x_desc.dtype, config.BLOCK_M, config.BLOCK_N, num_warps=config.num_warps)
+        mma_layout: gl.constexpr = pick_wgmma_layout(
+            x_desc.dtype, config.BLOCK_M, config.BLOCK_N, num_warps=config.num_warps
+        )
         xs_load_layout: gl.constexpr = gl.SliceLayout(1, mma_layout)
 
-    z_smem_layout: gl.constexpr = gl.NVMMASharedLayout.get_default_for([1, config.BLOCK_M, config.BLOCK_N], z_desc.dtype)
-    z_smem = gl.allocate_shared_memory(z_desc.dtype, [1, config.BLOCK_M, config.BLOCK_N], z_smem_layout)
+    z_smem_layout: gl.constexpr = gl.NVMMASharedLayout.get_default_for(
+        [1, config.BLOCK_M, config.BLOCK_N], z_desc.dtype
+    )
+    z_smem = gl.allocate_shared_memory(
+        z_desc.dtype, [1, config.BLOCK_M, config.BLOCK_N], z_smem_layout
+    )
 
     # xs in-tile lane indices (one fp32 per token along BLOCK_M).
     xs_lane = gl.arange(0, config.BLOCK_M, layout=xs_load_layout)
@@ -243,17 +276,25 @@ def compute_partition(channel, config, tensors):
         xs_row_base = batch_id * config.xs_sB + xs_m * config.xs_sM
 
         if config.SWAP_AB:
-            partial_zero = gl.zeros((config.BLOCK_N, config.BLOCK_M), dtype=gl.float32, layout=mma_layout)
-            acc = gl.zeros((config.BLOCK_N, config.BLOCK_M), dtype=gl.float32, layout=mma_layout)
+            partial_zero = gl.zeros(
+                (config.BLOCK_N, config.BLOCK_M), dtype=gl.float32, layout=mma_layout
+            )
+            acc = gl.zeros(
+                (config.BLOCK_N, config.BLOCK_M), dtype=gl.float32, layout=mma_layout
+            )
         else:
-            partial_zero = gl.zeros((config.BLOCK_M, config.BLOCK_N), dtype=gl.float32, layout=mma_layout)
-            acc = gl.zeros((config.BLOCK_M, config.BLOCK_N), dtype=gl.float32, layout=mma_layout)
+            partial_zero = gl.zeros(
+                (config.BLOCK_M, config.BLOCK_N), dtype=gl.float32, layout=mma_layout
+            )
+            acc = gl.zeros(
+                (config.BLOCK_M, config.BLOCK_N), dtype=gl.float32, layout=mma_layout
+            )
 
         for k in range(0, config.K, config.BLOCK_K):
             k_block_idx = k // config.BLOCK_K
             index, phase = counter.index, counter.phase
-            x_slot = channel.x_smem.index(index)   # [1, BLOCK_M, BLOCK_K]
-            y_slot = channel.y_smem.index(index)   # [BLOCK_N, BLOCK_K]
+            x_slot = channel.x_smem.index(index)  # [1, BLOCK_M, BLOCK_K]
+            y_slot = channel.y_smem.index(index)  # [BLOCK_N, BLOCK_K]
             ready_bar = channel.ready_bars.index(index)
             empty_bar = channel.empty_bars.index(index)
             mbarrier.wait(ready_bar, phase)
@@ -261,18 +302,26 @@ def compute_partition(channel, config, tensors):
             x = x_slot.reshape((config.BLOCK_M, config.BLOCK_K))
             y = y_slot
 
-            x_s = gl.load(xs_ptr + xs_row_base + k_block_idx * config.xs_sKb, mask=xs_mask, other=0.0)
+            x_s = gl.load(
+                xs_ptr + xs_row_base + k_block_idx * config.xs_sKb,
+                mask=xs_mask,
+                other=0.0,
+            )
             y_s = gl.load(ys_ptr + ys_base + k_block_idx)
             xy_s = x_s * y_s
 
             if config.SWAP_AB:
                 x_t = x.permute((1, 0))
-                partial_async = warpgroup_mma(y, x_t, partial_zero, use_acc=False, is_async=True)
+                partial_async = warpgroup_mma(
+                    y, x_t, partial_zero, use_acc=False, is_async=True
+                )
                 partial = warpgroup_mma_wait(num_outstanding=0, deps=(partial_async,))
                 acc = acc + partial * xy_s[None, :]
             else:
                 y_t = y.permute((1, 0))
-                partial_async = warpgroup_mma(x, y_t, partial_zero, use_acc=False, is_async=True)
+                partial_async = warpgroup_mma(
+                    x, y_t, partial_zero, use_acc=False, is_async=True
+                )
                 partial = warpgroup_mma_wait(num_outstanding=0, deps=(partial_async,))
                 acc = acc + partial * xy_s[:, None]
 
@@ -294,11 +343,12 @@ def compute_partition(channel, config, tensors):
 def load_partition(channel, config, tensors):
     x_desc, y_desc, xs_ptr, z_desc, ys_ptr = tensors
     start_pid = gl.program_id(0)
-    counter = BarrierCounter(index=gl.to_tensor(0), phase=gl.to_tensor(0), num_barriers=config.num_stages)
+    counter = BarrierCounter(
+        index=gl.to_tensor(0), phase=gl.to_tensor(0), num_barriers=config.num_stages
+    )
 
     nbytes: gl.constexpr = (
-        config.BLOCK_M * config.BLOCK_K
-        + config.BLOCK_N * config.BLOCK_K
+        config.BLOCK_M * config.BLOCK_K + config.BLOCK_N * config.BLOCK_K
     )
 
     for tile_id in range(start_pid, config.num_tiles, config.num_sms):
@@ -309,7 +359,6 @@ def load_partition(channel, config, tensors):
         y_row = batch_id * config.N + n_start
 
         for k in range(0, config.K, config.BLOCK_K):
-            k_block_idx = k // config.BLOCK_K
             index, phase = counter.index, counter.phase
             x_slot = channel.x_smem.index(index)
             y_slot = channel.y_smem.index(index)
@@ -318,7 +367,9 @@ def load_partition(channel, config, tensors):
             mbarrier.wait(empty_bar, phase)
 
             mbarrier.expect(ready_bar, nbytes)
-            tma.async_copy_global_to_shared(x_desc, [batch_id, m_start, k], ready_bar, x_slot)
+            tma.async_copy_global_to_shared(
+                x_desc, [batch_id, m_start, k], ready_bar, x_slot
+            )
             tma.async_copy_global_to_shared(y_desc, [y_row, k], ready_bar, y_slot)
 
             counter = counter.increment()
@@ -389,8 +440,10 @@ def w8a8_block_fp8_bmm_kernel(
     )
 
     gl.warp_specialize(
-        [(compute_partition, (channel, config, tensors)),
-         (load_partition, (channel, config, tensors))],
+        [
+            (compute_partition, (channel, config, tensors)),
+            (load_partition, (channel, config, tensors)),
+        ],
         [1],
         [24],
     )
@@ -414,7 +467,9 @@ def w8a8_block_fp8_bmm(
     # z:  [B, M, N]  out_dtype
     assert len(block_size) == 2
     BLOCK_N, BLOCK_K = block_size
-    assert BLOCK_N == 128 and BLOCK_K == 128, "this kernel assumes 128x128 block-wise FP8 scales"
+    assert (
+        BLOCK_N == 128 and BLOCK_K == 128
+    ), "this kernel assumes 128x128 block-wise FP8 scales"
 
     assert x.ndim == 3 and y.ndim == 3 and xs.ndim == 3 and ys.ndim == 3
     assert x.shape[0] == y.shape[0] == xs.shape[0] == ys.shape[0]
@@ -444,25 +499,43 @@ def w8a8_block_fp8_bmm(
     z_gl_dtype = _gl_dtype(z)
 
     x_layout = gl.NVMMASharedLayout.get_default_for([1, BLOCK_M, BLOCK_K], x_gl_dtype)
-    x_desc = TensorDescriptor.from_tensor(x, block_shape=[1, BLOCK_M, BLOCK_K], layout=x_layout)
+    x_desc = TensorDescriptor.from_tensor(
+        x, block_shape=[1, BLOCK_M, BLOCK_K], layout=x_layout
+    )
 
     assert y.is_contiguous(), "y must be contiguous so it can be viewed as (B*N, K)"
     y_flat = y.view(B * N, K)
     y_layout = gl.NVMMASharedLayout.get_default_for([BLOCK_N, BLOCK_K], y_gl_dtype)
-    y_desc = TensorDescriptor.from_tensor(y_flat, block_shape=[BLOCK_N, BLOCK_K], layout=y_layout)
+    y_desc = TensorDescriptor.from_tensor(
+        y_flat, block_shape=[BLOCK_N, BLOCK_K], layout=y_layout
+    )
 
     assert xs.ndim == 3 and xs.shape == (B, M, num_kb)
     xs_sB, xs_sM, xs_sKb = xs.stride()
 
     z_layout = gl.NVMMASharedLayout.get_default_for([1, BLOCK_M, BLOCK_N], z_gl_dtype)
-    z_desc = TensorDescriptor.from_tensor(z, block_shape=[1, BLOCK_M, BLOCK_N], layout=z_layout)
+    z_desc = TensorDescriptor.from_tensor(
+        z, block_shape=[1, BLOCK_M, BLOCK_N], layout=z_layout
+    )
 
     num_sms = torch.cuda.get_device_properties(device).multi_processor_count
     w8a8_block_fp8_bmm_kernel[(num_sms,)](
-        x_desc, y_desc, xs, z_desc, ys,
-        xs_sB=xs_sB, xs_sM=xs_sM, xs_sKb=xs_sKb,
-        B=B, M=M, M_aligned=M_aligned, N=N, K=K,
-        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K,
+        x_desc,
+        y_desc,
+        xs,
+        z_desc,
+        ys,
+        xs_sB=xs_sB,
+        xs_sM=xs_sM,
+        xs_sKb=xs_sKb,
+        B=B,
+        M=M,
+        M_aligned=M_aligned,
+        N=N,
+        K=K,
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
+        BLOCK_K=BLOCK_K,
         SWAP_AB=SWAP_AB,
         num_sms=num_sms,
     )

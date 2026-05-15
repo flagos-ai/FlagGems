@@ -31,9 +31,9 @@ def fp8_einsum(
     Returns:
         z: a newly allocated (b, h, d) tensor with the result.
     """
-    assert equation == "bhr,hdr->bhd", (
-        f"fp8_einsum only supports 'bhr,hdr->bhd', got {equation!r}"
-    )
+    assert (
+        equation == "bhr,hdr->bhd"
+    ), f"fp8_einsum only supports 'bhr,hdr->bhd', got {equation!r}"
     b, h, r = x.shape
     h2, d, r2 = y.shape
     assert h2 == h and r2 == r, f"x {tuple(x.shape)} / y {tuple(y.shape)} mismatch"
@@ -43,12 +43,12 @@ def fp8_einsum(
     # h is the batch dim → BMM layout (B=h, M=b, N=d, K=r). The permutes are
     # pure views (last dim r stays contiguous); the kernel handles xs's strides.
     w8a8_block_fp8_bmm(
-        x.permute(1, 0, 2),     # (h, b, r)
-        y,                       # (h, d, r)
-        xs.permute(1, 0, 2),    # (h, b, r // block_k)
-        ys,                      # (h, d // block_n, r // block_k)
+        x.permute(1, 0, 2),  # (h, b, r)
+        y,  # (h, d, r)
+        xs.permute(1, 0, 2),  # (h, b, r // block_k)
+        ys,  # (h, d // block_n, r // block_k)
         block_size=block_size,
-        z=z.permute(1, 0, 2),   # (h, b, d) view into the (b, h, d) output
+        z=z.permute(1, 0, 2),  # (h, b, d) view into the (b, h, d) output
         output_dtype=output_dtype,
     )
     return z

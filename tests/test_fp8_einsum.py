@@ -4,6 +4,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.runtime.backend._nvidia.hopper.ops.fp8_einsum import fp8_einsum
 
 from .conftest import QUICK_MODE
 
@@ -19,9 +20,6 @@ def is_cuda_available():
 
 
 CUDA_AVAILABLE = is_cuda_available()
-
-
-from flag_gems.runtime.backend._nvidia.hopper.ops.fp8_einsum import fp8_einsum
 
 
 # (h, r, d) groups -- r and d must be divisible by the 128 block grid.
@@ -132,9 +130,9 @@ def torch_fp8_block_einsum_reference(x_data, x_scale, y_data, y_scale, block_sha
         ns, ne = nt * block_n, min((nt + 1) * block_n, d)
         for kt in range(k_tiles):
             ks, ke = kt * block_k, min((kt + 1) * block_k, r)
-            y_deq[:, ns:ne, ks:ke] = y_f[:, ns:ne, ks:ke] * y_scale[
-                :, nt, kt
-            ].view(h, 1, 1)
+            y_deq[:, ns:ne, ks:ke] = y_f[:, ns:ne, ks:ke] * y_scale[:, nt, kt].view(
+                h, 1, 1
+            )
 
     return torch.einsum("bhr,hdr->bhd", x_deq, y_deq)
 

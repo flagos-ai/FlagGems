@@ -4,6 +4,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.runtime.backend._nvidia.hopper.ops.fp8_einsum import fp8_einsum
 
 from . import base
 
@@ -20,8 +21,6 @@ def is_cuda_available():
 
 CUDA_AVAILABLE = is_cuda_available()
 
-
-from flag_gems.runtime.backend._nvidia.hopper.ops.fp8_einsum import fp8_einsum
 
 try:
     import deep_gemm
@@ -122,9 +121,7 @@ class FP8EinsumBenchmark(base.Benchmark):
             "pro": (16, 7168, 1024),
         }
         self.shapes = [
-            (b, h, r, d)
-            for (h, r, d) in hrd_groups.values()
-            for b in batches
+            (b, h, r, d) for (h, r, d) in hrd_groups.values() for b in batches
         ]
 
     def get_input_iter(self, cur_dtype):
