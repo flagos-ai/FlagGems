@@ -69,5 +69,7 @@ def gelu_backward(x: torch.Tensor, dy: torch.Tensor) -> torch.Tensor:
     if n == 0:
         return dx.to(orig)
     BS = triton.next_power_of_2(min(n, 4096))
-    gelu_backward_kernel[(triton.cdiv(n, BS),)](x, dy, dx, n, BLOCK_SIZE=BS, num_warps=4)
+    gelu_backward_kernel[(triton.cdiv(n, BS),)](
+        x, dy, dx, n, BLOCK_SIZE=BS, num_warps=4
+    )
     return dx.to(orig)
