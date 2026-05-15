@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from flag_gems.fused.DSA.router_gemm_bf16_fp32 import router_gemm_bf16_fp32
+from flag_gems.fused import router_gemm_bf16_fp32
 
 
 def torch_router_gemm_bf16_fp32_ref(input: torch.Tensor, weight: torch.Tensor):

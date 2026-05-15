@@ -17,7 +17,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused.DSA.router_gemm_bf16_fp32 import router_gemm_bf16_fp32
+from flag_gems.fused import router_gemm_bf16_fp32
 
 from . import base
 
