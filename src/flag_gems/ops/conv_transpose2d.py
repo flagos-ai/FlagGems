@@ -6,11 +6,16 @@ Compatible with FlagTree backends (Iluvatar, Ascend, etc.) via standard Triton A
 
 Weight layout follows PyTorch convention: (C_in, C_out/groups, kH, kW).
 
-Algorithm: For each output position (n, co, oh, ow), iterate over input channels
-and kernel positions using element-wise accumulation. Uses small tiles (32, 16)
-optimized for BI-V150's 16 SMs and 64-wide warps.
+Algorithm:
+- stride=1: conv2d-based approach (transform weight, call conv2d_forward_kernel)
+- stride>1: Direct implicit GEMM kernel with conv2d-like loop structure
+  (no input dilation, only iterates over valid kernel positions)
 
-Backward pass uses PyTorch native conv_transpose2d with autograd for correctness.
+Backward pass:
+    grad_input  = conv2d(grad_output, weight^T_flipped, stride=1,
+                         padding=dil*(kH-1)-pad, dilation=stride)
+    grad_weight = correlation(input, grad_output) with transposed coord mapping
+    grad_bias   = grad_output.sum((0,2,3))
 """
 
 import logging
@@ -19,6 +24,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -42,14 +48,32 @@ def conv_transpose2d_output_size(
     )
 
 
-# Tile sizes optimized for BI-V150 (16 SMs, 64-wide warps)
-BLOCK_NHWO = 32
-BLOCK_CO = 16
+# =============================================================================
+# Direct implicit GEMM kernel (for stride > 1)
+# =============================================================================
 
 
 @libentry()
+@triton.autotune(
+    configs=runtime.get_tuned_config("conv_transpose2d_forward"),
+    key=[
+        "N",
+        "H_in",
+        "W_in",
+        "C_out",
+        "H_out",
+        "W_out",
+        "kH",
+        "kW",
+        "stride_h",
+        "stride_w",
+        "pad_h",
+        "pad_w",
+        "groups",
+    ],
+)
 @triton.jit
-def conv_transpose2d_kernel(
+def conv_transpose2d_direct_kernel(
     input_pointer,
     weight_pointer,
     output_pointer,
@@ -72,7 +96,7 @@ def conv_transpose2d_kernel(
     output_c_stride,
     output_h_stride,
     output_w_stride,
-    C_in_per_group: tl.constexpr,
+    C_in: tl.constexpr,
     kH: tl.constexpr,
     kW: tl.constexpr,
     stride_h: tl.constexpr,
@@ -82,76 +106,92 @@ def conv_transpose2d_kernel(
     dil_h: tl.constexpr,
     dil_w: tl.constexpr,
     groups: tl.constexpr,
-    BLOCK_NHWO: tl.constexpr,
+    BLOCK_NI_HO_WO: tl.constexpr,
     BLOCK_CO: tl.constexpr,
+    BLOCK_CI: tl.constexpr,
 ):
-    """Element-wise accumulation kernel for conv_transpose2d.
+    """Implicit GEMM kernel for conv_transpose2d (stride > 1).
 
-    For each output tile (BLOCK_NHWO spatial positions x BLOCK_CO channels),
-    iterates over (C_in_per_group, kH, kW) and accumulates weighted input values.
-    Uses small tiles (32, 16) optimized for BI-V150's 16 SMs.
+    Loads from original (non-dilated) input. Iterates only over valid
+    kernel positions where (kh % stride_h == 0) and (kw % stride_w == 0).
+    Same tiling structure as conv2d_forward_kernel for optimal compiler optimization.
     """
     pid_nhw = tl.program_id(0)
     pid_co = tl.program_id(1)
     pid_group = tl.program_id(2)
 
-    nhw_offset = pid_nhw * BLOCK_NHWO + tl.arange(0, BLOCK_NHWO)
-    nh_offset = nhw_offset // W_out
-    n_value = nh_offset // H_out
-    oh_value = nh_offset % H_out
-    ow_value = nhw_offset % W_out
+    ni_ho_wo_offset = pid_nhw * BLOCK_NI_HO_WO + tl.arange(0, BLOCK_NI_HO_WO)
+    ni_ho_offset = ni_ho_wo_offset // W_out
+    n_value = ni_ho_offset // H_out
+    oh_value = ni_ho_offset % H_out
+    ow_value = ni_ho_wo_offset % W_out
 
     out_per_group = C_out // groups
     co_offset = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
     co_global = pid_group * out_per_group + co_offset
+    in_per_group = C_in // groups
 
-    inp_base = input_n_stride * n_value + input_c_stride * pid_group * C_in_per_group
-    w_base = weight_ci_stride * pid_group * C_in_per_group + weight_co_stride * co_offset
+    input_pointer += (
+        input_n_stride * n_value + input_c_stride * pid_group * in_per_group
+    )[:, None]
+    weight_pointer += (
+        weight_co_stride * co_offset + weight_co_stride * pid_group * out_per_group
+    )[None, :]
 
-    acc = tl.zeros((BLOCK_NHWO, BLOCK_CO), dtype=tl.float32)
+    acc = tl.zeros((BLOCK_NI_HO_WO, BLOCK_CO), dtype=tl.float32)
 
-    for ci in range(C_in_per_group):
-        ci_inp_offset = input_c_stride * ci
-        ci_w_offset = weight_ci_stride * ci
-        for kh in range(kH):
-            ih_num = oh_value + pad_h - kh * dil_h
-            ih = ih_num // stride_h
-            ih_valid = (ih_num >= 0) & (ih_num % stride_h == 0) & (ih < H_in)
-            for kw in range(kW):
-                iw_num = ow_value + pad_w - kw * dil_w
-                iw = iw_num // stride_w
-                valid = (
-                    ih_valid
-                    & (iw_num >= 0)
-                    & (iw_num % stride_w == 0)
-                    & (iw < W_in)
-                    & (n_value < N)
-                )
+    BLOCK_CI_COUNT = (in_per_group + BLOCK_CI - 1) // BLOCK_CI
+    valid_kh_count: tl.constexpr = (kH + stride_h - 1) // stride_h
+    valid_kw_count: tl.constexpr = (kW + stride_w - 1) // stride_w
+    valid_khw_count: tl.constexpr = valid_kh_count * valid_kw_count
 
-                inp_ptrs = (
-                    input_pointer
-                    + inp_base
-                    + ci_inp_offset
-                    + input_h_stride * ih
-                    + input_w_stride * iw
-                )
-                inp_val = tl.load(inp_ptrs, mask=valid, other=0.0).to(tl.float32)
+    for hwc in range(valid_khw_count * BLOCK_CI_COUNT):
+        c = (hwc % BLOCK_CI_COUNT) * BLOCK_CI
+        hw = hwc // BLOCK_CI_COUNT
+        kh_i = hw // valid_kw_count
+        kw_i = hw % valid_kw_count
+        kh = kh_i * stride_h
+        kw = kw_i * stride_w
 
-                w_ptrs = (
-                    weight_pointer
-                    + w_base
-                    + ci_w_offset
-                    + weight_h_stride * kh
-                    + weight_w_stride * kw
-                )
-                w_mask = co_offset < out_per_group
-                w_val = tl.load(w_ptrs, mask=w_mask, other=0.0).to(tl.float32)
+        input_c_offset = c + tl.arange(0, BLOCK_CI)
+        ih_num = oh_value + pad_h - kh * dil_h
+        iw_num = ow_value + pad_w - kw * dil_w
+        ih = ih_num // stride_h
+        iw = iw_num // stride_w
 
-                acc += inp_val[:, None] * w_val[None, :]
+        curr_input_pointer = (
+            input_pointer
+            + (input_c_stride * input_c_offset)[None, :]
+            + (input_h_stride * ih)[:, None]
+            + (input_w_stride * iw)[:, None]
+        )
+        curr_weight_pointer = (
+            weight_pointer
+            + (weight_ci_stride * input_c_offset)[:, None]
+            + (weight_h_stride * kh)
+            + (weight_w_stride * kw)
+        )
+
+        input_mask = (
+            (n_value < N)[:, None]
+            & (input_c_offset < in_per_group)[None, :]
+            & (ih_num >= 0)[:, None]
+            & (ih < H_in)[:, None]
+            & (iw_num >= 0)[:, None]
+            & (iw < W_in)[:, None]
+        )
+        weight_mask = (input_c_offset < in_per_group)[:, None] & (
+            co_offset < out_per_group
+        )[None, :]
+
+        inp_val = tl.load(curr_input_pointer, mask=input_mask).to(tl.float32)
+        w_val = tl.load(curr_weight_pointer, mask=weight_mask).to(tl.float32)
+
+        acc += tl.dot(inp_val, w_val, allow_tf32=False)
 
     bias_ptrs = bias_pointer + co_global[None, :]
     bias_mask = (co_offset < out_per_group)[None, :]
-    bias_val = tl.load(bias_ptrs, mask=bias_mask, other=0.0).to(tl.float32)
+    bias_val = tl.load(bias_ptrs, mask=bias_mask).to(tl.float32)
     acc += bias_val
 
     out_ptrs = (
@@ -170,10 +210,19 @@ def conv_transpose2d_kernel(
     tl.store(out_ptrs, acc, mask=out_mask)
 
 
+# =============================================================================
+# Autograd wrapper
+# =============================================================================
+
+
 class ConvTranspose2d(torch.autograd.Function):
     """Autograd-enabled conv_transpose2d using Triton forward kernel.
 
-    Backward uses PyTorch native conv_transpose2d for correctness and performance.
+    stride=1: conv2d-based approach (reuses optimized conv2d_forward_kernel)
+    stride>1: Direct implicit GEMM kernel (no input dilation)
+
+    Backward uses Conv2d.apply for grad_input (reusing FlagGems conv2d Triton kernel)
+    and PyTorch ops for grad_weight/grad_bias.
     """
 
     @staticmethod
@@ -208,95 +257,215 @@ class ConvTranspose2d(torch.autograd.Function):
         else:
             bias_data = bias.contiguous()
 
-        # Cast to FP32 for kernel execution
-        orig_dtype = input.dtype
-        input_f32 = input.float()
-        weight_f32 = weight.float()
-        bias_f32 = bias_data.float()
-
-        output_f32 = torch.empty(
-            (N, C_out, H_out, W_out), device=input.device, dtype=torch.float32
+        output = torch.empty(
+            (N, C_out, H_out, W_out), device=input.device, dtype=input.dtype
         )
 
-        in_per_group = C_in // groups
+        if stride_h == 1 and stride_w == 1:
+            # --- stride=1: conv2d-based approach (cuDNN-style, already fast) ---
+            logger.debug("GEMS CONV_TRANSPOSE2D FORWARD (via conv2d, stride=1)")
+            weight_flipped = weight.flip([2, 3]).contiguous()
+            if groups == 1:
+                weight_conv2d = weight_flipped.permute(1, 0, 2, 3).contiguous()
+            else:
+                C_in_per_group = C_in // groups
+                w = weight_flipped.reshape(
+                    groups, C_in_per_group, C_out_per_group, kH, kW
+                )
+                w = w.permute(0, 2, 1, 3, 4)
+                weight_conv2d = w.reshape(C_out, C_in_per_group, kH, kW).contiguous()
 
-        grid = (
-            triton.cdiv(N * H_out * W_out, BLOCK_NHWO),
-            triton.cdiv(C_out // groups, BLOCK_CO),
-            groups,
-        )
+            conv2d_pad_h = dil_h * (kH - 1) - pad_h
+            conv2d_pad_w = dil_w * (kW - 1) - pad_w
 
-        logger.debug(
-            "GEMS CONV_TRANSPOSE2D FORWARD (triton): grid=%s, config=(%d,%d)",
-            grid, BLOCK_NHWO, BLOCK_CO,
-        )
+            from flag_gems.ops.conv2d import conv2d_forward_kernel
 
-        conv_transpose2d_kernel[grid](
-            input_f32,
-            weight_f32,
-            output_f32,
-            bias_f32,
-            N,
-            H_in,
-            W_in,
-            C_out,
-            H_out,
-            W_out,
-            *input_f32.stride(),
-            *weight_f32.stride(),
-            *output_f32.stride(),
-            in_per_group,
-            kH,
-            kW,
-            stride_h,
-            stride_w,
-            pad_h,
-            pad_w,
-            dil_h,
-            dil_w,
-            groups,
-            BLOCK_NHWO=BLOCK_NHWO,
-            BLOCK_CO=BLOCK_CO,
-            num_warps=4,
-            num_stages=2,
-        )
+            grid = lambda META: (
+                triton.cdiv(N * H_out * W_out, META["BLOCK_NI_HO_WO"]),
+                triton.cdiv(C_out // groups, META["BLOCK_CO"]),
+                groups,
+            )
 
-        output = output_f32.to(orig_dtype)
+            conv2d_forward_kernel[grid](
+                input,
+                weight_conv2d,
+                output,
+                bias_data,
+                N,
+                H_in,
+                W_in,
+                C_out,
+                H_out,
+                W_out,
+                *input.stride(),
+                *weight_conv2d.stride(),
+                *output.stride(),
+                weight_conv2d.shape[1],
+                kH,
+                kW,
+                1,
+                1,
+                conv2d_pad_h,
+                conv2d_pad_w,
+                dil_h,
+                dil_w,
+                groups=groups,
+            )
+        else:
+            # --- stride>1: direct implicit GEMM (no input dilation) ---
+            logger.debug("GEMS CONV_TRANSPOSE2D FORWARD (direct, stride>1)")
+
+            in_per_group = C_in // groups
+
+            grid = lambda META: (
+                triton.cdiv(N * H_out * W_out, META["BLOCK_NI_HO_WO"]),
+                triton.cdiv(C_out // groups, META["BLOCK_CO"]),
+                groups,
+            )
+
+            conv_transpose2d_direct_kernel[grid](
+                input,
+                weight,
+                output,
+                bias_data,
+                N,
+                H_in,
+                W_in,
+                C_out,
+                H_out,
+                W_out,
+                *input.stride(),
+                *weight.stride(),
+                *output.stride(),
+                in_per_group,
+                kH,
+                kW,
+                stride_h,
+                stride_w,
+                pad_h,
+                pad_w,
+                dil_h,
+                dil_w,
+                groups=groups,
+            )
 
         ctx.save_for_backward(input, weight, bias)
-        ctx.params = (stride_h, stride_w, pad_h, pad_w, opad_h, opad_w, dil_h, dil_w, groups)
+        ctx.params = (stride_h, stride_w, pad_h, pad_w, dil_h, dil_w, groups)
+        ctx.kernel_size = (kH, kW)
+        ctx.input_shape = (N, C_in, H_in, W_in)
 
         return output
 
     @staticmethod
     def backward(ctx, grad_output):
-        """Backward pass using PyTorch native conv_transpose2d for correctness."""
+        logger.debug("GEMS CONV_TRANSPOSE2D BACKWARD")
         input, weight, bias = ctx.saved_tensors
-        stride_h, stride_w, pad_h, pad_w, opad_h, opad_w, dil_h, dil_w, groups = ctx.params
+        stride_h, stride_w, pad_h, pad_w, dil_h, dil_w, groups = ctx.params
+        kH, kW = ctx.kernel_size
+        N, C_in, H_in, W_in = ctx.input_shape
+        C_out_per_group = weight.shape[1]
+        C_out = C_out_per_group * groups
 
         grad_output = grad_output.contiguous()
+        H_out = grad_output.shape[2]
+        W_out = grad_output.shape[3]
 
-        input_r = input.detach().requires_grad_(True)
-        weight_r = weight.detach().requires_grad_(True)
-        bias_r = bias.detach().requires_grad_(True) if bias is not None else None
+        # --- grad_input via conv2d ---
+        weight_flipped = weight.flip([2, 3]).contiguous()
+        if groups == 1:
+            weight_conv2d = weight_flipped.permute(1, 0, 2, 3).contiguous()
+        else:
+            C_in_per_group = C_in // groups
+            w = weight_flipped.reshape(groups, C_in_per_group, C_out_per_group, kH, kW)
+            w = w.permute(0, 2, 1, 3, 4)
+            weight_conv2d = w.reshape(C_out, C_in_per_group, kH, kW).contiguous()
 
-        with torch.enable_grad():
-            out = torch.nn.functional.conv_transpose2d(
-                input_r,
-                weight_r,
-                bias_r,
-                stride=(stride_h, stride_w),
-                padding=(pad_h, pad_w),
-                output_padding=(opad_h, opad_w),
-                groups=groups,
-                dilation=(dil_h, dil_w),
-            )
-            out.backward(grad_output)
+        conv2d_pad_h = dil_h * (kH - 1) - pad_h
+        conv2d_pad_w = dil_w * (kW - 1) - pad_w
+
+        from flag_gems.ops.conv2d import Conv2d
+
+        grad_input = Conv2d.apply(
+            grad_output,
+            weight_conv2d,
+            None,
+            1,
+            (conv2d_pad_h, conv2d_pad_w),
+            (dil_h, dil_w),
+            groups,
+        )
+
+        # --- grad_weight ---
+        grad_weight = torch.zeros_like(weight)
+
+        for g in range(groups):
+            ci_start = g * (C_in // groups)
+            co_start = g * C_out_per_group
+            ci_end = ci_start + C_in // groups
+            co_end = co_start + C_out_per_group
+
+            inp_g = input[:, ci_start:ci_end, :, :]
+            go_g = grad_output[:, co_start:co_end, :, :]
+
+            for kh in range(kH):
+                for kw in range(kW):
+                    oh_indices = []
+                    ih_map = {}
+                    for oh in range(H_out):
+                        ih_num = oh + pad_h - kh * dil_h
+                        if ih_num < 0:
+                            continue
+                        if stride_h > 1 and ih_num % stride_h != 0:
+                            continue
+                        ih = ih_num // stride_h
+                        if ih >= H_in:
+                            continue
+                        oh_indices.append(oh)
+                        ih_map[oh] = ih
+
+                    ow_indices = []
+                    iw_map = {}
+                    for ow in range(W_out):
+                        iw_num = ow + pad_w - kw * dil_w
+                        if iw_num < 0:
+                            continue
+                        if stride_w > 1 and iw_num % stride_w != 0:
+                            continue
+                        iw = iw_num // stride_w
+                        if iw >= W_in:
+                            continue
+                        ow_indices.append(ow)
+                        iw_map[ow] = iw
+
+                    if not oh_indices or not ow_indices:
+                        continue
+
+                    ih_vals = [ih_map[oh] for oh in oh_indices]
+                    iw_vals = [iw_map[ow] for ow in ow_indices]
+
+                    oh_t = torch.tensor(oh_indices, device=input.device)
+                    ow_t = torch.tensor(ow_indices, device=input.device)
+                    ih_t = torch.tensor(ih_vals, device=input.device)
+                    iw_t = torch.tensor(iw_vals, device=input.device)
+
+                    inp_selected = inp_g[:, :, ih_t[:, None], iw_t[None, :]]
+                    go_selected = go_g[:, :, oh_t[:, None], ow_t[None, :]]
+
+                    grad_weight[
+                        ci_start:ci_end, co_start:co_end, kh, kw
+                    ] += torch.einsum(
+                        "nchw,nchw->nc", inp_selected.flatten(2), go_selected.flatten(2)
+                    )
+
+        # --- grad_bias ---
+        grad_bias = None
+        if bias is not None:
+            grad_bias = grad_output.sum(dim=(0, 2, 3))
 
         return (
-            input_r.grad,
-            weight_r.grad,
-            bias_r.grad if bias_r is not None else None,
+            grad_input,
+            grad_weight,
+            grad_bias,
             None,
             None,
             None,
