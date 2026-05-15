@@ -447,7 +447,7 @@ def parse_single_performance(fmt, op_data):
 
 
 def parse_single(fmt):
-    lines = parse_env(fmt)
+    lines = []
 
     data = DATA.get("result", {})
     op = list(data.keys())[0]
@@ -651,10 +651,16 @@ def main():
     EMBED_LOGS = bool(args.embed_logs) and args.format == "html"
     STYLED = bool(args.styled) and args.format == "html"
 
+    result_heading = []
+    if args.format == "html":
+        result_heading = ["<h3>Test Result</h3>"]
+    elif args.format == "markdown":
+        result_heading = ["### Test Result", ""]
+
     if args.single:
-        lines = parse_single(args.format)
+        lines = parse_env(args.format) + result_heading + parse_single(args.format)
     else:
-        lines = parse_multi(args.format)
+        lines = parse_env(args.format) + result_heading + parse_multi(args.format)
 
     if args.format == "html":
         lines = wrap_html(lines)
