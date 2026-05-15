@@ -108,7 +108,7 @@ def all(inp):
 
 
 def all_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_ASCEND ALL_DIM")
+    logger.debug("GEMS_ASCEND ALL DIM")
     shape = list(inp.shape)
     if dim is None:
         out = all(inp)
@@ -137,7 +137,7 @@ def all_dim(inp, dim=None, keepdim=False):
 
 
 def all_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_ASCEND ALL_DIMS")
+    logger.debug("GEMS_ASCEND ALL DIMS")
 
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)

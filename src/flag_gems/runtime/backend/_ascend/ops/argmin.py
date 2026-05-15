@@ -5,7 +5,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -59,7 +58,14 @@ def argmin_kernel_2(
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("argmin"))
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_M": 1, "BLOCK_N": 512}),
+        triton.Config({"BLOCK_M": 4, "BLOCK_N": 256}),
+        triton.Config({"BLOCK_M": 8, "BLOCK_N": 128}),
+    ],
+    key=["M", "N", "K"],
+)
 @triton.jit
 def argmin_kernel(
     inp,
@@ -70,41 +76,40 @@ def argmin_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # set offset
     pid_m = ext.program_id(0)
-    # pid_k = ext.program_id(1)
-    for pid_k in range(K):
-        m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    pid_k = ext.program_id(1)
 
-        dtype = inp.type.element_ty
-        acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
-        max_value = get_dtype_max(dtype)
-        min_values = tl.full([BLOCK_M], dtype=acc_type, value=max_value)
-        argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
-        for start_n in range(0, N, BLOCK_N):
-            n_offset = start_n + tl.arange(0, BLOCK_N)
-            offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-            mask = m_offset[:, None] < M and n_offset[None, :] < N
-            inp_ptrs = inp + offset
-            inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
-            # tl.bfloat is promoted to tl.float32 by tl.min
-            local_min, local_argmin = tl.min(
-                inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
-            )
-            # if return indices is not supported, call a tl.argmin in addition
-            # local_argmin = tl.argmin(inp_vals, 1)
-            update = local_min < min_values
-            min_values = tl.where(update, local_min, min_values)
-            argmin_values = tl.where(update, start_n + local_argmin, argmin_values)
+    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
-        offset_index = m_offset * K + pid_k
-        out_index_ptrs = out_index + offset_index
-        mask1 = m_offset < M
-        tl.store(out_index_ptrs, argmin_values, mask=mask1)
+    dtype = inp.type.element_ty
+    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
+    max_value = get_dtype_max(dtype)
+    min_values = tl.full([BLOCK_M], dtype=acc_type, value=max_value)
+    argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        inp_ptrs = inp + offset
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
+        local_min, local_argmin = tl.min(
+            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
+        )
+        update = local_min < min_values
+        min_values = tl.where(update, local_min, min_values)
+        argmin_values = tl.where(update, start_n + local_argmin, argmin_values)
+
+    offset_index = m_offset * K + pid_k
+    out_index_ptrs = out_index + offset_index
+    mask1 = m_offset < M
+    tl.store(out_index_ptrs, argmin_values, mask=mask1)
 
 
 def argmin(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS_ASCEND ARGMIN")
+    if inp.dtype == torch.bfloat16:
+        result = argmin(inp.to(torch.float32), dim=dim, keepdim=keepdim, dtype=dtype)
+        return result
     if dim is None:
         M = inp.numel()
         if dtype is None:
@@ -115,13 +120,7 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
 
         mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
         mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
-        if keepdim:
-            shape = list(inp.shape)
-            for i in range(0, inp.dim()):
-                shape[i] = 1
-            out = torch.empty(shape, dtype=torch.int64, device=inp.device)
-        else:
-            out = torch.empty([], dtype=torch.int64, device=inp.device)
+        out = torch.empty([], dtype=torch.int64, device=inp.device)
 
         with torch_device_fn.device(inp.device):
             argmin_kernel_1[(mid_size, 1, 1)](
@@ -157,7 +156,7 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
 
         grid = lambda meta: (
             triton.cdiv(M, meta["BLOCK_M"]),
-            # K,
+            K,
         )
         with torch_device_fn.device(inp.device):
             argmin_kernel[grid](

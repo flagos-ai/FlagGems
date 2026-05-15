@@ -6,6 +6,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
@@ -182,7 +183,7 @@ def var_mean_kernel_1(
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("var_mean"))
+@triton.heuristics(_hcu.HEURISTICS_CONFIGS["var_mean"])
 @triton.jit(do_not_specialize=["correction"])
 def var_mean_kernel_2(
     Acc,

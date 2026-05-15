@@ -231,11 +231,8 @@ def radix_sortbykey_scatter_kernel(
                 (portion_id * passes + p) * max_tiles_per_portion + bk
             ) * bins + bin_id
             partial_prefix = tl.load(d_lookback + rd_lbk_offset, volatile=True)
-            max_wait = 1000
-            wait_count = 0
-            while partial_prefix == 0 and wait_count < max_wait:
+            while partial_prefix == 0:
                 partial_prefix = tl.load(d_lookback + rd_lbk_offset, volatile=True)
-                wait_count += 1
             inc_sum += (partial_prefix & LOOKBACK_VALUE_MASK).to(tl.int32)
             if partial_prefix & LOOKBACK_GLOBAL_MASK:
                 # break

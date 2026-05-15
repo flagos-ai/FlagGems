@@ -6,6 +6,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.heuristics(_hcu.HEURISTICS_CONFIGS["softmax_non_inner"])
 @triton.jit
 def softmax_kernel_non_inner(
     output_ptr,
@@ -85,7 +86,7 @@ def prev_multiple_of(a, b):
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
+@triton.heuristics(_hcu.HEURISTICS_CONFIGS["softmax_inner"])
 @triton.jit
 def softmax_kernel_inner(
     output_ptr,
@@ -169,7 +170,7 @@ def softmax_kernel_inner(
         "K",
     ],
 )
-@triton.heuristics(runtime.get_heuristic_config("softmax_backward_non_inner"))
+@triton.heuristics(_hcu.HEURISTICS_CONFIGS["softmax_backward_non_inner"])
 @triton.jit
 def softmax_backward_kernel_non_inner(
     out_ptr,
@@ -190,8 +191,8 @@ def softmax_backward_kernel_non_inner(
         offsets_n = tl.arange(0, TILE_N)
         offsets = pid_m * N * K + offsets_n[:, None] * K + offsets_k
         mask = (offsets_n < N)[:, None] & (offsets_k < K)
-        out_tile = tl.load(out_ptr + offsets, mask=mask)
-        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask)
+        out_tile = tl.load(out_ptr + offsets, mask=mask).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
         scale = tl.sum(out_tile * out_grad_tile, axis=0)
         in_grad_tile = out_tile * (out_grad_tile - scale[None, :])
         tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
@@ -201,8 +202,8 @@ def softmax_backward_kernel_non_inner(
             offsets_n = tl.arange(0, TILE_N) + off
             offsets = pid_m * N * K + offsets_n[:, None] * K + offsets_k
             mask = (offsets_n < N)[:, None] & (offsets_k < K)
-            out_tile = tl.load(out_ptr + offsets, mask=mask)
-            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask)
+            out_tile = tl.load(out_ptr + offsets, mask=mask).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
             scale += out_tile * out_grad_tile
             # offsets_n += TILE_N
             # offsets += TILE_N * K
@@ -212,8 +213,8 @@ def softmax_backward_kernel_non_inner(
             offsets_n = tl.arange(0, TILE_N) + off
             offsets = pid_m * N * K + offsets_n[:, None] * K + offsets_k
             mask = (offsets_n < N)[:, None] & (offsets_k < K)
-            out_tile = tl.load(out_ptr + offsets, mask=mask)
-            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask)
+            out_tile = tl.load(out_ptr + offsets, mask=mask).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
             in_grad_tile = out_tile * (out_grad_tile - scale[None, :])
             tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
             # offsets_n += TILE_N
@@ -226,7 +227,7 @@ def softmax_backward_kernel_non_inner(
     key=["M", "N"],
 )
 @triton.heuristics(
-    values=runtime.get_heuristic_config("softmax_backward_inner"),
+    values=_hcu.HEURISTICS_CONFIGS["softmax_backward_inner"],
 )
 @triton.jit
 def softmax_backward_kernel_inner(
@@ -245,8 +246,8 @@ def softmax_backward_kernel_inner(
         n_offsets = tl.arange(0, TILE_N)
         offsets = m_offsets[:, None] * N + n_offsets
         mask = (m_offsets[:, None] < M) & (n_offsets < N)
-        out_tile = tl.load(out_ptr + offsets, mask=mask)
-        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask)
+        out_tile = tl.load(out_ptr + offsets, mask=mask).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
         scale = tl.sum(out_tile * out_grad_tile, 1)
         in_grad_tile = out_tile * (out_grad_tile - scale[:, None])
         tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
@@ -260,8 +261,8 @@ def softmax_backward_kernel_inner(
             mask = (m_offsets[:, None] < M) & (n_offsets < N)
             out_tile = tl.load(
                 out_ptr + offsets, mask=mask, eviction_policy="evict_last"
-            )
-            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask)
+            ).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
             # scale += out_tile * out_grad_tile
             scale += tl.sum(out_tile * out_grad_tile, axis=1)
             # n_offsets += TILE_N
@@ -274,8 +275,8 @@ def softmax_backward_kernel_inner(
             mask = (m_offsets[:, None] < M) & (n_offsets < N)
             out_tile = tl.load(
                 out_ptr + offsets, mask=mask, eviction_policy="evict_first"
-            )
-            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask)
+            ).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
             in_grad_tile = out_tile * (out_grad_tile - scale[:, None])
             tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
             # n_offsets += TILE_N
@@ -290,38 +291,56 @@ def softmax(self, dim, half_to_float=False):
     M = 1
     N = self.shape[dim]
     for i in range(dim):
-        M *= self.shape[i]  # pre_dim
+        M *= self.shape[i]
     self = self.contiguous()
-    if half_to_float:
-        dtype = torch.float32
-    else:
-        dtype = self.dtype
+    dtype = torch.float32 if half_to_float else self.dtype
     out = torch.empty_like(self, dtype=dtype)
-    K = self.numel() // M // N  # post_dim
+    if N == 0 or self.numel() == 0:
+        return out
+    K = self.numel() // M // N
 
     with torch_device_fn.device(self.device):
         if K > 1:
             grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
-            softmax_kernel_non_inner[grid](
-                out,
-                self,
-                M,
-                N,
-                K,
-            )
+            softmax_kernel_non_inner[grid](out, self, M, N, K)
         else:
             grid = (M, 1, 1)
-            softmax_kernel_inner[grid](
-                out,
-                self,
-                M,
-                N,
-            )
+            softmax_kernel_inner[grid](out, self, M, N)
+    return out
+
+
+def softmax_out(self, dim, half_to_float=False, *, out):
+    logger.debug("GEMS_ASCEND SOFTMAX_OUT")
+
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+
+    if self.numel() == 0:
+        if tuple(out.shape) != tuple(self.shape):
+            out.resize_(self.shape)
+        return out
+
+    dim = dim % self.ndim
+    M = 1
+    N = self.shape[dim]
+    for i in range(dim):
+        M *= self.shape[i]
+    self = self.contiguous()
+    if tuple(out.shape) != tuple(self.shape):
+        out.resize_(self.shape)
+    K = self.numel() // M // N
+
+    with torch_device_fn.device(self.device):
+        if K > 1:
+            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+            softmax_kernel_non_inner[grid](out, self, M, N, K)
+        else:
+            grid = (M, 1, 1)
+            softmax_kernel_inner[grid](out, self, M, N)
     return out
 
 
 def softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS_ASCEND SOFTMAX VJP")
+    logger.debug("GEMS_ASCEND SOFTMAX BACKWARD")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
@@ -338,20 +357,36 @@ def softmax_backward(grad_output, output, dim, input_dtype):
         if K > 1:
             grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
             softmax_backward_kernel_non_inner[grid](
-                output,
-                grad_output,
-                in_grad,
-                M,
-                N,
-                K,
+                output, grad_output, in_grad, M, N, K
             )
         else:
             grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
-            softmax_backward_kernel_inner[grid](
-                output,
-                grad_output,
-                in_grad,
-                M,
-                N,
-            )
+            softmax_backward_kernel_inner[grid](output, grad_output, in_grad, M, N)
     return in_grad
+
+
+def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
+    logger.debug("GEMS_ASCEND SOFTMAX BACKWARD_OUT")
+
+    assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
+    dim = dim % output.ndim
+    M = 1
+    N = output.shape[dim]
+    for i in range(dim):
+        M *= output.shape[i]
+
+    grad_output = grad_output.contiguous()
+    if tuple(grad_input.shape) != tuple(output.shape):
+        grad_input.resize_(output.shape)
+    K = output.numel() // M // N
+
+    with torch_device_fn.device(grad_input.device):
+        if K > 1:
+            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+            softmax_backward_kernel_non_inner[grid](
+                output, grad_output, grad_input, M, N, K
+            )
+        else:
+            grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
+            softmax_backward_kernel_inner[grid](output, grad_output, grad_input, M, N)
+    return grad_input

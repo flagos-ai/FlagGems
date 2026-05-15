@@ -1,5 +1,4 @@
 import logging
-from typing import List
 
 import torch
 import triton
@@ -40,22 +39,27 @@ def index_kernel_func(
 
 
 def index_wrapper(input, indices, out):
+    """
+    Simple kernel wrapper for contiguous tensor indices starting from dim 0
+    """
     input_shape = input.shape
     input_dim = len(input_shape)
     indices_dim = len(indices)
-
     stride = 1
-    for i in range(0, input_dim - indices_dim):
-        stride *= input_shape[input_dim - i - 1]
+
+    for i in range(indices_dim, input_dim):
+        stride *= input_shape[i]
 
     index_len = indices[0].numel()
+    if index_len <= 0:
+        return
 
     actual_index = indices[0]
     for idx in range(0, indices_dim - 1):
         actual_index = actual_index * input_shape[idx + 1] + indices[idx + 1]
 
     BLOCK_SIZE = 32
-    MAX_DATA_SIZE = 16 * 1024
+    MAX_DATA_SIZE = 8 * 1024
 
     grid = lambda meta: (triton.cdiv(index_len, meta["BLOCK_SIZE"]),)
 
@@ -70,33 +74,147 @@ def index_wrapper(input, indices, out):
     )
 
 
-def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
-    max_rank = max([len(index.shape) for index in indices])
-    shape = [0 for _ in range(max_rank)]
-    for i in range(max_rank):
-        max_num = 0
-        for index in indices:
-            axis = len(index.shape) - 1 - i
-            if axis >= 0:
-                max_num = max(max_num, index.shape[axis])  #
-        shape[max_rank - 1 - i] = max_num
-    return shape
-
-
-def broadcast_indices(indices, target_shape):
-    for i, index in enumerate(indices):
-        if tuple(index.shape) != tuple(target_shape):
-            indices[i] = torch.broadcast_to(index, target_shape)
-
-
 def index(inp, indices):
     logger.debug("GEMS_ASCEND INDEX")
     indices = list(indices)
+    if not indices:
+        raise ValueError("at least one index must be provided")
 
-    target_shape = get_max_rank_shape(indices)
-    broadcast_indices(indices, target_shape)
-    target_shape += inp.shape[len(indices) :]
-    out = torch.empty(target_shape, dtype=inp.dtype, device=inp.device)
+    indices = [
+        index.to(inp.device)
+        if index is not None and index.device != inp.device
+        else index
+        for index in indices
+    ]
 
-    index_wrapper(inp, indices, out)
+    # Step 1: Process indices (convert bool/int8 to long, handle None)
+    # Following PyTorch meta implementation
+    processed_indices = []
+    for i, index in enumerate(indices):
+        if index is not None:
+            # Check dtype
+            if index.dtype in [torch.int8, torch.bool]:
+                # Convert boolean/int8 mask to long indices
+                nonzero = index.nonzero()
+                k = len(processed_indices)
+                if k + index.ndim > inp.ndim:
+                    raise IndexError(
+                        f"too many indices for tensor of dimension {inp.ndim}"
+                    )
+                # Check shape matches
+                for j in range(index.ndim):
+                    if index.shape[j] != inp.shape[k + j]:
+                        raise IndexError(
+                            f"The shape of the mask {index.shape} at index {i} "
+                            f"does not match the shape of the indexed tensor {inp.shape} at index {k + j}"
+                        )
+                # Extract indices from nonzero
+                for j in range(index.ndim):
+                    processed_indices.append(nonzero.select(1, j))
+            elif index.dtype in [torch.long, torch.int, torch.int32, torch.int64]:
+                processed_indices.append(index)
+            else:
+                raise TypeError(
+                    "tensors used as indices must be long, int, byte or bool tensors"
+                )
+        else:
+            processed_indices.append(None)
+
+    indices = processed_indices
+
+    # Check indices count
+    if len(indices) > inp.ndim:
+        raise IndexError(
+            f"too many indices for tensor of dimension {inp.ndim} (got {len(indices)})"
+        )
+
+    # Step 2: Broadcast indices (only tensor indices, not None)
+    tensor_indices = [idx for idx in indices if idx is not None]
+    if tensor_indices:
+        # Broadcast all tensor indices together
+        if len(tensor_indices) > 1:
+            tensor_indices = list(torch.broadcast_tensors(*tensor_indices))
+        # Update indices list with broadcasted tensors
+        tensor_idx = 0
+        for i in range(len(indices)):
+            if indices[i] is not None:
+                indices[i] = tensor_indices[tensor_idx]
+                tensor_idx += 1
+
+    # Step 3: Add missing None indices (pad to input.ndim)
+    while len(indices) < inp.ndim:
+        indices.append(None)
+
+    # Step 4: Check if has contiguous subspace
+    # (all non-None tensors are adjacent)
+    state = 0
+    has_contiguous_subspace = False
+    starts_from_zero = False
+    for i, index in enumerate(indices):
+        if state == 0:
+            if index is not None:
+                if i == 0:
+                    starts_from_zero = True
+                state = 1
+        elif state == 1:
+            if index is None:
+                state = 2
+        else:
+            if index is not None:
+                break
+    else:
+        has_contiguous_subspace = True
+
+    # Step 5: Transpose to front if needed
+    # If not contiguous, transpose input so all non-None indices come first
+    if not has_contiguous_subspace or not starts_from_zero:
+        # Build full index tuple (None -> slice(None))
+        full_indices = []
+        for idx in indices:
+            if idx is None:
+                full_indices.append(slice(None))
+            else:
+                full_indices.append(idx)
+        return inp[tuple(full_indices)]
+
+    # Step 6: Now indices have contiguous subspace
+    # Calculate output shape: before_shape + replacement_shape + after_shape
+    before_shape = []
+    after_shape = []
+    replacement_shape = []
+
+    for dim, index in enumerate(indices):
+        if index is None:
+            if replacement_shape:
+                # None after tensor indices -> goes to after_shape
+                after_shape.append(inp.shape[dim])
+            else:
+                # None before tensor indices -> goes to before_shape
+                before_shape.append(inp.shape[dim])
+        else:
+            # First tensor index determines replacement_shape
+            if not replacement_shape:
+                replacement_shape = list(index.shape)
+
+    # Step 7: Build output shape and create output tensor
+    out_shape = before_shape + replacement_shape + after_shape
+    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
+
+    # Step 8: Handle empty tensor case
+    if inp.numel() == 0 or out.numel() == 0:
+        return out
+
+    # Step 9: Extract only tensor indices for kernel
+    tensor_indices = [idx for idx in indices if idx is not None]
+    if not tensor_indices:
+        # All None, just reshape
+        return inp.view(*out_shape)
+
+    # Step 10: Call kernel with tensor indices
+    # Note: kernel needs to handle the fact that input was potentially permuted
+    # and output shape includes None dimensions
+    if inp.ndim == 1 and len(tensor_indices) == 1:
+        return torch.gather(inp, 0, tensor_indices[0])
+
+    index_wrapper(inp, tensor_indices, out)
     return out
