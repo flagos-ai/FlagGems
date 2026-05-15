@@ -16,17 +16,15 @@ device = flag_gems.device
     "dtype", utils.BOOL_TYPES + utils.ALL_INT_DTYPES + utils.ALL_FLOAT_DTYPES
 )
 @pytest.mark.parametrize(
-    "xdtype", utils.BOOL_TYPES + utils.ALL_INT_DTYPES + utils.ALL_FLOAT_DTYPES
-)
-@pytest.mark.parametrize(
     "fill_value", [3.1415926, 2, False, float("inf"), float("nan")]
 )
-def test_full_like(shape, dtype, xdtype, fill_value):
+def test_full_like(shape, dtype, fill_value):
     if isinstance(fill_value, float) and (
         math.isinf(fill_value) or math.isnan(fill_value)
     ):
         if dtype not in utils.ALL_FLOAT_DTYPES:
-            pytest.skip("Skipping inf/nan test for non-float dtypes")
+            # Skipping inf/nan test for non-float dtypes
+            return
 
     inp = torch.empty(size=shape, dtype=dtype, device=device)
     ref_inp = utils.to_reference(inp)

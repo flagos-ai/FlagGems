@@ -32,7 +32,7 @@ MAXPOOL3D_CONFIGS = [
 
 
 @pytest.mark.max_pool3d_with_indices
-@pytest.mark.skip(reason="#2865: this test always fail.")
+@pytest.mark.skip(reason="Issue #2865: this test always fail.")
 @pytest.mark.parametrize(
     "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
 )
@@ -66,7 +66,7 @@ def test_max_pool3d_with_indices(
 
 
 @pytest.mark.max_pool3d_backward
-@pytest.mark.skip(reason="#2865: this test always fail.")
+@pytest.mark.skip(reason="Issue #2865: this test always fail.")
 @pytest.mark.parametrize(
     "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
 )

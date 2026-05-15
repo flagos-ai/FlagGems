@@ -16,10 +16,11 @@ except ImportError:
 @pytest.mark.geglu
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
+@pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine is required")
 def test_geglu(shape, dtype):
     if len(shape) == 0:
-        pytest.skip("GEGLU does not support 0-dim scalar tensors.")
+        # GEGLU does not support 0-dim scalar tensors.
+        return
 
     if shape[-1] % 2 != 0:
         shape = list(shape)

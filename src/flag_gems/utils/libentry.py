@@ -418,6 +418,8 @@ class LibTuner(triton.runtime.Autotuner):
         return decorator
 
     def run(self, *args, **kwargs):
+        if hasattr(self, "seen_tuned_metas"):
+            self.seen_tuned_metas = {}  # flagtree aabs: deduplicate tuned meta
         # `arg_names` corresponds to the arguments of the `JITFunction`'s signature,
         # so please make sure the orders of `arg_names` and `args` match.
         self.nargs = dict(zip(self.arg_names, args))
@@ -502,7 +504,11 @@ def log2_strategy(key: Union[int, float]) -> float:
 
 @LibTuner.register_strategy("align32")
 def align32_strategy(key: Union[int, float]) -> int:
-    return log2_strategy(key) if key < 32 else math.ceil(key / 32) * 32
+    if key == 0:
+        return 0
+    if key < 32:
+        return 2 ** math.ceil(math.log2(key))
+    return math.ceil(key / 32) * 32
 
 
 @LibTuner.register_policy("default")
