@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from . import base, consts, utils
+from . import base, utils
 
 
 def _binary_input_fn(shape, dtype, device):
