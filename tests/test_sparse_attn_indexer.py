@@ -17,7 +17,8 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused.DSA.sparse_attn_indexer import sparse_attn_indexer
+from flag_gems.fused.sparse_attn_indexer import sparse_attn_indexer
+from tests.accuracy_utils import gems_assert_equal
 
 device = flag_gems.device
 
@@ -33,17 +34,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _quantize_k_to_cache_pytorch(k: torch.Tensor, head_dim: int):
-    """Quantize K to FP8 E4M3 and store in uint8 cache (PyTorch reference).
-
-    Args:
-        k: [num_tokens, head_dim] float32/float16 key vectors
-        head_dim: dimension per head
-
-    Returns:
-        kv_cache: [num_tokens, head_dim + 4] uint8 tensor
-            - [:, :head_dim] = FP8 E4M3 quantized keys (as uint8)
-            - [:, head_dim:head_dim+4] = FP32 scale as 4 LE bytes
-    """
+    """Quantize K to FP8 E4M3 and store in uint8 cache (PyTorch reference)."""
     num_tokens = k.shape[0]
     cache_stride_slot = head_dim + 4
     kv_cache = torch.zeros(
@@ -51,18 +42,14 @@ def _quantize_k_to_cache_pytorch(k: torch.Tensor, head_dim: int):
     )
 
     k_f32 = k.float()
-    # Per-token absmax scale
     amax = k_f32.abs().amax(dim=1).clamp(min=1e-4)
-    scale = amax / 448.0  # 448 = max E4M3 value
+    scale = amax / 448.0
 
-    # Quantize: round to FP8 range then store as uint8
     k_scaled = k_f32 / scale[:, None]
-    # Clamp to E4M3 range and convert via float8
     k_fp8 = k_scaled.to(torch.float8_e4m3fn)
     k_uint8 = k_fp8.view(torch.uint8)
     kv_cache[:, :head_dim] = k_uint8
 
-    # Store scale as 4 little-endian bytes
     scale_bytes = scale.to(torch.float32).view(torch.uint8).reshape(num_tokens, 4)
     kv_cache[:, head_dim : head_dim + 4] = scale_bytes
 
@@ -77,23 +64,7 @@ def _compute_logits_pytorch(
     head_dim: int,
     num_tokens: int,
 ):
-    """Compute attention logits using PyTorch (reference).
-
-    For each query token i with causal mask [0, i+1):
-        logit[kv_pos] = sum_h(ReLU(q_h . k_pos) * weight_h) * k_scale
-
-    Args:
-        q: [num_tokens, num_heads, head_dim] query vectors
-        kv_cache: [total_kv_slots, head_dim + 4] uint8 cache
-        weights: [num_tokens, num_heads] per-head weights
-        num_heads: number of attention heads
-        head_dim: dimension per head
-        num_tokens: number of query tokens
-
-    Returns:
-        logits: [num_tokens, num_tokens] float32 logits
-            logits[i, j] = -inf if j >= i+1 (causal mask)
-    """
+    """Compute attention logits using PyTorch (reference)."""
     logits = torch.full(
         (num_tokens, num_tokens),
         float("-inf"),
@@ -102,29 +73,20 @@ def _compute_logits_pytorch(
     )
 
     for i in range(num_tokens):
-        kv_end = i + 1  # Causal: token i sees [0, i+1)
-        # Load and dequantize keys for positions [0, kv_end)
+        kv_end = i + 1
         k_uint8 = kv_cache[:kv_end, :head_dim]
         k_fp8 = k_uint8.view(torch.float8_e4m3fn)
         k_f16 = k_fp8.to(torch.float16)
 
-        # Load scales
         scale_bytes = kv_cache[:kv_end, head_dim : head_dim + 4]
-        k_scale = scale_bytes.contiguous().view(torch.float32)  # [kv_end]
+        k_scale = scale_bytes.contiguous().view(torch.float32)
 
-        # q[i]: [num_heads, head_dim]
-        qi = q[i].to(torch.float16)  # [num_heads, head_dim]
-
-        # Dot product: [num_heads, kv_end]
+        qi = q[i].to(torch.float16)
         dots = torch.mm(qi, k_f16.T).float()
-        # ReLU activation
         dots = torch.relu(dots)
 
-        # Weighted sum across heads: [kv_end]
-        w_i = weights[i]  # [num_heads]
+        w_i = weights[i]
         acc = (dots * w_i[:, None]).sum(dim=0)
-
-        # Apply per-KV-position scale
         acc = acc * k_scale
 
         logits[i, :kv_end] = acc
@@ -142,45 +104,25 @@ def sparse_attn_indexer_ref(
     num_tokens: int,
     insert_k: bool = True,
 ):
-    """Pure-PyTorch reference for sparse_attn_indexer.
-
-    Args:
-        q: [num_tokens, num_heads * head_dim] flattened queries
-        k: [num_tokens, head_dim] key vectors
-        weights: [num_tokens, num_heads] per-head weights
-        num_heads: number of attention heads
-        head_dim: dimension per head
-        topk: number of top-K indices to select
-        num_tokens: number of tokens
-        insert_k: whether to quantize and insert k into cache
-
-    Returns:
-        topk_indices: [num_tokens, topk] int32 indices
-        kv_cache: [num_tokens, head_dim + 4] uint8 cache
-    """
+    """Pure-PyTorch reference for sparse_attn_indexer."""
     kv_cache = _quantize_k_to_cache_pytorch(k, head_dim)
 
-    # Reshape q for computation
     q_reshaped = q.reshape(num_tokens, num_heads, head_dim)
 
-    # Compute logits
     logits = _compute_logits_pytorch(
         q_reshaped, kv_cache, weights, num_heads, head_dim, num_tokens
     )
 
-    # Select top-K per row
     topk_indices = torch.full(
         (num_tokens, topk), -1, dtype=torch.int32, device=q.device
     )
     for i in range(num_tokens):
         kv_end = i + 1
         if kv_end <= topk:
-            # Shortcut: all positions selected
             topk_indices[i, :kv_end] = torch.arange(
                 kv_end, dtype=torch.int32, device=q.device
             )
         else:
-            # Select top-K from logits
             row_logits = logits[i, :kv_end]
             _, top_idx = torch.topk(row_logits, topk, largest=True)
             topk_indices[i] = top_idx.to(torch.int32)
@@ -202,17 +144,12 @@ def _make_inputs(num_tokens, num_heads, head_dim, device):
         device=device,
     )
     k = torch.randn(num_tokens, head_dim, dtype=torch.float16, device=device)
-    # Weights should be positive (they scale ReLU outputs)
     weights = torch.rand(num_tokens, num_heads, dtype=torch.float32, device=device)
     return q, k, weights
 
 
 def _compare_topk_sets(ref_indices, tri_indices, num_tokens, topk):
-    """Compare top-K results as sets (order-independent).
-
-    Returns (num_matches, num_total) where a match means the sets of
-    valid (non -1) indices are identical.
-    """
+    """Compare top-K results as sets (order-independent)."""
     matches = 0
     for i in range(num_tokens):
         ref_set = set(ref_indices[i].cpu().tolist()) - {-1}
@@ -227,6 +164,7 @@ def _compare_topk_sets(ref_indices, tri_indices, num_tokens, topk):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.sparse_attn_indexer
 @pytest.mark.parametrize(
     "num_tokens,num_heads,head_dim,topk",
     [
@@ -244,8 +182,6 @@ def test_shortcut_path(num_tokens, num_heads, head_dim, topk):
     """Test tokens where kv_end <= topk (shortcut path fills trivially)."""
     q, k, weights = _make_inputs(num_tokens, num_heads, head_dim, device)
 
-    # For shortcut path: all tokens have kv_end <= topk when
-    # num_tokens <= topk, so every token uses the shortcut
     assert num_tokens <= topk, "This test targets the shortcut path"
 
     cache_stride_slot = head_dim + 4
@@ -267,14 +203,22 @@ def test_shortcut_path(num_tokens, num_heads, head_dim, topk):
         insert_k=True,
     )
 
-    # Verify shortcut: token i should have indices [0, 1, ..., i] + padding
+    # Build expected: token i should have indices [0, 1, ..., i], rest -1
+    expected = torch.full(
+        (num_tokens, topk), -1, dtype=torch.int32, device=device
+    )
     for i in range(num_tokens):
-        row = result[i].cpu().tolist()
-        expected = set(range(i + 1))
-        actual = set(row) - {-1}
-        assert actual == expected, f"Token {i}: expected {expected}, got {actual}"
+        expected[i, : i + 1] = torch.arange(i + 1, dtype=torch.int32, device=device)
+
+    # Sort valid indices in each row for order-independent comparison
+    for i in range(num_tokens):
+        valid_len = i + 1
+        result_row = result[i, :valid_len].sort().values
+        expected_row = expected[i, :valid_len].sort().values
+        gems_assert_equal(result_row, expected_row)
 
 
+@pytest.mark.sparse_attn_indexer
 @pytest.mark.parametrize(
     "num_tokens,num_heads,head_dim,topk,max_model_len",
     [
@@ -299,7 +243,6 @@ def test_topk_selection(num_tokens, num_heads, head_dim, topk, max_model_len):
         max_model_len, cache_stride_slot, dtype=torch.uint8, device=device
     )
 
-    # Run Triton kernel
     tri_result = sparse_attn_indexer(
         q,
         k,
@@ -313,14 +256,12 @@ def test_topk_selection(num_tokens, num_heads, head_dim, topk, max_model_len):
         insert_k=True,
     )
 
-    # Run PyTorch reference
     ref_result, _ = sparse_attn_indexer_ref(
         q, k, weights, num_heads, head_dim, topk, num_tokens
     )
 
     # Compare only tokens in the multi-kernel path (kv_end > topk)
-    # Token indices [topk, num_tokens) have kv_end > topk
-    active_start = topk  # token_offset = min(topk, num_tokens)
+    active_start = topk
     if active_start >= num_tokens:
         pytest.skip("No active tokens for multi-kernel path")
 
@@ -331,8 +272,6 @@ def test_topk_selection(num_tokens, num_heads, head_dim, topk, max_model_len):
         topk,
     )
 
-    # Allow small tolerance: binary search threshold may cause
-    # boundary differences for tied logit values
     match_rate = matches / total
     assert match_rate >= 0.95, (
         f"Match rate {match_rate:.2%} below 95% threshold "
@@ -340,6 +279,7 @@ def test_topk_selection(num_tokens, num_heads, head_dim, topk, max_model_len):
     )
 
 
+@pytest.mark.sparse_attn_indexer
 @pytest.mark.parametrize(
     "num_tokens,num_heads,head_dim,topk",
     [
@@ -374,21 +314,13 @@ def test_k_cache_insert(num_tokens, num_heads, head_dim, topk):
         insert_k=True,
     )
 
-    # Verify cache contents against PyTorch quantization
     ref_cache = _quantize_k_to_cache_pytorch(k, head_dim)
 
-    # Check FP8 data matches
-    for i in range(num_tokens):
-        tri_fp8 = kv_cache[i, :head_dim]
-        ref_fp8 = ref_cache[i, :head_dim]
-        assert torch.equal(tri_fp8, ref_fp8), f"Token {i}: FP8 data mismatch"
-
-        # Check scale bytes match
-        tri_scale = kv_cache[i, head_dim : head_dim + 4]
-        ref_scale = ref_cache[i, head_dim : head_dim + 4]
-        assert torch.equal(tri_scale, ref_scale), f"Token {i}: scale mismatch"
+    # Use gems_assert_equal for strict byte-level comparison
+    gems_assert_equal(kv_cache[:num_tokens], ref_cache)
 
 
+@pytest.mark.sparse_attn_indexer
 @pytest.mark.parametrize(
     "num_tokens,num_heads,head_dim,topk",
     [
@@ -410,7 +342,6 @@ def test_skip_k_insert(num_tokens, num_heads, head_dim, topk):
     ref_cache = _quantize_k_to_cache_pytorch(k, head_dim)
     kv_cache[:num_tokens] = ref_cache
 
-    # Mark cache with sentinel to verify it's not overwritten
     sentinel = kv_cache[:num_tokens].clone()
 
     result = sparse_attn_indexer(
@@ -427,9 +358,7 @@ def test_skip_k_insert(num_tokens, num_heads, head_dim, topk):
     )
 
     # Cache should be unchanged
-    assert torch.equal(
-        kv_cache[:num_tokens], sentinel
-    ), "Cache was modified despite insert_k=False"
+    gems_assert_equal(kv_cache[:num_tokens], sentinel)
 
     # Result should still be valid (shortcut path for small num_tokens)
     for i in range(num_tokens):
@@ -439,6 +368,7 @@ def test_skip_k_insert(num_tokens, num_heads, head_dim, topk):
         assert actual == expected
 
 
+@pytest.mark.sparse_attn_indexer
 @pytest.mark.parametrize(
     "num_tokens",
     [1, 16, 64],

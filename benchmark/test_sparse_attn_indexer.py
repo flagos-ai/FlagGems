@@ -17,7 +17,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused.DSA.sparse_attn_indexer import sparse_attn_indexer
+from flag_gems.fused.sparse_attn_indexer import sparse_attn_indexer
 
 from . import base
 
