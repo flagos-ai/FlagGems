@@ -4673,6 +4673,20 @@ ops:
     stages:
       - stable: '3.0'
     cpp: '4.0'
+  - id: router_gemm_bf16_fp32
+    description: |
+      Triton bf16 x bf16 -> fp32 GEMM for DeepSeek V4 MoE router scoring.
+      Replaces vLLM router_gemm_bf16_fp32 CUDA kernel with expanded autotune space
+      covering both decode (M=1-32) and prefill (M=64-4096) regimes.
+    for:
+      - None
+    labels:
+      - fused
+      - DSA
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: resolve_conj
     description: |
       Returns a new tensor with materialized conjugation if `input`'s conjugate bit is set to True,
