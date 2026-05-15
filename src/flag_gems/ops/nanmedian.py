@@ -22,6 +22,7 @@ RADIX_BITS = 2
 MEDIUM_REDUCTION_N = 1024
 LARGE_FLOAT_REDUCTION_N = 4096
 LONG_RADIX_REDUCTION_N = 131072
+ASCEND_FLAT_SORT_MIN_N = 1 << 20
 FLAT_RADIX_BLOCK_N = 4096
 FLAT_RADIX_BITS = 8
 RADIX_SELECT_DTYPES = (
@@ -519,6 +520,22 @@ def _use_cuda_flat_radix_select(inp):
     )
 
 
+def _use_ascend_flat_sort(inp):
+    return (
+        inp.device.type == "npu"
+        and inp.dtype
+        in (
+            torch.float16,
+            torch.float32,
+            torch.int8,
+            torch.uint8,
+            torch.int16,
+            torch.int32,
+        )
+        and inp.numel() >= ASCEND_FLAT_SORT_MIN_N
+    )
+
+
 def _radix_block_n(inp, n):
     block_n = triton.next_power_of_2(n)
     if inp.is_cuda:
@@ -734,6 +751,17 @@ def _nanmedian_dim_impl(inp, dim, keepdim):
     return NanMedian(values=values, indices=indices)
 
 
+def _nanmedian_ascend_flat_sort(inp):
+    flat = inp.reshape(-1).contiguous()
+    sorted_values = torch.sort(flat).values
+    if torch.is_floating_point(flat):
+        valid_count = (sorted_values == sorted_values).sum()
+        rank = (valid_count - 1) // 2
+    else:
+        rank = (flat.numel() - 1) // 2
+    return sorted_values[rank]
+
+
 def _nanmedian_cuda_flat_radix_select(inp):
     flat = inp.reshape(-1).contiguous()
     n = flat.numel()
@@ -813,6 +841,8 @@ def nanmedian(inp):
         return _empty_flat_value(inp)
     if _use_cuda_flat_radix_select(inp):
         return _nanmedian_cuda_flat_radix_select(inp)
+    if _use_ascend_flat_sort(inp):
+        return _nanmedian_ascend_flat_sort(inp)
     return _nanmedian_dim_impl(inp.reshape(-1), 0, False).values
 
 
