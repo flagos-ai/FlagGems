@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from . import base
+from . import base, consts
 
 vendor_name = flag_gems.vendor_name
 
@@ -33,5 +33,27 @@ def test_weight_norm_interface():
         torch_op=torch._weight_norm,
     )
     bench.set_gems(flag_gems.weight_norm)
+
+    bench.run()
+
+
+def weight_norm_interface_backward_input_fn(shape, dtype, device):
+    dim = 0
+    w_grad = torch.randn(shape, dtype=dtype, device=device)
+    saved_v = torch.randn(shape, dtype=dtype, device=device)
+    saved_g = torch.randn(shape[dim], dtype=dtype, device=device)
+    saved_norms = torch.randn(shape[dim], dtype=dtype, device=device)
+    yield w_grad, saved_v, saved_g, saved_norms, dim
+
+
+@pytest.mark.weight_norm_interface_backward
+def test_weight_norm_interface_backward():
+    bench = base.GenericBenchmarkExcluse1D(
+        op_name="weight_norm_interface_backward",
+        input_fn=weight_norm_interface_backward_input_fn,
+        torch_op=torch.ops.aten._weight_norm_interface_backward,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.weight_norm_interface_backward)
 
     bench.run()
