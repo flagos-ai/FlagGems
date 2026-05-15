@@ -22,6 +22,8 @@ RADIX_BITS = 2
 MEDIUM_REDUCTION_N = 1024
 LARGE_FLOAT_REDUCTION_N = 4096
 LONG_RADIX_REDUCTION_N = 131072
+FLAT_RADIX_BLOCK_N = 4096
+FLAT_RADIX_BITS = 8
 RADIX_SELECT_DTYPES = (
     torch.float16,
     torch.bfloat16,
@@ -318,6 +320,156 @@ def nanmedian_radix_select_kernel(
     tl.store(out_indices + pid, result_idx)
 
 
+@libentry()
+@triton.jit
+def flat_radix_init_kernel(
+    valid_count,
+    state,
+    result_idx,
+    N: tl.constexpr,
+    IS_FLOAT: tl.constexpr,
+):
+    tl.store(valid_count, 0 if IS_FLOAT else N)
+    tl.store(state + 0, 0)
+    tl.store(state + 1, 0)
+    tl.store(state + 2, 0)
+    tl.store(result_idx, N)
+
+
+@libentry()
+@triton.jit
+def flat_radix_count_valid_kernel(
+    inp,
+    valid_count,
+    N: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    USE_ISNAN: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    offsets = pid * BLOCK_N + tl.arange(0, BLOCK_N)
+    mask = offsets < N
+    vals = tl.load(inp + offsets, mask=mask, other=0.0)
+    valid = mask & _is_not_nan(vals, USE_ISNAN)
+    count = tl.sum(valid.to(tl.int64), axis=0)
+    tl.atomic_add(valid_count, count, sem="relaxed")
+
+
+@libentry()
+@triton.jit
+def flat_radix_init_rank_kernel(valid_count, state):
+    count = tl.load(valid_count)
+    tl.store(state + 2, (count + 1) // 2)
+
+
+@libentry()
+@triton.jit
+def flat_radix_count_kernel(
+    inp,
+    bin_counts,
+    state,
+    N: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    DIGIT_POS: tl.constexpr,
+    RADIX_BITS_: tl.constexpr,
+    RADIX_SIZE: tl.constexpr,
+    USE_ISNAN: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    offsets = pid * BLOCK_N + tl.arange(0, BLOCK_N)
+    mask = offsets < N
+    vals = tl.load(inp + offsets, mask=mask, other=0.0)
+    dtype = inp.dtype.element_ty
+    nbits: tl.constexpr = dtype.primitive_bitwidth
+    utype = tl.dtype(f"uint{nbits}")
+    radix_mask: tl.constexpr = (1 << RADIX_BITS_) - 1
+    radix_mask_val = tl.full((), radix_mask, dtype=utype)
+
+    if dtype.is_floating():
+        valid = mask & _is_not_nan(vals, USE_ISNAN)
+    else:
+        valid = mask
+
+    desired = tl.load(state + 0).to(utype)
+    desired_mask = tl.load(state + 1).to(utype)
+    keys = _to_order_key(vals, valid)
+    active = valid & ((keys & desired_mask) == desired)
+    digit = ((keys >> DIGIT_POS) & radix_mask_val).to(tl.int32)
+    counts = tl.histogram(digit, RADIX_SIZE, active).to(tl.int64)
+    bins = tl.arange(0, RADIX_SIZE)
+    tl.atomic_add(bin_counts + bins, counts, sem="relaxed")
+
+
+@libentry()
+@triton.jit
+def flat_radix_update_kernel(
+    bin_counts,
+    state,
+    DIGIT_POS: tl.constexpr,
+    RADIX_BITS_: tl.constexpr,
+    RADIX_SIZE: tl.constexpr,
+):
+    bins = tl.arange(0, RADIX_SIZE)
+    counts = tl.load(bin_counts + bins)
+    k_to_find = tl.load(state + 2)
+    cumsum = tl.cumsum(counts, axis=0)
+    prev = cumsum - counts
+    take = (k_to_find <= cumsum) & (k_to_find > prev)
+    selected_bin = tl.min(tl.where(take, bins, RADIX_SIZE - 1), axis=0).to(tl.int64)
+    counts_before = tl.max(tl.where(take, prev, 0), axis=0)
+
+    desired = tl.load(state + 0)
+    desired_mask = tl.load(state + 1)
+    radix_mask: tl.constexpr = (1 << RADIX_BITS_) - 1
+    desired = desired | (selected_bin << DIGIT_POS)
+    desired_mask = desired_mask | (radix_mask << DIGIT_POS)
+    tl.store(state + 0, desired)
+    tl.store(state + 1, desired_mask)
+    tl.store(state + 2, k_to_find - counts_before)
+
+
+@libentry()
+@triton.jit
+def flat_radix_find_index_kernel(
+    inp,
+    state,
+    valid_count,
+    result_idx,
+    N: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    USE_ISNAN: tl.constexpr,
+):
+    if tl.load(valid_count) > 0:
+        pid = tle.program_id(0)
+        offsets = pid * BLOCK_N + tl.arange(0, BLOCK_N)
+        mask = offsets < N
+        vals = tl.load(inp + offsets, mask=mask, other=0.0)
+        dtype = inp.dtype.element_ty
+        nbits: tl.constexpr = dtype.primitive_bitwidth
+        utype = tl.dtype(f"uint{nbits}")
+
+        if dtype.is_floating():
+            valid = mask & _is_not_nan(vals, USE_ISNAN)
+        else:
+            valid = mask
+
+        desired = tl.load(state + 0).to(utype)
+        keys = _to_order_key(vals, valid)
+        local_idx = tl.min(tl.where(valid & (keys == desired), offsets, N), axis=0)
+        tl.atomic_min(result_idx, local_idx, sem="relaxed")
+
+
+@libentry()
+@triton.jit
+def flat_radix_store_result_kernel(inp, out, valid_count, result_idx):
+    dtype = inp.dtype.element_ty
+    idx = tl.load(result_idx)
+    if dtype.is_floating():
+        result = tl.load(inp + idx, mask=tl.load(valid_count) > 0, other=float("nan"))
+    else:
+        result = tl.load(inp + idx)
+    tl.store(out, result)
+
+
 def _check_supported_dtype(inp):
     if inp.dtype is torch.bool:
         raise NotImplementedError("\"median_out_impl\" not implemented for 'Bool'")
@@ -356,6 +508,14 @@ def _use_ascend_int_radix_select(inp, n):
         inp.device.type == "npu"
         and inp.dtype in ASCEND_RADIX_SELECT_DTYPES
         and MAX_BLOCK_N < n <= LONG_RADIX_REDUCTION_N
+    )
+
+
+def _use_cuda_flat_radix_select(inp):
+    return (
+        inp.is_cuda
+        and inp.dtype in RADIX_SELECT_DTYPES
+        and LONG_RADIX_REDUCTION_N < inp.numel() <= torch.iinfo(torch.int32).max
     )
 
 
@@ -574,11 +734,85 @@ def _nanmedian_dim_impl(inp, dim, keepdim):
     return NanMedian(values=values, indices=indices)
 
 
+def _nanmedian_cuda_flat_radix_select(inp):
+    flat = inp.reshape(-1).contiguous()
+    n = flat.numel()
+    out = torch.empty((), dtype=flat.dtype, device=flat.device)
+    valid_count = torch.empty((), dtype=torch.int64, device=flat.device)
+    state = torch.empty((3,), dtype=torch.int64, device=flat.device)
+    result_idx = torch.empty((), dtype=torch.int64, device=flat.device)
+    bin_counts = torch.empty(
+        (1 << FLAT_RADIX_BITS,), dtype=torch.int64, device=flat.device
+    )
+    block_n = min(triton.next_power_of_2(n), FLAT_RADIX_BLOCK_N)
+    grid = (triton.cdiv(n, block_n),)
+    nbits = flat.element_size() * 8
+
+    with torch_device_fn.device(flat.device):
+        flat_radix_init_kernel[(1,)](
+            valid_count,
+            state,
+            result_idx,
+            n,
+            torch.is_floating_point(flat),
+        )
+        if torch.is_floating_point(flat):
+            flat_radix_count_valid_kernel[grid](
+                flat,
+                valid_count,
+                n,
+                block_n,
+                True,
+                num_warps=8,
+                num_stages=1,
+            )
+        flat_radix_init_rank_kernel[(1,)](valid_count, state)
+        for digit_pos in range(nbits - FLAT_RADIX_BITS, -1, -FLAT_RADIX_BITS):
+            bin_counts.zero_()
+            flat_radix_count_kernel[grid](
+                flat,
+                bin_counts,
+                state,
+                n,
+                block_n,
+                digit_pos,
+                FLAT_RADIX_BITS,
+                1 << FLAT_RADIX_BITS,
+                True,
+                num_warps=8,
+                num_stages=1,
+            )
+            flat_radix_update_kernel[(1,)](
+                bin_counts,
+                state,
+                digit_pos,
+                FLAT_RADIX_BITS,
+                1 << FLAT_RADIX_BITS,
+                num_warps=8,
+                num_stages=1,
+            )
+        flat_radix_find_index_kernel[grid](
+            flat,
+            state,
+            valid_count,
+            result_idx,
+            n,
+            block_n,
+            True,
+            num_warps=8,
+            num_stages=1,
+        )
+        flat_radix_store_result_kernel[(1,)](flat, out, valid_count, result_idx)
+    return out
+
+
 def nanmedian(inp):
     logger.debug("GEMS NANMEDIAN")
     _check_supported_dtype(inp)
     if inp.numel() == 0:
         return _empty_flat_value(inp)
+    if _use_cuda_flat_radix_select(inp):
+        return _nanmedian_cuda_flat_radix_select(inp)
     return _nanmedian_dim_impl(inp.reshape(-1), 0, False).values
 
 
