@@ -48,6 +48,10 @@ def _case_id(case):
     )
 
 
+def _benchmark_case_params():
+    return [pytest.param(case, id=_case_id(case)) for case in _benchmark_cases()]
+
+
 def _scale_for_output(scale, rows, cols, is_left_scale):
     if scale.numel() == 1:
         return scale
@@ -166,7 +170,7 @@ class ScaledMMBenchmark(base.Benchmark):
 
 
 @pytest.mark.scaled_mm
-@pytest.mark.parametrize("case", _benchmark_cases(), ids=_case_id)
+@pytest.mark.parametrize("case", _benchmark_case_params())
 def test_scaled_mm_benchmark(case):
     torch_op = torch_scaled_mm_reference if _ascend_available() else torch._scaled_mm
     bench = ScaledMMBenchmark("scaled_mm", torch_op, flag_gems.scaled_mm, case)
@@ -174,7 +178,7 @@ def test_scaled_mm_benchmark(case):
 
 
 @pytest.mark.scaled_mm_out
-@pytest.mark.parametrize("case", _benchmark_cases(), ids=_case_id)
+@pytest.mark.parametrize("case", _benchmark_case_params())
 def test_scaled_mm_out_benchmark(case):
     torch_op = (
         torch_scaled_mm_out_reference
