@@ -82,9 +82,7 @@ def dropout(x: torch.Tensor, p: float = 0.5, training: bool = True) -> torch.Ten
     return out.to(orig_dtype)
 
 
-def dropout_backward(
-    dy: torch.Tensor, mask: torch.Tensor, p: float
-) -> torch.Tensor:
+def dropout_backward(dy: torch.Tensor, mask: torch.Tensor, p: float) -> torch.Tensor:
     logger.debug("GEMS DROPOUT BACKWARD")
     if p == 0.0:
         return dy
