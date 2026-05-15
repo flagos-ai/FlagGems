@@ -77,6 +77,8 @@ def test_accuracy_svd_fast_float32(shape):
     utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
     reconstructed = _reconstruct(res_u, res_s, res_v)
     utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
+    _assert_orthonormal(res_u)
+    _assert_orthonormal(res_v)
 
 
 @pytest.mark.svd
@@ -236,3 +238,69 @@ def test_accuracy_svd_non_contiguous_empty_and_complex():
         _assert_same_shape(res_s, ref_s)
         _assert_same_shape(res_v, ref_v)
         utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
+
+
+@pytest.mark.svd
+@pytest.mark.parametrize("shape", [(3, 3), (2, 3, 3)])
+def test_accuracy_svd_complex64_reconstruction(shape):
+    inp = _make_input(shape, torch.complex64)
+    ref_inp = utils.to_reference(inp, False)
+    ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
+
+    with flag_gems.use_gems(include=["svd"]):
+        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_v, ref_v)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-2)
+    reconstructed = _reconstruct(res_u, res_s, res_v)
+    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-2)
+
+
+@pytest.mark.svd
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_accuracy_svd_low_precision_float32_route(dtype):
+    if dtype is torch.bfloat16 and not utils.bf16_is_supported:
+        pytest.skip("bfloat16 is not supported on this device")
+
+    inp = _make_input((5, 3), dtype)
+    ref_inp = utils.to_reference(inp.to(torch.float32), False)
+    ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
+
+    with flag_gems.use_gems(include=["svd"]):
+        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_v, ref_v)
+    assert res_u.dtype == dtype
+    assert res_s.dtype == dtype
+    assert res_v.dtype == dtype
+    atol = 7e-2 if dtype is torch.bfloat16 else 8e-3
+    reconstructed = _reconstruct(
+        res_u.to(torch.float32),
+        res_s.to(torch.float32),
+        res_v.to(torch.float32),
+    )
+    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=atol)
+
+
+@pytest.mark.svd
+@pytest.mark.parametrize("shape", [(3, 5), (5, 3), (4, 4)])
+def test_accuracy_svd_some_false_reconstruction(shape):
+    inp = _make_input(shape, torch.float32)
+    ref_inp = utils.to_reference(inp, False)
+    ref_u, ref_s, ref_v = torch.svd(ref_inp, some=False, compute_uv=True)
+
+    with flag_gems.use_gems(include=["svd"]):
+        res_u, res_s, res_v = torch.svd(inp, some=False, compute_uv=True)
+
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_v, ref_v)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
+    reconstructed = _reconstruct(res_u, res_s, res_v)
+    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
+    _assert_orthonormal(res_u)
+    _assert_orthonormal(res_v)
