@@ -75,6 +75,61 @@ def test_copy_inplace_dtype_fallback():
 
 
 @pytest.mark.copy_
+@pytest.mark.skipif(
+    not hasattr(torch, "float8_e8m0fnu"),
+    reason="PyTorch does not support float8_e8m0fnu",
+)
+@pytest.mark.parametrize("shape", [(8,), (4, 4), (2, 3, 4)])
+def test_copy_inplace_float8_e8m0fnu(shape):
+    """Test that copy_ works correctly with float8_e8m0fnu (e8m0) dtype tensors.
+
+    Triton does not recognize float8_e8m0fnu, so FlagGems should fallback to
+    PyTorch's native copy_ implementation for this dtype.
+    """
+    device = flag_gems.device
+
+    # e8m0 is an exponent-only format, create via view from uint8
+    src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device=device)
+    src = src_uint8.view(torch.float8_e8m0fnu)
+    ref_src = utils.to_reference(src)
+
+    ref_dst = utils.to_reference(
+        torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
+    )
+    res_dst = torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
+    ref_dst.copy_(ref_src)
+
+    with flag_gems.use_gems():
+        res_dst.copy_(src)
+
+    utils.gems_assert_equal(res_dst, ref_dst)
+
+
+@pytest.mark.copy_
+@pytest.mark.skipif(
+    not hasattr(torch, "float8_e8m0fnu"),
+    reason="PyTorch does not support float8_e8m0fnu",
+)
+def test_copy_inplace_float8_e8m0fnu_to_float32():
+    """Test copy_ from float8_e8m0fnu to float32."""
+    device = flag_gems.device
+    shape = (8,)
+
+    src_uint8 = torch.randint(1, 200, shape, dtype=torch.uint8, device=device)
+    src = src_uint8.view(torch.float8_e8m0fnu)
+    ref_src = utils.to_reference(src)
+
+    ref_dst = utils.to_reference(torch.zeros(shape, dtype=torch.float32, device=device))
+    res_dst = torch.zeros(shape, dtype=torch.float32, device=device)
+    ref_dst.copy_(ref_src)
+
+    with flag_gems.use_gems():
+        res_dst.copy_(src)
+
+    utils.gems_assert_equal(res_dst, ref_dst)
+
+
+@pytest.mark.copy_
 @pytest.mark.parametrize(
     "src_dtype,dst_dtype",
     [

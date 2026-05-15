@@ -7,6 +7,9 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as ext
+
+from ...gcu400.utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +24,15 @@ def skip_layer_norm_kernel_2d(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    num_pids = tl.num_programs(0)
-    cols = tl.arange(0, BLOCK_N)
-    col_mask = cols < N
+    pid = ext.program_id(0)
+    Y += (pid * BLOCK_SIZE_M - 1) * y_stride_r
+    X += (pid * BLOCK_SIZE_M - 1) * x_stride_r
+    R += (pid * BLOCK_SIZE_M - 1) * r_stride_r
+    for i in range(BLOCK_SIZE_M):
+        if pid * BLOCK_SIZE_M + i < M:
+            Y += y_stride_r
+            X += x_stride_r
+            R += r_stride_r
 
     w = tl.load(W + cols, mask=col_mask, other=0.0).to(tl.float32)
     b = tl.load(B + cols, mask=col_mask, other=0.0).to(tl.float32)

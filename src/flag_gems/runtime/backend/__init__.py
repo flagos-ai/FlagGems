@@ -142,6 +142,9 @@ class BackendArchEvent:
             except Exception as err_msg:
                 self.error_msgs.append(err_msg)
 
+        if ops_module is not None:
+            arch_specialized_ops.extend(self.get_functions_from_module(ops_module))
+
         return arch_specialized_ops
 
 
@@ -227,6 +230,23 @@ import torch
 fn = torch.{_state.device_name}
 """
     _state.torch_device_object = get_codegen_result(code, "fn")
+
+    # SPACEMIT CPU backend needs special device guard handling
+    if vendor_name == "spacemit":
+        backends_module = importlib.import_module("flag_gems.runtime.backend._spacemit")
+        setattr(
+            _state.torch_device_object,
+            "_DeviceGuard",
+            getattr(backends_module, "_DeviceGuard"),
+        )
+        setattr(
+            _state.torch_device_object,
+            "device",
+            getattr(backends_module, "_DeviceWrapper"),
+        )
+        # Override current_device to return integer 0 for kernel cache indexing
+        setattr(_state.torch_device_object, "current_device", lambda: 0)
+
     return _state.torch_device_object
 
 
@@ -287,13 +307,12 @@ def get_unused_ops(vendor_name=None):
 
 def get_heuristic_config(vendor_name=None):
     config_name = "heuristics_config_utils"
-    default_backend = "nvidia"
-    for backend in (vendor_name, default_backend):
-        mod_name = f"_{backend}.{config_name}"
-        try:
-            _state.heuristic_config_module = importlib.import_module(mod_name)
-        except Exception:
-            continue
+    mod_name = f"_{vendor_name}.{config_name}"
+    try:
+        _state.heuristic_config_module = importlib.import_module(mod_name)
+    except Exception:
+        mod_name = f"_nvidia.{config_name}"
+        _state.heuristic_config_module = importlib.import_module(mod_name)
     return getattr(_state.heuristic_config_module, "HEURISTICS_CONFIGS", None)
 
 
