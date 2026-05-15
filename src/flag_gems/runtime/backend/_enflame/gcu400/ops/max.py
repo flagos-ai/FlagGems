@@ -175,11 +175,6 @@ def max_kernel_non_inner(
 
 def max(inp):
     logger.debug("GEMS MAX")
-    return_dtype = inp.dtype
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
-    if inp.dtype == torch.float64:
-        inp = inp.to(torch.float32)
 
     inp = inp.contiguous()
     M = inp.numel()
@@ -207,17 +202,11 @@ def max(inp):
                 inp, mid, M, block_size, num_warps=1
             )
             max_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, num_warps=1)
-    return out.to(return_dtype)
+    return out
 
 
 def max_dim(inp, dim=None, keepdim=False):
     logger.debug("GEMS MAX DIM")
-
-    return_dtype = inp.dtype
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
-    if inp.dtype == torch.float64:
-        inp = inp.to(torch.float32)
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
@@ -232,7 +221,7 @@ def max_dim(inp, dim=None, keepdim=False):
     shape_list = list(shape)
     shape_list[dim] = 1
     out_value = torch.empty(shape_list, dtype=inp.dtype, device=inp.device)
-    out_index = torch.empty(shape_list, dtype=torch.int32, device=inp.device)
+    out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
 
     if K == 1:
         BLOCK_N = min(triton.next_power_of_2(N), 4096)
@@ -264,5 +253,5 @@ def max_dim(inp, dim=None, keepdim=False):
         out_index = torch.squeeze(out_index, dim)
 
     Max_out = namedtuple("max", ["values", "indices"])
-    out = Max_out(values=out_value.to(return_dtype), indices=out_index.to(torch.int64))
+    out = Max_out(values=out_value, indices=out_index)
     return out
