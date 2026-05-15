@@ -4,7 +4,6 @@ from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
-from flag_gems.fused.DSA.router_gemm_bf16_fp32 import router_gemm_bf16_fp32
 from flag_gems.fused.FLA import (
     chunk_gated_delta_rule_fwd,
     fused_recurrent_gated_delta_rule_fwd,
@@ -41,6 +40,7 @@ from flag_gems.fused.outer import outer
 from flag_gems.fused.reglu import dreglu, reglu
 from flag_gems.fused.reshape_and_cache import reshape_and_cache
 from flag_gems.fused.reshape_and_cache_flash import reshape_and_cache_flash
+from flag_gems.fused.router_gemm_bf16_fp32 import router_gemm_bf16_fp32
 from flag_gems.fused.rotary_embedding import apply_rotary_pos_emb
 from flag_gems.fused.rwkv_ka_fusion import rwkv_ka_fusion
 from flag_gems.fused.rwkv_mm_sparsity import rwkv_mm_sparsity
