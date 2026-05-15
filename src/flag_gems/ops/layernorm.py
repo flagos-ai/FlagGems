@@ -29,16 +29,22 @@ def layer_norm(x, normalized_shape, weight=None, bias=None, eps=1e-5):
     logger.debug("GEMS LAYER_NORM")
     if x.numel() == 0:
         return x.clone()
-    orig = x.dtype; x = x.contiguous().float()
-    if weight is not None: weight = weight.contiguous().float()
-    if bias is not None: bias = bias.contiguous().float()
+    orig = x.dtype
+    x = x.contiguous().float()
+    if weight is not None:
+        weight = weight.contiguous().float()
+    if bias is not None:
+        bias = bias.contiguous().float()
     n = 1
-    for s in normalized_shape: n *= s
+    for s in normalized_shape:
+        n *= s
     rows = x.numel() // n
     x2d = x.reshape(rows, n)
     out = torch.empty_like(x2d)
-    if weight is None: weight = torch.ones(n, device=x.device, dtype=torch.float32)
-    if bias is None: bias = torch.zeros(n, device=x.device, dtype=torch.float32)
+    if weight is None:
+        weight = torch.ones(n, device=x.device, dtype=torch.float32)
+    if bias is None:
+        bias = torch.zeros(n, device=x.device, dtype=torch.float32)
     BS = min(triton.next_power_of_2(n), 65536)
     layer_norm_kernel[(rows,)](out, x2d, weight, bias, n, eps, BLOCK_SIZE=BS, num_warps=4)
     return out.view(x.shape).to(orig)
@@ -48,12 +54,17 @@ def layer_norm_backward(dy, x, normalized_shape, weight, bias, eps=1e-5):
     logger.debug("GEMS LAYER_NORM BACKWARD")
     if dy.numel() == 0:
         return dy.clone(), None, None
-    orig = dy.dtype; dy = dy.contiguous().float(); x = x.contiguous().float()
+    orig = dy.dtype
+    dy = dy.contiguous().float()
+    x = x.contiguous().float()
     n = 1
-    for s in normalized_shape: n *= s
+    for s in normalized_shape:
+        n *= s
     rows = x.numel() // n
-    x2d = x.reshape(rows, n); dy2d = dy.reshape(rows, n)
-    mean = x2d.mean(dim=1); var = x2d.var(dim=1, unbiased=False)
+    x2d = x.reshape(rows, n)
+    dy2d = dy.reshape(rows, n)
+    mean = x2d.mean(dim=1)
+    var = x2d.var(dim=1, unbiased=False)
     rstd = 1.0 / torch.sqrt(var + eps)
     w = weight.contiguous().float() if weight is not None else torch.ones(n, device=x.device, dtype=torch.float32)
     x_hat = (x2d - mean[:, None]) * rstd[:, None]
