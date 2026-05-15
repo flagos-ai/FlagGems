@@ -20,16 +20,25 @@ def mul_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def _mul(x, y):
-    orig = x.dtype; x = x.contiguous().float(); y = y.contiguous().float()
-    out = torch.empty_like(x); n = x.numel()
-    if n == 0: return out.to(orig)
+    orig = x.dtype
+    x = x.contiguous().float()
+    y = y.contiguous().float()
+    out = torch.empty_like(x)
+    n = x.numel()
+    if n == 0:
+        return out.to(orig)
     BS = triton.next_power_of_2(min(n, 4096))
     mul_kernel[(triton.cdiv(n, BS),)](x, y, out, n, BLOCK_SIZE=BS, num_warps=4)
     return out.to(orig)
 
 
 def mul(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS MUL"); return _mul(x, y)
+    logger.debug("GEMS MUL")
+    return _mul(x, y)
+
 
 def mul_(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS MUL_"); r = _mul(x, y); x.copy_(r); return x
+    logger.debug("GEMS MUL_")
+    r = _mul(x, y)
+    x.copy_(r)
+    return x
