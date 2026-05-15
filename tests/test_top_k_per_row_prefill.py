@@ -14,7 +14,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused.DSA.top_k_per_row_prefill import top_k_per_row_prefill
+from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
 
 device = flag_gems.device
 

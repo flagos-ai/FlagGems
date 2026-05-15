@@ -897,7 +897,6 @@ ops:
       - None
     labels:
       - fused
-      - DSA
     kind:
       - NeuralNetwork
     stages:
