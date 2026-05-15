@@ -37,4 +37,6 @@ def relu(x: torch.Tensor) -> torch.Tensor:
 
 def relu_(x: torch.Tensor) -> torch.Tensor:
     logger.debug("GEMS RELU_")
-    r = _relu(x); x.copy_(r); return x
+    r = _relu(x)
+    x.copy_(r)
+    return x
