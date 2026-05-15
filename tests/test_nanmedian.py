@@ -12,7 +12,9 @@ ASCEND_UNSUPPORTED_REFERENCE_DTYPES = (torch.bfloat16, torch.float64)
 def _filter_reference_supported(dtypes):
     if flag_gems.vendor_name == "ascend":
         return [
-            dtype for dtype in dtypes if dtype not in ASCEND_UNSUPPORTED_REFERENCE_DTYPES
+            dtype
+            for dtype in dtypes
+            if dtype not in ASCEND_UNSUPPORTED_REFERENCE_DTYPES
         ]
     return dtypes
 
@@ -170,6 +172,27 @@ def test_nanmedian_out(dtype):
 @pytest.mark.parametrize("dtype", NANMEDIAN_DTYPES)
 def test_nanmedian_dim_values(dtype):
     inp = _make_input((4, 33), dtype)
+    ref_inp = utils.to_reference(inp)
+    ref_values = torch.empty((4,), dtype=dtype, device=ref_inp.device)
+    ref_indices = torch.empty((4,), dtype=torch.long, device=ref_inp.device)
+    torch.nanmedian(ref_inp, dim=1, out=(ref_values, ref_indices))
+
+    out_values = torch.empty((4,), dtype=dtype, device=flag_gems.device)
+    out_indices = torch.empty((4,), dtype=torch.long, device=flag_gems.device)
+
+    with flag_gems.use_gems():
+        res = torch.nanmedian(inp, dim=1, out=(out_values, out_indices))
+
+    assert res.values is out_values
+    assert res.indices is out_indices
+    _assert_nanmedian_values(out_values, ref_values, dtype)
+    _assert_nanmedian_indices_valid(inp, out_values, out_indices, 1, False, dtype)
+
+
+@pytest.mark.nanmedian
+@pytest.mark.parametrize("dtype", [torch.int8, torch.uint8, torch.int16, torch.int32])
+def test_nanmedian_dim_values_large_int(dtype):
+    inp = _make_input((4, 8192), dtype)
     ref_inp = utils.to_reference(inp)
     ref_values = torch.empty((4,), dtype=dtype, device=ref_inp.device)
     ref_indices = torch.empty((4,), dtype=torch.long, device=ref_inp.device)
