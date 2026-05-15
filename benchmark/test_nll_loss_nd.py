@@ -57,7 +57,7 @@ def test_nll_loss_nd_forward():
     bench.run()
 
 
-@pytest.mark.nll_loss_nd_forward
+@pytest.mark.nll_loss_nd
 def test_nll_loss_nd_forward_perf():
     bench = NLLLossNDBenchmark(
         input_fn=nll_loss_nd_input_fn,
