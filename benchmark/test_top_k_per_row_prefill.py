@@ -17,7 +17,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
+from flag_gems.fused import top_k_per_row_prefill
 
 from . import base
 
@@ -88,7 +88,7 @@ class TopKPerRowPrefillBenchmark(base.Benchmark):
 
 
 @pytest.mark.top_k_per_row_prefill
-def test_perf_top_k_per_row_prefill():
+def test_top_k_per_row_prefill():
     bench = TopKPerRowPrefillBenchmark(
         op_name="top_k_per_row_prefill",
         torch_op=None,

@@ -14,7 +14,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
+from flag_gems.fused import top_k_per_row_prefill
 
 device = flag_gems.device
 
@@ -184,7 +184,3 @@ def test_top_k_per_row_prefill_nonzero_starts(num_rows):
     assert check_topk_values_match(
         logits, indices_test, indices_ref, row_starts, top_k
     ), f"FAIL: num_rows={num_rows}, nonzero starts"
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
