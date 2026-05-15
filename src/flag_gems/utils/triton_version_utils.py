@@ -34,3 +34,18 @@ def has_triton_tle(major: int = 0, minor: int = 0, patch: int = 0) -> bool:
 
 
 HAS_TLE = has_triton_tle()
+
+
+def has_tle_device_mesh() -> bool:
+    """Check if TLE device_mesh is available."""
+    if not HAS_TLE:
+        return False
+    try:
+        import triton.experimental.tle.language as tle_exp
+
+        return hasattr(tle_exp, "device_mesh")
+    except ImportError:
+        return False
+
+
+HAS_TLE_DEVICE_MESH = has_tle_device_mesh()

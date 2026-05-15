@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +26,8 @@ def logsumexp_kernel_non_inner(
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
     """Kernel for logsumexp when reduction dimension is not the innermost."""
-    pid_m = tle.program_id(0)
-    pid_k = tle.program_id(1)
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
 
     k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
 
@@ -86,7 +86,7 @@ def logsumexp_kernel_inner(
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
     """Kernel for logsumexp when reduction dimension is the innermost."""
-    pid_m = tle.program_id(0)
+    pid_m = ext.program_id(0)
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
         offset = pid_m * N + n_offsets
