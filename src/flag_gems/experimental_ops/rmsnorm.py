@@ -10,7 +10,7 @@ import triton.language as tl
 
 
 @triton.jit
-def rmsnorm(
+def rmsnorm_kernel(
     input_ptr,  # *Pointer* to the input tensor flattened to 2D [M, N]
     weight_ptr,  # *Pointer* to the weight tensor [N]
     output_ptr,  # *Pointer* to the output tensor flattened to 2D [M, N]
@@ -46,10 +46,6 @@ def rmsnorm(
         y = x * inv_rms * w
         tl.store(output_ptr + row_start + offs, y, mask=mask)
         col_start += BLOCK_SIZE
-
-
-# Keep a handle to the Triton kernel before defining the Python wrapper with the same name
-rmsnorm_kernel = rmsnorm
 
 
 def rmsnorm(input_tensor: torch.Tensor, weight: torch.Tensor, eps: float = 1e-6):

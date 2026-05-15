@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 #include <tuple>
+#include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 
 void reference_reshape_and_cache_flash(const torch::Tensor& key,
                                        const torch::Tensor& value,
@@ -32,8 +34,8 @@ class ReshapeAndCacheFlashTest
 TEST_P(ReshapeAndCacheFlashTest, CompareWithPureTorchReference) {
   auto [num_tokens, num_heads, head_size, block_size, dtype] = GetParam();
 
-  ASSERT_TRUE(torch::cuda::is_available());
-  torch::Device device(torch::kCUDA);
+  ASSERT_TRUE(flag_gems::test::is_device_available());
+  torch::Device device = flag_gems::test::default_device();
   auto options = torch::TensorOptions().device(device).dtype(dtype);
   auto long_options = options.dtype(torch::kLong);
 
@@ -71,11 +73,10 @@ TEST_P(ReshapeAndCacheFlashTest, CompareWithPureTorchReference) {
                                      k_scale,
                                      v_scale);
 
-  double atol = (dtype == torch::kFloat16 || dtype == torch::kBFloat16) ? 1e-2 : 1e-5;
-  double rtol = (dtype == torch::kFloat16 || dtype == torch::kBFloat16) ? 1e-2 : 1e-3;
-
-  ASSERT_TRUE(torch::allclose(key_cache_ref, key_cache_test, rtol, atol));
-  ASSERT_TRUE(torch::allclose(value_cache_ref, value_cache_test, rtol, atol));
+  auto key_result = flag_gems::accuracy_utils::gems_assert_close(key_cache_test, key_cache_ref);
+  EXPECT_TRUE(key_result.ok) << key_result.message;
+  auto value_result = flag_gems::accuracy_utils::gems_assert_close(value_cache_test, value_cache_ref);
+  EXPECT_TRUE(value_result.ok) << value_result.message;
 }
 
 INSTANTIATE_TEST_SUITE_P(ReshapeAndCacheFlashTests,

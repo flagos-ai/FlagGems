@@ -12,7 +12,7 @@ exp = tl_extra_shim.exp
 pow = tl_extra_shim.pow
 tanh = tl_extra_shim.tanh
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @triton.jit

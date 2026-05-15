@@ -7,7 +7,7 @@ import triton.language as tl
 # from flag_gems.ops.mul import mul
 from flag_gems.ops.mv import mv
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 @triton.jit

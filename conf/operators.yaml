@@ -1,0 +1,6262 @@
+ops:
+  - id: abs
+    description: |
+      Computes the absolute value of each element in `input`.
+      This is a simple wrapper of the existing torch `abs` operator.
+    for:
+      - abs
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+  - id: abs_
+    description: |
+      The in-place version of `abs()`, which is a simple wrapper of the Torch `abs` operator.
+    for:
+      - abs_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: absolute
+    description: |
+      This is an alias for `abs()` with the low-level operations implemented
+      by invoking low-level Torch operators.
+    for:
+      - absolute
+    labels:
+      - aaten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: acos
+    description: Returns a new tensor with the arccosine (in radians) of each element in `input`.
+    for:
+      - acos
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '5.0'
+  - id: act_quant_triton
+    description: This is a fused operator.
+    for:
+      - None
+    labels:
+      - fused
+    kind:
+      - Quantization
+    stages:
+      - beta: '5.1'
+  - id: adaptive_avg_pool3d
+    description: |
+      Apply a 3D adaptive average pooling over an input signal composed of several input planes.
+    for:
+      - _adaptive_avg_pool3d
+    labels:
+      - aten
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.0'
+  - id: adaptive_avg_pool3d_out
+    description: |
+      A variant of `_adaptive_avg_pool3d` that assigns the output to the `out` tensor.
+    for:
+      - _adaptive_avg_pool3d.out
+    labels:
+      - aten
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.0'
+  - id: add
+    description: |
+      Add a scalar or tensor to `self` tensor. If both `alpha` and `other` are specified,
+      each element of `other` is scaled by `alpha` before being used.
+    for:
+      - add.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+    cpp: '4.0'
+  - id: add_
+    description: The in-place version of `add()`.
+    for:
+      - add_.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: addcdiv
+    description: |
+      Performs the element-wise division of `tensor1` by `tensor2`, multiplies the result
+      by the scalar `value` and adds it to `input`.
+    for:
+      - addcdiv
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '4.0'
+  - id: addcdiv_out
+    description: |
+      A variant of `addcdiv()` that assigns the output to the given `out` parameter..
+    for:
+      - addcdiv.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.0'
+      - stable: '5.1'
+  - id: addcmul
+    description: |
+      Performs the element-wise multiplication of `tensor1` by `tensor2`,
+      multiplies the result by the scalar `value` and adds it to `input`.
+    for:
+      - addcmul
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '4.0'
+  - id: addcmul_out
+    description: |
+      A variant of `addcmul` that allows the output to be assigned to `out`.
+    for:
+      - addcmul.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.0'
+  - id: addmm
+    description: |
+      Performs a matrix multiplication of the matrices `mat1` and `mat2`.
+      The matrix `input` is added to the final result.
+    for:
+      - addmm
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '1.0'
+    cpp: '4.0'
+  - id: addmm_dtype
+    description: |
+      A variant of `addmm` that allows the dtype of the output tensor to be specified.
+      This is supported only on CUDA and for `torch.float32` given `torch.float16` or `torch.bfloat16` input dtypes.
+    for:
+      - addmm.dtype
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
+  - id: addmm_dtype_out
+    description: A variant of `addmm_dtype()` that allows the output to be saved to the provided `out` parameter.
+    for:
+      - addmm.dtype_out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
+  - id: addmm_out
+    description: |
+      A variant of `addmm` that assigns to the output to the provided `out` parameter.
+    for:
+      - addmm.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '4.0'
+  - id: addmv
+    description: |
+      Performs a matrix-vector product of the matrix `mat` and the vector `vec`.
+      The vector `input` is added to the final result.
+    for:
+      - addmv
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '4.0'
+  - id: addmv_out
+    description: |
+      Performs a matrix-vector product of the matrix `mat` and the vector `vec`.
+      The vector `input` is added to the final result.
+    for:
+      - addmv.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '4.0'
+  - id: addr
+    description: |
+      Performs the outer-product of vectors `vec1` and `vec2`
+      and adds it to the matrix `input`.
+    for:
+      - addr
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '4.0'
+  - id: alias_copy
+    description: |
+      Creates a new tensor that shares the same storage data as the original tensor,
+      but without preserving the original tensor's metadata (like shape or strides)
+      in a way that links future mutations.
+    for:
+      - alias_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.0'
+  - id: alias_copy_out
+    description: A variant of `alias_copy()` that assigns the output to the `out` tensor.
+    for:
+      - alias_copy.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.0'
+  - id: all
+    description: Tests if all elements in input evaluate to True.
+    for:
+      - all
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: all_dim
+    description: |
+      For each row of `input` in the given dimension `dim`, returns True if all elements
+      in the row evaluate to True and False otherwise.
+    for:
+      - all.dim
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: all_dims
+    description: A variant of `all`.
+    for:
+      - all.dims
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: allclose
+    description: |
+      This function checks if `input` and `other` satisfy a condition specified via
+      `atol` and `rtol` elementwise, for all elements of `input` and `other`.
+    for:
+      - allclose
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.1'
+  - id: amax
+    description: Returns the maximum value of each slice of the `input` tensor in the given dimension(s) `dim`.
+    for:
+      - amax
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '2.0'
+  - id: aminmax
+    description: |
+      Computes the minimum and maximum values of the `input` tensor.
+    for:
+      - aminmax
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: angle
+    description: Computes the element-wise angle (in radians) of the given `input` tensor.
+    for:
+      - angle
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '3.0'
+  - id: any
+    description: Tests if any element in `input` evaluates to True.
+    for:
+      - any
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: any_dim
+    description: For each row of `input` in the given dimension `dim`, returns True if any element in the row evaluate to True and False otherwise.
+    for:
+      - any.dim
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: any_dims
+    description: |
+      For each row of `input` in the given dimensions in `dims`, returns True if any element in the row evaluate to True and False otherwise.
+      The `dims` contains tuple of ints indicating the dimensions to reduce.
+    for:
+      - any.dims
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: apply_repetition_penalties
+    description: |
+      Modifies logit tensors in place to penalize tokens that have already appeared in the generated sequence.
+    for:
+      - _C.apply_repetition_penalties_
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '5.0'
+  - id: apply_rotary_pos_emb
+    description: |
+      A method to incorporate positional information into the Transformer architecture.
+      Rotary Positional Embedding (RoPE) applies position-dependent rotation to the query (Q)
+      and key (K) vectors before computing the attention score.
+    for:
+      - apply_rotary_pos_emb
+    labels:
+      - fused
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.0'
+  - id: arange
+    description: |
+      Returns a 1-D tensor of size `ceiling((end−start)/step)` with values from the interval `[start, end)`
+      taken with common difference `step` beginning from start.
+    for:
+      - arange
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+  - id: arange_start
+    description: A variant of `arange`, with `start` and/or `step` specified.
+    for:
+      - arange.start
+    labels:
+      - aten
+    kind:
+      - tensor
+    stages:
+      - stable: '2.1'
+  - id: arange_start_step
+    description: A variant of `arange`, with `start` and/or `step` specified.
+    for:
+      - arange_start_step
+    labels:
+      - aten
+    kind:
+      - tensor
+    stages:
+      - stable: '2.1'
+  - id: arcsinh
+    description: Performs an element-wise inverse hyperbolic sine computation on the given tensor.
+    for:
+      - arcsinh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: arcsinh_
+    description: The in-place version of `arcsinh()`.
+    for:
+      - arcsinh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: arcsinh_out
+    description: A variant of `arcsinh` that allows the output to be assigned to the `out` tensor.
+    for:
+      - arcsinh.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: arctanh_
+    description: |
+      Computes the element-wise inverse hyperbolic tangent of a given input tensor.
+      This is an in-place version.
+    for:
+      - arctanh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: argmax
+    description: Returns the indices of the maximum value of all elements in the `input` tensor.
+    for:
+      - argmax
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '2.0'
+    cpp: '4.0'
+  - id: argmin
+    description: Returns the indices of the minimum value(s) of the flattened tensor or along a dimension.
+    for:
+      - argmin
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '2.2'
+  - id: asinh
+    description: Returns a new tensor with the inverse hyperbolic sine of the elements of input.
+    for:
+      - asinh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: asinh_
+    description: Computes the inverse hyperbolic sine for each element of a tensor in-place.
+    for:
+      - asinh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: assert_async
+    description: |
+      A utility used to perform data-dependent assertions on GPU tensors
+      without triggering an immediate, performance-heavy GPU-to-CPU synchronization.
+    for:
+      - _assert_async
+    labels:
+      - utility
+    kind:
+      - Tensor
+    stages:
+      - stable: '5.1'
+  - id: atan
+    description: Returns a new tensor with the arctangent of the elements (in radians) in the `input` tensor.
+    for:
+      - atan
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '4.0'
+  - id: atan_
+    description: The in-place version of `atan()`.
+    for:
+      - atan_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '4.0'
+  - id: atan2
+    description: |
+      Computes the element-wise arc tangent of `input/other(y/x)`,
+      returning angles in radians between `-PI` and `PI`.
+    for:
+      - atan2
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '5.1'
+  - id: atan2_out
+    description: |
+      A variant of `atan2` that allows the output to be saved into `out`.
+    for:
+      - atan2.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: avg_pool2d
+    description: |
+      Applies 2D average-pooling operation in `kH \mul kW` regions by step size `sH \mul sW` steps.
+      The number of output features is equal to the number of input planes.
+      This is for the forward case.
+    for:
+      - avg_pool2d
+    labels:
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '4.1'
+  - id: avg_pool2d_backward
+    description: The backward version of `avg_pool2d()`.
+    for:
+      - avg_pool2d_backward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '4.1'
+  - id: avg_pool3d
+    description: |
+      Applies 3D average-pooling operation in `kD \times kH \times kW` regions by step size
+      `sD \times sH \times sW` steps.
+    for:
+      - avg_pool3d
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: avg_pool3d_backward
+    description: This is the backward version of `avg_pool3d()`.
+    for:
+      - avg_pool3d_backward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: baddbmm
+    description: |
+      Performs a batch matrix-matrix product of matrices in `batch1` and `batch2`.
+      `input` is added to the final result. `batch1` and `batch2` must be 3-D tensors
+      each containing the same number of matrices.
+    for:
+      - baddbmm
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '4.1'
+  - id: baddbmm.out
+    description: This is a variant of `baddbmm()`.
+    for:
+      - baddbmm.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
+  - id: batch_norm
+    description: An internal operator used for implementing the `BatchNorm` functionality.
+    for:
+      - native_batch_norm
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: batch_norm_backward
+    description: The backward version of `batch_norm()`.
+    for:
+      - native_batch_norm_backward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: bernoulli_
+    description: Draws binary random numbers (0 or 1) from a Bernoulli distribution.
+    for:
+      - bernoulli_.float
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: bincount
+    description: Count the frequency of each value in an array of non-negative integers.
+    for:
+      - bincount
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Reduction
+    stages:
+      - stable: '5.0'
+  - id: bitwise_and_scalar
+    description: Computes the bitwise AND of `input` and `other` scalar.
+    for:
+      - bitwise_and.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: bitwise_and_scalar_
+    description: The in-place, scalar version of `bitwise_and()`.
+    for:
+      - bitwise_and_.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: bitwise_and_scalar_tensor
+    description: A variant of `bitwise_and()`.
+    for:
+      - bitwise_and.Scalar_Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: bitwise_and_tensor
+    description: The Tensor method version of `bitwise_and()`.
+    for:
+      - bitwise_and.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: bitwise_and_tensor_
+    description: The in-place, Tensor method version of `bitwise_and()`.
+    for:
+      - bitwise_and_.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: bitwise_left_shift
+    description: Computes the left arithmetic shift of `input` by `other` bits.
+    for:
+      - bitwise_left_shift
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '4.0'
+  - id: bitwise_not
+    description: Computes the bitwise NOT of the given `input` tensor.
+    for:
+      - bitwise_not
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: bitwise_not_
+    description: The in-place version of `bitwise_not()`.
+    for:
+      - bitwise_not_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: bitwise_or_scalar
+    description: Computes the bitwise OR of scalars `input` and `other`.
+    for:
+      - bitwise_or.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: bitwise_or_scalar_
+    description: The in-place version of `bitwise_or_scalar`.
+    for:
+      - bitwise_or_.Scalar
+      - pointwise
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: bitwise_or_scalar_tensor
+    description: Computes the bitwise OR of `input` and `other`.
+    for:
+      - bitwise_or.Scalar_Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: bitwise_or_tensor
+    description: Computes the bitwise OR of `input` and `other`, this is the Tensor method variant.
+    for:
+      - bitwise_or.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: bitwise_or_tensor_
+    description: The in-place version of `bitwise_or_tensor()`.
+    for:
+      - bitwise_or_.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: bitwise_right_shift
+    description: Computes the right arithmetic shift of `input` by `other` bits.
+    for:
+      - bitwise_right_shift
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '4.0'
+  - id: bmm
+    description: Performs a batch matrix-matrix product of matrices stored in `input` and `mat2`.
+    for:
+      - bmm
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '1.0'
+    cpp: '4.0'
+  - id: bmm_out
+    description: |
+      Performs a batch matrix-matrix product of matrices stored in `input` and `mat2`.
+      This is a variant of `bmm` with `out` specified.
+    for:
+      - bmm.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '5.0'
+    cpp: '4.0'
+  - id: bucket_sort_topk
+    description: A wrapper of the TLE version and the Triton version bucket-sort topk operation.
+    for:
+      - None
+    labels:
+      - fused
+      - DSA
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: cat
+    description: Concatenates the given sequence of tensors in tensors in the given dimension.
+    for:
+      - cat
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+    cpp: '4.0'
+  - id: cat_out
+    description: A variant of `cat` that assigns the result to the provided `out` parameter.
+    for:
+      - cat.out
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+    cpp: '4.0'
+  - id: ceil
+    description: |
+      Returns a new tensor with the ceil of the elements of `input`, the smallest integer greater than
+      or equal to each element.
+    for:
+      - ceil
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '5.0'
+  - id: ceil_
+    description: The in-place version of `ceil()`.
+    for:
+      - ceil_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '5.0'
+  - id: ceil_out
+    description: A variant of `ceil()` with `out` specified.
+    for:
+      - ceil.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '5.0'
+  - id: celu
+    description: |
+      Applies the quantized CELU (Continuously Differentiable Exponential Linear Unit)
+      activation function element-wise.
+    for:
+      - celu
+    labels:
+      - aten
+      - nn.functional
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '4.0'
+  - id: celu_
+    description: The in-place version of `celu()`.
+    for:
+      - celu_
+    labels:
+      - aten
+      - nn.functional
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '4.0'
+  - id: chunk_gated_delta_rule_fwd
+    description: |
+      The forward case for `ChunkGatedDeltaRuleFunction` with Flash Linear Attention (FLA).
+    for:
+      - chunk_gated_delta_rule_fwd
+    labels:
+      - fused
+      - FLA
+    kind:
+      - Attention
+    stages:
+      - alpha: '5.0'
+  - id: clamp
+    description: Clamps all elements in `input` into the range `[min, max]`.
+    for:
+      - clamp
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: clamp_
+    description: The in-place version of `clamp()`.
+    for:
+      - clamp_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: clamp_min
+    description: A variant of `clamp()` with `min` set to `min`.
+    for:
+      - clamp_min
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '4.0'
+  - id: clamp_min_
+    description: The in-place version of `clamp_()`.
+    for:
+      - clamp_min_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '4.0'
+  - id: clamp_tensor
+    description: The tensor version of `clamp()`.
+    for:
+      - clamp.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: clamp_tensor_
+    description: The in-place, tensor version of `clamp()`.
+    for:
+      - clamp_.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: clip
+    description: This is identical to `clamp()`.
+    for:
+      - clip_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: clip_
+    description: This is identical to `clamp_()`.
+    for:
+      - clip_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: concat_and_cache_mla
+    description: |
+      Writes the latent and RoPE value into KV cache for Multi-head Latent Attention forward case.
+    for:
+      - _C_cache_ops.concat_and_cache_mla
+    labels:
+      - fused
+      - MLA
+    kind:
+      - Attention
+    stages:
+      - beta: '3.0'
+  - id: concatenate
+    description: An alias of `cat()`.
+    for:
+      - concatenate
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: conj_physical
+    description: |
+      Computes the element-wise conjugate of the given `input` tensor.
+      If `input` has a non-complex dtype, this function just returns `input`.
+    for:
+      - conj_physical
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.1'
+  - id: constant_pad_nd
+    description: |
+      Pads the input tensor boundaries with a constant value.
+      This is an IR representation, not a public API.
+    for:
+      - constant_pad_nd
+    labels:
+      - aten
+      - IR
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: contiguous
+    description: |
+      Returns a contiguous in memory tensor containing the same data as `self` tensor.
+    for:
+      - contiguous
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '2.2'
+      - removed: '4.1'
+    cpp: '4.0'
+  - id: conv1d
+    description: Applies a 1D convolution over a quantized 1D input composed of several input planes.
+    for:
+      - conv1d
+    labels:
+      - aten
+    kind:
+      - Convolution
+    stages:
+      - stable: '4.2'
+  - id: conv1d_padding
+    description: Applies a 1D convolution over a quantized 1D input composed of several input planes.
+    for:
+      - conv1d.padding
+    labels:
+      - aten
+    kind:
+      - Convolution
+    stages:
+      - stable: '4.2'
+  - id: conv2d
+    description: Applies a 2D convolution over a quantized 2D input composed of several input planes.
+    for:
+      - conv2d
+    labels:
+      - aten
+    kind:
+      - Convolution
+    stages:
+      - stable: '4.2'
+  - id: conv2d_padding
+    description: Applies a 2D convolution over a quantized 2D input composed of several input planes.
+    for:
+      - conv2d.padding
+    labels:
+      - aten
+    kind:
+      - Convolution
+    stages:
+      - stable: '4.2'
+  - id: conv3d
+    description: Applies a 3D convolution over a quantized 3D input composed of several input planes.
+    for:
+      - conv3d
+    labels:
+      - aten
+    kind:
+      - Convolution
+    stages:
+      - stable: '4.2'
+  - id: conv3d_padding
+    description: Applies a 3D convolution over a quantized 3D input composed of several input planes.
+    for:
+      - conv3d.padding
+    labels:
+      - aten
+    kind:
+      - Convolution
+    stages:
+      - stable: '4.2'
+  - id: conv_depthwise2d
+    description: A depthwise convolution for the conv2d neural network function.
+    for:
+      - _conv_depthwise2d
+    labels:
+      - aten
+      - Convolution
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '2.2'
+  - id: conv_transpose1d
+    description: |
+      Applies a 1D transposed convolution operator over an input image composed of several input planes.
+    for:
+      - conv_transpose1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - beta: '5.1'
+  - id: copy
+    description: |
+      As a wrapper of `copy_`, this operator copies elements from `src` to `out`
+      using given template for shapes.
+    for:
+      - copy
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - beta: '4.2'
+  - id: copy_
+    description: Copies the elements from `src` into `self` tensor and returns `self`.
+    for:
+      - copy_
+    condition:
+      - var: torch.version
+        op: ge
+        val: '2.4'
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '4.1'
+  - id: copysign
+    description: |
+      Create a new floating-point tensor with the magnitude of input and the sign of other, elementwise.
+    for:
+      - copysign
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: copysign_out
+    description: |
+      A variant of `copysign` that allows the output to be saved into `out`.
+    for:
+      - copysign.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: cos
+    description: Returns a new tensor with the cosine of the elements of `input` given in radians.
+    for:
+      - cos
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: cos_
+    description: The in-place version of `cos()`.
+    for:
+      - cos_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: cosh
+    description: Returns a new tensor with the hyperbolic cosine of the elements of `input`.
+    for:
+      - cosh
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '5.1'
+  - id: cosh_
+    description: This is the in-place version of `cosh()`.
+    for:
+      - cosh_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '5.1'
+  - id: cosh_out
+    description: This is an variant of `cosh()` that assigns the output to the provided `out`.
+    for:
+      - cosh.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '5.1'
+  - id: count_nonzero
+    description: |
+      Counts the number of non-zero values in the tensor `input` along the given `dim`.
+      If no `dim` is specified then all non-zeros in the tensor are counted.
+    for:
+      - count_nonzero
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: cross_entropy_loss
+    description: Computes the cross entropy loss between input logits and target.
+    for:
+      - CrossEntropyLoss
+    labels:
+      - fused
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.0'
+      - removed: '3.0'
+  - id: cudnn_convolution
+    description: |
+      A wrapper for cuDNN convolution backend.
+    for:
+      - cudnn_convolution
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: cummax
+    description: |
+      Returns a named tuple `(values, indices)` where `values` is the cumulative maximum of elements
+      of `input` in the dimension `dim`. And `indices` is the index location of each maximum value
+      found in the dimension `dim`.
+    for:
+      - cummax
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - stable: '3.0'
+  - id: cummin
+    description: |
+      Returns a named tuple `(values, indices)` where values is the cumulative minimum of elements
+      of `input` in the dimension `dim`. And `indices` is the index location of each minimum value
+      found in the dimension `dim`.
+    for:
+      - cummin
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: cumprod
+    description: Returns the cumulative product of elements of `input` in the dimension `dim`.
+    for:
+      - cumprod
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: cumprod_
+    description: This is the in-place version of `cumprod()`.
+    for:
+      - cumprod_
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: cumsum
+    destination: Returns the cumulative sum of elements of `input` in the dimension `dim`.
+    for:
+      - cumsum
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '1.0'
+  - id: cumsum_out
+    destination: |
+      Returns the cumulative sum of elements of `input` in the dimension `dim`.
+      It is a variant of `cumsum()`.
+    for:
+      - cumsum.out
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - stable: '3.0'
+  - id: cutlass_scaled_mm
+    for:
+      - cutlass_scaled_mm_sm_90
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.0'
+  - id: dgeglu
+    description: |
+      Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid function.
+      This is for the backward case.
+    for:
+      - dgeglu
+    labels:
+      - fused
+      - Transformer
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '4.2'
+      - beta: '5.0'
+      - stable: '5.0'
+  - id: diag
+    description: |
+      - If `input` is a vector (1-D tensor), then returns a 2-D square tensor
+        with the elements of `input` as the diagonal.
+      - If `input` is a matrix (2-D tensor), then returns a 1-D tensor
+        with the diagonal elements of `input`.
+    for:
+      - diag
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: diag_embed
+    description: |
+      Creates a tensor whose diagonals of certain 2D planes (specified by `dim1` and `dim2`) are filled by `input`.
+      To facilitate creating batched diagonal matrices, the 2D planes formed by the last two dimensions
+      of the returned tensor are chosen by default.
+    for:
+      - diag_embed
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: diagonal_backward
+    description: |
+      A diagonal operation returns a partial view of `input` with the its diagonal elements
+      with respect to `dim1` and `dim2` appended as a dimension at the end of the shape.
+      This is the backward case for `diagonal()`.
+    for:
+      - diagonal_backward
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '2.2'
+  - id: diff
+    description: |
+      Computes the n-th forward difference along the given dimension.
+    for:
+      - diff
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: digamma_
+    description: |
+      Computes the in-place digamma function, which is the logarithmic derivative of the Gamma function.
+    for:
+      - diagmma_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: dispatch_fused_moe_kernel
+    description: |
+      Accelerates neural network training by combining token routing (dispatch/all-to-all communication),
+      expert computation (GEMM), and result aggregation into a single GPU kernel.
+    for:
+      - dispatch_fused_moe_kernel
+    labels:
+      - fused
+      - Activation
+      - vLLM
+    kind:
+      - MoE
+    stages:
+      - beta: '5.0'
+  - id: div_scalar
+    description: This is the scalar version of `div()`.
+    for:
+      - div.Scalar
+      - divide.Scalar
+      - true_divide.Scalar
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.1'
+  - id: div_scalar_
+    description: This is the in-place version of `div_scalar()`.
+    for:
+      - div_.Scalar
+      - divide_Scalar
+      - true_divide_.Scalar
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.1'
+  - id: div_tensor
+    description: |
+      Divides each element of the input `input` by the corresponding element of `other`.
+      Note that `torch.divide()` is an alias of `torch.div()` and `torch.true_divide()`
+      is an alias of `torch.div()` with `rounding_mode=None`.
+    for:
+      - div.Tensor
+      - divide.Tensor
+      - true_divide.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.1'
+  - id: div_tensor_
+    description: This is the in-place version of `div_tensor()`.
+    for:
+      - div_.Tensor
+      - divide_.Tensor
+      - true_divide_.Tensor
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.1'
+  - id: div_out
+    description: This is an variant of `div()` with an `out` argument.
+    for:
+      - div.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '4.2'
+  - id: div_scalar_mode
+    description: |
+      Divides each element of the `input` by the corresponding element of `other`.
+      An optional `rounding_mode` can be specified.
+    for:
+      - div.Scalar_mode
+      - divide.Scalar_mode
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+  - id: div_scalar_mode_
+    description: The in-place version of `div_mode()`.
+    for:
+      - div_.Scalar_mode
+      - divide_.Scalar_mode
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: div_tensor_mode
+    description: |
+      Divides each element of the `input` by the corresponding element of `other`.
+      An optional `rounding_mode` can be specified.
+    for:
+      - div.Tensor_mode
+      - divide.Tensor_mode
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+  - id: div_tensor_mode_
+    description: The in-place version of `div_mode()`.
+    for:
+      - div_.Tensor_mode
+      - divide_.Tensor_mode
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: dot
+    description: Computes the dot product of two 1D tensors.
+    for:
+      - dot
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '3.0'
+  - id: dreglu
+    description: |
+      Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead of
+      the sigmoid function for gating. This is the backward case.
+    for:
+      - dreglu
+    labels:
+      - fused
+      - Transformer
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '4.2'
+  - id: dropout
+    description: An internal IR for implementing `torch.nn.functional.dropout`.
+    for:
+      - native_dropout
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '1.0'
+  - id: dropout_backward
+    description: The backward case of `dropout()`.
+    for:
+      - native_dropout_backward
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: dswiglu
+    description: |
+      Swish-Gated Linear Unit, a variant of GLU with the Swish activation function.
+      This is for the backward case.
+    for:
+      - dswiglu
+    labels:
+      - fused
+      - Transformer
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.0'
+  - id: dunder_ior_scalar
+    description: The scalar version of `dunder_ior_tensor`.
+    for:
+      - __ior__.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: dunder_ior_tensor
+    description: The in-place version of bitwise or operation for tensor and scalar.
+    for:
+      - __ior__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: dunder_or_scalar
+    description: The scalar version of `dunder_or_tensor`.
+    for:
+      - __or__.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: dunder_or_tensor
+    description: The in-place version of bitwise or operation for tensor and scalar.
+    for:
+      - __or__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: einsum
+    description: |
+      Sums the product of the elements of the input `operands` along dimensions specified using a notation
+      based on the Einstein summation convention.
+    for:
+      - einsum
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
+  - id: elu
+    description: Apply the Exponential Linear Unit (ELU) function element-wise.
+    for:
+      - elu
+    labels:
+      - aten
+      - nn.functional
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: elu_
+    description: The in-place version of `elu()`.
+    for:
+      - elu_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '4.0'
+  - id: elu_backward
+    description: The backward version of `elu()`.
+    for:
+      - elu_backward
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '4.0'
+  - id: embedding
+    description: |
+      Generate a simple lookup table that looks up embeddings in a fixed dictionary and size.
+      Note that the parameter sequence differs from `torch.nn.functional.embedding`.
+    for:
+      - embedding
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.1'
+    cpp: '4.0'
+  - id: embedding_backward
+    description: The backward version of `embedding()`.
+    for:
+      - embedding_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: embedding_dense_backward
+    description: Calculates the gradient of the weight matrix for a dense embedding layer during backpropagation.
+    for:
+      - embedding_dense_backward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '5.0'
+  - id: eq
+    description: Computes element-wise equality.
+    for:
+      - eq.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: eq_scalar
+    description: Computes equality between scalars.
+    for:
+      - eq.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: equal
+    description: Returns True if two tensors have the same size and elements, False otherwise.
+    for:
+      - equal
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - stable: '5.0'
+  - id: erf
+    description: Computes the error function of `input`.
+    for:
+      - erf
+      - pointwise
+    labels:
+      - aten
+    kind:
+      - Science
+    stages:
+      - stable: '2.1'
+  - id: erf_
+    description: The in-place version of `erf()`.
+    for:
+      - erf_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Science
+    stages:
+      - stable: '2.2'
+  - id: exp
+    description: Returns a new tensor with the exponential of the elements of the input tensor `input`.
+    for:
+      - exp
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+  - id: exp_
+    description: The in-place version of `exp()`.
+    for:
+      - exp_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: exp_out
+    description: A variant of `exp2()`, with `out` specified.
+    for:
+      - exp.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '4.1'
+  - id: exp2
+    description: Computes the base two exponential function of `input`.
+    for:
+      - exp2
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '4.0'
+  - id: exp2_
+    description: The in-place version of `exp2()`.
+    for:
+      - exp2_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '4.0'
+  - id: expm1
+    description: Computes the exponential of the elements minus 1 of `input`.
+    for:
+      - expm1
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: expm1_
+    description: The inplace version of `expm1`.
+    for:
+      - expm1_
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: expm1_out
+    description: A variant of `expm1` that saves the output to the specified `out`.
+    for:
+      - expm1.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: exponential_
+    description: Fills `self` tensor with elements drawn from a PDF (probability density function).
+    for:
+      - exponential_
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - stable: '2.1'
+    cpp: '4.0'
+  - id: eye
+    description: Returns a 2-D tensor with ones on the diagonal and zeros elsewhere.
+    for:
+      - eye
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '3.0'
+  - id: eye_m
+    description: |
+      Triton-based implementation of `torch.eye_m(n, m)`, using 2D tiles to split the matrix into blocks.
+    for:
+      - eye.m
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '3.0'
+  - id: feature_dropout
+    description: |
+      Applies feature dropout to the `input` tensor. Randomly zeroes out entire channels of the `input` tensor with probability `p`.
+      Each batch element has its own independent channel mask.
+    for:
+      - feature_dropout
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: feature_dropout_
+    description: The in-place version of `feature_dropout()`.
+    for:
+      - feature_dropout_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: fill_scalar
+    description: Fills a scalar with the specified value.
+    for:
+      - fill.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+    cpp: '4.0'
+  - id: fill_scalar_
+    description: The in-place version of `fill_scalar()`.
+    for:
+      - fill_.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+    cpp: '4.0'
+  - id: fill_scalar_out
+    description: A variant of `fill_scalar()` that assigns the output to an `out` tensor.
+    for:
+      - fill.Scalar_out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '5.0'
+  - id: fill_tensor
+    description: Fills a tensor with the specified value.
+    for:
+      - fill.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+    cpp: '4.0'
+  - id: fill_tensor_
+    description: The in-place version of `fill_tensor()`.
+    for:
+      - fill_.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+    cpp: '4.0'
+  - id: fill_tensor_out
+    description: A variant of `fill_tensor()` that assigns the output to an `out` tensor.
+    for:
+      - fill.Tensor_out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '5.0'
+  - id: flash_attention_forward
+    for:
+      - _flash_attention_forward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: flash_attn_varlen_func
+    description: |
+      Compute attention for sequences of variable lengths within a single batch.
+      Eliminating the need for padding.
+    for:
+      - flash_attn_varlen_func
+    labels:
+      - aten
+      - Attention
+      - FlashAttention
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.1'
+    cpp: '4.0'
+  - id: flash_attn_varlen_opt_func
+    description: A variant of `flash_attn_varlen_func` that has `lse` as an optional parameter.
+    for:
+      - flash_attn_varlen_func
+    labels:
+      - aten
+      - Attention
+      - FlashAttention
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: flash_mla
+    description: A variant of Multi-head Latent Attention (MLA).
+    for:
+      - triton_mla._forward_decode
+    labels:
+      - fused
+      - Attention
+      - vLLM
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: flash_mla_sparse_fwd
+    description: Part of the FlashMLA.
+    for:
+      - vllm.v1.attention.backends.mla.flashmla_sparse
+    labels:
+      - fused
+      - Attention
+      - vLLM
+    stages:
+      - alpha: '5.1'
+  - id: flip
+    description: Reverse the order of an n-D tensor along given axis in dims.
+    for:
+      - filp
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+  - id: floor_
+    description: |
+      Performs an in-place element-wise floor operation, rounding each element of a tensor
+      down to the nearest integer less than or equal to itself.
+    for:
+      - floor_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: floor_divide_scalar
+    description: Computes `input` divided by `other`, elementwise, and floors the result.
+    for:
+      - floor_divide.Scalar
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.1'
+  - id: floor_divide_scalar_
+    description: Computes `input` divided by `other`, elementwise, and floors the result.
+    for:
+      - floor_divide_Scalar
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+
+  - id: floor_divide_tensor
+    description: Computes `input` divided by `other`, elementwise, and floors the result.
+    for:
+      - floor_divide
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.1'
+  - id: floor_divide_tensor_
+    description: Computes `input` divided by `other`, elementwise, and floors the result.
+    for:
+      - floor_divide_.Tensor
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: fmin
+    description: |
+      Computes the element-wise minimum of two tensors, specially handling NaN values
+      by prioritizing the numerical value. Unlike `minimum()`, if one input is NaN and the other is a number,
+      `fmin()` returns the number. It supports broadcasting, type promotion, and operates on both CPU and GPU.
+    for:
+      - fmin
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: fmin_out
+    description: A variant of `fmin()` that assigns the output to the `out` tensor.
+    for:
+      - fmin.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: fp8_mqa_logits
+    description: |
+      For each token in the given E4M3 tensor, iterate all tokens from two other given tensors,
+      calculate the logit.
+    for:
+      - vllm.utils.deep_gemm.fp8_mqa_logits
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: full
+    description: |
+      Creates a tensor of size `size` filled with `fill_value`.
+      The tensor’s dtype is inferred from `fill_value`.
+    for:
+      - full
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+  - id: full_like
+    description: Returns a tensor with the same size as `input` filled with `fill_value`.
+    for:
+      - full_like
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+  - id: functional_sym_constrain_range_for_size
+    description: |
+      A low-level function used in symbolic shape analysis to restrict the possible numerical range
+      (min/max) of an unbacked symbolic integer.
+    for:
+      - _functional_sym_constrain_range_for_size
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.0'
+  - id: fused_add_rms_norm
+    for:
+      - add_rms_norm
+    labels:
+      - fused
+      - Normalization
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.0'
+    cpp: '4.0'
+  - id: fused_experts_impl
+    description: An implementation of fused MoE.
+    for:
+      - vllm.model_executor.layers.fused_moe.fused_moe.fused_experts_impl
+    labels:
+      - fused
+      - vLLM
+      - MoE
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: fused_moe
+    description: The generic interface for fused MoE.
+    for:
+      - vllm.model_executor.layers.fused_moe.fused_moe.fused_experts_impl
+    labels:
+      - fused
+      - vLLM
+      - MoE
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: fused_recurrent_gated_delta_rule_fwd
+    description: |
+      The forward case for `fused_recurrent_gated_delta_rule` used in Flash Linear Attention (FLA).
+    for:
+      - fused_recurrent_gated_delta_rule_fwd
+    labels:
+      - fused
+      - FLA
+    kind:
+      - Attention
+    stages:
+      - alpha: '5.0'
+  - id: gather
+    description: Gathers values along an axis specified by `dim`.
+    for:
+      - gather
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: gather_backward
+    description: The backward version of `gather()`.
+    for:
+      - gather_backward
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: gcd
+    description: Computes the element-wise greatest common divisor (GCD) of `input` and `other`.
+    for:
+      - gcd
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: gcd_out
+    description: A variant of `gcd()` that allows the output to be assigned to the specified `out`.
+    for:
+      - gcd.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: ge
+    description: Computes `input` is greater or equal to `other` element-wise.
+    for:
+      - ge.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: ge_scalar
+    description: The scalar version of `ge()`.
+    for:
+      - ge.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: geglu
+    description: Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid function.
+    for:
+      - geglu
+    labels:
+      - fused
+      - Activation
+      - Transformer
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '4.2'
+  - id: gelu
+    description: |
+      Apply Cumulative Distribution Function for Gaussian Distribution function element-wise.
+    for:
+      - gelu
+    labels:
+      - aten
+      - pointwise
+      - Activation
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '1.0'
+  - id: gelu_
+    description: The in-place version of `gelu()`.
+    for:
+      - gelu_
+    labels:
+      - aten
+      - Activation
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: gelu_and_mul
+    description: An activation function for GeGLU.
+    for:
+      - GeluAndMul
+    labels:
+      - fused
+      - pointwise
+      - Activation
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.0'
+  - id: gelu_backward
+    description: The backward version of `gelu()`.
+    for:
+      - gelu_backward
+    labels:
+      - aten
+      - Activation
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: get_paged_mqa_logits_metadata
+    description: Build scheduling metadata for paged MQA logits.
+    for:
+      vllm.utils.deep_gemm.get_paged_mqa_logits_metadata
+    labels:
+      - vLLM
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: get_scheduler_metadata
+    description: |
+      Computes scheduling metadata for attention work partitioning so that
+      CPU computations can be routed to ISA-specific kernel implmentations.
+      The metadata is stored in a tensor.
+    for:
+      - get_scheduler_metadata
+    labels:
+      - NoCPU
+      - vLLM
+    kind:
+      - Attention
+    stages:
+      - stable: '4.0'
+  - id: glu
+    description: Gated Linear Unit activation for modulating the output of a linear transformation with a gate.
+    for:
+      - glu
+    labels:
+      - aten
+      - Activation
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: glu_backward
+    description: The backward version of `glu()`.
+    for:
+      - glu_backward
+    labels:
+      - aten
+      - Activation
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '4.0'
+  - id: greater
+    description: Test if input is greater than `other` elementwise.
+    for:
+      - greater.Tensor
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '5.1'
+  - id: greater_out
+    description: A variant of `greater` that saves the output to the specified `out`.
+    for:
+      - greater.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '5.1'
+  - id: greater_scalar
+    description: A variant of `greater` for scalar variables.
+    for:
+      - greater.Scalar
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '5.1'
+  - id: greater_scalar_out
+    description: A variant of `greater_out` that saves the output to the specified `out`.
+    for:
+      - greater.Scalar_out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '5.1'
+  - id: grid_sample
+    description: |
+      Given an `input` and a flow-field `grid`, computes the `output` using `input` values and
+      pixel locations from `grid`.
+    for:
+      - nn.functional.grid_sample
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: group_norm
+    description: An internal IR for applying Group Normalization for last certain number of dimensions.
+    for:
+      - native_group_norm
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.0'
+  - id: group_norm_backward
+    description: The backward case for `group_norm()`.
+    for:
+      - native_group_norm_backward
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: grouped_mm
+    description: |
+      Grouped matrix multiply is a functional operator designed to accelerate Mixture-of-Experts (MoE) models
+      by computing multiple matrix multiplications in a single kernel launch.
+    for:
+      - _grouped_mm
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
+  - id: grouped_topk
+    description: |
+      A specialized routing mechanism used in Mixture-of-Experts (MoE) models (like DeepSeek-V3/R1)
+      to select top-k experts by first grouping them, rather than selecting globally.
+    for:
+      - _moe_C.grouped_topk
+    labels:
+      - fused
+      - NoCPU
+      - vLLM
+    kind:
+      - MoE
+    stages:
+      - stable: '5.0'
+  - id: gt
+    description: Computes that `input` is greater than `other` element-wise.
+    for:
+      - gt.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: gt_scalar
+    description: The scalar version of `gt()`.
+    for:
+      - gt.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: hardsigmoid
+    description: |
+      An activation function that provides a piecewise linear approximation of the standard sigmoid function,
+      mapping inputs to a range between 0 and 1.
+    for:
+      - hardsigmoid
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: hardsigmoid_out
+    description: |
+      A variant of `hardsigmoid` that supports an output tensor to receive the result.
+    for:
+      - hardsigmoid.out
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: hardswish_
+    description: |
+      Applies the Hard Swish activation function, commonly used in models like MobileNetV3
+      to improve accuracy while reducing computational cost compared to traditional Swish.
+      This is an in-place version.
+    for:
+      - hardswish_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+      - Activation
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: hc_split_sinkhorn_forward
+    description: |
+      Computes a differentiable approximation of the Wasserstein distance (Optimal Transport)
+      between two probability distributions or point clouds.
+    for:
+      - None
+    labels:
+      - fused
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: hstack
+    description: |
+      Stack tensors in sequence horizontally (column wise). This is equivalent to concatenation
+      along the first axis for 1-D tensors, and along the second axis for all other tensors.
+    for:
+      - hstack
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: hypot
+    description: |
+      Given the legs of a right triangle, return its hypotenuse.
+      The shapes of both input tensors must be broadcastable.
+    for:
+      - hypot
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: hypot_out
+    description: |
+      Given the legs of a right triangle, return its hypotenuse.
+      The shapes of both input tensors must be broadcastable.
+      This is a variant of `hypot` that allows the output to be a different tensor.
+    for:
+      - hypot.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: i0
+    description: |
+      Computes the modified Bessel function of the first kind of order zero element-wise for a given input tensor.
+    for:
+      - i0
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: i0_
+    description: The inplace version of `i0`.
+    for:
+      - i0_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: i0_out
+    description: A variant of `i0` that assigns the output to the `out` tensor.
+    for:
+      - i0.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: index
+    description: |
+      Extract, access or modify specific elements, slices, or subsets of data within a tensor.
+      The location of data is specified for each dimension, starting from index 0.
+    for:
+      - index.Tensor
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - alpha: '3.0'
+      - beta: '4.0'
+      - stable: '4.2'
+  - id: index_add
+    description: |
+      Accumulate the elements of `alpha` times `source` into the `input` tensor
+      by adding to the indices in the order given in `index`.
+    for:
+      - index_add
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: index_add_
+    description: The in-place version of `index_add()`.
+    for:
+      - index_add_
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '4.0'
+  - id: index_put
+    description: |
+      Puts values from the tensor `values` into the tensor `input` using the indices specified
+      in `indices` (which is a tuple of Tensors).
+    for:
+      - index_put
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: index_put_
+    description: The in-place version of `index_put()`.
+    for:
+      - index_put_
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '3.0'
+  - id: index_put_impl
+    description: An internal C++ function that handles the heavy lifting for placing values into a tensor at specific indices.
+    for:
+      - _index_put_impl_
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: index_select
+    description: |
+      Returns a new tensor which indexes the `input` tensor along dimension `dim`
+      using the entries in `index`.
+    for:
+      - index_select
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+  - id: inplace_fused_experts
+    description: This operator writes output directly to `hidden_states`.
+    for:
+      - inplace_fused_experts
+    labels:
+      - fused
+      - Activation
+      - vLLM
+    kind:
+      - MoE
+    stages:
+      - beta: '5.0'
+  - id: instance_norm
+    description: |
+      Apply Instance Normalization independently for each channel in every data sample within a batch.
+    for:
+      - instance_norm
+    labels:
+      - fused
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+      - removed: '3.0'
+      - beta: '5.1'
+  - id: is_all_true
+    description: The low-level implementation for checking if all elements in a tensor are True.
+    for:
+      - _is_all_true
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: isclose
+    description: |
+      Returns a new tensor with boolean elements representing if each element of `input`
+      is "close" to the corresponding element of `other`.
+      The closeness is defined with `rtol` and `atol`.
+    for:
+      - isclose
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.1'
+  - id: isfinite
+    description: Returns a new tensor with boolean elements representing if each element is finite or not.
+    for:
+      - isfinite
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.1'
+  - id: isin
+    description: |
+      Tests if each element of `elements` is in `test_elements`.
+      Returns a boolean tensor of the same shape as `elements` that is True
+      for elements in `test_elements` and False otherwise.
+    for:
+      - isin.Tensor_Tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: isin_scalar_tensor
+    description: A variant of `isin()`.
+    for:
+      - isin.Scalar_Tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: isin_tensor_scalar
+    description: A variant of `isin()`.
+    for:
+      - isin.Tensor_Scalar
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: isinf
+    description: Tests if each element of `input` is infinite (positive or negative infinity) or not.
+    for:
+      - isinf
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: isnan
+    description: Returns a new tensor with boolean elements representing if each element of `input` is NaN or not.
+    for:
+      - isnan
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: isneginf
+    description: Tests if each element of `input` is negative infinity or not.
+    for:
+      - isneginf
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '5.1'
+  - id: isneginf_out
+    description: A variant of `isneginf` that saves the output to the specified `out`.
+    for:
+      - isneginf.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '5.1'
+  - id: kron
+    description: Computes the Kronecker product of `input` and `other`.
+    for:
+      - kron
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '2.2'
+  - id: layer_norm
+    description: An internal IR for applying Layer Normalization for last certain number of dimensions.
+    for:
+      - native_layer_norm
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '1.0'
+  - id: layer_norm_backward
+    description: The backward case for `layer_norm()`.
+    for:
+      - native_layer_norm_backward
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - stable: '3.0'
+  - id: le
+    description: Computes that `input` is less than or equal to `other` element-wise.
+    for:
+      - le.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: le_scalar
+    description: The scalar version of `le()`.
+    for:
+      - le.Scalar
+      - pointwise
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: leaky_relu
+    description: Applies the LeakyReLU function element-wise.
+    for:
+      - leaky_relu
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: leaky_relu_
+    description: The in-place version of `leaky_relu()`.
+    for:
+      - leaky_relu_
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: leaky_relu_out
+    description: A variant of `leaky_relu()`.
+    for:
+      - leaky_relu.out
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: lerp_scalar
+    description: The scalar version of `lerp()`.
+    for:
+      - lerp.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '3.0'
+  - id: lerp_scalar_
+    description: The in-place, scalar version of `lerp()`.
+    for:
+      - lerp_.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '3.0'
+  - id: lerp_tensor
+    description: |
+      Performs a linear interpolation of two tensors `start` (given by `input`) and `end`
+      based on a scalar or tensor `weight` and returns the resulting `out` tensor.
+    for:
+      - lerp.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '3.0'
+  - id: lerp_tensor_
+    description: The in-place version of `lerp()`.
+    for:
+      - lerp_.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '3.0'
+  - id: lift_fresh_copy
+    description: |
+      Creates a new, independent copy of a tensor within a compiled graph.
+    for:
+      - lift_fresh_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.0'
+  - id: linspace
+    description: |
+      Creates a one-dimensional tensor of size `steps` whose values are evenly spaced from `start` to `end`, inclusive.
+    for:
+      - linspace
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: log
+    description: Returns a new tensor with the natural logarithm of the elements of `input`.
+    for:
+      - log
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: log10
+    description: Returns a new tensor with the logarithm to the base 10 of the elements of `input`.
+    for:
+      - log10
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: log10_
+    description: The in-place version of `log10()`.
+    for:
+      - log10_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: log10_out
+    description: A variant of `log10()` that assigns the output to the provided `out`.
+    for:
+      - log10_out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: log1p_
+    description: |
+      Computes the natural logarithm of `1+x(y_i=log_e(x_i+1))` for each element in the input tensor in-place.
+    for:
+      - log1p_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: log_sigmoid
+    description: Applies the Logsigmoid function element-wise.
+    for:
+      - LogSigmoid
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: log_softmax
+    description: An internal IR for applying a softmax followed by a logarithm.
+    for:
+      - _log_softmax
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '2.0'
+      - stable: '3.0'
+  - id: log_softmax_backward_data
+    description: |
+      Computes the gradient of the input tensor with respect to a `log_softmax` operation
+      during backpropagation.
+    for:
+      - _log_softmax_backward_data
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.0'
+  - id: log_softmax_backward_data_out
+    description: |
+      A variant of `_log_softmax_backward_data` that assigns the output to the `out` tensor.
+    for:
+      - _log_softmax_backward_data.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.0'
+  - id: log_softmax_out
+    description: An internal IR for applying a softmax followed by a logarithm.
+    for:
+      - _log_softmax.out
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '2.0'
+      - stable: '3.0'
+  - id: logaddexp
+    description: Computes the element-wise logarithm of the sum of the exponentials of two input tensors.
+    for:
+      - logaddexp
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: logaddexp_out
+    description: A variant of `logaddexp` that allows the output to be assigned to an `out` tensor.
+    for:
+      - logaddexp.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: logical_and
+    description: |
+      Computes the element-wise logical AND of the given `input` tensors.
+      Zeros are treated as False and nonzeros are treated as True.
+    for:
+      - logical_and
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: logical_and_
+    description: The in-place version of `logical_and()`.
+    for:
+      - logical_and_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '5.0'
+  - id: logical_not
+    description: Computes the element-wise logical NOT of the given `input` tensor.
+    for:
+      - logical_not
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: logical_or
+    description: Computes the element-wise logical OR of the given input tensors.
+    for:
+      - logical_or
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: logical_or_
+    description: The in-place version of `logical_or()`.
+    for:
+      - logical_or_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '5.0'
+  - id: logical_xor
+    description: Computes the element-wise logical XOR of the given input tensors.
+    for:
+      - logical_xor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: logit
+    description: |
+      Returns a new tensor with the logit of the elements of `input`.
+      `input` is clamped to `[eps, 1-eps]` when `eps` is not None.
+      When eps is None and `input<0` or `input>1`, the function will yield NaN.
+    for:
+      - logit
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.0'
+  - id: logit_
+    description: The in-place version of `logit()`.
+    for:
+      - logit_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.0'
+  - id: logit_out
+    description: |
+      A variant of `logit` that allows the output to be assigned to another tensor.
+    for:
+      - logit.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.0'
+  - id: logspace
+    description: |
+      Creates a one-dimensional tensor of size `steps` whose values are evenly spaced
+      from `base^start` to `base^end`, inclusive, on a logarithmic scale with base `base`.
+    for:
+      - logspace
+    labels:
+      - aten
+    kind:
+      - tensor
+    stages:
+      - stable: '4.0'
+  - id: lt
+    description: Computes that `input` is less than `other` element-wise.
+    for:
+      - lt.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: lt_scalar
+    description: The scalar version of `lt`.
+    for:
+      - lt.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: margin_ranking_loss
+    description: Compute the margin ranking loss.
+    for:
+      - margin_ranking_loss
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.0'
+      - beta: '5.1'
+  - id: masked_fill
+    description: Fills elements of given tensor with `value` where `mask` is True.
+    for:
+      - masked_fill.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - alpha: '2.1'
+      - stable: '2.2'
+  - id: masked_fill_
+    description: The in-place version of `masked_fill()`.
+    for:
+      - masked_fill_.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: masked_fill_scalar
+    description: Fills elements of given tensor with `value` where `mask` is True.
+    for:
+      - masked_fill.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - alpha: '2.1'
+      - stable: '2.2'
+  - id: masked_fill_scalar_
+    description: The in-place version of `masked_fill()`.
+    for:
+      - masked_fill_.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: masked_scatter
+    description: Copies elements from `source` into the given tensor at positions where the `mask` is True.
+    for:
+      - masked_scatter
+    labels:
+      - aten
+    kind:
+      - tensor
+    stages:
+      - stable: '4.2'
+  - id: masked_scatter_
+    description: The in-place version of `masked_scatter()`.
+    for:
+      - masked_scatter_
+    labels:
+      - aten
+    kind:
+      - tensor
+    stages:
+      - stable: '4.2'
+  - id: masked_select
+    description: |
+      Returns a new 1-D tensor which indexes the `input` tensor according to
+      the boolean mask `mask` which is a BoolTensor.
+    for:
+      - masked_select
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+  - id: max
+    description: Returns the maximum value of all elements in the `input` tensor.
+    for:
+      - max
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '2.0'
+    cpp: '4.0'
+  - id: max_dim
+    description: |
+      Returns a namedtuple `(values, indices)` where `values` is the maximum value
+      of each row of the `input` tensor in the given dimension `dim`.
+      And `indices` is the index location of each maximum value found (argmax).
+    for:
+      - max.dim
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '2.0'
+    cpp: '4.0'
+  - id: max_pool2d_backward
+    description: |
+      Applies a 2D max pooling over an input signal composed of several input planes.
+      This is an IR representation rather than a public API and it is for the backward step.
+    for:
+      - max_pool2d_backward
+    labels:
+      - aten
+    kind:
+      - IR
+    stages:
+      - stable: '4.0'
+  - id: max_pool2d_with_indices
+    description: |
+      Applies a 2D max pooling over an input signal composed of several input planes.
+      This is an IR representation rather than a public API.
+    for:
+      - max_pool2d_with_indices
+    labels:
+      - aten
+    kind:
+      - IR
+    stages:
+      - stable: '4.0'
+  - id: max_pool3d_backward
+    description: The backward version of `max_pool2d_with_indices()`.
+    for:
+      - nn.functional.max_pool3d
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: max_pool3d_with_indices
+    description: Applies a 3D max pooling over an input signal composed of several input planes.
+    for:
+      - nn.functional.max_pool3d
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: maximum
+    description: Computes the element-wise maximum of `input` and `other`.
+    for:
+      - maximum
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.1'
+  - id: mean
+    description: Returns the mean value of all elements in the `input` tensor. Input must be floating point or complex.
+    for:
+      - mean
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '1.0'
+  - id: mean_dim
+    description: |
+      Returns the mean value of each row of the `input` tensor in the given dimension `dim`.
+      If `dim` is a list of dimensions, reduce over all of them.
+    for:
+      - mean.dim
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - stable: '2.0'
+  - id: hc_head_fused_kernel
+    description: |
+      The head fusion kernel for MHC (Manifold-Constrained Hyper-Connections).
+      This fused implementation computes RMS-normalized hidden states and applies
+      per-head weighted mixing to produce the output activations.
+    for:
+      - mhc_head_fused_kernel
+    labels:
+      - fused
+      - vLLM
+      - DSA
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.2'
+  - id: mhc_bwd
+    description: |
+      The backward case for MHC (Manifold-Constrained Hyper-Connections).
+      This is the Triton implmentation for Sinkhorn implicit CG differentiation.
+      It computes the gradient of the Sinkhorn normalization using implicit differentiation via the conjugate gradient method.
+    for:
+      - mhc_bwd
+    labels:
+      - fused
+      - vLLM
+      - DSA
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: mhc_post
+    description: Triton implementation of mHC Post operator (optimized v3).
+    for:
+      - mhc_post
+    labels:
+      - fused
+      - vLLM
+      - DSA
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: mhc_pre
+    description: Triton implementation of mHC Pre operator (optimized v2).
+    for:
+      - vllm.model_executor.layers.mhc.mhc_pre
+    labels:
+      - fused
+      - vLLM
+      - DSA
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: min
+    description: Returns the minimum value of all elements in the `input` tensor.
+    for:
+      - min
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.0'
+  - id: min_dim
+    description: |
+      Returns a namedtuple `(values, indices)` where `values` is the minimum value of
+      each row of the `input` tensor in the given dimension `dim`.
+      And `indices` is the index location of each minimum value found (argmin).
+    for:
+      - min.dim
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '2.0'
+  - id: minimum
+    description: Computes the element-wise minimum of `input` and `other`.
+    for:
+      - minimum
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.1'
+  - id: mm
+    description: Performs a matrix multiplication of the two input matrices.
+    for:
+      - mm
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '1.0'
+    cpp: '4.0'
+  - id: mm_out
+    description: A variant of `mm()` with `out` specified.
+    for:
+      - mm.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '3.0'
+    cpp: '4.0'
+  - id: moe_align_block_size_triton
+    description: |
+      Aligns the token distribution across experts to be compatible with block size
+      for matrix multiplication.
+    for:
+      - _moe_C.align_block_size
+    labels:
+      - fused
+      - Reduction
+      - vLLM
+    kind:
+      - MoE
+    stages:
+      - beta: '4.0'
+      - stable: '4.2'
+  - id: moe_sum
+    description: |
+      An implementation of Mixture of Experts (MoE) with sum-based aggregation
+      instead of the more common weighted average.
+    for:
+      - _moe_C.moe_sum
+    labels:
+      - fused
+      - Reduction
+      - vLLM
+    kind:
+      - MoE
+    stages:
+      - stable: '4.2'
+  - id: mse_loss
+    description: Compute the element-wise mean squared error, with optional weighting.
+    for:
+      - mse_loss
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: smooth_l1_loss
+    description: Compute the smooth L1 loss between input and target tensors.
+    for:
+      - smooth_l1_loss
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: smooth_l1_loss_backward
+    description: Compute the gradient of smooth L1 loss with respect to the input tensor.
+    for:
+      - smooth_l1_loss_backward
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: mul
+    description: Multiplies `input` by `other`.
+    for:
+      - mul.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+  - id: mul_
+    description: The in-place version of `mul()`.
+    for:
+      - mul_.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: multinomial
+    description: |
+      Returns a tensor where each row contains `num_samples` indices sampled
+      from the multinomial probability distribution located in the corresponding row
+      of tensor `input`.
+    for:
+      - multinomial
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - stable: '2.1'
+  - id: mv
+    description: Performs a matrix-vector product of the matrix `input` and the vector `vec`.
+    for:
+      - mv
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '2.0'
+  - id: nan_to_num
+    description: |
+      Replaces `NaN`, positive infinity, and negative infinity values in `input`
+      with the values specified by `nan`, `posinf`, and `neginf`, respectively.
+    for:
+      - nan_to_num
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '3.0'
+  - id: ne
+    description: Computes that `input` is not equal to `other` element-wise.
+    for:
+      - ne.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: ne_scalar
+    description: The scalar version of `ne()`.
+    for:
+      - ne.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: neg
+    description: Returns a new tensor with the negative of the elements of `input`.
+    for:
+      - neg
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: neg_
+    description: The in-place version of `neg()`.
+    for:
+      - neg_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: new_full
+    description: |
+      Returns a Tensor of size `size` filled with `fill_value`.
+      By default, the returned Tensor has the same `torch.dtype` and `torch.device`
+      as this tensor.
+    for:
+      - new_full.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: nll_loss_backward
+    description: Compute the negative log likelihood loss. This is the backward case.
+    for:
+      - nll_loss_backward
+    labels:
+      - aten
+      - IR
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: nll_loss_forward
+    description: Compute the negative log likelihood loss. This is the forward case.
+    for:
+      - nll_loss_forward
+    labels:
+      - aten
+      - IR
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: nll_loss2d_backward
+    description: |
+      An internal IR for supporting `torch.nn.NLLLoss2d`, which has been deprecated
+      and is now integrated into the standard `torch.nn.NLLLoss`.
+      This is the backward case.
+    for:
+      - nll_loss2d_backward
+    labels:
+      - aten
+      - IR
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: nll_loss2d_forward
+    description: |
+      An internal IR for supporting `torch.nn.NLLLoss2d`, which has been deprecated
+      and is now integrated into the standard `torch.nn.NLLLoss`. This is the forward case.
+    for:
+      - nll_loss2d_forward
+    labels:
+      - aten
+      - IR
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: nll_loss_nd_backward
+    description: |
+      Measures the performance of a classification model by penalizing low probabilities for correct classe.s
+      This computes the gradients of this loss with respect to model parameters using automatic differentiation.
+    for:
+      - nll_loss_nd_backward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '5.0'
+  - id: nll_loss_nd_forward
+    description: |
+      Measures the performance of a classification model by calculating the negative log probability
+      of the true class. This defines the computation flow, transforming input data through layers
+      to produce output predictions.
+    for:
+      - nll_loss_nd_forward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '5.0'
+  - id: nonzero
+    description: |
+      Returns a 2-D tensor where each row is the index for a nonzero value.
+      When `as_tuple` is explicitly set to True, this returns a tuple of 1-D index tensors,
+      allowing for advanced indexing of all nonzero values.
+    for:
+      - nonzero
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+    cpp: '4.0'
+  - id: normal_float_float_
+    description: |
+      Returns a tensor of random numbers drawn from separate normal distributions
+      whose mean and standard deviation are given.
+      This is one of the variants that takes a float `mean` and a float `std`.
+    for:
+      - normal_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Distribution
+    stages:
+      - stable: '5.0'
+  - id: normal_float_tensor
+    description: |
+      Returns a tensor of random numbers drawn from separate normal distributions
+      whose mean and standard deviation are given.
+      This is one of the variants that takes a float `mean` and a tensor `std`.
+    for:
+      - normal.float_Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Distribution
+    stages:
+      - stable: '2.1'
+  - id: normal_tensor_float
+    description: |
+      Returns a tensor of random numbers drawn from separate normal distributions
+      whose mean and standard deviation are given.
+      This is one of the variants that takes a tensor `mean` and a float `std`.
+    for:
+      - normal.Tensor_float
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Distribution
+    stages:
+      - stable: '2.1'
+  - id: normal_tensor_tensor
+    description: |
+      Returns a tensor of random numbers drawn from separate normal distributions
+      whose mean and standard deviation are given.
+      This is one of the variants that takes a tensor `mean` and a tensor `std`.
+    for:
+      - normal.Tensor_Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Distribution
+    stages:
+      - stable: '2.1'
+  - id: normed_cumsum
+    description: |
+      Get the normalized cumulative sum where each step is divided by the total sum
+      of the dataset, resulting in values ranging from 0 to 1.
+      Internally used by the `multinomial` operator.
+    for:
+      - normed_cumsum
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - stable: '2.1'
+  - id: one_hot
+    description: |
+      Takes LongTensor with index values of shape `(*)` and returns a tensor of shape `(*, num_classes)`
+      that have zeros everywhere except where the index of last dimension matches the corresponding value
+      of the input tensor, in which case it will be 1.
+    for:
+      - one_hot
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '5.0'
+  - id: ones
+    description: |
+      Returns a tensor filled with the scalar value 1, with the shape defined
+      by the variable argument `size`.
+    for:
+      - ones
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+  - id: ones_like
+    description: Returns a tensor filled with the scalar value 1, with the same size as `input`.
+    for:
+      - ones_like
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+  - id: outer
+    description: |
+      Computes outer product of self and the input vector.
+      If the self tensor is a vector of size `n` and the input tensor is a vector of size `m`,
+      the `out` tensor (if specified) must be a matrix of size `n * m`.
+    for:
+      - outer.Tensor
+    labels:
+      - fused
+    kind:
+      - BLAS
+    stages:
+      - stable: '2.0'
+  - id: outplace_fused_experts
+    description: This operator allocates and returns a new output tensor.
+    for:
+      - outplace_fused_experts
+    labels:
+      - fused
+      - Activation
+      - vLLM
+    kind:
+      - MoE
+    stages:
+      - beta: '5.0'
+  - id: pad
+    description: This pads a tenor using the specified mode.
+    for:
+      - pad
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.1'
+  - id: per_token_group_quant_fp8
+    description: |
+      Function to perform per-token-group quantization on an input tensor `x`.
+      It converts the tensor values into signed float8 values and returns the
+      quantized tensor along with the scaling factor used for quantization.
+    for:
+      - _C.per_token_group_fp8_quant
+    labels:
+      - NoCPU
+      - vLLM
+    kind:
+      - Quantization
+    stages:
+      - alpha: '4.2'
+  - id: pixel_shuffle
+    description: Rearranges elements in a tensor to a new tensor of different shape.
+    for:
+      - pixel_shuffle
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: pixel_unshuffle
+    description: |
+      Rearranges elements from a low-resolution feature map with many channels
+      into a higher-resolution feature map with fewer channels.
+    for:
+      - pixel_unshuffle
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: pixel_unshuffle_out
+    description: A variant of `pixel_unshuffle` that assigns the output to the `out` tensor.
+    for:
+      - pixel_unshuffle.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: poisson
+    description: |
+      Returns a tensor of the same size as `input` with each element sampled
+      from a Poisson distribution with rate given by the corresponding element in `input`.
+    for:
+      - poisson
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: polar
+    description: |
+      Constructs a complex tensor whose elements are Cartesian coordinates corresponding to
+      the polar coordinates with absolute value `abs` and angle `angle`.
+    for:
+      - polar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '3.0'
+  - id: pow_scalar
+    description: |
+      Takes the power of each element in `input` with `exponent` and returns a tensor with the result.
+      The input is a single float, while the `exponent` is a tensor.
+    for:
+      - pow.Scalar
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+  - id: pow_tensor_scalar
+    description: |
+      Takes the power of each element in `input` with `exponent` and returns a tensor with the result.
+      The input is a tensor, while the `exponent` is a float.
+    for:
+      - pow.Tensor_Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+  - id: pow_tensor_scalar_
+    description: This is the in-place version of `pow_tensor_scalar()`.
+    for:
+      - pow_.Scalar
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: pow_tensor_tensor
+    description: |
+      Takes the power of each element in `input` with `exponent` and returns a tensor with the result.
+      The input is a tensor, while the `exponent` is also a tensor.
+    for:
+      - pow.Tensor_Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+  - id: pow_tensor_tensor_
+    description: This is the in-place version of `pow_tensor_tensor()`.
+    for:
+      - pow_.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: prelu
+    description: |
+      An activation function used in neural networks that improves upon ReLU (Rectified Linear Unit)
+      by allowing the network to learn the slope of negative inputs.
+      It performs an element-wise operation that keeps positive values and scales negative values
+      by a learnable parameter.
+    for:
+      - prelu
+    labels:
+      - aten
+      - Activation
+      - pointwise
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: prod
+    description: Returns the product of all elements in the `input` tensor.
+    for:
+      - prod
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '2.0'
+  - id: prod_dim_int
+    description: Returns the product of each row of the `input` tensor in the given dimension `dim`.
+    for:
+      - prod.dim_int
+    kind:
+      - Reduction
+    stages:
+      - stable: '2.0'
+    labels:
+      - aten
+  - id: quantile
+    description: Computes the q-th quantiles of each row of the `input` tensor along the dimension `dim`.
+    for:
+      - quantile
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: rand
+    description: Returns a tensor filled with random numbers from a uniform distribution on the interval `[0,1)`.
+    for:
+      - rand
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - stable: '2.1'
+  - id: rand_like
+    description: |
+      Returns a tensor with the same size as `input` that is filled with random numbers
+      from a uniform distribution on the interval `[0,1)`.
+    for:
+      - rand_like
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - stable: '2.1'
+  - id: randn
+    description: |
+      Returns a tensor filled with random numbers from a normal distribution with mean 0
+      and variance 1 (also called the standard normal distribution).
+    for:
+      - randn
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - stable: '2.1'
+  - id: randn_like
+    description: |
+      Returns a tensor with the same size as `input` that is filled with random numbers
+      from a normal distribution with mean 0 and variance 1.
+    for:
+      - randn_like
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - stable: '2.1'
+  - id: randperm
+    description: Returns a random permutation of integers from `0` to `n - 1`.
+    for:
+      - randperm
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - stable: '2.2'
+  - id: reciprocal
+    description: Returns a new tensor with the reciprocal of the elements of `input`.
+    for:
+      - reciprocal
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+  - id: reciprocal_
+    description: This is the in-place version of `reciprocal()`.
+    for:
+      - reciprocal_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: reflection_pad1d
+    description: |
+      Pads the input 3D or 2D tensor (typically representing signals or sequences)
+      by reflecting the boundary values at the edges.
+    for:
+      - reflection_pad1d
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: reflection_pad1d_out
+    description: A variant of `reflection_pad1d` that assigns the output to `out` tensor.
+    for:
+      - reflection_pad1d.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: reflection_pad2d
+    description: |
+      Pads the input 3D or 2D tensor (typically representing signals or sequences)
+      by reflecting the boundary values at the both edges.
+    for:
+      - reflection_pad2d
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: reflection_pad2d_out
+    description: A variant of `reflection_pad2d` that assigns the output to `out` tensor.
+    for:
+      - reflection_pad2d.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: reglu
+    description: |
+      Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead of the sigmoid function for gating.
+    for:
+      - reglu
+    labels:
+      - fused
+      - Transformer
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '4.2'
+  - id: relu
+    description: Apply the RELU (Rectified Linear Unit) activation function element-wise.
+    for:
+      - relu
+    labels:
+      - aten
+      - Activation
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '1.0'
+  - id: relu_
+    description: This is the in-place version of `relu()`.
+    for:
+      - relu_
+    labels:
+      - aten
+      - pointwise
+      - Activation
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: relu6
+    description: |
+      Applies the element-wise function `f(x)=min(max(0,x),6)`.
+      This is a variation of the standard ReLU activation function that "caps" its output
+      at a maximum value of 6.
+    for:
+      - relu6
+    labels:
+      - aten
+      - pointwise
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: remainder_scalar
+    description: |
+      Computes Python’s modulus operation entrywise. The result has the same sign
+      as the divisor `other` and its absolute value is less than that of `other`.
+    for:
+      - remainder.Scalar
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: remainder_scalar_
+    description: This is the in-place version of `remainder()`.
+    for:
+      - remainder_.Scalar
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: remainder_scalar_tensor
+    description: |
+      Computes Python’s modulus operation entrywise. The result has the same sign
+      as the divisor `other` and its absolute value is less than that of `other`.
+    for:
+      - remainder.Scalar_Tensor
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: remainder_tensor
+    description: |
+      Computes Python’s modulus operation entrywise. The result has the same sign
+      as the divisor `other` and its absolute value is less than that of `other`.
+    for:
+      - remainder.Tensor
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: remainder_tensor_
+    description: This is the in-place version of `remainder()`.
+    for:
+      - remainder_.Tensor
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: repeat
+    description: Repeats this tensor along the specified dimensions.
+    for:
+      - repeat
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+  - id: repeat_interleave_self_int
+    description: Repeats elements of a tensor. The number of repetitions is specified as an integer `repeats`.
+    for:
+      - repeat_interleave.self_int
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: repeat_interleave_self_tensor
+    description: |
+      Repeats elements of a tensor. The number of repetitions is specified as a tensor `repeats`.
+      `repeats` is broadcasted to fit the shape of the given axis.
+    for:
+      - repeat_interleave.self_Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: repeat_interleave_tensor
+    description: Repeats 0 `repeats[0]` times, 1 `repeats[1]` times, 2 `repeats[2]` times, etc.
+    for:
+      - repeat_interleave.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: replication_pad1d
+    description: Pads the edge of a 1D input tensor by repeating the boundary values.
+    for:
+      - replication_pad1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.0'
+  - id: replication_pad1d_out
+    description: A variant of `replication_pad1d` that assigns the output to the `out` tensor.
+    for:
+      - replication_pad1d.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.0'
+  - id: replication_pad3d
+    description: Pads the edge of a 3D input tensor by repeating the boundary values.
+    for:
+      - replication_pad3d
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.0'
+  - id: reshape_and_cache
+    description: Store the key/value token states into the pre-allcated kv_cache buffers of paged attention.
+    for:
+      - reshape_and_cache
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - Attention
+    stages:
+      - stable: '3.0'
+  - id: reshape_and_cache_flash
+    description: Store the key/value token states into the pre-allcated kv_cache buffers of paged attention.
+    for:
+      - reshape_and_cache_flash
+    labels:
+      - fused
+    kind:
+      - Attention
+    stages:
+      - stable: '3.0'
+    cpp: '4.0'
+  - id: resolve_conj
+    description: |
+      Returns a new tensor with materialized conjugation if `input`'s conjugate bit is set to True,
+      else returns `input`. The output tensor will always have its conjugate bit set to False.
+    for:
+      - resolve_conj
+    labels:
+      - aten
+    kind:
+      - Science
+    stages:
+      - stable: '2.1'
+  - id: resolve_neg
+    description: |
+      Returns a new tensor with materialized negation if `input`'s negative bit is set to True,
+      else returns `input`. The output tensor will always have its negative bit set to False.
+    for:
+      - resolve_neg
+    labels:
+      - aten
+    kind:
+      - Science
+    stages:
+      - stable: '2.1'
+  - id: rms_norm
+    description: |
+      Apply Root Mean Square Layer Normalization over a mini-batch of inputs.
+    for:
+      - RMSNorm
+    labels:
+      - aten
+      - nn.functional
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.0'
+    cpp: '4.0'
+  - id: roll
+    description: |
+      Roll the tensor input along the given dimension(s). Elements that are shifted beyond the last position
+      are re-introduced at the first position.
+    for:
+      - roll
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
+  - id: round
+    description: Rounds elements of input to the nearest integer.
+    for:
+      - round
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: round_
+    description: The inplace version of `round`.
+    for:
+      - round_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: round_out
+    description: A variant of `round` that assigns the output to the specifiec `out`.
+    for:
+      - round.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: rrelu_with_noise_backward
+    description: |
+      Computes the gradient of the Randomized Leaky ReLU (RReLU) activation function with respect to
+      its input during backpropagation. It uses the noise tensor generated in the forward pass
+      to correctly apply the slope to negative input values.
+    for:
+      - rrelu_with_noise_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: rsqrt
+    description: Returns a new tensor with the reciprocal of the square-root of each of the elements of `input`.
+    for:
+      - rsqrt
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+  - id: rsqrt_
+    description: The in-place version of `rsqrt()`.
+    for:
+      - rsqrt_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: rsub_scalar
+    description: Substracts `other`, scaled by `alpha`, from `input`. This is the scalar version.
+    for:
+      - rsub.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: rsub_tensor
+    description: Substracts `other`, scaled by `alpha`, from `input`. This is the tensor version.
+    for:
+      - rsub.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: rwkv_ka_fusion
+    description: |
+      Merges, aligns, and enhances features from different data sources or spatial directions
+      using the efficient, linear-time RWKV framework.
+    for:
+      - rwkv_ka_fusion
+    labels:
+      - fused
+    kind:
+      - RWKV
+    stages:
+      - stable: '4.1'
+    cpp: '4.0'
+  - id: rwkv_mm_sparsity
+    description: Optimized, lossless sparse matrix multiplication in RWKV-7 models.
+    for:
+      - rwkv_mm_sparsity
+    labels:
+      - fused
+    kind:
+      - RWKV
+    stages:
+      - stable: '4.1'
+    cpp: '4.0'
+  - id: safe_softmax
+    description: |
+      Apply a softmax function. Note this version may not be functional.
+    for:
+      - _safe_softmax
+    labels:
+      - aten
+      - IR
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: scaled_dot_product_attention
+    description: |
+      Computes scaled dot product attention on query, key and value tensors,
+      using an optional attention mask if passed and applying dropout
+      if a probability greater than 0.0 is specified.
+      The optional scale argument can only be specified as a keyword argument.
+    for:
+      - scaled_dot_product_attention
+    labels:
+      - nn.functional
+      - Attention
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: scaled_dot_product_attention_backward
+    description: The backward case for `scaled_dot_product_attention`.
+    for:
+      - scaled_dot_product_attention_backward
+    labels:
+      - nn.functional
+      - Attention
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: scaled_dot_product_attention_forward
+    description: The forward case for `scaled_dot_product_attention`.
+    for:
+      - scaled_dot_product_attention_forward
+    labels:
+      - nn.functional
+      - Attention
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: scaled_softmax_backward
+    description: |
+      The backward pass for a scaled softmax function, commonly used in Scaled Dot-Product Attention (SDPA)
+      within Transformer models, computes the gradient of the loss with respect to the input logits,
+      incorporating a scaling factor to stabilize training.
+    for:
+      - scaled_softmax_backward
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - stable: '4.2'
+  - id: scaled_softmax_forward
+    description: |
+      The backward pass for a scaled softmax function, commonly used in Scaled Dot-Product Attention (SDPA)
+      within Transformer models, computes the gradient of the loss with respect to the input logits,
+      incorporating a scaling factor to stabilize training.
+    for:
+      - scaled_softmax_forward
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - stable: '4.2'
+  - id: scatter_add_
+    description: |
+      Adds all values from the tensor `src` into `self` at the indices specified
+      in the `index` tensor in a similar fashion as `scatter_()`.
+      For each value in `src`, it is added to an index in `self` which is specified
+      by its index in `src` for `dimension != dim` and by the corresponding value
+      in `index` for `dimension = dim`.
+    for:
+      - scatter_add_
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '4.2'
+  - id: scatter_reduce
+    description: |
+      Writes all values from the tensor `src` into provided tensor at the indices
+      specified in the `index` tensor. For each value in `src`, its output index
+      is specified by its index in `src` for `dimension != dim` and by the corresponding value
+      in `index` for `dimension = dim`.
+      The optional `reduce` argument allows specification of an optional reduction operation,
+      which is applied to all values in the tensor `src` into the tensor at the indices
+      specified in the `index`.
+    for:
+      - scatter.reduce
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: scatter_reduce_
+    description: This is the in-place version of `scatter_reduce()`.
+    for:
+      - scatter_.reduce
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '3.0'
+  - id: scatter_reduce_two_
+    description: |
+      A specific low-level ATen operator primarily encountered during model compilation
+      or when using advanced backends like TensorRT or MPS.
+    for:
+      - scatter_reduce_.two
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
+  - id: scatter_src
+    description: |
+      Writes all values from the tensor `src` into provided tensor at the indices
+      specified in the `index` tensor. For each value in `src`, its output index
+      is specified by its index in `src` for `dimension != dim` and by the corresponding value
+      in `index` for `dimension = dim`.
+      The optional `reduce` argument allows specification of an optional reduction operation,
+      which is applied to all values in the tensor `src` into the tensor at the indices
+      specified in the `index`.
+    for:
+      - scatter.src
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: scatter_src_
+    description: This is the in-place version of `scatter_src()`.
+    for:
+      - scatter_.src
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '3.0'
+  - id: select_backward
+    description: Calculate the gradient during the backward pass in the neural network.
+    for:
+      - select_backward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: select_scatter
+    description: |
+      Embeds the values of the `src` tensor into `input` at the given index.
+      This function returns a tensor with fresh storage; it does not create a view.
+    for:
+      - select_scatter
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: selu
+    description: |
+      Applies an element-wise activation function that induces self-normalizing properties in neural networks.
+      It scales the Exponential Linear Unit (ELU) to ensure activations remain close to zero mean and unit variance.
+    for:
+      - selu
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: selu_
+    description: |
+      This is the in-place version of `selu`.
+    for:
+      - selu_
+    labels:
+      - aten
+      - pointwise
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: sgn_
+    description: |
+      Computes the sign of each element in the `self` tensor, element-wise.
+      This function is an extension of `sign()` designed to handle complex tensors
+      in addition to real-valued ones.
+    for:
+      - sgn_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: sigmoid
+    description: Computes the expit (also known as the logistic sigmoid function) of the elements of `input`.
+    for:
+      - sigmoid
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.0'
+  - id: sigmoid_
+    description: The in-place version of `sigmoid()`.
+    for:
+      - sigmoid_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: sigmoid_backward
+    description: The backward version of `sigmoid()`.
+    for:
+      - sigmoid_backward
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: signbit
+    description: Tests if each element of `input` has its sign bit set or not.
+    for:
+      - signbit
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: signbit_out
+    description: A variant of `signbit` that assigns the output to `out`.
+    for:
+      - signbit.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: silu
+    description: |
+      SiLU (Sigmoid Linear Unit), a simple approximation of ReLU but
+      without any discontinuity of the first derivative.
+    for:
+      - silu
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '1.0'
+  - id: silu_
+    description: The in-place version of `silu()`.
+    for:
+      - silu_
+    labels:
+      - aten
+      - nn.functional
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: silu_and_mul
+    description: A custom operator in vLLM as activation function for SwiGLU.
+    for:
+      - silu_and_mul
+    labels:
+      - fused
+      - pointwise
+      - vLLM
+    kind:
+      - Activation
+    stages:
+      - stable: '2.0'
+  - id: silu_and_mul_out
+    description: A variant of `silu_and_mul` with an extra `out` argument.
+    for:
+      - silu_and_mul.out
+    labels:
+      - fused
+      - pointwise
+      - vLLM
+    kind:
+      - Activation
+    stages:
+      - stable: '2.0'
+  - id: silu_and_mul_with_clamp
+    description: A custom operator in vLLM as activation function for SwiGLU.
+    for:
+      - silu_and_mul_with_clamp
+    labels:
+      - fused
+      - pointwise
+      - vLLM
+    kind:
+      - Activation
+    stages:
+      - stable: '5.1'
+  - id: silu_and_mul_with_clamp_out
+    description: A variant of `silu_and_mul_with_clamp` with an extra `out` argument.
+    for:
+      - silu_and_mul_with_clamp.out
+    labels:
+      - fused
+      - pointwise
+      - vLLM
+    kind:
+      - Activation
+    stages:
+      - stable: '5.1'
+  - id: silu_backward
+    description: A variant of `silu()` for backward case.
+    for:
+      - silu_backward
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: sin
+    description: |
+      Returns a new tensor with the sine of the elements in the `input` tensor,
+      where each value in this input tensor is in radians.
+    for:
+      - sin
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: sin_
+    description: The in-place version of `sin()`.
+    for:
+      - sin_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: sinh_
+    description: |
+      Computes the hyperbolic sine `(e^x-e^{-x})/2` of each element in a tensor.
+      This is an in-place version.
+    for:
+      - sinh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: skip_layer_norm
+    description: |
+      An optimized operation used in Transformer models to improve performance
+      by combining residual connection (skip connection) addition and Layer Normalization
+      (LayerNorm) into a single kernel.
+    for:
+      - skip_layer_norm
+    labels:
+      - fused
+      - Transformer
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.0'
+  - id: slice_backward
+    description: |
+      An automatic differentiation (autograd) function that computes the gradient of a tensor slicing operation
+      (`tensor[start:end]`) during backpropagation.
+    for:
+      - slice_backward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '5.0'
+  - id: slice_scatter
+    description: |
+      Embeds the values of the `src` tensor into `input` at the given dimension.
+      This function returns a tensor with fresh storage; it does not create a view.
+    for:
+      - slice_scatter
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: soft_margin_loss
+    description: Compute the soft margin loss.
+    for:
+      - soft_margin_loss
+    labels:
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: softmax
+    description: Apply a softmax function.
+    for:
+      - _softmax
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '1.0'
+    cpp: '4.0'
+  - id: softmax_backward
+    description: The backward version of `softmax()`.
+    for:
+      - _softmax_backward_data
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - Reduction
+    stages:
+      - stable: '3.0'
+  - id: softmax_backward_out
+    description: A variant of `softmax_backward()`.
+    for:
+      - _softmax_backward_data_out
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - Reduction
+    stages:
+      - stable: '3.0'
+  - id: softmax_out
+    description: Apply a softmax function, with given `out`.
+    for:
+      - _softmax.out
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '1.0'
+  - id: softplus
+    description: Applies element-wise, the function Softplus.
+    for:
+      - softplus
+    labels:
+      - aten
+      - nn.functional
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '4.0'
+  - id: softshrink
+    description: |
+      Applies the soft shrinkage function element-wise to an input tensor.
+      It is an activation function often used in signal processing and sparse representation,
+      such as image denoising.
+    for:
+      - softshrink
+    labels:
+      - aten
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: softshrink_out
+    description: |
+      This is a variant of `softshrink` that supports an output tensor.
+    for:
+      - softshrink.out
+    labels:
+      - aten
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: sort
+    description: Sorts the elements of the `input` tensor along a given dimension in ascending order by value.
+    for:
+      - sort
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: sort_stable
+    description: |
+      Sorts the elements of the `input` tensor along a given dimension in ascending order by value.
+      This is a variant of `sort()` where `stable` is set to True to preserve the order of equivalent elements.
+    for:
+      - sort.stable
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '3.0'
+  - id: sparse_attn_triton
+    description: Sparse attention with attention-sink.
+    for:
+      - None
+    labels:
+      - fused
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: sparse_mla_fwd_interface
+    description: |
+      A generic interface for sparse MLA (Multi-head Latent Attention) for DeepSeek v3/v3.2.
+      It is currently not exposed as a standalone operator for use.
+    for:
+      - sparse_mla_fwd
+    labels:
+      - fused
+    kind:
+      - DSA
+    stages:
+      - beta: '5.0'
+  - id: special_i0e
+    description: |
+      Computes the exponentially scaled zeroth order modified Bessel function
+      of the first kind for each element of `input`.
+    for:
+      - special_i0e
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: special_i0e_out
+    description: |
+      A variant of `special_i0e()` with output saved to provided `out`..
+    for:
+      - special_i0e.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: special_i1
+    description: |
+      Computes the modified Bessel function of the first kind of order 1 (I_1(x)) for each element
+      in the input tensor, designed for special mathematical functions.
+    for:
+      - special_i1
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: special_i1_out
+    description: A variant of `special_i1` that allows the output to be assigned to another tensor.
+    for:
+      - special_i1.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: sqrt
+    description: Returns a new tensor with the square-root of the elements of `input`.
+    for:
+      - sqrt
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '4.0'
+  - id: sqrt_
+    description: This is the in-place version of `sqrt()`.
+    for:
+      - sqrt_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '4.0'
+  - id: square
+    description: Returns a new tensor with the square of the elements of input.
+    for:
+      - square
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: square_
+    description: The inplace version of `square`.
+    for:
+      - square_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: square_out
+    description: A variant of `square` that assigns the output to the provided `out`.
+    for:
+      - square.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: stack
+    description: Concatenates a sequence of tensors along a new dimension.
+    for:
+      - stack
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: std
+    description: |
+      Calculates the standard deviation over the dimensions specified by `dim`.
+      `dim` can be a single dimension, list of dimensions, or `None`
+      to reduce over all dimensions.
+    for:
+      - std.correction
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - stable: '4.0'
+  - id: sub
+    description: Subtracts `other`, scaled by `alpha`, from the `input` tensor.
+    for:
+      - sub.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+  - id: sub_
+    description: |
+      Subtracts `other`, scaled by `alpha`, from the `input` tensor.
+      This is the in-place version.
+    for:
+      - sub_.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: sum
+    description: Returns the sum of all elements in the `input` tensor.
+    for:
+      - sum
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '2.0'
+    cpp: '4.0'
+  - id: sum_dim
+    description: |
+      Returns the sum of each row of the `input` tensor in the given dimension `dim`.
+      `dim` is a list of dimensions, reduce over all of them.
+    for:
+      - sum.dim_IntList
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '2.0'
+    cpp: '4.0'
+  - id: sum_dim_out
+    description: A variant of `sum_dim()` with the `out` argument.
+    for:
+      - sum.IntList_out
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '3.0'
+    cpp: '4.0'
+  - id: sum_out
+    description: A variant of `sum()` with the `out` argument.
+    for:
+      - sum.out
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '3.0'
+    cpp: '4.0'
+  - id: swiglu
+    description: Swish-Gated Linear Unit, a variant of GLU with the Swish activation function.
+    for:
+      - swiglu
+    labels:
+      - fused
+      - Transformer
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '5.0'
+  - id: t_copy
+    description: Transpose a 2D tensor into a new tensor with contiguous memory layout.
+    for:
+      - t_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.0'
+  - id: t_copy_out
+    description: A variant of `t_copy()` that allows the output to be assigned to the `out` tensor.
+    for:
+      - t_copy.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.0'
+  - id: tan
+    description: |
+      Returns a new tensor with the tangent of the elements in the `input` tensor,
+      where each value in this `input` tensor is in radians.
+    for:
+      - tan
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '4.1'
+  - id: tan_
+    description: This is the in-place version of `tan()`.
+    for:
+      - tan_
+    labels:
+      - aten
+      - pointwise
+    stages:
+      - stable: '4.1'
+  - id: tanh
+    description: Returns a new tensor with the hyperbolic tangent of the elements of `input`.
+    for:
+      - tanh
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
+  - id: tanh_
+    description: This is the in-place version of `tanh()`.
+    for:
+      - tanh_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
+  - id: tanh_backward
+    description: This is the backward case for `tanh()`.
+    for:
+      - tanh_backward
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '3.0'
+  - id: threshold
+    description: Apply a threshold to each element of the input Tensor.
+    for:
+      - threshold
+    labels:
+      - aten
+      - nn.functional
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: threshold_backward
+    description: This is the backward version for `threshold`.
+    for:
+      - threshold_backward
+    labels:
+      - aten
+      - nn.functional
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: tile
+    description: |
+      Constructs a tensor by repeating the elements of `input`.
+      The `dims` argument specifies the number of repetitions in each dimension.
+    for:
+      - tile
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+  - id: to_copy
+    for:
+      - _to_copy
+    condition:
+      - var: torch.version
+        op: ge
+        val: '2.4'
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - beta: '4.1'
+  - id: topk
+    description: |
+      Returns the `k` largest elements of the given `input` tensor along a given dimension.
+      If `dim` is not given, the last dimension of the `input` is chosen.
+      If `largest` is False then the `k` smallest elements are returned.
+    for:
+      - topk
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+    cpp: '4.0'
+  - id: topk_softmax
+    description: |
+      Selects the k most likely next-token candicates, sets all others to zero,
+      and renormalize the prbabilities of these top candidates.
+    for:
+      - _moe_C.topk_softmax
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - MoE
+    stages:
+      - stable: '4.0'
+  - id: trace
+    description: Returns the sum of the elements of the diagonal of the input 2-D matrix.
+    for:
+      - trace
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - stable: '4.0'
+  - id: tril
+    description: |
+      Returns the lower triangular part of an input matrix (or a batch of matrices) and
+      sets all other elements to zero.
+    for:
+      - tril
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.0'
+  - id: tril_
+    description: |
+      The in-place version of `tril()`.
+    for:
+      - tril_
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
+  - id: tril_out
+    description: |
+      A variant of `tril()` that explicitly assigns the output to the `out` parameter.
+    for:
+      - tril.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
+  - id: triton_lighting_indexer_k_tiled_interface
+    description: Part of FP8 MQA framework. It is currently not exposed as an operator for use.
+    for:
+      - None
+    labels:
+      - fused
+      - DSA
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: triu
+    description: |
+      Returns the upper triangular part of a matrix (2-D tensor) or batch of matrices `input`,
+      the other elements of the result tensor `out` are set to 0.
+    for:
+      - triu
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '1.0'
+  - id: triu_
+    description: The in-place version of `triu()`.
+    for:
+      - triu_
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '5.0'
+  - id: trunc_divide
+    description: The `div` function with rounding_mode set to `trunc`.
+    for:
+      - div
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.1'
+  - id: trunc_divide_
+    description: The in-place version of `trunc_divide`.
+    for:
+      - div
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - stable: '2.1'
+  - id: unfold_backward
+    description: |
+      An operator for calculating the gradient of the `unfold` operation during backpropagation.
+      It takes the gradient of the unfolded output and accumulates it back into
+      the original input shape, reversing sliding local block extraction and resolving overlaps.
+    for:
+      - unfold_backward
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '5.0'
+  - id: uniform_
+    description: Fills `self` tensor with numbers sampled from the continuous uniform distribution.
+    for:
+      - uniform_
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - stable: '2.1'
+  - id: unique2
+    description: Returns the unique elements of the input tensor. This is an internal PyTorch function.
+    for:
+      - _unique2
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+  - id: unique_consecutive
+    description: Eliminates all but the first element from every consecutive group of equivalent elements.
+    for:
+      - unique_consecutive
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
+  # - id: unsafe_view
+  #   description: |
+  #     Creates a new view of an existing tensor with a different shape without
+  #     performing safety checks, such as verifying if the tensor is contiguous or
+  #     if the reshape is valid.
+  #   for:
+  #     - _unsafe_view
+  #   labels:
+  #     - aten
+  #     - KernelGen
+  #   kind:
+  #     - Tensor
+  #   stages:
+  #     - alpha: '5.0'
+  # - id: unsafe_view_out
+  #   description: |
+  #     A variant of `_unsafe_view` that assigns the output to the `out` tensor.
+  #   for:
+  #     - _unsafe_view.out
+  #   labels:
+  #     - aten
+  #     - KernelGen
+  #   kind:
+  #     - Tensor
+  #   stages:
+  #     - alpha: '5.0'
+  - id: upsample_bicubic2d
+    description: A variant of `upsample()` that has `mode` set to `bicubic`.
+    for:
+      - upsample_bicubic2d
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '5.0'
+  - id: upsample_bicubic2d_aa
+    description: A variant of `upsample()` that has `mode` set to `bicubic`.
+    for:
+      - _upsample_bicubic2d_aa
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: upsample_bicubic2d_aa_backward
+    description: A backward case for `_upsample_bicubic2d_aa()`.
+    for:
+      - _upsample_bicubic2d_aa_backward
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '5.0'
+  - id: upsample_linear1d
+    description: |
+      Upsamples the `input`, using linear mode.
+      The input has to be 3 dimensional, and the `output_size` is an optional tuple of ints.
+    for:
+      - upsample_linear1d
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.0'
+  - id: upsample_nearest1d
+    description: |
+      Upsamples the `input`, using nearest neighbours' pixel values.
+      The input has to be 3 dimensional, and the `output_size` is an optional tuple of ints.
+    for:
+      - upsample_nearest1d
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '5.0'
+  - id: upsample_nearest2d
+    description: |
+      Upsamples the `input`, using nearest neighbours' pixel values. The input has to be 4 dimensional.
+      The scales can be provided with `scales_h` and `scales_w`.
+    for:
+      - upsample_nearest2d
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: upsample_nearest3d
+    description: |
+      Performs 3D nearest-neighbor interpolation to increase the spatial size of volumetric data,
+      such as 5D tensors. It scales up inputs by copying values from the nearest pixel/voxel,
+      without calculating new values through linear interpolation.
+    for:
+      - upsample_nearest3d
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '5.0'
+  - id: upsample_nearest_exact1d
+    description: |
+      Increases the length of a 1D tensor using nearest-neighbor interpolation,
+      ensuring the output aligns with library-standard algorithms like PIL.
+    for:
+      - _upsample_nearest_exact1d
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: var
+    description: Calculates the variance over all dimensions.
+    for:
+      - var
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: var_correction
+    description: |
+      A variant of the `var()` operator, with an optional `correction` for specifying
+      difference between the sample size and sample degrees of freedom.
+    for:
+      - var.correction
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: var_dim
+    description: Calculates the variance over the dimensions specified by dim.
+    for:
+      - var.dim
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: var_mean
+    description: |
+      Calculates the variance and mean over the dimensions specified by `dim`. `dim` can be a single dimension,
+      list of dimensions, or `None` to reduce over all dimensions.
+    for:
+      - var_mean.correction
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - stable: '2.0'
+  - id: vdot
+    description: Computes the dot product of two 1D vectors along a dimension.
+    for:
+      - vdot
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '2.2'
+  - id: vector_norm
+    description: Computes a vector norm.
+    for:
+      - linalg.vector_norm
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+      - NeuralNetwork
+    stages:
+      - stable: '2.0'
+  - id: vstack
+    description: Stack tensors in sequence vertically (row wise).
+    for:
+      - vstack
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: w8a8_block_fp8_matmul
+    description: Performs matrix multiplication with block-wise quantization.
+    for:
+      - vllm.model_executor.layers.quantization.utils.fp8_utils.w8a8_block_fp8_matmul
+    labels:
+      - vLLM
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.1'
+  - id: weight_norm
+    description: |
+      Reparameterizes a module's weight tensor by decoupling its magnitude (g)
+      from its direction (v). It is a hook that compute the actual weight before
+      each forward pass.
+    for:
+      - weight_norm
+    labels:
+      - fused
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: weight_norm_interface
+    description: |
+      Apply weight normalization to neural network layers, decoupling the magnitued
+      of a weight tensor from its direction. It is used to stabilize training, particularly
+      for models with small batch sizes.
+    for:
+      - _weight_norm_interface
+    labels:
+      - aten
+      - fused
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
+  - id: weight_norm_interface_backward
+    description: |
+      Computes the gradients for weight normalization during the backward pass.
+      It calculates the necessary derivatives for updating both the magnitude (g)
+      and direction (v)  parameters of a weight-normalized layer, based on gradients
+      received from the previous operation.
+    for:
+      - _weight_norm_interface_backward
+    labels:
+      - aten
+      - fused
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
+  - id: where_self
+    description: |
+      Returns a LongTensor. This operation is identical to `torch.nonzero(condition, as_tuple=True)`.
+    for:
+      - where.self
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+  - id: where_self_out
+    description: This is a variant of `where_self()` with an argument `out`.
+    for:
+      - where.self_out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - alpha: '2.1'
+      - stable: '2.2'
+  - id: zero
+    description: Fills tensor with zeros.
+    for:
+      - zero.Tensor_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.0'
+  - id: zero_
+    description: Fills `self` tensor with zeros.
+    for:
+      - zero_.Tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '5.0'
+  - id: zero_out
+    description: Fills tensor with zeros but assign the output to the `out` tensor.
+    for:
+      - zero.Tensor_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.0'
+  - id: zeros
+    description: |
+      Returns a tensor filled with the scalar value 0, with the shape defined by
+      the variable argument `size`.
+    for:
+      - zeros
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'
+    cpp: '4.0'
+  - id: zeros_like
+    description: Returns a tensor filled with the scalar value 0, with the same size as `input`.
+    for:
+      - zeros_like
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.1'

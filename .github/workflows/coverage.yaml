@@ -1,0 +1,108 @@
+# Note this *workflow_run* workflow runs on the default branch.
+name: coverage
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'The workflow run ID'
+        required: true
+        type: string
+
+  workflow_run:
+    workflows:
+      - daily
+    types:
+      - completed
+jobs:
+  publish-coverage:
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+
+      - id: download
+        uses: actions/github-script@v9
+        with:
+          result-encoding: string
+          script: |
+            if (context.eventName === 'workflow_dispatch') {
+              run_id = context.payload.inputs.run_id;
+            } else {
+              run_id = context.payload.workflow_run.id;
+            }
+            console.log(`Fetch artifact for ${run_id}`);
+            let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               run_id: run_id,
+            });
+            let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "op-ut-coverage";
+            })[0];
+
+            // There could be a case that no coverage data were generated.
+            if (matchArtifact === undefined) {
+              return "NO_DATA";
+            } else {
+              console.log(`Found artifact ${matchArtifact.id}`);
+              let download = await github.rest.actions.downloadArtifact({
+                 owner: context.repo.owner,
+                 repo: context.repo.repo,
+                 artifact_id: matchArtifact.id,
+                 archive_format: 'zip',
+              });
+              const fs = require('fs');
+              const path = require('path');
+              const temp = '${{ runner.temp }}/artifacts';
+              if (!fs.existsSync(temp)){
+                fs.mkdirSync(temp);
+              }
+              fs.writeFileSync(path.join(temp, 'op-ut-coverage.zip'), Buffer.from(download.data));
+              return "HAS_DATA";
+            }
+
+      - id: unzip-artifact
+        if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
+        run: unzip "${{ runner.temp }}/artifacts/op-ut-coverage.zip" -d "${{ runner.temp }}/artifacts"
+
+      - id: prepare-changes
+        if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
+        shell: bash
+        run: |
+          COV_ID=$(cat ${{ runner.temp }}/artifacts/COVERAGE_ID)
+          # Strip any newline characters to prevent environment variable injection
+          COV_ID=${COV_ID//$'\r'/}
+          COV_ID=${COV_ID//$'\n'/}
+          # Ensure COV_ID only contains safe characters (alphanumerics, underscore, dash)
+          if ! [[ "$COV_ID" =~ ^[A-Za-z0-9_-]+$ ]]; then
+            echo "Invalid COVERAGE_ID value: '$COV_ID'" >&2
+            exit 1
+          fi
+          echo "COV_ID=${COV_ID}" > "$GITHUB_ENV"
+          DATE=${COV_ID:0:8}
+
+          rm -fr docs/static/coverage/${COV_ID}*
+          mkdir -p docs/static/coverage/${COV_ID}
+          mv ${{ runner.temp }}/artifacts/htmlcov/* docs/static/coverage/${COV_ID}/
+
+          mv ${{ runner.temp }}/artifacts/ut-summary.md docs/content/en/references/test/unit/${DATE}-summary.md
+
+      - id: commit-change
+        if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add docs
+          git commit -a -m "Add coverage data for ${COV_ID}"
+
+      - id: push-change
+        if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
+        uses: ad-m/github-push-action@master
+        with:
+          branch: gh-pages
+          github_token: ${{ secrets.GITHUB_TOKEN }}

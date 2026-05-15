@@ -6,11 +6,11 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 rsqrt = tl_extra_shim.rsqrt
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 @libentry()
@@ -30,7 +30,7 @@ def group_norm_kernel(
     BLOCK_GROUP_SIZE: tl.constexpr,
     BLOCK_HW_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     group = pid % num_groups
     num_elements = group_size * HW
     group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
@@ -87,7 +87,7 @@ def group_norm_backward_kernel(
     BLOCK_GROUP_SIZE: tl.constexpr,
     BLOCK_HW_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     group = pid % num_groups
     num_elements = group_size * BLOCK_HW_SIZE
 
@@ -146,7 +146,7 @@ def weight_bias_backward_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_HW: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     group = pid // group_size
     n_offset = tl.arange(0, BLOCK_N)
     hw_offset = tl.arange(0, BLOCK_HW)

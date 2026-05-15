@@ -18,9 +18,14 @@ from .div import (
     true_divide,
     true_divide_,
 )
+from .exponential_ import exponential_
+from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .gelu import gelu, gelu_
+from .hadamard_transform import hadamard_transform
 from .isclose import allclose, isclose
 from .isin import isin
+from .matmul_bf16 import matmul_bf16
+from .matmul_int8 import matmul_int8
 from .mm import mm
 from .pow import (
     pow_scalar,
@@ -33,6 +38,7 @@ from .randperm import randperm
 from .silu import silu, silu_, silu_backward
 from .sort import sort, sort_stable
 from .unique import _unique2
+from .upsample_nearest2d import upsample_nearest2d
 
 __all__ = [
     "_unique2",
@@ -46,14 +52,22 @@ __all__ = [
     "any_dims",
     "div_mode",
     "div_mode_",
+    "exponential_",
+    "fill_scalar",
+    "fill_scalar_",
+    "fill_tensor",
+    "fill_tensor_",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "floor_divide",
     "floor_divide_",
     "gelu",
     "gelu_",
+    "hadamard_transform",
     "isin",
     "isclose",
+    "matmul_bf16",
+    "matmul_int8",
     "mm",
     "pow_scalar",
     "pow_tensor_scalar",
@@ -73,4 +87,5 @@ __all__ = [
     "sort_stable",
     "true_divide",
     "true_divide_",
+    "upsample_nearest2d",
 ]

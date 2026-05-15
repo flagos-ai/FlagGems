@@ -1,13 +1,15 @@
 #include <gtest/gtest.h>
 #include "c10/util/Logging.h"
+#include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 class EmbeddingTest : public ::testing::TestWithParam<
                           std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, bool, torch::ScalarType>> {
 };
 TEST_P(EmbeddingTest, CompareWithPyTorch) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto [EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype] = GetParam();
   auto options = torch::TensorOptions().dtype(dtype).device(device);
   auto indices =
@@ -16,6 +18,9 @@ TEST_P(EmbeddingTest, CompareWithPyTorch) {
                      {Batch, M},
                      torch::TensorOptions().device(device).dtype(torch::kLong).requires_grad(false));
   auto embedding = torch::randn({EmbeddingSize, N}, options.requires_grad(true));
+  auto ref_indices = flag_gems::accuracy_utils::to_reference(indices);
+  auto ref_embedding = flag_gems::accuracy_utils::to_reference(embedding);
+
   auto out_torch = torch::nn::functional::embedding(indices,
                                                     embedding,
                                                     torch::nn::functional::EmbeddingFuncOptions()
@@ -23,7 +28,8 @@ TEST_P(EmbeddingTest, CompareWithPyTorch) {
                                                         .scale_grad_by_freq(scale_grad_by_freq)
                                                         .sparse(false));
   auto out_triton = flag_gems::embedding(embedding, indices, padding_idx, scale_grad_by_freq, false);
-  EXPECT_TRUE(torch::allclose(out_torch, out_triton));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton, out_torch);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 INSTANTIATE_TEST_SUITE_P(embedding_test,
                          EmbeddingTest,
@@ -47,20 +53,29 @@ class EmbeddingBackwardTest
     : public ::testing::TestWithParam<
           std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, bool, torch::ScalarType>> {};
 TEST_P(EmbeddingBackwardTest, FixedValueTest) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto [EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype] = GetParam();
   auto options = torch::TensorOptions().dtype(dtype).device(device);
   auto grad = torch::randn({Batch, M, N}, options);
   auto indices =
       torch::randint(0, EmbeddingSize, {Batch, M}, torch::TensorOptions().device(device).dtype(torch::kLong));
+
   int64_t num_weights = EmbeddingSize;
   bool sparse = false;
+#if defined(FLAGGEMS_USE_MUSA)
+  // torch_musa does not support scale_grad_by_freq in native embedding_backward,
+  // so compute the reference on CPU instead.
+  auto torch_in_grad =
+      at::embedding_backward(grad.cpu(), indices.cpu(), num_weights, padding_idx, scale_grad_by_freq, sparse)
+          .to(device);
+#else
   auto torch_in_grad =
       at::embedding_backward(grad, indices, num_weights, padding_idx, scale_grad_by_freq, sparse);
-
+#endif
   auto triton_in_grad =
       flag_gems::embedding_backward(grad, indices, num_weights, padding_idx, scale_grad_by_freq, sparse);
-  EXPECT_TRUE(torch::allclose(torch_in_grad, triton_in_grad));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(triton_in_grad, torch_in_grad);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 INSTANTIATE_TEST_SUITE_P(embedding_backward_test,
                          EmbeddingBackwardTest,

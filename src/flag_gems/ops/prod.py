@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def prod_kernel_mid(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -85,7 +85,7 @@ def prod_kernel(
     BLOCK_N: tl.constexpr,
 ):
     # set offset
-    pid_m = tle.program_id(0)
+    pid_m = ext.program_id(0)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
     acc = tl.full((BLOCK_M, BLOCK_N), value=1.0, dtype=tl.float32)
@@ -94,7 +94,7 @@ def prod_kernel(
         offset = m_offset[:, None] * N + n_offset[None, :]
 
         # set mask
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
         acc *= inp_vals

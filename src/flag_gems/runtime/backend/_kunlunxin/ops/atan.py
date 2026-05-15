@@ -8,7 +8,7 @@ from flag_gems.utils import tl_extra_shim
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 _atan = tl_extra_shim.atan
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])

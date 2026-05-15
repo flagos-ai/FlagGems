@@ -4,7 +4,7 @@ import torch
 
 from flag_gems.ops.neg import neg_func
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 def resolve_conj(A: torch.Tensor):

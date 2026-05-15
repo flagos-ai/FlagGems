@@ -4,12 +4,12 @@ import torch
 import triton
 from triton import language as tl
 
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.shape_utils import c_contiguous_stride
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 @pointwise_dynamic(num_inputs=1, promotion_methods=[(0, "DEFAULT")])
@@ -66,7 +66,7 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
 def repeat_interleave_tensor_kernel(
     repeats_ptr, cumsum_ptr, out_ptr, size, BLOCK_SIZE: tl.constexpr
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     mask = pid < size
     cumsum = tl.load(cumsum_ptr + pid, mask, other=0)
     repeats = tl.load(repeats_ptr + pid, mask, other=0)
@@ -85,7 +85,7 @@ def repeat_interleave_tensor_kernel(
 def fused_repeat_and_index_select_kernel(
     inp, out, M, N, repeats, BLOCK_SIZE: tl.constexpr
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     row_idx_mask = pid > 0
     start_row_idx = tl.load(repeats + pid - 1, mask=row_idx_mask, other=0)
     end_row_idx = tl.load(repeats + pid)

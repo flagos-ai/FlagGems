@@ -1,5 +1,6 @@
 import importlib
 import os
+from dataclasses import dataclass
 from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import torch
@@ -238,12 +239,12 @@ class KernelGenerator:
         self.fn_module = scalar_fn.__module__
 
     def gen_import_function(self, code: IndentedBuffer):
-        code.writeline(f'"""Quoted source of {self.fn_name}:')
+        code.writeline("@triton.jit")
         code.writemultiline(self.fn.src)
-        code.writeline('"""')
-        code.newline()
 
     def gen_config_prune(self, code):
+        code.newline()
+        code.newline()
         code.writeline("def config_prune(configs, named_args, **kwargs):")
         with code.indent():
             code.writeline("new_configs = []")
@@ -290,12 +291,45 @@ class KernelGenerator:
                     )
 
             code.writeline("return new_configs")
+
+    def gen_hooks(self, code):
         code.newline()
         code.newline()
+        code.writeline("restore_copies = {}")
+        code.writeline(
+            "KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.PrivateUse1)"
+        )
+        code.writeline("def pre_hook(kwargs, reset_only=False):")
+        with code.indent():
+            code.writeline("if not reset_only:")
+            with code.indent():
+                code.writeline(
+                    "torch_copy_ = flag_gems.current_work_registrar.torch_ops_map['aten::copy_']"
+                )
+                code.writeline(f"for name in {self.name}.fn.restore_value:")
+                with code.indent():
+                    code.writeline("restore_copy = torch.empty_like(kwargs[name])")
+                    code.writeline(
+                        "restore_copies[name] = torch_copy_.call_boxed(KEYSET, restore_copy, kwargs[name])"
+                    )
+
+        code.writeline("def post_hook(kwargs, exception):")
+        with code.indent():
+            code.writeline(f"for name in {self.name}.fn.restore_value:")
+            with code.indent():
+                code.writeline(
+                    "torch_copy_ = flag_gems.current_work_registrar.torch_ops_map['aten::copy_']"
+                )
+                code.writeline(
+                    "kwargs[name] = torch_copy_.call_boxed(KEYSET, kwargs[name], restore_copies[name])"
+                )
 
     def gen_decorators(self, code):
         if self.ndim in [1, 2, 3, 4] and (not self.config.prefer_1d_tile):
             self.gen_config_prune(code)
+
+            if self.fn_name == "_copy_kernel":
+                self.gen_hooks(code)
 
         num_non_tensor_args = self.fx.num_non_tensor_args()
         if num_non_tensor_args > 0:
@@ -335,6 +369,9 @@ class KernelGenerator:
                 ]
                 output_elements = ", ".join(f"'{name}'" for name in output_params)
                 code.writeline(f"restore_value=[{output_elements}],")
+                if self.fn_name == "_copy_kernel":
+                    code.writeline("pre_hook=pre_hook,")
+                    code.writeline("post_hook=post_hook,")
             code.writeline(")")
 
         if self.ndim == 2 and (not self.config.prefer_1d_tile):
@@ -361,6 +398,9 @@ class KernelGenerator:
                 ]
                 output_elements = ", ".join(f"'{name}'" for name in output_params)
                 code.writeline(f"restore_value=[{output_elements}],")
+                if self.fn_name == "_copy_kernel":
+                    code.writeline("pre_hook=pre_hook,")
+                    code.writeline("post_hook=post_hook,")
             code.writeline(")")
 
         if self.ndim == 3 and (not self.config.prefer_1d_tile):
@@ -391,6 +431,9 @@ class KernelGenerator:
                 ]
                 output_elements = ", ".join(f"'{name}'" for name in output_params)
                 code.writeline(f"restore_value=[{output_elements}],")
+                if self.fn_name == "_copy_kernel":
+                    code.writeline("pre_hook=pre_hook,")
+                    code.writeline("post_hook=post_hook,")
             code.writeline(")")
 
         if self.ndim == 4 and (not self.config.prefer_1d_tile):
@@ -421,6 +464,9 @@ class KernelGenerator:
                 ]
                 output_elements = ", ".join(f"'{name}'" for name in output_params)
                 code.writeline(f"restore_value=[{output_elements}],")
+                if self.fn_name == "_copy_kernel":
+                    code.writeline("pre_hook=pre_hook,")
+                    code.writeline("post_hook=post_hook,")
             code.writeline(")")
 
         if num_non_tensor_args > 0:
@@ -476,7 +522,7 @@ class KernelGenerator:
             if ndim > 0:
                 # strides for inputs
                 for i in range(schema.num_input_tensors()):
-                    stride_args = _cs(f"in{i}_stride{j}" for j in range(ndim))
+                    stride_args = _cs(f"in{i}_stride{j}: int" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for in{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
@@ -492,7 +538,7 @@ class KernelGenerator:
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
-                    stride_args = _cs(f"out{i}_stride{j}" for j in range(ndim))
+                    stride_args = _cs(f"out{i}_stride{j}: int" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for out{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
@@ -514,6 +560,8 @@ class KernelGenerator:
 
                 # number of tasks, used to compute mask
                 code.writeline("num_tasks,")
+                if self.config.prefer_block_pointer:
+                    code.writeline("FALLBACK_BPTR: tl.constexpr,")
 
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
@@ -569,11 +617,14 @@ class KernelGenerator:
                     code.writeline(f"{stride_args}, # strides for out{i}")
 
                 # task space, used to reconstruct multi index
-                task_space_args = _cs(f"s{i}: int" for i in range(ndim))
+                task_space_args = _cs(f"s{i}" for i in range(ndim))
                 code.writeline(f"{task_space_args}, # task_space")
 
                 # number of tasks, used to compute mask
-                code.writeline("num_tasks: int,")
+                code.writeline("num_tasks,")
+
+                if self.config.prefer_block_pointer:
+                    code.writeline("FALLBACK_BPTR: tl.constexpr,")
 
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
@@ -644,75 +695,158 @@ class KernelGenerator:
 
         # cta_offsets
         code.writeline("# tile offsets")
-        for i in range(ndim):
-            # Or else: AssertionError: Block pointers only support 32 bit
-            # `offsets/block_shape`, add a `.to(tl.int32)` or use regular indexing
-            # for 64 bit support
-            code.writeline(f"offset{i} = (tile_id{i} * tile_size{i}).to(tl.int32)")
 
-        # loads
-        code.writeline("# loads")
-        for i in range(schema.num_input_tensors()):
-            strides = _tuple_content(tuple(f"in{i}_stride{j}" for j in range(ndim)))
-            order = _tuple_content(tuple(f"in{i}_stride_order{j}" for j in range(ndim)))
+        # Because block pointer only support `tl.int32` indexing, when max offsets
+        # of ptrs exceeding 2^31, we should fallback it to noraml indexing method.
+        code.writeline("if not FALLBACK_BPTR:")
+        with code.indent():
+            for i in range(ndim):
+                # Or else: AssertionError: Block pointers only support 32 bit
+                # `offsets/block_shape`, add a `.to(tl.int32)` or use regular indexing
+                # for 64 bit support
+                code.writeline(f"offset{i} = (tile_id{i} * tile_size{i}).to(tl.int32)")
 
-            for j in range(ndim):
-                code.writeline(f"if in{i}_zero_stride{j}:")
-                with code.indent():
-                    code.writeline(f"in{i}_stride{j} = 0")
+            # loads
+            code.writeline("# loads")
+            for i in range(schema.num_input_tensors()):
+                strides = _tuple_content(tuple(f"in{i}_stride{j}" for j in range(ndim)))
+                order = _tuple_content(
+                    tuple(f"in{i}_stride_order{j}" for j in range(ndim))
+                )
 
+                for j in range(ndim):
+                    code.writeline(f"if in{i}_zero_stride{j}:")
+                    with code.indent():
+                        code.writeline(f"in{i}_stride{j} = 0")
+
+                code.writeline(
+                    f"in{i}_bptr = tl.make_block_ptr("
+                    f"in{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
+                )
+
+                code.writeline(
+                    f"in{i} = tl.load(in{i}_bptr, boundary_check=({order})).to(in{i}_ptr.type.element_ty) "
+                )
+            code.newline()
+
+            # compute
+            # TODO: sepearate this part
+            inputs_to_scalar_fn = [
+                self.input_name(i) for i in range(schema.num_inputs())
+            ]
+            outputs_to_scalar_fn = [
+                self.output_name(i) for i in range(schema.num_output_tensors())
+            ]
+            inputs_to_scalar_fn = _cs(inputs_to_scalar_fn)
+            outputs_to_scalar_fn = _cs(outputs_to_scalar_fn)
+
+            code.writeline("# compute")
             code.writeline(
-                f"in{i}_bptr = tl.make_block_ptr("
-                f"in{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
+                f"{outputs_to_scalar_fn} = {self.fn_name}({inputs_to_scalar_fn})"
             )
+            code.newline()
 
+            # stores
+            for i in range(schema.num_output_tensors()):
+                strides = _tuple_content(
+                    tuple(f"out{i}_stride{j}" for j in range(ndim))
+                )
+                order = _tuple_content(
+                    tuple(f"out{i}_stride_order{j}" for j in range(ndim))
+                )
+
+                for j in range(ndim):
+                    code.writeline(f"if out{i}_zero_stride{j}:")
+                    with code.indent():
+                        code.writeline(f"out{i}_stride{j} = 0")
+
+                code.writeline(
+                    f"out{i}_bptr = tl.make_block_ptr("
+                    f"out{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
+                )
+
+                code.writeline(
+                    f"tl.store(out{i}_bptr, out{i}.to(out{i}_bptr.type.element_ty), boundary_check=({order}))"
+                )
+        code.writeline("else:")
+        with code.indent():
+            # offsets
+            for i in range(ndim):
+                code.writeline(
+                    f"offsets{i} = tile_id{i} * tile_size{i} + tl.arange(0, tile_size{i})"
+                )
+
+            # masks
+            for i in range(ndim):
+                code.writeline(f"mask{i} = offsets{i} < s{i}")
+            masks = tuple(f"mask{i}{_broadcast_vec(i, ndim)}" for i in range(ndim))
+            mask_combine = " & ".join(masks)
+            code.writeline(f"mask = {mask_combine}")
+
+            # loads
+            code.writeline("# loads")
+            for i in range(schema.num_input_tensors()):
+                strides = _tuple_content(tuple(f"in{i}_stride{j}" for j in range(ndim)))
+                order = _tuple_content(
+                    tuple(f"in{i}_stride_order{j}" for j in range(ndim))
+                )
+
+                for j in range(ndim):
+                    code.writeline(f"if in{i}_zero_stride{j}:")
+                    with code.indent():
+                        code.writeline(f"in{i}_stride{j} = 0")
+                offsets = tuple(
+                    f"offsets{j}{_broadcast_vec(j, ndim)} * in{i}_stride{j}"
+                    for j in range(ndim)
+                )
+                offset_combine = " + ".join(offsets)
+                code.writeline(
+                    f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
+                )
+
+            code.newline()
+
+            # compute
+            inputs_to_scalar_fn = [
+                self.input_name(i) for i in range(schema.num_inputs())
+            ]
+            outputs_to_scalar_fn = [
+                self.output_name(i) for i in range(schema.num_output_tensors())
+            ]
+            inputs_to_scalar_fn = _cs(inputs_to_scalar_fn)
+            outputs_to_scalar_fn = _cs(outputs_to_scalar_fn)
+
+            code.writeline("# compute")
             code.writeline(
-                f"in{i} = tl.load(in{i}_bptr, boundary_check=({order})).to(in{i}_ptr.type.element_ty) "
-                "# workaround the bug on bool, we should use the original pointer's dtype(instead of block pointer's)"
+                f"{outputs_to_scalar_fn} = {self.fn_name}({inputs_to_scalar_fn})"
             )
-        code.newline()
+            code.newline()
 
-        # compute
-        # TODO: sepearate this part
-        inputs_to_scalar_fn = [self.input_name(i) for i in range(schema.num_inputs())]
-        outputs_to_scalar_fn = [
-            self.output_name(i) for i in range(schema.num_output_tensors())
-        ]
-        inputs_to_scalar_fn = _cs(inputs_to_scalar_fn)
-        outputs_to_scalar_fn = _cs(outputs_to_scalar_fn)
+            # store
+            for i in range(schema.num_output_tensors()):
+                strides = _tuple_content(
+                    tuple(f"out{i}_stride{j}" for j in range(ndim))
+                )
+                order = _tuple_content(
+                    tuple(f"out{i}_stride_order{j}" for j in range(ndim))
+                )
 
-        code.writeline("# compute")
-        code.writeline(
-            f"{outputs_to_scalar_fn} = {self.fn_name}({inputs_to_scalar_fn})"
-        )
-        code.newline()
+                for j in range(ndim):
+                    code.writeline(f"if out{i}_zero_stride{j}:")
+                    with code.indent():
+                        code.writeline(f"out{i}_stride{j} = 0")
 
-        # stores
-        code.writeline(
-            "# stores, note that store to block pointer does not automatically cast the value to the pointer's dtype"
-        )
-        for i in range(schema.num_output_tensors()):
-            strides = _tuple_content(tuple(f"out{i}_stride{j}" for j in range(ndim)))
-            order = _tuple_content(
-                tuple(f"out{i}_stride_order{j}" for j in range(ndim))
-            )
-
-            for j in range(ndim):
-                code.writeline(f"if out{i}_zero_stride{j}:")
-                with code.indent():
-                    code.writeline(f"out{i}_stride{j} = 0")
-
-            code.writeline(
-                f"out{i}_bptr = tl.make_block_ptr("
-                f"out{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
-            )
-
-            code.writeline(
-                f"tl.store(out{i}_bptr, out{i}.to(out{i}_bptr.type.element_ty), boundary_check=({order}))"
-            )
+                offsets = tuple(
+                    f"offsets{j}{_broadcast_vec(j, ndim)} * out{i}_stride{j}"
+                    for j in range(ndim)
+                )
+                offset_combine = " + ".join(offsets)
+                code.writeline(
+                    f"in{i} = tl.store(out{i}_ptr + {offset_combine}, out{i}, mask=mask)"
+                )
 
     def gen_body_gsl_with_bptr(self, code):
-        code.writeline("num_ctas = tle.num_programs(0)")
+        code.writeline("num_ctas = ext.num_programs(0)")
         if self.ndim <= 4:
             num_tiles = " * ".join([f"num_tiles{i}" for i in range(self.ndim)])
             code.writeline(
@@ -793,7 +927,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_without_bptr(self, code):
-        code.writeline("num_ctas = tle.num_programs(0)")
+        code.writeline("num_ctas = ext.num_programs(0)")
         if self.ndim <= 4:
             num_tiles = " * ".join([f"num_tiles{i}" for i in range(self.ndim)])
             code.writeline(f"tiles_per_cta = tl.cdiv({num_tiles}, num_ctas)")
@@ -815,7 +949,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tle.program_id(0)")
+            code.writeline("pid = ext.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             if self.ndim > 4:
@@ -844,7 +978,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tle.program_id(0)")
+            code.writeline("pid = ext.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             if self.ndim > 4:
@@ -921,7 +1055,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_1d_tile(self, code):
-        code.writeline("num_ctas = tle.num_programs(0)")
+        code.writeline("num_ctas = ext.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -940,7 +1074,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tle.program_id(0)")
+            code.writeline("pid = ext.program_id(0)")
             # code.writeline("num_ctas = te.num_programs(0)")
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -1027,6 +1161,23 @@ class WrapperGenerator:
         check: str = " == ".join(params)
         code.writeline(f"assert {check}, 'operand shapes mismatch'")
 
+    def gen_fallback_bptr(self, code: IndentedBuffer):
+        code.writeline("def fallback_bptr(t):")
+        with code.indent():
+            code.writeline("ndim = t.dim()")
+            code.writeline("sizes = t.size()")
+            code.writeline("if t.numel() == 0:")
+            with code.indent():
+                code.writeline("return False")
+            code.writeline("for i in range(ndim):")
+            with code.indent():
+                code.writeline("if sizes[i] >= 2147483648:")
+                with code.indent():
+                    code.writeline("return True")
+            code.writeline("return False")
+            code.newline()
+            code.newline()
+
     def gen_task_partition(self, code: IndentedBuffer):
         code.writeline("# task partitioning")
         ndim = self.ndim
@@ -1053,6 +1204,21 @@ class WrapperGenerator:
 
             code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
+            if self.config.prefer_block_pointer:
+                code.writeline("FALLBACK_BPTR = False")
+                inputs = ",".join(
+                    [f"in{i}" for i in range(self.fx.num_input_tensors())]
+                )
+                outputs = ",".join(
+                    [f"out{i}" for i in range(self.fx.num_output_tensors())]
+                )
+                code.writeline(f"all_tensors = [{inputs}, {outputs}]")
+                code.writeline("for t in all_tensors:")
+                with code.indent():
+                    code.writeline("if fallback_bptr(t):")
+                    with code.indent():
+                        code.writeline("FALLBACK_BPTR = True")
+                        code.writeline("break")
         if ndim > 0 and ndim <= 4:
             max_grid_size0 = self.config.max_grid_size[0]
             dynamic_num_tiles = " * ".join(
@@ -1088,6 +1254,21 @@ class WrapperGenerator:
             code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
+            if self.config.prefer_block_pointer:
+                code.writeline("FALLBACK_BPTR = False")
+                inputs = ",".join(
+                    [f"in{i}" for i in range(self.fx.num_input_tensors())]
+                )
+                outputs = ",".join(
+                    [f"out{i}" for i in range(self.fx.num_output_tensors())]
+                )
+                code.writeline(f"all_tensors = [{inputs}, {outputs}]")
+                code.writeline("for t in all_tensors:")
+                with code.indent():
+                    code.writeline("if fallback_bptr(t):")
+                    with code.indent():
+                        code.writeline("FALLBACK_BPTR = True")
+                        code.writeline("break")
         code.writeline("grid = (num_ctas, 1, 1)")
 
     def gen_kernel_launch(
@@ -1173,6 +1354,8 @@ class WrapperGenerator:
                     shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
                     code.writeline(f"{shape_args}, # task indexing space")
                     code.writeline("num_tasks, # num tasks")
+                    if self.config.prefer_block_pointer:
+                        code.writeline("FALLBACK_BPTR=FALLBACK_BPTR,")
                     if ndim > 4:
                         code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
                     if ndim == 0 or ndim > 4:
@@ -1223,6 +1406,8 @@ class WrapperGenerator:
                     shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
                     code.writeline(f"{shape_args}, # task indexing space")
                     code.writeline("num_tasks, # num tasks")
+                    if self.config.prefer_block_pointer:
+                        code.writeline("FALLBACK_BPTR=FALLBACK_BPTR,")
                     code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
                     code.writeline("tile_size=tile_size,")
                     code.writeline("one_tile_per_cta=one_tile_per_cta,")
@@ -1234,6 +1419,8 @@ class WrapperGenerator:
         code.writeline(f"return {return_exprs}")
 
     def codegen_nd_tile(self, code):
+        if self.config.prefer_block_pointer:
+            self.gen_fallback_bptr(code)
         self.gen_signature(code)
 
         with code.indent():
@@ -1246,6 +1433,8 @@ class WrapperGenerator:
         return code
 
     def codegen_1d_tile(self, code):
+        if self.config.prefer_block_pointer:
+            self.gen_fallback_bptr(code)
         self.gen_signature(code)
 
         with code.indent():
@@ -1269,6 +1458,7 @@ class ModuleGenerator:
         config: CodeGenConfig,
     ):
         self.config = config
+        self.scalar_fn = scalar_fn
         self.wrapper_gen = WrapperGenerator(
             function_schema, jit_fn_name, ndim, wrapper_name, config
         )
@@ -1277,13 +1467,98 @@ class ModuleGenerator:
         )
 
     @staticmethod
-    def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
+    def _collect_jit_deps(scalar_fn):
+        """Collect extra imports and local @triton.jit helper sources.
+
+        Parses the source module where scalar_fn is defined using AST.
+        Returns a tuple of:
+          - extra_imports: dict of module_path -> set of names
+          - local_sources: list of source strings for local @triton.jit
+            functions (those NOT decorated with @pointwise_dynamic)
+        """
+        import ast
+        import inspect
+
+        py_fn = getattr(scalar_fn, "fn", scalar_fn)
+        module_name = getattr(py_fn, "__module__", None)
+        if not module_name:
+            return {}, []
+        try:
+            mod = importlib.import_module(module_name)
+            source_file = inspect.getfile(mod)
+        except (ImportError, TypeError, OSError):
+            return {}, []
+        try:
+            with open(source_file) as f:
+                module_source = f.read()
+            source_lines = module_source.splitlines(keepends=True)
+            tree = ast.parse(module_source)
+        except (OSError, SyntaxError):
+            return {}, []
+
+        # Collect non-standard import-from lines
+        ALREADY_IMPORTED = {
+            "math",
+            "typing",
+            "torch",
+            "triton",
+            "triton.language",
+            "flag_gems.utils.shape_utils",
+            "flag_gems.utils.tensor_wrapper",
+            "flag_gems.utils.libentry",
+            "flag_gems.utils",
+            "flag_gems.runtime",
+            "flag_gems.utils.pointwise_dynamic",
+            "utils.pointwise_dynamic",
+            "randn",
+            "utils",
+            "all",
+        }
+        extra_imports = {}
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module in ALREADY_IMPORTED:
+                    continue
+                names = {alias.name for alias in node.names}
+                extra_imports.setdefault(node.module, set()).update(names)
+
+        # Collect local @triton.jit functions (without @pointwise_dynamic)
+        def _has_decorator(func_node, name):
+            for dec in func_node.decorator_list:
+                src = "".join(source_lines[dec.lineno - 1 : dec.end_lineno])
+                if name in src:
+                    return True
+            return False
+
+        def _extract_source(func_node):
+            start = func_node.lineno - 1
+            if func_node.decorator_list:
+                start = func_node.decorator_list[0].lineno - 1
+            end = func_node.end_lineno
+            return "".join(source_lines[start:end])
+
+        local_sources = []
+        for node in ast.iter_child_nodes(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            if not _has_decorator(node, "triton.jit") and not _has_decorator(
+                node, "jit"
+            ):
+                continue
+            if _has_decorator(node, "pointwise_dynamic"):
+                continue
+            local_sources.append(_extract_source(node))
+
+        return extra_imports, local_sources
+
+    def generate_imports(self, code: IndentedBuffer) -> IndentedBuffer:
         code.writeline("import math")
         code.writeline("from typing import Union")
         code.writeline("import torch")
         code.writeline("import triton")
         code.writeline("from triton import language as tl")
         code.newline()
+        code.writeline("import flag_gems")
         code.writeline("from flag_gems.utils.shape_utils import (")
         code.writeline("    heuristics_for_tile_size,")
         code.writeline("    heuristics_for_num_warps,")
@@ -1291,14 +1566,27 @@ class ModuleGenerator:
         code.writeline(")")
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
         code.writeline("from flag_gems.utils.libentry import libentry, libtuner")
-        code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+        code.writeline("from flag_gems.utils import triton_lang_extension as ext")
         code.writeline("from flag_gems.runtime import torch_device_fn")
+
+        # Generate extra imports and local JIT deps of the scalar function
+        jit_dep_imports, local_jit_sources = self._collect_jit_deps(self.scalar_fn)
+        for module_path, names in sorted(jit_dep_imports.items()):
+            sorted_names = ", ".join(sorted(names))
+            code.writeline(f"from {module_path} import {sorted_names}")
+
         code.newline()
         code.newline()
+
+        # Emit local @triton.jit helper functions
+        for source in local_jit_sources:
+            for line in source.splitlines():
+                code.writeline(line)
+            code.newline()
+
         return code
 
     def codegen(self, code: IndentedBuffer):
-        # the only runtime determined factor is the rank of the task space
         code = self.generate_imports(code)
         if self.config.prefer_1d_tile:
             code = self.wrapper_gen.codegen_1d_tile(code)
@@ -1307,6 +1595,16 @@ class ModuleGenerator:
             code = self.wrapper_gen.codegen_nd_tile(code)
             code = self.kernel_gen.codegen_nd_tile(code)
         return code
+
+
+@dataclass
+class KernelInfo:
+    """Information about a generated kernel for C++ integration."""
+
+    file_path: str
+    kernel_name: str
+    wrapper_name: str
+    ndim: int
 
 
 class PointwiseDynamicFunction:
@@ -1326,7 +1624,9 @@ class PointwiseDynamicFunction:
         self.config: CodeGenConfig = config or get_codegen_config()
 
         # instantiated & cached overloads
-        self.overloads: Mapping[int, Callable] = {}
+        self.overloads: Mapping[str, Callable] = {}
+        # cached kernel info for C++ integration
+        self._kernel_info_cache: Mapping[str, KernelInfo] = {}
 
     def __call__(self, *args, **kwargs):
         # inputs must be passed by position, outputs must be passed by keyword
@@ -1474,18 +1774,42 @@ class PointwiseDynamicFunction:
             return item.unwrap()
         return tuple(item.unwrap() for item in tensors)
 
+    def _compute_kernel_names(self, ndim: int) -> Tuple[str, str, str]:
+        """Compute kernel name, wrapper name, and file path for a given ndim.
+
+        This is the single source of truth for naming, used by both instantiate()
+        and get_kernel_info() to ensure consistency.
+
+        Returns:
+            Tuple of (kernel_name, wrapper_name, file_path)
+        """
+        scalar_fn_name = self._scalar_fn.__name__
+        kernel_name = f"{scalar_fn_name}_kernel_rank_{ndim}"
+        wrapper_name = f"{scalar_fn_name}_wrapper_rank_{ndim}"
+
+        file_name = (
+            f"pointwise_dynamic_{self._scalar_fn_cache_key}_{kernel_name}_"
+            f"{'1d_tile_' if self.config.prefer_1d_tile else ''}"
+            f"{'bptr' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
+            ".py"
+        )
+        file_path = str(code_cache_dir() / file_name)
+
+        return kernel_name, wrapper_name, file_path
+
     def instantiate(self, ndim):
         # NOTE: manually instantiated overload does not have `prepare_args` as
         # preprocessing, so you have to manually allocate output and make sure that
         # the inputs & ouputs actually fits the manually instantiated overload
-        if ndim in self.overloads:
-            return self.overloads[ndim]
+        key = f"{ndim}_{self.config.prefer_block_pointer}"
+        if key in self.overloads:
+            return self.overloads[key]
 
         code = IndentedBuffer()
 
-        scalar_fn_name = self._scalar_fn.__name__
-        kernel_name = f"{scalar_fn_name}_kernel_rank_{ndim}"
-        wrapper_name = f"{scalar_fn_name}_wrapper_rank_{ndim}"
+        # Use helper to compute names (single source of truth)
+        kernel_name, wrapper_name, file_path = self._compute_kernel_names(ndim)
+
         module_gen = ModuleGenerator(
             self.fx,
             self._scalar_fn,
@@ -1503,14 +1827,6 @@ class PointwiseDynamicFunction:
         # created via exec string. We can help inspect to find the source by hacking linecache
         # library, but we find generating a module simpler, since we can generating 2 functions
         # the kernel and the wrapper, and the wrapper calls the kernel.
-        file_name = (
-            f"pointwise_dynamic_{self._scalar_fn_cache_key}_{kernel_name}_"
-            f"{'1d_tile_' if self.config.prefer_1d_tile else ''}"
-            f"{'bptr' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
-            ".py"
-        )
-
-        file_path = code_cache_dir() / file_name
         write_atomic(file_path, code.getvalue())
 
         # load
@@ -1534,8 +1850,39 @@ class PointwiseDynamicFunction:
         m.__dict__[self._scalar_fn.__name__] = self._scalar_fn
 
         overload = getattr(m, wrapper_name)
-        self.overloads[ndim] = overload
+        self.overloads[key] = overload
+
+        # Cache kernel info for C++ integration
+        self._kernel_info_cache[key] = KernelInfo(
+            file_path=file_path,
+            kernel_name=kernel_name,
+            wrapper_name=wrapper_name,
+            ndim=ndim,
+        )
+
         return overload
+
+    def get_kernel_info(self, ndim: int) -> KernelInfo:
+        """Get kernel information for a given ndim.
+
+        This method is useful for C++ integration to get the file path and
+        kernel name without duplicating the naming logic.
+
+        If the kernel hasn't been instantiated yet, this will instantiate it first.
+
+        Args:
+            ndim: The rank of the task space
+
+        Returns:
+            KernelInfo with file_path, kernel_name, wrapper_name, and ndim
+        """
+        key = f"{ndim}_{self.config.prefer_block_pointer}"
+
+        # Ensure the kernel is instantiated
+        if key not in self._kernel_info_cache:
+            self.instantiate(ndim)
+
+        return self._kernel_info_cache[key]
 
 
 def pointwise_dynamic(

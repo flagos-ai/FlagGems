@@ -61,8 +61,11 @@ argmin:
 
 log_softmax:
 - META:
-    BLOCK_M: 64
+    BLOCK_M: 32
     BLOCK_N: 8
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 4
 
 mm:
 - META:
@@ -601,9 +604,13 @@ var_mean:
       BLOCK_M: block_m
       BLOCK_N: block_n
   block_m:
-  - 18
+  - 8
+  - 16
+  - 32
   block_n:
+  - 128
   - 256
+  - 512
 
 conv2d_forward:
 - META:
@@ -723,3 +730,125 @@ index_put:
   - 1024
   - 2048
   - 4096
+
+moe_sum:
+# Very small hidden_size configs (128-512) - single block covers all
+- META:
+    BLOCK_SIZE: 512
+    BLOCK_SIZE_SUB: 128
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 512
+    BLOCK_SIZE_SUB: 256
+  multibuffer: true
+# Small hidden_size configs (512-1024)
+- META:
+    BLOCK_SIZE: 1024
+    BLOCK_SIZE_SUB: 256
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 1024
+    BLOCK_SIZE_SUB: 512
+  multibuffer: true
+# Medium-small hidden_size configs (1024-2048)
+- META:
+    BLOCK_SIZE: 2048
+    BLOCK_SIZE_SUB: 256
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 2048
+    BLOCK_SIZE_SUB: 512
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 2048
+    BLOCK_SIZE_SUB: 1024
+  multibuffer: true
+# Medium hidden_size configs (2048-4096) - common LLM sizes
+- META:
+    BLOCK_SIZE: 4096
+    BLOCK_SIZE_SUB: 512
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 4096
+    BLOCK_SIZE_SUB: 1024
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 4096
+    BLOCK_SIZE_SUB: 2048
+  multibuffer: true
+# Large hidden_size configs (8192) - common LLM sizes
+- META:
+    BLOCK_SIZE: 8192
+    BLOCK_SIZE_SUB: 512
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 8192
+    BLOCK_SIZE_SUB: 1024
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 8192
+    BLOCK_SIZE_SUB: 2048
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 8192
+    BLOCK_SIZE_SUB: 4096
+  multibuffer: true
+# Very large hidden_size configs (16384+)
+- META:
+    BLOCK_SIZE: 16384
+    BLOCK_SIZE_SUB: 1024
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 16384
+    BLOCK_SIZE_SUB: 2048
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 16384
+    BLOCK_SIZE_SUB: 4096
+  multibuffer: true
+
+topk_softmax:
+# Small num_experts (8-32) - common MoE configurations
+- META:
+    BLOCK_SIZE_ROWS: 16
+    BLOCK_SIZE_EXPERTS: 32
+    BLOCK_SIZE_EXPERTS_SUB: 32
+  multibuffer: true
+- META:
+    BLOCK_SIZE_ROWS: 8
+    BLOCK_SIZE_EXPERTS: 64
+    BLOCK_SIZE_EXPERTS_SUB: 64
+  multibuffer: true
+# Medium num_experts (64-128)
+- META:
+    BLOCK_SIZE_ROWS: 4
+    BLOCK_SIZE_EXPERTS: 128
+    BLOCK_SIZE_EXPERTS_SUB: 64
+  multibuffer: true
+- META:
+    BLOCK_SIZE_ROWS: 2
+    BLOCK_SIZE_EXPERTS: 128
+    BLOCK_SIZE_EXPERTS_SUB: 128
+  multibuffer: true
+# Large num_experts (256-512)
+- META:
+    BLOCK_SIZE_ROWS: 1
+    BLOCK_SIZE_EXPERTS: 256
+    BLOCK_SIZE_EXPERTS_SUB: 64
+  multibuffer: true
+- META:
+    BLOCK_SIZE_ROWS: 1
+    BLOCK_SIZE_EXPERTS: 256
+    BLOCK_SIZE_EXPERTS_SUB: 128
+  multibuffer: true
+- META:
+    BLOCK_SIZE_ROWS: 1
+    BLOCK_SIZE_EXPERTS: 512
+    BLOCK_SIZE_EXPERTS_SUB: 128
+  multibuffer: true
+# Very large num_experts (1024)
+- META:
+    BLOCK_SIZE_ROWS: 1
+    BLOCK_SIZE_EXPERTS: 1024
+    BLOCK_SIZE_EXPERTS_SUB: 128
+  multibuffer: true

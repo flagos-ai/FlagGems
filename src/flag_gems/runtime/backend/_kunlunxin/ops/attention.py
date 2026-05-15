@@ -3,6 +3,8 @@ import math
 from functools import partial
 
 import torch
+
+# import torch.nn.functional as F
 import triton
 import triton.language as tl
 
@@ -13,7 +15,7 @@ from flag_gems.runtime import torch_device_fn
 from .flash_api import mha_fwd, mha_varlan_fwd
 from .flash_kernel import keep
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 # Modified from Triton tutorial: https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
@@ -747,7 +749,7 @@ def _attn_bwd(
     tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None])
 
 
-def scaled_dot_product_attention(
+def scaled_dot_product_attention_forward(
     query,
     key,
     value,
@@ -1024,6 +1026,28 @@ class ScaleDotProductAttention(torch.autograd.Function):
             enable_gqa=enable_gqa,
         )
         return dq, dk, dv, None, None, None, None, None
+
+
+def scaled_dot_product_attention(
+    query,
+    key,
+    value,
+    attn_mask=None,
+    dropout_p=0.0,
+    is_causal=False,
+    scale=None,
+    enable_gqa=False,
+):
+    return ScaleDotProductAttention.apply(
+        query,
+        key,
+        value,
+        attn_mask,
+        dropout_p,
+        is_causal,
+        scale,
+        enable_gqa,
+    )
 
 
 def flash_attention_forward(

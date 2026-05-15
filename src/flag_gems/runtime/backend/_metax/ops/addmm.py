@@ -8,9 +8,9 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 @libentry()
@@ -51,8 +51,8 @@ def addmm_kernel(
     UPGRADE: tl.constexpr,
 ):
     if UPGRADE:
-        pid_m = tle.program_id(0)
-        pid_n = tle.program_id(1)
+        pid_m = ext.program_id(0)
+        pid_n = ext.program_id(1)
     else:
         pid_m = tl.program_id(0)
         pid_n = tl.program_id(1)
@@ -99,6 +99,17 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     ), "Incompatible input shape"
     M, K = mat1.shape
     _, N = mat2.shape
+
+    logger.debug(
+        "METAX GEMS ADDMM, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
+        M,
+        N,
+        K,
+        mat1.stride(0) == 1,
+        mat2.stride(0) == 1,
+        bias.stride(0) == 1,
+    )
 
     mat1 = mat1.contiguous()
     mat2 = mat2.contiguous()

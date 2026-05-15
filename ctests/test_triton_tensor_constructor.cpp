@@ -1,10 +1,12 @@
 #include <gtest/gtest.h>
 
+#include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 TEST(zeros_op_test, 2d_tensor) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   std::vector<int64_t> shape_0 = {31};
   std::vector<int64_t> shape_1 = {11, 7};
   std::vector<int64_t> shape = {7, 7, 7};
@@ -34,11 +36,14 @@ TEST(zeros_op_test, 2d_tensor) {
   );
 
   EXPECT_TRUE(torch::all(out_triton == 0).item<bool>());
-  EXPECT_TRUE(torch::allclose(out_triton, ref_empty));
+  auto res = flag_gems::accuracy_utils::gems_assert_equal(out_triton, ref_empty);
+  EXPECT_TRUE(res.ok) << res.message;
 
   EXPECT_TRUE(torch::all(out_triton_0 == 0).item<bool>());
-  EXPECT_TRUE(torch::allclose(out_triton_0, ref_empty_0));
+  auto res0 = flag_gems::accuracy_utils::gems_assert_equal(out_triton_0, ref_empty_0);
+  EXPECT_TRUE(res0.ok) << res0.message;
 
   EXPECT_TRUE(torch::all(out_triton_1 == 0).item<bool>());
-  EXPECT_TRUE(torch::allclose(out_triton_1, ref_empty_1));
+  auto res1 = flag_gems::accuracy_utils::gems_assert_equal(out_triton_1, ref_empty_1);
+  EXPECT_TRUE(res1.ok) << res1.message;
 }

@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -7,7 +8,7 @@ import triton.language as tl
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -27,12 +28,26 @@ def heur_group_m(args):
         return (args["M"] + args["BLOCK_M"] - 1) // args["BLOCK_M"]
 
 
-@libentry()
-@triton.autotune(
+autotune_decorator = triton.autotune(
     configs=[],
     generate_configs="mm",
     key=["M", "N", "K"],
 )
+
+
+KLX_USE_AUTOTUNE = os.environ.get("KLX_USE_AUTOTUNE", "1") == "1"
+
+if not KLX_USE_AUTOTUNE:
+    autotune_decorator = triton.autotune(
+        configs=[
+            triton.Config({"BLOCK_M": 256, "BLOCK_N": 256, "BLOCK_K": 256}),
+        ],
+        key=["M", "N", "K"],
+    )
+
+
+@libentry()
+@autotune_decorator
 @triton.heuristics(
     {
         "SPLIT_K": heur_split_k,
@@ -63,8 +78,8 @@ def mm_kernel(
     EVEN_K: tl.constexpr,
 ):
     # matrix multiplication
-    pid = tle.program_id(0)
-    pid_z = tle.program_id(1)
+    pid = ext.program_id(0)
+    pid_z = ext.program_id(1)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
     # re-order program ID for better L2 performance

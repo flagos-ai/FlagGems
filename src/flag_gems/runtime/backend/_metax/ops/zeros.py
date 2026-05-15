@@ -7,10 +7,10 @@ import triton.language as tl
 import flag_gems.runtime as runtime
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.shape_utils import volume
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 device_ = device
 
 
@@ -22,7 +22,7 @@ def zeros_kernel(
     N,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(axis=0)  # We use a 1D launch grid so axis is 0.
+    pid = ext.program_id(axis=0)  # We use a 1D launch grid so axis is 0.
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < N

@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
 
 
@@ -93,8 +93,8 @@ def output_counts_flat_kernel(
     tiles_per_cta: int,
     tile_size: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    ctas_num = tle.num_programs(0)
+    pid = ext.program_id(0)
+    ctas_num = ext.num_programs(0)
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
         global_pid = pid + j * ctas_num
@@ -154,8 +154,8 @@ def quick_output_flat_kernel(
     tiles_per_cta: int,
     tile_size: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    ctas_num = tle.num_programs(0)
+    pid = ext.program_id(0)
+    ctas_num = ext.num_programs(0)
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
         global_pid = pid + j * ctas_num
@@ -237,8 +237,8 @@ def local_quick_unique_flat_kernel(
     tile_size: tl.constexpr,
     return_counts: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    ctas_num = tle.num_programs(0)
+    pid = ext.program_id(0)
+    ctas_num = ext.num_programs(0)
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
         global_pid = pid + j * ctas_num
@@ -330,8 +330,8 @@ def global_quick_unique_flat_kernel(
     one_tile_per_cta: tl.constexpr,
     return_counts: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    ctas_num = tle.num_programs(0)
+    pid = ext.program_id(0)
+    ctas_num = ext.num_programs(0)
     if one_tile_per_cta:  # monolitic kernel style
         global_quick_unique_flat_impl(
             pid,
@@ -430,8 +430,8 @@ def global_quick_unique_flat_kernel_stage_1(
     one_tile_per_cta: tl.constexpr,
     return_counts: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    ctas_num = tle.num_programs(0)
+    pid = ext.program_id(0)
+    ctas_num = ext.num_programs(0)
     if one_tile_per_cta:  # monolitic kernel style
         global_quick_unique_flat_impl_stage_1(
             pid,
@@ -542,8 +542,8 @@ def global_quick_unique_flat_kernel_stage_2(
     one_tile_per_cta: tl.constexpr,
     return_counts: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    ctas_num = tle.num_programs(0)
+    pid = ext.program_id(0)
+    ctas_num = ext.num_programs(0)
     if one_tile_per_cta:  # monolitic kernel style
         global_quick_unique_flat_impl_stage_2(
             pid,
@@ -803,8 +803,8 @@ def local_ne_flat_kernel(
     tiles_per_cta: int,
     tile_size: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    ctas_num = tle.num_programs(0)
+    pid = ext.program_id(0)
+    ctas_num = ext.num_programs(0)
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
         global_pid = pid + j * ctas_num
@@ -915,8 +915,8 @@ def global_cumsum_flat_kernel(
     one_tile_per_cta: tl.constexpr,
     return_counts: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    ctas_num = tle.num_programs(0)
+    pid = ext.program_id(0)
+    ctas_num = ext.num_programs(0)
     if one_tile_per_cta:  # monolitic kernel style
         global_cumsum_flat_impl(
             pid,
@@ -1050,8 +1050,8 @@ def global_cumsum_flat_kernel_stage_1(
     one_tile_per_cta: tl.constexpr,
     return_counts: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    ctas_num = tle.num_programs(0)
+    pid = ext.program_id(0)
+    ctas_num = ext.num_programs(0)
     if one_tile_per_cta:  # monolitic kernel style
         global_cumsum_flat_impl_stage_1(
             pid,
@@ -1185,8 +1185,8 @@ def global_cumsum_flat_kernel_stage_2(
     one_tile_per_cta: tl.constexpr,
     return_counts: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    ctas_num = tle.num_programs(0)
+    pid = ext.program_id(0)
+    ctas_num = ext.num_programs(0)
     if one_tile_per_cta:  # monolitic kernel style
         global_cumsum_flat_impl_stage_2(
             pid,

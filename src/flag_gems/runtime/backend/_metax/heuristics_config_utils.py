@@ -164,7 +164,8 @@ def softmax_heur_tile_k(args):
 
 
 def softmax_heur_tile_n_non_inner(args):
-    return triton.cdiv(8192, args["TILE_K"])
+    upper_bound = triton.next_power_of_2(args["N"])
+    return min(upper_bound, triton.cdiv(8192, args["TILE_K"]))
 
 
 def softmax_heur_one_tile_per_cta(args):
@@ -173,7 +174,11 @@ def softmax_heur_one_tile_per_cta(args):
 
 def softmax_heur_num_warps_non_inner(args):
     tile_size = args["TILE_N"] * args["TILE_K"]
-    if tile_size < 2048:
+    if tile_size < 512:
+        return 1
+    elif tile_size < 256:
+        return 2
+    elif tile_size < 2048:
         return 4
     elif tile_size < 4096:
         return 8

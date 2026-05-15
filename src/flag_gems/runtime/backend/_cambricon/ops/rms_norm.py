@@ -8,10 +8,87 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-from ..utils import cfggen_reduce_op
+from ..utils import MAX_GRID_SIZE_X, cfggen_reduce_op
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 MAX_NRAM_C_FORWARD = 16384 * 2
+
+
+def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
+    logger.debug("GEMS_CAMBRICON RMSNORM FORWARD")
+    dim = x.ndim - len(normalized_shape)
+    M = math.prod(x.shape[:dim])
+    N = math.prod(normalized_shape)
+
+    BLOCK_SIZE = N  # triton.next_power_of_2(N)
+    x = x.contiguous()
+    weight = weight.contiguous()
+    y = torch.empty_like(x)
+    inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
+    grid = (min(M, MAX_GRID_SIZE_X // 4),)
+    with torch_device_fn.device(x.device):
+        if BLOCK_SIZE <= MAX_NRAM_C_FORWARD:
+            logger.debug("GEMS_CAMBRICON RMSNORM FORWARD NOT USING C SPLIT")
+            rms_norm_kernel[grid](
+                y, inv_rms, x, weight, N, 1, N, 1, N, eps, M, BLOCK_SIZE
+            )
+        else:
+            logger.debug("GEMS_CAMBRICON RMSNORM FORWARD USING C SPLIT")
+            rms_norm_kernel_C_split[grid](y, inv_rms, x, weight, N, 1, N, 1, N, eps, M)
+    return y, inv_rms
+
+
+def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
+    logger.debug("GEMS_CAMBRICON RMSNORM BACKWARD")
+    dim = x.ndim - len(normalized_shape)
+    M = math.prod(x.shape[:dim])
+    N = math.prod(normalized_shape)
+
+    # BLOCK_SIZE = triton.next_power_of_2(N)
+    BLOCK_SIZE = N
+    x = x.contiguous()
+    weight = weight.contiguous()
+    dx = torch.empty_like(x)
+    grid = (min(M, MAX_GRID_SIZE_X // 4),)
+    with torch_device_fn.device(x.device):
+        if BLOCK_SIZE <= MAX_NRAM_C_FORWARD:
+            logger.debug("GEMS_CAMBRICON RMSNORM BACKWARD NOT USING C SPLIT")
+            rms_norm_grad_dx_kernel[grid](
+                x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, M, BLOCK_SIZE
+            )
+        else:
+            logger.debug("GEMS_CAMBRICON RMSNORM BACKWARD USING C SPLIT")
+            rms_norm_grad_dx_kernel_C_split[grid](
+                x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, M
+            )
+
+    ROW_BLOCK_SIZE = 16
+    COL_BLOCK_SIZE = 256
+    row_block_num = triton.cdiv(M, ROW_BLOCK_SIZE)
+    col_block_num = triton.cdiv(N, COL_BLOCK_SIZE)
+
+    partial_buffer = torch.empty(
+        (row_block_num, N), dtype=torch.float32, device=x.device
+    )
+
+    with torch_device_fn.device(x.device):
+        rms_norm_grad_dw_kernel[row_block_num, col_block_num](
+            x,
+            dy,
+            inv_rms,
+            partial_buffer,
+            N,
+            1,
+            N,
+            1,
+            M,
+            N,
+            ROW_BLOCK_SIZE,
+            COL_BLOCK_SIZE,
+        )
+        dw = torch.sum(partial_buffer, dim=0, dtype=x.dtype).reshape(-1)
+
+    return dx, dw
 
 
 @libentry()
@@ -27,23 +104,28 @@ def rms_norm_kernel(
     x_stride_c,  # how much to increase the pointer when moving by 1 col
     N,  # number of columns in X
     eps,  # epsilon to avoid division by zero
+    M,  # number of rows in X
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    Y += pid * y_stride_r
-    X += pid * x_stride_r
+    prog_num = tl.num_programs(0).to(tl.uint64)
+    task_num = M
+    pid = tl.program_id(0).to(tl.uint64)
+    while pid < task_num:
+        Y_ = Y + pid * y_stride_r
+        X_ = X + pid * x_stride_r
 
-    mask = tl.arange(0, BLOCK_SIZE) < N
-    cols = tl.arange(0, BLOCK_SIZE)
-    x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+        mask = tl.arange(0, BLOCK_SIZE) < N
+        cols = tl.arange(0, BLOCK_SIZE)
+        x = tl.load(X_ + cols * x_stride_c, mask, other=0.0).to(tl.float32)
 
-    var = tl.sum(x * x, axis=0) / N
-    rrms = 1 / tl.sqrt(var + eps)
+        var = tl.sum(x * x, axis=0) / N
+        rrms = 1 / tl.sqrt(var + eps)
 
-    w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
-    y = (x * rrms).to(Y.dtype.element_ty) * w
-    tl.store(Y + cols * y_stride_c, y, mask=mask)
-    tl.store(INV_RMS + pid, rrms)
+        w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
+        y = (x * rrms).to(Y_.dtype.element_ty) * w
+        tl.store(Y_ + cols * y_stride_c, y, mask=mask)
+        tl.store(INV_RMS + pid, rrms)
+        pid += prog_num
 
 
 @libentry()
@@ -63,30 +145,35 @@ def rms_norm_kernel_C_split(
     x_stride_c,  # how much to increase the pointer when moving by 1 col
     N,  # number of columns in X
     eps,  # epsilon to avoid division by zero
+    M,  # number of rows in X
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    Y += pid * y_stride_r
-    X += pid * x_stride_r
+    prog_num = tl.num_programs(0).to(tl.uint64)
+    task_num = M
+    pid = tl.program_id(0).to(tl.uint64)
+    while pid < task_num:
+        Y_ = Y + pid * y_stride_r
+        X_ = X + pid * x_stride_r
 
-    var = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-    for m_idx in range(0, N, BLOCK_SIZE):
-        cols = m_idx + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-        var += x * x
+        var = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+        for m_idx in range(0, N, BLOCK_SIZE):
+            cols = m_idx + tl.arange(0, BLOCK_SIZE)
+            mask = cols < N
+            x = tl.load(X_ + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+            var += x * x
 
-    var = tl.sum(var, axis=0) / N
-    rrms = 1 / tl.sqrt(var + eps)
+        var = tl.sum(var, axis=0) / N
+        rrms = 1 / tl.sqrt(var + eps)
 
-    for m_idx in range(0, N, BLOCK_SIZE):
-        cols = m_idx + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        w = tl.load(W + cols, mask=mask, other=0.0)
-        x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-        y = (x * rrms).to(Y.dtype.element_ty) * w
-        tl.store(Y + cols * y_stride_c, y, mask=mask)
-    tl.store(INV_RMS + pid, rrms)
+        for m_idx in range(0, N, BLOCK_SIZE):
+            cols = m_idx + tl.arange(0, BLOCK_SIZE)
+            mask = cols < N
+            w = tl.load(W + cols, mask=mask, other=0.0)
+            x = tl.load(X_ + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+            y = (x * rrms).to(Y_.dtype.element_ty) * w
+            tl.store(Y_ + cols * y_stride_c, y, mask=mask)
+        tl.store(INV_RMS + pid, rrms)
+        pid += prog_num
 
 
 @libentry()
@@ -103,30 +190,35 @@ def rms_norm_grad_dx_kernel(
     x_stride_c,  # how much to increase the pointer when moving by 1 col
     N,  # number of columns in X
     eps,  # epsilon to avoid division by zero
+    M,  # number of rows in X
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    DX += pid * dx_stride_r
-    X += pid * x_stride_r
-    DY += pid * x_stride_r
-    INV_RMS += pid
+    prog_num = tl.num_programs(0).to(tl.uint64)
+    task_num = M
+    pid = tl.program_id(0).to(tl.uint64)
+    while pid < task_num:
+        DX_ = DX + pid * dx_stride_r
+        X_ = X + pid * x_stride_r
+        DY_ = DY + pid * x_stride_r
+        INV_RMS_ = INV_RMS + pid
 
-    mask = tl.arange(0, BLOCK_SIZE) < N
-    cols = tl.arange(0, BLOCK_SIZE)
-    x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-    inv_rms = tl.load(INV_RMS).to(tl.float32)
-    dy = tl.load(DY + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-    w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
+        mask = tl.arange(0, BLOCK_SIZE) < N
+        cols = tl.arange(0, BLOCK_SIZE)
+        x = tl.load(X_ + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+        inv_rms = tl.load(INV_RMS_).to(tl.float32)
+        dy = tl.load(DY_ + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+        w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
 
-    dy = dy * w
+        dy = dy * w
 
-    normalized_buf = x * inv_rms
-    row_sum_stats = tl.sum(normalized_buf * dy, axis=0)
+        normalized_buf = x * inv_rms
+        row_sum_stats = tl.sum(normalized_buf * dy, axis=0)
 
-    norm_val = normalized_buf / N
-    dx = (dy - norm_val * row_sum_stats) * inv_rms
+        norm_val = normalized_buf / N
+        dx = (dy - norm_val * row_sum_stats) * inv_rms
 
-    tl.store(DX + cols * dx_stride_c, dx, mask=mask)
+        tl.store(DX_ + cols * dx_stride_c, dx, mask=mask)
+        pid += prog_num
 
 
 @libentry()
@@ -147,41 +239,46 @@ def rms_norm_grad_dx_kernel_C_split(
     x_stride_c,  # how much to increase the pointer when moving by 1 col
     N,  # number of columns in X
     eps,  # epsilon to avoid division by zero
+    M,  # number of rows in X
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    DX += pid * dx_stride_r
-    X += pid * x_stride_r
-    DY += pid * x_stride_r
-    INV_RMS += pid
-    inv_rms = tl.load(INV_RMS).to(tl.float32)
+    prog_num = tl.num_programs(0).to(tl.uint64)
+    task_num = M
+    pid = tl.program_id(0).to(tl.uint64)
+    while pid < task_num:
+        DX_ = DX + pid * dx_stride_r
+        X_ = X + pid * x_stride_r
+        DY_ = DY + pid * x_stride_r
+        INV_RMS_ = INV_RMS + pid
+        inv_rms = tl.load(INV_RMS_).to(tl.float32)
 
-    acc = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-    for m_idx in range(0, N, BLOCK_SIZE):
-        cols = m_idx + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        x = tl.load(X + cols * x_stride_c, mask=mask, other=0.0).to(tl.float32)
-        inv_rms = tl.load(INV_RMS).to(tl.float32)
-        dy = tl.load(DY + cols * x_stride_c, mask=mask, other=0.0).to(tl.float32)
-        w = tl.load(W + cols, mask=mask, other=0.0)
-        dy = dy * w
-        normalized = x * inv_rms
-        acc += normalized * dy
+        acc = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+        for m_idx in range(0, N, BLOCK_SIZE):
+            cols = m_idx + tl.arange(0, BLOCK_SIZE)
+            mask = cols < N
+            x = tl.load(X_ + cols * x_stride_c, mask=mask, other=0.0).to(tl.float32)
+            inv_rms = tl.load(INV_RMS_).to(tl.float32)
+            dy = tl.load(DY_ + cols * x_stride_c, mask=mask, other=0.0).to(tl.float32)
+            w = tl.load(W + cols, mask=mask, other=0.0)
+            dy = dy * w
+            normalized = x * inv_rms
+            acc += normalized * dy
 
-    row_sum_stats = tl.sum(acc, axis=0)
+        row_sum_stats = tl.sum(acc, axis=0)
 
-    for m_idx in range(0, N, BLOCK_SIZE):
-        cols = m_idx + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        x = tl.load(X + cols * x_stride_c, mask=mask, other=0.0).to(tl.float32)
-        inv_rms = tl.load(INV_RMS).to(tl.float32)
-        dy = tl.load(DY + cols * x_stride_c, mask=mask, other=0.0).to(tl.float32)
-        w = tl.load(W + cols, mask=mask, other=0.0)
-        dy = dy * w
-        normalized = x * inv_rms
-        norm_val = normalized / N
-        dx = (dy - norm_val * row_sum_stats) * inv_rms
-        tl.store(DX + cols * dx_stride_c, dx, mask=mask)
+        for m_idx in range(0, N, BLOCK_SIZE):
+            cols = m_idx + tl.arange(0, BLOCK_SIZE)
+            mask = cols < N
+            x = tl.load(X_ + cols * x_stride_c, mask=mask, other=0.0).to(tl.float32)
+            inv_rms = tl.load(INV_RMS_).to(tl.float32)
+            dy = tl.load(DY_ + cols * x_stride_c, mask=mask, other=0.0).to(tl.float32)
+            w = tl.load(W + cols, mask=mask, other=0.0)
+            dy = dy * w
+            normalized = x * inv_rms
+            norm_val = normalized / N
+            dx = (dy - norm_val * row_sum_stats) * inv_rms
+            tl.store(DX_ + cols * dx_stride_c, dx, mask=mask)
+        pid += prog_num
 
 
 @libentry()
@@ -242,27 +339,7 @@ def rms_norm_grad_dw_kernel(
 class RmsNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, eps=1e-5):
-        logger.debug("GEMS_CAMBRICON RMSNORM FORWARD")
-        dim = x.ndim - len(normalized_shape)
-        M = math.prod(x.shape[:dim])
-        N = math.prod(normalized_shape)
-
-        BLOCK_SIZE = N  # triton.next_power_of_2(N)
-        x = x.contiguous()
-        weight = weight.contiguous()
-        y = torch.empty_like(x)
-        inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
-
-        with torch_device_fn.device(x.device):
-            if BLOCK_SIZE <= MAX_NRAM_C_FORWARD:
-                logger.debug("GEMS_CAMBRICON RMSNORM FORWARD NOT USING C SPLIT")
-                rms_norm_kernel[M,](
-                    y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-                )
-            else:
-                logger.debug("GEMS_CAMBRICON RMSNORM FORWARD USING C SPLIT")
-                rms_norm_kernel_C_split[M,](y, inv_rms, x, weight, N, 1, N, 1, N, eps)
-
+        y, inv_rms = rms_norm_forward(x, normalized_shape, weight, eps)
         ctx.save_for_backward(x, inv_rms, weight)
         ctx.normalized_shape = normalized_shape
         ctx.eps = eps
@@ -270,59 +347,10 @@ class RmsNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dy):
-        logger.debug("GEMS_CAMBRICON RMSNORM BACKWARD")
         x, inv_rms, weight = ctx.saved_tensors
         normalized_shape = ctx.normalized_shape
         eps = ctx.eps
-
-        dim = x.ndim - len(normalized_shape)
-        M = math.prod(x.shape[:dim])
-        N = math.prod(normalized_shape)
-
-        # BLOCK_SIZE = triton.next_power_of_2(N)
-        BLOCK_SIZE = N
-        x = x.contiguous()
-        weight = weight.contiguous()
-        dx = torch.empty_like(x)
-
-        with torch_device_fn.device(x.device):
-            if BLOCK_SIZE <= MAX_NRAM_C_FORWARD:
-                logger.debug("GEMS_CAMBRICON RMSNORM BACKWARD NOT USING C SPLIT")
-                rms_norm_grad_dx_kernel[M,](
-                    x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-                )
-            else:
-                logger.debug("GEMS_CAMBRICON RMSNORM BACKWARD USING C SPLIT")
-                rms_norm_grad_dx_kernel_C_split[M,](
-                    x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps
-                )
-
-        ROW_BLOCK_SIZE = 16
-        COL_BLOCK_SIZE = 256
-        row_block_num = triton.cdiv(M, ROW_BLOCK_SIZE)
-        col_block_num = triton.cdiv(N, COL_BLOCK_SIZE)
-
-        partial_buffer = torch.empty(
-            (row_block_num, N), dtype=torch.float32, device=x.device
-        )
-
-        with torch_device_fn.device(x.device):
-            rms_norm_grad_dw_kernel[row_block_num, col_block_num](
-                x,
-                dy,
-                inv_rms,
-                partial_buffer,
-                N,
-                1,
-                N,
-                1,
-                M,
-                N,
-                ROW_BLOCK_SIZE,
-                COL_BLOCK_SIZE,
-            )
-            dw = torch.sum(partial_buffer, dim=0, dtype=x.dtype).reshape(-1)
-
+        dx, dw = rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps)
         return dx, None, dw, None
 
 

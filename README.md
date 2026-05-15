@@ -1,12 +1,36 @@
-[中文版](./README_cn.md)
+[<img width="2182" height="602" alt="github+banner-20260130" src="https://github.com/flagos-ai/FlagGems/blob/master/.github/assets/banner-20260130.png" />](https://flagos.io/)
+
+[中文版](./README_cn.md) | English
+
+<div align="right">
+  <a href="https://www.linkedin.com/company/flagos-community" target="_blank">
+    <img src="https://github.com/flagos-ai/FlagGems/blob/master/docs/assets/Linkedin.png" alt="LinkIn" width="32" height="32" />
+  </a>
+
+  <a href="https://www.youtube.com/@FlagOS_Official" target="_blank">
+    <img src="https://github.com/flagos-ai/FlagGems/blob/master/docs/assets/youtube.png" alt="YouTube" width="32" height="32" />
+  </a>
+
+  <a href="https://x.com/FlagOS_Official" target="_blank">
+    <img src="https://github.com/flagos-ai/FlagGems/blob/master/docs/assets/x.png" alt="X" width="32" height="32" />
+  </a>
+
+  <a href="https://www.facebook.com/flagosglobalcommunity/" target="_blank">
+    <img src="https://github.com/flagos-ai/FlagGems/blob/master/docs/assets/Facebook.png" alt="Facebook" width="32" height="32" />
+  </a>
+
+  <a href="https://discord.com/invite/ubqGuFMTNE" target="_blank">
+    <img src="https://github.com/flagos-ai/FlagGems/blob/master/docs/assets/discord.png" alt="Discord" width="32" height="32" />
+  </a>
+</div>
 
 ## About
 
-FlagGems is part of [FlagOS](https://flagos.io/), a unified, open-source AI system software stack that
-aims to foster an open technology ecosystem by seamlessly integrating various models, systems and chips.
-By "develop once, migrate across various chips", FlagOS aims to unlock the full computational potential
-of hardware, break down the barriers between different chip software stacks, and effectively reduce
-migration costs.
+FlagGems is part of [FlagOS](https://flagos.io/), a fully open-source system software stack
+designed to unify the model–system–chip layers and foster an open and collaborative ecosystem.
+It enables a "develop once, run anywhere" workflow across diverse AI accelerators,
+unlocking hardware performance, eliminating fragmentation among AI chipset-specific software stacks,
+and substantially lowering the cost of porting and maintaining AI workloads.
 
 FlagGems is a high-performance, generic operator library implemented in [Triton](https://github.com/openai/triton) language.
 It is built on a collection of backend-neutral kernels that aims to accelerate LLM (Large-Language Models) training
@@ -27,18 +51,16 @@ FlagGems provides the following technical features.
 - Eager-mode ready, independent of `torch.compile`
 - Automatic pointwise operator codegen supporting arbitrary input types and layout
 - Fast per-function runtime kernel dispatching
-- Multi-backend interface enabling support of [diverse hardware platforms](./docs/features.md#generic-interface-for-diverse-platforms)
+- Multi-backend interface enabling support of diverse hardware platforms
 - Over 10 supported backends
 - C++ Triton function dispatcher (working in progress)
 
-Check the [features](./docs/features.md) documentation for more details.
+Check the [features](https://flagos-ai.github.io/FlagGems/overview/features/) documentation for more details.
 
 ## Getting Started
 
-- Refer to the [Getting Started](./docs/getting-started.md) for a quick start.
-- Refer to the [usage](./docs/usage.md) documentation for some details on using the software.
-- Refer to the [how-to-use](./docs/how_to_use_flaggems.md) documentation for some details
-  on configuration options.
+- Refer to the [Getting Started](https://flagos-ai.github.io/FlagGems/getting-started/) for a quick start.
+- Refer to the [usage](https://flagos-ai.github.io/FlagGems/usage/) documentation for some details on using the software.
 
 ## Sample models for testing
 
@@ -50,7 +72,9 @@ Check the [features](./docs/features.md) documentation for more details.
 
 <!--TODO(Qiming): replicate this to other repo.-->
 
-- If you are interested in contributing to the FlagGems project, please refer to [CONTRIBUTING.md](./CONTRIBUTING.md). Any contributions would be highly appreciated.
+- If you are interested in contributing to the FlagGems project, please refer to
+  [contribution guide](https://flagos-ai.github.io/FlagGems/contribution/overview/).
+  Any contributions would be highly appreciated.
 - Please file an issue for feature requests or bug reports.
 - Drop us an email at <a href="mailto:contact@flagos.io">contact@flagos.io</a> when you have questions or suggestions to share.
 - Join the FlagGems WeChat group by scanning the QR code below. You will receive first-hand messages about updates and new releases.
@@ -74,4 +98,4 @@ If you find our work useful, please consider citing our project:
 
 ## License
 
-The FlagGems project is licensed under the [Apache License (Version 2.0)](./LICENSE).
+The FlagGems project is licensed under the [Apache License (Version 2.0)](https://github.com/flagos-ai/FlagGems/blob/master/LICENSE).

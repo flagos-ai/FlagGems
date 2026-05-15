@@ -5,7 +5,6 @@ import triton
 import triton.language as tl
 from triton.language.extra.xpu.libdevice import log2
 
-# from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
@@ -13,21 +12,25 @@ from flag_gems.utils.random_utils import (
 )
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
-# def heur_block(args):
-#     if args["N"] <= 512:
-#         return 512
-#     else:
-#         return 1024
+
+CLUSTER_NUM = 12
 
 
 def heur_block(args):
-    return triton.next_power_of_2(triton.cdiv(args["N"], 12))  # CLUSTER_NUM = 12
+    N = args.get("N", 0)
+    if N <= 4096:
+        return 256
+    elif N <= 65536:
+        return 512
+    else:
+        return 1024
 
 
 def heur_num_warps(args):
-    if args["N"] <= 512:
+    N = args.get("N", 0)
+    if N <= 4096:
         return 4
-    elif args["N"] <= 1024:
+    elif N <= 65536:
         return 8
     else:
         return 16
@@ -39,7 +42,6 @@ def heur_num_warps(args):
         "num_warps": heur_num_warps,
     }
 )
-# @triton.heuristics(runtime.get_heuristic_config("exponential_"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
 def fused_exponential_kernel(
     out_ptr,
@@ -102,13 +104,14 @@ def paste_u64(hi: tl.uint32, lo: tl.uint32):
 def transform_exponential(u, lambd, eps):
     eps1 = -0.5 * eps
     is_min = u >= 1.0 + eps1
-    log = tl.where(is_min, eps1, log2(u))
+    trans_scale = 1.0 / 1.4426950408889634
+    log = tl.where(is_min, eps1, log2(u) * trans_scale)
     v = -1.0 / lambd * log
     return v
 
 
 def exponential_(x, lambd: float = 1.0, *, generator=None):
-    logger.debug("GEMS EXPONENTIAL_")
+    logger.debug("GEMS_KUNLUNXIN EXPONENTIAL_")
     dtype = x.dtype
     device = x.device
     inplace = x.is_contiguous()

@@ -8,9 +8,9 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 @libentry()
@@ -46,14 +46,14 @@ def bmm_kernel(
     UPGRADE: tl.constexpr,
 ):
     # batch offsets
-    pid_b = tle.program_id(2)
+    pid_b = ext.program_id(2)
     A += pid_b * M * K
     B += pid_b * K * N
     O += pid_b * M * N
 
     if UPGRADE:
-        pidx = tle.program_id(0)
-        pidy = tle.program_id(1)
+        pidx = ext.program_id(0)
+        pidy = ext.program_id(1)
     else:
         pidx = tl.program_id(0)
         pidy = tl.program_id(1)
@@ -63,8 +63,8 @@ def bmm_kernel(
     else:
         # reorder CTAs
         if UPGRADE:
-            gridx = tle.num_programs(0)
-            gridy = tle.num_programs(1)
+            gridx = ext.num_programs(0)
+            gridy = ext.num_programs(1)
         else:
             gridx = tl.num_programs(0)
             gridy = tl.num_programs(1)
@@ -140,6 +140,16 @@ def bmm(A, B):
     logger.debug("METAX GEMS BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
+    logger.debug(
+        "METAX GEMS ADDMM_OUT, [shape info]: [%s, %s, %s, %s](batch, M, N, K), "
+        "[A column-major]: %s, [B column-major]: %s",
+        batch,
+        M,
+        N,
+        K,
+        A.stride(0) == 1,
+        B.stride(0) == 1,
+    )
     A = A.contiguous()
     B = B.contiguous()
     out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)

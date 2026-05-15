@@ -7,9 +7,9 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 def heur_block_n(args):
@@ -44,8 +44,8 @@ def log_softmax_kernel(
     BLOCK_N: tl.constexpr,
     USE_K: tl.constexpr,
 ):
-    pid_m = tle.program_id(0)
-    pid_k = tle.program_id(1)
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     n_offset = tl.arange(0, BLOCK_N)
     offset = m_offset[:, None] * N * K + n_offset[None, :] * K
@@ -82,8 +82,8 @@ def log_softmax_backward_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_N_SPLIT: tl.constexpr,
 ):
-    pid_m = tle.program_id(0)
-    pid_k = tle.program_id(1)
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     n_split_offset = tl.arange(0, BLOCK_N_SPLIT)
     n_offset = tl.arange(0, BLOCK_N)

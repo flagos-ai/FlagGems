@@ -11,6 +11,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
+from .zeros import zero_
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 MAX_N = 16384
@@ -748,6 +749,15 @@ def softmax(self, dim, half_to_float=False):
     logger.debug("GEMS_CAMBRICON SOFTMAX")
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+
+    # special handling for dim = 0 and empty tensor
+    if self.numel() == 0:
+        # empty tensor, return the same shape with 1's
+        out_shape = list(self.shape)
+        out = torch.empty(out_shape, dtype=self.dtype, device=self.device)
+        zero_(out)
+        return out
+
     dim = dim % self.ndim
     M = 1
     N = self.shape[dim]
