@@ -15,7 +15,9 @@ if importlib.util.find_spec("triton.backends.spine_triton") is not None:
 
 
 vendor_info = VendorInfoBase(
-    vendor_name="spacemit", device_name="cpu", device_query_cmd="lscpu"
+    vendor_name="spacemit",
+    device_name="cpu",
+    device_query_cmd="grep -Eiq spacemit /proc/cpuinfo",
 )
 
 
