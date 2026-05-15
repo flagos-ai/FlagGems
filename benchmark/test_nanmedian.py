@@ -55,15 +55,13 @@ def _make_input(shape, dtype, device):
 
 def _input_fn(shape, dtype, device):
     inp = _make_input(shape, dtype, device)
-    if len(shape) == 1:
-        yield (inp,)
+    yield (inp,)
 
 
 def _out_input_fn(shape, dtype, device):
     inp = _make_input(shape, dtype, device)
-    if len(shape) == 1:
-        out = torch.empty((), dtype=dtype, device=device)
-        yield inp, {"out": out}
+    out = torch.empty((), dtype=dtype, device=device)
+    yield inp, {"out": out}
 
 
 def _dim_input_fn(shape, dtype, device):
