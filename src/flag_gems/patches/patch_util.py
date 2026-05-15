@@ -45,10 +45,12 @@ _LIB_OPS = {
         "cutlass_scaled_mm",
         "per_token_group_fp8_quant",
         "apply_repetition_penalties_",
+        "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     ],
     "_moe_C": ["topk_softmax", "moe_align_block_size", "grouped_topk", "moe_sum"],
     "_vllm_fa3_C": ["get_scheduler_metadata"],
     "_C_cache_ops": ["concat_and_cache_mla"],
+    "vllm": ["deepseek_v4_attention", "deepseek_v4_fp8_einsum"],
 }
 
 _OP_SIGNATURES = {
@@ -72,6 +74,9 @@ _OP_SIGNATURES = {
         "float fp8_max, bool scale_ue8m0=False) -> ()",
         "apply_repetition_penalties_": "(Tensor(a!) logits, Tensor prompt_mask, "
         "Tensor output_mask, Tensor repetition_penalties) -> Tensor",
+        "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert": "(Tensor(a!) q, Tensor kv, "
+        "Tensor(a!) k_cache, Tensor slot_mapping, Tensor positions, "
+        "Tensor cos_sin_cache, float eps, int block_size) -> ()",
     },
     "_vllm_fa3_C": {
         "get_scheduler_metadata": "(int batch_size, int max_seqlen_q, int max_seqlen_k, "
@@ -88,6 +93,12 @@ _OP_SIGNATURES = {
     "_C_cache_ops": {
         "concat_and_cache_mla": "(Tensor kv_c, Tensor k_pe, Tensor(a!) kv_cache, "
         "Tensor slot_mapping, str kv_cache_dtype, Tensor scale) -> ()",
+    },
+    "vllm": {
+        "deepseek_v4_attention": "(Tensor hidden_states, Tensor positions, "
+        "Tensor(a!) out, str layer_name) -> ()",
+        "deepseek_v4_fp8_einsum": "(Tensor a, Tensor a_scale, Tensor b, "
+        "Tensor b_scale, Tensor(a!) out, str equation, int[] recipe) -> ()",
     },
 }
 
@@ -107,7 +118,7 @@ for lib_name, ops in _LIB_OPS.items():
 
     # looks like it happens only when vllm is not compiled
     # with custom ops like tsingmicro vllm
-    if not loaded:
+    if not loaded and lib_name != "vllm":
         if lib_name in _OP_SIGNATURES:
             for op_name, signature in _OP_SIGNATURES[lib_name].items():
                 _define_op_if_not_exists(lib_name, op_name, signature)
@@ -116,12 +127,14 @@ vllm_C_lib = torch.library.Library("_C", "IMPL")
 vllm_moe_C_lib = torch.library.Library("_moe_C", "IMPL")
 vllm_fa3_C_lib = torch.library.Library("_vllm_fa3_C", "IMPL")
 vllm_C_cache_ops_lib = torch.library.Library("_C_cache_ops", "IMPL")
+vllm_ops_lib = torch.library.Library("vllm", "IMPL")
 
 libs = {
     "_C": vllm_C_lib,
     "_moe_C": vllm_moe_C_lib,
     "_vllm_fa3_C": vllm_fa3_C_lib,
     "_C_cache_ops": vllm_C_cache_ops_lib,
+    "vllm": vllm_ops_lib,
 }
 
 
@@ -140,7 +153,7 @@ def patch_vllm_lib(lib_name, fn_name, fn, key, verbose=True):
         raise ValueError(f"Library {lib_name} is not recognized.")
 
     lib = libs[lib_name]
-    lib.impl(fn_name, fn, key)
+    lib.impl(fn_name, fn, key, allow_override=True)
 
     if verbose:
         print(f"Patched torch.ops.{lib_name}.{fn_name} with FLAGGEMS {fn.__name__}")

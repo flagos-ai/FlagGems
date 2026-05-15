@@ -452,6 +452,61 @@ def custom_concat_and_cache_mla(
     )
 
 
+def custom_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
+    q: torch.Tensor,
+    kv: torch.Tensor,
+    k_cache: torch.Tensor,
+    slot_mapping: torch.Tensor,
+    positions: torch.Tensor,
+    cos_sin_cache: torch.Tensor,
+    eps: float,
+    block_size: int,
+) -> None:
+    from flag_gems.runtime.backend._nvidia.fused.dsv4_attention_triton import (
+        dsv4_qnorm_rope_kv_rope_quant_insert,
+    )
+
+    dsv4_qnorm_rope_kv_rope_quant_insert(
+        q=q,
+        kv=kv,
+        k_cache=k_cache,
+        slot_mapping=slot_mapping,
+        positions=positions,
+        cos_sin_cache=cos_sin_cache,
+        eps=eps,
+        block_size=block_size,
+    )
+
+
+def custom_deepseek_v4_attention(
+    hidden_states: torch.Tensor,
+    positions: torch.Tensor,
+    out: torch.Tensor,
+    layer_name: str,
+) -> None:
+    from flag_gems.runtime.backend._nvidia.fused.dsv4_attention_triton import (
+        dsv4_vllm_deepseek_v4_attention,
+    )
+
+    dsv4_vllm_deepseek_v4_attention(hidden_states, positions, out, layer_name)
+
+
+def custom_deepseek_v4_fp8_einsum(
+    a: torch.Tensor,
+    a_scale: torch.Tensor,
+    b: torch.Tensor,
+    b_scale: torch.Tensor,
+    out: torch.Tensor,
+    equation: str,
+    recipe: list[int],
+) -> None:
+    from flag_gems.runtime.backend._nvidia.fused.dsv4_attention_triton import (
+        dsv4_fp8_einsum,
+    )
+
+    dsv4_fp8_einsum(a, a_scale, b, b_scale, out, equation, recipe)
+
+
 def custom_gems_flashattn_mla_forward_decode(
     self,
     q: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
@@ -588,32 +643,136 @@ def custom_rms_norm_out(result, input, weight, epsilon):
 def apply_gems_patches_to_vllm(verbose=True):
     import vllm  # noqa: F401
     import vllm._custom_ops as ops  # noqa: F401
+    import vllm.model_executor.layers.deepseek_v4_attention as dsv4_layer
 
     try:
         from vllm.attention.ops import vit_attn_wrappers as vitw
     except (ModuleNotFoundError, ImportError):
         vitw = None
-    from vllm.attention.ops.paged_attn import PagedAttention
-    from vllm.model_executor.layers.activation import SiluAndMul
-    from vllm.model_executor.layers.layernorm import RMSNorm
-    from vllm.model_executor.layers.rotary_embedding import RotaryEmbedding
-    from vllm.v1.attention.backends.flash_attn import FlashAttentionImpl
-    from vllm.v1.attention.backends.mla.flashattn_mla import FlashAttnMLAImpl
-    from vllm.v1.attention.backends.mla.triton_mla import TritonMLAImpl
+
+    PagedAttention = None
+    SiluAndMul = None
+    RMSNorm = None
+    RotaryEmbedding = None
+    FlashAttentionImpl = None
+    FlashAttnMLAImpl = None
+    TritonMLAImpl = None
+
+    try:
+        from vllm.attention.ops.paged_attn import PagedAttention as _PagedAttention
+
+        PagedAttention = _PagedAttention
+    except (ModuleNotFoundError, ImportError):
+        pass
+
+    try:
+        from vllm.model_executor.layers.activation import SiluAndMul as _SiluAndMul
+
+        SiluAndMul = _SiluAndMul
+    except (ModuleNotFoundError, ImportError):
+        pass
+
+    try:
+        from vllm.model_executor.layers.layernorm import RMSNorm as _RMSNorm
+
+        RMSNorm = _RMSNorm
+    except (ModuleNotFoundError, ImportError):
+        pass
+
+    try:
+        from vllm.model_executor.layers.rotary_embedding import (
+            RotaryEmbedding as _RotaryEmbedding,
+        )
+
+        RotaryEmbedding = _RotaryEmbedding
+    except (ModuleNotFoundError, ImportError):
+        pass
+
+    try:
+        from vllm.v1.attention.backends.flash_attn import (
+            FlashAttentionImpl as _FlashAttentionImpl,
+        )
+
+        FlashAttentionImpl = _FlashAttentionImpl
+    except (ModuleNotFoundError, ImportError):
+        pass
+
+    try:
+        from vllm.v1.attention.backends.mla.flashattn_mla import (
+            FlashAttnMLAImpl as _FlashAttnMLAImpl,
+        )
+
+        FlashAttnMLAImpl = _FlashAttnMLAImpl
+    except (ModuleNotFoundError, ImportError):
+        pass
+
+    try:
+        from vllm.v1.attention.backends.mla.triton_mla import (
+            TritonMLAImpl as _TritonMLAImpl,
+        )
+
+        TritonMLAImpl = _TritonMLAImpl
+    except (ModuleNotFoundError, ImportError):
+        pass
 
     dispatch_key = flag_gems.runtime.device.dispatch_key
 
-    module_patches = [
-        (RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda),
-        (RotaryEmbedding, "forward_cuda", custom_gems_rope_forward_cuda),
-        (PagedAttention, "write_to_paged_cache", custom_gems_write_to_paged_cache),
-        (SiluAndMul, "forward_cuda", custom_gems_silu_and_mul),
-        (TritonMLAImpl, "_forward_decode", custom_gems_flash_mla_forward),
-        (FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forward),
-        (FlashAttnMLAImpl, "_forward_decode", custom_gems_flashattn_mla_forward_decode),
-    ]
+    module_patches = []
+    if RMSNorm is not None:
+        module_patches.append((RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda))
+    if RotaryEmbedding is not None:
+        module_patches.append(
+            (RotaryEmbedding, "forward_cuda", custom_gems_rope_forward_cuda)
+        )
+    if PagedAttention is not None:
+        module_patches.append(
+            (PagedAttention, "write_to_paged_cache", custom_gems_write_to_paged_cache)
+        )
+    if SiluAndMul is not None:
+        module_patches.append((SiluAndMul, "forward_cuda", custom_gems_silu_and_mul))
+    if TritonMLAImpl is not None:
+        module_patches.append(
+            (TritonMLAImpl, "_forward_decode", custom_gems_flash_mla_forward)
+        )
+    if FlashAttentionImpl is not None:
+        module_patches.append(
+            (FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forward)
+        )
+    if FlashAttnMLAImpl is not None:
+        module_patches.append(
+            (
+                FlashAttnMLAImpl,
+                "_forward_decode",
+                custom_gems_flashattn_mla_forward_decode,
+            )
+        )
     for cls, method_name, new_method in module_patches:
         patch_module_method(cls, method_name, new_method, verbose)
+
+    from flag_gems.runtime.backend._nvidia.fused.dsv4_attention_triton import (
+        dsv4_combine_topk_swa_indices,
+        dsv4_compute_global_topk_indices_and_lens,
+        dsv4_dequantize_and_gather_k_cache,
+        dsv4_fused_q_kv_rmsnorm,
+    )
+
+    dsv4_module_patches = [
+        ("combine_topk_swa_indices", dsv4_combine_topk_swa_indices),
+        (
+            "compute_global_topk_indices_and_lens",
+            dsv4_compute_global_topk_indices_and_lens,
+        ),
+        ("dequantize_and_gather_k_cache", dsv4_dequantize_and_gather_k_cache),
+        ("fused_q_kv_rmsnorm", dsv4_fused_q_kv_rmsnorm),
+    ]
+    for symbol_name, fn in dsv4_module_patches:
+        setattr(dsv4_layer, symbol_name, fn)
+        if verbose:
+            print(
+                "Patched "
+                f"vllm.model_executor.layers.deepseek_v4_attention.{symbol_name} "
+                f"with FLAGGEMS {fn.__name__}"
+            )
 
     lib_patches = [
         ("_C", "rms_norm", custom_rms_norm_out),
@@ -621,6 +780,11 @@ def apply_gems_patches_to_vllm(verbose=True):
         ("_C", "silu_and_mul_with_clamp", custom_silu_and_mul_with_clamp),
         ("_C", "hc_head_fused_kernel", custom_hc_head_fused_kernel),
         ("_C", "cutlass_scaled_mm", custom_cutlass_scaled_mm),
+        (
+            "_C",
+            "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
+            custom_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
+        ),
         ("_moe_C", "moe_align_block_size", custom_moe_align_block_size),
         ("_moe_C", "topk_softmax", custom_topk_softmax),
         ("_moe_C", "moe_sum", custom_moe_sum),
@@ -629,6 +793,8 @@ def apply_gems_patches_to_vllm(verbose=True):
         ("_C", "per_token_group_fp8_quant", custom_per_token_group_fp8_quant),
         ("_C", "apply_repetition_penalties_", custom_apply_repetition_penalties),
         ("_C_cache_ops", "concat_and_cache_mla", custom_concat_and_cache_mla),
+        ("vllm", "deepseek_v4_attention", custom_deepseek_v4_attention),
+        ("vllm", "deepseek_v4_fp8_einsum", custom_deepseek_v4_fp8_einsum),
     ]
     for lib_name, fn_name, fn in lib_patches:
         patch_vllm_lib(lib_name, fn_name, fn, dispatch_key, verbose)
