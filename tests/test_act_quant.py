@@ -19,9 +19,9 @@ BLOCK_SIZES = [64, 128]
 SCALE_FMTS = [None, "ue8m0"]
 
 
-def is_support_fp8e4nv():
+def is_fp8e4nv_supported():
     major, minor = get_device_capability()
-    return major * 10 + minor >= 89
+    return major + minor / 10 >= 8.9
 
 
 def torch_act_quant(
@@ -80,7 +80,7 @@ def torch_act_quant(
 @pytest.mark.act_quant_triton
 # https://github.com/triton-lang/triton/blob/v3.6.0/third_party/nvidia/backend/compiler.py#L188
 @pytest.mark.skipif(
-    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
+    not is_fp8e4nv_supported(), reason="fp8e4nv requires device capability > 8.9"
 )
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("block_size", BLOCK_SIZES)

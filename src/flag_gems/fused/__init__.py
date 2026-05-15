@@ -23,6 +23,8 @@ from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.grouped_topk import grouped_topk
 from flag_gems.fused.instance_norm import instance_norm
 from flag_gems.fused.mhc import (
+    hc_head_fused_kernel,
+    hc_head_fused_kernel_ref,
     mhc_bwd,
     mhc_bwd_ref,
     mhc_post,
@@ -73,6 +75,8 @@ __all__ = [
     "geglu",
     "gelu_and_mul",
     "grouped_topk",
+    "hc_head_fused_kernel",
+    "hc_head_fused_kernel_ref",
     "inplace_fused_experts",
     "instance_norm",
     "invoke_fused_moe_triton_kernel",
