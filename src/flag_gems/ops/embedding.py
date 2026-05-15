@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def embedding_kernel(out_ptr, weight_ptr, indices_ptr, n, emb_dim, BLOCK_SIZE: tl.constexpr):
+def embedding_kernel(
+    out_ptr, weight_ptr, indices_ptr, n, emb_dim, BLOCK_SIZE: tl.constexpr
+):
     pid = tl.program_id(axis=0)
     idx = tl.load(indices_ptr + pid)
     cols = tl.arange(0, BLOCK_SIZE)
@@ -34,10 +36,16 @@ def embedding(weight: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
     return out.reshape(*orig_shape, emb_dim)
 
 
-def embedding_backward(grad, indices, num_weights, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
+def embedding_backward(
+    grad, indices, num_weights, padding_idx=-1, scale_grad_by_freq=False, sparse=False
+):
     logger.debug("GEMS EMBEDDING BACKWARD")
     indices_flat = indices.reshape(-1)
     grad_flat = grad.reshape(-1, grad.shape[-1])
-    grad_weight = torch.zeros(num_weights, grad.shape[-1], device=grad.device, dtype=grad.dtype)
-    grad_weight.scatter_add_(0, indices_flat.unsqueeze(1).expand_as(grad_flat), grad_flat)
+    grad_weight = torch.zeros(
+        num_weights, grad.shape[-1], device=grad.device, dtype=grad.dtype
+    )
+    grad_weight.scatter_add_(
+        0, indices_flat.unsqueeze(1).expand_as(grad_flat), grad_flat
+    )
     return grad_weight
