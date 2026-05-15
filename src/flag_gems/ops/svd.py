@@ -15,8 +15,8 @@ SVDResult = namedtuple("SVDResult", ["U", "S", "V"])
 _GRAM_CONDITION_GUARD_MAX_BATCH = 16
 _GRAM_CONDITION_GUARD_MAX_K = 32
 _GRAM_CONDITION_EIGEN_RATIO = 1.0e-8
-_GRAM_TALL_WIDE_MAX_K = 64
-_GRAM_TALL_WIDE_MAX_ROWS = 256
+_GRAM_TALL_WIDE_MAX_K = 32
+_GRAM_TALL_WIDE_MAX_ROWS = 1024
 _RANK1_BLOCK_R_MAX = 1024
 _TSQR_CHOLESKY_MAX_BATCH = 32
 _TSQR_CHOLESKY_MAX_K = 128
@@ -52,28 +52,6 @@ def _svd_shape(input):
 
 def _should_guard_gram_spectrum(batch, k):
     return batch <= _GRAM_CONDITION_GUARD_MAX_BATCH and k <= _GRAM_CONDITION_GUARD_MAX_K
-
-
-def _gram_spectrum_needs_fallback(vals):
-    if vals.numel() == 0:
-        return False
-
-    largest = vals.max(dim=-1).values
-    smallest = vals.min(dim=-1).values
-    suspicious = (
-        (~torch.isfinite(vals).all(dim=-1))
-        | (largest <= 0)
-        | (smallest <= largest * _GRAM_CONDITION_EIGEN_RATIO)
-    )
-    return bool(torch.any(suspicious).item())
-
-
-def _assert_safe_gram_spectrum(vals):
-    if _gram_spectrum_needs_fallback(vals):
-        raise NotImplementedError(
-            "FlagGems Gram SVD guard rejected a non-finite, non-positive, "
-            "rank-deficient, or ill-conditioned Gram spectrum."
-        )
 
 
 def _is_float32_cuda_matrix(input):
@@ -151,35 +129,23 @@ def _can_use_gram_jacobi_kernel(input, some=True, compute_uv=True):
 
 
 def _can_use_tall_wide_gram_jacobi_kernel(input, some=True, compute_uv=True):
-    _, m, n = _svd_shape(input)
+    batch, m, n = _svd_shape(input)
     k = min(m, n)
     rows = max(m, n)
     return (
         _is_float32_cuda_matrix(input)
         and some
         and compute_uv
-        and 16 < k <= _GRAM_TALL_WIDE_MAX_K
+        and batch >= 128
+        and 16 <= k <= _GRAM_TALL_WIDE_MAX_K
         and rows <= _GRAM_TALL_WIDE_MAX_ROWS
         and rows >= 2 * k
     )
 
 
 def _can_use_tsqr_cholesky_kernel(input, some=True, compute_uv=True):
-    batch, m, n = _svd_shape(input)
-    k = min(m, n)
-    rows = max(m, n)
-    min_batch = 8 if k == 128 else 4
-    return (
-        _is_float32_cuda_matrix(input)
-        and some
-        and compute_uv
-        and batch >= min_batch
-        and batch <= _TSQR_CHOLESKY_MAX_BATCH
-        and k in (32, 64, 128)
-        and rows >= 2 * k
-        and rows <= _TSQR_CHOLESKY_MAX_ROWS
-        and k <= _TSQR_CHOLESKY_MAX_K
-    )
+    # Input-dependent TSQR safety needs a native device-side guard before dispatch.
+    return False
 
 
 def _can_use_blocked_jacobi_kernel(input, some=True, compute_uv=True):
@@ -709,14 +675,7 @@ def _tsqr_cholesky_svd(input):
             num_warps=4,
         )
 
-    if bool(torch.any(status != 0).item()):
-        return _tsqr_guard_fallback_svd(input)
-
     _, s, basis = svd(r, some=True, compute_uv=True)
-    try:
-        _assert_safe_gram_spectrum(s * s)
-    except NotImplementedError:
-        return _tsqr_guard_fallback_svd(input)
     basis = basis.reshape(batch, k, k)
     s = s.reshape(batch, k)
 
@@ -963,8 +922,10 @@ def _renorm_projection_update_s_kernel(
     vals_f32 = vals.to(tl.float32)
     norm = tl.sqrt(tl.sum(vals_f32 * vals_f32, axis=0))
     inv_norm = tl.rsqrt(tl.maximum(norm * norm, 1.0e-40))
+    basis = tl.where(rows == col, 1.0, 0.0)
+    vals = tl.where(norm <= 1.0e-20, basis, vals * inv_norm)
     tl.store(S + batch * K + col, norm)
-    tl.store(Q + batch * ROWS * K + rows * K + col, vals * inv_norm, mask=mask)
+    tl.store(Q + batch * ROWS * K + rows * K + col, vals, mask=mask)
 
 
 @libentry()
@@ -1025,8 +986,6 @@ def _gram_jacobi_svd(input):
             BLOCK_K=block_k,
             num_warps=4,
         )
-    _assert_safe_gram_spectrum(evals)
-
     with torch_device_fn.device(input.device):
         _gram_sort_basis_kernel[(batch, k)](
             evals,
@@ -1049,7 +1008,7 @@ def _gram_jacobi_svd(input):
         proj_rows = n
 
     with torch_device_fn.device(input.device):
-        _normalize_projection_kernel[(batch, k)](
+        _renorm_projection_update_s_kernel[(batch, k)](
             u if tall else v,
             s,
             ROWS=proj_rows,
@@ -1057,20 +1016,21 @@ def _gram_jacobi_svd(input):
             BLOCK_R=triton.next_power_of_2(proj_rows),
             num_warps=1 if proj_rows <= 64 else 4,
         )
-        if k <= 17 and rows <= 64:
+        _complete_zero_projection_kernel[(batch, k)](
+            u if tall else v,
+            s,
+            ROWS=proj_rows,
+            K=k,
+            BLOCK_R=triton.next_power_of_2(proj_rows),
+            num_warps=1 if proj_rows <= 64 else 4,
+        )
+        if k <= _GRAM_TALL_WIDE_MAX_K:
             _thin_reorthogonalize_kernel[(batch,)](
-                u,
-                ROWS=m,
+                u if tall else v,
+                ROWS=proj_rows,
                 K=k,
-                BLOCK_R=triton.next_power_of_2(m),
-                num_warps=1,
-            )
-            _thin_reorthogonalize_kernel[(batch,)](
-                v,
-                ROWS=n,
-                K=k,
-                BLOCK_R=triton.next_power_of_2(n),
-                num_warps=1,
+                BLOCK_R=triton.next_power_of_2(proj_rows),
+                num_warps=1 if proj_rows <= 64 else 4,
             )
 
     return (
@@ -2171,6 +2131,8 @@ def _blocked_jacobi_store_projected_kernel(
         other=0.0,
     )
     vals = vals / tl.maximum(s_col, eps)
+    basis = tl.where(rows == rank, 1.0, 0.0)
+    vals = tl.where(s_col <= eps, basis, vals)
     tl.store(
         PROJECTED + batch * OUT_ROWS * K + rows * K + rank,
         vals,
@@ -3486,6 +3448,8 @@ def svd(input, some=True, compute_uv=True):
             return SVDResult(*_rank2_svd(input))
         if k == 4 and m == 4 and n == 4 and batch >= 16:
             return SVDResult(*_small4_square_svd(input))
+        if _can_use_tall_wide_gram_jacobi_kernel(input, some, compute_uv):
+            return SVDResult(*_gram_jacobi_svd(input))
         use_batched_cyclic16 = k == 16 and batch >= 8 and max(m, n) <= 64
         if (
             _can_use_small_jacobi_kernel(input, some, compute_uv)
