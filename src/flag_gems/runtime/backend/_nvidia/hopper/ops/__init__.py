@@ -13,5 +13,7 @@ if triton.__version__ >= "3.4":
     from .mul import mul  # noqa: F401
     from .sqrt import sqrt, sqrt_  # noqa: F401
     from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul  # noqa: F401
+    from .w8a8_block_fp8_bmm import w8a8_block_fp8_bmm  # noqa: F401
+    from .fp8_einsum import fp8_einsum  # noqa: F401
 
 __all__ = ["*"]
