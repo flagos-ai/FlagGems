@@ -1,37 +1,11 @@
 import pytest
 import torch
-import torch.nn.functional as F
 
 import flag_gems
 
 from . import base, consts
 
 CTC_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
-
-
-def _ctc_loss_reference(
-    log_probs,
-    targets,
-    input_lengths,
-    target_lengths,
-    blank=0,
-    reduction="mean",
-    zero_infinity=False,
-):
-    original_dtype = log_probs.dtype
-    work_log_probs = log_probs
-    if work_log_probs.dtype in (torch.float16, torch.bfloat16):
-        work_log_probs = work_log_probs.float()
-    out = F.ctc_loss(
-        work_log_probs,
-        targets,
-        input_lengths,
-        target_lengths,
-        blank=blank,
-        reduction=reduction,
-        zero_infinity=zero_infinity,
-    )
-    return out.to(original_dtype) if out.dtype != original_dtype else out
 
 
 def _make_targets(batch, max_target, classes, device, target_layout):
@@ -69,7 +43,7 @@ def ctc_loss_input_fn(shape, dtype, device):
         targets,
         input_lengths,
         target_lengths,
-        {"blank": 0, "reduction": "mean", "zero_infinity": False},
+        {"blank": 0, "reduction": 1, "zero_infinity": False},
     )
 
     targets, target_lengths = _make_targets(
@@ -80,7 +54,7 @@ def ctc_loss_input_fn(shape, dtype, device):
         targets,
         input_lengths,
         target_lengths,
-        {"blank": 0, "reduction": "mean", "zero_infinity": False},
+        {"blank": 0, "reduction": 1, "zero_infinity": False},
     )
 
     if base.Config.bench_level.value == consts.BenchLevel.COMPREHENSIVE.value:
@@ -92,7 +66,7 @@ def ctc_loss_input_fn(shape, dtype, device):
             targets,
             input_lengths,
             target_lengths,
-            {"blank": 0, "reduction": "sum", "zero_infinity": False},
+            {"blank": 0, "reduction": 2, "zero_infinity": False},
         )
 
 
@@ -114,7 +88,7 @@ def test_ctc_loss():
     bench = CtcLossBenchmark(
         op_name="ctc_loss",
         input_fn=ctc_loss_input_fn,
-        torch_op=_ctc_loss_reference,
+        torch_op=torch.ops.aten.ctc_loss.Tensor,
         dtypes=CTC_DTYPES,
     )
     bench.set_gems(flag_gems.ctc_loss)
@@ -126,7 +100,7 @@ def test_ctc_loss_backward():
     bench = CtcLossBenchmark(
         op_name="ctc_loss",
         input_fn=ctc_loss_input_fn,
-        torch_op=_ctc_loss_reference,
+        torch_op=torch.ops.aten.ctc_loss.Tensor,
         dtypes=CTC_DTYPES,
         is_backward=True,
     )

@@ -1132,8 +1132,6 @@ def _ctc_loss_impl(
     Returns:
         (neg_log_likelihood, log_alpha) matching PyTorch's internal contract.
     """
-    logger.debug("GEMS _CTC_LOSS")
-
     if log_probs.ndim != 3:
         raise RuntimeError(
             f"_ctc_loss expects log_probs to be 3D (T, N, C), got {log_probs.ndim}D"
@@ -1254,8 +1252,6 @@ def _ctc_loss_backward_impl(
     Returns:
         grad_log_probs (T, N, C)
     """
-    logger.debug("GEMS _CTC_LOSS_BACKWARD")
-
     device = log_probs.device
     T, N, C = log_probs.shape
 
