@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ def resolve_conj_kernel_1d(
     BLOCK_SIZE: tl.constexpr,  # Block size
 ):
     # Get PID of current program
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
 
     # Create element index range for current block (complex element index, not float32 index)
     block_start = pid * BLOCK_SIZE
@@ -59,7 +59,7 @@ def resolve_conj_kernel_2d_strided(
     BLOCK_SIZE: tl.constexpr,  # Block size
 ):
     # Get 2D PID of current program
-    pid_row = tle.program_id(axis=0)
+    pid_row = ext.program_id(axis=0)
     pid_col_block = tl.program_id(axis=1)
 
     # Calculate column index range (complex element index)
@@ -104,8 +104,8 @@ def resolve_conj_kernel_large_2d(
     BLOCK_SIZE_COLS: tl.constexpr,  # Column block size
 ):
     # Get 2D PID of current program
-    pid_row = tle.program_id(axis=0)
-    pid_col = tle.program_id(axis=1)
+    pid_row = ext.program_id(axis=0)
+    pid_col = ext.program_id(axis=1)
 
     # Calculate row and column index ranges (complex element index)
     row_offsets = pid_row * BLOCK_SIZE_ROWS + tl.arange(0, BLOCK_SIZE_ROWS)
