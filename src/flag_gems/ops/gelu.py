@@ -1,5 +1,4 @@
 import logging
-import math
 
 import torch
 import triton
@@ -37,25 +36,38 @@ def gelu_backward_kernel(x_ptr, dy_ptr, dx_ptr, n_elements, BLOCK_SIZE: tl.const
 
 
 def _fwd(x):
-    orig = x.dtype; x = x.contiguous().float()
-    out = torch.empty_like(x); n = x.numel()
-    if n == 0: return out.to(orig)
+    orig = x.dtype
+    x = x.contiguous().float()
+    out = torch.empty_like(x)
+    n = x.numel()
+    if n == 0:
+        return out.to(orig)
     BS = triton.next_power_of_2(min(n, 4096))
     gelu_kernel[(triton.cdiv(n, BS),)](x, out, n, BLOCK_SIZE=BS, num_warps=4)
     return out.to(orig)
 
 
 def gelu(x: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS GELU"); return _fwd(x)
+    logger.debug("GEMS GELU")
+    return _fwd(x)
+
 
 def gelu_(x: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS GELU_"); r = _fwd(x); x.copy_(r); return x
+    logger.debug("GEMS GELU_")
+    r = _fwd(x)
+    x.copy_(r)
+    return x
+
 
 def gelu_backward(x: torch.Tensor, dy: torch.Tensor) -> torch.Tensor:
     logger.debug("GEMS GELU BACKWARD")
-    orig = x.dtype; x = x.contiguous().float(); dy = dy.contiguous().float()
-    dx = torch.empty_like(x); n = x.numel()
-    if n == 0: return dx.to(orig)
+    orig = x.dtype
+    x = x.contiguous().float()
+    dy = dy.contiguous().float()
+    dx = torch.empty_like(x)
+    n = x.numel()
+    if n == 0:
+        return dx.to(orig)
     BS = triton.next_power_of_2(min(n, 4096))
     gelu_backward_kernel[(triton.cdiv(n, BS),)](x, dy, dx, n, BLOCK_SIZE=BS, num_warps=4)
     return dx.to(orig)
