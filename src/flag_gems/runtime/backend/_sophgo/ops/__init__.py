@@ -54,6 +54,7 @@ from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
 from .rms_norm import rms_norm
+from .scatter import scatter, scatter_
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid
 from .slice_scatter import slice_scatter
@@ -139,6 +140,8 @@ __all__ = [
     "randn_like",
     "randperm",
     "rms_norm",
+    "scatter",
+    "scatter_",
     "sigmoid",
     "select_scatter",
     "slice_scatter",

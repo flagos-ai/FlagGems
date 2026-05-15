@@ -516,7 +516,10 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
         random.randint(1, min(src_shape[1], inp_shape[1])),
         random.randint(1, min(src_shape[2], inp_shape[2])),
     ]
-    index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
+    if flag_gems.vendor_name == "sophgo":
+        index = torch.empty(tuple(index_shape), dtype=torch.int32, device=flag_gems.device)
+    else:
+        index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
 
     m, n, o = index_shape
 
@@ -561,7 +564,10 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
         random.randint(1, min(src_shape[1], inp_shape[1])),
         random.randint(1, min(src_shape[2], inp_shape[2])),
     ]
-    index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
+    if flag_gems.vendor_name == "sophgo":
+        index = torch.empty(tuple(index_shape), dtype=torch.int32, device=flag_gems.device)
+    else:
+        index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
 
     m, n, o = index_shape
 
@@ -607,7 +613,10 @@ def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
         random.randint(1, min(src_shape[1], inp_shape[1])),
         random.randint(1, min(src_shape[2], inp_shape[2])),
     ]
-    index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
+    if flag_gems.vendor_name == "sophgo":
+        index = torch.empty(tuple(index_shape), dtype=torch.int32, device=flag_gems.device)
+    else:
+        index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
 
     m, n, o = index_shape
 
