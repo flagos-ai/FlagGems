@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def rms_norm_kernel(out_ptr, x_ptr, weight_ptr, n_elements, eps, BLOCK_SIZE: tl.constexpr):
+def rms_norm_kernel(
+    out_ptr, x_ptr, weight_ptr, n_elements, eps, BLOCK_SIZE: tl.constexpr
+):
     row_idx = tl.program_id(axis=0)
     cols = tl.arange(0, BLOCK_SIZE)
     mask = cols < n_elements
@@ -25,7 +27,11 @@ def rms_norm_kernel(out_ptr, x_ptr, weight_ptr, n_elements, eps, BLOCK_SIZE: tl.
 def _fwd(x, weight, eps):
     orig = x.dtype
     x = x.contiguous().float()
-    w = weight.contiguous().float() if weight is not None else torch.ones(x.shape[-1], device=x.device)
+    w = (
+        weight.contiguous().float()
+        if weight is not None
+        else torch.ones(x.shape[-1], device=x.device)
+    )
     n = x.shape[-1]
     rows = x.numel() // n
     x2d = x.reshape(rows, n)
@@ -56,7 +62,11 @@ def rms_norm_backward(dy, x, weight, eps=1e-6):
     orig = dy.dtype
     dy = dy.contiguous().float()
     x = x.contiguous().float()
-    w = weight.contiguous().float() if weight is not None else torch.ones(x.shape[-1], device=x.device)
+    w = (
+        weight.contiguous().float()
+        if weight is not None
+        else torch.ones(x.shape[-1], device=x.device)
+    )
     n = x.shape[-1]
     rows = x.numel() // n
     x2d = x.reshape(rows, n)
