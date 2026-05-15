@@ -640,9 +640,9 @@ def _cholesky_upper_kernel(
         r_vals = tl.where(cols == j, pivot, r_vals)
         r_vals = tl.where(row_mask, r_vals, 0.0)
         bad_vals = tl.sum(
-            (
-                ((r_vals != r_vals) | (tl.abs(r_vals) >= finite_limit)) & row_mask
-            ).to(tl.int32),
+            (((r_vals != r_vals) | (tl.abs(r_vals) >= finite_limit)) & row_mask).to(
+                tl.int32
+            ),
             axis=0,
         )
         status = tl.where(good_diag & (bad_vals == 0), status, 1)
@@ -1600,13 +1600,9 @@ def _cyclic_jacobi_init_a_kernel(
     aw_base = A_WORK + batch * K * ROWS
 
     if TALL:
-        vals = tl.load(a_base + rows * N + col, mask=row_mask, other=0.0).to(
-            tl.float32
-        )
+        vals = tl.load(a_base + rows * N + col, mask=row_mask, other=0.0).to(tl.float32)
     else:
-        vals = tl.load(a_base + col * N + rows, mask=row_mask, other=0.0).to(
-            tl.float32
-        )
+        vals = tl.load(a_base + col * N + rows, mask=row_mask, other=0.0).to(tl.float32)
     tl.store(aw_base + col * ROWS + rows, vals, mask=row_mask)
 
 
@@ -1635,13 +1631,9 @@ def _cyclic_jacobi_init_kernel(
     vw_base = V_WORK + batch * K * K
 
     if TALL:
-        vals = tl.load(a_base + rows * N + col, mask=row_mask, other=0.0).to(
-            tl.float32
-        )
+        vals = tl.load(a_base + rows * N + col, mask=row_mask, other=0.0).to(tl.float32)
     else:
-        vals = tl.load(a_base + col * N + rows, mask=row_mask, other=0.0).to(
-            tl.float32
-        )
+        vals = tl.load(a_base + col * N + rows, mask=row_mask, other=0.0).to(tl.float32)
     tl.store(aw_base + col * ROWS + rows, vals, mask=row_mask)
 
     ident = tl.where(basis_cols == col, 1.0, 0.0)
@@ -1878,9 +1870,7 @@ def _cyclic_jacobi_finalize_kernel(
     rank = tl.full((), 0, dtype=tl.int32)
     for other in tl.static_range(0, K):
         s_other = tl.load(S_WORK + batch * K + other)
-        rank += ((s_other > s_col) | ((s_other == s_col) & (other < col))).to(
-            tl.int32
-        )
+        rank += ((s_other > s_col) | ((s_other == s_col) & (other < col))).to(tl.int32)
 
     aw_base = A_WORK + batch * K * ROWS
     vw_base = V_WORK + batch * K * K
@@ -2149,9 +2139,7 @@ def _blocked_jacobi_rank_kernel(
     other = 0
     while other < K:
         s_other = tl.load(S_WORK + batch * K + other)
-        rank += ((s_other > s_col) | ((s_other == s_col) & (other < col))).to(
-            tl.int32
-        )
+        rank += ((s_other > s_col) | ((s_other == s_col) & (other < col))).to(tl.int32)
         other += 1
     tl.store(RANKS + batch * K + col, rank)
     tl.store(S + batch * K + rank, s_col)
@@ -2236,17 +2224,17 @@ def _thin_reorthogonalize_kernel(
 
         for prev in tl.static_range(0, K):
             if prev < j:
-                q_prev = tl.load(
-                    base + rows * K + prev, mask=row_mask, other=0.0
-                ).to(tl.float32)
+                q_prev = tl.load(base + rows * K + prev, mask=row_mask, other=0.0).to(
+                    tl.float32
+                )
                 coeff = tl.sum(vec * q_prev)
                 vec = vec - coeff * q_prev
 
         for prev in tl.static_range(0, K):
             if prev < j:
-                q_prev = tl.load(
-                    base + rows * K + prev, mask=row_mask, other=0.0
-                ).to(tl.float32)
+                q_prev = tl.load(base + rows * K + prev, mask=row_mask, other=0.0).to(
+                    tl.float32
+                )
                 coeff = tl.sum(vec * q_prev)
                 vec = vec - coeff * q_prev
 
@@ -2256,9 +2244,9 @@ def _thin_reorthogonalize_kernel(
 
         for prev in tl.static_range(0, K):
             if prev < j:
-                q_prev = tl.load(
-                    base + rows * K + prev, mask=row_mask, other=0.0
-                ).to(tl.float32)
+                q_prev = tl.load(base + rows * K + prev, mask=row_mask, other=0.0).to(
+                    tl.float32
+                )
                 coeff = tl.sum(vec * q_prev)
                 vec = vec - coeff * q_prev
 
@@ -2589,9 +2577,7 @@ def _blocked_jacobi_svd(input):
             num_warps=1,
         )
         if m >= n:
-            _blocked_jacobi_store_projected_kernel[
-                (batch, k, triton.cdiv(m, block_r))
-            ](
+            _blocked_jacobi_store_projected_kernel[(batch, k, triton.cdiv(m, block_r))](
                 a_work,
                 s_work,
                 ranks,
@@ -2602,9 +2588,7 @@ def _blocked_jacobi_svd(input):
                 BLOCK_R=block_r,
                 num_warps=1 if block_r <= 64 else 4,
             )
-            _blocked_jacobi_store_basis_kernel[
-                (batch, k, triton.cdiv(n, block_v))
-            ](
+            _blocked_jacobi_store_basis_kernel[(batch, k, triton.cdiv(n, block_v))](
                 v_work,
                 ranks,
                 v,
@@ -2613,9 +2597,7 @@ def _blocked_jacobi_svd(input):
                 num_warps=1,
             )
         else:
-            _blocked_jacobi_store_basis_kernel[
-                (batch, k, triton.cdiv(m, block_v))
-            ](
+            _blocked_jacobi_store_basis_kernel[(batch, k, triton.cdiv(m, block_v))](
                 v_work,
                 ranks,
                 u,
@@ -2623,9 +2605,7 @@ def _blocked_jacobi_svd(input):
                 BLOCK_V=block_v,
                 num_warps=1,
             )
-            _blocked_jacobi_store_projected_kernel[
-                (batch, k, triton.cdiv(n, block_r))
-            ](
+            _blocked_jacobi_store_projected_kernel[(batch, k, triton.cdiv(n, block_r))](
                 a_work,
                 s_work,
                 ranks,
@@ -2701,9 +2681,7 @@ def _blocked_jacobi_square_project_svd(input):
             k,
             num_warps=1,
         )
-        _blocked_jacobi_store_projected_kernel[
-            (batch, k, triton.cdiv(m, block_r))
-        ](
+        _blocked_jacobi_store_projected_kernel[(batch, k, triton.cdiv(m, block_r))](
             a_work,
             s_work,
             ranks,
@@ -2803,9 +2781,7 @@ def _hier_block_jacobi_square_project_svd(input):
             k,
             num_warps=1,
         )
-        _blocked_jacobi_store_projected_kernel[
-            (batch, k, triton.cdiv(m, block_r))
-        ](
+        _blocked_jacobi_store_projected_kernel[(batch, k, triton.cdiv(m, block_r))](
             a_work,
             s_work,
             ranks,
@@ -3046,10 +3022,7 @@ def _complex_svd_pick_factor_kernel(
         other=0.0,
     )
     imag = tl.load(
-        REAL_FACTOR
-        + batch * (2 * ROWS) * REAL_K
-        + (ROWS + row) * REAL_K
-        + src_col,
+        REAL_FACTOR + batch * (2 * ROWS) * REAL_K + (ROWS + row) * REAL_K + src_col,
         mask=mask,
         other=0.0,
     )
@@ -3120,9 +3093,7 @@ def _complex_svd_pick_orthonormal_v_kernel(
             )
             cur_r -= prev_r * coeff_r - prev_i * coeff_i
             cur_i -= prev_r * coeff_i + prev_i * coeff_r
-        norm_sq = tl.sum(
-            tl.where(row_mask, cur_r * cur_r + cur_i * cur_i, 0.0), axis=0
-        )
+        norm_sq = tl.sum(tl.where(row_mask, cur_r * cur_r + cur_i * cur_i, 0.0), axis=0)
         inv_norm = tl.rsqrt(tl.maximum(norm_sq, 1.0e-20))
         cur_r *= inv_norm
         cur_i *= inv_norm
@@ -3177,7 +3148,9 @@ def _complex_svd_via_real_embedding(input):
     batch, m, n = _svd_shape(input)
     k = min(m, n)
     a_ri = torch.view_as_real(input.contiguous()).reshape(batch, m, n, 2)
-    real_matrix = torch.empty((batch, 2 * m, 2 * n), dtype=torch.float32, device=input.device)
+    real_matrix = torch.empty(
+        (batch, 2 * m, 2 * n), dtype=torch.float32, device=input.device
+    )
     block_size = triton.next_power_of_2(4 * m * n)
     with torch_device_fn.device(input.device):
         _complex_to_real_embedding_kernel[(batch,)](
@@ -3514,9 +3487,10 @@ def svd(input, some=True, compute_uv=True):
         if k == 4 and m == 4 and n == 4 and batch >= 16:
             return SVDResult(*_small4_square_svd(input))
         use_batched_cyclic16 = k == 16 and batch >= 8 and max(m, n) <= 64
-        if _can_use_small_jacobi_kernel(
-            input, some, compute_uv
-        ) and not use_batched_cyclic16:
+        if (
+            _can_use_small_jacobi_kernel(input, some, compute_uv)
+            and not use_batched_cyclic16
+        ):
             return SVDResult(*_small_jacobi_svd(input))
         if _can_use_tsqr_cholesky_kernel(input, some, compute_uv):
             return SVDResult(*_tsqr_cholesky_svd(input))
