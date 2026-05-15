@@ -355,7 +355,9 @@ def test_div_tensor_mode_scalar_inplace_none(shape, scalar, dtype):
 @pytest.mark.xfail(
     reason="Operator bug: trunc/floor div scalar kernels fail Triton compilation"
 )
-def test_div_tensor_mode_scalar_inplace_trunc_floor(shape, scalar, dtype, rounding_mode):
+def test_div_tensor_mode_scalar_inplace_trunc_floor(
+    shape, scalar, dtype, rounding_mode
+):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1.clone(), False)
 
