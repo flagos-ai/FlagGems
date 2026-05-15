@@ -23,10 +23,13 @@ def rms_norm_kernel(out_ptr, x_ptr, weight_ptr, n_elements, eps, BLOCK_SIZE: tl.
 
 
 def _fwd(x, weight, eps):
-    orig = x.dtype; x = x.contiguous().float()
+    orig = x.dtype
+    x = x.contiguous().float()
     w = weight.contiguous().float() if weight is not None else torch.ones(x.shape[-1], device=x.device)
-    n = x.shape[-1]; rows = x.numel() // n
-    x2d = x.reshape(rows, n); out = torch.empty_like(x2d)
+    n = x.shape[-1]
+    rows = x.numel() // n
+    x2d = x.reshape(rows, n)
+    out = torch.empty_like(x2d)
     BS = min(triton.next_power_of_2(n), 65536)
     rms_norm_kernel[(rows,)](out, x2d, w, n, eps, BLOCK_SIZE=BS, num_warps=4)
     return out.view(x.shape).to(orig)
@@ -34,24 +37,34 @@ def _fwd(x, weight, eps):
 
 def rms_norm(x, normalized_shape, weight=None, eps=1e-6):
     logger.debug("GEMS RMS_NORM")
-    if x.numel() == 0: return x.clone()
+    if x.numel() == 0:
+        return x.clone()
     return _fwd(x, weight, eps)
+
 
 def rms_norm_forward(x, normalized_shape, weight=None, eps=1e-6):
     logger.debug("GEMS RMS_NORM_FORWARD")
-    if x.numel() == 0: return x.clone()
+    if x.numel() == 0:
+        return x.clone()
     return _fwd(x, weight, eps)
+
 
 def rms_norm_backward(dy, x, weight, eps=1e-6):
     logger.debug("GEMS RMS_NORM_BACKWARD")
-    if dy.numel() == 0: return dy.clone(), None
-    orig = dy.dtype; dy = dy.contiguous().float(); x = x.contiguous().float()
+    if dy.numel() == 0:
+        return dy.clone(), None
+    orig = dy.dtype
+    dy = dy.contiguous().float()
+    x = x.contiguous().float()
     w = weight.contiguous().float() if weight is not None else torch.ones(x.shape[-1], device=x.device)
-    n = x.shape[-1]; rows = x.numel() // n
-    x2d = x.reshape(rows, n); dy2d = dy.reshape(rows, n)
-    mean_sq = (x2d * x2d).mean(dim=1); rrms = 1.0 / torch.sqrt(mean_sq + eps)
+    n = x.shape[-1]
+    rows = x.numel() // n
+    x2d = x.reshape(rows, n)
+    dy2d = dy.reshape(rows, n)
+    mean_sq = (x2d * x2d).mean(dim=1)
+    rrms = 1.0 / torch.sqrt(mean_sq + eps)
     wdy = w * dy2d
-    c = (wdy * x2d).sum(1, keepdim=True) * (rrms ** 2)[:, None] / n
+    c = (wdy * x2d).sum(1, keepdim=True) * (rrms**2)[:, None] / n
     dx = (rrms[:, None] * (wdy - x2d * c)).view(x.shape).to(orig)
     dw = (dy2d * x2d * rrms[:, None]).sum(0).to(orig) if weight is not None else None
     return dx, dw
