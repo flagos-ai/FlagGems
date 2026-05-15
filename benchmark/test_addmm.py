@@ -75,6 +75,10 @@ def _input_fn_dtype_out(b, m, n, k, dtype, device, b_column_major):
 
 
 @pytest.mark.addmm_dtype_out
+@pytest.mark.skipif(
+    utils.SkipVersion("torch", "<2.8"),
+    reason="The operator addmm.dtype_out was added starting from 2.8.0",
+)
 def test_addmm_dtype_out(monkeypatch):
     if flag_gems.vendor_name == "mthreads":
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
