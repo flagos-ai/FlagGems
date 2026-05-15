@@ -812,7 +812,7 @@ def _build_styled_html_table(header_fields, data_rows):
 
 def _build_filter_select(name, values):
     """Build a <select> dropdown for filtering."""
-    opts = [f'<option value="">All</option>']
+    opts = ['<option value="">All</option>']
     for v in values:
         escaped = html_module.escape(v)
         opts.append(f'<option value="{escaped}">{escaped}</option>')
