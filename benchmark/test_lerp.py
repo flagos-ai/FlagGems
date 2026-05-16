@@ -44,3 +44,32 @@ def test_lerp_tensor_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+def lerp_scalar_input_fn(shape, dtype, device):
+    input = torch.randn(*shape, device=device, dtype=dtype)
+    end = input + 10
+    yield {"input": input, "end": end, "weight": 0.5},
+
+
+@pytest.mark.lerp_scalar
+def test_lerp_scalar():
+    bench = LerpBenchmark(
+        input_fn=lerp_scalar_input_fn,
+        op_name="lerp_scalar",
+        torch_op=torch.lerp,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.lerp_scalar_
+def test_lerp_scalar_inplace():
+    bench = LerpBenchmark(
+        input_fn=lerp_scalar_input_fn,
+        op_name="lerp_scalar_",
+        torch_op=lambda input, end, weight: input.lerp_(end, weight),
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()

@@ -37,3 +37,19 @@ def test_zero_inplace():
         torch_op=torch.zero_,
     )
     bench.run()
+
+
+def _input_fn_out(shape, dtype, device):
+    input = torch.empty(shape, dtype=dtype, device=device)
+    out = torch.empty(shape, dtype=dtype, device=device)
+    yield input, {"out": out}
+
+
+@pytest.mark.zero_out
+def test_zero_out():
+    bench = base.GenericBenchmark(
+        op_name="zero_out",
+        input_fn=_input_fn_out,
+        torch_op=torch.ops.aten.zero.out,
+    )
+    bench.run()
