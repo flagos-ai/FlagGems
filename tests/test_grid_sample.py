@@ -36,7 +36,7 @@ ATOL_DICT = {
 try:
     gpu_memory_available = torch.cuda.get_device_properties(0).total_memory
 except Exception:
-    gpu_memory_availabel = 32 * 1024**3
+    gpu_memory_available = 32 * 1024**3
 
 
 def assert_close(actual, expected, rtol=1e-4, atol=None, dtype=torch.float32):
