@@ -148,6 +148,12 @@ sunrise = [
     # "flagtree-0.4.0+sunrise3.4"
 ]
 
+thead = [
+    "torch==2.9.0+ppu2.0.0.oe",
+    "triton==3.5.0+ppu2.0.0.oe",
+]
+
+
 tsingmicro = [
     "torch==2.7.0+cpu",
     "torchvision==0.22.0+cpu",
