@@ -24,3 +24,22 @@ def test_copy_inplace():
     )
 
     bench.run()
+
+
+class CopyFunctionalBenchmark(base.Benchmark):
+    def get_input_iter(self, dtype) -> Generator:
+        for shape in self.shapes:
+            template = utils.generate_tensor_input(shape, dtype, self.device)
+            src = utils.generate_tensor_input(shape, dtype, self.device)
+            yield template, src
+
+
+@pytest.mark.copy
+def test_copy_functional():
+    bench = CopyFunctionalBenchmark(
+        op_name="copy",
+        torch_op=torch.ops.aten.copy,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
+    )
+
+    bench.run()
