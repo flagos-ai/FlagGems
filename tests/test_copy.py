@@ -11,9 +11,11 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    utils.FLOAT_DTYPES + [torch.int32, torch.int64]
-    if flag_gems.vendor_name == "cambricon"
-    else utils.FLOAT_DTYPES,
+    (
+        utils.FLOAT_DTYPES + [torch.int32, torch.int64]
+        if flag_gems.vendor_name == "cambricon"
+        else utils.FLOAT_DTYPES
+    ),
 )
 def test_copy_inplace_same_dtype(shape, dtype):
     if flag_gems.vendor_name == "cambricon":
@@ -164,3 +166,55 @@ def test_copy_inplace_mixed_dtype_triton(src_dtype, dst_dtype):
         res_dst.copy_(src)
 
     utils.gems_assert_equal(res_dst, ref_dst)
+
+
+@pytest.mark.copy
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize(
+    "dtype",
+    (
+        utils.FLOAT_DTYPES + [torch.int32, torch.int64]
+        if flag_gems.vendor_name == "cambricon"
+        else utils.FLOAT_DTYPES
+    ),
+)
+def test_copy_functional_same_dtype(shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        if dtype in utils.FLOAT_DTYPES:
+            src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        else:
+            src = torch.randint(
+                torch.iinfo(dtype).min,
+                torch.iinfo(dtype).max,
+                shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+    else:
+        src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    template = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_src = utils.to_reference(src)
+    ref_template = utils.to_reference(template)
+
+    ref_out = torch.ops.aten.copy(ref_template, ref_src)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.copy(template, src)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.copy
+def test_copy_functional_broadcast():
+    src = torch.arange(0, 3, dtype=torch.float32, device=flag_gems.device)
+    template = torch.empty((2, 3), dtype=torch.float32, device=flag_gems.device)
+
+    ref_src = utils.to_reference(src)
+    ref_template = utils.to_reference(template)
+
+    ref_out = torch.ops.aten.copy(ref_template, ref_src)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.copy(template, src)
+
+    utils.gems_assert_equal(res_out, ref_out)
