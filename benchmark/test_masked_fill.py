@@ -30,3 +30,22 @@ def test_masked_fill_inplace():
     )
 
     bench.run()
+
+
+@pytest.mark.masked_fill_scalar
+def test_masked_fill_scalar():
+    bench = base.GenericBenchmark(
+        op_name="masked_fill_scalar", input_fn=_input_fn, torch_op=torch.masked_fill
+    )
+    bench.run()
+
+
+@pytest.mark.masked_fill_scalar_
+def test_masked_fill_scalar_inplace():
+    bench = base.GenericBenchmark(
+        op_name="masked_fill_scalar_",
+        input_fn=_input_fn,
+        torch_op=lambda a, b, c: a.masked_fill_(b, c),
+        is_inplace=True,
+    )
+    bench.run()
