@@ -18,6 +18,7 @@ _GRAM_CONDITION_EIGEN_RATIO = 1.0e-8
 _GRAM_TALL_WIDE_MAX_K = 32
 _GRAM_TALL_WIDE_MAX_ROWS = 1024
 _RANK1_BLOCK_R_MAX = 1024
+_RANK2_BLOCK_R_MAX = 2048
 _TSQR_CHOLESKY_MAX_BATCH = 32
 _TSQR_CHOLESKY_MAX_K = 128
 _TSQR_CHOLESKY_MAX_ROWS = 1024
@@ -78,7 +79,7 @@ def _can_use_rank2_kernel(input, some=True, compute_uv=True):
         and some
         and compute_uv
         and min(m, n) == 2
-        and max(m, n) <= 1024
+        and max(m, n) <= _RANK2_BLOCK_R_MAX
     )
 
 
@@ -1187,7 +1188,8 @@ def _rank2_svd_tiny_kernel(
     diff = aa - bbv
     root = tl.sqrt(diff * diff + 4.0 * ab * ab)
     l0 = tl.maximum(0.0, 0.5 * (aa + bbv + root))
-    l1 = tl.maximum(0.0, 0.5 * (aa + bbv - root))
+    det = tl.maximum(0.0, aa * bbv - ab * ab)
+    l1 = tl.where(l0 > eps, det / l0, 0.0)
     s0 = tl.sqrt(l0)
     s1 = tl.sqrt(l1)
 
@@ -1266,7 +1268,8 @@ def _rank2_svals_tiny_kernel(
     diff = aa - bbv
     root = tl.sqrt(diff * diff + 4.0 * ab * ab)
     l0 = tl.maximum(0.0, 0.5 * (aa + bbv + root))
-    l1 = tl.maximum(0.0, 0.5 * (aa + bbv - root))
+    det = tl.maximum(0.0, aa * bbv - ab * ab)
+    l1 = tl.where(l0 > 1.0e-20, det / l0, 0.0)
     tl.store(S + b * 2, tl.sqrt(l0), mask=bmask)
     tl.store(S + b * 2 + 1, tl.sqrt(l1), mask=bmask)
 
@@ -1301,7 +1304,8 @@ def _rank2_svals_kernel(
     diff = aa - bb
     root = tl.sqrt(diff * diff + 4.0 * ab * ab)
     l0 = tl.maximum(0.0, 0.5 * (aa + bb + root))
-    l1 = tl.maximum(0.0, 0.5 * (aa + bb - root))
+    det = tl.maximum(0.0, aa * bb - ab * ab)
+    l1 = tl.where(l0 > 1.0e-20, det / l0, 0.0)
 
     sbase = S + pid * 2
     tl.store(sbase, tl.sqrt(l0))
@@ -1341,7 +1345,8 @@ def _rank2_svd_kernel(
     diff = aa - bb
     root = tl.sqrt(diff * diff + 4.0 * ab * ab)
     l0 = tl.maximum(0.0, 0.5 * (aa + bb + root))
-    l1 = tl.maximum(0.0, 0.5 * (aa + bb - root))
+    det = tl.maximum(0.0, aa * bb - ab * ab)
+    l1 = tl.where(l0 > eps, det / l0, 0.0)
     s0 = tl.sqrt(l0)
     s1 = tl.sqrt(l1)
 
@@ -1365,7 +1370,18 @@ def _rank2_svd_kernel(
     if TALL:
         ubase = U + pid * M * 2
         u0 = (x * vx0 + y * vy0) * inv_s0
+        basis0 = tl.where(offs == 0, 1.0, 0.0)
+        basis1 = tl.where(offs == 1, 1.0, 0.0)
+        u0 = tl.where(s0 > eps, u0, basis0)
+
         u1 = (x * vx1 + y * vy1) * inv_s1
+        u0_first = tl.sum(tl.where(offs == 0, u0, 0.0))
+        anchor = tl.where(tl.abs(u0_first) < 0.70710678, basis0, basis1)
+        dot = tl.sum(anchor * u0)
+        fallback_u1 = anchor - dot * u0
+        fallback_norm = tl.sum(fallback_u1 * fallback_u1)
+        fallback_u1 = fallback_u1 * tl.rsqrt(fallback_norm + eps)
+        u1 = tl.where(s1 > s0 * 5.0e-4, u1, fallback_u1)
         tl.store(ubase + offs * 2, u0, mask=mask)
         tl.store(ubase + offs * 2 + 1, u1, mask=mask)
 
@@ -1383,7 +1399,18 @@ def _rank2_svd_kernel(
 
         vbase = V + pid * N * 2
         v0 = (x * vx0 + y * vy0) * inv_s0
+        basis0 = tl.where(offs == 0, 1.0, 0.0)
+        basis1 = tl.where(offs == 1, 1.0, 0.0)
+        v0 = tl.where(s0 > eps, v0, basis0)
+
         v1 = (x * vx1 + y * vy1) * inv_s1
+        v0_first = tl.sum(tl.where(offs == 0, v0, 0.0))
+        anchor = tl.where(tl.abs(v0_first) < 0.70710678, basis0, basis1)
+        dot = tl.sum(anchor * v0)
+        fallback_v1 = anchor - dot * v0
+        fallback_norm = tl.sum(fallback_v1 * fallback_v1)
+        fallback_v1 = fallback_v1 * tl.rsqrt(fallback_norm + eps)
+        v1 = tl.where(s1 > s0 * 5.0e-4, v1, fallback_v1)
         tl.store(vbase + offs * 2, v0, mask=mask)
         tl.store(vbase + offs * 2 + 1, v1, mask=mask)
 
@@ -3385,7 +3412,7 @@ def _singular_values_only(input):
     _, m, n = _svd_shape(input)
     k = min(m, n)
     largest = max(m, n)
-    if k == 2 and largest <= 1024:
+    if k == 2 and largest <= _RANK2_BLOCK_R_MAX:
         return _rank2_singular_values(input)
     if k <= 16 and largest <= 1024:
         return _small_jacobi_singular_values(input)
@@ -3444,7 +3471,7 @@ def svd(input, some=True, compute_uv=True):
     try:
         if k == 1:
             return SVDResult(*_rank1_svd(input))
-        if k == 2 and max(m, n) <= 1024:
+        if k == 2 and max(m, n) <= _RANK2_BLOCK_R_MAX:
             return SVDResult(*_rank2_svd(input))
         if k == 4 and m == 4 and n == 4 and batch >= 16:
             return SVDResult(*_small4_square_svd(input))

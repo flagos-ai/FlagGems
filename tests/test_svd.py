@@ -203,6 +203,42 @@ def test_accuracy_svd_tiny_rank_degenerate_inputs(case):
 
 
 @pytest.mark.svd
+@pytest.mark.parametrize("shape", [(1025, 2), (2, 1025)])
+@pytest.mark.parametrize("case", ["zero", "rankdef", "scaled"])
+def test_accuracy_svd_rank2_boundary_degenerate_inputs(shape, case):
+    if case == "zero":
+        inp = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
+    else:
+        length = max(shape)
+        vec = torch.linspace(1.0, 2.0, length, device=flag_gems.device)
+        small = torch.linspace(-0.5, 0.5, length, device=flag_gems.device)
+        if shape[-2] >= shape[-1]:
+            inp = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
+            inp[:, 0] = vec
+            inp[:, 1] = 0.0 if case == "rankdef" else small * 1.0e-4
+        else:
+            inp = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
+            inp[0, :] = vec
+            inp[1, :] = 0.0 if case == "rankdef" else small * 1.0e-4
+
+    ref_inp = utils.to_reference(inp, False)
+    ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
+
+    with flag_gems.use_gems(include=["svd"]):
+        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+
+    _assert_finite(res_u, res_s, res_v)
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_v, ref_v)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
+    reconstructed = _reconstruct(res_u, res_s, res_v)
+    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
+    _assert_orthonormal(res_u)
+    _assert_orthonormal(res_v)
+
+
+@pytest.mark.svd
 @pytest.mark.parametrize("shape", utils.SVD_FALLBACK_SHAPES)
 @pytest.mark.parametrize("some", [True, False])
 def test_accuracy_svd_fallback_modes(shape, some):
