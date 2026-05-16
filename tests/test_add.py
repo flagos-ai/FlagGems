@@ -27,6 +27,10 @@ def test_add(shape, alpha, dtype):
 
 
 @pytest.mark.add
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Issues #3267: Ascend NPU does not support complex32 dtype",
+)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 @pytest.mark.parametrize(
