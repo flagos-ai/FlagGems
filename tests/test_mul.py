@@ -110,6 +110,10 @@ def test_mul_tensor_scalar_(shape, scalar, dtype):
 
 
 @pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Issues #3267: Ascend NPU does not support complex32 dtype",
+)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_mul_complex_complex(shape, complex_dtype):
@@ -128,6 +132,10 @@ def test_mul_complex_complex(shape, complex_dtype):
 
 
 @pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Issues #3267: Ascend NPU does not support complex32 dtype",
+)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_mul_complex_float_tensor(shape, complex_dtype):
@@ -154,6 +162,10 @@ def test_mul_complex_float_tensor(shape, complex_dtype):
 
 
 @pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Issues #3267: Ascend NPU does not support complex32 dtype",
+)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_mul_complex_int_tensor(shape, complex_dtype):
@@ -172,6 +184,10 @@ def test_mul_complex_int_tensor(shape, complex_dtype):
 
 
 @pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Issues #3267: Ascend NPU does not support complex32 dtype",
+)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_mul_complex_int_scalar(shape, complex_dtype):
