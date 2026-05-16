@@ -49,7 +49,7 @@ def nll_loss_nd_input_fn(shape, cur_dtype, device):
 def test_nll_loss_nd_forward():
     bench = NLLLossNDBenchmark(
         input_fn=nll_loss_nd_input_fn,
-        op_name="nll_loss_nd",
+        op_name="nll_loss_nd_forward",
         torch_op=torch.nn.functional.nll_loss,
         dtypes=consts.FLOAT_DTYPES,
     )
@@ -61,7 +61,7 @@ def test_nll_loss_nd_forward():
 def test_nll_loss_nd_backward():
     bench = NLLLossNDBenchmark(
         input_fn=nll_loss_nd_input_fn,
-        op_name="nll_loss_nd",
+        op_name="nll_loss_nd_backward",
         torch_op=torch.nn.functional.nll_loss,
         dtypes=consts.FLOAT_DTYPES,
         is_backward=True,
