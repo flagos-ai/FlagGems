@@ -31,21 +31,6 @@ W8A8_BLOCK_FP8_MNK_SHAPES = [
 W8A8_BLOCK_FP8_BLOCK_SIZE = [128, 128]
 
 
-def get_w8a8_block_fp8_dtype():
-    if flag_gems.device != "cuda" or not torch.cuda.is_available():
-        return None
-
-    major, _ = torch.cuda.get_device_capability()
-
-    if major > 8 and hasattr(torch, "float8_e4m3fn"):
-        return torch.float8_e4m3fn
-
-    if major == 8 and hasattr(torch, "float8_e5m2"):
-        return torch.float8_e5m2
-
-    return None
-
-
 def rand_fp8_tensor(shape, device, dtype):
     finfo = torch.finfo(dtype)
     return (
@@ -73,9 +58,7 @@ class W8A8BlockFP8MatmulBenchmark(base.Benchmark):
         self.shape_desc = "M, N, K"
 
     def get_input_iter(self, dtype) -> Generator:
-        fp8_dtype = get_w8a8_block_fp8_dtype()
-
-        if fp8_dtype is None:
+        if dtype is None:
             raise RuntimeError(
                 "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
             )
@@ -85,8 +68,8 @@ class W8A8BlockFP8MatmulBenchmark(base.Benchmark):
             num_k_groups = (k + block_k - 1) // block_k
             num_n_groups = (n + block_n - 1) // block_n
 
-            A = rand_fp8_tensor((m, k), self.device, fp8_dtype).contiguous()
-            B = rand_fp8_tensor((n, k), self.device, fp8_dtype).contiguous()
+            A = rand_fp8_tensor((m, k), self.device, dtype).contiguous()
+            B = rand_fp8_tensor((n, k), self.device, dtype).contiguous()
             As = (
                 0.01
                 * torch.rand((m, num_k_groups), dtype=torch.float32, device=self.device)
@@ -117,7 +100,7 @@ class W8A8BlockFP8MatmulBenchmark(base.Benchmark):
     reason="w8a8_block_fp8_matmul benchmark requires vLLM baseline operator",
 )
 def test_perf_w8a8_block_fp8_matmul():
-    if get_w8a8_block_fp8_dtype() is None:
+    if len(consts.FP8_DTYPES) == 0:
         pytest.skip(
             "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
         )
@@ -126,6 +109,6 @@ def test_perf_w8a8_block_fp8_matmul():
         op_name="w8a8_block_fp8_matmul",
         torch_op=vllm_w8a8_triton_block_scaled_mm,
         gems_op=flag_gems.w8a8_block_fp8_matmul,
-        dtypes=["fp8"],
+        dtypes=consts.FP8_DTYPES,
     )
     bench.run()

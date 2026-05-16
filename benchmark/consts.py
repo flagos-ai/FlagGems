@@ -5,10 +5,31 @@ from typing import List, Optional, Tuple
 
 import torch
 
+import flag_gems
+
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
 BOOL_DTYPES = [torch.bool]
 COMPLEX_DTYPES = [torch.complex64]
+EXTRA_INT_DTYPES = [torch.int8, torch.uint8, torch.int64]
+
+
+def get_fp8_dtype():
+    if flag_gems.device != "cuda" or not torch.cuda.is_available():
+        return None
+
+    major, _ = torch.cuda.get_device_capability()
+
+    if major > 8 and hasattr(torch, "float8_e4m3fn"):
+        return torch.float8_e4m3fn
+
+    if major == 8 and hasattr(torch, "float8_e5m2"):
+        return torch.float8_e5m2
+
+    return None
+
+
+FP8_DTYPES = [get_fp8_dtype()]
 
 DEFAULT_WARMUP_COUNT = 1000
 DEFAULT_ITER_COUNT = 100
