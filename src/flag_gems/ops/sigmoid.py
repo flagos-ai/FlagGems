@@ -1,45 +1,73 @@
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
-exp2 = tl_extra_shim.exp2
 
 
-@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
+@libentry()
 @triton.jit
-def sigmoid_forward(x):
-    # log2e: tl.constexpr = math.log2(math.e)
-    # triton 3.0.0 disallow calling non-jitted function inside jitted function, even if it is in
-    # the rhs of an assignment to a constexpr, so we use numeric literal instead to work around this.
-    log2e: tl.constexpr = 1.4426950408889634
-    return 1 / (1 + exp2(-x.to(tl.float32) * log2e))
+def sigmoid_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    out = 1.0 / (1.0 + tl.exp(-x))
+    tl.store(out_ptr + offsets, out, mask=mask)
 
 
-@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
+@libentry()
 @triton.jit
-def sigmoid_backward_kernel(dy, y):
-    y_f32 = y.to(tl.float32)
-    dy_f32 = dy.to(tl.float32)
-    return dy_f32 * (1.0 - y_f32) * y_f32
+def sigmoid_backward_kernel(
+    x_ptr, dy_ptr, dx_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+):
+    offsets = tl.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    dy = tl.load(dy_ptr + offsets, mask=mask, other=0.0)
+    sig = 1.0 / (1.0 + tl.exp(-x))
+    dx = dy * sig * (1.0 - sig)
+    tl.store(dx_ptr + offsets, dx, mask=mask)
 
 
-def sigmoid(self):
-    logger.debug("GEMS SIGMOID FORWARD")
-    output = sigmoid_forward(self)
-    return output
+def _fwd(x):
+    orig = x.dtype
+    x = x.contiguous().float()
+    out = torch.empty_like(x)
+    n = x.numel()
+    if n == 0:
+        return out.to(orig)
+    BS = triton.next_power_of_2(min(n, 4096))
+    sigmoid_kernel[(triton.cdiv(n, BS),)](x, out, n, BLOCK_SIZE=BS, num_warps=4)
+    return out.to(orig)
 
 
-def sigmoid_backward(grad_output, output):
+def sigmoid(x: torch.Tensor) -> torch.Tensor:
+    logger.debug("GEMS SIGMOID")
+    return _fwd(x)
+
+
+def sigmoid_(x: torch.Tensor) -> torch.Tensor:
+    logger.debug("GEMS SIGMOID_")
+    r = _fwd(x)
+    x.copy_(r)
+    return x
+
+
+def sigmoid_backward(x: torch.Tensor, dy: torch.Tensor) -> torch.Tensor:
     logger.debug("GEMS SIGMOID BACKWARD")
-    grad_input = sigmoid_backward_kernel(grad_output, output)
-    return grad_input
-
-
-def sigmoid_(A):
-    logger.debug("GEMS SIGMOID_ FORWARD")
-    out = sigmoid_forward(A, out0=A)
-    return out
+    orig = x.dtype
+    x = x.contiguous().float()
+    dy = dy.contiguous().float()
+    dx = torch.empty_like(x)
+    n = x.numel()
+    if n == 0:
+        return dx.to(orig)
+    BS = triton.next_power_of_2(min(n, 4096))
+    sigmoid_backward_kernel[(triton.cdiv(n, BS),)](
+        x, dy, dx, n, BLOCK_SIZE=BS, num_warps=4
+    )
+    return dx.to(orig)
