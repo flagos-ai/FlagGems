@@ -4,6 +4,22 @@ import torch
 from . import base
 
 
+def fill_scalar_input_fn(shape, dtype, device):
+    input = torch.empty(shape, dtype=dtype, device=device)
+    yield input, 3.14159,
+
+
+@pytest.mark.fill_scalar
+def test_fill_scalar():
+    bench = base.GenericBenchmark(
+        op_name="fill_scalar",
+        input_fn=fill_scalar_input_fn,
+        torch_op=torch.fill,
+        is_inplace=True,
+    )
+    bench.run()
+
+
 def fill_tensor_input_fn(shape, dtype, device):
     input = torch.empty(shape, dtype=dtype, device=device)
     yield input, 3.14159,
