@@ -23,7 +23,7 @@ def test_ne():
 def test_ne_scalar():
     bench = base.GenericBenchmark(
         input_fn=_scalar_input_fn,
-        op_name="ne.Scalar",
+        op_name="ne_scalar",
         torch_op=torch.ne,
         dtypes=consts.FLOAT_DTYPES,
     )
