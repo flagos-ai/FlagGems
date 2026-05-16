@@ -109,15 +109,18 @@ jobs:
           tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} --gpus 2 --dump-output
           tools/psummary --format markdown --single results > results.md
 
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: ondemand-test
+          path: results/
+
       - name: comment
         uses: mshick/add-pr-comment@v3
         with:
           message-path: results.md
           message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           allow-repeats: True
-
-      - name: Upload results
-        uses: actions/upload-artifact@v7
-        with:
-          name: ondemand-test
-          path: results/
+          attach-path: results/*
+          attach-name: test-report
+          attach-text: '📎 [Download %ATTACH_NAME%](%ARTIFACT_URL%)'
