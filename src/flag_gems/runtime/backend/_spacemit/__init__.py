@@ -13,9 +13,11 @@ if importlib.util.find_spec("triton.backends.spine_triton") is not None:
 
     triton.runtime.driver.set_active(CPUDriver())  # noqa: E402
 
-# TODO: Fix import error on other devices
+
 vendor_info = VendorInfoBase(
-    vendor_name="spacemit", device_name="cpu", device_query_cmd=""
+    vendor_name="spacemit",
+    device_name="cpu",
+    device_query_cmd="spacemit-tcm-smi",
 )
 
 
