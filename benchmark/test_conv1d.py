@@ -61,3 +61,40 @@ def test_conv1d():
     )
     bench.set_gems(flag_gems.conv1d)
     bench.run()
+
+
+class Conv1DPaddingBenchmark(base.GenericBenchmark):
+    def get_input_iter(self, dtype):
+        shapes = [
+            (32, 64, 512, 64, 3, 1, 0, 1),
+            (32, 64, 512, 64, 3, 1, 1, 1),
+            (32, 64, 512, 64, 3, 1, 2, 1),
+            (64, 48, 1024, 128, 5, 2, 0, 1),
+            (64, 48, 1024, 128, 5, 2, 2, 1),
+            (64, 48, 1024, 128, 5, 2, 4, 1),
+            (16, 24, 2048, 96, 7, 1, 0, 2),
+            (16, 24, 2048, 96, 7, 1, 3, 2),
+            (16, 24, 2048, 96, 7, 1, 6, 2),
+            (32, 64, 512, 64, 3, 1, "valid", 1),
+            (64, 48, 1024, 128, 5, 2, "valid", 1),
+            (16, 24, 2048, 96, 7, 1, "same", 2),
+            (8, 8, 8192, 16, 11, 1, "same", 1),
+        ]
+        for shape in shapes:
+            yield from self.input_fn(shape, dtype, self.device)
+
+
+@pytest.mark.conv1d_padding
+def test_conv1d_padding():
+    torch.backends.cudnn.allow_tf32 = False
+    bench = Conv1DPaddingBenchmark(
+        input_fn=conv1d_input_fn,
+        op_name="conv1d_padding",
+        torch_op=torch.nn.functional.conv1d,
+        dtypes=[
+            torch.float16,
+            torch.float32,
+        ],  # Exclude bfloat16 due to cuDNN limitations
+    )
+    bench.set_gems(flag_gems.conv1d)
+    bench.run()
