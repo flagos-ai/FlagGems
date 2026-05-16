@@ -255,9 +255,7 @@ def addmm_sqmma_kernel(
     bias = tl._experimental_descriptor_load(
         bias_desc_ptr, [offs_am, offs_bn], [BLOCK_SIZE_M, BLOCK_SIZE_N], input_type
     )
-    result = (alpha * accumulator.to(output_type) + beta * bias.to(output_type)).to(
-        output_type
-    )
+    result = (alpha * accumulator + beta * bias).to(output_type)
     tl._experimental_descriptor_store(c_desc_ptr, result, [offs_am, offs_bn])
 
 

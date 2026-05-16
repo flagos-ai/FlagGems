@@ -21,3 +21,14 @@ def test_tanh_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+@pytest.mark.tanh_backward
+def test_tanh_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="tanh_backward",
+        torch_op=torch.tanh,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
