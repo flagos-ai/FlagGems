@@ -31,7 +31,7 @@ def test_nll_loss2d_forward():
 def test_nll_loss2d_backward():
     bench = base.GenericBenchmark4DOnly(
         input_fn=nll_loss_input_fn,
-        op_name="nll_loss2d",
+        op_name="nll_loss2d_backward",
         torch_op=torch.nn.functional.nll_loss,
         dtypes=consts.FLOAT_DTYPES,
         is_backward=True,
