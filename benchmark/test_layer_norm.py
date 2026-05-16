@@ -37,3 +37,27 @@ def test_layer_norm():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+def input_fn_backward(shape, dtype, device):
+    grad_out = torch.randn(shape, dtype=dtype, device=device)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    normalized_shape = shape[1:]
+    # mean and rstd are always float32 for native_layer_norm_backward
+    mean = torch.randn(shape[0], dtype=torch.float32, device=device)
+    rstd = torch.randn(shape[0], dtype=torch.float32, device=device)
+    weight = torch.randn(normalized_shape, dtype=dtype, device=device)
+    bias = torch.randn(normalized_shape, dtype=dtype, device=device)
+    output_mask = [True, True, True]
+    yield grad_out, inp, normalized_shape, mean, rstd, weight, bias, output_mask
+
+
+@pytest.mark.layer_norm_backward
+def test_layer_norm_backward():
+    bench = NormBenchmark(
+        op_name="layer_norm_backward",
+        input_fn=input_fn_backward,
+        torch_op=torch.ops.aten.native_layer_norm_backward,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
