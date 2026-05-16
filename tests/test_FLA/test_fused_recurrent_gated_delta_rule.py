@@ -199,3 +199,153 @@ def test_fused_recurrent_gated_delta_rule_matches_vllm(cfg, T, qkv_contiguous):
 
     torch.testing.assert_close(flag_out, base_out, rtol=1e-1, atol=2e-1)
     torch.testing.assert_close(flag_final, base_final, rtol=1.5, atol=1.0)
+
+
+def _reference_fused_recurrent_gated_delta_rule_fwd(
+    q,
+    k,
+    v,
+    g,
+    beta,
+    scale,
+    initial_state,
+    cu_seqlens,
+    ssm_state_indices,
+    use_qk_l2norm_in_kernel=False,
+    inplace_final_state=True,
+):
+    """Pure PyTorch reference implementation for accuracy testing."""
+    B, T, H, K = q.shape
+    HV = v.shape[2]
+    V = v.shape[3]
+    N = len(cu_seqlens) - 1
+
+    o = torch.zeros_like(v)
+    if inplace_final_state:
+        final_state = initial_state.clone()
+    else:
+        final_state = torch.zeros(T, HV, K, V, dtype=q.dtype, device=q.device)
+
+    for n in range(N):
+        bos = cu_seqlens[n].item()
+        eos = cu_seqlens[n + 1].item()
+        seq_len = eos - bos
+
+        for i_hv in range(HV):
+            i_h = i_hv // (HV // H)
+            h = initial_state[ssm_state_indices[bos].item(), i_hv].float().clone()
+
+            for t in range(seq_len):
+                pos = bos + t
+                bq = q[0, pos, i_h].float()
+                bk = k[0, pos, i_h].float()
+                bv = v[0, pos, i_hv].float()
+
+                if use_qk_l2norm_in_kernel:
+                    bq = bq / (bq.norm() + 1e-6)
+                    bk = bk / (bk.norm() + 1e-6)
+                bq = bq * scale
+
+                bg = g[0, pos, i_hv].float()
+                h = h * torch.exp(bg)
+
+                bv = bv - (h * bk[:, None]).sum(0)
+                bb = beta[0, pos, i_hv].float()
+                bv = bv * bb
+
+                h = h + bk[:, None] * bv[None, :]
+                bo = (h * bq[:, None]).sum(0)
+                o[0, pos, i_hv] = bo.to(o.dtype)
+
+                state_idx = ssm_state_indices[pos].item()
+                if inplace_final_state:
+                    final_state[state_idx, i_hv] = h.to(final_state.dtype)
+                else:
+                    final_state[pos, i_hv] = h.to(final_state.dtype)
+
+    return o, final_state
+
+
+@pytest.mark.fused_recurrent_gated_delta_rule_fwd
+@pytest.mark.fused_recurrent_gated_delta_rule
+@pytest.mark.parametrize("T", [1, 2, 4, 8])
+@pytest.mark.parametrize("qkv_contiguous", [True, False])
+@pytest.mark.parametrize("use_qk_l2norm", [True, False])
+def test_fused_recurrent_gated_delta_rule_fwd_accuracy(
+    T, qkv_contiguous, use_qk_l2norm
+):
+    """Self-contained accuracy test using a pure PyTorch reference."""
+    device = flag_gems.device
+    dtype = torch.bfloat16
+
+    B = 1
+    H, HV, K, V = 4, 8, 64, 64
+    tp_size = 1
+    key_dim = H * K
+    value_dim = HV * V
+
+    mixed_qkv_dim = (2 * key_dim + value_dim) // tp_size
+    total_tokens = B * T
+    mixed_qkv = torch.randn((total_tokens, mixed_qkv_dim), device=device, dtype=dtype)
+
+    query, key, value = rearrange_mixed_qkv(
+        mixed_qkv,
+        key_dim=key_dim,
+        value_dim=value_dim,
+        head_k_dim=K,
+        head_v_dim=V,
+        tp_size=tp_size,
+        contiguous=qkv_contiguous,
+    )
+
+    HV_local = value.shape[2]
+    g = F.logsigmoid(torch.randn((B, T, HV_local), device=device, dtype=dtype))
+    beta = torch.rand(B, T, HV_local, device=device, dtype=dtype).sigmoid()
+    cu_seqlens = torch.arange(T + 1, device=device, dtype=torch.long)
+    ssm_state_len = 128
+    initial_state = (
+        torch.randn((ssm_state_len, HV_local, K, V), device=device, dtype=dtype) * 0.01
+    )
+    ssm_state_indices = torch.zeros(T, device=device, dtype=torch.long)
+    scale = K**-0.5
+
+    ref_out, ref_final = _reference_fused_recurrent_gated_delta_rule_fwd(
+        q=query.clone(),
+        k=key.clone(),
+        v=value.clone(),
+        g=g.clone(),
+        beta=beta.clone(),
+        scale=scale,
+        initial_state=initial_state.clone(),
+        cu_seqlens=cu_seqlens,
+        ssm_state_indices=ssm_state_indices,
+        use_qk_l2norm_in_kernel=use_qk_l2norm,
+        inplace_final_state=True,
+    )
+
+    flag_out, flag_final = flag_gems.fused_recurrent_gated_delta_rule_fwd(
+        q=query,
+        k=key,
+        v=value,
+        g=g,
+        beta=beta,
+        scale=scale,
+        initial_state=initial_state.clone(),
+        inplace_final_state=True,
+        cu_seqlens=cu_seqlens,
+        ssm_state_indices=ssm_state_indices,
+        num_accepted_tokens=None,
+        use_qk_l2norm_in_kernel=use_qk_l2norm,
+    )
+
+    torch.testing.assert_close(flag_out, ref_out, rtol=1e-1, atol=2e-1)
+    # Final state accumulates over T timesteps; use per-element relative check
+    # with generous tolerance since bfloat16 errors compound across recurrence.
+    mask = ref_final.abs() > 1e-3
+    if mask.any():
+        rel_err = (
+            flag_final[mask].float() - ref_final[mask].float()
+        ).abs() / ref_final[mask].float().abs()
+        assert (
+            rel_err.median() < 0.1
+        ), f"Median relative error on final_state too large: {rel_err.median():.4f}"
