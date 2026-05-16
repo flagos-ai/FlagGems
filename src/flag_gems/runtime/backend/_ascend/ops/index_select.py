@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
@@ -12,7 +12,7 @@ logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("index_select"))
+@triton.heuristics(_hcu.HEURISTICS_CONFIGS["index_select"])
 @triton.jit
 def index_select_kernel(
     inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
