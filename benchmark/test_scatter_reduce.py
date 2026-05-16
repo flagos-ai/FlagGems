@@ -4,7 +4,7 @@ import torch
 import flag_gems
 from flag_gems.utils import shape_utils
 
-from . import base
+from . import base, consts
 
 
 class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
@@ -24,6 +24,16 @@ class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
             if len(shape) == 2 and shape[0] > 16 and shape[1] > 16
         ]
         return shapes
+
+
+class ScatterReduceBenchmark(base.GenericBenchmark2DOnly):
+    DEFAULT_SHAPE_FILES = "core_shapes.yaml"
+
+    def set_more_metrics(self):
+        return ["gbps"]
+
+    def set_more_shapes(self):
+        return []
 
 
 def gather_input_fn(shape, dtype, device):
@@ -77,6 +87,54 @@ def gather_scatter_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
+def scatter_reduce_two_input_fn_factory(reduce="sum", include_self=True):
+    def inner(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        dim = -1
+        src_shape = list(shape)
+        src_shape[dim] = max(1, shape[dim] // 2)
+        src = torch.randn(src_shape, dtype=dtype, device=device)
+        index = torch.arange(src_shape[dim], dtype=torch.long, device=device).expand(
+            src_shape
+        )
+        yield inp, dim, index, src, {"reduce": reduce, "include_self": include_self}
+
+    return inner
+
+
+def scatter_reduce_two_out_input_fn_factory(reduce="sum", include_self=True):
+    def inner(shape, dtype, device):
+        for inp, dim, index, src, kwargs in scatter_reduce_two_input_fn_factory(
+            reduce, include_self
+        )(shape, dtype, device):
+            yield inp, dim, index, src, kwargs, {"out": torch.empty_like(inp)}
+
+    return inner
+
+
+SCATTER_REDUCE_TWO_FORWARD_CASES = [
+    ("scatter_reduce_two", "sum", True),
+    ("scatter_reduce_two", "mean", False),
+    ("scatter_reduce_two", "prod", True),
+    ("scatter_reduce_two", "amax", False),
+    ("scatter_reduce_two", "amin", True),
+]
+
+SCATTER_REDUCE_TWO_INPLACE_CASES = [
+    ("scatter_reduce_two_", "sum", True),
+    ("scatter_reduce_two_", "prod", True),
+    ("scatter_reduce_two_", "amax", True),
+    ("scatter_reduce_two_", "amin", True),
+    ("scatter_reduce_two_", "mean", True),
+]
+
+SCATTER_REDUCE_TWO_OUT_CASES = [
+    ("scatter_reduce_two_out", "mean", True),
+    ("scatter_reduce_two_out", "prod", True),
+    ("scatter_reduce_two_out", "amin", False),
+]
+
+
 @pytest.mark.scatter_reduce
 def test_scatter_reduce_add():
     bench = TensorSelectBenchmark(
@@ -123,5 +181,49 @@ def test_scatter_reduce_multiply_inplace():
         get_gbps=gather_scatter_gbps,
         dtypes=[torch.float16, torch.float32],
         is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_reduce_two
+@pytest.mark.parametrize(
+    "op_name, reduce, include_self", SCATTER_REDUCE_TWO_FORWARD_CASES
+)
+def test_scatter_reduce_two(op_name, reduce, include_self):
+    bench = ScatterReduceBenchmark(
+        op_name=op_name,
+        torch_op=torch.scatter_reduce,
+        input_fn=scatter_reduce_two_input_fn_factory(reduce, include_self),
+        get_gbps=gather_scatter_gbps,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.parametrize(
+    "op_name, reduce, include_self", SCATTER_REDUCE_TWO_INPLACE_CASES
+)
+def test_scatter_reduce_two_(op_name, reduce, include_self):
+    bench = ScatterReduceBenchmark(
+        op_name=op_name,
+        torch_op=torch.Tensor.scatter_reduce_,
+        input_fn=scatter_reduce_two_input_fn_factory(reduce, include_self),
+        get_gbps=gather_scatter_gbps,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_reduce_two
+@pytest.mark.parametrize("op_name, reduce, include_self", SCATTER_REDUCE_TWO_OUT_CASES)
+def test_scatter_reduce_two_out(op_name, reduce, include_self):
+    bench = ScatterReduceBenchmark(
+        op_name=op_name,
+        torch_op=torch.scatter_reduce,
+        input_fn=scatter_reduce_two_out_input_fn_factory(reduce, include_self),
+        get_gbps=gather_scatter_gbps,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
