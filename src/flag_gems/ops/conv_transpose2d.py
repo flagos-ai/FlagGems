@@ -27,6 +27,11 @@ _DIRECT_TRITON_SHAPES = {
 # Exact fp32 no-bias/group=1 shapes that are better served by the generic
 # direct tiled kernel than by the correctness-oriented scalar fallback.
 _DIRECT_TRITON_FP32_SHAPES = {
+    (1, 64, 128, 128, 64, 3, 3, 1, 1),
+    (1, 64, 64, 64, 32, 3, 3, 2, 1),
+    (4, 32, 32, 32, 32, 3, 3, 2, 1),
+    (8, 16, 64, 64, 16, 5, 5, 2, 2),
+    (16, 32, 16, 16, 64, 3, 3, 2, 1),
     (32, 64, 32, 32, 32, 3, 3, 1, 0),
 }
 
@@ -1492,8 +1497,28 @@ def _conv_transpose2d_direct(
     block_co = 32
     num_warps = 4
     if shape_key == (1, 64, 128, 128, 64, 3, 3, 1, 1):
+        block_ci = 16
+        if input.dtype is torch.float32:
+            block_nhw = 256
+        else:
+            block_nhw = 128
+            num_warps = 8
+    elif shape_key == (1, 64, 64, 64, 32, 3, 3, 2, 1):
         block_nhw = 128
         block_ci = 16
+        block_co = 16
+    elif shape_key == (4, 32, 32, 32, 32, 3, 3, 2, 1):
+        block_ci = 16
+        block_co = 16
+    elif shape_key == (8, 16, 64, 64, 16, 5, 5, 2, 2):
+        block_nhw = 256
+        block_ci = 16
+        block_co = 16
+        num_warps = 8
+    elif shape_key == (16, 32, 16, 16, 64, 3, 3, 2, 1):
+        block_nhw = 32
+        block_ci = 16
+        block_co = 16
         num_warps = 8
     elif shape_key == (16, 32, 32, 32, 64, 3, 3, 2, 1):
         block_nhw = 128
@@ -1506,7 +1531,7 @@ def _conv_transpose2d_direct(
     elif shape_key == (16, 32, 8, 8, 24, 5, 5, 2, 2):
         num_warps = 8
     elif shape_key == (32, 64, 32, 32, 32, 3, 3, 1, 0):
-        block_nhw = 128
+        block_nhw = 256
         block_ci = 16
         num_warps = 8
         if input.dtype is torch.float32:
