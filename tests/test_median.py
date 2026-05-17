@@ -441,6 +441,23 @@ def test_median_bool_no_dim_full_registration():
 
 
 @pytest.mark.median
+@pytest.mark.parametrize("width", [257, 1025, 8193])
+def test_median_bool_no_dim_large(width):
+    if torch.device(flag_gems.device).type != "cuda":
+        pytest.skip("bool median no-dim is CUDA-specific in native PyTorch")
+
+    vals = torch.arange(width, device=flag_gems.device)
+    inp = (vals * 37) % 5 < 3
+    ref_out = torch.median(inp)
+    with flag_gems.use_gems(include=MEDIAN_OPS):
+        res_out = torch.median(inp)
+
+    assert res_out.dtype == ref_out.dtype
+    assert res_out.device == ref_out.device
+    assert res_out.item() == ref_out.item()
+
+
+@pytest.mark.median
 def test_median_full_registration_nan_semantics():
     inp = torch.tensor(
         [[3.0, 1.0, 2.0], [float("nan"), 4.0, 5.0]],
@@ -559,6 +576,80 @@ def test_median_large_width(width):
         res_out = torch.median(inp, dim=1)
 
     _assert_median_dim_equal(res_out, ref_out, torch.float32, inp=inp, dim=1)
+
+
+@pytest.mark.median
+@pytest.mark.parametrize("width", [257, 1024, 4096])
+@pytest.mark.parametrize("keepdim", KEEPDIM)
+def test_median_float64_key_select(width, keepdim):
+    vals = torch.arange(3 * width, dtype=torch.int64, device=flag_gems.device)
+    vals = ((vals * 7919) % (3 * width)) - width
+    inp = vals.reshape(3, width).to(torch.float64) / 3.0
+    inp[0, 0] = float("-inf")
+    inp[0, width - 1] = float("inf")
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.median(ref_inp, dim=1, keepdim=keepdim)
+    with flag_gems.use_gems(include=MEDIAN_OPS):
+        res_out = torch.median(inp, dim=1, keepdim=keepdim)
+
+    _assert_median_dim_equal(
+        res_out,
+        ref_out,
+        torch.float64,
+        exact_indices=False,
+        inp=inp,
+        dim=1,
+        keepdim=keepdim,
+    )
+
+
+@pytest.mark.median
+@pytest.mark.parametrize("width", [640, 4096])
+def test_median_float64_key_select_nan_first_index(width):
+    inp = torch.randn((3, width), dtype=torch.float64, device=flag_gems.device)
+    expected_indices = torch.tensor([0, width // 2, width - 1], device=flag_gems.device)
+    inp[0, 0] = float("nan")
+    inp[0, min(width - 1, 17)] = float("nan")
+    inp[1, width // 2] = float("nan")
+    inp[2, width - 1] = float("nan")
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.median(ref_inp, dim=1)
+    with flag_gems.use_gems(include=MEDIAN_OPS):
+        res_out = torch.median(inp, dim=1)
+
+    _assert_median_dim_equal(
+        res_out,
+        ref_out,
+        torch.float64,
+        equal_nan=True,
+        exact_indices=False,
+        inp=inp,
+        dim=1,
+    )
+    flag_gems.testing.assert_equal(res_out.indices, expected_indices)
+    assert torch.all(torch.isnan(res_out.values)).item()
+
+
+@pytest.mark.median
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.int32]
+)
+def test_median_extended_lastdim_width(dtype):
+    width = 8193
+    vals = torch.arange(2 * width, dtype=torch.int64, device=flag_gems.device)
+    vals = ((vals * 9973) % (3 * width)) - width
+    inp = vals.reshape(2, width).to(dtype)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.median(ref_inp, dim=1)
+    with flag_gems.use_gems(include=MEDIAN_OPS):
+        res_out = torch.median(inp, dim=1)
+
+    _assert_median_dim_equal(
+        res_out, ref_out, dtype, exact_indices=False, inp=inp, dim=1
+    )
 
 
 @pytest.mark.median

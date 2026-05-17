@@ -16,6 +16,8 @@ MedianResult = namedtuple("median", ["values", "indices"])
 
 _DIRECT_REDUCTION_LIMIT = 256
 _DIRECT_FLAT_LIMIT = 256
+_BOOL_FLAT_BLOCK = 1024
+_BOOL_FLAT_LIMIT = 1024 * 1024
 _DIRECT_REDUCTION_DTYPES = {
     torch.bool,
     torch.float16,
@@ -34,11 +36,13 @@ _BF16_LASTDIM_SORT_LIMIT = 2048
 _LASTDIM_SORT_DTYPES = {torch.float16, torch.bfloat16}
 _FLAT_SORT_DTYPES = _LASTDIM_SORT_DTYPES | {torch.float32}
 _F16_KEY_SELECT_MIN = 512
-_F16_KEY_SELECT_LIMIT = 8192
+_F16_KEY_SELECT_LIMIT = 16384
 _F16_KEY_SELECT_DTYPES = {torch.float16, torch.bfloat16}
 _FP32_KEY_SELECT_MIN = 257
-_FP32_KEY_SELECT_LIMIT = 8192
-_INT_LASTDIM_SELECT_LIMIT = 8192
+_FP32_KEY_SELECT_LIMIT = 16384
+_FP64_KEY_SELECT_MIN = 257
+_FP64_KEY_SELECT_LIMIT = 8192
+_INT_LASTDIM_SELECT_LIMIT = 16384
 _INT_LASTDIM_SELECT_DTYPES = {
     torch.int8,
     torch.uint8,
@@ -47,7 +51,7 @@ _INT_LASTDIM_SELECT_DTYPES = {
     torch.int64,
 }
 _STRIDED_SELECT_MIN = _DIRECT_REDUCTION_LIMIT + 1
-_STRIDED_SELECT_LIMIT = 2048
+_STRIDED_SELECT_LIMIT = 4096
 
 
 @libentry()
@@ -159,6 +163,41 @@ def median_small_flat_kernel(
 
 @libentry()
 @triton.jit
+def median_bool_count_kernel(
+    inp,
+    counts,
+    WIDTH: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    block_id = tl.program_id(0)
+    offsets = block_id * BLOCK + tl.arange(0, BLOCK)
+    valid = offsets < WIDTH
+    data = tl.load(inp + offsets, mask=valid, other=False)
+    true_count = tl.sum((valid & data).to(tl.int64), axis=0)
+    tl.store(counts + block_id, true_count)
+
+
+@libentry()
+@triton.jit
+def median_bool_from_counts_kernel(
+    counts,
+    value,
+    WIDTH: tl.constexpr,
+    NUM_BLOCKS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    offsets = tl.arange(0, BLOCK)
+    valid = offsets < NUM_BLOCKS
+    block_counts = tl.load(counts + offsets, mask=valid, other=0)
+    true_count = tl.sum(block_counts, axis=0)
+    rank = (WIDTH - 1) // 2
+    false_count = WIDTH - true_count
+    median_value = rank >= false_count
+    tl.store(value, median_value)
+
+
+@libentry()
+@triton.jit
 def median_lastdim_sort_kernel(
     row_data,
     values,
@@ -237,6 +276,16 @@ def _fp32_order_key(x):
     sign = signed >> 31
     sign_mask = tl.full((), 0x80000000, dtype=tl.uint32)
     mask = sign_mask | sign.to(tl.uint32, bitcast=True)
+    return bits ^ mask
+
+
+@triton.jit
+def _fp64_order_key(x):
+    bits = x.to(tl.uint64, bitcast=True)
+    signed = x.to(tl.int64, bitcast=True)
+    sign = signed >> 63
+    sign_mask = tl.full((), 1, dtype=tl.uint64) << 63
+    mask = sign_mask | sign.to(tl.uint64, bitcast=True)
     return bits ^ mask
 
 
@@ -353,6 +402,55 @@ def median_fp32_key_select_kernel(
     hi = row_max
     rank = (WIDTH - 1) // 2
     for _ in tl.static_range(0, 32):
+        mid = lo + ((hi - lo) >> 1)
+        le_count = tl.sum((finite & (keys <= mid)).to(tl.int32), axis=0)
+        take_left = le_count > rank
+        hi = tl.where(take_left, mid, hi)
+        lo = tl.where(take_left, lo, mid + 1)
+
+    selected_key = lo
+    key_match = finite & (keys == selected_key)
+    selected_key_first = tl.argmax(key_match.to(tl.int32), axis=0)
+    selected_value = tl.load(base + selected_key_first)
+
+    selected_value = tl.where(has_nan, nan_value, selected_value)
+    first_match = tl.where(has_nan, first_nan, selected_key_first)
+    tl.store(values + row, selected_value)
+    tl.store(indices + row, first_match.to(tl.int64))
+
+
+@libentry()
+@triton.jit
+def median_fp64_key_select_kernel(
+    row_data,
+    values,
+    indices,
+    WIDTH: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    row = tl.program_id(0)
+    cols = tl.arange(0, BLOCK)
+    valid = cols < WIDTH
+    base = row_data + row * WIDTH
+    data = tl.load(base + cols, mask=valid, other=0.0)
+
+    nan_mask = valid & (data != data)
+    nan_i64 = nan_mask.to(tl.int64)
+    has_nan = tl.max(nan_i64, axis=0) != 0
+    first_nan = tl.argmax(nan_i64, axis=0)
+    nan_value = tl.load(base + first_nan, mask=has_nan, other=0.0)
+
+    keys = _fp64_order_key(data)
+    finite = valid & ~nan_mask
+    key_min_fill = tl.full((), 0xFFFFFFFFFFFFFFFF, dtype=tl.uint64)
+    key_max_fill = tl.full((), 0, dtype=tl.uint64)
+    row_min = tl.min(tl.where(finite, keys, key_min_fill), axis=0)
+    row_max = tl.max(tl.where(finite, keys, key_max_fill), axis=0)
+
+    lo = row_min
+    hi = row_max
+    rank = (WIDTH - 1) // 2
+    for _ in tl.static_range(0, 64):
         mid = lo + ((hi - lo) >> 1)
         le_count = tl.sum((finite & (keys <= mid)).to(tl.int32), axis=0)
         take_left = le_count > rank
@@ -605,6 +703,8 @@ def _median_from_rows(row_data, output_shape):
         return _median_lastdim_sort(row_data, output_shape)
     if _use_fp32_key_select(row_data.dtype, width):
         return _median_fp32_key_select(row_data, output_shape)
+    if _use_fp64_key_select(row_data.dtype, width):
+        return _median_fp64_key_select(row_data, output_shape)
     if (
         width <= _INT_LASTDIM_SELECT_LIMIT
         and row_data.dtype in _INT_LASTDIM_SELECT_DTYPES
@@ -623,6 +723,35 @@ def _median_small_flat(inp):
             WIDTH=inp.numel(),
             BLOCK=block,
             num_warps=min(8, max(4, block // 32)),
+        )
+    return value
+
+
+def _median_bool_flat(inp):
+    width = inp.numel()
+    if width > _BOOL_FLAT_LIMIT:
+        _unsupported_width(inp.dtype, width)
+
+    block = _BOOL_FLAT_BLOCK
+    num_blocks = triton.cdiv(width, block)
+    counts = torch.empty((num_blocks,), dtype=torch.int64, device=inp.device)
+    value = torch.empty((), dtype=inp.dtype, device=inp.device)
+    count_block = triton.next_power_of_2(num_blocks)
+    with torch_device_fn.device(inp.device):
+        median_bool_count_kernel[(num_blocks,)](
+            inp.reshape(-1),
+            counts,
+            WIDTH=width,
+            BLOCK=block,
+            num_warps=4,
+        )
+        median_bool_from_counts_kernel[(1,)](
+            counts,
+            value,
+            WIDTH=width,
+            NUM_BLOCKS=num_blocks,
+            BLOCK=count_block,
+            num_warps=min(8, max(1, count_block // 32)),
         )
     return value
 
@@ -665,6 +794,13 @@ def _use_fp32_key_select(dtype, width):
     return (
         dtype == torch.float32
         and _FP32_KEY_SELECT_MIN <= width <= _FP32_KEY_SELECT_LIMIT
+    )
+
+
+def _use_fp64_key_select(dtype, width):
+    return (
+        dtype == torch.float64
+        and _FP64_KEY_SELECT_MIN <= width <= _FP64_KEY_SELECT_LIMIT
     )
 
 
@@ -757,6 +893,25 @@ def _median_fp32_key_select(row_data, output_shape):
     return values, indices
 
 
+def _median_fp64_key_select(row_data, output_shape):
+    width = row_data.shape[-1]
+    rows = row_data.numel() // width
+    values = torch.empty(output_shape, dtype=row_data.dtype, device=row_data.device)
+    indices = torch.empty(output_shape, dtype=torch.int64, device=row_data.device)
+    block = triton.next_power_of_2(width)
+    num_warps = 2 if block <= 1024 else 8
+    with torch_device_fn.device(row_data.device):
+        median_fp64_key_select_kernel[(rows,)](
+            row_data.reshape(rows, width),
+            values.reshape(rows),
+            indices.reshape(rows),
+            WIDTH=width,
+            BLOCK=block,
+            num_warps=num_warps,
+        )
+    return values, indices
+
+
 def _median_fp32_strided_key_select(inp, dim, output_shape):
     reduction_size = inp.shape[dim]
     inner_size = math.prod(inp.shape[dim + 1 :])
@@ -837,6 +992,8 @@ def median(inp):
     flat = inp.contiguous().reshape(-1)
     if inp.dtype in _DIRECT_REDUCTION_DTYPES and inp.numel() <= _DIRECT_FLAT_LIMIT:
         return _median_small_flat(flat)
+    if inp.dtype == torch.bool:
+        return _median_bool_flat(flat)
 
     row_data = flat.reshape(1, inp.numel())
     if _use_f16_key_select(inp.dtype, inp.numel()):
@@ -845,6 +1002,8 @@ def median(inp):
         values, _ = _median_lastdim_sort(row_data, ())
     elif _use_fp32_key_select(inp.dtype, inp.numel()):
         values, _ = _median_fp32_key_select(row_data, ())
+    elif _use_fp64_key_select(inp.dtype, inp.numel()):
+        values, _ = _median_fp64_key_select(row_data, ())
     elif (
         inp.numel() <= _INT_LASTDIM_SELECT_LIMIT
         and inp.dtype in _INT_LASTDIM_SELECT_DTYPES
@@ -919,6 +1078,8 @@ def median_dim(inp, dim=0, keepdim=False):
             values, indices = _median_lastdim_sort(work.contiguous(), output_shape)
         elif dim == work.ndim - 1 and _use_fp32_key_select(work.dtype, work.shape[dim]):
             values, indices = _median_fp32_key_select(work.contiguous(), output_shape)
+        elif dim == work.ndim - 1 and _use_fp64_key_select(work.dtype, work.shape[dim]):
+            values, indices = _median_fp64_key_select(work.contiguous(), output_shape)
         elif (
             dim == work.ndim - 1
             and work.shape[dim] <= _INT_LASTDIM_SELECT_LIMIT
@@ -937,6 +1098,8 @@ def median_dim(inp, dim=0, keepdim=False):
                 values, indices = _median_lastdim_sort(rows, row_output_shape)
             elif _use_fp32_key_select(rows.dtype, row_width):
                 values, indices = _median_fp32_key_select(rows, row_output_shape)
+            elif _use_fp64_key_select(rows.dtype, row_width):
+                values, indices = _median_fp64_key_select(rows, row_output_shape)
             elif (
                 row_width <= _INT_LASTDIM_SELECT_LIMIT
                 and rows.dtype in _INT_LASTDIM_SELECT_DTYPES
