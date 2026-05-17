@@ -63,7 +63,7 @@ def scatter_input_fn_factory(reduce=None):
         if reduce is None:
             yield inp, dim, index, src
         else:
-            yield inp, dim, index, src, reduce
+            yield inp, dim, index, src, {"reduce": reduce}
 
     return inner
 
@@ -79,7 +79,7 @@ def scatter_inplace_input_fn_factory(reduce=None):
         if reduce is None:
             yield inp, dim, index, src
         else:
-            yield inp, dim, index, src, reduce
+            yield inp, dim, index, src, {"reduce": reduce}
 
     return inner
 
@@ -92,10 +92,10 @@ def scatter_reduce_public_input_fn_factory(reduce, include_self=True, out=False)
         src_shape[dim] = max(1, src_shape[dim] // 2)
         src = torch.randn(src_shape, dtype=dtype, device=device)
         index = torch.randint(0, shape[dim], src_shape, dtype=torch.long, device=device)
-        kwargs = {"include_self": include_self}
+        kwargs = {"reduce": reduce, "include_self": include_self}
         if out:
             kwargs["out"] = torch.empty_like(inp)
-        yield inp, dim, index, src, reduce, kwargs
+        yield inp, dim, index, src, kwargs
 
     return inner
 
@@ -110,11 +110,11 @@ def gather_scatter_gbps(bench_fn_args, latency):
 
 
 @pytest.mark.scatter_reduce
-def test_scatter_reduce_add():
+def test_scatter_reduce_sum():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce",
-        torch_op=torch.scatter,
-        input_fn=scatter_input_fn_factory("add"),
+        torch_op=torch.scatter_reduce,
+        input_fn=scatter_input_fn_factory("sum"),
         get_gbps=gather_scatter_gbps,
         dtypes=[torch.float32],
     )
@@ -122,11 +122,11 @@ def test_scatter_reduce_add():
 
 
 @pytest.mark.scatter_reduce
-def test_scatter_reduce_multiply():
+def test_scatter_reduce_prod():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce",
-        torch_op=torch.scatter,
-        input_fn=scatter_input_fn_factory("multiply"),
+        torch_op=torch.scatter_reduce,
+        input_fn=scatter_input_fn_factory("prod"),
         get_gbps=gather_scatter_gbps,
         dtypes=[torch.float16, torch.float32],
     )
@@ -183,11 +183,11 @@ def test_scatter_reduce_public_api_out(reduce, include_self):
 
 
 @pytest.mark.scatter_reduce_
-def test_scatter_reduce_add_inplace():
+def test_scatter_reduce_sum_inplace():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce_",
-        torch_op=torch.Tensor.scatter_,
-        input_fn=scatter_inplace_input_fn_factory("add"),
+        torch_op=torch.Tensor.scatter_reduce_,
+        input_fn=scatter_inplace_input_fn_factory("sum"),
         get_gbps=gather_scatter_gbps,
         dtypes=[torch.float16, torch.float32],
         is_inplace=True,
@@ -196,11 +196,11 @@ def test_scatter_reduce_add_inplace():
 
 
 @pytest.mark.scatter_reduce_
-def test_scatter_reduce_multiply_inplace():
+def test_scatter_reduce_prod_inplace():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce_",
-        torch_op=torch.Tensor.scatter_,
-        input_fn=scatter_inplace_input_fn_factory("multiply"),
+        torch_op=torch.Tensor.scatter_reduce_,
+        input_fn=scatter_inplace_input_fn_factory("prod"),
         get_gbps=gather_scatter_gbps,
         dtypes=[torch.float16, torch.float32],
         is_inplace=True,
