@@ -169,7 +169,9 @@ def scatter_reduce_prod_2d_kernel(
             new_val = tl.where(stop, cur_val, cur_val * src_val)
             is_nan = new_val != new_val
             new_val = tl.where(is_nan, src_val, new_val)
-            cas_res = tl.atomic_cas(out_ptr + out_offsets, cur_val, new_val, sem="relaxed")
+            cas_res = tl.atomic_cas(
+                out_ptr + out_offsets, cur_val, new_val, sem="relaxed"
+            )
             stop |= (cur_val == cas_res) | is_nan
             block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
 
@@ -273,7 +275,9 @@ def scatter_reduce_amax_2d_kernel(
                     new_val = tl.maximum(cur_val, src_val)
                 else:
                     new_val = tl.minimum(cur_val, src_val)
-                cas_res = tl.atomic_cas(out_ptr + out_offsets, cur_val, new_val, sem="relaxed")
+                cas_res = tl.atomic_cas(
+                    out_ptr + out_offsets, cur_val, new_val, sem="relaxed"
+                )
                 stop |= cur_val == cas_res
                 block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
         else:
@@ -539,7 +543,9 @@ def scatter_reduce_prod_kernel(
             # Detect NaN: if new_val != new_val (NaN check), use src_val directly
             is_nan = new_val != new_val
             new_val = tl.where(is_nan, src_val, new_val)
-            cas_res = tl.atomic_cas(out_ptr + out_offsets, cur_val, new_val, sem="relaxed")
+            cas_res = tl.atomic_cas(
+                out_ptr + out_offsets, cur_val, new_val, sem="relaxed"
+            )
             # Mark done if CAS succeeded OR if value is NaN (can't recover)
             stop |= (cur_val == cas_res) | is_nan
             block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
@@ -912,57 +918,149 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                 src_ncols = src.shape[1]
                 out_ncols = out.shape[1]
                 scatter_reduce_sum_2d_kernel[grid](
-                    index, src, out, mask_ptr,
-                    N, src_ncols, out_ncols,
-                    dim_2d, use_mask,
+                    index,
+                    src,
+                    out,
+                    mask_ptr,
+                    N,
+                    src_ncols,
+                    out_ncols,
+                    dim_2d,
+                    use_mask,
                 )
             else:
                 scatter_reduce_sum_kernel[grid](
-                    index, src, out, mask_ptr, N,
-                    out_stride_dim, src_stride_dim, src_shape_dim, out_shape_dim,
-                    padded_dim, use_mask,
-                    src_strides_p[0], src_strides_p[1], src_strides_p[2], src_strides_p[3], src_strides_p[4],
-                    src_shapes[0], src_shapes[1], src_shapes[2], src_shapes[3], src_shapes[4],
-                    idx_strides_p[0], idx_strides_p[1], idx_strides_p[2], idx_strides_p[3], idx_strides_p[4],
-                    out_strides_p[0], out_strides_p[1], out_strides_p[2], out_strides_p[3], out_strides_p[4],
+                    index,
+                    src,
+                    out,
+                    mask_ptr,
+                    N,
+                    out_stride_dim,
+                    src_stride_dim,
+                    src_shape_dim,
+                    out_shape_dim,
+                    padded_dim,
+                    use_mask,
+                    src_strides_p[0],
+                    src_strides_p[1],
+                    src_strides_p[2],
+                    src_strides_p[3],
+                    src_strides_p[4],
+                    src_shapes[0],
+                    src_shapes[1],
+                    src_shapes[2],
+                    src_shapes[3],
+                    src_shapes[4],
+                    idx_strides_p[0],
+                    idx_strides_p[1],
+                    idx_strides_p[2],
+                    idx_strides_p[3],
+                    idx_strides_p[4],
+                    out_strides_p[0],
+                    out_strides_p[1],
+                    out_strides_p[2],
+                    out_strides_p[3],
+                    out_strides_p[4],
                 )
         elif reduce == "prod":
             if use_2d:
                 src_ncols = src.shape[1]
                 out_ncols = out.shape[1]
                 scatter_reduce_prod_2d_kernel[grid](
-                    index, src, out, mask_ptr,
-                    N, src_ncols, out_ncols,
-                    dim_2d, use_mask,
+                    index,
+                    src,
+                    out,
+                    mask_ptr,
+                    N,
+                    src_ncols,
+                    out_ncols,
+                    dim_2d,
+                    use_mask,
                 )
             else:
                 scatter_reduce_prod_kernel[grid](
-                    index, src, out, mask_ptr, N,
-                    out_stride_dim, src_stride_dim, src_shape_dim, out_shape_dim,
-                    padded_dim, use_mask,
-                    src_strides_p[0], src_strides_p[1], src_strides_p[2], src_strides_p[3], src_strides_p[4],
-                    src_shapes[0], src_shapes[1], src_shapes[2], src_shapes[3], src_shapes[4],
-                    idx_strides_p[0], idx_strides_p[1], idx_strides_p[2], idx_strides_p[3], idx_strides_p[4],
-                    out_strides_p[0], out_strides_p[1], out_strides_p[2], out_strides_p[3], out_strides_p[4],
+                    index,
+                    src,
+                    out,
+                    mask_ptr,
+                    N,
+                    out_stride_dim,
+                    src_stride_dim,
+                    src_shape_dim,
+                    out_shape_dim,
+                    padded_dim,
+                    use_mask,
+                    src_strides_p[0],
+                    src_strides_p[1],
+                    src_strides_p[2],
+                    src_strides_p[3],
+                    src_strides_p[4],
+                    src_shapes[0],
+                    src_shapes[1],
+                    src_shapes[2],
+                    src_shapes[3],
+                    src_shapes[4],
+                    idx_strides_p[0],
+                    idx_strides_p[1],
+                    idx_strides_p[2],
+                    idx_strides_p[3],
+                    idx_strides_p[4],
+                    out_strides_p[0],
+                    out_strides_p[1],
+                    out_strides_p[2],
+                    out_strides_p[3],
+                    out_strides_p[4],
                 )
         elif reduce == "mean":
             if use_2d:
                 src_ncols = src.shape[1]
                 out_ncols = out.shape[1]
                 scatter_reduce_mean_2d_kernel[grid](
-                    index, src, out, count, mask_ptr,
-                    N, src_ncols, out_ncols,
-                    dim_2d, use_mask,
+                    index,
+                    src,
+                    out,
+                    count,
+                    mask_ptr,
+                    N,
+                    src_ncols,
+                    out_ncols,
+                    dim_2d,
+                    use_mask,
                 )
             else:
                 scatter_reduce_mean_kernel[grid](
-                    index, src, out, count, mask_ptr, N,
-                    out_stride_dim, src_stride_dim, src_shape_dim, out_shape_dim,
-                    padded_dim, use_mask,
-                    src_strides_p[0], src_strides_p[1], src_strides_p[2], src_strides_p[3], src_strides_p[4],
-                    src_shapes[0], src_shapes[1], src_shapes[2], src_shapes[3], src_shapes[4],
-                    idx_strides_p[0], idx_strides_p[1], idx_strides_p[2], idx_strides_p[3], idx_strides_p[4],
-                    out_strides_p[0], out_strides_p[1], out_strides_p[2], out_strides_p[3], out_strides_p[4],
+                    index,
+                    src,
+                    out,
+                    count,
+                    mask_ptr,
+                    N,
+                    out_stride_dim,
+                    src_stride_dim,
+                    src_shape_dim,
+                    out_shape_dim,
+                    padded_dim,
+                    use_mask,
+                    src_strides_p[0],
+                    src_strides_p[1],
+                    src_strides_p[2],
+                    src_strides_p[3],
+                    src_strides_p[4],
+                    src_shapes[0],
+                    src_shapes[1],
+                    src_shapes[2],
+                    src_shapes[3],
+                    src_shapes[4],
+                    idx_strides_p[0],
+                    idx_strides_p[1],
+                    idx_strides_p[2],
+                    idx_strides_p[3],
+                    idx_strides_p[4],
+                    out_strides_p[0],
+                    out_strides_p[1],
+                    out_strides_p[2],
+                    out_strides_p[3],
+                    out_strides_p[4],
                 )
             has_contributions = count > 0
             count = torch.clamp(count, min=1.0)
@@ -974,19 +1072,53 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                 src_ncols = src.shape[1]
                 out_ncols = out.shape[1]
                 scatter_reduce_amax_2d_kernel[grid](
-                    index, src, out, mask_ptr,
-                    N, src_ncols, out_ncols,
-                    dim_2d, reduce == "amax", use_mask, use_cas,
+                    index,
+                    src,
+                    out,
+                    mask_ptr,
+                    N,
+                    src_ncols,
+                    out_ncols,
+                    dim_2d,
+                    reduce == "amax",
+                    use_mask,
+                    use_cas,
                 )
             else:
                 scatter_reduce_amax_kernel[grid](
-                    index, src, out, mask_ptr, N,
-                    out_stride_dim, src_stride_dim, src_shape_dim, out_shape_dim,
-                    padded_dim, reduce == "amax", use_mask, use_cas,
-                    src_strides_p[0], src_strides_p[1], src_strides_p[2], src_strides_p[3], src_strides_p[4],
-                    src_shapes[0], src_shapes[1], src_shapes[2], src_shapes[3], src_shapes[4],
-                    idx_strides_p[0], idx_strides_p[1], idx_strides_p[2], idx_strides_p[3], idx_strides_p[4],
-                    out_strides_p[0], out_strides_p[1], out_strides_p[2], out_strides_p[3], out_strides_p[4],
+                    index,
+                    src,
+                    out,
+                    mask_ptr,
+                    N,
+                    out_stride_dim,
+                    src_stride_dim,
+                    src_shape_dim,
+                    out_shape_dim,
+                    padded_dim,
+                    reduce == "amax",
+                    use_mask,
+                    use_cas,
+                    src_strides_p[0],
+                    src_strides_p[1],
+                    src_strides_p[2],
+                    src_strides_p[3],
+                    src_strides_p[4],
+                    src_shapes[0],
+                    src_shapes[1],
+                    src_shapes[2],
+                    src_shapes[3],
+                    src_shapes[4],
+                    idx_strides_p[0],
+                    idx_strides_p[1],
+                    idx_strides_p[2],
+                    idx_strides_p[3],
+                    idx_strides_p[4],
+                    out_strides_p[0],
+                    out_strides_p[1],
+                    out_strides_p[2],
+                    out_strides_p[3],
+                    out_strides_p[4],
                 )
 
     if use_mask and reduce != "mean":
