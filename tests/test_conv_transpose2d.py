@@ -31,6 +31,18 @@ SUPPORTED_CONV_TRANSPOSE2D_CASES = [
         id="fp32_direct_32x64x16",
     ),
     pytest.param(
+        (32, 64, 32, 32),
+        (64, 32, 3, 3),
+        False,
+        1,
+        0,
+        0,
+        1,
+        1,
+        torch.float32,
+        id="fp32_direct_benchmark_stride1",
+    ),
+    pytest.param(
         (16, 32, 32, 32),
         (32, 64, 3, 3),
         False,

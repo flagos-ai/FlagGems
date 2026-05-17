@@ -24,6 +24,12 @@ _DIRECT_TRITON_SHAPES = {
     (16, 32, 8, 8, 24, 5, 5, 2, 2),
 }
 
+# Exact fp32 no-bias/group=1 shapes that are better served by the generic
+# direct tiled kernel than by the correctness-oriented scalar fallback.
+_DIRECT_TRITON_FP32_SHAPES = {
+    (32, 64, 32, 32, 32, 3, 3, 1, 0),
+}
+
 _BLOCKER_FP16_SHAPE = (4, 256, 8, 8, 128, 3, 3, 2, 1)
 
 _K4_FP16_SHAPE = (8, 128, 4, 4, 64, 4, 4, 2, 1)
@@ -889,7 +895,11 @@ def _conv_transpose2d_direct_kernel(
                         weight_block = tl.load(
                             weight_pointer + weight_offsets, mask=weight_mask, other=0.0
                         )
-                        accum += tl.dot(input_block, weight_block, allow_tf32=False)
+                        accum += tl.dot(
+                            input_block,
+                            weight_block,
+                            input_precision="tf32x3",
+                        )
 
     output_offsets = (
         n[:, None] * output_n_stride
@@ -1354,6 +1364,35 @@ def conv_transpose2d(
             output_padding_w,
         )
 
+    direct_fp32_shape_key = _exact_shape_key(
+        input,
+        weight,
+        bias,
+        stride_h,
+        stride_w,
+        padding_h,
+        padding_w,
+        output_padding_h,
+        output_padding_w,
+        groups,
+        dilation_h,
+        dilation_w,
+        (torch.float32,),
+    )
+    if direct_fp32_shape_key in _DIRECT_TRITON_FP32_SHAPES:
+        return _conv_transpose2d_direct(
+            input,
+            weight,
+            stride_h,
+            stride_w,
+            padding_h,
+            padding_w,
+            dilation_h,
+            dilation_w,
+            output_padding_h,
+            output_padding_w,
+        )
+
     if _validate_conv_transpose2d_args(
         input,
         weight,
@@ -1470,6 +1509,8 @@ def _conv_transpose2d_direct(
         block_nhw = 128
         block_ci = 16
         num_warps = 8
+        if input.dtype is torch.float32:
+            num_warps = 4
         if input.dtype is torch.float16:
             block_co = 64
     elif input_channels >= 64 and output_channels <= 32:
