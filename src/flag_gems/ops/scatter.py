@@ -683,7 +683,7 @@ def _check_scatter_reduce_args(inp, dim, index, src, reduce):
 
 
 def _scatter_reduce_triton(inp, dim, index, src, reduce, include_self):
-    out = inp.clone() if include_self else torch.empty_like(inp)
+    out = inp.clone()
     return _scatter_reduce_impl_(out, dim, index, src, reduce, include_self=include_self)
 
 
@@ -691,7 +691,7 @@ def _scatter_reduce_out_triton(inp, dim, index, src, reduce, include_self, out):
     _check_scatter_reduce_out(out, inp)
     if out.shape != inp.shape:
         out.resize_as_(inp)
-    if include_self and out.data_ptr() != inp.data_ptr():
+    if out.data_ptr() != inp.data_ptr():
         out.copy_(inp)
     return _scatter_reduce_impl_(out, dim, index, src, reduce, include_self=include_self)
 

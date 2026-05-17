@@ -356,6 +356,116 @@ def generate_count_kernel(
     return code
 
 
+def generate_init_kernel(
+    rank: int,
+    kernel_name: str,
+    code: IndentedBuffer,
+) -> IndentedBuffer:
+    """Generate kernel to set only indexed destinations to reduction identity."""
+    code.newline()
+
+    code.writeline("@libentry()")
+    code.writeline("@triton.heuristics(")
+    with code.indent():
+        code.writeline("{")
+        with code.indent():
+            code.writeline('"BLOCK": heur_block,')
+            code.writeline('"LOOP": loop_count,')
+        code.writeline("}")
+    code.writeline(")")
+    inp_stride_vars = ",".join(f"'inp_stride_{i}'" for i in range(rank))
+    index_stride_vars = ",".join(f"'index_stride_{i}'" for i in range(rank))
+    shape_vars = ",".join(f"'shape_{i}'" for i in range(rank))
+    code.writeline(
+        f"@triton.jit(do_not_specialize=['N','stride_dim','inp_size_dim',"
+        f"{inp_stride_vars},{index_stride_vars},{shape_vars}])"
+    )
+
+    code.writeline(f"def {kernel_name}(")
+    with code.indent():
+        if rank > 0:
+            code.writeline("index,")
+            code.writeline("out,")
+
+            stride_args = ", ".join(f"inp_stride_{i}: int" for i in range(rank))
+            code.writeline(f"{stride_args}, # stride for inp")
+
+            stride_args = ", ".join(f"index_stride_{i}: int" for i in range(rank))
+            code.writeline(f"{stride_args}, # stride for index")
+
+            shape_args = ", ".join(f"shape_{i}: int" for i in range(rank))
+            code.writeline(f"{shape_args}, # shape")
+            code.writeline("inp_size_dim,")
+            code.writeline("stride_dim,")
+            code.writeline("N,")
+            code.writeline("IS_PROD: tl.constexpr,")
+            code.writeline("IS_AMAX: tl.constexpr,")
+            code.writeline("IS_AMIN: tl.constexpr,")
+            code.writeline("BLOCK: tl.constexpr,")
+            code.writeline("LOOP: tl.constexpr,")
+            code.writeline("INT32_OFFSET: tl.constexpr")
+
+    code.writeline("):")
+
+    with code.indent():
+        code.writeline("pid = tl.program_id(0)")
+        code.writeline("if not INT32_OFFSET:")
+        with code.indent():
+            code.writeline("pid = pid.to(tl.int64)")
+        code.writeline("offsets = pid * LOOP * BLOCK + tl.arange(0, BLOCK)")
+
+        code.writeline("for loop_iter in tl.static_range(LOOP):")
+        with code.indent():
+            code.writeline("mask = offsets < N")
+            code.writeline("cur_idx = offsets")
+            code.writeline("if INT32_OFFSET:")
+            with code.indent():
+                code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+            code.writeline("else:")
+            with code.indent():
+                code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
+                code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
+            for i in range(rank)[::-1]:
+                code.writeline("if INT32_OFFSET:")
+                with code.indent():
+                    code.writeline(f"shape_{i} = shape_{i}.to(tl.int32)")
+                    code.writeline(f"inp_stride_{i} = inp_stride_{i}.to(tl.int32)")
+                    code.writeline(f"index_stride_{i} = index_stride_{i}.to(tl.int32)")
+                code.writeline(f"mod = cur_idx % shape_{i}")
+                code.writeline(f"inp_offsets += mod * inp_stride_{i}")
+                code.writeline(f"idx_offsets += mod * index_stride_{i}")
+                if i != 0:
+                    code.writeline(f"cur_idx = cur_idx // shape_{i}")
+
+            code.writeline(
+                "cur_index = tl.load(index + idx_offsets, mask=mask, other=0)"
+            )
+            code.writeline("if INT32_OFFSET:")
+            with code.indent():
+                code.writeline("cur_index = cur_index.to(tl.int32)")
+                code.writeline("stride_dim = stride_dim.to(tl.int32)")
+
+            code.writeline("dim_offsets = cur_index * stride_dim")
+            code.writeline("inp_offsets += dim_offsets")
+            code.writeline("identity = tl.zeros((BLOCK,), dtype=tl.float32)")
+            code.writeline("if IS_PROD:")
+            with code.indent():
+                code.writeline("identity = identity + 1.0")
+            code.writeline("elif IS_AMAX:")
+            with code.indent():
+                code.writeline("identity = identity - float('inf')")
+            code.writeline("elif IS_AMIN:")
+            with code.indent():
+                code.writeline("identity = identity + float('inf')")
+            code.writeline("tl.store(out + inp_offsets, identity, mask=mask)")
+            code.writeline("offsets += BLOCK")
+
+    code.newline()
+    code.newline()
+    return code
+
+
 def parameter_for_wrapper() -> str:
     parameters: List[str] = []
 
@@ -378,6 +488,7 @@ def generate_destination_passing_wrapper(
     wrapper_name: str,
     kernel_name: str,
     count_kernel_name: str,
+    init_kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
     parameters: str = parameter_for_wrapper()
@@ -405,6 +516,31 @@ def generate_destination_passing_wrapper(
         with code.indent():
             code.writeline('triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]), ')
         code.writeline(")")
+
+        code.writeline("if not include_self:")
+        with code.indent():
+            init_launch: str = f"{init_kernel_name}[grid]("
+            code.writeline(init_launch)
+            with code.indent():
+                code.writeline("index, out, ")
+                if rank > 0:
+                    s = ", ".join(f"inp_strides[{i}]" for i in range(rank))
+                    code.writeline(f"{s},")
+
+                    s = ", ".join(f"index_strides[{i}]" for i in range(rank))
+                    code.writeline(f"{s},")
+
+                    s = ", ".join(f"index_shapes[{i}]" for i in range(rank))
+                    code.writeline(f"{s},")
+
+                    code.writeline("inp_size_dim,")
+                    code.writeline("stride_dim,")
+                    code.writeline("N,")
+                    code.writeline("IS_PROD,")
+                    code.writeline("IS_AMAX,")
+                    code.writeline("IS_AMIN,")
+                    code.writeline("INT32_OFFSET=int32_offset,")
+            code.writeline(")")
 
         kernel_launch: str = f"{kernel_name}[grid]("
         code.writeline(kernel_launch)
@@ -477,6 +613,7 @@ def generate_code(
     wrapper_name: str,
     kernel_name: str,
     count_kernel_name: str,
+    init_kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
     shape = inputs[1].shape
@@ -485,8 +622,9 @@ def generate_code(
     code = generate_imports(code)
     code = generate_scatter_reduce_kernel(rank, kernel_name, code)
     code = generate_count_kernel(rank, count_kernel_name, code)
+    code = generate_init_kernel(rank, init_kernel_name, code)
     code = generate_destination_passing_wrapper(
-        rank, wrapper_name, kernel_name, count_kernel_name, code
+        rank, wrapper_name, kernel_name, count_kernel_name, init_kernel_name, code
     )
     return code
 
@@ -507,6 +645,7 @@ class ScatterReduceFunction:
                 "_scatter_reduce_wrapper",
                 "_scatter_reduce_jit_function",
                 "_scatter_reduce_count_jit_function",
+                "_scatter_reduce_init_jit_function",
                 code,
             )
 
@@ -536,31 +675,6 @@ class ScatterReduceFunction:
 _scatter_reduce_func = ScatterReduceFunction()
 
 
-def _get_init_value(reduce: str, dtype: torch.dtype, include_self: bool):
-    """Get the initial value for reduction when include_self=False."""
-    if include_self:
-        return None  # No initialization needed, use original values
-
-    if reduce == "sum":
-        return 0
-    elif reduce == "prod":
-        return 1
-    elif reduce == "amax":
-        if dtype.is_floating_point:
-            return float("-inf")
-        else:
-            return torch.iinfo(dtype).min
-    elif reduce == "amin":
-        if dtype.is_floating_point:
-            return float("inf")
-        else:
-            return torch.iinfo(dtype).max
-    elif reduce == "mean":
-        return 0
-    else:
-        raise ValueError(f"Unknown reduce operation: {reduce}")
-
-
 def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
     logger.debug("GEMS SCATTER_REDUCE_")
     out = inp
@@ -578,12 +692,6 @@ def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
     assert (
         has_internal_overlapping(out) != MemOverlap.Yes
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
-
-    # Handle include_self=False: initialize with identity values
-    if not include_self:
-        init_value = _get_init_value(reduce, inp.dtype, include_self)
-        if init_value is not None:
-            out.fill_(init_value)
 
     src_restrided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(inp, dim, index.shape)
