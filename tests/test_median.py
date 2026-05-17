@@ -458,6 +458,54 @@ def test_median_bool_no_dim_large(width):
 
 
 @pytest.mark.median
+def test_median_bool_no_dim_beyond_old_flat_limit():
+    if torch.device(flag_gems.device).type != "cuda":
+        pytest.skip("bool median no-dim is CUDA-specific in native PyTorch")
+
+    width = 1024 * 1024 + 1
+    vals = torch.arange(width, device=flag_gems.device)
+    inp = vals % 5 < 3
+    ref_out = torch.median(inp)
+    with flag_gems.use_gems(include=MEDIAN_OPS):
+        res_out = torch.median(inp)
+
+    assert res_out.dtype == ref_out.dtype
+    assert res_out.device == ref_out.device
+    assert res_out.item() == ref_out.item()
+
+
+@pytest.mark.median
+@pytest.mark.parametrize("keepdim", KEEPDIM)
+@pytest.mark.parametrize("dim", [0, 1])
+def test_median_bool_dim_count_selects_first_index(dim, keepdim):
+    if torch.device(flag_gems.device).type != "cuda":
+        pytest.skip("bool median dim is CUDA-specific in native PyTorch")
+
+    width = 2049
+    row_false = torch.ones(width, dtype=torch.bool, device=flag_gems.device)
+    row_false[3 : 3 + width // 2 + 1] = False
+    row_true = torch.zeros(width, dtype=torch.bool, device=flag_gems.device)
+    row_true[7 : 7 + width // 2 + 1] = True
+    row_all_true = torch.ones(width, dtype=torch.bool, device=flag_gems.device)
+    rows = torch.stack((row_false, row_true, row_all_true))
+    inp = rows if dim == 1 else rows.T.contiguous()
+
+    expected_values = torch.tensor(
+        [False, True, True], dtype=torch.bool, device=flag_gems.device
+    )
+    expected_indices = torch.tensor([3, 7, 0], dtype=torch.int64, device=flag_gems.device)
+    if keepdim:
+        expected_values = expected_values.unsqueeze(dim)
+        expected_indices = expected_indices.unsqueeze(dim)
+
+    with flag_gems.use_gems(include=MEDIAN_OPS):
+        res_out = torch.median(inp, dim=dim, keepdim=keepdim)
+
+    flag_gems.testing.assert_equal(res_out.values, expected_values)
+    flag_gems.testing.assert_equal(res_out.indices, expected_indices)
+
+
+@pytest.mark.median
 def test_median_full_registration_nan_semantics():
     inp = torch.tensor(
         [[3.0, 1.0, 2.0], [float("nan"), 4.0, 5.0]],
@@ -1383,11 +1431,6 @@ def test_median_dim_values_out_wrong_device():
 
 @pytest.mark.median
 def test_median_error_paths():
-    bool_inp = torch.tensor([True, False, True], device=flag_gems.device)
-    with pytest.raises(NotImplementedError):
-        with flag_gems.use_gems(include=MEDIAN_OPS):
-            torch.median(bool_inp, dim=0)
-
     inp = torch.randn((2, 3), dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(IndexError):
         with flag_gems.use_gems(include=MEDIAN_OPS):

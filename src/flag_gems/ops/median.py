@@ -17,7 +17,7 @@ MedianResult = namedtuple("median", ["values", "indices"])
 _DIRECT_REDUCTION_LIMIT = 256
 _DIRECT_FLAT_LIMIT = 256
 _BOOL_FLAT_BLOCK = 1024
-_BOOL_FLAT_LIMIT = 1024 * 1024
+_BOOL_COUNT_REDUCE_BLOCK = 1024
 _DIRECT_REDUCTION_DTYPES = {
     torch.bool,
     torch.float16,
@@ -194,6 +194,130 @@ def median_bool_from_counts_kernel(
     false_count = WIDTH - true_count
     median_value = rank >= false_count
     tl.store(value, median_value)
+
+
+@libentry()
+@triton.jit
+def median_bool_reduce_counts_kernel(
+    counts_in,
+    counts_out,
+    WIDTH: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    block_id = tl.program_id(0)
+    offsets = block_id * BLOCK + tl.arange(0, BLOCK)
+    valid = offsets < WIDTH
+    block_counts = tl.load(counts_in + offsets, mask=valid, other=0)
+    count = tl.sum(block_counts, axis=0)
+    tl.store(counts_out + block_id, count)
+
+
+@libentry()
+@triton.jit
+def median_bool_dim_count_chunks_kernel(
+    inp,
+    counts,
+    first_false,
+    first_true,
+    total_outputs,
+    reduction_size,
+    inner_size,
+    chunks_per_output: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    out_offset = pid // chunks_per_output
+    chunk_id = pid - out_offset * chunks_per_output
+    out_mask = out_offset < total_outputs
+    inner_offset = out_offset % inner_size
+    outer_offset = out_offset // inner_size
+
+    cols = chunk_id * BLOCK + tl.arange(0, BLOCK)
+    valid = (cols < reduction_size) & out_mask
+    ptrs = (
+        inp
+        + outer_offset * reduction_size * inner_size
+        + cols * inner_size
+        + inner_offset
+    )
+    data = tl.load(ptrs, mask=valid, other=False)
+
+    true_mask = valid & data
+    false_mask = valid & ~data
+    true_count = tl.sum(true_mask.to(tl.int64), axis=0)
+    first_false_idx = tl.min(tl.where(false_mask, cols, reduction_size), axis=0)
+    first_true_idx = tl.min(tl.where(true_mask, cols, reduction_size), axis=0)
+
+    tl.store(counts + pid, true_count)
+    tl.store(first_false + pid, first_false_idx.to(tl.int64))
+    tl.store(first_true + pid, first_true_idx.to(tl.int64))
+
+
+@libentry()
+@triton.jit
+def median_bool_dim_reduce_chunks_kernel(
+    counts_in,
+    first_false_in,
+    first_true_in,
+    counts_out,
+    first_false_out,
+    first_true_out,
+    input_chunks: tl.constexpr,
+    output_chunks: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    row = tl.program_id(0)
+    out_chunk = tl.program_id(1)
+    chunk_offsets = out_chunk * BLOCK + tl.arange(0, BLOCK)
+    valid = chunk_offsets < input_chunks
+    in_base = row * input_chunks + chunk_offsets
+
+    counts = tl.load(counts_in + in_base, mask=valid, other=0)
+    first_false = tl.load(first_false_in + in_base, mask=valid, other=9223372036854775807)
+    first_true = tl.load(first_true_in + in_base, mask=valid, other=9223372036854775807)
+
+    true_count = tl.sum(counts, axis=0)
+    first_false_idx = tl.min(first_false, axis=0)
+    first_true_idx = tl.min(first_true, axis=0)
+    out_base = row * output_chunks + out_chunk
+    tl.store(counts_out + out_base, true_count)
+    tl.store(first_false_out + out_base, first_false_idx)
+    tl.store(first_true_out + out_base, first_true_idx)
+
+
+@libentry()
+@triton.jit
+def median_bool_dim_finish_kernel(
+    counts,
+    first_false,
+    first_true,
+    values,
+    indices,
+    reduction_size,
+    chunks_per_output: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    row = tl.program_id(0)
+    chunk_offsets = tl.arange(0, BLOCK)
+    valid = chunk_offsets < chunks_per_output
+    base = row * chunks_per_output + chunk_offsets
+
+    block_counts = tl.load(counts + base, mask=valid, other=0)
+    true_count = tl.sum(block_counts, axis=0)
+    false_count = reduction_size - true_count
+    rank = (reduction_size - 1) // 2
+    median_value = rank >= false_count
+
+    false_indices = tl.load(
+        first_false + base, mask=valid, other=9223372036854775807
+    )
+    true_indices = tl.load(first_true + base, mask=valid, other=9223372036854775807)
+    first_false_idx = tl.min(false_indices, axis=0)
+    first_true_idx = tl.min(true_indices, axis=0)
+    first_match = tl.where(median_value, first_true_idx, first_false_idx)
+
+    tl.store(values + row, median_value)
+    tl.store(indices + row, first_match)
 
 
 @libentry()
@@ -729,14 +853,10 @@ def _median_small_flat(inp):
 
 def _median_bool_flat(inp):
     width = inp.numel()
-    if width > _BOOL_FLAT_LIMIT:
-        _unsupported_width(inp.dtype, width)
-
     block = _BOOL_FLAT_BLOCK
     num_blocks = triton.cdiv(width, block)
     counts = torch.empty((num_blocks,), dtype=torch.int64, device=inp.device)
     value = torch.empty((), dtype=inp.dtype, device=inp.device)
-    count_block = triton.next_power_of_2(num_blocks)
     with torch_device_fn.device(inp.device):
         median_bool_count_kernel[(num_blocks,)](
             inp.reshape(-1),
@@ -745,15 +865,99 @@ def _median_bool_flat(inp):
             BLOCK=block,
             num_warps=4,
         )
+        while counts.numel() > _BOOL_COUNT_REDUCE_BLOCK:
+            reduced_blocks = triton.cdiv(counts.numel(), _BOOL_COUNT_REDUCE_BLOCK)
+            reduced = torch.empty(
+                (reduced_blocks,), dtype=torch.int64, device=inp.device
+            )
+            median_bool_reduce_counts_kernel[(reduced_blocks,)](
+                counts,
+                reduced,
+                WIDTH=counts.numel(),
+                BLOCK=_BOOL_COUNT_REDUCE_BLOCK,
+                num_warps=4,
+            )
+            counts = reduced
+        count_block = triton.next_power_of_2(counts.numel())
         median_bool_from_counts_kernel[(1,)](
             counts,
             value,
             WIDTH=width,
-            NUM_BLOCKS=num_blocks,
+            NUM_BLOCKS=counts.numel(),
             BLOCK=count_block,
             num_warps=min(8, max(1, count_block // 32)),
         )
     return value
+
+
+def _median_bool_dim(inp, dim, output_shape):
+    reduction_size = inp.shape[dim]
+    inner_size = math.prod(inp.shape[dim + 1 :])
+    total_outputs = math.prod(output_shape)
+    values = torch.empty(output_shape, dtype=inp.dtype, device=inp.device)
+    indices = torch.empty(output_shape, dtype=torch.int64, device=inp.device)
+    block = _BOOL_FLAT_BLOCK
+    chunks = triton.cdiv(reduction_size, block)
+    chunk_shape = (total_outputs, chunks)
+    counts = torch.empty(chunk_shape, dtype=torch.int64, device=inp.device)
+    first_false = torch.empty(chunk_shape, dtype=torch.int64, device=inp.device)
+    first_true = torch.empty(chunk_shape, dtype=torch.int64, device=inp.device)
+
+    with torch_device_fn.device(inp.device):
+        median_bool_dim_count_chunks_kernel[(total_outputs * chunks,)](
+            inp,
+            counts.reshape(-1),
+            first_false.reshape(-1),
+            first_true.reshape(-1),
+            total_outputs,
+            reduction_size,
+            inner_size,
+            chunks_per_output=chunks,
+            BLOCK=block,
+            num_warps=4,
+        )
+        while chunks > _BOOL_COUNT_REDUCE_BLOCK:
+            reduced_chunks = triton.cdiv(chunks, _BOOL_COUNT_REDUCE_BLOCK)
+            reduced_shape = (total_outputs, reduced_chunks)
+            reduced_counts = torch.empty(
+                reduced_shape, dtype=torch.int64, device=inp.device
+            )
+            reduced_first_false = torch.empty(
+                reduced_shape, dtype=torch.int64, device=inp.device
+            )
+            reduced_first_true = torch.empty(
+                reduced_shape, dtype=torch.int64, device=inp.device
+            )
+            median_bool_dim_reduce_chunks_kernel[(total_outputs, reduced_chunks)](
+                counts.reshape(-1),
+                first_false.reshape(-1),
+                first_true.reshape(-1),
+                reduced_counts.reshape(-1),
+                reduced_first_false.reshape(-1),
+                reduced_first_true.reshape(-1),
+                input_chunks=chunks,
+                output_chunks=reduced_chunks,
+                BLOCK=_BOOL_COUNT_REDUCE_BLOCK,
+                num_warps=4,
+            )
+            counts = reduced_counts
+            first_false = reduced_first_false
+            first_true = reduced_first_true
+            chunks = reduced_chunks
+
+        finish_block = triton.next_power_of_2(chunks)
+        median_bool_dim_finish_kernel[(total_outputs,)](
+            counts.reshape(-1),
+            first_false.reshape(-1),
+            first_true.reshape(-1),
+            values.reshape(-1),
+            indices.reshape(-1),
+            reduction_size,
+            chunks_per_output=chunks,
+            BLOCK=finish_block,
+            num_warps=min(8, max(1, finish_block // 32)),
+        )
+    return values, indices
 
 
 def _median_lastdim_sort(row_data, output_shape):
@@ -1029,7 +1233,7 @@ def median_dim(inp, dim=0, keepdim=False):
     work = _anonymous(inp)
 
     if work.ndim == 0:
-        if work.dtype == torch.bool or work.dtype.is_complex:
+        if work.dtype.is_complex:
             _raise_dim_dtype(work.dtype)
         return MedianResult(
             values=work.clone(),
@@ -1052,9 +1256,11 @@ def median_dim(inp, dim=0, keepdim=False):
         values = torch.empty(output_shape, dtype=work.dtype, device=work.device)
         indices = torch.empty(output_shape, dtype=torch.int64, device=work.device)
     else:
-        if work.dtype == torch.bool or work.dtype.is_complex:
+        if work.dtype.is_complex:
             _raise_dim_dtype(work.dtype)
-        if (
+        if work.dtype == torch.bool:
+            values, indices = _median_bool_dim(work.contiguous(), dim, output_shape)
+        elif (
             work.shape[dim] <= _DIRECT_REDUCTION_LIMIT
             and work.dtype in _DIRECT_REDUCTION_DTYPES
         ):
