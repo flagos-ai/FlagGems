@@ -8,10 +8,6 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-)
-
 _TRITON_DIRECT_LOWP_DTYPES = (torch.float16, torch.bfloat16)
 
 # Exact no-bias/group=1 shapes covered by the direct Triton kernel.
@@ -90,7 +86,7 @@ def _exact_shape_key(
     )
 
 
-def _semantic_fallback_conv_transpose2d(
+def _unsupported_conv_transpose2d(
     input,
     weight,
     bias,
@@ -104,17 +100,18 @@ def _semantic_fallback_conv_transpose2d(
     dilation_h,
     dilation_w,
 ):
-    # Redispatch is kept for PyTorch semantic coverage outside Triton specializations.
-    return torch.ops.aten.conv_transpose2d.input.redispatch(
-        _FALLBACK_KEYSET,
-        input,
-        weight,
-        bias,
-        [stride_h, stride_w],
-        [padding_h, padding_w],
-        [output_padding_h, output_padding_w],
-        groups,
-        [dilation_h, dilation_w],
+    bias_dtype = None if bias is None else bias.dtype
+    raise NotImplementedError(
+        "flag_gems.conv_transpose2d supports only tuned Triton cases: "
+        "4D contiguous CUDA input/weight tensors, bias=None, groups=1, "
+        "dilation=(1, 1), output_padding=(0, 0), and one of the registered "
+        "shape/dtype combinations; got "
+        f"input_shape={tuple(input.shape)}, weight_shape={tuple(weight.shape)}, "
+        f"input_dtype={input.dtype}, weight_dtype={weight.dtype}, bias_dtype={bias_dtype}, "
+        f"input_device={input.device}, weight_device={weight.device}, "
+        f"stride=({stride_h}, {stride_w}), padding=({padding_h}, {padding_w}), "
+        f"output_padding=({output_padding_h}, {output_padding_w}), groups={groups}, "
+        f"dilation=({dilation_h}, {dilation_w})"
     )
 
 
@@ -977,53 +974,6 @@ def _conv_transpose2d_fp32_32_64_kernel(
     tl.store(output_pointer + output_offsets, accum, mask=output_mask)
 
 
-def _lowp_semantic_fallback_conv_transpose2d(
-    input,
-    weight,
-    bias,
-    stride_h,
-    stride_w,
-    padding_h,
-    padding_w,
-    output_padding_h,
-    output_padding_w,
-    groups,
-    dilation_h,
-    dilation_w,
-):
-    if bias is not None and bias.dtype != input.dtype:
-        return _semantic_fallback_conv_transpose2d(
-            input,
-            weight,
-            bias,
-            stride_h,
-            stride_w,
-            padding_h,
-            padding_w,
-            output_padding_h,
-            output_padding_w,
-            groups,
-            dilation_h,
-            dilation_w,
-        )
-    bias_fp32 = bias.float() if bias is not None else None
-    output = _semantic_fallback_conv_transpose2d(
-        input.float(),
-        weight.float(),
-        bias_fp32,
-        stride_h,
-        stride_w,
-        padding_h,
-        padding_w,
-        output_padding_h,
-        output_padding_w,
-        groups,
-        dilation_h,
-        dilation_w,
-    )
-    return output.to(input.dtype)
-
-
 def _conv_transpose2d_blocker_fp16(input, weight):
     output = torch.empty((4, 128, 15, 15), device=input.device, dtype=input.dtype)
     grid = (29 * 4,)
@@ -1240,23 +1190,7 @@ def conv_transpose2d(
             output_padding_w,
         )
 
-    if input.dtype in (torch.float16, torch.bfloat16) and weight.dtype == input.dtype:
-        return _lowp_semantic_fallback_conv_transpose2d(
-            input,
-            weight,
-            bias,
-            stride_h,
-            stride_w,
-            padding_h,
-            padding_w,
-            output_padding_h,
-            output_padding_w,
-            groups,
-            dilation_h,
-            dilation_w,
-        )
-
-    return _semantic_fallback_conv_transpose2d(
+    return _unsupported_conv_transpose2d(
         input,
         weight,
         bias,

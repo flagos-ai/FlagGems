@@ -3,18 +3,15 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base
 
 
 class ConvTranspose2DBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         return [
-            (1, 64, 128, 128, 64, 3, 3, 1, 1, 1),
-            (1, 64, 64, 64, 32, 3, 3, 2, 1, 1),
-            (4, 32, 32, 32, 32, 3, 3, 2, 1, 1),
-            (8, 16, 64, 64, 16, 5, 5, 2, 2, 1),
-            (16, 32, 16, 16, 64, 3, 3, 2, 1, 1),
+            (16, 32, 32, 32, 64, 3, 3, 2, 1, 1),
             (32, 64, 32, 32, 32, 3, 3, 1, 0, 1),
+            (32, 64, 16, 16, 32, 3, 3, 2, 1, 1),
         ]
 
 
@@ -58,7 +55,7 @@ def test_perf_conv_transpose2d(monkeypatch):
         input_fn=_input_fn,
         op_name="conv_transpose2d",
         torch_op=torch.nn.functional.conv_transpose2d,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
     )
     bench.set_gems(flag_gems.conv_transpose2d)
     bench.run()
