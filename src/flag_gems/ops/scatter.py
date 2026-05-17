@@ -7,6 +7,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.scatter_reduce_ import scatter_reduce_ as _scatter_reduce_impl_
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import (
@@ -17,28 +18,9 @@ from flag_gems.utils.shape_utils import (
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-)
 _SCATTER_REDUCE_TO_SCATTER = {"sum": "add", "prod": "multiply"}
+_SCATTER_REDUCE_OPS = ("sum", "prod", "mean", "amax", "amin")
 _SCATTER_REDUCE_FAST_DTYPES = (torch.float16, torch.float32)
-_NATIVE_SCATTER_REDUCE_OUT_DISPATCH = {
-    "cpu": ("CPU", torch._C.DispatchKeySet(torch._C.DispatchKey.CPU)),
-    "cuda": ("CUDA", torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)),
-}
-
-
-def _get_native_scatter_reduce_out_kernel(dispatch_key):
-    try:
-        return torch.library.get_kernel("aten::scatter_reduce.two_out", dispatch_key)
-    except Exception:
-        return None
-
-
-_NATIVE_SCATTER_REDUCE_OUT_KERNELS = {
-    dispatch_key: _get_native_scatter_reduce_out_kernel(dispatch_key)
-    for dispatch_key, _keyset in _NATIVE_SCATTER_REDUCE_OUT_DISPATCH.values()
-}
 
 
 @triton.jit
@@ -669,10 +651,6 @@ def _can_use_scatter_reduce_scatter_path(
     )
 
 
-def _copy_tensor(dst, src):
-    return torch.ops.aten.copy_.default.redispatch(_FALLBACK_KEYSET, dst, src, False)
-
-
 def _check_scatter_reduce_out(out, inp):
     if out.dtype != inp.dtype:
         raise RuntimeError(
@@ -684,94 +662,74 @@ def _check_scatter_reduce_out(out, inp):
         )
 
 
-def _scatter_reduce_fallback(inp, dim, index, src, reduce, include_self):
-    return torch.ops.aten.scatter_reduce.two.redispatch(
-        _FALLBACK_KEYSET,
-        inp,
-        dim,
-        index,
-        src,
-        reduce,
-        include_self=include_self,
-    )
+def _check_scatter_reduce_args(inp, dim, index, src, reduce):
+    if reduce not in _SCATTER_REDUCE_OPS:
+        raise RuntimeError(f"Unsupported scatter_reduce reduce operation: {reduce}")
+    if inp.ndim == 0 or not (-inp.ndim <= dim < inp.ndim):
+        raise RuntimeError(f"Dimension out of range for scatter_reduce: {dim}")
+    if index.dtype not in (torch.int32, torch.int64):
+        raise RuntimeError("scatter_reduce index must have int32 or int64 dtype")
+    if index.ndim != inp.ndim:
+        raise RuntimeError("Index tensor must have the same rank as input tensor")
+    if src.ndim != inp.ndim:
+        raise RuntimeError("Source tensor must have the same rank as input tensor")
+
+    dim = dim % inp.ndim
+    for axis, index_size in enumerate(index.shape):
+        if index_size > src.size(axis):
+            raise RuntimeError("Index tensor shape must not exceed source tensor shape")
+        if axis != dim and index_size > inp.size(axis):
+            raise RuntimeError("Index tensor shape is incompatible with input tensor")
 
 
-def _scatter_reduce_inplace_fallback(inp, dim, index, src, reduce, include_self):
-    return torch.ops.aten.scatter_reduce_.two.redispatch(
-        _FALLBACK_KEYSET,
-        inp,
-        dim,
-        index,
-        src,
-        reduce,
-        include_self=include_self,
-    )
+def _scatter_reduce_triton(inp, dim, index, src, reduce, include_self):
+    out = inp.clone() if include_self else torch.empty_like(inp)
+    return _scatter_reduce_impl_(out, dim, index, src, reduce, include_self=include_self)
 
 
-def _scatter_reduce_out_fallback(inp, dim, index, src, reduce, include_self, out):
+def _scatter_reduce_out_triton(inp, dim, index, src, reduce, include_self, out):
     _check_scatter_reduce_out(out, inp)
-    native_dispatch = _NATIVE_SCATTER_REDUCE_OUT_DISPATCH.get(inp.device.type)
-    if native_dispatch is not None:
-        dispatch_key, keyset = native_dispatch
-        kernel = _NATIVE_SCATTER_REDUCE_OUT_KERNELS.get(dispatch_key)
-        if kernel is not None:
-            # two_out has no CompositeExplicitAutograd redispatch kernel; this
-            # terminates functional/in-place redispatch without CPU transfer.
-            return kernel.call_boxed(
-                keyset,
-                inp,
-                dim,
-                index,
-                src,
-                reduce,
-                include_self=include_self,
-                out=out,
-            )
-    result = _scatter_reduce_fallback(inp, dim, index, src, reduce, include_self)
-    return _copy_scatter_reduce_out(result, out)
-
-
-def _can_use_scatter_reduce_out_scatter_path(
-    inp, dim, index, src, reduce, include_self, out
-):
-    return (
-        _can_use_scatter_reduce_scatter_path(inp, dim, index, src, reduce, include_self)
-        and out.dtype == inp.dtype
-        and out.device == inp.device
-    )
+    if out.shape != inp.shape:
+        out.resize_as_(inp)
+    if include_self and out.data_ptr() != inp.data_ptr():
+        out.copy_(inp)
+    return _scatter_reduce_impl_(out, dim, index, src, reduce, include_self=include_self)
 
 
 def _copy_scatter_reduce_out(result, out):
+    _check_scatter_reduce_out(out, result)
     if out.shape != result.shape:
         out.resize_as_(result)
-    _copy_tensor(out, result)
+    if out.data_ptr() != result.data_ptr():
+        out.copy_(result)
     return out
 
 
 def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
     logger.debug("GEMS SCATTER_REDUCE")
+    _check_scatter_reduce_args(inp, dim, index, src, reduce)
     scatter_reduce_op = _scatter_reduce_as_scatter_reduce(reduce)
     if _can_use_scatter_reduce_scatter_path(inp, dim, index, src, reduce, include_self):
         return scatter(inp, dim, index, src, reduce=scatter_reduce_op)
-    return _scatter_reduce_fallback(inp, dim, index, src, reduce, include_self)
+    return _scatter_reduce_triton(inp, dim, index, src, reduce, include_self)
 
 
 def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
     logger.debug("GEMS SCATTER_REDUCE_")
+    _check_scatter_reduce_args(inp, dim, index, src, reduce)
     scatter_reduce_op = _scatter_reduce_as_scatter_reduce(reduce)
     if _can_use_scatter_reduce_scatter_path(inp, dim, index, src, reduce, include_self):
         return scatter_(inp, dim, index, src, reduce=scatter_reduce_op)
-    return _scatter_reduce_inplace_fallback(inp, dim, index, src, reduce, include_self)
+    return _scatter_reduce_impl_(inp, dim, index, src, reduce, include_self=include_self)
 
 
 def scatter_reduce_out(inp, dim, index, src, reduce, *, include_self=True, out):
     logger.debug("GEMS SCATTER_REDUCE OUT")
-    if _can_use_scatter_reduce_out_scatter_path(
-        inp, dim, index, src, reduce, include_self, out
-    ):
+    _check_scatter_reduce_args(inp, dim, index, src, reduce)
+    if _can_use_scatter_reduce_scatter_path(inp, dim, index, src, reduce, include_self):
         result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
         return _copy_scatter_reduce_out(result, out)
-    return _scatter_reduce_out_fallback(inp, dim, index, src, reduce, include_self, out)
+    return _scatter_reduce_out_triton(inp, dim, index, src, reduce, include_self, out)
 
 
 def scatter(inp, dim, index, src, reduce=None):

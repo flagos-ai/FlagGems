@@ -591,7 +591,9 @@ def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
     dim_stride = inp.stride(dim)
     N = index.numel()
 
-    int32_size_dim = lambda x: x.stride(dim) * x.size(dim) < 2**32
+    def int32_size_dim(x):
+        return x.stride(dim) * x.size(dim) < 2**32
+
     use_int32_offset = all(map(int32_size_dim, (inp, index, src)))
 
     _scatter_reduce_func(
