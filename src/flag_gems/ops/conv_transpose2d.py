@@ -28,6 +28,8 @@ _BLOCKER_FP16_SHAPE = (4, 256, 8, 8, 128, 3, 3, 2, 1)
 
 _K4_FP16_SHAPE = (8, 128, 4, 4, 64, 4, 4, 2, 1)
 
+_GENERAL_TRITON_DTYPES = (torch.float32, torch.float16, torch.bfloat16)
+
 
 def _pair(value):
     if isinstance(value, (list, tuple)):
@@ -102,10 +104,8 @@ def _unsupported_conv_transpose2d(
 ):
     bias_dtype = None if bias is None else bias.dtype
     raise NotImplementedError(
-        "flag_gems.conv_transpose2d supports only tuned Triton cases: "
-        "4D contiguous CUDA input/weight tensors, bias=None, groups=1, "
-        "dilation=(1, 1), output_padding=(0, 0), and one of the registered "
-        "shape/dtype combinations; got "
+        "flag_gems.conv_transpose2d supports 4D contiguous CUDA input/weight "
+        "tensors with float32, float16, or bfloat16 dtype; got "
         f"input_shape={tuple(input.shape)}, weight_shape={tuple(weight.shape)}, "
         f"input_dtype={input.dtype}, weight_dtype={weight.dtype}, bias_dtype={bias_dtype}, "
         f"input_device={input.device}, weight_device={weight.device}, "
@@ -113,6 +113,93 @@ def _unsupported_conv_transpose2d(
         f"output_padding=({output_padding_h}, {output_padding_w}), groups={groups}, "
         f"dilation=({dilation_h}, {dilation_w})"
     )
+
+
+def _validate_conv_transpose2d_args(
+    input,
+    weight,
+    bias,
+    stride_h,
+    stride_w,
+    padding_h,
+    padding_w,
+    output_padding_h,
+    output_padding_w,
+    groups,
+    dilation_h,
+    dilation_w,
+):
+    if input.device.type != "cuda" or weight.device != input.device:
+        return False
+    if input.dim() != 4 or weight.dim() != 4:
+        return False
+    if not input.is_contiguous() or not weight.is_contiguous():
+        return False
+    if input.dtype not in _GENERAL_TRITON_DTYPES or weight.dtype != input.dtype:
+        return False
+    if input.dtype is torch.bfloat16 and not torch.cuda.is_bf16_supported():
+        return False
+    if bias is not None:
+        if bias.device != input.device or bias.dtype != input.dtype:
+            return False
+        if bias.dim() != 1 or not bias.is_contiguous():
+            return False
+    if groups <= 0:
+        raise RuntimeError("groups must be a positive integer")
+    if stride_h <= 0 or stride_w <= 0:
+        raise RuntimeError("non-positive stride is not supported")
+    if dilation_h <= 0 or dilation_w <= 0:
+        raise RuntimeError("dilation should be greater than zero")
+    if padding_h < 0 or padding_w < 0:
+        raise RuntimeError("negative padding is not supported")
+    if output_padding_h < 0 or output_padding_w < 0:
+        raise RuntimeError("negative output_padding is not supported")
+    if output_padding_h >= stride_h and output_padding_h >= dilation_h:
+        raise RuntimeError("output padding must be smaller than either stride or dilation")
+    if output_padding_w >= stride_w and output_padding_w >= dilation_w:
+        raise RuntimeError("output padding must be smaller than either stride or dilation")
+
+    input_channels = input.shape[1]
+    weight_input_channels = weight.shape[0]
+    output_channels_per_group = weight.shape[1]
+    weight_height = weight.shape[2]
+    weight_width = weight.shape[3]
+    if (
+        input_channels <= 0
+        or output_channels_per_group <= 0
+        or weight_height <= 0
+        or weight_width <= 0
+    ):
+        raise RuntimeError("non-empty input channels and weight dimensions are required")
+    if input_channels != weight_input_channels:
+        raise RuntimeError(
+            "expected input channel dimension to match weight input channels"
+        )
+    if input_channels % groups != 0:
+        raise RuntimeError("input channels must be divisible by groups")
+    output_channels = output_channels_per_group * groups
+    if bias is not None and bias.numel() != output_channels:
+        raise RuntimeError("expected bias to have one element per output channel")
+
+    input_height = input.shape[2]
+    input_width = input.shape[3]
+    output_height = (
+        (input_height - 1) * stride_h
+        - 2 * padding_h
+        + dilation_h * (weight_height - 1)
+        + output_padding_h
+        + 1
+    )
+    output_width = (
+        (input_width - 1) * stride_w
+        - 2 * padding_w
+        + dilation_w * (weight_width - 1)
+        + output_padding_w
+        + 1
+    )
+    if output_height <= 0 or output_width <= 0:
+        raise RuntimeError("calculated output size is too small")
+    return True
 
 
 @libentry()
@@ -897,6 +984,83 @@ def _conv_transpose2d_fp32_16_32_kernel(
 
 @libentry()
 @triton.jit
+def _conv_transpose2d_general_kernel(
+    input_pointer,
+    weight_pointer,
+    bias_pointer,
+    output_pointer,
+    total_elements: tl.constexpr,
+    batch_size: tl.constexpr,
+    input_channels: tl.constexpr,
+    input_height: tl.constexpr,
+    input_width: tl.constexpr,
+    output_channels: tl.constexpr,
+    output_height: tl.constexpr,
+    output_width: tl.constexpr,
+    weight_height: tl.constexpr,
+    weight_width: tl.constexpr,
+    output_channels_per_group: tl.constexpr,
+    input_channels_per_group: tl.constexpr,
+    stride_height: tl.constexpr,
+    stride_width: tl.constexpr,
+    padding_height: tl.constexpr,
+    padding_width: tl.constexpr,
+    dilation_height: tl.constexpr,
+    dilation_width: tl.constexpr,
+    has_bias: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < total_elements
+
+    ow = offsets % output_width
+    tmp = offsets // output_width
+    oh = tmp % output_height
+    tmp = tmp // output_height
+    co = tmp % output_channels
+    n = tmp // output_channels
+
+    group = co // output_channels_per_group
+    co_in_group = co - group * output_channels_per_group
+    accum = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+
+    if has_bias:
+        bias = tl.load(bias_pointer + co, mask=mask, other=0.0).to(tl.float32)
+        accum += bias
+
+    for ci_in_group in tl.range(0, input_channels_per_group):
+        ci = group * input_channels_per_group + ci_in_group
+        for kh in tl.static_range(0, weight_height):
+            ih_unstrided = oh + padding_height - kh * dilation_height
+            ih = ih_unstrided // stride_height
+            valid_h = (ih_unstrided % stride_height == 0) & (ih >= 0)
+            valid_h = valid_h & (ih < input_height)
+            for kw in tl.static_range(0, weight_width):
+                iw_unstrided = ow + padding_width - kw * dilation_width
+                iw = iw_unstrided // stride_width
+                valid = mask & valid_h
+                valid = valid & (iw_unstrided % stride_width == 0)
+                valid = valid & (iw >= 0) & (iw < input_width)
+
+                input_offsets = ((n * input_channels + ci) * input_height + ih)
+                input_offsets = input_offsets * input_width + iw
+                weight_offsets = (
+                    (ci * output_channels_per_group + co_in_group) * weight_height
+                )
+                weight_offsets = (weight_offsets + kh) * weight_width + kw
+                input_values = tl.load(
+                    input_pointer + input_offsets, mask=valid, other=0.0
+                ).to(tl.float32)
+                weight_values = tl.load(
+                    weight_pointer + weight_offsets, mask=valid, other=0.0
+                ).to(tl.float32)
+                accum += input_values * weight_values
+
+    tl.store(output_pointer + offsets, accum, mask=mask)
+
+
+@libentry()
+@triton.jit
 def _conv_transpose2d_fp32_32_64_kernel(
     input_pointer,
     weight_pointer,
@@ -1190,6 +1354,35 @@ def conv_transpose2d(
             output_padding_w,
         )
 
+    if _validate_conv_transpose2d_args(
+        input,
+        weight,
+        bias,
+        stride_h,
+        stride_w,
+        padding_h,
+        padding_w,
+        output_padding_h,
+        output_padding_w,
+        groups,
+        dilation_h,
+        dilation_w,
+    ):
+        return _conv_transpose2d_general(
+            input,
+            weight,
+            bias,
+            stride_h,
+            stride_w,
+            padding_h,
+            padding_w,
+            dilation_h,
+            dilation_w,
+            output_padding_h,
+            output_padding_w,
+            groups,
+        )
+
     return _unsupported_conv_transpose2d(
         input,
         weight,
@@ -1313,5 +1506,78 @@ def _conv_transpose2d_direct(
         BLOCK_CI=block_ci,
         BLOCK_CO=block_co,
         num_warps=num_warps,
+    )
+    return output
+
+
+def _conv_transpose2d_general(
+    input,
+    weight,
+    bias,
+    stride_h,
+    stride_w,
+    padding_h,
+    padding_w,
+    dilation_h,
+    dilation_w,
+    output_padding_h,
+    output_padding_w,
+    groups,
+):
+    batch, input_channels, input_height, input_width = input.shape
+    _, output_channels_per_group, weight_height, weight_width = weight.shape
+    output_channels = output_channels_per_group * groups
+    output_height = (
+        (input_height - 1) * stride_h
+        - 2 * padding_h
+        + dilation_h * (weight_height - 1)
+        + output_padding_h
+        + 1
+    )
+    output_width = (
+        (input_width - 1) * stride_w
+        - 2 * padding_w
+        + dilation_w * (weight_width - 1)
+        + output_padding_w
+        + 1
+    )
+    output = torch.empty(
+        (batch, output_channels, output_height, output_width),
+        device=input.device,
+        dtype=input.dtype,
+    )
+    total_elements = output.numel()
+    if total_elements == 0:
+        return output
+
+    block_size = 256
+    grid = (triton.cdiv(total_elements, block_size),)
+    bias_pointer = bias if bias is not None else input
+    _conv_transpose2d_general_kernel[grid](
+        input,
+        weight,
+        bias_pointer,
+        output,
+        total_elements,
+        batch,
+        input_channels,
+        input_height,
+        input_width,
+        output_channels,
+        output_height,
+        output_width,
+        weight_height,
+        weight_width,
+        output_channels_per_group,
+        input_channels // groups,
+        stride_h,
+        stride_w,
+        padding_h,
+        padding_w,
+        dilation_h,
+        dilation_w,
+        bias is not None,
+        BLOCK_SIZE=block_size,
+        num_warps=4,
     )
     return output
