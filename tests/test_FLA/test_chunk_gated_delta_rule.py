@@ -389,41 +389,73 @@ def test_chunk_gated_delta_rule_supports_qk_l2norm_option():
     _assert_close(actual, expected, dtype)
 
 
-def test_chunk_gated_delta_rule_rejects_qk_l2norm_outside_direct_path():
+def test_chunk_gated_delta_rule_supports_qk_l2norm_on_chunk_path():
     dtype = torch.float32
     torch.manual_seed(6000)
     q, k, v, beta, g = _make_inputs(
-        B=1, T=129, Hg=2, H=4, K=64, V=32, dtype=dtype, head_first=True
+        B=1, T=33, Hg=2, H=4, K=64, V=32, dtype=dtype, head_first=True
+    )
+    initial_state = 0.125 * torch.randn(
+        1, 4, 64, 32, device=flag_gems.device, dtype=dtype
     )
 
-    with pytest.raises(NotImplementedError, match="q/k L2 normalization"):
-        flag_gems.chunk_gated_delta_rule(
-            q,
-            k,
-            v,
-            beta,
-            g,
-            head_first=True,
-            output_final_state=False,
-            use_qk_l2norm_in_kernel=True,
-        )
+    actual, actual_final = flag_gems.chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        initial_state=initial_state,
+        head_first=True,
+        output_final_state=True,
+        use_qk_l2norm_in_kernel=True,
+    )
+    expected, expected_final = _reference_chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        initial_state=initial_state,
+        output_final_state=True,
+        cu_seqlens=None,
+        head_first=True,
+        scale=None,
+        use_qk_l2norm_in_kernel=True,
+    )
+
+    _assert_close(actual, expected, dtype)
+    _assert_close(actual_final, expected_final, dtype, final_state=True)
 
 
-def test_chunk_gated_delta_rule_rejects_iluvatar_fla_path(monkeypatch):
+def test_chunk_gated_delta_rule_does_not_broadly_reject_iluvatar_chunk_path(
+    monkeypatch,
+):
     dtype = torch.float32
     torch.manual_seed(7000)
     q, k, v, beta, g = _make_inputs(
         B=1, T=129, Hg=2, H=4, K=64, V=32, dtype=dtype, head_first=False
     )
-    monkeypatch.setattr(chunk_gated_delta_rule_module, "_is_iluvatar_backend", lambda: True)
+    calls = []
 
-    with pytest.raises(NotImplementedError, match="Iluvatar backend"):
-        flag_gems.chunk_gated_delta_rule(
-            q,
-            k,
-            v,
-            beta,
-            g,
-            head_first=False,
-            output_final_state=False,
-        )
+    def _fake_chunk_fwd(**kwargs):
+        calls.append(kwargs)
+        return None, kwargs["v"].clone(), None, None, None, None, None
+
+    monkeypatch.setattr(
+        chunk_gated_delta_rule_module, "chunk_gated_delta_rule_fwd", _fake_chunk_fwd
+    )
+
+    actual, actual_final = flag_gems.chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        head_first=False,
+        output_final_state=False,
+    )
+
+    assert calls
+    assert actual_final is None
+    torch.testing.assert_close(actual, v)

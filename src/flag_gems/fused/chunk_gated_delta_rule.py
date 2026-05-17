@@ -1,11 +1,41 @@
 import torch
+import triton
+import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.fused.FLA import chunk_gated_delta_rule_fwd
 from flag_gems.fused.FLA.chunk_gated_delta_direct import (
     can_use_chunk_gated_delta_rule_direct,
     chunk_gated_delta_rule_direct_fwd,
 )
+from flag_gems.utils import libentry
+
+
+@libentry()
+@triton.jit
+def _l2_normalize_last_dim_kernel(
+    x,
+    out,
+    n_rows: tl.constexpr,
+    H: tl.constexpr,
+    K: tl.constexpr,
+    stride_x_b: tl.constexpr,
+    stride_x_t: tl.constexpr,
+    stride_x_h: tl.constexpr,
+    stride_x_k: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    row = tl.program_id(0)
+    offs = tl.arange(0, BLOCK_K)
+    mask = offs < K
+
+    h = row % H
+    row_bt = row // H
+    t = row_bt % n_rows
+    b = row_bt // n_rows
+    x_base = x + b * stride_x_b + t * stride_x_t + h * stride_x_h
+    values = tl.load(x_base + offs * stride_x_k, mask=mask, other=0.0).to(tl.float32)
+    inv_norm = 1.0 / tl.maximum(tl.sqrt(tl.sum(values * values, axis=0)), 1e-6)
+    tl.store(out + row * K + offs, values * inv_norm, mask=mask)
 
 
 def _as_seq_first(
@@ -89,22 +119,23 @@ def _direct_contiguous(x: torch.Tensor) -> torch.Tensor:
     return x if x.is_contiguous() else x.contiguous()
 
 
-def _is_iluvatar_backend() -> bool:
-    return getattr(runtime.device, "vendor_name", "").lower() == "iluvatar"
-
-
-def _unsupported(message: str) -> None:
-    raise NotImplementedError(
-        f"chunk_gated_delta_rule does not support {message} without a Triton "
-        "kernel implementation"
+def _l2_normalize_last_dim(x: torch.Tensor) -> torch.Tensor:
+    B, T, H, K = x.shape
+    out = torch.empty_like(x, memory_format=torch.contiguous_format)
+    block_k = triton.next_power_of_2(K)
+    _l2_normalize_last_dim_kernel[(B * T * H,)](
+        x=x,
+        out=out,
+        n_rows=T,
+        H=H,
+        K=K,
+        stride_x_b=x.stride(0),
+        stride_x_t=x.stride(1),
+        stride_x_h=x.stride(2),
+        stride_x_k=x.stride(3),
+        BLOCK_K=block_k,
     )
-
-
-def _ensure_fla_supported(use_qk_l2norm_in_kernel: bool) -> None:
-    if _is_iluvatar_backend():
-        _unsupported("Iluvatar backend execution")
-    if use_qk_l2norm_in_kernel:
-        _unsupported("q/k L2 normalization outside the direct Triton path")
+    return out
 
 
 def chunk_gated_delta_rule(
@@ -182,7 +213,9 @@ def chunk_gated_delta_rule(
                 o = o.transpose(1, 2)
             return o, final_state
 
-    _ensure_fla_supported(use_qk_l2norm_in_kernel)
+    if use_qk_l2norm_in_kernel:
+        q_seq = _l2_normalize_last_dim(q_seq)
+        k_seq = _l2_normalize_last_dim(k_seq)
 
     _, o, _, final_state, _, _, _ = chunk_gated_delta_rule_fwd(
         q=q_seq,
