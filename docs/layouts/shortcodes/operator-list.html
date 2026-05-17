@@ -2,6 +2,7 @@
 <table>
 <thead>
   <tr>
+    <th>No.</th>
     <th>name</th>
     <th>kind</th>
     <th>stage</th>
@@ -11,36 +12,24 @@
   <tr>
 </thead>
 <tbody>
-{{ range hugo.Data.operators.ops }}
+{{ range $no, $op := hugo.Data.operators.ops }}
+{{ $no_display := add $no 1 }}
 <tr>
-  <td><tt>{{ .name }}</tt></td>
-  <td>{{ range .kind }}
+  <td>{{ $no_display }} </td>
+  <td><tt>{{ $op.id }}</tt></td>
+  <td>{{ range $op.kind }}
       {{ . }}
       {{ end }}
   </td>
-  {{ if isset .stages "removed" -}}
-    <td>Removed</td>
-    <td> {{ index .stages "removed" }}</td>
-  {{ else }}
-    {{ if isset .stages "stable" -}}
-      <td>Stable</td>
-      <td> {{ index .stages "stable" }}</td>
-    {{ else }}
-      {{ if isset .stages "beta" -}}
-        <td>Beta</td>
-        <td>{{ index .stages "beta" }}</td>
-      {{ else }}
-        {{ if isset .stages "alpha" -}}
-          <td>Alpha</td>
-          <td>{{ index .stages "alpha" }}</td>
-        {{ else }}
-          <td>XXX</td>
-          <td>XXX</td>
-        {{ end }}
+  {{ $stages := .stages }}
+  {{ range $idx, $v := $stages }}
+    {{ if eq $idx (sub (len $stages) 1) }}
+      {{ range $stage, $release := $v }}
+      <td>{{ $stage | strings.Title }}</td>
+      <td>{{ $release }}</td>
       {{ end }}
     {{ end }}
   {{ end }}
-
   <td>
     {{- delimit .labels ", " -}}
   </td>
