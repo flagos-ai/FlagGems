@@ -183,7 +183,10 @@ def generate_scatter_reduce_kernel(
                         code.writeline(
                             "cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res)"
                         )
-                        code.writeline("stop |= cur_inp == cas_res")
+                        code.writeline(
+                            "stop |= (cur_inp == cas_res) | "
+                            "((cur_inp != cur_inp) & (cas_res != cas_res))"
+                        )
                         code.writeline(
                             "block_stop = tl.sum(stop.to(tl.int32)) == BLOCK"
                         )
@@ -202,7 +205,10 @@ def generate_scatter_reduce_kernel(
                     code.writeline(
                         "cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res)"
                     )
-                    code.writeline("stop |= cur_inp == cas_res")
+                    code.writeline(
+                        "stop |= (cur_inp == cas_res) | "
+                        "((cur_inp != cur_inp) & (cas_res != cas_res))"
+                    )
                     code.writeline("block_stop = tl.sum(stop.to(tl.int32)) == BLOCK")
 
             # Max reduction using CAS loop (atomic_max doesn't support float)
@@ -216,13 +222,18 @@ def generate_scatter_reduce_kernel(
                         "cur_inp = tl.load(out + inp_offsets, mask=mask, other=0)"
                     )
                     code.writeline(
-                        "new_val = tl.where(cur_src > cur_inp, cur_src, cur_inp)"
+                        "new_val = tl.where((cur_src != cur_src) | "
+                        "(cur_inp != cur_inp), cur_src + cur_inp, "
+                        "tl.where(cur_src > cur_inp, cur_src, cur_inp))"
                     )
                     code.writeline("res = tl.where(stop, cur_inp, new_val)")
                     code.writeline(
                         "cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res)"
                     )
-                    code.writeline("stop |= cur_inp == cas_res")
+                    code.writeline(
+                        "stop |= (cur_inp == cas_res) | "
+                        "((cur_inp != cur_inp) & (cas_res != cas_res))"
+                    )
                     code.writeline("block_stop = tl.sum(stop.to(tl.int32)) == BLOCK")
 
             # Min reduction using CAS loop (atomic_min doesn't support float)
@@ -236,13 +247,18 @@ def generate_scatter_reduce_kernel(
                         "cur_inp = tl.load(out + inp_offsets, mask=mask, other=0)"
                     )
                     code.writeline(
-                        "new_val = tl.where(cur_src < cur_inp, cur_src, cur_inp)"
+                        "new_val = tl.where((cur_src != cur_src) | "
+                        "(cur_inp != cur_inp), cur_src + cur_inp, "
+                        "tl.where(cur_src < cur_inp, cur_src, cur_inp))"
                     )
                     code.writeline("res = tl.where(stop, cur_inp, new_val)")
                     code.writeline(
                         "cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res)"
                     )
-                    code.writeline("stop |= cur_inp == cas_res")
+                    code.writeline(
+                        "stop |= (cur_inp == cas_res) | "
+                        "((cur_inp != cur_inp) & (cas_res != cas_res))"
+                    )
                     code.writeline("block_stop = tl.sum(stop.to(tl.int32)) == BLOCK")
 
             code.writeline("offsets += BLOCK")
@@ -466,6 +482,111 @@ def generate_init_kernel(
     return code
 
 
+def generate_mean_init_finalize_kernel(
+    rank: int,
+    kernel_name: str,
+    code: IndentedBuffer,
+) -> IndentedBuffer:
+    """Generate kernel to initialize mean counts or finalize mean output."""
+    code.newline()
+
+    code.writeline("@libentry()")
+    code.writeline("@triton.heuristics(")
+    with code.indent():
+        code.writeline("{")
+        with code.indent():
+            code.writeline('"BLOCK": heur_block,')
+            code.writeline('"LOOP": loop_count,')
+        code.writeline("}")
+    code.writeline(")")
+    out_stride_vars = ",".join(f"'out_stride_{i}'" for i in range(rank))
+    count_stride_vars = ",".join(f"'count_stride_{i}'" for i in range(rank))
+    shape_vars = ",".join(f"'shape_{i}'" for i in range(rank))
+    code.writeline(
+        f"@triton.jit(do_not_specialize=['N_OUT',"
+        f"{out_stride_vars},{count_stride_vars},{shape_vars}])"
+    )
+
+    code.writeline(f"def {kernel_name}(")
+    with code.indent():
+        if rank > 0:
+            code.writeline("out,")
+            code.writeline("count,")
+
+            stride_args = ", ".join(f"out_stride_{i}: int" for i in range(rank))
+            code.writeline(f"{stride_args}, # stride for out")
+
+            stride_args = ", ".join(f"count_stride_{i}: int" for i in range(rank))
+            code.writeline(f"{stride_args}, # stride for count")
+
+            shape_args = ", ".join(f"shape_{i}: int" for i in range(rank))
+            code.writeline(f"{shape_args}, # shape")
+            code.writeline("N_OUT,")
+            code.writeline("INCLUDE_SELF: tl.constexpr,")
+            code.writeline("IS_INIT: tl.constexpr,")
+            code.writeline("BLOCK: tl.constexpr,")
+            code.writeline("LOOP: tl.constexpr,")
+            code.writeline("INT32_OFFSET: tl.constexpr")
+
+    code.writeline("):")
+
+    with code.indent():
+        code.writeline("pid = tl.program_id(0)")
+        code.writeline("if not INT32_OFFSET:")
+        with code.indent():
+            code.writeline("pid = pid.to(tl.int64)")
+        code.writeline("offsets = pid * LOOP * BLOCK + tl.arange(0, BLOCK)")
+
+        code.writeline("for loop_iter in tl.static_range(LOOP):")
+        with code.indent():
+            code.writeline("mask = offsets < N_OUT")
+            code.writeline("cur_idx = offsets")
+            code.writeline("if INT32_OFFSET:")
+            with code.indent():
+                code.writeline("out_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                code.writeline("count_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+            code.writeline("else:")
+            with code.indent():
+                code.writeline("out_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
+                code.writeline("count_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
+            for i in range(rank)[::-1]:
+                code.writeline("if INT32_OFFSET:")
+                with code.indent():
+                    code.writeline(f"shape_{i} = shape_{i}.to(tl.int32)")
+                    code.writeline(f"out_stride_{i} = out_stride_{i}.to(tl.int32)")
+                    code.writeline(f"count_stride_{i} = count_stride_{i}.to(tl.int32)")
+                code.writeline(f"mod = cur_idx % shape_{i}")
+                code.writeline(f"out_offsets += mod * out_stride_{i}")
+                code.writeline(f"count_offsets += mod * count_stride_{i}")
+                if i != 0:
+                    code.writeline(f"cur_idx = cur_idx // shape_{i}")
+
+            code.writeline("if IS_INIT:")
+            with code.indent():
+                code.writeline("base = tl.full((BLOCK,), 0, dtype=tl.int32)")
+                code.writeline("if INCLUDE_SELF:")
+                with code.indent():
+                    code.writeline("base += 1")
+                code.writeline("tl.store(count + count_offsets, base, mask=mask)")
+            code.writeline("else:")
+            with code.indent():
+                code.writeline(
+                    "cur_count = tl.load(count + count_offsets, mask=mask, other=1)"
+                )
+                code.writeline("denom = tl.where(cur_count > 0, cur_count, 1)")
+                code.writeline(
+                    "cur_out = tl.load(out + out_offsets, mask=mask, other=0)"
+                )
+                code.writeline(
+                    "tl.store(out + out_offsets, cur_out / denom, mask=mask)"
+                )
+            code.writeline("offsets += BLOCK")
+
+    code.newline()
+    code.newline()
+    return code
+
+
 def parameter_for_wrapper() -> str:
     parameters: List[str] = []
 
@@ -489,6 +610,7 @@ def generate_destination_passing_wrapper(
     kernel_name: str,
     count_kernel_name: str,
     init_kernel_name: str,
+    mean_init_finalize_kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
     parameters: str = parameter_for_wrapper()
@@ -497,9 +619,11 @@ def generate_destination_passing_wrapper(
 
     with code.indent():
         code.writeline("inp_strides = list(inp.stride())")
+        code.writeline("out_strides = out.stride()")
         code.writeline("index_strides = index.stride()")
         code.writeline("src_strides = src_strided.stride()")
         code.writeline("index_shapes = list(index.shape)")
+        code.writeline("out_shapes = list(out.shape)")
         code.writeline("inp_size_dim = dim_size")
         code.writeline("stride_dim = dim_stride")
 
@@ -509,7 +633,7 @@ def generate_destination_passing_wrapper(
         code.writeline('IS_AMIN = reduce == "amin"')
         code.writeline('IS_MEAN = reduce == "mean"')
         code.writeline("IS_FLOAT32 = out.dtype == torch.float32")
-        code.writeline("int32_offset = int32_offset or True")
+        code.writeline("int32_offset = True if int32_offset is None else int32_offset")
 
         # kernel launch
         code.writeline("grid = lambda meta: (")
@@ -573,14 +697,41 @@ def generate_destination_passing_wrapper(
                 code.writeline("INT32_OFFSET=int32_offset,")
         code.writeline(")")
 
-        # Handle mean: need to divide by count
+        # Handle mean finalization through generated kernels.
         code.writeline("if IS_MEAN:")
         with code.indent():
-            code.writeline("count = torch.zeros_like(out, dtype=torch.int32)")
-            # if include_self, initialize count to 1
-            code.writeline("if include_self:")
+            code.writeline("count = torch.empty_strided(")
             with code.indent():
-                code.writeline("count.fill_(1)")
+                code.writeline("out.shape,")
+                code.writeline("out.stride(),")
+                code.writeline("device=out.device,")
+                code.writeline("dtype=torch.int32,")
+            code.writeline(")")
+            code.writeline("count_strides = count.stride()")
+            code.writeline("N_OUT = out.numel()")
+            code.writeline("out_grid = lambda meta: (")
+            with code.indent():
+                code.writeline('triton.cdiv(N_OUT, meta["BLOCK"] * meta["LOOP"]), ')
+            code.writeline(")")
+            count_init_launch: str = f"{mean_init_finalize_kernel_name}[out_grid]("
+            code.writeline(count_init_launch)
+            with code.indent():
+                code.writeline("out, count, ")
+                if rank > 0:
+                    s = ", ".join(f"out_strides[{i}]" for i in range(rank))
+                    code.writeline(f"{s},")
+
+                    s = ", ".join(f"count_strides[{i}]" for i in range(rank))
+                    code.writeline(f"{s},")
+
+                    s = ", ".join(f"out_shapes[{i}]" for i in range(rank))
+                    code.writeline(f"{s},")
+
+                    code.writeline("N_OUT,")
+                    code.writeline("include_self,")
+                    code.writeline("True,")
+                    code.writeline("INT32_OFFSET=int32_offset,")
+            code.writeline(")")
             count_launch: str = f"{count_kernel_name}[grid]("
             code.writeline(count_launch)
             with code.indent():
@@ -600,8 +751,25 @@ def generate_destination_passing_wrapper(
                     code.writeline("N,")
                     code.writeline("INT32_OFFSET=int32_offset,")
             code.writeline(")")
-            code.writeline("count = count.clamp(min=1)")
-            code.writeline("out.div_(count)")
+            count_finalize_launch: str = f"{mean_init_finalize_kernel_name}[out_grid]("
+            code.writeline(count_finalize_launch)
+            with code.indent():
+                code.writeline("out, count, ")
+                if rank > 0:
+                    s = ", ".join(f"out_strides[{i}]" for i in range(rank))
+                    code.writeline(f"{s},")
+
+                    s = ", ".join(f"count_strides[{i}]" for i in range(rank))
+                    code.writeline(f"{s},")
+
+                    s = ", ".join(f"out_shapes[{i}]" for i in range(rank))
+                    code.writeline(f"{s},")
+
+                    code.writeline("N_OUT,")
+                    code.writeline("include_self,")
+                    code.writeline("False,")
+                    code.writeline("INT32_OFFSET=int32_offset,")
+            code.writeline(")")
 
         code.writeline("return out")
 
@@ -614,6 +782,7 @@ def generate_code(
     kernel_name: str,
     count_kernel_name: str,
     init_kernel_name: str,
+    mean_init_finalize_kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
     shape = inputs[1].shape
@@ -623,8 +792,17 @@ def generate_code(
     code = generate_scatter_reduce_kernel(rank, kernel_name, code)
     code = generate_count_kernel(rank, count_kernel_name, code)
     code = generate_init_kernel(rank, init_kernel_name, code)
+    code = generate_mean_init_finalize_kernel(
+        rank, mean_init_finalize_kernel_name, code
+    )
     code = generate_destination_passing_wrapper(
-        rank, wrapper_name, kernel_name, count_kernel_name, init_kernel_name, code
+        rank,
+        wrapper_name,
+        kernel_name,
+        count_kernel_name,
+        init_kernel_name,
+        mean_init_finalize_kernel_name,
+        code,
     )
     return code
 
@@ -646,6 +824,7 @@ class ScatterReduceFunction:
                 "_scatter_reduce_jit_function",
                 "_scatter_reduce_count_jit_function",
                 "_scatter_reduce_init_jit_function",
+                "_scatter_reduce_mean_init_finalize_jit_function",
                 code,
             )
 

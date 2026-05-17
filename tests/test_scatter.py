@@ -148,30 +148,33 @@ def test_scatter_reduce_public_api_variants(reduce, include_self):
 
 
 @pytest.mark.scatter_reduce
-def test_scatter_reduce_prod_nan_matches_pytorch():
+@pytest.mark.parametrize("reduce", ["prod", "amax", "amin"])
+@pytest.mark.parametrize("include_self", [True, False])
+def test_scatter_reduce_nan_matches_pytorch(reduce, include_self):
     inp, index, src = _public_scatter_reduce_inputs()
     inp[0, 0] = float("nan")
     src[1, 2] = float("nan")
     dim = 1
-    reduce = "prod"
 
     ref_inp = utils.to_reference(inp)
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src)
 
     ref_out = torch.scatter_reduce(
-        ref_inp, dim, ref_index, ref_src, reduce, include_self=True
+        ref_inp, dim, ref_index, ref_src, reduce, include_self=include_self
     )
     with flag_gems.use_gems(include=["scatter_reduce"]):
-        res_out = torch.scatter_reduce(inp, dim, index, src, reduce, include_self=True)
+        res_out = torch.scatter_reduce(
+            inp, dim, index, src, reduce, include_self=include_self
+        )
     utils.gems_assert_close(res_out, ref_out, torch.float32, equal_nan=True)
 
     ref_inplace = ref_inp.clone().scatter_reduce_(
-        dim, ref_index, ref_src, reduce, include_self=True
+        dim, ref_index, ref_src, reduce, include_self=include_self
     )
     with flag_gems.use_gems(include=["scatter_reduce_"]):
         res_inplace = inp.clone().scatter_reduce_(
-            dim, index, src, reduce, include_self=True
+            dim, index, src, reduce, include_self=include_self
         )
     utils.gems_assert_close(res_inplace, ref_inplace, torch.float32, equal_nan=True)
 
@@ -182,7 +185,7 @@ def test_scatter_reduce_prod_nan_matches_pytorch():
         ref_index,
         ref_src,
         reduce,
-        include_self=True,
+        include_self=include_self,
         out=ref_out_tensor,
     )
     res_out_tensor = torch.empty_like(inp)
@@ -193,7 +196,7 @@ def test_scatter_reduce_prod_nan_matches_pytorch():
             index,
             src,
             reduce,
-            include_self=True,
+            include_self=include_self,
             out=res_out_tensor,
         )
     assert res_return.data_ptr() == res_out_tensor.data_ptr()

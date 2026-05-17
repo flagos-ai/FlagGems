@@ -684,7 +684,9 @@ def _check_scatter_reduce_args(inp, dim, index, src, reduce):
 
 def _scatter_reduce_triton(inp, dim, index, src, reduce, include_self):
     out = inp.clone()
-    return _scatter_reduce_impl_(out, dim, index, src, reduce, include_self=include_self)
+    return _scatter_reduce_impl_(
+        out, dim, index, src, reduce, include_self=include_self
+    )
 
 
 def _scatter_reduce_out_triton(inp, dim, index, src, reduce, include_self, out):
@@ -693,7 +695,9 @@ def _scatter_reduce_out_triton(inp, dim, index, src, reduce, include_self, out):
         out.resize_as_(inp)
     if out.data_ptr() != inp.data_ptr():
         out.copy_(inp)
-    return _scatter_reduce_impl_(out, dim, index, src, reduce, include_self=include_self)
+    return _scatter_reduce_impl_(
+        out, dim, index, src, reduce, include_self=include_self
+    )
 
 
 def _copy_scatter_reduce_out(result, out):
@@ -720,7 +724,9 @@ def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
     scatter_reduce_op = _scatter_reduce_as_scatter_reduce(reduce)
     if _can_use_scatter_reduce_scatter_path(inp, dim, index, src, reduce, include_self):
         return scatter_(inp, dim, index, src, reduce=scatter_reduce_op)
-    return _scatter_reduce_impl_(inp, dim, index, src, reduce, include_self=include_self)
+    return _scatter_reduce_impl_(
+        inp, dim, index, src, reduce, include_self=include_self
+    )
 
 
 def scatter_reduce_out(inp, dim, index, src, reduce, *, include_self=True, out):
