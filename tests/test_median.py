@@ -441,12 +441,7 @@ def test_median_bool_no_dim_full_registration():
 
 
 @pytest.mark.median
-def test_median_iluvatar_sort_fallback_full_registration(monkeypatch):
-    import importlib
-
-    median_ops = importlib.import_module("flag_gems.ops.median")
-
-    monkeypatch.setattr(median_ops.device, "vendor_name", "iluvatar")
+def test_median_full_registration_nan_semantics():
     inp = torch.tensor(
         [[3.0, 1.0, 2.0], [float("nan"), 4.0, 5.0]],
         device=flag_gems.device,

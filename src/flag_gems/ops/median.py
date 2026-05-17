@@ -6,23 +6,22 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.topk import _get_finfo_val, _get_iinfo_val
-from flag_gems.runtime import device, torch_device_fn
+from flag_gems.ops.topk import _get_iinfo_val
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
 MedianResult = namedtuple("median", ["values", "indices"])
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-)
 
 _DIRECT_REDUCTION_LIMIT = 256
 _DIRECT_FLAT_LIMIT = 256
 _DIRECT_REDUCTION_DTYPES = {
+    torch.bool,
     torch.float16,
     torch.bfloat16,
     torch.float32,
+    torch.float64,
     torch.int8,
     torch.uint8,
     torch.int16,
@@ -35,53 +34,20 @@ _BF16_LASTDIM_SORT_LIMIT = 2048
 _LASTDIM_SORT_DTYPES = {torch.float16, torch.bfloat16}
 _FLAT_SORT_DTYPES = _LASTDIM_SORT_DTYPES | {torch.float32}
 _F16_KEY_SELECT_MIN = 512
-_F16_KEY_SELECT_LIMIT = 2048
+_F16_KEY_SELECT_LIMIT = 8192
 _F16_KEY_SELECT_DTYPES = {torch.float16, torch.bfloat16}
 _FP32_KEY_SELECT_MIN = 257
-_FP32_KEY_SELECT_LIMIT = 2048
-_INT_LASTDIM_SELECT_LIMIT = 2048
-_INT_LASTDIM_SELECT_DTYPES = {torch.int16, torch.int32}
+_FP32_KEY_SELECT_LIMIT = 8192
+_INT_LASTDIM_SELECT_LIMIT = 8192
+_INT_LASTDIM_SELECT_DTYPES = {
+    torch.int8,
+    torch.uint8,
+    torch.int16,
+    torch.int32,
+    torch.int64,
+}
 _STRIDED_SELECT_MIN = _DIRECT_REDUCTION_LIMIT + 1
 _STRIDED_SELECT_LIMIT = 2048
-
-
-def _is_iluvatar_backend():
-    return device.vendor_name == "iluvatar"
-
-
-def _median_flat_native(flat):
-    if flat.is_floating_point() and torch.isnan(flat).any():
-        return torch.full((), float("nan"), dtype=flat.dtype, device=flat.device)
-    sorted_values = torch.ops.aten.sort.default.redispatch(
-        _FALLBACK_KEYSET, flat
-    ).values
-    return sorted_values[(flat.numel() - 1) // 2].reshape(()).clone()
-
-
-def _median_dim_native(inp, dim, keepdim):
-    rank = (inp.shape[dim] - 1) // 2
-    sorted_values, sorted_indices = torch.ops.aten.sort.default.redispatch(
-        _FALLBACK_KEYSET, inp, dim, False
-    )
-    values = sorted_values.select(dim, rank)
-    indices = sorted_indices.select(dim, rank).to(torch.int64)
-
-    if inp.is_floating_point():
-        nan_mask_full = torch.isnan(inp)
-        has_nan = nan_mask_full.any(dim=dim)
-        if has_nan.any():
-            first_nan = torch.argmax(nan_mask_full.to(torch.int64), dim=dim)
-            values = torch.where(
-                has_nan,
-                torch.full_like(values, float("nan")),
-                values,
-            )
-            indices = torch.where(has_nan, first_nan.to(torch.int64), indices)
-
-    if keepdim:
-        values = values.unsqueeze(dim)
-        indices = indices.unsqueeze(dim)
-    return values, indices
 
 
 @libentry()
@@ -111,7 +77,7 @@ def median_small_dim_kernel(
     )
 
     if inp.dtype.element_ty.is_floating():
-        high = _get_finfo_val(inp.dtype.element_ty, return_max=True)
+        high = float("inf")
     else:
         high = _get_iinfo_val(inp.dtype.element_ty, return_max=True)
 
@@ -162,7 +128,9 @@ def median_small_flat_kernel(
     valid = offsets < WIDTH
 
     if inp.dtype.element_ty.is_floating():
-        high = _get_finfo_val(inp.dtype.element_ty, return_max=True)
+        high = float("inf")
+    elif inp.dtype.element_ty is tl.int1:
+        high = True
     else:
         high = _get_iinfo_val(inp.dtype.element_ty, return_max=True)
 
@@ -187,28 +155,6 @@ def median_small_flat_kernel(
         median_value = tl.where(has_nan, nan_value, median_value)
 
     tl.store(value, median_value)
-
-
-@libentry()
-@triton.jit
-def median_nan_fix_kernel(
-    row_data,
-    values,
-    indices,
-    WIDTH: tl.constexpr,
-    BLOCK: tl.constexpr,
-):
-    row = tl.program_id(0)
-    lane = tl.arange(0, BLOCK)
-    valid = lane < WIDTH
-    base = row_data + row * WIDTH
-    data = tl.load(base + lane, mask=valid, other=0.0)
-    is_nan = valid & (data != data)
-    is_nan_i32 = is_nan.to(tl.int32)
-    row_has_nan = tl.max(is_nan_i32, axis=0) != 0
-    first_nan = tl.argmax(is_nan_i32, axis=0)
-    tl.store(values + row, tl.load(base + first_nan), mask=row_has_nan)
-    tl.store(indices + row, first_nan.to(tl.int64), mask=row_has_nan)
 
 
 @libentry()
@@ -632,30 +578,39 @@ def _raise_dim_dtype(dtype):
     raise NotImplementedError(f'"median_out_impl" not implemented for {dtype_name!r}')
 
 
-def _nan_override(row_data, row_values, row_indices):
-    if not row_data.dtype.is_floating_point:
-        return row_values, row_indices
+def _int_search_steps(dtype):
+    if dtype in (torch.int8, torch.uint8):
+        return 8
+    if dtype == torch.int16:
+        return 16
+    if dtype == torch.int32:
+        return 32
+    if dtype == torch.int64:
+        return 64
+    raise NotImplementedError(f"median integer selection not implemented for {dtype}")
 
+
+def _unsupported_width(dtype, width):
+    raise NotImplementedError(
+        f"median Triton selection not implemented for dtype {dtype} "
+        f"with reduction width {width}"
+    )
+
+
+def _median_from_rows(row_data, output_shape):
     width = row_data.shape[-1]
-    rows = row_data.numel() // width
-    block = triton.next_power_of_2(width)
-    num_warps = 1 if block <= 1024 else min(8, max(4, block // 512))
-    with torch_device_fn.device(row_data.device):
-        median_nan_fix_kernel[(rows,)](
-            row_data.reshape(rows, width),
-            row_values.reshape(rows),
-            row_indices.reshape(rows),
-            WIDTH=width,
-            BLOCK=block,
-            num_warps=num_warps,
-        )
-    return row_values, row_indices
-
-
-def _median_from_rows(row_data):
-    kth = (row_data.shape[-1] + 1) // 2
-    result = torch.kthvalue(row_data, kth, dim=-1)
-    return _nan_override(row_data, result.values, result.indices)
+    if _use_f16_key_select(row_data.dtype, width):
+        return _median_f16_key_select(row_data, output_shape)
+    if _use_lastdim_sort(row_data.dtype, width):
+        return _median_lastdim_sort(row_data, output_shape)
+    if _use_fp32_key_select(row_data.dtype, width):
+        return _median_fp32_key_select(row_data, output_shape)
+    if (
+        width <= _INT_LASTDIM_SELECT_LIMIT
+        and row_data.dtype in _INT_LASTDIM_SELECT_DTYPES
+    ):
+        return _median_int_lastdim_select(row_data, output_shape)
+    _unsupported_width(row_data.dtype, width)
 
 
 def _median_small_flat(inp):
@@ -726,7 +681,7 @@ def _median_int_lastdim_select(row_data, output_shape):
     values = torch.empty(output_shape, dtype=row_data.dtype, device=row_data.device)
     indices = torch.empty(output_shape, dtype=torch.int64, device=row_data.device)
     block = triton.next_power_of_2(width)
-    search_steps = 16 if row_data.dtype == torch.int16 else 32
+    search_steps = _int_search_steps(row_data.dtype)
     with torch_device_fn.device(row_data.device):
         median_int_lastdim_select_kernel[(rows,)](
             row_data.reshape(rows, width),
@@ -874,19 +829,12 @@ def median(inp):
     inp = _anonymous(inp)
     if inp.numel() == 0:
         return _empty_result_value(inp)
-    if inp.dtype == torch.bool:
-        true_count = torch.ops.aten.count_nonzero.default.redispatch(
-            _FALLBACK_KEYSET, inp
-        )
-        return (true_count > inp.numel() // 2).to(torch.bool)
     if inp.dtype.is_complex:
         raise RuntimeError("Sort does not support complex dtypes on CPU")
     if inp.numel() == 1:
         return inp.reshape(()).clone()
 
     flat = inp.contiguous().reshape(-1)
-    if _is_iluvatar_backend():
-        return _median_flat_native(flat)
     if inp.dtype in _DIRECT_REDUCTION_DTYPES and inp.numel() <= _DIRECT_FLAT_LIMIT:
         return _median_small_flat(flat)
 
@@ -903,7 +851,7 @@ def median(inp):
     ):
         values, _ = _median_int_lastdim_select(row_data, ())
     else:
-        values, _ = _median_from_rows(row_data)
+        values, _ = _median_from_rows(row_data, ())
     return values.reshape(())
 
 
@@ -947,9 +895,7 @@ def median_dim(inp, dim=0, keepdim=False):
     else:
         if work.dtype == torch.bool or work.dtype.is_complex:
             _raise_dim_dtype(work.dtype)
-        if _is_iluvatar_backend():
-            values, indices = _median_dim_native(work.contiguous(), dim, keepdim)
-        elif (
+        if (
             work.shape[dim] <= _DIRECT_REDUCTION_LIMIT
             and work.dtype in _DIRECT_REDUCTION_DTYPES
         ):
@@ -997,7 +943,7 @@ def median_dim(inp, dim=0, keepdim=False):
             ):
                 values, indices = _median_int_lastdim_select(rows, row_output_shape)
             else:
-                values, indices = _median_from_rows(rows)
+                values, indices = _median_from_rows(rows, row_output_shape)
             if keepdim:
                 values = torch.movedim(values.unsqueeze(-1), -1, dim)
                 indices = torch.movedim(indices.unsqueeze(-1), -1, dim)
