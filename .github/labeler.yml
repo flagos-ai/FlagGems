@@ -86,6 +86,11 @@ vendor/Cambricon:
       - any-glob-to-any-file:
           - 'src/flag_gems/runtime/backend/_cambricon/**'
 
+vendor/Enflame:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_enflame/**'
+
 vendor/Hygon:
   - changed-files:
       - any-glob-to-any-file:
@@ -116,10 +121,20 @@ vendor/NVIDIA:
       - any-glob-to-any-file:
           - 'src/flag_gems/runtime/backend/_nvidia/**'
 
+vendor/SpaceMit:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_spacemit**'
+
 vendor/Sunrise:
   - changed-files:
       - any-glob-to-any-file:
           - 'src/flag_gems/runtime/backend/_sunrise/**'
+
+vendor/THead:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_thead/**'
 
 vendor/TsingMicro:
   - changed-files:
