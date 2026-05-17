@@ -22,7 +22,7 @@ case $VENDOR in
 
   enflame)
     uv pip install -e .
-    uv pip install ".[enflame]"
+    # uv pip install ".[enflame]"
 
     uv pip install --index ${FLAGOS_PYPI} \
       "torch==2.9.1+cpu" \
@@ -32,6 +32,7 @@ case $VENDOR in
       "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323"
 
     uv pip install ".[test]"
+
     # Replace triton with flagtree if requested
     # Currenly not working because it requires GLIBCXX_3.4.32
     # if [ -n "${USE_TRITON}" ]; then
