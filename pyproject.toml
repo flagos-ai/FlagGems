@@ -79,6 +79,7 @@ iluvatar = [
 
 kunlunxin = [
     "benchflow==1.0.0",
+    "colorama==0.4.6",
     "hyperparameter==0.5.6",
     "torch==2.5.1+cu118",
     "torchaudio==2.5.1+cu118",
@@ -180,6 +181,8 @@ conflicts = [
         { extra = "metax" },
         { extra = "mthreads" },
         { extra = "nvidia" },
+        { extra = "spacemit" },
+        { extra = "thead" },
         { extra = "tsingmicro" },
     ],
 ]
