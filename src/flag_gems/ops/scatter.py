@@ -667,8 +667,8 @@ def _check_scatter_reduce_args(inp, dim, index, src, reduce):
         raise RuntimeError(f"Unsupported scatter_reduce reduce operation: {reduce}")
     if inp.ndim == 0 or not (-inp.ndim <= dim < inp.ndim):
         raise RuntimeError(f"Dimension out of range for scatter_reduce: {dim}")
-    if index.dtype != torch.int64:
-        raise RuntimeError("scatter_reduce index must have int64 dtype")
+    if index.dtype not in (torch.int32, torch.int64):
+        raise RuntimeError("scatter_reduce index must have int32 or int64 dtype")
     if index.ndim != inp.ndim:
         raise RuntimeError("Index tensor must have the same rank as input tensor")
     if src.ndim != inp.ndim:

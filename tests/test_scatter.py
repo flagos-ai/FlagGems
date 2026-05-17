@@ -288,9 +288,7 @@ def test_scatter_reduce_nan_matches_pytorch(reduce, include_self):
 
 
 @pytest.mark.scatter_reduce
-@pytest.mark.parametrize(
-    "bad_index_dtype", [torch.float32, torch.bool, torch.int16, torch.int32]
-)
+@pytest.mark.parametrize("bad_index_dtype", [torch.float32, torch.bool, torch.int16])
 def test_scatter_reduce_invalid_index_dtype_falls_back_to_pytorch_error(
     bad_index_dtype,
 ):
