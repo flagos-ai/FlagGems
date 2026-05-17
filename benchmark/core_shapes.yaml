@@ -200,6 +200,14 @@ TensorSelectBenchmark:
     - [4096, 4096]
     - [1024, 65536]
 
+ScatterReducePublicBenchmark:
+  shapes:
+    - [128, 256]
+    - [512, 1024]
+    - [2048, 2048]
+    - [1024, 4096]
+  shape_desc: "M, N"
+
 EmbeddingBenchmark:
   shapes:
     - [4, 4]

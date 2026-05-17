@@ -22,6 +22,15 @@ random.seed(time.time() // 100)
 
 
 PUBLIC_SCATTER_REDUCTIONS = ("sum", "prod", "mean", "amax", "amin")
+PUBLIC_SCATTER_REDUCE_FLOAT_DTYPES = (
+    [torch.float32] if cfg.QUICK_MODE else [torch.float16, torch.float32]
+)
+PUBLIC_SCATTER_REDUCE_SHAPE_CASES = (
+    ((6, 4), (5, 4), 0),
+    ((3, 6, 4), (3, 5, 4), 1),
+    ((2, 3, 7), (2, 3, 5), -1),
+)
+PUBLIC_SCATTER_REDUCE_OVERLOADS = ("functional", "inplace", "out")
 
 
 def _scatter_reduce_name(reduce):
@@ -70,6 +79,79 @@ def _public_scatter_reduce_inputs():
         device=flag_gems.device,
     )
     return inp, index, src
+
+
+def _public_scatter_reduce_shape_inputs(inp_shape, src_shape, dim, dtype):
+    inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+    dim = dim % len(inp_shape)
+    dim_index = torch.arange(src_shape[dim], dtype=torch.long, device=flag_gems.device)
+    dim_index = dim_index % inp_shape[dim]
+    view_shape = [1] * len(src_shape)
+    view_shape[dim] = src_shape[dim]
+    index = dim_index.reshape(view_shape).expand(src_shape).clone()
+    return inp, index, src
+
+
+def _reference_public_scatter_reduce(
+    inp, dim, index, src, reduce, include_self, overload, dtype
+):
+    ref_inp = utils.to_reference(inp.clone(), upcast=True)
+    ref_index = utils.to_reference(index)
+    ref_src = utils.to_reference(src, upcast=True)
+
+    if overload == "functional":
+        return torch.scatter_reduce(
+            ref_inp,
+            dim,
+            ref_index,
+            ref_src,
+            reduce,
+            include_self=include_self,
+        ).to(dtype)
+
+    if overload == "inplace":
+        return ref_inp.scatter_reduce_(
+            dim,
+            ref_index,
+            ref_src,
+            reduce,
+            include_self=include_self,
+        ).to(dtype)
+
+    ref_out = torch.empty_like(ref_inp)
+    torch.scatter_reduce(
+        ref_inp,
+        dim,
+        ref_index,
+        ref_src,
+        reduce,
+        include_self=include_self,
+        out=ref_out,
+    )
+    return ref_out.to(dtype)
+
+
+def _result_public_scatter_reduce(inp, dim, index, src, reduce, include_self, overload):
+    if overload == "functional":
+        with flag_gems.use_gems(include=["scatter_reduce"]):
+            return torch.scatter_reduce(
+                inp, dim, index, src, reduce, include_self=include_self
+            )
+
+    if overload == "inplace":
+        with flag_gems.use_gems(include=["scatter_reduce_"]):
+            return inp.clone().scatter_reduce_(
+                dim, index, src, reduce, include_self=include_self
+            )
+
+    out = torch.empty_like(inp)
+    with flag_gems.use_gems(include=["scatter_reduce"]):
+        result = torch.scatter_reduce(
+            inp, dim, index, src, reduce, include_self=include_self, out=out
+        )
+    assert result.data_ptr() == out.data_ptr()
+    return out
 
 
 def _assert_registered_keys(expected_keys):
@@ -206,7 +288,9 @@ def test_scatter_reduce_nan_matches_pytorch(reduce, include_self):
 
 
 @pytest.mark.scatter_reduce
-@pytest.mark.parametrize("bad_index_dtype", [torch.float32, torch.bool, torch.int16])
+@pytest.mark.parametrize(
+    "bad_index_dtype", [torch.float32, torch.bool, torch.int16, torch.int32]
+)
 def test_scatter_reduce_invalid_index_dtype_falls_back_to_pytorch_error(
     bad_index_dtype,
 ):
@@ -216,6 +300,29 @@ def test_scatter_reduce_invalid_index_dtype_falls_back_to_pytorch_error(
     with pytest.raises(RuntimeError):
         with flag_gems.use_gems(include=["scatter_reduce"]):
             torch.scatter_reduce(inp, 1, index, src, "sum", include_self=True)
+
+
+@pytest.mark.scatter_reduce
+@pytest.mark.parametrize("inp_shape, src_shape, dim", PUBLIC_SCATTER_REDUCE_SHAPE_CASES)
+@pytest.mark.parametrize("dtype", PUBLIC_SCATTER_REDUCE_FLOAT_DTYPES)
+@pytest.mark.parametrize("reduce", ["sum", "mean"])
+@pytest.mark.parametrize("include_self", [True, False])
+@pytest.mark.parametrize("overload", PUBLIC_SCATTER_REDUCE_OVERLOADS)
+def test_scatter_reduce_public_api_shapes_dims_dtypes(
+    inp_shape, src_shape, dim, dtype, reduce, include_self, overload
+):
+    inp, index, src = _public_scatter_reduce_shape_inputs(
+        inp_shape, src_shape, dim, dtype
+    )
+
+    ref_out = _reference_public_scatter_reduce(
+        inp, dim, index, src, reduce, include_self, overload, dtype
+    )
+    res_out = _result_public_scatter_reduce(
+        inp, dim, index, src, reduce, include_self, overload
+    )
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=max(1, index.numel()))
 
 
 @pytest.mark.scatter_reduce
