@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 
 from flag_gems import runtime
 from flag_gems.fused.FLA import chunk_gated_delta_rule_fwd
@@ -94,94 +93,18 @@ def _is_iluvatar_backend() -> bool:
     return getattr(runtime.device, "vendor_name", "").lower() == "iluvatar"
 
 
-def _torch_semantic_fallback_recurrent_fwd(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    beta: torch.Tensor,
-    g: torch.Tensor,
-    scale: float,
-    initial_state: torch.Tensor | None,
-    output_final_state: bool,
-    cu_seqlens: torch.Tensor | None,
-) -> tuple[torch.Tensor, torch.Tensor | None]:
-    """Reference torch recurrence used only as an explicit semantic fallback."""
-    q_float = q.float()
-    k_float = k.float()
-    v_float = v.float()
-    beta_float = beta.float()
-    g_float = g.float()
-    B, T, Hg, K = q.shape
-    H, V = v.shape[2], v.shape[3]
-    heads_per_group = H // Hg
-    out = torch.empty_like(v_float)
-    final_state = None
-    if output_final_state:
-        n_state = B if cu_seqlens is None else cu_seqlens.numel() - 1
-        final_state = torch.empty(
-            n_state, H, K, V, device=v.device, dtype=torch.float32
-        )
-
-    if cu_seqlens is None:
-        if initial_state is None:
-            h = torch.zeros(B, H, K, V, device=v.device, dtype=torch.float32)
-        else:
-            h = initial_state.float().clone()
-        for t in range(T):
-            q_heads = q_float[:, t].repeat_interleave(heads_per_group, dim=1)
-            k_heads = k_float[:, t].repeat_interleave(heads_per_group, dim=1)
-            h *= torch.exp(g_float[:, t, :, None, None])
-            residual = v_float[:, t] - torch.einsum("bhk,bhkv->bhv", k_heads, h)
-            update = residual * beta_float[:, t, :, None]
-            h += k_heads[..., :, None] * update[..., None, :]
-            out[:, t] = torch.einsum("bhk,bhkv->bhv", q_heads * scale, h)
-        if final_state is not None:
-            final_state.copy_(h)
-        return out.to(v.dtype), final_state
-
-    cu_cpu = cu_seqlens.detach().cpu().tolist()
-    for state_idx, (start, end) in enumerate(zip(cu_cpu, cu_cpu[1:])):
-        if initial_state is None:
-            h = torch.zeros(H, K, V, device=v.device, dtype=torch.float32)
-        else:
-            h = initial_state[state_idx].float().clone()
-        for t in range(start, end):
-            q_heads = q_float[0, t].repeat_interleave(heads_per_group, dim=0)
-            k_heads = k_float[0, t].repeat_interleave(heads_per_group, dim=0)
-            h *= torch.exp(g_float[0, t, :, None, None])
-            residual = v_float[0, t] - torch.einsum("hk,hkv->hv", k_heads, h)
-            update = residual * beta_float[0, t, :, None]
-            h += k_heads[..., :, None] * update[..., None, :]
-            out[0, t] = torch.einsum("hk,hkv->hv", q_heads * scale, h)
-        if final_state is not None:
-            final_state[state_idx] = h
-
-    return out.to(v.dtype), final_state
-
-
-def _semantic_fallback_recurrent_fwd(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    beta: torch.Tensor,
-    g: torch.Tensor,
-    scale: float,
-    initial_state: torch.Tensor | None,
-    output_final_state: bool,
-    cu_seqlens: torch.Tensor | None,
-) -> tuple[torch.Tensor, torch.Tensor | None]:
-    """Fallback dispatcher for supported semantics when direct/chunk kernels cannot run."""
-    return _torch_semantic_fallback_recurrent_fwd(
-        q=q,
-        k=k,
-        v=v,
-        beta=beta,
-        g=g,
-        scale=scale,
-        initial_state=initial_state,
-        output_final_state=output_final_state,
-        cu_seqlens=cu_seqlens,
+def _unsupported(message: str) -> None:
+    raise NotImplementedError(
+        f"chunk_gated_delta_rule does not support {message} without a Triton "
+        "kernel implementation"
     )
+
+
+def _ensure_fla_supported(use_qk_l2norm_in_kernel: bool) -> None:
+    if _is_iluvatar_backend():
+        _unsupported("Iluvatar backend execution")
+    if use_qk_l2norm_in_kernel:
+        _unsupported("q/k L2 normalization outside the direct Triton path")
 
 
 def chunk_gated_delta_rule(
@@ -259,27 +182,7 @@ def chunk_gated_delta_rule(
                 o = o.transpose(1, 2)
             return o, final_state
 
-    # Unsupported direct cases use the semantic fallback path; the chunk kernels do
-    # not normalize q/k internally.
-    if use_qk_l2norm_in_kernel:
-        q_seq = F.normalize(q_seq, p=2.0, dim=-1, eps=1e-6)
-        k_seq = F.normalize(k_seq, p=2.0, dim=-1, eps=1e-6)
-
-    if _is_iluvatar_backend():
-        o, final_state = _semantic_fallback_recurrent_fwd(
-            q=q_seq,
-            k=k_seq,
-            v=v_seq,
-            beta=beta_seq,
-            g=g_seq,
-            scale=float(scale),
-            initial_state=initial_state,
-            output_final_state=output_final_state,
-            cu_seqlens=cu_seqlens,
-        )
-        if head_first:
-            o = o.transpose(1, 2)
-        return o, final_state
+    _ensure_fla_supported(use_qk_l2norm_in_kernel)
 
     _, o, _, final_state, _, _, _ = chunk_gated_delta_rule_fwd(
         q=q_seq,

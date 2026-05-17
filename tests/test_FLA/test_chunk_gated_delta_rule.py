@@ -1,9 +1,15 @@
+import importlib
+
 import pytest
 import torch
 import torch.nn.functional as F
 import triton
 
 import flag_gems
+
+chunk_gated_delta_rule_module = importlib.import_module(
+    "flag_gems.fused.chunk_gated_delta_rule"
+)
 
 _TRITON_ALLOCATOR_READY = False
 
@@ -381,3 +387,43 @@ def test_chunk_gated_delta_rule_supports_qk_l2norm_option():
     )
 
     _assert_close(actual, expected, dtype)
+
+
+def test_chunk_gated_delta_rule_rejects_qk_l2norm_outside_direct_path():
+    dtype = torch.float32
+    torch.manual_seed(6000)
+    q, k, v, beta, g = _make_inputs(
+        B=1, T=129, Hg=2, H=4, K=64, V=32, dtype=dtype, head_first=True
+    )
+
+    with pytest.raises(NotImplementedError, match="q/k L2 normalization"):
+        flag_gems.chunk_gated_delta_rule(
+            q,
+            k,
+            v,
+            beta,
+            g,
+            head_first=True,
+            output_final_state=False,
+            use_qk_l2norm_in_kernel=True,
+        )
+
+
+def test_chunk_gated_delta_rule_rejects_iluvatar_fla_path(monkeypatch):
+    dtype = torch.float32
+    torch.manual_seed(7000)
+    q, k, v, beta, g = _make_inputs(
+        B=1, T=129, Hg=2, H=4, K=64, V=32, dtype=dtype, head_first=False
+    )
+    monkeypatch.setattr(chunk_gated_delta_rule_module, "_is_iluvatar_backend", lambda: True)
+
+    with pytest.raises(NotImplementedError, match="Iluvatar backend"):
+        flag_gems.chunk_gated_delta_rule(
+            q,
+            k,
+            v,
+            beta,
+            g,
+            head_first=False,
+            output_final_state=False,
+        )
