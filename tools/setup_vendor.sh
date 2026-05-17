@@ -97,6 +97,7 @@ case $VENDOR in
 
     uv pip install --index ${FLAGOS_PYPI} \
         "benchflow==1.0.0" \
+        "colorama==0.4.6" \
         "hyperparameter==0.5.6" \
         "torch==2.5.1+cu118" \
         "torchaudio==2.5.1+cu118" \
