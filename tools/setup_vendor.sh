@@ -27,7 +27,7 @@ case $VENDOR in
     uv pip install --index ${FLAGOS_PYPI} \
       "torch==2.9.1+cpu" \
       "torch-gcu==2.9.1+3.7.1" \
-      "triton==3.3.1" \
+      "triton==3.3.0" \
       "triton-gcu==3.3.1+1.0.20260323" \
       "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323"
 
