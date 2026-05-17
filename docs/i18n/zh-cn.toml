@@ -1,0 +1,20 @@
+[op_desc]
+other = "描述"
+
+[op_kind]
+other = "类别"
+
+[op_labels]
+other = "标签"
+
+[op_name]
+other = "名称"
+
+[op_since]
+other = "对应版本"
+
+[op_stage]
+other = "阶段"
+
+[seq_no]
+other = "序号"

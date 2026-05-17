@@ -1,0 +1,20 @@
+[op_desc]
+other = "Description"
+
+[op_kind]
+other = "Kind"
+
+[op_labels]
+other = "Labels"
+
+[op_name]
+other = "Name"
+
+[op_since]
+other = "Since"
+
+[op_stage]
+other = "Stage"
+
+[seq_no]
+other = "No."
