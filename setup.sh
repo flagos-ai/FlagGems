@@ -9,6 +9,7 @@ SUPPORTED_VENDORS=(
   "metax"
   "mthreads"
   "nvidia"
+  "spacemit"
   "thead"
   "tsingmicro"
 )
@@ -99,7 +100,7 @@ if [ "$?" != 0 ]; then
   printf "$RED{FAILED]$NC\n"
   exit 1
 else
-  printf "$RED[OK]$NC\n"
+  printf "$GREEN[OK]$NC\n"
   source .venv/bin/activate
 fi
 
