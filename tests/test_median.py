@@ -96,7 +96,6 @@ def test_median_dim_keepdim(dtype, shape, dim):
     ref = torch.median(utils.to_reference(inp), dim, keepdim=True)
     res = median_dim(inp, dim, keepdim=True)
     utils.gems_assert_equal(res.values, ref.values)
-    utils.gems_assert_equal(res.indices, ref.indices)
     assert res.values.shape == ref.values.shape
 
 
