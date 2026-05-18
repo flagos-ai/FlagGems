@@ -5,13 +5,12 @@ from typing import List
 import torch
 import triton
 import triton.language as tl
+from triton.tools.tensor_descriptor import TensorDescriptor
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
-
-from .utils import create_tma_device_descriptor, get_cached_tma_device_descriptor
 
 logger = logging.getLogger(
     "flag_gems.runtime.backend._mthreads.ops.w8a8_block_fp8_matmul"
@@ -162,88 +161,26 @@ def w8a8_block_fp8_matmul_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
-def sqmma_descriptor_pre_hook(nargs):
-    a = nargs["A"]
-    b = nargs["B"]
-    c = nargs["C"]
-    block_m = nargs["BLOCK_M"]
-    block_n = nargs["BLOCK_N"]
-    block_k = nargs["BLOCK_K"]
-    device = c.device
-
-    nargs["a_desc_ptr"].copy_(
-        get_cached_tma_device_descriptor(a, block_m, block_k, device)
-    )
-    nargs["b_desc_ptr"].copy_(
-        get_cached_tma_device_descriptor(b, block_k, block_n, device)
-    )
-    nargs["c_desc_ptr"].copy_(create_tma_device_descriptor(c, block_m, block_n, device))
-
-
-def sqmma_get_configs(pre_hook=sqmma_descriptor_pre_hook):
-    return [
-        triton.Config(
-            {
-                "BLOCK_M": 64,
-                "BLOCK_N": 64,
-                "BLOCK_K": 128,
-                "GROUP_M": 8,
-            },
-            num_stages=3,
-            num_warps=4,
-            pre_hook=pre_hook,
-        )
-    ]
-
-
-@libentry()
-@libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general_tma",
-        pre_hook=sqmma_descriptor_pre_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else sqmma_get_configs(),
-    key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
-    warmup=5,
-    rep=5,
-)
 @triton.jit
 def w8a8_block_fp8_matmul_sqmma_kernel(
-    A,
-    B,
-    C,
+    a_desc,
+    b_desc,
+    c_desc,
     As,
     Bs,
-    a_desc_ptr,
-    b_desc_ptr,
-    c_desc_ptr,
     M,
     N,
     K,
     group_n,
     group_k,
-    stride_am,
-    stride_bk,
     stride_As_m,
     stride_As_k,
     stride_Bs_n,
     stride_Bs_k,
-    dtype: tl.constexpr,
-    input_dtype: tl.constexpr,
-    output_dtype: tl.constexpr,
     GROUP_M: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
-    is_transpose_a: tl.constexpr = False,
-    is_transpose_b: tl.constexpr = True,
 ):
     pid = ext.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_M)
@@ -261,24 +198,10 @@ def w8a8_block_fp8_matmul_sqmma_kernel(
     row_offset = offs_am + tl.arange(0, BLOCK_M)
     col_offset = offs_bn + tl.arange(0, BLOCK_N)
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    tme_load_input_dtype = input_dtype
-    c_store_dtype = output_dtype
 
     for _ in range(0, tl.cdiv(K, BLOCK_K)):
-        a = tl._experimental_descriptor_load(
-            a_desc_ptr,
-            [offs_am, offs_k],
-            [BLOCK_M, BLOCK_K],
-            tme_load_input_dtype,
-            is_transpose_a,
-        )
-        b = tl._experimental_descriptor_load(
-            b_desc_ptr,
-            [offs_k, offs_bn],
-            [BLOCK_K, BLOCK_N],
-            tme_load_input_dtype,
-            is_transpose_b,
-        )
+        a = tl.load_tensor_descriptor(a_desc, [offs_am, offs_k])
+        b = tl.load_tensor_descriptor(b_desc, [offs_k, offs_bn])
 
         scale_k = offs_k // group_k
         a_s = tl.load(
@@ -298,9 +221,7 @@ def w8a8_block_fp8_matmul_sqmma_kernel(
         )
         offs_k += BLOCK_K
 
-    tl._experimental_descriptor_store(
-        c_desc_ptr, acc.to(c_store_dtype), [offs_am, offs_bn]
-    )
+    tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], acc.to(c_desc.dtype))
 
 
 def general_w8a8_block_fp8_matmul(
@@ -373,24 +294,19 @@ def sqmma_w8a8_block_fp8_matmul(
         b.stride(0) == 1,
     )
     device = a.device
-    is_transpose_a = False
-    is_transpose_b = True
-
     if not a.is_contiguous():
-        if a.stride(0) == 1 and a.stride(1) == a.shape[0]:
-            is_transpose_a = True
-        else:
-            a = a.contiguous()
+        a = a.contiguous()
     if not b.is_contiguous():
-        if b.stride(0) == 1 and b.stride(1) == b.shape[0]:
-            is_transpose_b = False
-        else:
-            b = b.contiguous()
-            is_transpose_b = True
+        b = b.contiguous()
 
-    desc_a = torch.empty((64,), dtype=torch.int8, device=device)
-    desc_b = torch.empty((64,), dtype=torch.int8, device=device)
-    desc_c = torch.empty((64,), dtype=torch.int8, device=device)
+    BLOCK_M = 64
+    BLOCK_N = 64
+    BLOCK_K = 128
+    GROUP_M = 8
+
+    desc_a = TensorDescriptor.from_tensor(a, [BLOCK_M, BLOCK_K])
+    desc_b = TensorDescriptor.from_tensor(b, [BLOCK_K, BLOCK_N])
+    desc_c = TensorDescriptor.from_tensor(c, [BLOCK_M, BLOCK_N])
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
@@ -400,30 +316,26 @@ def sqmma_w8a8_block_fp8_matmul(
 
     with torch_device_fn.device(device):
         w8a8_block_fp8_matmul_sqmma_kernel[grid](
-            a,
-            b,
-            c,
-            a_s,
-            b_s,
             desc_a,
             desc_b,
             desc_c,
+            a_s,
+            b_s,
             M,
             N,
             K,
             group_n,
             group_k,
-            a.stride(0),
-            b.stride(1),
             a_s.stride(0),
             a_s.stride(1),
             b_s.stride(0),
             b_s.stride(1),
-            dtype=str(a.dtype).split(".")[-1],
-            input_dtype=get_triton_type(a.dtype),
-            output_dtype=get_triton_type(c.dtype),
-            is_transpose_a=is_transpose_a,
-            is_transpose_b=is_transpose_b,
+            GROUP_M,
+            BLOCK_M,
+            BLOCK_N,
+            BLOCK_K,
+            num_warps=4,
+            num_stages=3,
         )
     return c
 
