@@ -52,7 +52,7 @@ def test_index_add():
         op_name="index_add",
         torch_op=torch.index_add,
         input_fn=index_add_input_fn,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
         get_gbps=index_add_gbps,
     )
     bench.run()
@@ -76,7 +76,7 @@ def test_index_add_():
         op_name="index_add_",
         torch_op=torch.Tensor.index_add_,
         input_fn=index_add__input_fn,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
         get_gbps=index_add_gbps,
     )
     bench.run()
