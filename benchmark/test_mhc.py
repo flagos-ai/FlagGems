@@ -216,6 +216,10 @@ class HCHeadFusedBenchmark(base.Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
+            (1, 1280, 4),
+            (4, 2560, 4),
+            (16, 4096, 4),
+            (64, 7168, 4),
             (256, 1280, 2),
             (256, 1280, 4),
             (512, 1280, 2),

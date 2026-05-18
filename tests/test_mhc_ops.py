@@ -221,6 +221,10 @@ def test_mhc_bwd_vs_ref(seqlen, n_stream, sinkhorn_iters):
 
 
 MHC_HC_HEAD_FUSED_CONFIGS = [
+    (1, 1280, 4),
+    (4, 2560, 4),
+    (16, 4096, 4),
+    (64, 7168, 4),
     (256, 1280, 2),
     (256, 1280, 4),
     (512, 1280, 2),
