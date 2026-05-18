@@ -36,8 +36,6 @@ _FULL_CONFIG = (
     ("__or__.Tensor", bitwise_or_tensor),
     ("_assert_async", _assert_async),
     ("_conv_depthwise2d", _conv_depthwise2d),
-    ("_efficient_attention_backward", efficient_attention_backward),
-    ("_flash_attention_backward", flash_attention_backward),
     ("_flash_attention_forward", flash_attention_forward),
     (
         "_functional_sym_constrain_range_for_size",
@@ -500,6 +498,7 @@ _FULL_CONFIG = (
     ("sum.IntList_out", sum_dim_out),
     ("sum.dim_IntList", sum_dim),
     ("sum.out", sum_out),
+    ("svd", svd),
     ("t_copy", t_copy),
     ("t_copy.out", t_copy_out),
     ("tan", tan),
