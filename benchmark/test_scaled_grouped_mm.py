@@ -6,7 +6,9 @@ import flag_gems
 from . import base, consts
 
 
-def _cuda_fp8_available():
+def _native_scaled_grouped_mm_benchmark_available():
+    if not hasattr(torch, "_scaled_grouped_mm"):
+        return False
     if flag_gems.device != "cuda" or not torch.cuda.is_available():
         return False
     if not hasattr(torch, "float8_e4m3fn"):
@@ -85,8 +87,8 @@ class ScaledGroupedMMBenchmark(base.Benchmark):
 
 @pytest.mark.scaled_grouped_mm
 @pytest.mark.skipif(
-    not _cuda_fp8_available(),
-    reason="torch._scaled_grouped_mm benchmark requires CUDA FP8 support.",
+    not _native_scaled_grouped_mm_benchmark_available(),
+    reason="native torch._scaled_grouped_mm benchmark requires CUDA FP8 on SM89+.",
 )
 def test_scaled_grouped_mm_benchmark():
     bench = ScaledGroupedMMBenchmark()
