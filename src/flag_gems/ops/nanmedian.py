@@ -561,7 +561,10 @@ def nanmedian_radix_select_kernel(
             digit = ((keys >> digit_pos) & radix_mask_val).to(tl.int32)
             active = valid & matches
             if USE_HISTOGRAM:
-                counts += tl.histogram(digit, radix_size, active)
+                safe_digit = tl.where(active, digit, 0)
+                chunk_counts = tl.histogram(safe_digit, radix_size).to(tl.int32)
+                inactive_count = tl.sum((~active).to(tl.int32), axis=0)
+                counts += chunk_counts - tl.where(radix_bins == 0, inactive_count, 0)
             else:
                 for radix_bin in tl.static_range(0, radix_size):
                     bin_count = tl.sum(
@@ -684,8 +687,11 @@ def flat_radix_count_kernel(
     keys = _to_order_key(vals, valid)
     active = valid & ((keys & desired_mask) == desired)
     digit = ((keys >> DIGIT_POS) & radix_mask_val).to(tl.int32)
-    counts = tl.histogram(digit, RADIX_SIZE, active).to(tl.int64)
     bins = tl.arange(0, RADIX_SIZE)
+    safe_digit = tl.where(active, digit, 0)
+    counts = tl.histogram(safe_digit, RADIX_SIZE).to(tl.int64)
+    inactive_count = tl.sum((~active).to(tl.int64), axis=0)
+    counts -= tl.where(bins == 0, inactive_count, 0)
     tl.atomic_add(bin_counts + bins, counts, sem="relaxed")
 
 
