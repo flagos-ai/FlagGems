@@ -3684,6 +3684,23 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.1'
+  - id: median
+    description: |
+      Returns the median value of all elements in the `input` tensor (flat).
+      When `dim` is specified, returns a named tuple `(values, indices)` where
+      `values` contains the median of each slice along `dim` and `indices` holds
+      the original positions of the median elements.
+    for:
+      - median
+      - median.dim
+      - median.dim_values
+      - median.out
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - beta: '5.1'
   - id: min
     description: Returns the minimum value of all elements in the `input` tensor.
     for:
