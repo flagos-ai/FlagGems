@@ -44,7 +44,8 @@ def test_bitwise_or_scalar():
 
 def _scalar_input_fn_inplace(shape, dtype, device):
     inp = utils.generate_tensor_input(shape, dtype, device)
-    yield inp, 0x5A
+    scalar = True if dtype == torch.bool else 0x5A
+    yield inp, scalar
 
 
 @pytest.mark.bitwise_or_scalar_
