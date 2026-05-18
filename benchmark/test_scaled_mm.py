@@ -15,10 +15,6 @@ def _cuda_fp8_available():
     return major * 10 + minor >= 89 and hasattr(torch, "float8_e4m3fn")
 
 
-def _ascend_available():
-    return flag_gems.vendor_name == "ascend"
-
-
 def _benchmark_cases():
     if _cuda_fp8_available() and hasattr(torch, "_scaled_mm"):
         return [
@@ -27,15 +23,6 @@ def _benchmark_cases():
             (torch.float8_e4m3fn, "scalar", torch.float32, False),
             (torch.float8_e4m3fn, "rowwise", torch.bfloat16, True),
         ]
-
-    if _ascend_available():
-        cases = [
-            (torch.float16, "rowwise", torch.float16, True),
-            (torch.float32, "rowwise", torch.float32, True),
-        ]
-        if flag_gems.runtime.device.support_bf16:
-            cases.append((torch.bfloat16, "rowwise", torch.bfloat16, True))
-        return cases
 
     return []
 
@@ -50,63 +37,6 @@ def _case_id(case):
 
 def _benchmark_case_params():
     return [pytest.param(case, id=_case_id(case)) for case in _benchmark_cases()]
-
-
-def _scale_for_output(scale, rows, cols, is_left_scale):
-    if scale.numel() == 1:
-        return scale
-    if scale.ndim == 1:
-        if is_left_scale and scale.shape[0] == rows:
-            return scale.reshape(rows, 1)
-        if not is_left_scale and scale.shape[0] == cols:
-            return scale.reshape(1, cols)
-    return scale
-
-
-def torch_scaled_mm_reference(
-    mat1,
-    mat2,
-    scale_a,
-    scale_b,
-    bias=None,
-    scale_result=None,
-    out_dtype=None,
-    use_fast_accum=False,
-):
-    rows = mat1.shape[0]
-    cols = mat2.shape[1]
-    out = torch.mm(mat1.float(), mat2.float())
-    out = out * _scale_for_output(scale_a.float(), rows, cols, True)
-    out = out * _scale_for_output(scale_b.float(), rows, cols, False)
-    if bias is not None:
-        out = out + bias.float()
-    return out.to(out_dtype or mat1.dtype)
-
-
-def torch_scaled_mm_out_reference(
-    mat1,
-    mat2,
-    scale_a,
-    scale_b,
-    bias=None,
-    scale_result=None,
-    out_dtype=None,
-    use_fast_accum=False,
-    *,
-    out,
-):
-    result = torch_scaled_mm_reference(
-        mat1,
-        mat2,
-        scale_a,
-        scale_b,
-        bias=bias,
-        scale_result=scale_result,
-        out_dtype=out_dtype,
-        use_fast_accum=use_fast_accum,
-    )
-    out.copy_(result)
-    return out
 
 
 class ScaledMMBenchmark(base.Benchmark):
@@ -170,24 +100,26 @@ class ScaledMMBenchmark(base.Benchmark):
 
 
 @pytest.mark.scaled_mm
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Native torch._scaled_mm benchmark baseline is unavailable on Ascend.",
+)
 @pytest.mark.parametrize("case", _benchmark_case_params())
 def test_scaled_mm_benchmark(case):
-    torch_op = torch_scaled_mm_reference if _ascend_available() else torch._scaled_mm
-    bench = ScaledMMBenchmark("scaled_mm", torch_op, flag_gems.scaled_mm, case)
+    bench = ScaledMMBenchmark("scaled_mm", torch._scaled_mm, flag_gems.scaled_mm, case)
     bench.run()
 
 
 @pytest.mark.scaled_mm_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Native aten._scaled_mm.out benchmark baseline is unavailable on Ascend.",
+)
 @pytest.mark.parametrize("case", _benchmark_case_params())
 def test_scaled_mm_out_benchmark(case):
-    torch_op = (
-        torch_scaled_mm_out_reference
-        if _ascend_available()
-        else torch.ops.aten._scaled_mm.out
-    )
     bench = ScaledMMBenchmark(
         "scaled_mm_out",
-        torch_op,
+        torch.ops.aten._scaled_mm.out,
         flag_gems.scaled_mm_out,
         case,
         use_out=True,
