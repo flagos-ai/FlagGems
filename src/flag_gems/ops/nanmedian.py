@@ -68,8 +68,9 @@ def _triton_version_at_least(major, minor):
 
 def _use_cuda_masked_histogram():
     try:
-        importlib_metadata.version("flagtree")
-        return False
+        flagtree_version = importlib_metadata.version("flagtree")
+        if "+3.1" in flagtree_version:
+            return False
     except importlib_metadata.PackageNotFoundError:
         pass
 
