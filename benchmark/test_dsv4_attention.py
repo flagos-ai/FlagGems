@@ -116,7 +116,9 @@ class DSV4DecodeBenchmark(base.Benchmark):
 
 
 @pytest.mark.dsv4_attention_prefill
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="DSV4 benchmark requires CUDA")
+@pytest.mark.skipif(
+    not torch.cuda.is_available(), reason="DSV4 benchmark requires CUDA"
+)
 def test_dsv4_attention_prefill_benchmark():
     if not ORACLE_PATH.exists():
         pytest.skip(f"oracle not found: {ORACLE_PATH}")
@@ -126,7 +128,9 @@ def test_dsv4_attention_prefill_benchmark():
 
 
 @pytest.mark.dsv4_attention_decode
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="DSV4 benchmark requires CUDA")
+@pytest.mark.skipif(
+    not torch.cuda.is_available(), reason="DSV4 benchmark requires CUDA"
+)
 def test_dsv4_attention_decode_benchmark():
     if not ORACLE_PATH.exists():
         pytest.skip(f"oracle not found: {ORACLE_PATH}")

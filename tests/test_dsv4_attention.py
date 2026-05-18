@@ -10,11 +10,9 @@ from flag_gems.runtime.backend._nvidia.fused.dsv4_attention_triton import (
     dsv4_dequantize_and_gather_k_cache,
     dsv4_flash_mla_sparse_decode,
     dsv4_flash_mla_sparse_prefill,
+    dsv4_fp8_einsum,
     dsv4_fused_q_kv_rmsnorm,
     dsv4_qnorm_rope_kv_rope_quant_insert,
-)
-from flag_gems.runtime.backend._nvidia.fused.dsv4_attention_triton import (
-    dsv4_fp8_einsum,
 )
 
 ORACLE_DIR = (
@@ -153,7 +151,9 @@ def test_dsv4_prefill_decode_e2e_accuracy():
     torch.testing.assert_close(decode_lse, decode["lse"], atol=4e-2, rtol=4e-2)
 
     e2e_out = torch.empty_like(decode["out"])
-    dummy_kv = torch.empty((0, decode["q"].shape[-1]), device="cuda", dtype=decode["q"].dtype)
+    dummy_kv = torch.empty(
+        (0, decode["q"].shape[-1]), device="cuda", dtype=decode["q"].dtype
+    )
     dsv4_attention_triton(
         decode["q"],
         dummy_kv,

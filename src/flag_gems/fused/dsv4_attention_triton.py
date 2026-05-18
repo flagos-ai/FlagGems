@@ -1,4 +1,3 @@
-import math
 from typing import Optional, Tuple
 
 import torch
@@ -10,7 +9,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._nvidia.hopper.ops.w8a8_block_fp8_matmul import (
     w8a8_block_fp8_matmul,
 )
-
 
 _INT32_MAX = 2147483647
 _SPARSE_PREFILL_TOPK_ALIGNMENT = 128
@@ -151,7 +149,9 @@ def _dsv4_qnorm_rope_kv_rope_quant_insert_kernel(
 
     if task < NUM_HEADS:
         q_base = q_ptr + token_idx.to(tl.int64) * q_stride_t + task * q_stride_h
-        q = tl.load(q_base + offs * q_stride_d, mask=mask_head, other=0.0).to(tl.float32)
+        q = tl.load(q_base + offs * q_stride_d, mask=mask_head, other=0.0).to(
+            tl.float32
+        )
         var = tl.sum(q * q, axis=0) / HEAD_DIM
         rrms = tl.rsqrt(var + eps)
         q = q * rrms
@@ -162,11 +162,14 @@ def _dsv4_qnorm_rope_kv_rope_quant_insert_kernel(
         is_even = (rope_off % 2) == 0
         mate_rope_off = tl.where(is_even, rope_off + 1, rope_off - 1)
         mate_off = rope_start + mate_rope_off
-        q_mate = tl.load(
-            q_base + mate_off * q_stride_d,
-            mask=is_rope,
-            other=0.0,
-        ).to(tl.float32) * rrms
+        q_mate = (
+            tl.load(
+                q_base + mate_off * q_stride_d,
+                mask=is_rope,
+                other=0.0,
+            ).to(tl.float32)
+            * rrms
+        )
         cos = tl.load(
             cos_sin_ptr + pos * cos_sin_stride_t + pair_id,
             mask=is_rope,
@@ -179,7 +182,9 @@ def _dsv4_qnorm_rope_kv_rope_quant_insert_kernel(
         ).to(tl.float32)
         rotated = tl.where(is_even, q * cos - q_mate * sin, q_mate * sin + q * cos)
         out = tl.where(is_rope, rotated, q)
-        tl.store(q_base + offs * q_stride_d, out.to(q_ptr.dtype.element_ty), mask=mask_head)
+        tl.store(
+            q_base + offs * q_stride_d, out.to(q_ptr.dtype.element_ty), mask=mask_head
+        )
         return
 
     slot = tl.load(slot_mapping_ptr + token_idx)
@@ -190,37 +195,47 @@ def _dsv4_qnorm_rope_kv_rope_quant_insert_kernel(
     pos_in_block = slot - block_idx * CACHE_BLOCK_SIZE
     cache_block = k_cache_ptr + block_idx.to(tl.int64) * cache_block_stride
     token_data = cache_block + pos_in_block * TOKEN_DATA_SIZE
-    scale_base = cache_block + CACHE_BLOCK_SIZE * TOKEN_DATA_SIZE + pos_in_block * SCALE_SLOTS
+    scale_base = (
+        cache_block + CACHE_BLOCK_SIZE * TOKEN_DATA_SIZE + pos_in_block * SCALE_SLOTS
+    )
 
     kv_base = kv_ptr + token_idx.to(tl.int64) * kv_stride_t
-    kv_vals = tl.load(kv_base + offs * kv_stride_d, mask=mask_head, other=0.0).to(tl.float32)
+    # kv_vals = tl.load(kv_base + offs * kv_stride_d, mask=mask_head, other=0.0).to(
+    #     tl.float32
+    # )
 
-    is_k_rope = (offs >= NOPE_DIM) & (offs < NOPE_DIM + ROPE_DIM)
-    k_rope_off = offs - NOPE_DIM
-    k_pair_id = k_rope_off // 2
-    k_is_even = (k_rope_off % 2) == 0
-    k_mate_rope_off = tl.where(k_is_even, k_rope_off + 1, k_rope_off - 1)
-    k_mate_off = NOPE_DIM + k_mate_rope_off
-    kv_mate = tl.load(kv_base + k_mate_off * kv_stride_d, mask=is_k_rope, other=0.0).to(tl.float32)
-    k_cos = tl.load(
-        cos_sin_ptr + pos * cos_sin_stride_t + k_pair_id,
-        mask=is_k_rope,
-        other=1.0,
-    ).to(tl.float32)
-    k_sin = tl.load(
-        cos_sin_ptr + pos * cos_sin_stride_t + k_pair_id + (ROPE_DIM // 2),
-        mask=is_k_rope,
-        other=0.0,
-    ).to(tl.float32)
-    kv_rot = tl.where(k_is_even, kv_vals * k_cos - kv_mate * k_sin, kv_mate * k_sin + kv_vals * k_cos)
-    kv_final = tl.where(is_k_rope, kv_rot, kv_vals)
+    # is_k_rope = (offs >= NOPE_DIM) & (offs < NOPE_DIM + ROPE_DIM)
+    # k_rope_off = offs - NOPE_DIM
+    # k_pair_id = k_rope_off // 2
+    # k_is_even = (k_rope_off % 2) == 0
+    # k_mate_rope_off = tl.where(k_is_even, k_rope_off + 1, k_rope_off - 1)
+    # k_mate_off = NOPE_DIM + k_mate_rope_off
+    # kv_mate = tl.load(kv_base + k_mate_off * kv_stride_d, mask=is_k_rope, other=0.0).to(
+    #     tl.float32
+    # )
+    # k_cos = tl.load(
+    #     cos_sin_ptr + pos * cos_sin_stride_t + k_pair_id,
+    #     mask=is_k_rope,
+    #     other=1.0,
+    # ).to(tl.float32)
+    # k_sin = tl.load(
+    #     cos_sin_ptr + pos * cos_sin_stride_t + k_pair_id + (ROPE_DIM // 2),
+    #     mask=is_k_rope,
+    #     other=0.0,
+    # ).to(tl.float32)
+    # kv_rot = tl.where(
+    #     k_is_even, kv_vals * k_cos - kv_mate * k_sin, kv_mate * k_sin + kv_vals * k_cos
+    # )
+    # kv_final = tl.where(is_k_rope, kv_rot, kv_vals)
 
     for qblock in tl.static_range(0, SCALE_SLOTS):
         start = qblock * Q_RMS_BLOCK
         qoffs = start + tl.arange(0, Q_RMS_BLOCK)
         qmask = qoffs < NOPE_DIM
         if start < NOPE_DIM:
-            x = tl.load(kv_base + qoffs * kv_stride_d, mask=qmask, other=0.0).to(tl.float32)
+            x = tl.load(kv_base + qoffs * kv_stride_d, mask=qmask, other=0.0).to(
+                tl.float32
+            )
             amax = tl.maximum(tl.max(tl.abs(x), axis=0), 1.0e-4)
             exponent = tl.ceil(tl.log2(amax / FP8_MAX))
             scale = tl.exp2(exponent)
@@ -249,7 +264,9 @@ def _dsv4_qnorm_rope_kv_rope_quant_insert_kernel(
             mask=r_mask,
             other=0.0,
         ).to(tl.float32)
-        cos = tl.load(cos_sin_ptr + pos * cos_sin_stride_t + pair, mask=r_mask, other=1.0).to(tl.float32)
+        cos = tl.load(
+            cos_sin_ptr + pos * cos_sin_stride_t + pair, mask=r_mask, other=1.0
+        ).to(tl.float32)
         sin = tl.load(
             cos_sin_ptr + pos * cos_sin_stride_t + pair + (ROPE_DIM // 2),
             mask=r_mask,
@@ -299,9 +316,7 @@ def dsv4_qnorm_rope_kv_rope_quant_insert(
     block = triton.next_power_of_2(head_dim)
     qblock = 64
     with torch_device_fn.device(q.device):
-        _dsv4_qnorm_rope_kv_rope_quant_insert_kernel[
-            (q.shape[0], q.shape[1] + 1)
-        ](
+        _dsv4_qnorm_rope_kv_rope_quant_insert_kernel[(q.shape[0], q.shape[1] + 1)](
             q,
             kv,
             k_cache_2d,
@@ -365,10 +380,16 @@ def _dsv4_dequantize_and_gather_k_cache_kernel(
         pos = start_pos + local_i
         block_in_seq = pos // cache_block_size
         pos_in_block = pos - block_in_seq * cache_block_size
-        physical_block = tl.load(block_table_ptr + req_idx * max_blocks_per_seq + block_in_seq)
+        physical_block = tl.load(
+            block_table_ptr + req_idx * max_blocks_per_seq + block_in_seq
+        )
         cache_block = k_cache_ptr + physical_block.to(tl.int64) * cache_block_stride
         token_data = cache_block + pos_in_block * token_data_size
-        scale_base = cache_block + cache_block_size * token_data_size + pos_in_block * scale_slots
+        scale_base = (
+            cache_block
+            + cache_block_size * token_data_size
+            + pos_in_block * scale_slots
+        )
         out_row = out_ptr + req_idx * out_stride0 + (offset + local_i) * out_stride1
 
         for qblock in tl.static_range(0, scale_slots):
@@ -462,7 +483,9 @@ def _dsv4_compute_global_topk_indices_and_lens_kernel(
     for start in range(0, topk, BLOCK):
         offs = start + tl.arange(0, BLOCK)
         mask = offs < topk
-        local_idx = tl.load(local_indices_ptr + token_idx * local_stride + offs, mask=mask, other=-1)
+        local_idx = tl.load(
+            local_indices_ptr + token_idx * local_stride + offs, mask=mask, other=-1
+        )
         valid = local_idx >= 0
         block_idx = local_idx // block_size
         block_off = local_idx - block_idx * block_size
@@ -546,8 +569,14 @@ def _dsv4_combine_topk_swa_indices_kernel(
 
         offs = tl.arange(0, PADDED_TOP_K)
         mask = offs < topk_len
-        topk_vals = tl.load(topk_ptr + token_idx * topk_stride + offs, mask=mask, other=-1)
-        tl.store(combined_ptr + token_idx * combined_stride + offs, topk_vals + M * batch_idx, mask=mask)
+        topk_vals = tl.load(
+            topk_ptr + token_idx * topk_stride + offs, mask=mask, other=-1
+        )
+        tl.store(
+            combined_ptr + token_idx * combined_stride + offs,
+            topk_vals + M * batch_idx,
+            mask=mask,
+        )
 
         swa_offs = tl.arange(0, PADDED_WINDOW_SIZE)
         tl.store(
@@ -658,7 +687,9 @@ def dsv4_flash_mla_sparse_prefill(
         assert out.dtype == q.dtype
         output = out
         output.zero_()
-    max_logits = torch.full((sq, h), float("-inf"), device=q.device, dtype=torch.float32)
+    max_logits = torch.full(
+        (sq, h), float("-inf"), device=q.device, dtype=torch.float32
+    )
     lse = torch.full((sq, h), float("-inf"), device=q.device, dtype=torch.float32)
     q_idx_i64 = q.numel() > _INT32_MAX
     output_idx_i64 = output.numel() > _INT32_MAX
@@ -836,14 +867,20 @@ def dsv4_flash_mla_sparse_decode(
     extra_flat = None
     if extra_indices_in_kvcache is not None:
         if extra_indices_in_kvcache.ndim == 3:
-            extra_flat = extra_indices_in_kvcache.reshape(q_flat.shape[0], extra_indices_in_kvcache.shape[-1]).contiguous()
+            extra_flat = extra_indices_in_kvcache.reshape(
+                q_flat.shape[0], extra_indices_in_kvcache.shape[-1]
+            ).contiguous()
         else:
             extra_flat = extra_indices_in_kvcache.contiguous()
 
     topk = indices_flat.shape[-1]
     extra_topk = 0 if extra_flat is None else extra_flat.shape[-1]
     total_slots = topk + extra_topk
-    kv = torch.empty((q_flat.shape[0] * total_slots, 1, head_dim), device=q.device, dtype=torch.bfloat16)
+    kv = torch.empty(
+        (q_flat.shape[0] * total_slots, 1, head_dim),
+        device=q.device,
+        dtype=torch.bfloat16,
+    )
     sparse_indices = torch.full(
         (q_flat.shape[0], 1, total_slots),
         -1,
@@ -860,7 +897,9 @@ def dsv4_flash_mla_sparse_decode(
         dtype=torch.int32,
     )
     k_cache_2d = _as_cache_2d(k_cache)
-    extra_cache_2d = _as_cache_2d(extra_k_cache) if extra_k_cache is not None else k_cache_2d
+    extra_cache_2d = (
+        _as_cache_2d(extra_k_cache) if extra_k_cache is not None else k_cache_2d
+    )
     token_data_size = nope_dim + rope_dim * 2
 
     with torch_device_fn.device(q.device):
