@@ -66,7 +66,9 @@ def stable_decay(
     return torch.log1p(-decay).to(dtype)
 
 
-def stable_beta(shape: tuple[int, ...], dtype: torch.dtype, device: str) -> torch.Tensor:
+def stable_beta(
+    shape: tuple[int, ...], dtype: torch.dtype, device: str
+) -> torch.Tensor:
     return (
         torch.empty(shape, device=device, dtype=torch.float32)
         .uniform_(-2.0, 2.0)
@@ -294,7 +296,9 @@ def run_case(case: Case, flag_gems, counts: dict[str, int], device: str) -> None
     if delta[other] != 0:
         raise AssertionError(f"{case.name}: unexpected {other} path, saw delta={delta}")
     shape = (case.b, case.t, case.hg, case.h, case.k, case.v)
-    print(f"PASS {case.name}: path={case.expected_path} shape={shape} dtype={case.dtype}")
+    print(
+        f"PASS {case.name}: path={case.expected_path} shape={shape} dtype={case.dtype}"
+    )
 
 
 def main() -> int:
