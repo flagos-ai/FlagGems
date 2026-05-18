@@ -71,27 +71,19 @@ class TopKPerRowPrefillBenchmark(base.Benchmark):
                 "top_k": top_k,
             }
 
-    def get_gems_op(self):
-        return top_k_per_row_prefill
-
-    def get_torch_op(self):
-        def torch_topk_ref(
-            logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
-        ):
-            # Baseline: torch.topk without masking or index adjustment.
-            # This under-counts the Triton kernel's work (which also masks + adjusts),
-            # but provides a consistent PyTorch-native comparison point.
-            _, top_idx = torch.topk(logits, top_k, dim=1, largest=True, sorted=False)
-            indices.copy_(top_idx.to(torch.int32))
-
-        return torch_topk_ref
+def _torch_topk_ref(
+    logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
+):
+    _, top_idx = torch.topk(logits, top_k, dim=1, largest=True, sorted=False)
+    indices.copy_(top_idx.to(torch.int32))
 
 
 @pytest.mark.top_k_per_row_prefill
 def test_top_k_per_row_prefill():
     bench = TopKPerRowPrefillBenchmark(
         op_name="top_k_per_row_prefill",
-        torch_op=None,
+        torch_op=_torch_topk_ref,
+        gems_op=top_k_per_row_prefill,
         dtypes=[torch.float32],
     )
     bench.run()

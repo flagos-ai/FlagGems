@@ -125,9 +125,6 @@ def test_top_k_per_row_prefill_variable_lengths(num_rows, vocab_size, top_k):
     KV ranges (e.g., due to causal masking or sequence packing).
     row_ends is randomized in [top_k, vocab_size] to ensure enough valid elements.
     """
-    if top_k > vocab_size:
-        pytest.skip("top_k > vocab_size")
-
     torch.manual_seed(123)
 
     logits = torch.randn(num_rows, vocab_size, device=device, dtype=torch.float32)

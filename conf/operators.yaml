@@ -889,18 +889,6 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.1'
-  - id: top_k_per_row_prefill
-    description: |
-      Triton top-K per row for DeepSeek V4 sparse attention prefill phase.
-      Replaces vLLM persistent_topk CUDA kernel with in-place masking + adaptive topk selection.
-    for:
-      - None
-    labels:
-      - fused
-    kind:
-      - NeuralNetwork
-    stages:
-      - beta: '5.1'
   - id: cat
     description: Concatenates the given sequence of tensors in tensors in the given dimension.
     for:
@@ -5774,6 +5762,18 @@ ops:
       - Tensor
     stages:
       - beta: '4.1'
+  - id: top_k_per_row_prefill
+    description: |
+      Triton top-K per row for DeepSeek V4 sparse attention prefill phase.
+      Replaces vLLM persistent_topk CUDA kernel with in-place masking + adaptive topk selection.
+    for:
+      - None
+    labels:
+      - fused
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: topk
     description: |
       Returns the `k` largest elements of the given `input` tensor along a given dimension.
