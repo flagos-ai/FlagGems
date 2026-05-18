@@ -153,7 +153,7 @@ case $VENDOR in
     else
       uv pip uninstall triton
       uv pip install --index $FLAGOS_PYPI \
-        "flagtree==0.5.0+mthreads3.1"
+        "flagtree==0.5.1+mthreads3.6"
     fi
     ;;
 
