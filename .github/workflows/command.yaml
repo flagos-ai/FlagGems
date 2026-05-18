@@ -39,7 +39,7 @@ jobs:
           op=$(echo $params | cut -d ':' -f 1)
           runner=$(echo $params | cut -d ':' -f 2)
           echo "OP_ID=${op}" >> $GITHUB_OUTPUT
-          echo "RUNNERr=${runner}" >> $GITHUB_OUTPUT
+          echo "RUNNER=${runner}" >> $GITHUB_OUTPUT
           echo "PR_NUMBER=${PULL_NUMBER}" >> $GITHUB_OUTPUT
 
           # Detect if operator exists before
