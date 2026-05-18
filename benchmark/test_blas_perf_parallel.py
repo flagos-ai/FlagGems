@@ -62,6 +62,14 @@ except Exception:
     transform_sf_into_required_layout = None
     DEEPGEMM_AVAILABLE = False
 
+try:
+    from vllm._custom_ops import router_gemm_bf16_fp32 as vllm_router_gemm_bf16_fp32
+
+    VLLM_ROUTER_GEMM_AVAILABLE = True
+except Exception:
+    vllm_router_gemm_bf16_fp32 = None
+    VLLM_ROUTER_GEMM_AVAILABLE = False
+
 PARALLEL_WORKER_ENV = "FLAGGEMS_BENCH_PARALLEL_WORKER"
 PARALLEL_RESULT_FILE_ENV = "FLAGGEMS_BENCH_RESULT_FILE"
 torch_device_object = flag_gems.runtime.backend.gen_torch_device_object()
@@ -237,6 +245,40 @@ class AddrBenchmark(BlasBenchmark):
             yield from self.input_fn(m, n, cur_dtype, self.device)
 
 
+ROUTER_GEMM_SHAPES = [
+    (1, 1, 256, 7168),
+    (1, 8, 256, 7168),
+    (1, 16, 256, 7168),
+    (1, 32, 256, 7168),
+    (1, 64, 256, 7168),
+    (1, 128, 256, 7168),
+    (1, 256, 256, 7168),
+    (1, 512, 256, 7168),
+    (1, 1024, 256, 7168),
+]
+
+
+class RouterGemmBenchmark(BlasBenchmark):
+    """
+    benchmark for router_gemm (bf16 -> fp32)
+    """
+
+    DEFAULT_SHAPES = ROUTER_GEMM_SHAPES[:]
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for b, m, n, k in self.shapes:
+            yield from self.input_fn(b, m, n, k, cur_dtype, self.device, False)
+
+    def set_more_shapes(self):
+        return None
+
+    def get_tflops(self, op, *args, **kwargs):
+        x, weight = args[0], args[1]
+        M, K = x.shape
+        N = weight.shape[0]
+        return 2 * M * N * K
+
+
 # ============================================================================
 # Input functions (from test_blas_perf.py)
 # ============================================================================
@@ -339,6 +381,12 @@ def addmv_input_fn(m, n, cur_dtype, device):
     bias = torch.randn([m], dtype=cur_dtype, device=device)
     # torch.addmv(bias, mat, vec)
     yield bias, mat, vec
+
+
+def router_gemm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
+    x = torch.randn([m, k], dtype=torch.bfloat16, device=device)
+    weight = torch.randn([n, k], dtype=torch.bfloat16, device=device)
+    yield x, weight
 
 
 # ============================================================================
@@ -585,21 +633,31 @@ class ParallelBenchmarkMixin:
         }
         return preferred_key
 
+    def _get_tuning_fixed_overhead(self):
+        """Fixed cost per shape representing compilation + autotuning overhead.
+
+        When shapes have extreme variance in compute cost, pure-FLOPS balancing
+        piles all small shapes onto one GPU.  Adding a fixed term ensures each
+        shape carries a minimum weight so the scheduler spreads them out.
+        Override in subclasses to adjust.
+        """
+        return 0
+
     def _split_shapes_evenly(self, num_buckets):
         indexed_shapes = list(enumerate(self.shapes))
         if not indexed_shapes:
             return []
 
+        fixed_overhead = self._get_tuning_fixed_overhead()
+
         def estimate_shape_cost(shape):
             if self.op_name == "sparse_attention":
                 if len(shape) != 6:
-                    return 1
+                    return 1 + fixed_overhead
                 batch, seq_len, _, topk, heads, dim = shape
                 block = 64
                 topk_aligned = ((max(1, int(topk)) + block - 1) // block) * block
                 heads_padded = max(16, 1 << (max(1, int(heads)) - 1).bit_length())
-                # The sparse attention kernel processes top-k indices in BLOCK=64
-                # chunks and pads H to at least 16 / next power of two.
                 return (
                     max(1, int(batch))
                     * max(1, int(seq_len))
@@ -607,7 +665,7 @@ class ParallelBenchmarkMixin:
                     * heads_padded
                     * max(1, int(dim))
                     * 4
-                )
+                ) + fixed_overhead
 
             if self.op_name in {
                 "mm",
@@ -616,6 +674,7 @@ class ParallelBenchmarkMixin:
                 "baddbmm",
                 "w8a8_block_fp8_matmul",
                 "w8a8_block_fp8_matmul_deepgemm",
+                "router_gemm",
             }:
                 normalized_shape = shape
                 if len(shape) == 3:
@@ -626,15 +685,16 @@ class ParallelBenchmarkMixin:
                     normalized_shape = None
 
                 if normalized_shape is None:
-                    return 1
+                    return 1 + fixed_overhead
 
                 if self.op_name in {
                     "mm",
                     "bmm",
                     "w8a8_block_fp8_matmul",
+                    "router_gemm",
                 }:
-                    return m * n * k * 2
-                return m * n * (2 * k + 1)
+                    return m * n * k * 2 + fixed_overhead
+                return m * n * (2 * k + 1) + fixed_overhead
 
             cost = 1
             for dim in shape:
@@ -642,7 +702,7 @@ class ParallelBenchmarkMixin:
                     continue
                 if isinstance(dim, (int, float)):
                     cost *= max(1, int(dim))
-            return cost
+            return cost + fixed_overhead
 
         sorted_items = sorted(
             indexed_shapes,
@@ -898,6 +958,45 @@ class ParallelVdotBenchmark(ParallelBenchmarkMixin, VdotBenchmark):
 
 class ParallelAddrBenchmark(ParallelBenchmarkMixin, AddrBenchmark):
     pass
+
+
+class ParallelRouterGemmBenchmark(ParallelBenchmarkMixin, RouterGemmBenchmark):
+    SHAPE_CONFIG_KEYS = ("router_gemm",)
+
+    def _get_tuning_fixed_overhead(self):
+        return 30_000_000_000
+
+    def set_shapes(self, shape_file_path=None):
+        if not os.path.isfile(shape_file_path):
+            raise FileNotFoundError(f"Shape file '{shape_file_path}' does not exist.")
+
+        with open(shape_file_path, "r") as shape_file:
+            yaml_config = yaml.safe_load(shape_file) or {}
+
+        for shape_key in self._get_shape_config_keys():
+            if shape_key in yaml_config:
+                self.shapes = yaml_config[shape_key].get("shapes", ROUTER_GEMM_SHAPES)
+                break
+        else:
+            self.shapes = ROUTER_GEMM_SHAPES[:]
+
+        self.shapes = [tuple(shape) for shape in self.shapes]
+
+        normalized_shapes = []
+        for shape in self.shapes:
+            if len(shape) == 4:
+                normalized_shapes.append(shape)
+            elif len(shape) == 3:
+                m, n, k = shape
+                normalized_shapes.append((1, m, n, k))
+            else:
+                raise ValueError(
+                    "router_gemm benchmark expects shapes in (M, N, K) "
+                    "or (B, M, N, K) format."
+                )
+
+        self.shapes = normalized_shapes
+        self.shape_desc = "M, N, K"
 
 
 class ParallelW8A8BlockFP8MatmulBenchmark(
@@ -1348,4 +1447,21 @@ def test_addr_benchmark():
         torch_op=torch.Tensor.addr,
         dtypes=FLOAT_DTYPES,
     )
+    bench.run()
+
+
+@pytest.mark.router_gemm
+def test_perf_router_gemm():
+    if not VLLM_ROUTER_GEMM_AVAILABLE:
+        pytest.skip(
+            "router_gemm benchmark requires vLLM router_gemm_bf16_fp32 baseline"
+        )
+
+    bench = ParallelRouterGemmBenchmark(
+        input_fn=router_gemm_input_fn,
+        op_name="router_gemm",
+        torch_op=vllm_router_gemm_bf16_fp32,
+        dtypes=[torch.bfloat16],
+    )
+    bench.set_gems(flag_gems.router_gemm)
     bench.run()
