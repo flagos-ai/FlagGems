@@ -13,19 +13,60 @@ shared by both sides.
 import pytest
 import torch
 
-# vLLM's quantizer — produces (w_ref, qweight, scales, qzeros) matching the
-# layout fused_moe_kernel_gptq_awq expects.
-from vllm.model_executor.layers.quantization.utils.quant_utils import quantize_weights
-from vllm.scalar_type import scalar_types
-
 import flag_gems
 from flag_gems.fused.fused_marlin_moe import QUANT_TYPE_UINT4B8, fused_marlin_moe
+
+# -----------------------------------------------------------------------------
+# Local GPTQ uint4b8 quantization helper (self-contained, no vllm dependency).
+# Matches the layout produced by vllm.quantize_weights(..., uint4b8): values
+# in [-7, 7] shifted to unsigned [1, 15] and packed two-per-byte into uint8.
+# -----------------------------------------------------------------------------
+QUANT_TYPE_UINT4B8_TAG = "uint4b8"
+
+
+def _gptq_quantize_uint4b8(w_2d, group_size):
+    """
+    Symmetric per-group INT4 quantization with +8 offset (GPTQ uint4b8 convention).
+
+    Self-contained replacement for vllm.quantize_weights(w, scalar_types.uint4b8,
+    group_size, False, False). Produces unpacked integer codes (each cell a
+    nibble in [0, 15]) plus the exact dequantized FP reference, both compatible
+    with the layout fused_moe_kernel_gptq_awq consumes.
+
+    Args:
+        w_2d: (out_dim, in_dim), fp16 or bf16.
+        group_size: int, must divide in_dim.
+
+    Returns:
+        w_ref:  (out_dim, in_dim), same dtype.  Dequantized reference values.
+        w_q_unsigned: (out_dim, in_dim), uint8.  Each cell a nibble in [0, 15].
+        scales: (out_dim, in_dim // group_size), same dtype as w_2d.
+    """
+    out_dim, in_dim = w_2d.shape
+    assert in_dim % group_size == 0
+    ng = in_dim // group_size
+
+    w_grouped = w_2d.reshape(out_dim, ng, group_size).to(torch.float32)
+    max_abs = w_grouped.abs().amax(dim=-1, keepdim=True)
+    # scale = max_abs / 7  (symmetric INT4 range [-7, 7] after +8 offset -> [1, 15])
+    scales_fp = (max_abs / 7.0).clamp(min=1e-8)
+
+    w_q_signed = torch.round(w_grouped / scales_fp).clamp(-7, 7)
+    w_ref_grouped = (w_q_signed * scales_fp).to(w_2d.dtype)
+    w_q_unsigned = (w_q_signed + 8).clamp(0, 15).to(torch.uint8)
+
+    w_ref = w_ref_grouped.reshape(out_dim, in_dim)
+    w_q_unsigned = w_q_unsigned.reshape(out_dim, in_dim)
+    scales = scales_fp.squeeze(-1).to(w_2d.dtype)
+    return w_ref, w_q_unsigned, scales
+
 
 # -----------------------------------------------------------------------------
 # Shape configs.
 # Tuple format: (num_tokens, num_experts, hidden_size, intermediate_size, topk)
 # Hard requirement: hidden_size and intermediate_size are multiples of 128
 # (the wna16 group_size). Smallest legal hidden = 128.
+
 # -----------------------------------------------------------------------------
 QUICK_CONFIGS = [
     (1, 8, 128, 256, 2),
@@ -50,7 +91,7 @@ FULL_CONFIGS = QUICK_CONFIGS + [
 GROUP_SIZE = 128
 
 
-def _quantize_moe_weight(w_fp, quant_type, group_size):
+def _quantize_moe_weight(w_fp, group_size):
     """
     Apply vLLM's per-expert GPTQ quantization, returning the packed uint8
     weight and bf16/fp16 dequantized reference, in the layout fused MoE
@@ -77,22 +118,14 @@ def _quantize_moe_weight(w_fp, quant_type, group_size):
         device=w_fp.device,
         dtype=w_fp.dtype,
     )
-
     for e in range(E):
-        # vLLM convention: quantize_weights operates on (in_dim, out_dim).
-        ref_e, q_e, sc_e, _ = quantize_weights(
-            w_fp[e].T, quant_type, group_size, False, False
-        )
-        # Post-process to MoE layout (mirrors vLLM's test_moe_vllm.py:613-624).
-        ref_e = ref_e.T  # (out, in)
-        q_e = q_e.T.contiguous().to(torch.uint8)  # (out, in), each cell a nibble
-        sc_e = sc_e.T  # (out, in/group_size)
-        q_e_packed = q_e[:, 1::2] * 16 + q_e[:, ::2]  # (out, in/2)
-
+        # Self-contained GPTQ uint4b8 quantization (no vllm dependency).
+        ref_e, q_e_unpacked, sc_e = _gptq_quantize_uint4b8(w_fp[e], group_size)
+        # Pack two nibbles per byte; low nibble = even, high nibble = odd.
+        q_e_packed = q_e_unpacked[:, 1::2] * 16 + q_e_unpacked[:, ::2]
         w_q[e] = q_e_packed
         w_ref[e] = ref_e
         scales[e] = sc_e
-
     return w_q, w_ref, scales
 
 
@@ -135,12 +168,8 @@ def _make_inputs(
         / 10.0
     )
 
-    w1_q, w1_ref, w1_scale = _quantize_moe_weight(
-        w1_fp, scalar_types.uint4b8, GROUP_SIZE
-    )
-    w2_q, w2_ref, w2_scale = _quantize_moe_weight(
-        w2_fp, scalar_types.uint4b8, GROUP_SIZE
-    )
+    w1_q, w1_ref, w1_scale = _quantize_moe_weight(w1_fp, GROUP_SIZE)
+    w2_q, w2_ref, w2_scale = _quantize_moe_weight(w2_fp, GROUP_SIZE)
 
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
     topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
