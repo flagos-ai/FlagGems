@@ -1033,7 +1033,9 @@ def _median_float_key_select_rows(row_data, output_shape):
 def _median_float_key_select_dim(work, dim, output_shape, keepdim):
     if dim == work.ndim - 1:
         return _median_float_key_select_rows(work.contiguous(), output_shape)
-    if work.is_contiguous() and work.dtype in (_F16_KEY_SELECT_DTYPES | {torch.float32}):
+    if work.is_contiguous() and work.dtype in (
+        _F16_KEY_SELECT_DTYPES | {torch.float32}
+    ):
         if work.dtype in _F16_KEY_SELECT_DTYPES:
             return _median_f16_strided_key_select(work, dim, output_shape)
         return _median_fp32_strided_key_select(work, dim, output_shape)
