@@ -117,8 +117,10 @@ def parse_env():
         ts1 = DATA["before"].get("timestamp", "?")
         ts2 = DATA["after"].get("timestamp", "?")
         timestamp = f"{ts1} -> {ts2}"
-        ver1 = env.get("flag_gems", {}).get("version", "?")
-        ver2 = env.get("flag_gems", {}).get("version", "?")
+        env1 = env
+        env2 = DATA["after"].get("env", {})
+        ver1 = env1.get("flag_gems", {}).get("version", "?")
+        ver2 = env2.get("flag_gems", {}).get("version", "?")
         flaggems_ver = f"{ver1} -> {ver2}"
     else:
         timestamp = DATA.get("timestamp", "?")
