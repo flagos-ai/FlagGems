@@ -174,6 +174,15 @@ case $VENDOR in
     fi
     ;;
 
+  spacemit)
+    uv pip install -e .
+    uv pip install ".[spacemit]"
+    uv pip install --index ${FLAGOS_PYPI} \
+        "torch==2.8.0+spacemit.0" \
+        "triton==3.6.0+spacemit.a4"
+    uv pip install ".[test]"
+    ;;
+
   thead)
     # TODO(Qiming): Investigate environment settings
     uv pip install -e .
