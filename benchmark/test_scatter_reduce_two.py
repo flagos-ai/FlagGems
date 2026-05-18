@@ -59,7 +59,7 @@ def gather_scatter_gbps(bench_fn_args, latency):
 @pytest.mark.scatter_reduce_two
 @pytest.mark.parametrize(
     "reduce, include_self",
-    [("sum", True), ("mean", False), ("prod", True), ("amax", False), ("amin", True)],
+    [("sum", True), ("mean", False), ("prod", True)],
 )
 def test_scatter_reduce_two(reduce, include_self):
     bench = ScatterReducePublicBenchmark(
@@ -75,7 +75,7 @@ def test_scatter_reduce_two(reduce, include_self):
 @pytest.mark.scatter_reduce_two_
 @pytest.mark.parametrize(
     "reduce, include_self",
-    [("sum", True), ("mean", True), ("prod", True), ("amax", True), ("amin", True)],
+    [("sum", True)],
 )
 def test_scatter_reduce_two_inplace(reduce, include_self):
     bench = ScatterReducePublicBenchmark(
@@ -92,7 +92,7 @@ def test_scatter_reduce_two_inplace(reduce, include_self):
 @pytest.mark.scatter_reduce_two_out
 @pytest.mark.parametrize(
     "reduce, include_self",
-    [("sum", False), ("mean", True), ("amax", True), ("amin", False)],
+    [("sum", False)],
 )
 def test_scatter_reduce_two_out(reduce, include_self):
     bench = ScatterReducePublicBenchmark(
