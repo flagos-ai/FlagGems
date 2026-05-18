@@ -1,0 +1,365 @@
+#!/usr/bin/env python
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import consts
+
+DATA = {}
+DEBUG = False
+DATA_DIR = None
+
+
+def read_log_files(op_name, prefix):
+    """Read log files for an operator with the given prefix (accuracy_ or performance_).
+
+    Returns a list of (filename, content) tuples, or None if no files found.
+    """
+    if DATA_DIR is None:
+        return None
+    op_dir = Path(DATA_DIR) / op_name
+    if not op_dir.is_dir():
+        return None
+    log_files = sorted(op_dir.glob(f"{prefix}*"))
+    if not log_files:
+        return None
+    results = []
+    for lf in log_files:
+        try:
+            content = lf.read_text(errors="replace").strip()
+            if content:
+                results.append((lf.name, content))
+        except Exception:
+            pass
+    if not results:
+        return None
+    return results
+
+
+def load_data(data_path):
+    try:
+        with data_path.open("r") as f:
+            data = json.load(f)
+        return data, True
+    except Exception as ex:
+        print(f"Failed to load data: {ex}")
+    return {}, False
+
+
+def format_record(fields, fmt):
+    if fmt == "csv":
+        return ",".join(fields)
+
+    if fmt == "markdown":
+        line = " | ".join(fields)
+        return f"| {line} |"
+
+    return ""
+
+
+def parse_lines(fmt):
+    """Write result to CSV.
+
+    The layout is as follows:
+    <id>,<astatus>,<pass/fail/skip>,<pstatus>,<fp16>,<fp32>,<bf16>,<cf64>,<i16>,<i32>,<i64>,<note>
+    """
+    data = DATA.get("result", {})
+    lines = []
+    for op, item in data.items():
+        fields = []
+        accu = item["accuracy"]["status"]
+        accud = "/".join(
+            [
+                str(item["accuracy"]["passed"]),
+                str(item["accuracy"]["failed"]),
+                str(item["accuracy"]["skipped"]),
+            ]
+        )
+        fields.extend([op, accu, accud])
+
+        perf_data = item["performance"]["data"]
+        perf_status = item["performance"]["status"]
+        if perf_status == "NotFound":
+            fields.append("NotFound")
+            fields.extend(
+                [""] * (len(consts.DTYPE_MAP) + 2)
+            )  # OPAverageSpeedUp + dtypes + note
+
+        elif perf_status in ["Failed", "Skipped"]:
+            reason = item["performance"]["reason"]
+            reason = reason.split("\n")[0]
+            fields.append(perf_status)
+            fields.extend(
+                [""] * (len(consts.DTYPE_MAP) + 1)
+            )  # OPAverageSpeedUp + dtypes
+            fields.append(f'"{reason}"')
+
+        else:
+            fields.append(perf_status)
+            speedup_values = []
+            for dtype in list(consts.DTYPE_MAP.values()):
+                dobj = perf_data.get(dtype, {})
+                speedup = dobj.get("speedup", None)
+                if speedup:
+                    fields.append(f"{speedup:6.3f}")
+                    speedup_values.append(speedup)
+                else:
+                    fields.append("")
+            # Compute OPAverageSpeedUp
+            if speedup_values:
+                avg_speedup = sum(speedup_values) / len(speedup_values)
+                op_avg_field = f"{avg_speedup:6.3f}"
+            else:
+                op_avg_field = ""
+
+            fields.insert(4, op_avg_field)
+            fields.append("")  # note
+
+        lines.append(format_record(fields, fmt))
+
+    return sorted(lines)
+
+
+def parse_env(fmt):
+    timestamp = DATA.get("timestamp", "?")
+    env = DATA.get("env", {})
+    arch = env.get("architecture", "?")
+    os = env.get("os_name") + " " + env.get("os_release")
+    pyver = env.get("python", "?")
+    torch_obj = env.get("torch", {})
+    torch_ver = torch_obj.get("version", "?")
+    flagtree_ver = env.get("flagtree", "?")
+    triton_ver = env.get("triton", {}).get("version", "?")
+    flaggems_ver = env.get("flag_gems", {}).get("version", "?")
+    flaggems_vendor = env.get("flag_gems", {}).get("vendor", "?")
+    flaggems_device = env.get("flag_gems", {}).get("device", "?")
+
+    lines = []
+    if fmt == "markdown":
+        lines.append("### Test Environment")
+        lines.append("")
+        lines.append("| Env | Setting |")
+        lines.append("| --- | ------- |")
+        lines.append(f"| Time | `{timestamp}` |")
+        lines.append(f"| Architecture | `{arch}` |")
+        lines.append(f"| OS | `{os}` |")
+        lines.append(f"| Python | `{pyver}` |")
+        lines.append(f"| Torch | `{torch_ver}` |")
+        lines.append(f"| FlagTree | `{flagtree_ver}` |")
+        lines.append(f"| Triton | `{triton_ver}` |")
+        lines.append(f"| FlagGems | `{flaggems_ver}` |")
+        lines.append(f"| Vendor | `{flaggems_vendor}` |")
+        lines.append(f"| Device | `{flaggems_device}` |")
+        lines.append("")
+
+    return lines
+
+
+def parse_single_accuracy_details(details, num, kind):
+    lines = []
+    if num == 0:
+        return lines
+
+    lines.append(f"#### {kind.title()} Cases")
+    lines.append("")
+
+    for reason, cases in details.get(kind, {}).items():
+        reason_strs = reason.split("\n")
+        lines.append("- **Reason**")
+        lines.append("")
+        for s in reason_strs:
+            lines.append(f"  > {s}")
+        lines.append("")
+        lines.append("  **Test cases**")
+        lines.append("")
+        for case in cases:
+            lines.append(f"  - `{case}`")
+        lines.append("")
+
+    return lines
+
+
+def parse_single_accuracy(fmt, op_data):
+    lines = []
+    f = 0
+    k = 0
+    if fmt == "markdown":
+        lines.append("### Accuracy Result")
+        lines.append("")
+        lines.append("#### Summary")
+        lines.append("")
+        lines.append("| Status | Duration | Total | Passed | Skipped | Failed |")
+        lines.append("|--------|----------|-------|--------|---------|--------|")
+
+        s = op_data.get("status", "?")
+        d = op_data.get("duration", 0)
+        t = op_data.get("total", 0)
+        p = op_data.get("passed", 0)
+        k = op_data.get("skipped", 0)
+        f = op_data.get("failed", 0)
+        lines.append(f"| {s} | {d:6.2f} sec | {t} | {p} | {k} | {f} |")
+        lines.append("")
+
+    # Append failed and skipped cases if any
+    details = op_data.get("details", {})
+    f_lines = parse_single_accuracy_details(details, f, "failed")
+    lines.extend(f_lines)
+    k_lines = parse_single_accuracy_details(details, k, "skipped")
+    lines.extend(k_lines)
+
+    return lines
+
+
+def parse_single_performance(op_data):
+    lines = []
+
+    status = op_data.get("status", "OK")
+
+    lines.append("### Performance Result")
+    lines.append("")
+    lines.append("#### Summary")
+    lines.append("")
+    lines.append("| Status | Duration | Reason |")
+    lines.append("|--------|----------|--------|")
+    duration = op_data.get("duration", 0)
+    if status in ["Skipped", "Failed"]:
+        reason = op_data.get("reason", "Unknown")
+        reason = "<blockquote>" + reason.replace("\n", "<br/>") + "</blockquote>"
+        lines.append(f"| {status} | {duration:6.2f} seconds | {reason} |")
+    elif status == "NotFound":
+        lines.append(f"| {status} | {duration:6.2f} seconds | *No test case found.* |")
+    else:
+        lines.append(f"| {status} | {duration:6.2f} seconds | *All tests completed.* |")
+
+    lines.append("")
+    if status != "Passed":
+        return lines
+
+    lines.append("#### Benchmark data")
+    lines.append("")
+    lines.append("| Dtype  | Speedup | Base | Gems    | Shape |")
+    lines.append("|--------|---------|------|---------|-------|")
+    perf_data = op_data.get("data", {})
+    for dtype, ddata in perf_data.items():
+        speedup = ddata.get("speedup", 0)
+        lines.append(f"| {dtype} | **{speedup:.3f}** | - | - | - |")
+        for shp, res in ddata.get("details", {}).items():
+            spd = res.get("speedup", 0)
+            base = res.get("base", 0)
+            gems = res.get("gems", 0)
+            lines.append(f"| | {spd:6.3f} | {base:6.3f} | {gems:6.3f} | `{shp}` |")
+    lines.append("")
+    return lines
+
+
+def parse_single(fmt):
+    lines = []
+
+    data = DATA.get("result", {})
+    op = list(data.keys())[0]
+
+    op_data = data.get(op, {}).get("accuracy", {})
+    lines.extend(parse_single_accuracy(fmt, op_data))
+    op_data = data.get(op, {}).get("performance", {})
+    lines.extend(parse_single_performance(fmt, op_data))
+    return lines
+
+
+def parse_multi(fmt):
+    lines = parse_lines(fmt)
+    header_fields = (
+        [
+            "No.",
+            "ID",
+            "AccRes",
+            "AccStat(pass/fail/skip)",
+            "PerfRes",
+            "OPAverageSpeedUp",
+        ]
+        + list(consts.DTYPE_MAP.values())
+        + ["Note"]
+    )
+
+    # Add sequence number to each sorted line
+    numbered_lines = []
+    for idx, line in enumerate(lines, 1):
+        seq = str(idx)
+        if fmt == "csv":
+            numbered_lines.append(seq + "," + line)
+        elif fmt == "markdown":
+            numbered_lines.append("| " + seq + " " + line[1:])  # replace leading '|'
+    lines = numbered_lines
+
+    if fmt == "csv":
+        lines.insert(0, ",".join(header_fields))
+    elif fmt == "markdown":
+        header = "|" + "----|" * len(header_fields)
+        lines.insert(0, header)
+        header = "| " + " | ".join(header_fields) + " |"
+        lines.insert(0, header)
+
+    return lines
+
+
+def main():
+    global DATA
+    global DATA_DIR
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("dir", default="result", help="the data directory to process")
+    parser.add_argument(
+        "-f",
+        "--format",
+        choices=["csv", "markdown"],
+        default="csv",
+        help="the output format",
+    )
+    parser.add_argument(
+        "-o", "--output", default="<stdout>", help="path to the output file."
+    )
+    parser.add_argument(
+        "--single",
+        action=argparse.BooleanOptionalAction,
+        help="only parse the result from the first operator",
+    )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action=argparse.BooleanOptionalAction,
+        help="flag for printing verbose information for debugging",
+    )
+
+    args = parser.parse_args()
+
+    data_path = Path(args.dir) / "summary.json"
+    DATA, res = load_data(data_path)
+    if not res:
+        return 1
+
+    DATA_DIR = args.dir
+
+    result_heading = []
+    if args.format == "markdown":
+        result_heading = ["### Test Result", ""]
+
+    if args.single:
+        lines = parse_env(args.format) + result_heading + parse_single(args.format)
+    else:
+        lines = parse_env(args.format) + result_heading + parse_multi(args.format)
+
+    # never dump debug information to result file
+    if args.output == "<stdout>" or args.debug:
+        for ln in lines:
+            print(ln)
+    else:
+        with open(args.output, "w") as f:
+            for ln in lines:
+                f.write(ln + "\n")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
