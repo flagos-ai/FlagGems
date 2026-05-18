@@ -38,9 +38,9 @@ _FLAT_SORT_DTYPES = _LASTDIM_SORT_DTYPES | {torch.float32}
 _F16_KEY_SELECT_MIN = 2
 _F16_KEY_SELECT_LIMIT = 16384
 _F16_KEY_SELECT_DTYPES = {torch.float16, torch.bfloat16}
-_FP32_KEY_SELECT_MIN = 257
+_FP32_KEY_SELECT_MIN = 2
 _FP32_KEY_SELECT_LIMIT = 16384
-_FP64_KEY_SELECT_MIN = 257
+_FP64_KEY_SELECT_MIN = 2
 _FP64_KEY_SELECT_LIMIT = 8192
 _INT_LASTDIM_SELECT_LIMIT = 16384
 _INT_LASTDIM_SELECT_DTYPES = {
@@ -1014,6 +1014,39 @@ def _use_strided_select(dtype, width):
     )
 
 
+def _use_float_key_select(dtype, width):
+    return (
+        _use_f16_key_select(dtype, width)
+        or _use_fp32_key_select(dtype, width)
+        or _use_fp64_key_select(dtype, width)
+    )
+
+
+def _median_float_key_select_rows(row_data, output_shape):
+    if _use_f16_key_select(row_data.dtype, row_data.shape[-1]):
+        return _median_f16_key_select(row_data, output_shape)
+    if _use_fp32_key_select(row_data.dtype, row_data.shape[-1]):
+        return _median_fp32_key_select(row_data, output_shape)
+    return _median_fp64_key_select(row_data, output_shape)
+
+
+def _median_float_key_select_dim(work, dim, output_shape, keepdim):
+    if dim == work.ndim - 1:
+        return _median_float_key_select_rows(work.contiguous(), output_shape)
+    if work.is_contiguous() and work.dtype in (_F16_KEY_SELECT_DTYPES | {torch.float32}):
+        if work.dtype in _F16_KEY_SELECT_DTYPES:
+            return _median_f16_strided_key_select(work, dim, output_shape)
+        return _median_fp32_strided_key_select(work, dim, output_shape)
+
+    rows = torch.movedim(work, dim, -1).contiguous()
+    row_output_shape = rows.shape[:-1]
+    values, indices = _median_float_key_select_rows(rows, row_output_shape)
+    if keepdim:
+        values = torch.movedim(values.unsqueeze(-1), -1, dim)
+        indices = torch.movedim(indices.unsqueeze(-1), -1, dim)
+    return values, indices
+
+
 def _median_int_lastdim_select(row_data, output_shape):
     width = row_data.shape[-1]
     rows = row_data.numel() // width
@@ -1194,8 +1227,8 @@ def median(inp):
 
     flat = inp.contiguous().reshape(-1)
     row_data = flat.reshape(1, inp.numel())
-    if _use_f16_key_select(inp.dtype, inp.numel()):
-        values, _ = _median_f16_key_select(row_data, ())
+    if _use_float_key_select(inp.dtype, inp.numel()):
+        values, _ = _median_float_key_select_rows(row_data, ())
         return values.reshape(())
     if inp.dtype in _DIRECT_REDUCTION_DTYPES and inp.numel() <= _DIRECT_FLAT_LIMIT:
         return _median_small_flat(flat)
@@ -1260,22 +1293,10 @@ def median_dim(inp, dim=0, keepdim=False):
             _raise_dim_dtype(work.dtype)
         if work.dtype == torch.bool:
             values, indices = _median_bool_dim(work.contiguous(), dim, output_shape)
-        elif _use_f16_key_select(work.dtype, work.shape[dim]):
-            if dim == work.ndim - 1:
-                values, indices = _median_f16_key_select(
-                    work.contiguous(), output_shape
-                )
-            elif work.is_contiguous():
-                values, indices = _median_f16_strided_key_select(
-                    work, dim, output_shape
-                )
-            else:
-                rows = torch.movedim(work, dim, -1).contiguous()
-                row_output_shape = rows.shape[:-1]
-                values, indices = _median_f16_key_select(rows, row_output_shape)
-                if keepdim:
-                    values = torch.movedim(values.unsqueeze(-1), -1, dim)
-                    indices = torch.movedim(indices.unsqueeze(-1), -1, dim)
+        elif _use_float_key_select(work.dtype, work.shape[dim]):
+            values, indices = _median_float_key_select_dim(
+                work, dim, output_shape, keepdim
+            )
         elif (
             work.shape[dim] <= _DIRECT_REDUCTION_LIMIT
             and work.dtype in _DIRECT_REDUCTION_DTYPES
