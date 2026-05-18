@@ -8,7 +8,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 REDUCE_OPS = ["sum", "prod", "mean", "amax", "amin"]
-OVERLOADS = ["functional", "inplace", "out"]
 SHAPE_DIM_CASES = [
     ((4, 5), (6, 5), 0),
     ((4, 5), (4, 7), 1),
@@ -119,12 +118,7 @@ def _gems_result(inp, dim, index, src, reduce, include_self, overload):
         return out
 
 
-@pytest.mark.scatter_reduce
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.parametrize("reduce", REDUCE_OPS)
-@pytest.mark.parametrize("include_self", [True, False])
-@pytest.mark.parametrize("overload", OVERLOADS)
-def test_scatter_reduce_overloads(dtype, reduce, include_self, overload):
+def _assert_scatter_reduce(dtype, reduce, include_self, overload):
     src_shape, inp_shape, dim = SHAPE_DIM_CASES[0]
     inp, index, src = _make_inputs(src_shape, inp_shape, dim, dtype)
 
@@ -134,11 +128,35 @@ def test_scatter_reduce_overloads(dtype, reduce, include_self, overload):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=max(1, index.numel()))
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("reduce", REDUCE_OPS)
+@pytest.mark.parametrize("include_self", [True, False])
+def test_scatter_reduce_two(dtype, reduce, include_self):
+    _assert_scatter_reduce(dtype, reduce, include_self, "functional")
+
+
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("reduce", REDUCE_OPS)
+@pytest.mark.parametrize("include_self", [True, False])
+def test_scatter_reduce_two_(dtype, reduce, include_self):
+    _assert_scatter_reduce(dtype, reduce, include_self, "inplace")
+
+
+@pytest.mark.scatter_reduce_two_out
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("reduce", REDUCE_OPS)
+@pytest.mark.parametrize("include_self", [True, False])
+def test_scatter_reduce_two_out(dtype, reduce, include_self):
+    _assert_scatter_reduce(dtype, reduce, include_self, "out")
+
+
+@pytest.mark.scatter_reduce_two
 @pytest.mark.parametrize("src_shape, inp_shape, dim", SHAPE_DIM_CASES)
 @pytest.mark.parametrize("include_self", [True, False])
 @pytest.mark.parametrize("reduce", ["sum", "amax"])
-def test_scatter_reduce_shapes_and_dims(
+def test_scatter_reduce_two_shapes_and_dims(
     src_shape, inp_shape, dim, include_self, reduce
 ):
     dtype = torch.float32

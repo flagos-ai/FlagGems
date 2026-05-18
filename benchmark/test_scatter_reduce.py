@@ -1,7 +1,6 @@
 import pytest
 import torch
 
-import flag_gems
 from flag_gems.utils import shape_utils
 
 from . import base, consts
@@ -12,18 +11,9 @@ class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
         return ["gbps"]
 
     def set_more_shapes(self):
-        # Speed Up Benchmark Test, Big Shape Will Cause Timeout
-        if flag_gems.vendor_name == "kunlunxin":
-            return []
-
-        shapes = super().set_more_shapes()
-        shapes = [
-            # this filter is for scatter
-            shape
-            for shape in shapes
-            if len(shape) == 2 and shape[0] > 16 and shape[1] > 16
-        ]
-        return shapes
+        # The generic comprehensive 2D shapes include very large tensors that
+        # make scatter/scatter_reduce benchmarks time out.
+        return []
 
 
 class ScatterReduceBenchmark(base.GenericBenchmark2DOnly):
@@ -129,9 +119,11 @@ SCATTER_REDUCE_TWO_INPLACE_CASES = [
 ]
 
 SCATTER_REDUCE_TWO_OUT_CASES = [
-    ("scatter_reduce_two_out", "mean", True),
+    ("scatter_reduce_two_out", "sum", True),
+    ("scatter_reduce_two_out", "mean", False),
     ("scatter_reduce_two_out", "prod", True),
-    ("scatter_reduce_two_out", "amin", False),
+    ("scatter_reduce_two_out", "amax", False),
+    ("scatter_reduce_two_out", "amin", True),
 ]
 
 
@@ -216,7 +208,7 @@ def test_scatter_reduce_two_(op_name, reduce, include_self):
     bench.run()
 
 
-@pytest.mark.scatter_reduce_two
+@pytest.mark.scatter_reduce_two_out
 @pytest.mark.parametrize("op_name, reduce, include_self", SCATTER_REDUCE_TWO_OUT_CASES)
 def test_scatter_reduce_two_out(op_name, reduce, include_self):
     bench = ScatterReduceBenchmark(
