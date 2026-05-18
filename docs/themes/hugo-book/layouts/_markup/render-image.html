@@ -1,6 +1,0 @@
-{{- $destination := .Destination -}}
-{{- if .Page.Site.Params.BookPortableLinks -}}
-  {{- $destination = partial "docs/links/portable-image" . -}}
-{{- end -}}
-<img src="{{ $destination | safeURL }}" alt="{{ .Text }}" {{ with .Title }}title="{{ . }}"{{ end }}/>
-{{- /**/ -}}
