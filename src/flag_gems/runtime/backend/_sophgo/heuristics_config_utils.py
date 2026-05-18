@@ -76,7 +76,7 @@ def index_select_heur_block_m(args):
 
 def index_select_heur_block_n(args):
     m = min(triton.next_power_of_2(triton.cdiv(args["N"], 16)), 512)
-    return max(m, 16)
+    return max(m, 512)
 
 
 def mm_heur_even_k(args):

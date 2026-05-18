@@ -84,7 +84,7 @@ def generate_index_add_kernel(
                 "input_idx = (src_offset + (delta * pre_idx + src_dim_idx - dim_idx) * inp_stride_dim).to(tl.int64)"
             )
 
-            code.writeline("input_mask = input_idx < inp_numel")
+            code.writeline("input_mask = mask & (input_idx < inp_numel)")
             code.writeline(
                 "add_on = tl.load(src + src_offset, mask=mask, other=0) * alpha"
             )
@@ -137,7 +137,7 @@ def generate_destination_passing_wrapper(
         code.writeline("src_shapes = list(src.shape)")
 
         # kernel launch
-        code.writeline("BLOCK_SIZE = 128")  # BLOCK_SIZE setting
+        code.writeline("BLOCK_SIZE = 4096")  # BLOCK_SIZE setting
         code.writeline("grid = (triton.cdiv(N, BLOCK_SIZE),)")
         kernel_launch: str = f"{kernel_name}[grid]("
         code.writeline(kernel_launch)

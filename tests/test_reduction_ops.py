@@ -779,7 +779,16 @@ def test_accuracy_gather(inp_shape, dim, dtype):
         random.randint(1, inp_shape[1]),
         random.randint(1, inp_shape[2]),
     ]
-    index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
+
+    # not support torch.long
+    if flag_gems.vendor_name == "sophgo":
+        index = torch.empty(
+            tuple(index_shape), dtype=torch.int32, device=flag_gems.device
+        )
+    else:
+        index = torch.empty(
+            tuple(index_shape), dtype=torch.long, device=flag_gems.device
+        )
 
     m, n, o = index_shape
 
@@ -800,6 +809,10 @@ def test_accuracy_gather(inp_shape, dim, dtype):
         res_out = torch.gather(inp, dim, index)
 
     gems_assert_equal(res_out, ref_out)
+
+    # not support gather backward
+    if flag_gems.vendor_name == "sophgo":
+        return
 
     if dtype in (torch.bfloat16,):
         return
@@ -936,7 +949,10 @@ def test_accuracy_index_add(shape, dim, dtype):
     src_shape = list(inp.shape)
     index_max = src_shape[dim]
     index_len = index_max
-    index = torch.randperm(index_len, device=flag_gems.device)
+    if flag_gems.vendor_name == "sophgo":
+        index = torch.randperm(index_len, device=flag_gems.device, dtype=torch.int32)
+    else:
+        index = torch.randperm(index_len, device=flag_gems.device)
     src_shape[dim] = index_len
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
     alpha = 2
@@ -960,9 +976,18 @@ def test_accuracy_index_select(shape, dim, dtype):
     index_size = inp.size(dim)
     from math import floor
 
-    index = torch.randint(
-        0, index_size, [floor(index_size * 0.8)], device=flag_gems.device
-    )
+    if flag_gems.vendor_name == "sophgo":
+        index = torch.randint(
+            0,
+            index_size,
+            [floor(index_size * 0.8)],
+            device=flag_gems.device,
+            dtype=torch.int32,
+        )
+    else:
+        index = torch.randint(
+            0, index_size, [floor(index_size * 0.8)], device=flag_gems.device
+        )
 
     ref_inp = to_reference(inp)
     ref_index = to_reference(index)

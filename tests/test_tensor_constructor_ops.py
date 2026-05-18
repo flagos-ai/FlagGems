@@ -114,6 +114,8 @@ def test_accuracy_full(shape, dtype, fill_value):
     ref_out = torch.full(shape, fill_value, device="cpu" if TO_CPU else device)
     with flag_gems.use_gems():
         res_out = torch.full(shape, fill_value, device=flag_gems.device)
+    if flag_gems.vendor_name == "sophgo" and ref_out.dtype == torch.int64:
+        ref_out = ref_out.to(torch.int32)
     gems_assert_equal(res_out, ref_out)
 
     # with dtype

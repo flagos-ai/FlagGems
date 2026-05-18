@@ -164,7 +164,7 @@ CUSTOMIZED_UNUSED_OPS = (
     # "sin_",
     # "softmax",
     "softmax_backward",
-    # "sort",
+    "sort",
     # "sub",
     # "sub_",
     # "tanh",
