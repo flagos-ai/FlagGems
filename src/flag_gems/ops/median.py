@@ -92,7 +92,7 @@ def median_small_dim_kernel(
         nan_mask = sample_mask & (samples != samples)
         sortable = tl.where(nan_mask, high, samples)
 
-    ordered = tl.sort(sortable, dim=1)
+    ordered = tl.sort(sortable, dim=1, descending=False)
     rank = (reduction_size - 1) // 2
     rank_mask = reduction_offsets[None, :] == rank
     median_values = tl.sum(tl.where(rank_mask, ordered, tl.zeros_like(ordered)), axis=1)
@@ -145,7 +145,7 @@ def median_small_flat_kernel(
         nan_mask = valid & (data != data)
         sortable = tl.where(nan_mask, high, data)
 
-    ordered = tl.sort(sortable)
+    ordered = tl.sort(sortable, descending=False)
     rank = (WIDTH - 1) // 2
     median_value = tl.sum(
         tl.where(offsets == rank, ordered, tl.zeros_like(ordered)), axis=0
@@ -337,7 +337,7 @@ def median_lastdim_sort_kernel(
 
     nan_mask = valid & (data != data)
     sortable = tl.where(nan_mask, float("inf"), data)
-    ordered = tl.sort(sortable)
+    ordered = tl.sort(sortable, descending=False)
     rank = (WIDTH - 1) // 2
     median_value = tl.sum(
         tl.where(cols == rank, ordered, tl.zeros_like(ordered)), axis=0
