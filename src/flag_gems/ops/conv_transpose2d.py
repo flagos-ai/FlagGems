@@ -1034,12 +1034,12 @@ def _conv_transpose2d_general_kernel(
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < total_elements
 
-    ow = offsets % output_width
     tmp = offsets // output_width
-    oh = tmp % output_height
-    tmp = tmp // output_height
-    co = tmp % output_channels
-    n = tmp // output_channels
+    ow = offsets - tmp * output_width
+    tmp2 = tmp // output_height
+    oh = tmp - tmp2 * output_height
+    n = tmp2 // output_channels
+    co = tmp2 - n * output_channels
 
     group = co // output_channels_per_group
     co_in_group = co - group * output_channels_per_group

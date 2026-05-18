@@ -105,6 +105,70 @@ SUPPORTED_CONV_TRANSPOSE2D_CASES = [
 ]
 
 
+ADDITIONAL_CONV_TRANSPOSE2D_CASES = [
+    pytest.param(
+        (2, 4, 4, 5),
+        (4, 2, 2, 3),
+        True,
+        (3, 2),
+        (1, 2),
+        (2, 1),
+        2,
+        1,
+        torch.float32,
+        id="fp32_groups2_bias_stride3_asymmetric_output_padding",
+    ),
+    pytest.param(
+        (1, 3, 5, 5),
+        (3, 4, 3, 2),
+        True,
+        2,
+        (2, 1),
+        1,
+        1,
+        (2, 1),
+        torch.float16,
+        id="fp16_bias_tuple_padding_dilation",
+    ),
+    pytest.param(
+        (2, 1, 1, 1),
+        (1, 3, 1, 1),
+        True,
+        1,
+        0,
+        0,
+        1,
+        1,
+        torch.float32,
+        id="fp32_1x1_kernel_single_pixel",
+    ),
+    pytest.param(
+        (0, 2, 4, 4),
+        (2, 3, 3, 3),
+        False,
+        1,
+        1,
+        0,
+        1,
+        1,
+        torch.float32,
+        id="fp32_empty_batch",
+    ),
+    pytest.param(
+        (1, 4, 4, 4),
+        (4, 2, 2, 2),
+        False,
+        (1, 2),
+        (1, 0),
+        (0, 1),
+        2,
+        (2, 2),
+        torch.bfloat16,
+        id="bf16_grouped_dilation_output_padding",
+    ),
+]
+
+
 def _skip_if_unsupported_test_device(dtype):
     if torch.device(flag_gems.device).type != "cuda":
         pytest.skip("conv_transpose2d Triton kernels require CUDA")
@@ -112,13 +176,7 @@ def _skip_if_unsupported_test_device(dtype):
         pytest.skip("BF16 conv_transpose2d requires CUDA BF16 support")
 
 
-@pytest.mark.conv_transpose2d
-@pytest.mark.parametrize(
-    "input_shape, weight_shape, use_bias, stride, padding, output_padding, groups, "
-    "dilation, dtype",
-    SUPPORTED_CONV_TRANSPOSE2D_CASES,
-)
-def test_accuracy_conv_transpose2d_supported(
+def _assert_conv_transpose2d_matches(
     monkeypatch,
     input_shape,
     weight_shape,
@@ -172,6 +230,70 @@ def test_accuracy_conv_transpose2d_supported(
 
 
 @pytest.mark.conv_transpose2d
+@pytest.mark.parametrize(
+    "input_shape, weight_shape, use_bias, stride, padding, output_padding, groups, "
+    "dilation, dtype",
+    SUPPORTED_CONV_TRANSPOSE2D_CASES,
+)
+def test_accuracy_conv_transpose2d_supported(
+    monkeypatch,
+    input_shape,
+    weight_shape,
+    use_bias,
+    stride,
+    padding,
+    output_padding,
+    groups,
+    dilation,
+    dtype,
+):
+    _assert_conv_transpose2d_matches(
+        monkeypatch,
+        input_shape,
+        weight_shape,
+        use_bias,
+        stride,
+        padding,
+        output_padding,
+        groups,
+        dilation,
+        dtype,
+    )
+
+
+@pytest.mark.conv_transpose2d
+@pytest.mark.parametrize(
+    "input_shape, weight_shape, use_bias, stride, padding, output_padding, groups, "
+    "dilation, dtype",
+    ADDITIONAL_CONV_TRANSPOSE2D_CASES,
+)
+def test_accuracy_conv_transpose2d_extended_parameters(
+    monkeypatch,
+    input_shape,
+    weight_shape,
+    use_bias,
+    stride,
+    padding,
+    output_padding,
+    groups,
+    dilation,
+    dtype,
+):
+    _assert_conv_transpose2d_matches(
+        monkeypatch,
+        input_shape,
+        weight_shape,
+        use_bias,
+        stride,
+        padding,
+        output_padding,
+        groups,
+        dilation,
+        dtype,
+    )
+
+
+@pytest.mark.conv_transpose2d
 def test_conv_transpose2d_invalid_groups_raise():
     _skip_if_unsupported_test_device(torch.float32)
     inp = torch.randn((1, 2, 4, 4), dtype=torch.float32, device=flag_gems.device)
@@ -179,3 +301,78 @@ def test_conv_transpose2d_invalid_groups_raise():
 
     with pytest.raises(RuntimeError, match="divisible by groups"):
         flag_gems.conv_transpose2d(inp, weight, groups=3)
+
+
+@pytest.mark.conv_transpose2d
+@pytest.mark.parametrize(
+    "case, match",
+    [
+        ("groups_zero", "positive integer"),
+        ("channel_mismatch", "match weight input channels"),
+        ("bias_size", "one element per output channel"),
+        ("stride_zero", "non-positive stride"),
+        ("negative_padding", "negative padding"),
+        ("invalid_output_padding", "smaller than either stride or dilation"),
+        ("dilation_zero", "greater than zero"),
+        ("output_too_small", "output size is too small"),
+    ],
+)
+def test_conv_transpose2d_invalid_arguments_raise(case, match):
+    _skip_if_unsupported_test_device(torch.float32)
+    inp = torch.randn((1, 2, 4, 4), dtype=torch.float32, device=flag_gems.device)
+    weight = torch.randn((2, 3, 3, 3), dtype=torch.float32, device=flag_gems.device)
+    bias = torch.randn((3,), dtype=torch.float32, device=flag_gems.device)
+    kwargs = {
+        "bias": bias,
+        "stride": 1,
+        "padding": 0,
+        "output_padding": 0,
+        "groups": 1,
+        "dilation": 1,
+    }
+
+    if case == "groups_zero":
+        kwargs["groups"] = 0
+    elif case == "channel_mismatch":
+        weight = torch.randn((3, 3, 3, 3), dtype=torch.float32, device=flag_gems.device)
+    elif case == "bias_size":
+        kwargs["bias"] = torch.randn((4,), dtype=torch.float32, device=flag_gems.device)
+    elif case == "stride_zero":
+        kwargs["stride"] = 0
+    elif case == "negative_padding":
+        kwargs["padding"] = -1
+    elif case == "invalid_output_padding":
+        kwargs["stride"] = 2
+        kwargs["dilation"] = 2
+        kwargs["output_padding"] = 2
+    elif case == "dilation_zero":
+        kwargs["dilation"] = 0
+    elif case == "output_too_small":
+        kwargs["padding"] = 8
+
+    with pytest.raises(RuntimeError, match=match):
+        flag_gems.conv_transpose2d(inp, weight, **kwargs)
+
+
+@pytest.mark.conv_transpose2d
+@pytest.mark.parametrize(
+    "case",
+    ["noncontiguous_input", "noncontiguous_weight", "bad_dtype", "noncontiguous_bias"],
+)
+def test_conv_transpose2d_unsupported_inputs_raise(case):
+    _skip_if_unsupported_test_device(torch.float32)
+    inp = torch.randn((1, 2, 4, 5), dtype=torch.float32, device=flag_gems.device)
+    weight = torch.randn((2, 3, 3, 3), dtype=torch.float32, device=flag_gems.device)
+    bias = torch.randn((3,), dtype=torch.float32, device=flag_gems.device)
+
+    if case == "noncontiguous_input":
+        inp = inp.transpose(2, 3)
+    elif case == "noncontiguous_weight":
+        weight = weight.transpose(2, 3)
+    elif case == "bad_dtype":
+        weight = weight.to(torch.float64)
+    elif case == "noncontiguous_bias":
+        bias = torch.randn((6,), dtype=torch.float32, device=flag_gems.device)[::2]
+
+    with pytest.raises(NotImplementedError, match="supports 4D contiguous CUDA"):
+        flag_gems.conv_transpose2d(inp, weight, bias=bias)
