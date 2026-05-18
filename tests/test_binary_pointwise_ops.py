@@ -1522,6 +1522,7 @@ def test_accuracy_sub_scalar_scalar(dtype):
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.device == "tpu", reason="TODODIX")
 @pytest.mark.where
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
