@@ -296,21 +296,3 @@ def fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
                 cache_block_size, N_ins,
                 num_warps=2, num_stages=4,
             )
-
-
-def fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert_ref(
-    q,
-    kv,
-    k_cache,
-    slot_mapping,
-    position_ids,
-    cos_sin_cache,
-    eps: float = 1e-6,
-    cache_block_size: int = 16,
-):
-    """Reference implementation via vLLM CUDA kernel. Used as performance baseline."""
-    from vllm.model_executor.layers import deepseek_v4_attention  # noqa: F401
-
-    torch.ops._C.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
-        q, kv, k_cache, slot_mapping, position_ids, cos_sin_cache, eps, cache_block_size
-    )

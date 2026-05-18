@@ -20,7 +20,6 @@ from flag_gems.fused.fused_moe import (
 )
 from flag_gems.fused.fused_qnorm_rope_kv import (
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
-    fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert_ref,
 )
 from flag_gems.fused.geglu import dgeglu, geglu
 from flag_gems.fused.gelu_and_mul import gelu_and_mul
@@ -75,7 +74,6 @@ __all__ = [
     "flash_mla_sparse_fwd",
     "fused_add_rms_norm",
     "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
-    "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert_ref",
     "fused_experts_impl",
     "fused_recurrent_gated_delta_rule_fwd",
     "geglu",
