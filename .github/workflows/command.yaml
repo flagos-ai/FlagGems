@@ -143,7 +143,7 @@ jobs:
               --single \
               --compare \
               --output report.md \
-              results_new
+              results
           fi
 
       - name: Upload results
