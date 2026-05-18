@@ -35,7 +35,7 @@ _LASTDIM_SORT_LIMIT = 1024
 _BF16_LASTDIM_SORT_LIMIT = 2048
 _LASTDIM_SORT_DTYPES = {torch.float16, torch.bfloat16}
 _FLAT_SORT_DTYPES = _LASTDIM_SORT_DTYPES | {torch.float32}
-_F16_KEY_SELECT_MIN = _LASTDIM_SORT_LIMIT + 1
+_F16_KEY_SELECT_MIN = 2
 _F16_KEY_SELECT_LIMIT = 16384
 _F16_KEY_SELECT_DTYPES = {torch.float16, torch.bfloat16}
 _FP32_KEY_SELECT_MIN = 257
@@ -1193,15 +1193,16 @@ def median(inp):
         return inp.reshape(()).clone()
 
     flat = inp.contiguous().reshape(-1)
+    row_data = flat.reshape(1, inp.numel())
+    if _use_f16_key_select(inp.dtype, inp.numel()):
+        values, _ = _median_f16_key_select(row_data, ())
+        return values.reshape(())
     if inp.dtype in _DIRECT_REDUCTION_DTYPES and inp.numel() <= _DIRECT_FLAT_LIMIT:
         return _median_small_flat(flat)
     if inp.dtype == torch.bool:
         return _median_bool_flat(flat)
 
-    row_data = flat.reshape(1, inp.numel())
-    if _use_f16_key_select(inp.dtype, inp.numel()):
-        values, _ = _median_f16_key_select(row_data, ())
-    elif inp.dtype in _FLAT_SORT_DTYPES and inp.numel() <= _FLAT_SORT_LIMIT:
+    if inp.dtype in _FLAT_SORT_DTYPES and inp.numel() <= _FLAT_SORT_LIMIT:
         values, _ = _median_lastdim_sort(row_data, ())
     elif _use_fp32_key_select(inp.dtype, inp.numel()):
         values, _ = _median_fp32_key_select(row_data, ())
@@ -1259,6 +1260,22 @@ def median_dim(inp, dim=0, keepdim=False):
             _raise_dim_dtype(work.dtype)
         if work.dtype == torch.bool:
             values, indices = _median_bool_dim(work.contiguous(), dim, output_shape)
+        elif _use_f16_key_select(work.dtype, work.shape[dim]):
+            if dim == work.ndim - 1:
+                values, indices = _median_f16_key_select(
+                    work.contiguous(), output_shape
+                )
+            elif work.is_contiguous():
+                values, indices = _median_f16_strided_key_select(
+                    work, dim, output_shape
+                )
+            else:
+                rows = torch.movedim(work, dim, -1).contiguous()
+                row_output_shape = rows.shape[:-1]
+                values, indices = _median_f16_key_select(rows, row_output_shape)
+                if keepdim:
+                    values = torch.movedim(values.unsqueeze(-1), -1, dim)
+                    indices = torch.movedim(indices.unsqueeze(-1), -1, dim)
         elif (
             work.shape[dim] <= _DIRECT_REDUCTION_LIMIT
             and work.dtype in _DIRECT_REDUCTION_DTYPES
