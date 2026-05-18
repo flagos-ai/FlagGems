@@ -38,3 +38,37 @@ def test_clamp_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+def _clamp_tensor_input_fn(shape, cur_dtype, device):
+    inp = utils.generate_tensor_input(shape, cur_dtype, device)
+    mini = utils.generate_tensor_input(shape, cur_dtype, device)
+    maxi = utils.generate_tensor_input(shape, cur_dtype, device)
+    yield inp, {"min": mini, "max": maxi}
+
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+        yield inp, {"min": mini, "max": None}
+        yield inp, {"min": None, "max": maxi}
+
+
+@pytest.mark.clamp_tensor
+def test_clamp_tensor():
+    bench = base.GenericBenchmark(
+        op_name="clamp_tensor",
+        input_fn=_clamp_tensor_input_fn,
+        torch_op=torch.clamp,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.clamp_tensor_
+def test_clamp_tensor_inplace():
+    bench = base.GenericBenchmark(
+        op_name="clamp_tensor_",
+        input_fn=_clamp_tensor_input_fn,
+        torch_op=torch.clamp_,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()

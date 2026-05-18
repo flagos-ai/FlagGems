@@ -15,10 +15,10 @@ weight: 50
 <!--
 FlagGems supports a range of AI chips/platforms beyond NVIDIA.
 For an up-to-date list of validated platforms, please refer to
-[Supported Platforms](/FlagGems/overview//features/#platforms-supported)
+[Supported Platforms](/FlagGems/overview/platforms/)
 -->
 *FlagGems* 在 NVIDIA 芯片之外支持若干不同类型的 AI 芯片或平台。
-请参阅[平台支持](/FlagGems/zh-cn/overview/features/#platforms-supported)
+请参阅[平台支持](/FlagGems/zh-cn/overview/platforms/)
 文档了解已经验证过的平台的最新列表。
 
 <!--
@@ -124,10 +124,10 @@ export GEMS_VENDOR=<厂商名称>
 
 <!--
 For the list of valid `vendor_name`s, please check the
-[supported platforms](/FlagGems/overview/features/#platforms-supported) documentation
+[supported platforms](/FlagGems/overview/platforms/) documentation
 for details.
 -->
-参阅[平台支持](/FlagGems/zh-cn/overview/features/#platforms-supported)文档，
+参阅[平台支持](/FlagGems/zh-cn/overview/platforms/)文档，
 了解不同厂商对应的符号名。
 
 <!--
