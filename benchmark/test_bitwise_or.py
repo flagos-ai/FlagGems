@@ -52,9 +52,9 @@ def test_bitwise_or_scalar_():
     bench = base.GenericBenchmark(
         input_fn=_scalar_input_fn_inplace,
         op_name="bitwise_or_scalar_",
-        torch_op=torch.Tensor.bitwise_or_,
+        torch_op=lambda a, b: a.bitwise_or_(b),
         dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
-        inplace=True,
+        is_inplace=True,
     )
     bench.run()
 
