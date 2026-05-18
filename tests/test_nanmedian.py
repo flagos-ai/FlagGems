@@ -87,7 +87,7 @@ def test_nanmedian(shape, dtype):
     _assert_nanmedian_values(res, ref, dtype)
 
 
-@pytest.mark.nanmedian
+@pytest.mark.nanmedian_dim
 @pytest.mark.parametrize(
     ("shape", "dim"),
     [((7,), 0), ((4, 33), 0), ((4, 33), -1), ((2, 3, 129), 1), ((2, 3, 1031), -1)],
@@ -106,7 +106,7 @@ def test_nanmedian_dim(shape, dim, keepdim, dtype):
     _assert_nanmedian_indices_valid(inp, res.values, res.indices, dim, keepdim, dtype)
 
 
-@pytest.mark.nanmedian
+@pytest.mark.nanmedian_dim
 @pytest.mark.parametrize("dtype", LARGE_RADIX_DTYPES)
 def test_nanmedian_large_radix_path(dtype):
     inp = _make_input((4, 8192), dtype)
@@ -120,7 +120,7 @@ def test_nanmedian_large_radix_path(dtype):
     _assert_nanmedian_indices_valid(inp, res.values, res.indices, -1, False, dtype)
 
 
-@pytest.mark.nanmedian
+@pytest.mark.nanmedian_dim
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_nanmedian_all_nan_rows(dtype):
     inp = torch.tensor(
@@ -138,7 +138,7 @@ def test_nanmedian_all_nan_rows(dtype):
     _assert_nanmedian_indices_valid(inp, res.values, res.indices, 1, False, dtype)
 
 
-@pytest.mark.nanmedian
+@pytest.mark.nanmedian_dim
 @pytest.mark.parametrize("dtype", NANMEDIAN_DTYPES)
 def test_nanmedian_non_contiguous(dtype):
     inp = _make_input((5, 7, 3), dtype).transpose(0, 1)
@@ -152,7 +152,7 @@ def test_nanmedian_non_contiguous(dtype):
     _assert_nanmedian_indices_valid(inp, res.values, res.indices, 1, False, dtype)
 
 
-@pytest.mark.nanmedian
+@pytest.mark.nanmedian_out
 @pytest.mark.parametrize("dtype", NANMEDIAN_DTYPES)
 def test_nanmedian_out(dtype):
     inp = _make_input((4, 33), dtype)
@@ -168,7 +168,7 @@ def test_nanmedian_out(dtype):
     _assert_nanmedian_values(out, ref_out, dtype)
 
 
-@pytest.mark.nanmedian
+@pytest.mark.nanmedian_dim_values
 @pytest.mark.parametrize("dtype", NANMEDIAN_DTYPES)
 def test_nanmedian_dim_values(dtype):
     inp = _make_input((4, 33), dtype)
@@ -189,7 +189,7 @@ def test_nanmedian_dim_values(dtype):
     _assert_nanmedian_indices_valid(inp, out_values, out_indices, 1, False, dtype)
 
 
-@pytest.mark.nanmedian
+@pytest.mark.nanmedian_dim_values
 @pytest.mark.parametrize("dtype", [torch.int8, torch.uint8, torch.int16, torch.int32])
 def test_nanmedian_dim_values_large_int(dtype):
     inp = _make_input((4, 8192), dtype)
@@ -222,6 +222,10 @@ def test_nanmedian_empty(dtype):
 
     _assert_nanmedian_values(res, ref, dtype)
 
+
+@pytest.mark.nanmedian_dim
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.uint8])
+def test_nanmedian_dim_empty(dtype):
     inp = torch.empty((2, 0), dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems(), pytest.raises(IndexError):
         torch.nanmedian(inp, dim=1)

@@ -149,7 +149,32 @@ nanmedian:
     - [1024, 1024]
     - [256, 4096]
     - [16, 131072]
-  shape_desc: "(B), M, N"
+  shape_desc: "N or M, N"
+
+nanmedian_out:
+  shapes:
+    - [64]
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "N or M, N"
+
+nanmedian_dim:
+  shapes:
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "M, N"
+
+nanmedian_dim_values:
+  shapes:
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "M, N"
 
 BlasBenchmark:
   shapes:

@@ -29,19 +29,6 @@ NANMEDIAN_DTYPES = _filter_reference_supported(
 )
 
 
-class NanMedianBenchmark(base.GenericBenchmark):
-    def set_shapes(self, shape_file_path=None):
-        op_name = self.op_name
-        self.op_name = "nanmedian"
-        try:
-            super().set_shapes(shape_file_path)
-        finally:
-            self.op_name = op_name
-
-    def set_more_shapes(self):
-        return [(1024, 1024), (256, 4096), (16, 128 * 1024)]
-
-
 def _make_input(shape, dtype, device):
     if dtype is torch.uint8:
         return torch.randint(0, 101, shape, dtype=dtype, device="cpu").to(device)
@@ -81,7 +68,7 @@ def _dim_values_input_fn(shape, dtype, device):
 
 @pytest.mark.nanmedian
 def test_nanmedian():
-    bench = NanMedianBenchmark(
+    bench = base.GenericBenchmark(
         input_fn=_input_fn,
         op_name="nanmedian",
         torch_op=torch.nanmedian,
@@ -91,11 +78,11 @@ def test_nanmedian():
     bench.run()
 
 
-@pytest.mark.nanmedian
+@pytest.mark.nanmedian_out
 def test_nanmedian_out():
-    bench = NanMedianBenchmark(
+    bench = base.GenericBenchmark(
         input_fn=_out_input_fn,
-        op_name="nanmedian.out",
+        op_name="nanmedian_out",
         torch_op=torch.ops.aten.nanmedian.out,
         dtypes=NANMEDIAN_DTYPES,
     )
@@ -103,11 +90,11 @@ def test_nanmedian_out():
     bench.run()
 
 
-@pytest.mark.nanmedian
+@pytest.mark.nanmedian_dim
 def test_nanmedian_dim():
-    bench = NanMedianBenchmark(
+    bench = base.GenericBenchmark(
         input_fn=_dim_input_fn,
-        op_name="nanmedian.dim",
+        op_name="nanmedian_dim",
         torch_op=torch.nanmedian,
         dtypes=NANMEDIAN_DTYPES,
     )
@@ -115,11 +102,11 @@ def test_nanmedian_dim():
     bench.run()
 
 
-@pytest.mark.nanmedian
+@pytest.mark.nanmedian_dim_values
 def test_nanmedian_dim_values():
-    bench = NanMedianBenchmark(
+    bench = base.GenericBenchmark(
         input_fn=_dim_values_input_fn,
-        op_name="nanmedian.dim_values",
+        op_name="nanmedian_dim_values",
         torch_op=torch.nanmedian,
         dtypes=NANMEDIAN_DTYPES,
     )

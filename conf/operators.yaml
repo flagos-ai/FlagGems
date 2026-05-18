@@ -3893,6 +3893,16 @@ ops:
     description: Returns the median of the values in `input`, ignoring `NaN` values.
     for:
       - nanmedian
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.1'
+  - id: nanmedian_out
+    description: A variant of `nanmedian()` with the `out` argument.
+    for:
       - nanmedian.out
     labels:
       - aten
@@ -3908,6 +3918,16 @@ ops:
       `indices` contains the index location of each median value found.
     for:
       - nanmedian.dim
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.1'
+  - id: nanmedian_dim_values
+    description: A variant of `nanmedian_dim()` with the `out` argument.
+    for:
       - nanmedian.dim_values
     labels:
       - aten
