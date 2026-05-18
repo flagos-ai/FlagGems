@@ -180,17 +180,19 @@ def topk_softplus_sqrt(
     gating_output,
     renormalize,
     routed_scaling_factor,
-    e_score_correction_bias=None,
-    input_tokens=None,
-    hash_indices_table=None,
+    correction_bias=None,
+    input_ids=None,
+    tid2eid=None,
 ):
     """Fused topk + softplus + sqrt kernel for MoE gating.
 
     Interface aligned with vLLM CUDA operator:
         void topk_softplus_sqrt(Tensor& topk_weights, Tensor& topk_indices,
-            Tensor& token_expert_indices, Tensor& gating_output, ...)
-
-    Writes results in-place into pre-allocated output tensors.
+            Tensor& token_expert_indices, Tensor& gating_output,
+            bool renormalize, double routed_scaling_factor,
+            const c10::optional<Tensor>& correction_bias,
+            const c10::optional<Tensor>& input_ids,
+            const c10::optional<Tensor>& tid2eid);
 
     Args:
         topk_weights: Output tensor [num_tokens, topk], dtype float32
@@ -199,9 +201,9 @@ def topk_softplus_sqrt(
         gating_output: Gating logits [num_tokens, num_experts]
         renormalize: Whether to renormalize weights
         routed_scaling_factor: Scaling factor for final weights
-        e_score_correction_bias: Optional bias for expert scores [num_experts]
-        input_tokens: Token IDs for hash mode [num_tokens]
-        hash_indices_table: Hash table mapping tokens to expert indices
+        correction_bias: Optional bias for expert scores [num_experts]
+        input_ids: Token IDs for hash mode [num_tokens]
+        tid2eid: Hash table mapping tokens to expert indices
     """
     num_tokens, num_experts = gating_output.shape
     topk = topk_weights.shape[1]
@@ -211,7 +213,7 @@ def topk_softplus_sqrt(
 
     BLOCK_E = triton.next_power_of_2(num_experts)
 
-    if input_tokens is not None and hash_indices_table is not None:
+    if input_ids is not None and tid2eid is not None:
         BLOCK_K = triton.next_power_of_2(topk)
         grid = (num_tokens,)
         _hash_kernel[grid](
@@ -219,17 +221,17 @@ def topk_softplus_sqrt(
             topk_weights,
             topk_indices,
             token_expert_indices,
-            e_score_correction_bias
-            if e_score_correction_bias is not None
+            correction_bias
+            if correction_bias is not None
             else gating_output,
-            input_tokens,
-            hash_indices_table,
+            input_ids,
+            tid2eid,
             num_tokens=num_tokens,
             num_experts=num_experts,
             topk=topk,
             renormalize=renormalize,
             routed_scaling_factor=routed_scaling_factor,
-            HAS_BIAS=e_score_correction_bias is not None,
+            HAS_BIAS=correction_bias is not None,
             BLOCK_E=BLOCK_E,
             BLOCK_K=BLOCK_K,
             num_warps=1,
@@ -243,15 +245,15 @@ def topk_softplus_sqrt(
         topk_weights,
         topk_indices,
         token_expert_indices,
-        e_score_correction_bias
-        if e_score_correction_bias is not None
+        correction_bias
+        if correction_bias is not None
         else gating_output,
         num_tokens=num_tokens,
         num_experts=num_experts,
         topk=topk,
         renormalize=renormalize,
         routed_scaling_factor=routed_scaling_factor,
-        HAS_BIAS=e_score_correction_bias is not None,
+        HAS_BIAS=correction_bias is not None,
         BLOCK_E=BLOCK_E,
         num_warps=1,
         num_stages=1,

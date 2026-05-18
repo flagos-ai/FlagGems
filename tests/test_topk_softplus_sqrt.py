@@ -44,21 +44,21 @@ def _torch_topk_softplus_sqrt_reference(
     topk: int,
     renormalize: bool,
     routed_scaling_factor: float,
-    e_score_correction_bias: torch.Tensor | None = None,
-    input_tokens: torch.Tensor | None = None,
-    hash_indices_table: torch.Tensor | None = None,
+    correction_bias: torch.Tensor | None = None,
+    input_ids: torch.Tensor | None = None,
+    tid2eid: torch.Tensor | None = None,
 ):
     """Pure PyTorch reference implementation."""
     scores = F.softplus(gating_output.float()).sqrt()
     original_scores = scores
-    if e_score_correction_bias is not None:
-        scores_for_choice = scores + e_score_correction_bias.unsqueeze(0)
+    if correction_bias is not None:
+        scores_for_choice = scores + correction_bias.unsqueeze(0)
     else:
         scores_for_choice = scores
 
-    if hash_indices_table is not None:
-        assert input_tokens is not None
-        topk_ids = hash_indices_table[input_tokens.long()]
+    if tid2eid is not None:
+        assert input_ids is not None
+        topk_ids = tid2eid[input_ids.long()]
     else:
         topk_ids = torch.topk(scores_for_choice, k=topk, dim=-1, sorted=True)[1]
 
@@ -103,7 +103,7 @@ def test_topk_softplus_sqrt_standard(
     torch.manual_seed(0)
 
     gating_output = torch.randn((num_tokens, num_experts), dtype=dtype, device=device)
-    e_score_correction_bias = torch.randn(
+    correction_bias = torch.randn(
         (num_experts,), dtype=torch.float32, device=device
     )
 
@@ -112,7 +112,7 @@ def test_topk_softplus_sqrt_standard(
         topk,
         renormalize,
         routed_scaling_factor,
-        e_score_correction_bias=e_score_correction_bias,
+        correction_bias=correction_bias,
     )
     ref_weights = utils.to_reference(ref_weights)
     ref_ids = utils.to_reference(ref_ids)
@@ -129,7 +129,7 @@ def test_topk_softplus_sqrt_standard(
             gating_output,
             renormalize,
             routed_scaling_factor,
-            e_score_correction_bias=e_score_correction_bias,
+            correction_bias=correction_bias,
         )
 
     _check_topk_results(res_weights, res_ids, ref_weights, ref_ids)
@@ -151,10 +151,10 @@ def test_topk_softplus_sqrt_hash(
 
     vocab_size = 1024
     gating_output = torch.randn((num_tokens, num_experts), dtype=dtype, device=device)
-    hash_indices_table = torch.stack(
+    tid2eid = torch.stack(
         [torch.randperm(num_experts)[:topk] for _ in range(vocab_size)]
     ).to(device=device, dtype=torch.int32)
-    input_tokens = torch.randint(
+    input_ids = torch.randint(
         0, vocab_size, (num_tokens,), dtype=torch.int32, device=device
     )
 
@@ -163,8 +163,8 @@ def test_topk_softplus_sqrt_hash(
         topk,
         renormalize,
         routed_scaling_factor,
-        input_tokens=input_tokens,
-        hash_indices_table=hash_indices_table,
+        input_ids=input_ids,
+        tid2eid=tid2eid,
     )
     ref_weights = utils.to_reference(ref_weights)
     ref_ids = utils.to_reference(ref_ids)
@@ -181,8 +181,8 @@ def test_topk_softplus_sqrt_hash(
             gating_output,
             renormalize,
             routed_scaling_factor,
-            input_tokens=input_tokens,
-            hash_indices_table=hash_indices_table,
+            input_ids=input_ids,
+            tid2eid=tid2eid,
         )
 
     _check_topk_results(res_weights, res_ids, ref_weights, ref_ids)
@@ -202,7 +202,7 @@ def test_topk_softplus_sqrt_vs_vllm(num_tokens, num_experts, topk, renormalize):
     dtype = torch.bfloat16
     routed_scaling_factor = 1.0
     gating_output = torch.randn((num_tokens, num_experts), dtype=dtype, device=device)
-    e_score_correction_bias = torch.randn(
+    correction_bias = torch.randn(
         (num_experts,), dtype=torch.float32, device=device
     )
 
@@ -217,7 +217,7 @@ def test_topk_softplus_sqrt_vs_vllm(num_tokens, num_experts, topk, renormalize):
         gating_output,
         renormalize,
         routed_scaling_factor,
-        e_score_correction_bias,
+        correction_bias,
         None,
         None,
     )
@@ -237,7 +237,7 @@ def test_topk_softplus_sqrt_vs_vllm(num_tokens, num_experts, topk, renormalize):
             gating_output,
             renormalize,
             routed_scaling_factor,
-            e_score_correction_bias=e_score_correction_bias,
+            correction_bias=correction_bias,
         )
 
     _check_topk_results(res_weights, res_ids, vllm_weights, vllm_ids)
