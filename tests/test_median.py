@@ -1220,10 +1220,10 @@ def test_median_strided_nonlast_large_reduction_out(keepdim):
     inp = torch.randn((384, 7), dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_shape = (1, 7) if keepdim else (7,)
-    ref_values = torch.empty(ref_shape, dtype=torch.float32, device=flag_gems.device)
-    ref_indices = torch.empty(ref_shape, dtype=torch.int64, device=flag_gems.device)
-    values = torch.empty_like(ref_values)
-    indices = torch.empty_like(ref_indices)
+    ref_values = torch.empty(ref_shape, dtype=torch.float32, device=ref_inp.device)
+    ref_indices = torch.empty(ref_shape, dtype=torch.int64, device=ref_inp.device)
+    values = torch.empty(ref_shape, dtype=torch.float32, device=inp.device)
+    indices = torch.empty(ref_shape, dtype=torch.int64, device=inp.device)
 
     ref_out = torch.median(
         ref_inp, dim=0, keepdim=keepdim, out=(ref_values, ref_indices)
