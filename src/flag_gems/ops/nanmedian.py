@@ -34,12 +34,6 @@ RADIX_SELECT_DTYPES = (
     torch.int16,
     torch.int32,
 )
-ASCEND_RADIX_SELECT_DTYPES = (
-    torch.int8,
-    torch.uint8,
-    torch.int16,
-    torch.int32,
-)
 ASCEND_HISTOGRAM_SELECT_DTYPES = (
     torch.int8,
     torch.uint8,
@@ -164,7 +158,6 @@ def nanmedian_float_clean_count_kernel(
     inp,
     cleaned,
     valid_counts,
-    M,
     N: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -194,7 +187,6 @@ def nanmedian_float_sorted_gather_kernel(
     valid_counts,
     out_values,
     out_indices,
-    M,
     N: tl.constexpr,
 ):
     pid = tle.program_id(0)
@@ -207,81 +199,6 @@ def nanmedian_float_sorted_gather_kernel(
     result_val = tl.where(count > 0, result_val, float("nan"))
     result_idx = tl.where(count > 0, result_idx, 0)
 
-    tl.store(out_values + pid, result_val)
-    tl.store(out_indices + pid, result_idx)
-
-
-@libentry()
-@triton.jit
-def nanmedian_ascend_radix_select_kernel(
-    inp,
-    out_values,
-    out_indices,
-    M,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    RADIX_BITS_: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    offsets = tl.arange(0, BLOCK_N)
-    dtype = inp.dtype.element_ty
-    nbits: tl.constexpr = dtype.primitive_bitwidth
-    utype = tl.dtype(f"uint{nbits}")
-    radix_mask: tl.constexpr = (1 << RADIX_BITS_) - 1
-    radix_mask_val = tl.full((), radix_mask, dtype=utype)
-
-    valid_count = tl.full((), N, dtype=tl.int32)
-    k_to_find = (valid_count + 1) // 2
-    desired = tl.full((), 0, dtype=utype)
-    desired_mask = tl.full((), 0, dtype=utype)
-
-    for digit_pos in tl.static_range(nbits - RADIX_BITS_, -1, -RADIX_BITS_):
-        count0 = tl.full((), 0, dtype=tl.int32)
-        count1 = tl.full((), 0, dtype=tl.int32)
-        count2 = tl.full((), 0, dtype=tl.int32)
-        count3 = tl.full((), 0, dtype=tl.int32)
-
-        for start in tl.range(0, N, BLOCK_N):
-            cols = start + offsets
-            mask = cols < N
-            vals = tl.load(inp + pid * N + cols, mask=mask, other=0)
-            keys = _to_order_key(vals, mask)
-            active = mask & ((keys & desired_mask) == desired)
-            digit = ((keys >> digit_pos) & radix_mask_val).to(tl.int32)
-            count0 += tl.sum((active & (digit == 0)).to(tl.int32), axis=0)
-            count1 += tl.sum((active & (digit == 1)).to(tl.int32), axis=0)
-            count2 += tl.sum((active & (digit == 2)).to(tl.int32), axis=0)
-            count3 += tl.sum((active & (digit == 3)).to(tl.int32), axis=0)
-
-        cumsum0 = count0
-        cumsum1 = count0 + count1
-        cumsum2 = cumsum1 + count2
-        take0 = k_to_find <= cumsum0
-        take1 = (~take0) & (k_to_find <= cumsum1)
-        take2 = (~take0) & (~take1) & (k_to_find <= cumsum2)
-        selected_bin = tl.where(take0, 0, tl.where(take1, 1, tl.where(take2, 2, 3)))
-        counts_before = tl.where(
-            take0, 0, tl.where(take1, count0, tl.where(take2, cumsum1, cumsum2))
-        )
-
-        selected_bin = selected_bin.to(utype)
-        desired = desired | (selected_bin << digit_pos)
-        desired_mask = desired_mask | (radix_mask_val << digit_pos)
-        k_to_find = k_to_find - counts_before
-
-    result_idx = tl.full((), N, dtype=tl.int32)
-    for start in tl.range(0, N, BLOCK_N):
-        cols = start + offsets
-        mask = cols < N
-        vals = tl.load(inp + pid * N + cols, mask=mask, other=0)
-        keys = _to_order_key(vals, mask)
-        local_idx = tl.min(tl.where(mask & (keys == desired), cols, N), axis=0)
-        result_idx = tl.where(local_idx < result_idx, local_idx, result_idx)
-
-    fallback_value = get_dtype_min(dtype)
-    result_val = tl.load(
-        inp + pid * N + result_idx, mask=result_idx < N, other=fallback_value
-    )
     tl.store(out_values + pid, result_val)
     tl.store(out_indices + pid, result_idx)
 
@@ -876,18 +793,9 @@ def _use_radix_select(inp, n):
     return False
 
 
-def _use_ascend_int_radix_select(inp, n):
+def _use_ascend_float_sort_select(inp, n):
     return (
         inp.device.type == "npu"
-        and inp.dtype in ASCEND_RADIX_SELECT_DTYPES
-        and MAX_BLOCK_N < n <= LONG_RADIX_REDUCTION_N
-    )
-
-
-def _use_ascend_float_sort_select(inp, n, enabled):
-    return (
-        enabled
-        and inp.device.type == "npu"
         and inp.dtype in ASCEND_FLOAT_SELECT_DTYPES
         and MAX_BLOCK_N < n <= LONG_RADIX_REDUCTION_N
     )
@@ -1071,7 +979,6 @@ def _nanmedian_ascend_float_sort_select(inp, M, N, values, indices):
                 inp,
                 cleaned,
                 valid_counts,
-                M,
                 N,
                 block_n,
                 num_warps=num_warps,
@@ -1091,7 +998,6 @@ def _nanmedian_ascend_float_sort_select(inp, M, N, values, indices):
             valid_counts,
             flat_values,
             flat_indices,
-            M,
             N,
             num_warps=1,
             num_stages=1,
@@ -1169,7 +1075,7 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
                 num_warps=num_warps,
                 num_stages=1,
             )
-    elif _use_ascend_float_sort_select(inp, N, use_ascend_float_select):
+    elif use_ascend_float_select and _use_ascend_float_sort_select(inp, N):
         _nanmedian_ascend_float_sort_select(inp, M, N, values, indices)
     elif _use_ascend_multi_histogram_select(inp, N):
         flat_values = values.reshape(M)
@@ -1295,23 +1201,6 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
                 N,
                 block_n,
                 ASCEND_HISTOGRAM_BINS,
-                num_warps=num_warps,
-                num_stages=1,
-            )
-    elif _use_ascend_int_radix_select(inp, N):
-        flat_values = values.reshape(M)
-        flat_indices = indices.reshape(M)
-        block_n = _radix_block_n(inp, N)
-        num_warps = 4 if block_n <= 512 else 8
-        with torch_device_fn.device(inp.device):
-            nanmedian_ascend_radix_select_kernel[(M,)](
-                inp,
-                flat_values,
-                flat_indices,
-                M,
-                N,
-                block_n,
-                RADIX_BITS,
                 num_warps=num_warps,
                 num_stages=1,
             )
