@@ -7,8 +7,6 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
-
 logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24

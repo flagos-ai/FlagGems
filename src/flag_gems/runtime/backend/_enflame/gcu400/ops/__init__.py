@@ -1,4 +1,3 @@
-# __all__ = ["any", "any_dim", "any_dims"]
 from .all import all, all_dim, all_dims
 from .abs import abs, abs_
 from .add import add, add_
@@ -422,4 +421,7 @@ __all__ = [
     "all",
     "all_dim",
     "all_dims",
+    "any",
+    "any_dim",
+    "any_dims",
 ]

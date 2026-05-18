@@ -1,10 +1,9 @@
 import importlib
 import logging
 import os
-from typing import Any, Callable, List, Mapping, Tuple
+from typing import Any, Callable, Mapping, Tuple
 
 import torch
-import triton
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic

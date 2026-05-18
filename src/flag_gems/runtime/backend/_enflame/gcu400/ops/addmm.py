@@ -38,7 +38,6 @@ def _select_block_sizes(M, N, K):
     else:
         BLOCK_K = 64
 
-    grid_m = triton.cdiv(M, BLOCK_M)
     grid_n = triton.cdiv(N, BLOCK_N)
     if grid_n > GCU_MAX_GRID_Y:
         BLOCK_N = triton.cdiv(N, GCU_MAX_GRID_Y)

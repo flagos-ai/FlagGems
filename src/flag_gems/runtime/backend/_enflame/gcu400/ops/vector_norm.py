@@ -1,6 +1,5 @@
 import builtins
 import logging
-import math
 
 import torch
 import triton
@@ -411,7 +410,9 @@ def _launch_global_norm(x, out, M, ord_val, dtype):
             l1_global_kernel_1[(grid_size,)](x, mid, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4)
             l1_global_kernel_2[(1,)](mid, out, mid_size, block_mid, num_warps=1)
         else:
-            v_global_kernel_1[(grid_size,)](x, mid, ord_val, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4)
+            v_global_kernel_1[(grid_size,)](
+                x, mid, ord_val, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4
+            )
             v_global_kernel_2[(1,)](mid, out, ord_val, mid_size, block_mid, num_warps=1)
 
 

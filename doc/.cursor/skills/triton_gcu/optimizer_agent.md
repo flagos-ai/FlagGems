@@ -11,6 +11,7 @@
 - 未通过 ValidatorAgent 正确性验证不得进入下一轮优化
 - 每轮 benchmark 运行时**始终设置** `export TRITON_GCU_COMPILE_TIME=1`
 - aten passthrough 已全面禁止（Strategy 39）
+- **代码风格合规（MANDATORY）**: 生成或修改的代码必须通过 pre-commit hooks（flake8 + black + end-of-file-fixer），无 F401/F811/F821/E226/E501/E741 等 lint 错误。详见 Section 4B
 - **pointwise_dynamic codegen 修改原则**: 若算子使用 `pointwise_dynamic` 代码生成器实现，且优化需要修改 codegen 逻辑，**必须采用特化方式**，禁止直接修改通用 codegen 框架。两种合规做法：
   1. **在 codegen 中增加特定算子分支**: 在 `pointwise_dynamic` 内部为该算子添加专属分支逻辑（如根据算子名或参数特征分发）
   2. **改用非 codegen 手写实现**: 放弃 `pointwise_dynamic`，直接在 `gcu400/ops/{op_name}.py` 中手写完整的 `@triton.jit` kernel（参见 Pattern 2），由 RegistrarAgent 完成迁移注册
@@ -493,7 +494,131 @@ BLOCK_M = max(1, min(128, 32768 // BLOCK_N))
 | MEDIUM | cumsum: K=1 用行级专用 kernel | 6.14 |
 | LOW | ENABLE_STRIDE_GATHER | S4 |
 | **FORBIDDEN** | aten passthrough 全面禁止 | 全局约束 |
+| **MANDATORY** | 代码通过 flake8 + black（无 F401/F811/F821/E226 等） | Section 4B |
 | **MANDATORY** | 优化完成后更新 skill | Section 9 |
+
+---
+
+## 4B. 代码风格合规（MANDATORY — 生成代码必须通过 pre-commit）
+
+> **背景**: FlagGems 仓库启用了 pre-commit hooks（flake8 + black + end-of-file-fixer + trailing-whitespace），优化生成的代码必须通过这些检查。以下规则来自实际 code-style 审查中高频出现的问题，OptimizerAgent 生成或修改的每一行代码都必须遵守。
+
+### 4B.1 Flake8 规则（按出现频率排序）
+
+#### F401: 未使用的 import — 禁止保留无用导入
+- **只 import 实际使用的模块/符号**，不要"以防万一"地保留 import
+- **常见违规**: 从公共实现迁移时复制了全部 import，但手写 kernel 未使用其中部分（如 `math`、`pointwise_dynamic`、`tl_extra_shim`、`triton_lang_extension as tle`）
+- **`from typing import ...`**: 只导入实际用到的类型（如只用 `Callable, Mapping` 就不要带 `Any, Tuple, List`）
+- **运行时被覆盖的 import**: 若函数内有 `device = x.device`，则文件顶部的 `from flag_gems.runtime import device` 变成了未使用 import（被局部变量遮蔽），必须移除
+- **`__init__.py` re-export**: 若在 `__init__.py` 中 import 了符号，必须将其加入 `__all__` 列表，否则 flake8 报 F401
+
+#### F811: 重复定义 — 禁止代码块复制粘贴
+- **绝对禁止**在同一文件中出现两份完整实现（kernel + dispatch 函数）的情况
+- **常见原因**: 迁移时将公共实现整段追加到文件末尾，导致 import、kernel 函数、dispatch 函数全部重复定义
+- **正确做法**: 一个文件只保留一份完整实现；若需对比，用 git diff 而非文件内粘贴
+
+#### F821: 引用未定义的变量名 — kernel 参数名必须与使用一致
+- Triton kernel 内使用的变量名必须与函数签名中的参数名完全匹配
+- **常见违规**: 签名写 `BLOCK_M` 但 kernel 内写 `BLOCK_SIZE_M`；签名无 `y_stride_r` 但 kernel 内使用了
+- 修改 kernel 结构后，必须同步清理引用旧结构的残留代码
+
+#### F841: 赋值但未使用的局部变量
+- 不要留下 `grid_m = triton.cdiv(M, BLOCK_M)` 这种计算了但从未引用的变量
+- 若暂时保留备用，加 `_` 前缀（`_grid_m = ...`）
+
+#### E741: 歧义变量名
+- **禁止使用单字母 `O` 作为变量名**（与数字 0 混淆），应改为 `Out` 或 `output`
+- 同理避免 `l`（与 1 混淆）、`I`（与 l 混淆）
+
+#### E226: 算术运算符缺少空格
+- 所有二元算术运算符两侧必须有空格: `a + b`、`a * b`、`a - b`
+- **常见违规**: `BLOCK_SIZE=1024*16` → 应写 `BLOCK_SIZE=1024 * 16`
+- **Triton kernel 内的复杂数学表达式同样适用**: `((a+2)*x-(a+3))*x*x+1` → `((a + 2) * x - (a + 3)) * x * x + 1`
+
+#### E501: 行长度不超过 120 字符
+- kernel launch 调用经常超长，需拆成多行:
+```python
+# BAD (>120 chars):
+v_global_kernel_1[(grid_size,)](x, mid, ord_val, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4)
+
+# GOOD:
+v_global_kernel_1[(grid_size,)](
+    x, mid, ord_val, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4
+)
+```
+
+#### E127/E128: 续行缩进不正确
+- **E128 (under-indented)**: 续行必须与开始括号后的第一个非空白字符对齐，或使用悬挂缩进（4 空格增量）
+- **E127 (over-indented)**: 续行不能超过对齐位置
+- **嵌套数学表达式**: 使用显式分层缩进而非紧贴括号:
+```python
+# GOOD: 每层嵌套增加 4 空格缩进
+sin_x = x * (
+    0.99999999999999999999
+    + x2 * (
+        -0.16666666666666666654
+        + x2 * (
+            0.00833333333333332876
+            + x2 * (-0.00019841269841269616 + x2 * 2.755e-6)
+        )
+    )
+)
+```
+- **`@triton.jit(do_not_specialize=[...])` 装饰器**: 参数列表过长时使用多行格式:
+```python
+# GOOD:
+@triton.jit(
+    do_not_specialize=[
+        "D_in", "H_in", "W_in",
+        "pad_l", "pad_t", "pad_f",
+    ],
+)
+```
+
+#### E305/E402: 文件结构
+- **E305**: 顶层函数/类定义之后需要 2 个空行
+- **E402**: 所有 import 必须在文件顶部（不能在函数定义之后再 import）
+- 这两个错误通常伴随 F811（代码块重复粘贴）一起出现
+
+### 4B.2 Black 格式化
+- 生成的代码应符合 black 默认格式（4 空格缩进、双引号字符串、尾逗号等）
+- `tl.where(...)` 嵌套调用：每个参数独占一行:
+```python
+# GOOD:
+weight_y0 = tl.where(
+    0 < span_size_h,
+    tl.where(
+        wy0 < 1.0,
+        ((a + 2) * wy0 - (a + 3)) * wy0 * wy0 + 1,
+        tl.where(
+            wy0 < 2.0,
+            (((wy0 - 5) * wy0 + 8) * wy0 - 4) * a,
+            0.0,
+        ),
+    ),
+    0.0,
+)
+```
+
+### 4B.3 文件末尾 & 空白
+- 文件必须以**恰好一个换行符**结尾（end-of-file-fixer）
+- 行尾不得有多余空白（trailing-whitespace）
+
+### 4B.4 Checklist（代码提交前自查）
+
+| 检查项 | 对应规则 |
+|--------|---------|
+| 所有 import 都在代码中实际使用了？ | F401 |
+| 文件中无重复的函数/类定义？ | F811 |
+| kernel 内使用的变量名与签名参数名一致？ | F821 |
+| 无赋值后未使用的变量？ | F841 |
+| 无单字母 `O`/`l`/`I` 变量名？ | E741 |
+| 算术运算符两侧有空格？ | E226 |
+| 每行不超过 120 字符？ | E501 |
+| 续行缩进正确（不欠不超）？ | E127/E128 |
+| import 全在文件顶部，函数间有 2 空行？ | E305/E402 |
+| 文件以单个换行符结尾，无行尾空白？ | pre-commit |
+| `__init__.py` 中 import 的符号都在 `__all__` 中？ | F401 |
 
 ---
 

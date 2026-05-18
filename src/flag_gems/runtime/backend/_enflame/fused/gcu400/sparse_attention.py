@@ -13,7 +13,7 @@ NUM_SIPS = 24
 @libentry()
 @triton.jit(do_not_specialize=["scale", "topk", "total_bh"])
 def fused_attn_kernel(
-    Q, GKV, O, attn_sink,
+    Q, GKV, Out, attn_sink,
     stride_qb, stride_qm, stride_qh, stride_qd,
     stride_gkvbm, stride_gkvt, stride_gkvd,
     stride_ob, stride_om, stride_oh, stride_od,
@@ -71,7 +71,7 @@ def fused_attn_kernel(
         sum_exp = sum_exp + tl.exp(sink_val - score_max)
         acc_o = acc_o / sum_exp
 
-        o_base = O + pid_b * stride_ob + pid_m * stride_om + pid_h * stride_oh
+        o_base = Out + pid_b * stride_ob + pid_m * stride_om + pid_h * stride_oh
         tl.store(o_base + offs_d * stride_od, acc_o.to(tl.bfloat16))
 
 

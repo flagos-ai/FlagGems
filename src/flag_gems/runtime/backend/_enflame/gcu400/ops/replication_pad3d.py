@@ -13,10 +13,20 @@ NUM_SIPS = 24
 
 
 @libentry()
-@triton.jit(do_not_specialize=["D_in", "H_in", "W_in",
-                                "pad_l", "pad_t", "pad_f",
-                                "stride_nc", "stride_xd", "stride_xh",
-                                "NCD_total"])
+@triton.jit(
+    do_not_specialize=[
+        "D_in",
+        "H_in",
+        "W_in",
+        "pad_l",
+        "pad_t",
+        "pad_f",
+        "stride_nc",
+        "stride_xd",
+        "stride_xh",
+        "NCD_total",
+    ],
+)
 def replicationpad3d_kernel(
     x_ptr,
     out_ptr,

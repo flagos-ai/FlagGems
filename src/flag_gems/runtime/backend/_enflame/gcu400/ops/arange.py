@@ -8,7 +8,6 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
@@ -99,75 +98,6 @@ def arange_start(
     if dtype == torch.int64:
         result = result.to(torch.int64)
 
-    return result
-
-
-def arange(end, *, dtype=None, layout=None, device=None, pin_memory=None):
-    return arange_start(
-        0, end, 1, dtype=dtype, layout=layout, device=device, pin_memory=pin_memory
-    )
-
-import logging
-import math
-
-import torch
-import triton
-import triton.language as tl
-
-from flag_gems import runtime
-from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
-
-logger = logging.getLogger(__name__)
-
-
-@libentry()
-@triton.jit
-def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
-    pid = ext.program_id(0)
-    y_ptr += pid * BLOCK_SIZE
-    step_offset = pid * BLOCK_SIZE * step
-
-    cols = tl.arange(0, BLOCK_SIZE)
-    arange_val = cols * step + step_offset + start
-    mask = cols + pid * BLOCK_SIZE
-    tl.store(y_ptr + cols, arange_val, mask=mask < size)
-
-
-def arange_start(
-    start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None
-):
-    logger.debug("GEMS ARANGE")
-    if dtype is torch.int64:
-        sgn = (step > 0) - (step < 0)
-        size = (end - start + step - sgn) // step
-    else:
-        size = math.ceil((end - start) / step)
-
-    if size <= 65536:
-        BLOCK_SIZE = min(triton.next_power_of_2(size), 8192)
-        nw = 4
-    else:
-        BLOCK_SIZE = 65536
-        nw = 1
-    while triton.cdiv(size, BLOCK_SIZE) > 65535:
-        BLOCK_SIZE *= 2
-    grid = triton.cdiv(size, BLOCK_SIZE)
-
-    if dtype is None:
-        dtype = torch.int64
-
-    if pin_memory is None:
-        pin_memory = False
-
-    if device is None:
-        device = runtime.device.name
-
-    result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
-    if size > 65536:
-        arange_func[grid,](result, start, end, step, size, BLOCK_SIZE, num_warps=nw)
-    else:
-        arange_func[grid,](result, start, end, step, size, BLOCK_SIZE)
     return result
 
 

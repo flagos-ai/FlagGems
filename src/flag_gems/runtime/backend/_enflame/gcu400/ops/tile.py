@@ -11,7 +11,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.libentry import libentry
-from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 

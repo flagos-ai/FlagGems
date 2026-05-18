@@ -1,13 +1,12 @@
 import importlib
 import logging
 import os
-from typing import Any, Callable, Mapping, Tuple
+from typing import Callable, Mapping
 
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.code_cache import code_cache_dir

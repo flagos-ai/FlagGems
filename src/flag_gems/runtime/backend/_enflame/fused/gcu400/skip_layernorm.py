@@ -9,8 +9,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-from ...gcu400.utils.config_utils import MAX_GRID_DIM
-
 logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
@@ -25,17 +23,7 @@ def skip_layer_norm_kernel_2d(
     BLOCK_N: tl.constexpr,
 ):
     pid = ext.program_id(0)
-    Y += (pid * BLOCK_SIZE_M - 1) * y_stride_r
-    X += (pid * BLOCK_SIZE_M - 1) * x_stride_r
-    R += (pid * BLOCK_SIZE_M - 1) * r_stride_r
-    for i in range(BLOCK_SIZE_M):
-        if pid * BLOCK_SIZE_M + i < M:
-            Y += y_stride_r
-            X += x_stride_r
-            R += r_stride_r
-
-    w = tl.load(W + cols, mask=col_mask, other=0.0).to(tl.float32)
-    b = tl.load(B + cols, mask=col_mask, other=0.0).to(tl.float32)
+    num_pids = tl.num_programs(0)
 
     for row_start in tl.range(pid * BLOCK_M, M, num_pids * BLOCK_M):
         x_blk = tl.make_block_ptr(
@@ -54,6 +42,11 @@ def skip_layer_norm_kernel_2d(
         x = tl.load(x_blk, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
         r = tl.load(r_blk, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
         x = x + r
+
+        cols = tl.arange(0, BLOCK_N)
+        col_mask = cols < N
+        w = tl.load(W + cols, mask=col_mask, other=0.0).to(tl.float32)
+        b = tl.load(B + cols, mask=col_mask, other=0.0).to(tl.float32)
 
         mean = tl.sum(x, axis=1) / N
         diff = x - mean[:, None]
