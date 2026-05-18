@@ -117,6 +117,11 @@ nvidia = [
     # "triton==3.5",
 ]
 
+spacemit = [
+    "torch==2.8.0+spacemit.0",
+    "triton==3.6.0+spacemit.a4",
+]
+
 tsingmicro = [
     "torch==2.7.0+cpu",
     "torchvision==0.22.0",
@@ -234,6 +239,12 @@ explicit = true
 [[tool.uv.index]]
 name = "nvidia-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-nvidia/simple"
+explicit = true
+
+# Source for SpaceMIT packages
+[[tool.uv.index]]
+name = "spacemit-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-spacemit/simple"
 explicit = true
 
 # Source for TsingMicro packages
