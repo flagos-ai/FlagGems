@@ -1,7 +1,7 @@
 [build-system]
 # cmake locks to '>=3.20,<4.0' to sync with FlagTree
 
-requires = ["setuptools>=64.0", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
+requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
 
 build-backend = "scikit_build_core.build"
 
@@ -60,7 +60,7 @@ ascend = [
 enflame = [
     "torch==2.9.1+cpu",
     "torch-gcu==2.9.1+3.7.1",
-    "triton==3.3.1",
+    "triton==3.3.0",
     "triton-gcu==3.3.1+1.0.20260323",
     "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323",
 ]
@@ -79,6 +79,7 @@ iluvatar = [
 
 kunlunxin = [
     "benchflow==1.0.0",
+    "colorama==0.4.6",
     "hyperparameter==0.5.6",
     "torch==2.5.1+cu118",
     "torchaudio==2.5.1+cu118",
@@ -102,7 +103,7 @@ metax = [
 mthreads = [
     "torch==2.7.1+musa.4.0.0",
     "torch_musa==2.7.1",
-    "flagtree==0.5.0+mthreads3.1",
+    "flagtree==0.5.1+mthreads3.6",
     # "triton==3.1.0+musa1.4.6",
     "numpy==1.26.4",
     "mkl==2024.0.0",
@@ -180,6 +181,8 @@ conflicts = [
         { extra = "metax" },
         { extra = "mthreads" },
         { extra = "nvidia" },
+        { extra = "spacemit" },
+        { extra = "thead" },
         { extra = "tsingmicro" },
     ],
 ]
