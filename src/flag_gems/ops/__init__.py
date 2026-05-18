@@ -1,3 +1,4 @@
+from flag_gems.ops._cholesky_solve_helper import _cholesky_solve_helper
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -321,6 +322,7 @@ from flag_gems.ops.softmax import (
 from flag_gems.ops.softplus import softplus
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
+from flag_gems.ops.special_gammaincc import special_gammaincc
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.sqrt import sqrt, sqrt_
@@ -372,6 +374,7 @@ from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
     "_assert_async",
+    "_cholesky_solve_helper",
     "_conv_depthwise2d",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
@@ -775,6 +778,7 @@ __all__ = [
     "softshrink_out",
     "sort",
     "sort_stable",
+    "special_gammaincc",
     "special_i1",
     "special_i1_out",
     "special_i0e",

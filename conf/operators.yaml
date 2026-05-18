@@ -972,6 +972,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.0'
+  - id: cholesky_solve_helper
+    description: |
+      Solves a linear system of equations with a positive semidefinite matrix,
+      using its Cholesky decomposition. Supports both lower and upper triangular factors.
+    for:
+      - _cholesky_solve_helper
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.1'
   - id: chunk_gated_delta_rule_fwd
     description: |
       The forward case for `ChunkGatedDeltaRuleFunction` with Flash Linear Attention (FLA).
@@ -5394,6 +5407,19 @@ ops:
       - DSA
     stages:
       - beta: '5.0'
+  - id: special_gammaincc
+    description: |
+      Computes the regularized upper incomplete gamma function Q(a, x).
+    for:
+      - special_gammaincc
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
