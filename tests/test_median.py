@@ -2,6 +2,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops import median, median_dim
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -41,7 +42,6 @@ def make_tensor(shape, dtype):
 @pytest.mark.parametrize("n", SHAPES_1D)
 @pytest.mark.parametrize("dtype", ALL_DTYPES)
 def test_median_scalar(dtype, n):
-    from flag_gems.ops.median import median
     inp = make_tensor((n,), dtype)
     ref = torch.median(utils.to_reference(inp))
     res = median(inp)
@@ -52,7 +52,6 @@ def test_median_scalar(dtype, n):
 @pytest.mark.parametrize("shape", [(4, 64), (8, 8), (3, 4, 5), (2, 3, 4, 5)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_median_scalar_multidim(dtype, shape):
-    from flag_gems.ops.median import median
     inp = make_tensor(shape, dtype)
     ref = torch.median(utils.to_reference(inp))
     res = median(inp)
@@ -63,7 +62,6 @@ def test_median_scalar_multidim(dtype, shape):
 @pytest.mark.parametrize("shape,dim", SHAPES_DIM)
 @pytest.mark.parametrize("dtype", ALL_DTYPES)
 def test_median_dim(dtype, shape, dim):
-    from flag_gems.ops.median import median_dim
     inp = make_tensor(shape, dtype)
     ref = torch.median(utils.to_reference(inp), dim)
     res = median_dim(inp, dim)
@@ -79,7 +77,6 @@ def test_median_dim(dtype, shape, dim):
 ])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_median_dim_keepdim(dtype, shape, dim):
-    from flag_gems.ops.median import median_dim
     inp = make_tensor(shape, dtype)
     ref = torch.median(utils.to_reference(inp), dim, keepdim=True)
     res = median_dim(inp, dim, keepdim=True)
@@ -91,7 +88,6 @@ def test_median_dim_keepdim(dtype, shape, dim):
 @pytest.mark.median_dim
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_median_dim_special(dtype):
-    from flag_gems.ops.median import median_dim
     # all same values
     inp = torch.ones(3, 7, dtype=dtype, device=flag_gems.device)
     ref = torch.median(utils.to_reference(inp), dim=1)
@@ -111,7 +107,6 @@ def test_median_dim_special(dtype):
     ((1024, 1024), 1), ((4096, 128), 1), ((128, 4096), 1),
 ])
 def test_median_large(shape, dim):
-    from flag_gems.ops.median import median_dim
     inp = make_tensor(shape, torch.float32)
     ref = torch.median(utils.to_reference(inp), dim)
     res = median_dim(inp, dim)

@@ -6260,3 +6260,19 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: median
+    description: Returns the median value of all elements in the `input` tensor.
+    for:
+      - median
+    labels:
+      - aten
+      - Reduction
+  - id: median_dim
+    description: Returns the median value of each row of the `input` tensor in the given dimension `dim`, along with the index of the median value.
+    for:
+      - median.dim
+      - median.dim_values
+      - median.out
+    labels:
+      - aten
+      - Reduction
