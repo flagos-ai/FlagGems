@@ -166,9 +166,13 @@ def _validate_conv_transpose2d_args(
     if output_padding_h < 0 or output_padding_w < 0:
         raise RuntimeError("negative output_padding is not supported")
     if output_padding_h >= stride_h and output_padding_h >= dilation_h:
-        raise RuntimeError("output padding must be smaller than either stride or dilation")
+        raise RuntimeError(
+            "output padding must be smaller than either stride or dilation"
+        )
     if output_padding_w >= stride_w and output_padding_w >= dilation_w:
-        raise RuntimeError("output padding must be smaller than either stride or dilation")
+        raise RuntimeError(
+            "output padding must be smaller than either stride or dilation"
+        )
 
     input_channels = input.shape[1]
     weight_input_channels = weight.shape[0]
@@ -181,7 +185,9 @@ def _validate_conv_transpose2d_args(
         or weight_height <= 0
         or weight_width <= 0
     ):
-        raise RuntimeError("non-empty input channels and weight dimensions are required")
+        raise RuntimeError(
+            "non-empty input channels and weight dimensions are required"
+        )
     if input_channels != weight_input_channels:
         raise RuntimeError(
             "expected input channel dimension to match weight input channels"
@@ -1057,11 +1063,11 @@ def _conv_transpose2d_general_kernel(
                 valid = valid & (iw_unstrided % stride_width == 0)
                 valid = valid & (iw >= 0) & (iw < input_width)
 
-                input_offsets = ((n * input_channels + ci) * input_height + ih)
+                input_offsets = (n * input_channels + ci) * input_height + ih
                 input_offsets = input_offsets * input_width + iw
                 weight_offsets = (
-                    (ci * output_channels_per_group + co_in_group) * weight_height
-                )
+                    ci * output_channels_per_group + co_in_group
+                ) * weight_height
                 weight_offsets = (weight_offsets + kh) * weight_width + kw
                 input_values = tl.load(
                     input_pointer + input_offsets, mask=valid, other=0.0
