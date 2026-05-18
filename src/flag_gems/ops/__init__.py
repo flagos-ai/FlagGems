@@ -222,7 +222,7 @@ from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
-from flag_gems.ops.mm import mm, mm_out
+from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
@@ -841,6 +841,7 @@ __all__ = [
     "vector_norm",
     "vstack",
     "fp8_matmul",
+    "router_gemm",
     "w8a8_block_fp8_matmul",
     "weight_norm_interface",
     "weight_norm_interface_backward",
