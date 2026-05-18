@@ -6,6 +6,8 @@ from flag_gems.utils import shape_utils
 
 from . import base, consts
 
+FLOAT16_FLOAT32_DTYPES = [torch.float16, torch.float32]
+
 
 class ScatterReducePublicBenchmark(base.GenericBenchmark2DOnly):
     def set_more_metrics(self):
@@ -39,6 +41,12 @@ def scatter_reduce_two_input_fn_factory(reduce, include_self=True, out=False):
     return inner
 
 
+def scatter_reduce_bench_dtypes(reduce):
+    if reduce in ("sum", "mean"):
+        return FLOAT16_FLOAT32_DTYPES
+    return consts.FLOAT_DTYPES
+
+
 def gather_scatter_gbps(bench_fn_args, latency):
     inp, dim, index = bench_fn_args[:3]
     data_shape = list(inp.shape)
@@ -59,7 +67,7 @@ def test_scatter_reduce_two(reduce, include_self):
         torch_op=torch.scatter_reduce,
         input_fn=scatter_reduce_two_input_fn_factory(reduce, include_self),
         get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=scatter_reduce_bench_dtypes(reduce),
     )
     bench.run()
 
@@ -75,7 +83,7 @@ def test_scatter_reduce_two_inplace(reduce, include_self):
         torch_op=torch.Tensor.scatter_reduce_,
         input_fn=scatter_reduce_two_input_fn_factory(reduce, include_self),
         get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=scatter_reduce_bench_dtypes(reduce),
         is_inplace=True,
     )
     bench.run()
@@ -92,6 +100,6 @@ def test_scatter_reduce_two_out(reduce, include_self):
         torch_op=torch.scatter_reduce,
         input_fn=scatter_reduce_two_input_fn_factory(reduce, include_self, out=True),
         get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=scatter_reduce_bench_dtypes(reduce),
     )
     bench.run()
