@@ -1,6 +1,8 @@
+import inspect
 import logging
 import math
 from collections import namedtuple
+from importlib import metadata as importlib_metadata
 
 import torch
 import triton
@@ -65,7 +67,16 @@ def _triton_version_at_least(major, minor):
 
 
 def _use_cuda_masked_histogram():
-    return _triton_version_at_least(3, 6)
+    try:
+        importlib_metadata.version("flagtree")
+        return False
+    except importlib_metadata.PackageNotFoundError:
+        pass
+
+    try:
+        return "mask" in inspect.signature(tl.histogram).parameters
+    except (TypeError, ValueError):
+        return _triton_version_at_least(3, 6)
 
 
 @triton.jit
