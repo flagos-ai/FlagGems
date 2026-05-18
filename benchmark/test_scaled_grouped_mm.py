@@ -15,52 +15,12 @@ def _cuda_fp8_available():
     return major * 10 + minor >= 89
 
 
-def _is_float8(dtype):
-    return hasattr(torch, "float8_e4m3fn") and dtype == torch.float8_e4m3fn
-
-
-def _default_out_dtype(dtype):
-    if _is_float8(dtype):
-        return torch.bfloat16
-    return dtype
-
-
-def torch_scaled_grouped_mm_baseline(
-    mat_a,
-    mat_b,
-    scale_a,
-    scale_b,
-    offs=None,
-    bias=None,
-    scale_result=None,
-    out_dtype=None,
-    use_fast_accum=False,
-):
-    target_dtype = out_dtype or _default_out_dtype(mat_a.dtype)
-    starts = [0] + offs.detach().cpu().tolist()
-    chunks = []
-    for group_idx in range(mat_b.shape[0]):
-        m_start, m_end = starts[group_idx], starts[group_idx + 1]
-        out = mat_a[m_start:m_end].float().mm(mat_b[group_idx].float())
-        out = out * scale_a[m_start:m_end].reshape(-1, 1) * scale_b[group_idx]
-        if bias is not None:
-            out = out + bias
-        chunks.append(out.to(target_dtype))
-    return torch.cat(chunks, dim=0)
-
-
 class ScaledGroupedMMBenchmark(base.Benchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
     def __init__(self):
-        dtypes = [torch.float16, torch.float32]
-        if flag_gems.runtime.device.support_bf16:
-            dtypes.append(torch.bfloat16)
-        if _cuda_fp8_available():
-            dtypes.append(torch.float8_e4m3fn)
-
         super().__init__(
-            "scaled_grouped_mm", torch_scaled_grouped_mm_baseline, dtypes=dtypes
+            "scaled_grouped_mm", torch._scaled_grouped_mm, dtypes=[torch.float8_e4m3fn]
         )
         self.set_gems(flag_gems.scaled_grouped_mm)
 
@@ -93,27 +53,26 @@ class ScaledGroupedMMBenchmark(base.Benchmark):
 
             mat_a = torch.randn((M, K), dtype=torch.float32, device=flag_gems.device)
             mat_b = torch.randn(
-                (groups, K, N), dtype=torch.float32, device=flag_gems.device
+                (groups, N, K), dtype=torch.float32, device=flag_gems.device
             )
-            if _is_float8(dtype):
-                mat_a = (mat_a * 0.25).to(dtype)
-                mat_b = (mat_b * 0.25).to(dtype)
-                out_dtype = torch.bfloat16
-            else:
-                mat_a = mat_a.to(dtype)
-                mat_b = mat_b.to(dtype)
-                out_dtype = dtype
+            mat_a = (mat_a * 0.25).to(dtype)
+            mat_b = (mat_b * 0.25).to(dtype).transpose(-1, -2)
+            out_dtype = torch.bfloat16
 
             scale_a = torch.linspace(0.75, 1.25, M, device=flag_gems.device)
             scale_b = torch.linspace(
                 1.25, 0.75, groups * N, device=flag_gems.device
             ).reshape(groups, N)
-            bias = torch.randn((N,), dtype=torch.float32, device=flag_gems.device)
-            yield mat_a, mat_b, scale_a, scale_b, offs, bias, None, out_dtype, False
+            yield mat_a, mat_b, scale_a, scale_b, {
+                "offs": offs,
+                "bias": None,
+                "out_dtype": out_dtype,
+                "use_fast_accum": False,
+            }
 
     def get_tflops(self, op, *args, **kwargs):
         mat_b = args[1]
-        offs = args[4]
+        offs = kwargs["offs"]
         groups, K, N = mat_b.shape
         sizes = torch.diff(
             offs, prepend=torch.zeros(1, device=offs.device, dtype=offs.dtype)
@@ -125,6 +84,10 @@ class ScaledGroupedMMBenchmark(base.Benchmark):
 
 
 @pytest.mark.scaled_grouped_mm
+@pytest.mark.skipif(
+    not _cuda_fp8_available(),
+    reason="torch._scaled_grouped_mm benchmark requires CUDA FP8 support.",
+)
 def test_scaled_grouped_mm_benchmark():
     bench = ScaledGroupedMMBenchmark()
     bench.run()
