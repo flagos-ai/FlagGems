@@ -2,11 +2,15 @@ import math
 
 import pytest
 import torch
+import triton
 
 import flag_gems
-from flag_gems.runtime.backend._nvidia.hopper.ops.fp8_einsum import fp8_einsum
 
 from . import base
+
+# The Gluon fp8_einsum kernel requires Triton >= 3.6.0.
+if triton.__version__ >= "3.6.0":
+    from flag_gems.runtime.backend._nvidia.hopper.ops.fp8_einsum import fp8_einsum
 
 DEFAULT_BLOCK_SHAPE = [128, 128]
 
@@ -20,6 +24,7 @@ def is_cuda_available():
 
 
 CUDA_AVAILABLE = is_cuda_available()
+TRITON_VERSION_OK = triton.__version__ >= "3.6.0"
 
 
 try:
@@ -160,8 +165,8 @@ def _gems_fp8_einsum_wrapper(x_data, x_scale, y_data, y_scale):
 
 @pytest.mark.fp8_einsum
 @pytest.mark.skipif(
-    not (HAS_DEEPGEMM and CUDA_AVAILABLE),
-    reason="requires DeepGEMM and NVIDIA Hopper architecture",
+    not (HAS_DEEPGEMM and CUDA_AVAILABLE and TRITON_VERSION_OK),
+    reason="requires DeepGEMM, NVIDIA Hopper architecture and Triton >= 3.6.0",
 )
 def test_perf_fp8_einsum_gems_vs_deepgemm():
     """Benchmark FlagGems vs DeepGEMM on block-wise FP8 ``bhr,hdr->bhd`` einsum."""

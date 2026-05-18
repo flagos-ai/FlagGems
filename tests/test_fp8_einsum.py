@@ -2,11 +2,15 @@ import math
 
 import pytest
 import torch
+import triton
 
 import flag_gems
-from flag_gems.runtime.backend._nvidia.hopper.ops.fp8_einsum import fp8_einsum
 
 from .conftest import QUICK_MODE
+
+# The Gluon fp8_einsum kernel requires Triton >= 3.6.0.
+if triton.__version__ >= "3.6.0":
+    from flag_gems.runtime.backend._nvidia.hopper.ops.fp8_einsum import fp8_einsum
 
 DEFAULT_BLOCK_SHAPE = [128, 128]
 
@@ -20,6 +24,7 @@ def is_cuda_available():
 
 
 CUDA_AVAILABLE = is_cuda_available()
+TRITON_VERSION_OK = triton.__version__ >= "3.6.0"
 
 
 # (h, r, d) groups -- r and d must be divisible by the 128 block grid.
@@ -141,8 +146,8 @@ def torch_fp8_block_einsum_reference(x_data, x_scale, y_data, y_scale, block_sha
 @pytest.mark.parametrize("config", FP8_EINSUM_CONFIGS)
 @pytest.mark.parametrize("block_shape", [[128, 128]])
 @pytest.mark.skipif(
-    not CUDA_AVAILABLE,
-    reason="requires NVIDIA Hopper architecture",
+    not (CUDA_AVAILABLE and TRITON_VERSION_OK),
+    reason="requires NVIDIA Hopper architecture and Triton >= 3.6.0",
 )
 def test_accuracy_fp8_einsum(config, block_shape):
     """Validate FlagGems fp8_einsum against a dequantized PyTorch reference."""
