@@ -10,9 +10,6 @@ from pathlib import Path
 import consts
 
 DATA = {}
-DEBUG = False
-EMBED_LOGS = False
-STYLED = False
 DATA_DIR = None
 
 ASSETS_DIR = Path(__file__).resolve().parent / "html_assets"
@@ -27,15 +24,10 @@ def wrap_html(lines):
         '<meta charset="utf-8">',
         "<title>FlagGems Test Report</title>",
     ]
-    if STYLED:
-        css = (ASSETS_DIR / "style.css").read_text()
-        header.append(f"<style>\n{css}</style>")
-    header.extend(
-        [
-            "</head>",
-            "<body>",
-        ]
-    )
+
+    css = (ASSETS_DIR / "style.css").read_text()
+    header.append(f"<style>\n{css}</style>")
+    header.extend(["</head>", "<body>"])
     js = (ASSETS_DIR / "script.js").read_text()
     footer = [
         f"<script>\n{js}</script>",
@@ -81,27 +73,7 @@ def load_data(data_path):
     return {}, False
 
 
-def format_record(fields, fmt):
-    if fmt == "csv":
-        return ",".join(fields)
-
-    if fmt == "markdown":
-        line = " | ".join(fields)
-        return f"| {line} |"
-
-    if fmt == "html":
-        line = "</td><td>".join(fields)
-        return "<tr><td>" + line + "</td></tr>"
-
-    return ""
-
-
-def parse_lines(fmt):
-    """Write result to CSV.
-
-    The layout is as follows:
-    <id>,<astatus>,<pass/fail/skip>,<pstatus>,<fp16>,<fp32>,<bf16>,<cf64>,<i16>,<i32>,<i64>,<note>
-    """
+def parse_lines():
     data = DATA.get("result", {})
     lines = []
     for op, item in data.items():
@@ -154,11 +126,7 @@ def parse_lines(fmt):
             fields.insert(4, op_avg_field)
             fields.append("")  # note
 
-        # For HTML with embedded logs, build the row with <details> in AccRes/PerfRes cells
-        if fmt == "html" and EMBED_LOGS:
-            lines.append(_build_html_row_with_logs(op, fields))
-        else:
-            lines.append(format_record(fields, fmt))
+        lines.append(_build_html_row_with_logs(op, fields))
 
     return sorted(lines)
 
@@ -223,7 +191,7 @@ def _render_log_tabs(summary_text, log_files, uid):
     return "".join(parts)
 
 
-def parse_env(fmt):
+def parse_env():
     timestamp = DATA.get("timestamp", "?")
     env = DATA.get("env", {})
     arch = env.get("architecture", "?")
@@ -238,39 +206,22 @@ def parse_env(fmt):
     flaggems_device = env.get("flag_gems", {}).get("device", "?")
 
     lines = []
-    if fmt == "markdown":
-        lines.append("### Test Environment")
-        lines.append("")
-        lines.append("| Env | Setting |")
-        lines.append("| --- | ------- |")
-        lines.append(f"| Time | `{timestamp}` |")
-        lines.append(f"| Architecture | `{arch}` |")
-        lines.append(f"| OS | `{os}` |")
-        lines.append(f"| Python | `{pyver}` |")
-        lines.append(f"| Torch | `{torch_ver}` |")
-        lines.append(f"| FlagTree | `{flagtree_ver}` |")
-        lines.append(f"| Triton | `{triton_ver}` |")
-        lines.append(f"| FlagGems | `{flaggems_ver}` |")
-        lines.append(f"| Vendor | `{flaggems_vendor}` |")
-        lines.append(f"| Device | `{flaggems_device}` |")
-        lines.append("")
-    elif fmt == "html":
-        lines.append("<h3>Test Environment</h3>")
-        lines.append("<table>")
-        lines.append("<thead><tr><th>Env</th><th>Setting</th></tr></thead>")
-        lines.append("<tbody>")
-        lines.append(f"<tr><td>Time</td><td><tt>{timestamp}</tt></td></tr>")
-        lines.append(f"<tr><td>Architecture</td><td><tt>{arch}</tt></td></tr>")
-        lines.append(f"<tr><td>OS</td><td><tt>{os}</tt></td></tr>")
-        lines.append(f"<tr><td>Python</td><td><tt>{pyver}</tt></td></tr>")
-        lines.append(f"<tr><td>Torch</td><td><tt>{torch_ver}</tt></td></tr>")
-        lines.append(f"<tr><td>FlagTree</td><td><tt>{flagtree_ver}</tt></td></tr>")
-        lines.append(f"<tr><td>Triton</td><td><tt>{triton_ver}</tt></td></tr>")
-        lines.append(f"<tr><td>FlagGems</td><td><tt>{flaggems_ver}</tt></td></tr>")
-        lines.append(f"<tr><td>Vendor</td><td><tt>{flaggems_vendor}</tt></td></tr>")
-        lines.append(f"<tr><td>Device</td><td><tt>{flaggems_device}</tt></td></tr>")
-        lines.append("</tbody>")
-        lines.append("</table>")
+    lines.append("<h3>Test Environment</h3>")
+    lines.append("<table>")
+    lines.append("<thead><tr><th>Env</th><th>Setting</th></tr></thead>")
+    lines.append("<tbody>")
+    lines.append(f"<tr><td>Time</td><td><tt>{timestamp}</tt></td></tr>")
+    lines.append(f"<tr><td>Architecture</td><td><tt>{arch}</tt></td></tr>")
+    lines.append(f"<tr><td>OS</td><td><tt>{os}</tt></td></tr>")
+    lines.append(f"<tr><td>Python</td><td><tt>{pyver}</tt></td></tr>")
+    lines.append(f"<tr><td>Torch</td><td><tt>{torch_ver}</tt></td></tr>")
+    lines.append(f"<tr><td>FlagTree</td><td><tt>{flagtree_ver}</tt></td></tr>")
+    lines.append(f"<tr><td>Triton</td><td><tt>{triton_ver}</tt></td></tr>")
+    lines.append(f"<tr><td>FlagGems</td><td><tt>{flaggems_ver}</tt></td></tr>")
+    lines.append(f"<tr><td>Vendor</td><td><tt>{flaggems_vendor}</tt></td></tr>")
+    lines.append(f"<tr><td>Device</td><td><tt>{flaggems_device}</tt></td></tr>")
+    lines.append("</tbody>")
+    lines.append("</table>")
 
     return lines
 
@@ -301,166 +252,38 @@ def parse_single_accuracy_details(fmt, details, num, kind):
 
 def parse_single_accuracy(fmt, op_data):
     lines = []
-    f = 0
-    k = 0
-    if fmt == "markdown":
-        lines.append("### Accuracy Result")
-        lines.append("")
-        lines.append("#### Summary")
-        lines.append("")
-        lines.append("| Status | Duration | Total | Passed | Skipped | Failed |")
-        lines.append("|--------|----------|-------|--------|---------|--------|")
 
-        s = op_data.get("status", "?")
-        d = op_data.get("duration", 0)
-        t = op_data.get("total", 0)
-        p = op_data.get("passed", 0)
-        k = op_data.get("skipped", 0)
-        f = op_data.get("failed", 0)
-        lines.append(f"| {s} | {d:6.2f} sec | {t} | {p} | {k} | {f} |")
-        lines.append("")
-
-    elif fmt == "html":
-        lines.append("<h3>Accuracy Result</h3>")
-        lines.append("<h4>Summary</h4>")
-        lines.append("<table>")
-        lines.append("<thead><tr>")
-        lines.append("<th>Status</th><th>Duration (s)</th><th>Total</th>")
-        lines.append("<th>Passed</th><th>Skipped</th><th>Failed</th>")
-        lines.append("</tr></thead>")
-        lines.append("<tbody>")
-        lines.append(f"<tr><td>{op_data.get('status', '?')}</td>")
-        lines.append(f"<td>{op_data.get('duration', '?')}</td>")
-        lines.append(f"<td>{op_data.get('total', 0)}</td>")
-        lines.append(f"<td>{op_data.get('passed', 0)}</td>")
-        k = op_data.get("skipped", 0)
-        lines.append(f"<td>{k}</td>")
-        f = op_data.get("failed", 0)
-        lines.append(f"<td>{f}</td></tr>")
-        lines.append("</tbody>")
-        lines.append("</table>")
+    lines.append("<h3>Accuracy Result</h3>")
+    lines.append("<h4>Summary</h4>")
+    lines.append("<table>")
+    lines.append("<thead><tr>")
+    lines.append("<th>Status</th><th>Duration (s)</th><th>Total</th>")
+    lines.append("<th>Passed</th><th>Skipped</th><th>Failed</th>")
+    lines.append("</tr></thead>")
+    lines.append("<tbody>")
+    lines.append(f"<tr><td>{op_data.get('status', '?')}</td>")
+    lines.append(f"<td>{op_data.get('duration', '?')}</td>")
+    lines.append(f"<td>{op_data.get('total', 0)}</td>")
+    lines.append(f"<td>{op_data.get('passed', 0)}</td>")
+    skipped = op_data.get("skipped", 0)
+    lines.append(f"<td>{skipped}</td>")
+    failed = op_data.get("failed", 0)
+    lines.append(f"<td>{failed}</td></tr>")
+    lines.append("</tbody>")
+    lines.append("</table>")
 
     # Append failed and skipped cases if any
     details = op_data.get("details", {})
-    f_lines = parse_single_accuracy_details(fmt, details, f, "failed")
+    f_lines = parse_single_accuracy_details(fmt, details, failed, "failed")
     lines.extend(f_lines)
-    k_lines = parse_single_accuracy_details(fmt, details, k, "skipped")
+    k_lines = parse_single_accuracy_details(fmt, details, skipped, "skipped")
     lines.extend(k_lines)
 
     return lines
 
 
-def parse_single_performance(fmt, op_data):
-    lines = []
-
-    status = op_data.get("status", "OK")
-    if fmt == "markdown":
-        lines.append("### Performance Result")
-        lines.append("")
-        lines.append("#### Summary")
-        lines.append("")
-        lines.append("| Status | Duration | Reason |")
-        lines.append("|--------|----------|--------|")
-        duration = op_data.get("duration", 0)
-        if status in ["Skipped", "Failed"]:
-            reason = op_data.get("reason", "Unknown")
-            reason = "<blockquote>" + reason.replace("\n", "<br/>") + "</blockquote>"
-            lines.append(f"| {status} | {duration:6.2f} seconds | {reason} |")
-        elif status == "NotFound":
-            lines.append(
-                f"| {status} | {duration:6.2f} seconds | *No test case found.* |"
-            )
-        else:
-            lines.append(
-                f"| {status} | {duration:6.2f} seconds | *All tests completed.* |"
-            )
-
-        lines.append("")
-        if status != "Passed":
-            return lines
-
-        lines.append("#### Benchmark data")
-        lines.append("")
-        lines.append("| Dtype  | Speedup | Base | Gems    | Shape |")
-        lines.append("|--------|---------|------|---------|-------|")
-        perf_data = op_data.get("data", {})
-        for dtype, ddata in perf_data.items():
-            speedup = ddata.get("speedup", 0)
-            lines.append(f"| {dtype} | **{speedup:.3f}** | - | - | - |")
-            for shp, res in ddata.get("details", {}).items():
-                spd = res.get("speedup", 0)
-                base = res.get("base", 0)
-                gems = res.get("gems", 0)
-                lines.append(f"| | {spd:6.3f} | {base:6.3f} | {gems:6.3f} | `{shp}` |")
-        lines.append("")
-        return lines
-
-    elif fmt == "html":
-        duration = op_data.get("duration", 0)
-        lines.append("<h3>Performance Result</h3>")
-        lines.append("<h4>Summary</h4>")
-        lines.append("<table>")
-        lines.append("<thead><tr>")
-        lines.append("<th>Status</th><th>Duration</th><th>Reason</th>")
-        lines.append("</tr></thead>")
-        lines.append("<tbody>")
-        lines.append(f"<tr><td>{status}</td>")
-        lines.append(f"<td>{duration:6.2f}</td>")
-        if status in ["Skipped", "Failed"]:
-            reason = op_data.get("reason", "Unknown")
-            reason = "<blockquote>" + reason.replace("\n", "<br/>") + "</blockquote>"
-            lines.append(f"<td>{reason}</td></tr>")
-        elif status == "NotFound":
-            lines.append("<td><i>No test case found.</i></td></tr>")
-        else:
-            lines.append("<td><i>All tests completed.</i></td></tr>")
-        lines.append("</tbody>")
-        lines.append("</table>")
-
-    if status != "Passed":
-        return lines
-
-    lines.append("<h4>Benchmark data</h4>")
-    lines.append("<table>")
-    lines.append("<thead><tr>")
-    lines.append(
-        "<th>Dtype</th><th>Speedup</th><th>Base</th><th>Gems</th><th>Shape</th>"
-    )
-    lines.append("</tr></thead>")
-    lines.append("<tbody>")
-    perf_data = op_data.get("data", {})
-    for dtype, ddata in perf_data.items():
-        speedup = ddata.get("speedup", 0)
-        lines.append(
-            f"<tr><td>{dtype}</td><td><strong>{speedup:6.3f}</strong></td><td>-</td><td>-</td><td>-</td></tr>"
-        )
-        for shp, res in ddata.get("details", {}).items():
-            spd = res.get("speedup", 0)
-            base = res.get("base", 0)
-            gems = res.get("gems", 0)
-            lines.append(
-                f"<tr><td></td><td>{spd:6.3f}</td><td>{base:6.3f}</td><td>{gems:6.3f}</td><td><tt>{shp}</tt></td></tr>"
-            )
-    lines.append("</tbody>")
-    lines.append("</table>")
-    return lines
-
-
-def parse_single(fmt):
-    lines = []
-
-    data = DATA.get("result", {})
-    op = list(data.keys())[0]
-
-    op_data = data.get(op, {}).get("accuracy", {})
-    lines.extend(parse_single_accuracy(fmt, op_data))
-    op_data = data.get(op, {}).get("performance", {})
-    lines.extend(parse_single_performance(fmt, op_data))
-    return lines
-
-
-def parse_multi(fmt):
-    lines = parse_lines(fmt)
+def parse_data():
+    lines = parse_lines()
     header_fields = (
         [
             "No.",
@@ -478,45 +301,17 @@ def parse_multi(fmt):
     numbered_lines = []
     for idx, line in enumerate(lines, 1):
         seq = str(idx)
-        if fmt == "csv":
-            numbered_lines.append(seq + "," + line)
-        elif fmt == "markdown":
-            numbered_lines.append("| " + seq + " " + line[1:])  # replace leading '|'
-        elif fmt == "html":
-            if STYLED:
-                # Add sticky classes to No. and ID (first two) columns
-                row = line.replace(
-                    "<tr>",
-                    f'<tr><td class="sticky-col sticky-col-0">{seq}</td>',
-                    1,
-                )
-                # Add sticky class to the original first <td> (now ID column)
-                row = row.replace("<td>", '<td class="sticky-col sticky-col-1">', 1)
-            else:
-                row = line.replace("<tr>", f"<tr><td>{seq}</td>", 1)
-            numbered_lines.append(row)
-    lines = numbered_lines
+        # Add sticky classes to No. and ID (first two) columns
+        row = line.replace(
+            "<tr>",
+            f'<tr><td class="sticky-col sticky-col-0">{seq}</td>',
+            1,
+        )
+        # Add sticky class to the original first <td> (now ID column)
+        row = row.replace("<td>", '<td class="sticky-col sticky-col-1">', 1)
+        numbered_lines.append(row)
 
-    if fmt == "csv":
-        lines.insert(0, ",".join(header_fields))
-    elif fmt == "markdown":
-        header = "|" + "----|" * len(header_fields)
-        lines.insert(0, header)
-        header = "| " + " | ".join(header_fields) + " |"
-        lines.insert(0, header)
-    elif fmt == "html":
-        if STYLED:
-            lines = _build_styled_html_table(header_fields, lines)
-        else:
-            header = ["<table>", "<thead>", "<tr>"]
-            for field in header_fields:
-                header.append(f"<th>{field}</th>")
-            header.extend(["</tr>", "</thead>", "<tbody>"])
-            lines = header + lines
-            lines.append("</tbody>")
-            lines.append("</table>")
-
-    return lines
+    return _build_styled_html_table(header_fields, numbered_lines)
 
 
 def _build_styled_html_table(header_fields, data_rows):
@@ -603,25 +398,11 @@ def _strip_html_tags(s):
 def main():
     global DATA
     global DATA_DIR
-    global EMBED_LOGS
-    global STYLED
 
     parser = argparse.ArgumentParser()
     parser.add_argument("dir", default="result", help="the data directory to process")
     parser.add_argument(
-        "-f",
-        "--format",
-        choices=["csv", "markdown", "html"],
-        default="csv",
-        help="the output format",
-    )
-    parser.add_argument(
         "-o", "--output", default="<stdout>", help="path to the output file."
-    )
-    parser.add_argument(
-        "--single",
-        action=argparse.BooleanOptionalAction,
-        help="only parse the result from the first operator",
     )
     parser.add_argument(
         "-d",
@@ -629,17 +410,6 @@ def main():
         action=argparse.BooleanOptionalAction,
         help="flag for printing verbose information for debugging",
     )
-    parser.add_argument(
-        "--embed-logs",
-        action=argparse.BooleanOptionalAction,
-        help="embed accuracy/performance logs into HTML output (only effective with -f html)",
-    )
-    parser.add_argument(
-        "--styled",
-        action=argparse.BooleanOptionalAction,
-        help="add CSS styling to HTML output (only effective with -f html)",
-    )
-
     args = parser.parse_args()
 
     data_path = Path(args.dir) / "summary.json"
@@ -648,22 +418,10 @@ def main():
         return 1
 
     DATA_DIR = args.dir
-    EMBED_LOGS = bool(args.embed_logs) and args.format == "html"
-    STYLED = bool(args.styled) and args.format == "html"
 
-    result_heading = []
-    if args.format == "html":
-        result_heading = ["<h3>Test Result</h3>"]
-    elif args.format == "markdown":
-        result_heading = ["### Test Result", ""]
-
-    if args.single:
-        lines = parse_env(args.format) + result_heading + parse_single(args.format)
-    else:
-        lines = parse_env(args.format) + result_heading + parse_multi(args.format)
-
-    if args.format == "html":
-        lines = wrap_html(lines)
+    result_heading = ["<h3>Test Result</h3>"]
+    lines = parse_env() + result_heading + parse_data()
+    lines = wrap_html(lines)
 
     # never dump debug information to result file
     if args.output == "<stdout>" or args.debug:

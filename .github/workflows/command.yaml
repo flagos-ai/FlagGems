@@ -107,7 +107,7 @@ jobs:
           source .venv/bin/activate
           source tools/set-env.sh ${VENDOR}
           tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} --gpus 2 --dump-output
-          tools/psummary --format markdown --single results > results.md
+          tools/psum_text --format markdown --single results > results.md
 
       - name: Upload results
         uses: actions/upload-artifact@v7
