@@ -30,9 +30,14 @@ vendor_info = VendorInfoBase(
 os.environ["ARCH"] = str(arch_version)
 ARCH_MAP = {"3": "gcu300", "4": "gcu400"}
 # i64 to/copy is not supported in gcu300
-CUSTOMIZED_UNUSED_OPS = (
-    "to_copy",
-    "copy_",
-)
+if arch_version == 300:
+    CUSTOMIZED_UNUSED_OPS = (
+        "to_copy",
+        "copy_",
+    )
+elif arch_version == 400:
+    CUSTOMIZED_UNUSED_OPS = (
+        "to_copy",
+    )
 
 __all__ = ["*"]

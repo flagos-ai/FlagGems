@@ -97,9 +97,10 @@ def randn_heur_num_warps(args):
 
 def softmax_heur_tile_k(args):
     MAX_TILE_K = 8192
-    NUM_SMS = torch.cuda.get_device_properties(
-        torch.cuda.current_device()
-    ).multi_processor_count
+    # NUM_SMS = torch.cuda.get_device_properties(
+    #     torch.cuda.current_device()
+    # ).multi_processor_count
+    NUM_SMS = 64
     tile_k = 1
     upper_bound = min(args["K"], MAX_TILE_K)
     while tile_k <= upper_bound:
@@ -241,6 +242,30 @@ HEURISTICS_CONFIGS = {
     "index_select": {
         "BLOCK_M": index_select_heur_block_m,
         "BLOCK_N": index_select_heur_block_n,
+    },
+    "mha_block_128": {
+        "BLOCK_M": lambda args: 64,
+        "BLOCK_N": lambda args: 32,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 1,
+    },
+    "mha_block_64": {
+        "BLOCK_M": lambda args: 32,
+        "BLOCK_N": lambda args: 64,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 1,
+    },
+    "mha_block_32": {
+        "BLOCK_M": lambda args: 32,
+        "BLOCK_N": lambda args: 64,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 1,
+    },
+    "mha_block_16": {
+        "BLOCK_M": lambda args: 16,
+        "BLOCK_N": lambda args: 64,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 1,
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,

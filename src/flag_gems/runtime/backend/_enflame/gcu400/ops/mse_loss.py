@@ -1,82 +1,93 @@
-import logging
-import math
-from enum import Enum
-
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
-
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+_NP2 = triton.next_power_of_2
+_CDIV = triton.cdiv
+_REDUCE_BS = 65536
+_NONE_BS = 32768
+_NONE_PD_THRESHOLD = 2097152
 
 
-@libentry()
 @triton.jit
-def kernel_1(inp, target, mid, M, BLOCK_SIZE: tl.constexpr, reduction: tl.constexpr):
+def mse_single_kernel(inp, target, out, M, BLOCK_SIZE: tl.constexpr, reduction: tl.constexpr):
+    offset = tl.arange(0, BLOCK_SIZE)
+    mask = offset < M
+    inp_val = tl.load(inp + offset, mask=mask, other=0.0).to(tl.float32)
+    tgt_val = tl.load(target + offset, mask=mask, other=0.0).to(tl.float32)
+    d = inp_val - tgt_val
+    result = tl.sum(d * d)
+    if reduction == 1:
+        result = result / M
+    tl.store(out, result)
+
+
+@triton.jit
+def mse_reduce_k1(inp, target, mid, M, BLOCK_SIZE: tl.constexpr, reduction: tl.constexpr):
     pid = tl.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    target_ptrs = target + offset
     mask = offset < M
-
-    inp_val = tl.load(inp_ptrs, mask=mask, other=0).to(tl.float32)
-    target_val = tl.load(target_ptrs, mask=mask, other=0).to(tl.float32)
-    sub = inp_val - target_val
-    pow_val = sub * sub
-    # Reduction.MEAN.value: 1 Reduction.SUM.value: 2
+    inp_val = tl.load(inp + offset, mask=mask, other=0.0).to(tl.float32)
+    tgt_val = tl.load(target + offset, mask=mask, other=0.0).to(tl.float32)
+    d = inp_val - tgt_val
+    s = tl.sum(d * d)
     if reduction == 1:
-        sum_val = tl.sum(pow_val) / M
-    else:
-        sum_val = tl.sum(pow_val)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, sum_val)
+        s = s / M
+    tl.store(mid + pid, s)
 
 
-@libentry()
 @triton.jit
-def kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
+def mse_reduce_k2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
     mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=0).to(tl.float32)
-    sum_val = tl.sum(mid_val)
-    tl.store(out, sum_val)
+    mid_val = tl.load(mid + offset, mask=mask, other=0.0).to(tl.float32)
+    tl.store(out, tl.sum(mid_val))
+
+
+@triton.jit
+def mse_none_kernel(inp, target, out, M, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offset < M
+    x = tl.load(inp + offset, mask=mask, other=0.0).to(tl.float32)
+    y = tl.load(target + offset, mask=mask, other=0.0).to(tl.float32)
+    d = x - y
+    tl.store(out + offset, d * d, mask=mask)
 
 
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
-def func(x, y):
+def mse_none_pd(x, y):
     return (x - y) * (x - y)
 
 
-class Reduction(Enum):
-    NONE = 0
-    MEAN = 1
-    SUM = 2
-
-
-def mse_loss(inp, target, reduction=Reduction.MEAN.value):
-    logger.debug("GEMS MSE LOSS")
-    if reduction == Reduction.NONE.value:
-        return func(inp, target)
-
-    inp = inp.contiguous()
-    target = target.contiguous()
+def mse_loss(inp, target, reduction=1):
     M = inp.numel()
     dtype = inp.dtype
 
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
+    if reduction == 0:
+        if M >= _NONE_PD_THRESHOLD:
+            return mse_none_pd(inp, target)
+        inp_c = inp if inp.is_contiguous() else inp.contiguous()
+        tgt_c = target if target.is_contiguous() else target.contiguous()
+        out = torch.empty_like(inp)
+        bs = min(_NONE_BS, _NP2(M))
+        mse_none_kernel[(_CDIV(M, bs), 1, 1)](inp_c, tgt_c, out, M, bs)
+        return out
 
-    mid = torch.empty((mid_size,), dtype=torch.float32, device=inp.device)
+    inp_c = inp if inp.is_contiguous() else inp.contiguous()
+    tgt_c = target if target.is_contiguous() else target.contiguous()
+
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    with torch_device_fn.device(inp.device):
-        kernel_1[(mid_size, 1, 1)](inp, target, mid, M, block_size, reduction)
-        kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+    if M <= 1024:
+        mse_single_kernel[(1, 1, 1)](inp_c, tgt_c, out, M, _NP2(M), reduction)
+    else:
+        mid_size = _CDIV(M, _REDUCE_BS)
+        mid = torch.empty(mid_size, dtype=torch.float32, device=inp.device)
+        mse_reduce_k1[(mid_size, 1, 1)](inp_c, tgt_c, mid, M, _REDUCE_BS, reduction)
+        mse_reduce_k2[(1, 1, 1)](mid, out, mid_size, _NP2(mid_size))
+
     return out
