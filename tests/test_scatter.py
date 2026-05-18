@@ -160,7 +160,9 @@ def _assert_registered_keys(expected_keys):
     assert not missing, f"missing registered keys: {sorted(missing)}"
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.scatter_reduce_two_out
 def test_scatter_reduce_public_api_registered():
     with flag_gems.use_gems(include=["scatter_reduce", "scatter_reduce_"]):
         _assert_registered_keys(
@@ -172,7 +174,9 @@ def test_scatter_reduce_public_api_registered():
         )
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.scatter_reduce_two_out
 @pytest.mark.parametrize("reduce", PUBLIC_SCATTER_REDUCTIONS)
 @pytest.mark.parametrize("include_self", [True, False])
 def test_scatter_reduce_public_api_variants(reduce, include_self):
@@ -229,7 +233,9 @@ def test_scatter_reduce_public_api_variants(reduce, include_self):
     utils.gems_assert_close(res_out_tensor, ref_out_tensor, torch.float32)
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.scatter_reduce_two_out
 @pytest.mark.parametrize("reduce", ["prod", "amax", "amin"])
 @pytest.mark.parametrize("include_self", [True, False])
 def test_scatter_reduce_nan_matches_pytorch(reduce, include_self):
@@ -287,7 +293,7 @@ def test_scatter_reduce_nan_matches_pytorch(reduce, include_self):
     )
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two
 @pytest.mark.parametrize("bad_index_dtype", [torch.float32, torch.bool, torch.int16])
 def test_scatter_reduce_invalid_index_dtype_falls_back_to_pytorch_error(
     bad_index_dtype,
@@ -300,7 +306,9 @@ def test_scatter_reduce_invalid_index_dtype_falls_back_to_pytorch_error(
             torch.scatter_reduce(inp, 1, index, src, "sum", include_self=True)
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.scatter_reduce_two_out
 @pytest.mark.parametrize("inp_shape, src_shape, dim", PUBLIC_SCATTER_REDUCE_SHAPE_CASES)
 @pytest.mark.parametrize("dtype", PUBLIC_SCATTER_REDUCE_FLOAT_DTYPES)
 @pytest.mark.parametrize("reduce", ["sum", "mean"])
@@ -323,7 +331,7 @@ def test_scatter_reduce_public_api_shapes_dims_dtypes(
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=max(1, index.numel()))
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.scatter_reduce_two
 def test_scatter_reduce_invalid_index_rank_falls_back_to_pytorch_error():
     inp, index, src = _public_scatter_reduce_inputs()
     index = index.unsqueeze(-1)
