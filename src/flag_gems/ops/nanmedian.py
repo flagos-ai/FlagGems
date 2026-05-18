@@ -48,6 +48,10 @@ ASCEND_BYTE_HISTOGRAM_SELECT_DTYPES = (
     torch.int16,
     torch.int32,
 )
+ASCEND_FLOAT_SELECT_DTYPES = (
+    torch.float16,
+    torch.float32,
+)
 ASCEND_HISTOGRAM_BINS = 256
 ASCEND_MULTI_HISTOGRAM_MIN_N = 8192
 
@@ -152,6 +156,59 @@ def nanmedian_select_kernel(
 
     tl.store(out_values + pid, median_val)
     tl.store(out_indices + pid, median_idx)
+
+
+@libentry()
+@triton.jit
+def nanmedian_float_clean_count_kernel(
+    inp,
+    cleaned,
+    valid_counts,
+    M,
+    N: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    offsets = tl.arange(0, BLOCK_N)
+    dtype = inp.dtype.element_ty
+    max_value = _get_finfo_val(dtype, return_max=True)
+    count = tl.full((), 0, dtype=tl.int32)
+
+    for start in tl.range(0, N, BLOCK_N):
+        cols = start + offsets
+        mask = cols < N
+        vals = tl.load(inp + pid * N + cols, mask=mask, other=max_value)
+        valid = mask & _is_not_nan(vals, False)
+        cleaned_vals = tl.where(valid, vals, max_value)
+        tl.store(cleaned + pid * N + cols, cleaned_vals, mask=mask)
+        count += tl.sum(valid.to(tl.int32), axis=0)
+
+    tl.store(valid_counts + pid, count)
+
+
+@libentry()
+@triton.jit
+def nanmedian_float_sorted_gather_kernel(
+    sorted_values,
+    sorted_indices,
+    valid_counts,
+    out_values,
+    out_indices,
+    M,
+    N: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    count = tl.load(valid_counts + pid)
+    rank = tl.where(count > 0, (count - 1) // 2, 0)
+    result_val = tl.load(
+        sorted_values + pid * N + rank, mask=count > 0, other=float("nan")
+    )
+    result_idx = tl.load(sorted_indices + pid * N + rank, mask=count > 0, other=0)
+    result_val = tl.where(count > 0, result_val, float("nan"))
+    result_idx = tl.where(count > 0, result_idx, 0)
+
+    tl.store(out_values + pid, result_val)
+    tl.store(out_indices + pid, result_idx)
 
 
 @libentry()
@@ -827,6 +884,15 @@ def _use_ascend_int_radix_select(inp, n):
     )
 
 
+def _use_ascend_float_sort_select(inp, n, enabled):
+    return (
+        enabled
+        and inp.device.type == "npu"
+        and inp.dtype in ASCEND_FLOAT_SELECT_DTYPES
+        and MAX_BLOCK_N < n <= LONG_RADIX_REDUCTION_N
+    )
+
+
 def _use_ascend_histogram_select(inp, n):
     return (
         inp.device.type == "npu"
@@ -991,7 +1057,48 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
         return NanMedian(values=values, indices=indices)
 
 
-def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
+def _nanmedian_ascend_float_sort_select(inp, M, N, values, indices):
+    inp = inp.reshape(M, N)
+    flat_values = values.reshape(M)
+    flat_indices = indices.reshape(M)
+    if N <= LARGE_FLOAT_REDUCTION_N:
+        cleaned = torch.empty_like(inp)
+        valid_counts = torch.empty((M,), dtype=torch.int32, device=inp.device)
+        block_n = min(triton.next_power_of_2(N), RADIX_BLOCK_N)
+        num_warps = 4 if block_n <= 512 else 8
+        with torch_device_fn.device(inp.device):
+            nanmedian_float_clean_count_kernel[(M,)](
+                inp,
+                cleaned,
+                valid_counts,
+                M,
+                N,
+                block_n,
+                num_warps=num_warps,
+                num_stages=1,
+            )
+        sorted_values, sorted_indices = torch.sort(cleaned, dim=1)
+    else:
+        sorted_values, sorted_indices = torch.sort(inp, dim=1)
+        valid_counts = torch.sum(
+            (sorted_values == sorted_values).to(torch.int32), dim=1
+        )
+
+    with torch_device_fn.device(inp.device):
+        nanmedian_float_sorted_gather_kernel[(M,)](
+            sorted_values,
+            sorted_indices,
+            valid_counts,
+            flat_values,
+            flat_indices,
+            M,
+            N,
+            num_warps=1,
+            num_stages=1,
+        )
+
+
+def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=True):
     dim = _normalize_dim(dim, inp.ndim)
 
     if inp.ndim == 0:
@@ -1062,6 +1169,8 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
                 num_warps=num_warps,
                 num_stages=1,
             )
+    elif _use_ascend_float_sort_select(inp, N, use_ascend_float_select):
+        _nanmedian_ascend_float_sort_select(inp, M, N, values, indices)
     elif _use_ascend_multi_histogram_select(inp, N):
         flat_values = values.reshape(M)
         flat_indices = indices.reshape(M)
@@ -1330,7 +1439,9 @@ def nanmedian(inp):
         return _nanmedian_cuda_flat_radix_select(inp)
     if _use_ascend_flat_sort(inp):
         return _nanmedian_ascend_flat_sort(inp)
-    return _nanmedian_dim_impl(inp.reshape(-1), 0, False).values
+    return _nanmedian_dim_impl(
+        inp.reshape(-1), 0, False, use_ascend_float_select=False
+    ).values
 
 
 def nanmedian_out(inp, *, out):
