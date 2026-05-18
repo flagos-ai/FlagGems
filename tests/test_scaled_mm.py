@@ -7,6 +7,11 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name in ["ascend"],
+    reason="Native torch._scaled_mm is not supported on Ascend.",
+)
+
 if QUICK_MODE:
     SCALED_MM_SHAPES = [(16, 16, 16)]
 else:

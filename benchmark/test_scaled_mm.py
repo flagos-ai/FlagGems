@@ -5,6 +5,11 @@ import flag_gems
 
 from . import base, consts
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name in ["ascend"],
+    reason="Native torch._scaled_mm is not supported on Ascend.",
+)
+
 
 def _cuda_fp8_available():
     if flag_gems.device != "cuda" or not torch.cuda.is_available():
@@ -100,10 +105,6 @@ class ScaledMMBenchmark(base.Benchmark):
 
 
 @pytest.mark.scaled_mm
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Native torch._scaled_mm benchmark baseline is unavailable on Ascend.",
-)
 @pytest.mark.parametrize("case", _benchmark_case_params())
 def test_scaled_mm_benchmark(case):
     bench = ScaledMMBenchmark("scaled_mm", torch._scaled_mm, flag_gems.scaled_mm, case)
@@ -111,10 +112,6 @@ def test_scaled_mm_benchmark(case):
 
 
 @pytest.mark.scaled_mm_out
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Native aten._scaled_mm.out benchmark baseline is unavailable on Ascend.",
-)
 @pytest.mark.parametrize("case", _benchmark_case_params())
 def test_scaled_mm_out_benchmark(case):
     bench = ScaledMMBenchmark(
