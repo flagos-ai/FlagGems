@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from flag_gems.fused.fp8_einsum import fp8_einsum, fp8_einsum_ref
+from flag_gems.fused.fp8_einsum import fp8_einsum
 
 from . import base
 
@@ -9,6 +9,33 @@ pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available() or torch.cuda.get_device_capability()[0] < 9,
     reason="fp8e4nv (torch.float8_e4m3fn) requires SM89+ (Hopper H100/H200)",
 )
+
+BLOCK_K = 128
+
+
+def _torch_fp8_einsum_ref(a, a_scale, b, b_scale, out):
+    """Pure-PyTorch reference: block-scaled FP8 einsum bhr,hdr->bhd."""
+    B, H, R = a.shape
+    _, D, _ = b.shape
+
+    a_f32 = a.to(torch.float32)
+    b_f32 = b.to(torch.float32)
+    n_k_blocks = (R + BLOCK_K - 1) // BLOCK_K
+
+    acc = torch.zeros((B, H, D), dtype=torch.float32, device=a.device)
+    for k_blk in range(n_k_blocks):
+        k_start = k_blk * BLOCK_K
+        k_end = min(k_start + BLOCK_K, R)
+
+        a_block = a_f32[:, :, k_start:k_end]
+        b_block = b_f32[:, :, k_start:k_end]
+        dot = torch.einsum("bhr,hdr->bhd", a_block, b_block)
+
+        a_s = a_scale[:, :, k_blk].unsqueeze(-1)
+        b_s = b_scale[:, :, k_blk].repeat_interleave(BLOCK_K, dim=1)[:, :D].unsqueeze(0)
+        acc += dot * (a_s * b_s)
+
+    out.copy_(acc.to(torch.bfloat16))
 
 
 class FP8EinsumBenchmark(base.Benchmark):
@@ -26,7 +53,6 @@ class FP8EinsumBenchmark(base.Benchmark):
         ]
 
     def get_input_iter(self, dtype):
-        BLOCK_K = 128
         for B, H, R, D in self.shapes:
             n_k_blocks = (R + BLOCK_K - 1) // BLOCK_K
             n_d_blocks = (D + BLOCK_K - 1) // BLOCK_K
@@ -52,7 +78,7 @@ class FP8EinsumBenchmark(base.Benchmark):
 def test_fp8_einsum():
     bench = FP8EinsumBenchmark(
         op_name="fp8_einsum",
-        torch_op=fp8_einsum_ref,
+        torch_op=_torch_fp8_einsum_ref,
         gems_op=fp8_einsum,
         dtypes=[torch.float8_e4m3fn],
     )

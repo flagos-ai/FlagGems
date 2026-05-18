@@ -182,21 +182,3 @@ def fp8_einsum(
         num_warps=num_warps,
         num_stages=num_stages,
     )
-
-
-def fp8_einsum_ref(
-    a: torch.Tensor,
-    a_scale: torch.Tensor,
-    b: torch.Tensor,
-    b_scale: torch.Tensor,
-    out: torch.Tensor,
-    equation: str = "bhr,hdr->bhd",
-    recipe: tuple | None = None,
-) -> None:
-    """Reference implementation via DeepGEMM CUDA kernel. Used as performance baseline."""
-    from vllm.utils.deep_gemm import fp8_einsum as deepgemm_fp8_einsum
-
-    if recipe is None:
-        recipe = (1, 128, 128)
-
-    deepgemm_fp8_einsum(equation, (a, a_scale), (b, b_scale), out, recipe=recipe)
