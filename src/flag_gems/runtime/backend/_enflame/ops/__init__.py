@@ -1,4 +1,4 @@
-from ..utils.config_utils import arch_version
+from .. import arch_version
 
 __all__ = []
 
