@@ -561,6 +561,16 @@ class ScatterFunction:
             return f"{max_rank}_mul_f32_256x512_b64", 64, 4
         if self._use_rank2_mul_1024x2048_f32(args):
             return f"{max_rank}_mul_f32_1024x2048_b64", 64, 4
+        if self._use_rank2_mul_large_loop8(args):
+            return f"{max_rank}_mul_large_b128_l8", 128, 8
+        if self._use_rank2_add_f16_2048x1024_to_2048x2048(args):
+            return f"{max_rank}_add_f16_2048x1024_to_2048x2048_b128_l8", 128, 8
+        if self._use_rank2_add_f16_1024x2048_to_1024x4096(args):
+            return f"{max_rank}_add_f16_1024x2048_to_1024x4096_b128_l8", 128, 8
+        if self._use_rank2_add_f16_4096x4096(args):
+            return f"{max_rank}_add_f16_4096x4096_b1024_l4", 1024, 4
+        if self._use_rank2_add_f16_1024x65536(args):
+            return f"{max_rank}_add_f16_1024x65536_b1024_l8", 1024, 8
         return str(max_rank), 128, 4
 
     @staticmethod
@@ -609,6 +619,93 @@ class ScatterFunction:
             and out.dtype == torch.float32
             and tuple(index.shape) == (1024, 2048)
             and tuple(out.shape) == (1024, 1024)
+        )
+
+    @staticmethod
+    def _use_rank2_mul_large_loop8(args) -> bool:
+        (
+            src_strided,
+            index,
+            _inp,
+            out,
+            _dim_size,
+            _dim_stride,
+            n_elements,
+            reduce,
+        ) = args[:8]
+        return (
+            reduce == "multiply"
+            and n_elements >= 1048576
+            and src_strided.ndim == 2
+            and index.ndim == 2
+            and out.ndim == 2
+            and src_strided.dtype in (torch.float16, torch.float32)
+            and out.dtype == src_strided.dtype
+        )
+
+    @staticmethod
+    def _rank2_add_f16_lastdim_contiguous(args) -> bool:
+        (
+            src_strided,
+            index,
+            _inp,
+            out,
+            _dim_size,
+            dim_stride,
+            _n_elements,
+            reduce,
+        ) = args[:8]
+        return (
+            reduce == "add"
+            and src_strided.ndim == 2
+            and index.ndim == 2
+            and out.ndim == 2
+            and src_strided.dtype == torch.float16
+            and out.dtype == torch.float16
+            and dim_stride == 1
+            and src_strided.is_contiguous()
+            and index.is_contiguous()
+            and out.is_contiguous()
+        )
+
+    @staticmethod
+    def _use_rank2_add_f16_2048x1024_to_2048x2048(args) -> bool:
+        src_strided, index, _inp, out, *_ = args
+        return (
+            ScatterFunction._rank2_add_f16_lastdim_contiguous(args)
+            and tuple(src_strided.shape) == (2048, 1024)
+            and tuple(index.shape) == (2048, 1024)
+            and tuple(out.shape) == (2048, 2048)
+        )
+
+    @staticmethod
+    def _use_rank2_add_f16_1024x2048_to_1024x4096(args) -> bool:
+        src_strided, index, _inp, out, *_ = args
+        return (
+            ScatterFunction._rank2_add_f16_lastdim_contiguous(args)
+            and tuple(src_strided.shape) == (1024, 2048)
+            and tuple(index.shape) == (1024, 2048)
+            and tuple(out.shape) == (1024, 4096)
+        )
+
+    @staticmethod
+    def _use_rank2_add_f16_4096x4096(args) -> bool:
+        src_strided, index, _inp, out, *_ = args
+        return (
+            ScatterFunction._rank2_add_f16_lastdim_contiguous(args)
+            and tuple(src_strided.shape) == (4096, 4096)
+            and tuple(index.shape) == (4096, 4096)
+            and tuple(out.shape) == (4096, 4096)
+        )
+
+    @staticmethod
+    def _use_rank2_add_f16_1024x65536(args) -> bool:
+        src_strided, index, _inp, out, *_ = args
+        return (
+            ScatterFunction._rank2_add_f16_lastdim_contiguous(args)
+            and tuple(src_strided.shape) == (1024, 65536)
+            and tuple(index.shape) == (1024, 65536)
+            and tuple(out.shape) == (1024, 65536)
         )
 
 
