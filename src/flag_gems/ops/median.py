@@ -273,7 +273,9 @@ def median_bool_dim_reduce_chunks_kernel(
     in_base = row * input_chunks + chunk_offsets
 
     counts = tl.load(counts_in + in_base, mask=valid, other=0)
-    first_false = tl.load(first_false_in + in_base, mask=valid, other=9223372036854775807)
+    first_false = tl.load(
+        first_false_in + in_base, mask=valid, other=9223372036854775807
+    )
     first_true = tl.load(first_true_in + in_base, mask=valid, other=9223372036854775807)
 
     true_count = tl.sum(counts, axis=0)
@@ -308,9 +310,7 @@ def median_bool_dim_finish_kernel(
     rank = (reduction_size - 1) // 2
     median_value = rank >= false_count
 
-    false_indices = tl.load(
-        first_false + base, mask=valid, other=9223372036854775807
-    )
+    false_indices = tl.load(first_false + base, mask=valid, other=9223372036854775807)
     true_indices = tl.load(first_true + base, mask=valid, other=9223372036854775807)
     first_false_idx = tl.min(false_indices, axis=0)
     first_true_idx = tl.min(true_indices, axis=0)
@@ -1009,9 +1009,8 @@ def _use_fp64_key_select(dtype, width):
 
 
 def _use_strided_select(dtype, width):
-    return (
-        _STRIDED_SELECT_MIN <= width <= _STRIDED_SELECT_LIMIT
-        and dtype in (_F16_KEY_SELECT_DTYPES | {torch.float32})
+    return _STRIDED_SELECT_MIN <= width <= _STRIDED_SELECT_LIMIT and dtype in (
+        _F16_KEY_SELECT_DTYPES | {torch.float32}
     )
 
 

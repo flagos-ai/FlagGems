@@ -493,7 +493,9 @@ def test_median_bool_dim_count_selects_first_index(dim, keepdim):
     expected_values = torch.tensor(
         [False, True, True], dtype=torch.bool, device=flag_gems.device
     )
-    expected_indices = torch.tensor([3, 7, 0], dtype=torch.int64, device=flag_gems.device)
+    expected_indices = torch.tensor(
+        [3, 7, 0], dtype=torch.int64, device=flag_gems.device
+    )
     if keepdim:
         expected_values = expected_values.unsqueeze(dim)
         expected_indices = expected_indices.unsqueeze(dim)
@@ -1246,9 +1248,7 @@ def test_median_strided_nonlast_named_dim_preserves_names(keepdim):
     ref_out = torch.median(ref_inp, dim=1, keepdim=keepdim)
     res_out = gems_median_dim(inp, dim="reduce", keepdim=keepdim)
 
-    expected_names = (
-        ("batch", "reduce", "feature") if keepdim else ("batch", "feature")
-    )
+    expected_names = ("batch", "reduce", "feature") if keepdim else ("batch", "feature")
     assert res_out.values.names == expected_names
     assert res_out.indices.names == expected_names
     _assert_median_dim_equal(
