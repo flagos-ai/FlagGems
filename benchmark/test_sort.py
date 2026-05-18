@@ -24,3 +24,20 @@ def test_perf_sort():
     )
 
     bench.run()
+
+
+def _input_fn_stable(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    yield inp, {"dim": -1, "descending": False, "stable": True},
+
+
+@pytest.mark.sort_stable
+def test_perf_sort_stable():
+    bench = SortBenchmark(
+        input_fn=_input_fn_stable,
+        op_name="sort_stable",
+        torch_op=torch.sort,
+        dtypes=consts.INT_DTYPES + consts.FLOAT_DTYPES,
+    )
+
+    bench.run()
