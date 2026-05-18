@@ -20,19 +20,18 @@ def test_cumsum():
     bench.run()
 
 
+def cumsum_out_input_fn(shape, cur_dtype, device):
+    inp = utils.generate_tensor_input(shape, cur_dtype, device)
+    out = torch.empty(shape, dtype=cur_dtype, device=device)
+    yield inp, 1, out
+
+
 @pytest.mark.cumsum_out
 def test_cumsum_out():
-    bench = base.GenericBenchmark(
+    bench = base.GenericBenchmark2DOnly(
         op_name="cumsum_out",
         torch_op=lambda inp, dim, out: torch.cumsum(inp, dim, out=out),
-        input_fn=lambda shape, dtype, device: (
-            (
-                torch.randn(shape, dtype=dtype, device=device),
-                1 if len(shape) > 1 else 0,
-                torch.empty(shape, dtype=dtype, device=device),
-            )
-            for _ in [None]
-        ),
+        input_fn=cumsum_out_input_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
