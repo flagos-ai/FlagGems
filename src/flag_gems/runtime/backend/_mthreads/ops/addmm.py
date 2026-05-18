@@ -236,20 +236,34 @@ def addmm_sqmma_kernel(
     output_type = c_type
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl._experimental_descriptor_load(
-            a_desc_ptr,
-            [offs_am, offs_k],
-            [BLOCK_SIZE_M, BLOCK_SIZE_K],
-            input_type,
-            is_transpose_a,
-        )
-        b = tl._experimental_descriptor_load(
-            b_desc_ptr,
-            [offs_k, offs_bn],
-            [BLOCK_SIZE_K, BLOCK_SIZE_N],
-            input_type,
-            is_transpose_b,
-        )
+        if is_transpose_a:
+            a = tl._experimental_descriptor_load(
+                a_desc_ptr,
+                [offs_k, offs_am],
+                [BLOCK_SIZE_K, BLOCK_SIZE_M],
+                input_type,
+            ).T
+        else:
+            a = tl._experimental_descriptor_load(
+                a_desc_ptr,
+                [offs_am, offs_k],
+                [BLOCK_SIZE_M, BLOCK_SIZE_K],
+                input_type,
+            )
+        if is_transpose_b:
+            b = tl._experimental_descriptor_load(
+                b_desc_ptr,
+                [offs_bn, offs_k],
+                [BLOCK_SIZE_N, BLOCK_SIZE_K],
+                input_type,
+            ).T
+        else:
+            b = tl._experimental_descriptor_load(
+                b_desc_ptr,
+                [offs_k, offs_bn],
+                [BLOCK_SIZE_K, BLOCK_SIZE_N],
+                input_type,
+            )
         accumulator = tl.dot(a, b, acc=accumulator)
         offs_k += BLOCK_SIZE_K
     bias = tl._experimental_descriptor_load(

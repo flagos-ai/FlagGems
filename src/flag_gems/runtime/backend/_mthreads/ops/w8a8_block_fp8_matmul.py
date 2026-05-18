@@ -265,20 +265,36 @@ def w8a8_block_fp8_matmul_sqmma_kernel(
     c_store_dtype = output_dtype
 
     for _ in range(0, tl.cdiv(K, BLOCK_K)):
-        a = tl._experimental_descriptor_load(
-            a_desc_ptr,
-            [offs_am, offs_k],
-            [BLOCK_M, BLOCK_K],
-            tme_load_input_dtype,
-            is_transpose_a,
-        )
-        b = tl._experimental_descriptor_load(
-            b_desc_ptr,
-            [offs_k, offs_bn],
-            [BLOCK_K, BLOCK_N],
-            tme_load_input_dtype,
-            is_transpose_b,
-        )
+        if is_transpose_a:
+            a = tl._experimental_descriptor_load(
+                a_desc_ptr,
+                [offs_k, offs_am],
+                [BLOCK_K, BLOCK_M],
+                tme_load_input_dtype,
+            )
+            a = tl.trans(a)
+        else:
+            a = tl._experimental_descriptor_load(
+                a_desc_ptr,
+                [offs_am, offs_k],
+                [BLOCK_M, BLOCK_K],
+                tme_load_input_dtype,
+            )
+        if is_transpose_b:
+            b = tl._experimental_descriptor_load(
+                b_desc_ptr,
+                [offs_bn, offs_k],
+                [BLOCK_N, BLOCK_K],
+                tme_load_input_dtype,
+            )
+            b = tl.trans(b)
+        else:
+            b = tl._experimental_descriptor_load(
+                b_desc_ptr,
+                [offs_k, offs_bn],
+                [BLOCK_K, BLOCK_N],
+                tme_load_input_dtype,
+            )
 
         scale_k = offs_k // group_k
         a_s = tl.load(
