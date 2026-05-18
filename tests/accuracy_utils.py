@@ -80,6 +80,16 @@ REDUCTION_SHAPES = [(2, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 4099
 REDUCTION_SMALL_SHAPES = (
     [(1, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 2560, 3)]
 )
+SVD_FAST_SHAPES = [(2, 2), (8, 2), (2, 8), (16, 8), (8, 16), (64, 32), (32, 64)]
+SVD_RANK1_SHAPES = [(8, 1), (1, 8), (2, 17, 1), (2, 1, 17), (1025, 1), (1, 1025)]
+SVD_FALLBACK_SHAPES = [(5, 3), (3, 5), (2, 4, 4)]
+SVD_GRAM_ILL_CONDITIONED_SHAPES = [(17, 17), (16, 16, 16)]
+SVD_TINY_RANK_DEGENERATE_CASES = [
+    "zero_2x2",
+    "repeated_2x2",
+    "zero_column_8x2",
+    "zero_row_2x8",
+]
 STACK_SHAPES = [
     [(16,), (16,)],
     [(16, 256), (16, 256)],
