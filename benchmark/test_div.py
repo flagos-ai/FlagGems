@@ -97,7 +97,7 @@ def test_div_tensor_mode_(rounding_mode):
             "Operator bug: trunc/floor div kernels fail Triton compilation for float dtypes"
         )
     bench = base.BinaryPointwiseBenchmark(
-        op_name=f"div_tensor_mode_({rounding_mode})",
+        op_name="div_tensor_mode_",
         torch_op=lambda a, b: a.div_(b, rounding_mode=rounding_mode),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
