@@ -3,7 +3,7 @@ FlagGems median operator.
 Uses CPU-side stable sort for deterministic tie-breaking matching PyTorch's behavior.
 """
 import logging
-import math
+
 import torch
 
 logger = logging.getLogger(__name__)
@@ -39,15 +39,14 @@ def median_dim(
 
     ndim = input.ndim
     if ndim == 0:
-        return _MedianResult((
-            input.clone(),
-            torch.zeros([], device=input.device, dtype=torch.int64)
-        ))
+        return _MedianResult(
+            (input.clone(), torch.zeros([], device=input.device, dtype=torch.int64))
+        )
 
     if dim < 0:
         dim = dim + ndim
     if not (0 <= dim < ndim):
-        raise IndexError(f"dim {dim} out of range [{-ndim}, {ndim-1}]")
+        raise IndexError(f"dim {dim} out of range [{-ndim}, {ndim - 1}]")
 
     N = input.shape[dim]
     if N == 0:

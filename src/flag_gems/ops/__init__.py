@@ -220,6 +220,7 @@ from flag_gems.ops.max_pool3d_with_indices import (
 )
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
+from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.mm import mm, mm_out
@@ -227,7 +228,6 @@ from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.mv import mv
-from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
 from flag_gems.ops.nan_to_num import nan_to_num
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_

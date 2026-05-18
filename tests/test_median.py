@@ -19,14 +19,24 @@ else:
     SHAPES_DIM = [
         ((7,), 0),
         ((64,), 0),
-        ((4, 7), 0), ((4, 7), 1),
-        ((8, 64), 0), ((8, 64), 1),
-        ((64, 64), 0), ((64, 64), 1),
-        ((256, 256), 0), ((256, 256), 1),
-        ((3, 4, 5), 0), ((3, 4, 5), 1), ((3, 4, 5), 2),
+        ((4, 7), 0),
+        ((4, 7), 1),
+        ((8, 64), 0),
+        ((8, 64), 1),
+        ((64, 64), 0),
+        ((64, 64), 1),
+        ((256, 256), 0),
+        ((256, 256), 1),
+        ((3, 4, 5), 0),
+        ((3, 4, 5), 1),
+        ((3, 4, 5), 2),
         ((8, 16, 32), 2),
-        ((2, 3, 4, 5), 0), ((2, 3, 4, 5), 1), ((2, 3, 4, 5), 3),
-        ((4, 7), -1), ((3, 4, 5), -1), ((3, 4, 5), -2),
+        ((2, 3, 4, 5), 0),
+        ((2, 3, 4, 5), 1),
+        ((2, 3, 4, 5), 3),
+        ((4, 7), -1),
+        ((3, 4, 5), -1),
+        ((3, 4, 5), -2),
     ]
 
 ALL_DTYPES = FLOAT_DTYPES + INT_DTYPES
@@ -72,9 +82,14 @@ def test_median_dim(dtype, shape, dim):
 
 
 @pytest.mark.median_dim
-@pytest.mark.parametrize("shape,dim", [
-    ((4, 7), 1), ((3, 4, 5), 2), ((2, 3, 4, 5), -1),
-])
+@pytest.mark.parametrize(
+    "shape,dim",
+    [
+        ((4, 7), 1),
+        ((3, 4, 5), 2),
+        ((2, 3, 4, 5), -1),
+    ],
+)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_median_dim_keepdim(dtype, shape, dim):
     inp = make_tensor(shape, dtype)
@@ -103,9 +118,14 @@ def test_median_dim_special(dtype):
 
 
 @pytest.mark.median
-@pytest.mark.parametrize("shape,dim", [
-    ((1024, 1024), 1), ((4096, 128), 1), ((128, 4096), 1),
-])
+@pytest.mark.parametrize(
+    "shape,dim",
+    [
+        ((1024, 1024), 1),
+        ((4096, 128), 1),
+        ((128, 4096), 1),
+    ],
+)
 def test_median_large(shape, dim):
     inp = make_tensor(shape, torch.float32)
     ref = torch.median(utils.to_reference(inp), dim)
