@@ -462,7 +462,7 @@ def custom_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
     eps: float,
     block_size: int,
 ) -> None:
-    from flag_gems.runtime.backend._nvidia.fused.dsv4_attention_triton import (
+    from flag_gems.fused.dsv4_attention import (
         dsv4_qnorm_rope_kv_rope_quant_insert,
     )
 
@@ -484,7 +484,7 @@ def custom_deepseek_v4_attention(
     out: torch.Tensor,
     layer_name: str,
 ) -> None:
-    from flag_gems.runtime.backend._nvidia.fused.dsv4_attention_triton import (
+    from flag_gems.fused.dsv4_attention import (
         dsv4_vllm_deepseek_v4_attention,
     )
 
@@ -500,7 +500,7 @@ def custom_deepseek_v4_fp8_einsum(
     equation: str,
     recipe: list[int],
 ) -> None:
-    from flag_gems.runtime.backend._nvidia.fused.dsv4_attention_triton import (
+    from flag_gems.fused.dsv4_attention import (
         dsv4_fp8_einsum,
     )
 
@@ -646,6 +646,11 @@ def apply_gems_patches_to_vllm(verbose=True):
     import vllm.model_executor.layers.deepseek_v4_attention as dsv4_layer
 
     try:
+        import vllm.v1.attention.ops.deepseek_v4_ops as dsv4_ops
+    except (ModuleNotFoundError, ImportError):
+        dsv4_ops = None
+
+    try:
         from vllm.attention.ops import vit_attn_wrappers as vitw
     except (ModuleNotFoundError, ImportError):
         vitw = None
@@ -749,14 +754,26 @@ def apply_gems_patches_to_vllm(verbose=True):
     for cls, method_name, new_method in module_patches:
         patch_module_method(cls, method_name, new_method, verbose)
 
-    from flag_gems.runtime.backend._nvidia.fused.dsv4_attention_triton import (
+    from flag_gems.fused.dsv4_attention import (
+        dsv4_attention_triton,
+        dsv4_flash_mla_sparse_decode,
+        dsv4_flash_mla_sparse_prefill,
         dsv4_combine_topk_swa_indices,
         dsv4_compute_global_topk_indices_and_lens,
         dsv4_dequantize_and_gather_k_cache,
+        dsv4_fp8_einsum,
         dsv4_fused_q_kv_rmsnorm,
+        dsv4_qnorm_rope_kv_rope_quant_insert,
+        dsv4_vllm_deepseek_v4_attention,
     )
 
     dsv4_module_patches = [
+        ("dsv4_attention_triton", dsv4_attention_triton),
+        ("dsv4_flash_mla_sparse_prefill", dsv4_flash_mla_sparse_prefill),
+        ("dsv4_flash_mla_sparse_decode", dsv4_flash_mla_sparse_decode),
+        ("dsv4_qnorm_rope_kv_rope_quant_insert", dsv4_qnorm_rope_kv_rope_quant_insert),
+        ("dsv4_vllm_deepseek_v4_attention", dsv4_vllm_deepseek_v4_attention),
+        ("dsv4_fp8_einsum", dsv4_fp8_einsum),
         ("combine_topk_swa_indices", dsv4_combine_topk_swa_indices),
         (
             "compute_global_topk_indices_and_lens",
@@ -765,6 +782,26 @@ def apply_gems_patches_to_vllm(verbose=True):
         ("dequantize_and_gather_k_cache", dsv4_dequantize_and_gather_k_cache),
         ("fused_q_kv_rmsnorm", dsv4_fused_q_kv_rmsnorm),
     ]
+
+    if dsv4_ops is not None:
+        dsv4_ops_patches = [
+            ("combine_topk_swa_indices", dsv4_combine_topk_swa_indices),
+            (
+                "compute_global_topk_indices_and_lens",
+                dsv4_compute_global_topk_indices_and_lens,
+            ),
+            ("dequantize_and_gather_k_cache", dsv4_dequantize_and_gather_k_cache),
+            ("fused_q_kv_rmsnorm", dsv4_fused_q_kv_rmsnorm),
+        ]
+        for symbol_name, fn in dsv4_ops_patches:
+            setattr(dsv4_ops, symbol_name, fn)
+            if verbose:
+                print(
+                    "Patched "
+                    f"vllm.v1.attention.ops.deepseek_v4_ops.{symbol_name} "
+                    f"with FLAGGEMS {fn.__name__}"
+                )
+
     for symbol_name, fn in dsv4_module_patches:
         setattr(dsv4_layer, symbol_name, fn)
         if verbose:
