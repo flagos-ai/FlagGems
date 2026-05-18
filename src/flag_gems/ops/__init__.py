@@ -1,3 +1,4 @@
+from flag_gems.ops._cholesky_solve_helper import _cholesky_solve_helper
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -372,6 +373,7 @@ from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
     "_assert_async",
+    "_cholesky_solve_helper",
     "_conv_depthwise2d",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",

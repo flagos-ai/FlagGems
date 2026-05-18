@@ -972,6 +972,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.0'
+  - id: cholesky_solve_helper
+    description: |
+      Solves a linear system of equations with a positive semidefinite matrix,
+      using its Cholesky decomposition. Supports both lower and upper triangular factors.
+    for:
+      - _cholesky_solve_helper
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.1'
   - id: chunk_gated_delta_rule_fwd
     description: |
       The forward case for `ChunkGatedDeltaRuleFunction` with Flash Linear Attention (FLA).
