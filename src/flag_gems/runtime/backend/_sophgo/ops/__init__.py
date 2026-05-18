@@ -11,6 +11,7 @@ from .conv_depthwise2d import _conv_depthwise2d
 from .count_nonzero import count_nonzero
 from .cumsum import cumsum, normed_cumsum
 from .diagonal import diagonal
+from .diag_embed import diag_embed
 from .dropout import dropout
 from .exponential_ import exponential_
 from .flip import flip
@@ -32,7 +33,10 @@ from .max import max, max_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .nan_to_num import nan_to_num
-from .nllloss import nll_loss_forward
+from .nllloss import (
+    nll_loss_forward,
+    nll_loss2d_forward
+)
 from .nonzero import nonzero
 from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .polar import polar
@@ -79,6 +83,7 @@ __all__ = [
     "count_nonzero",
     "cumsum",
     "diagonal",
+    "diag_embed",
     "dropout",
     "exponential_",
     "flip",
@@ -105,6 +110,7 @@ __all__ = [
     "mm_out",
     "nan_to_num",
     "nll_loss_forward",
+    "nll_loss2d_forward",
     "nonzero",
     "normed_cumsum",
     "normal_float_tensor",

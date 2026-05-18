@@ -767,19 +767,13 @@ var_mean:
     META:
       BLOCK_M: block_m
       BLOCK_N: block_n
-    num_warps: warps
+    num_warps: 1
   block_m:
-  # - 1
-  - 2
-  # - 4
-  # - 8
+  - 32
+  - 16
+  - 8
   block_n:
-  - 1024
-  # - 2048
-  warps:
-  - 4
-  # - 8
-  # - 16
+  - 128
 
 conv2d_forward:
 # - META:

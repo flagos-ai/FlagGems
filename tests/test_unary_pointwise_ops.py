@@ -434,6 +434,7 @@ def test_accuracy_sigmoid(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "sophgo", reason="UnsupportBackward")
 @pytest.mark.sigmoid
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -501,6 +502,7 @@ def test_accuracy_silu(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "sophgo", reason="UnsupportBackward")
 @pytest.mark.silu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

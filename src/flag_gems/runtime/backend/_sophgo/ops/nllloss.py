@@ -346,12 +346,11 @@ def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
         # mean mode: accumulate all program partial sums on host, compute weighted average
         total_sum = sum_buf.sum()
         total_weight = weight_buf.sum()
-        mean_val = total_sum / total_weight.clamp(min=1e-8)  # Prevent division by zero
+        mean_val = total_sum / total_weight
         output = mean_val.to(self.dtype)
         total_weight = total_weight.to(self.dtype)
     else:
         # sum mode: accumulate all program partial sums on host
-        output = sum_buf.sum().to(self.dtype)
         output = sum_buf.sum().to(self.dtype)
         total_weight = torch.empty([], dtype=self.dtype, device=self.device)
 
@@ -477,7 +476,7 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
     elif reduction == 1:
         total_sum = sum_buf.sum()
         total_weight = weight_buf.sum()
-        mean_val = total_sum / total_weight.clamp(min=1e-8)
+        mean_val = total_sum / total_weight
         output = mean_val.to(self.dtype)
         total_weight = total_weight.to(self.dtype)
     else:
