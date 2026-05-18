@@ -70,7 +70,7 @@ def _assert_nanmedian_indices_valid(inp, values, indices, dim, keepdim, dtype):
     if not keepdim:
         gathered = gathered.squeeze(dim)
 
-    _assert_nanmedian_values(gathered, values, dtype)
+    _assert_nanmedian_values(gathered, utils.to_reference(values), dtype)
 
 
 @pytest.mark.nanmedian
