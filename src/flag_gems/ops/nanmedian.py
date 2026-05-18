@@ -50,6 +50,24 @@ ASCEND_HISTOGRAM_BINS = 256
 ASCEND_MULTI_HISTOGRAM_MIN_N = 8192
 
 
+def _triton_version_at_least(major, minor):
+    version = getattr(triton, "__version__", "0.0").split("+", 1)[0]
+    parts = []
+    for token in version.split(".")[:2]:
+        digits = []
+        for char in token:
+            if not char.isdigit():
+                break
+            digits.append(char)
+        parts.append(int("".join(digits) or 0))
+    parts.extend([0] * (2 - len(parts)))
+    return tuple(parts[:2]) >= (major, minor)
+
+
+def _use_cuda_masked_histogram():
+    return _triton_version_at_least(3, 6)
+
+
 @triton.jit
 def _is_not_nan(vals, USE_ISNAN: tl.constexpr):
     vals_fp32 = vals.to(tl.float32)
@@ -561,10 +579,7 @@ def nanmedian_radix_select_kernel(
             digit = ((keys >> digit_pos) & radix_mask_val).to(tl.int32)
             active = valid & matches
             if USE_HISTOGRAM:
-                safe_digit = tl.where(active, digit, 0)
-                chunk_counts = tl.histogram(safe_digit, radix_size).to(tl.int32)
-                inactive_count = tl.sum((~active).to(tl.int32), axis=0)
-                counts += chunk_counts - tl.where(radix_bins == 0, inactive_count, 0)
+                counts += tl.histogram(digit, radix_size, active)
             else:
                 for radix_bin in tl.static_range(0, radix_size):
                     bin_count = tl.sum(
@@ -666,6 +681,7 @@ def flat_radix_count_kernel(
     RADIX_BITS_: tl.constexpr,
     RADIX_SIZE: tl.constexpr,
     USE_ISNAN: tl.constexpr,
+    USE_HISTOGRAM: tl.constexpr,
 ):
     pid = tle.program_id(0)
     offsets = pid * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -688,10 +704,13 @@ def flat_radix_count_kernel(
     active = valid & ((keys & desired_mask) == desired)
     digit = ((keys >> DIGIT_POS) & radix_mask_val).to(tl.int32)
     bins = tl.arange(0, RADIX_SIZE)
-    safe_digit = tl.where(active, digit, 0)
-    counts = tl.histogram(safe_digit, RADIX_SIZE).to(tl.int64)
-    inactive_count = tl.sum((~active).to(tl.int64), axis=0)
-    counts -= tl.where(bins == 0, inactive_count, 0)
+    counts = tl.zeros((RADIX_SIZE,), dtype=tl.int64)
+    if USE_HISTOGRAM:
+        counts = tl.histogram(digit, RADIX_SIZE, active).to(tl.int64)
+    else:
+        for radix_bin in tl.static_range(0, RADIX_SIZE):
+            bin_count = tl.sum((active & (digit == radix_bin)).to(tl.int64), axis=0)
+            counts += tl.where(bins == radix_bin, bin_count, 0)
     tl.atomic_add(bin_counts + bins, counts, sem="relaxed")
 
 
@@ -1061,6 +1080,7 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
         return NanMedian(values=values, indices=indices)
 
     inp = dim_compress(inp, dim)
+    use_cuda_histogram = inp.is_cuda and _use_cuda_masked_histogram()
 
     if inp.dtype in RADIX_SELECT_DTYPES and _use_radix_select(inp, N):
         flat_values = values.reshape(M)
@@ -1075,9 +1095,9 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
                 M,
                 N,
                 block_n,
-                _radix_bits(inp, N),
+                _radix_bits(inp, N) if use_cuda_histogram else RADIX_BITS,
                 inp.is_cuda,
-                inp.is_cuda,
+                use_cuda_histogram,
                 num_warps=num_warps,
                 num_stages=1,
             )
@@ -1260,12 +1280,13 @@ def _nanmedian_cuda_flat_radix_select(inp):
     valid_count = torch.empty((), dtype=torch.int64, device=flat.device)
     state = torch.empty((3,), dtype=torch.int64, device=flat.device)
     result_idx = torch.empty((), dtype=torch.int64, device=flat.device)
-    bin_counts = torch.empty(
-        (1 << FLAT_RADIX_BITS,), dtype=torch.int64, device=flat.device
-    )
     block_n = min(triton.next_power_of_2(n), FLAT_RADIX_BLOCK_N)
     grid = (triton.cdiv(n, block_n),)
     nbits = flat.element_size() * 8
+    use_histogram = _use_cuda_masked_histogram()
+    radix_bits = FLAT_RADIX_BITS if use_histogram else RADIX_BITS
+    radix_size = 1 << radix_bits
+    bin_counts = torch.empty((radix_size,), dtype=torch.int64, device=flat.device)
 
     with torch_device_fn.device(flat.device):
         flat_radix_init_kernel[(1,)](
@@ -1286,7 +1307,7 @@ def _nanmedian_cuda_flat_radix_select(inp):
                 num_stages=1,
             )
         flat_radix_init_rank_kernel[(1,)](valid_count, state)
-        for digit_pos in range(nbits - FLAT_RADIX_BITS, -1, -FLAT_RADIX_BITS):
+        for digit_pos in range(nbits - radix_bits, -1, -radix_bits):
             bin_counts.zero_()
             flat_radix_count_kernel[grid](
                 flat,
@@ -1295,9 +1316,10 @@ def _nanmedian_cuda_flat_radix_select(inp):
                 n,
                 block_n,
                 digit_pos,
-                FLAT_RADIX_BITS,
-                1 << FLAT_RADIX_BITS,
+                radix_bits,
+                radix_size,
                 True,
+                use_histogram,
                 num_warps=8,
                 num_stages=1,
             )
@@ -1305,8 +1327,8 @@ def _nanmedian_cuda_flat_radix_select(inp):
                 bin_counts,
                 state,
                 digit_pos,
-                FLAT_RADIX_BITS,
-                1 << FLAT_RADIX_BITS,
+                radix_bits,
+                radix_size,
                 num_warps=8,
                 num_stages=1,
             )
