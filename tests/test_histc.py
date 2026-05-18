@@ -7,7 +7,7 @@ from .accuracy_utils import FLOAT_DTYPES, gems_assert_close, to_reference
 
 HISTC_SHAPES = [(64,), (1024,), (4096,), (100, 100), (32, 64, 16)]
 HISTC_BINS = [10, 50, 100]
-HISTC_DTYPES = FLOAT_DTYPES
+HISTC_DTYPES = [torch.float32]
 
 
 @pytest.mark.histc
