@@ -616,6 +616,26 @@ def test_median_non_contiguous():
 
 
 @pytest.mark.median
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
+@pytest.mark.parametrize(
+    "shape, dim, keepdim",
+    [
+        ((2, 3, 4, 5), 2, False),
+        ((2, 3, 4, 5, 6), -2, True),
+    ],
+)
+def test_median_high_dim_semantics(dtype, shape, dim, keepdim):
+    inp = _make_input(shape, dtype)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.median(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems(include=MEDIAN_OPS):
+        res_out = torch.median(inp, dim=dim, keepdim=keepdim)
+
+    _assert_median_dim_equal(res_out, ref_out, dtype, inp=inp, dim=dim, keepdim=keepdim)
+
+
+@pytest.mark.median
 @pytest.mark.parametrize("width", [257, 5001])
 def test_median_large_width(width):
     inp = torch.randn((2, width), dtype=torch.float32, device=flag_gems.device)

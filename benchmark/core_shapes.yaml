@@ -152,6 +152,7 @@ median:
     - [257]
     - [1024]
     - [4096]
+    - [4, 8, 16, 8]
   shape_desc: "input shape"
 
 median_dim:
