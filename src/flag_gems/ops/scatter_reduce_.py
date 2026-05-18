@@ -316,8 +316,12 @@ def generate_scatter_reduce_2d_lastdim_kernel(
                 code.writeline("out_stride_0 = out_stride_0.to(tl.int32)")
             code.writeline("index_offsets = row * index_stride_0 + col")
             code.writeline("src_offsets = row * src_stride_0 + col")
-            code.writeline("cur_index = tl.load(index + index_offsets, mask=mask, other=0)")
-            code.writeline("cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)")
+            code.writeline(
+                "cur_index = tl.load(index + index_offsets, mask=mask, other=0)"
+            )
+            code.writeline(
+                "cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)"
+            )
             code.writeline("if INT32_OFFSET:")
             with code.indent():
                 code.writeline("cur_index = cur_index.to(tl.int32)")
@@ -532,8 +536,12 @@ def generate_scatter_reduce_2d_lastdim_key_kernels(
                 code.writeline("out_stride_0 = out_stride_0.to(tl.int32)")
             code.writeline("index_offsets = row * index_stride_0 + col")
             code.writeline("src_offsets = row * src_stride_0 + col")
-            code.writeline("cur_index = tl.load(index + index_offsets, mask=mask, other=0)")
-            code.writeline("cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0.0)")
+            code.writeline(
+                "cur_index = tl.load(index + index_offsets, mask=mask, other=0)"
+            )
+            code.writeline(
+                "cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0.0)"
+            )
             code.writeline("if INT32_OFFSET:")
             with code.indent():
                 code.writeline("cur_index = cur_index.to(tl.int32)")
@@ -597,7 +605,9 @@ def generate_scatter_reduce_2d_lastdim_key_kernels(
             )
             code.writeline("val = _scatter_reduce_ordered_i32_to_float(key)")
             code.writeline("nan_val = val + float('nan')")
-            code.writeline("tl.store(out + offsets, tl.where(has_nan, nan_val, val), mask=mask)")
+            code.writeline(
+                "tl.store(out + offsets, tl.where(has_nan, nan_val, val), mask=mask)"
+            )
             code.writeline("offsets += BLOCK")
     code.newline()
     code.newline()
@@ -837,8 +847,7 @@ def generate_init_2d_lastdim_kernel(
         code.writeline("}")
     code.writeline(")")
     code.writeline(
-        "@triton.jit(do_not_specialize=["
-        "'N','K','index_stride_0','out_stride_0'])"
+        "@triton.jit(do_not_specialize=[" "'N','K','index_stride_0','out_stride_0'])"
     )
 
     code.writeline(f"def {kernel_name}(")
@@ -876,7 +885,9 @@ def generate_init_2d_lastdim_kernel(
                 code.writeline("index_stride_0 = index_stride_0.to(tl.int32)")
                 code.writeline("out_stride_0 = out_stride_0.to(tl.int32)")
             code.writeline("index_offsets = row * index_stride_0 + col")
-            code.writeline("cur_index = tl.load(index + index_offsets, mask=mask, other=0)")
+            code.writeline(
+                "cur_index = tl.load(index + index_offsets, mask=mask, other=0)"
+            )
             code.writeline("if INT32_OFFSET:")
             with code.indent():
                 code.writeline("cur_index = cur_index.to(tl.int32)")
@@ -1053,7 +1064,9 @@ def generate_mean_init_finalize_2d_lastdim_kernel(
                 code.writeline("tl.store(count + offsets, base, mask=mask)")
             code.writeline("else:")
             with code.indent():
-                code.writeline("cur_count = tl.load(count + offsets, mask=mask, other=1)")
+                code.writeline(
+                    "cur_count = tl.load(count + offsets, mask=mask, other=1)"
+                )
                 code.writeline("denom = tl.where(cur_count > 0, cur_count, 1)")
                 code.writeline("cur_out = tl.load(out + offsets, mask=mask, other=0)")
                 code.writeline("tl.store(out + offsets, cur_out / denom, mask=mask)")
@@ -1195,9 +1208,7 @@ def generate_destination_passing_wrapper(
                         code.writeline("N_OUT,")
                         code.writeline("INT32_OFFSET=int32_offset,")
                     code.writeline(")")
-                    key_scatter_launch: str = (
-                        f"{fast_key_scatter_kernel_name}[grid]("
-                    )
+                    key_scatter_launch: str = f"{fast_key_scatter_kernel_name}[grid]("
                     code.writeline(key_scatter_launch)
                     with code.indent():
                         code.writeline("src_strided, index, keys, nan_flags,")
