@@ -58,6 +58,7 @@ from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
 from .vdot import vdot
 from .bmm import bmm
+from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 
 
 __all__ = [
@@ -133,4 +134,8 @@ __all__ = [
     "upsample_nearest2d",
     "var_mean",
     "vdot",
+    "where_self_out",
+    "where_self",
+    "where_scalar_self",
+    "where_scalar_other",
 ]

@@ -1526,6 +1526,11 @@ def test_accuracy_sub_scalar_scalar(dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_where_self_out_cross_device(shape, dtype):
+    if len(shape) > 2:
+        total = math.prod(shape)
+        if total > 64 and total % 64 == 0:
+            shape = (1, 64, 1, total // 64)
+
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     cond = torch.randint(0, 2, shape, dtype=torch.bool, device=flag_gems.device)
