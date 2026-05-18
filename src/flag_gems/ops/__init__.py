@@ -84,11 +84,14 @@ from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
+from flag_gems.ops.conv_transpose1d import conv_transpose1d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
+from flag_gems.ops.ctc_loss import ctc_loss
+from flag_gems.ops.cudnn_convolution import cudnn_convolution
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_
@@ -123,6 +126,7 @@ from flag_gems.ops.exponential_ import exponential_
 from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
 from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
+from flag_gems.ops.fft import fft
 from flag_gems.ops.fill import (
     fill_scalar,
     fill_scalar_,
@@ -218,7 +222,7 @@ from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
-from flag_gems.ops.mm import mm, mm_out
+from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
@@ -252,6 +256,7 @@ from flag_gems.ops.per_token_group_quant_fp8 import (
 )
 from flag_gems.ops.pixel_shuffle import pixel_shuffle
 from flag_gems.ops.pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
+from flag_gems.ops.poisson import poisson
 from flag_gems.ops.polar import polar
 from flag_gems.ops.pow import (
     pow_scalar,
@@ -328,6 +333,7 @@ from flag_gems.ops.stack import stack
 from flag_gems.ops.std import std
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
+from flag_gems.ops.svd import svd
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
@@ -473,6 +479,7 @@ __all__ = [
     "conv1d",
     "conv2d",
     "conv3d",
+    "conv_transpose1d",
     "copy",
     "copy_",
     "copysign",
@@ -483,6 +490,8 @@ __all__ = [
     "cosh_",
     "cosh_out",
     "count_nonzero",
+    "ctc_loss",
+    "cudnn_convolution",
     "cummax",
     "cummin",
     "cumprod",
@@ -534,6 +543,7 @@ __all__ = [
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flip",
+    "fft",
     "floor_",
     "floor_divide",
     "floor_divide_",
@@ -685,6 +695,7 @@ __all__ = [
     "pixel_shuffle",
     "pixel_unshuffle",
     "pixel_unshuffle_out",
+    "poisson",
     "polar",
     "pow_scalar",
     "pow_tensor_scalar",
@@ -790,6 +801,7 @@ __all__ = [
     "sum_dim",
     "sum_dim_out",
     "sum_out",
+    "svd",
     "ScaleDotProductAttention",
     "SUPPORTED_FP8_DTYPE",
     "t_copy",
@@ -829,6 +841,7 @@ __all__ = [
     "vector_norm",
     "vstack",
     "fp8_matmul",
+    "router_gemm",
     "w8a8_block_fp8_matmul",
     "weight_norm_interface",
     "weight_norm_interface_backward",

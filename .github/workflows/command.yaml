@@ -106,8 +106,14 @@ jobs:
         run: |
           source .venv/bin/activate
           source tools/set-env.sh ${VENDOR}
-          tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }}
-          tools/psummary --format markdown --single results > results.md
+          tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} --gpus 2 --dump-output
+          tools/psum_text --format markdown --single results > results.md
+
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: ondemand-test
+          path: results/
 
       - name: comment
         uses: mshick/add-pr-comment@v3
@@ -115,9 +121,6 @@ jobs:
           message-path: results.md
           message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           allow-repeats: True
-
-      - name: Upload results
-        uses: actions/upload-artifact@v7
-        with:
-          name: ondemand-test
-          path: results/
+          attach-path: results/*
+          attach-name: test-report
+          attach-text: '📎 [Download %ATTACH_NAME%](%ARTIFACT_URL%)'

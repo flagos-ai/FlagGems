@@ -52,66 +52,6 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("argmax_non_inner"))
-@triton.jit
-def argmax_kernel_non_inner(
-    inp,
-    out_index,
-    M,
-    N,
-    K,
-    TILE_K: tl.constexpr,
-    TILE_N: tl.constexpr,
-    ONE_TILE_PER_CTA: tl.constexpr,
-):
-    pid_m = ext.program_id(0)
-    pid_k = ext.program_id(1)
-    k_offset = pid_k * TILE_K + tl.arange(0, TILE_K)
-
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
-        inp.dtype.element_ty == tl.bfloat16
-    ):
-        cdtype = tl.float32
-    else:
-        cdtype = inp.dtype.element_ty
-
-    min_value = get_dtype_min(cdtype)
-
-    if ONE_TILE_PER_CTA:
-        n_offset = tl.arange(0, TILE_N)
-        offset = pid_m * N * K + n_offset[:, None] * K + k_offset
-        mask = k_offset < K and n_offset[:, None] < N
-        inp_ptrs = inp + offset
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-        local_max, local_argmax = tl.max(
-            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
-        )
-        offset_index = pid_m * K + k_offset
-        out_index_ptrs = out_index + offset_index
-        mask1 = k_offset < K
-        tl.store(out_index_ptrs, local_argmax, mask=mask1)
-    else:
-        max_values = tl.full([TILE_K], dtype=cdtype, value=min_value)
-        argmax_values = tl.full([TILE_K], dtype=tl.int64, value=0)
-
-        for start_n in range(0, N, TILE_N):
-            n_offset = start_n + tl.arange(0, TILE_N)
-            offset = pid_m * N * K + n_offset[:, None] * K + k_offset
-            mask = k_offset < K and n_offset[:, None] < N
-            inp_ptrs = inp + offset
-            inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-            local_max, local_argmax = tl.max(
-                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
-            )
-            update = local_max > max_values
-            max_values = tl.where(update, local_max, max_values)
-            argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
-        offset_index = pid_m * K + k_offset
-        out_index_ptrs = out_index + offset_index
-        mask1 = k_offset < K
-        tl.store(out_index_ptrs, argmax_values, mask=mask1)
-
-
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("argmax"))
 @triton.jit
@@ -124,36 +64,33 @@ def argmax_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # set offset
     pid_m = ext.program_id(0)
-    # pid_k = ext.program_id(1)
-    for pid_k in range(K):
-        m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    pid_k = ext.program_id(1)
 
-        dtype = inp.type.element_ty
-        acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
-        min_value = get_dtype_min(dtype)
-        max_values = tl.full([BLOCK_M], dtype=acc_type, value=min_value)
-        argmax_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
-        for start_n in range(0, N, BLOCK_N):
-            n_offset = start_n + tl.arange(0, BLOCK_N)
-            offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-            mask = m_offset[:, None] < M and n_offset[None, :] < N
-            inp_ptrs = inp + offset
-            inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-            local_max, local_argmax = tl.max(
-                inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
-            )
-            # if return indices is not supported, call a tl.argmax in addition
-            # local_argmax = tl.argmax(inp_vals, 1)
-            update = local_max > max_values
-            max_values = tl.where(update, local_max, max_values)
-            argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
+    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
-        offset_index = m_offset * K + pid_k
-        out_index_ptrs = out_index + offset_index
-        mask1 = m_offset < M
-        tl.store(out_index_ptrs, argmax_values, mask=mask1)
+    dtype = inp.type.element_ty
+    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
+    min_value = get_dtype_min(dtype)
+    max_values = tl.full([BLOCK_M], dtype=acc_type, value=min_value)
+    argmax_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        inp_ptrs = inp + offset
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
+        local_max, local_argmax = tl.max(
+            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
+        )
+        update = local_max > max_values
+        max_values = tl.where(update, local_max, max_values)
+        argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
+
+    offset_index = m_offset * K + pid_k
+    out_index_ptrs = out_index + offset_index
+    mask1 = m_offset < M
+    tl.store(out_index_ptrs, argmax_values, mask=mask1)
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
@@ -168,13 +105,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
 
         mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
         mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
-        if keepdim:
-            shape = list(inp.shape)
-            for i in range(0, inp.dim()):
-                shape[i] = 1
-            out = torch.empty(shape, dtype=torch.int64, device=inp.device)
-        else:
-            out = torch.empty([], dtype=torch.int64, device=inp.device)
+        out = torch.empty([], dtype=torch.int64, device=inp.device)
 
         with torch_device_fn.device(inp.device):
             argmax_kernel_1[(mid_size, 1, 1)](
@@ -208,30 +139,17 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
         if not keepdim:
             out_index = torch.squeeze(out_index, dim)
-
+        grid = lambda meta: (
+            triton.cdiv(M, meta["BLOCK_M"]),
+            K,
+        )
         with torch_device_fn.device(inp.device):
-            if K > 1:
-                grid = lambda meta: (
-                    M,
-                    triton.cdiv(K, meta["TILE_K"]),
-                )
-                argmax_kernel_non_inner[grid](
-                    inp,
-                    out_index,
-                    M,
-                    N,
-                    K,
-                )
-            else:
-                grid = lambda meta: (
-                    triton.cdiv(M, meta["BLOCK_M"]),
-                    # K,
-                )
-                argmax_kernel[grid](
-                    inp,
-                    out_index,
-                    M,
-                    N,
-                    K,
-                )
+            argmax_kernel[grid](
+                inp,
+                out_index,
+                M,
+                N,
+                K,
+            )
+
         return out_index

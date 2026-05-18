@@ -22,6 +22,7 @@ aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None
 runtime.replace_customized_ops(globals())
+AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 
 
 def torch_ge(v):
@@ -156,6 +157,7 @@ _FULL_CONFIG = (
     ("conv2d.padding", conv2d),
     ("conv3d", conv3d),
     ("conv3d.padding", conv3d),
+    ("conv_transpose1d", conv_transpose1d),
     (
         "copy_",
         copy_,
@@ -169,6 +171,9 @@ _FULL_CONFIG = (
     ("copysign", copysign),
     ("copysign.out", copysign_out),
     ("count_nonzero", count_nonzero),
+    ("ctc_loss.IntList", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("ctc_loss.Tensor", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("cudnn_convolution", cudnn_convolution),
     ("cummax", cummax),
     ("cummin", cummin),
     ("cumprod", cumprod),
@@ -379,6 +384,7 @@ _FULL_CONFIG = (
     ("pixel_shuffle", pixel_shuffle),
     ("pixel_unshuffle", pixel_unshuffle),
     ("pixel_unshuffle.out", pixel_unshuffle_out),
+    ("poisson", poisson),
     ("polar", polar),
     ("pow.Scalar", pow_scalar),
     ("pow.Tensor_Scalar", pow_tensor_scalar),
@@ -479,6 +485,7 @@ _FULL_CONFIG = (
     ("sum.IntList_out", sum_dim_out),
     ("sum.dim_IntList", sum_dim),
     ("sum.out", sum_out),
+    ("svd", svd),
     ("t_copy", t_copy),
     ("t_copy.out", t_copy_out),
     ("tan", tan),
