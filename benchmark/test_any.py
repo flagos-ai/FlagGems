@@ -25,7 +25,10 @@ def test_any_dim():
 
 
 def any_dims_input_fn(shape, dtype, device):
-    inp = torch.randn(shape, dtype=dtype, device=device)
+    if dtype == torch.bool:
+        inp = torch.randint(0, 2, shape, dtype=dtype, device=device)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=device)
     yield inp, {"dim": [0, 1]}
 
 
