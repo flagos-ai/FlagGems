@@ -516,7 +516,9 @@ class DSV4RMSNormVsVLLMBenchmark(base.Benchmark):
         _ = dtype
         device = str(self.case["qr"].device)
         for num_tokens, seed in self.shapes:
-            cur_case = _build_subops_case(device=device, num_tokens=num_tokens, seed=seed)
+            cur_case = _build_subops_case(
+                device=device, num_tokens=num_tokens, seed=seed
+            )
             yield (
                 cur_case["qr"],
                 cur_case["kv"],
@@ -547,7 +549,9 @@ class DSV4GatherVsVLLMBenchmark(base.Benchmark):
         _ = dtype
         device = str(self.case["qr"].device)
         for num_tokens, seed in self.shapes:
-            cur_case = _build_subops_case(device=device, num_tokens=num_tokens, seed=seed)
+            cur_case = _build_subops_case(
+                device=device, num_tokens=num_tokens, seed=seed
+            )
             yield (
                 cur_case["out_fg"],
                 cur_case["out_vl"],
@@ -582,7 +586,9 @@ class DSV4GlobalTopkVsVLLMBenchmark(base.Benchmark):
         _ = dtype
         device = str(self.case["qr"].device)
         for num_tokens, seed in self.shapes:
-            cur_case = _build_subops_case(device=device, num_tokens=num_tokens, seed=seed)
+            cur_case = _build_subops_case(
+                device=device, num_tokens=num_tokens, seed=seed
+            )
             yield (
                 cur_case["topk_indices"],
                 cur_case["token_to_req"],
@@ -613,7 +619,9 @@ class DSV4CombineTopkVsVLLMBenchmark(base.Benchmark):
         _ = dtype
         device = str(self.case["qr"].device)
         for num_tokens, seed in self.shapes:
-            cur_case = _build_subops_case(device=device, num_tokens=num_tokens, seed=seed)
+            cur_case = _build_subops_case(
+                device=device, num_tokens=num_tokens, seed=seed
+            )
             yield (
                 cur_case["topk2"],
                 cur_case["query_start_loc"],
