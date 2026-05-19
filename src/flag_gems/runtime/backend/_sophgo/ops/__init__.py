@@ -20,6 +20,7 @@ from .gelu import gelu, gelu_
 from .groupnorm import group_norm
 from .hstack import hstack
 from .index_add import index_add
+from .index_put import index_put, index_put_
 from .isclose import isclose
 from .isfinite import isfinite
 from .isinf import isinf
@@ -65,6 +66,7 @@ from .var_mean import var_mean
 from .vdot import vdot
 from .bmm import bmm
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
+from .layernorm import layer_norm
 
 
 __all__ = [
@@ -99,11 +101,14 @@ __all__ = [
     "group_norm",
     "hstack",
     "index_add",
+    "index_put",
+    "index_put_",
     "isclose",
     "isfinite",
     "isinf",
     "isnan",
     "kron",
+    "layer_norm",
     "logical_and",
     "logical_not",
     "logical_or",

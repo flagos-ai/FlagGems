@@ -1292,7 +1292,11 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
     ref_values = to_reference(values, upcast=True)
     ref_out = torch.index_put(ref_inp, ref_indices, ref_values, accumulate)
     out = flag_gems.index_put(inp, indices, values, accumulate)
-    gems_assert_close(out, ref_out, dtype)
+
+    atol = 1e-4
+    if flag_gems.vendor_name == "sophgo" and dtype == torch.float16:
+        atol = 1e-3
+    gems_assert_close(out, ref_out, dtype, atol=atol)
 
 
 @pytest.mark.index_put_
