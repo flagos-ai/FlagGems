@@ -78,6 +78,83 @@ def _scatter_mul_2d_lastdim_pow2_kernel(
         block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
 
 
+@triton.jit
+def _scatter_mul_2d_lastdim_pow2_large_kernel(
+    src,
+    index,
+    out,
+    INDEX_DIM_N: tl.constexpr,
+    OUT_DIM_N: tl.constexpr,
+    SRC_STRIDE_0: tl.constexpr,
+    BLOCK: tl.constexpr,
+    LOOP: tl.constexpr,
+):
+    row = tl.program_id(0)
+    col_block = tl.program_id(1)
+    cols = col_block * LOOP * BLOCK + tl.arange(0, BLOCK)
+
+    for _ in tl.static_range(LOOP):
+        src_offsets = row * SRC_STRIDE_0 + cols
+        cur_src = tl.load(src + src_offsets)
+        cur_index = tl.load(index + row * INDEX_DIM_N + cols).to(tl.int32)
+        out_offsets = row * OUT_DIM_N + cur_index
+        stop = tl.full((BLOCK,), False, dtype=tl.int1)
+        block_stop = False
+        while not block_stop:
+            cur_out = tl.load(out + out_offsets)
+            res = tl.where(stop, cur_out, cur_out * cur_src)
+            cas_res = tl.atomic_cas(out + out_offsets, cur_out, res, sem="relaxed")
+            stop |= (cur_out == cas_res) | (
+                (cur_out != cur_out) & (cas_res != cas_res)
+            )
+            block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
+        cols += BLOCK
+
+
+@triton.jit
+def _scatter_mul_2d_lastdim_pow2_large_pair_kernel(
+    src,
+    index,
+    out,
+    INDEX_DIM_N: tl.constexpr,
+    OUT_DIM_N: tl.constexpr,
+    SRC_STRIDE_0: tl.constexpr,
+    BLOCK: tl.constexpr,
+    LOOP: tl.constexpr,
+):
+    row = tl.program_id(0)
+    col_block = tl.program_id(1)
+    lanes = tl.arange(0, BLOCK)
+    cols = col_block * LOOP * BLOCK + lanes
+    lower_pair_lane = (lanes & 1) == 0
+
+    for _ in tl.static_range(LOOP):
+        src_offsets = row * SRC_STRIDE_0 + cols
+        cur_src = tl.load(src + src_offsets)
+        cur_index = tl.load(index + row * INDEX_DIM_N + cols).to(tl.int32)
+
+        pair_cols = cols ^ 1
+        pair_src = tl.load(src + row * SRC_STRIDE_0 + pair_cols)
+        pair_index = tl.load(index + row * INDEX_DIM_N + pair_cols).to(tl.int32)
+        pair_match = cur_index == pair_index
+        cur_src = tl.where(lower_pair_lane & pair_match, cur_src * pair_src, cur_src)
+
+        out_offsets = row * OUT_DIM_N + cur_index
+        dummy_offsets = row * OUT_DIM_N + cols % OUT_DIM_N
+        stop = (~lower_pair_lane) & pair_match
+        block_stop = False
+        while not block_stop:
+            cas_offsets = tl.where(stop, dummy_offsets, out_offsets)
+            cur_out = tl.load(out + cas_offsets)
+            res = tl.where(stop, cur_out, cur_out * cur_src)
+            cas_res = tl.atomic_cas(out + cas_offsets, cur_out, res, sem="relaxed")
+            stop |= (cur_out == cas_res) | (
+                (cur_out != cur_out) & (cas_res != cas_res)
+            )
+            block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
+        cols += BLOCK
+
+
 def _is_power_of_2(x: int) -> bool:
     return x > 0 and (x & (x - 1)) == 0
 
@@ -171,6 +248,33 @@ def _can_scatter_mul_2d_lastdim_pow2(inp, dim, index, src, out, reduce) -> bool:
     )
 
 
+def _can_scatter_mul_2d_lastdim_pow2_large(inp, dim, index, src, out, reduce) -> bool:
+    if reduce != "multiply" or inp.ndim != 2:
+        return False
+    if not (-inp.ndim <= dim < inp.ndim) or dim % inp.ndim != inp.ndim - 1:
+        return False
+    if index.ndim != 2 or src.ndim != 2:
+        return False
+    if not _is_power_of_2(index.size(1)):
+        return False
+    if inp.dtype not in (torch.float16, torch.float32):
+        return False
+    if index.numel() < 1048576:
+        return False
+    if index.size(1) > 8192 or index.size(1) % 32 != 0:
+        return False
+    if index.size(0) != inp.size(0) or src.size(0) < index.size(0):
+        return False
+    if src.size(1) < index.size(1):
+        return False
+    return (
+        inp.is_contiguous()
+        and out.is_contiguous()
+        and index.is_contiguous()
+        and src.is_contiguous()
+    )
+
+
 def _can_scatter_mul_2d_lastdim_pow2_inplace(inp, dim, index, src, reduce) -> bool:
     if reduce != "multiply" or inp.ndim != 2:
         return False
@@ -191,6 +295,10 @@ def _can_scatter_mul_2d_lastdim_pow2_inplace(inp, dim, index, src, reduce) -> bo
     if src.size(1) < index.size(1):
         return False
     return inp.is_contiguous() and index.is_contiguous() and src.is_contiguous()
+
+
+def _can_scatter_mul_2d_lastdim_pow2_large_inplace(inp, dim, index, src, reduce) -> bool:
+    return _can_scatter_mul_2d_lastdim_pow2_large(inp, dim, index, src, inp, reduce)
 
 
 def _scatter_add_2d_lastdim_pow2_launch(inp, index, src, out, block, num_warps):
@@ -234,6 +342,43 @@ def _scatter_mul_2d_lastdim_pow2_inplace(inp, index, src, out):
         INDEX_LOG2_N=index_dim_n.bit_length() - 1,
         BLOCK=block,
         num_warps=4,
+    )
+    return out
+
+
+def _scatter_mul_2d_lastdim_pow2_large(inp, index, src, out):
+    if inp.dtype == torch.float32 and index.size(1) == 8192:
+        block = 256
+        loop = 2
+        num_warps = 2
+    else:
+        block = 32
+        loop = 1
+        num_warps = 1
+    grid = (index.size(0), triton.cdiv(index.size(1), block * loop))
+    if inp.dtype == torch.float32:
+        _scatter_mul_2d_lastdim_pow2_large_pair_kernel[grid](
+            src,
+            index,
+            out,
+            INDEX_DIM_N=index.size(1),
+            OUT_DIM_N=inp.size(1),
+            SRC_STRIDE_0=src.stride(0),
+            BLOCK=block,
+            LOOP=loop,
+            num_warps=num_warps,
+        )
+        return out
+    _scatter_mul_2d_lastdim_pow2_large_kernel[grid](
+        src,
+        index,
+        out,
+        INDEX_DIM_N=index.size(1),
+        OUT_DIM_N=inp.size(1),
+        SRC_STRIDE_0=src.stride(0),
+        BLOCK=block,
+        LOOP=loop,
+        num_warps=num_warps,
     )
     return out
 
@@ -561,6 +706,8 @@ class ScatterFunction:
             return f"{max_rank}_mul_f32_256x512_b64", 64, 4
         if self._use_rank2_mul_1024x2048_f32(args):
             return f"{max_rank}_mul_f32_1024x2048_b64", 64, 4
+        if self._use_rank2_mul_1024x131072(args):
+            return f"{max_rank}_mul_1024x131072_b64_l64", 64, 64
         if self._use_rank2_mul_large_loop8(args):
             return f"{max_rank}_mul_large_b128_l8", 128, 8
         if self._use_rank2_add_f16_2048x1024_to_2048x2048(args):
@@ -619,6 +766,30 @@ class ScatterFunction:
             and out.dtype == torch.float32
             and tuple(index.shape) == (1024, 2048)
             and tuple(out.shape) == (1024, 1024)
+        )
+
+    @staticmethod
+    def _use_rank2_mul_1024x131072(args) -> bool:
+        (
+            src_strided,
+            index,
+            _inp,
+            out,
+            _dim_size,
+            _dim_stride,
+            n_elements,
+            reduce,
+        ) = args[:8]
+        return (
+            reduce == "multiply"
+            and n_elements == 134217728
+            and src_strided.ndim == 2
+            and index.ndim == 2
+            and out.ndim == 2
+            and src_strided.dtype in (torch.float16, torch.float32)
+            and out.dtype == src_strided.dtype
+            and tuple(index.shape) == (1024, 131072)
+            and tuple(out.shape) == (1024, 65536)
         )
 
     @staticmethod
@@ -850,6 +1021,9 @@ def scatter(inp, dim, index, src, reduce=None):
     if _can_scatter_add_2d_lastdim_pow2(inp, dim, index, src, out, reduce):
         return _scatter_add_2d_lastdim_pow2(inp, index, src, out)
 
+    if _can_scatter_mul_2d_lastdim_pow2_large(inp, dim, index, src, out, reduce):
+        return _scatter_mul_2d_lastdim_pow2_large(inp, index, src, out)
+
     if _can_scatter_mul_2d_lastdim_pow2(inp, dim, index, src, out, reduce):
         return _scatter_mul_2d_lastdim_pow2(inp, index, src, out)
 
@@ -893,6 +1067,9 @@ def scatter_(inp, dim, index, src, reduce=None):
 
     if _can_scatter_add_2d_lastdim_pow2_inplace(inp, dim, index, src, reduce):
         return _scatter_add_2d_lastdim_pow2_inplace(inp, index, src, out)
+
+    if _can_scatter_mul_2d_lastdim_pow2_large_inplace(inp, dim, index, src, reduce):
+        return _scatter_mul_2d_lastdim_pow2_large(inp, index, src, out)
 
     if _can_scatter_mul_2d_lastdim_pow2_inplace(inp, dim, index, src, reduce):
         return _scatter_mul_2d_lastdim_pow2_inplace(inp, index, src, out)
