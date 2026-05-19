@@ -103,9 +103,7 @@ def test_topk_softplus_sqrt_standard(
     torch.manual_seed(0)
 
     gating_output = torch.randn((num_tokens, num_experts), dtype=dtype, device=device)
-    correction_bias = torch.randn(
-        (num_experts,), dtype=torch.float32, device=device
-    )
+    correction_bias = torch.randn((num_experts,), dtype=torch.float32, device=device)
 
     ref_weights, ref_ids = _torch_topk_softplus_sqrt_reference(
         gating_output,
@@ -202,9 +200,7 @@ def test_topk_softplus_sqrt_vs_vllm(num_tokens, num_experts, topk, renormalize):
     dtype = torch.bfloat16
     routed_scaling_factor = 1.0
     gating_output = torch.randn((num_tokens, num_experts), dtype=dtype, device=device)
-    correction_bias = torch.randn(
-        (num_experts,), dtype=torch.float32, device=device
-    )
+    correction_bias = torch.randn((num_experts,), dtype=torch.float32, device=device)
 
     # vLLM CUDA kernel
     vllm_weights = torch.empty((num_tokens, topk), dtype=torch.float32, device=device)

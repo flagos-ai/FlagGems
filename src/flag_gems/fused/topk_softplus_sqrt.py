@@ -221,9 +221,7 @@ def topk_softplus_sqrt(
             topk_weights,
             topk_indices,
             token_expert_indices,
-            correction_bias
-            if correction_bias is not None
-            else gating_output,
+            correction_bias if correction_bias is not None else gating_output,
             input_ids,
             tid2eid,
             num_tokens=num_tokens,
@@ -245,9 +243,7 @@ def topk_softplus_sqrt(
         topk_weights,
         topk_indices,
         token_expert_indices,
-        correction_bias
-        if correction_bias is not None
-        else gating_output,
+        correction_bias if correction_bias is not None else gating_output,
         num_tokens=num_tokens,
         num_experts=num_experts,
         topk=topk,
