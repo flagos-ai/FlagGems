@@ -696,7 +696,7 @@ def _per_token_group_quant_fp8_colmajor_m8(
     tl.store(y_s_ptr6, y_s6)
     tl.store(y_q_ptr7 + cols, y_q7, mask=mask)
     tl.store(y_s_ptr7, y_s7)
-    
+
 
 def per_token_group_quant_fp8(
     x: torch.Tensor,
@@ -743,7 +743,7 @@ def per_token_group_quant_fp8(
             return 2
         else:
             return 1
-        
+            
     groups_per_program = Groups_per_program(x, group_size)
     
     if column_major_scales:
