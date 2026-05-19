@@ -66,7 +66,9 @@ def dropout_backward_kernel(
 ):
     offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = offset < N
-    m = tl.load(dropout_mask + offset, mask=mask, other=0, eviction_policy="evict_first")
+    m = tl.load(
+        dropout_mask + offset, mask=mask, other=0, eviction_policy="evict_first"
+    )
     dy = tl.load(DY + offset, mask=mask, other=0, eviction_policy="evict_first")
     dx = dy * m * scale
     tl.store(DX + offset, dx, mask=mask, eviction_policy="evict_first")
