@@ -3,7 +3,7 @@ import torch
 
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
 
-from . import base, consts
+from . import base
 
 
 class BucketSortTopKBenchmark(base.Benchmark):

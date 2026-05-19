@@ -4,12 +4,9 @@ import numpy as np
 import pytest
 import torch
 
-# Import your operator
-from flag_gems.fused.DSA.bin_topk import (
-    bucket_sort_topk,  # Replace with actual module name
-)
 from flag_gems.fused.DSA.bin_topk import (
     HAS_TLE,
+    bucket_sort_topk,
 )
 
 
@@ -357,7 +354,7 @@ def test_bucket_sort_topk_correctness():
 @pytest.mark.parametrize("seq_len", [512, 1024, 4096])
 @pytest.mark.parametrize("topk", [32, 128, 512])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-def test_bucket_sort_topk(batch_size, seq_len, topk, dtype):
+def test_bucket_sort_topk_accuracy(batch_size, seq_len, topk, dtype):
     """Accuracy test for bucket_sort_topk across dtypes and sizes."""
     if topk > seq_len:
         pytest.skip("topk cannot be larger than seq_len")
