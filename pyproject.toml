@@ -1,7 +1,7 @@
 [build-system]
 # cmake locks to '>=3.20,<4.0' to sync with FlagTree
 
-requires = ["setuptools>=64.0", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
+requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
 
 build-backend = "scikit_build_core.build"
 
@@ -57,6 +57,14 @@ ascend = [
     "flagtree==0.5.0+ascend3.2",
 ]
 
+enflame = [
+    "torch==2.9.1+cpu",
+    "torch-gcu==2.9.1+3.7.1",
+    "triton==3.3.0",
+    "triton-gcu==3.3.1+1.0.20260323",
+    "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323",
+]
+
 hygon = [
     "torch==2.9.0+das.opt1.dtk2604",
     "flagtree==0.5.0+hcu3.0",
@@ -71,6 +79,7 @@ iluvatar = [
 
 kunlunxin = [
     "benchflow==1.0.0",
+    "colorama==0.4.6",
     "hyperparameter==0.5.6",
     "torch==2.5.1+cu118",
     "torchaudio==2.5.1+cu118",
@@ -94,7 +103,7 @@ metax = [
 mthreads = [
     "torch==2.7.1+musa.4.0.0",
     "torch_musa==2.7.1",
-    "flagtree==0.5.0+mthreads3.1",
+    "flagtree==0.5.1+mthreads3.6",
     # "triton==3.1.0+musa1.4.6",
     "numpy==1.26.4",
     "mkl==2024.0.0",
@@ -106,6 +115,11 @@ nvidia = [
     "torchaudio==2.9.0+cu128",
     "flagtree==0.5.0+3.5",
     # "triton==3.5",
+]
+
+spacemit = [
+    "torch==2.8.0+spacemit.0",
+    "triton==3.6.0+spacemit.a4",
 ]
 
 tsingmicro = [
@@ -125,6 +139,7 @@ test = [
     "gitpython==3.1.50",
     "openpyxl==3.1.5",
     "pytest==9.0.3",
+    "pytest-md-report==0.8.0",
     "scipy>=1.15.3",
 ]
 
@@ -164,12 +179,15 @@ index-strategy = "unsafe-best-match"
 conflicts = [
     [
         { extra = "ascend" },
+        { extra = "enflame" },
         { extra = "hygon" },
         { extra = "iluvatar" },
         { extra = "kunlunxin" },
         { extra = "metax" },
         { extra = "mthreads" },
         { extra = "nvidia" },
+        { extra = "spacemit" },
+        { extra = "thead" },
         { extra = "tsingmicro" },
     ],
 ]
@@ -178,6 +196,12 @@ conflicts = [
 [[tool.uv.index]]
 name = "ascend-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-ascend/simple"
+explicit = true
+
+# Source for Enflame packages
+[[tool.uv.index]]
+name = "enflame-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-enflame/simple"
 explicit = true
 
 # Source for Hygon packages
@@ -215,6 +239,12 @@ explicit = true
 [[tool.uv.index]]
 name = "nvidia-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-nvidia/simple"
+explicit = true
+
+# Source for SpaceMIT packages
+[[tool.uv.index]]
+name = "spacemit-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-spacemit/simple"
 explicit = true
 
 # Source for TsingMicro packages
