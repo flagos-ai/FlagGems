@@ -6,6 +6,39 @@ from flag_gems.fused.topk_softplus_sqrt import topk_softplus_sqrt
 
 from . import base
 
+try:
+    from vllm._custom_ops import topk_hash_softplus_sqrt as _vllm_topk_softplus_sqrt
+
+    HAS_VLLM = True
+except ImportError:
+    HAS_VLLM = False
+    _vllm_topk_softplus_sqrt = None
+
+
+def _vllm_topk_softplus_sqrt_wrapper(
+    topk_weights,
+    topk_indices,
+    token_expert_indices,
+    gating_output,
+    renormalize,
+    routed_scaling_factor,
+    correction_bias=None,
+    input_ids=None,
+    tid2eid=None,
+):
+    """vLLM CUDA kernel baseline."""
+    _vllm_topk_softplus_sqrt(
+        topk_weights,
+        topk_indices,
+        token_expert_indices,
+        gating_output,
+        renormalize,
+        routed_scaling_factor,
+        correction_bias,
+        input_ids,
+        tid2eid,
+    )
+
 
 def _torch_topk_softplus_sqrt_ref(
     topk_weights,
@@ -18,7 +51,7 @@ def _torch_topk_softplus_sqrt_ref(
     input_ids=None,
     tid2eid=None,
 ):
-    """Pure-PyTorch reference: fused softplus + sqrt + top-k for MoE gating."""
+    """Pure-PyTorch fallback reference (used when vLLM is not installed)."""
     num_tokens = gating_output.shape[0]
     topk = topk_weights.shape[1]
 
@@ -46,6 +79,9 @@ def _torch_topk_softplus_sqrt_ref(
     tei = torch.arange(num_tokens, device=gating_output.device).unsqueeze(1) * topk
     tei = tei + torch.arange(topk, device=gating_output.device).unsqueeze(0)
     token_expert_indices.copy_(tei.to(torch.int32))
+
+
+_baseline_op = _vllm_topk_softplus_sqrt_wrapper if HAS_VLLM else _torch_topk_softplus_sqrt_ref
 
 
 class TopkSoftplusSqrtBenchmark(base.Benchmark):
@@ -96,7 +132,7 @@ class TopkSoftplusSqrtBenchmark(base.Benchmark):
 def test_topk_softplus_sqrt():
     bench = TopkSoftplusSqrtBenchmark(
         op_name="topk_softplus_sqrt",
-        torch_op=_torch_topk_softplus_sqrt_ref,
+        torch_op=_baseline_op,
         gems_op=topk_softplus_sqrt,
         dtypes=[torch.bfloat16],
     )
