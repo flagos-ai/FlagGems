@@ -698,6 +698,17 @@ def _per_token_group_quant_fp8_colmajor_m8(
     tl.store(y_s_ptr7, y_s7)
 
 
+def Groups_per_program(x, group_size) -> int:
+    if (x.shape[-1] // group_size) % 8 == 0:
+        return 8
+    elif (x.shape[-1] // group_size) % 4 == 0:
+        return 4
+    elif (x.shape[-1] // group_size) % 2 == 0:
+        return 2
+    else:
+        return 1
+
+
 def per_token_group_quant_fp8(
     x: torch.Tensor,
     group_size: int,
@@ -733,19 +744,7 @@ def per_token_group_quant_fp8(
     BLOCK = triton.next_power_of_2(N)
     num_warps = min(max(BLOCK // 256, 1), 8)
     num_stages = 1
-
-    def Groups_per_program(x, group_size) -> int:
-        if (x.shape[-1] // group_size) % 8 == 0:
-            return 8
-        elif (x.shape[-1] // group_size) % 4 == 0:
-            return 4
-        elif (x.shape[-1] // group_size) % 2 == 0:
-            return 2
-        else:
-            return 1
-            
     groups_per_program = Groups_per_program(x, group_size)
-    
     if column_major_scales:
         if groups_per_program == 8:
             _per_token_group_quant_fp8_colmajor_m8[(M // 8,)](
