@@ -5407,19 +5407,6 @@ ops:
       - DSA
     stages:
       - beta: '5.0'
-  - id: special_gammaincc
-    description: |
-      Computes the regularized upper incomplete gamma function Q(a, x).
-    for:
-      - special_gammaincc
-    labels:
-      - aten
-      - KernelGen
-      - pointwise
-    kind:
-      - Math
-    stages:
-      - alpha: '5.1'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
