@@ -20,9 +20,10 @@ import triton
 
 import flag_gems
 from flag_gems.ops.flash_api import fwd_params  # reuse the slot struct
-from .flash_kernel_v3 import flash_varlen_fwd_v3_kernel
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import philox_backend_seed_offset
+
+from .flash_kernel_v3 import flash_varlen_fwd_v3_kernel
 
 logger = logging.getLogger(__name__)
 
@@ -67,12 +68,15 @@ def is_fa3_supported() -> bool:
     if not torch.cuda.is_available():
         return False
     cap = torch.cuda.get_device_capability()
-    if cap[0] < 9:           # need Hopper or newer
+    if cap[0] < 9:  # need Hopper or newer
         return False
     # Triton needs to expose make_tensor_descriptor.
     try:
         import triton.language as tl
-        return hasattr(tl, "make_tensor_descriptor") and hasattr(triton, "set_allocator")
+
+        return hasattr(tl, "make_tensor_descriptor") and hasattr(
+            triton, "set_allocator"
+        )
     except Exception:
         return False
 
@@ -82,20 +86,37 @@ def is_fa3_supported() -> bool:
 # so attention.py can swap one for the other based on fa_version.
 # ---------------------------------------------------------------------------
 def mha_varlan_fwd_v3(
-    q, k, v, out,
-    cu_seqlens_q, cu_seqlens_k, seqused_k, leftpad_k,
-    page_table, alibi_slopes,
-    max_seqlen_q, max_seqlen_k,
-    p_dropout, softmax_scale, zero_tensors,
-    is_causal, window_size_left, window_size_right,
-    softcap, return_softmax, gen,
+    q,
+    k,
+    v,
+    out,
+    cu_seqlens_q,
+    cu_seqlens_k,
+    seqused_k,
+    leftpad_k,
+    page_table,
+    alibi_slopes,
+    max_seqlen_q,
+    max_seqlen_k,
+    p_dropout,
+    softmax_scale,
+    zero_tensors,
+    is_causal,
+    window_size_left,
+    window_size_right,
+    softcap,
+    return_softmax,
+    gen,
 ):
-    _check_device(q); _check_device(k); _check_device(v)
+    _check_device(q)
+    _check_device(k)
+    _check_device(v)
     q_device = q.device
     q_dtype = q.dtype
-    assert q_dtype in (torch.float16, torch.bfloat16), (
-        "FA3 currently only supports fp16 and bf16 (FP8 path intentionally omitted)."
-    )
+    assert q_dtype in (
+        torch.float16,
+        torch.bfloat16,
+    ), "FA3 currently only supports fp16 and bf16 (FP8 path intentionally omitted)."
     assert q_dtype == k.dtype == v.dtype
     assert q.stride(-1) == 1 and k.stride(-1) == 1 and v.stride(-1) == 1
     assert cu_seqlens_q.dtype == torch.int32 and cu_seqlens_q.is_contiguous()
@@ -149,9 +170,11 @@ def mha_varlan_fwd_v3(
     )
     q_groups = num_heads // num_heads_k
     if seqlenq_ngroups_swapped:
-        q = (q.reshape((batch_size, num_heads_k, q_groups, head_size))
-              .transpose(1, 2)
-              .reshape(batch_size * q_groups, num_heads_k, head_size))
+        q = (
+            q.reshape((batch_size, num_heads_k, q_groups, head_size))
+            .transpose(1, 2)
+            .reshape(batch_size * q_groups, num_heads_k, head_size)
+        )
         max_seqlen_q = q_groups
         num_heads = num_heads_k
         cu_seqlens_q = None
@@ -200,10 +223,13 @@ def mha_varlan_fwd_v3(
         assert alibi_slopes.device == q_device
         assert alibi_slopes.dtype == torch.float
         assert alibi_slopes.stride(-1) == 1
-        assert (alibi_slopes.shape == (num_heads,)
-                or alibi_slopes.shape == (batch_size, num_heads))
+        assert alibi_slopes.shape == (num_heads,) or alibi_slopes.shape == (
+            batch_size,
+            num_heads,
+        )
         alibi_slopes_batch_stride = (
-            alibi_slopes.stride(0) if alibi_slopes.ndim == 2 else 0)
+            alibi_slopes.stride(0) if alibi_slopes.ndim == 2 else 0
+        )
         is_alibi = True
     else:
         alibi_slopes_batch_stride = 0
@@ -232,7 +258,8 @@ def mha_varlan_fwd_v3(
             increment = batch_size * num_heads * 32
             philox_seed, philox_offset = philox_backend_seed_offset(increment)
             philox_args = torch.tensor(
-                [philox_seed, philox_offset], dtype=torch.int64, device=q_device)
+                [philox_seed, philox_offset], dtype=torch.int64, device=q_device
+            )
         else:
             is_dropout = False
             philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
@@ -255,26 +282,64 @@ def mha_varlan_fwd_v3(
         # Pack params (mirrors v2 launcher exactly).
         # --------------------------------------------------------------
         params = fwd_params(
-            q, k, v, out, p, lse,
-            q.stride(-3), k.stride(-3), v.stride(-3),
-            q.stride(-2), k.stride(-2), v.stride(-2),
-            out.stride(-3), out.stride(-2),
-            q_batch_stride, k_batch_stride, v_batch_stride, o_batch_stride,
-            cu_seqlens_q is not None, cu_seqlens_q,
-            seqused_k is None, cu_seqlens_k,
-            seqused_k is not None, seqused_k,
-            batch_size, k_batch_size,
-            num_heads, num_heads_k, num_heads // num_heads_k,
-            max_seqlen_q, max_seqlen_k, seqlen_q_rounded, seqlen_k_rounded,
-            head_size, head_size_rounded,
-            is_softcap, adjusted_softcap,
-            adjusted_scale_softmax, adjusted_scale_softmax_log2e,
-            is_dropout, p_dropout, rp_dropout, p_dropout_in_uint8_t,
-            philox_args, return_softmax_v3,
-            is_causal, is_local, window_size_left, window_size_right,
-            seqlenq_ngroups_swapped, is_paged,
-            is_alibi, alibi_slopes, alibi_slopes_batch_stride,
-            total_q, page_table, page_table_batch_stride, block_size,
+            q,
+            k,
+            v,
+            out,
+            p,
+            lse,
+            q.stride(-3),
+            k.stride(-3),
+            v.stride(-3),
+            q.stride(-2),
+            k.stride(-2),
+            v.stride(-2),
+            out.stride(-3),
+            out.stride(-2),
+            q_batch_stride,
+            k_batch_stride,
+            v_batch_stride,
+            o_batch_stride,
+            cu_seqlens_q is not None,
+            cu_seqlens_q,
+            seqused_k is None,
+            cu_seqlens_k,
+            seqused_k is not None,
+            seqused_k,
+            batch_size,
+            k_batch_size,
+            num_heads,
+            num_heads_k,
+            num_heads // num_heads_k,
+            max_seqlen_q,
+            max_seqlen_k,
+            seqlen_q_rounded,
+            seqlen_k_rounded,
+            head_size,
+            head_size_rounded,
+            is_softcap,
+            adjusted_softcap,
+            adjusted_scale_softmax,
+            adjusted_scale_softmax_log2e,
+            is_dropout,
+            p_dropout,
+            rp_dropout,
+            p_dropout_in_uint8_t,
+            philox_args,
+            return_softmax_v3,
+            is_causal,
+            is_local,
+            window_size_left,
+            window_size_right,
+            seqlenq_ngroups_swapped,
+            is_paged,
+            is_alibi,
+            alibi_slopes,
+            alibi_slopes_batch_stride,
+            total_q,
+            page_table,
+            page_table_batch_stride,
+            block_size,
         )
 
         # --------------------------------------------------------------
@@ -295,7 +360,9 @@ def mha_varlan_fwd_v3(
         # Undo the seqlenq-ngroups swap if we did it.
         # --------------------------------------------------------------
         if seqlenq_ngroups_swapped:
-            out = out.reshape(batch_size, max_seqlen_q, num_heads_k, head_size).transpose(1, 2)
+            out = out.reshape(
+                batch_size, max_seqlen_q, num_heads_k, head_size
+            ).transpose(1, 2)
             if out_ is not None:
                 out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(out)
                 out = out_
