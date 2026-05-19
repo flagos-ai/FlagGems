@@ -36,8 +36,8 @@ def test_cholesky_solve_helper(shape, dtype, upper):
     ref_b = utils.to_reference(b)
     ref_L = utils.to_reference(L)
 
-    ref_out = torch._cholesky_solve_helper(ref_b, ref_L, upper)
+    ref_out = torch.cholesky_solve(ref_b, ref_L, upper=upper)
     with flag_gems.use_gems():
-        res_out = torch._cholesky_solve_helper(b, L, upper)
+        res_out = torch.cholesky_solve(b, L, upper=upper)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

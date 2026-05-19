@@ -25,7 +25,7 @@ class CholeskySolveHelperBenchmark(base.OperationBenchmark):
 def test_cholesky_solve_helper():
     bench = CholeskySolveHelperBenchmark(
         op_name="cholesky_solve_helper",
-        torch_op=torch._cholesky_solve_helper,
+        torch_op=torch.cholesky_solve,
         # cholesky_cusolver only supports float32+; Half/BFloat16 raise RuntimeError
         dtypes=[torch.float32],
     )
