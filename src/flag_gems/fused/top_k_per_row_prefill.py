@@ -125,9 +125,7 @@ def top_k_per_row_prefill(
     vocab_size = logits.shape[1]
 
     if top_k > vocab_size:
-        raise ValueError(
-            f"top_k ({top_k}) must not exceed vocab_size ({vocab_size})"
-        )
+        raise ValueError(f"top_k ({top_k}) must not exceed vocab_size ({vocab_size})")
 
     # --- Phase 1: Mask invalid ranges to -inf ---
     # BLOCK_SIZE=8192 chosen to balance occupancy vs. grid size:

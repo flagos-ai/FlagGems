@@ -60,16 +60,8 @@ class TopKPerRowPrefillBenchmark(base.Benchmark):
             stride0 = logits.stride(0)  # = vocab_size for contiguous
             stride1 = logits.stride(1)  # = 1 for contiguous
 
-            yield {
-                "logits": logits,
-                "row_starts": row_starts,
-                "row_ends": row_ends,
-                "indices": indices,
-                "num_rows": num_rows,
-                "stride0": stride0,
-                "stride1": stride1,
-                "top_k": top_k,
-            }
+            yield logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
+
 
 def _torch_topk_ref(
     logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
