@@ -8,7 +8,7 @@ import triton.runtime.driver as driver
 
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -31,7 +31,7 @@ def scan_part_sum_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -66,7 +66,7 @@ def add_base_sum_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -92,9 +92,9 @@ def scan_part_sum_abc_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = tle.program_id(0)
-    pid_b = tle.program_id(1)
-    pid_c = tle.program_id(2)
+    pid_a = ext.program_id(0)
+    pid_b = ext.program_id(1)
+    pid_c = ext.program_id(2)
 
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -137,9 +137,9 @@ def add_base_sum_abc_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = tle.program_id(0)
-    pid_b = tle.program_id(1)
-    pid_c = tle.program_id(2)
+    pid_a = ext.program_id(0)
+    pid_b = ext.program_id(1)
+    pid_c = ext.program_id(2)
 
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -163,8 +163,7 @@ def add_base_sum_abc_kernel(
 
 
 def scan_then_fan_col(inp, out, n_ele, dtype):
-    # TODO(all): tune on target board
-    BLOCK_SIZE = 1536
+    BLOCK_SIZE = 1024
     if n_ele <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(n_ele)
     part_num = math.ceil(n_ele / BLOCK_SIZE)
@@ -181,8 +180,7 @@ def scan_then_fan_col(inp, out, n_ele, dtype):
 
 
 def scan_then_fan(inp, out, A, B, C, dtype):
-    # TODO(all): tune on target board
-    BLOCK_SIZE = 1536
+    BLOCK_SIZE = 1024
     if B <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(B)
     part_num = math.ceil(B / BLOCK_SIZE)
@@ -216,6 +214,8 @@ def cumsum(inp, dim=1, *, dtype=None):
         dtype = inp.dtype
         if dtype is torch.bool:
             dtype = torch.int64
+    if inp.dtype in (torch.int8, torch.int16, torch.int32, torch.uint8):
+        dtype = torch.int64
     out = torch.empty_like(inp, dtype=dtype)
 
     compute_dtype = out.dtype
@@ -232,7 +232,7 @@ def cumsum(inp, dim=1, *, dtype=None):
 @libentry()
 @triton.jit(do_not_specialize=["K"])
 def normed_cumsum_kernel(inp, out, K, BLOCK: tl.constexpr):
-    row_start = tle.program_id(0) * K
+    row_start = ext.program_id(0) * K
     row_off = tl.arange(0, BLOCK)
     x = tl.load(inp + row_start + row_off, mask=row_off < K, other=0)
     if x.dtype.is_fp16():
@@ -274,9 +274,9 @@ def block_cumsum_kernel(
     # One CTA processes a (r, t*tile) chunk
     # rows = [ grid.y, grid.y + r )
     # cols = [ grid.x * t * tile, (grid.x + 1) * t * tile )
-    gridx = tle.program_id(0).to(tl.int64)
-    gridy = tle.program_id(1).to(tl.int64)
-    n_chunks = tle.num_programs(0)
+    gridx = ext.program_id(0).to(tl.int64)
+    gridy = ext.program_id(1).to(tl.int64)
+    n_chunks = ext.num_programs(0)
 
     for row in range(gridy * r, min((gridy + 1) * r, R)):
         curr_cumsum = tl.zeros((1,), tl.float32)
@@ -343,9 +343,9 @@ def block_update_kernel(
     # One CTA processes a (r, t*tile) chunk
     # rows = [ grid.y, grid.y + r )
     # cols = [ grid.x * t * tile, (grid.x + 1) * t * tile )
-    gridx = tle.program_id(0).to(tl.int64)
-    gridy = tle.program_id(1).to(tl.int64)
-    n_gridx = tle.num_programs(1)
+    gridx = ext.program_id(0).to(tl.int64)
+    gridy = ext.program_id(1).to(tl.int64)
+    n_gridx = ext.num_programs(1)
 
     base += gridy * n_gridx + gridx
     rscale_ptr += gridy * rscale_stride

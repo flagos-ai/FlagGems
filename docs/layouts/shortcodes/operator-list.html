@@ -1,0 +1,41 @@
+
+<table>
+<thead>
+  <tr>
+    <th>{{ T "seq_no" }}</th>
+    <th>{{ T "op_name" }}</th>
+    <th>{{ T "op_kind" }}</th>
+    <th>{{ T "op_stage" }}</th>
+    <th>{{ T "op_since" }}</th>
+    <th>{{ T "op_labels" }}</th>
+    <th>{{ T "op_desc" }}</th>
+  <tr>
+</thead>
+<tbody>
+{{ range $no, $op := hugo.Data.operators.ops }}
+{{ $no_display := add $no 1 }}
+<tr>
+  <td>{{ $no_display }} </td>
+  <td><tt>{{ $op.id }}</tt></td>
+  <td>{{ range $op.kind }}
+      {{ . }}
+      {{ end }}
+  </td>
+  {{ $stages := .stages }}
+  {{ range $idx, $v := $stages }}
+    {{ if eq $idx (sub (len $stages) 1) }}
+      {{ range $stage, $release := $v }}
+      <td>{{ $stage | strings.Title }}</td>
+      <td>{{ $release }}</td>
+      {{ end }}
+    {{ end }}
+  {{ end }}
+  <td>
+    {{- delimit .labels ", " -}}
+  </td>
+  <td>
+    {{ .description | markdownify }}
+  </td>
+{{ end }}
+</tbody>
+</table>

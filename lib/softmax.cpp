@@ -1,6 +1,6 @@
 #include <ATen/WrapDimUtils.h>
 #include <iostream>
-#include "c10/cuda/CUDAStream.h"
+#include "flag_gems/backend_utils.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 #include "triton_jit/triton_jit_function.h"
@@ -40,8 +40,8 @@ namespace {
     constexpr unsigned int NUM_STAGES = 1;
 
     c10::DeviceGuard guard(input.device());
-    c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-    CUstream raw_stream = static_cast<CUstream>(stream.stream());
+    backend::StreamType stream = backend::getCurrentStream();
+    backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
     if (K == 1) {
       const TritonJITFunction &kernel = get_kernel("softmax_kernel_inner");
@@ -115,8 +115,8 @@ namespace {
     constexpr unsigned int NUM_STAGES = 1;
 
     c10::DeviceGuard guard(output.device());
-    c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-    CUstream raw_stream = static_cast<CUstream>(stream.stream());
+    backend::StreamType stream = backend::getCurrentStream();
+    backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
     if (K == 1) {
       const TritonJITFunction &kernel = get_kernel("softmax_backward_kernel_inner");

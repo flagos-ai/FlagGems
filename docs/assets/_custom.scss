@@ -1,0 +1,35 @@
+/* Custom styles for readability */
+
+h1 {
+  font-weight: 600 !important;
+}
+
+h2 {
+  font-weight: 500 !important;
+}
+
+.book-menu {
+  background: #e8f3f9;
+  a.active {
+    font-weight: bolder;
+  }
+}
+
+main {
+  &.container {
+    max-width: inherit;
+  }
+}
+
+.markdown {
+  td {
+    code {
+      border: none;
+      background: inherit;
+      color: #3388aa;
+    }
+  }
+}
+
+// @import "plugins/numbered";
+// @import "plugins/scrollbars";

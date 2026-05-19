@@ -1,10 +1,11 @@
 #include <gtest/gtest.h>
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 TEST(rwkv_op_test, rwkv_ka_fusion) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   const int T = 1024, H = 8, N = 64;
   const int C = H * N;
 

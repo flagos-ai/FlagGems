@@ -29,7 +29,7 @@ def full_like(
     fill_value = check_dtype(fill_value, dtype, device)
     out = torch.empty_like(x, device=device, dtype=dtype)
     N = x.numel()
-    BLOCK_SIZE = triton.next_power_of_2(math.ceil(math.sqrt(N)))
+    BLOCK_SIZE = min(triton.next_power_of_2(math.ceil(math.sqrt(N))), 2048)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(x.device):
         full_kernel[grid_fn](

@@ -1,3 +1,4 @@
+import logging
 from typing import Callable, Optional
 
 import torch
@@ -5,6 +6,8 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils.device_info import get_device_capability
+
+logger = logging.getLogger(__name__)
 
 SCALE_BLOCK_K, SCALE_BLOCK_N = 128, 128
 
@@ -463,6 +466,7 @@ def cutlass_scaled_mm(
     b_scale: torch.Tensor,
     bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
+    logger.debug("GEMS CUTLASS SCALED MM")
     assert (
         a.dim() == 2 and b.dim() == 2 and c.dim() == 2
     ), "All inputs must be 2D tensors"

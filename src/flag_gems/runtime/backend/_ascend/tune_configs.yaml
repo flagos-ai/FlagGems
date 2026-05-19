@@ -46,10 +46,13 @@ bmm:
 argmax:
 - META:
     BLOCK_M: 8
+    BLOCK_N: 512
 - META:
     BLOCK_M: 16
+    BLOCK_N: 512
 - META:
     BLOCK_M: 32
+    BLOCK_N: 512
 
 argmin:
 - META:
@@ -61,22 +64,34 @@ argmin:
 
 log_softmax:
 - META:
-    BLOCK_M: 64
-    BLOCK_N: 8
+    BLOCK_M: 8
+    BLOCK_N: 64
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 32
+- META:
+    BLOCK_M: 1
+    BLOCK_N: 32
+- META:
+    BLOCK_M: 1
+    BLOCK_N: 16
 
 mm:
 - META:
     BLOCK_M: 16
     BLOCK_N: 32
     BLOCK_K: 32
+    SPLIT_K: 1
 - META:
     BLOCK_M: 128
     BLOCK_N: 128
     BLOCK_K: 128
+    SPLIT_K: 1
 - META:
     BLOCK_M: 256
     BLOCK_N: 256
     BLOCK_K: 256
+    SPLIT_K: 1
 
 softmax_non_inner:
 - META:
@@ -305,9 +320,10 @@ mean:
       BLOCK_M: block_m
       BLOCK_N: 256
   block_m:
-  - 64
-  - 128
-  - 256
+  - 1
+  - 2
+  - 4
+  - 8
 
 instancenorm:
 - gen: true
@@ -524,7 +540,7 @@ triu:
   param_map:
     META:
       M_BLOCK_SIZE: 2
-      N_BLOCK_SIZE: 2048
+      N_BLOCK_SIZE: 256
 
 triu_batch:
 - gen: true
@@ -586,13 +602,15 @@ weight_norm_kernel:
   - 2048
 
 vector_norm:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: 512
-  block_m:
-  - 8
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 256
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 256
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 128
 
 var_mean:
 - gen: true
@@ -603,7 +621,7 @@ var_mean:
   block_m:
   - 18
   block_n:
-  - 256
+  - 128
 
 conv2d_forward:
 - META:
@@ -685,6 +703,8 @@ batch_norm:
 - gen: true
   param_map:
     META: {}
+    num_warps: 2
+    num_stages: 1
 
 kron:
 - gen: true
@@ -700,6 +720,21 @@ kron:
   block_n:
   - 128
   - 256
+
+moe_sum:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      BLOCK_SIZE_SUB: block_size_sub
+  block_size:
+  - 512
+  - 1024
+  - 2048
+  block_size_sub:
+  - 256
+  - 512
+  - 1024
 
 index_add:
 - gen: true

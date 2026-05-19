@@ -39,12 +39,8 @@ def check_dtype(fill_value, dtype, device):
     if isinstance(fill_value, bool):
         if dtype != torch.bool:
             fill_value = int(fill_value)
-    elif (
-        dtype in ALL_INT_DTYPES
-        and (fill_value < torch.iinfo(dtype).min or fill_value > torch.iinfo(dtype).max)
-    ) or (
-        dtype in ALL_FLOAT_DTYPES
-        and (fill_value < torch.finfo(dtype).min or fill_value > torch.finfo(dtype).max)
+    elif dtype in ALL_INT_DTYPES and (
+        fill_value < torch.iinfo(dtype).min or fill_value > torch.iinfo(dtype).max
     ):
         raise RuntimeError(
             f"value cannot be converted to type {dtype} without overflow"
@@ -70,7 +66,7 @@ def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=N
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
-    BLOCK_SIZE = triton.next_power_of_2(math.ceil(math.sqrt(N)))
+    BLOCK_SIZE = min(triton.next_power_of_2(math.ceil(math.sqrt(N))), 2048)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(device):
         full_kernel[grid_fn](

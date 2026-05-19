@@ -2,7 +2,6 @@ import logging
 
 import torch
 
-from flag_gems.ops.copy import copy
 from flag_gems.utils.shape_utils import has_internal_overlapping
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
@@ -28,9 +27,9 @@ def select_scatter(inp, src, dim, index):
             inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
         )
 
-    copy(inp, out0=out)
+    out.copy_(inp)
     indices = [slice(None)] * inp.ndim
     indices[dim] = index
-    copy(src, out0=out[indices])
+    out[indices].copy_(src)
 
     return out

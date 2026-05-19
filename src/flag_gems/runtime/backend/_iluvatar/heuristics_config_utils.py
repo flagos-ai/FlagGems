@@ -22,18 +22,6 @@ def argmin_heur_block_n(args):
     return min(4096, triton.next_power_of_2(args["N"]))
 
 
-def bmm_heur_divisible_m(args):
-    return args["M"] % args["BLOCK_M"] == 0
-
-
-def bmm_heur_divisible_n(args):
-    return args["N"] % args["BLOCK_N"] == 0
-
-
-def bmm_heur_divisible_k(args):
-    return args["K"] % args["BLOCK_K"] == 0
-
-
 def dropout_heur_block(args):
     if args["N"] <= 512:
         return 512
@@ -238,11 +226,6 @@ HEURISTICS_CONFIGS = {
     "argmin": {
         "BLOCK_M": argmin_heur_block_m,
         "BLOCK_N": argmin_heur_block_n,
-    },
-    "bmm": {
-        "DIVISIBLE_M": bmm_heur_divisible_m,
-        "DIVISIBLE_N": bmm_heur_divisible_n,
-        "DIVISIBLE_K": bmm_heur_divisible_k,
     },
     "dropout": {
         "BLOCK": dropout_heur_block,

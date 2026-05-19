@@ -3,15 +3,20 @@
 # the following copyright notice:
 # Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
 # ruff: noqa: E501
+
+import logging
+
 import torch
 
 from flag_gems.fused.FLA.chunk_delta_h import chunk_gated_delta_rule_fwd_h
 from flag_gems.fused.FLA.chunk_o import chunk_fwd_o
-from flag_gems.fused.FLA.chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
-from flag_gems.fused.FLA.cumsum import chunk_local_cumsum
-from flag_gems.fused.FLA.solve_tril import solve_tril
+from flag_gems.fused.FLA.fused_cumsum_kkt_solve_tril import (
+    chunk_gated_delta_rule_fused_cumsum_kkt_solve_tril,
+)
 from flag_gems.fused.FLA.utils import SUPPRESS_LEVEL
 from flag_gems.fused.FLA.wy_fast import recompute_w_u_fwd
+
+logger = logging.getLogger(__name__)
 
 
 def chunk_gated_delta_rule_fwd(
@@ -25,12 +30,10 @@ def chunk_gated_delta_rule_fwd(
     output_final_state: bool,
     cu_seqlens: torch.LongTensor | None = None,
 ):
-    g = chunk_local_cumsum(g, chunk_size=64, cu_seqlens=cu_seqlens)
-    # obtain WY representation. u is actually the new v.
-    A = chunk_scaled_dot_kkt_fwd(
-        k=k, beta=beta, g=g, cu_seqlens=cu_seqlens, output_dtype=torch.float32
+    logger.debug("GEMS CHUNK GATED DELTA RULE FWD")
+    g, A = chunk_gated_delta_rule_fused_cumsum_kkt_solve_tril(
+        g=g, k=k, beta=beta, cu_seqlens=cu_seqlens, chunk_size=64, output_dtype=k.dtype
     )
-    A = solve_tril(A=A, cu_seqlens=cu_seqlens, output_dtype=k.dtype)
     w, u = recompute_w_u_fwd(
         k=k,
         v=v,

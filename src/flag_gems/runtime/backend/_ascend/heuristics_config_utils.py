@@ -78,10 +78,6 @@ def index_select_heur_block_n(args):
     return max(m, 16)
 
 
-def mm_heur_even_k(args):
-    return args["K"] % (args["BLOCK_K"]) == 0
-
-
 def rand_heur_block(args):
     if args["N"] <= 512:
         return 2048
@@ -206,14 +202,13 @@ def upsample_nearest2d_SAME_W(args):
 
 
 def batch_norm_heur_block_m(args):
-    return min(128, triton.next_power_of_2(args["batch_dim"]))
+    return min(64, triton.next_power_of_2(args["batch_dim"]))
 
 
 def batch_norm_heur_block_n(args):
-    # A maximum of 4096 elements are loaded at once.
     BLOCK_M = batch_norm_heur_block_m(args)
     BLOCK_N = triton.next_power_of_2(args["spatial_dim"])
-    return min(BLOCK_N, max(1, 2**12 // BLOCK_M))
+    return min(BLOCK_N, max(1, 2**10 // BLOCK_M))
 
 
 def vdot_heur_block_size(args):
@@ -226,6 +221,10 @@ def vdot_heur_block_size(args):
         return 1024
 
 
+def mm_heur_even_k(args):
+    return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
+
+
 HEURISTICS_CONFIGS = {
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
@@ -234,6 +233,11 @@ HEURISTICS_CONFIGS = {
     "argmin": {
         "BLOCK_M": argmin_heur_block_m,
         "BLOCK_N": argmin_heur_block_n,
+    },
+    "baddbmm": {
+        "DIVISIBLE_M": bmm_heur_divisible_m,
+        "DIVISIBLE_N": bmm_heur_divisible_n,
+        "DIVISIBLE_K": bmm_heur_divisible_k,
     },
     "bmm": {
         "DIVISIBLE_M": bmm_heur_divisible_m,
@@ -303,5 +307,11 @@ HEURISTICS_CONFIGS = {
     },
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
+    },
+    "mha_block_16": {
+        "BLOCK_M": lambda args: 16,  # 16
+        "BLOCK_N": lambda args: 16,  # 64
+        "num_warps": lambda args: 4,  # 4
+        "num_stages": lambda args: 3,  # 3
     },
 }
