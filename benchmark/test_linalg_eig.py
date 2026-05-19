@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from . import base, consts
+from . import base
 
 
 class LinalgEigBenchmark(base.Benchmark):
@@ -25,6 +25,7 @@ def test_linalg_eig():
     bench = LinalgEigBenchmark(
         op_name="linalg_eig",
         torch_op=torch.linalg.eig,
-        dtypes=consts.FLOAT_DTYPES,
+        # linalg_eig_out_cpu does not support Half/BFloat16
+        dtypes=[torch.float32],
     )
     bench.run()

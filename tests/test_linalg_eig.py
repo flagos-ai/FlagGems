@@ -8,7 +8,8 @@ from . import accuracy_utils as utils
 
 @pytest.mark.linalg_eig
 @pytest.mark.parametrize("shape", [(2, 2), (4, 2, 2)])
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+# linalg_eig_out_cpu does not support Half/BFloat16
+@pytest.mark.parametrize("dtype", [torch.float32])
 def test_linalg_eig(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
