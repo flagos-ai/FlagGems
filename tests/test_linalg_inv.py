@@ -8,7 +8,8 @@ from . import accuracy_utils as utils
 
 @pytest.mark.linalg_inv
 @pytest.mark.parametrize("shape", [(2, 2), (3, 3), (4, 2, 2), (2, 3, 3)])
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+# linalg.inv does not support low precision dtypes (Half/BFloat16)
+@pytest.mark.parametrize("dtype", [torch.float32])
 def test_linalg_inv(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp = inp + torch.eye(shape[-1], dtype=dtype, device=flag_gems.device) * 2.0

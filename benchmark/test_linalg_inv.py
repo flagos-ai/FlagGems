@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from . import base, consts
+from . import base
 
 
 class LinalgInvBenchmark(base.Benchmark):
@@ -27,6 +27,7 @@ def test_linalg_inv():
     bench = LinalgInvBenchmark(
         op_name="linalg_inv",
         torch_op=torch.linalg.inv,
-        dtypes=consts.FLOAT_DTYPES,
+        # linalg.inv does not support low precision dtypes (Half/BFloat16)
+        dtypes=[torch.float32],
     )
     bench.run()
