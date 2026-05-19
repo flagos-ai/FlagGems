@@ -153,7 +153,7 @@ case $VENDOR in
     else
       uv pip uninstall triton
       uv pip install --index $FLAGOS_PYPI \
-        "flagtree==0.5.0+mthreads3.1"
+        "flagtree==0.5.1+mthreads3.6"
     fi
     ;;
 
@@ -172,6 +172,15 @@ case $VENDOR in
       uv pip install --index ${FLAGOS_PYPI} \
         "triton==3.5"
     fi
+    ;;
+
+  spacemit)
+    uv pip install -e .
+    uv pip install ".[spacemit]"
+    uv pip install --index ${FLAGOS_PYPI} \
+        "torch==2.8.0+spacemit.0" \
+        "triton==3.6.0+spacemit.a4"
+    uv pip install ".[test]"
     ;;
 
   thead)
