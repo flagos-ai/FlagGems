@@ -1432,7 +1432,7 @@ def scaled_dot_product_cudnn_attention_backward(
     key_bshd = key.permute(0, 2, 1, 3).contiguous()
     value_bshd = value.permute(0, 2, 1, 3).contiguous()
     out_bshd = out.permute(0, 2, 1, 3).contiguous()
-    lse = logsumexp.squeeze(-1).float()
+    lse = logsumexp.float()
 
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None

@@ -357,7 +357,6 @@ def test_scaled_dot_product_cudnn_attention_backward(
     V_bhsd = V.permute(0, 2, 1, 3).contiguous()
     out_bhsd = out.permute(0, 2, 1, 3).contiguous()
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
-    lse_4d = lse.unsqueeze(-1)
 
     (
         ref_dQ_bhsd,
@@ -369,7 +368,7 @@ def test_scaled_dot_product_cudnn_attention_backward(
         K_bhsd,
         V_bhsd,
         out_bhsd,
-        lse_4d,
+        lse,
         philox_seed,
         philox_offset,
         attn_bias,
@@ -396,7 +395,7 @@ def test_scaled_dot_product_cudnn_attention_backward(
             K_bhsd,
             V_bhsd,
             out_bhsd,
-            lse_4d,
+            lse,
             philox_seed,
             philox_offset,
             attn_bias,

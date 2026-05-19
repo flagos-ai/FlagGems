@@ -637,7 +637,6 @@ def cudnn_attn_bwd_input_fn(config, dtype, device):
         is_causal=is_causal,
         softmax_scale=scale,
     )
-    lse_4d = lse.unsqueeze(-1)
 
     yield (
         dOut_bhsd,
@@ -645,7 +644,6 @@ def cudnn_attn_bwd_input_fn(config, dtype, device):
         K_bhsd,
         V_bhsd,
         out_bhsd,
-        lse_4d,
         lse,
         philox_seed,
         philox_offset,
@@ -666,7 +664,6 @@ def _cudnn_attn_bwd_aten(
     K_bhsd,
     V_bhsd,
     out_bhsd,
-    lse_4d,
     lse,
     philox_seed,
     philox_offset,
@@ -685,7 +682,7 @@ def _cudnn_attn_bwd_aten(
         K_bhsd,
         V_bhsd,
         out_bhsd,
-        lse_4d,
+        lse,
         philox_seed,
         philox_offset,
         attn_bias,
@@ -705,7 +702,6 @@ def _cudnn_attn_bwd_gems(
     K_bhsd,
     V_bhsd,
     out_bhsd,
-    lse_4d,
     lse,
     philox_seed,
     philox_offset,
@@ -724,7 +720,7 @@ def _cudnn_attn_bwd_gems(
         K_bhsd,
         V_bhsd,
         out_bhsd,
-        lse_4d,
+        lse,
         philox_seed,
         philox_offset,
         attn_bias,
