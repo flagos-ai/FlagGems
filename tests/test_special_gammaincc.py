@@ -8,7 +8,8 @@ from . import accuracy_utils as utils
 
 @pytest.mark.special_gammaincc
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+# igammac_cuda is not implemented for Half/BFloat16
+@pytest.mark.parametrize("dtype", [torch.float32])
 def test_special_gammaincc(shape, dtype):
     inp_a = torch.abs(torch.randn(shape, dtype=dtype, device=flag_gems.device)) + 0.1
     inp_x = torch.abs(torch.randn(shape, dtype=dtype, device=flag_gems.device))
