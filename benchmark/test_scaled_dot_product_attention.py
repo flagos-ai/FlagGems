@@ -13,9 +13,7 @@ class AttentionBenchmark(base.GenericBenchmark):
         return []
 
 
-def sdpa_flash(
-    query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False
-):
+def sdpa_flash(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False):
     from torch.nn.attention import SDPBackend, sdpa_kernel
 
     with sdpa_kernel(backends=[SDPBackend.FLASH_ATTENTION]):
@@ -93,9 +91,7 @@ class ScaledDotProductAttentionForwardBenchmark(base.GenericBenchmark):
         self.shapes = []
         for head_size in (64, 128, 256):
             for is_causal in (False, True):
-                self.shapes.append(
-                    (4, 8, 8, 1024, 1024, head_size, is_causal, False)
-                )
+                self.shapes.append((4, 8, 8, 1024, 1024, head_size, is_causal, False))
         for batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len in (
             (1, 1, 1, 128, 2048),
             (4, 8, 8, 17, 1030),
@@ -115,9 +111,7 @@ class ScaledDotProductAttentionForwardBenchmark(base.GenericBenchmark):
                 )
         for head_size in (64, 128):
             for is_causal in (False, True):
-                self.shapes.append(
-                    (4, 8, 2, 1024, 1024, head_size, is_causal, True)
-                )
+                self.shapes.append((4, 8, 2, 1024, 1024, head_size, is_causal, True))
 
 
 def sdpa_forward_input_fn(shape, dtype, device):
