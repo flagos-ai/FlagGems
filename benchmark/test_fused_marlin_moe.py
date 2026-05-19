@@ -1,15 +1,23 @@
 import pytest
 import torch
 
-# vLLM imports (baseline)
-from vllm.model_executor.layers.fused_moe.fused_marlin_moe import (
-    fused_marlin_moe as vllm_fused_marlin_moe,
-)
-from vllm.model_executor.layers.quantization.utils.marlin_utils_test import (
-    marlin_quantize,
-)
-from vllm.model_executor.layers.quantization.utils.quant_utils import quantize_weights
-from vllm.scalar_type import scalar_types
+# vLLM imports (baseline). Optional: when vllm is not installed (e.g. in CI),
+# the entire benchmark is skipped via the skipif marker below.
+try:
+    from vllm.model_executor.layers.fused_moe.fused_marlin_moe import (
+        fused_marlin_moe as vllm_fused_marlin_moe,
+    )
+    from vllm.model_executor.layers.quantization.utils.marlin_utils_test import (
+        marlin_quantize,
+    )
+    from vllm.model_executor.layers.quantization.utils.quant_utils import (
+        quantize_weights,
+    )
+    from vllm.scalar_type import scalar_types
+
+    HAS_VLLM_FUSED_MARLIN_MOE = True
+except ImportError:
+    HAS_VLLM_FUSED_MARLIN_MOE = False
 
 import flag_gems
 
@@ -228,6 +236,9 @@ def _gems_call(
 
 
 @pytest.mark.fused_marlin_moe
+@pytest.mark.skipif(
+    not HAS_VLLM_FUSED_MARLIN_MOE, reason="vllm not installed; baseline unavailable"
+)
 @pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires NVIDIA Hopper architecture")
 def test_fused_marlin_moe():
     """
