@@ -101,21 +101,8 @@ class ChunkGatedDeltaRuleBenchmark(Benchmark):
     DEFAULT_DTYPES = [torch.bfloat16, torch.float16]
     DEFAULT_SHAPE_DESC = "B, T, Hg, H, K, V"
 
-    def set_more_shapes(self):
-        return [
-            (1, 64, 4, 8, 64, 64),
-            (1, 128, 4, 8, 64, 64),
-            (1, 256, 4, 8, 64, 64),
-            (1, 512, 4, 8, 64, 64),
-            (2, 64, 4, 8, 64, 64),
-            (2, 128, 4, 8, 64, 64),
-            (2, 256, 4, 8, 64, 64),
-            (2, 512, 4, 8, 64, 64),
-        ]
-
     def get_input_iter(self, cur_dtype):
-        shapes = self.set_more_shapes()
-        for B, T, Hg, H, K, V in shapes:
+        for B, T, Hg, H, K, V in self.shapes:
             yield self._build_inputs(B, T, Hg, H, K, V, cur_dtype)
 
     def _build_inputs(self, B, T, Hg, H, K, V, dtype):
