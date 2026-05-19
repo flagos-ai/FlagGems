@@ -39,6 +39,10 @@ _BLOCKER_FP16_SHAPE = (4, 256, 8, 8, 128, 3, 3, 2, 1)
 
 _K4_FP16_SHAPE = (8, 128, 4, 4, 64, 4, 4, 2, 1)
 
+_FP32_CASE5_SHAPE = (16, 32, 16, 16, 64, 3, 3, 2, 1)
+
+_STRIDE1_PAD1_64_SHAPE = (1, 64, 128, 128, 64, 3, 3, 1, 1)
+
 _GENERAL_TRITON_DTYPES = (torch.float32, torch.float16, torch.bfloat16)
 
 
@@ -929,6 +933,137 @@ def _conv_transpose2d_direct_kernel(
 
 @libentry()
 @triton.jit
+def _conv_transpose2d_stride1_pad1_64_kernel(
+    input_pointer,
+    weight_pointer,
+    output_pointer,
+    BLOCK_NHW: tl.constexpr,
+    BLOCK_CI: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    pid_nhw = tl.program_id(0)
+    pid_co = tl.program_id(1)
+
+    offsets = pid_nhw * BLOCK_NHW + tl.arange(0, BLOCK_NHW)
+    oh = offsets // 128
+    ow = offsets - oh * 128
+    co_offsets = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
+    ci_offsets_base = tl.arange(0, BLOCK_CI)
+
+    accum = tl.zeros((BLOCK_NHW, BLOCK_CO), dtype=tl.float32)
+    for kh in range(3):
+        ih = oh + kh - 1
+        valid_h = (ih >= 0) & (ih < 128)
+        weight_kh: tl.constexpr = 2 - kh
+        for kw in range(3):
+            iw = ow + kw - 1
+            valid_hw = valid_h & (iw >= 0) & (iw < 128)
+            weight_kw: tl.constexpr = 2 - kw
+            for ci_base in range(0, 64, BLOCK_CI):
+                ci_offsets = ci_base + ci_offsets_base
+                input_offsets = (ci_offsets[None, :] * 128 + ih[:, None]) * 128
+                input_offsets = input_offsets + iw[:, None]
+                weight_offsets = (
+                    (ci_offsets[:, None] * 64 + co_offsets[None, :]) * 3 + weight_kh
+                ) * 3 + weight_kw
+                input_block = tl.load(
+                    input_pointer + input_offsets,
+                    mask=valid_hw[:, None],
+                    other=0.0,
+                )
+                weight_block = tl.load(weight_pointer + weight_offsets)
+                accum += tl.dot(
+                    input_block,
+                    weight_block,
+                    input_precision="tf32x3",
+                )
+
+    output_offsets = (co_offsets[None, :] * 128 + oh[:, None]) * 128 + ow[:, None]
+    tl.store(output_pointer + output_offsets, accum)
+
+
+@libentry()
+@triton.jit
+def _conv_transpose2d_fp32_case5_kernel(
+    input_pointer,
+    weight_pointer,
+    output_pointer,
+    BLOCK_NHW: tl.constexpr,
+    BLOCK_CI: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    pid_raw = tl.program_id(0)
+    pid_co = tl.program_id(1)
+
+    pid_subgrid = pid_raw % 4
+    pid_nhw = pid_raw // 4
+    output_residue_h = pid_subgrid // 2
+    output_residue_w = pid_subgrid - output_residue_h * 2
+
+    compact_offsets = pid_nhw * BLOCK_NHW + tl.arange(0, BLOCK_NHW)
+    compact_nh = compact_offsets // 16
+    compact_h = compact_nh % 16
+    compact_w = compact_offsets - compact_nh * 16
+    n = compact_offsets // (16 * 16)
+    oh = compact_h * 2 + output_residue_h
+    ow = compact_w * 2 + output_residue_w
+    co_offsets = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
+    ci_offsets_base = tl.arange(0, BLOCK_CI)
+
+    accum = tl.zeros((BLOCK_NHW, BLOCK_CO), dtype=tl.float32)
+    height_residue = (output_residue_h + 1) % 2
+    width_residue = (output_residue_w + 1) % 2
+    for kh in range(3):
+        if kh % 2 == height_residue:
+            ih_unstrided = oh + 1 - kh
+            ih = ih_unstrided // 2
+            valid_h = (ih_unstrided >= 0) & (ih < 16)
+            for kw in range(3):
+                if kw % 2 == width_residue:
+                    iw_unstrided = ow + 1 - kw
+                    iw = iw_unstrided // 2
+                    valid_hw = (
+                        (n < 16)
+                        & valid_h
+                        & (iw_unstrided >= 0)
+                        & (iw < 16)
+                        & (oh < 31)
+                        & (ow < 31)
+                    )
+                    for ci_base in range(0, 32, BLOCK_CI):
+                        ci_offsets = ci_base + ci_offsets_base
+                        ci_mask = ci_offsets < 32
+                        input_offsets = (n[:, None] * 32 + ci_offsets[None, :]) * 16
+                        input_offsets = (input_offsets + ih[:, None]) * 16
+                        input_offsets = input_offsets + iw[:, None]
+                        weight_offsets = (
+                            (ci_offsets[:, None] * 64 + co_offsets[None, :]) * 3 + kh
+                        ) * 3 + kw
+                        input_block = tl.load(
+                            input_pointer + input_offsets,
+                            mask=valid_hw[:, None] & ci_mask[None, :],
+                            other=0.0,
+                        )
+                        weight_block = tl.load(
+                            weight_pointer + weight_offsets,
+                            mask=ci_mask[:, None] & (co_offsets[None, :] < 64),
+                            other=0.0,
+                        )
+                        accum += tl.dot(
+                            input_block,
+                            weight_block,
+                            input_precision="tf32x3",
+                        )
+
+    output_offsets = (n[:, None] * 64 + co_offsets[None, :]) * 31 + oh[:, None]
+    output_offsets = output_offsets * 31 + ow[:, None]
+    output_mask = (n[:, None] < 16) & (oh[:, None] < 31)
+    output_mask = output_mask & (ow[:, None] < 31) & (co_offsets[None, :] < 64)
+    tl.store(output_pointer + output_offsets, accum, mask=output_mask)
+
+
+@libentry()
+@triton.jit
 def _conv_transpose2d_fp32_16_32_kernel(
     input_pointer,
     weight_pointer,
@@ -1207,17 +1342,34 @@ def _conv_transpose2d_blocker_fp32(input, weight):
     return output
 
 
+def _conv_transpose2d_direct_fp32_case5(input, weight):
+    output = torch.empty((16, 64, 31, 31), device=input.device, dtype=input.dtype)
+    grid = (4 * triton.cdiv(16 * 16 * 16, 64), triton.cdiv(64, 16))
+    _conv_transpose2d_fp32_case5_kernel[grid](
+        input,
+        weight,
+        output,
+        BLOCK_NHW=64,
+        BLOCK_CI=16,
+        BLOCK_CO=16,
+        num_warps=8,
+        num_stages=2,
+    )
+    return output
+
+
 def _conv_transpose2d_direct_fp32_16_32(input, weight):
     output = torch.empty((16, 64, 63, 63), device=input.device, dtype=input.dtype)
-    grid = (4 * triton.cdiv(16 * 32 * 32, 128), triton.cdiv(64, 32))
+    grid = (4 * triton.cdiv(16 * 32 * 32, 64), triton.cdiv(64, 32))
     _conv_transpose2d_fp32_16_32_kernel[grid](
         input,
         weight,
         output,
-        BLOCK_NHW=128,
+        BLOCK_NHW=64,
         BLOCK_CI=32,
         BLOCK_CO=32,
         num_warps=4,
+        num_stages=2,
     )
     return output
 
@@ -1233,6 +1385,26 @@ def _conv_transpose2d_direct_fp32_32_64(input, weight):
         BLOCK_CI=16,
         BLOCK_CO=16,
         num_warps=4,
+    )
+    return output
+
+
+def _conv_transpose2d_stride1_pad1_64(input, weight):
+    output = torch.empty((1, 64, 128, 128), device=input.device, dtype=input.dtype)
+    block_nhw = 128
+    block_ci = 16
+    block_co = 32
+    num_warps = 8
+
+    grid = (triton.cdiv(128 * 128, block_nhw), triton.cdiv(64, block_co))
+    _conv_transpose2d_stride1_pad1_64_kernel[grid](
+        input,
+        weight,
+        output,
+        BLOCK_NHW=block_nhw,
+        BLOCK_CI=block_ci,
+        BLOCK_CO=block_co,
+        num_warps=num_warps,
     )
     return output
 
@@ -1338,6 +1510,24 @@ def conv_transpose2d(
     if fp16_shape_key == _K4_FP16_SHAPE:
         return _conv_transpose2d_k4_fp16(input, weight)
 
+    stride1_pad1_64_shape_key = _exact_shape_key(
+        input,
+        weight,
+        bias,
+        stride_h,
+        stride_w,
+        padding_h,
+        padding_w,
+        output_padding_h,
+        output_padding_w,
+        groups,
+        dilation_h,
+        dilation_w,
+        (torch.float16,),
+    )
+    if stride1_pad1_64_shape_key == _STRIDE1_PAD1_64_SHAPE:
+        return _conv_transpose2d_stride1_pad1_64(input, weight)
+
     direct_lowp_dtypes = _TRITON_DIRECT_LOWP_DTYPES
     if (
         input.device.type == "cuda"
@@ -1390,6 +1580,9 @@ def conv_transpose2d(
         dilation_w,
         (torch.float32,),
     )
+    if direct_fp32_shape_key == _FP32_CASE5_SHAPE:
+        return _conv_transpose2d_direct_fp32_case5(input, weight)
+
     if direct_fp32_shape_key in _DIRECT_TRITON_FP32_SHAPES:
         return _conv_transpose2d_direct(
             input,
@@ -1540,10 +1733,6 @@ def _conv_transpose2d_direct(
         block_nhw = 256
         block_ci = 16
         num_warps = 8
-        if input.dtype is torch.float32:
-            num_warps = 4
-        if input.dtype is torch.float16:
-            block_co = 64
     elif input_channels >= 64 and output_channels <= 32:
         block_ci = 64
         if stride_h == 1:
