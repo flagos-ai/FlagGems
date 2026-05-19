@@ -4995,6 +4995,20 @@ ops:
       - Reduction
     stages:
       - alpha: '5.1'
+  - id: scatter_reduce_two
+    description: |
+      Out-of-place `torch.scatter_reduce`. Reduces values from `src` into a new
+      tensor initialized from `self` at indices given by `index` along `dim`,
+      using one of `sum / prod / mean / amax / amin`. Supports the `out=` variant.
+    for:
+      - scatter_reduce.two
+      - scatter_reduce.two_out
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
   - id: scatter_src
     description: |
       Writes all values from the tensor `src` into provided tensor at the indices

@@ -442,6 +442,8 @@ _FULL_CONFIG = (
     ("scatter_.reduce", scatter_),
     ("scatter_.src", scatter_),
     ("scatter_add_", scatter_add_),
+    ("scatter_reduce.two", scatter_reduce),
+    ("scatter_reduce.two_out", scatter_reduce_out),
     ("scatter_reduce_.two", scatter_reduce_),
     ("select_backward", select_backward),
     ("select_scatter", select_scatter),
