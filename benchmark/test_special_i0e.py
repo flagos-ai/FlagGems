@@ -12,3 +12,13 @@ def test_special_i0e():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.special_i0e_out
+def test_special_i0e_out():
+    bench = base.UnaryPointwiseOutBenchmark(
+        op_name="special_i0e_out",
+        torch_op=torch.ops.aten.special_i0e,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
