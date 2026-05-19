@@ -11,7 +11,8 @@ from . import accuracy_utils as utils
 
 
 def make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
-    set_philox_state(1234567890, 0, device)
+    dev = torch_device_fn.current_device()
+    set_philox_state(1234567890, 0, dev)
     Q = torch.empty(
         batch, q_seq_len, num_head, head_size, dtype=dtype, device=device
     ).uniform_(-0.05, 0.05)
@@ -217,10 +218,11 @@ def test_flash_attention_backward(
     window_size_right,
     head_size,
 ):
-    dev = torch_device_fn.current_device()
     scale = float(1.0 / math.sqrt(head_size))
 
-    Q, K, V = make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, dev)
+    Q, K, V = make_qkv(
+        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+    )
     dOut = torch.randn(
         batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
     )
@@ -321,10 +323,11 @@ def test_scaled_dot_product_cudnn_attention_backward(
     if bias_requires_grad and not has_attn_bias:
         pytest.skip("bias_requires_grad=True requires has_attn_bias=True")
 
-    dev = torch_device_fn.current_device()
     scale = float(1.0 / math.sqrt(head_size))
 
-    Q, K, V = make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, dev)
+    Q, K, V = make_qkv(
+        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+    )
     dOut = torch.randn(
         batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
     )
@@ -454,10 +457,11 @@ def test_efficient_attention_backward(
     if not has_bias and bias_requires_grad:
         pytest.skip("bias_requires_grad=True requires has_bias=True")
 
-    dev = torch_device_fn.current_device()
     scale = float(1.0 / math.sqrt(head_size))
 
-    Q, K, V = make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, dev)
+    Q, K, V = make_qkv(
+        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+    )
     dOut = torch.randn(
         batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
     )
@@ -582,10 +586,11 @@ def test_scaled_dot_product_efficient_attention_backward(
     if need_dbias and not has_attn_bias:
         pytest.skip("need_dbias=True requires has_attn_bias=True")
 
-    dev = torch_device_fn.current_device()
     scale = float(1.0 / math.sqrt(head_size))
 
-    Q, K, V = make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, dev)
+    Q, K, V = make_qkv(
+        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+    )
     dOut = torch.randn(
         batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
     )
