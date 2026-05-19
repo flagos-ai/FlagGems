@@ -160,16 +160,10 @@ def _direct_tiled_family_shape_key(
     ):
         return None
     output_height = (
-        (input_height - 1) * stride_h
-        - 2 * padding_h
-        + weight_height
-        + output_padding_h
+        (input_height - 1) * stride_h - 2 * padding_h + weight_height + output_padding_h
     )
     output_width = (
-        (input_width - 1) * stride_w
-        - 2 * padding_w
-        + weight_width
-        + output_padding_w
+        (input_width - 1) * stride_w - 2 * padding_w + weight_width + output_padding_w
     )
     if output_height <= 0 or output_width <= 0:
         return None
@@ -1378,8 +1372,7 @@ def _conv_transpose2d_residue_kernel(
                         ci_in_offsets = ci_base * BLOCK_CI + tl.arange(0, BLOCK_CI)
                         ci_offsets = group * input_channels_per_group + ci_in_offsets
                         input_offsets = (
-                            n[:, None] * input_channels
-                            + ci_offsets[None, :]
+                            n[:, None] * input_channels + ci_offsets[None, :]
                         ) * input_height
                         input_offsets = (
                             input_offsets + ih[:, None]
@@ -1407,7 +1400,7 @@ def _conv_transpose2d_residue_kernel(
                             input_precision="tf32x3",
                         )
 
-    output_offsets = (n[:, None] * output_channels + co_offsets[None, :])
+    output_offsets = n[:, None] * output_channels + co_offsets[None, :]
     output_offsets = (output_offsets * output_height + oh[:, None]) * output_width
     output_offsets = output_offsets + ow[:, None]
     output_mask = (
@@ -1580,8 +1573,7 @@ def _conv_transpose2d_residue_static_kernel(
                         ci_in_offsets = ci_base * BLOCK_CI + tl.arange(0, BLOCK_CI)
                         ci_offsets = group * input_channels_per_group + ci_in_offsets
                         input_offsets = (
-                            n[:, None] * input_channels
-                            + ci_offsets[None, :]
+                            n[:, None] * input_channels + ci_offsets[None, :]
                         ) * input_height
                         input_offsets = (
                             input_offsets + ih[:, None]
@@ -1609,7 +1601,7 @@ def _conv_transpose2d_residue_static_kernel(
                             input_precision="tf32x3",
                         )
 
-    output_offsets = (n[:, None] * output_channels + co_offsets[None, :])
+    output_offsets = n[:, None] * output_channels + co_offsets[None, :]
     output_offsets = (output_offsets * output_height + oh[:, None]) * output_width
     output_offsets = output_offsets + ow[:, None]
     output_mask = (
@@ -1690,7 +1682,9 @@ def _conv_transpose2d_scatter_no_overlap_kernel(
 
     oh = ih * stride_height - padding_height + kh * dilation_height
     ow = iw * stride_width - padding_width + kw * dilation_width
-    valid_nhw = (nhw_offsets < batch_size * input_height * input_width) & (n < batch_size)
+    valid_nhw = (nhw_offsets < batch_size * input_height * input_width) & (
+        n < batch_size
+    )
     valid_nhw = valid_nhw & (oh >= 0) & (oh < output_height)
     valid_nhw = valid_nhw & (ow >= 0) & (ow < output_width)
 
@@ -1703,10 +1697,7 @@ def _conv_transpose2d_scatter_no_overlap_kernel(
     for ci_block in range(ci_blocks):
         ci_in_group = ci_block * BLOCK_CI + ci_in_group_base
         ci = group * input_channels_per_group + ci_in_group
-        input_offsets = (
-            n[:, None] * input_channels
-            + ci[None, :]
-        ) * input_height
+        input_offsets = (n[:, None] * input_channels + ci[None, :]) * input_height
         input_offsets = (input_offsets + ih[:, None]) * input_width + iw[:, None]
         weight_offsets = (
             ci[:, None] * output_channels_per_group + co_in_group[None, :]
@@ -1741,7 +1732,9 @@ def _conv_transpose2d_scatter_no_overlap_kernel(
 
     output_offsets = (n[:, None] * output_channels + co[None, :]) * output_height
     output_offsets = (output_offsets + oh[:, None]) * output_width + ow[:, None]
-    output_mask = valid_nhw[:, None] & (co_in_group[None, :] < output_channels_per_group)
+    output_mask = valid_nhw[:, None] & (
+        co_in_group[None, :] < output_channels_per_group
+    )
     tl.store(output_pointer + output_offsets, accum, mask=output_mask)
 
 
@@ -2120,19 +2113,13 @@ def _try_conv_transpose2d_specialized_schedule(
         (torch.float32,),
     )
     if fp32_shape_key == _K3_S2_P1_N32_CI64_CO32_HW16_SHAPE:
-        return _conv_transpose2d_direct_k3_s2_p1_n32_ci64_co32_hw16_fp32(
-            input, weight
-        )
+        return _conv_transpose2d_direct_k3_s2_p1_n32_ci64_co32_hw16_fp32(input, weight)
     if fp32_shape_key == _K3_S2_P1_N16_CI32_CO64_HW32_SHAPE:
-        return _conv_transpose2d_direct_k3_s2_p1_n16_ci32_co64_hw32_fp32(
-            input, weight
-        )
+        return _conv_transpose2d_direct_k3_s2_p1_n16_ci32_co64_hw32_fp32(input, weight)
     if fp32_shape_key == _K3_S2_P1_N4_CI256_CO128_HW8_SHAPE:
         return _conv_transpose2d_k3_s2_p1_n4_ci256_co128_hw8_fp32(input, weight)
     if fp32_shape_key == _K3_S2_P1_N16_CI32_CO64_HW16_SHAPE:
-        return _conv_transpose2d_direct_k3_s2_p1_n16_ci32_co64_hw16_fp32(
-            input, weight
-        )
+        return _conv_transpose2d_direct_k3_s2_p1_n16_ci32_co64_hw16_fp32(input, weight)
 
     lowp_dtypes = None
     if input.dtype is torch.float16:
@@ -2159,13 +2146,9 @@ def _try_conv_transpose2d_specialized_schedule(
             lowp_dtypes,
         )
         if lowp_shape_key == _K3_S2_P1_N4_CI256_CO128_HW8_SHAPE:
-            return _conv_transpose2d_k3_s2_p1_n4_ci256_co128_hw8_lowp(
-                input, weight
-            )
+            return _conv_transpose2d_k3_s2_p1_n4_ci256_co128_hw8_lowp(input, weight)
         if lowp_shape_key == _K4_S2_P1_N8_CI128_CO64_HW4_SHAPE:
-            return _conv_transpose2d_k4_s2_p1_n8_ci128_co64_hw4_lowp(
-                input, weight
-            )
+            return _conv_transpose2d_k4_s2_p1_n8_ci128_co64_hw4_lowp(input, weight)
         if lowp_shape_key == _K3_S1_P1_N1_CI64_CO64_HW128_SHAPE:
             return _conv_transpose2d_k3_s1_p1_n1_ci64_co64_hw128(input, weight)
 
@@ -2412,8 +2395,8 @@ def _conv_transpose2d_direct(
         stride_h,
         padding_h,
     )
-    block_nhw, block_ci, block_co, num_warps = (
-        _select_conv_transpose2d_direct_schedule(input.dtype, shape_key)
+    block_nhw, block_ci, block_co, num_warps = _select_conv_transpose2d_direct_schedule(
+        input.dtype, shape_key
     )
 
     grid = (

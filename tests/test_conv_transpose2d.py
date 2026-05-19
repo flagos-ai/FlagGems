@@ -422,9 +422,9 @@ def test_conv_transpose2d_noncontiguous_tensors_match_pytorch(
     bias = torch.randn((3,), dtype=torch.float32, device=flag_gems.device)
 
     if noncontiguous in ("input", "all"):
-        inp = torch.randn(
-            (1, 2, 4, 10), dtype=torch.float32, device=flag_gems.device
-        )[:, :, :, ::2]
+        inp = torch.randn((1, 2, 4, 10), dtype=torch.float32, device=flag_gems.device)[
+            :, :, :, ::2
+        ]
     if noncontiguous in ("weight", "all"):
         weight = torch.randn(
             (2, 3, 3, 4), dtype=torch.float32, device=flag_gems.device
