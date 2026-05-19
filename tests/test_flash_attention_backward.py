@@ -245,14 +245,19 @@ def test_flash_attention_backward(
         extra_bwd["window_size_left"] = window_size_left
     if window_size_right is not None:
         extra_bwd["window_size_right"] = window_size_right
-
+    ref_dOut = utils.to_reference(dOut)
+    ref_Q = utils.to_reference(Q)
+    ref_K = utils.to_reference(K)
+    ref_V = utils.to_reference(V)
+    ref_out = utils.to_reference(out)
+    ref_lse = utils.to_reference(lse)
     ref_dQ, ref_dK, ref_dV = torch.ops.aten._flash_attention_backward(
-        dOut,
-        Q,
-        K,
-        V,
-        out,
-        lse,
+        ref_dOut,
+        ref_Q,
+        ref_K,
+        ref_V,
+        ref_out,
+        ref_lse,
         None,
         None,
         q_seq_len,
@@ -361,17 +366,24 @@ def test_scaled_dot_product_cudnn_attention_backward(
     out_bhsd = out.permute(0, 2, 1, 3).contiguous()
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
+    ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
+    ref_Q_bhsd = utils.to_reference(Q_bhsd)
+    ref_K_bhsd = utils.to_reference(K_bhsd)
+    ref_V_bhsd = utils.to_reference(V_bhsd)
+    ref_out_bhsd = utils.to_reference(out_bhsd)
+    ref_lse = utils.to_reference(lse)
+
     (
         ref_dQ_bhsd,
         ref_dK_bhsd,
         ref_dV_bhsd,
     ) = torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
-        dOut_bhsd,
-        Q_bhsd,
-        K_bhsd,
-        V_bhsd,
-        out_bhsd,
-        lse,
+        ref_dOut_bhsd,
+        ref_Q_bhsd,
+        ref_K_bhsd,
+        ref_V_bhsd,
+        ref_out_bhsd,
+        ref_lse,
         philox_seed,
         philox_offset,
         attn_bias,
@@ -489,18 +501,25 @@ def test_efficient_attention_backward(
         softmax_scale=scale,
     )
 
+    ref_dOut = utils.to_reference(dOut)
+    ref_Q = utils.to_reference(Q)
+    ref_K = utils.to_reference(K)
+    ref_V = utils.to_reference(V)
+    ref_bias = utils.to_reference(bias)
+    ref_out = utils.to_reference(out)
+    ref_lse_aligned = utils.to_reference(lse_aligned)
     ref_dQ, ref_dK, ref_dV, ref_dBias = torch.ops.aten._efficient_attention_backward(
-        dOut,
-        Q,
-        K,
-        V,
-        bias,
-        out,
+        ref_dOut,
+        ref_Q,
+        ref_K,
+        ref_V,
+        ref_bias,
+        ref_out,
         None,
         None,
         q_seq_len,
         kv_seq_len,
-        lse_aligned,
+        ref_lse_aligned,
         0.0,
         philox_seed,
         philox_offset,
@@ -627,19 +646,26 @@ def test_scaled_dot_product_efficient_attention_backward(
     )
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
+    ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
+    ref_Q_bhsd = utils.to_reference(Q_bhsd)
+    ref_K_bhsd = utils.to_reference(K_bhsd)
+    ref_V_bhsd = utils.to_reference(V_bhsd)
+    ref_bias = utils.to_reference(attn_bias)
+    ref_out_bhsd = utils.to_reference(out_bhsd)
+    ref_lse = utils.to_reference(lse)
     (
         ref_dQ_bhsd,
         ref_dK_bhsd,
         ref_dV_bhsd,
         ref_dBias,
     ) = torch.ops.aten._scaled_dot_product_efficient_attention_backward(
-        dOut_bhsd,
-        Q_bhsd,
-        K_bhsd,
-        V_bhsd,
-        attn_bias,
-        out_bhsd,
-        lse,
+        ref_dOut_bhsd,
+        ref_Q_bhsd,
+        ref_K_bhsd,
+        ref_V_bhsd,
+        ref_bias,
+        ref_out_bhsd,
+        ref_lse,
         philox_seed,
         philox_offset,
         0.0,
