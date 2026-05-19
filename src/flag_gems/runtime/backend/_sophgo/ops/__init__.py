@@ -30,6 +30,7 @@ from .logical_and import logical_and
 from .logical_not import logical_not
 from .logical_or import logical_or
 from .logical_xor import logical_xor
+from .log_softmax import log_softmax
 from .max import max, max_dim
 from .masked_select import masked_select
 from .min import min, min_dim
@@ -116,6 +117,7 @@ __all__ = [
     "logical_not",
     "logical_or",
     "logical_xor",
+    "log_softmax",
     "max",
     "max_dim",
     "masked_select",

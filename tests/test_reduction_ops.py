@@ -401,6 +401,9 @@ def test_accuracy_log_softmax(shape, dtype, dim):
 
 
 @pytest.mark.log_softmax
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sophgo", reason="Not support backward"
+)
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", [0, 1] if flag_gems.vendor_name == "cambricon" else [1])
