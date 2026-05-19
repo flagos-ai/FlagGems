@@ -70,7 +70,7 @@ def _input_fn_out(b, m, n, k, dtype, device, b_column_major):
     bias = torch.randn([b, m, n], dtype=dtype, device=device)
     out = torch.empty([b, m, n], dtype=dtype, device=device)
 
-    yield (bias, inp1, inp2), {"out": out}
+    yield bias, inp1, inp2, {"out": out}
 
 
 @pytest.mark.baddbmm_out
