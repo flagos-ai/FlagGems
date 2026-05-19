@@ -3125,6 +3125,18 @@ ops:
       - Tensor
     stages:
       - beta: '5.0'
+  - id: linalg_eig
+    description: |
+      Computes the eigenvalue decomposition of a square matrix.
+    for:
+      - linalg_eig
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.1'
   - id: linspace
     description: |
       Creates a one-dimensional tensor of size `steps` whose values are evenly spaced from `start` to `end`, inclusive.
