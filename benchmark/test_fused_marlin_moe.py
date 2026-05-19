@@ -15,6 +15,7 @@ try:
     )
     from vllm.scalar_type import scalar_types
 
+    VLLM_QUANT_TYPE = scalar_types.uint4b8
     HAS_VLLM_FUSED_MARLIN_MOE = True
 except ImportError:
     HAS_VLLM_FUSED_MARLIN_MOE = False
@@ -39,7 +40,6 @@ def is_cuda_available():
 CUDA_AVAILABLE = is_cuda_available()
 
 GROUP_SIZE = 128
-VLLM_QUANT_TYPE = scalar_types.uint4b8
 
 
 def _wna16_quantize_per_expert(w_fp):
