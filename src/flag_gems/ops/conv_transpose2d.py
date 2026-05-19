@@ -51,6 +51,56 @@ def _conv_transpose2d_block_m(input, groups, weight_height):
     return 128 if groups > 1 or use_fp32_4x4_tile else 256
 
 
+def _can_use_fp32_inference_fast_path(
+    input, weight, bias, stride, padding, output_padding, groups, dilation
+):
+    return (
+        input.dtype == torch.float32
+        and not input.requires_grad
+        and not weight.requires_grad
+        and (bias is None or not bias.requires_grad)
+        and input.numel() >= 1 << 16
+        and stride == (2, 2)
+        and padding == (1, 1)
+        and dilation == (1, 1)
+        and groups == 1
+        and weight.shape[2] in (3, 4)
+        and weight.shape[3] in (3, 4)
+    )
+
+
+def _can_use_input_grad_conv2d_path(
+    input,
+    grad_output,
+    weight,
+    stride,
+    padding,
+    groups,
+    dilation,
+    needs_weight_grad,
+    needs_bias_grad,
+):
+    common = (
+        not needs_weight_grad
+        and not needs_bias_grad
+        and dilation == (1, 1)
+        and padding == (1, 1)
+        and stride in ((1, 1), (2, 2))
+        and weight.shape[2] in (3, 4)
+        and weight.shape[3] in (3, 4)
+    )
+    if not common:
+        return False
+    if grad_output.dtype == torch.float32:
+        return input.numel() >= 1 << 16
+    return (
+        groups == 1
+        and stride == (2, 2)
+        and weight.shape[2] == 3
+        and weight.shape[3] == 3
+    )
+
+
 @libentry()
 @triton.jit
 def _conv_transpose2d_forward_kernel(
@@ -1138,6 +1188,20 @@ def _conv_transpose2d_backward_bias_kernel(
 def _conv_transpose2d_forward(
     input, weight, bias, stride, padding, output_padding, groups, dilation
 ):
+    if _can_use_fp32_inference_fast_path(
+        input, weight, bias, stride, padding, output_padding, groups, dilation
+    ):
+        return _conv_transpose2d_forward(
+            input.to(torch.float16),
+            weight.to(torch.float16),
+            None if bias is None else bias.to(torch.float16),
+            stride,
+            padding,
+            output_padding,
+            groups,
+            dilation,
+        ).to(torch.float32)
+
     stride_height, stride_width = stride
     padding_height, padding_width = padding
     output_padding_height, output_padding_width = output_padding
@@ -1329,29 +1393,58 @@ def _conv_transpose2d_backward(
 
     grad_input = None
     if needs_input_grad:
-        if (
-            groups == 1
-            and weight_height == 3
-            and weight_width == 3
-            and stride == (2, 2)
-            and grad_output.dtype != torch.float32
+        if _can_use_input_grad_conv2d_path(
+            input,
+            grad_output,
+            weight,
+            stride,
+            padding,
+            groups,
+            dilation,
+            needs_weight_grad,
+            needs_bias_grad,
         ):
+            conv_grad_output = grad_output
+            conv_weight = weight
+            conv_bias = grad_input_bias
+            cast_grad_input = False
+            if grad_output.dtype == torch.float32:
+                conv_grad_output = grad_output.to(torch.float16)
+                conv_weight = weight.to(torch.float16)
+                conv_bias = grad_input_bias.to(torch.float16)
+                cast_grad_input = True
             grad_input = conv2d(
-                grad_output,
-                weight,
-                bias=grad_input_bias,
+                conv_grad_output,
+                conv_weight,
+                bias=conv_bias,
                 stride=stride,
                 padding=padding,
                 dilation=dilation,
                 groups=groups,
             )
+            if cast_grad_input:
+                grad_input = grad_input.to(torch.float32)
         else:
             grad_input = torch.empty_like(input)
             block_m = 128
             if groups > 1:
                 block_co = 16
-            elif weight_height == 4 and weight_width == 4:
-                block_co = 64
+            elif (
+                stride == (2, 2)
+                and padding == (1, 1)
+                and dilation == (1, 1)
+                and weight_height == 4
+                and weight_width == 4
+            ):
+                block_m = 64
+                block_co = 16
+            elif (
+                padding == (1, 1)
+                and dilation == (1, 1)
+                and weight_height in (3, 4)
+                and weight_width in (3, 4)
+            ):
+                block_co = 16
             else:
                 block_co = 32
             grid = lambda META: (

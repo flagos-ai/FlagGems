@@ -25,10 +25,6 @@ def _temporary_backend_attr(backend, name, value):
 
 @contextlib.contextmanager
 def _benchmark_backend_flags():
-    if flag_gems.vendor_name != "nvidia":
-        yield
-        return
-
     with contextlib.ExitStack() as stack:
         cudnn_backend = getattr(torch.backends, "cudnn", None)
         if cudnn_backend is not None and hasattr(cudnn_backend, "flags"):
