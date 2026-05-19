@@ -566,8 +566,12 @@ def _build_subops_case(device: str = "cuda"):
 
     case.update(
         {
-            "topk_indices": torch.randint(0, 256, (256, 64), device=device, dtype=torch.int32),
-            "token_to_req": torch.randint(0, 2, (256,), device=device, dtype=torch.int32),
+            "topk_indices": torch.randint(
+                0, 256, (256, 64), device=device, dtype=torch.int32
+            ),
+            "token_to_req": torch.randint(
+                0, 2, (256,), device=device, dtype=torch.int32
+            ),
             "blk_tbl": torch.randint(0, 64, (2, 64), device=device, dtype=torch.int32),
             "valid": torch.randint(0, 2, (256,), device=device, dtype=torch.int32),
         }
@@ -575,7 +579,9 @@ def _build_subops_case(device: str = "cuda"):
 
     case.update(
         {
-            "query_start_loc": torch.tensor([0, 128, 256], device=device, dtype=torch.int32),
+            "query_start_loc": torch.tensor(
+                [0, 128, 256], device=device, dtype=torch.int32
+            ),
             "seq_lens2": torch.tensor([1024, 1024], device=device, dtype=torch.int32),
             "gather_lens2": torch.tensor([512, 512], device=device, dtype=torch.int32),
             "topk2": torch.randint(0, 256, (256, 64), device=device, dtype=torch.int32),

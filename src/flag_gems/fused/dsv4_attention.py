@@ -4,7 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.fused.flashmla_sparse import flash_mla_sparse_fwd as _flash_mla_sparse_fwd_impl
+from flag_gems.fused.flashmla_sparse import (
+    flash_mla_sparse_fwd as _flash_mla_sparse_fwd_impl,
+)
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._nvidia.hopper.ops.w8a8_block_fp8_matmul import (
     w8a8_block_fp8_matmul,
