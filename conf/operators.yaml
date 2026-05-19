@@ -3125,6 +3125,19 @@ ops:
       - Tensor
     stages:
       - beta: '5.0'
+  - id: linalg_eigvals
+    description: |
+      Computes the eigenvalues of a square matrix.
+    for:
+      - linalg_eigvals
+    labels:
+      - aten
+      - LinearAlg
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.1'
   - id: linspace
     description: |
       Creates a one-dimensional tensor of size `steps` whose values are evenly spaced from `start` to `end`, inclusive.
