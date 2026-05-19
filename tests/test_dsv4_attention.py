@@ -482,8 +482,9 @@ def test_dsv4_vs_vllm_subops_accuracy():
     k = torch.randn((num_tokens, head_dim), device=device, dtype=torch.bfloat16)
     token_data_size = 448 + 64 * 2
     scale_slots = 8
-    block_stride = block_size * token_data_size + block_size * scale_slots
-    cache = torch.zeros((2, block_stride), device=device, dtype=torch.uint8)
+    head_bytes = token_data_size + scale_slots
+    cache_3d = torch.empty((2, block_size, head_bytes), device=device, dtype=torch.uint8)
+    cache = cache_3d.view(2, -1)
     slot_mapping = torch.arange(num_tokens, device=device, dtype=torch.int64)
     vllm_quantize_and_insert_k_cache(k, cache, slot_mapping, block_size=block_size)
     seq_lens = torch.tensor([num_tokens], device=device, dtype=torch.int32)
@@ -505,7 +506,7 @@ def test_dsv4_vs_vllm_subops_accuracy():
     )
     vllm_dequantize_and_gather_k_cache(
         out_vl,
-        cache,
+        cache_3d,
         seq_lens,
         gather_lens,
         block_table,

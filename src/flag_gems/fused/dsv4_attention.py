@@ -28,7 +28,11 @@ def _default_scale_slots(nope_dim: int) -> int:
 def _as_cache_2d(k_cache: torch.Tensor) -> torch.Tensor:
     if k_cache.ndim == 2:
         return k_cache
-    return k_cache.contiguous().view(k_cache.shape[0], -1)
+    if k_cache.ndim == 3:
+        if k_cache.is_contiguous():
+            return k_cache.view(k_cache.shape[0], -1)
+        return k_cache.contiguous().view(k_cache.shape[0], -1)
+    raise ValueError(f"k_cache must be 2D or 3D, got shape={tuple(k_cache.shape)}")
 
 
 @triton.jit(do_not_specialize=["eps"])

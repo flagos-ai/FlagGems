@@ -26,6 +26,9 @@ try:
     from vllm.v1.attention.ops.deepseek_v4_ops import (
         fused_q_kv_rmsnorm as vllm_fused_q_kv_rmsnorm,
     )
+    from vllm.v1.attention.ops.deepseek_v4_ops import (
+        quantize_and_insert_k_cache as vllm_quantize_and_insert_k_cache,
+    )
     from vllm.v1.attention.ops.flashmla import (
         flash_mla_sparse_fwd as vllm_flash_mla_sparse_fwd,
     )
@@ -291,41 +294,44 @@ def _rms_vllm_vs_fg_op(qr, kv, q_weight, kv_weight, eps):
 def _gather_fg_vs_vllm_op(
     out_fg,
     out_vl,
-    cache,
+    cache_fg,
+    cache_vl,
     seq_lens,
     gather_lens,
     block_table,
     block_size,
     offset,
 ):
-    _ = out_vl
+    _ = out_vl, cache_vl
     return dsv4_dequantize_and_gather_k_cache(
         out_fg,
-        cache,
+        cache_fg,
         seq_lens,
         gather_lens,
         block_table,
         block_size,
         offset=offset,
         rope_dim=64,
-        nope_dim=512,
+        nope_dim=448,
+        scale_slots=8,
     )
 
 
 def _gather_vllm_vs_fg_op(
     out_fg,
     out_vl,
-    cache,
+    cache_fg,
+    cache_vl,
     seq_lens,
     gather_lens,
     block_table,
     block_size,
     offset,
 ):
-    _ = out_fg
+    _ = out_fg, cache_fg
     return vllm_dequantize_and_gather_k_cache(
         out_vl,
-        cache,
+        cache_vl,
         seq_lens,
         gather_lens,
         block_table,
@@ -477,7 +483,8 @@ class DSV4GatherVsVLLMBenchmark(base.Benchmark):
         yield (
             self.case["out_fg"],
             self.case["out_vl"],
-            self.case["cache"],
+            self.case["cache_fg"],
+            self.case["cache_vl"],
             self.case["seq_lens"],
             self.case["gather_lens"],
             self.case["block_table"],
@@ -548,18 +555,36 @@ def _build_subops_case(device: str = "cuda"):
         "eps": 1e-6,
     }
 
-    cache = _build_decode_cache(512, 64, 576, 64, device)
+    num_tokens = 512
+    head_dim = 512
+    block_size = 64
+    token_data_size = 448 + 64 * 2
+    scale_slots = 8
+    head_bytes = token_data_size + scale_slots
+    num_blocks = max(2, (num_tokens + block_size - 1) // block_size + 1)
+
+    k = torch.randn((num_tokens, head_dim), device=device, dtype=torch.bfloat16)
+    slot_mapping = torch.arange(num_tokens, device=device, dtype=torch.int64)
+    cache_vl_3d = torch.empty(
+        (num_blocks, block_size, head_bytes), device=device, dtype=torch.uint8
+    )
+    cache_fg_2d = cache_vl_3d.view(num_blocks, -1)
+    vllm_quantize_and_insert_k_cache(k, cache_fg_2d, slot_mapping, block_size=block_size)
+
     case.update(
         {
-            "cache": cache,
-            "out_fg": torch.empty((1, 512, 576), device=device, dtype=torch.bfloat16),
-            "out_vl": torch.empty((1, 512, 576), device=device, dtype=torch.bfloat16),
-            "seq_lens": torch.tensor([512], device=device, dtype=torch.int32),
-            "gather_lens": torch.tensor([512], device=device, dtype=torch.int32),
+            "cache_fg": cache_fg_2d,
+            "cache_vl": cache_vl_3d,
+            "out_fg": torch.empty((1, 512, head_dim), device=device, dtype=torch.bfloat16),
+            "out_vl": torch.empty((1, 512, head_dim), device=device, dtype=torch.bfloat16),
+            "seq_lens": torch.tensor([num_tokens], device=device, dtype=torch.int32),
+            "gather_lens": torch.tensor([num_tokens], device=device, dtype=torch.int32),
             "block_table": torch.tensor(
-                [[i for i in range(8)]], device=device, dtype=torch.int32
+                [[i for i in range((num_tokens + block_size - 1) // block_size)]],
+                device=device,
+                dtype=torch.int32,
             ),
-            "block_size": 64,
+            "block_size": block_size,
             "offset": 0,
         }
     )
