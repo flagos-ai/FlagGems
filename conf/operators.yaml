@@ -2161,6 +2161,8 @@ ops:
       - fused
       - Attention
       - vLLM
+    kind:
+      - NeuralNetwork
     stages:
       - alpha: '5.1'
   - id: flip
@@ -2815,6 +2817,30 @@ ops:
       - Tensor
     stages:
       - stable: '4.0'
+  - id: index_copy
+    description: |
+      Copies the elements from `source` into `input` at the positions specified by
+      `index` along the given `dim`.
+    for:
+      - index_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: index_copy_
+    description: The in-place version of `index_copy()`.
+    for:
+      - index_copy_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: index_put
     description: |
       Puts values from the tensor `values` into the tensor `input` using the indices specified

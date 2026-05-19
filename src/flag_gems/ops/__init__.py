@@ -170,6 +170,7 @@ from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
+from flag_gems.ops.index_copy_ import index_copy, index_copy_
 from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.isclose import allclose, isclose
@@ -222,7 +223,7 @@ from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
-from flag_gems.ops.mm import mm, mm_out
+from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
@@ -339,6 +340,7 @@ from flag_gems.ops.stack import stack
 from flag_gems.ops.std import std
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
+from flag_gems.ops.svd import svd
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
@@ -600,6 +602,8 @@ __all__ = [
     "index",
     "index_add",
     "index_add_",
+    "index_copy",
+    "index_copy_",
     "index_put",
     "index_put_",
     "index_select",
@@ -810,6 +814,7 @@ __all__ = [
     "sum_dim",
     "sum_dim_out",
     "sum_out",
+    "svd",
     "ScaleDotProductAttention",
     "SUPPORTED_FP8_DTYPE",
     "t_copy",
@@ -849,6 +854,7 @@ __all__ = [
     "vector_norm",
     "vstack",
     "fp8_matmul",
+    "router_gemm",
     "w8a8_block_fp8_matmul",
     "weight_norm_interface",
     "weight_norm_interface_backward",
