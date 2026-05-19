@@ -354,7 +354,7 @@ def _scatter_mul_2d_lastdim_pow2_large(inp, index, src, out):
         loop = 1
         num_warps = 1
     grid = (index.size(0), triton.cdiv(index.size(1), block * loop))
-    if inp.dtype == torch.float32:
+    if inp.dtype in (torch.float16, torch.float32):
         _scatter_mul_2d_lastdim_pow2_large_pair_kernel[grid](
             src,
             index,
