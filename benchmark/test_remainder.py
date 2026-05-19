@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from . import base, consts, utils
+from . import base, consts
 
 
 @pytest.mark.remainder_tensor
