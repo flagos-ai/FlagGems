@@ -297,6 +297,7 @@ from flag_gems.ops.rsub import rsub_scalar, rsub_tensor
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
 from flag_gems.ops.scatter_add_ import scatter_add_
+from flag_gems.ops.scatter_reduce import scatter_reduce, scatter_reduce_out
 from flag_gems.ops.scatter_reduce_ import scatter_reduce_
 from flag_gems.ops.select_backward import select_backward
 from flag_gems.ops.select_scatter import select_scatter
@@ -751,6 +752,8 @@ __all__ = [
     "scatter",
     "scatter_",
     "scatter_add_",
+    "scatter_reduce",
+    "scatter_reduce_out",
     "scatter_reduce_",
     "select_backward",
     "select_scatter",

@@ -4958,6 +4958,21 @@ ops:
       - Tensor
     stages:
       - stable: '3.0'
+  - id: scatter_reduce_two
+    description: |
+      Out-of-place scatter reduce operator. Reduces all values from `src` into `self`
+      at the indices specified in `index` along the given `dim` using the specified
+      reduction (`sum`, `prod`, `mean`, `amax`, `amin`). Returns a new tensor.
+    for:
+      - scatter_reduce.two
+      - scatter_reduce.two_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
   - id: scatter_reduce_two_
     description: |
       A specific low-level ATen operator primarily encountered during model compilation
