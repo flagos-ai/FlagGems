@@ -13,6 +13,7 @@ if torch_device_fn.is_available() and get_device_capability() >= (9, 0):
 else:
     SUPPORTED_FP8_DTYPE = torch.float32
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -113,11 +114,10 @@ def _per_token_group_quant_fp8_m2(
 ):
     groups_per_row = y_num_columns // group_size
     pid = tl.program_id(0)
-  
     pairs_per_row = groups_per_row // 2
     row = pid // pairs_per_row
     pair_id = pid % pairs_per_row
-    
+
     group0 = pair_id * 2
     group1 = group0 + 1
 
@@ -128,7 +128,7 @@ def _per_token_group_quant_fp8_m2(
 
     y_ptr0 = base + group0 * group_size
     y_ptr1 = base + group1 * group_size
-   
+
     y_q_ptr0 = y_q_ptr + g0 * group_size
     y_q_ptr1 = y_q_ptr + g1 * group_size
 
@@ -143,25 +143,25 @@ def _per_token_group_quant_fp8_m2(
 
     abs0 = tl.abs(y0)
     abs1 = tl.abs(y1)
-    
+
     max0 = tl.max(abs0)
     max1 = tl.max(abs1)
-    
+
     y_s0 = tl.maximum(max0, eps) / fp8_max
     y_s1 = tl.maximum(max1, eps) / fp8_max
-   
+
     if scale_ue8m0:
         y_s0 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s0), 1e-10))))
         y_s1 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s1), 1e-10))))
-        
+
     y_q0 = tl.clamp(y0 / y_s0, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     y_q1 = tl.clamp(y1 / y_s1, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-    
+
     tl.store(y_q_ptr0 + cols, y_q0, mask=mask)
     tl.store(y_s_ptr0, y_s0)
     tl.store(y_q_ptr1 + cols, y_q1, mask=mask)
     tl.store(y_s_ptr1, y_s1)
-    
+
 
 @triton.jit
 def _per_token_group_quant_fp8_colmajor_m2(
@@ -180,50 +180,49 @@ def _per_token_group_quant_fp8_colmajor_m2(
 ):
     groups_per_row = y_num_columns // group_size
     pid = tl.program_id(0)
-  
     pairs_per_row = groups_per_row // 2
     row = pid // pairs_per_row
     pair_id = pid % pairs_per_row
 
     group0 = pair_id * 2
     group1 = group0 + 1
-   
+
     g0 = row * groups_per_row + group0
     g1 = g0 + 1
-    
+
     base = y_ptr + row * y_row_stride
 
     y_ptr0 = base + group0 * group_size
     y_ptr1 = base + group1 * group_size
-    
+
     y_q_ptr0 = y_q_ptr + g0 * group_size
     y_q_ptr1 = y_q_ptr + g1 * group_size
-    
+
     y_s_ptr0 = y_s_ptr + group0 * y_s_col_stride + row
     y_s_ptr1 = y_s_ptr + group1 * y_s_col_stride + row
-    
+
     cols = tl.arange(0, BLOCK)
     mask = cols < group_size
 
     y0 = tl.load(y_ptr0 + cols, mask=mask, other=0.0).to(tl.float32)
     y1 = tl.load(y_ptr1 + cols, mask=mask, other=0.0).to(tl.float32)
-    
+
     abs0 = tl.abs(y0)
     abs1 = tl.abs(y1)
-    
+
     max0 = tl.max(abs0)
     max1 = tl.max(abs1)
-   
+
     y_s0 = tl.maximum(max0, eps) / fp8_max
     y_s1 = tl.maximum(max1, eps) / fp8_max
-    
+
     if scale_ue8m0:
         y_s0 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s0), 1e-10))))
         y_s1 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s1), 1e-10))))
-        
+
     y_q0 = tl.clamp(y0 / y_s0, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     y_q1 = tl.clamp(y1 / y_s1, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-    
+
     tl.store(y_q_ptr0 + cols, y_q0, mask=mask)
     tl.store(y_s_ptr0, y_s0)
     tl.store(y_q_ptr1 + cols, y_q1, mask=mask)
@@ -246,7 +245,6 @@ def _per_token_group_quant_fp8_m4(
 ):
     groups_per_row = y_num_columns // group_size
     pid = tl.program_id(0)
-  
     pairs_per_row = groups_per_row // 4
     row = pid // pairs_per_row
     pair_id = pid % pairs_per_row
@@ -255,29 +253,29 @@ def _per_token_group_quant_fp8_m4(
     group1 = group0 + 1
     group2 = group0 + 2
     group3 = group0 + 3
-    
+
     g0 = row * groups_per_row + group0
     g1 = g0 + 1
     g2 = g1 + 1
     g3 = g2 + 1
-   
+
     base = y_ptr + row * y_row_stride
 
     y_ptr0 = base + group0 * group_size
     y_ptr1 = base + group1 * group_size
     y_ptr2 = base + group2 * group_size
     y_ptr3 = base + group3 * group_size
-    
+
     y_q_ptr0 = y_q_ptr + g0 * group_size
     y_q_ptr1 = y_q_ptr + g1 * group_size
     y_q_ptr2 = y_q_ptr + g2 * group_size
     y_q_ptr3 = y_q_ptr + g3 * group_size
-    
+
     y_s_ptr0 = y_s_ptr + g0
     y_s_ptr1 = y_s_ptr + g1
     y_s_ptr2 = y_s_ptr + g2
     y_s_ptr3 = y_s_ptr + g3
-    
+
     cols = tl.arange(0, BLOCK)
     mask = cols < group_size
 
@@ -290,12 +288,12 @@ def _per_token_group_quant_fp8_m4(
     abs1 = tl.abs(y1)
     abs2 = tl.abs(y2)
     abs3 = tl.abs(y3)
-    
+
     max0 = tl.max(abs0)
     max1 = tl.max(abs1)
     max2 = tl.max(abs2)
     max3 = tl.max(abs3)
-   
+
     y_s0 = tl.maximum(max0, eps) / fp8_max
     y_s1 = tl.maximum(max1, eps) / fp8_max
     y_s2 = tl.maximum(max2, eps) / fp8_max
@@ -306,12 +304,12 @@ def _per_token_group_quant_fp8_m4(
         y_s1 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s1), 1e-10))))
         y_s2 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s2), 1e-10))))
         y_s3 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s3), 1e-10))))
-       
+
     y_q0 = tl.clamp(y0 / y_s0, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     y_q1 = tl.clamp(y1 / y_s1, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     y_q2 = tl.clamp(y2 / y_s2, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     y_q3 = tl.clamp(y3 / y_s3, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-   
+
     tl.store(y_q_ptr0 + cols, y_q0, mask=mask)
     tl.store(y_s_ptr0, y_s0)
     tl.store(y_q_ptr1 + cols, y_q1, mask=mask)
@@ -320,7 +318,7 @@ def _per_token_group_quant_fp8_m4(
     tl.store(y_s_ptr2, y_s2)
     tl.store(y_q_ptr3 + cols, y_q3, mask=mask)
     tl.store(y_s_ptr3, y_s3)
-    
+
 
 @triton.jit
 def _per_token_group_quant_fp8_colmajor_m4(
@@ -339,7 +337,6 @@ def _per_token_group_quant_fp8_colmajor_m4(
 ):
     groups_per_row = y_num_columns // group_size
     pid = tl.program_id(0)
-  
     pairs_per_row = groups_per_row // 4
     row = pid // pairs_per_row
     pair_id = pid % pairs_per_row
@@ -348,19 +345,19 @@ def _per_token_group_quant_fp8_colmajor_m4(
     group1 = group0 + 1
     group2 = group1 + 1
     group3 = group2 + 1
-    
+
     g0 = row * groups_per_row + group0
     g1 = g0 + 1
     g2 = g1 + 1
     g3 = g2 + 1
-    
+
     base = y_ptr + row * y_row_stride
 
     y_ptr0 = base + group0 * group_size
     y_ptr1 = base + group1 * group_size
     y_ptr2 = base + group2 * group_size
     y_ptr3 = base + group3 * group_size
-    
+
     y_q_ptr0 = y_q_ptr + g0 * group_size
     y_q_ptr1 = y_q_ptr + g1 * group_size
     y_q_ptr2 = y_q_ptr + g2 * group_size
@@ -370,7 +367,7 @@ def _per_token_group_quant_fp8_colmajor_m4(
     y_s_ptr1 = y_s_ptr + group1 * y_s_col_stride + row
     y_s_ptr2 = y_s_ptr + group2 * y_s_col_stride + row
     y_s_ptr3 = y_s_ptr + group3 * y_s_col_stride + row
-    
+
     cols = tl.arange(0, BLOCK)
     mask = cols < group_size
 
@@ -378,33 +375,33 @@ def _per_token_group_quant_fp8_colmajor_m4(
     y1 = tl.load(y_ptr1 + cols, mask=mask, other=0.0).to(tl.float32)
     y2 = tl.load(y_ptr2 + cols, mask=mask, other=0.0).to(tl.float32)
     y3 = tl.load(y_ptr3 + cols, mask=mask, other=0.0).to(tl.float32)
-    
+
     abs0 = tl.abs(y0)
     abs1 = tl.abs(y1)
     abs2 = tl.abs(y2)
     abs3 = tl.abs(y3)
-    
+
     max0 = tl.max(abs0)
     max1 = tl.max(abs1)
     max2 = tl.max(abs2)
     max3 = tl.max(abs3)
-    
+
     y_s0 = tl.maximum(max0, eps) / fp8_max
     y_s1 = tl.maximum(max1, eps) / fp8_max
     y_s2 = tl.maximum(max2, eps) / fp8_max
     y_s3 = tl.maximum(max3, eps) / fp8_max
-   
+
     if scale_ue8m0:
         y_s0 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s0), 1e-10))))
         y_s1 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s1), 1e-10))))
         y_s2 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s2), 1e-10))))
         y_s3 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s3), 1e-10))))
-        
+
     y_q0 = tl.clamp(y0 / y_s0, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     y_q1 = tl.clamp(y1 / y_s1, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     y_q2 = tl.clamp(y2 / y_s2, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     y_q3 = tl.clamp(y3 / y_s3, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-   
+
     tl.store(y_q_ptr0 + cols, y_q0, mask=mask)
     tl.store(y_s_ptr0, y_s0)
     tl.store(y_q_ptr1 + cols, y_q1, mask=mask)
@@ -413,7 +410,7 @@ def _per_token_group_quant_fp8_colmajor_m4(
     tl.store(y_s_ptr2, y_s2)
     tl.store(y_q_ptr3 + cols, y_q3, mask=mask)
     tl.store(y_s_ptr3, y_s3)
-   
+
 
 @triton.jit
 def _per_token_group_quant_fp8_m8(
@@ -431,7 +428,6 @@ def _per_token_group_quant_fp8_m8(
 ):
     groups_per_row = y_num_columns // group_size
     pid = tl.program_id(0)
-  
     pairs_per_row = groups_per_row // 8
     row = pid // pairs_per_row
     pair_id = pid % pairs_per_row
@@ -444,7 +440,7 @@ def _per_token_group_quant_fp8_m8(
     group5 = group0 + 5
     group6 = group0 + 6
     group7 = group0 + 7
-    
+
     g0 = row * groups_per_row + group0
     g1 = g0 + 1
     g2 = g1 + 1
@@ -453,7 +449,7 @@ def _per_token_group_quant_fp8_m8(
     g5 = g4 + 1
     g6 = g5 + 1
     g7 = g6 + 1
-    
+
     base = y_ptr + row * y_row_stride
 
     y_ptr0 = base + group0 * group_size
@@ -464,7 +460,7 @@ def _per_token_group_quant_fp8_m8(
     y_ptr5 = base + group5 * group_size
     y_ptr6 = base + group6 * group_size
     y_ptr7 = base + group7 * group_size
-   
+
     y_q_ptr0 = y_q_ptr + g0 * group_size
     y_q_ptr1 = y_q_ptr + g1 * group_size
     y_q_ptr2 = y_q_ptr + g2 * group_size
@@ -473,7 +469,7 @@ def _per_token_group_quant_fp8_m8(
     y_q_ptr5 = y_q_ptr + g5 * group_size
     y_q_ptr6 = y_q_ptr + g6 * group_size
     y_q_ptr7 = y_q_ptr + g7 * group_size
-  
+
     y_s_ptr0 = y_s_ptr + g0
     y_s_ptr1 = y_s_ptr + g1
     y_s_ptr2 = y_s_ptr + g2
@@ -482,7 +478,7 @@ def _per_token_group_quant_fp8_m8(
     y_s_ptr5 = y_s_ptr + g5
     y_s_ptr6 = y_s_ptr + g6
     y_s_ptr7 = y_s_ptr + g7
-    
+
     cols = tl.arange(0, BLOCK)
     mask = cols < group_size
 
@@ -512,7 +508,6 @@ def _per_token_group_quant_fp8_m8(
     max5 = tl.max(abs5)
     max6 = tl.max(abs6)
     max7 = tl.max(abs7)
-    
     y_s0 = tl.maximum(max0, eps) / fp8_max
     y_s1 = tl.maximum(max1, eps) / fp8_max
     y_s2 = tl.maximum(max2, eps) / fp8_max
@@ -521,7 +516,7 @@ def _per_token_group_quant_fp8_m8(
     y_s5 = tl.maximum(max5, eps) / fp8_max
     y_s6 = tl.maximum(max6, eps) / fp8_max
     y_s7 = tl.maximum(max7, eps) / fp8_max
-    
+
     if scale_ue8m0:
         y_s0 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s0), 1e-10))))
         y_s1 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s1), 1e-10))))
@@ -531,7 +526,7 @@ def _per_token_group_quant_fp8_m8(
         y_s5 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s5), 1e-10))))
         y_s6 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s6), 1e-10))))
         y_s7 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s7), 1e-10))))
-   
+
     y_q0 = tl.clamp(y0 / y_s0, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     y_q1 = tl.clamp(y1 / y_s1, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     y_q2 = tl.clamp(y2 / y_s2, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
@@ -540,7 +535,7 @@ def _per_token_group_quant_fp8_m8(
     y_q5 = tl.clamp(y5 / y_s5, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     y_q6 = tl.clamp(y6 / y_s6, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     y_q7 = tl.clamp(y7 / y_s7, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-  
+
     tl.store(y_q_ptr0 + cols, y_q0, mask=mask)
     tl.store(y_s_ptr0, y_s0)
     tl.store(y_q_ptr1 + cols, y_q1, mask=mask)
@@ -557,7 +552,7 @@ def _per_token_group_quant_fp8_m8(
     tl.store(y_s_ptr6, y_s6)
     tl.store(y_q_ptr7 + cols, y_q7, mask=mask)
     tl.store(y_s_ptr7, y_s7)
-  
+
 
 @triton.jit
 def _per_token_group_quant_fp8_colmajor_m8(
@@ -576,7 +571,6 @@ def _per_token_group_quant_fp8_colmajor_m8(
 ):
     groups_per_row = y_num_columns // group_size
     pid = tl.program_id(0)
-  
     pairs_per_row = groups_per_row // 8
     row = pid // pairs_per_row
     pair_id = pid % pairs_per_row
@@ -589,7 +583,7 @@ def _per_token_group_quant_fp8_colmajor_m8(
     group5 = group4 + 1
     group6 = group5 + 1
     group7 = group6 + 1
-   
+
     g0 = row * groups_per_row + group0
     g1 = g0 + 1
     g2 = g1 + 1
@@ -598,7 +592,7 @@ def _per_token_group_quant_fp8_colmajor_m8(
     g5 = g4 + 1
     g6 = g5 + 1
     g7 = g6 + 1
-    
+
     base = y_ptr + row * y_row_stride
 
     y_ptr0 = base + group0 * group_size
@@ -609,7 +603,7 @@ def _per_token_group_quant_fp8_colmajor_m8(
     y_ptr5 = base + group5 * group_size
     y_ptr6 = base + group6 * group_size
     y_ptr7 = base + group7 * group_size
- 
+
     y_q_ptr0 = y_q_ptr + g0 * group_size
     y_q_ptr1 = y_q_ptr + g1 * group_size
     y_q_ptr2 = y_q_ptr + g2 * group_size
@@ -618,7 +612,7 @@ def _per_token_group_quant_fp8_colmajor_m8(
     y_q_ptr5 = y_q_ptr + g5 * group_size
     y_q_ptr6 = y_q_ptr + g6 * group_size
     y_q_ptr7 = y_q_ptr + g7 * group_size
-    
+
     y_s_ptr0 = y_s_ptr + group0 * y_s_col_stride + row
     y_s_ptr1 = y_s_ptr + group1 * y_s_col_stride + row
     y_s_ptr2 = y_s_ptr + group2 * y_s_col_stride + row
@@ -627,7 +621,7 @@ def _per_token_group_quant_fp8_colmajor_m8(
     y_s_ptr5 = y_s_ptr + group5 * y_s_col_stride + row
     y_s_ptr6 = y_s_ptr + group6 * y_s_col_stride + row
     y_s_ptr7 = y_s_ptr + group7 * y_s_col_stride + row
-  
+
     cols = tl.arange(0, BLOCK)
     mask = cols < group_size
 
@@ -639,7 +633,7 @@ def _per_token_group_quant_fp8_colmajor_m8(
     y5 = tl.load(y_ptr5 + cols, mask=mask, other=0.0).to(tl.float32)
     y6 = tl.load(y_ptr6 + cols, mask=mask, other=0.0).to(tl.float32)
     y7 = tl.load(y_ptr7 + cols, mask=mask, other=0.0).to(tl.float32)
-   
+
     abs0 = tl.abs(y0)
     abs1 = tl.abs(y1)
     abs2 = tl.abs(y2)
@@ -648,7 +642,7 @@ def _per_token_group_quant_fp8_colmajor_m8(
     abs5 = tl.abs(y5)
     abs6 = tl.abs(y6)
     abs7 = tl.abs(y7)
- 
+
     max0 = tl.max(abs0)
     max1 = tl.max(abs1)
     max2 = tl.max(abs2)
@@ -657,7 +651,7 @@ def _per_token_group_quant_fp8_colmajor_m8(
     max5 = tl.max(abs5)
     max6 = tl.max(abs6)
     max7 = tl.max(abs7)
-   
+
     y_s0 = tl.maximum(max0, eps) / fp8_max
     y_s1 = tl.maximum(max1, eps) / fp8_max
     y_s2 = tl.maximum(max2, eps) / fp8_max
@@ -685,7 +679,7 @@ def _per_token_group_quant_fp8_colmajor_m8(
     y_q5 = tl.clamp(y5 / y_s5, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     y_q6 = tl.clamp(y6 / y_s6, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     y_q7 = tl.clamp(y7 / y_s7, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
- 
+
     tl.store(y_q_ptr0 + cols, y_q0, mask=mask)
     tl.store(y_s_ptr0, y_s0)
     tl.store(y_q_ptr1 + cols, y_q1, mask=mask)
