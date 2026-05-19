@@ -7,7 +7,9 @@ from . import base, consts
 @pytest.mark.any
 def test_any():
     bench = base.UnaryReductionBenchmark(
-        op_name="any", torch_op=torch.any, dtypes=consts.FLOAT_DTYPES + consts.BOOL_DTYPES
+        op_name="any",
+        torch_op=torch.any,
+        dtypes=consts.FLOAT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()
 
@@ -15,7 +17,9 @@ def test_any():
 @pytest.mark.any_dim
 def test_any_dim():
     bench = base.UnaryReductionBenchmark(
-        op_name="any_dim", torch_op=torch.any, dtypes=consts.FLOAT_DTYPES + consts.BOOL_DTYPES
+        op_name="any_dim",
+        torch_op=torch.any,
+        dtypes=consts.FLOAT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()
 
