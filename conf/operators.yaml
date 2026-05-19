@@ -269,6 +269,19 @@ ops:
       - Tensor
     stages:
       - beta: '5.0'
+  - id: alpha_dropout
+    description: |
+      Applies alpha dropout to the input tensor during training.
+    for:
+      - alpha_dropout
+    labels:
+      - aten
+      - NeuralNetwork
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: all
     description: Tests if all elements in input evaluate to True.
     for:

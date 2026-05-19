@@ -81,6 +81,7 @@ _FULL_CONFIG = (
     ("addmm.dtype_out", addmm_dtype_out),
     ("addr", addr),
     ("alias_copy", alias_copy),
+    ("alpha_dropout", alpha_dropout),
     ("all", all),
     ("all.dim", all_dim),
     ("all.dims", all_dims),
