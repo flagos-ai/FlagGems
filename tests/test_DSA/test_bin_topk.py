@@ -4,10 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-from flag_gems.fused.DSA.bin_topk import (
-    HAS_TLE,
-    bucket_sort_topk,
-)
+from flag_gems.fused.DSA.bin_topk import HAS_TLE, bucket_sort_topk
 
 
 def assert_set_similar(actual, expected, dtype, equal_nan=False):
