@@ -90,3 +90,20 @@ def test_sum_dim_out(shape, dim, keepdim, dtype):
         _dim = inp.numel()
     utils.gems_assert_close(res_result, ref_result, dtype, reduce_dim=_dim)
     utils.gems_assert_close(out, ref_result, dtype, reduce_dim=_dim)
+
+
+@pytest.mark.sum_out
+@pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_sum_out(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.sum(ref_inp)
+
+    out = torch.empty([], dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.sum.out(inp, out=out)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=inp.numel())
