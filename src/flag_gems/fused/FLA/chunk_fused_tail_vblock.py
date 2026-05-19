@@ -6,7 +6,6 @@ import triton.language as tl
 
 from flag_gems.utils import libentry
 
-
 _FUSED_TAIL_BV = 16
 
 
@@ -117,9 +116,7 @@ def _chunk_gated_delta_rule_fused_tail_vblock_kernel(
             mask=v_mask[None, :],
         )
 
-        g_last = tl.load(g + (i_b * T + ((i_t + 1) * BT - 1)) * H + i_h).to(
-            tl.float32
-        )
+        g_last = tl.load(g + (i_b * T + ((i_t + 1) * BT - 1)) * H + i_h).to(tl.float32)
         residual_for_state = residual * tl.exp(g_last - g_vec)[:, None]
         h_acc = h_acc * tl.exp(g_last) + tl.dot(
             k_t_block, residual_for_state.to(k_t_block.dtype)
