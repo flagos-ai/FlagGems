@@ -485,6 +485,7 @@ _FULL_CONFIG = (
     ("sum.IntList_out", sum_dim_out),
     ("sum.dim_IntList", sum_dim),
     ("sum.out", sum_out),
+    ("svd", svd),
     ("t_copy", t_copy),
     ("t_copy.out", t_copy_out),
     ("tan", tan),

@@ -398,11 +398,12 @@ def get_higher_dtype(a, b):
             return a
 
 
-def general_mm(a, b, c, M, N, K):
+def general_mm(a, b, c, M, N, K, op_name="mm"):
     # TODO: Remove this debug message
     logger.debug(
-        "GEMS MM-hopper, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "GEMS MM-hopper, [op]: %s, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
         "[A column-major]: %s, [B column-major]: %s",
+        op_name,
         M,
         N,
         K,
@@ -579,6 +580,115 @@ def gemv_mm(a, b, c, M, K):
             a.stride(1),
             b.stride(0),
             IS_FP64=a.dtype == torch.float64,
+        )
+    return c
+
+
+@libentry()
+@libtuner(
+    configs=runtime.ops_get_configs(
+        "mm_splitk",
+        pre_hook=None,
+        yaml_path=EXPAND_CONFIG_FILENAME,
+    )
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else runtime.get_tuned_config("mm_splitk"),
+    key=["M", "N", "K", "stride_am", "stride_bk"],
+    reset_to_zero=["C"],
+    strategy=runtime.get_expand_config("mm_splitk", yaml_path=EXPAND_CONFIG_FILENAME)[
+        "strategy"
+    ]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32", "align32", "align32", "align32"],
+    warmup=5,
+    rep=10,
+)
+@triton.jit
+def mm_kernel_splitk(
+    A,
+    B,
+    C,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    pid_k = tl.program_id(1)
+
+    grid_n = tl.cdiv(N, BLOCK_N)
+    pid_m = pid // grid_n
+    pid_n = pid % grid_n
+
+    offset_am = pid_m * BLOCK_M
+    offset_bn = pid_n * BLOCK_N
+    offs_am = offset_am + tl.arange(0, BLOCK_M)
+    offs_bn = offset_bn + tl.arange(0, BLOCK_N)
+
+    total_k_iters = tl.cdiv(K, BLOCK_K)
+    k_per_split = tl.cdiv(total_k_iters, SPLIT_K)
+    k_start = pid_k * k_per_split
+    k_end = min((pid_k + 1) * k_per_split, total_k_iters)
+
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(k_start, k_end):
+        offset_k = k * BLOCK_K
+        offs_k = offset_k + tl.arange(0, BLOCK_K)
+
+        a = tl.load(
+            A + offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak,
+            mask=(offs_am[:, None] < M) & (offs_k[None, :] < K),
+            other=0.0,
+        )
+        b = tl.load(
+            B + offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn,
+            mask=(offs_k[:, None] < K) & (offs_bn[None, :] < N),
+            other=0.0,
+        )
+        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+
+    offs_cm = offset_am + tl.arange(0, BLOCK_M)
+    offs_cn = offset_bn + tl.arange(0, BLOCK_N)
+    c_ptrs = C + offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn
+    mask = (offs_cm < M)[:, None] & (offs_cn < N)[None, :]
+    tl.atomic_add(c_ptrs, acc, mask=mask)
+
+
+def splitk_mm(a, b, c, M, N, K, op_name="mm"):
+    logger.debug(
+        "GEMS MM-hopper, [op]: %s, [mm scenario]: splitk, [shape info]: [-, %s, %s, %s](batch, M, N, K)",
+        op_name,
+        M,
+        N,
+        K,
+    )
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        META["SPLIT_K"],
+    )
+    with torch_device_fn.device(a.device):
+        mm_kernel_splitk[grid](
+            a,
+            b,
+            c,
+            M,
+            N,
+            K,
+            a.stride(0),
+            a.stride(1),
+            b.stride(0),
+            b.stride(1),
+            c.stride(0),
+            c.stride(1),
         )
     return c
 
@@ -868,6 +978,10 @@ def mm(a, b):
     if HAS_TLE and BLOCK_CLUSTER_MESH is not None:
         if cluster_remote_mm_scenario(a, b, c, M, N, K):
             return cluster_remote_mm(a, b, c, M, N, K)
+    # Use splitk for small M
+    if M < 2048 and N < 2048 and K >= 4096:
+        c.zero_()
+        return splitk_mm(a, b, c, M, N, K)
     return general_mm(a, b, c, M, N, K)
 
 
@@ -892,4 +1006,22 @@ def mm_out(a, b, *, out):
     if HAS_TLE and BLOCK_CLUSTER_MESH is not None:
         if cluster_remote_mm_scenario(a, b, out, M, N, K):
             return cluster_remote_mm(a, b, out, M, N, K)
+    # Use splitk for small M
+    if M < 2048 and N < 2048 and K >= 4096:
+        out.zero_()
+        return splitk_mm(a, b, out, M, N, K)
     return general_mm(a, b, out, M, N, K)
+
+
+def router_gemm(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+    """bf16 x bf16 -> fp32 GEMM for MoE router gate. weight shape: (N, K)."""
+    if x.stride(0) > 1 and x.stride(1) > 1:
+        x = x.contiguous()
+    M, K = x.shape
+    N = weight.shape[0]
+    c = torch.empty((M, N), device=x.device, dtype=torch.float32)
+    b = weight.t()
+    if M < 2048 and N < 2048 and K >= 4096:
+        c.zero_()
+        return splitk_mm(x, b, c, M, N, K, op_name="router_gemm")
+    return general_mm(x, b, c, M, N, K, op_name="router_gemm")
