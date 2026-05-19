@@ -5447,6 +5447,19 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: special_airy_ai
+    description: |
+      Computes the Airy function Ai(x) of the input tensor.
+    for:
+      - special_airy_ai
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
