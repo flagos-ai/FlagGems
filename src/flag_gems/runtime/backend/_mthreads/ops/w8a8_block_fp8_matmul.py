@@ -161,6 +161,37 @@ def w8a8_block_fp8_matmul_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
+def sqmma_descriptor_pre_hook(nargs):
+    nargs["a_desc"].block_shape = [nargs["BLOCK_M"], nargs["BLOCK_K"]]
+    nargs["b_desc"].block_shape = [nargs["BLOCK_K"], nargs["BLOCK_N"]]
+    nargs["c_desc"].block_shape = [nargs["BLOCK_M"], nargs["BLOCK_N"]]
+
+
+@libentry()
+@libtuner(
+    configs=runtime.ops_get_configs(
+        "w8a8_block_fp8_general_tma",
+        pre_hook=sqmma_descriptor_pre_hook,
+        yaml_path=EXPAND_CONFIG_FILENAME,
+    )
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else [
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 128, "GROUP_M": 8},
+            num_stages=3,
+            num_warps=4,
+            pre_hook=sqmma_descriptor_pre_hook,
+        )
+    ],
+    key=["M", "N", "K"],
+    strategy=runtime.get_expand_config(
+        "w8a8_block_fp8_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
+    )["strategy"][:3]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32", "align32"],
+    warmup=5,
+    rep=5,
+)
 @triton.jit
 def w8a8_block_fp8_matmul_sqmma_kernel(
     a_desc,
@@ -299,14 +330,9 @@ def sqmma_w8a8_block_fp8_matmul(
     if not b.is_contiguous():
         b = b.contiguous()
 
-    BLOCK_M = 64
-    BLOCK_N = 64
-    BLOCK_K = 128
-    GROUP_M = 8
-
-    desc_a = TensorDescriptor.from_tensor(a, [BLOCK_M, BLOCK_K])
-    desc_b = TensorDescriptor.from_tensor(b, [BLOCK_K, BLOCK_N])
-    desc_c = TensorDescriptor.from_tensor(c, [BLOCK_M, BLOCK_N])
+    desc_a = TensorDescriptor.from_tensor(a, [1, 1])
+    desc_b = TensorDescriptor.from_tensor(b, [1, 1])
+    desc_c = TensorDescriptor.from_tensor(c, [1, 1])
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
@@ -330,12 +356,6 @@ def sqmma_w8a8_block_fp8_matmul(
             a_s.stride(1),
             b_s.stride(0),
             b_s.stride(1),
-            GROUP_M,
-            BLOCK_M,
-            BLOCK_N,
-            BLOCK_K,
-            num_warps=4,
-            num_stages=3,
         )
     return c
 
