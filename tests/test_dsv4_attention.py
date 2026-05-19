@@ -133,8 +133,9 @@ def _build_decode_cache(
     not HAS_HOPPER_TL_FLOAT8E4NV,
     reason="DSV4 tests require NVIDIA Hopper (SM90) with tl.float8e4nv support",
 )
-def test_dsv4_subops_accuracy():
-    torch.manual_seed(0)
+@pytest.mark.parametrize("num_tokens", [17, 128])
+def test_dsv4_subops_accuracy(num_tokens):
+    torch.manual_seed(100 + num_tokens)
     device = "cuda"
 
     rms = {
@@ -161,7 +162,6 @@ def test_dsv4_subops_accuracy():
     torch.testing.assert_close(q_out, qr_ref, atol=2e-2, rtol=2e-2)
     torch.testing.assert_close(kv_out, kv_ref, atol=2e-2, rtol=2e-2)
 
-    num_tokens = 128
     head_dim = 576
     rope_dim = 64
     nope_dim = head_dim - rope_dim
@@ -170,10 +170,13 @@ def test_dsv4_subops_accuracy():
     kv_in = torch.randn((num_tokens, head_dim), device=device, dtype=torch.bfloat16)
     scale_slots = (nope_dim + 63) // 64 + (1 if nope_dim % 64 == 0 else 0)
     block_stride = block_size * (nope_dim + rope_dim * 2) + block_size * scale_slots
-    cache = torch.full((4, block_stride), 0xA5, device=device, dtype=torch.uint8)
+    num_blocks = (num_tokens + block_size - 1) // block_size
+    cache = torch.full(
+        (num_blocks, block_stride), 0xA5, device=device, dtype=torch.uint8
+    )
     slot_mapping = torch.arange(num_tokens, device=device, dtype=torch.int32)
     positions = torch.arange(num_tokens, device=device, dtype=torch.int64)
-    cos_sin = _build_cos_sin_cache(256, rope_dim, device)
+    cos_sin = _build_cos_sin_cache(num_tokens + 8, rope_dim, device)
     q = q_in.clone()
     dsv4_qnorm_rope_kv_rope_quant_insert(
         q,
@@ -196,7 +199,7 @@ def test_dsv4_subops_accuracy():
     seq_lens = torch.tensor([num_tokens], device=device, dtype=torch.int32)
     gather_lens = torch.tensor([num_tokens], device=device, dtype=torch.int32)
     block_table = torch.tensor(
-        [[0, 1, 2, 3]],
+        [[idx for idx in range(num_blocks)]],
         device=device,
         dtype=torch.int32,
     )
@@ -461,12 +464,20 @@ def test_dsv4_fp8_einsum_accuracy():
     reason="DSV4 tests require NVIDIA Hopper (SM90) with tl.float8e4nv support",
 )
 @pytest.mark.skipif(not VLLM_AVAILABLE, reason="vLLM is not installed")
-def test_dsv4_vs_vllm_subops_accuracy():
-    torch.manual_seed(42)
+@pytest.mark.parametrize(
+    "rms_tokens,num_tokens",
+    [
+        (48, 128),
+        (17, 64),
+        (257, 256),
+    ],
+)
+def test_dsv4_vs_vllm_subops_accuracy(rms_tokens, num_tokens):
+    torch.manual_seed(42 + rms_tokens + num_tokens)
     device = "cuda"
 
-    qr = torch.randn((48, 64 * 576), device=device, dtype=torch.bfloat16)
-    kv = torch.randn((48, 576), device=device, dtype=torch.bfloat16)
+    qr = torch.randn((rms_tokens, 64 * 576), device=device, dtype=torch.bfloat16)
+    kv = torch.randn((rms_tokens, 576), device=device, dtype=torch.bfloat16)
     q_weight = torch.randn((64 * 576,), device=device, dtype=torch.bfloat16)
     kv_weight = torch.randn((576,), device=device, dtype=torch.bfloat16)
     eps = 1e-6
@@ -476,22 +487,24 @@ def test_dsv4_vs_vllm_subops_accuracy():
     torch.testing.assert_close(q_fg, q_vl, atol=0, rtol=0)
     torch.testing.assert_close(kv_fg, kv_vl, atol=0, rtol=0)
 
-    num_tokens = 128
     head_dim = 512
     block_size = 64
     k = torch.randn((num_tokens, head_dim), device=device, dtype=torch.bfloat16)
     token_data_size = 448 + 64 * 2
     scale_slots = 8
     head_bytes = token_data_size + scale_slots
+    num_blocks = (num_tokens + block_size - 1) // block_size
     cache_3d = torch.empty(
-        (2, block_size, head_bytes), device=device, dtype=torch.uint8
+        (num_blocks, block_size, head_bytes), device=device, dtype=torch.uint8
     )
-    cache = cache_3d.view(2, -1)
+    cache = cache_3d.view(num_blocks, -1)
     slot_mapping = torch.arange(num_tokens, device=device, dtype=torch.int64)
     vllm_quantize_and_insert_k_cache(k, cache, slot_mapping, block_size=block_size)
     seq_lens = torch.tensor([num_tokens], device=device, dtype=torch.int32)
     gather_lens = torch.tensor([num_tokens], device=device, dtype=torch.int32)
-    block_table = torch.tensor([[0, 1]], device=device, dtype=torch.int32)
+    block_table = torch.tensor(
+        [[idx for idx in range(num_blocks)]], device=device, dtype=torch.int32
+    )
     out_fg = torch.empty((1, num_tokens, head_dim), device=device, dtype=torch.bfloat16)
     out_vl = torch.empty_like(out_fg)
     dsv4_dequantize_and_gather_k_cache(
@@ -575,15 +588,21 @@ def test_dsv4_vs_vllm_subops_accuracy():
     reason="DSV4 tests require NVIDIA Hopper (SM90) with tl.float8e4nv support",
 )
 @pytest.mark.skipif(not VLLM_AVAILABLE, reason="vLLM is not installed")
-def test_dsv4_vs_vllm_prefill_accuracy():
+@pytest.mark.parametrize(
+    "sq,skv,topk,seed",
+    [
+        (32, 128, 128, 123),
+        (17, 128, 128, 131),
+    ],
+)
+def test_dsv4_vs_vllm_prefill_accuracy(sq, skv, topk, seed):
     supported, reason = is_flashmla_sparse_supported()
     if not supported:
         pytest.skip(reason or "vLLM FlashMLA sparse is not supported")
 
-    torch.manual_seed(123)
+    torch.manual_seed(seed)
     device = "cuda"
-    sq, h, dt = 32, 64, 576
-    skv, topk = 128, 128
+    h, dt = 64, 576
     q = torch.randn((sq, h, dt), device=device, dtype=torch.bfloat16)
     kv = torch.randn((skv, 1, dt), device=device, dtype=torch.bfloat16)
     indices = torch.randint(0, skv, (sq, 1, topk), device=device, dtype=torch.int32)

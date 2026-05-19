@@ -96,13 +96,16 @@ def _build_decode_cache(
     return cache
 
 
-def _build_prefill_case(device: str = "cuda"):
-    torch.manual_seed(7)
-    sq = 64
+def _build_prefill_case(
+    device: str = "cuda",
+    sq: int = 64,
+    skv: int = 256,
+    topk: int = 128,
+    seed: int = 7,
+):
+    torch.manual_seed(seed)
     h = 64
     dt = 576
-    skv = 256
-    topk = 128
     return {
         "q": torch.randn((sq, h, dt), device=device, dtype=torch.bfloat16),
         "kv": torch.randn((skv, 1, dt), device=device, dtype=torch.bfloat16),
@@ -115,26 +118,31 @@ def _build_prefill_case(device: str = "cuda"):
     }
 
 
-def _build_decode_case(device: str = "cuda"):
-    torch.manual_seed(11)
-    bsz = 8
-    next_n = 1
+def _build_decode_case(
+    device: str = "cuda",
+    bsz: int = 8,
+    next_n: int = 1,
+    cache_tokens: int = 1024,
+    topk: int = 128,
+    seed: int = 11,
+):
+    torch.manual_seed(seed)
     h = 64
     dt = 576
-    topk = 128
     rope_dim = 64
     decode_tokens = bsz * next_n
+    index_upper = max(1, min(cache_tokens, 768))
     return {
         "q": torch.randn((bsz, next_n, h, dt), device=device, dtype=torch.bfloat16),
-        "cache": _build_decode_cache(1024, 64, dt, rope_dim, device),
+        "cache": _build_decode_cache(cache_tokens, 64, dt, rope_dim, device),
         "indices": torch.randint(
-            0, 768, (bsz, next_n, topk), device=device, dtype=torch.int32
+            0, index_upper, (bsz, next_n, topk), device=device, dtype=torch.int32
         ),
         "sm_scale": dt**-0.5,
         "attn_sink": torch.randn((h,), device=device, dtype=torch.float32),
-        "extra_cache": _build_decode_cache(1024, 64, dt, rope_dim, device),
+        "extra_cache": _build_decode_cache(cache_tokens, 64, dt, rope_dim, device),
         "extra_indices": torch.randint(
-            0, 768, (bsz, next_n, topk), device=device, dtype=torch.int32
+            0, index_upper, (bsz, next_n, topk), device=device, dtype=torch.int32
         ),
         "topk_length": torch.full(
             (decode_tokens,), topk, device=device, dtype=torch.int32
@@ -195,18 +203,31 @@ class DSV4PrefillBenchmark(base.Benchmark):
         self.case = case
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = []
+        _ = shape_file_path
+        self.shapes = [
+            (64, 256, 128, 7),
+            (17, 128, 128, 17),
+        ]
 
     def get_input_iter(self, dtype):
         _ = dtype
-        yield (
-            self.case["q"],
-            self.case["kv"],
-            self.case["indices"],
-            self.case["sm_scale"],
-            self.case["attn_sink"],
-            self.case["topk_length"],
-        )
+        device = str(self.case["q"].device)
+        for sq, skv, topk, seed in self.shapes:
+            cur_case = _build_prefill_case(
+                device=device,
+                sq=sq,
+                skv=skv,
+                topk=topk,
+                seed=seed,
+            )
+            yield (
+                cur_case["q"],
+                cur_case["kv"],
+                cur_case["indices"],
+                cur_case["sm_scale"],
+                cur_case["attn_sink"],
+                cur_case["topk_length"],
+            )
 
 
 class DSV4DecodeBenchmark(base.Benchmark):
@@ -220,21 +241,35 @@ class DSV4DecodeBenchmark(base.Benchmark):
         self.case = case
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = []
+        _ = shape_file_path
+        self.shapes = [
+            (8, 1, 1024, 128, 11),
+            (4, 2, 256, 128, 29),
+        ]
 
     def get_input_iter(self, dtype):
         _ = dtype
-        yield (
-            self.case["q"],
-            self.case["cache"],
-            self.case["indices"],
-            self.case["sm_scale"],
-            self.case["attn_sink"],
-            self.case["extra_cache"],
-            self.case["extra_indices"],
-            self.case["topk_length"],
-            self.case["extra_topk_length"],
-        )
+        device = str(self.case["q"].device)
+        for bsz, next_n, cache_tokens, topk, seed in self.shapes:
+            cur_case = _build_decode_case(
+                device=device,
+                bsz=bsz,
+                next_n=next_n,
+                cache_tokens=cache_tokens,
+                topk=topk,
+                seed=seed,
+            )
+            yield (
+                cur_case["q"],
+                cur_case["cache"],
+                cur_case["indices"],
+                cur_case["sm_scale"],
+                cur_case["attn_sink"],
+                cur_case["extra_cache"],
+                cur_case["extra_indices"],
+                cur_case["topk_length"],
+                cur_case["extra_topk_length"],
+            )
 
 
 def _prefill_fg_vs_vllm_op(
@@ -425,20 +460,39 @@ class DSV4PrefillVsVLLMBenchmark(base.Benchmark):
         self.case["vl_out"] = torch.empty_like(self.case["fg_out"])
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = []
+        _ = shape_file_path
+        self.shapes = [
+            (64, 256, 128, 701),
+            (32, 128, 128, 709),
+        ]
 
     def get_input_iter(self, dtype):
         _ = dtype
-        yield (
-            self.case["q"],
-            self.case["kv"],
-            self.case["indices"],
-            self.case["sm_scale"],
-            self.case["attn_sink"],
-            self.case["topk_length"],
-            self.case["fg_out"],
-            self.case["vl_out"],
-        )
+        device = str(self.case["q"].device)
+        for sq, skv, topk, seed in self.shapes:
+            cur_case = _build_prefill_case(
+                device=device,
+                sq=sq,
+                skv=skv,
+                topk=topk,
+                seed=seed,
+            )
+            fg_out = torch.empty(
+                (cur_case["q"].shape[0], cur_case["q"].shape[1], 512),
+                device=cur_case["q"].device,
+                dtype=torch.bfloat16,
+            )
+            vl_out = torch.empty_like(fg_out)
+            yield (
+                cur_case["q"],
+                cur_case["kv"],
+                cur_case["indices"],
+                cur_case["sm_scale"],
+                cur_case["attn_sink"],
+                cur_case["topk_length"],
+                fg_out,
+                vl_out,
+            )
 
 
 class DSV4RMSNormVsVLLMBenchmark(base.Benchmark):
@@ -452,17 +506,24 @@ class DSV4RMSNormVsVLLMBenchmark(base.Benchmark):
         self.case = case
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = []
+        _ = shape_file_path
+        self.shapes = [
+            (128, 2026),
+            (512, 2027),
+        ]
 
     def get_input_iter(self, dtype):
         _ = dtype
-        yield (
-            self.case["qr"],
-            self.case["kv"],
-            self.case["q_weight"],
-            self.case["kv_weight"],
-            self.case["eps"],
-        )
+        device = str(self.case["qr"].device)
+        for num_tokens, seed in self.shapes:
+            cur_case = _build_subops_case(device=device, num_tokens=num_tokens, seed=seed)
+            yield (
+                cur_case["qr"],
+                cur_case["kv"],
+                cur_case["q_weight"],
+                cur_case["kv_weight"],
+                cur_case["eps"],
+            )
 
 
 class DSV4GatherVsVLLMBenchmark(base.Benchmark):
@@ -476,21 +537,28 @@ class DSV4GatherVsVLLMBenchmark(base.Benchmark):
         self.case = case
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = []
+        _ = shape_file_path
+        self.shapes = [
+            (128, 2026),
+            (512, 2027),
+        ]
 
     def get_input_iter(self, dtype):
         _ = dtype
-        yield (
-            self.case["out_fg"],
-            self.case["out_vl"],
-            self.case["cache_fg"],
-            self.case["cache_vl"],
-            self.case["seq_lens"],
-            self.case["gather_lens"],
-            self.case["block_table"],
-            self.case["block_size"],
-            self.case["offset"],
-        )
+        device = str(self.case["qr"].device)
+        for num_tokens, seed in self.shapes:
+            cur_case = _build_subops_case(device=device, num_tokens=num_tokens, seed=seed)
+            yield (
+                cur_case["out_fg"],
+                cur_case["out_vl"],
+                cur_case["cache_fg"],
+                cur_case["cache_vl"],
+                cur_case["seq_lens"],
+                cur_case["gather_lens"],
+                cur_case["block_table"],
+                cur_case["block_size"],
+                cur_case["offset"],
+            )
 
 
 class DSV4GlobalTopkVsVLLMBenchmark(base.Benchmark):
@@ -504,17 +572,24 @@ class DSV4GlobalTopkVsVLLMBenchmark(base.Benchmark):
         self.case = case
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = []
+        _ = shape_file_path
+        self.shapes = [
+            (128, 2026),
+            (512, 2027),
+        ]
 
     def get_input_iter(self, dtype):
         _ = dtype
-        yield (
-            self.case["topk_indices"],
-            self.case["token_to_req"],
-            self.case["blk_tbl"],
-            self.case["block_size"],
-            self.case["valid"],
-        )
+        device = str(self.case["qr"].device)
+        for num_tokens, seed in self.shapes:
+            cur_case = _build_subops_case(device=device, num_tokens=num_tokens, seed=seed)
+            yield (
+                cur_case["topk_indices"],
+                cur_case["token_to_req"],
+                cur_case["blk_tbl"],
+                cur_case["block_size"],
+                cur_case["valid"],
+            )
 
 
 class DSV4CombineTopkVsVLLMBenchmark(base.Benchmark):
@@ -528,34 +603,39 @@ class DSV4CombineTopkVsVLLMBenchmark(base.Benchmark):
         self.case = case
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = []
+        _ = shape_file_path
+        self.shapes = [
+            (128, 2026),
+            (512, 2027),
+        ]
 
     def get_input_iter(self, dtype):
         _ = dtype
-        yield (
-            self.case["topk2"],
-            self.case["query_start_loc"],
-            self.case["seq_lens2"],
-            self.case["gather_lens2"],
-            self.case["window_size"],
-            self.case["compress_ratio"],
-            self.case["topk"],
-            self.case["M"],
-            self.case["N"],
-        )
+        device = str(self.case["qr"].device)
+        for num_tokens, seed in self.shapes:
+            cur_case = _build_subops_case(device=device, num_tokens=num_tokens, seed=seed)
+            yield (
+                cur_case["topk2"],
+                cur_case["query_start_loc"],
+                cur_case["seq_lens2"],
+                cur_case["gather_lens2"],
+                cur_case["window_size"],
+                cur_case["compress_ratio"],
+                cur_case["topk"],
+                cur_case["M"],
+                cur_case["N"],
+            )
 
 
-def _build_subops_case(device: str = "cuda"):
-    torch.manual_seed(2026)
+def _build_subops_case(device: str = "cuda", num_tokens: int = 512, seed: int = 2026):
+    torch.manual_seed(seed)
     case = {
-        "qr": torch.randn((128, 64 * 576), device=device, dtype=torch.bfloat16),
-        "kv": torch.randn((128, 576), device=device, dtype=torch.bfloat16),
+        "qr": torch.randn((num_tokens, 64 * 576), device=device, dtype=torch.bfloat16),
+        "kv": torch.randn((num_tokens, 576), device=device, dtype=torch.bfloat16),
         "q_weight": torch.randn((64 * 576,), device=device, dtype=torch.bfloat16),
         "kv_weight": torch.randn((576,), device=device, dtype=torch.bfloat16),
         "eps": 1e-6,
     }
-
-    num_tokens = 512
     head_dim = 512
     block_size = 64
     token_data_size = 448 + 64 * 2
