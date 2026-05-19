@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from . import base, consts
+from . import base
 
 
 def cholesky_solve_input_fn(shape, cur_dtype, device):
@@ -26,6 +26,7 @@ def test_cholesky_solve_helper():
     bench = CholeskySolveHelperBenchmark(
         op_name="cholesky_solve_helper",
         torch_op=torch._cholesky_solve_helper,
-        dtypes=consts.FLOAT_DTYPES,
+        # cholesky_cusolver only supports float32+; Half/BFloat16 raise RuntimeError
+        dtypes=[torch.float32],
     )
     bench.run()
