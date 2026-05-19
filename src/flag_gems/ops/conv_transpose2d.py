@@ -845,7 +845,9 @@ def _conv_transpose2d_backward_weight_atomic_kernel(
         grad_output_block = tl.load(
             grad_output_offsets, mask=grad_output_mask, other=0.0
         )
-        partial = tl.sum(input_block * grad_output_block, axis=1)
+        partial = tl.sum(
+            input_block.to(tl.float32) * grad_output_block.to(tl.float32), axis=1
+        )
         accum += tl.where(co_offsets[None, :] == co, partial[:, None], 0.0)
 
     grad_weight_offsets = (
@@ -1078,7 +1080,9 @@ def _conv_transpose2d_backward_weight_kernel(
                 mask=grad_output_mask,
                 other=0.0,
             )
-            partial = tl.sum(input_block * grad_output_block, axis=1)
+            partial = tl.sum(
+                input_block.to(tl.float32) * grad_output_block.to(tl.float32), axis=1
+            )
             accum += tl.where(co_offsets[None, :] == co, partial[:, None], 0.0)
 
     grad_weight_offsets = (
