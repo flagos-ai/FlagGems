@@ -21,4 +21,4 @@ def test_linalg_eigvals(batch, dtype):
     res_out_sorted = torch.view_as_real(res_out)
     ref_out_sorted = torch.view_as_real(ref_out)
 
-    utils.gems_assert_close(res_out_sorted, ref_out_sorted, dtype, rtol=1e-4, atol=1e-4)
+    utils.gems_assert_close(res_out_sorted, ref_out_sorted, dtype, atol=1e-4)
