@@ -569,14 +569,20 @@ def _build_subops_case(device: str = "cuda"):
         (num_blocks, block_size, head_bytes), device=device, dtype=torch.uint8
     )
     cache_fg_2d = cache_vl_3d.view(num_blocks, -1)
-    vllm_quantize_and_insert_k_cache(k, cache_fg_2d, slot_mapping, block_size=block_size)
+    vllm_quantize_and_insert_k_cache(
+        k, cache_fg_2d, slot_mapping, block_size=block_size
+    )
 
     case.update(
         {
             "cache_fg": cache_fg_2d,
             "cache_vl": cache_vl_3d,
-            "out_fg": torch.empty((1, 512, head_dim), device=device, dtype=torch.bfloat16),
-            "out_vl": torch.empty((1, 512, head_dim), device=device, dtype=torch.bfloat16),
+            "out_fg": torch.empty(
+                (1, 512, head_dim), device=device, dtype=torch.bfloat16
+            ),
+            "out_vl": torch.empty(
+                (1, 512, head_dim), device=device, dtype=torch.bfloat16
+            ),
             "seq_lens": torch.tensor([num_tokens], device=device, dtype=torch.int32),
             "gather_lens": torch.tensor([num_tokens], device=device, dtype=torch.int32),
             "block_table": torch.tensor(

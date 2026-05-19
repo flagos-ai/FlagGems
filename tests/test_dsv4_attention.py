@@ -483,7 +483,9 @@ def test_dsv4_vs_vllm_subops_accuracy():
     token_data_size = 448 + 64 * 2
     scale_slots = 8
     head_bytes = token_data_size + scale_slots
-    cache_3d = torch.empty((2, block_size, head_bytes), device=device, dtype=torch.uint8)
+    cache_3d = torch.empty(
+        (2, block_size, head_bytes), device=device, dtype=torch.uint8
+    )
     cache = cache_3d.view(2, -1)
     slot_mapping = torch.arange(num_tokens, device=device, dtype=torch.int64)
     vllm_quantize_and_insert_k_cache(k, cache, slot_mapping, block_size=block_size)
