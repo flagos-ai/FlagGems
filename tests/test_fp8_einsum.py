@@ -4,6 +4,7 @@ Accuracy tests for FP8 block-scaled einsum (DeepSeek V4 O-projection).
 Equation: bhr,hdr->bhd
 Tests the Triton kernel against a pure-PyTorch reference implementation.
 """
+
 from itertools import product
 
 import pytest
@@ -79,7 +80,7 @@ FP8_EINSUM_CONFIGS = list(
     FP8_EINSUM_CONFIGS,
     ids=[f"B{B}_H{H}_R{R}_D{D}" for B, H, R, D in FP8_EINSUM_CONFIGS],
 )
-def test_fp8_einsum_vs_torch(B, H, R, D):
+def test_fp8_einsum(B, H, R, D):
     """Test Triton fp8_einsum against pure-PyTorch reference."""
     data = generate_fp8_einsum_data(B, H, R, D)
     out_ref = torch.empty_like(data["out"])

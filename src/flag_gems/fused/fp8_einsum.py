@@ -127,7 +127,7 @@ def fp8_einsum(
     if equation != "bhr,hdr->bhd":
         raise NotImplementedError(f"Only 'bhr,hdr->bhd' is supported, got '{equation}'")
 
-    logger.debug("GEMS FP8 EINSUM FORWARD")
+    logger.debug("GEMS FP8_EINSUM_FORWARD")
 
     B, H, R = a.shape
     _, D, _ = b.shape
