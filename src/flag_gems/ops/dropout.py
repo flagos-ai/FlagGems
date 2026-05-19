@@ -17,7 +17,14 @@ logger = logging.getLogger(__name__)
 @triton.heuristics(runtime.get_heuristic_config("dropout"))
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
 def dropout_forward_kernel(
-    X, Y, dropout_mask, N, p, philox_seed, philox_offset, BLOCK: tl.constexpr,
+    X,
+    Y,
+    dropout_mask,
+    N,
+    p,
+    philox_seed,
+    philox_offset,
+    BLOCK: tl.constexpr,
 ):
     UNROLL: tl.constexpr = 4
     philox_seed = philox_seed.to(tl.int64)
@@ -62,7 +69,12 @@ def dropout_forward_kernel(
 @triton.heuristics(runtime.get_heuristic_config("dropout"))
 @triton.jit(do_not_specialize=["scale"])
 def dropout_backward_kernel(
-    DY, DX, dropout_mask, N, scale, BLOCK: tl.constexpr,
+    DY,
+    DX,
+    dropout_mask,
+    N,
+    scale,
+    BLOCK: tl.constexpr,
 ):
     offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = offset < N
