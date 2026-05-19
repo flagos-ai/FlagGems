@@ -3,7 +3,6 @@ import random
 import pytest
 import torch
 
-import flag_gems
 from flag_gems.fused.DSA.sparse_mla import triton_sparse_mla_fwd_interface
 
 from . import base
