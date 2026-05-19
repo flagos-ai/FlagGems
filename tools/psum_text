@@ -175,6 +175,13 @@ def parse_single_accuracy():
         p = op_data.get("passed", 0)
         k = op_data.get("skipped", 0)
         f = op_data.get("failed", 0)
+        if s == "Passed":
+            s = f"<span style='color:Green'>{s}</span>"
+        else:
+            s = f"<span style='color:Red'>{s}</span>"
+        p = f"<span style='color:Green'>{p}</span>"
+        k = f"<span style='color:DeepPink'>{k}</span>"
+        f = f"<span style='color:Red'>{f}</span>"
         return f"| {s} | {d:6.2f} sec | {t} | {p} | {k} | {f} |"
 
     if ARGS.compare:
@@ -185,6 +192,9 @@ def parse_single_accuracy():
 
     op = list(data1.keys())[0]
     op_data1 = data1.get(op, {}).get("accuracy", {})
+    op_data2 = {}
+    if ARGS.compare:
+        op_data2 = data2.get(op, {}).get("accuracy", {})
 
     lines = []
     lines.append("### Accuracy Result")
@@ -204,20 +214,18 @@ def parse_single_accuracy():
         lines.append(summary1)
     else:
         lines.append("| **Before** " + summary1)
-
-        op_data2 = data2.get(op, {}).get("accuracy", {})
         summary2 = _compose_summary(op_data2)
         lines.append("| **After** " + summary2)
 
     lines.append("")
 
-    # Append failed and skipped cases if any
+    # Append failed and skipped cases if any, for the first run
     details = op_data1.get("details", {})
     case = " Before" if ARGS.compare else ""
-    if op_data1.get("failed", 0) > 0:
+    if details.get("failed", 0) > 0:
         f_lines = parse_single_accuracy_details(details, "Failed", case)
         lines.extend(f_lines)
-    if op_data1.get("skipped", 0) > 0:
+    if details.get("skipped", 0) > 0:
         k_lines = parse_single_accuracy_details(details, "Skipped", case)
         lines.extend(k_lines)
 
@@ -225,10 +233,10 @@ def parse_single_accuracy():
         return lines
 
     details = op_data2.get("details", {})
-    if op_data2.get("failed", 0) > 0:
+    if details.get("failed", 0) > 0:
         f_lines = parse_single_accuracy_details(details, "Failed", " After")
         lines.extend(f_lines)
-    if op_data2.get("skipped", 0) > 0:
+    if details.get("skipped", 0) > 0:
         k_lines = parse_single_accuracy_details(details, "Skipped", " After")
         lines.extend(k_lines)
 
@@ -242,10 +250,16 @@ def parse_single_performance():
         if status in ["Skipped", "Failed"]:
             reason = op_data1.get("reason", "Unknown")
             reason = "<blockquote>" + reason.replace("\n", "<br/>") + "</blockquote>"
+            if status == "Failed":
+                status = "<span style='color:Red'>Failed</span>"
+            else:
+                status = "<span style='color:DeepPink'>Skipped</span>"
             line = f"| {status} | {duration:6.2f} seconds | {reason} |"
         elif status == "NotFound":
+            status = f"<span style='color:Gray'>{status}</span>"
             line = f"| {status} | {duration:6.2f} seconds | *No test case found.* |"
         else:
+            status = f"<span style='color:Green'>{status}</span>"
             line = f"| {status} | {duration:6.2f} seconds | *All tests completed.* |"
 
         if case is None:
@@ -303,7 +317,13 @@ def parse_single_performance():
         line = f"| {dtype} | **{speedup1:.3f}** | - | - | - |"
         if ARGS.compare:
             speedup2 = ddata2.get("speedup", 0)
-            line = f"| {dtype} | **{speedup1:.3f} -> {speedup2:.3f}** |" "- | - | - |"
+            spd_str = f"**{speedup1:.3f} -> {speedup2:.3f}**"
+            if speedup2 > speedup1:
+                spd_str = f"<span style='color:Green'>{spd_str}"
+            else:
+                spd_str = f"<span style='color:Red'>{spd_str}"
+
+            line = f"| {dtype} | {spd_str} | - | - | - |"
         lines.append(line)
 
         for shp, res1 in ddata1.get("details", {}).items():
@@ -317,8 +337,15 @@ def parse_single_performance():
                 s2 = res2.get("speedup", 0)
                 b2 = res2.get("base", 0)
                 g2 = res2.get("gems", 0)
+
+                spd_str = f"{s1:6.3f} -> {s2:6.3f}"
+                if s2 > s1:
+                    spd_str = f"<span style='color:Green'>{spd_str}"
+                else:
+                    spd_str = f"<span style='color:Red'>{spd_str}"
+
                 line = (
-                    f"| | {s1:6.3f} -> {s2:6.3f} |"
+                    f"| | {spd_str} |"
                     f" {b1:6.3f} -> {b2:6.3f} |"
                     f" {g1:6.3f} -> {g2:6.3f} |"
                     f" `{shp}` |"
