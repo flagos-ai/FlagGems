@@ -119,6 +119,30 @@ ADDITIONAL_CONV_TRANSPOSE2D_CASES = [
         id="fp32_groups2_bias_stride3_asymmetric_output_padding",
     ),
     pytest.param(
+        (2, 4, 4, 5),
+        (4, 2, 3, 3),
+        True,
+        (4, 4),
+        (1, 2),
+        (3, 1),
+        2,
+        1,
+        torch.float16,
+        id="fp16_scatter_groups_bias_stride4_output_padding",
+    ),
+    pytest.param(
+        (1, 8, 5, 4),
+        (8, 4, 3, 3),
+        False,
+        (3, 4),
+        (1, 0),
+        (2, 3),
+        1,
+        1,
+        torch.bfloat16,
+        id="bf16_scatter_stride3x4_output_padding",
+    ),
+    pytest.param(
         (1, 3, 5, 5),
         (3, 4, 3, 2),
         True,
@@ -227,6 +251,7 @@ def _assert_conv_transpose2d_matches(
     )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+    return res_out, ref_out
 
 
 @pytest.mark.conv_transpose2d
@@ -355,24 +380,81 @@ def test_conv_transpose2d_invalid_arguments_raise(case, match):
 
 
 @pytest.mark.conv_transpose2d
-@pytest.mark.parametrize(
-    "case",
-    ["noncontiguous_input", "noncontiguous_weight", "bad_dtype", "noncontiguous_bias"],
-)
-def test_conv_transpose2d_unsupported_inputs_raise(case):
+def test_conv_transpose2d_unsupported_dtype_raise():
     _skip_if_unsupported_test_device(torch.float32)
     inp = torch.randn((1, 2, 4, 5), dtype=torch.float32, device=flag_gems.device)
-    weight = torch.randn((2, 3, 3, 3), dtype=torch.float32, device=flag_gems.device)
+    weight = torch.randn((2, 3, 3, 3), dtype=torch.float64, device=flag_gems.device)
     bias = torch.randn((3,), dtype=torch.float32, device=flag_gems.device)
 
-    if case == "noncontiguous_input":
-        inp = inp.transpose(2, 3)
-    elif case == "noncontiguous_weight":
-        weight = weight.transpose(2, 3)
-    elif case == "bad_dtype":
-        weight = weight.to(torch.float64)
-    elif case == "noncontiguous_bias":
+    with pytest.raises(NotImplementedError, match="dtype"):
+        flag_gems.conv_transpose2d(inp, weight, bias=bias)
+
+
+@pytest.mark.conv_transpose2d
+def test_conv_transpose2d_unbatched_3d_matches_pytorch(monkeypatch):
+    res_out, ref_out = _assert_conv_transpose2d_matches(
+        monkeypatch,
+        (2, 4, 5),
+        (2, 3, 3, 2),
+        True,
+        (2, 1),
+        (1, 0),
+        (1, 0),
+        1,
+        1,
+        torch.float32,
+    )
+
+    assert res_out.dim() == ref_out.dim() == 3
+
+
+@pytest.mark.conv_transpose2d
+@pytest.mark.parametrize("noncontiguous", ["input", "weight", "bias", "all"])
+def test_conv_transpose2d_noncontiguous_tensors_match_pytorch(
+    monkeypatch, noncontiguous
+):
+    _skip_if_unsupported_test_device(torch.float32)
+    if flag_gems.vendor_name == "hygon":
+        monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
+
+    inp = torch.randn((1, 2, 4, 5), dtype=torch.float32, device=flag_gems.device)
+    weight = torch.randn((2, 3, 3, 2), dtype=torch.float32, device=flag_gems.device)
+    bias = torch.randn((3,), dtype=torch.float32, device=flag_gems.device)
+
+    if noncontiguous in ("input", "all"):
+        inp = torch.randn(
+            (1, 2, 4, 10), dtype=torch.float32, device=flag_gems.device
+        )[:, :, :, ::2]
+    if noncontiguous in ("weight", "all"):
+        weight = torch.randn(
+            (2, 3, 3, 4), dtype=torch.float32, device=flag_gems.device
+        )[:, :, :, ::2]
+    if noncontiguous in ("bias", "all"):
         bias = torch.randn((6,), dtype=torch.float32, device=flag_gems.device)[::2]
 
-    with pytest.raises(NotImplementedError, match="supports 4D contiguous CUDA"):
-        flag_gems.conv_transpose2d(inp, weight, bias=bias)
+    if noncontiguous in ("input", "all"):
+        assert not inp.is_contiguous()
+    if noncontiguous in ("weight", "all"):
+        assert not weight.is_contiguous()
+    if noncontiguous in ("bias", "all"):
+        assert not bias.is_contiguous()
+
+    ref_out = torch.nn.functional.conv_transpose2d(
+        utils.to_reference(inp, True),
+        utils.to_reference(weight, True),
+        bias=utils.to_reference(bias, True),
+        stride=(2, 1),
+        padding=(1, 0),
+        output_padding=(1, 0),
+    ).to(torch.float32)
+
+    res_out = flag_gems.conv_transpose2d(
+        inp,
+        weight,
+        bias=bias,
+        stride=(2, 1),
+        padding=(1, 0),
+        output_padding=(1, 0),
+    )
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
