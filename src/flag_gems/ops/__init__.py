@@ -1,5 +1,3 @@
-from .assert_async import _assert_async
-from .chunk_gated_delta import chunk_gated_delta_rule
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -26,6 +24,7 @@ from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.asinh_ import asinh_
+from flag_gems.ops.assert_async import _assert_async
 from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
@@ -38,8 +37,9 @@ from flag_gems.ops.attention import (
 from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.baddbmm import baddbmm
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
-from flag_gems.ops.bernoulli_ import bernoulli_
-from flag_gems.ops.bincount import bincount
+
+# from flag_gems.ops.bernoulli_ import bernoulli_
+# from flag_gems.ops.bincount import bincount
 from flag_gems.ops.bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_,
@@ -69,9 +69,11 @@ from flag_gems.ops.clamp import (
     clamp_tensor,
     clamp_tensor_,
 )
-from flag_gems.ops.clip import clip, clip_
+
+# from flag_gems.ops.clip import clip, clip_
 from flag_gems.ops.col2im import col2im
-from flag_gems.ops.concatenate import concatenate
+
+# from flag_gems.ops.concatenate import concatenate
 from flag_gems.ops.conj_physical import conj_physical
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
@@ -126,7 +128,8 @@ from flag_gems.ops.flip import flip
 from flag_gems.ops.floor_ import floor_
 from flag_gems.ops.fmin import fmin, fmin_out
 from flag_gems.ops.fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
-from flag_gems.ops.fp8_matmul import fp8_matmul
+
+# from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.fp8_mqa_logits import fp8_mqa_logits
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
@@ -323,6 +326,8 @@ from flag_gems.ops.where import (
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
+
+from .chunk_gated_delta import chunk_gated_delta_rule
 
 __all__ = [
     "_assert_async",

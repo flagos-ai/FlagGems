@@ -1,12 +1,13 @@
-import pytest
-import torch
 import math
 import warnings  # <--- ይህንን ከላይ ይጨምሩ
 
+import pytest
+import torch
+
 from flag_gems.ops.chunk_gated_delta import (
-    torch_chunk_gated_delta_rule,
-    chunk_gated_delta_rule,
     FlagOS_ChunkGatedDelta,
+    chunk_gated_delta_rule,
+    torch_chunk_gated_delta_rule,
 )
 
 # በ PyTorch እና Triton መሃል ያለውን ልዩነት 100% ለማጥፋት TF32ን እናጠፋዋለን
@@ -195,13 +196,19 @@ def test_non_divisible_T(T, BT, device):
     max_diff = (out_tri - out_ref).abs().max().item()
     print(f"\n[INFO] T={T}, BT={BT}: max diff = {max_diff:.2e}")
     torch.testing.assert_close(out_tri, out_ref, atol=1e-4, rtol=1e-4)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 6. Performance Benchmark (Triton vs PyTorch)
 # ─────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("B, H, T, D", [
-    (2, 4, 1024, 64), # እውነተኛ (Realistic) የሞዴል ሳይዝ
-])
+
+@pytest.mark.parametrize(
+    "B, H, T, D",
+    [
+        (2, 4, 1024, 64),  # እውነተኛ (Realistic) የሞዴል ሳይዝ
+    ],
+)
 @pytest.mark.parametrize("BT", [64])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_benchmark(B, H, T, D, BT, dtype, device):
@@ -209,38 +216,41 @@ def test_benchmark(B, H, T, D, BT, dtype, device):
     ይህ ቴስት የ PyTorch እና የ Triton ኮዶችን ፍጥነት ለክቶ ያነፃፅራል (Speedup)።
     """
     q, k, v, beta = _make_inputs(B, H, T, D, device, dtype)
-    
+
     # የ Warmup ዙሮች (ለማሞቅ)
     for _ in range(3):
         torch_chunk_gated_delta_rule(q, k, v, beta)
         chunk_gated_delta_rule(q, k, v, beta, BT=BT)
-    
+
     torch.cuda.synchronize()
-    
+
     # 1. የ PyTorchን ፍጥነት መለካት
     import time
+
     start_time = time.time()
     for _ in range(10):
         torch_chunk_gated_delta_rule(q, k, v, beta)
     torch.cuda.synchronize()
-    pytorch_time = (time.time() - start_time) / 10 * 1000 # በሚሊ-ሰከንድ (ms)
+    pytorch_time = (time.time() - start_time) / 10 * 1000  # በሚሊ-ሰከንድ (ms)
 
     # 2. የ Tritonን ፍጥነት መለካት
     start_time = time.time()
     for _ in range(10):
         chunk_gated_delta_rule(q, k, v, beta, BT=BT)
     torch.cuda.synchronize()
-    triton_time = (time.time() - start_time) / 10 * 1000 # በሚሊ-ሰከንድ (ms)
-    
+    triton_time = (time.time() - start_time) / 10 * 1000  # በሚሊ-ሰከንድ (ms)
+
     speedup = pytorch_time / triton_time
-    
-    print("\n" + "="*50)
+
+    print("\n" + "=" * 50)
     print(f"📊 BENCHMARK RESULTS (Shape: {B}x{H}x{T}x{D})")
-    print("="*50)
+    print("=" * 50)
     print(f"PyTorch Time: {pytorch_time:.3f} ms")
     print(f"Triton Time : {triton_time:.3f} ms")
     print(f"🚀 Speedup   : {speedup:.2f}x (Triton is {speedup:.2f} times faster!)")
-    print("="*50)
-    
+    print("=" * 50)
+
     # ውድድሩ ቢያንስ የ 0.9x ፍጥነት ይጠይቃል (የኛ በጣም ፈጣን ይሆናል ተብሎ ይጠበቃል)
-    assert speedup >= 0.9, f"Performance failed: Speedup is {speedup:.2f}x (Required >= 0.9x)"
+    assert (
+        speedup >= 0.9
+    ), f"Performance failed: Speedup is {speedup:.2f}x (Required >= 0.9x)"

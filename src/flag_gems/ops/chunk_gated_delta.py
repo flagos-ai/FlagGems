@@ -149,7 +149,7 @@ def _cgd_fwd_kernel(
     T,  # int – sequence length
     D,  # int – head dimension
     # ── compile-time constants ────────────────────────────────────────────────
-    BD: tl.constexpr,   # next_power_of_2(D) – full row block (padded D)
+    BD: tl.constexpr,  # next_power_of_2(D) – full row block (padded D)
     BDC: tl.constexpr,  # column block width; BD // BDC programs per (b,h)
 ):
     """
@@ -169,57 +169,57 @@ def _cgd_fwd_kernel(
 
     No cross-program synchronisation is required.
     """
-    pid_bh  = tl.program_id(0)   # (batch, head) index
-    pid_col = tl.program_id(1)   # column-block index
+    pid_bh = tl.program_id(0)  # (batch, head) index
+    pid_col = tl.program_id(1)  # column-block index
 
     b = pid_bh // H
-    h = pid_bh  % H
+    h = pid_bh % H
     col_start = pid_col * BDC
 
     # Index arrays
-    d_row = tl.arange(0, BD)                # [BD]  – full row dim
+    d_row = tl.arange(0, BD)  # [BD]  – full row dim
     d_col = col_start + tl.arange(0, BDC)  # [BDC] – this column slice
 
-    row_mask = d_row < D   # [BD]
-    col_mask = d_col < D   # [BDC]
+    row_mask = d_row < D  # [BD]
+    col_mask = d_col < D  # [BDC]
 
     # Base pointers (time-independent offsets to the (b, h) slice)
-    q_base    = Q    + b * sq_b + h * sq_h
-    k_base    = K    + b * sk_b + h * sk_h
-    v_base    = V    + b * sv_b + h * sv_h
+    q_base = Q + b * sq_b + h * sq_h
+    k_base = K + b * sk_b + h * sk_h
+    v_base = V + b * sv_b + h * sv_h
     beta_base = Beta + b * sb_b + h * sb_h
-    o_base    = O    + b * so_b + h * so_h
+    o_base = O + b * so_b + h * so_h
 
     # Column slice of the state matrix S  [BD, BDC], initialised to 0
     S_local = tl.zeros([BD, BDC], dtype=tl.float32)
 
     for t in range(T):
         # ── load this timestep ───────────────────────────────────────────────
-        k_t = tl.load(
-            k_base + t * sk_t + d_row * sk_d, mask=row_mask, other=0.0
-        ).to(tl.float32)   # [BD]
-        v_t = tl.load(
-            v_base + t * sv_t + d_col * sv_d, mask=col_mask, other=0.0
-        ).to(tl.float32)   # [BDC]
-        bt  = tl.load(beta_base + t * sb_t).to(tl.float32)   # scalar
+        k_t = tl.load(k_base + t * sk_t + d_row * sk_d, mask=row_mask, other=0.0).to(
+            tl.float32
+        )  # [BD]
+        v_t = tl.load(v_base + t * sv_t + d_col * sv_d, mask=col_mask, other=0.0).to(
+            tl.float32
+        )  # [BDC]
+        bt = tl.load(beta_base + t * sb_t).to(tl.float32)  # scalar
 
         # ── delta-rule state update ──────────────────────────────────────────
         # kS_col[j] = Σ_i  k_t[i] · S_local[i, j]
-        kS = tl.sum(k_t[:, None] * S_local, axis=0)   # [BDC]
+        kS = tl.sum(k_t[:, None] * S_local, axis=0)  # [BDC]
 
         # r_t_col = v_t_col − kS_col
-        r_t = v_t - kS   # [BDC]
+        r_t = v_t - kS  # [BDC]
 
         # S_local += β_t · outer(k_t, r_t_col)   [BD, BDC]
         S_local = S_local + bt * (k_t[:, None] * r_t[None, :])
 
         # ── output ──────────────────────────────────────────────────────────
-        q_t = tl.load(
-            q_base + t * sq_t + d_row * sq_d, mask=row_mask, other=0.0
-        ).to(tl.float32)   # [BD]
+        q_t = tl.load(q_base + t * sq_t + d_row * sq_d, mask=row_mask, other=0.0).to(
+            tl.float32
+        )  # [BD]
 
         # o_t_col[j] = Σ_i  q_t[i] · S_local[i, j]
-        o_t = tl.sum(q_t[:, None] * S_local, axis=0)   # [BDC]
+        o_t = tl.sum(q_t[:, None] * S_local, axis=0)  # [BDC]
 
         tl.store(o_base + t * so_t + d_col * so_d, o_t, mask=col_mask)
 
