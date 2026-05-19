@@ -773,9 +773,7 @@ def _unique2(
     return_counts: bool = False,
 ):
     if in0.numel() <= 8192:
-        sorted_data, sorted_indices = torch.sort(
-            in0.ravel().cpu()
-        )  # 不支持int16及int64类型
+        sorted_data, sorted_indices = torch.sort(in0.ravel().cpu())  # 不支持int16及int64类型
         data_out, inverse_indices, counts = simple_unique_flat(
             sorted_data.to(in0.device),
             sorted_indices.to(in0.device),
