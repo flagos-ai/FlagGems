@@ -81,7 +81,9 @@ def _torch_topk_softplus_sqrt_ref(
     token_expert_indices.copy_(tei.to(torch.int32))
 
 
-_baseline_op = _vllm_topk_softplus_sqrt_wrapper if HAS_VLLM else _torch_topk_softplus_sqrt_ref
+_baseline_op = (
+    _vllm_topk_softplus_sqrt_wrapper if HAS_VLLM else _torch_topk_softplus_sqrt_ref
+)
 
 
 class TopkSoftplusSqrtBenchmark(base.Benchmark):
