@@ -93,6 +93,8 @@ def _can_use_input_grad_conv2d_path(
         return False
     if grad_output.dtype == torch.float32:
         return input.numel() >= 1 << 16
+    if runtime.device.vendor_name == "iluvatar":
+        return groups == 1
     return (
         groups == 1
         and stride == (2, 2)
