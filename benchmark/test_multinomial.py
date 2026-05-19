@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from . import base
+from . import base, consts
 
 
 def _input_fn(shape, dtype, device):
@@ -16,6 +16,6 @@ def test_multinomial_with_replacement():
         input_fn=_input_fn,
         op_name="multinomial",
         torch_op=torch.multinomial,
-        dtypes=(torch.float16, torch.float32),
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
