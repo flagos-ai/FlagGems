@@ -1,9 +1,18 @@
 import pytest
 import torch
+import triton
+from packaging.version import Version
 
 import flag_gems
 
 from . import base, consts
+
+_TRITON_VERSION = Version(triton.__version__.split("+")[0])
+_SKIP_JOIN_BUG = _TRITON_VERSION < Version("3.5.0")
+_skip_if_join_bug = pytest.mark.skipif(
+    _SKIP_JOIN_BUG,
+    reason=f"triton {triton.__version__} has tt.join layout bug (fixed in 3.5.0)",
+)
 
 # ============================================================
 # Standard FHT benchmark (hadamard_transform)
@@ -58,6 +67,7 @@ class HadamardBenchmark(base.GenericBenchmark2DOnly):
 
 
 @pytest.mark.hadamard_transform
+@_skip_if_join_bug
 def test_hadamard_transform():
     bench = HadamardBenchmark(
         input_fn=ht_input_fn,
@@ -137,8 +147,12 @@ class HadamardMNBenchmark(base.GenericBenchmark2DOnly):
     def set_more_shapes(self):
         return []
 
+    def set_shapes(self, *args, **kwargs):
+        self.shapes = self.DEFAULT_SHAPES
+
 
 @pytest.mark.hadamard_transform_mn
+@_skip_if_join_bug
 def test_hadamard_transform_mn():
     bench = HadamardMNBenchmark(
         input_fn=ht_mn_input_fn,

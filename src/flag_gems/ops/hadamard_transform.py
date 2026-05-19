@@ -49,14 +49,12 @@ def _butterfly_stage_1d(x, BLOCK_SIZE: tl.constexpr, STRIDE: tl.constexpr):
     if STRIDE == 1:
         x2 = tl.reshape(x, (GRP, 2))
         a, b = tl.split(x2)
-        return tl.interleave(a + b, a - b)
+        return tl.reshape(tl.join(a + b, a - b), (BLOCK_SIZE,))
     else:
         x3 = tl.reshape(x, (GRP, 2, STRIDE))
         x3 = tl.permute(x3, (0, 2, 1))
         a, b = tl.split(x3)
-        a, b = tl.reshape(a, (GRP, STRIDE)), tl.reshape(b, (GRP, STRIDE))
-        x3 = tl.interleave(a + b, a - b)
-        x3 = tl.reshape(x3, (GRP, 2, STRIDE))
+        x3 = tl.join(a + b, a - b)
         x3 = tl.permute(x3, (0, 2, 1))
         return tl.reshape(x3, (BLOCK_SIZE,))
 
@@ -70,14 +68,12 @@ def _butterfly_stage_2d(
     if STRIDE == 1:
         x2 = tl.reshape(x, (ROWS, GRP, 2))
         a, b = tl.split(x2)
-        return tl.reshape(tl.interleave(a + b, a - b), (ROWS, BLOCK_SIZE))
+        return tl.reshape(tl.join(a + b, a - b), (ROWS, BLOCK_SIZE))
     else:
         x3 = tl.reshape(x, (ROWS, GRP, 2, STRIDE))
         x3 = tl.permute(x3, (0, 1, 3, 2))
         a, b = tl.split(x3)
-        a, b = tl.reshape(a, (ROWS, GRP, STRIDE)), tl.reshape(b, (ROWS, GRP, STRIDE))
-        x3 = tl.interleave(a + b, a - b)
-        x3 = tl.reshape(x3, (ROWS, GRP, 2, STRIDE))
+        x3 = tl.join(a + b, a - b)
         x3 = tl.permute(x3, (0, 1, 3, 2))
         return tl.reshape(x3, (ROWS, BLOCK_SIZE))
 

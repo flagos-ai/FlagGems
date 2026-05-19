@@ -1,10 +1,19 @@
 import pytest
 import torch
+import triton
+from packaging.version import Version
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+
+_TRITON_VERSION = Version(triton.__version__.split("+")[0])
+_SKIP_JOIN_BUG = _TRITON_VERSION < Version("3.5.0")
+_skip_if_join_bug = pytest.mark.skipif(
+    _SKIP_JOIN_BUG,
+    reason=f"triton {triton.__version__} has tt.join layout bug (fixed in 3.5.0)",
+)
 
 if cfg.QUICK_MODE:
     HADAMARD_MN_CASES = [(1536, 3, "12N"), (10240, 5, "20N"), (14336, 7, "28N")]
@@ -68,6 +77,7 @@ def _ref_mn(x: torch.Tensor, M: int) -> torch.Tensor:
 
 
 @pytest.mark.hadamard_transform_mn
+@_skip_if_join_bug
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("dim,M,tag", HADAMARD_MN_CASES)
 @pytest.mark.parametrize("batch", [1, 16, 1024])
@@ -79,6 +89,7 @@ def test_hadamard_transform_mn(batch, dim, M, tag, dtype):
 
 
 @pytest.mark.hadamard_transform_mn
+@_skip_if_join_bug
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 @pytest.mark.parametrize("scale", [0.5, 1.0, 2.0])
 def test_hadamard_transform_mn_scale(scale, dtype):
@@ -90,6 +101,7 @@ def test_hadamard_transform_mn_scale(scale, dtype):
 
 
 @pytest.mark.hadamard_transform_mn
+@_skip_if_join_bug
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 @pytest.mark.parametrize("shape", [(4, 8, 3072), (2, 3, 4, 1536)])
 def test_hadamard_transform_mn_leading_dims(shape, dtype):
