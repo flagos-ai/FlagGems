@@ -6,6 +6,9 @@ from flag_gems.utils import shape_utils
 
 from . import base
 
+FLOAT32_DTYPES = [torch.float32]
+FLOAT16_FLOAT32_DTYPES = [torch.float16, torch.float32]
+
 
 class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
     def set_more_metrics(self):
@@ -84,7 +87,7 @@ def test_scatter_reduce_sum():
         torch_op=torch.scatter_reduce,
         input_fn=scatter_input_fn_factory("sum"),
         get_gbps=gather_scatter_gbps,
-        dtypes=[torch.float32],
+        dtypes=FLOAT32_DTYPES,
     )
     bench.run()
 
@@ -96,7 +99,7 @@ def test_scatter_reduce_prod():
         torch_op=torch.scatter_reduce,
         input_fn=scatter_input_fn_factory("prod"),
         get_gbps=gather_scatter_gbps,
-        dtypes=[torch.float16, torch.float32],
+        dtypes=FLOAT16_FLOAT32_DTYPES,
     )
     bench.run()
 
@@ -108,7 +111,7 @@ def test_scatter_reduce_sum_inplace():
         torch_op=torch.Tensor.scatter_reduce_,
         input_fn=scatter_inplace_input_fn_factory("sum"),
         get_gbps=gather_scatter_gbps,
-        dtypes=[torch.float16, torch.float32],
+        dtypes=FLOAT16_FLOAT32_DTYPES,
         is_inplace=True,
     )
     bench.run()
@@ -121,7 +124,7 @@ def test_scatter_reduce_prod_inplace():
         torch_op=torch.Tensor.scatter_reduce_,
         input_fn=scatter_inplace_input_fn_factory("prod"),
         get_gbps=gather_scatter_gbps,
-        dtypes=[torch.float16, torch.float32],
+        dtypes=FLOAT16_FLOAT32_DTYPES,
         is_inplace=True,
     )
     bench.run()

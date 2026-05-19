@@ -104,9 +104,7 @@ def _scatter_mul_2d_lastdim_pow2_large_kernel(
             cur_out = tl.load(out + out_offsets)
             res = tl.where(stop, cur_out, cur_out * cur_src)
             cas_res = tl.atomic_cas(out + out_offsets, cur_out, res, sem="relaxed")
-            stop |= (cur_out == cas_res) | (
-                (cur_out != cur_out) & (cas_res != cas_res)
-            )
+            stop |= (cur_out == cas_res) | ((cur_out != cur_out) & (cas_res != cas_res))
             block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
         cols += BLOCK
 
@@ -148,9 +146,7 @@ def _scatter_mul_2d_lastdim_pow2_large_pair_kernel(
             cur_out = tl.load(out + cas_offsets)
             res = tl.where(stop, cur_out, cur_out * cur_src)
             cas_res = tl.atomic_cas(out + cas_offsets, cur_out, res, sem="relaxed")
-            stop |= (cur_out == cas_res) | (
-                (cur_out != cur_out) & (cas_res != cas_res)
-            )
+            stop |= (cur_out == cas_res) | ((cur_out != cur_out) & (cas_res != cas_res))
             block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
         cols += BLOCK
 
@@ -297,7 +293,9 @@ def _can_scatter_mul_2d_lastdim_pow2_inplace(inp, dim, index, src, reduce) -> bo
     return inp.is_contiguous() and index.is_contiguous() and src.is_contiguous()
 
 
-def _can_scatter_mul_2d_lastdim_pow2_large_inplace(inp, dim, index, src, reduce) -> bool:
+def _can_scatter_mul_2d_lastdim_pow2_large_inplace(
+    inp, dim, index, src, reduce
+) -> bool:
     return _can_scatter_mul_2d_lastdim_pow2_large(inp, dim, index, src, inp, reduce)
 
 
