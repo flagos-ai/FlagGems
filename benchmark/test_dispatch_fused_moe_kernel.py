@@ -72,10 +72,8 @@ class DispatchFusedMoeKernelBenchmark(base.Benchmark):
 
 def _torch_fused_moe_baseline(hidden_states, w1, w2, topk_weights, topk_ids):
     """PyTorch eager baseline for fused MoE (no fusion)."""
-    num_tokens = hidden_states.shape[0]
     num_experts = w1.shape[0]
     intermediate_size = w1.shape[1] // 2
-    top_k = topk_ids.shape[1]
 
     output = torch.zeros_like(hidden_states)
     for expert_id in range(num_experts):
