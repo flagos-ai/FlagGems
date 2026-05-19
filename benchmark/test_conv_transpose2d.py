@@ -10,19 +10,43 @@ from . import base
 
 
 @contextlib.contextmanager
-def _benchmark_backend_flags():
-    cudnn_enabled = torch.backends.cudnn.enabled
-    cudnn_allow_tf32 = torch.backends.cudnn.allow_tf32
-    cuda_matmul_allow_tf32 = torch.backends.cuda.matmul.allow_tf32
-    torch.backends.cudnn.enabled = False
-    torch.backends.cudnn.allow_tf32 = False
-    torch.backends.cuda.matmul.allow_tf32 = True
+def _temporary_backend_attr(backend, name, value):
+    if backend is None or not hasattr(backend, name):
+        yield
+        return
+
+    old_value = getattr(backend, name)
+    setattr(backend, name, value)
     try:
         yield
     finally:
-        torch.backends.cudnn.enabled = cudnn_enabled
-        torch.backends.cudnn.allow_tf32 = cudnn_allow_tf32
-        torch.backends.cuda.matmul.allow_tf32 = cuda_matmul_allow_tf32
+        setattr(backend, name, old_value)
+
+
+@contextlib.contextmanager
+def _benchmark_backend_flags():
+    if flag_gems.vendor_name != "nvidia":
+        yield
+        return
+
+    with contextlib.ExitStack() as stack:
+        cudnn_backend = getattr(torch.backends, "cudnn", None)
+        if cudnn_backend is not None and hasattr(cudnn_backend, "flags"):
+            stack.enter_context(cudnn_backend.flags(enabled=False, allow_tf32=False))
+        else:
+            stack.enter_context(
+                _temporary_backend_attr(cudnn_backend, "enabled", False)
+            )
+            stack.enter_context(
+                _temporary_backend_attr(cudnn_backend, "allow_tf32", False)
+            )
+
+        cuda_backend = getattr(torch.backends, "cuda", None)
+        cuda_matmul_backend = getattr(cuda_backend, "matmul", None)
+        stack.enter_context(
+            _temporary_backend_attr(cuda_matmul_backend, "allow_tf32", False)
+        )
+        yield
 
 
 class ConvTranspose2DBenchmark(base.GenericBenchmark):

@@ -33,9 +33,22 @@ def _conv_transpose2d_output_size(
 
 
 def _dot_input_precision(input):
-    if input.dtype == torch.float32 and torch.backends.cuda.matmul.allow_tf32:
+    if runtime.device.vendor_name != "nvidia":
+        return "ieee"
+
+    cuda_backend = getattr(torch.backends, "cuda", None)
+    matmul_backend = getattr(cuda_backend, "matmul", None)
+    allow_tf32 = bool(getattr(matmul_backend, "allow_tf32", False))
+    if input.dtype == torch.float32 and allow_tf32:
         return "tf32"
     return "tf32x3"
+
+
+def _conv_transpose2d_block_m(input, groups, weight_height):
+    if runtime.device.vendor_name != "nvidia" and input.dtype == torch.float32:
+        return 128
+    use_fp32_4x4_tile = input.dtype == torch.float32 and weight_height == 4
+    return 128 if groups > 1 or use_fp32_4x4_tile else 256
 
 
 @libentry()
@@ -1152,8 +1165,8 @@ def _conv_transpose2d_forward(
     if _can_use_stride2_kernel(
         stride, padding, dilation, out_height, out_width, weight
     ):
+        block_m = _conv_transpose2d_block_m(input, groups, weight_height)
         use_fp32_4x4_tile = input.dtype == torch.float32 and weight_height == 4
-        block_m = 128 if groups > 1 or use_fp32_4x4_tile else 256
         block_co = 16 if groups > 1 else 32
         num_warps = 4 if groups > 1 or use_fp32_4x4_tile else 8
         if input.dtype == torch.float32 and weight_height == 3 and weight_width == 3:
