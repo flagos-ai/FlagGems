@@ -79,7 +79,7 @@ def median(inp, dim=None, keepdim=False):
             out_shape.insert(dim, 1)
         out_vals = inp.new_empty(out_shape)
         out_idx = torch.empty(out_shape, dtype=torch.int64, device=inp.device)
-        return torch.return_types.median([out_vals, out_idx])
+        return torch.return_types.median(out_vals, out_idx)
 
     # Sort along dim using FlagGems Triton radix sort
     sorted_vals, sorted_indices = sort_stable(inp, stable=True, dim=dim)
@@ -113,7 +113,7 @@ def median(inp, dim=None, keepdim=False):
         out_vals = out_vals.unsqueeze(dim)
         out_idx = out_idx.unsqueeze(dim)
 
-    return torch.return_types.median([out_vals, out_idx])
+    return torch.return_types.median(out_vals, out_idx)
 
 
 def median_dim(inp, dim, keepdim=False):
