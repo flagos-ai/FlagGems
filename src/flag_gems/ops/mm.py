@@ -601,3 +601,14 @@ def mm_out(a, b, *, out):
     if cluster_remote_mm_scenario(a, b, out, M, N, K):
         return cluster_remote_mm(a, b, out, M, N, K)
     return general_mm(a, b, out, M, N, K)
+
+
+def router_gemm(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+    """bf16 x bf16 -> fp32 GEMM for MoE router gate. weight shape: (N, K)."""
+    if x.stride(0) > 1 and x.stride(1) > 1:
+        x = x.contiguous()
+    M, K = x.shape
+    N = weight.shape[0]
+    c = torch.empty((M, N), device=x.device, dtype=torch.float32)
+    b = weight.t().contiguous()
+    return general_mm(x, b, c, M, N, K)
