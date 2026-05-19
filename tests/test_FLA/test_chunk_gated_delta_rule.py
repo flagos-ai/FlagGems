@@ -428,6 +428,373 @@ def test_chunk_gated_delta_rule_supports_qk_l2norm_on_chunk_path():
     _assert_close(actual_final, expected_final, dtype, final_state=True)
 
 
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_chunk_gated_delta_rule_fused_tail_vblock_matches_reference(dtype):
+    torch.manual_seed(7000 + (0 if dtype == torch.float16 else 1))
+    q, k, v, beta, g = _make_inputs(
+        B=1, T=128, Hg=4, H=8, K=64, V=64, dtype=dtype, head_first=False
+    )
+    initial_state = 0.125 * torch.randn(
+        1, 8, 64, 64, device=flag_gems.device, dtype=dtype
+    )
+
+    actual, actual_final = flag_gems.chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        initial_state=initial_state,
+        output_final_state=True,
+        head_first=False,
+    )
+    expected, expected_final = _reference_chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        initial_state=initial_state,
+        output_final_state=True,
+        cu_seqlens=None,
+        head_first=False,
+        scale=None,
+    )
+
+    _assert_close(actual, expected, dtype)
+    _assert_close(actual_final, expected_final, dtype, final_state=True)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            {
+                "B": 1,
+                "T": 16,
+                "Hg": 1,
+                "H": 4,
+                "K": 16,
+                "V": 16,
+                "dtype": torch.float32,
+                "head_first": False,
+                "output_final_state": True,
+            },
+            id="single_chunk_gqa_fp32",
+        ),
+        pytest.param(
+            {
+                "B": 1,
+                "T": 37,
+                "Hg": 2,
+                "H": 4,
+                "K": 24,
+                "V": 17,
+                "dtype": torch.float16,
+                "head_first": True,
+                "output_final_state": False,
+            },
+            id="non_aligned_kv_fp16",
+        ),
+        pytest.param(
+            {
+                "B": 1,
+                "T": 9,
+                "Hg": 2,
+                "H": 8,
+                "K": 32,
+                "V": 16,
+                "dtype": torch.bfloat16,
+                "head_first": False,
+                "output_final_state": True,
+            },
+            id="many_heads_bf16",
+        ),
+    ],
+)
+def test_chunk_gated_delta_rule_direct_path_shape_variants(case):
+    torch.manual_seed(8000 + case["T"])
+    input_case = dict(case)
+    output_final_state = case["output_final_state"]
+    input_case.pop("output_final_state")
+    q, k, v, beta, g = _make_inputs(**input_case)
+
+    actual, actual_final = flag_gems.chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        head_first=case["head_first"],
+        output_final_state=output_final_state,
+    )
+    expected, expected_final = _reference_chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        initial_state=None,
+        output_final_state=output_final_state,
+        cu_seqlens=None,
+        head_first=case["head_first"],
+        scale=None,
+    )
+
+    _assert_close(actual, expected, case["dtype"])
+    if output_final_state:
+        _assert_close(actual_final, expected_final, case["dtype"], final_state=True)
+    else:
+        assert actual_final is None
+        assert expected_final is None
+
+
+def test_chunk_gated_delta_rule_varlen_initial_state_gqa_non_aligned_lengths():
+    dtype = torch.float32
+    torch.manual_seed(9000)
+    q, k, v, beta, g = _make_inputs(
+        B=1, T=70, Hg=1, H=4, K=32, V=16, dtype=dtype, head_first=False
+    )
+    cu_seqlens = torch.tensor(
+        [0, 13, 37, 70], device=flag_gems.device, dtype=torch.long
+    )
+    initial_state = 0.125 * torch.randn(
+        3, 4, 32, 16, device=flag_gems.device, dtype=dtype
+    )
+
+    actual, actual_final = flag_gems.chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        initial_state=initial_state,
+        cu_seqlens=cu_seqlens,
+        output_final_state=True,
+        head_first=False,
+    )
+    expected, expected_final = _reference_chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        initial_state=initial_state,
+        output_final_state=True,
+        cu_seqlens=cu_seqlens,
+        head_first=False,
+        scale=None,
+    )
+
+    _assert_close(actual, expected, dtype)
+    _assert_close(actual_final, expected_final, dtype, final_state=True)
+
+
+def test_chunk_gated_delta_rule_zero_values_extreme_gates_return_zero_state():
+    dtype = torch.float32
+    torch.manual_seed(10000)
+    q, k, v, beta, g = _make_inputs(
+        B=1, T=17, Hg=1, H=2, K=16, V=16, dtype=dtype, head_first=False
+    )
+    v.zero_()
+    beta.fill_(1)
+    g.fill_(-20)
+
+    actual, actual_final = flag_gems.chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        output_final_state=True,
+        head_first=False,
+    )
+
+    torch.testing.assert_close(actual, torch.zeros_like(actual), atol=0, rtol=0)
+    torch.testing.assert_close(
+        actual_final,
+        torch.zeros_like(actual_final),
+        atol=0,
+        rtol=0,
+        check_dtype=False,
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "zero_query",
+        "zero_key",
+        "zero_value",
+        "beta_zero",
+        "beta_one",
+        "weak_decay",
+        "strong_decay",
+        "custom_scale",
+    ],
+)
+def test_chunk_gated_delta_rule_value_edge_cases_match_reference(case):
+    dtype = torch.float32
+    torch.manual_seed(11000)
+    q, k, v, beta, g = _make_inputs(
+        B=1, T=8, Hg=1, H=2, K=16, V=16, dtype=dtype, head_first=False
+    )
+    scale = None
+
+    if case == "zero_query":
+        q.zero_()
+    elif case == "zero_key":
+        k.zero_()
+    elif case == "zero_value":
+        v.zero_()
+    elif case == "beta_zero":
+        beta.zero_()
+    elif case == "beta_one":
+        beta.fill_(1)
+    elif case == "weak_decay":
+        g.fill_(-1e-4)
+    elif case == "strong_decay":
+        g.fill_(-20)
+    elif case == "custom_scale":
+        scale = 0.25
+
+    actual, actual_final = flag_gems.chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        output_final_state=True,
+        head_first=False,
+        scale=scale,
+    )
+    expected, expected_final = _reference_chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        initial_state=None,
+        output_final_state=True,
+        cu_seqlens=None,
+        head_first=False,
+        scale=scale,
+    )
+
+    _assert_close(actual, expected, dtype)
+    _assert_close(actual_final, expected_final, dtype, final_state=True)
+
+
+def test_chunk_gated_delta_rule_accepts_non_contiguous_head_first_inputs():
+    dtype = torch.float32
+    torch.manual_seed(12000)
+    q, k, v, beta, g = _make_inputs(
+        B=1,
+        T=32,
+        Hg=2,
+        H=4,
+        K=32,
+        V=16,
+        dtype=dtype,
+        head_first=True,
+        non_contiguous=True,
+    )
+    assert not q.is_contiguous()
+    assert not k.is_contiguous()
+    assert not v.is_contiguous()
+
+    actual, actual_final = flag_gems.chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        head_first=True,
+        output_final_state=False,
+    )
+    expected, expected_final = _reference_chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        initial_state=None,
+        output_final_state=False,
+        cu_seqlens=None,
+        head_first=True,
+        scale=None,
+    )
+
+    assert actual_final is None
+    assert expected_final is None
+    _assert_close(actual, expected, dtype)
+
+
+def test_chunk_gated_delta_rule_repeated_calls_are_deterministic():
+    dtype = torch.float32
+    torch.manual_seed(13000)
+    q, k, v, beta, g = _make_inputs(
+        B=1, T=32, Hg=2, H=4, K=32, V=16, dtype=dtype, head_first=False
+    )
+
+    actual_1, final_1 = flag_gems.chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        head_first=False,
+        output_final_state=True,
+    )
+    actual_2, final_2 = flag_gems.chunk_gated_delta_rule(
+        q,
+        k,
+        v,
+        beta,
+        g,
+        head_first=False,
+        output_final_state=True,
+    )
+
+    torch.testing.assert_close(actual_1, actual_2, atol=0, rtol=0)
+    torch.testing.assert_close(final_1, final_2, atol=0, rtol=0)
+
+
+@pytest.mark.parametrize(
+    "case, match",
+    [
+        ("bt", "currently supports only BT=64"),
+        ("head_ratio", "head count must divide"),
+        ("cu_seqlens_dtype", "cu_seqlens must have dtype torch.long"),
+        ("initial_state_shape", "initial_state must have shape"),
+    ],
+)
+def test_chunk_gated_delta_rule_rejects_invalid_public_arguments(case, match):
+    dtype = torch.float32
+    q, k, v, beta, g = _make_inputs(
+        B=1, T=16, Hg=2, H=4, K=16, V=16, dtype=dtype, head_first=False
+    )
+    kwargs = {"head_first": False}
+
+    if case == "bt":
+        kwargs["BT"] = 32
+    elif case == "head_ratio":
+        q, k, v, beta, g = _make_inputs(
+            B=1, T=16, Hg=3, H=4, K=16, V=16, dtype=dtype, head_first=False
+        )
+    elif case == "cu_seqlens_dtype":
+        kwargs["cu_seqlens"] = torch.tensor(
+            [0, 16], device=flag_gems.device, dtype=torch.int32
+        )
+    elif case == "initial_state_shape":
+        kwargs["initial_state"] = torch.zeros(
+            1, 4, 16, 15, device=flag_gems.device, dtype=dtype
+        )
+
+    with pytest.raises(ValueError, match=match):
+        flag_gems.chunk_gated_delta_rule(q, k, v, beta, g, **kwargs)
+
+
 def test_chunk_gated_delta_rule_does_not_broadly_reject_iluvatar_chunk_path(
     monkeypatch,
 ):

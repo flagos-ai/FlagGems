@@ -9,6 +9,10 @@ import logging
 import torch
 
 from flag_gems.fused.FLA.chunk_delta_h import chunk_gated_delta_rule_fwd_h
+from flag_gems.fused.FLA.chunk_fused_tail_vblock import (
+    can_use_fused_tail_vblock,
+    chunk_gated_delta_rule_fused_tail_vblock,
+)
 from flag_gems.fused.FLA.chunk_o import chunk_fwd_o
 from flag_gems.fused.FLA.fused_cumsum_kkt_solve_tril import (
     chunk_gated_delta_rule_fused_cumsum_kkt_solve_tril,
@@ -86,6 +90,27 @@ def chunk_gated_delta_rule_fwd(
         g_cumsum=g,
         cu_seqlens=cu_seqlens,
     )
+    if SUPPRESS_LEVEL < 3 and can_use_fused_tail_vblock(
+        q=q,
+        k=k,
+        w=w,
+        u=u,
+        g=g,
+        initial_state=initial_state,
+        output_final_state=output_final_state,
+        chunk_size=chunk_size,
+        cu_seqlens=cu_seqlens,
+    ):
+        o, final_state = chunk_gated_delta_rule_fused_tail_vblock(
+            q=q,
+            k=k,
+            w=w,
+            u=u,
+            g=g,
+            initial_state=initial_state,
+            scale=scale,
+        )
+        return g, o, A, final_state, None, None, None
     h, v_new, final_state = chunk_gated_delta_rule_fwd_h(
         k=k,
         w=w,
