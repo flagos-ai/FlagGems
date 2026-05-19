@@ -33,3 +33,9 @@ tests/*.json
 *.air
 *.ipa
 *.apk
+submit_fresh_*.py
+final_sync.py
+clean_branches.py
+restore_all_operators.py
+page (8).tsx
+submit_fresh_silu.py
