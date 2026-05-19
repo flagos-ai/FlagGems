@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +49,8 @@ def addmm_kernel(
     BLOCK_SIZE_K: tl.constexpr,
     IS_FP64: tl.constexpr = False,
 ):
-    pid_m = tle.program_id(0)
-    pid_n = tle.program_id(1)
+    pid_m = ext.program_id(0)
+    pid_n = ext.program_id(1)
 
     offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)

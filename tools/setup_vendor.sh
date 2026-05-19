@@ -20,6 +20,28 @@ case $VENDOR in
     fi
     ;;
 
+  enflame)
+    uv pip install -e .
+    # uv pip install ".[enflame]"
+
+    uv pip install --index ${FLAGOS_PYPI} \
+      "torch==2.9.1+cpu" \
+      "torch-gcu==2.9.1+3.7.1" \
+      "triton==3.3.0" \
+      "triton-gcu==3.3.1+1.0.20260323" \
+      "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323"
+
+    uv pip install ".[test]"
+
+    # Replace triton with flagtree if requested
+    # Currenly not working because it requires GLIBCXX_3.4.32
+    # if [ -n "${USE_TRITON}" ]; then
+    #   uv pip uninstall flagtree
+    #   uv pip install --index ${FLAGOS_PYPI} \
+    #     flagtree==0.5.0+enflame3.6
+    # fi
+    ;;
+
   hygon)
     uv pip install -e .
     uv pip install ".[hygon]"
@@ -75,6 +97,7 @@ case $VENDOR in
 
     uv pip install --index ${FLAGOS_PYPI} \
         "benchflow==1.0.0" \
+        "colorama==0.4.6" \
         "hyperparameter==0.5.6" \
         "torch==2.5.1+cu118" \
         "torchaudio==2.5.1+cu118" \
@@ -130,7 +153,7 @@ case $VENDOR in
     else
       uv pip uninstall triton
       uv pip install --index $FLAGOS_PYPI \
-        "flagtree==0.5.0+mthreads3.1"
+        "flagtree==0.5.1+mthreads3.6"
     fi
     ;;
 
@@ -149,6 +172,15 @@ case $VENDOR in
       uv pip install --index ${FLAGOS_PYPI} \
         "triton==3.5"
     fi
+    ;;
+
+  spacemit)
+    uv pip install -e .
+    uv pip install ".[spacemit]"
+    uv pip install --index ${FLAGOS_PYPI} \
+        "torch==2.8.0+spacemit.0" \
+        "triton==3.6.0+spacemit.a4"
+    uv pip install ".[test]"
     ;;
 
   thead)
