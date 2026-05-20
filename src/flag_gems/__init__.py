@@ -58,6 +58,7 @@ _FULL_CONFIG = (
         lambda: version.parse(torch.__version__) >= version.parse("2.4"),
     ),
     ("_unique2", _unique2),
+    ("_unsafe_masked_index_put_accumulate", _unsafe_masked_index_put_accumulate),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
     ("_upsample_nearest_exact1d", _upsample_nearest_exact1d),

@@ -5932,6 +5932,19 @@ ops:
   #     - Tensor
   #   stages:
   #     - alpha: '5.0'
+  - id: unsafe_masked_index_put_accumulate
+    description: |
+      Performs masked index put with accumulation in an unsafe manner.
+    for:
+      - _unsafe_masked_index_put_accumulate
+    labels:
+      - aten
+      - KernelGen
+      - special
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: upsample_bicubic2d
     description: A variant of `upsample()` that has `mode` set to `bicubic`.
     for:
