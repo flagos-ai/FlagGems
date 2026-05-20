@@ -222,22 +222,22 @@ def parse_single_accuracy():
     # Append failed and skipped cases if any, for the first run
     details = op_data1.get("details", {})
     case = " Before" if ARGS.compare else ""
-    if details.get("failed", 0) > 0:
-        f_lines = parse_single_accuracy_details(details, "Failed", case)
+    if op_data1.get("failed", 0) > 0:
+        f_lines = parse_single_accuracy_details(details, "failed", case)
         lines.extend(f_lines)
-    if details.get("skipped", 0) > 0:
-        k_lines = parse_single_accuracy_details(details, "Skipped", case)
+    if op_data1.get("skipped", 0) > 0:
+        k_lines = parse_single_accuracy_details(details, "skipped", case)
         lines.extend(k_lines)
 
     if not ARGS.compare:
         return lines
 
     details = op_data2.get("details", {})
-    if details.get("failed", 0) > 0:
-        f_lines = parse_single_accuracy_details(details, "Failed", " After")
+    if op_data2.get("failed", 0) > 0:
+        f_lines = parse_single_accuracy_details(details, "failed", " After")
         lines.extend(f_lines)
-    if details.get("skipped", 0) > 0:
-        k_lines = parse_single_accuracy_details(details, "Skipped", " After")
+    if op_data2.get("skipped", 0) > 0:
+        k_lines = parse_single_accuracy_details(details, "skipped", " After")
         lines.extend(k_lines)
 
     return lines
