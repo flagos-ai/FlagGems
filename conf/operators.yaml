@@ -1217,6 +1217,18 @@ ops:
       - Convolution
     stages:
       - beta: '5.1'
+  - id: conv_transpose2d
+    description: |
+      Applies a 2D transposed convolution operator over an input image composed of several input planes.
+    for:
+      - conv_transpose2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - alpha: '5.1'
   - id: copy
     description: |
       As a wrapper of `copy_`, this operator copies elements from `src` to `out`
