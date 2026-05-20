@@ -165,13 +165,23 @@ case $VENDOR in
         "torch==2.9.0+cu128" \
         "torchvision==0.24.0+cu128" \
         "torchaudio==2.9.0+cu128" \
-        "flagtree==0.5.0+3.5"
+        "triton==3.6"
 
-    if [ -n "${USE_TRITON}" ]; then
-      uv pip uninstall flagtree
-      uv pip install --index ${FLAGOS_PYPI} \
-        "triton==3.5"
-    fi
+    # We don't have flagtree for triton 3.6 yet
+    # if [ -n "${USE_TRITON}" ]; then
+    #   uv pip uninstall triton
+    #   uv pip install --index ${FLAGOS_PYPI} \
+    #     "flagtree==0.5.1+3.6"
+    # fi
+    ;;
+
+  spacemit)
+    uv pip install -e .
+    uv pip install ".[spacemit]"
+    uv pip install --index ${FLAGOS_PYPI} \
+        "torch==2.8.0+spacemit.0" \
+        "triton==3.6.0+spacemit.a4"
+    uv pip install ".[test]"
     ;;
 
   thead)
