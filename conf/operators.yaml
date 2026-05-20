@@ -5447,6 +5447,19 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: special_logsumexp
+    description: |
+      Computes log(sum(exp(input), dim)) with numerical stability.
+    for:
+      - special_logsumexp
+    labels:
+      - aten
+      - KernelGen
+      - reduction
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:

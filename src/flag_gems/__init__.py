@@ -467,6 +467,7 @@ _FULL_CONFIG = (
     ("special_i0e.out", special_i0e_out),
     ("special_i1", special_i1),
     ("special_i1.out", special_i1_out),
+    ("special_logsumexp", special_logsumexp),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
     ("square", square),
