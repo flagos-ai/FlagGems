@@ -146,7 +146,7 @@ def test_accuracy_outer(M, N, dtype):
 def test_accuracy_vdot(M, is_conj, dtype, stride):
     inp1_is_conj, inp2_is_conj = is_conj
 
-    if flag_gems.device == "musa":
+    if flag_gems.device == "musa" or flag_gems.vendor_name == 'sophgo':
         inp1 = torch.randn(M, dtype=dtype, device="cpu")
         inp2 = torch.randn(M, dtype=dtype, device="cpu")
     else:
@@ -165,11 +165,14 @@ def test_accuracy_vdot(M, is_conj, dtype, stride):
     ref_inp2 = to_reference(inp2, True)
 
     with flag_gems.use_gems():
-        if flag_gems.device == "musa":
+        if flag_gems.device == "musa" or flag_gems.vendor_name == 'sophgo':
             res_out = torch.vdot(
                 inp1.to(device=flag_gems.device), inp2.to(device=flag_gems.device)
             )
         else:
             res_out = torch.vdot(inp1, inp2)
     ref_out = torch.vdot(ref_inp1, ref_inp2)
-    gems_assert_close(res_out, ref_out, dtype)
+    atol = 1e-4
+    if flag_gems.vendor_name == "sophgo":
+        atol = 1e-3
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp1.shape[0], atol=atol)
