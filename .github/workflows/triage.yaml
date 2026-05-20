@@ -18,7 +18,7 @@ jobs:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
           sync-labels: true
       - id: sizer
-        uses: codelytv/pr-size-labeler@v1.3.8
+        uses: cbrgm/pr-size-labeler-action@v1.3.8
         with:
           xs_label: 'size/XSmall'
           xs_max_size: '10'
