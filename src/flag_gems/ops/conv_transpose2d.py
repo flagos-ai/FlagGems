@@ -28,7 +28,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -51,25 +50,6 @@ def _output_size(in_size, kernel_size, stride, padding, output_padding, dilation
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("conv_transpose2d"),
-    key=[
-        "batch",
-        "in_channels",
-        "input_height",
-        "input_width",
-        "out_channels",
-        "kernel_height",
-        "kernel_width",
-        "stride_height",
-        "stride_width",
-        "padding_height",
-        "padding_width",
-        "dilation_height",
-        "dilation_width",
-        "groups",
-    ],
-)
 @triton.jit
 def _conv_transpose2d_kernel(
     input_ptr,
@@ -249,6 +229,24 @@ def _validate(
         raise RuntimeError("expected bias to have one element per output channel")
 
 
+def _select_schedule(
+    dtype,
+    batch,
+    in_channels_per_group,
+    out_channels_per_group,
+    input_height,
+    input_width,
+    max_nhw,
+):
+    if in_channels_per_group <= 16 and out_channels_per_group <= 16:
+        return 32, 16, 16, 2, 2
+    if input_height * input_width >= 128 * 128 and dtype is not torch.float32:
+        return 64, 64, 32, 4, 2
+    if max_nhw <= 4096:
+        return 64, 16, 32, 4, 2
+    return 128, 16, 32, 4, 2
+
+
 def conv_transpose2d(
     input,
     weight,
@@ -313,9 +311,19 @@ def conv_transpose2d(
     max_nhw = batch * max_compact_h * max_compact_w
     n_phase_group = stride_h * stride_w * groups
 
-    grid = lambda meta: (
-        triton.cdiv(max_nhw, meta["BLOCK_NHW"]),
-        triton.cdiv(out_channels_per_group, meta["BLOCK_CO"]),
+    block_nhw, block_ci, block_co, num_warps, num_stages = _select_schedule(
+        input.dtype,
+        batch,
+        in_channels_per_group,
+        out_channels_per_group,
+        input_height,
+        input_width,
+        max_nhw,
+    )
+
+    grid = (
+        triton.cdiv(max_nhw, block_nhw),
+        triton.cdiv(out_channels_per_group, block_co),
         n_phase_group,
     )
 
@@ -352,5 +360,10 @@ def conv_transpose2d(
         out_channels_per_group,
         bias is not None,
         precision,
+        BLOCK_NHW=block_nhw,
+        BLOCK_CI=block_ci,
+        BLOCK_CO=block_co,
+        num_warps=num_warps,
+        num_stages=num_stages,
     )
     return output
