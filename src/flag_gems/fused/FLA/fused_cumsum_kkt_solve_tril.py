@@ -372,7 +372,9 @@ def chunk_gated_delta_rule_fused_cumsum_kkt_solve_tril(
     A_inv = torch.zeros(B, T, H, BT, device=g.device, dtype=output_dtype)
 
     def grid(meta):
-        return (NT, B * H)
+        # Varlen kernels derive the sequence from chunk_indices. The batch id
+        # from i_bh is unused there, so H programs are sufficient for B > 1 too.
+        return (NT, H if cu_seqlens is not None else B * H)
 
     chunk_gated_delta_rule_fused_cumsum_kkt_solve_tril_kernel[grid](
         g_in=g,
@@ -389,7 +391,7 @@ def chunk_gated_delta_rule_fused_cumsum_kkt_solve_tril(
         K=K,
         BT=BT,
         IS_VARLEN=cu_seqlens is not None,
-        USE_TMA=is_tma_supported,
+        USE_TMA=is_tma_supported and BT == 64,
         DOT_PRECISION=FLA_TRIL_PRECISION,
     )
     return g_out, A_inv
