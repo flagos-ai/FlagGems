@@ -923,8 +923,10 @@ def _can_use_scatter_reduce_scatter_path(
         return False
     if inp.dtype in _SCATTER_REDUCE_FAST_DTYPES:
         return True
-    return inp.dtype == torch.bfloat16 and reduce == "prod" and (
-        _can_scatter_reduce_prod_scatter_path(inp, dim, index, src)
+    return (
+        inp.dtype == torch.bfloat16
+        and reduce == "prod"
+        and (_can_scatter_reduce_prod_scatter_path(inp, dim, index, src))
     )
 
 
