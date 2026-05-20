@@ -1098,7 +1098,9 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
         return NanMedian(values=values, indices=indices)
 
     inp = dim_compress(inp, dim)
-    use_cuda_histogram = inp.is_cuda and _use_cuda_masked_histogram()
+    use_cuda_histogram = (
+        inp.is_cuda and N > MAX_BLOCK_N and _use_cuda_masked_histogram()
+    )
 
     if inp.dtype in RADIX_SELECT_DTYPES and _use_radix_select(inp, N):
         flat_values = values.reshape(M)
