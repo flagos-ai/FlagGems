@@ -226,7 +226,7 @@ def _can_scatter_mul_2d_lastdim_pow2(inp, dim, index, src, out, reduce) -> bool:
         return False
     if not _is_power_of_2(index.size(1)):
         return False
-    if inp.dtype not in (torch.float16, torch.float32):
+    if inp.dtype not in (torch.float16, torch.float32, torch.bfloat16):
         return False
     if index.numel() > 65536:
         return False
@@ -253,7 +253,7 @@ def _can_scatter_mul_2d_lastdim_pow2_large(inp, dim, index, src, out, reduce) ->
         return False
     if not _is_power_of_2(index.size(1)):
         return False
-    if inp.dtype not in (torch.float16, torch.float32):
+    if inp.dtype not in (torch.float16, torch.float32, torch.bfloat16):
         return False
     if index.numel() < 1048576:
         return False
@@ -280,7 +280,7 @@ def _can_scatter_mul_2d_lastdim_pow2_inplace(inp, dim, index, src, reduce) -> bo
         return False
     if not _is_power_of_2(index.size(1)):
         return False
-    if inp.dtype not in (torch.float16, torch.float32):
+    if inp.dtype not in (torch.float16, torch.float32, torch.bfloat16):
         return False
     if index.numel() > 65536:
         return False
@@ -354,7 +354,7 @@ def _scatter_mul_2d_lastdim_pow2_large(inp, index, src, out):
         loop = 1
         num_warps = 1
     grid = (index.size(0), triton.cdiv(index.size(1), block * loop))
-    if inp.dtype in (torch.float16, torch.float32):
+    if inp.dtype in (torch.float16, torch.float32, torch.bfloat16):
         _scatter_mul_2d_lastdim_pow2_large_pair_kernel[grid](
             src,
             index,
@@ -902,18 +902,29 @@ def _valid_scatter_reduce_fast_shapes(inp, dim, index, src) -> bool:
     return True
 
 
+def _can_scatter_reduce_prod_scatter_path(inp, dim, index, src) -> bool:
+    return _can_scatter_mul_2d_lastdim_pow2_large(
+        inp, dim, index, src, inp, "multiply"
+    ) or _can_scatter_mul_2d_lastdim_pow2(inp, dim, index, src, inp, "multiply")
+
+
 def _can_use_scatter_reduce_scatter_path(
     inp, dim, index, src, reduce, include_self
 ) -> bool:
-    return (
+    if not (
         include_self
         and _scatter_reduce_as_scatter_reduce(reduce) is not None
         and inp.is_cuda
         and index.device == inp.device
         and src.device == inp.device
-        and inp.dtype in _SCATTER_REDUCE_FAST_DTYPES
         and src.dtype == inp.dtype
         and _valid_scatter_reduce_fast_shapes(inp, dim, index, src)
+    ):
+        return False
+    if inp.dtype in _SCATTER_REDUCE_FAST_DTYPES:
+        return True
+    return inp.dtype == torch.bfloat16 and reduce == "prod" and (
+        _can_scatter_reduce_prod_scatter_path(inp, dim, index, src)
     )
 
 
@@ -1008,11 +1019,6 @@ def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER")
     out = inp.clone()
 
-    if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
-
     if has_internal_overlapping(out) == MemOverlap.Yes:
         out = out.contiguous()
 
@@ -1024,6 +1030,11 @@ def scatter(inp, dim, index, src, reduce=None):
 
     if _can_scatter_mul_2d_lastdim_pow2(inp, dim, index, src, out, reduce):
         return _scatter_mul_2d_lastdim_pow2(inp, index, src, out)
+
+    if reduce is not None:
+        assert inp.dtype not in (
+            torch.bfloat16,
+        ), "Unsupported operation: reduce scatter bfloat tensors."
 
     src_strided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(inp, dim, index.shape)
@@ -1054,11 +1065,6 @@ def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER_")
     out = inp
 
-    if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
-
     assert (
         has_internal_overlapping(out) != MemOverlap.Yes
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
@@ -1071,6 +1077,11 @@ def scatter_(inp, dim, index, src, reduce=None):
 
     if _can_scatter_mul_2d_lastdim_pow2_inplace(inp, dim, index, src, reduce):
         return _scatter_mul_2d_lastdim_pow2_inplace(inp, index, src, out)
+
+    if reduce is not None:
+        assert inp.dtype not in (
+            torch.bfloat16,
+        ), "Unsupported operation: reduce scatter bfloat tensors."
 
     src_restrided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(inp, dim, index.shape)
