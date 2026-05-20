@@ -45,9 +45,9 @@ jobs:
           # Detect if operator exists before
           num=$(grep "pytest.mark.${{ needs.preprocess.outputs.op }}" -r tests | wc -l)
           if [ "$num" -eq "0" ]; then
-            echo "EXISTING_OP=1" >> $GITHUB_ENV
-          else
             echo "EXISTING_OP=0" >> $GITHUB_ENV
+          else
+            echo "EXISTING_OP=1" >> $GITHUB_ENV
           fi
 
   test-operator:
