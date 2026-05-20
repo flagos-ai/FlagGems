@@ -148,11 +148,12 @@ def test_median_even_count(dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_median_zero_dim(dtype):
     inp = torch.tensor(2.75, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
     with flag_gems.use_gems():
         res = torch.median(inp)
         res_v, res_i = torch.median(inp, dim=0)
-    utils.gems_assert_equal(res, inp)
-    utils.gems_assert_equal(res_v, inp)
+    utils.gems_assert_equal(res, ref_inp)
+    utils.gems_assert_equal(res_v, ref_inp)
     assert res_i.item() == 0
 
 
