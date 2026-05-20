@@ -3502,3 +3502,11 @@ def svd(input, some=True, compute_uv=True):
         return SVDResult(*_large_native_svd(input))
     except RuntimeError:
         return SVDResult(*_unsupported_svd(input, some, compute_uv))
+
+
+def svd_out(input, some=True, compute_uv=True, *, U, S, V):
+    u, s, v = svd(input, some=some, compute_uv=compute_uv)
+    U.resize_as_(u).copy_(u)
+    S.resize_as_(s).copy_(s)
+    V.resize_as_(v).copy_(v)
+    return SVDResult(U, S, V)

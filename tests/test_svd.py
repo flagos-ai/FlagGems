@@ -340,3 +340,23 @@ def test_accuracy_svd_some_false_reconstruction(shape):
     utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
     _assert_orthonormal(res_u)
     _assert_orthonormal(res_v)
+
+
+@pytest.mark.svd
+def test_accuracy_svd_out():
+    inp = _make_input((5, 3), torch.float32)
+    ref_inp = utils.to_reference(inp, False)
+    ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
+    res_u = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
+    res_s = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
+    res_v = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
+
+    with flag_gems.use_gems(include=["svd"]):
+        torch.svd(inp, some=True, compute_uv=True, out=(res_u, res_s, res_v))
+
+    _assert_same_shape(res_u, ref_u)
+    _assert_same_shape(res_s, ref_s)
+    _assert_same_shape(res_v, ref_v)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
+    reconstructed = _reconstruct(res_u, res_s, res_v)
+    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
