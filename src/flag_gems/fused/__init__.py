@@ -55,6 +55,7 @@ from flag_gems.fused.skip_layernorm import skip_layer_norm
 from flag_gems.fused.sparse_attention import sparse_attn_triton
 from flag_gems.fused.swiglu import dswiglu, swiglu
 from flag_gems.fused.topk_softmax import topk_softmax
+from flag_gems.fused.topk_softplus_sqrt import topk_softplus_sqrt
 from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
@@ -106,6 +107,7 @@ __all__ = [
     "skip_layer_norm",
     "swiglu",
     "topk_softmax",
+    "topk_softplus_sqrt",
     "weight_norm",
     "sparse_attn_triton",
 ]
