@@ -1,0 +1,4 @@
+# Local libtriton-jit .deb files are dropped here for the FlagGems
+# wheel build to consume; never commit them.
+*.deb
+*.rpm
