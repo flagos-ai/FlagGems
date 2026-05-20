@@ -5455,7 +5455,7 @@ ops:
     labels:
       - aten
       - KernelGen
-      - reduction
+      - Reduction
     kind:
       - Math
     stages:
