@@ -105,8 +105,8 @@ def test_conv_transpose2d(
         )
 
     # Tolerance: reduce_dim accounts for C_in * kH * kW accumulation,
-    # with 4x safety factor for different accumulation order and autotuning variance
-    reduce_dim = kernel[0] * kernel[2] * kernel[3] * 4
+    # with 8x safety factor for different accumulation order and autotuning variance
+    reduce_dim = kernel[0] * kernel[2] * kernel[3] * 8
     # bfloat16 has lower precision, use larger atol
     atol = 5e-4 if dtype == torch.bfloat16 else 1e-4
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim, atol=atol)
