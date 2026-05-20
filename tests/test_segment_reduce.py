@@ -9,18 +9,8 @@ from . import conftest as cfg
 FLOAT_DTYPES = [torch.float32] if cfg.QUICK_MODE else utils.ALL_FLOAT_DTYPES
 REDUCTIONS = ("sum", "mean", "max", "min", "prod")
 INITIALS = (None, 0.5)
-
-LENGTH_CASES = (
-    ((5,), 0, [2, 0, 3]),
-    ((2, 3), 1, [[1, 1, 1], [1, 1, 1]]),
-    ((2, 3, 4), 1, [[1, 2], [2, 1]]),
-    ((2, 3, 5), 2, [[[2, 3], [1, 4], [3, 2]], [[5, 0], [2, 3], [4, 1]]]),
-)
-
-OFFSET_CASES = (
-    ((5,), 0, [0, 2, 5]),
-    ((2, 3, 4), 1, [[0, 1, 3], [0, 2, 3]]),
-)
+LENGTH_CASES = utils.SEGMENT_REDUCE_LENGTH_CASES
+OFFSET_CASES = utils.SEGMENT_REDUCE_OFFSET_CASES
 
 
 def _make_data(shape, dtype, requires_grad=False):
@@ -183,7 +173,7 @@ def test_segment_reduce_backward_lengths(shape, axis, lengths, reduce, dtype, in
 @pytest.mark.parametrize("reduce", REDUCTIONS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_segment_reduce_lengths_out(reduce, dtype):
-    shape, axis, lengths = (2, 3, 4), 1, [[1, 2], [2, 1]]
+    shape, axis, lengths = utils.SEGMENT_REDUCE_LENGTH_OUT_CASE
     _assert_segment_reduce_out(
         shape,
         _make_lengths_kwargs(axis, lengths),
@@ -196,7 +186,7 @@ def test_segment_reduce_lengths_out(reduce, dtype):
 @pytest.mark.parametrize("reduce", REDUCTIONS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_segment_reduce_offsets_out(reduce, dtype):
-    shape, axis, offsets = (2, 3, 4), 1, [[0, 1, 3], [0, 2, 3]]
+    shape, axis, offsets = utils.SEGMENT_REDUCE_OFFSET_OUT_CASE
     _assert_segment_reduce_out(
         shape,
         _make_offsets_kwargs(axis, offsets),
@@ -209,7 +199,7 @@ def test_segment_reduce_offsets_out(reduce, dtype):
 @pytest.mark.parametrize("reduce", REDUCTIONS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_segment_reduce_backward_lengths_out(reduce, dtype):
-    shape, axis, lengths = (2, 3, 4), 1, [[1, 2], [2, 1]]
+    shape, axis, lengths = utils.SEGMENT_REDUCE_LENGTH_OUT_CASE
     _assert_segment_reduce_backward_out(
         shape,
         _make_lengths_kwargs(axis, lengths),
@@ -222,7 +212,7 @@ def test_segment_reduce_backward_lengths_out(reduce, dtype):
 @pytest.mark.parametrize("reduce", REDUCTIONS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_segment_reduce_backward_offsets_out(reduce, dtype):
-    shape, axis, offsets = (2, 3, 4), 1, [[0, 1, 3], [0, 2, 3]]
+    shape, axis, offsets = utils.SEGMENT_REDUCE_OFFSET_OUT_CASE
     _assert_segment_reduce_backward_out(
         shape,
         _make_offsets_kwargs(axis, offsets),

@@ -1,5 +1,3 @@
-import os
-
 import pytest
 import torch
 
@@ -29,33 +27,9 @@ def _make_lengths(shape, axis, device):
 
 
 class SegmentReduceBenchmark(base.Benchmark):
-    DEFAULT_SHAPES = [
-        (1048576,),
-        (64, 64),
-        (4096, 4096),
-        (64, 512, 512),
-        (1024, 1024, 1024),
-    ]
-    DEFAULT_SHAPE_DESC = "data shape"
     is_segment_backward = False
     use_backward_out = False
     use_out = False
-
-    def set_shapes(self, shape_file_path=None):
-        default_shape_file = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
-        )
-        if shape_file_path and os.path.abspath(shape_file_path) != default_shape_file:
-            super().set_shapes(shape_file_path)
-            return
-
-        self.shapes = self.DEFAULT_SHAPES
-        self.shape_desc = self.DEFAULT_SHAPE_DESC
-        if (
-            base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE
-            and not base.Config.query
-        ):
-            self.shapes = list(dict.fromkeys(self.shapes + self.set_more_shapes()))
 
     def set_more_shapes(self):
         return [(65536,), (2048, 256), (128, 256, 128)]
