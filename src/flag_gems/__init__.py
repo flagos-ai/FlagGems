@@ -80,6 +80,7 @@ _FULL_CONFIG = (
     ("addmm.dtype", addmm_dtype),
     ("addmm.dtype_out", addmm_dtype_out),
     ("addr", addr),
+    ("affine_grid_generator", affine_grid_generator),
     ("alias_copy", alias_copy),
     ("all", all),
     ("all.dim", all_dim),
