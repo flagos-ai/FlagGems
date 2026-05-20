@@ -262,7 +262,7 @@ class ConvTranspose2d(torch.autograd.Function):
         else:
             bias_data = bias
 
-        # Always use direct implicit GEMM kernel (no weight transformation overhead)
+        # Use direct kernel for all cases
         in_per_group = C_in // groups
 
         grid = lambda META: (
