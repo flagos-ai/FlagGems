@@ -66,11 +66,11 @@ def test_accuracy_exponential_(shape, dtype):
 def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
     # First use multinomial to generate a series of indices, then
     # use the index counts as the input probabilities (scaled)
-    rand_indices = torch.multinomial(torch.rand(shape), n_samples, True).to(device)
-    inp_counts = torch.nn.functional.one_hot(rand_indices).sum(1)
+    rand_indices = torch.multinomial(torch.rand(shape), n_samples, True)
+    inp_counts = torch.nn.functional.one_hot(rand_indices).sum(1).to(device)
     with flag_gems.use_gems():
         out_indices = torch.multinomial(inp_counts.to(dtype=dtype), n_samples, True)
-    out_counts = torch.nn.functional.one_hot(out_indices).sum(1)
+    out_counts = torch.nn.functional.one_hot(out_indices.cpu().to(torch.long)).sum(1).to(device)
     # Do a simple Chi-square test
     assert torch.equal(inp_counts.sum(-1), out_counts.sum(-1))
     chi2, pvalue = scipy.stats.chisquare(

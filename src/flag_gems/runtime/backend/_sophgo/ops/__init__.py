@@ -33,6 +33,7 @@ from .logical_xor import logical_xor
 from .max import max, max_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
+from .multinomial import multinomial
 from .nan_to_num import nan_to_num
 from .nllloss import (
     nll_loss_forward,
@@ -120,6 +121,7 @@ __all__ = [
     "min_dim",
     "mm",
     "mm_out",
+    "multinomial",
     "nan_to_num",
     "nll_loss_forward",
     "nll_loss2d_forward",

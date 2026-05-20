@@ -473,7 +473,7 @@ def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
             dist[..., -1] = 0.5
             with flag_gems.use_gems():
                 res_out = torch.multinomial(dist, n_samples, True)
-            res_dist = torch.gather(dist, -1, res_out)
+            res_dist = torch.gather(dist.cpu(), -1, res_out.cpu().to(torch.long))
             # assert torch.all(res_dist)
             assert torch.sum(res_dist == 0) / res_dist.numel() < 0.001
 
@@ -492,7 +492,7 @@ def test_accuracy_multinomial_without_replacement(pool, dtype):
         with flag_gems.use_gems():
             out = torch.multinomial(dist, n, False)
         # Verifies uniqueness
-        idx_cnt = torch.nn.functional.one_hot(out).sum(1)
+        idx_cnt = torch.nn.functional.one_hot(out.cpu().to(torch.long)).sum(1).to(flag_gems.device)
         assert torch.all(idx_cnt <= 1)
 
 
