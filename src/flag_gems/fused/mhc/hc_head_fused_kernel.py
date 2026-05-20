@@ -164,12 +164,12 @@ def _hc_head_fused_kernel(
 
         # Load residual values for each HC head at positions h_off
         # Assuming contiguous layout: stride_m = H, stride_h = 1
-        r0 = tl.load(
-            residual_ptr + x_base + 0 * H + h_off, mask=h_mask, other=0.0
-        ).to(tl.float32)
-        r1 = tl.load(
-            residual_ptr + x_base + 1 * H + h_off, mask=h_mask, other=0.0
-        ).to(tl.float32)
+        r0 = tl.load(residual_ptr + x_base + 0 * H + h_off, mask=h_mask, other=0.0).to(
+            tl.float32
+        )
+        r1 = tl.load(residual_ptr + x_base + 1 * H + h_off, mask=h_mask, other=0.0).to(
+            tl.float32
+        )
 
         # Weighted sum: out[h] = sum_m(pre_mix[m] * residual[m, h])
         acc = pre_mix0 * r0 + pre_mix1 * r1
