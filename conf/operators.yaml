@@ -2176,6 +2176,32 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: floor
+    description: |
+      Performs an element-wise floor operation, rounding each element of a tensor
+      down to the nearest integer less than or equal to itself.
+    for:
+      - floor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: floor_out
+    description: |
+      Performs an element-wise floor operation with output tensor, rounding each element
+      down to the nearest integer less than or equal to itself.
+    for:
+      - floor.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
   - id: floor_
     description: |
       Performs an in-place element-wise floor operation, rounding each element of a tensor
