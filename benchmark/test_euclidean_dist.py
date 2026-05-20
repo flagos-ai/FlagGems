@@ -4,7 +4,9 @@ import torch
 
 from . import base
 
-# Custom shapes for pairwise distance computation
+# Hardcoded shapes: _euclidean_dist requires (N,D) matrix pairs;
+# CI --level core overrides GenericBenchmark shapes with 1D/3D defaults,
+# so we use a custom Benchmark subclass with set_shapes override.
 EUCLIDEAN_DIST_SHAPES = [
     ((64, 128), (64, 128)),
     ((128, 256), (128, 256)),
