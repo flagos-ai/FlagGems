@@ -1,6 +1,14 @@
 from . import backend, common, error
 from .backend.device import DeviceDetector
 from .configloader import ConfigLoader
+from .flagtune import (
+    flagtune,
+    flagtune_enabled,
+    get_default_flagtune_include,
+    get_flagtune_registry,
+    get_supported_flagtune_ops,
+    register_flagtune_op,
+)
 
 config_loader = ConfigLoader()
 device = DeviceDetector()
