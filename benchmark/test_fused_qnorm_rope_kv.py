@@ -11,8 +11,14 @@ from . import base
 
 
 def _torch_fused_qnorm_rope_kv_ref(
-    q, kv, k_cache, slot_mapping, position_ids, cos_sin_cache,
-    eps=1e-6, cache_block_size=16,
+    q,
+    kv,
+    k_cache,
+    slot_mapping,
+    position_ids,
+    cos_sin_cache,
+    eps=1e-6,
+    cache_block_size=16,
 ):
     """Pure-PyTorch reference: QNorm + RoPE + FP8 KV cache insert."""
     N, H, D = q.shape
@@ -27,7 +33,9 @@ def _torch_fused_qnorm_rope_kv_ref(
         for head in range(H):
             x = q[tok, head, :].float()
             var = (x * x).mean()
-            rsqrt_val = torch.rsqrt(var + torch.tensor(eps, dtype=torch.float32, device=x.device))
+            rsqrt_val = torch.rsqrt(
+                var + torch.tensor(eps, dtype=torch.float32, device=x.device)
+            )
             x_norm = x * rsqrt_val
 
             q[tok, head, :448] = x_norm[:448].to(torch.bfloat16)
@@ -56,20 +64,21 @@ def _torch_fused_qnorm_rope_kv_ref(
         block_idx = slot_id // cache_block_size
         pos_in_block = slot_id % cache_block_size
         byte_off_tok = block_idx * cache_stride + pos_in_block * 576
-        byte_off_scale = (block_idx * cache_stride
-                          + cache_block_size * 576 + pos_in_block * 8)
+        byte_off_scale = (
+            block_idx * cache_stride + cache_block_size * 576 + pos_in_block * 8
+        )
 
         flat = k_cache.view(-1)
 
         for b in range(7):
-            bdata = kv_f[b * 64:(b + 1) * 64]
+            bdata = kv_f[b * 64 : (b + 1) * 64]
             absmax = bdata.abs().max().clamp(min=1e-4)
             exponent = math.ceil(math.log2(absmax.item() / 448.0))
             inv_scale = 2.0 ** (-exponent)
             scaled = (bdata * inv_scale).clamp(-448.0, 448.0)
             fp8_vals = scaled.to(torch.float8_e4m3fn)
             fp8_i8 = fp8_vals.view(torch.int8).view(torch.uint8)
-            flat[byte_off_tok + b * 64:byte_off_tok + (b + 1) * 64] = fp8_i8
+            flat[byte_off_tok + b * 64 : byte_off_tok + (b + 1) * 64] = fp8_i8
             enc_scale = max(0, min(255, int(exponent + 127)))
             flat[byte_off_scale + b] = enc_scale
 
@@ -80,7 +89,7 @@ def _torch_fused_qnorm_rope_kv_ref(
         rope_bf16[0::2] = out_e.to(torch.bfloat16)
         rope_bf16[1::2] = out_o.to(torch.bfloat16)
         bf16_bytes[:] = rope_bf16.view(torch.uint8)
-        flat[byte_off_tok + 448:byte_off_tok + 576] = bf16_bytes
+        flat[byte_off_tok + 448 : byte_off_tok + 576] = bf16_bytes
 
 
 class FusedQNormRopeKVBenchmark(base.Benchmark):
@@ -120,9 +129,14 @@ class FusedQNormRopeKVBenchmark(base.Benchmark):
             )
 
             yield (
-                q, kv, k_cache, slot_mapping,
-                position_ids, cos_sin_cache,
-                1e-6, cache_block_size,
+                q,
+                kv,
+                k_cache,
+                slot_mapping,
+                position_ids,
+                cos_sin_cache,
+                1e-6,
+                cache_block_size,
             )
 
 

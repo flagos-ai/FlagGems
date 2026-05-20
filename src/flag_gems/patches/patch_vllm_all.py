@@ -640,7 +640,11 @@ def apply_gems_patches_to_vllm(verbose=True):
         ("_C", "per_token_group_fp8_quant", custom_per_token_group_fp8_quant),
         ("_C", "apply_repetition_penalties_", custom_apply_repetition_penalties),
         ("_C_cache_ops", "concat_and_cache_mla", custom_concat_and_cache_mla),
-        ("_C", "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert", custom_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert),
+        (
+            "_C",
+            "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
+            custom_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
+        ),
     ]
     for lib_name, fn_name, fn in lib_patches:
         patch_vllm_lib(lib_name, fn_name, fn, dispatch_key, verbose)
