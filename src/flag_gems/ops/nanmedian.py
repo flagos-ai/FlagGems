@@ -998,6 +998,12 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             result.indices[row_indices] = indices
         return result
     else:
+        if inp.device.type == "npu" and inp.dtype in (torch.int32, torch.int64):
+            sorted_values, sorted_indices = torch.sort(inp, dim=1)
+            kth = (N + 1) // 2 - 1
+            values = sorted_values[:, kth]
+            indices = sorted_indices[:, kth]
+            return NanMedian(values=values, indices=indices)
         values, indices = torch.kthvalue(inp, (N + 1) // 2, dim=1)
         return NanMedian(values=values, indices=indices)
 
