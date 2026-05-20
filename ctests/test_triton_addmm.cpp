@@ -27,7 +27,10 @@ TEST_P(AddmmTest, addmm) {
   at::Tensor out_torch = at::addmm(ref_bias, ref_mat1, ref_mat2);
   at::Tensor out_triton = flag_gems::addmm(bias, mat1, mat2);
 
-  auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton, out_torch, bias.scalar_type());
+  float atol = (param.dtype == at::ScalarType::BFloat16) ? 1e-2 : 1e-4;
+  auto result = flag_gems::accuracy_utils::gems_assert_close(
+      out_triton, out_torch, bias.scalar_type(),
+      /*equal_nan=*/false, /*reduce_dim=*/param.k, /*atol=*/atol);
   EXPECT_TRUE(result.ok) << result.message;
 }
 

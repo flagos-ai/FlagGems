@@ -84,7 +84,7 @@ at::Tensor addmm(const at::Tensor& self,
     /* BLOCK_M = */ config.block_m,
     /* BLOCK_N = */ config.block_n,
     /* BLOCK_K = */ config.block_k,
-    /* IS_FP64 = */ false);
+    /* IS_FP64 = */ mat1.dtype() == at::kDouble);
   return out;
 }
 
@@ -141,7 +141,7 @@ at::Tensor& addmm_out(const at::Tensor& self,
     /* BLOCK_M = */ config.block_m,
     /* BLOCK_N = */ config.block_n,
     /* BLOCK_K = */ config.block_k,
-    /* IS_FP64 = */ false);
+    /* IS_FP64 = */ mat1.dtype() == at::kDouble);
   return out;
 }
 
