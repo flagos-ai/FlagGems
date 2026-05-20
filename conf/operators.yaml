@@ -1801,6 +1801,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.0'
+  - id: efficient_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _efficient_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.2'
   - id: embedding
     description: |
       Generate a simple lookup table that looks up embeddings in a fixed dictionary and size.
@@ -2104,6 +2116,18 @@ ops:
       - Tensor
     stages:
       - stable: '5.0'
+  - id: flash_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _flash_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.2'
   - id: flash_attention_forward
     for:
       - _flash_attention_forward
@@ -4914,6 +4938,42 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: scaled_dot_product_cudnn_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _scaled_dot_product_cudnn_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.2'
+  - id: scaled_dot_product_efficient_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _scaled_dot_product_efficient_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.2'
+  - id: scaled_dot_product_flash_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _scaled_dot_product_flash_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.2'
   - id: scaled_softmax_backward
     description: |
       The backward pass for a scaled softmax function, commonly used in Scaled Dot-Product Attention (SDPA)
