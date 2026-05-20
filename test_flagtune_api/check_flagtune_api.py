@@ -35,19 +35,26 @@ def main():
 
     import flag_gems
 
+    default_ops = frozenset(("mm", "bmm"))
+    supported_ops = default_ops | {"w8a8_block_fp8_matmul"}
+
     bmm_mod = importlib.import_module("flag_gems.ops.bmm")
     addmm_mod = importlib.import_module("flag_gems.ops.addmm")
     hopper_mm_mod = importlib.import_module(
         "flag_gems.runtime.backend._nvidia.hopper.ops.mm"
     )
+    hopper_w8a8_mod = importlib.import_module(
+        "flag_gems.runtime.backend._nvidia.hopper.ops.w8a8_block_fp8_matmul"
+    )
 
     assert hasattr(flag_gems, "flagtune")
     assert hasattr(flag_gems, "register_flagtune_op")
-    assert flag_gems.get_supported_flagtune_ops() == frozenset(("mm", "bmm"))
-    assert flag_gems.get_default_flagtune_include() == frozenset(("mm", "bmm"))
-    assert set(flag_gems.get_flagtune_registry()) == {"mm", "bmm"}
+    assert flag_gems.get_supported_flagtune_ops() == supported_ops
+    assert flag_gems.get_default_flagtune_include() == default_ops
+    assert set(flag_gems.get_flagtune_registry()) == set(supported_ops)
     assert not flag_gems.runtime.flagtune_enabled("mm")
     assert not flag_gems.runtime.flagtune_enabled("bmm")
+    assert not flag_gems.runtime.flagtune_enabled("w8a8_block_fp8_matmul")
 
     registry_op = "dummy_registry_op"
     spec = flag_gems.register_flagtune_op(
@@ -70,12 +77,20 @@ def main():
 
     bmm_tuner = bmm_mod.bmm_kernel.fn
     mm_tuner = hopper_mm_mod.mm_kernel_general_host_tma.fn
+    w8a8_general_tuner = hopper_w8a8_mod.w8a8_block_fp8_matmul_kernel_general.fn
+    w8a8_splitk_tuner = hopper_w8a8_mod.w8a8_block_fp8_matmul_kernel_splitk.fn
     addmm_tuner = addmm_mod.addmm_kernel.fn
 
     bmm_default_count = len(bmm_tuner.configs)
     mm_default_count = len(mm_tuner.configs)
+    w8a8_general_default_count = len(w8a8_general_tuner.configs)
+    w8a8_splitk_default_count = len(w8a8_splitk_tuner.configs)
     assert bmm_default_count > 0
     assert mm_default_count > 0
+    assert w8a8_general_default_count > 0
+    assert w8a8_splitk_default_count > 0
+    assert w8a8_general_tuner._flagtune_op_name == "w8a8_block_fp8_matmul"
+    assert w8a8_splitk_tuner._flagtune_op_name == "w8a8_block_fp8_matmul"
     assert getattr(addmm_tuner, "_flagtune_op_name", None) is None
 
     bmm_expand_path = flag_gems.runtime.config_loader.expand_config_registry["bmm"][
@@ -113,6 +128,25 @@ def main():
     assert len(mm_tuner.configs) > mm_default_count
     mm_expanded_count = len(mm_tuner.configs)
 
+    flag_gems.flagtune(include="w8a8_block_fp8_matmul")
+    _apply_flagtune_state(
+        bmm_mod.bmm_kernel,
+        hopper_mm_mod.mm_kernel_general_host_tma,
+        hopper_w8a8_mod.w8a8_block_fp8_matmul_kernel_general,
+        hopper_w8a8_mod.w8a8_block_fp8_matmul_kernel_splitk,
+    )
+    assert flag_gems.runtime.flagtune_enabled("w8a8_block_fp8_matmul")
+    assert not flag_gems.runtime.flagtune_enabled("mm")
+    assert not flag_gems.runtime.flagtune_enabled("bmm")
+    assert not bmm_tuner._flagtune_active
+    assert not mm_tuner._flagtune_active
+    assert w8a8_general_tuner._flagtune_active
+    assert w8a8_splitk_tuner._flagtune_active
+    assert len(w8a8_general_tuner.configs) > w8a8_general_default_count
+    assert len(w8a8_splitk_tuner.configs) > w8a8_splitk_default_count
+    w8a8_general_expanded_count = len(w8a8_general_tuner.configs)
+    w8a8_splitk_expanded_count = len(w8a8_splitk_tuner.configs)
+
     try:
         flag_gems.flagtune(include="addmm")
     except ValueError:
@@ -123,6 +157,11 @@ def main():
     print("PASS: flagtune API include scope and config switching look correct")
     print(f"bmm configs: {bmm_default_count} -> {bmm_expanded_count}")
     print(f"mm configs: {mm_default_count} -> {mm_expanded_count}")
+    print(
+        "w8a8 configs: "
+        f"general {w8a8_general_default_count} -> {w8a8_general_expanded_count}, "
+        f"splitk {w8a8_splitk_default_count} -> {w8a8_splitk_expanded_count}"
+    )
     print(f"bmm expand yaml: {bmm_expand_path}")
 
 

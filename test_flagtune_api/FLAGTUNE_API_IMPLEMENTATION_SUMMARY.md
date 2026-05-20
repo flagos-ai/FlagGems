@@ -24,7 +24,8 @@ flag_gems.flagtune(include="mm, bmm")
 目标语义：
 
 - 只有 `include` 里的算子开启 FlagTune。
-- 内置 registry 默认注册 `mm` 和 `bmm`。
+- 内置 registry 注册 `mm`、`bmm` 和 `w8a8_block_fp8_matmul`。
+- 默认 `flag_gems.flagtune()` 只启用 `mm`、`bmm`；`w8a8_block_fp8_matmul` 需要显式 include。
 - 后续新增算子时，通过 `register_flagtune_op(...)` 注册，而不是继续在 `flagtune.py` 里手写多个固定集合。
 - `USE_FLAGTUNE=1` 仍然作为总开关，但它不再让其他算子误进入 FlagTune。
 - `bmm` 的 expanded YAML 从旧位置移动到 Hopper backend 目录。
@@ -58,6 +59,15 @@ flag_gems.enable()
 import flag_gems
 
 flag_gems.flagtune(include="mm")
+flag_gems.enable()
+```
+
+显式打开 Hopper `w8a8_block_fp8_matmul`：
+
+```python
+import flag_gems
+
+flag_gems.flagtune(include="w8a8_block_fp8_matmul")
 flag_gems.enable()
 ```
 
@@ -131,6 +141,11 @@ src/flag_gems/runtime/flagtune.py
 ```python
 register_flagtune_op("mm", default=True, description="matrix multiplication")
 register_flagtune_op("bmm", default=True, description="batched matrix multiplication")
+register_flagtune_op(
+    "w8a8_block_fp8_matmul",
+    default=False,
+    description="W8A8 block FP8 matrix multiplication",
+)
 ```
 
 registry 是支持列表和默认 include 的唯一来源：
@@ -140,7 +155,7 @@ registry 是支持列表和默认 include 的唯一来源：
 - `flag_gems.flagtune()` 等价于 `flag_gems.flagtune(include=None)`，会启用 registry 默认 op。
 - `flag_gems.flagtune(include="...")` 只接受已注册 op，未注册 op 会报错。
 
-文件开头不再维护 `SUPPORTED_FLAGTUNE_OPS = {"mm", "bmm"}` 或 `DEFAULT_FLAGTUNE_INCLUDE = {"mm", "bmm"}` 这种固定集合。为了兼容旧代码读取这两个名字，模块提供了 `__getattr__`，访问时会动态返回 registry 当前状态；新增算子后结果也会跟着变化。
+文件开头不再维护 `SUPPORTED_FLAGTUNE_OPS = {"mm", "bmm"}` 或 `DEFAULT_FLAGTUNE_INCLUDE = {"mm", "bmm"}` 这种固定集合。为了兼容旧代码读取这两个名字，模块提供了 `__getattr__`，访问时会动态返回 registry 当前状态；新增算子后结果也会跟着变化。当前 `w8a8_block_fp8_matmul` 已注册但 `default=False`，所以它是 supported op，但不属于默认 include。
 
 `flagtune(...)` 做两件事：
 
@@ -346,7 +361,47 @@ src/flag_gems/runtime/backend/_nvidia/hopper/general_ops_hopper_configs.yaml
 
 在 Hopper 上，`bmm` 的 expand YAML 会自动解析到新路径。
 
-## 6. USE_FLAGTUNE 的生效范围现在是什么
+## 6. Hopper w8a8_block_fp8_matmul 的接入方式
+
+Hopper `w8a8_block_fp8_matmul` 位于：
+
+```text
+src/flag_gems/runtime/backend/_nvidia/hopper/ops/w8a8_block_fp8_matmul.py
+```
+
+它现在也注册到了 FlagTune registry：
+
+```python
+register_flagtune_op("w8a8_block_fp8_matmul", default=False)
+```
+
+这表示：
+
+- `flag_gems.flagtune()` 默认不会启用它。
+- 用户可以显式调用 `flag_gems.flagtune(include="w8a8_block_fp8_matmul")`。
+- `USE_FLAGTUNE=1` 不会再单独误触发它。
+
+本次为 Hopper `w8a8_block_fp8_matmul` 接入了两个 tuner：
+
+```python
+flagtune_op_name="w8a8_block_fp8_matmul"
+flagtune_expand_op_name="w8a8_block_fp8_general"
+```
+
+```python
+flagtune_op_name="w8a8_block_fp8_matmul"
+flagtune_expand_op_name="w8a8_block_fp8_general_splitk"
+```
+
+这些 expanded configs 来自：
+
+```text
+src/flag_gems/runtime/backend/_nvidia/hopper/w8a8_block_fp8_matmul_hopper_expand.yaml
+```
+
+和 `mm` 不同的是，Hopper `w8a8_block_fp8_matmul` 默认路径仍保留原有 fixed-meta 逻辑，用于复用已有的 shape config 和 fallback meta。只有当用户显式 include 该 op 时，host 侧才通过 `LibTuner` wrapper 启动 kernel，并由 `LibTuner` 切换到 expanded configs。
+
+## 7. USE_FLAGTUNE 的生效范围现在是什么
 
 现在 `USE_FLAGTUNE=1` 是总开关，不再单独决定某个算子是否进入 expanded configs。
 
@@ -393,7 +448,23 @@ runtime.flagtune_enabled("mm")   # True
 
 下一次运行时，`bmm` tuner 会切回默认 configs，`mm` tuner 会切到 expanded configs。
 
-## 7. 已关闭旧的误触发路径
+如果显式调用：
+
+```python
+flag_gems.flagtune(include="w8a8_block_fp8_matmul")
+```
+
+则：
+
+```python
+runtime.flagtune_enabled("w8a8_block_fp8_matmul")  # True
+runtime.flagtune_enabled("mm")                     # False
+runtime.flagtune_enabled("bmm")                    # False
+```
+
+此时 Hopper `w8a8_block_fp8_matmul` 会走 `LibTuner` wrapper 并使用 expanded configs。
+
+## 8. 已关闭旧的误触发路径
 
 旧代码中这些算子会直接响应 `USE_FLAGTUNE=1`：
 
@@ -412,17 +483,24 @@ runtime.flagtune_enabled("mm")   # True
 - `bmm` 接入新的 `flag_gems.flagtune(include=...)` API。
 - Hopper/MThreads `mm` 接入新的 `flag_gems.flagtune(include=...)` API。
 - `addmm`、`baddbmm`、`mv` 不再被 `USE_FLAGTUNE=1` 打开。
-- `w8a8` 和 `sparse_attention` 不再被这个 API 误打开。
+- `w8a8` 默认不再被这个 API 误打开，但可以通过 `include="w8a8_block_fp8_matmul"` 显式启用。
+- `sparse_attention` 不再被这个 API 误打开。
 
 因此当前内置且已经接入实际 tuner configs 切换的范围是：
+
+```text
+mm, bmm, w8a8_block_fp8_matmul
+```
+
+其中默认 include 只有：
 
 ```text
 mm, bmm
 ```
 
-API 层本身可以通过 registry 扩展支持新名字，但新增名字还需要继续完成 kernel 侧 `flagtune_op_name`、expanded YAML 和 config 生成逻辑，才会真正触发 tuner configs 切换。
+`w8a8_block_fp8_matmul` 是已注册、已接入，但需要显式 include 的 op。API 层本身也可以继续通过 registry 扩展支持新名字，但新增名字还需要继续完成 kernel 侧 `flagtune_op_name`、expanded YAML 和 config 生成逻辑，才会真正触发 tuner configs 切换。
 
-## 8. configloader.py 如何按 backend/arch 找 YAML
+## 9. configloader.py 如何按 backend/arch 找 YAML
 
 修改文件：
 
@@ -488,7 +566,7 @@ src/flag_gems/runtime/backend/_nvidia/hopper/mm_hopper_expand.yaml
 
 另外，`get_expand_config(op_name, yaml_path=...)` 现在优先使用显式传入的 `yaml_path`。这对 `mm_general_tma`、`gemv`、`mm_splitk` 很重要，因为它们复用 `mm_hopper_expand.yaml`，由 kernel 侧明确传入路径。
 
-## 9. 验证脚本
+## 10. 验证脚本
 
 新增目录：
 
@@ -518,6 +596,7 @@ conda activate vllm0.17
 PASS: flagtune API include scope and config switching look correct
 bmm configs: 12 -> 384
 mm configs: 162 -> 480
+w8a8 configs: general 1 -> 108, splitk 1 -> 144
 bmm expand yaml: /workspace/FlagGems-dev/src/flag_gems/runtime/backend/_nvidia/hopper/general_ops_hopper_configs.yaml
 ```
 
@@ -525,18 +604,21 @@ bmm expand yaml: /workspace/FlagGems-dev/src/flag_gems/runtime/backend/_nvidia/h
 
 - `flag_gems.flagtune` 顶层 API 存在。
 - `flag_gems.register_flagtune_op` 顶层 API 存在。
-- registry 默认包含 `mm`、`bmm`，并支持动态注册测试 op。
+- registry 支持 `mm`、`bmm`、`w8a8_block_fp8_matmul`，其中默认 include 只有 `mm`、`bmm`。
+- registry 支持动态注册测试 op。
 - `include="bmm"` 时只启用 `bmm`。
 - `include="mm"` 时只启用 `mm`。
+- `include="w8a8_block_fp8_matmul"` 时只启用 Hopper `w8a8_block_fp8_matmul`。
 - `bmm` 可以从默认 12 个 configs 切到 expanded 384 个 configs。
 - Hopper `mm_general_tma` 可以从默认 162 个 configs 切到 expanded 480 个 configs。
+- Hopper `w8a8_block_fp8_matmul` 的 general tuner 可以从默认 1 个 config 切到 expanded 108 个 configs，split-k tuner 可以从默认 1 个 config 切到 expanded 144 个 configs。
 - `addmm` 没有接入 flagtune。
 - `include="addmm"` 会被拒绝。
 - `bmm` 的 YAML 路径正确指向 `general_ops_hopper_configs.yaml`。
 
 脚本默认不真正 launch kernel 做完整 autotune，只检查 API、include scope 和 tuner configs 切换。这样可以避免首次运行 benchmark 大量 configs 导致耗时过长。
 
-## 10. 如果以后要给新算子接入 flagtune
+## 11. 如果以后要给新算子接入 flagtune
 
 假设新增公开算子 `foo`。
 
@@ -696,15 +778,17 @@ flag_gems.flagtune(include="foo")
 flag_gems.enable()
 ```
 
-## 11. 当前限制和注意事项
+## 12. 当前限制和注意事项
 
-1. 当前内置 registry 默认只注册：
+1. 当前内置 registry 注册：
 
 ```text
-mm, bmm
+mm, bmm, w8a8_block_fp8_matmul
 ```
 
-新增 op 可以通过 `register_flagtune_op(...)` 注册，但“注册”只表示 API 层允许 include 这个名字；如果没有在对应 kernel 的 `@libtuner(...)` 上加 `flagtune_op_name`，也没有配置 YAML 和 config 生成逻辑，那么不会发生实际 tuner configs 切换。
+其中默认 include 只有 `mm`、`bmm`。`w8a8_block_fp8_matmul` 已经接入 Hopper tuner configs 切换，但需要显式 include。
+
+新增 op 可以继续通过 `register_flagtune_op(...)` 注册，但“注册”只表示 API 层允许 include 这个名字；如果没有在对应 kernel 的 `@libtuner(...)` 上加 `flagtune_op_name`，也没有配置 YAML 和 config 生成逻辑，那么不会发生实际 tuner configs 切换。
 
 2. Hopper `mm` 的 `streamk_mm` 和 `cluster_remote_mm` 当前没有接入本次 flagtune API。
 
@@ -726,7 +810,7 @@ mm, bmm
 
 这个默认值来自 registry 中 `default=True` 的 op。当前内置默认是 `mm`、`bmm`，因此保持了一个合理默认行为，同时避免其他算子被误打开。
 
-## 12. 总结
+## 13. 总结
 
 本次改造完成后，FlagTune 的启用方式从“全局环境变量粗粒度打开”变成了“Python API 精确指定算子范围”：
 
@@ -739,6 +823,7 @@ flag_gems.flagtune(include="mm, bmm")
 - `USE_FLAGTUNE=1` 不再让所有历史分支算子误启用。
 - FlagTune 支持范围由 registry 管理，新增 op 可以通过 `register_flagtune_op(...)` 扩展。
 - `mm` 和 `bmm` 可以分别、独立启用 FlagTune。
+- Hopper `w8a8_block_fp8_matmul` 已注册为非默认 op，可以通过显式 include 启用 FlagTune。
 - `LibTuner` 支持运行时按 include 切换 configs。
 - `bmm` 的 expanded YAML 已迁移到 Hopper backend 目录。
 - `configloader.py` 已支持按 backend/arch 自动查找 YAML。

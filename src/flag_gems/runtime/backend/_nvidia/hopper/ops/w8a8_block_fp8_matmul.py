@@ -112,6 +112,10 @@ def _get_fixed_matmul_meta(M: int, N: int, K: int, block_n: int, block_k: int):
     strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=5,
+    flagtune_op_name="w8a8_block_fp8_matmul",
+    flagtune_expand_op_name="w8a8_block_fp8_general",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=None,
 )
 @triton.jit
 def w8a8_block_fp8_matmul_kernel_general(
@@ -194,6 +198,10 @@ def w8a8_block_fp8_matmul_kernel_general(
     strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=5,
+    flagtune_op_name="w8a8_block_fp8_matmul",
+    flagtune_expand_op_name="w8a8_block_fp8_general_splitk",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=None,
 )
 @triton.jit
 def w8a8_block_fp8_matmul_kernel_splitk(
@@ -292,6 +300,9 @@ def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
         b.stride(0) == 1,
     )
 
+    # Default W8A8 keeps the existing fixed-meta path. When explicitly included
+    # in flag_gems.flagtune(...), launch through LibTuner so expanded configs
+    # are selected by the same registry-driven mechanism used by mm.
     use_flagtune = runtime.flagtune_enabled("w8a8_block_fp8_matmul")
 
     # Split-K path for small-N, large-K shapes

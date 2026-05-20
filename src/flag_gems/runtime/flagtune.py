@@ -145,6 +145,11 @@ def __getattr__(name):
 
 register_flagtune_op("mm", default=True, description="matrix multiplication")
 register_flagtune_op("bmm", default=True, description="batched matrix multiplication")
+register_flagtune_op(
+    "w8a8_block_fp8_matmul",
+    default=False,
+    description="W8A8 block FP8 matrix multiplication",
+)
 
 __all__ = [
     "DEFAULT_FLAGTUNE_INCLUDE",
