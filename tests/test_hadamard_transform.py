@@ -16,7 +16,12 @@ _skip_if_join_bug = pytest.mark.skipif(
 )
 
 if cfg.QUICK_MODE:
-    HADAMARD_MN_CASES = [(1536, 3, "12N"), (10240, 5, "20N"), (14336, 7, "28N")]
+    HADAMARD_MN_CASES = [
+        (1536, 3, "12N"),
+        (10240, 5, "20N"),
+        (14336, 7, "28N"),
+        (40960, 5, "40N"),
+    ]
 else:
     HADAMARD_MN_CASES = [
         (1536, 3, "12N"),
@@ -31,9 +36,10 @@ else:
     ]
 
 _FN_MAP = {
-    3: flag_gems.hadamard_transform_12N,
-    5: flag_gems.hadamard_transform_20N,
-    7: flag_gems.hadamard_transform_28N,
+    "12N": flag_gems.hadamard_transform_12N,
+    "20N": flag_gems.hadamard_transform_20N,
+    "28N": flag_gems.hadamard_transform_28N,
+    "40N": flag_gems.hadamard_transform_40N,
 }
 
 
@@ -84,7 +90,7 @@ def _ref_mn(x: torch.Tensor, M: int) -> torch.Tensor:
 def test_hadamard_transform_mn(batch, dim, M, tag, dtype):
     x = torch.randn(batch, dim, dtype=dtype, device=flag_gems.device)
     ref_out = _ref_mn(x, M)
-    res_out = _FN_MAP[M](x)
+    res_out = _FN_MAP[tag](x)
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=dim)
 
 

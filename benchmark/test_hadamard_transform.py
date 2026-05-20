@@ -80,7 +80,7 @@ def test_hadamard_transform():
 
 
 # ============================================================
-# M×N fused kernel benchmark (hadamard_transform_12N/20N/28N)
+# M×N fused kernel benchmark (hadamard_transform_12N/20N/28N/40N)
 # ============================================================
 
 _HT_MN_SHAPES = [
@@ -102,22 +102,26 @@ _HT_MN_SHAPES = [
     (8192, 10240),
     (8192, 14336),
     (8192, 20480),
+    (1024, 40960),
+    (8192, 40960),
 ]
 
-_M_FOR_DIM = {
-    1536: 3,
-    3072: 3,
-    6144: 3,
-    12288: 3,
-    10240: 5,
-    20480: 5,
-    14336: 7,
+_TAG_FOR_DIM = {
+    1536: "12N",
+    3072: "12N",
+    6144: "12N",
+    12288: "12N",
+    10240: "20N",
+    20480: "20N",
+    14336: "28N",
+    40960: "40N",
 }
 
 _FN_MAP = {
-    3: flag_gems.hadamard_transform_12N,
-    5: flag_gems.hadamard_transform_20N,
-    7: flag_gems.hadamard_transform_28N,
+    "12N": flag_gems.hadamard_transform_12N,
+    "20N": flag_gems.hadamard_transform_20N,
+    "28N": flag_gems.hadamard_transform_28N,
+    "40N": flag_gems.hadamard_transform_40N,
 }
 
 
@@ -136,8 +140,8 @@ def torch_ht_mn(x):
 
 def gems_ht_mn(x):
     dim = x.shape[-1]
-    M = _M_FOR_DIM[dim]
-    return _FN_MAP[M](x)
+    tag = _TAG_FOR_DIM[dim]
+    return _FN_MAP[tag](x)
 
 
 class HadamardMNBenchmark(base.GenericBenchmark2DOnly):
