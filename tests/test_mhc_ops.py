@@ -11,11 +11,18 @@ import torch
 
 import flag_gems
 from flag_gems.fused.mhc.hc_head_fused_kernel import (
-    HAS_VLLM,
     hc_head_fused_kernel,
     hc_head_fused_kernel_ref,
-    hc_head_fused_kernel_vllm_ref,
 )
+
+try:
+    from vllm.model_executor.layers.mhc import (
+        _hc_head_fused_kernel as _vllm_hc_head_fused,
+    )
+
+    HAS_VLLM = True
+except ImportError:
+    HAS_VLLM = False
 from flag_gems.fused.mhc.hc_split_sinkhorn import (
     hc_split_sinkhorn,
     mhc_split_sinkhorn_torch_ref,
@@ -286,6 +293,15 @@ def test_hc_head_fused_kernel_vs_ref(n, hidden_size, hc_mult):
     torch.testing.assert_close(out_triton, out_ref, rtol=2e-2, atol=2e-2)
 
 
+def _hc_head_fused_kernel_vllm_ref(
+    hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
+):
+    _vllm_hc_head_fused(
+        hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
+    )
+    return out
+
+
 @pytest.mark.hc_head_fused_kernel
 @pytest.mark.skipif(not HAS_VLLM, reason="vLLM not available")
 @pytest.mark.parametrize(
@@ -299,5 +315,5 @@ def test_hc_head_fused_kernel_vs_vllm(n, hidden_size, hc_mult):
     data_ref = generate_hc_head_fused_data(n, hidden_size, hc_mult, dtype=dtype)
 
     out_triton = hc_head_fused_kernel(**data)
-    out_ref = hc_head_fused_kernel_vllm_ref(**data_ref)
+    out_ref = _hc_head_fused_kernel_vllm_ref(**data_ref)
     torch.testing.assert_close(out_triton, out_ref, rtol=2e-2, atol=2e-2)

@@ -2,15 +2,6 @@ import torch
 import triton
 import triton.language as tl
 
-try:
-    from vllm.model_executor.layers.mhc import (
-        _hc_head_fused_kernel as _vllm_hc_head_fused,
-    )
-
-    HAS_VLLM = True
-except ImportError:
-    HAS_VLLM = False
-
 
 @triton.autotune(
     configs=[
@@ -189,26 +180,6 @@ def hc_head_fused_kernel_ref(
         out.dtype
     )
     out.copy_(result)
-    return out
-
-
-def hc_head_fused_kernel_vllm_ref(
-    hs_flat: torch.Tensor,
-    fn: torch.Tensor,
-    hc_scale: torch.Tensor,
-    hc_base: torch.Tensor,
-    out: torch.Tensor,
-    hidden_size: int,
-    rms_eps: float,
-    hc_eps: float,
-    hc_mult: int,
-) -> torch.Tensor:
-    """vLLM tilelang reference (production baseline for bf16 benchmarking)."""
-    if not HAS_VLLM:
-        raise RuntimeError("vLLM not available for tilelang reference")
-    _vllm_hc_head_fused(
-        hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
-    )
     return out
 
 
