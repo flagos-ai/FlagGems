@@ -21,7 +21,7 @@ class LogsumexpBenchmark(base.Benchmark):
 
 
 @pytest.mark.special_logsumexp
-def test_perf_special_logsumexp():
+def test_special_logsumexp():
     bench = LogsumexpBenchmark(
         op_name="special_logsumexp",
         torch_op=torch.special.logsumexp,
