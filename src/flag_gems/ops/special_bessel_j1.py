@@ -18,9 +18,3 @@ def j1_func(x):
 def special_bessel_j1(A):
     logger.debug("GEMS SPECIAL_BESSEL_J1")
     return j1_func(A)
-
-
-def special_bessel_j1_(A):
-    logger.debug("GEMS SPECIAL_BESSEL_J1_")
-    j1_func(A, out0=A)
-    return A
