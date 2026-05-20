@@ -12,11 +12,13 @@ class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
         return ["gbps"]
 
     def set_more_shapes(self):
+        # Speed Up Benchmark Test, Big Shape Will Cause Timeout
         if flag_gems.vendor_name == "kunlunxin":
             return []
 
         shapes = super().set_more_shapes()
         shapes = [
+            # this filter is for scatter
             shape
             for shape in shapes
             if len(shape) == 2 and shape[0] > 16 and shape[1] > 16
@@ -45,7 +47,7 @@ def scatter_input_fn_factory(reduce=None):
         if reduce is None:
             yield inp, dim, index, src
         else:
-            yield inp, dim, index, src, {"reduce": reduce}
+            yield inp, dim, index, src, reduce
 
     return inner
 
@@ -73,7 +75,7 @@ def scatter_inplace_input_fn_factory(reduce=None):
         if reduce is None:
             yield inp, dim, index, src
         else:
-            yield inp, dim, index, src, {"reduce": reduce}
+            yield inp, dim, index, src, reduce
 
     return inner
 
