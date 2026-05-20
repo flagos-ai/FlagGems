@@ -31,6 +31,7 @@ from .logical_not import logical_not
 from .logical_or import logical_or
 from .logical_xor import logical_xor
 from .max import max, max_dim
+from .masked_select import masked_select
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .multinomial import multinomial
@@ -117,6 +118,7 @@ __all__ = [
     "logical_xor",
     "max",
     "max_dim",
+    "masked_select",
     "min",
     "min_dim",
     "mm",
