@@ -58,6 +58,8 @@ def test_accuracy_angle(shape, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
+    if flag_gems.vendor_name == "sophgo" and dtype in COMPLEX_DTYPES:
+        pytest.skip("not support complex type")
 
     if dtype in BOOL_TYPES:
         inp = torch.randint(0, 2, size=shape, dtype=dtype, device=flag_gems.device)
