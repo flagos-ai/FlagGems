@@ -150,7 +150,54 @@ def _fastpath_lastdim_kernel(
             cur_v = tl.load(out_ptr + target, mask=mask, other=0)
             new_v = tl.where(stop, cur_v, cur_v * src_val)
             cas = tl.atomic_cas(out_ptr + target, cur_v, new_v)
-            stop |= cur_v == cas
+            cur_nan = cur_v != cur_v
+            cas_nan = cas != cas
+            stop |= (cur_v == cas) | (cur_nan & cas_nan)
+            all_done = tl.sum(stop.to(tl.int32)) == BLOCK
+
+
+@libentry()
+@triton.jit
+def _fastpath_prod_kernel(
+    src_ptr,
+    index_ptr,
+    out_ptr,
+    N,
+    D,
+    UPCAST: tl.constexpr,
+    BLOCK: tl.constexpr,
+    LOOP: tl.constexpr,
+):
+    """Dedicated CAS-loop kernel for prod. Each program processes LOOP * BLOCK
+    elements sequentially, with one inner CAS loop per BLOCK tile. Versus the
+    unified `_fastpath_lastdim_kernel`, this:
+    1) Has no REDUCE / NEED_COUNT constexpr branching, so Triton's IR is
+       smaller and register allocation is friendlier.
+    2) Amortises grid launch overhead and serialises across LOOP tiles, which
+       lowers the number of simultaneously-competing blocks on the L2 atomic
+       unit — the dominant bottleneck for prod (ncu shows L2 throughput 82%,
+       DRAM only 2.5%, so reducing block-level contention has direct payoff)."""
+    pid = tl.program_id(0).to(tl.int64)
+    base = pid * BLOCK * LOOP
+
+    for k in tl.static_range(LOOP):
+        offs = base + k * BLOCK + tl.arange(0, BLOCK)
+        mask = offs < N
+        val = tl.load(src_ptr + offs, mask=mask, other=1.0)
+        idx = tl.load(index_ptr + offs, mask=mask, other=0)
+        if UPCAST:
+            val = val.to(tl.float32)
+        row = offs // D
+        target = row * D + idx
+        stop = ~mask
+        all_done = False
+        while not all_done:
+            cur = tl.load(out_ptr + target, mask=mask, other=0)
+            new_v = tl.where(stop, cur, cur * val)
+            cas = tl.atomic_cas(out_ptr + target, cur, new_v)
+            cur_nan = cur != cur
+            cas_nan = cas != cas
+            stop |= (cur == cas) | (cur_nan & cas_nan)
             all_done = tl.sum(stop.to(tl.int32)) == BLOCK
 
 
@@ -204,7 +251,15 @@ def _try_fastpath(self_t, dim, index, src, reduce, include_self, out):
             buf = out
         _fast_copy_into(buf, self_t)
 
-    if N < 65536:
+    if reduce == "prod":
+        if N >= 4_000_000:
+            BLOCK = 512
+        elif N >= 500_000:
+            BLOCK = 256
+        else:
+            BLOCK = 128
+        NW = 4
+    elif N < 65536:
         BLOCK = 256
         NW = 4
     elif N < 1048576:
@@ -221,19 +276,34 @@ def _try_fastpath(self_t, dim, index, src, reduce, include_self, out):
     else:
         count = buf
 
-    _fastpath_lastdim_kernel[grid](
-        src,
-        index,
-        buf,
-        count,
-        N,
-        D,
-        REDUCE=_REDUCE_CODE[reduce],
-        UPCAST=use_upcast,
-        NEED_COUNT=need_count,
-        BLOCK=BLOCK,
-        num_warps=NW,
-    )
+    if reduce == "prod":
+        LOOP = 4
+        prod_grid = (triton.cdiv(N, BLOCK * LOOP),)
+        _fastpath_prod_kernel[prod_grid](
+            src,
+            index,
+            buf,
+            N,
+            D,
+            UPCAST=use_upcast,
+            BLOCK=BLOCK,
+            LOOP=LOOP,
+            num_warps=NW,
+        )
+    else:
+        _fastpath_lastdim_kernel[grid](
+            src,
+            index,
+            buf,
+            count,
+            N,
+            D,
+            REDUCE=_REDUCE_CODE[reduce],
+            UPCAST=use_upcast,
+            NEED_COUNT=need_count,
+            BLOCK=BLOCK,
+            num_warps=NW,
+        )
 
     if need_count:
         _fastpath_div_kernel[grid](buf, count, N, BLOCK=BLOCK, num_warps=NW)
@@ -457,7 +527,9 @@ def _scatter_reduce_kernel(
             cur_v = tl.load(out_ptr + final, mask=mask, other=0)
             new_v = tl.where(stop, cur_v, cur_v * val)
             cas = tl.atomic_cas(out_ptr + final, cur_v, new_v)
-            stop |= cur_v == cas
+            cur_nan = cur_v != cur_v
+            cas_nan = cas != cas
+            stop |= (cur_v == cas) | (cur_nan & cas_nan)
             all_done = tl.sum(stop.to(tl.int32)) == BLOCK
 
 
