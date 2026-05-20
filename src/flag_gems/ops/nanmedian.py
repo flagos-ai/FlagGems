@@ -826,7 +826,7 @@ def _empty_flat_value(inp):
 
 def _use_radix_select(inp, n):
     if inp.is_cuda and inp.dtype in RADIX_SELECT_DTYPES:
-        return n <= LONG_RADIX_REDUCTION_N
+        return MAX_BLOCK_N < n <= LONG_RADIX_REDUCTION_N
     return False
 
 
