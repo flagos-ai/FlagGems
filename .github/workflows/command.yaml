@@ -56,7 +56,7 @@ jobs:
     runs-on: ${{ needs.preprocess.outputs.runner }}
     steps:
       - id: checkout-attempt-1
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
         continue-on-error: true
       - id: sleep-1
         if: steps.checkout-attempt-1.outcome == 'failure'
@@ -65,7 +65,7 @@ jobs:
 
       - id: checkout-attempt-2
         if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
         continue-on-error: true
       - id: sleep-2
         if: steps.checkout-attempt-2.outcome == 'failure'
@@ -74,7 +74,7 @@ jobs:
 
       - id: checkout-attempt-3
         if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
 
       - id: checkout-pr
         env:
@@ -147,13 +147,13 @@ jobs:
           fi
 
       - name: Upload results
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ondemand-test
           path: results/
 
       - name: comment
-        uses: mshick/add-pr-comment@v3
+        uses: mshick/add-pr-comment@v3.11.0
         with:
           message-path: report.md
           message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
