@@ -3654,6 +3654,30 @@ ops:
       - Reduction
     stages:
       - stable: '2.0'
+  - id: median
+    description: Returns the median (lower of two for even count) of all elements in the `input` tensor.
+    for:
+      - median
+      - median.out
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.2'
+  - id: median_dim
+    description: |
+      Returns a namedtuple `(values, indices)` of the median value along `dim`
+      and the index of one occurrence of the median in the original input.
+    for:
+      - median.dim
+      - median.dim_values
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.2'
   - id: hc_head_fused_kernel
     description: |
       The head fusion kernel for MHC (Manifold-Constrained Hyper-Connections).
