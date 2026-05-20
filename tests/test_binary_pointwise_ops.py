@@ -558,6 +558,9 @@ def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
 @pytest.mark.div
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_accuracy_div_scalar_scalar(dtype):
+    if flag_gems.vendor_name == "sophgo" and dtype == torch.int64:
+        pytest.skip("sophgo backend does not support int64 division")
+
     if dtype == torch.float32:
         inp1 = float(np.float32(random.random() + 0.01))
         inp2 = float(np.float32(random.random() + 0.01))
@@ -565,9 +568,9 @@ def test_accuracy_div_scalar_scalar(dtype):
         inp1 = random.randint(1, 100)
         inp2 = random.randint(1, 100)
 
-    ref_out = torch.mul(inp1, inp2)
+    ref_out = torch.div(inp1, inp2)
     with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+        res_out = torch.div(inp1, inp2)
 
     if dtype == torch.int64:
         gems_assert_equal(res_out, ref_out)

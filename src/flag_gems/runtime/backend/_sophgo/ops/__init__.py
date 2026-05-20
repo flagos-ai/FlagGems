@@ -52,10 +52,12 @@ from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
+from .rms_norm import rms_norm
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid
 from .slice_scatter import slice_scatter
 from .stack import stack
+from .tile import tile
 from .uniform import uniform_
 from .unique import _unique2
 from .upsample_nearest2d import upsample_nearest2d
@@ -131,10 +133,12 @@ __all__ = [
     "randn",
     "randn_like",
     "randperm",
+    "rms_norm",
     "sigmoid",
     "select_scatter",
     "slice_scatter",
     "stack",
+    "tile",
     "uniform_",
     "_unique2",
     "upsample_nearest2d",

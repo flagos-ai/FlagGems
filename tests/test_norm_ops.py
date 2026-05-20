@@ -549,6 +549,11 @@ def test_accuracy_rmsnorm(shape, dtype):
     ref_out = _torch_rms_norm(ref_inp, weight=ref_weight, eps=eps)
     res_out = flag_gems.rms_norm(inp, list(layer_shape), weight=weight, eps=eps)
 
+    if flag_gems.vendor_name == "sophgo":
+        gems_assert_close(res_out, ref_out, dtype)
+        # wait for backward support
+        return
+
     res_grad = torch.tensor(
         np_grad, dtype=dtype, device=flag_gems.device, requires_grad=True
     )

@@ -753,7 +753,7 @@ vector_norm:
   param_map:
     META:
       BLOCK_M: block_m
-      BLOCK_N: 1024
+      BLOCK_N: 256
     num_warps: 4
   block_m:
   # - 1
