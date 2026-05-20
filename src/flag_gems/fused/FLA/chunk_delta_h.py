@@ -34,7 +34,7 @@ NUM_WARPS = [2, 4, 8, 16]
         for num_stages in [2, 3, 4]
         for BV in [32, 64]
     ],
-    key=["H", "K", "V", "BT"],
+    key=["H", "K", "V", "BT", "IS_VARLEN", "USE_INITIAL_STATE", "STORE_FINAL_STATE"],
     use_cuda_graph=use_cuda_graph,
 )
 @triton.jit(do_not_specialize=["T"])
@@ -183,11 +183,11 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
         last_idx = min((i_t + 1) * BT, T) - 1
         if USE_G:
             m_t = (i_t * BT + tl.arange(0, BT)) < T
-            b_g_last = tl.load(g + bos * H + last_idx * H + i_h)
+            b_g_last = tl.load(g + bos * H + last_idx * H + i_h).to(tl.float32)
             p_g = tl.make_block_ptr(
                 g + bos * H + i_h, (T,), (H,), (i_t * BT,), (BT,), (0,)
             )
-            b_g = tl.load(p_g, boundary_check=(0,))
+            b_g = tl.load(p_g, boundary_check=(0,)).to(tl.float32)
             b_v = b_v * tl.where(m_t, exp(b_g_last - b_g), 0)[:, None]
             b_g_last = exp(b_g_last)
             b_h1 *= b_g_last
@@ -204,7 +204,7 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
                 gk + (bos + last_idx) * H * K + i_h * K + o_k1,
                 mask=(o_k1 < K),
                 other=0.0,
-            )
+            ).to(tl.float32)
             b_h1 *= exp(b_gk_last1)[:, None]
             if K > 64:
                 o_k2 = 64 + o_k1
@@ -212,7 +212,7 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
                     gk + (bos + last_idx) * H * K + i_h * K + o_k2,
                     mask=(o_k2 < K),
                     other=0.0,
-                )
+                ).to(tl.float32)
                 b_h2 *= exp(b_gk_last2)[:, None]
             if K > 128:
                 o_k3 = 128 + o_k1
@@ -220,7 +220,7 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
                     gk + (bos + last_idx) * H * K + i_h * K + o_k3,
                     mask=(o_k3 < K),
                     other=0.0,
-                )
+                ).to(tl.float32)
                 b_h3 *= exp(b_gk_last3)[:, None]
             if K > 192:
                 o_k4 = 192 + o_k1
@@ -228,7 +228,7 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
                     gk + (bos + last_idx) * H * K + i_h * K + o_k4,
                     mask=(o_k4 < K),
                     other=0.0,
-                )
+                ).to(tl.float32)
                 b_h4 *= exp(b_gk_last4)[:, None]
         b_v = b_v.to(k.dtype.element_ty)
 

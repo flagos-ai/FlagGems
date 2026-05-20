@@ -170,6 +170,7 @@ from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
+from flag_gems.ops.index_copy_ import index_copy, index_copy_
 from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.isclose import allclose, isclose
@@ -222,7 +223,7 @@ from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
-from flag_gems.ops.mm import mm, mm_out
+from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
@@ -297,7 +298,11 @@ from flag_gems.ops.rsub import rsub_scalar, rsub_tensor
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
 from flag_gems.ops.scatter_add_ import scatter_add_
-from flag_gems.ops.scatter_reduce_ import scatter_reduce_
+from flag_gems.ops.scatter_reduce import (
+    scatter_reduce,
+    scatter_reduce_,
+    scatter_reduce_out,
+)
 from flag_gems.ops.select_backward import select_backward
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.selu import selu
@@ -593,6 +598,8 @@ __all__ = [
     "index",
     "index_add",
     "index_add_",
+    "index_copy",
+    "index_copy_",
     "index_put",
     "index_put_",
     "index_select",
@@ -751,7 +758,9 @@ __all__ = [
     "scatter",
     "scatter_",
     "scatter_add_",
+    "scatter_reduce",
     "scatter_reduce_",
+    "scatter_reduce_out",
     "select_backward",
     "select_scatter",
     "selu",
@@ -841,6 +850,7 @@ __all__ = [
     "vector_norm",
     "vstack",
     "fp8_matmul",
+    "router_gemm",
     "w8a8_block_fp8_matmul",
     "weight_norm_interface",
     "weight_norm_interface_backward",
