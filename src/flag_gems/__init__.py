@@ -49,18 +49,6 @@ _FULL_CONFIG = (
     ("_log_softmax_backward_data", log_softmax_backward),
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
     ("_safe_softmax", _safe_softmax),
-    (
-        "_scaled_dot_product_cudnn_attention_backward",
-        scaled_dot_product_cudnn_attention_backward,
-    ),
-    (
-        "_scaled_dot_product_efficient_attention_backward",
-        scaled_dot_product_efficient_attention_backward,
-    ),
-    (
-        "_scaled_dot_product_flash_attention_backward",
-        scaled_dot_product_flash_attention_backward,
-    ),
     ("_scaled_mm", scaled_mm, lambda: torch_ge("2.5")),
     ("_scaled_mm.out", scaled_mm_out, lambda: torch_ge("2.5")),
     ("_softmax", softmax),
