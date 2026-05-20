@@ -9,6 +9,7 @@ SUPPORTED_VENDORS=(
   "metax"
   "mthreads"
   "nvidia"
+  "spacemit"
   "thead"
   "tsingmicro"
 )
@@ -23,6 +24,7 @@ declare -A PYTHON_SUPPORTED=(
   ["metax"]="3.12"
   ["mthreads"]="3.10"
   ["nvidia"]="3.12"
+  ["spacemit"]="3.12"
   ["tsingmicro"]="3.10"
 )
 
@@ -99,7 +101,7 @@ if [ "$?" != 0 ]; then
   printf "$RED{FAILED]$NC\n"
   exit 1
 else
-  printf "$RED[OK]$NC\n"
+  printf "$GREEN[OK]$NC\n"
   source .venv/bin/activate
 fi
 
