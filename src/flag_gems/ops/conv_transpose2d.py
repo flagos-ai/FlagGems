@@ -458,6 +458,16 @@ def conv_transpose2d(
         dil_h = dil_w = dilation
 
     return ConvTranspose2d.apply(
-        input, weight, bias,
-        stride_h, stride_w, pad_h, pad_w, opad_h, opad_w, dil_h, dil_w, groups,
+        input,
+        weight,
+        bias,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w,
+        opad_h,
+        opad_w,
+        dil_h,
+        dil_w,
+        groups,
     )
