@@ -13,12 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: labeler
-        uses: actions/labeler@v6
+        uses: actions/labeler@v6.1.0
         with:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
           sync-labels: true
       - id: sizer
-        uses: codelytv/pr-size-labeler@v1
+        uses: codelytv/pr-size-labeler@v1.3.8
         with:
           xs_label: 'size/XSmall'
           xs_max_size: '10'
@@ -37,7 +37,7 @@ jobs:
           github_api_url: 'https://api.github.com'
           files_to_ignore: ''
       - id: identify-pr-type
-        uses: actions/github-script@v9
+        uses: actions/github-script@v9.0.0
         with:
           script: |
             const prTitle = context.payload.pull_request.title
