@@ -4,7 +4,9 @@ import torch
 
 from . import base
 
-# Custom shapes: (N, H, W)
+# Hardcoded shapes: affine_grid_generator requires (N,2,3) theta + [N,C,H,W] size;
+# CI --level core overrides GenericBenchmark shapes with 1D/3D defaults,
+# so we use a custom Benchmark subclass with set_shapes override.
 AFFINE_GRID_SHAPES = [
     (1, 4, 4),
     (1, 8, 8),
