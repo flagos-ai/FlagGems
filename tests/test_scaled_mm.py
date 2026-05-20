@@ -9,7 +9,7 @@ from .conftest import QUICK_MODE
 
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name in ["ascend"],
-    reason="Native torch._scaled_mm is not supported on Ascend.",
+    reason="https://github.com/flagos-ai/FlagGems/issues/3387",
 )
 
 if QUICK_MODE:
