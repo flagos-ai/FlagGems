@@ -221,6 +221,7 @@ from flag_gems.ops.max_pool3d_with_indices import (
 )
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
+from flag_gems.ops.median import median, median_dim
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.mm import mm, mm_out, router_gemm
@@ -665,6 +666,8 @@ __all__ = [
     "maximum",
     "mean",
     "mean_dim",
+    "median",
+    "median_dim",
     "min",
     "min_dim",
     "minimum",
