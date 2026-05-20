@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 MedianResult = namedtuple("median", ["values", "indices"])
 
 _SORT_MAX_BLOCK = 4096
+_KEY_SELECT_MAX_BLOCK = 16384
 _CUDA_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)
 
 _MAX_FP16 = tl.constexpr(torch.finfo(torch.float16).max)
@@ -140,6 +141,273 @@ def _median_multi_row_sort_kernel(
     tl.store(idx_ptr + row_offsets, first_match.to(tl.int64), mask=row_mask)
 
 
+@triton.jit
+def _fp32_order_key(x):
+    u = x.to(tl.uint32, bitcast=True)
+    sign_bit = u >> 31
+    flip = tl.where(
+        sign_bit != 0,
+        tl.full((), 0xFFFFFFFF, dtype=tl.uint32),
+        tl.full((), 0x80000000, dtype=tl.uint32),
+    )
+    return u ^ flip
+
+
+@triton.jit
+def _fp16_order_key(x):
+    u = x.to(tl.uint16, bitcast=True)
+    sign_bit = u >> 15
+    flip = tl.where(
+        sign_bit != 0,
+        tl.full((), 0xFFFF, dtype=tl.uint16),
+        tl.full((), 0x8000, dtype=tl.uint16),
+    )
+    return u ^ flip
+
+
+@libentry()
+@triton.jit
+def _median_fp32_select_kernel(
+    inp_ptr,
+    val_ptr,
+    idx_ptr,
+    M,
+    N: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    row = tl.program_id(0)
+    if row >= M:
+        return
+
+    cols = tl.arange(0, BLOCK_N)
+    valid = cols < N
+    base = inp_ptr + row * N
+    data = tl.load(base + cols, mask=valid, other=0.0)
+
+    nan_lane = valid & (data != data)
+    nan_i32 = nan_lane.to(tl.int32)
+    has_nan = tl.max(nan_i32, axis=0) != 0
+    first_nan = tl.argmax(nan_i32, axis=0)
+
+    keys = _fp32_order_key(data)
+    finite = valid & ~nan_lane
+    key_min_fill = tl.full((), 0xFFFFFFFF, dtype=tl.uint32)
+    key_max_fill = tl.full((), 0, dtype=tl.uint32)
+    row_min = tl.min(tl.where(finite, keys, key_min_fill), axis=0)
+    row_max = tl.max(tl.where(finite, keys, key_max_fill), axis=0)
+
+    rank = (N - 1) // 2
+    lo = row_min
+    hi = row_max
+    for _ in tl.static_range(0, 32):
+        mid = lo + ((hi - lo) >> 1)
+        le_count = tl.sum((finite & (keys <= mid)).to(tl.int32), axis=0)
+        take_left = le_count > rank
+        hi = tl.where(take_left, mid, hi)
+        lo = tl.where(take_left, lo, mid + 1)
+
+    selected_key = lo
+    key_match = finite & (keys == selected_key)
+    selected_first = tl.argmax(key_match.to(tl.int32), axis=0)
+    selected_value = tl.load(base + selected_first, mask=~has_nan, other=0.0)
+
+    nan_value = tl.load(base + first_nan, mask=has_nan, other=0.0)
+    out_val = tl.where(has_nan, nan_value, selected_value)
+    out_idx = tl.where(has_nan, first_nan, selected_first)
+
+    tl.store(val_ptr + row, out_val)
+    tl.store(idx_ptr + row, out_idx.to(tl.int64))
+
+
+@libentry()
+@triton.jit
+def _median_fp16_select_kernel(
+    inp_ptr,
+    val_ptr,
+    idx_ptr,
+    M,
+    N: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    IS_BF16: tl.constexpr,
+):
+    row = tl.program_id(0)
+    if row >= M:
+        return
+
+    cols = tl.arange(0, BLOCK_N)
+    valid = cols < N
+    base = inp_ptr + row * N
+    data = tl.load(base + cols, mask=valid, other=0.0)
+
+    nan_lane = valid & (data != data)
+    nan_i32 = nan_lane.to(tl.int32)
+    has_nan = tl.max(nan_i32, axis=0) != 0
+    first_nan = tl.argmax(nan_i32, axis=0)
+
+    if IS_BF16:
+        data_f32 = data.to(tl.float32)
+        keys = _fp32_order_key(data_f32)
+        key_min_fill = tl.full((), 0xFFFFFFFF, dtype=tl.uint32)
+        key_max_fill = tl.full((), 0, dtype=tl.uint32)
+        steps: tl.constexpr = 32
+    else:
+        keys = _fp16_order_key(data).to(tl.uint32)
+        key_min_fill = tl.full((), 0xFFFF, dtype=tl.uint32)
+        key_max_fill = tl.full((), 0, dtype=tl.uint32)
+        steps: tl.constexpr = 16
+
+    finite = valid & ~nan_lane
+    row_min = tl.min(tl.where(finite, keys, key_min_fill), axis=0)
+    row_max = tl.max(tl.where(finite, keys, key_max_fill), axis=0)
+
+    rank = (N - 1) // 2
+    lo = row_min
+    hi = row_max
+    for _ in tl.static_range(0, steps):
+        mid = lo + ((hi - lo) >> 1)
+        le_count = tl.sum((finite & (keys <= mid)).to(tl.int32), axis=0)
+        take_left = le_count > rank
+        hi = tl.where(take_left, mid, hi)
+        lo = tl.where(take_left, lo, mid + 1)
+
+    selected_key = lo
+    key_match = finite & (keys == selected_key)
+    selected_first = tl.argmax(key_match.to(tl.int32), axis=0)
+    selected_value = tl.load(base + selected_first, mask=~has_nan, other=0.0)
+
+    nan_value = tl.load(base + first_nan, mask=has_nan, other=0.0)
+    out_val = tl.where(has_nan, nan_value, selected_value)
+    out_idx = tl.where(has_nan, first_nan, selected_first)
+
+    tl.store(val_ptr + row, out_val)
+    tl.store(idx_ptr + row, out_idx.to(tl.int64))
+
+
+@libentry()
+@triton.jit
+def _median_int_select_kernel(
+    inp_ptr,
+    val_ptr,
+    idx_ptr,
+    M,
+    N: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    STEPS: tl.constexpr,
+):
+    row = tl.program_id(0)
+    if row >= M:
+        return
+
+    cols = tl.arange(0, BLOCK_N)
+    valid = cols < N
+    base = inp_ptr + row * N
+    data = tl.load(base + cols, mask=valid, other=0)
+
+    dtype = inp_ptr.dtype.element_ty
+    type_max = get_dtype_max(dtype).to(tl.int64)
+    type_min = (-type_max - 1).to(tl.int64)
+
+    data64 = data.to(tl.int64)
+    row_min = tl.min(tl.where(valid, data64, type_max), axis=0)
+    row_max = tl.max(tl.where(valid, data64, type_min), axis=0)
+
+    rank = (N - 1) // 2
+    lo = row_min
+    hi = row_max
+    for _ in tl.static_range(0, STEPS):
+        mid = lo + ((hi - lo) >> 1)
+        le_count = tl.sum((valid & (data64 <= mid)).to(tl.int32), axis=0)
+        take_left = le_count > rank
+        hi = tl.where(take_left, mid, hi)
+        lo = tl.where(take_left, lo, mid + 1)
+
+    selected = lo
+    key_match = valid & (data64 == selected)
+    first_match = tl.argmax(key_match.to(tl.int32), axis=0)
+
+    tl.store(val_ptr + row, selected.to(dtype))
+    tl.store(idx_ptr + row, first_match.to(tl.int64))
+
+
+def _launch_key_select(inp_2d, values_flat, indices_flat):
+    M, N = inp_2d.shape
+    block_n = triton.next_power_of_2(N)
+    if block_n <= 1024:
+        num_warps = 4
+    elif block_n <= 4096:
+        num_warps = 8
+    else:
+        num_warps = 16
+    dtype = inp_2d.dtype
+
+    with torch_device_fn.device(inp_2d.device):
+        if dtype == torch.float32:
+            _median_fp32_select_kernel[(M,)](
+                inp_2d,
+                values_flat,
+                indices_flat,
+                M,
+                N=N,
+                BLOCK_N=block_n,
+                num_warps=num_warps,
+            )
+        elif dtype == torch.float16:
+            _median_fp16_select_kernel[(M,)](
+                inp_2d,
+                values_flat,
+                indices_flat,
+                M,
+                N=N,
+                BLOCK_N=block_n,
+                IS_BF16=False,
+                num_warps=num_warps,
+            )
+        elif dtype == torch.bfloat16:
+            _median_fp16_select_kernel[(M,)](
+                inp_2d,
+                values_flat,
+                indices_flat,
+                M,
+                N=N,
+                BLOCK_N=block_n,
+                IS_BF16=True,
+                num_warps=num_warps,
+            )
+        elif dtype in (torch.int8, torch.uint8, torch.int16, torch.int32, torch.int64):
+            steps = {
+                torch.int8: 8,
+                torch.uint8: 8,
+                torch.int16: 16,
+                torch.int32: 32,
+                torch.int64: 64,
+            }[dtype]
+            _median_int_select_kernel[(M,)](
+                inp_2d,
+                values_flat,
+                indices_flat,
+                M,
+                N=N,
+                BLOCK_N=block_n,
+                STEPS=steps,
+                num_warps=num_warps,
+            )
+        else:
+            raise NotImplementedError(f"key-select for dtype {dtype}")
+
+
+def _is_key_select_supported(dtype):
+    return dtype in (
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        torch.int8,
+        torch.uint8,
+        torch.int16,
+        torch.int32,
+        torch.int64,
+    )
+
+
 _SORT_UPCAST = {
     torch.bfloat16: torch.float32,
     torch.int8: torch.int32,
@@ -211,11 +479,27 @@ def _launch_sort(inp_2d, values_flat, indices_flat):
 
 def _median_rows(inp_2d, out_values, out_indices):
     M, N = inp_2d.shape
-    if N <= _SORT_MAX_BLOCK and _is_sort_supported(inp_2d.dtype):
+    dtype = inp_2d.dtype
+
+    needs_upcast = dtype in _SORT_UPCAST
+    if M >= 4 and N <= 256 and _is_sort_supported(dtype) and not needs_upcast:
         _launch_sort(inp_2d, out_values, out_indices)
         return
 
+    if N <= _KEY_SELECT_MAX_BLOCK and _is_key_select_supported(dtype):
+        _launch_key_select(inp_2d, out_values, out_indices)
+        return
+
+    if N <= _SORT_MAX_BLOCK and _is_sort_supported(dtype):
+        _launch_sort(inp_2d, out_values, out_indices)
+        return
+
+    _median_rows_via_aten_sort(inp_2d, out_values, out_indices)
+
+
+def _median_rows_via_aten_sort(inp_2d, out_values, out_indices):
     inp = inp_2d
+    N = inp.shape[-1]
     sorted_vals, sorted_idx = torch.ops.aten.sort.default.redispatch(
         _CUDA_KEYSET, inp, -1, False
     )
