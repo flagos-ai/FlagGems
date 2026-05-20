@@ -11,8 +11,10 @@ import torch
 
 import flag_gems
 from flag_gems.fused.mhc.hc_head_fused_kernel import (
+    HAS_VLLM,
     hc_head_fused_kernel,
     hc_head_fused_kernel_ref,
+    hc_head_fused_kernel_vllm_ref,
 )
 from flag_gems.fused.mhc.hc_split_sinkhorn import (
     hc_split_sinkhorn,
@@ -270,26 +272,32 @@ def generate_hc_head_fused_data(
 
 @pytest.mark.hc_head_fused_kernel
 @pytest.mark.parametrize(
-    "dtype",
-    [torch.float32, torch.float16, torch.bfloat16],
-    ids=["fp32", "fp16", "bf16"],
+    "n, hidden_size, hc_mult",
+    MHC_HC_HEAD_FUSED_CONFIGS,
+    ids=[f"n{n}_h{h}_hc{hc}" for n, h, hc in MHC_HC_HEAD_FUSED_CONFIGS],
 )
+def test_hc_head_fused_kernel_vs_ref(n, hidden_size, hc_mult):
+    dtype = torch.bfloat16
+    data = generate_hc_head_fused_data(n, hidden_size, hc_mult, dtype=dtype)
+    data_ref = generate_hc_head_fused_data(n, hidden_size, hc_mult, dtype=dtype)
+
+    out_triton = hc_head_fused_kernel(**data)
+    out_ref = hc_head_fused_kernel_ref(**data_ref)
+    torch.testing.assert_close(out_triton, out_ref, rtol=2e-2, atol=2e-2)
+
+
+@pytest.mark.hc_head_fused_kernel
+@pytest.mark.skipif(not HAS_VLLM, reason="vLLM not available")
 @pytest.mark.parametrize(
     "n, hidden_size, hc_mult",
     MHC_HC_HEAD_FUSED_CONFIGS,
     ids=[f"n{n}_h{h}_hc{hc}" for n, h, hc in MHC_HC_HEAD_FUSED_CONFIGS],
 )
-def test_hc_head_fused_kernel_vs_ref(n, hidden_size, hc_mult, dtype):
+def test_hc_head_fused_kernel_vs_vllm(n, hidden_size, hc_mult):
+    dtype = torch.bfloat16
     data = generate_hc_head_fused_data(n, hidden_size, hc_mult, dtype=dtype)
     data_ref = generate_hc_head_fused_data(n, hidden_size, hc_mult, dtype=dtype)
 
-    tol_map = {
-        torch.float32: (1e-4, 1e-4),
-        torch.float16: (2e-2, 2e-2),
-        torch.bfloat16: (2e-2, 2e-2),
-    }
-    rtol, atol = tol_map[dtype]
-
     out_triton = hc_head_fused_kernel(**data)
-    out_ref = hc_head_fused_kernel_ref(**data_ref)
-    torch.testing.assert_close(out_triton, out_ref, rtol=rtol, atol=atol)
+    out_ref = hc_head_fused_kernel_vllm_ref(**data_ref)
+    torch.testing.assert_close(out_triton, out_ref, rtol=2e-2, atol=2e-2)

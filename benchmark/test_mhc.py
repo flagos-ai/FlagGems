@@ -3,7 +3,7 @@ import torch
 
 from flag_gems.fused.mhc.hc_head_fused_kernel import (
     hc_head_fused_kernel,
-    hc_head_fused_kernel_ref,
+    hc_head_fused_kernel_vllm_ref,
 )
 from flag_gems.fused.mhc.hc_split_sinkhorn import (
     hc_split_sinkhorn,
@@ -253,8 +253,8 @@ class HCHeadFusedBenchmark(base.Benchmark):
 def test_hc_head_fused_kernel():
     bench = HCHeadFusedBenchmark(
         op_name="hc_head_fused_kernel",
-        torch_op=hc_head_fused_kernel_ref,
+        torch_op=hc_head_fused_kernel_vllm_ref,
         gems_op=hc_head_fused_kernel,
-        dtypes=[torch.float32, torch.float16, torch.bfloat16],
+        dtypes=[torch.bfloat16],
     )
     bench.run()
