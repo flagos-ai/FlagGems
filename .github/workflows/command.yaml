@@ -153,7 +153,7 @@ jobs:
           path: results/
 
       - name: comment
-        uses: mshick/add-pr-comment@v3.11.0
+        uses: https://gitcode.com/flagos-ai/add-pr-comment@v3.11.0
         with:
           message-path: report.md
           message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
