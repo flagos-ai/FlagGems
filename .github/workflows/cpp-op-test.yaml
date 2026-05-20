@@ -32,9 +32,16 @@ jobs:
         uses: actions/checkout@v6
       - shell: bash
         run: |
-          SKBUILD_CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON" pip install --no-build-isolation -v -e .
+          export PATH="$HOME/.pyenv/bin:$PATH"
+          eval "$(pyenv init -)"
+          eval "$(pyenv virtualenv-init -)" 2>/dev/null || true
+          export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DCMAKE_BUILD_TYPE=Release"
+          pip install -v -e . --no-build-isolation
       - shell: bash
         run: |
-          cd build/cpython-311/ctests
+          export PATH="$HOME/.pyenv/bin:$PATH"
+          eval "$(pyenv init -)"
+          eval "$(pyenv virtualenv-init -)" 2>/dev/null || true
+          cd build/cpython-*/ctests
           export FLAGGEMS_SOURCE_DIR=$(python -c "import os;import flag_gems;print(os.path.dirname(flag_gems.__file__))")
           ctest -V
