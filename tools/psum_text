@@ -222,22 +222,22 @@ def parse_single_accuracy():
     # Append failed and skipped cases if any, for the first run
     details = op_data1.get("details", {})
     case = " Before" if ARGS.compare else ""
-    if details.get("failed", 0) > 0:
-        f_lines = parse_single_accuracy_details(details, "Failed", case)
+    if op_data1.get("failed", 0) > 0:
+        f_lines = parse_single_accuracy_details(details, "failed", case)
         lines.extend(f_lines)
-    if details.get("skipped", 0) > 0:
-        k_lines = parse_single_accuracy_details(details, "Skipped", case)
+    if op_data1.get("skipped", 0) > 0:
+        k_lines = parse_single_accuracy_details(details, "skipped", case)
         lines.extend(k_lines)
 
     if not ARGS.compare:
         return lines
 
     details = op_data2.get("details", {})
-    if details.get("failed", 0) > 0:
-        f_lines = parse_single_accuracy_details(details, "Failed", " After")
+    if op_data2.get("failed", 0) > 0:
+        f_lines = parse_single_accuracy_details(details, "failed", " After")
         lines.extend(f_lines)
-    if details.get("skipped", 0) > 0:
-        k_lines = parse_single_accuracy_details(details, "Skipped", " After")
+    if op_data2.get("skipped", 0) > 0:
+        k_lines = parse_single_accuracy_details(details, "skipped", " After")
         lines.extend(k_lines)
 
     return lines
@@ -314,23 +314,23 @@ def parse_single_performance():
     for dtype, ddata1 in perf_data1.items():
         ddata2 = perf_data2.get(dtype, {})
         speedup1 = ddata1.get("speedup", 0)
-        line = f"| {dtype} | **{speedup1:.3f}** | - | - | - |"
         if ARGS.compare:
             speedup2 = ddata2.get("speedup", 0)
             spd_str = f"**{speedup1:.3f} -> {speedup2:.3f}**"
             if speedup2 > speedup1:
-                spd_str = f"<span style='color:Green'>{spd_str}"
+                spd_str = f"<span style='color:Green'>**{spd_str}**</span>"
             else:
-                spd_str = f"<span style='color:Red'>{spd_str}"
+                spd_str = f"<span style='color:Red'>**{spd_str}**</span>"
 
             line = f"| {dtype} | {spd_str} | - | - | - |"
+        else:
+            line = f"| {dtype} | **{speedup1:.3f}** | - | - | - |"
         lines.append(line)
 
         for shp, res1 in ddata1.get("details", {}).items():
             s1 = res1.get("speedup", 0)
             b1 = res1.get("base", 0)
             g1 = res1.get("gems", 0)
-            line = f"| | {s1:6.3f} | {b1:6.3f} | {g1:6.3f} | `{shp}` |"
 
             if ARGS.compare and shp in ddata2.get("details", {}):
                 res2 = ddata2.get("details").get(shp)
@@ -340,9 +340,9 @@ def parse_single_performance():
 
                 spd_str = f"{s1:6.3f} -> {s2:6.3f}"
                 if s2 > s1:
-                    spd_str = f"<span style='color:Green'>{spd_str}"
+                    spd_str = f"<span style='color:Green'>{spd_str}</span>"
                 else:
-                    spd_str = f"<span style='color:Red'>{spd_str}"
+                    spd_str = f"<span style='color:Red'>{spd_str}</span>"
 
                 line = (
                     f"| | {spd_str} |"
@@ -350,6 +350,9 @@ def parse_single_performance():
                     f" {g1:6.3f} -> {g2:6.3f} |"
                     f" `{shp}` |"
                 )
+            else:
+                line = f"| | {s1:6.3f} | {b1:6.3f} | {g1:6.3f} | `{shp}` |"
+
             lines.append(line)
 
         # Deal with case where dtype in _after_ but not in _before_

@@ -377,24 +377,8 @@ def w8a8_block_fp8_matmul(
     a_2d = A.reshape(M, K)
     as_2d = As.reshape(M, As.shape[-1])
     c_2d = c.reshape(M, N)
-    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
-    os.environ["MUSA_ENABLE_SQMMA"] = "1"
-    try:
-        if is_sqmma_compatible(a_2d, B, output_dtype, N, K):
-            return sqmma_w8a8_block_fp8_matmul(
-                a_2d,
-                B,
-                c_2d,
-                as_2d,
-                Bs,
-                M,
-                N,
-                K,
-                block_n,
-                block_k,
-            ).reshape(c.shape)
-
-        return general_w8a8_block_fp8_matmul(
+    if is_sqmma_compatible(a_2d, B, output_dtype, N, K):
+        return sqmma_w8a8_block_fp8_matmul(
             a_2d,
             B,
             c_2d,
@@ -406,8 +390,16 @@ def w8a8_block_fp8_matmul(
             block_n,
             block_k,
         ).reshape(c.shape)
-    finally:
-        if prev_sqmma is None:
-            os.environ.pop("MUSA_ENABLE_SQMMA", None)
-        else:
-            os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+
+    return general_w8a8_block_fp8_matmul(
+        a_2d,
+        B,
+        c_2d,
+        as_2d,
+        Bs,
+        M,
+        N,
+        K,
+        block_n,
+        block_k,
+    ).reshape(c.shape)
