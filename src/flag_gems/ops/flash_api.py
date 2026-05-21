@@ -866,6 +866,7 @@ def mha_varlan_fwd_opt(
             page_table,  # page_table_ptr,
             page_table_batch_stride,  # page_table_batch_stride,
             block_size,  # block_size,
+            k.stride(0) if is_paged else 0,  # k_page_stride,
         )
 
         if flag_gems.vendor_name == "iluvatar":
