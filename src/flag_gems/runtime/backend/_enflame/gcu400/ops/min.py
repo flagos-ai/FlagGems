@@ -171,14 +171,6 @@ def min(inp):
 def min_dim(inp, dim=None, keepdim=False):
     logger.debug("GEMS MIN DIM GCU400")
 
-    return_dtype = inp.dtype
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
-    if inp.dtype == torch.int16:
-        inp = inp.to(torch.int32)
-    if inp.dtype == torch.float64:
-        inp = inp.to(torch.float32)
-
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
@@ -192,7 +184,7 @@ def min_dim(inp, dim=None, keepdim=False):
     shape_list = list(shape)
     shape_list[dim] = 1
     out_value = torch.empty(shape_list, dtype=inp.dtype, device=inp.device)
-    out_index = torch.empty(shape_list, dtype=torch.int32, device=inp.device)
+    out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
 
     if K == 1:
         BLOCK_N = _min(triton.next_power_of_2(N), 4096)
@@ -237,5 +229,5 @@ def min_dim(inp, dim=None, keepdim=False):
         out_index = torch.squeeze(out_index, dim)
 
     Min_out = namedtuple("min", ["values", "indices"])
-    out = Min_out(values=out_value.to(return_dtype), indices=out_index.to(torch.int64))
+    out = Min_out(values=out_value, indices=out_index)
     return out
