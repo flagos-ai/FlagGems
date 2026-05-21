@@ -86,9 +86,6 @@ def ref_mla(
 @pytest.mark.parametrize("seqlen", [1024, 2048, 4096, 8192])
 @pytest.mark.parametrize("dtype", [torch.bfloat16])
 def test_flash_mla(monkeypatch, seqlen, dtype):
-    if vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     b = 128
     s_q = 1
     h_q = 128
