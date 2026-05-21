@@ -6,6 +6,18 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .hopper_fa3_utils import (
+    accuracy_shapes as hopper_fa3_accuracy_shapes,
+    build_reference as build_hopper_fa3_reference,
+    dispatch_source as hopper_fa3_dispatch_source,
+    dispatches_to_hopper as dispatches_to_hopper_fa3,
+    is_fa3_supported as is_hopper_fa3_supported,
+    make_varlen as make_hopper_fa3_varlen,
+    max_mean_abs as hopper_fa3_max_mean_abs,
+    output_tensor as hopper_fa3_output_tensor,
+    run_flag_gems as run_hopper_fa3,
+    tolerances as hopper_fa3_tolerances,
+)
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
@@ -13,6 +25,13 @@ vendor_name = flag_gems.vendor_name
 
 def _selected_fa_version(pytestconfig) -> int:
     return pytestconfig.getoption("flash_attn_varlen_fa_version")
+
+
+def _skip_unless_hopper_fa3(pytestconfig) -> None:
+    if _selected_fa_version(pytestconfig) != 3:
+        pytest.skip("Hopper FA3 coverage only runs with fa_version=3.")
+    if not is_hopper_fa3_supported():
+        pytest.skip("requires CUDA Hopper with Triton FA3 support.")
 
 
 def _is_fa3_supported() -> bool:
@@ -74,6 +93,38 @@ def _run_flash_attn_varlen_func(
         alibi_slopes=alibi_slopes,
         fa_version=fa_version,
     )
+
+
+@pytest.mark.hopper_fa3
+@pytest.mark.flash_attn_varlen_func
+def test_flash_attn_varlen_func_hopper_fa3_dispatch(pytestconfig):
+    _skip_unless_hopper_fa3(pytestconfig)
+    assert dispatches_to_hopper_fa3(), (
+        "flag_gems.flash_attn_varlen_func is not routed to the Hopper backend; "
+        f"source={hopper_fa3_dispatch_source()}"
+    )
+
+
+@pytest.mark.hopper_fa3
+@pytest.mark.flash_attn_varlen_func
+@pytest.mark.parametrize(
+    "shape", hopper_fa3_accuracy_shapes(), ids=lambda shape: shape.name
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@torch.inference_mode()
+def test_flash_attn_varlen_func_hopper_fa3_accuracy(pytestconfig, shape, dtype):
+    _skip_unless_hopper_fa3(pytestconfig)
+    tensors = make_hopper_fa3_varlen(shape, dtype, flag_gems.device, seed=2026)
+    ref, ref_kind = build_hopper_fa3_reference(tensors, shape, fa_version=3)
+    out = hopper_fa3_output_tensor(run_hopper_fa3(tensors, shape, fa_version=3))
+    atol, rtol = hopper_fa3_tolerances(dtype, tensors.max_seqlen_k, ref_kind)
+
+    max_abs, mean_abs = hopper_fa3_max_mean_abs(out, ref)
+    msg = (
+        f"shape={shape.name}, dtype={dtype}, ref={ref_kind}, "
+        f"max_abs={max_abs:.3e}, mean_abs={mean_abs:.3e}"
+    )
+    torch.testing.assert_close(out.float(), ref.float(), atol=atol, rtol=rtol, msg=msg)
 
 
 # Following varlen and paged attn tests are copied from
