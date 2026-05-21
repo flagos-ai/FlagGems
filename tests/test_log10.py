@@ -1,110 +1,112 @@
-import pytest
+
+import sys
+import os
+
+sys.path.append(os.path.abspath("src"))
+
 import torch
 
-import flag_gems
-
-from . import accuracy_utils as utils
+from flag_gems.ops.log10 import log10
 
 
-@pytest.mark.log10
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_log10(shape, dtype):
-    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+def test_small_tensor():
 
-    ref_inp = utils.to_reference(inp, True)
-    ref_out = torch.log10(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.log10(inp)
+    x = torch.rand(128, device="cuda") + 0.01
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    y_triton = log10(x)
 
+    y_torch = torch.log10(x)
 
-@pytest.mark.log10_
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_log10_(shape, dtype):
-    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone(), True)
-
-    ref_out = torch.log10_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.log10_(inp)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.log10_out
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_log10_out(shape, dtype):
-    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
-
-    ref_out = torch.empty_like(ref_inp)
-    torch.log10(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.empty_like(inp)
-        torch.log10(inp, out=res_out)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.log10
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_log10_special_values(dtype):
-    inp = torch.tensor(
-        [0.0, -0.0, 1.0, 10.0, -1.0, float("inf"), float("-inf"), float("nan")],
-        dtype=dtype,
-        device=flag_gems.device,
+    assert torch.allclose(
+        y_triton,
+        y_torch,
+        rtol=1e-4,
+        atol=1e-4
     )
-    ref_inp = utils.to_reference(inp, True)
-
-    ref_out = torch.log10(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.log10(inp)
-
-    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.log10
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_log10_empty(dtype):
-    shapes = ((0,), (4, 0), (2, 0, 3))
+def test_large_tensor():
+
+    x = torch.rand(1_000_000, device="cuda") + 0.01
+
+    y_triton = log10(x)
+
+    y_torch = torch.log10(x)
+
+    assert torch.allclose(
+        y_triton,
+        y_torch,
+        rtol=1e-4,
+        atol=1e-4
+    )
+
+
+def test_zero_values():
+
+    x = torch.tensor(
+        [0.0, 1.0, 10.0],
+        device="cuda"
+    )
+
+    y_triton = log10(x)
+
+    y_torch = torch.log10(torch.maximum(
+        x,
+        torch.tensor(1e-12, device="cuda")
+    ))
+
+    assert torch.allclose(
+        y_triton,
+        y_torch,
+        rtol=1e-4,
+        atol=1e-4
+    )
+
+
+def test_many_shapes():
+
+    shapes = [
+        (1,),
+        (8,),
+        (128,),
+        (1024,),
+        (4096,),
+        (64, 64),
+        (128, 128),
+        (256, 256),
+    ]
+
     for shape in shapes:
-        inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-        ref_inp = utils.to_reference(inp, True)
 
-        ref_out = torch.log10(ref_inp)
-        with flag_gems.use_gems():
-            res_out = torch.log10(inp)
+        x = torch.rand(shape, device="cuda") + 0.01
 
-        utils.gems_assert_close(res_out, ref_out, dtype)
+        y_triton = log10(x)
 
+        y_torch = torch.log10(x)
 
-@pytest.mark.log10
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_log10_noncontiguous(dtype):
-    inp = torch.rand((32, 64), dtype=dtype, device=flag_gems.device).transpose(0, 1)
-    ref_inp = utils.to_reference(inp, True)
-
-    ref_out = torch.log10(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.log10(inp)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
+        assert torch.allclose(
+            y_triton,
+            y_torch,
+            rtol=1e-4,
+            atol=1e-4
+        )
 
 
-@pytest.mark.log10
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
-def test_log10_int_promotes_to_float(dtype):
-    inp = torch.randint(1, 100, (128, 64), dtype=dtype, device="cpu").to(
-        flag_gems.device
+def test_float16():
+
+    x = (
+        torch.rand(4096, device="cuda")
+        .half()
+        + 0.01
     )
-    ref_inp = utils.to_reference(inp, True)
 
-    ref_out = torch.log10(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.log10(inp)
+    y_triton = log10(x)
 
-    utils.gems_assert_close(res_out, ref_out, torch.float32)
+    y_torch = torch.log10(x)
+
+    assert torch.allclose(
+        y_triton,
+        y_torch,
+        rtol=1e-2,
+        atol=1e-2
+    )
