@@ -10,8 +10,39 @@ single_dim_shapes: &single_dim_shapes
 vdot:
   <<: *single_dim_shapes
 
+ctc_loss:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
+ctc_loss_backward:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
 randperm:
   <<: *single_dim_shapes
+
+svd:
+  shapes:
+    - [4096, 2, 2]
+    - [4096, 16, 2]
+    - [4096, 2, 16]
+    - [4096, 8, 8]
+    - [256, 16, 8]
+    - [256, 8, 16]
+    - [64, 32]
+    - [32, 64]
+    - [16, 16, 16]
+    - [17, 17]
+    - [256, 256]
+  shape_desc: "(*B), M, N"
 
 gelu_backward:
   shapes:
@@ -420,6 +451,19 @@ FusedRecurrentGatedDeltaRuleBenchmark:
     - [256]
     - [512]
   shape_desc: "(T,) many lengths"
+
+ChunkGatedDeltaRuleBenchmark:
+  shapes:
+    - [1, 64, 4, 8, 64, 64]
+    - [1, 128, 4, 8, 64, 64]
+    - [1, 256, 4, 8, 64, 64]
+    - [1, 512, 4, 8, 64, 64]
+    - [2, 64, 4, 8, 64, 64]
+    - [2, 128, 4, 8, 64, 64]
+    - [2, 256, 4, 8, 64, 64]
+    - [2, 512, 4, 8, 64, 64]
+  shape_desc: "B, T, Hg, H, K, V"
+
 MoeAlignBlockSizeBenchmark:
   shapes:
     - [16, 8]

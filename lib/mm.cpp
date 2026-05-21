@@ -232,7 +232,8 @@ void general_mm_tensor(
     /* BLOCK_M = */ BLOCK_M,
     /* BLOCK_N = */ BLOCK_N,
     /* BLOCK_K = */ BLOCK_K,
-    /* GROUP_M = */ GROUP_M);
+    /* GROUP_M = */ GROUP_M,
+    /* IS_FP64 = */ a.dtype() == at::kDouble);
   return;
 }
 
