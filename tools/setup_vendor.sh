@@ -162,10 +162,10 @@ case $VENDOR in
     uv pip install ".[nvidia,test]"
 
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.9.0+cu128" \
-        "torchvision==0.24.0+cu128" \
-        "torchaudio==2.9.0+cu128" \
-        "triton==3.6"
+        "torch==2.10.0+cu128" \
+        "torchvision==0.25.0+cu128" \
+        "torchaudio==2.10.0+cu128" \
+        "triton==3.6.0"
 
     # We don't have flagtree for triton 3.6 yet
     # if [ -n "${USE_TRITON}" ]; then

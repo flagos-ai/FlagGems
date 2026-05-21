@@ -152,39 +152,31 @@ def sparse_attn_triton(
         d,
     )
     grid = (m, b)
-    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
-    os.environ["MUSA_ENABLE_SQMMA"] = "1"
-    try:
-        with torch_device_fn.device(q.device):
-            sparse_attn_triton_kernel[grid](
-                q,
-                kv,
-                o,
-                attn_sink,
-                topk_idxs,
-                q.stride(0),
-                q.stride(1),
-                q.stride(2),
-                q.stride(3),
-                kv.stride(0),
-                kv.stride(1),
-                kv.stride(2),
-                o.stride(0),
-                o.stride(1),
-                o.stride(2),
-                o.stride(3),
-                topk_idxs.stride(0),
-                topk_idxs.stride(1),
-                topk_idxs.stride(2),
-                softmax_scale,
-                topk,
-                h,
-                D=d,
-                H=h_padded,
-            )
-        return o
-    finally:
-        if prev_sqmma is None:
-            os.environ.pop("MUSA_ENABLE_SQMMA", None)
-        else:
-            os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+    with torch_device_fn.device(q.device):
+        sparse_attn_triton_kernel[grid](
+            q,
+            kv,
+            o,
+            attn_sink,
+            topk_idxs,
+            q.stride(0),
+            q.stride(1),
+            q.stride(2),
+            q.stride(3),
+            kv.stride(0),
+            kv.stride(1),
+            kv.stride(2),
+            o.stride(0),
+            o.stride(1),
+            o.stride(2),
+            o.stride(3),
+            topk_idxs.stride(0),
+            topk_idxs.stride(1),
+            topk_idxs.stride(2),
+            softmax_scale,
+            topk,
+            h,
+            D=d,
+            H=h_padded,
+        )
+    return o
