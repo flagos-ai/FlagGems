@@ -27,9 +27,6 @@ else:
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
-    if flag_gems.vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     if b_column_major:
         mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
