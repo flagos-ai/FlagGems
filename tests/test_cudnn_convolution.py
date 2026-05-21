@@ -60,12 +60,16 @@ def test_cudnn_convolution_2d(
 
     gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype)
 
-
-SHAPE_CUDNN_CONV1D = [
-    ((32, 2, 4), (17, 2, 2)),
-    ((32, 15, 6), (17, 15, 2)),
-    ((64, 64, 64), (128, 64, 7)),
-]
+if QUICK_MODE:
+    SHAPE_CUDNN_CONV1D = [
+        ((32, 2, 4), (17, 2, 2)),
+    ]
+else:
+    SHAPE_CUDNN_CONV1D = [
+        ((32, 2, 4), (17, 2, 2)),
+        ((32, 15, 6), (17, 15, 2)),
+        ((64, 64, 64), (128, 64, 7)),
+    ]
 
 
 @pytest.mark.cudnn_convolution
@@ -105,10 +109,15 @@ def test_cudnn_convolution_1d(shape, kernel, stride, padding, dtype, monkeypatch
     gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype)
 
 
-SHAPE_CUDNN_CONV3D = [
-    ((1, 2, 5, 5, 5), (1, 2, 3, 3, 3), 1),
-    ((2, 3, 9, 9, 9), (1, 3, 3, 3, 3), 1),
-]
+if QUICK_MODE:
+    SHAPE_CUDNN_CONV3D = [
+        ((1, 2, 5, 5, 5), (1, 2, 3, 3, 3), 1),
+    ]
+else:
+    SHAPE_CUDNN_CONV3D = [
+        ((1, 2, 5, 5, 5), (1, 2, 3, 3, 3), 1),
+        ((2, 3, 9, 9, 9), (1, 3, 3, 3, 3), 1),
+    ]
 
 
 @pytest.mark.cudnn_convolution
