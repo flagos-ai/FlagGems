@@ -11,7 +11,10 @@ Summary:        FlagGems — GPU operator library for FlagOS (Phase 1, Python-on
 License:        Apache-2.0
 URL:            https://github.com/flagos-ai/FlagGems
 Source0:        %{url}/archive/v%{version}/flag-gems-%{version}.tar.gz
-BuildArch:      noarch
+# Stay aligned with the wheel's actual arch tag (scikit-build-core tags
+# linux_x86_64 even when FLAGGEMS_BUILD_C_EXTENSIONS=OFF) and with the
+# Debian `Architecture: amd64`. See packaging/NOTES.md.
+BuildArch:      x86_64
 BuildRequires:  python3-devel
 BuildRequires:  python3-setuptools >= 64
 BuildRequires:  python3-wheel

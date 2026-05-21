@@ -12,7 +12,7 @@ Build-Depends: debhelper-compat (= 13),
                python3-pybind11,
                libtriton-jit-dev,
                dh-python
-Standards-Version: 4.6.0
+Standards-Version: 4.6.2
 Homepage: https://github.com/flagos-ai/FlagGems
 Vcs-Browser: https://github.com/flagos-ai/FlagGems
 Vcs-Git: https://github.com/flagos-ai/FlagGems.git
