@@ -40,6 +40,26 @@ def _check_device(x):
 _TMA_ALLOCATOR_REGISTERED = False
 
 
+def _bucket_avg_rows(avg_rows):
+    if avg_rows <= 16:
+        return 16
+    if avg_rows <= 32:
+        return 32
+    if avg_rows <= 64:
+        return 64
+    return 128
+
+
+def _bucket_avg_rows_per_cta(total_q, batch_size, num_heads):
+    total_rows = total_q * num_heads
+    num_sms = torch_device_fn.get_device_properties(
+        flag_gems.device
+    ).multi_processor_count
+    avg_rows_per_sm = total_rows / max(num_sms, 1)
+    avg_rows_per_batch = total_q / max(batch_size, 1)
+    return _bucket_avg_rows(min(avg_rows_per_batch, avg_rows_per_sm))
+
+
 def _ensure_tma_allocator():
     global _TMA_ALLOCATOR_REGISTERED
     if _TMA_ALLOCATOR_REGISTERED:
@@ -353,7 +373,12 @@ def mha_varlan_fwd_v3(
             batch_size,
             num_heads,
         )
-        args = tuple(getattr(params, k) for k in params.__slots__)
+        avg_rows_per_cta_bucket = _bucket_avg_rows_per_cta(
+            total_q, batch_size, num_heads
+        )
+        args = tuple(getattr(params, k) for k in params.__slots__) + (
+            avg_rows_per_cta_bucket,
+        )
         flash_varlen_fwd_v3_kernel[grid](*args)
 
         # --------------------------------------------------------------
