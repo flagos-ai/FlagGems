@@ -1,5 +1,6 @@
 import pytest
 import torch
+import torch.nn as nn
 
 import flag_gems
 
@@ -10,6 +11,13 @@ if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
 else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
+
+
+class _MockGemmaRMSNorm(nn.Module):
+    def __init__(self, hidden_size, eps=1e-6, dtype=torch.float32, device="cpu"):
+        super().__init__()
+        self.weight = nn.Parameter(torch.zeros(hidden_size, dtype=dtype, device=device))
+        self.variance_epsilon = eps
 
 
 def _torch_gemma_rms_norm(x, weight, eps):
@@ -31,41 +39,37 @@ def _torch_gemma_fused_add_rms_norm(x, residual, weight, eps):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_gemma_rms_norm(shape, dtype):
     N = shape[1]
-    layer_shape = [N]
-    inp = torch.randn(shape[:2], dtype=dtype, device=flag_gems.device)
-    weight = torch.randn(layer_shape, dtype=dtype, device=flag_gems.device) * 0.01
     eps = 1e-6
+    inp = torch.randn(shape[:2], dtype=dtype, device=flag_gems.device)
+    module = _MockGemmaRMSNorm(N, eps, dtype=dtype, device=flag_gems.device)
 
     ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
+    ref_weight = utils.to_reference(module.weight, True)
 
     ref_out = _torch_gemma_rms_norm(ref_inp, ref_weight, eps)
-    res_out = flag_gems.gemma_rms_norm(inp, list(layer_shape), weight=weight, eps=eps)
+    res_out = flag_gems.gemma_rms_norm(module, inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.gemma_fused_add_rms_norm
+@pytest.mark.gemma_rms_norm
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_gemma_fused_add_rms_norm(shape, dtype):
+def test_gemma_rms_norm_with_residual(shape, dtype):
     N = shape[1]
-    layer_shape = [N]
+    eps = 1e-6
     inp = torch.randn(shape[:2], dtype=dtype, device=flag_gems.device)
     residual = torch.randn(shape[:2], dtype=dtype, device=flag_gems.device)
-    weight = torch.randn(layer_shape, dtype=dtype, device=flag_gems.device) * 0.01
-    eps = 1e-6
+    module = _MockGemmaRMSNorm(N, eps, dtype=dtype, device=flag_gems.device)
 
     ref_inp = utils.to_reference(inp, True)
     ref_residual = utils.to_reference(residual, True)
-    ref_weight = utils.to_reference(weight, True)
+    ref_weight = utils.to_reference(module.weight, True)
 
     ref_out, ref_new_residual = _torch_gemma_fused_add_rms_norm(
         ref_inp, ref_residual, ref_weight, eps
     )
-    res_out, res_new_residual = flag_gems.gemma_fused_add_rms_norm(
-        inp, residual, list(layer_shape), weight=weight, eps=eps
-    )
+    res_out, res_new_residual = flag_gems.gemma_rms_norm(module, inp, residual)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_new_residual, ref_new_residual, dtype)

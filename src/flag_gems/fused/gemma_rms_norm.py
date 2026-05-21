@@ -1,4 +1,4 @@
-"""Triton Gemma RMS Normalization kernels.
+"""Triton Gemma RMS Normalization kernel.
 
 Implements Gemma-style RMSNorm where the weight uses a +1 offset:
     output = x * rsqrt(mean(x^2) + eps) * (1 + weight)
@@ -6,9 +6,10 @@ Implements Gemma-style RMSNorm where the weight uses a +1 offset:
 This differs from standard RMSNorm (which multiplies by weight directly)
 because Gemma initializes weights to zero and adds 1 during forward pass.
 
-Two kernels are provided:
-    - gemma_rms_norm_kernel: standalone normalization
-    - gemma_fused_add_rms_norm_kernel: fused residual addition + normalization
+A single entry point `gemma_rms_norm` dispatches to the appropriate kernel
+based on whether a residual tensor is provided:
+    - Without residual: standalone normalization
+    - With residual: fused residual addition + normalization in one kernel launch
 """
 
 import logging
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
-def gemma_rms_norm_kernel(
+def _gemma_rms_norm_kernel(
     input_ptr,
     w_ptr,
     output_ptr,
@@ -65,7 +66,7 @@ def gemma_rms_norm_kernel(
 
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
-def gemma_fused_add_rms_norm_kernel(
+def _gemma_fused_add_rms_norm_kernel(
     input_ptr,
     residual_ptr,
     w_ptr,
@@ -106,46 +107,40 @@ def gemma_fused_add_rms_norm_kernel(
     tl.store(input_ptr + cols * in_stride_c, y, mask=mask)
 
 
-def gemma_rms_norm(x, normalized_shape, weight, eps=1e-6):
-    logger.debug(
-        "GEMS GEMMA_RMS_NORM, [input shape]: %s, [weight shape]: %s",
-        x.size(),
-        weight.size(),
-    )
+def gemma_rms_norm(module, x, residual=None):
+    weight = module.weight.data
+    eps = module.variance_epsilon
+    normalized_shape = weight.shape
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
-
     BLOCK_SIZE = triton.next_power_of_2(N)
+
     x = x.contiguous()
     weight = weight.contiguous()
-    out = torch.empty_like(x)
 
-    with torch_device_fn.device(x.device):
-        gemma_rms_norm_kernel[M,](
-            x, weight, out, N, 1, N, 1, N, eps, BLOCK_SIZE
+    if residual is not None:
+        logger.debug(
+            "GEMS GEMMA_RMS_NORM (fused add), [input shape]: %s, [residual shape]: %s, [weight shape]: %s",
+            x.size(),
+            residual.size(),
+            weight.size(),
         )
-    return out
-
-
-def gemma_fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-6):
-    logger.debug(
-        "GEMS GEMMA_FUSED_ADD_RMS_NORM, [input shape]: %s, [residual shape]: %s, [weight shape]: %s",
-        x.size(),
-        residual.size(),
-        weight.size(),
-    )
-    dim = x.ndim - len(normalized_shape)
-    M = math.prod(x.shape[:dim])
-    N = math.prod(normalized_shape)
-
-    BLOCK_SIZE = triton.next_power_of_2(N)
-    x = x.contiguous()
-    residual = residual.contiguous()
-    weight = weight.contiguous()
-
-    with torch_device_fn.device(x.device):
-        gemma_fused_add_rms_norm_kernel[M,](
-            x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
+        residual = residual.contiguous()
+        with torch_device_fn.device(x.device):
+            _gemma_fused_add_rms_norm_kernel[M,](
+                x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
+            )
+        return x, residual
+    else:
+        logger.debug(
+            "GEMS GEMMA_RMS_NORM, [input shape]: %s, [weight shape]: %s",
+            x.size(),
+            weight.size(),
         )
-    return x, residual
+        out = torch.empty_like(x)
+        with torch_device_fn.device(x.device):
+            _gemma_rms_norm_kernel[M,](
+                x, weight, out, N, 1, N, 1, N, eps, BLOCK_SIZE
+            )
+        return out
