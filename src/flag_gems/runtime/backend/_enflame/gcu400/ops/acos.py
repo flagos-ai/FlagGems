@@ -5,8 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
-from flag_gems.utils import tl_extra_shim
+from flag_gems.utils import libentry, tl_extra_shim
 
 _acos = tl_extra_shim.acos
 
@@ -51,7 +50,10 @@ def acos(A):
 
     with torch_device_fn.device(inp.device):
         acos_kernel[(grid_size,)](
-            inp, out, N,
-            BLOCK=BLOCK, num_warps=4,
+            inp,
+            out,
+            N,
+            BLOCK=BLOCK,
+            num_warps=4,
         )
     return out

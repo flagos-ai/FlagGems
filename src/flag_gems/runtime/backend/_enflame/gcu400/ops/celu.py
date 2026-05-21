@@ -54,7 +54,9 @@ def _launch_celu(inp, out, N_total, alpha):
         NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
         grid_size = min(NUM_BLOCKS, NUM_SIPS * 2)
         with torch_device_fn.device(inp.device):
-            celu_kernel_alpha1[(grid_size,)](inp, out, N_total, BLOCK=BLOCK, num_warps=2)
+            celu_kernel_alpha1[(grid_size,)](
+                inp, out, N_total, BLOCK=BLOCK, num_warps=2
+            )
     else:
         if N_total <= 65536:
             BLOCK = triton.next_power_of_2(N_total)
@@ -65,7 +67,9 @@ def _launch_celu(inp, out, N_total, alpha):
         NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
         grid_size = min(NUM_BLOCKS, NUM_SIPS * 2)
         with torch_device_fn.device(inp.device):
-            celu_kernel[(grid_size,)](inp, out, N_total, alpha, BLOCK=BLOCK, num_warps=2)
+            celu_kernel[(grid_size,)](
+                inp, out, N_total, alpha, BLOCK=BLOCK, num_warps=2
+            )
 
 
 def celu(A, alpha=1.0):

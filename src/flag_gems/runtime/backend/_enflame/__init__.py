@@ -36,8 +36,6 @@ if arch_version == 300:
         "copy_",
     )
 elif arch_version == 400:
-    CUSTOMIZED_UNUSED_OPS = (
-        "to_copy",
-    )
+    CUSTOMIZED_UNUSED_OPS = ("to_copy",)
 
 __all__ = ["*"]

@@ -12,7 +12,9 @@ _NONE_PD_THRESHOLD = 2097152
 
 
 @triton.jit
-def mse_single_kernel(inp, target, out, M, BLOCK_SIZE: tl.constexpr, reduction: tl.constexpr):
+def mse_single_kernel(
+    inp, target, out, M, BLOCK_SIZE: tl.constexpr, reduction: tl.constexpr
+):
     offset = tl.arange(0, BLOCK_SIZE)
     mask = offset < M
     inp_val = tl.load(inp + offset, mask=mask, other=0.0).to(tl.float32)
@@ -25,7 +27,9 @@ def mse_single_kernel(inp, target, out, M, BLOCK_SIZE: tl.constexpr, reduction: 
 
 
 @triton.jit
-def mse_reduce_k1(inp, target, mid, M, BLOCK_SIZE: tl.constexpr, reduction: tl.constexpr):
+def mse_reduce_k1(
+    inp, target, mid, M, BLOCK_SIZE: tl.constexpr, reduction: tl.constexpr
+):
     pid = tl.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < M

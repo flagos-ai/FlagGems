@@ -291,7 +291,10 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
             ):
                 triton_dtype = torch2triton_dtype[inp.dtype]
                 # use default paramerter to calcualte grid
-                grid_for_split_K = (triton.cdiv(M, 8), min(triton.cdiv(K, 32), GRID_Y_LIMIT))
+                grid_for_split_K = (
+                    triton.cdiv(M, 8),
+                    min(triton.cdiv(K, 32), GRID_Y_LIMIT),
+                )
                 with torch_device_fn.device(inp.device):
                     argmin_split_K_kernel_merged[grid_for_split_K](
                         inp,

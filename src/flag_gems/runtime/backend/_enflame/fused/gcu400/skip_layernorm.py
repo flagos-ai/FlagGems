@@ -9,8 +9,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-from ...gcu400.utils.config_utils import MAX_GRID_DIM
-
 logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
@@ -20,40 +18,55 @@ MAX_BLOCK_N = 32768
 @libentry()
 @triton.jit(do_not_specialize=["M", "N", "eps"])
 def skip_layer_norm_kernel_2d(
-    Y, X, R, W, B, stride, M, N, eps,
+    Y,
+    X,
+    R,
+    W,
+    B,
+    stride,
+    M,
+    N,
+    eps,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
     pid = ext.program_id(0)
-    Y += (pid * BLOCK_SIZE_M - 1) * y_stride_r
-    X += (pid * BLOCK_SIZE_M - 1) * x_stride_r
-    R += (pid * BLOCK_SIZE_M - 1) * r_stride_r
-    for i in range(BLOCK_SIZE_M):
-        if pid * BLOCK_SIZE_M + i < M:
-            Y += y_stride_r
-            X += x_stride_r
-            R += r_stride_r
-
-    w = tl.load(W + cols, mask=col_mask, other=0.0).to(tl.float32)
-    b = tl.load(B + cols, mask=col_mask, other=0.0).to(tl.float32)
+    num_pids = tl.num_programs(0)
 
     for row_start in tl.range(pid * BLOCK_M, M, num_pids * BLOCK_M):
         x_blk = tl.make_block_ptr(
-            base=X, shape=(M, N), strides=(stride, 1),
-            offsets=(row_start, 0), block_shape=(BLOCK_M, BLOCK_N), order=(1, 0),
+            base=X,
+            shape=(M, N),
+            strides=(stride, 1),
+            offsets=(row_start, 0),
+            block_shape=(BLOCK_M, BLOCK_N),
+            order=(1, 0),
         )
         r_blk = tl.make_block_ptr(
-            base=R, shape=(M, N), strides=(stride, 1),
-            offsets=(row_start, 0), block_shape=(BLOCK_M, BLOCK_N), order=(1, 0),
+            base=R,
+            shape=(M, N),
+            strides=(stride, 1),
+            offsets=(row_start, 0),
+            block_shape=(BLOCK_M, BLOCK_N),
+            order=(1, 0),
         )
         y_blk = tl.make_block_ptr(
-            base=Y, shape=(M, N), strides=(stride, 1),
-            offsets=(row_start, 0), block_shape=(BLOCK_M, BLOCK_N), order=(1, 0),
+            base=Y,
+            shape=(M, N),
+            strides=(stride, 1),
+            offsets=(row_start, 0),
+            block_shape=(BLOCK_M, BLOCK_N),
+            order=(1, 0),
         )
 
         x = tl.load(x_blk, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
         r = tl.load(r_blk, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
         x = x + r
+
+        cols = tl.arange(0, BLOCK_N)
+        col_mask = cols < N
+        w = tl.load(W + cols, mask=col_mask, other=0.0).to(tl.float32)
+        b = tl.load(B + cols, mask=col_mask, other=0.0).to(tl.float32)
 
         mean = tl.sum(x, axis=1) / N
         diff = x - mean[:, None]
@@ -67,7 +80,15 @@ def skip_layer_norm_kernel_2d(
 @libentry()
 @triton.jit(do_not_specialize=["M", "N", "eps", "stride"])
 def skip_layer_norm_kernel_large_n(
-    Y, X, R, W, B, stride, M, N, eps,
+    Y,
+    X,
+    R,
+    W,
+    B,
+    stride,
+    M,
+    N,
+    eps,
     BLOCK_N: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -120,8 +141,15 @@ class SkipLayerNorm(torch.autograd.Function):
             grid_size = min(M, NUM_SIPS * 2)
             with torch_device_fn.device(x.device):
                 skip_layer_norm_kernel_large_n[(grid_size,)](
-                    y, x, residual, weight, bias,
-                    N, M, N, eps,
+                    y,
+                    x,
+                    residual,
+                    weight,
+                    bias,
+                    N,
+                    M,
+                    N,
+                    eps,
                     MAX_BLOCK_N,
                     num_warps=1,
                 )
@@ -132,9 +160,17 @@ class SkipLayerNorm(torch.autograd.Function):
             grid_size = min(num_row_blocks, NUM_SIPS * 2)
             with torch_device_fn.device(x.device):
                 skip_layer_norm_kernel_2d[(grid_size,)](
-                    y, x, residual, weight, bias,
-                    N, M, N, eps,
-                    BLOCK_M, BLOCK_N,
+                    y,
+                    x,
+                    residual,
+                    weight,
+                    bias,
+                    N,
+                    M,
+                    N,
+                    eps,
+                    BLOCK_M,
+                    BLOCK_N,
                     num_warps=1,
                 )
         return y

@@ -1,7 +1,9 @@
 import logging
+
+import torch
 import triton
 import triton.language as tl
-import torch
+
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -13,11 +15,24 @@ NUM_SIPS = 24
 @libentry()
 @triton.jit(do_not_specialize=["scale", "topk", "total_bh"])
 def fused_attn_kernel(
-    Q, GKV, O, attn_sink,
-    stride_qb, stride_qm, stride_qh, stride_qd,
-    stride_gkvbm, stride_gkvt, stride_gkvd,
-    stride_ob, stride_om, stride_oh, stride_od,
-    scale, topk, total_bh,
+    Q,
+    GKV,
+    Out,
+    attn_sink,
+    stride_qb,
+    stride_qm,
+    stride_qh,
+    stride_qd,
+    stride_gkvbm,
+    stride_gkvt,
+    stride_gkvd,
+    stride_ob,
+    stride_om,
+    stride_oh,
+    stride_od,
+    scale,
+    topk,
+    total_bh,
     D: tl.constexpr,
     H: tl.constexpr,
     GRID_BH: tl.constexpr,
@@ -49,7 +64,12 @@ def fused_attn_kernel(
             block_start = t * BLOCK
             valid_mask = (block_start + offs_blk) < topk
 
-            kv_ptrs = GKV + gkv_offset + (block_start + offs_blk[:, None]) * stride_gkvt + offs_d[None, :] * stride_gkvd
+            kv_ptrs = (
+                GKV
+                + gkv_offset
+                + (block_start + offs_blk[:, None]) * stride_gkvt
+                + offs_d[None, :] * stride_gkvd
+            )
             kv_block = tl.load(kv_ptrs, mask=valid_mask[:, None], other=0.0)
 
             scores = tl.sum(q_scaled_bf[None, :] * kv_block, axis=1).to(tl.float32)
@@ -71,7 +91,7 @@ def fused_attn_kernel(
         sum_exp = sum_exp + tl.exp(sink_val - score_max)
         acc_o = acc_o / sum_exp
 
-        o_base = O + pid_b * stride_ob + pid_m * stride_om + pid_h * stride_oh
+        o_base = Out + pid_b * stride_ob + pid_m * stride_om + pid_h * stride_oh
         tl.store(o_base + offs_d * stride_od, acc_o.to(tl.bfloat16))
 
 
@@ -97,12 +117,28 @@ def sparse_attn_triton(q, kv, attn_sink, topk_idxs, softmax_scale):
 
     with torch_device_fn.device(q.device):
         fused_attn_kernel[grid](
-            q, gathered_kv, o, attn_sink,
-            q.stride(0), q.stride(1), q.stride(2), q.stride(3),
-            gathered_kv.stride(0), gathered_kv.stride(1), gathered_kv.stride(2),
-            o.stride(0), o.stride(1), o.stride(2), o.stride(3),
-            softmax_scale, topk, total_bh,
-            D=d, H=h, GRID_BH=GRID_BH, BLOCK=BLOCK,
+            q,
+            gathered_kv,
+            o,
+            attn_sink,
+            q.stride(0),
+            q.stride(1),
+            q.stride(2),
+            q.stride(3),
+            gathered_kv.stride(0),
+            gathered_kv.stride(1),
+            gathered_kv.stride(2),
+            o.stride(0),
+            o.stride(1),
+            o.stride(2),
+            o.stride(3),
+            softmax_scale,
+            topk,
+            total_bh,
+            D=d,
+            H=h,
+            GRID_BH=GRID_BH,
+            BLOCK=BLOCK,
             num_warps=1,
         )
     return o

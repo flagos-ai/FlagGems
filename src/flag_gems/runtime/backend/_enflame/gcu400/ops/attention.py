@@ -129,7 +129,8 @@ def _attn_fwd_inner(
 configs = [
     triton.Config(
         {"BLOCK_M": BM, "BLOCK_N": BN, "PRE_LOAD_V": PLV},
-        num_stages=s, num_warps=w,
+        num_stages=s,
+        num_warps=w,
     )
     for BM in [64, 128]
     for BN in [128]

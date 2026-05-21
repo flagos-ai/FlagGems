@@ -1,5 +1,4 @@
 import logging
-import math
 
 import torch
 import triton
@@ -23,7 +22,9 @@ def reduce_all(a, b):
 @libentry()
 @triton.jit(do_not_specialize=["N_total"])
 def all_global_kernel(
-    inp_ptr, mid_ptr, N_total,
+    inp_ptr,
+    mid_ptr,
+    N_total,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -65,7 +66,10 @@ def _keep_config(conf):
 )
 @triton.jit
 def all_kernel_dim(
-    inp, out, M, N,
+    inp,
+    out,
+    M,
+    N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):

@@ -96,7 +96,9 @@ def convert_to_uint_preverse_order(x: tl.tensor, descending: tl.constexpr = Fals
 
 
 @triton.jit
-def extract_radix_key(x: tl.tensor, bit_offset, bfe_mask, descending: tl.constexpr = False):
+def extract_radix_key(
+    x: tl.tensor, bit_offset, bfe_mask, descending: tl.constexpr = False
+):
     if x.dtype.is_int_signed():
         num_bits: tl.constexpr = x.dtype.primitive_bitwidth
         if descending:
@@ -210,7 +212,6 @@ def sweep(
     num_programs_m = tl.num_programs(2)
 
     for pid_m in range(pid_m_base, total_m_tasks, num_programs_m):
-
         # cumsum for a bin_index
         n_offsets = pid_n * TILE_N + tl.arange(0, TILE_N)  # (TILE_N, )
         mask = n_offsets < N

@@ -265,7 +265,9 @@ def global_quick_unique_flat_impl(
     mask = i0 < num_tasks
 
     prefix = tl.load(tile_cumsum_ptr + global_pid)
-    cur_tile_sum = tl.load(tile_sum_ptr + global_pid, mask=global_pid < global_ctas_num, other=0)
+    cur_tile_sum = tl.load(
+        tile_sum_ptr + global_pid, mask=global_pid < global_ctas_num, other=0
+    )
 
     tile_mask = r < cur_tile_sum
     out_offset = prefix + r

@@ -4,7 +4,6 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -51,7 +50,7 @@ def elu_kernel_default(x_ptr, out_ptr, N_total, BLOCK: tl.constexpr):
 
 def _launch_elu(inp, out, N_total, alpha, scale, input_scale):
     is_fp32 = inp.dtype == torch.float32
-    is_default = (alpha == 1.0 and scale == 1.0 and input_scale == 1.0)
+    is_default = alpha == 1.0 and scale == 1.0 and input_scale == 1.0
 
     if N_total <= 1024:
         BLOCK = 1024
@@ -74,7 +73,9 @@ def _launch_elu(inp, out, N_total, alpha, scale, input_scale):
 
     with torch_device_fn.device(inp.device):
         if is_default:
-            elu_kernel_default[(grid_size,)](inp, out, N_total, BLOCK=BLOCK, num_warps=2)
+            elu_kernel_default[(grid_size,)](
+                inp, out, N_total, BLOCK=BLOCK, num_warps=2
+            )
         else:
             elu_kernel[(grid_size,)](
                 inp, out, N_total, alpha, scale, input_scale, BLOCK=BLOCK, num_warps=2

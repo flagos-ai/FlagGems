@@ -54,8 +54,16 @@ def bmm_kernel(
     offs_bn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
 
-    a_ptrs = A + pid_b * stride_ab + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
-    b_ptrs = B + pid_b * stride_bb + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+    a_ptrs = (
+        A
+        + pid_b * stride_ab
+        + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    )
+    b_ptrs = (
+        B
+        + pid_b * stride_bb
+        + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+    )
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
     for k in range(0, tl.cdiv(K, BLOCK_K)):
@@ -76,7 +84,12 @@ def bmm_kernel(
 
     offs_cm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_cn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    c_ptrs = C + pid_b * stride_cb + offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn
+    c_ptrs = (
+        C
+        + pid_b * stride_cb
+        + offs_cm[:, None] * stride_cm
+        + offs_cn[None, :] * stride_cn
+    )
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
     c = acc.to(C.dtype.element_ty)
     tl.store(c_ptrs, c, mask=c_mask)
@@ -95,11 +108,22 @@ def bmm(A, B):
         Batch * triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
     bmm_kernel[grid](
-        A, B, out,
-        Batch, M, N, K,
-        A.stride(0), A.stride(1), A.stride(2),
-        B.stride(0), B.stride(1), B.stride(2),
-        out.stride(0), out.stride(1), out.stride(2),
+        A,
+        B,
+        out,
+        Batch,
+        M,
+        N,
+        K,
+        A.stride(0),
+        A.stride(1),
+        A.stride(2),
+        B.stride(0),
+        B.stride(1),
+        B.stride(2),
+        out.stride(0),
+        out.stride(1),
+        out.stride(2),
         dot_out_dtype=tl.float32,
         GROUP_M=8,
     )
@@ -118,11 +142,22 @@ def bmm_out(A, B, out):
         Batch * triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
     bmm_kernel[grid](
-        A, B, out,
-        Batch, M, N, K,
-        A.stride(0), A.stride(1), A.stride(2),
-        B.stride(0), B.stride(1), B.stride(2),
-        out.stride(0), out.stride(1), out.stride(2),
+        A,
+        B,
+        out,
+        Batch,
+        M,
+        N,
+        K,
+        A.stride(0),
+        A.stride(1),
+        A.stride(2),
+        B.stride(0),
+        B.stride(1),
+        B.stride(2),
+        out.stride(0),
+        out.stride(1),
+        out.stride(2),
         dot_out_dtype=tl.float32,
         GROUP_M=8,
     )

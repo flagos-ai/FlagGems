@@ -173,14 +173,27 @@ def dropout(input, p, train=True):
         philox_seed, philox_offset = philox_backend_seed_offset(increment)
         if NUM_BLOCKS <= 256:
             dropout_forward_kernel[(NUM_BLOCKS,)](
-                input, out, mask_u8, N, p, philox_seed, philox_offset,
+                input,
+                out,
+                mask_u8,
+                N,
+                p,
+                philox_seed,
+                philox_offset,
                 BLOCK=BLOCK,
             )
         else:
             grid_size = min(NUM_BLOCKS, NUM_SIPS)
             dropout_persistent_kernel[(grid_size,)](
-                input, out, mask_u8, N, p, philox_seed, philox_offset,
-                NUM_BLOCKS=NUM_BLOCKS, BLOCK=BLOCK,
+                input,
+                out,
+                mask_u8,
+                N,
+                p,
+                philox_seed,
+                philox_offset,
+                NUM_BLOCKS=NUM_BLOCKS,
+                BLOCK=BLOCK,
             )
 
     mask = mask_u8.view(input.shape).view(torch.bool)

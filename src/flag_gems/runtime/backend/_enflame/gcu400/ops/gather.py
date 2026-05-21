@@ -1,13 +1,12 @@
 import importlib
 import logging
 import os
-from typing import Any, Callable, Mapping, Tuple
+from typing import Callable, Mapping
 
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.code_cache import code_cache_dir
@@ -20,12 +19,20 @@ NUM_SIPS = 24
 
 
 @libentry()
-@triton.jit(do_not_specialize=["M", "N_idx", "inp_stride0", "idx_stride0", "out_stride0"])
+@triton.jit(
+    do_not_specialize=["M", "N_idx", "inp_stride0", "idx_stride0", "out_stride0"]
+)
 def gather_2d_row_kernel(
-    inp_ptr, index_ptr, out_ptr,
-    M, N_idx,
-    inp_stride0, idx_stride0, out_stride0,
-    BLOCK_N: tl.constexpr, GRID_DIM: tl.constexpr,
+    inp_ptr,
+    index_ptr,
+    out_ptr,
+    M,
+    N_idx,
+    inp_stride0,
+    idx_stride0,
+    out_stride0,
+    BLOCK_N: tl.constexpr,
+    GRID_DIM: tl.constexpr,
 ):
     pid = tl.program_id(0)
     for row in tl.range(pid, M, GRID_DIM):
@@ -42,12 +49,28 @@ def gather_2d_row_kernel(
 
 
 @libentry()
-@triton.jit(do_not_specialize=["M", "N_idx", "dim_stride", "inp_stride0", "idx_stride0", "out_stride0"])
+@triton.jit(
+    do_not_specialize=[
+        "M",
+        "N_idx",
+        "dim_stride",
+        "inp_stride0",
+        "idx_stride0",
+        "out_stride0",
+    ]
+)
 def gather_2d_dim0_kernel(
-    inp_ptr, index_ptr, out_ptr,
-    M, N_idx, dim_stride,
-    inp_stride0, idx_stride0, out_stride0,
-    BLOCK_N: tl.constexpr, GRID_DIM: tl.constexpr,
+    inp_ptr,
+    index_ptr,
+    out_ptr,
+    M,
+    N_idx,
+    dim_stride,
+    inp_stride0,
+    idx_stride0,
+    out_stride0,
+    BLOCK_N: tl.constexpr,
+    GRID_DIM: tl.constexpr,
 ):
     pid = tl.program_id(0)
     for row in tl.range(pid, M, GRID_DIM):
@@ -98,7 +121,9 @@ def generate_gather_kernel(rank, kernel_name, code):
         code.writeline("num_blocks = tl.cdiv(N, BLOCK_SIZE_N)")
         code.writeline("for block_idx in range(pid, num_blocks, num_ctas):")
         with code.indent():
-            code.writeline("offset = block_idx * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)")
+            code.writeline(
+                "offset = block_idx * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)"
+            )
             code.newline()
             code.writeline("cur_offset = offset")
             for i in range(rank - 1, -1, -1):
@@ -108,7 +133,9 @@ def generate_gather_kernel(rank, kernel_name, code):
             comp = [f"index_idx{i} * index_stride{i}" for i in range(rank)]
             code.writeline(f"index_offset = {' + '.join(comp)}")
             code.writeline("mask = offset < N")
-            code.writeline("cur_index = tl.load(index + index_offset, mask=mask, other=0)")
+            code.writeline(
+                "cur_index = tl.load(index + index_offset, mask=mask, other=0)"
+            )
             code.newline()
             comp = [f"index_idx{i} * inp_stride{i}" for i in range(rank)]
             code.writeline(f"inp_offset = {' + '.join(comp)}")
@@ -132,7 +159,9 @@ def generate_gather_wrapper(rank, wrapper_name, kernel_name, code):
         code.writeline("index_stride = index.stride()")
         code.writeline("out_shape = out.shape")
         code.writeline("out_stride = out.stride()")
-        code.writeline("grid = lambda meta: (min(triton.cdiv(N, meta['BLOCK_SIZE_N']), 48), )")
+        code.writeline(
+            "grid = lambda meta: (min(triton.cdiv(N, meta['BLOCK_SIZE_N']), 48), )"
+        )
         code.writeline(f"{kernel_name}[grid](")
         with code.indent():
             args = ["inp, ", "index, ", "out, "]
@@ -170,11 +199,15 @@ class GatherFunction:
             overload = self.overloads[key]
         else:
             code = IndentedBuffer()
-            code = generate_code(args, "_gather_wrapper", "_gather_flaggems_jit_function", code)
+            code = generate_code(
+                args, "_gather_wrapper", "_gather_flaggems_jit_function", code
+            )
             file_name = f"gather_rank_{key}.py"
             file_path = code_cache_dir() / file_name
             write_atomic(file_path, code.getvalue())
-            spec = importlib.util.spec_from_file_location(f"_gen_module_rank_{key}", file_path)
+            spec = importlib.util.spec_from_file_location(
+                f"_gen_module_rank_{key}", file_path
+            )
             m = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(m)
             overload = getattr(m, "_gather_wrapper")
@@ -198,15 +231,32 @@ def _gather_2d_fast(inp, dim, index, out):
     with torch_device_fn.device(inp.device):
         if dim == -1 or dim == 1:
             gather_2d_row_kernel[(grid_dim,)](
-                inp, index, out, M, N_idx,
-                inp.stride(0), index.stride(0), out.stride(0),
-                BLOCK_N=BLOCK_N, GRID_DIM=grid_dim, num_warps=4,
+                inp,
+                index,
+                out,
+                M,
+                N_idx,
+                inp.stride(0),
+                index.stride(0),
+                out.stride(0),
+                BLOCK_N=BLOCK_N,
+                GRID_DIM=grid_dim,
+                num_warps=4,
             )
         elif dim == 0:
             gather_2d_dim0_kernel[(grid_dim,)](
-                inp, index, out, M, N_idx, inp.stride(0),
-                inp.stride(0), index.stride(0), out.stride(0),
-                BLOCK_N=BLOCK_N, GRID_DIM=grid_dim, num_warps=4,
+                inp,
+                index,
+                out,
+                M,
+                N_idx,
+                inp.stride(0),
+                inp.stride(0),
+                index.stride(0),
+                out.stride(0),
+                BLOCK_N=BLOCK_N,
+                GRID_DIM=grid_dim,
+                num_warps=4,
             )
         else:
             return False
@@ -239,5 +289,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 def gather_backward(grad, self, dim, index, sparse_grad):
     logger.debug("GEMS GATHER BACKWARD")
     from .scatter import scatter_
+
     result = grad.new_zeros(self.shape)
     return scatter_(result, dim, index, grad, reduce="add")

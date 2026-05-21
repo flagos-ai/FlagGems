@@ -26,7 +26,9 @@ def _pair_uniform_to_normal(u1, u2):
 
 
 @libentry()
-@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N", "std_val", "mean_val"])
+@triton.jit(
+    do_not_specialize=["philox_seed", "philox_offset", "N", "std_val", "mean_val"]
+)
 def normal_fused_kernel(
     out_ptr,
     N,
@@ -217,7 +219,9 @@ def normal_ft_fused_kernel(
     tl.store(out_ptr + off_3, n3, mask=off_3 < N)
 
 
-def _get_block_and_grid(N, has_tensor_io=False, use_grid_stride=False, prefer_small_grid=False):
+def _get_block_and_grid(
+    N, has_tensor_io=False, use_grid_stride=False, prefer_small_grid=False
+):
     if N <= 4096:
         BLOCK = 1024
     elif has_tensor_io:
@@ -249,17 +253,27 @@ def normal_(self, mean=0, std=1, *, generator=None):
         temp = torch.empty(N, device=device, dtype=torch.float32)
         with torch_device_fn.device(device):
             normal_fused_kernel[grid](
-                temp, N, float(std), float(mean),
-                philox_seed, philox_offset,
-                BLOCK=BLOCK, num_warps=4,
+                temp,
+                N,
+                float(std),
+                float(mean),
+                philox_seed,
+                philox_offset,
+                BLOCK=BLOCK,
+                num_warps=4,
             )
         self.view(-1).copy_(temp)
     else:
         with torch_device_fn.device(device):
             normal_fused_kernel[grid](
-                self, N, float(std), float(mean),
-                philox_seed, philox_offset,
-                BLOCK=BLOCK, num_warps=4,
+                self,
+                N,
+                float(std),
+                float(mean),
+                philox_seed,
+                philox_offset,
+                BLOCK=BLOCK,
+                num_warps=4,
             )
     return self
 
@@ -280,9 +294,14 @@ def normal_tensor_tensor(mean, std, *, generator=None):
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     with torch_device_fn.device(device):
         normal_tt_fused_kernel[grid](
-            out, mean_expanded, std_expanded, N,
-            philox_seed, philox_offset,
-            BLOCK=BLOCK, num_warps=4,
+            out,
+            mean_expanded,
+            std_expanded,
+            N,
+            philox_seed,
+            philox_offset,
+            BLOCK=BLOCK,
+            num_warps=4,
         )
     return out.view(shape)
 
@@ -301,9 +320,14 @@ def normal_tensor_float(mean, std, *, generator=None):
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     with torch_device_fn.device(device):
         normal_tf_fused_kernel[grid](
-            out, mean_flat, N, float(std),
-            philox_seed, philox_offset,
-            BLOCK=BLOCK, num_warps=4,
+            out,
+            mean_flat,
+            N,
+            float(std),
+            philox_seed,
+            philox_offset,
+            BLOCK=BLOCK,
+            num_warps=4,
         )
     return out.view(shape)
 
@@ -322,8 +346,13 @@ def normal_float_tensor(mean, std, *, generator=None):
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     with torch_device_fn.device(device):
         normal_ft_fused_kernel[grid](
-            out, std_flat, N, float(mean),
-            philox_seed, philox_offset,
-            BLOCK=BLOCK, num_warps=4,
+            out,
+            std_flat,
+            N,
+            float(mean),
+            philox_seed,
+            philox_offset,
+            BLOCK=BLOCK,
+            num_warps=4,
         )
     return out.view(shape)

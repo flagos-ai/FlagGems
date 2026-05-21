@@ -1,5 +1,4 @@
 import logging
-import math
 
 import torch
 import triton
@@ -22,10 +21,13 @@ def reduce_any(a, b):
 
 # ========== Global any (optimized: grid-stride + bool→u8) ==========
 
+
 @libentry()
 @triton.jit(do_not_specialize=["N_total"])
 def any_global_kernel(
-    inp_ptr, mid_ptr, N_total,
+    inp_ptr,
+    mid_ptr,
+    N_total,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -54,6 +56,7 @@ def any_reduce_kernel(mid_ptr, out_ptr, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 # ========== Dim any (kept close to generic, with bool→u8 + fixed &/|) ==========
 
+
 def _keep_config(conf):
     bm = conf.kwargs["BLOCK_M"]
     bn = conf.kwargs["BLOCK_N"]
@@ -69,7 +72,10 @@ def _keep_config(conf):
 )
 @triton.jit
 def any_kernel_dim(
-    inp, out, M, N,
+    inp,
+    out,
+    M,
+    N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):

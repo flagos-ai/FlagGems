@@ -78,8 +78,12 @@ def avg_pool2d_forward_kernel(
 
             for kh in range(0, kernel_h):
                 for kw in range(0, kernel_w):
-                    h_in = h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
-                    w_in = w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
+                    h_in = (
+                        h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
+                    )
+                    w_in = (
+                        w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
+                    )
                     in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
 
                     input_offset = h_in * in_stride_h + w_in * in_stride_w
@@ -91,7 +95,9 @@ def avg_pool2d_forward_kernel(
                     count_acc += in_mask.to(tl.int32)
 
             if divisor_override != 0:
-                divisor = tl.full((BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32)
+                divisor = tl.full(
+                    (BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32
+                )
             elif COUNT_INCLUDE_PAD:
                 divisor = tl.full(
                     (BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32

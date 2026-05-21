@@ -6,7 +6,6 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -66,7 +65,9 @@ def sigmoid(self):
 
     with torch_device_fn.device(inp.device):
         sigmoid_flat_kernel[(grid_size,)](
-            inp, out, N_total,
+            inp,
+            out,
+            N_total,
             BLOCK=BLOCK,
             num_warps=nw,
         )
@@ -93,7 +94,9 @@ def sigmoid_(A):
 
     with torch_device_fn.device(inp.device):
         sigmoid_flat_kernel[(grid_size,)](
-            inp, A, N_total,
+            inp,
+            A,
+            N_total,
             BLOCK=BLOCK,
             num_warps=nw,
         )

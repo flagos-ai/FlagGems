@@ -13,7 +13,10 @@ _BS = 8192
 
 @triton.jit
 def _count_flat_small_k(
-    x_ptr, out_ptr, numel, BLOCK_SIZE: tl.constexpr,
+    x_ptr,
+    out_ptr,
+    numel,
+    BLOCK_SIZE: tl.constexpr,
 ):
     cnt = tl.zeros((), dtype=tl.int32)
     for off in range(0, numel, BLOCK_SIZE):
@@ -26,7 +29,11 @@ def _count_flat_small_k(
 
 @triton.jit
 def _count_flat_k(
-    x_ptr, out_ptr, numel, num_progs, BLOCK_SIZE: tl.constexpr,
+    x_ptr,
+    out_ptr,
+    numel,
+    num_progs,
+    BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     cnt = tl.zeros((), dtype=tl.int32)
@@ -42,7 +49,9 @@ def _count_flat_k(
 
 @triton.jit
 def _reduce_sum_k(
-    in_ptr, out_ptr, N: tl.constexpr,
+    in_ptr,
+    out_ptr,
+    N: tl.constexpr,
 ):
     idx = tl.arange(0, N)
     v = tl.load(in_ptr + idx)
@@ -52,7 +61,12 @@ def _reduce_sum_k(
 
 @triton.jit
 def _count_dim_k(
-    x_ptr, out_ptr, N, M, num_progs, BLOCK_SIZE: tl.constexpr,
+    x_ptr,
+    out_ptr,
+    N,
+    M,
+    num_progs,
+    BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     row = pid
@@ -70,7 +84,12 @@ def _count_dim_k(
 
 @triton.jit
 def _count_dim_batch_k(
-    x_ptr, out_ptr, N, M, num_progs, BLOCK_M: tl.constexpr,
+    x_ptr,
+    out_ptr,
+    N,
+    M,
+    num_progs,
+    BLOCK_M: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_tiles = (M + BLOCK_M - 1) // BLOCK_M
@@ -89,7 +108,13 @@ def _count_dim_batch_k(
 
 @triton.jit(do_not_specialize=["N", "M", "inner_size"])
 def _count_dim_strided_k(
-    x_ptr, out_ptr, N, M, inner_size, num_progs, BLOCK_M: tl.constexpr,
+    x_ptr,
+    out_ptr,
+    N,
+    M,
+    inner_size,
+    num_progs,
+    BLOCK_M: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_tiles = (M + BLOCK_M - 1) // BLOCK_M

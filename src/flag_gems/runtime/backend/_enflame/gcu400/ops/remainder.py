@@ -82,8 +82,12 @@ def _launch_tt(inp_a, inp_b, out, N, dtype):
     grid_size = min(triton.cdiv(N, BLOCK), MAX_GRID)
     with torch_device_fn.device(inp_a.device):
         remainder_tt_kernel[(grid_size,)](
-            inp_a, inp_b, out, N,
-            BLOCK=BLOCK, num_warps=4,
+            inp_a,
+            inp_b,
+            out,
+            N,
+            BLOCK=BLOCK,
+            num_warps=4,
         )
 
 
@@ -108,8 +112,12 @@ def remainder(A, B):
         grid_size = min(triton.cdiv(N, BLOCK), MAX_GRID)
         with torch_device_fn.device(inp.device):
             remainder_ts_kernel[(grid_size,)](
-                inp, B, out, N,
-                BLOCK=BLOCK, num_warps=4,
+                inp,
+                B,
+                out,
+                N,
+                BLOCK=BLOCK,
+                num_warps=4,
             )
         return out
     elif isinstance(B, torch.Tensor):
@@ -120,8 +128,12 @@ def remainder(A, B):
         grid_size = min(triton.cdiv(N, BLOCK), MAX_GRID)
         with torch_device_fn.device(inp.device):
             remainder_st_kernel[(grid_size,)](
-                A, inp, out, N,
-                BLOCK=BLOCK, num_warps=4,
+                A,
+                inp,
+                out,
+                N,
+                BLOCK=BLOCK,
+                num_warps=4,
             )
         return out
     else:
@@ -141,15 +153,23 @@ def remainder_(A, B):
         grid_size = min(triton.cdiv(N, BLOCK), MAX_GRID)
         with torch_device_fn.device(inp_a.device):
             remainder_tt_kernel[(grid_size,)](
-                inp_a, inp_b, A, N,
-                BLOCK=BLOCK, num_warps=4,
+                inp_a,
+                inp_b,
+                A,
+                N,
+                BLOCK=BLOCK,
+                num_warps=4,
             )
     else:
         BLOCK = _choose_block(N, inp_a.dtype)
         grid_size = min(triton.cdiv(N, BLOCK), MAX_GRID)
         with torch_device_fn.device(inp_a.device):
             remainder_ts_kernel[(grid_size,)](
-                inp_a, B, A, N,
-                BLOCK=BLOCK, num_warps=4,
+                inp_a,
+                B,
+                A,
+                N,
+                BLOCK=BLOCK,
+                num_warps=4,
             )
     return A

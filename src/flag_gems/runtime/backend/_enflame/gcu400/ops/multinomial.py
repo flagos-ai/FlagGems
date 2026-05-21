@@ -13,9 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.jit(do_not_specialize=["K", "N", "n_sample_blocks", "philox_seed", "philox_offset"])
+@triton.jit(
+    do_not_specialize=["K", "N", "n_sample_blocks", "philox_seed", "philox_offset"]
+)
 def multinomial_with_replacement(
-    cdf_ptr, out_ptr, K, N, n_sample_blocks, philox_seed, philox_offset,
+    cdf_ptr,
+    out_ptr,
+    K,
+    N,
+    n_sample_blocks,
+    philox_seed,
+    philox_offset,
     NBLOCK: tl.constexpr = 128,
 ):
     # Flattened 1D grid: pid encodes (dist_id, sample_batch).
@@ -83,7 +91,12 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
     n_sample_blocks = triton.cdiv(n_samples, NBLOCK)
     grid = (n_sample_blocks * n_dist,)
     multinomial_with_replacement[grid](
-        cum_prob, out, n_categories, n_samples,
-        n_sample_blocks, philox_seed, philox_offset,
+        cum_prob,
+        out,
+        n_categories,
+        n_samples,
+        n_sample_blocks,
+        philox_seed,
+        philox_offset,
     )
     return out

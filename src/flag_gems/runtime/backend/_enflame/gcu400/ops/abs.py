@@ -46,7 +46,9 @@ def _run_abs(inp, out, N_total):
 
     with torch_device_fn.device(inp.device):
         abs_flat_kernel[(grid_size,)](
-            inp, out, N_total,
+            inp,
+            out,
+            N_total,
             BLOCK=BLOCK,
             num_warps=8,
         )
