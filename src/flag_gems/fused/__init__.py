@@ -40,8 +40,8 @@ from flag_gems.fused.outer import outer
 from flag_gems.fused.reglu import dreglu, reglu
 from flag_gems.fused.reshape_and_cache import reshape_and_cache
 from flag_gems.fused.reshape_and_cache_flash import reshape_and_cache_flash
-from flag_gems.fused.router_gemm_bf16_fp32 import router_gemm_bf16_fp32
 from flag_gems.fused.rotary_embedding import apply_rotary_pos_emb
+from flag_gems.fused.router_gemm_bf16_fp32 import router_gemm_bf16_fp32
 from flag_gems.fused.rwkv_ka_fusion import rwkv_ka_fusion
 from flag_gems.fused.rwkv_mm_sparsity import rwkv_mm_sparsity
 from flag_gems.fused.silu_and_mul import silu_and_mul, silu_and_mul_out

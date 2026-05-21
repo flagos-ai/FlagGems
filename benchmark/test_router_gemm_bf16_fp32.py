@@ -80,9 +80,13 @@ class RouterGemmBF16FP32Benchmark(base.Benchmark):
 
 @pytest.mark.router_gemm_bf16_fp32
 def test_perf_router_gemm_bf16_fp32():
+    def torch_matmul_ref(input, weight):
+        return torch.matmul(input.float(), weight.T.float())
+
     bench = RouterGemmBF16FP32Benchmark(
         op_name="router_gemm_bf16_fp32",
-        torch_op=None,
+        torch_op=torch_matmul_ref,
+        gems_op=router_gemm_bf16_fp32,
         dtypes=[torch.bfloat16],
     )
     bench.run()
