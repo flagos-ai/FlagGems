@@ -142,6 +142,30 @@ quantile:
     - [64, 512, 128]
     - [20, 8, 10000]
 
+median:
+  shapes:
+    - [2]
+    - [64]
+    - [65]
+    - [128]
+    - [256]
+    - [257]
+    - [1024]
+    - [4096]
+    - [4, 8, 16, 8]
+  shape_desc: "input shape"
+
+median_dim:
+  shapes:
+    - [1536, 640]
+    - [144, 8192]
+    - [768, 1536]
+    - [32, 384, 128]
+    - [[32, 384, 128], 1, false]
+    - [[640, 1536], 0, false]
+    - [[8, 64, 384, 64], 2, false]
+  shape_desc: "input shape or [input shape, dim, keepdim]"
+
 BlasBenchmark:
   shapes:
     - [2, 384, 384, 384]
