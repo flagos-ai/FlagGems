@@ -14,6 +14,7 @@ from flag_gems.ops.addcmul import addcmul, addcmul_out
 from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addr import addr
+from flag_gems.ops.affine_grid_generator import affine_grid_generator
 from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
 from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.amax import amax
@@ -409,6 +410,7 @@ __all__ = [
     "addmv",
     "addmv_out",
     "addr",
+    "affine_grid_generator",
     "alias_copy",
     "alias_copy_out",
     "all",
