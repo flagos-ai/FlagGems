@@ -76,7 +76,9 @@ def test_to_copy_preserve_strides(memory_format):
 def test_to_copy_float_to_float(shape, src_dtype, dst_dtype):
     if src_dtype == dst_dtype:
         pytest.skip("Skip same dtype conversion")
-    if flag_gems.vendor_name == "ascend" and (src_dtype == torch.bfloat16 or dst_dtype == torch.bfloat16):
+    if flag_gems.vendor_name == "ascend" and (
+        src_dtype == torch.bfloat16 or dst_dtype == torch.bfloat16
+    ):
         pytest.skip("Ascend NPU may have issues with bfloat16")
     x = torch.randn(shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
@@ -169,6 +171,3 @@ def test_to_copy_uint8_to_int(shape, dst_dtype):
     with flag_gems.use_gems():
         res_out = torch.ops.aten._to_copy(x, dtype=dst_dtype)
     utils.gems_assert_equal(res_out, ref_out)
-
-
-

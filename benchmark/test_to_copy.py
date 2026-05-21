@@ -1,12 +1,11 @@
-from typing import Generator, Tuple
+from typing import Generator
 
 import pytest
 import torch
 
 import flag_gems
 
-from . import base
-from . import consts
+from . import base, consts
 
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 
@@ -25,12 +24,21 @@ class ToCopyBenchmark(base.Benchmark):
 
     def get_input_iter(self, dtype) -> Generator:
         for shape in self.shapes:
-            if self.src_dtype in [torch.float32, torch.float16, torch.bfloat16, torch.float64]:
+            if self.src_dtype in [
+                torch.float32,
+                torch.float16,
+                torch.bfloat16,
+                torch.float64,
+            ]:
                 inp = torch.randn(shape, dtype=self.src_dtype, device=self.device)
             elif self.src_dtype in [torch.int8, torch.int16, torch.int32, torch.int64]:
-                inp = torch.randint(-100, 100, shape, dtype=self.src_dtype, device=self.device)
+                inp = torch.randint(
+                    -100, 100, shape, dtype=self.src_dtype, device=self.device
+                )
             elif self.src_dtype == torch.uint8:
-                inp = torch.randint(0, 255, shape, dtype=self.src_dtype, device=self.device)
+                inp = torch.randint(
+                    0, 255, shape, dtype=self.src_dtype, device=self.device
+                )
             else:
                 inp = torch.randn(shape, dtype=self.src_dtype, device=self.device)
             yield inp, {"dtype": dtype}
