@@ -11,6 +11,71 @@ device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 
 
+def _selected_fa_version(pytestconfig) -> int:
+    return pytestconfig.getoption("flash_attn_varlen_fa_version")
+
+
+def _is_fa3_supported() -> bool:
+    try:
+        from flag_gems.runtime.backend._nvidia.hopper.ops.flash_api_v3 import (
+            is_fa3_supported,
+        )
+
+        return is_fa3_supported()
+    except Exception:
+        if flag_gems.device != "cuda" or not torch.cuda.is_available():
+            return False
+        return torch.cuda.get_device_capability()[0] >= 9
+
+
+def _run_flash_attn_varlen_func(
+    q,
+    k,
+    v,
+    cu_seqlens_q,
+    seqused_k,
+    max_seqlen_q,
+    max_seqlen_k,
+    softmax_scale,
+    causal,
+    window_size,
+    block_table,
+    softcap,
+    alibi_slopes=None,
+    optimize_init=False,
+    fa_version=2,
+):
+    if fa_version == 3:
+        if optimize_init:
+            pytest.skip("FA3 opt-init path is not implemented for this test.")
+        if not _is_fa3_supported():
+            pytest.skip("FA3 requires CUDA Hopper with Triton FA3 support.")
+        op = flag_gems.flash_attn_varlen_func
+    elif vendor_name == "cambricon":
+        op = flag_gems.flash_attn_varlen_func
+    elif optimize_init:
+        op = flag_gems.ops.flash_attn_varlen_opt_func
+    else:
+        op = flag_gems.ops.flash_attn_varlen_func
+
+    return op(
+        q=q,
+        k=k,
+        v=v,
+        cu_seqlens_q=cu_seqlens_q,
+        seqused_k=seqused_k,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        softmax_scale=softmax_scale,
+        causal=causal,
+        window_size=window_size,
+        block_table=block_table,
+        softcap=softcap,
+        alibi_slopes=alibi_slopes,
+        fa_version=fa_version,
+    )
+
+
 # Following varlen and paged attn tests are copied from
 # https://github.com/vllm-project/flash-attention/blob/main/tests/test_vllm_flash_attn.py
 def attn_bias_from_alibi_slopes(slopes, seqlen_q, seqlen_k, causal=False):
@@ -109,6 +174,7 @@ def ref_paged_attn(
 @torch.inference_mode()
 def test_flash_attn_varlen_func(
     monkeypatch,
+    pytestconfig,
     seq_lens: List[Tuple[int, int]],
     num_heads: Tuple[int, int],
     head_size: int,
@@ -122,6 +188,7 @@ def test_flash_attn_varlen_func(
 ) -> None:
     if vendor_name == "mthreads":
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
+    fa_version = _selected_fa_version(pytestconfig)
 
     # (Issue) numerical stability concern
     if alibi is True and soft_cap is not None:
@@ -181,58 +248,23 @@ def test_flash_attn_varlen_func(
         else:
             alibi_slopes, attn_bias = None, None
 
-        if vendor_name == "cambricon":
-            output = flag_gems.flash_attn_varlen_func(
-                q=query,
-                k=key_cache,
-                v=value_cache,
-                cu_seqlens_q=cu_query_lens,
-                seqused_k=seqused_k,
-                max_seqlen_q=max_query_len,
-                max_seqlen_k=max_kv_len,
-                softmax_scale=scale,
-                causal=causal,
-                window_size=window_size,
-                block_table=block_tables,
-                softcap=soft_cap if soft_cap is not None else 0,
-                alibi_slopes=alibi_slopes,
-                fa_version=2,
-            )
-        else:
-            if optimize_init:
-                output = flag_gems.ops.flash_attn_varlen_opt_func(
-                    q=query,
-                    k=key_cache,
-                    v=value_cache,
-                    cu_seqlens_q=cu_query_lens,
-                    seqused_k=seqused_k,
-                    max_seqlen_q=max_query_len,
-                    max_seqlen_k=max_kv_len,
-                    softmax_scale=scale,
-                    causal=causal,
-                    window_size=window_size,
-                    block_table=block_tables,
-                    softcap=soft_cap if soft_cap is not None else 0,
-                    alibi_slopes=alibi_slopes,
-                    fa_version=2,
-                )
-            else:
-                output = flag_gems.ops.flash_attn_varlen_func(
-                    q=query,
-                    k=key_cache,
-                    v=value_cache,
-                    cu_seqlens_q=cu_query_lens,
-                    seqused_k=seqused_k,
-                    max_seqlen_q=max_query_len,
-                    max_seqlen_k=max_kv_len,
-                    softmax_scale=scale,
-                    causal=causal,
-                    window_size=window_size,
-                    block_table=block_tables,
-                    softcap=soft_cap if soft_cap is not None else 0,
-                    alibi_slopes=alibi_slopes,
-                    fa_version=2,
-                )
+        output = _run_flash_attn_varlen_func(
+            q=query,
+            k=key_cache,
+            v=value_cache,
+            cu_seqlens_q=cu_query_lens,
+            seqused_k=seqused_k,
+            max_seqlen_q=max_query_len,
+            max_seqlen_k=max_kv_len,
+            softmax_scale=scale,
+            causal=causal,
+            window_size=window_size,
+            block_table=block_tables,
+            softcap=soft_cap if soft_cap is not None else 0,
+            alibi_slopes=alibi_slopes,
+            optimize_init=optimize_init,
+            fa_version=fa_version,
+        )
 
         ref_output = ref_paged_attn(
             query=query,
@@ -265,6 +297,7 @@ def test_flash_attn_varlen_func(
 @torch.inference_mode()
 def test_flash_attn_varlen_func_swap_qg(
     monkeypatch,
+    pytestconfig,
     seq_lens: List[Tuple[int, int]],
     num_heads: Tuple[int, int],
     head_size: int,
@@ -276,6 +309,7 @@ def test_flash_attn_varlen_func_swap_qg(
 ) -> None:
     if vendor_name == "mthreads":
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
+    fa_version = _selected_fa_version(pytestconfig)
 
     with torch.device(flag_gems.device):
         utils.init_seed(1234567890)
@@ -310,38 +344,21 @@ def test_flash_attn_varlen_func_swap_qg(
             device=device,
         )
 
-        if vendor_name == "cambricon":
-            output = flag_gems.flash_attn_varlen_func(
-                q=query,
-                k=key_cache,
-                v=value_cache,
-                cu_seqlens_q=cu_query_lens,
-                seqused_k=seqused_k,
-                max_seqlen_q=max_query_len,
-                max_seqlen_k=max_kv_len,
-                softmax_scale=scale,
-                causal=True,
-                window_size=window_size,
-                block_table=block_tables,
-                softcap=soft_cap if soft_cap is not None else 0,
-                fa_version=2,
-            )
-        else:
-            output = flag_gems.ops.flash_attn_varlen_func(
-                q=query,
-                k=key_cache,
-                v=value_cache,
-                cu_seqlens_q=cu_query_lens,
-                seqused_k=seqused_k,
-                max_seqlen_q=max_query_len,
-                max_seqlen_k=max_kv_len,
-                softmax_scale=scale,
-                causal=True,
-                window_size=window_size,
-                block_table=block_tables,
-                softcap=soft_cap if soft_cap is not None else 0,
-                fa_version=2,
-            )
+        output = _run_flash_attn_varlen_func(
+            q=query,
+            k=key_cache,
+            v=value_cache,
+            cu_seqlens_q=cu_query_lens,
+            seqused_k=seqused_k,
+            max_seqlen_q=max_query_len,
+            max_seqlen_k=max_kv_len,
+            softmax_scale=scale,
+            causal=True,
+            window_size=window_size,
+            block_table=block_tables,
+            softcap=soft_cap if soft_cap is not None else 0,
+            fa_version=fa_version,
+        )
 
         ref_output = ref_paged_attn(
             query=query,
