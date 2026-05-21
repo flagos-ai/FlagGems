@@ -3,4 +3,4 @@ flag-gems (5.0.2-1) unstable; urgency=medium
   * Initial Debian packaging (Phase 1: bundled python3-flag-gems only).
   * Phase 2 (libflaggems + libflaggems-dev split) deferred to a follow-up.
 
- -- FlagOS Contributors <contact@flagos.io>  Mon, 27 Apr 2026 02:00:00 +0000
+ -- FlagOS Contributors <contact@flagos.io>  Thu, 21 May 2026 02:00:00 +0000
