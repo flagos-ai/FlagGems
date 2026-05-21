@@ -343,12 +343,12 @@ def sqmma_descriptor_pre_hook(nargs):
             pre_hook=sqmma_descriptor_pre_hook,
         )
     ],
-    key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    key=["M", "N", "K", "dtype"],
     strategy=runtime.get_expand_config(
         "mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
     )["strategy"]
     if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    else ["align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
 )
@@ -430,14 +430,12 @@ def mm(a, b):
         return gemv_mm(a, b, c, M, K)
 
     if is_sqmma_compatible(a, b, N, K):
-        GROUP_M = 8
         return mm_sqmma(
             a,
             b,
             M,
             N,
             K,
-            GROUP_M,
         )
     else:
         return mm_fma(a, b)
