@@ -35,7 +35,10 @@ Depends: ${python3:Depends},
          python3-yaml,
          python3-sqlalchemy,
          python3-packaging
-Recommends: python3-torch, python3-flagtree-nvidia
+# python3-torch is pulled in automatically via ${python3:Depends} from
+# pyproject.toml, so it is intentionally omitted from Recommends to avoid
+# a redundant (and conflicting) declaration.
+Recommends: python3-flagtree-nvidia
 Description: FlagGems GPU operator library (Python module)
  FlagGems is a GPU operator library written in Triton, providing a
  drop-in replacement for many torch.* operations with custom-tuned
