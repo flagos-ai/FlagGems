@@ -99,19 +99,57 @@ def accuracy_shapes() -> List[Shape]:
 
 
 def benchmark_shapes() -> List[Shape]:
-    return [
+    prefill = [
         Shape("prefill_b4_s2k_d128_mha", [(2048, 2048)] * 4, 32, 32, 128, True),
         Shape("prefill_b4_s4k_d128_mha", [(4096, 4096)] * 4, 32, 32, 128, True),
+        Shape("prefill_b4_s8k_d128_mha", [(8192, 8192)] * 4, 32, 32, 128, True),
+        Shape("prefill_b2_s16k_d128_mha", [(16384, 16384)] * 2, 32, 32, 128, True),
         Shape("prefill_b4_s4k_d128_gqa4", [(4096, 4096)] * 4, 32, 8, 128, True),
+        Shape("prefill_b4_s8k_d128_gqa4", [(8192, 8192)] * 4, 32, 8, 128, True),
+        Shape("prefill_b8_s2k_d64_mha", [(2048, 2048)] * 8, 16, 16, 64, False),
+    ]
+
+    decode = [
         Shape("decode_b16_kv1k_d128_gqa4", [(1, 1024)] * 16, 32, 8, 128, True),
         Shape(
-            "varlen_mixed_d128_gqa4",
-            [(2048, 2048), (1, 4096), (1024, 1024), (1, 8192)],
+            "decode_b16_mixed_d128_gqa4",
+            [(1, 512), (1, 1024), (1, 2048), (1, 4096)] * 4,
             32,
             8,
             128,
             True,
         ),
+        Shape("decode_b32_kv2k_d128_gqa4", [(1, 2048)] * 32, 32, 8, 128, True),
+    ]
+
+    varlen = [
+        Shape(
+            "varlen_mixed_d128_gqa4",
+            [(2048, 2048), (1, 4096), (1, 4096), (1024, 1024), (1, 8192), (1, 1024)],
+            32,
+            8,
+            128,
+            True,
+        ),
+        Shape(
+            "varlen_serve_b32_1pf_31dec_d128_gqa4",
+            [(2048, 2048)] + [(1, 1024 + 64 * i) for i in range(31)],
+            32,
+            8,
+            128,
+            True,
+        ),
+        Shape(
+            "varlen_longtail_d128_gqa4",
+            [(16384, 16384)] + [(256, 256)] * 16,
+            32,
+            8,
+            128,
+            True,
+        ),
+    ]
+
+    paged = [
         Shape(
             "paged_decode_b16_kvmix_bs16_d128_gqa4",
             [(1, 1024 + 256 * i) for i in range(16)],
@@ -122,7 +160,39 @@ def benchmark_shapes() -> List[Shape]:
             paged=True,
             block_size=16,
         ),
+        Shape(
+            "paged_decode_b64_bs16_d128_gqa4",
+            [(1, 512 + 128 * i) for i in range(64)],
+            32,
+            8,
+            128,
+            True,
+            paged=True,
+            block_size=16,
+        ),
+        Shape(
+            "paged_serve_b32_1pf_31dec_bs16_d128_gqa4",
+            [(2048, 2048)] + [(1, 1024 + 96 * i) for i in range(31)],
+            32,
+            8,
+            128,
+            True,
+            paged=True,
+            block_size=16,
+        ),
+        Shape(
+            "paged_uniform_b4_s4k_bs16_d128_mha",
+            [(4096, 4096)] * 4,
+            32,
+            32,
+            128,
+            True,
+            paged=True,
+            block_size=16,
+        ),
     ]
+
+    return prefill + decode + varlen + paged
 
 
 def make_varlen(shape: Shape, dtype: torch.dtype, device: str, seed: int = 0) -> Tensors:
