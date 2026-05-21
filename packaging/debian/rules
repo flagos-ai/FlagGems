@@ -43,7 +43,7 @@ override_dh_auto_install:
 override_dh_shlibdeps:
 	# The bundled liboperators.so links against libtorch, libcuda, etc.
 	# which aren't in the build env. Skip auto-detection.
-	dh_shlibdeps -- --ignore-missing-info || true
+	dh_shlibdeps -- --ignore-missing-info
 
 override_dh_strip:
 	# Don't strip pybind11 / cmake-built .so files — JIT lookups use symbols.

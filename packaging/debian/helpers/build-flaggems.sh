@@ -16,7 +16,8 @@ DEPS_DIR="packaging/debian/helpers/local-deps"
 if [ ! -d "$DEPS_DIR" ] || [ -z "$(ls "$DEPS_DIR"/libtriton-jit*.deb 2>/dev/null)" ]; then
     echo "ERROR: $DEPS_DIR/libtriton-jit*.deb is required for the build."
     echo "Copy or symlink the libtriton-jit{,-dev}_*.deb files there first."
-    echo "Local source available at /home/shiptux/git/github/libtriton_jit/output/deb/"
+    echo "Hint: set LIBTRITON_JIT_DEB_DIR to a directory holding the .deb files,"
+    echo "      e.g. export LIBTRITON_JIT_DEB_DIR=\$HOME/git/libtriton_jit/output/deb"
     exit 1
 fi
 
