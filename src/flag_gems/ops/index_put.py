@@ -410,5 +410,31 @@ def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
         values = values.to(inp.device)
     values = torch.broadcast_to(values, target_shape)
 
-    _index_put_func(inp, tensor_indices, values, accumulate)
+    has_duplicate_indices = False
+    if not accumulate and len(tensor_indices) == 1:
+        indices_tensor = tensor_indices[0]
+        unique_indices = torch.unique(indices_tensor)
+        has_duplicate_indices = unique_indices.numel() < indices_tensor.numel()
+
+    if has_duplicate_indices:
+        flat_indices = indices_tensor.flatten()
+        flat_values = values.reshape(flat_indices.shape[0], -1)
+
+        n = flat_indices.shape[0]
+        keep_mask = torch.zeros(n, dtype=torch.bool, device=flat_indices.device)
+        seen_last = {}
+        for i in range(n):
+            idx = flat_indices[i].item()
+            if idx in seen_last:
+                keep_mask[seen_last[idx]] = False
+            keep_mask[i] = True
+            seen_last[idx] = i
+
+        new_flat_indices = flat_indices[keep_mask]
+        new_flat_values = flat_values[keep_mask]
+        new_indices = [new_flat_indices.reshape(-1)]
+
+        _index_put_func(inp, new_indices, new_flat_values, accumulate)
+    else:
+        _index_put_func(inp, tensor_indices, values, accumulate)
     return inp
