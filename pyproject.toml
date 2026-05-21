@@ -79,6 +79,7 @@ iluvatar = [
 
 kunlunxin = [
     "benchflow==1.0.0",
+    "colorama==0.4.6",
     "hyperparameter==0.5.6",
     "torch==2.5.1+cu118",
     "torchaudio==2.5.1+cu118",
@@ -102,18 +103,23 @@ metax = [
 mthreads = [
     "torch==2.7.1+musa.4.0.0",
     "torch_musa==2.7.1",
-    "flagtree==0.5.0+mthreads3.1",
+    "flagtree==0.5.1+mthreads3.6",
     # "triton==3.1.0+musa1.4.6",
     "numpy==1.26.4",
     "mkl==2024.0.0",
 ]
 
 nvidia = [
-    "torch==2.9.0+cu128",
-    "torchvision==0.24.0+cu128",
-    "torchaudio==2.9.0+cu128",
-    "flagtree==0.5.0+3.5",
-    # "triton==3.5",
+    "torch==2.10.0+cu128",
+    "torchvision==0.25.0+cu128",
+    "torchaudio==2.10.0+cu128",
+    "triton==3.6.0",
+    # "flagtree==0.5.1+3.6",
+]
+
+spacemit = [
+    "torch==2.8.0+spacemit.0",
+    "triton==3.6.0+spacemit.a4",
 ]
 
 tsingmicro = [
@@ -180,6 +186,8 @@ conflicts = [
         { extra = "metax" },
         { extra = "mthreads" },
         { extra = "nvidia" },
+        { extra = "spacemit" },
+        { extra = "thead" },
         { extra = "tsingmicro" },
     ],
 ]
@@ -231,6 +239,12 @@ explicit = true
 [[tool.uv.index]]
 name = "nvidia-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-nvidia/simple"
+explicit = true
+
+# Source for SpaceMIT packages
+[[tool.uv.index]]
+name = "spacemit-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-spacemit/simple"
 explicit = true
 
 # Source for TsingMicro packages

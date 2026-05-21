@@ -13,10 +13,11 @@ jobs:
   preprocess:
     runs-on: ubuntu-latest
     outputs:
-      op: ${{ steps.parse-command.outputs.op}}
-      runner: ${{ steps.parse-command.outputs.runner }}
-      pull: ${{ steps.parse-command.outputs.pull }}
       continue: ${{ steps.check.outputs.continue }}
+      op: ${{ steps.parse-command.outputs.OP_ID}}
+      runner: ${{ steps.parse-command.outputs.RUNNER }}
+      pull: ${{ steps.parse-command.outputs.PR_NUMBER }}
+      existing: ${{ steps.parse-command.outputs.EXISTING_OP }}
     steps:
       - id: check
         uses: github/command@v2.0.3
@@ -33,13 +34,21 @@ jobs:
         env:
           PULL_NUMBER: ${{ github.event.issue.number }}
         run: |
-          # params is op:runner
+          # Parse command arguments
           params=${{ steps.check.outputs.params }}
           op=$(echo $params | cut -d ':' -f 1)
           runner=$(echo $params | cut -d ':' -f 2)
-          echo "op=${op}" >> $GITHUB_OUTPUT
-          echo "runner=${runner}" >> $GITHUB_OUTPUT
-          echo "pull=${PULL_NUMBER}" >> $GITHUB_OUTPUT
+          echo "OP_ID=${op}" >> $GITHUB_OUTPUT
+          echo "RUNNER=${runner}" >> $GITHUB_OUTPUT
+          echo "PR_NUMBER=${PULL_NUMBER}" >> $GITHUB_OUTPUT
+
+          # Detect if operator exists before
+          num=$(grep "pytest.mark.${{ needs.preprocess.outputs.op }}" -r tests | wc -l)
+          if [ "$num" -eq "0" ]; then
+            echo "EXISTING_OP=0" >> $GITHUB_OUTPUT
+          else
+            echo "EXISTING_OP=1" >> $GITHUB_OUTPUT
+          fi
 
   test-operator:
     needs: preprocess
@@ -47,7 +56,7 @@ jobs:
     runs-on: ${{ needs.preprocess.outputs.runner }}
     steps:
       - id: checkout-attempt-1
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
         continue-on-error: true
       - id: sleep-1
         if: steps.checkout-attempt-1.outcome == 'failure'
@@ -56,7 +65,7 @@ jobs:
 
       - id: checkout-attempt-2
         if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
         continue-on-error: true
       - id: sleep-2
         if: steps.checkout-attempt-2.outcome == 'failure'
@@ -65,7 +74,7 @@ jobs:
 
       - id: checkout-attempt-3
         if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
 
       - id: checkout-pr
         env:
@@ -73,6 +82,7 @@ jobs:
         run: |
           echo "checking out ${{ needs.preprocess.outputs.pull }}"
           gh pr checkout ${{ needs.preprocess.outputs.pull }}
+
       - name: Setup FlagGems
         shell: bash
         env:
@@ -103,24 +113,51 @@ jobs:
 
       - name: Run tests
         shell: bash
+        env:
+          EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
         run: |
           source .venv/bin/activate
           source tools/set-env.sh ${VENDOR}
-          tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} --gpus 2 --dump-output
-          tools/psummary --format markdown --single results > results.md
+          tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+            --dump-output \
+            --output-dir results_new
+
+          if [ "$EXISTING_OP" == "0" ]; then
+            tools/psum_text --format markdown \
+              --output report.md \
+              --single \
+              results_new
+            mv results_new results
+          else
+            git checkout master
+            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+              --dump-output \
+              --output-dir results_old
+
+            # merge two data sets into one directory
+            mkdir results
+            mv results_old results/before
+            mv results_new results/after
+
+            tools/psum_text --format markdown \
+              --single \
+              --compare \
+              --output report.md \
+              results
+          fi
 
       - name: Upload results
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: ondemand-test
           path: results/
 
       - name: comment
-        uses: mshick/add-pr-comment@v3
+        uses: mshick/add-pr-comment@8e4927817251f1ff60c001f04568532b38e0b4a0
         with:
-          message-path: results.md
+          message-path: report.md
           message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           allow-repeats: True
           attach-path: results/*
-          attach-name: test-report
+          attach-name: report-${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           attach-text: '📎 [Download %ATTACH_NAME%](%ARTIFACT_URL%)'

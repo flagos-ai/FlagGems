@@ -33,7 +33,7 @@ NUM_WARPS = [2, 4] if is_nvidia_hopper else [2, 4, 8]
         for num_warps in NUM_WARPS
         for num_stages in [2, 3, 4]
     ],
-    key=["H", "K", "V", "BT"],
+    key=["H", "K", "V", "BT", "IS_VARLEN"],
 )
 @triton.jit(do_not_specialize=["T"])
 def chunk_fwd_kernel_o(
@@ -112,7 +112,7 @@ def chunk_fwd_kernel_o(
     if USE_G:
         g += bos * H + i_h
         p_g = tl.make_block_ptr(g, (T,), (H,), (i_t * BT,), (BT,), (0,))
-        b_g = tl.load(p_g, boundary_check=(0,))
+        b_g = tl.load(p_g, boundary_check=(0,)).to(tl.float32)
         b_o = b_o * exp(b_g)[:, None]
         b_A = b_A * exp(b_g[:, None] - b_g[None, :])
 
@@ -158,7 +158,9 @@ def chunk_fwd_o(
     o = torch.empty_like(v)
 
     def grid(meta):
-        return (triton.cdiv(V, meta["BV"]), NT, B * H)
+        # In varlen mode chunk_indices owns the sequence mapping and the batch
+        # id derived from i_bh is unused; use H programs to avoid duplicate work.
+        return (triton.cdiv(V, meta["BV"]), NT, H if cu_seqlens is not None else B * H)
 
     chunk_fwd_kernel_o[grid](
         q,

@@ -475,6 +475,19 @@ FusedRecurrentGatedDeltaRuleBenchmark:
     - [256]
     - [512]
   shape_desc: "(T,) many lengths"
+
+ChunkGatedDeltaRuleBenchmark:
+  shapes:
+    - [1, 64, 4, 8, 64, 64]
+    - [1, 128, 4, 8, 64, 64]
+    - [1, 256, 4, 8, 64, 64]
+    - [1, 512, 4, 8, 64, 64]
+    - [2, 64, 4, 8, 64, 64]
+    - [2, 128, 4, 8, 64, 64]
+    - [2, 256, 4, 8, 64, 64]
+    - [2, 512, 4, 8, 64, 64]
+  shape_desc: "B, T, Hg, H, K, V"
+
 MoeAlignBlockSizeBenchmark:
   shapes:
     - [16, 8]
