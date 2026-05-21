@@ -10,8 +10,7 @@ Summary:        FlagGems — GPU operator library for FlagOS (Phase 1, Python-on
 
 License:        Apache-2.0
 URL:            https://github.com/flagos-ai/FlagGems
-Source0:        flag-gems-%{version}.tar.gz
-
+Source0:        %{url}/archive/v%{version}/flag-gems-%{version}.tar.gz
 BuildArch:      noarch
 BuildRequires:  python3-devel
 BuildRequires:  python3-setuptools >= 64
