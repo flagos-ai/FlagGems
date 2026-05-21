@@ -679,6 +679,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: bernoulli
+    description: |
+      Draws binary random numbers (0 or 1) from a Bernoulli distribution with per-element probabilities.
+    for:
+      - bernoulli
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: bernoulli_
     description: Draws binary random numbers (0 or 1) from a Bernoulli distribution.
     for:
