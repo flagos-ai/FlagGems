@@ -63,5 +63,5 @@ PYTHONDONTWRITEBYTECODE=1 \
 %license LICENSE*
 
 %changelog
-* Fri May 15 2026 FlagOS Contributors <contact@flagos.io> - 5.0.2-1
+* Thu May 21 2026 FlagOS Contributors <contact@flagos.io> - 5.0.2-1
 - Initial RPM packaging (Phase 1, Python-only, no C++ extension).
