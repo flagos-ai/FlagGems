@@ -753,12 +753,9 @@ class TestGridSampleExtremeSizes:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     @pytest.mark.grid_sample
-    @pytest.mark.skip(
-        reason="Issue #3027: CUDA error: operation not supported on global/shared address space."
-    )
     @pytest.mark.skipif(
         gpu_memory_available < 8 * 1024**3,
-        reason="Insufficient GPU memory for 2048×2048 test",
+        reason="Insufficient GPU memory for 1024×1024 test",
     )
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
@@ -788,7 +785,6 @@ class TestGridSampleExtremeSizes:
         gpu_memory_available < 16 * 1024**3,
         reason="Insufficient GPU memory for 2048×2048 test",
     )
-    @pytest.mark.skip(reason="Issue #3027: CUDA error: illegal memory access.")
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
     def test_2048x2048_extreme_large_size(self, mode, padding_mode):
@@ -812,10 +808,9 @@ class TestGridSampleExtremeSizes:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     @pytest.mark.grid_sample
-    @pytest.mark.skip(reason="Issue #3027: CUDA error: illegal memory access.")
     @pytest.mark.skipif(
         gpu_memory_available < 32 * 1024**3,
-        reason="Insufficient GPU memory for 2048×2048 test",
+        reason="Insufficient GPU memory for 4096×4096 test",
     )
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
