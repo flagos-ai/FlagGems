@@ -185,6 +185,48 @@ def _probe_flaggems():
     return
 
 
+def _pip_grep(keyword):
+    """Run `pip list | grep -i <keyword>` and return a dict of {package: version}."""
+    try:
+        result = subprocess.run(
+            f"pip list | grep -i {keyword}",
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        pkgs = {}
+        for line in result.stdout.strip().splitlines():
+            parts = line.split()
+            if len(parts) >= 2:
+                pkgs[parts[0]] = parts[1]
+        return pkgs
+    except Exception as e:
+        pwarn(f"pip list | grep {keyword} failed: {e}")
+        return {}
+
+
+def _probe_vllm():
+    pkgs = _pip_grep("vllm")
+    if pkgs:
+        ENV_INFO["vllm"] = pkgs
+        for name, ver in pkgs.items():
+            pinfo(f"{name} detected ... {ver}")
+    else:
+        ENV_INFO["vllm"] = None
+        pwarn("No vllm-related packages found.")
+
+
+def _probe_torch_extensions():
+    pkgs = _pip_grep("torch")
+    if pkgs:
+        ENV_INFO.setdefault("torch", {})["packages"] = pkgs
+        for name, ver in pkgs.items():
+            pinfo(f"{name} detected ... {ver}")
+    else:
+        pwarn("No torch-related packages found via pip list.")
+
+
 def probe_env():
     ENV_INFO["architecture"] = platform.machine()
     ENV_INFO["os_name"] = distro.id()
@@ -192,8 +234,10 @@ def probe_env():
     ENV_INFO["python"] = platform.python_version()
 
     _probe_torch()
+    _probe_torch_extensions()
     _probe_triton()
     _probe_flaggems()
+    _probe_vllm()
 
 
 def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
