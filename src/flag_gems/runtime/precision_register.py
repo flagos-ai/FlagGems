@@ -9,11 +9,12 @@ import functools
 
 import torch
 
+from ..config import get_skip_precision_check_ops
 from ..logging_utils import (
     compare_outputs,
-    get_precision_logger,
     get_tensor_info,
     precision_config,
+    write_precision_result,
 )
 from .register import Register
 
@@ -52,39 +53,33 @@ def _max_tensor_numel(args):
     return max_n
 
 
-# Operators that should never be precision-checked
-_SKIP_OPS = frozenset(
-    {
-        # Pure layout / memory operations
-        "copy_",
-        "_to_copy",
-        "view",
-        "reshape",
-        "expand",
-        "permute",
-        "transpose",
-        "contiguous",
-        "clone",
-        "to",
-        "empty",
-        "zeros",
-        "ones",
-        "full",
-        "masked_fill_",
-        # Random sampling operators (GPU/CPU RNGs differ)
-        "exponential_",
-        "normal_",
-        "uniform_",
-        "bernoulli_",
-        "random_",
-        "multinomial",
-        "randperm",
-        # Sorting/selection operators (order of equal values may differ)
-        "sort",
-        "topk",
-        "argsort",
-    }
-)
+# Operators that should never be precision-checked – loaded from conf/operators.yaml
+_SKIP_OPS = get_skip_precision_check_ops()
+
+
+def _parse_op_key(op_key):
+    """Parse op_key once and return (op_name, overload_name, should_skip).
+
+    This avoids repeated string splitting inside the hot wrapper.
+    """
+    # Strip namespace prefix (e.g. "aten::add.Tensor" -> "add.Tensor")
+    bare_key = op_key.split("::")[-1] if "::" in op_key else op_key
+
+    # Split into base op name and overload
+    dot_pos = bare_key.find(".")
+    if dot_pos >= 0:
+        op_name = bare_key[:dot_pos]
+        overload_name = bare_key[dot_pos + 1 :]
+    else:
+        op_name = bare_key
+        overload_name = "default"
+
+    # Determine if this op should be skipped entirely (never checked)
+    should_skip = (
+        overload_name == "out" or op_name.endswith("_out") or op_name in _SKIP_OPS
+    )
+
+    return op_name, overload_name, should_skip
 
 
 def _wrap_op_with_precision_check(op_key, fn):
@@ -97,84 +92,82 @@ def _wrap_op_with_precision_check(op_key, fn):
     - skip large tensors (over 1M elements)
     - once a failure is logged, that operator is no longer checked
     """
+    # --- Pre-compute everything derivable from op_key at wrap time ---
+    op_name, overload_name, should_skip = _parse_op_key(op_key)
+
+    # If this op can never be checked, return the unwrapped function directly
+    if should_skip:
+        return fn
+
+    # Pre-resolve the aten overload so we don't do getattr on every call
+    aten_packet = getattr(torch.ops.aten, op_name, None)
+    aten_overload = getattr(aten_packet, overload_name, None) if aten_packet else None
+
+    # If we can't find the native implementation, no point wrapping
+    if aten_overload is None:
+        return fn
+
+    # Pre-fetch the set reference for fast membership test
+    _logged_ops = precision_config["logged_ops"]
     _call_count = 0
 
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         nonlocal _call_count
 
-        # Execute the FlagGems implementation first
-        fg_result = fn(*args, **kwargs)
-
-        cfg = precision_config
-
         # Skip operators that have already logged a failure
-        if op_key in cfg["logged_ops"]:
-            return fg_result
+        if op_key in _logged_ops:
+            return fn(*args, **kwargs)
 
         # Sampling: only check the first N calls per operator
         _call_count += 1
-        if _call_count > cfg.get("max_checks", 10):
-            return fg_result
-
-        op_name = (
-            op_key.split("::")[-1].split(".")[0]
-            if "::" in op_key
-            else op_key.split(".")[0]
-        )
-
-        # Skip out variants
-        overload_part = op_key.split(".")[-1] if "." in op_key else ""
-        if overload_part == "out" or op_name.endswith("_out"):
-            return fg_result
-
-        # Skip operators that do not need checking
-        if op_name in _SKIP_OPS:
-            return fg_result
+        if _call_count > precision_config.get("max_checks", 10):
+            return fn(*args, **kwargs)
 
         # Skip large tensors to avoid copy overhead
         if _max_tensor_numel(args) > _MAX_NUMEL_FOR_CHECK:
-            return fg_result
+            return fn(*args, **kwargs)
+
+        # Execute the FlagGems implementation FIRST with no interference
+        fg_result = fn(*args, **kwargs)
 
         try:
-            parts = op_key.split(".")
-            base_name = parts[0]
-            overload_name = parts[1] if len(parts) > 1 else "default"
-
-            aten_packet = getattr(torch.ops.aten, base_name, None)
-            if aten_packet is None:
-                return fg_result
-            aten_overload = getattr(aten_packet, overload_name, None)
-            if aten_overload is None:
-                return fg_result
-
+            # Copy inputs and output to CPU for comparison.
+            # The .cpu() call implicitly synchronizes the CUDA stream.
+            # For in-place ops (op_name ends with '_'), inputs may have been
+            # modified, but those ops are typically skipped via _SKIP_OPS.
             cpu_args = [_to_cpu(a) for a in args]
             cpu_kwargs = {k: _to_cpu(v) for k, v in kwargs.items()}
+            fg_result_cpu = _to_cpu(fg_result)
 
             with torch.no_grad():
                 pt_result_cpu = aten_overload(*cpu_args, **cpu_kwargs)
 
-            fg_result_cpu = _to_cpu(fg_result)
-
+            cfg = precision_config
             rtol, atol = _get_dtype_tolerance(args, cfg["rtol"], cfg["atol"])
             is_close, info = compare_outputs(fg_result_cpu, pt_result_cpu, rtol, atol)
 
             if not is_close:
-                cfg["logged_ops"].add(op_key)
-                logger = get_precision_logger()
+                _logged_ops.add(op_key)
                 input_info = [get_tensor_info(a) for a in args if get_tensor_info(a)]
                 output_info = get_tensor_info(fg_result)
 
-                msg = f"Op: {op_key} | FAIL | in: {input_info} | out: {output_info}"
+                record = {
+                    "op": op_key,
+                    "status": "FAIL",
+                    "inputs": input_info,
+                    "output": output_info,
+                    "rtol": rtol,
+                    "atol": atol,
+                }
                 if "error" in info:
-                    msg += f" | {info['error']}: fg={info['fg']}, pt={info['pt']}"
+                    record["error"] = info["error"]
+                    record["fg_value"] = info["fg"]
+                    record["pt_value"] = info["pt"]
                 else:
-                    msg += (
-                        f" | max_abs: {info['max_abs']:.6e}"
-                        f" | max_rel: {info['max_rel']:.6e}"
-                    )
-                msg += f" | rtol={rtol}, atol={atol}"
-                logger.warning(msg)
+                    record["max_abs_diff"] = info["max_abs"]
+                    record["max_rel_diff"] = info["max_rel"]
+                write_precision_result(record)
 
         except Exception:
             pass
@@ -192,7 +185,7 @@ class PrecisionCheckRegister(Register):
     It is never on the normal execution path.
     """
 
-    def register_impl(self, key, fn):
+    def register_impl(self, key, fn, extra_dispatch_keys=()):
         if self.lib is None:
             raise ValueError("Library instance is not provided.")
 
@@ -202,3 +195,5 @@ class PrecisionCheckRegister(Register):
         self.all_ops.append(fn.__name__)
         self.all_keys.append(key)
         self.lib.impl(key, wrapped_fn, device_key)
+        for dispatch_key in extra_dispatch_keys:
+            self.lib.impl(key, wrapped_fn, dispatch_key)
