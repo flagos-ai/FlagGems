@@ -16,9 +16,10 @@ COPY . /workspace/FlagGems
 
 RUN SPEC_VERSION=$(grep '^Version:' /workspace/FlagGems/packaging/rpm/specs/flag-gems.spec | awk '{print $2}') && \
     tar czf /root/rpmbuild/SOURCES/flag-gems-${SPEC_VERSION}.tar.gz \
-        -C /workspace \
-        --transform "s|^FlagGems|flag-gems-${SPEC_VERSION}|" \
-        FlagGems
+        -C /workspace/FlagGems \
+        --exclude='./.git' \
+        --transform "s|^\./|flag-gems-${SPEC_VERSION}/|" \
+        .
 
 RUN rpmbuild -ba /workspace/FlagGems/packaging/rpm/specs/flag-gems.spec 2>&1 || \
     { echo "=== build failed ==="; \
