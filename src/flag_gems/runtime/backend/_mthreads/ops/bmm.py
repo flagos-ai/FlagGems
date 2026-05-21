@@ -247,22 +247,9 @@ def bmm_sqmma(A, B, elem_type, batch, M, N, K):
 
 def bmm(a, b):
     a_dtype = a.dtype
-    b_dtype = b.dtype
     batch, M, K = a.shape
     _, _, N = b.shape
-    need_sqmma = a_dtype != torch.float32 and b_dtype != torch.float32
-    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
-    if need_sqmma:
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+    if is_sqmma_compatible(a, b, N, K) and M >= 128:
+        return bmm_sqmma(a, b, a_dtype, batch, M, N, K)
     else:
-        os.environ.pop("MUSA_ENABLE_SQMMA", None)
-    try:
-        if is_sqmma_compatible(a, b, N, K) and M >= 128:
-            return bmm_sqmma(a, b, a_dtype, batch, M, N, K)
-        else:
-            return bmm_fma(a, b)
-    finally:
-        if prev_sqmma is None:
-            os.environ.pop("MUSA_ENABLE_SQMMA", None)
-        else:
-            os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+        return bmm_fma(a, b)
