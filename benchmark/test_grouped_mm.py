@@ -63,9 +63,6 @@ def _input_fn(groups, N, K, cur_dtype, device):
     reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
 )
 def test_grouped_mm(monkeypatch):
-    if flag_gems.vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     bench = GroupmmBenchmark(
         op_name="grouped_mm",
         input_fn=_input_fn,
