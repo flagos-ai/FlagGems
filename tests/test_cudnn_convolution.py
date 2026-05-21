@@ -3,20 +3,29 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from .accuracy_utils import gems_assert_close
+from .conftest import QUICK_MODE
 
-SHAPE_CUDNN_CONV2D = [
-    ((1, 2, 5, 5), (1, 2, 3, 3), 1),
-    ((2, 3, 9, 9), (1, 3, 3, 3), 1),
-    ((32, 8, 8, 8), (32, 8, 2, 2), 1),
-]
+if QUICK_MODE:
+    SHAPE_CUDNN_CONV2D = [
+        ((1, 2, 5, 5), (1, 2, 3, 3), 1),
+    ]
+    FLOAT_DTYPES = [torch.float32]
 
+else:
+    SHAPE_CUDNN_CONV2D = [
+        ((1, 2, 5, 5), (1, 2, 3, 3), 1),
+        ((2, 3, 9, 9), (1, 3, 3, 3), 1),
+        ((32, 8, 8, 8), (32, 8, 2, 2), 1),
+    ]
+    FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 @pytest.mark.cudnn_convolution
 @pytest.mark.parametrize("shape, kernel, groups", SHAPE_CUDNN_CONV2D)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dilation", [1, 2])
 def test_cudnn_convolution_2d(
     shape, kernel, stride, padding, groups, dtype, dilation, monkeypatch
@@ -63,7 +72,7 @@ SHAPE_CUDNN_CONV1D = [
 @pytest.mark.parametrize("shape, kernel", SHAPE_CUDNN_CONV1D)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_cudnn_convolution_1d(shape, kernel, stride, padding, dtype, monkeypatch):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
@@ -106,7 +115,7 @@ SHAPE_CUDNN_CONV3D = [
 @pytest.mark.parametrize("shape, kernel, groups", SHAPE_CUDNN_CONV3D)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dilation", [1, 2])
 def test_cudnn_convolution_3d(
     shape, kernel, stride, padding, groups, dtype, dilation, monkeypatch
