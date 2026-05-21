@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import device, error, torch_device_fn
+from flag_gems.runtime import device, torch_device_fn
 
 device = device.name
 logger = logging.getLogger(__name__)
@@ -181,15 +181,17 @@ def flash_mla(
 
     o = torch.empty([b * s_q, h_q, dv], dtype=q.dtype, device=device)
 
-    major, _ = torch.cuda.get_device_capability(device)
-    if major == 3:
-        BLOCK_H = 64
-        num_stages = 1
-    elif major == 4:
-        BLOCK_H = 16
-        num_stages = 1
-    else:
-        error.backend_not_support(device)
+    # major, _ = torch.cuda.get_device_capability(device)
+    # if major == 3:
+    #     BLOCK_H = 64
+    #     num_stages = 1
+    # elif major == 4:
+    #     BLOCK_H = 16
+    #     num_stages = 1
+    # else:
+    #     error.backend_not_support(device)
+    BLOCK_H = 64
+    num_stages = 2
     BLOCK_N = 16
     grid = (
         triton.cdiv(head_num, BLOCK_H),

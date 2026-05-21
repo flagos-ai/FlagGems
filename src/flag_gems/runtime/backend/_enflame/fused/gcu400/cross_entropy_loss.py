@@ -30,6 +30,8 @@ def celoss_indices_kernel(
     ignore_index,
     C,
     D,
+    N,
+    GRID_N,
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
@@ -37,43 +39,48 @@ def celoss_indices_kernel(
     pid_n = tl.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
-    tgt_ptrs = tgt_ptr + pid_n * D + offset_d
-    tgt_mask = offset_d < D
-    tgt = tl.load(tgt_ptrs, mask=tgt_mask, other=0)
+    for n_idx in range(pid_n, N, GRID_N):
+        tgt_ptrs = tgt_ptr + n_idx * D + offset_d
+        tgt_mask = offset_d < D
+        tgt = tl.load(tgt_ptrs, mask=tgt_mask, other=0)
 
-    ignore_mask = not (tgt == ignore_index) and tgt_mask
+        ignore_mask = not (tgt == ignore_index) and tgt_mask
 
-    tmp_max = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
-    tmp_sum = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
+        tmp_max = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
+        tmp_sum = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
 
-    for off in range(0, C, BLOCK_C):
-        offset_c = off + tl.arange(0, BLOCK_C)
-        inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-        inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
-        inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
-        cur_max = tl.maximum(tmp_max, inp)
-        cur_exp = tl.exp(inp - cur_max)
-        tmp_sum = tmp_sum * tl.exp(tmp_max - cur_max) + cur_exp
-        tmp_max = cur_max
-    final_max = tl.max(tmp_max, axis=0)
-    tmp_sum = tmp_sum * tl.exp(tmp_max - final_max[None, :])
-    final_sum = tl.log(tl.sum(tmp_sum, axis=0))
+        for off in range(0, C, BLOCK_C):
+            offset_c = off + tl.arange(0, BLOCK_C)
+            inp_ptrs = (
+                inp_ptr + n_idx * C * D + offset_c[:, None] * D + offset_d[None, :]
+            )
+            inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
+            inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
+            cur_max = tl.maximum(tmp_max, inp)
+            cur_exp = tl.exp(inp - cur_max)
+            tmp_sum = tmp_sum * tl.exp(tmp_max - cur_max) + cur_exp
+            tmp_max = cur_max
+        final_max = tl.max(tmp_max, axis=0)
+        tmp_sum = tmp_sum * tl.exp(tmp_max - final_max[None, :])
+        final_sum = tl.log(tl.sum(tmp_sum, axis=0))
 
-    inp_tgt_ptrs = inp_ptr + pid_n * C * D + tgt * D + offset_d
-    inp_tgt = tl.load(inp_tgt_ptrs, mask=tgt_mask, other=-float("inf")).to(tl.float32)
+        inp_tgt_ptrs = inp_ptr + n_idx * C * D + tgt * D + offset_d
+        inp_tgt = tl.load(inp_tgt_ptrs, mask=tgt_mask, other=-float("inf")).to(
+            tl.float32
+        )
 
-    out = final_sum + final_max - inp_tgt
-    w_tgt_ptrs = w_tgt_ptr + pid_n * D + offset_d
+        out = final_sum + final_max - inp_tgt
+        w_tgt_ptrs = w_tgt_ptr + n_idx * D + offset_d
 
-    if w_ptr is None:
-        w_tgt = ignore_mask
-    else:
-        w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+        if w_ptr is None:
+            w_tgt = ignore_mask
+        else:
+            w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
 
-    tl.store(w_tgt_ptrs, w_tgt, mask=tgt_mask)
-    out *= w_tgt
-    out_ptrs = out_ptr + pid_n * D + offset_d
-    tl.store(out_ptrs, out, mask=tgt_mask)
+        tl.store(w_tgt_ptrs, w_tgt, mask=tgt_mask)
+        out *= w_tgt
+        out_ptrs = out_ptr + n_idx * D + offset_d
+        tl.store(out_ptrs, out, mask=tgt_mask)
 
 
 @libentry()
@@ -239,6 +246,8 @@ def celoss_indices_bwd(
     mean_num,
     C,
     D,
+    N,
+    GRID_N,
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
@@ -246,52 +255,59 @@ def celoss_indices_bwd(
     pid_n = tl.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
-    tgt_ptrs = tgt_ptr + pid_n * D + offset_d
-    tgt_mask = offset_d < D
-    tgt = tl.load(tgt_ptrs, mask=tgt_mask, other=0)
-    out_grad_ptrs = out_grad_ptr + pid_n * D + offset_d
-    out_grad = tl.load(out_grad_ptrs, mask=tgt_mask, other=0).to(tl.float32)[None, :]
+    for n_idx in range(pid_n, N, GRID_N):
+        tgt_ptrs = tgt_ptr + n_idx * D + offset_d
+        tgt_mask = offset_d < D
+        tgt = tl.load(tgt_ptrs, mask=tgt_mask, other=0)
+        out_grad_ptrs = out_grad_ptr + n_idx * D + offset_d
+        out_grad = tl.load(out_grad_ptrs, mask=tgt_mask, other=0).to(tl.float32)[
+            None, :
+        ]
 
-    if w_ptr is None:
-        w_tgt = tgt_mask
-    else:
-        w_ptrs = w_ptr + tgt
-        w_tgt = tl.load(w_ptrs, mask=tgt_mask, other=0).to(tl.float32)[None, :]
+        if w_ptr is None:
+            w_tgt = tgt_mask
+        else:
+            w_ptrs = w_ptr + tgt
+            w_tgt = tl.load(w_ptrs, mask=tgt_mask, other=0).to(tl.float32)[None, :]
 
-    ignore_mask = (tgt != ignore_index)[None, :]
+        ignore_mask = (tgt != ignore_index)[None, :]
 
-    tmp_max = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
-    tmp_sum = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
+        tmp_max = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
+        tmp_sum = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
 
-    for off in range(0, C, BLOCK_C):
-        offset_c = off + tl.arange(0, BLOCK_C)
-        inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-        inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
-        inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
-        cur_max = tl.maximum(tmp_max, inp)
-        cur_exp = tl.exp(inp - cur_max)
-        tmp_sum = tmp_sum * tl.exp(tmp_max - cur_max) + cur_exp
-        tmp_max = cur_max
-    final_max = tl.max(tmp_max, axis=0)[None, :]
-    tmp_sum = tmp_sum * tl.exp(tmp_max - final_max)
-    final_sum = tl.sum(tmp_sum, axis=0)[None, :]
+        for off in range(0, C, BLOCK_C):
+            offset_c = off + tl.arange(0, BLOCK_C)
+            inp_ptrs = (
+                inp_ptr + n_idx * C * D + offset_c[:, None] * D + offset_d[None, :]
+            )
+            inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
+            inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
+            cur_max = tl.maximum(tmp_max, inp)
+            cur_exp = tl.exp(inp - cur_max)
+            tmp_sum = tmp_sum * tl.exp(tmp_max - cur_max) + cur_exp
+            tmp_max = cur_max
+        final_max = tl.max(tmp_max, axis=0)[None, :]
+        tmp_sum = tmp_sum * tl.exp(tmp_max - final_max)
+        final_sum = tl.sum(tmp_sum, axis=0)[None, :]
 
-    for off in range(0, C, BLOCK_C):
-        offset_c = off + tl.arange(0, BLOCK_C)
-        inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-        inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
-        inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
-        minus_one = offset_c[:, None] == tgt[None, :]
-        inp_grad = (
-            (tl.exp(inp - final_max) / final_sum - minus_one)
-            * w_tgt
-            * out_grad
-            * mean_num
-        )
-        inp_grad_ptrs = (
-            inp_grad_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-        )
-        tl.store(inp_grad_ptrs, inp_grad, mask=inp_mask and ignore_mask)
+        for off in range(0, C, BLOCK_C):
+            offset_c = off + tl.arange(0, BLOCK_C)
+            inp_ptrs = (
+                inp_ptr + n_idx * C * D + offset_c[:, None] * D + offset_d[None, :]
+            )
+            inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
+            inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
+            minus_one = offset_c[:, None] == tgt[None, :]
+            inp_grad = (
+                (tl.exp(inp - final_max) / final_sum - minus_one)
+                * w_tgt
+                * out_grad
+                * mean_num
+            )
+            inp_grad_ptrs = (
+                inp_grad_ptr + n_idx * C * D + offset_c[:, None] * D + offset_d[None, :]
+            )
+            tl.store(inp_grad_ptrs, inp_grad, mask=inp_mask and ignore_mask)
 
 
 @libentry()
@@ -568,8 +584,10 @@ class CrossEntropyLoss(torch.autograd.Function):
         elif label_smoothing == 0:
             # target indices
             w_tgt = torch.empty(shape, dtype=torch.float32, device=inp.device)
+            GRID_N = min(N, MAX_GRID_DIM)
+            grid_indices = lambda meta: (triton.cdiv(D, meta["BLOCK_D"]), GRID_N)
             with torch_device_fn.device(inp.device):
-                celoss_indices_kernel[grid](
+                celoss_indices_kernel[grid_indices](
                     inp,
                     tgt,
                     weight,
@@ -578,6 +596,8 @@ class CrossEntropyLoss(torch.autograd.Function):
                     ignore_index,
                     C,
                     D,
+                    N,
+                    GRID_N,
                 )
         else:
             w_tgt = torch.empty(shape, dtype=torch.float32, device=inp.device)
@@ -654,8 +674,20 @@ class CrossEntropyLoss(torch.autograd.Function):
                 out_grad, inp, tgt, weight, inp_grad, label_smoothing, mean_num, C, D
             )
         elif label_smoothing == 0:
-            celoss_indices_bwd[grid](
-                out_grad, inp, tgt, weight, inp_grad, ignore_index, mean_num, C, D
+            GRID_N = min(N, MAX_GRID_DIM)
+            grid_indices = lambda meta: (triton.cdiv(D, meta["BLOCK_D"]), GRID_N)
+            celoss_indices_bwd[grid_indices](
+                out_grad,
+                inp,
+                tgt,
+                weight,
+                inp_grad,
+                ignore_index,
+                mean_num,
+                C,
+                D,
+                N,
+                GRID_N,
             )
         else:
             GRID_N = min(N, MAX_GRID_DIM)
