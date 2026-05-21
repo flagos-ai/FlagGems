@@ -221,8 +221,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
         )
     if out is None:
         out = torch.empty_like(index, dtype=inp.dtype, device=inp.device)
-    if index.dtype == torch.int64:
-        index = index.to(torch.int32)
 
     if inp.ndim == 2:
         if _gather_2d_fast(inp, dim, index, out):

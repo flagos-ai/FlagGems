@@ -76,12 +76,7 @@ def arange_start(
 
     is_int = dtype in (torch.int32, torch.int64, torch.int16, torch.int8)
 
-    if dtype == torch.int64:
-        compute_dtype = torch.int32
-    else:
-        compute_dtype = dtype
-
-    result = torch.empty((size,), device=device, dtype=compute_dtype, pin_memory=pin_memory)
+    result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
 
     with torch_device_fn.device(result.device):
         if is_int:
@@ -94,9 +89,6 @@ def arange_start(
                 result, float(start), float(step), size,
                 BLOCK_SIZE=BLOCK_SIZE, GRID_DIM=grid_dim, num_warps=nw,
             )
-
-    if dtype == torch.int64:
-        result = result.to(torch.int64)
 
     return result
 

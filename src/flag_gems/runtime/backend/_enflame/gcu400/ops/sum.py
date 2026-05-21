@@ -160,10 +160,6 @@ def _launch_dim_sum(inp, out, M, N):
 
 def sum(inp, *, dtype=None):
     logger.debug("GEMS SUM GCU400")
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
-    if dtype == torch.int64:
-        dtype = torch.int32
 
     if dtype is None:
         dtype = inp.dtype
@@ -181,10 +177,6 @@ def sum(inp, *, dtype=None):
 
 def sum_out(inp, *, dtype=None, out):
     logger.debug("GEMS SUM_OUT GCU400")
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
-    if dtype == torch.int64:
-        dtype = torch.int32
 
     if dtype is None:
         dtype = inp.dtype
@@ -200,10 +192,6 @@ def sum_out(inp, *, dtype=None, out):
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS SUM_DIM GCU400")
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
-    if dtype == torch.int64:
-        dtype = torch.int32
 
     if dtype is None:
         dtype = inp.dtype
@@ -258,10 +246,6 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
 def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
     logger.debug("GEMS SUM_DIM_OUT GCU400")
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
-    if dtype == torch.int64:
-        dtype = torch.int32
 
     if dtype is None:
         dtype = inp.dtype
