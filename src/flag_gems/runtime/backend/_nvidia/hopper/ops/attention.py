@@ -143,6 +143,6 @@ def flash_attn_varlen_func(
 
 
 def flash_attn_varlen_opt_func(*args, **kwargs):
-    # 对应原 attention.py 中 _opt 路径：底层 launcher 换成 mha_varlan_fwd_opt
-    # 当 fa_version=3 时仍调用 mha_varlan_fwd_v3。
+    # Mirrors the generic attention.py _opt path, swapping the launcher to
+    # mha_varlan_fwd_opt for FA2 while keeping mha_varlan_fwd_v3 for FA3.
     ...
