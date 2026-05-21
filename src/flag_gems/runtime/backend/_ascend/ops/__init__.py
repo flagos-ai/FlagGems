@@ -15,6 +15,7 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .baddbmm import baddbmm
+from .binary_cross_entropy import binary_cross_entropy
 from .bmm import bmm
 from .cat import cat, cat_out
 from .count_nonzero import count_nonzero
@@ -103,6 +104,7 @@ __all__ = [
     "argmax",
     "argmin",
     "baddbmm",
+    "binary_cross_entropy",
     "bmm",
     "cat",
     "cat_out",

@@ -702,6 +702,18 @@ ops:
       - Tensor
     stages:
       - beta: '5.1'
+  - id: binary_cross_entropy
+    description: |
+      Computes the binary cross entropy between input probabilities and target.
+    for:
+      - binary_cross_entropy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: bincount
     description: Count the frequency of each value in an array of non-negative integers.
     for:
