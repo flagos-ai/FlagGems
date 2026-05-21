@@ -215,30 +215,32 @@ def _heur_block_k(args):
     return triton.next_power_of_2(args["d"])
 
 
-# Hopper sweet-spots for FA3-style fwd. BLOCK_M=128, BLOCK_N in {64, 128}.
-# num_warps=8 is what triggers the compiler's two-warpgroup partition,
-# which is the implicit "ping-pong" we rely on.
+# Hopper sweet-spots for FA3-style fwd. Large prefill still uses
+# BLOCK_M=128 with 8 warps for the two-warpgroup partition. Paged serving
+# shapes with tiny average Q rows need smaller M tiles; otherwise one CTA
+# carries a 128-row softmax/accumulator for only a handful of real rows.
+# The concrete config list lives in hopper/tune_configs.yaml to match the
+# rest of the Hopper backend.
 def _v3_configs():
-    cfgs = []
-    for bm in [128]:
-        for bn in [64, 128]:
-            for s in [2, 3, 4]:
-                # 8 warps -> 2 warpgroups -> implicit pingpong
-                cfgs.append(
-                    triton.Config(
-                        {"BLOCK_M": bm, "BLOCK_N": bn}, num_stages=s, num_warps=8
-                    )
-                )
-            # Keep one 4-warp option for small head_dim where 8 warps
-            # over-allocates registers.
-            cfgs.append(
-                triton.Config({"BLOCK_M": bm, "BLOCK_N": 64}, num_stages=3, num_warps=4)
-            )
-
-    return cfgs
+    return runtime.get_tuned_config("flash_varlen_fwd_v3")
 
 
 def _prune_v3_configs(configs, nargs, **kwargs):
+    if nargs.get("is_paged", False):
+        avg_rows_bucket = nargs.get("avg_rows_per_cta_bucket", 128)
+        seqlen_k_bucket = nargs.get("seqlen_k_rounded", 0)
+
+        # For short-K paged shapes the simple large-M tile was faster in the
+        # benchmark: there is not enough K work to amortize smaller CTAs.
+        if seqlen_k_bucket <= 512:
+            configs = [c for c in configs if c.kwargs["BLOCK_M"] == 128]
+        elif avg_rows_bucket <= 16:
+            configs = [c for c in configs if c.kwargs["BLOCK_M"] in (16, 32)]
+        elif avg_rows_bucket <= 32:
+            configs = [c for c in configs if c.kwargs["BLOCK_M"] in (32, 64)]
+        elif avg_rows_bucket <= 64:
+            configs = [c for c in configs if c.kwargs["BLOCK_M"] in (64, 128)]
+
     # When dropout is on we can't use 8 warps reliably (philox state
     # blows up the register budget). Fall back to 4-warp configs.
     if nargs.get("is_dropout", False):
@@ -257,7 +259,16 @@ def _prune_v3_configs(configs, nargs, **kwargs):
 @triton.autotune(
     configs=_v3_configs(),
     prune_configs_by={"early_config_prune": _prune_v3_configs},
-    key=["d", "is_causal", "is_local", "is_paged", "is_dropout"],
+    key=[
+        "d",
+        "is_causal",
+        "is_local",
+        "is_paged",
+        "is_dropout",
+        "seqlen_q_rounded",
+        "seqlen_k_rounded",
+        "avg_rows_per_cta_bucket",
+    ],
 )
 @triton.heuristics(
     values={
@@ -347,6 +358,7 @@ def flash_varlen_fwd_v3_kernel(
     page_table_ptr,
     page_table_batch_stride: tl.constexpr,
     block_size: tl.constexpr,
+    avg_rows_per_cta_bucket: tl.constexpr,
     # ---- kernel params ----
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
