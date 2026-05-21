@@ -22,7 +22,7 @@ jobs:
       labels: ${{ fromJSON(steps.get-labels.outputs.result) }}
     steps:
       - id: changed-files
-        uses: tj-actions/changed-files@v47
+        uses: tj-actions/changed-files@v47.0.6
       - id: wait-for-triage
         uses: ArcticLampyrid/action-wait-for-workflow@v1.3.0
         with:
@@ -41,7 +41,7 @@ jobs:
           echo "PR_ID: ${PR_ID}"
 
       - id: get-labels
-        uses: actions/github-script@v9
+        uses: actions/github-script@v9.0.0
         with:
           script: |
             // Determine if the event is a pull request
@@ -78,13 +78,30 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - uses: Wandalen/wretry.action@v3.8.0
-        with:
-          action: actions/checkout@v6
-          attempt_limit: 5
-          attempt_delay: 20000
+      - id: checkout-attempt-1
+        uses: actions/checkout@v6.0.2
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@v6.0.2
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@v6.0.2
+
       - shell: bash
         run: tools/gpu_check.sh
+
       - shell: bash
         env:
           CHANGED_FILES: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
@@ -99,11 +116,27 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - uses: Wandalen/wretry.action@v3.8.0
-        with:
-          action: actions/checkout@v6
-          attempt_limit: 5
-          attempt_delay: 20000
+      - id: checkout-attempt-1
+        uses: actions/checkout@v6.0.2
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@v6.0.2
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@v6.0.2
+
       - shell: bash
         run: tools/gpu_check.sh
       - shell: bash

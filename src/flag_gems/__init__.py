@@ -22,6 +22,7 @@ aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None
 runtime.replace_customized_ops(globals())
+AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 
 
 def torch_ge(v):
@@ -156,6 +157,7 @@ _FULL_CONFIG = (
     ("conv2d.padding", conv2d),
     ("conv3d", conv3d),
     ("conv3d.padding", conv3d),
+    ("conv_transpose1d", conv_transpose1d),
     (
         "copy_",
         copy_,
@@ -169,6 +171,9 @@ _FULL_CONFIG = (
     ("copysign", copysign),
     ("copysign.out", copysign_out),
     ("count_nonzero", count_nonzero),
+    ("ctc_loss.IntList", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("ctc_loss.Tensor", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("cudnn_convolution", cudnn_convolution),
     ("cummax", cummax),
     ("cummin", cummin),
     ("cumprod", cumprod),
@@ -272,6 +277,8 @@ _FULL_CONFIG = (
     ("index.Tensor", index),
     ("index_add", index_add),
     ("index_add_", index_add_),
+    ("index_copy", index_copy),
+    ("index_copy_", index_copy_),
     ("index_put", index_put),
     ("index_put_", index_put_),
     ("index_select", index_select),
@@ -379,6 +386,7 @@ _FULL_CONFIG = (
     ("pixel_shuffle", pixel_shuffle),
     ("pixel_unshuffle", pixel_unshuffle),
     ("pixel_unshuffle.out", pixel_unshuffle_out),
+    ("poisson", poisson),
     ("polar", polar),
     ("pow.Scalar", pow_scalar),
     ("pow.Tensor_Scalar", pow_tensor_scalar),
@@ -434,7 +442,9 @@ _FULL_CONFIG = (
     ("scatter_.reduce", scatter_),
     ("scatter_.src", scatter_),
     ("scatter_add_", scatter_add_),
+    ("scatter_reduce.two", scatter_reduce),
     ("scatter_reduce_.two", scatter_reduce_),
+    ("scatter_reduce.two_out", scatter_reduce_out),
     ("select_backward", select_backward),
     ("select_scatter", select_scatter),
     ("selu", selu),
@@ -453,6 +463,9 @@ _FULL_CONFIG = (
     ("sinh_", sinh_),
     ("slice_backward", slice_backward),
     ("slice_scatter", slice_scatter),
+    ("smooth_l1_loss", smooth_l1_loss),
+    ("smooth_l1_loss_backward", smooth_l1_loss_backward),
+    ("smooth_l1_loss.out", smooth_l1_loss_out),
     ("soft_margin_loss", soft_margin_loss),
     ("softplus", softplus),
     ("softshrink", softshrink),
@@ -476,6 +489,7 @@ _FULL_CONFIG = (
     ("sum.IntList_out", sum_dim_out),
     ("sum.dim_IntList", sum_dim),
     ("sum.out", sum_out),
+    ("svd", svd),
     ("t_copy", t_copy),
     ("t_copy.out", t_copy_out),
     ("tan", tan),

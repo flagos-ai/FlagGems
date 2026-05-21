@@ -115,6 +115,10 @@ IFS=',' read -r -a gpu_id_array <<< "$gpu_ids"
 # Flag that indicate the first time to check if memory_usage_max is greater than any GPU's total memory
 first_time_check=true
 
+if [ -n "$GITHUB_ENV" ]; then
+    echo "GEMS_VENDOR=nvidia" >> "$GITHUB_ENV"
+fi
+
 while true; do
     # Query GPU memory usage and total memory
     memory_usage=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null)

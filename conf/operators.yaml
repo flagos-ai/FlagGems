@@ -1205,6 +1205,18 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '2.2'
+  - id: conv_transpose1d
+    description: |
+      Applies a 1D transposed convolution operator over an input image composed of several input planes.
+    for:
+      - conv_transpose1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - beta: '5.1'
   - id: copy
     description: |
       As a wrapper of `copy_`, this operator copies elements from `src` to `out`
@@ -1337,6 +1349,18 @@ ops:
     stages:
       - stable: '2.0'
       - removed: '3.0'
+  - id: cudnn_convolution
+    description: |
+      A wrapper for cuDNN convolution backend.
+    for:
+      - cudnn_convolution
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: cummax
     description: |
       Returns a named tuple `(values, indices)` where `values` is the cumulative maximum of elements
@@ -2137,6 +2161,8 @@ ops:
       - fused
       - Attention
       - vLLM
+    kind:
+      - NeuralNetwork
     stages:
       - alpha: '5.1'
   - id: flip
@@ -2229,6 +2255,19 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: fp8_mqa_logits
+    description: |
+      For each token in the given E4M3 tensor, iterate all tokens from two other given tensors,
+      calculate the logit.
+    for:
+      - vllm.utils.deep_gemm.fp8_mqa_logits
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: full
     description: |
       Creates a tensor of size `size` filled with `fill_value`.
@@ -2778,6 +2817,30 @@ ops:
       - Tensor
     stages:
       - stable: '4.0'
+  - id: index_copy
+    description: |
+      Copies the elements from `source` into `input` at the positions specified by
+      `index` along the given `dim`.
+    for:
+      - index_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: index_copy_
+    description: The in-place version of `index_copy()`.
+    for:
+      - index_copy_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: index_put
     description: |
       Puts values from the tensor `values` into the tensor `input` using the indices specified
@@ -3744,6 +3807,30 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: smooth_l1_loss
+    description: Compute the smooth L1 loss between input and target tensors.
+    for:
+      - smooth_l1_loss
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: smooth_l1_loss_backward
+    description: Compute the gradient of smooth L1 loss with respect to the input tensor.
+    for:
+      - smooth_l1_loss_backward
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: mul
     description: Multiplies `input` by `other`.
     for:
@@ -4139,6 +4226,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: poisson
+    description: |
+      Returns a tensor of the same size as `input` with each element sampled
+      from a Poisson distribution with rate given by the corresponding element in `input`.
+    for:
+      - poisson
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: polar
     description: |
       Constructs a complex tensor whose elements are Cartesian coordinates corresponding to
