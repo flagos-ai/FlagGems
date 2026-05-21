@@ -1487,7 +1487,7 @@ def flash_attn_varlen_opt_func(
             )
         return (out_cpp, softmax_lse) if return_softmax_lse else out_cpp
     else:
-        logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC")
+        logger.debug("GEMS FLASH_ATTN_VARLEN_OPT_FUNC")
         assert (
             cu_seqlens_k is not None or seqused_k is not None
         ), "cu_seqlens_k or seqused_k must be provided"

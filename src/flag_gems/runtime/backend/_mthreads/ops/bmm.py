@@ -4,24 +4,44 @@ import os
 import torch
 import triton
 import triton.language as tl
+from triton.tools.tensor_descriptor import TensorDescriptor
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
-
-from .utils import create_tma_device_descriptor, should_enable_sqmma
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(
     f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
 )
+
+EXPAND_CONFIG_FILENAME = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "bmm_mthreads_expand.yaml")
+)
+
+
+def is_supported_sqmma_layout(tensor):
+    return tensor.is_contiguous() or (
+        tensor.stride(0) == 1 and tensor.stride(1) == tensor.shape[0]
+    )
+
+
+def is_sqmma_compatible(a, b, N, K):
+    return (
+        a.dtype == b.dtype
+        and a.dtype in (torch.float16, torch.bfloat16)
+        and is_supported_sqmma_layout(a)
+        and is_supported_sqmma_layout(b)
+        and N % 8 == 0
+        and K % 8 == 0
+    )
 
 
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("bmm"),
     key=["M", "N", "K"],
-    strategy=["log", "log", "log"],
+    strategy=["align32", "align32", "align32"],
 )
 @triton.heuristics(runtime.get_heuristic_config("bmm"))
 @triton.jit
@@ -39,22 +59,23 @@ def bmm_kernel(
     DIVISIBLE_M: tl.constexpr,
     DIVISIBLE_N: tl.constexpr,
     DIVISIBLE_K: tl.constexpr,
+    IS_FP64: tl.constexpr = False,
 ):
     # batch offsets
-    pid_b = tle.program_id(2)
+    pid_b = ext.program_id(2)
     A += pid_b * M * K
     B += pid_b * K * N
     O += pid_b * M * N
 
-    pidx = tle.program_id(0)
-    pidy = tle.program_id(1)
+    pidx = ext.program_id(0)
+    pidy = ext.program_id(1)
 
     if GROUP_M == 1:
         pid_m, pid_n = pidx, pidy
     else:
         # reorder CTAs
-        gridx = tle.num_programs(0)
-        gridy = tle.num_programs(1)
+        gridx = ext.num_programs(0)
+        gridy = ext.num_programs(1)
         pid = pidx + pidy * gridx
 
         num_CTA_per_group = gridy * GROUP_M
@@ -81,7 +102,10 @@ def bmm_kernel(
     o_ptrs = O + offs_m[:, None] * N + offs_n[None, :]
 
     num_iters = tl.cdiv(K, TILE_K)
-    o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
+    if IS_FP64:
+        o = tl.zeros((TILE_M, TILE_N), dtype=tl.float64)
+    else:
+        o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
     for _ in range(num_iters):
         if DIVISIBLE_K:
             if DIVISIBLE_M:
@@ -137,47 +161,41 @@ def bmm_fma(A, B):
         batch,
     )
     with torch_device_fn.device(A.device):
-        bmm_kernel[grid_fn](A, B, out, M, N, K)
+        bmm_kernel[grid_fn](A, B, out, M, N, K, IS_FP64=A.dtype == torch.float64)
     return out
 
 
 @triton.jit
 def bmm_sqmma_kernel(
-    a_desc_ptr,
-    b_desc_ptr,
-    c_desc_ptr,
+    a_desc,
+    b_desc,
+    c_desc,
+    batch,
     M,
     N,
     K,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
-    ab_type: tl.constexpr,
-    d_type: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     batch_index = tl.program_id(axis=1)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
     pid_m = pid % num_pid_m
     pid_n = pid // num_pid_m
-    offs_am = pid_m * BLOCK_SIZE_M + batch_index * M
-    offs_bn = pid_n * BLOCK_SIZE_N
+    offs_am = (pid_m * BLOCK_SIZE_M + batch_index * M).to(tl.int32)
+    offs_bn = (pid_n * BLOCK_SIZE_N).to(tl.int32)
     offs_ak = 0
-    offs_bk = batch_index * K
-    tme_load_type = ab_type
+    offs_ak = offs_ak.to(tl.int32)
+    offs_bk = (batch_index * K).to(tl.int32)
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl._experimental_descriptor_load(
-            a_desc_ptr, [offs_am, offs_ak], [BLOCK_SIZE_M, BLOCK_SIZE_K], tme_load_type
-        )
-        b = tl._experimental_descriptor_load(
-            b_desc_ptr, [offs_bk, offs_bn], [BLOCK_SIZE_K, BLOCK_SIZE_N], tme_load_type
-        )
+        a = tl.load_tensor_descriptor(a_desc, [offs_am, offs_ak])
+        b = tl.load_tensor_descriptor(b_desc, [offs_bk, offs_bn])
         accumulator = tl.dot(a, b, acc=accumulator)
         offs_ak += BLOCK_SIZE_K
         offs_bk += BLOCK_SIZE_K
-    accumulator = accumulator.to(d_type)
-    tl._experimental_descriptor_store(c_desc_ptr, accumulator, [offs_am, offs_bn])
+    tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], accumulator.to(c_desc.dtype))
 
 
 def get_triton_type(elem_type):
@@ -189,69 +207,49 @@ def get_triton_type(elem_type):
     return type_map.get(elem_type, None)
 
 
-def bmm_sqmma(
-    A, B, elem_type, batch, M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages
-):
+def bmm_sqmma(A, B, elem_type, batch, M, N, K):
     device = "musa"
-    ab_type = elem_type
     c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
     C = torch.empty((batch, M, N), dtype=torch.float16, device=device).to(c_type)
-    desc_a = create_tma_device_descriptor(
-        A.reshape(batch * M, K), BLOCK_M, BLOCK_K, device
+    BLOCK_SIZE_M = 128
+    BLOCK_SIZE_N = 128
+    BLOCK_SIZE_K = 64
+    desc_a = TensorDescriptor.from_tensor(
+        A.reshape(batch * M, K), [BLOCK_SIZE_M, BLOCK_SIZE_K]
     )
-    desc_b = create_tma_device_descriptor(
-        B.reshape(batch * K, N), BLOCK_K, BLOCK_N, device
+    desc_b = TensorDescriptor.from_tensor(
+        B.reshape(batch * K, N), [BLOCK_SIZE_K, BLOCK_SIZE_N]
     )
-    desc_c = create_tma_device_descriptor(
-        C.reshape(batch * M, N), BLOCK_M, BLOCK_N, device
+    desc_c = TensorDescriptor.from_tensor(
+        C.reshape(batch * M, N), [BLOCK_SIZE_M, BLOCK_SIZE_N]
     )
-    bmm_sqmma_kernel[(triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), batch, 1)](
+    grid = lambda META: (
+        triton.cdiv(M, BLOCK_SIZE_M) * triton.cdiv(N, BLOCK_SIZE_N),
+        batch,
+        1,
+    )
+    bmm_sqmma_kernel[grid](
         desc_a,
         desc_b,
         desc_c,
+        batch,
         M,
         N,
         K,
-        BLOCK_M,
-        BLOCK_N,
-        BLOCK_K,
-        get_triton_type(ab_type),
-        get_triton_type(c_type),
-        num_warps=num_warps,
-        num_stages=num_stages,
+        BLOCK_SIZE_M,
+        BLOCK_SIZE_N,
+        BLOCK_SIZE_K,
+        num_warps=4,
+        num_stages=1,
     )
     return C
 
 
 def bmm(a, b):
     a_dtype = a.dtype
-    b_dtype = b.dtype
     batch, M, K = a.shape
     _, _, N = b.shape
-    use_sqmma = should_enable_sqmma(a_dtype, b_dtype, M, N, K)
-    if use_sqmma:
-        BLOCK_M = 128
-        BLOCK_N = BLOCK_M
-        BLOCK_K = 64
-        num_warps = 16 if BLOCK_M == 256 else 4
-        num_stages = 1
-        return bmm_sqmma(
-            a,
-            b,
-            a_dtype,
-            batch,
-            M,
-            N,
-            K,
-            BLOCK_M,
-            BLOCK_N,
-            BLOCK_K,
-            num_warps,
-            num_stages,
-        )
+    if is_sqmma_compatible(a, b, N, K) and M >= 128:
+        return bmm_sqmma(a, b, a_dtype, batch, M, N, K)
     else:
-        enable_sqmma = os.environ.pop("MUSA_ENABLE_SQMMA", None)
-        result = bmm_fma(a, b)
-        if enable_sqmma:
-            os.environ["MUSA_ENABLE_SQMMA"] = enable_sqmma
-        return result
+        return bmm_fma(a, b)
