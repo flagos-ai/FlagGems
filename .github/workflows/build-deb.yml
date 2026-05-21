@@ -1,0 +1,34 @@
+name: Build Debian Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'packaging/debian/**'
+      - '.github/workflows/build-deb.yml'
+  workflow_dispatch:
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build .deb
+        run: bash packaging/debian/helpers/build-flaggems.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flag-gems-amd64-packages
+          path: debian-packages/*.deb
+          retention-days: 7
