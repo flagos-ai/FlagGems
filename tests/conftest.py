@@ -51,14 +51,22 @@ def pytest_addoption(parser):
         action="store_true",
         help="run tests on quick mode",
     )
-    parser.addoption(
-        "--flash-attn-varlen-fa-version",
-        action="store",
-        type=int,
-        default=2,
-        choices=[2, 3],
-        help="FA version used by tests/test_flash_attn_varlen_func.py.",
-    )
+    try:
+        parser.addoption(
+            "--flash-attn-varlen-fa-version",
+            action="store",
+            type=int,
+            default=2,
+            choices=[2, 3],
+            help=(
+                "FA version used by flash_attn_varlen_func accuracy and benchmark "
+                "tests."
+            ),
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register this option in
+        # benchmark/conftest.py. Reuse the existing option in that case.
+        pass
 
     try:
         parser.addoption(

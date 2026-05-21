@@ -10,10 +10,29 @@ from . import base, utils
 vendor_name = flag_gems.vendor_name
 
 
+def _selected_fa_version(pytestconfig) -> int:
+    return pytestconfig.getoption("flash_attn_varlen_fa_version")
+
+
+def _is_fa3_supported() -> bool:
+    try:
+        from flag_gems.runtime.backend._nvidia.hopper.ops.flash_api_v3 import (
+            is_fa3_supported,
+        )
+
+        return is_fa3_supported()
+    except Exception:
+        if flag_gems.device != "cuda" or not torch.cuda.is_available():
+            return False
+        return torch.cuda.get_device_capability()[0] >= 9
+
+
 class FlashAttnVarlenBenchmark(base.Benchmark):
     """
     benchmark for flash_attn_varlen_func
     """
+
+    fa_version = 2
 
     def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
         # Collecting from qwen/Qwen3-1.7B
@@ -215,7 +234,7 @@ class FlashAttnVarlenBenchmark(base.Benchmark):
                 "cp_world_size": 1,
                 "cp_rank": 0,
                 "cp_tot_seqused_k": None,
-                "fa_version": 2,
+                "fa_version": self.fa_version,
             },
         )
 
@@ -296,8 +315,11 @@ def flash_attn_varlen_legacy(*args, **kwargs):
 @pytest.mark.skipif(vendor_name == "hygon", reason="#2816: RuntimeError")
 @pytest.mark.skipif(vendor_name == "cambricon", reason="#2886: TypeError")
 @pytest.mark.flash_attn_varlen_func
-def test_flash_attn_varlen_func(monkeypatch):
+def test_flash_attn_varlen_func(monkeypatch, pytestconfig):
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
+    fa_version = _selected_fa_version(pytestconfig)
+    if fa_version == 3 and not _is_fa3_supported():
+        pytest.skip("FA3 requires CUDA Hopper with Triton FA3 support.")
 
     if vendor_name == "iluvatar":
         # iluvatar does not have updated vllm_flash_attn, use conversion wrapper
@@ -305,10 +327,17 @@ def test_flash_attn_varlen_func(monkeypatch):
     else:
         from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
 
+    gems_op = (
+        flag_gems.flash_attn_varlen_func
+        if fa_version == 3
+        else flag_gems.ops.flash_attn_varlen_func
+    )
+
     bench = FlashAttnVarlenBenchmark(
         op_name="flash_attn_varlen_func",
         torch_op=flash_attn_varlen_func,
-        gems_op=flag_gems.ops.flash_attn_varlen_func,
+        gems_op=gems_op,
         dtypes=[torch.float16, torch.bfloat16],
+        fa_version=fa_version,
     )
     bench.run()
