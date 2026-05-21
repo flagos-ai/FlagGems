@@ -15,6 +15,7 @@ from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
 from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import (
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
 )
+from flag_gems.fused.gemma_rms_norm import gemma_fused_add_rms_norm, gemma_rms_norm
 from flag_gems.fused.fused_moe import (
     dispatch_fused_moe_kernel,
     fused_experts_impl,
@@ -80,6 +81,8 @@ __all__ = [
     "fused_experts_impl",
     "fused_recurrent_gated_delta_rule_fwd",
     "geglu",
+    "gemma_fused_add_rms_norm",
+    "gemma_rms_norm",
     "gelu_and_mul",
     "grouped_topk",
     "hc_head_fused_kernel",
