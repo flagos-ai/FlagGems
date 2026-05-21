@@ -92,6 +92,7 @@ class fwd_params:
         "page_table_ptr",
         "page_table_batch_stride",
         "block_size",
+        "k_page_stride",
     )
 
     def __init__(
@@ -160,6 +161,7 @@ class fwd_params:
         page_table_ptr,
         page_table_batch_stride,
         block_size,
+        k_page_stride,
     ):
         self.q_ptr = q_ptr
         self.k_ptr = k_ptr
@@ -225,6 +227,7 @@ class fwd_params:
         self.page_table_ptr = page_table_ptr
         self.page_table_batch_stride = page_table_batch_stride
         self.block_size = block_size
+        self.k_page_stride = k_page_stride
 
     def args(self):
         return tuple(getattr(self, k) for k in self.__slots__)
@@ -513,6 +516,7 @@ def mha_varlan_fwd(
             page_table,  # page_table_ptr,
             page_table_batch_stride,  # page_table_batch_stride,
             block_size,  # block_size,
+            k.stride(0) if is_paged else 0,  # k_page_stride,
         )
 
         if flag_gems.vendor_name == "iluvatar":
@@ -1245,6 +1249,7 @@ def mha_fwd(
             None,  # page_table_ptr,
             0,  # page_table_batch_stride,
             0,  # block_size,
+            0,  # k_page_stride,
         )
 
         # Move TxD to last dims for correct stride in Triton tt.load
