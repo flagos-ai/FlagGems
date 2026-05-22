@@ -5,6 +5,8 @@ Uses value-based comparison (sorted selected values must match) to handle
 non-deterministic tie-breaking between implementations.
 """
 
+import inspect
+
 import pytest
 import torch
 import triton.language as tl
@@ -16,10 +18,19 @@ from . import conftest as cfg
 
 device = flag_gems.device
 
-# tl.histogram requires Triton 3.x+ with sm90 support
+
+def _has_histogram_mask():
+    if not hasattr(tl, "histogram"):
+        return False
+    try:
+        return "mask" in inspect.signature(tl.histogram).parameters
+    except (ValueError, TypeError):
+        return False
+
+
 pytestmark = pytest.mark.skipif(
-    not hasattr(tl, "histogram"),
-    reason="tl.histogram not available in this Triton version",
+    not _has_histogram_mask(),
+    reason="tl.histogram with mask parameter not available",
 )
 
 # --- Shape configuration with QUICK_MODE support ---

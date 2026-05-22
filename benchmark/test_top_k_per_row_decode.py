@@ -5,6 +5,8 @@ The baseline uses vLLM's CUDA kernel when available,
 falling back to a pure-PyTorch reference (torch.topk).
 """
 
+import inspect
+
 import pytest
 import torch
 import triton.language as tl
@@ -13,10 +15,19 @@ from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
 
 from . import base
 
-# tl.histogram requires Triton 3.x+ with sm90 support
+
+def _has_histogram_mask():
+    if not hasattr(tl, "histogram"):
+        return False
+    try:
+        return "mask" in inspect.signature(tl.histogram).parameters
+    except (ValueError, TypeError):
+        return False
+
+
 pytestmark = pytest.mark.skipif(
-    not hasattr(tl, "histogram"),
-    reason="tl.histogram not available in this Triton version",
+    not _has_histogram_mask(),
+    reason="tl.histogram with mask parameter not available",
 )
 
 # --- vLLM CUDA baseline (preferred) with PyTorch fallback ---
