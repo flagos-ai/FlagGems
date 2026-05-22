@@ -240,9 +240,13 @@ def test_dsv4_kernel_interface_prefill_decode_smoke():
     next_n = 1
     decode_q = torch.randn((bsz, next_n, h, dt), device=device, dtype=torch.bfloat16)
     k_cache = torch.zeros((2, 64 * 584), device=device, dtype=torch.uint8)
-    decode_indices = torch.randint(0, 64, (bsz, next_n, topk), device=device, dtype=torch.int32)
+    decode_indices = torch.randint(
+        0, 64, (bsz, next_n, topk), device=device, dtype=torch.int32
+    )
     decode_out = torch.empty((bsz, next_n, h, 512), device=device, dtype=torch.bfloat16)
-    decode_topk_len = torch.full((bsz * next_n,), topk, device=device, dtype=torch.int32)
+    decode_topk_len = torch.full(
+        (bsz * next_n,), topk, device=device, dtype=torch.int32
+    )
 
     dsv4_kernel_flash_mla_sparse_decode(
         decode_q,

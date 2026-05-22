@@ -71,7 +71,9 @@ class DSV4KernelTopkMapBenchmark(base.Benchmark):
                 -1, 64, (num_tokens, topk), device=device, dtype=torch.int32
             )
             token_to_req = torch.zeros((num_tokens,), device=device, dtype=torch.int32)
-            block_table = torch.arange(0, 256, device=device, dtype=torch.int32).view(1, -1)
+            block_table = torch.arange(0, 256, device=device, dtype=torch.int32).view(
+                1, -1
+            )
             yield (topk_indices, token_to_req, block_table, 64, None)
 
 
@@ -95,7 +97,9 @@ class DSV4KernelCombineBenchmark(base.Benchmark):
             topk_indices = torch.randint(
                 -1, 2048, (num_tokens, topk), device=device, dtype=torch.int32
             )
-            query_start_loc = torch.arange(0, num_tokens + 1, device=device, dtype=torch.int32)
+            query_start_loc = torch.arange(
+                0, num_tokens + 1, device=device, dtype=torch.int32
+            )
             seq_lens = torch.tensor([4096], device=device, dtype=torch.int32)
             gather_lens = torch.tensor([2048], device=device, dtype=torch.int32)
             yield (
@@ -127,11 +131,21 @@ class DSV4KernelFP8EinsumBenchmark(base.Benchmark):
     def get_input_iter(self, dtype):
         device = "cuda"
         for batch, groups, kdim, ndim in self.shapes:
-            a = torch.randn((batch, groups, kdim), device=device, dtype=torch.float32).to(dtype)
-            b = torch.randn((groups, ndim, kdim), device=device, dtype=torch.float32).to(dtype)
-            a_scale = torch.ones((batch, groups, kdim // 128), device=device, dtype=torch.float32)
-            b_scale = torch.ones((groups, ndim // 128, kdim // 128), device=device, dtype=torch.float32)
-            out = torch.empty((batch, groups, ndim), device=device, dtype=torch.bfloat16)
+            a = torch.randn(
+                (batch, groups, kdim), device=device, dtype=torch.float32
+            ).to(dtype)
+            b = torch.randn(
+                (groups, ndim, kdim), device=device, dtype=torch.float32
+            ).to(dtype)
+            a_scale = torch.ones(
+                (batch, groups, kdim // 128), device=device, dtype=torch.float32
+            )
+            b_scale = torch.ones(
+                (groups, ndim // 128, kdim // 128), device=device, dtype=torch.float32
+            )
+            out = torch.empty(
+                (batch, groups, ndim), device=device, dtype=torch.bfloat16
+            )
             yield (
                 a,
                 a_scale,
@@ -182,7 +196,9 @@ class DSV4KernelTopKPerRowPrefillBenchmark(base.Benchmark):
         device = "cuda"
         for num_rows, row_len, topk in self.shapes:
             logits = torch.randn((num_rows, row_len), device=device, dtype=dtype)
-            row_starts = torch.arange(0, num_rows * row_len, row_len, device=device, dtype=torch.int32)
+            row_starts = torch.arange(
+                0, num_rows * row_len, row_len, device=device, dtype=torch.int32
+            )
             row_ends = row_starts + row_len
             out = torch.empty((num_rows, topk), device=device, dtype=torch.int32)
             yield (
