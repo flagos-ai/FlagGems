@@ -5962,6 +5962,20 @@ ops:
       - MoE
     stages:
       - stable: '4.0'
+  - id: topk_softplus_sqrt
+    description: |
+      Fused softplus + sqrt + top-k selection and optional renormalization
+      for MoE gating in models like DeepSeek-V3/V4.
+    for:
+      - topk_softplus_sqrt
+    labels:
+      - fused
+      - KernelGen
+      - vLLM
+    kind:
+      - MoE
+    stages:
+      - beta: '5.1'
   - id: trace
     description: Returns the sum of the elements of the diagonal of the input 2-D matrix.
     for:
