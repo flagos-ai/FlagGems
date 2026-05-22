@@ -1242,6 +1242,18 @@ ops:
       - Convolution
     stages:
       - beta: '5.1'
+  - id: conv_transpose2d
+    description: |
+      Applies a 2D transposed convolution operator over an input image composed of several input planes.
+    for:
+      - conv_transpose2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - alpha: '5.1'
   - id: copy
     description: |
       As a wrapper of `copy_`, this operator copies elements from `src` to `out`
@@ -1894,6 +1906,19 @@ ops:
       - Math
     stages:
       - stable: '5.0'
+  - id: euclidean_dist
+    description: |
+      Computes pairwise Euclidean distances between rows of two 2D tensors.
+    for:
+      - _euclidean_dist
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: erf
     description: Computes the error function of `input`.
     for:
