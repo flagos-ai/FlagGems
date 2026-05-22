@@ -34,17 +34,16 @@ RUN pip3 install --no-cache-dir --upgrade pip && \
         --index-url https://download.pytorch.org/whl/cu128 \
         torch==2.9.0+cu128
 
-# Install libtriton-jit-dev from a locally-staged .deb. When the central
-# flagos-packaging repo goes live, switch to:
-#   echo "deb [signed-by=...] https://flagos-ai.github.io/flagos-packaging/apt stable main" \
-#     > /etc/apt/sources.list.d/flagos.list && apt-get update && apt-get install -y libtriton-jit-dev
-COPY packaging/debian/build-helpers/local-deps/*.deb /tmp/deps/
-RUN dpkg -i /tmp/deps/*.deb 2>&1 | tail -20 || apt-get install -f -y --no-install-recommends
+# Phase 1 (FLAGGEMS_BUILD_C_EXTENSIONS=OFF, pure-Python wheel) does not
+# need libtriton-jit at build time. Phase 2 will reintroduce a
+#   COPY packaging/debian/build-helpers/local-deps/*.deb /tmp/deps/
+#   RUN dpkg -i /tmp/deps/*.deb ...
+# step once we move to the FlagOS APT repo or a download-artifact CI step.
 
 WORKDIR /src
 # Narrow COPY: only paths the wheel build needs (skip packaging/, docs/, etc.
 # so packaging-only edits don't bust the wheel cache).
-COPY CMakeLists.txt pyproject.toml setup.sh LICENSE README.md /src/
+COPY CMakeLists.txt pyproject.toml LICENSE README.md /src/
 COPY cmake /src/cmake
 COPY include /src/include
 COPY lib /src/lib
@@ -61,6 +60,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
         debhelper dh-python python3-all python3-pip python3-setuptools \
         python3-wheel devscripts fakeroot lintian \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -72,6 +72,11 @@ ENV WHEEL_DIR=/build/dist
 
 RUN dpkg-buildpackage -us -uc -b && \
     ls -lh /python3-flag-gems_*.deb
+
+# Run lintian against the produced .deb — surface packaging warnings
+# (unused-license-paragraph, no-manual-page, missing-build-dependency, etc.)
+# in the build log without failing the build.
+RUN lintian --info --display-info /python3-flag-gems_*.deb || true
 
 # ---------- Stage 3: extract the .deb ----------
 FROM scratch AS deb-output

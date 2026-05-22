@@ -15,6 +15,7 @@ on:
       - 'conf/**'
       - 'CMakeLists.txt'
       - 'pyproject.toml'
+      - 'tools/setup_nvidia.sh'
       - '.github/workflows/build-deb.yml'
   workflow_dispatch:
 
@@ -25,20 +26,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Allowed to fail until libtriton-jit*.deb is available via one of:
-      #   - a `download-artifact` step pulling the deb from the libtriton_jit
-      #     packaging PR's CI, OR
-      #   - a live FlagOS APT repo serving libtriton-jit-dev, so the wheel
-      #     builder can `apt-get install` it instead of needing it staged at
-      #     packaging/debian/build-helpers/local-deps/.
-      # Remove `continue-on-error` once one of the above is wired up.
       - name: Build .deb
-        continue-on-error: true
         run: bash packaging/debian/build-helpers/build-flaggems.sh
 
       - name: Upload artifacts
