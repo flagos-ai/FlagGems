@@ -23,15 +23,15 @@ override_dh_auto_build:
 override_dh_auto_test:
 
 override_dh_auto_install:
-	@if [ -z "$$(ls $(WHEEL_DIR)/flag_gems-*.whl 2>/dev/null)" ]; then \
+	@wheel="$$(ls -1 $(WHEEL_DIR)/flag_gems-*.whl 2>/dev/null | head -1)"; \
+	if [ -z "$$wheel" ]; then \
 		echo "ERROR: no flag_gems-*.whl found under $(WHEEL_DIR)"; \
 		echo "Run packaging/debian/build-helpers/build-flaggems.sh first."; \
 		exit 1; \
-	fi
-	mkdir -p $(PYDIR)
+	fi; \
+	mkdir -p $(PYDIR); \
 	python3 -m pip install --no-deps --no-compile --no-index \
-		--target=$(PYDIR) \
-		$(WHEEL_DIR)/flag_gems-*.whl
+		--target=$(PYDIR) "$$wheel"
 	# Move console scripts to /usr/bin
 	if [ -d $(PYDIR)/bin ]; then \
 		mkdir -p debian/$(PKG)/usr/bin; \
@@ -41,8 +41,10 @@ override_dh_auto_install:
 	rm -f $(PYDIR)/flag_gems-*.dist-info/RECORD
 
 override_dh_shlibdeps:
-	# The bundled liboperators.so links against libtorch, libcuda, etc.
-	# which aren't in the build env. Skip auto-detection.
+	# Kept defensively for Phase 2: when FLAGGEMS_BUILD_C_EXTENSIONS=ON, the
+	# bundled liboperators.so links against libtorch / libcuda which aren't
+	# in the build env; --ignore-missing-info silences those.
+	# In Phase 1 (current) there is no .so to scan, so this is a no-op.
 	dh_shlibdeps -- --ignore-missing-info
 
 override_dh_strip:
