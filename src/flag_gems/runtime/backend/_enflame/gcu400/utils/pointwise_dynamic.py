@@ -511,7 +511,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_with_bptr(self, code):
-        code.writeline("num_ctas = tle.num_programs(0)")
+        code.writeline("num_ctas = ext.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -587,7 +587,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_without_bptr(self, code):
-        code.writeline("num_ctas = tle.num_programs(0)")
+        code.writeline("num_ctas = ext.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -606,7 +606,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tle.program_id(0)")
+            code.writeline("pid = ext.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -632,7 +632,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tle.program_id(0)")
+            code.writeline("pid = ext.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -706,7 +706,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_1d_tile(self, code):
-        code.writeline("num_ctas = tle.num_programs(0)")
+        code.writeline("num_ctas = ext.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -725,7 +725,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tle.program_id(0)")
+            code.writeline("pid = ext.program_id(0)")
             # code.writeline("num_ctas = te.num_programs(0)")
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -828,11 +828,13 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
+            if "isclose" in self.name:
+                max_tile_size //= 2
             major, _ = get_device_capability()
             code.writeline("FlagOfNotUseDMA = False")
             for i in range(schema.num_input_tensors()):
                 code.writeline(f"in{i}_strides = in{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
+                code.writeline(f"FlagOfNotUseDMA |= any(s <= 0 for s in in{i}_strides)")
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "
@@ -853,7 +855,7 @@ class WrapperGenerator:
             for i in range(schema.num_output_tensors()):
                 code.writeline(f"out{i}_strides = out{i}.stride()")
                 code.writeline(
-                    f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)"
+                    f"FlagOfNotUseDMA |= any(s <= 0 for s in out{i}_strides)"
                 )
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
@@ -915,11 +917,13 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
+            if "isclose" in self.name:
+                max_tile_size //= 2
             major, _ = get_device_capability()
             code.writeline("FlagOfNotUseDMA = False")
             for i in range(schema.num_input_tensors()):
                 code.writeline(f"in{i}_strides = in{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
+                code.writeline(f"FlagOfNotUseDMA |= any(s <= 0 for s in in{i}_strides)")
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "
@@ -933,7 +937,7 @@ class WrapperGenerator:
             for i in range(schema.num_output_tensors()):
                 code.writeline(f"out{i}_strides = out{i}.stride()")
                 code.writeline(
-                    f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)"
+                    f"FlagOfNotUseDMA |= any(s <= 0 for s in out{i}_strides)"
                 )
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
@@ -1131,7 +1135,7 @@ class ModuleGenerator:
         code.writeline(")")
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
         code.writeline("from flag_gems.utils.libentry import libentry")
-        code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+        code.writeline("from flag_gems.utils import triton_lang_extension as ext")
         code.writeline("from flag_gems.runtime import torch_device_fn")
         code.writeline(
             "from flag_gems.runtime.backend._enflame.gcu400.utils.shape_utils import ("

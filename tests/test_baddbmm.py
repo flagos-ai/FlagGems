@@ -37,8 +37,6 @@ FP8_MNK_SHAPES = [
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_baddbmm(monkeypatch, M, N, K, scalar, dtype):
-    if flag_gems.vendor_name == "mthreads" and dtype in [torch.float16, torch.bfloat16]:
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
     batch = 4
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
@@ -55,7 +53,7 @@ def test_baddbmm(monkeypatch, M, N, K, scalar, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
-@pytest.mark.baddbmm_backward
+@pytest.mark.baddbmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
