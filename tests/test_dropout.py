@@ -6,6 +6,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.testing import RESOLUTION
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -16,7 +17,6 @@ device = flag_gems.device
 
 
 @pytest.mark.dropout
-@pytest.mark.skipif(True, reason="Line 58 fails when under CPU mode testing.")
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -24,6 +24,8 @@ def test_dropout(shape, p, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
+    else:
+        utils.init_seed(0)
 
     if cfg.TO_CPU or shape == (1,):
         shape = (32768,)
@@ -47,8 +49,6 @@ def test_dropout(shape, p, dtype):
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
 
     if cfg.TO_CPU:
-        from flag_gems.testing import RESOLUTION
-
         zero_equal = torch.eq(res_out, torch.zeros_like(res_out))
         num_zero = torch.sum(zero_equal).item()
         assert abs(num_zero / res_inp.numel() - p) <= 0.05

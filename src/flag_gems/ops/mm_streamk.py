@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ def mac_loop(
     GROUP_M: tl.constexpr,
 ):
     # where are we in the grid
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     tile_id = start_iter // iters_per_tile
 
     pid_m, pid_n = swizzle_tile(tile_id, M, N, BLOCK_M, BLOCK_N, GROUP_M)
@@ -195,7 +195,7 @@ def first_wave(
     GROUP_M: tl.constexpr,
     EVEN_K: tl.constexpr,
 ):
-    pid = tle.program_id(0)  # pid range from 0 to sm_count
+    pid = ext.program_id(0)  # pid range from 0 to sm_count
     start_iter = pid * iters_per_pid + tl.minimum(pid, iters_remaining)
     last_iter = (pid + 1) * iters_per_pid + tl.minimum(pid + 1, iters_remaining)
     while start_iter < last_iter:
@@ -298,7 +298,7 @@ def first_wave_for_bf16(
     GROUP_M: tl.constexpr,
     EVEN_K: tl.constexpr,
 ):
-    pid = tle.program_id(0)  # pid range from 0 to sm_count
+    pid = ext.program_id(0)  # pid range from 0 to sm_count
     start_iter = pid * iters_per_pid + tl.minimum(pid, iters_remaining)
     last_iter = (pid + 1) * iters_per_pid + tl.minimum(pid + 1, iters_remaining)
     while start_iter < last_iter:
@@ -404,7 +404,7 @@ def classic_mm(
     GROUP_M: tl.constexpr,
 ):
     # first wave has done more tiles than there are SMs, we adjust pid
-    tile_id = tle.program_id(0) + total_tiles_streamk
+    tile_id = ext.program_id(0) + total_tiles_streamk
     pid_m, pid_n = swizzle_tile(tile_id, M, N, BLOCK_M, BLOCK_N, GROUP_M)
 
     # do matrix multiplication

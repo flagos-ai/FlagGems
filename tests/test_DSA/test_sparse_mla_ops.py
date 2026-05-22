@@ -265,8 +265,3 @@ def test_sparse_mla_device_compatibility():
     assert (
         your_output.shape == expected_shape
     ), f"Output shape incorrect: {your_output.shape} != {expected_shape}"
-
-
-if __name__ == "__main__":
-    # Can directly run this file for testing
-    pytest.main([__file__, "-v"])
