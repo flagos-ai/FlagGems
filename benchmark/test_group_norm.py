@@ -58,7 +58,7 @@ def test_group_norm():
 def test_group_norm_backward():
     bench = NormBenchmark(
         input_fn=group_norm_input_fn,
-        op_name="group_norm",
+        op_name="group_norm_backward",
         torch_op=torch.nn.functional.group_norm,
         dtypes=consts.FLOAT_DTYPES,
         is_backward=True,
