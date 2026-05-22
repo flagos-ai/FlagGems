@@ -2,7 +2,7 @@ import pytest
 import torch
 
 import flag_gems
-
+from . import accuracy_utils as utils
 from .accuracy_utils import gems_assert_close, to_reference
 from .conftest import QUICK_MODE
 
