@@ -7,6 +7,10 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+# Test covers all FLOAT_DTYPES to validate the kernel's correctness for every
+# supported input type (the kernel upcasts to float32 internally, then casts
+# back). Benchmark is fp32-only because torch.special.bessel_j1 on CUDA has no
+# Half/BFloat16 reference — see benchmark/test_special_bessel_j1.py for details.
 @pytest.mark.special_bessel_j1
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
