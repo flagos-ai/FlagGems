@@ -255,7 +255,7 @@ class HCHeadFusedBenchmark(base.Benchmark):
             yield hs_flat, fn, hc_scale, hc_base, out, hidden_size, 1e-6, 1e-6, hc_mult
 
 
-def _hc_head_fused_kernel_vllm_ref(
+def _hc_head_fused_kernel_ref(
     hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
 ):
     _vllm_hc_head_fused(
@@ -269,7 +269,7 @@ def _hc_head_fused_kernel_vllm_ref(
 def test_hc_head_fused_kernel():
     bench = HCHeadFusedBenchmark(
         op_name="hc_head_fused_kernel",
-        torch_op=_hc_head_fused_kernel_vllm_ref,
+        torch_op=_hc_head_fused_kernel_ref,
         gems_op=hc_head_fused_kernel,
         dtypes=[torch.bfloat16],
     )
