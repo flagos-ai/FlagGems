@@ -15,6 +15,9 @@ Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz#/flag-gems-%{version
 # linux_x86_64 even when FLAGGEMS_BUILD_C_EXTENSIONS=OFF) and with the
 # Debian `Architecture: amd64`. See packaging/NOTES.md.
 BuildArch:      x86_64
+# ExclusiveArch makes rpmbuild refuse to start on a non-x86_64 host
+# (belt and suspenders with BuildArch above; this wheel is linux_x86_64 only).
+ExclusiveArch:  x86_64
 BuildRequires:  python3-devel
 BuildRequires:  python3-setuptools >= 64
 BuildRequires:  python3-wheel
@@ -77,7 +80,7 @@ PYTHONDONTWRITEBYTECODE=1 \
     python3 -c "import importlib.util; s = importlib.util.find_spec('flag_gems'); assert s and s.origin, 'flag_gems not findable'; print('OK: flag_gems at', s.origin)"
 
 %files -f %{pyproject_files}
-%license LICENSE*
+%license LICENSE
 
 %changelog
 * Thu May 21 2026 FlagOS Contributors <contact@flagos.io> - 5.0.2-1
