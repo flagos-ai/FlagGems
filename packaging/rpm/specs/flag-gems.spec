@@ -26,6 +26,22 @@ BuildRequires:  python3-scikit-build-core
 BuildRequires:  cmake
 BuildRequires:  ninja-build
 
+# Filter out auto-generated `==`-pinned Requires that %%pyproject_save_files
+# would emit from FlagGems's strict pyproject dependencies. The pinned
+# versions (numpy==1.26.4, PyYAML==6.0.3, sqlalchemy==2.0.48, packaging==26.0)
+# never match what Fedora ships (numpy 2.3.5, pyyaml 6.0.2 etc.), so the
+# auto Requires make the RPM uninstallable. We instead Require the distro
+# package names without a version constraint below — any compatible
+# distro version works at runtime. torch/triton stay excluded as before
+# (distro torch is CPU-only; users install GPU torch via pip).
+%global __requires_exclude ^python3.*dist.*(torch|numpy|pyyaml|sqlalchemy|packaging)
+
+# Hand-written distro deps (versions left open — distro newer is fine):
+Requires:       python3-numpy
+Requires:       python3-pyyaml
+Requires:       python3-sqlalchemy
+Requires:       python3-packaging
+
 # Triton runtime dep — any FlagTree backend satisfies this (libblas3
 # pattern, see ADR-002). Not yet active until FlagTree adds the
 # Provides: python3-flagtree-backend declaration; leaving plain dep
