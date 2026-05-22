@@ -5931,6 +5931,7 @@ ops:
       - None
     labels:
       - fused
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:

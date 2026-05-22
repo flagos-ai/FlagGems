@@ -5,7 +5,6 @@ import torch
 import torch.nn.functional as F
 
 import flag_gems
-from flag_gems.fused import top_k_per_row_prefill
 from flag_gems.patches.patch_util import patch_module_method, patch_vllm_lib
 
 
@@ -440,14 +439,6 @@ def custom_cutlass_scaled_mm(
     return flag_gems.cutlass_scaled_mm(output, input, weight, scale_a, scale_b, bias)
 
 
-def custom_top_k_per_row_prefill(
-    logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
-):
-    top_k_per_row_prefill(
-        logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
-    )
-
-
 def custom_concat_and_cache_mla(
     kv_c: torch.Tensor,
     k_pe: torch.Tensor,
@@ -637,7 +628,6 @@ def apply_gems_patches_to_vllm(verbose=True):
         ("_moe_C", "grouped_topk", custom_moe_grouped_topk),
         ("_C", "per_token_group_fp8_quant", custom_per_token_group_fp8_quant),
         ("_C", "apply_repetition_penalties_", custom_apply_repetition_penalties),
-        ("_C", "top_k_per_row_prefill", custom_top_k_per_row_prefill),
         ("_C_cache_ops", "concat_and_cache_mla", custom_concat_and_cache_mla),
     ]
     for lib_name, fn_name, fn in lib_patches:
