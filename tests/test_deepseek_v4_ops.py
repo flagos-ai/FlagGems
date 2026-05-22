@@ -1,19 +1,20 @@
 import pytest
 import torch
 
-from flag_gems.fused.dsv4_kernel_ops import (
-    dsv4_kernel_combine_topk_swa_indices,
-    dsv4_kernel_compute_global_topk_indices_and_lens,
-    dsv4_kernel_cp_gather_indexer_k_quant_cache,
-    dsv4_kernel_deepseek_v4_fp8_einsum,
-    dsv4_kernel_dequantize_and_gather_k_cache,
-    dsv4_kernel_flash_mla_sparse_decode,
-    dsv4_kernel_flash_mla_sparse_fwd,
-    dsv4_kernel_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
-    dsv4_kernel_fused_q_kv_rmsnorm,
-    dsv4_kernel_get_mla_metadata,
-    dsv4_kernel_persistent_topk,
-    dsv4_kernel_top_k_per_row_prefill,
+import flag_gems.testing as fg_testing
+from flag_gems.fused.deepseek_v4_ops import (
+    combine_topk_swa_indices,
+    compute_global_topk_indices_and_lens,
+    cp_gather_indexer_k_quant_cache,
+    deepseek_v4_fp8_einsum,
+    dequantize_and_gather_k_cache,
+    flash_mla_sparse_decode,
+    flash_mla_sparse_fwd,
+    fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
+    fused_q_kv_rmsnorm,
+    get_mla_metadata,
+    persistent_topk,
+    top_k_per_row_prefill,
 )
 
 
@@ -27,26 +28,33 @@ def _has_hopper() -> bool:
 HAS_HOPPER = _has_hopper()
 
 
+def _has_op(lib_name: str, op_name: str) -> bool:
+    try:
+        return hasattr(getattr(torch.ops, lib_name), op_name)
+    except Exception:
+        return False
+
+
 @pytest.mark.skipif(not HAS_HOPPER, reason="requires Hopper SM90")
-def test_dsv4_kernel_interface_local_ops_smoke():
+def test_deepseek_v4_ops_local_interface_smoke():
     device = "cuda"
 
     qr = torch.randn((8, 64 * 576), device=device, dtype=torch.bfloat16)
     kv = torch.randn((8, 576), device=device, dtype=torch.bfloat16)
     q_weight = torch.ones((64 * 576,), device=device, dtype=torch.bfloat16)
     kv_weight = torch.ones((576,), device=device, dtype=torch.bfloat16)
-    q_out, kv_out = dsv4_kernel_fused_q_kv_rmsnorm(qr, kv, q_weight, kv_weight, 1e-6)
+    q_out, kv_out = fused_q_kv_rmsnorm(qr, kv, q_weight, kv_weight, 1e-6)
     assert q_out.shape == qr.shape
     assert kv_out.shape == kv.shape
 
     topk_indices = torch.tensor(
         [[0, 2, -1, -1], [1, 3, 0, -1]], device=device, dtype=torch.int32
     )
-    token_to_req = torch.tensor([0, 0], device=device, dtype=torch.int32)
+    token_to_req_indices = torch.tensor([0, 0], device=device, dtype=torch.int32)
     block_table = torch.tensor([[5, 9]], device=device, dtype=torch.int32)
-    global_indices, lens = dsv4_kernel_compute_global_topk_indices_and_lens(
+    global_indices, lens = compute_global_topk_indices_and_lens(
         topk_indices,
-        token_to_req,
+        token_to_req_indices,
         block_table,
         block_size=64,
     )
@@ -56,7 +64,7 @@ def test_dsv4_kernel_interface_local_ops_smoke():
     query_start_loc = torch.tensor([0, 2], device=device, dtype=torch.int32)
     seq_lens = torch.tensor([16], device=device, dtype=torch.int32)
     gather_lens = torch.tensor([16], device=device, dtype=torch.int32)
-    combined, combined_lens = dsv4_kernel_combine_topk_swa_indices(
+    combined, combined_lens = combine_topk_swa_indices(
         topk_indices=topk_indices,
         query_start_loc=query_start_loc,
         seq_lens=seq_lens,
@@ -72,7 +80,7 @@ def test_dsv4_kernel_interface_local_ops_smoke():
 
 
 @pytest.mark.skipif(not HAS_HOPPER, reason="requires Hopper SM90")
-def test_dsv4_kernel_interface_qnorm_insert_and_gather_smoke():
+def test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert_and_gather_smoke():
     device = "cuda"
     num_tokens = 8
     head_dim = 576
@@ -98,7 +106,7 @@ def test_dsv4_kernel_interface_qnorm_insert_and_gather_smoke():
     block_stride = block_size * token_data_size + block_size * scale_slots
     k_cache = torch.zeros((2, block_stride), device=device, dtype=torch.uint8)
 
-    dsv4_kernel_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
+    fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
         q,
         kv,
         k_cache,
@@ -115,7 +123,7 @@ def test_dsv4_kernel_interface_qnorm_insert_and_gather_smoke():
     seq_lens = torch.tensor([num_tokens], device=device, dtype=torch.int32)
     gather_lens = torch.tensor([num_tokens], device=device, dtype=torch.int32)
     block_table = torch.tensor([[0, 1]], device=device, dtype=torch.int32)
-    dsv4_kernel_dequantize_and_gather_k_cache(
+    dequantize_and_gather_k_cache(
         out,
         k_cache,
         seq_lens,
@@ -127,11 +135,11 @@ def test_dsv4_kernel_interface_qnorm_insert_and_gather_smoke():
         nope_dim=nope_dim,
         scale_slots=scale_slots,
     )
-    assert out.isfinite().all()
+    fg_testing.assert_equal(out.isfinite(), torch.ones_like(out, dtype=torch.bool))
 
 
 @pytest.mark.skipif(not HAS_HOPPER, reason="requires Hopper SM90")
-def test_dsv4_kernel_interface_fp8_einsum_smoke():
+def test_deepseek_v4_fp8_einsum_smoke():
     device = "cuda"
     batch = 2
     groups = 2
@@ -146,7 +154,7 @@ def test_dsv4_kernel_interface_fp8_einsum_smoke():
     a_scale = torch.ones((batch, groups, 1), device=device, dtype=torch.float32)
     b_scale = torch.ones((groups, 1, 1), device=device, dtype=torch.float32)
     out = torch.empty((batch, groups, ndim), device=device, dtype=torch.bfloat16)
-    dsv4_kernel_deepseek_v4_fp8_einsum(
+    deepseek_v4_fp8_einsum(
         a,
         a_scale,
         b,
@@ -155,24 +163,17 @@ def test_dsv4_kernel_interface_fp8_einsum_smoke():
         equation="bhr,hdr->bhd",
         recipe=[1, 128, 128],
     )
-    assert out.isfinite().all()
-
-
-def _has_op(lib_name: str, op_name: str) -> bool:
-    try:
-        return hasattr(getattr(torch.ops, lib_name), op_name)
-    except Exception:
-        return False
+    fg_testing.assert_equal(out.isfinite(), torch.ones_like(out, dtype=torch.bool))
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires cuda")
-def test_dsv4_kernel_interface_external_vllm_ops_smoke():
+def test_external_vllm_interface_smoke():
     if _has_op("_C", "persistent_topk"):
         logits = torch.randn((2, 512), device="cuda", dtype=torch.float32)
         lengths = torch.tensor([512, 320], device="cuda", dtype=torch.int32)
         output = torch.empty((2, 512), device="cuda", dtype=torch.int32)
         workspace = torch.empty((1024 * 1024,), device="cuda", dtype=torch.uint8)
-        dsv4_kernel_persistent_topk(logits, lengths, output, workspace, 512, 512)
+        persistent_topk(logits, lengths, output, workspace, 512, 512)
         assert output.shape == (2, 512)
 
     if _has_op("_C", "top_k_per_row_prefill"):
@@ -180,7 +181,7 @@ def test_dsv4_kernel_interface_external_vllm_ops_smoke():
         row_starts = torch.tensor([0, 16, 32, 48], device="cuda", dtype=torch.int32)
         row_ends = torch.tensor([16, 32, 48, 64], device="cuda", dtype=torch.int32)
         out_indices = torch.empty((4, 8), device="cuda", dtype=torch.int32)
-        dsv4_kernel_top_k_per_row_prefill(
+        top_k_per_row_prefill(
             logits,
             row_starts,
             row_ends,
@@ -193,16 +194,16 @@ def test_dsv4_kernel_interface_external_vllm_ops_smoke():
         assert out_indices.shape == (4, 8)
 
     if _has_op("_C_cache_ops", "cp_gather_indexer_k_quant_cache"):
-        assert callable(dsv4_kernel_cp_gather_indexer_k_quant_cache)
+        assert callable(cp_gather_indexer_k_quant_cache)
 
     try:
-        dsv4_kernel_get_mla_metadata()
+        get_mla_metadata()
     except Exception:
         pass
 
 
 @pytest.mark.skipif(not HAS_HOPPER, reason="requires Hopper SM90")
-def test_dsv4_kernel_interface_prefill_decode_smoke():
+def test_flash_mla_sparse_fwd_decode_smoke():
     try:
         from vllm.v1.attention.ops.flashmla import is_flashmla_sparse_supported
     except Exception:
@@ -225,7 +226,7 @@ def test_dsv4_kernel_interface_prefill_decode_smoke():
     attn_sink = torch.zeros((h,), device=device, dtype=torch.float32)
     topk_length = torch.full((sq,), topk, device=device, dtype=torch.int32)
 
-    out, _, _ = dsv4_kernel_flash_mla_sparse_fwd(
+    out, _, _ = flash_mla_sparse_fwd(
         q,
         kv,
         indices,
@@ -248,7 +249,7 @@ def test_dsv4_kernel_interface_prefill_decode_smoke():
         (bsz * next_n,), topk, device=device, dtype=torch.int32
     )
 
-    dsv4_kernel_flash_mla_sparse_decode(
+    flash_mla_sparse_decode(
         decode_q,
         k_cache,
         decode_indices,

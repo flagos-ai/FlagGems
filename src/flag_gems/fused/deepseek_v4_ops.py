@@ -15,7 +15,7 @@ from flag_gems.fused.dsv4_attention import (
 )
 
 
-def dsv4_kernel_fused_q_kv_rmsnorm(
+def fused_q_kv_rmsnorm(
     qr: torch.Tensor,
     kv: torch.Tensor,
     q_weight: torch.Tensor,
@@ -25,7 +25,7 @@ def dsv4_kernel_fused_q_kv_rmsnorm(
     return dsv4_fused_q_kv_rmsnorm(qr, kv, q_weight, kv_weight, eps)
 
 
-def dsv4_kernel_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
+def fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
     q: torch.Tensor,
     kv: torch.Tensor,
     k_cache: torch.Tensor,
@@ -54,7 +54,7 @@ def dsv4_kernel_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
     )
 
 
-def dsv4_kernel_dequantize_and_gather_k_cache(
+def dequantize_and_gather_k_cache(
     out: torch.Tensor,
     k_cache: torch.Tensor,
     seq_lens: torch.Tensor,
@@ -81,9 +81,9 @@ def dsv4_kernel_dequantize_and_gather_k_cache(
     )
 
 
-def dsv4_kernel_compute_global_topk_indices_and_lens(
+def compute_global_topk_indices_and_lens(
     topk_indices: torch.Tensor,
-    token_to_req: torch.Tensor,
+    token_to_req_indices: torch.Tensor,
     block_table: torch.Tensor,
     block_size: int,
     is_valid_token: Optional[torch.Tensor] = None,
@@ -94,14 +94,14 @@ def dsv4_kernel_compute_global_topk_indices_and_lens(
         )
     return dsv4_compute_global_topk_indices_and_lens(
         topk_indices=topk_indices,
-        token_to_req_indices=token_to_req,
+        token_to_req_indices=token_to_req_indices,
         block_table=block_table,
         block_size=block_size,
         is_valid_token=is_valid_token,
     )
 
 
-def dsv4_kernel_combine_topk_swa_indices(
+def combine_topk_swa_indices(
     topk_indices: torch.Tensor,
     query_start_loc: torch.Tensor,
     seq_lens: torch.Tensor,
@@ -125,7 +125,7 @@ def dsv4_kernel_combine_topk_swa_indices(
     )
 
 
-def dsv4_kernel_flash_mla_sparse_fwd(
+def flash_mla_sparse_fwd(
     q: torch.Tensor,
     kv: torch.Tensor,
     indices: torch.Tensor,
@@ -147,10 +147,10 @@ def dsv4_kernel_flash_mla_sparse_fwd(
     )
 
 
-def dsv4_kernel_flash_mla_sparse_decode(
+def flash_mla_sparse_decode(
     q: torch.Tensor,
     k_cache: torch.Tensor,
-    indices_in_kvcache: torch.Tensor,
+    indices: torch.Tensor,
     sm_scale: float,
     head_dim_v: int,
     attn_sink: torch.Tensor,
@@ -167,7 +167,7 @@ def dsv4_kernel_flash_mla_sparse_decode(
     return dsv4_flash_mla_sparse_decode(
         q=q,
         k_cache=k_cache,
-        indices=indices_in_kvcache,
+        indices=indices,
         sm_scale=sm_scale,
         head_dim_v=head_dim_v,
         attn_sink=attn_sink,
@@ -183,7 +183,7 @@ def dsv4_kernel_flash_mla_sparse_decode(
     )
 
 
-def dsv4_kernel_deepseek_v4_fp8_einsum(
+def deepseek_v4_fp8_einsum(
     a: torch.Tensor,
     a_scale: torch.Tensor,
     b: torch.Tensor,
@@ -203,13 +203,13 @@ def dsv4_kernel_deepseek_v4_fp8_einsum(
     )
 
 
-def dsv4_kernel_get_mla_metadata(*args, **kwargs):
-    from vllm.v1.attention.ops.flashmla import get_mla_metadata
+def get_mla_metadata(*args, **kwargs):
+    from vllm.v1.attention.ops.flashmla import get_mla_metadata as _get_mla_metadata
 
-    return get_mla_metadata(*args, **kwargs)
+    return _get_mla_metadata(*args, **kwargs)
 
 
-def dsv4_kernel_persistent_topk(
+def persistent_topk(
     logits: torch.Tensor,
     lengths: torch.Tensor,
     output: torch.Tensor,
@@ -220,7 +220,7 @@ def dsv4_kernel_persistent_topk(
     torch.ops._C.persistent_topk(logits, lengths, output, workspace, k, max_seq_len)
 
 
-def dsv4_kernel_top_k_per_row_prefill(
+def top_k_per_row_prefill(
     logits: torch.Tensor,
     row_starts: torch.Tensor,
     row_ends: torch.Tensor,
@@ -242,7 +242,7 @@ def dsv4_kernel_top_k_per_row_prefill(
     )
 
 
-def dsv4_kernel_cp_gather_indexer_k_quant_cache(
+def cp_gather_indexer_k_quant_cache(
     kv_cache: torch.Tensor,
     dst_k: torch.Tensor,
     dst_scale: torch.Tensor,
@@ -259,16 +259,16 @@ def dsv4_kernel_cp_gather_indexer_k_quant_cache(
 
 
 __all__ = [
-    "dsv4_kernel_combine_topk_swa_indices",
-    "dsv4_kernel_compute_global_topk_indices_and_lens",
-    "dsv4_kernel_cp_gather_indexer_k_quant_cache",
-    "dsv4_kernel_deepseek_v4_fp8_einsum",
-    "dsv4_kernel_dequantize_and_gather_k_cache",
-    "dsv4_kernel_flash_mla_sparse_decode",
-    "dsv4_kernel_flash_mla_sparse_fwd",
-    "dsv4_kernel_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
-    "dsv4_kernel_fused_q_kv_rmsnorm",
-    "dsv4_kernel_get_mla_metadata",
-    "dsv4_kernel_persistent_topk",
-    "dsv4_kernel_top_k_per_row_prefill",
+    "combine_topk_swa_indices",
+    "compute_global_topk_indices_and_lens",
+    "cp_gather_indexer_k_quant_cache",
+    "deepseek_v4_fp8_einsum",
+    "dequantize_and_gather_k_cache",
+    "flash_mla_sparse_decode",
+    "flash_mla_sparse_fwd",
+    "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
+    "fused_q_kv_rmsnorm",
+    "get_mla_metadata",
+    "persistent_topk",
+    "top_k_per_row_prefill",
 ]

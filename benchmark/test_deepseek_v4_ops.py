@@ -1,13 +1,13 @@
 import pytest
 import torch
 
-from flag_gems.fused.dsv4_kernel_ops import (
-    dsv4_kernel_combine_topk_swa_indices,
-    dsv4_kernel_compute_global_topk_indices_and_lens,
-    dsv4_kernel_deepseek_v4_fp8_einsum,
-    dsv4_kernel_fused_q_kv_rmsnorm,
-    dsv4_kernel_persistent_topk,
-    dsv4_kernel_top_k_per_row_prefill,
+from flag_gems.fused.deepseek_v4_ops import (
+    combine_topk_swa_indices,
+    compute_global_topk_indices_and_lens,
+    deepseek_v4_fp8_einsum,
+    fused_q_kv_rmsnorm,
+    persistent_topk,
+    top_k_per_row_prefill,
 )
 
 from . import base
@@ -27,13 +27,13 @@ def _has_op(lib_name: str, op_name: str) -> bool:
         return False
 
 
-class DSV4KernelRMSNormBenchmark(base.Benchmark):
+class FusedQKVRMSNormBenchmark(base.Benchmark):
     def __init__(self):
         super().__init__(
-            "dsv4_kernel_fused_q_kv_rmsnorm",
-            dsv4_kernel_fused_q_kv_rmsnorm,
+            "fused_q_kv_rmsnorm",
+            fused_q_kv_rmsnorm,
             [torch.bfloat16],
-            gems_op=dsv4_kernel_fused_q_kv_rmsnorm,
+            gems_op=fused_q_kv_rmsnorm,
         )
 
     def set_shapes(self, shape_file_path=None):
@@ -50,13 +50,13 @@ class DSV4KernelRMSNormBenchmark(base.Benchmark):
             yield (qr, kv, q_weight, kv_weight, 1e-6)
 
 
-class DSV4KernelTopkMapBenchmark(base.Benchmark):
+class ComputeGlobalTopkIndicesAndLensBenchmark(base.Benchmark):
     def __init__(self):
         super().__init__(
-            "dsv4_kernel_compute_global_topk_indices_and_lens",
-            dsv4_kernel_compute_global_topk_indices_and_lens,
+            "compute_global_topk_indices_and_lens",
+            compute_global_topk_indices_and_lens,
             [torch.int32],
-            gems_op=dsv4_kernel_compute_global_topk_indices_and_lens,
+            gems_op=compute_global_topk_indices_and_lens,
         )
 
     def set_shapes(self, shape_file_path=None):
@@ -70,20 +70,22 @@ class DSV4KernelTopkMapBenchmark(base.Benchmark):
             topk_indices = torch.randint(
                 -1, 64, (num_tokens, topk), device=device, dtype=torch.int32
             )
-            token_to_req = torch.zeros((num_tokens,), device=device, dtype=torch.int32)
+            token_to_req_indices = torch.zeros(
+                (num_tokens,), device=device, dtype=torch.int32
+            )
             block_table = torch.arange(0, 256, device=device, dtype=torch.int32).view(
                 1, -1
             )
-            yield (topk_indices, token_to_req, block_table, 64, None)
+            yield (topk_indices, token_to_req_indices, block_table, 64, None)
 
 
-class DSV4KernelCombineBenchmark(base.Benchmark):
+class CombineTopkSwaIndicesBenchmark(base.Benchmark):
     def __init__(self):
         super().__init__(
-            "dsv4_kernel_combine_topk_swa_indices",
-            dsv4_kernel_combine_topk_swa_indices,
+            "combine_topk_swa_indices",
+            combine_topk_swa_indices,
             [torch.int32],
-            gems_op=dsv4_kernel_combine_topk_swa_indices,
+            gems_op=combine_topk_swa_indices,
         )
 
     def set_shapes(self, shape_file_path=None):
@@ -115,13 +117,13 @@ class DSV4KernelCombineBenchmark(base.Benchmark):
             )
 
 
-class DSV4KernelFP8EinsumBenchmark(base.Benchmark):
+class DeepseekV4Fp8EinsumBenchmark(base.Benchmark):
     def __init__(self):
         super().__init__(
-            "dsv4_kernel_deepseek_v4_fp8_einsum",
-            dsv4_kernel_deepseek_v4_fp8_einsum,
+            "deepseek_v4_fp8_einsum",
+            deepseek_v4_fp8_einsum,
             [torch.float8_e4m3fn],
-            gems_op=dsv4_kernel_deepseek_v4_fp8_einsum,
+            gems_op=deepseek_v4_fp8_einsum,
         )
 
     def set_shapes(self, shape_file_path=None):
@@ -156,13 +158,13 @@ class DSV4KernelFP8EinsumBenchmark(base.Benchmark):
             )
 
 
-class DSV4KernelPersistentTopkBenchmark(base.Benchmark):
+class PersistentTopkBenchmark(base.Benchmark):
     def __init__(self):
         super().__init__(
-            "dsv4_kernel_persistent_topk",
-            dsv4_kernel_persistent_topk,
+            "persistent_topk",
+            persistent_topk,
             [torch.float32],
-            gems_op=dsv4_kernel_persistent_topk,
+            gems_op=persistent_topk,
         )
 
     def set_shapes(self, shape_file_path=None):
@@ -179,13 +181,13 @@ class DSV4KernelPersistentTopkBenchmark(base.Benchmark):
             yield (logits, lengths, output, workspace, 512, max_seq_len)
 
 
-class DSV4KernelTopKPerRowPrefillBenchmark(base.Benchmark):
+class TopKPerRowPrefillBenchmark(base.Benchmark):
     def __init__(self):
         super().__init__(
-            "dsv4_kernel_top_k_per_row_prefill",
-            dsv4_kernel_top_k_per_row_prefill,
+            "top_k_per_row_prefill",
+            top_k_per_row_prefill,
             [torch.float32],
-            gems_op=dsv4_kernel_top_k_per_row_prefill,
+            gems_op=top_k_per_row_prefill,
         )
 
     def set_shapes(self, shape_file_path=None):
@@ -214,16 +216,16 @@ class DSV4KernelTopKPerRowPrefillBenchmark(base.Benchmark):
 
 
 @pytest.mark.skipif(not _has_hopper(), reason="requires Hopper SM90")
-def test_dsv4_kernel_core_benchmarks():
-    DSV4KernelRMSNormBenchmark().run()
-    DSV4KernelTopkMapBenchmark().run()
-    DSV4KernelCombineBenchmark().run()
-    DSV4KernelFP8EinsumBenchmark().run()
+def test_deepseek_v4_ops_core_benchmarks():
+    FusedQKVRMSNormBenchmark().run()
+    ComputeGlobalTopkIndicesAndLensBenchmark().run()
+    CombineTopkSwaIndicesBenchmark().run()
+    DeepseekV4Fp8EinsumBenchmark().run()
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires cuda")
-def test_dsv4_kernel_external_topk_benchmarks():
+def test_deepseek_v4_ops_external_topk_benchmarks():
     if _has_op("_C", "persistent_topk"):
-        DSV4KernelPersistentTopkBenchmark().run()
+        PersistentTopkBenchmark().run()
     if _has_op("_C", "top_k_per_row_prefill"):
-        DSV4KernelTopKPerRowPrefillBenchmark().run()
+        TopKPerRowPrefillBenchmark().run()
