@@ -107,7 +107,6 @@ __all__ = [
     "fused_inv_rope_fp8_quant",
     "rwkv_ka_fusion",
     "rwkv_mm_sparsity",
-    "unpack_seq_triton",
     "silu_and_mul",
     "silu_and_mul_out",
     "silu_and_mul_with_clamp",

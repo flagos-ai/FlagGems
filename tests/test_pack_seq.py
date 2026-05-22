@@ -12,16 +12,17 @@ from . import conftest as cfg
 # =============================================================================
 
 
-def _is_cuda_hopper():
+def is_cuda_available():
     if flag_gems.device != "cuda":
         return False
     if not torch.cuda.is_available():
         return False
     major, minor = torch.cuda.get_device_capability()
-    return major >= 9
+    sm_version_num = major * 10 + minor
+    return sm_version_num >= 90 and sm_version_num < 100
 
 
-CUDA_HOPPER = _is_cuda_hopper()
+CUDA_AVAILABLE = is_cuda_available()
 
 
 def _ref_pack_seq(x, lengths, pad_value=-float("inf")):
@@ -80,12 +81,7 @@ else:
     ]
 
 
-# =============================================================================
-# accuracy — 2D / 3D
-# =============================================================================
-
-
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 @pytest.mark.parametrize("N, D, lengths_list", PACK_SHAPES_2D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_pack_seq_accuracy_2d(N, D, lengths_list, dtype):
@@ -99,7 +95,7 @@ def test_pack_seq_accuracy_2d(N, D, lengths_list, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 @pytest.mark.parametrize("N, H, D, lengths_list", PACK_SHAPES_3D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_pack_seq_accuracy_3d(N, H, D, lengths_list, dtype):
@@ -120,12 +116,7 @@ def test_pack_seq_accuracy_3d(N, H, D, lengths_list, dtype):
     utils.gems_assert_close(result, ref_out, dtype)
 
 
-# =============================================================================
-# shape consistency
-# =============================================================================
-
-
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 @pytest.mark.parametrize(
     "N, H, D, lengths_list",
     [(6, 8, 4, [3, 3])]
@@ -143,12 +134,7 @@ def test_pack_seq_shape_consistency(N, H, D, lengths_list):
     assert result.shape[2:] == x.shape[1:]
 
 
-# =============================================================================
-# custom padding
-# =============================================================================
-
-
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 @pytest.mark.parametrize("pad_value", [-100.0, -10.0, 0.0, 10.0, 100.0])
 def test_pack_seq_custom_padding(pad_value):
     N, D = 20, 16
@@ -167,12 +153,7 @@ def test_pack_seq_custom_padding(pad_value):
     )
 
 
-# =============================================================================
-# default -inf padding
-# =============================================================================
-
-
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_pack_seq_default_inf_padding(dtype):
     N, D = 20, 16
@@ -185,12 +166,7 @@ def test_pack_seq_default_inf_padding(dtype):
     assert torch.all(torch.isinf(padded_data) & (padded_data < 0))
 
 
-# =============================================================================
-# edge cases
-# =============================================================================
-
-
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 def test_pack_seq_single_batch():
     lengths = torch.tensor([10], dtype=torch.int32, device=flag_gems.device)
     x = torch.randn(10, 16, dtype=torch.float32, device=flag_gems.device)
@@ -198,7 +174,7 @@ def test_pack_seq_single_batch():
     assert result.shape == (1, 10, 16)
 
 
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 def test_pack_seq_short_sequences():
     lengths = torch.tensor([1, 1, 1], dtype=torch.int32, device=flag_gems.device)
     x = torch.randn(20, 4, dtype=torch.float32, device=flag_gems.device)
@@ -206,7 +182,7 @@ def test_pack_seq_short_sequences():
     assert result.shape == (3, 1, 4)
 
 
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 def test_pack_seq_3d_single_batch():
     lengths = torch.tensor([10], dtype=torch.int32, device=flag_gems.device)
     x = torch.randn(10, 8, 16, dtype=torch.float32, device=flag_gems.device)
@@ -214,7 +190,7 @@ def test_pack_seq_3d_single_batch():
     assert result.shape == (1, 10, 8, 16)
 
 
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 def test_pack_seq_3d_short_sequences():
     lengths = torch.tensor([1, 1, 1], dtype=torch.int32, device=flag_gems.device)
     x = torch.randn(20, 4, 8, dtype=torch.float32, device=flag_gems.device)
@@ -222,12 +198,7 @@ def test_pack_seq_3d_short_sequences():
     assert result.shape == (3, 1, 4, 8)
 
 
-# =============================================================================
-# block sizes
-# =============================================================================
-
-
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 @pytest.mark.parametrize("block_t, block_d", [(32, 32), (64, 64), (128, 128)])
 def test_pack_seq_block_sizes(block_t, block_d):
     N, D = 100, 32
@@ -243,14 +214,9 @@ def test_pack_seq_block_sizes(block_t, block_d):
     utils.gems_assert_close(result, ref_out, torch.float32)
 
 
-# =============================================================================
-# fp8 tests
-# =============================================================================
-
-
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 @pytest.mark.skipif(
-    not CUDA_HOPPER,
+    not CUDA_AVAILABLE,
     reason="requires NVIDIA Hopper architecture for FP8",
 )
 @pytest.mark.parametrize(
@@ -275,9 +241,9 @@ def test_pack_seq_fp8_basic(N, H, D, lengths_list):
         torch.testing.assert_close(actual, expected, rtol=1e-1, atol=1e-2)
 
 
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 @pytest.mark.skipif(
-    not CUDA_HOPPER,
+    not CUDA_AVAILABLE,
     reason="requires NVIDIA Hopper architecture for FP8",
 )
 def test_pack_seq_fp8_custom_padding():
@@ -297,9 +263,9 @@ def test_pack_seq_fp8_custom_padding():
             assert torch.allclose(padded_data, torch.zeros_like(padded_data), atol=1e-2)
 
 
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 @pytest.mark.skipif(
-    not CUDA_HOPPER,
+    not CUDA_AVAILABLE,
     reason="requires NVIDIA Hopper architecture for FP8",
 )
 def test_pack_seq_fp8_default_inf_padding():
@@ -313,9 +279,9 @@ def test_pack_seq_fp8_default_inf_padding():
     assert torch.all(padded_data < -100)
 
 
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 @pytest.mark.skipif(
-    not CUDA_HOPPER,
+    not CUDA_AVAILABLE,
     reason="requires NVIDIA Hopper architecture for FP8",
 )
 @pytest.mark.parametrize("block_t, block_d", [(32, 32), (64, 64), (128, 128)])

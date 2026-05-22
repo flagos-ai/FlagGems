@@ -69,6 +69,7 @@ def pack_seq_triton(
     block_t: int = 64,
     block_d: int = 64,
 ) -> torch.Tensor:
+    logger.debug("GEMS PACK_SEQ_TRITON")
     is_uint8 = x.dtype == torch.uint8
     if is_uint8:
         assert (

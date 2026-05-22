@@ -17,51 +17,24 @@ try:
 except ImportError:
     HAS_VLLM = False
 
-
 # =============================================================================
-# CUDA / Hopper check for FP8
+# CUDA available check for FP8
 # =============================================================================
 
 
-def _is_cuda_hopper():
+def is_cuda_available():
     if flag_gems.device != "cuda":
         return False
     if not torch.cuda.is_available():
         return False
     major, minor = torch.cuda.get_device_capability()
-    return major >= 9
+    sm_version_num = major * 10 + minor
+    return sm_version_num >= 90 and sm_version_num < 100
 
 
-CUDA_HOPPER = _is_cuda_hopper()
+CUDA_AVAILABLE = is_cuda_available()
 
-FP8_DTYPE = torch.float8_e4m3fn if CUDA_HOPPER else None
-
-
-# =============================================================================
-# Wrapper functions — vllm
-# =============================================================================
-
-
-def _vllm_pack_seq(x, lengths):
-    return vllm_pack_seq(x, lengths)
-
-
-def _vllm_pack_seq_fp8(x, lengths):
-    return vllm_pack_seq(x, lengths)
-
-
-# =============================================================================
-# Wrapper functions — FlagGems
-# =============================================================================
-
-
-def _gems_pack_seq(x, lengths):
-    return pack_seq_triton(x, lengths)
-
-
-def _gems_pack_seq_fp8(x, lengths):
-    return pack_seq_triton(x, lengths)
-
+FP8_DTYPE = torch.float8_e4m3fn if CUDA_AVAILABLE else None
 
 # =============================================================================
 # Benchmark shapes: (N, D, B, lengths_list)
@@ -135,36 +108,31 @@ class PackSeqFP8Benchmark(base.Benchmark):
         yield x_fp8, lengths
 
 
-# =============================================================================
-# Benchmark tests
-# =============================================================================
-
-
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 @pytest.mark.skipif(
     not HAS_VLLM,
     reason="requires vLLM to be installed for reference comparison",
 )
 def test_pack_seq():
     bench = PackSeqBenchmark(
-        op_name="pack_seq",
-        torch_op=_vllm_pack_seq,
+        op_name="pack_seq_triton",
+        torch_op=vllm_pack_seq,
         dtypes=[torch.float16, torch.float32, torch.bfloat16],
     )
-    bench.set_gems(_gems_pack_seq)
+    bench.set_gems(pack_seq_triton)
     bench.run()
 
 
-@pytest.mark.pack_seq
+@pytest.mark.pack_seq_triton
 @pytest.mark.skipif(
-    not (HAS_VLLM and CUDA_HOPPER),
+    not (HAS_VLLM and CUDA_AVAILABLE),
     reason="requires vLLM and NVIDIA Hopper architecture for FP8",
 )
 def test_pack_seq_fp8():
     bench = PackSeqFP8Benchmark(
-        op_name="pack_seq_fp8",
-        torch_op=_vllm_pack_seq_fp8,
+        op_name="pack_seq_triton",
+        torch_op=vllm_pack_seq,
         dtypes=[FP8_DTYPE],
     )
-    bench.set_gems(_gems_pack_seq_fp8)
+    bench.set_gems(pack_seq_triton)
     bench.run()
