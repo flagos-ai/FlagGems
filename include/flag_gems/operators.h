@@ -42,6 +42,9 @@ at::Tensor fill_tensor(const at::Tensor &input, const at::Tensor &value);
 at::Tensor &fill_scalar_(at::Tensor &input, const c10::Scalar &value);
 at::Tensor &fill_tensor_(at::Tensor &input, const at::Tensor &value);
 #endif
+std::vector<at::Tensor> act_quant_triton(const at::Tensor &x,
+                                         int block_size = 128,
+                                         std::optional<std::string> scale_fmt = std::nullopt);
 at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2);
 at::Tensor &mm_out_tensor(const at::Tensor &mat1, const at::Tensor &mat2, at::Tensor &out);
 at::Tensor sum_dim(const at::Tensor &self,
@@ -113,6 +116,16 @@ at::Tensor softmax_backward(const at::Tensor &grad_output,
                             const at::Tensor &output,
                             int64_t dim,
                             at::ScalarType input_dtype);
+at::Tensor fp8_matmul(const at::Tensor &a,
+                      const at::Tensor &a_s,
+                      const at::Tensor &b,
+                      const at::Tensor &b_s,
+                      const at::ScalarType scale_dtype = at::kFloat);
+at::Tensor fp8_matmul_direct(const at::Tensor &a,
+                             const at::Tensor &a_s,
+                             const at::Tensor &b,
+                             const at::Tensor &b_s,
+                             const at::ScalarType scale_dtype = at::kFloat);
 
 void reshape_and_cache_flash(const at::Tensor &key,
                              const at::Tensor &value,

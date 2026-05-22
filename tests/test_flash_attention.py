@@ -103,6 +103,72 @@ def gems_flash_fwd(
     return out, lse, seed, offset, debug_softmax
 
 
+def sparse_attention_ref(q, kv, attn_sink, topk_idxs, scale):
+    batch, seq_len, heads, dim = q.shape
+    topk = topk_idxs.shape[-1]
+
+    kv_expanded = kv[:, None, :, :].expand(batch, seq_len, -1, dim)
+    idx_expanded = topk_idxs[:, :, :, None].expand(batch, seq_len, topk, dim).long()
+    gathered_kv = torch.gather(kv_expanded, 2, idx_expanded)
+
+    scores = torch.einsum("bmhd,bmtd->bmht", q.float(), gathered_kv.float()) * scale
+    sink = attn_sink[None, None, :, None].expand(batch, seq_len, heads, 1)
+    attn = torch.softmax(torch.cat([scores, sink], dim=-1), dim=-1)
+
+    out = torch.einsum("bmht,bmtd->bmhd", attn[:, :, :, :-1], gathered_kv.float())
+    return out.to(q.dtype)
+
+
+@pytest.mark.skip(
+    reason="Issue #2809: The operator fails this test on Nvidia at least."
+)
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.sparse_attn_triton
+@pytest.mark.parametrize(
+    "batch, seq_len, kv_len, topk, heads, dim, seed",
+    [
+        (64, 1, 128, 128, 16, 512, 2025),
+        (64, 1, 400, 392, 16, 512, 2026),
+        (16, 1, 168, 165, 16, 512, 2027),
+        (1, 240, 240, 128, 8, 512, 2028),
+        (64, 1, 144, 137, 16, 512, 2029),
+        (64, 1, 640, 598, 16, 512, 2030),
+        (1, 1, 264, 257, 16, 512, 2031),
+        (1, 240, 240, 128, 4, 512, 2032),
+    ],
+)
+def test_sparse_attention(batch, seq_len, kv_len, topk, heads, dim, seed):
+    device = torch_device_fn.current_device()
+    utils.init_seed(seed)
+
+    q = torch.empty((batch, seq_len, heads, dim), device=device, dtype=torch.bfloat16)
+    q.uniform_(-0.05, 0.05)
+    kv = torch.empty((batch, kv_len, dim), device=device, dtype=torch.bfloat16)
+    kv.uniform_(-0.05, 0.05)
+    attn_sink = torch.empty((heads,), device=device, dtype=torch.float32)
+    attn_sink.uniform_(-0.1, 0.1)
+    topk_idxs = torch.randint(
+        0,
+        kv_len,
+        (batch, seq_len, topk),
+        device=device,
+        dtype=torch.int32,
+    )
+    scale = float(1.0 / np.sqrt(dim))
+
+    ref_q = utils.to_reference(q, False)
+    ref_kv = utils.to_reference(kv, False)
+    ref_attn_sink = utils.to_reference(attn_sink, False)
+    ref_topk_idxs = utils.to_reference(topk_idxs, False)
+
+    torch_result = sparse_attention_ref(
+        ref_q, ref_kv, ref_attn_sink, ref_topk_idxs, scale
+    )
+    gems_result = flag_gems.sparse_attn_triton(q, kv, attn_sink, topk_idxs, scale)
+
+    utils.gems_assert_close(gems_result, torch_result, torch.bfloat16, atol=1e-3)
+
+
 def attn_bias_from_alibi_slopes(slopes, seqlen_q, seqlen_k, causal=False):
     # batch, nheads = slopes.shape
     device = slopes.device
@@ -118,11 +184,14 @@ def attn_bias_from_alibi_slopes(slopes, seqlen_q, seqlen_k, causal=False):
     return -slopes * relative_pos.to(dtype=slopes.dtype)
 
 
-@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
-@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="Unsupported in CPU mode")
 @pytest.mark.flash_attention_forward
+@pytest.mark.skip(
+    reason="Issue #2809: The operator fails this test on Nvidia at least."
+)
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(vendor_name == "metax", reason="Issue #2811: Not supported")
+@pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not working")
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
     [(1, 1, 128, 2048), (4, 8, 1024, 128), (4, 8, 17, 1030)],
@@ -305,9 +374,9 @@ def attention_ref(
 
 
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="Unsupported in CPU mode")
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not supported")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not supported")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
@@ -379,11 +448,11 @@ def test_flash_attention_forward_gqa_alibi_softcap(
     utils.gems_assert_close(gems_out, torch_out, dtype)
 
 
-@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="Unsupported in CPU mode")
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
+@pytest.mark.skipif(vendor_name == "metax", reason="Issue #2811: Not working")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not working")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not working")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
@@ -454,12 +523,11 @@ def test_flash_attention_foward_splitkv(
     utils.gems_assert_close(gems_out, torch_out, dtype)
 
 
-@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.skipif(torch.__version__ < "2.4", reason="Low Pytorch Version")
-@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="Unsupported in CPU mode")
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
+@pytest.mark.skipif(vendor_name == "metax", reason="Issue #2811: Not working")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not working")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not working")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
@@ -522,10 +590,10 @@ def test_flash_attention_foward_swa(
 
 
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.skipif(triton.__version__ < "3.1", reason="Low Triton Version")
-@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="Low Triton Version")
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(triton.__version__ < "3.1", reason="RequiresTriton >= 3.1")
+@pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not supported")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not supported")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],

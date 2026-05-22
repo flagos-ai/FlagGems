@@ -1,0 +1,145 @@
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+from . import conftest as cfg
+
+
+def replace_zeros(inp):
+    return torch.where(inp == 0, 1, inp)
+
+
+@pytest.mark.remainder_tensor
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_remainder(shape, dtype):
+    inp1 = torch.randint(
+        torch.iinfo(dtype).min,
+        torch.iinfo(dtype).max,
+        shape,
+        dtype=dtype,
+        device="cpu",
+    ).to(flag_gems.device)
+    inp2 = torch.randint(
+        torch.iinfo(dtype).min,
+        torch.iinfo(dtype).max,
+        shape,
+        dtype=dtype,
+        device="cpu",
+    ).to(flag_gems.device)
+
+    if cfg.TO_CPU:
+        inp1 = replace_zeros(inp1)
+        inp2 = replace_zeros(inp2)
+
+    ref_inp1 = utils.to_reference(inp1, False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = ref_inp1 % ref_inp2
+    with flag_gems.use_gems():
+        res_out = inp1 % inp2
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+    for d in inp2.flatten()[:2]:
+        ref_d = utils.to_reference(d, False)
+        ref_out = ref_inp1 % ref_d
+        with flag_gems.use_gems():
+            res_out = inp1 % d
+        utils.gems_assert_equal(res_out, ref_out)
+
+        ref_out = ref_d % ref_inp1
+        with flag_gems.use_gems():
+            res_out = d % inp1
+        utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.remainder_tensor_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_remainder_(shape, dtype):
+    inp1 = torch.randint(
+        torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
+    ).to(flag_gems.device)
+    inp2 = torch.randint(
+        torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
+    ).to(flag_gems.device)
+    if cfg.TO_CPU:
+        inp1 = replace_zeros(inp1.clone())
+        inp2 = replace_zeros(inp2)
+    ref_inp1 = utils.to_reference(inp1.clone(), False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = ref_inp1.remainder_(ref_inp2)
+
+    with flag_gems.use_gems():
+        res_out = inp1.remainder_(inp2)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+    ref_inp1 = utils.to_reference(inp1.clone(), False)
+    for d in inp2.flatten()[:2]:
+        ref_d = utils.to_reference(d, False)
+        ref_out = ref_inp1.remainder_(ref_d)
+
+        with flag_gems.use_gems():
+            res_out = inp1.remainder_(d)
+        utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.remainder_scalar_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_remainder_scalar_(shape, dtype):
+    inp = torch.randint(
+        torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
+    ).to(flag_gems.device)
+    scalar = (
+        torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            (1,),
+            dtype=dtype,
+            device="cpu",
+        )
+        .to(flag_gems.device)
+        .item()
+    )
+
+    if cfg.TO_CPU and scalar == 0:
+        scalar = 1
+
+    ref_inp = utils.to_reference(inp.clone(), False)
+    ref_out = ref_inp.remainder_(scalar)
+
+    with flag_gems.use_gems():
+        res_out = inp.remainder_(scalar)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.remainder_scalar_tensor
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_remainder_scalar_tensor(shape, dtype):
+    inp = torch.randint(
+        torch.iinfo(dtype).min,
+        torch.iinfo(dtype).max,
+        shape,
+        dtype=dtype,
+        device="cpu",
+    ).to(flag_gems.device)
+
+    if cfg.TO_CPU:
+        inp = replace_zeros(inp)
+
+    ref_inp = utils.to_reference(inp, False)
+
+    scalar = 7
+    ref_out = torch.remainder(torch.tensor(scalar, dtype=dtype), ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.remainder(scalar, inp)
+
+    utils.gems_assert_equal(res_out, ref_out)

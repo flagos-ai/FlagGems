@@ -20,7 +20,7 @@ def test_exponential_(shape, dtype):
 @pytest.mark.exponential_
 @pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_fast_exponential_(shape, dtype):
+def test_exponential_fast(shape, dtype):
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
     lambd = 1.0
     mean_tol = 0.05

@@ -75,7 +75,7 @@ def test_cat(shape, dim, dtype):
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_accuracy_cat_empty_tensor(shape, dim, dtype):
+def test_cat_empty_tensor(shape, dim, dtype):
     inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
     ref_inp = [utils.to_reference(_) for _ in inp]
     ref_out = torch.cat(ref_inp, dim)
@@ -84,3 +84,22 @@ def test_accuracy_cat_empty_tensor(shape, dim, dtype):
         res_out = torch.cat(inp, dim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.cat_out
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_cat_out_matches_reference(dtype):
+    a = torch.randn(3, 5, dtype=dtype, device=flag_gems.device)
+    b = torch.randn(7, 5, dtype=dtype, device=flag_gems.device)
+    dim = 0
+
+    ref_a = utils.to_reference(a, True)
+    ref_b = utils.to_reference(b, True)
+    ref_out = torch.empty((10, 5), dtype=dtype, device=ref_a.device)
+    torch.ops.aten.cat.out([ref_a, ref_b], dim, out=ref_out)
+
+    out = torch.empty((10, 5), dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        torch.ops.aten.cat.out([a, b], dim, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype)
