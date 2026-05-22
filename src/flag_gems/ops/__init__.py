@@ -1,3 +1,4 @@
+from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -86,6 +87,7 @@ from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
+from flag_gems.ops.conv_transpose2d import conv_transpose2d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.cos import cos, cos_
@@ -391,6 +393,7 @@ from flag_gems.ops.zeros_like import zeros_like
 __all__ = [
     "_assert_async",
     "_conv_depthwise2d",
+    "_euclidean_dist",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
     "_is_all_true",
@@ -494,6 +497,7 @@ __all__ = [
     "conv2d",
     "conv3d",
     "conv_transpose1d",
+    "conv_transpose2d",
     "copy",
     "copy_",
     "copysign",

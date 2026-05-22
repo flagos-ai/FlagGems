@@ -36,6 +36,7 @@ _FULL_CONFIG = (
     ("__or__.Tensor", bitwise_or_tensor),
     ("_assert_async", _assert_async),
     ("_conv_depthwise2d", _conv_depthwise2d),
+    ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_forward", flash_attention_forward),
     (
         "_functional_sym_constrain_range_for_size",
@@ -156,6 +157,7 @@ _FULL_CONFIG = (
     ("conv1d.padding", conv1d),
     ("conv2d", conv2d),
     ("conv2d.padding", conv2d),
+    ("conv_transpose2d", conv_transpose2d),
     ("conv3d", conv3d),
     ("conv3d.padding", conv3d),
     ("conv_transpose1d", conv_transpose1d),
