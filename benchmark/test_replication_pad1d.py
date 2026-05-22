@@ -38,16 +38,18 @@ def test_replication_pad1d():
     bench.run()
 
 
-def _torch_replication_pad1d_out(x, padding):
+def _input_fn_out(config, dtype, device):
+    shape, padding = config
+    x = torch.randn(shape, dtype=dtype, device=device)
     pad_left, pad_right = padding[0], padding[1]
-    if x.dim() == 3:
-        N, C, W_in = x.shape
+    if len(shape) == 3:
+        N, C, W_in = shape
         out_shape = (N, C, W_in + pad_left + pad_right)
     else:
-        C, W_in = x.shape
+        C, W_in = shape
         out_shape = (C, W_in + pad_left + pad_right)
-    out = torch.empty(out_shape, dtype=x.dtype, device=x.device)
-    return torch.ops.aten.replication_pad1d.out(x, padding, out=out)
+    out = torch.empty(out_shape, dtype=dtype, device=device)
+    yield x, list(padding), {"out": out}
 
 
 class ReplicationPad1dOutBenchmark(base.Benchmark):
@@ -64,14 +66,14 @@ class ReplicationPad1dOutBenchmark(base.Benchmark):
 
     def get_input_iter(self, dtype):
         for config in self.shapes:
-            yield from _input_fn(config, dtype, self.device)
+            yield from _input_fn_out(config, dtype, self.device)
 
 
 @pytest.mark.replication_pad1d_out
 def test_replication_pad1d_out():
     bench = ReplicationPad1dOutBenchmark(
         op_name="replication_pad1d_out",
-        torch_op=_torch_replication_pad1d_out,
+        torch_op=torch.ops.aten.replication_pad1d.out,
         dtypes=consts.FLOAT_DTYPES,
     )
 
