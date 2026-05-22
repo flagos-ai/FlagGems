@@ -293,7 +293,7 @@ def test_hc_head_fused_kernel_vs_ref(n, hidden_size, hc_mult):
     torch.testing.assert_close(out_triton, out_ref, rtol=2e-2, atol=2e-2)
 
 
-def _hc_head_fused_kernel_vllm_ref(
+def _hc_head_fused_kernel_ref(
     hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
 ):
     _vllm_hc_head_fused(
@@ -315,5 +315,5 @@ def test_hc_head_fused_kernel_vs_vllm(n, hidden_size, hc_mult):
     data_ref = generate_hc_head_fused_data(n, hidden_size, hc_mult, dtype=dtype)
 
     out_triton = hc_head_fused_kernel(**data)
-    out_ref = _hc_head_fused_kernel_vllm_ref(**data_ref)
+    out_ref = _hc_head_fused_kernel_ref(**data_ref)
     torch.testing.assert_close(out_triton, out_ref, rtol=2e-2, atol=2e-2)
