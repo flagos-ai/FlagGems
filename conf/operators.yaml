@@ -244,6 +244,19 @@ ops:
       - BLAS
     stages:
       - stable: '4.0'
+  - id: affine_grid_generator
+    description: |
+      Generates a 2D or 3D flow field (sampling grid), given a batch of affine matrices theta.
+    for:
+      - affine_grid_generator
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: alias_copy
     description: |
       Creates a new tensor that shares the same storage data as the original tensor,
@@ -1072,6 +1085,18 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: col2im
+    description: |
+      Rearranges column blocks back into a multidimensional tensor (inverse of im2col).
+    for:
+      - col2im
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: concat_and_cache_mla
     description: |
       Writes the latent and RoPE value into KV cache for Multi-head Latent Attention forward case.
@@ -1349,6 +1374,18 @@ ops:
     stages:
       - stable: '2.0'
       - removed: '3.0'
+  - id: cudnn_convolution
+    description: |
+      A wrapper for cuDNN convolution backend.
+    for:
+      - cudnn_convolution
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: cummax
     description: |
       Returns a named tuple `(values, indices)` where `values` is the cumulative maximum of elements
@@ -1857,6 +1894,19 @@ ops:
       - Math
     stages:
       - stable: '5.0'
+  - id: euclidean_dist
+    description: |
+      Computes pairwise Euclidean distances between rows of two 2D tensors.
+    for:
+      - _euclidean_dist
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: erf
     description: Computes the error function of `input`.
     for:
@@ -2149,6 +2199,8 @@ ops:
       - fused
       - Attention
       - vLLM
+    kind:
+      - NeuralNetwork
     stages:
       - alpha: '5.1'
   - id: flip
@@ -2241,6 +2293,54 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: fmod_scalar
+    description: |
+      Computes the element-wise remainder of division of input by a scalar divisor.
+    for:
+      - fmod.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: fmod_scalar_
+    description: |
+      In-place version of fmod with a scalar divisor.
+    for:
+      - fmod_.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: fmod_tensor
+    description: |
+      Computes the element-wise remainder of division of input by a tensor divisor.
+    for:
+      - fmod.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: fmod_tensor_
+    description: |
+      In-place version of fmod with a tensor divisor.
+    for:
+      - fmod_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: fp8_mqa_logits
     description: |
       For each token in the given E4M3 tensor, iterate all tokens from two other given tensors,
@@ -2257,7 +2357,7 @@ ops:
   - id: full
     description: |
       Creates a tensor of size `size` filled with `fill_value`.
-      The tensor’s dtype is inferred from `fill_value`.
+      The tensor's dtype is inferred from `fill_value`.
     for:
       - full
     labels:
@@ -2694,6 +2794,18 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.1'
+  - id: histc
+    description: |
+      Computes the histogram of a tensor, binning each element into equal-width bins.
+    for:
+      - histc
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: hstack
     description: |
       Stack tensors in sequence horizontally (column wise). This is equivalent to concatenation
@@ -2816,6 +2928,30 @@ ops:
       - Tensor
     stages:
       - stable: '4.0'
+  - id: index_copy
+    description: |
+      Copies the elements from `source` into `input` at the positions specified by
+      `index` along the given `dim`.
+    for:
+      - index_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: index_copy_
+    description: The in-place version of `index_copy()`.
+    for:
+      - index_copy_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: index_put
     description: |
       Puts values from the tensor `values` into the tensor `input` using the indices specified
@@ -3410,6 +3546,18 @@ ops:
       - tensor
     stages:
       - stable: '4.0'
+  - id: logsumexp
+    description: |
+      Computes the log of the sum of exponentials of elements in the input tensor along given dimensions.
+    for:
+      - logsumexp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: lt
     description: Computes that `input` is less than `other` element-wise.
     for:
@@ -4010,6 +4158,19 @@ ops:
     stages:
       - stable: '2.1'
     cpp: '4.0'
+  - id: nonzero_numpy
+    description: |
+      Returns a tuple of 1-D tensors, one for each dimension, containing the indices of
+      the nonzero elements in the input tensor (NumPy-style).
+    for:
+      - nonzero_numpy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: normal_float_float_
     description: |
       Returns a tensor of random numbers drawn from separate normal distributions
@@ -4201,6 +4362,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: poisson
+    description: |
+      Returns a tensor of the same size as `input` with each element sampled
+      from a Poisson distribution with rate given by the corresponding element in `input`.
+    for:
+      - poisson
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: polar
     description: |
       Constructs a complex tensor whose elements are Cartesian coordinates corresponding to
@@ -4508,7 +4682,7 @@ ops:
       - beta: '5.0'
   - id: remainder_scalar
     description: |
-      Computes Python’s modulus operation entrywise. The result has the same sign
+      Computes Python's modulus operation entrywise. The result has the same sign
       as the divisor `other` and its absolute value is less than that of `other`.
     for:
       - remainder.Scalar
@@ -4530,7 +4704,7 @@ ops:
       - stable: '2.2'
   - id: remainder_scalar_tensor
     description: |
-      Computes Python’s modulus operation entrywise. The result has the same sign
+      Computes Python's modulus operation entrywise. The result has the same sign
       as the divisor `other` and its absolute value is less than that of `other`.
     for:
       - remainder.Scalar_Tensor
@@ -4542,7 +4716,7 @@ ops:
       - stable: '2.2'
   - id: remainder_tensor
     description: |
-      Computes Python’s modulus operation entrywise. The result has the same sign
+      Computes Python's modulus operation entrywise. The result has the same sign
       as the divisor `other` and its absolute value is less than that of `other`.
     for:
       - remainder.Tensor
