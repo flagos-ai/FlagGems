@@ -53,34 +53,35 @@ SPARSE_MLA_PARAMS = [
 ]
 
 
-class SparseMlaFwdBenchmark(base.Benchmark):
-    def __init__(self):
-        super().__init__(
-            op_name="sparse_mla_fwd_interface",
-            torch_op=triton_sparse_mla_fwd_interface,
-            dtypes=[torch.bfloat16],
-        )
+def sparse_mla_input_fn(param, dtype, device):
+    q, kv, indices = make_sparse_mla_input(
+        batch_size=1,
+        seq_len_q=param["seq_len_q"],
+        seq_len_kv=param["seq_len_kv"],
+        num_heads=param["num_heads"],
+        num_kv_heads=1,
+        qk_dim=576,
+        topk=param["topk"],
+        dtype=dtype,
+        device=device,
+    )
+    yield (q, kv, indices, {"d_v": 512})
 
+
+class SparseMlaFwdBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = []
+        self.shapes = SPARSE_MLA_PARAMS
 
-    def get_input_iter(self, dtype):
-        for param in SPARSE_MLA_PARAMS:
-            q, kv, indices = make_sparse_mla_input(
-                batch_size=1,
-                seq_len_q=param["seq_len_q"],
-                seq_len_kv=param["seq_len_kv"],
-                num_heads=param["num_heads"],
-                num_kv_heads=1,
-                qk_dim=576,
-                topk=param["topk"],
-                dtype=dtype,
-                device=self.device,
-            )
-            yield (q, kv, indices, {"d_v": 512})
+    def set_more_shapes(self):
+        return []
 
 
 @pytest.mark.sparse_mla_fwd_interface
 def test_sparse_mla_fwd_interface():
-    bench = SparseMlaFwdBenchmark()
+    bench = SparseMlaFwdBenchmark(
+        op_name="sparse_mla_fwd_interface",
+        torch_op=triton_sparse_mla_fwd_interface,
+        input_fn=sparse_mla_input_fn,
+        dtypes=[torch.bfloat16],
+    )
     bench.run()
