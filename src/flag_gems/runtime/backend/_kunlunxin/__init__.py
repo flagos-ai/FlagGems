@@ -8,7 +8,6 @@ vendor_info = VendorInfoBase(
 )
 
 CUSTOMIZED_UNUSED_OPS = (
-    "argmax",
     "cummin",
     "cumsum",
     "randperm",
