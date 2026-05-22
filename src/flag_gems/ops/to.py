@@ -97,6 +97,19 @@ def to_copy(
             memory_format=target_memory_format,
         )
 
+    # Triton does not support float8_e8m0fnu dtypes; fall back to PyTorch.
+    if x.dtype == torch.float8_e8m0fnu or target_dtype == torch.float8_e8m0fnu:
+        return torch.ops.aten._to_copy.default.redispatch(
+            _FALLBACK_KEYSET,
+            x,
+            dtype=target_dtype,
+            layout=layout,
+            device=target_device,
+            pin_memory=pin_memory,
+            non_blocking=non_blocking,
+            memory_format=target_memory_format,
+        )
+
     if target_device != x.device or (
         x.device.type == "cpu" and target_device.type == "cpu"
     ):
