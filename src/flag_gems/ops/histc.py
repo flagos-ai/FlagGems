@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def histc_kernel(
     Each thread processes BLOCK_SIZE elements, computing which bin they belong to
     and atomically incrementing the corresponding bin counter.
     """
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -79,7 +79,7 @@ def histc_kernel_simple(
     """
     Simple histogram kernel - each program handles one element at a time.
     """
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -89,11 +89,8 @@ def histc_kernel_simple(
     # Convert to float32 for computation
     inp_val = inp_val.to(tl.float32)
 
-    # Compute bin width
-    bin_width = (max_val - min_val) / bins
-
-    # Compute bin indices
-    bin_idx = ((inp_val - min_val) / bin_width).to(tl.int64)
+    # Compute bin indices using multiplication to avoid float division precision loss
+    bin_idx = tl.floor((inp_val - min_val) * bins / (max_val - min_val)).to(tl.int64)
 
     # Handle edge case: elements exactly equal to max go to last bin
     bin_idx = tl.where(inp_val == max_val, bins - 1, bin_idx)
