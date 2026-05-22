@@ -12,7 +12,7 @@ import torch
 import triton.language as tl
 
 import flag_gems
-from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
+from flag_gems.fused import top_k_per_row_decode
 
 from . import conftest as cfg
 
