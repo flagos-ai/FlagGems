@@ -1,3 +1,10 @@
+"""Benchmark for fused QNorm+RoPE+KV cache insert (DeepSeek V4).
+
+Shapes match DeepSeek V4 production config (H=128, D=512).
+The baseline uses vLLM's fused CUDA kernel when available,
+falling back to a pure-PyTorch reference.
+"""
+
 import math
 
 import pytest
@@ -6,8 +13,45 @@ import torch
 from flag_gems.fused.fused_qnorm_rope_kv import (
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
 )
+from flag_gems.utils.device_info import get_device_capability
 
 from . import base
+
+# Skip entire benchmark on GPUs without FP8 E4M3 support (compute capability < 89)
+pytestmark = pytest.mark.skipif(
+    not (lambda: (lambda m, n: m * 10 + n >= 89)(*get_device_capability()))(),
+    reason="FP8 E4M3 requires compute capability >= 89",
+)
+
+# --- vLLM CUDA baseline (preferred) with PyTorch fallback ---
+try:
+    import vllm._custom_ops  # noqa: F401 — loads torch.ops._C
+
+    def _vllm_fused_qnorm_rope_kv_ref(
+        q,
+        kv,
+        k_cache,
+        slot_mapping,
+        position_ids,
+        cos_sin_cache,
+        eps=1e-6,
+        cache_block_size=16,
+    ):
+        torch.ops._C.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
+            q,
+            kv,
+            k_cache,
+            slot_mapping,
+            position_ids,
+            cos_sin_cache,
+            eps,
+            cache_block_size,
+        )
+
+    HAS_VLLM = True
+except (ImportError, AttributeError):
+    HAS_VLLM = False
+    _vllm_fused_qnorm_rope_kv_ref = None
 
 
 def _torch_fused_qnorm_rope_kv_ref(
@@ -20,7 +64,7 @@ def _torch_fused_qnorm_rope_kv_ref(
     eps=1e-6,
     cache_block_size=16,
 ):
-    """Pure-PyTorch reference: QNorm + RoPE + FP8 KV cache insert."""
+    """Pure-PyTorch fallback reference: QNorm + RoPE + FP8 KV cache insert."""
     N, H, D = q.shape
     N_ins = slot_mapping.shape[0]
     cache_stride = k_cache.stride(0)
@@ -92,6 +136,11 @@ def _torch_fused_qnorm_rope_kv_ref(
         flat[byte_off_tok + 448 : byte_off_tok + 576] = bf16_bytes
 
 
+_baseline_op = (
+    _vllm_fused_qnorm_rope_kv_ref if HAS_VLLM else _torch_fused_qnorm_rope_kv_ref
+)
+
+
 class FusedQNormRopeKVBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "N, H"
 
@@ -144,7 +193,7 @@ class FusedQNormRopeKVBenchmark(base.Benchmark):
 def test_fused_qnorm_rope_kv():
     bench = FusedQNormRopeKVBenchmark(
         op_name="fused_qnorm_rope_kv",
-        torch_op=_torch_fused_qnorm_rope_kv_ref,
+        torch_op=_baseline_op,
         gems_op=fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
         dtypes=[torch.bfloat16],
     )

@@ -2324,6 +2324,7 @@ ops:
       - fused
       - vLLM
       - DeepSeekV4
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:

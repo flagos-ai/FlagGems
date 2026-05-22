@@ -1,8 +1,10 @@
-"""
-Accuracy tests for fused DeepSeek V4 QNorm+RoPE+KV Insert kernel.
+"""Accuracy tests for fused DeepSeek V4 QNorm+RoPE+KV Insert kernel.
 
-Tests the Triton kernel against a pure-PyTorch reference implementation.
+Tests the Triton kernel against vLLM CUDA reference (when available) and a
+pure-PyTorch fallback. Verifies Q path (RMSNorm + RoPE) and KV path
+(RoPE + FP8 quantize + paged cache insert) independently.
 """
+
 import math
 
 import pytest
@@ -14,10 +16,53 @@ from flag_gems.fused.fused_qnorm_rope_kv import (
 )
 from flag_gems.utils.device_info import get_device_capability
 
+from . import conftest as cfg
+
+device = flag_gems.device
+
 
 def is_support_fp8e4nv():
     major, minor = get_device_capability()
     return major * 10 + minor >= 89
+
+
+# --- Shape configuration with QUICK_MODE support ---
+if cfg.QUICK_MODE:
+    DECODE_CONFIGS = [1, 4]
+    PREFILL_CONFIGS = [1024]
+else:
+    DECODE_CONFIGS = [1, 4, 17, 64]
+    PREFILL_CONFIGS = [256, 1024, 2048]
+
+# --- vLLM CUDA reference (optional) ---
+try:
+    import vllm._custom_ops  # noqa: F401 — loads torch.ops._C
+
+    def _vllm_fused_qnorm_rope_kv(
+        q,
+        kv,
+        k_cache,
+        slot_mapping,
+        position_ids,
+        cos_sin_cache,
+        eps=1e-6,
+        cache_block_size=16,
+    ):
+        torch.ops._C.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
+            q,
+            kv,
+            k_cache,
+            slot_mapping,
+            position_ids,
+            cos_sin_cache,
+            eps,
+            cache_block_size,
+        )
+
+    HAS_VLLM = True
+except (ImportError, AttributeError):
+    HAS_VLLM = False
+    _vllm_fused_qnorm_rope_kv = None
 
 
 def fused_qnorm_rope_kv_ref(
@@ -107,7 +152,6 @@ def generate_test_data(
     H: int = 128,
     cache_block_size: int = 16,
     max_pos: int = 8192,
-    device: str = flag_gems.device,
 ):
     """Generate test inputs matching DeepSeek V4 dimensions."""
     torch.manual_seed(42)
@@ -135,13 +179,9 @@ def generate_test_data(
     )
 
 
-DECODE_CONFIGS = [1, 4, 17, 64]
-PREFILL_CONFIGS = [256, 1024, 2048]
-
-
 @pytest.mark.fused_qnorm_rope_kv
 @pytest.mark.skipif(
-    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
+    not is_support_fp8e4nv(), reason="FP8 E4M3 requires compute capability >= 89"
 )
 @pytest.mark.parametrize("N", DECODE_CONFIGS, ids=[f"N{n}" for n in DECODE_CONFIGS])
 def test_q_norm_rope_decode(N):
@@ -159,7 +199,7 @@ def test_q_norm_rope_decode(N):
 
 @pytest.mark.fused_qnorm_rope_kv
 @pytest.mark.skipif(
-    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
+    not is_support_fp8e4nv(), reason="FP8 E4M3 requires compute capability >= 89"
 )
 @pytest.mark.parametrize("N", PREFILL_CONFIGS, ids=[f"N{n}" for n in PREFILL_CONFIGS])
 def test_q_norm_rope_prefill(N):
@@ -177,7 +217,7 @@ def test_q_norm_rope_prefill(N):
 
 @pytest.mark.fused_qnorm_rope_kv
 @pytest.mark.skipif(
-    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
+    not is_support_fp8e4nv(), reason="FP8 E4M3 requires compute capability >= 89"
 )
 @pytest.mark.parametrize(
     "N",
@@ -204,7 +244,7 @@ def test_kv_cache_insert(N):
 
 @pytest.mark.fused_qnorm_rope_kv
 @pytest.mark.skipif(
-    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
+    not is_support_fp8e4nv(), reason="FP8 E4M3 requires compute capability >= 89"
 )
 def test_inplace_modification():
     """Verify q is modified in-place."""
@@ -216,10 +256,35 @@ def test_inplace_modification():
 
 @pytest.mark.fused_qnorm_rope_kv
 @pytest.mark.skipif(
-    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
+    not is_support_fp8e4nv(), reason="FP8 E4M3 requires compute capability >= 89"
 )
 def test_negative_slot_skipped():
     """Verify tokens with slot_mapping=-1 are skipped."""
     data = generate_test_data(4)
     data["slot_mapping"][2] = -1
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(**data)
+
+
+@pytest.mark.fused_qnorm_rope_kv
+@pytest.mark.skipif(not HAS_VLLM, reason="vLLM is not installed")
+@pytest.mark.skipif(
+    not is_support_fp8e4nv(), reason="FP8 E4M3 requires compute capability >= 89"
+)
+@pytest.mark.parametrize("N", [1, 64, 1024])
+def test_fused_qnorm_rope_kv_vs_vllm(N):
+    """Test against vLLM CUDA kernel."""
+    data = generate_test_data(N)
+    data_ref = {
+        k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in data.items()
+    }
+
+    fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(**data)
+    _vllm_fused_qnorm_rope_kv(**data_ref)
+
+    torch.testing.assert_close(data["q"], data_ref["q"], rtol=1e-2, atol=1e-2)
+    torch.testing.assert_close(
+        data["k_cache"].view(-1).float(),
+        data_ref["k_cache"].view(-1).float(),
+        rtol=0,
+        atol=1,
+    )

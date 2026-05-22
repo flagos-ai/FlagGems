@@ -5,9 +5,6 @@ import torch
 import torch.nn.functional as F
 
 import flag_gems
-from flag_gems.fused.fused_qnorm_rope_kv import (
-    fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
-)
 from flag_gems.patches.patch_util import patch_module_method, patch_vllm_lib
 
 
@@ -455,14 +452,6 @@ def custom_concat_and_cache_mla(
     )
 
 
-def custom_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
-    q, kv, k_cache, slot_mapping, position_ids, cos_sin_cache, eps, cache_block_size
-):
-    fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
-        q, kv, k_cache, slot_mapping, position_ids, cos_sin_cache, eps, cache_block_size
-    )
-
-
 def custom_gems_flashattn_mla_forward_decode(
     self,
     q: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
@@ -640,11 +629,6 @@ def apply_gems_patches_to_vllm(verbose=True):
         ("_C", "per_token_group_fp8_quant", custom_per_token_group_fp8_quant),
         ("_C", "apply_repetition_penalties_", custom_apply_repetition_penalties),
         ("_C_cache_ops", "concat_and_cache_mla", custom_concat_and_cache_mla),
-        (
-            "_C",
-            "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
-            custom_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
-        ),
     ]
     for lib_name, fn_name, fn in lib_patches:
         patch_vllm_lib(lib_name, fn_name, fn, dispatch_key, verbose)
