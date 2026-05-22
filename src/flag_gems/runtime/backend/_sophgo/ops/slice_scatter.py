@@ -3,9 +3,26 @@ import logging
 import torch
 import triton
 
+from flag_gems.utils.codegen_config_utils import CodeGenConfig
 from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
+from flag_gems.utils.tensor_wrapper import StridedBuffer
+from flag_gems.utils import pointwise_dynamic
 
 from ..ops.copy import copy
+
+
+config_ = CodeGenConfig(
+    64, (512, 1, 1), 32, False,
+    prefer_1d_tile=int(triton.__version__[0]) < 3,
+)
+
+
+@pointwise_dynamic(
+    is_tensor=[True], promotion_methods=[(0, "DEFAULT")], config=config_
+)
+@triton.jit
+def copy_func(x):
+    return x
 
 
 def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
@@ -36,9 +53,16 @@ def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
     ndim = inp.ndim
     copy(inp, out0=out)
 
-    indices = [slice(None)] * ndim
-    indices[dim] = slice(start, end, step)
-    out_ = out[indices]
-    copy(src, out0=out_)
+    new_strides = list(out.stride())
+    new_strides[dim] *= step
+
+    out_slice = StridedBuffer(
+        out,
+        shape=src.shape,
+        strides=new_strides,
+        offset=start * out.stride(dim),
+    )
+
+    copy_func.instantiate(ndim)(src, out0=out_slice)
 
     return out

@@ -43,6 +43,7 @@ from .nllloss import (
 )
 from .nonzero import nonzero
 from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
+from .pad import pad
 from .polar import polar
 from .pow import (
     pow_scalar,
@@ -134,6 +135,7 @@ __all__ = [
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
+    "pad",
     "polar",
     "pow_scalar",
     "pow_tensor_scalar",
