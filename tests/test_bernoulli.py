@@ -11,7 +11,7 @@ SPECIAL_SHAPES = utils.POINTWISE_SHAPES
 @pytest.mark.bernoulli
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_bernoulli(shape, dtype):
+def test_bernoulli(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         res_out = torch.bernoulli(inp)
@@ -22,7 +22,7 @@ def test_accuracy_bernoulli(shape, dtype):
 # bfloat16 excluded: deterministic boundary test only needs float16+float32
 @pytest.mark.bernoulli
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_accuracy_bernoulli_deterministic(dtype):
+def test_bernoulli_deterministic(dtype):
     inp_zeros = torch.zeros(1024, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         out_zeros = torch.bernoulli(inp_zeros)
@@ -37,7 +37,7 @@ def test_accuracy_bernoulli_deterministic(dtype):
 @pytest.mark.bernoulli_
 @pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_bernoulli_(shape, dtype):
+def test_bernoulli_(shape, dtype):
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
     p = 0.5
     with flag_gems.use_gems():
@@ -53,7 +53,7 @@ def test_accuracy_bernoulli_(shape, dtype):
 @pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("p", [0.0, 0.3, 0.7, 1.0])
-def test_accuracy_bernoulli__various_p(shape, dtype, p):
+def test_bernoulli_various_p(shape, dtype, p):
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         x.bernoulli_(p)
