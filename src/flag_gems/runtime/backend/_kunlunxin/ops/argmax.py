@@ -69,20 +69,13 @@ def heur_n_block_size(args):
 
 
 @libentry()
-# @triton.heuristics(runtime.get_heuristic_config("argmax"))
-@triton.heuristics(
-    values={
-        "BLOCK_M": heur_m_block_size,
-        "BLOCK_N": heur_n_block_size,
-    },
-)
 @triton.jit
 def argmax_kernel(
     inp,
     out_index,
-    M: tl.constexpr,
-    N: tl.constexpr,
-    K: tl.constexpr,
+    M,
+    N,
+    K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -118,7 +111,6 @@ def argmax_kernel(
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("argmax"))
 @triton.jit
 def argmax_kernel_small_n(
     inp,
@@ -205,10 +197,10 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
         if not keepdim:
             out_index = torch.squeeze(out_index, dim)
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            K,
-        )
+
+        BLOCK_M = heur_m_block_size({"M": M, "N": N})
+        BLOCK_N = heur_n_block_size({"M": M, "N": N})
+        grid = (triton.cdiv(M, BLOCK_M), K)
 
         if N == 1:
             tl_dtype, dtype_min_value = torch_dtype_to_tl_dtype_and_min_value[inp.dtype]
@@ -221,6 +213,8 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                     K,
                     tl_dtype,
                     dtype_min_value,
+                    BLOCK_M,
+                    BLOCK_N,
                 )
             return out_index
 
@@ -231,6 +225,8 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 M,
                 N,
                 K,
+                BLOCK_M,
+                BLOCK_N,
                 is_use_mask_zero=True,
             )
 
