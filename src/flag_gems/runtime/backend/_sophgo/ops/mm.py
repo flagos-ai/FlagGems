@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 )
 @triton.heuristics(runtime.get_heuristic_config("mm"))
 @triton.jit
-# def mm_kernel(
 def matmul_kernel(
     a_ptr,
     b_ptr,
@@ -37,26 +36,10 @@ def matmul_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    SPLIT_K: tl.constexpr,
     EVEN_K: tl.constexpr,
 ):
-    """Kernel for computing the matmul C = A x B.
-    A has shape (M, K), B has shape (K, N) and C has shape (M, N)
-    """
-    # -----------------------------------------------------------
-    # Map program ids `pid` to the block of C it should compute.
-    # This is done in a grouped ordering to promote L2 data reuse.
-    # See above `L2 Cache Optimizations` section for details.
-    pid = tl.program_id(axis=0)
-    num_pid_m = tl.cdiv(M, BLOCK_M)
-    num_pid_n = tl.cdiv(N, BLOCK_N)
-    num_pid_in_group = GROUP_M * num_pid_n
-    group_id = pid // num_pid_in_group
-    first_pid_m = group_id * GROUP_M
-    group_size_m = min(num_pid_m - first_pid_m, GROUP_M)
-    pid_m = first_pid_m + (pid % group_size_m)
-    pid_n = (pid % num_pid_in_group) // group_size_m
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
 
     # ----------------------------------------------------------
     # Create pointers for the first blocks of A and B.
@@ -127,21 +110,30 @@ def mm(a, b):
         a = a.contiguous()
     if b.stride(0) > 1 and b.stride(1) > 1:
         b = b.contiguous()
+    if a.dtype == torch.float32 or b.dtype == torch.float32:
+        a = a.contiguous()
+        b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
-    # allocates output
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
+    # For M=1 or N=1, PPL AddressAssign may fail due to compile-time tensor
+    # sizes outscaling the actual data. Use broadcast-mul-reduce instead.
+    if M == 1:
+        c = (a.view(1, K, 1) * b.unsqueeze(0)).sum(dim=1)
+        return c
+    elif N == 1:
+        c = (a.view(M, K) * b.view(1, K)).sum(dim=1, keepdim=True)
+        return c
     c = torch.empty((M, N), device=device, dtype=c_dtype)
     dot_out_dtype = tl.float32
     # launch kernel
     grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        triton.cdiv(M, META["BLOCK_M"]),
+        triton.cdiv(N, META["BLOCK_N"]),
     )
-    # import pdb;pdb.set_trace()
     with torch_device_fn.device(a.device):
-        # mm_kernel[grid](
         matmul_kernel[grid](
             a,
             b,
@@ -156,7 +148,6 @@ def mm(a, b):
             c.stride(0),
             c.stride(1),
             dot_out_dtype=dot_out_dtype,
-            GROUP_M=8,
         )
     return c
 
@@ -168,6 +159,9 @@ def mm_out(a, b, *, out):
         a = a.contiguous()
     if b.stride(0) > 1 and b.stride(1) > 1:
         b = b.contiguous()
+    if a.dtype == torch.float32 or b.dtype == torch.float32:
+        a = a.contiguous()
+        b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
@@ -177,12 +171,11 @@ def mm_out(a, b, *, out):
     dot_out_dtype = tl.float32
     # launch kernel
     grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-        META["SPLIT_K"],
+        triton.cdiv(M, META["BLOCK_M"]),
+        triton.cdiv(N, META["BLOCK_N"]),
     )
     with torch_device_fn.device(a.device):
         matmul_kernel[grid](
-            # mm_kernel[grid](
             a,
             b,
             c,
@@ -196,6 +189,5 @@ def mm_out(a, b, *, out):
             c.stride(0),
             c.stride(1),
             dot_out_dtype=dot_out_dtype,
-            GROUP_M=8,
         )
     return c

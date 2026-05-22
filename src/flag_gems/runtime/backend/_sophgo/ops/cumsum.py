@@ -27,7 +27,7 @@ def scan_part_sum_kernel(
     mask = offset < n_elements
 
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask)
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=0)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
         or tl.constexpr(inp_vals.dtype.is_uint64())
@@ -39,7 +39,7 @@ def scan_part_sum_kernel(
         inp_vals = inp_vals.to(tl.float32)
     result = tl.cumsum(inp_vals, axis=0)
 
-    part_sum_via_sum = tl.sum(inp_vals)
+    part_sum_via_sum = tl.sum(inp_vals.to(tl.float32)).to(inp_vals.dtype)
 
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)
@@ -62,7 +62,7 @@ def add_base_sum_kernel(
     mask = offset < n_elements
 
     out_ptrs = out + offset
-    out_vals = tl.load(out_ptrs, mask=mask)
+    out_vals = tl.load(out_ptrs, mask=mask, other=0)
 
     if pid > 0:
         partial_sum_ptrs = partial_sum + pid - 1
@@ -96,7 +96,7 @@ def scan_part_sum_abc_kernel(
 
     mask = c_idx < C
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask)
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=0)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
         or tl.constexpr(inp_vals.dtype.is_uint64())
@@ -108,7 +108,7 @@ def scan_part_sum_abc_kernel(
         inp_vals = inp_vals.to(tl.float32)
     result = tl.cumsum(inp_vals, axis=0)
 
-    part_sum_via_sum = tl.sum(inp_vals)
+    part_sum_via_sum = tl.sum(inp_vals.to(tl.float32)).to(inp_vals.dtype)
 
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)

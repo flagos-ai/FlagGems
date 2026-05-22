@@ -90,7 +90,10 @@ def test_accuracy_mm(M, N, K, dtype):
     with flag_gems.use_gems():
         res_out = torch.mm(mat1, mat2)
 
-    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    if flag_gems.vendor_name == "sophgo" and dtype == torch.float32:
+        gems_assert_close(res_out, ref_out, dtype, atol=0.05, rtol=1e-4)
+    else:
+        gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.mv

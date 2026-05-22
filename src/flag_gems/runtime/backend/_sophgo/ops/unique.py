@@ -45,8 +45,8 @@ def _sort_workaround(tensor):
     cpu_tensor = tensor.cpu()  # Transfer to CPU
     sorted_data, sorted_indices = torch.sort(cpu_tensor)  # Sort on CPU
     return sorted_data.to(tensor.device), sorted_indices.to(
-        tensor.device
-    )  # Transfer back to TPU
+        torch.int32
+    ).to(tensor.device)  # Transfer back to TPU
 
 
 @libentry()
@@ -62,8 +62,6 @@ def simple_unique_flat_kernel(
     Simplified unique kernel - only computes adjacent element not-equal markers (executed on TPU).
 
     Function: Compare adjacent elements in the sorted array, marking unequal positions.
-    Modification: The original version included tl.cumsum(), but due to the compiler's
-        linalg_ext.scan shape validation issue, it now only computes ne_result.
         cumsum is completed on the CPU.
 
     Algorithm:
@@ -76,26 +74,19 @@ def simple_unique_flat_kernel(
         sorted_indices_ptr: Sort indices pointer (unused, kept for interface compatibility).
         ne_result_ptr: Output - not-equal marker array.
         num_tasks: Total number of data items.
-        tile_size: Tile size (power of 2).
+        tile_size: Tile size (max 8192).
     """
-    # Generate index range [0, 1, 2, ..., tile_size-1]
     i0 = tl.arange(0, tile_size)
-    mask = i0 < num_tasks  # Handle boundary case
+    mask = i0 < num_tasks
 
-    # Load current element
     a = tl.load(sorted_data_ptr + i0, mask=mask)
 
-    # Calculate previous element index (first element's previous is set to 0)
     i0_prev = tl.where(i0 > 0, i0 - 1, 0)
 
-    # Load previous element
     b = tl.load(sorted_data_ptr + i0_prev, mask=mask)
 
-    # Compute not-equal markers: if i0 > 0 and a != b, mark 1, otherwise 0
-    # First element (i0 == 0) is always marked 0
     ne_result = tl.where(i0 > 0, a != b, 0)
 
-    # Store result (cumsum will be done on CPU later)
     tl.store(ne_result_ptr + i0, ne_result, mask=mask)
 
 
@@ -798,22 +789,83 @@ def simple_unique_flat(
         counts: Count array (if return_counts=True).
     """
     num_tasks = sorted_data.numel()
+
+    # ========== CPU fallback for large inputs ==========
+    # For very large inputs, compute everything on CPU to avoid ppl-compile
+    # and CMODEL bugs: AddressAssign failure, DMA out-of-range, int16 precision mismatch.
+    # Only final results are transferred back to TPU.
+    if False:  # CPU fallback disabled: ppl v1.7.116 fixes CMA and DMA issues
+        sorted_cpu = sorted_data.cpu()
+        indices_cpu = sorted_indices.cpu()
+
+        ne_cpu = torch.zeros(num_tasks, dtype=torch.int32)
+        ne_cpu[1:] = (sorted_cpu[1:] != sorted_cpu[:-1]).to(torch.int32)
+
+        cumsum_cpu = torch.cumsum(ne_cpu, dim=0)
+        out_size = cumsum_cpu[-1].item() + 1
+
+        # unique values (CPU gather, avoids scatter_)
+        ne_mask_cpu = ne_cpu.bool()
+        ne_mask_cpu[0] = True
+        unique_pos = torch.where(ne_mask_cpu)[0]
+        data_out = sorted_cpu[unique_pos].to(sorted_data.device)
+
+        # inverse_indices (CPU scatter, avoids scatter_)
+        inverse_indices = None
+        if return_inverse:
+            inv_cpu = torch.zeros(num_tasks, dtype=torch.int32)
+            inv_cpu.scatter_(
+                0,
+                indices_cpu.to(torch.int32),
+                cumsum_cpu.to(torch.int32),
+            )
+            inverse_indices = inv_cpu.to(sorted_data.device)
+
+        # counts
+        counts = None
+        if return_counts:
+            idx_next_cpu = torch.cat(
+                [unique_pos[1:], torch.tensor([num_tasks], dtype=torch.int32)]
+            )
+            counts = (idx_next_cpu - unique_pos).to(sorted_data.device)
+
+        return data_out, inverse_indices, counts
+
+    # ========== TPU chunked path for smaller inputs ==========
+    sorted_data_for_kernel = sorted_data
+    chunk_tile_size = min(8192, triton.next_power_of_2(num_tasks))
+    num_chunks = triton.cdiv(num_tasks, chunk_tile_size)
     grid = (1, 1, 1)
 
-    # ========== Step 1: Compute ne_result on TPU ==========
-    # Allocate output tensor
+    # ========== Step 1: Compute ne_result on TPU (chunked) ==========
     ne_result = torch.empty_like(sorted_data, dtype=torch.int32)
 
-    # Launch TPU kernel to compute adjacent element not-equal markers
     with torch_device_fn.device(sorted_data.device.index):
-        simple_unique_flat_kernel[grid](
-            sorted_data,
-            sorted_indices,
-            ne_result,  # out
-            num_tasks,
-            tile_size=triton.next_power_of_2(num_tasks),
-            num_warps=8,
-        )
+        for chunk_id in range(num_chunks):
+            offset = chunk_id * chunk_tile_size
+            chunk_size = min(chunk_tile_size, num_tasks - offset)
+            chunk_tile = triton.next_power_of_2(chunk_size)
+            simple_unique_flat_kernel[grid](
+                sorted_data_for_kernel[offset:],
+                sorted_indices[offset:],
+                ne_result[offset:],
+                chunk_size,
+                tile_size=chunk_tile,
+                num_warps=8,
+            )
+
+        # Fix inter-chunk boundary: first element of each non-first chunk
+        if num_chunks > 1:
+            for chunk_id in range(1, num_chunks):
+                offset = chunk_id * chunk_tile_size
+                if offset < num_tasks:
+                    prev_idx = offset - 1
+                    curr_idx = offset
+                    prev_val = sorted_data_for_kernel[prev_idx : prev_idx + 1]
+                    curr_val = sorted_data_for_kernel[curr_idx : curr_idx + 1]
+                    ne_result[curr_idx : curr_idx + 1] = (
+                        prev_val != curr_val
+                    ).to(torch.int32)
 
     # ========== Step 2: Compute cumsum on CPU (workaround) ==========
     # Problem: tl.cumsum has compilation error (linalg_ext.scan shape validation failure).
@@ -849,24 +901,19 @@ def simple_unique_flat(
     # Compute the occurrence count for each unique value.
     counts = None
     if return_counts:
-        # Find all starting positions of unique values.
-        ne_mask = ne_result.bool()
+        ne_mask = ne_result.cpu().bool()
         ne_mask[
             0
         ] = True  # First element is always a starting position of a unique value
-        idx = torch.arange(num_tasks, device=sorted_data.device, dtype=torch.int32)[
-            ne_mask
-        ]
+        idx_cpu = torch.where(ne_mask)[0]
 
-        # Compute difference between adjacent starting positions, which gives the count per unique value.
-        counts = torch.empty((out_size,), dtype=torch.int32, device=sorted_data.device)
-        idx_next = torch.cat(
+        idx_next_cpu = torch.cat(
             [
-                idx[1:],
-                torch.tensor([num_tasks], device=sorted_data.device, dtype=torch.int32),
+                idx_cpu[1:],
+                torch.tensor([num_tasks], dtype=torch.int32),
             ]
         )
-        counts = idx_next - idx
+        counts = (idx_next_cpu - idx_cpu).to(sorted_data.device)
 
     return data_out, inverse_indices, counts
 
@@ -919,6 +966,12 @@ def _unique2(
     # ========== Step 1: Sort input data ==========
     # Use CPU sort (workaround, bypassing TPU Top-K size limitation).
     # When TPU sort is implemented, replace _sort_workaround with torch.sort.
+    # Convert int16 to int32 for TPU path to avoid cmodel precision mismatch
+    #   (cmodel atomic_tensor_arithmetic.cpp requires A_prec == B_prec).
+    orig_dtype = in0.dtype
+    device = in0.device
+    if in0.dtype == torch.int16:
+        in0 = in0.cpu().to(torch.int32).to(device)
     sorted_data, sorted_indices = _sort_workaround(in0.ravel())
 
     # ========== Step 2: Compute unique ==========
@@ -934,6 +987,8 @@ def _unique2(
     # ========== Step 3: Reshape inverse indices to original input shape ==========
     # inverse_indices is currently 1D (corresponding to in0.ravel()).
     # Need to reshape to the original input shape.
+    if orig_dtype == torch.int16:
+        data_out = data_out.cpu().to(torch.int16).to(data_out.device)
     return (
         data_out,
         inverse_indices if inverse_indices is None else inverse_indices.view_as(in0),

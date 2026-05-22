@@ -383,7 +383,7 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+        inp = torch.randint(-10, 10, shape).to(dtype).to(flag_gems.device)
     ref_inp = to_reference(inp, False)
 
     if return_counts:
@@ -402,7 +402,7 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
                 return_counts=return_counts,
             )
             assert res_out.numel() == ref_out.numel()
-            gems_assert_equal(res_unique_order, ref_unique_order)
+            gems_assert_equal(res_unique_order, ref_unique_order.to(res_unique_order.dtype))
         else:
             with flag_gems.use_gems():
                 res_out, res_counts = torch.unique(
@@ -418,7 +418,7 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
                 return_counts=return_counts,
             )
             assert res_out.numel() == ref_out.numel()
-        gems_assert_equal(res_counts, ref_counts)
+        gems_assert_equal(res_counts, ref_counts.to(res_counts.dtype))
     else:
         if return_inverse:
             with flag_gems.use_gems():
@@ -435,7 +435,7 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
                 return_counts=return_counts,
             )
             assert res_out.numel() == ref_out.numel()
-            gems_assert_equal(res_unique_order, ref_unique_order)
+            gems_assert_equal(res_unique_order, ref_unique_order.to(res_unique_order.dtype))
         else:
             with flag_gems.use_gems():
                 res_out = torch.unique(

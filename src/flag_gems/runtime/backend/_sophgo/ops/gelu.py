@@ -35,7 +35,7 @@ def gelu_none(x):
 @triton.jit
 def gelu_tanh(x):
     x_fp32 = x.to(tl.float32)
-    output = 0.5 * x * (1 + tanh(x_fp32 * 0.79788456 * (1 + 0.044715 * (x_fp32**2))))
+    output = 0.5 * x * (1 + tanh(x_fp32 * 0.79788456 * (1 + 0.044715 * (x_fp32 * x_fp32))))
     return output
 
 
@@ -45,8 +45,9 @@ def gelu_backward_none(x, dy):
     scale1: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
     scale2: tl.constexpr = 0.3989422803  # 1 / math.sqrt(2 * math.pi)
     x_fp32 = x.to(tl.float32)
+    sx = scale1 * x_fp32
     dydx = (
-        scale2 * x_fp32 * exp(-((scale1 * x_fp32) ** 2))
+        scale2 * x_fp32 * exp(-(sx * sx))
         # scale2 * x_fp32 * torch.exp(-torch.pow(scale1 * x_fp32, 2))
         + 0.5 * erf(scale1 * x_fp32)
         + 0.5
@@ -60,9 +61,11 @@ def gelu_backward_none(x, dy):
 def gelu_backward_tanh(x, dy):
     x_fp32 = x.to(tl.float32)
     # 0.79788456 = math.sqrt(2 / math.pi)
-    tanh_out = tanh(0.79788456 * x_fp32 * (1 + 0.044715 * (x_fp32**2)))
+    x2 = x_fp32 * x_fp32
+    tanh_out = tanh(0.79788456 * x_fp32 * (1 + 0.044715 * x2))
+    tanh2 = tanh_out * tanh_out
     dydx = 0.5 * x_fp32 * (
-        (1 - (tanh_out**2)) * (0.79788456 + 0.1070322243 * (x_fp32**2))
+        (1 - tanh2) * (0.79788456 + 0.1070322243 * x2)
     ) + 0.5 * (1 + tanh_out)
     dx = dydx * dy
     return dx

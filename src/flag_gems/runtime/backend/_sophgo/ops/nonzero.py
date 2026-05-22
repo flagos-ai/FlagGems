@@ -60,17 +60,7 @@ def nonzero(inp, *, as_tuple=False):
     num_nonzeros = n_elements
     out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int32, device=inp.device)
 
-    print("=== 1111111111111111parameters ===")
-    print("n_elements:", n_elements)
-    print("inp shape:", inp.shape)
-    print("inp bool:", inp_bool)
-    print("prefix_sum:", prefix_sum)
-    print("shape tensor:", shape)
-    print("out shape:", out.shape)
-    print("inp_ndim:", inp_ndim)
-    print("================================")
-
-    BLOCK_SIZE = 4
+    BLOCK_SIZE = 1024
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(inp.device):
         nonzero_kernel[grid](

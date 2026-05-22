@@ -20,12 +20,10 @@ def polar_kernel(abs, angle):
 
 
 def polar(abs, angle):
-    # Compute real and imaginary parts separately on TPU
     real = torch.empty_like(abs)
     imag = torch.empty_like(abs)
-
     polar_kernel(abs, angle, out0=real, out1=imag)
 
-    # TPU does not support complex type, return stacked tensor of real and imaginary parts
-    # Shape: (..., 2), where last dimension [0] is real part, [1] is imaginary part
-    return torch.stack([real, imag], dim=-1)
+    rcpu, icpu = real.cpu(), imag.cpu()
+    stacked = torch.stack([rcpu, icpu], dim=-1)
+    return torch.view_as_complex(stacked)
