@@ -135,7 +135,7 @@ def sdpa_forward_input_fn(shape, dtype, device):
         (batch, num_kv_head, kv_seq_len, head_size), device=device, dtype=dtype
     ).uniform_(-0.05, 0.05)
     scale = float(1.0 / math.sqrt(head_size))
-    yield q, k, v, None, 0.0, is_causal, scale, enable_gqa
+    yield q, k, v, None, 0.0, {"is_causal": is_causal, "scale": scale, "enable_gqa": enable_gqa}
 
 
 def torch_sdpa_forward(
