@@ -22,12 +22,8 @@ Eliminates the store-load-store pattern for renormalization by storing weights
 during the loop and re-reading with scale at the end.
 """
 
-import logging
-
 import triton
 import triton.language as tl
-
-logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -209,7 +205,6 @@ def topk_softplus_sqrt(
         input_ids: Token IDs for hash mode [num_tokens]
         tid2eid: Hash table mapping tokens to expert indices
     """
-    logger.debug("GEMS TOPK_SOFTPLUS_SQRT")
     num_tokens, num_experts = gating_output.shape
     topk = topk_weights.shape[1]
 

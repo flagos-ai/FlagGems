@@ -96,7 +96,7 @@ def _check_topk_results(
 @pytest.mark.parametrize("dtype", DTYPE_LIST)
 @pytest.mark.parametrize("renormalize", RENORMALIZE_LIST)
 @pytest.mark.parametrize("routed_scaling_factor", RSF_LIST)
-def test_topk_softplus_sqrt(
+def test_topk_softplus_sqrt_standard(
     num_tokens, num_experts, topk, dtype, renormalize, routed_scaling_factor
 ):
     """Test topk_softplus_sqrt in standard mode (with bias) against PyTorch reference."""
