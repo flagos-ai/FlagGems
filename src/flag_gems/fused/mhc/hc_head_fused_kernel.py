@@ -48,9 +48,9 @@ def _hc_head_fused_kernel(
         offsets = block_start + tl.arange(0, BLOCK_K)
         mask = offsets < total_elems
 
-        res_vals = tl.load(
-            residual_ptr + res_base + offsets, mask=mask, other=0.0
-        ).to(tl.float32)
+        res_vals = tl.load(residual_ptr + res_base + offsets, mask=mask, other=0.0).to(
+            tl.float32
+        )
         sqrsum += tl.sum(res_vals * res_vals)
 
         fn0 = tl.load(fn_ptr + 0 * total_elems + offsets, mask=mask, other=0.0)
@@ -150,7 +150,8 @@ def _hc_head_apply_pre_mix_kernel(
     pre_t_base = pid_t * pre_stride_t
 
     for i_hc in tl.static_range(HC):
-        pre = tl.load(pre_mix_ptr + pre_t_base + i_hc * pre_stride_m).to(tl.float32)
+        pre_ptr = pre_mix_ptr + pre_t_base + i_hc * pre_stride_m
+        pre = tl.load(pre_ptr).to(tl.float32)
         hs_ptrs = hs_ptr + hs_t_base + i_hc * hs_stride_m + h_off * hs_stride_h
         hs_vals = tl.load(hs_ptrs, mask=h_mask, other=0.0).to(tl.float32)
         acc += pre * hs_vals
@@ -172,10 +173,11 @@ def hc_head_fused_kernel_ref(
 ) -> torch.Tensor:
     if hs_flat.shape[0] == 0:
         return out
-    x = hs_flat.reshape(hs_flat.shape[0], hc_mult * hidden_size).to(torch.float32)
+    T, M = hs_flat.shape[0], hc_mult
+    x = hs_flat.reshape(T, M * hidden_size).to(torch.float32)
     mixes = torch.matmul(x, fn.t())
     sqrsum = x.square().sum(dim=-1, keepdim=True)
-    rsqrt = torch.rsqrt(sqrsum / (hc_mult * hidden_size) + rms_eps)
+    rsqrt = torch.rsqrt(sqrsum / (M * hidden_size) + rms_eps)
     pre_mix = torch.sigmoid(mixes * rsqrt * hc_scale[0] + hc_base) + hc_eps
     result = torch.sum(pre_mix.unsqueeze(-1) * hs_flat.to(torch.float32), dim=1).to(
         out.dtype
@@ -259,11 +261,20 @@ def hc_head_fused_kernel(
 
     if hs_flat.device.type != "cuda":
         return hc_head_fused_kernel_ref(
-            hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
+            hs_flat,
+            fn,
+            hc_scale,
+            hc_base,
+            out,
+            hidden_size,
+            rms_eps,
+            hc_eps,
+            hc_mult,
         )
 
     if hc_mult == 4:
-        residual = hs_flat.contiguous().reshape(num_tokens, hc_mult * hidden_size)
+        N = num_tokens
+        residual = hs_flat.contiguous().reshape(N, hc_mult * hidden_size)
         fn_c = fn.contiguous()
         total_elems = hc_mult * hidden_size
 
@@ -282,5 +293,13 @@ def hc_head_fused_kernel(
         return out
 
     return _hc_head_fused_two_pass(
-        hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
+        hs_flat,
+        fn,
+        hc_scale,
+        hc_base,
+        out,
+        hidden_size,
+        rms_eps,
+        hc_eps,
+        hc_mult,
     )
