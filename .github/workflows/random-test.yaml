@@ -16,13 +16,6 @@ on:
         description: "GPUs (comma separated numbers)"
         required: true
         type: string
-    secrets:
-      RUNNER_SSH_KEY:
-        required: true
-      PROXYC:
-        required: true
-      PROXYG:
-        required: true
 permissions:
   contents: read
 
@@ -33,7 +26,7 @@ jobs:
       authorized: ${{ steps.makeDecision.outputs.continue }}
     steps:
       - id: checkUser
-        uses: tspascoal/get-user-teams-membership@v4
+        uses: tspascoal/get-user-teams-membership@v4.0.2
         with:
           username: ${{ github.actor }}
           team: 'FlagGems'
@@ -55,26 +48,26 @@ jobs:
     if: needs.check-permission.outputs.authorized == 'true'
     runs-on: ${{ inputs.runner }}
     steps:
-      # - name: Set global proxy
-      #   if: False
-      #   shell: bash
-      #   env:
-      #     RUNNER_LABEL: ${{ inputs.runner }}
-      #     PROXY: ${{ secrets.PROXYG }}
-      #   run: |
-      #     # Setup proxy for git checkout
-      #     case "${RUNNER_LABEL}" in
-      #       h20|metax|hygon)
-      #         ;;
-      #       *)
-      #         echo "HTTP_PROXY=${PROXY}" >> $GITHUB_ENV
-      #         echo "HTTPS_PROXY=${PROXY}" >> $GITHUB_ENV
-      #         ;;
-      #     esac
+      - id: checkout-attempt-1
+        uses: actions/checkout@v6.0.2
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
 
-      - uses: actions/checkout@v6
-        # with:
-        #  ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@v6.0.2
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@v6.0.2
 
       - name: Setup FlagGems
         shell: bash
@@ -112,7 +105,7 @@ jobs:
           tools/run_tests.py --ops ${{ inputs.operators }} --gpus ${{ inputs.gpus }}
 
       - name: Upload results
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: random-test
           path: results/

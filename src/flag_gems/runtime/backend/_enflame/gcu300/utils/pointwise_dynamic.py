@@ -1046,7 +1046,7 @@ class WrapperGenerator:
             code.writeline("FlagOfNotUseDMA = False")
             for i in range(schema.num_input_tensors()):
                 code.writeline(f"in{i}_strides = in{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
+                code.writeline(f"FlagOfNotUseDMA |= any(s <= 0 for s in in{i}_strides)")
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "
@@ -1060,7 +1060,7 @@ class WrapperGenerator:
                     code.writeline(f"in{i}_stride_order = (0,)")
             for i in range(schema.num_output_tensors()):
                 code.writeline(f"out{i}_strides = out{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
+                code.writeline(f"FlagOfNotUseDMA |= any(s <= 0 for s in in{i}_strides)")
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "
@@ -1121,7 +1121,7 @@ class WrapperGenerator:
             code.writeline("FlagOfNotUseDMA = False")
             for i in range(schema.num_input_tensors()):
                 code.writeline(f"in{i}_strides = in{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
+                code.writeline(f"FlagOfNotUseDMA |= any(s <= 0 for s in in{i}_strides)")
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "
@@ -1130,7 +1130,7 @@ class WrapperGenerator:
             for i in range(schema.num_output_tensors()):
                 code.writeline(f"out{i}_strides = out{i}.stride()")
                 code.writeline(
-                    f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)"
+                    f"FlagOfNotUseDMA |= any(s <= 0 for s in out{i}_strides)"
                 )
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
@@ -1401,7 +1401,7 @@ class ModuleGenerator:
         code.writeline(")")
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
         code.writeline("from flag_gems.utils.libentry import libentry")
-        code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+        code.writeline("from flag_gems.utils import triton_lang_extension as ext")
         code.writeline("from flag_gems.runtime import torch_device_fn")
         code.writeline(
             "from flag_gems.runtime.backend._enflame.gcu300.utils.shape_utils import ("
