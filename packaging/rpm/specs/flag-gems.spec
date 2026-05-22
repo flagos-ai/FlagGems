@@ -11,12 +11,10 @@ Summary:        FlagGems — GPU operator library for FlagOS (Phase 1, Python-on
 License:        Apache-2.0
 URL:            https://github.com/flagos-ai/FlagGems
 Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz#/flag-gems-%{version}.tar.gz
-# Stay aligned with the wheel's actual arch tag (scikit-build-core tags
-# linux_x86_64 even when FLAGGEMS_BUILD_C_EXTENSIONS=OFF) and with the
-# Debian `Architecture: amd64`. See packaging/NOTES.md.
-BuildArch:      x86_64
-# ExclusiveArch makes rpmbuild refuse to start on a non-x86_64 host
-# (belt and suspenders with BuildArch above; this wheel is linux_x86_64 only).
+# scikit-build-core tags this wheel linux_x86_64 even when
+# FLAGGEMS_BUILD_C_EXTENSIONS=OFF, so the rpm is x86_64-only. Use
+# ExclusiveArch (not BuildArch) so rpmbuild refuses to start on a
+# non-x86_64 host instead of silently producing a mislabeled rpm.
 ExclusiveArch:  x86_64
 BuildRequires:  python3-devel
 BuildRequires:  python3-setuptools >= 64
@@ -33,8 +31,7 @@ BuildRequires:  ninja-build
 # Reason: torch: distro version is CPU-only. numpy/pyyaml/sqlalchemy/packaging: distro has them but FlagGems pyproject uses == pins that distro versions do not match; we Require them below without a version constraint instead.
 # See packaging/INSTALL.md (or future flagos-packaging install docs) for the
 # user-side pip install incantation.
-%global __requires_exclude ^python3.*dist.*(torch|numpy|pyyaml|sqlalchemy|packaging)
-
+%global __requires_exclude ^python3(\.[0-9]+)?dist\((torch|numpy|pyyaml|sqlalchemy|packaging)\)$
 # Hand-written distro deps (versions left open — distro newer is fine):
 Requires:       python3-numpy
 Requires:       python3-pyyaml
@@ -61,7 +58,7 @@ and headers into libflaggems-dev.
 %autosetup -n flag-gems-%{version}
 
 # FLAGGEMS_BUILD_C_EXTENSIONS defaults OFF in CMakeLists.txt:32;
-# %pyproject_wheel does not override it. The resulting wheel is
+# %%pyproject_wheel does not override it. The resulting wheel is
 # pure-Python (no liboperators.so), aligning with Phase 1 scope.
 %build
 %pyproject_wheel

@@ -32,7 +32,21 @@ override_dh_auto_install:
 	mkdir -p $(PYDIR); \
 	python3 -m pip install --no-deps --no-compile --no-index \
 		--target=$(PYDIR) "$$wheel"
-	# Move console scripts to /usr/bin
+	# Guard against scikit-build-core / setuptools.package-data drift:
+	# the runtime needs YAML configs under flag_gems/runtime/backend/ —
+	# without them, vendor backends fail at first use with FileNotFoundError.
+	# Upstream ships ~32 YAML files; flag if drift drops below 20.
+	@yaml_count=$$(find $(PYDIR)/flag_gems/runtime -name '*.yaml' 2>/dev/null | wc -l); \
+	if [ "$$yaml_count" -lt 20 ]; then \
+		echo "ERROR: only $$yaml_count YAML config files under $(PYDIR)/flag_gems/runtime/; expected ~32." >&2; \
+		echo "       Check pyproject.toml [tool.scikit-build] / CMakeLists install rules — they may have drifted." >&2; \
+		exit 1; \
+	fi; \
+	echo "Found $$yaml_count YAML runtime configs (sanity OK)"
+	# Move console scripts to /usr/bin.
+	# Phase 1 reserved: FlagGems' pyproject.toml currently declares no
+	# [project.scripts], so this branch is never taken. Left in place for
+	# Phase 2 when the wheel may grow entry points.
 	if [ -d $(PYDIR)/bin ]; then \
 		mkdir -p debian/$(PKG)/usr/bin; \
 		mv $(PYDIR)/bin/* debian/$(PKG)/usr/bin/; \
