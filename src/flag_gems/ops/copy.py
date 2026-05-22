@@ -86,7 +86,9 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
             _FALLBACK_KEYSET, dst, src, non_blocking
         )
 
-    if src.dtype == torch.float8_e8m0fnu or dst.dtype == torch.float8_e8m0fnu:
+    if _FLOAT8_E8M0FNU is not None and (
+        src.dtype == torch.float8_e8m0fnu or dst.dtype == torch.float8_e8m0fnu
+    ):
         return torch.ops.aten.copy_.default.redispatch(
             _FALLBACK_KEYSET, dst, src, non_blocking
         )
