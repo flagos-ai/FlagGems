@@ -5,7 +5,11 @@ import torch
 from . import base
 
 
-# bessel_j1_cuda does not support Half/BFloat16
+# torch.special.bessel_j1 on CUDA dispatches to bessel_j1_cuda which only supports
+# float32/double. The Triton kernel handles all float dtypes (tested in test), but
+# we benchmark fp32 only because the CUDA reference can't run Half/BFloat16 on GPU.
+# On non-NVIDIA backends the reference may support more dtypes — this restriction
+# is NVIDIA-specific and should be relaxed per-backend when the framework allows.
 @pytest.mark.special_bessel_j1
 def test_special_bessel_j1():
     bench = base.UnaryPointwiseBenchmark(
