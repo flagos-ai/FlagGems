@@ -7,6 +7,7 @@ non-deterministic tie-breaking between implementations.
 
 import pytest
 import torch
+import triton.language as tl
 
 import flag_gems
 from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
@@ -14,6 +15,12 @@ from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
 from . import conftest as cfg
 
 device = flag_gems.device
+
+# tl.histogram requires Triton 3.x+ with sm90 support
+pytestmark = pytest.mark.skipif(
+    not hasattr(tl, "histogram"),
+    reason="tl.histogram not available in this Triton version",
+)
 
 # --- Shape configuration with QUICK_MODE support ---
 if cfg.QUICK_MODE:

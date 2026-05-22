@@ -7,10 +7,17 @@ falling back to a pure-PyTorch reference (torch.topk).
 
 import pytest
 import torch
+import triton.language as tl
 
 from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
 
 from . import base
+
+# tl.histogram requires Triton 3.x+ with sm90 support
+pytestmark = pytest.mark.skipif(
+    not hasattr(tl, "histogram"),
+    reason="tl.histogram not available in this Triton version",
+)
 
 # --- vLLM CUDA baseline (preferred) with PyTorch fallback ---
 try:
