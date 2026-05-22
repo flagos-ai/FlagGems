@@ -384,6 +384,7 @@ _FULL_CONFIG = (
     ("ones", ones),
     ("ones_like", ones_like),
     ("pad", pad),
+    ("pdist", pdist),
     ("pixel_shuffle", pixel_shuffle),
     ("pixel_unshuffle", pixel_unshuffle),
     ("pixel_unshuffle.out", pixel_unshuffle_out),

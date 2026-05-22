@@ -4190,6 +4190,20 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.1'
+  - id: pdist
+    description: |
+      Computes the p-norm distance between every pair of row vectors in the input.
+      Input must be a 2-D tensor of shape (N, M). Returns a tensor of shape
+      (N*(N-1)//2,) containing pairwise distances.
+    for:
+      - pdist
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: per_token_group_quant_fp8
     description: |
       Function to perform per-token-group quantization on an input tensor `x`.
