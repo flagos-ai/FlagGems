@@ -10,7 +10,7 @@ Summary:        FlagGems — GPU operator library for FlagOS (Phase 1, Python-on
 
 License:        Apache-2.0
 URL:            https://github.com/flagos-ai/FlagGems
-Source0:        %{url}/archive/v%{version}/flag-gems-%{version}.tar.gz
+Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz#/flag-gems-%{version}.tar.gz
 # Stay aligned with the wheel's actual arch tag (scikit-build-core tags
 # linux_x86_64 even when FLAGGEMS_BUILD_C_EXTENSIONS=OFF) and with the
 # Debian `Architecture: amd64`. See packaging/NOTES.md.
@@ -26,14 +26,10 @@ BuildRequires:  python3-scikit-build-core
 BuildRequires:  cmake
 BuildRequires:  ninja-build
 
-# Filter out auto-generated `==`-pinned Requires that %%pyproject_save_files
-# would emit from FlagGems's strict pyproject dependencies. The pinned
-# versions (numpy==1.26.4, PyYAML==6.0.3, sqlalchemy==2.0.48, packaging==26.0)
-# never match what Fedora ships (numpy 2.3.5, pyyaml 6.0.2 etc.), so the
-# auto Requires make the RPM uninstallable. We instead Require the distro
-# package names without a version constraint below — any compatible
-# distro version works at runtime. torch/triton stay excluded as before
-# (distro torch is CPU-only; users install GPU torch via pip).
+# Filter the auto-generated Requires for: torch + numpy/pyyaml/sqlalchemy/packaging.
+# Reason: torch: distro version is CPU-only. numpy/pyyaml/sqlalchemy/packaging: distro has them but FlagGems pyproject uses == pins that distro versions do not match; we Require them below without a version constraint instead.
+# See packaging/INSTALL.md (or future flagos-packaging install docs) for the
+# user-side pip install incantation.
 %global __requires_exclude ^python3.*dist.*(torch|numpy|pyyaml|sqlalchemy|packaging)
 
 # Hand-written distro deps (versions left open — distro newer is fine):
@@ -61,6 +57,9 @@ and headers into libflaggems-dev.
 %prep
 %autosetup -n flag-gems-%{version}
 
+# FLAGGEMS_BUILD_C_EXTENSIONS defaults OFF in CMakeLists.txt:32;
+# %pyproject_wheel does not override it. The resulting wheel is
+# pure-Python (no liboperators.so), aligning with Phase 1 scope.
 %build
 %pyproject_wheel
 

@@ -61,7 +61,7 @@ packaging/
 
 - libtriton-jit + libtriton-jit-dev .debs (from the FlagOS APT repo, or
   the upstream libtriton_jit's CI artifacts) — drop into
-  `packaging/debian/helpers/local-deps/` before running the build
+  `packaging/debian/build-helpers/local-deps/` before running the build
 - Docker with networking access for PyPI + PyTorch CDN
 
 ## Why bundled in Phase 1
