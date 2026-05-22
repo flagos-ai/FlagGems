@@ -100,23 +100,24 @@ def flagtune(include=None):
 
     Passing include=None enables the registry's default operators. Passing a
     string or iterable selects the registered operators that should use
-    expanded tuning spaces when their LibTuner runs.
+    expanded tuning spaces when their LibTuner runs. This API only updates the
+    explicit include list; setting USE_FLAGTUNE=1 remains the legacy opt-in for
+    enabling every registered FlagTune operator.
     """
     global _include_ops
     _include_ops = _normalize_include(include)
-    os.environ[USE_FLAGTUNE_ENV] = "1"
     os.environ[FLAGTUNE_INCLUDE_ENV] = ",".join(sorted(_include_ops))
 
 
 def _include_from_env():
     include = os.environ.get(FLAGTUNE_INCLUDE_ENV)
-    if not include:
-        return get_default_flagtune_include()
+    if include is None:
+        return frozenset()
     try:
         return _normalize_include(include)
     except (TypeError, ValueError) as err:
         warnings.warn(f"Invalid {FLAGTUNE_INCLUDE_ENV}: {err}")
-        return get_default_flagtune_include()
+        return frozenset()
 
 
 def get_flagtune_include():
@@ -126,13 +127,16 @@ def get_flagtune_include():
 
 
 def flagtune_enabled(op_name):
-    if os.environ.get(USE_FLAGTUNE_ENV) != "1":
-        return False
     try:
         op_name = _normalize_op_name(op_name)
     except (TypeError, ValueError):
         return False
-    return op_name in get_flagtune_include()
+    if op_name not in get_supported_flagtune_ops():
+        return False
+    return (
+        os.environ.get(USE_FLAGTUNE_ENV) == "1"
+        or op_name in get_flagtune_include()
+    )
 
 
 def __getattr__(name):
