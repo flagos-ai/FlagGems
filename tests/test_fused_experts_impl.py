@@ -77,15 +77,15 @@ if not QUICK_MODE:
     ]
 
 
-def is_cuda_available():
+def is_hopper_available() -> bool:
+    """Check if the current device is NVIDIA Hopper architecture (SM90+)."""
     if flag_gems.device != "cuda":
         return False
     major, minor = torch.cuda.get_device_capability()
-    sm_version_num = major * 10 + minor
-    return sm_version_num >= 90 and sm_version_num < 100
+    return (major * 10 + minor) >= 90
 
 
-CUDA_AVAILABLE = is_cuda_available()
+HOPPER_AVAILABLE = is_hopper_available()
 
 
 def torch_fused_moe_reference(
@@ -245,7 +245,7 @@ def test_fused_moe_vs_vllm(config, dtype):
 @pytest.mark.fused_experts_impl
 @pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
 @pytest.mark.skipif(
-    not CUDA_AVAILABLE,
+    not HOPPER_AVAILABLE,
     reason="FP8 quantization requires NVIDIA Hopper architecture",
 )
 def test_accuracy_fused_moe_fp8(config):
@@ -542,7 +542,7 @@ def torch_w8a8_block_fp8_moe(
 @pytest.mark.parametrize("config", FUSED_MOE_FP8_BLOCKWISE_CONFIGS)
 @pytest.mark.parametrize("block_shape", [[128, 128]])
 @pytest.mark.skipif(
-    not CUDA_AVAILABLE,
+    not HOPPER_AVAILABLE,
     reason="FP8 blockwise quantization requires NVIDIA Hopper architecture",
 )
 def test_fused_moe_fp8_blockwise(config, block_shape):
@@ -997,6 +997,10 @@ def test_outplace_fused_experts_vs_ref(config, dtype):
 
 
 @pytest.mark.outplace_fused_experts
+@pytest.mark.skipif(
+    not HOPPER_AVAILABLE,
+    reason="FP8 quantization requires NVIDIA Hopper architecture (SM90+)",
+)
 @pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
 def test_outplace_fused_experts_fp8(config):
     """Test outplace_fused_experts with FP8 W8A8 quantization."""
