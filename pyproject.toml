@@ -1,7 +1,8 @@
 [build-system]
-# cmake locks to '>=3.20,<4.0' to sync with FlagTree
-
-requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
+# The cmake and ninja packages are not supposed to be listed in build-system.requires.
+# The version expectation is "cmake>=3.20,<4.0", "ninja==1.13.0".
+# They must be installed separately for `--no-build-isolation` to work.
+requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3"]
 
 build-backend = "scikit_build_core.build"
 
@@ -104,9 +105,9 @@ mthreads = [
     "torch==2.7.1+musa.4.0.0",
     "torch_musa==2.7.1",
     "flagtree==0.5.1+mthreads3.6",
-    # "triton==3.1.0+musa1.4.6",
     "numpy==1.26.4",
     "mkl==2024.0.0",
+    # "triton==3.1.0+musa1.4.6",
 ]
 
 nvidia = [
