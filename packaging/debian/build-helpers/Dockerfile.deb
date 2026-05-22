@@ -38,7 +38,7 @@ RUN pip3 install --no-cache-dir --upgrade pip && \
 # flagos-packaging repo goes live, switch to:
 #   echo "deb [signed-by=...] https://flagos-ai.github.io/flagos-packaging/apt stable main" \
 #     > /etc/apt/sources.list.d/flagos.list && apt-get update && apt-get install -y libtriton-jit-dev
-COPY packaging/debian/helpers/local-deps/*.deb /tmp/deps/
+COPY packaging/debian/build-helpers/local-deps/*.deb /tmp/deps/
 RUN dpkg -i /tmp/deps/*.deb 2>&1 | tail -20 || apt-get install -f -y --no-install-recommends
 
 WORKDIR /src

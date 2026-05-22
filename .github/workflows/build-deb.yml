@@ -28,11 +28,11 @@ jobs:
       #     packaging PR's CI, OR
       #   - a live FlagOS APT repo serving libtriton-jit-dev, so the wheel
       #     builder can `apt-get install` it instead of needing it staged at
-      #     packaging/debian/helpers/local-deps/.
+      #     packaging/debian/build-helpers/local-deps/.
       # Remove `continue-on-error` once one of the above is wired up.
       - name: Build .deb
         continue-on-error: true
-        run: bash packaging/debian/helpers/build-flaggems.sh
+        run: bash packaging/debian/build-helpers/build-flaggems.sh
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

@@ -25,7 +25,7 @@ override_dh_auto_test:
 override_dh_auto_install:
 	@if [ -z "$$(ls $(WHEEL_DIR)/flag_gems-*.whl 2>/dev/null)" ]; then \
 		echo "ERROR: no flag_gems-*.whl found under $(WHEEL_DIR)"; \
-		echo "Run packaging/debian/helpers/build-flaggems.sh first."; \
+		echo "Run packaging/debian/build-helpers/build-flaggems.sh first."; \
 		exit 1; \
 	fi
 	mkdir -p $(PYDIR)
