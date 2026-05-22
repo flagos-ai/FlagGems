@@ -380,6 +380,8 @@ _FULL_CONFIG = (
     ("normal.float_Tensor", normal_float_tensor),
     ("normal_", normal_),
     ("normed_cumsum", normed_cumsum),
+    ("not_equal.Scalar", not_equal_scalar),
+    ("not_equal.Tensor", not_equal),
     ("one_hot", one_hot),
     ("ones", ones),
     ("ones_like", ones_like),
