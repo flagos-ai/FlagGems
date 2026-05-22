@@ -42,6 +42,7 @@ from flag_gems.fused.moe_align_block_size import (
 )
 from flag_gems.fused.moe_sum import moe_sum
 from flag_gems.fused.outer import outer
+from flag_gems.fused.pack_seq import pack_seq_triton
 from flag_gems.fused.reglu import dreglu, reglu
 from flag_gems.fused.reshape_and_cache import reshape_and_cache
 from flag_gems.fused.reshape_and_cache_flash import reshape_and_cache_flash
@@ -99,12 +100,14 @@ __all__ = [
     "moe_align_block_size_triton",
     "outer",
     "outplace_fused_experts",
+    "pack_seq_triton",
     "reglu",
     "reshape_and_cache",
     "reshape_and_cache_flash",
     "fused_inv_rope_fp8_quant",
     "rwkv_ka_fusion",
     "rwkv_mm_sparsity",
+    "unpack_seq_triton",
     "silu_and_mul",
     "silu_and_mul_out",
     "silu_and_mul_with_clamp",
