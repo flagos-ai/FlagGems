@@ -265,6 +265,7 @@ def _hc_head_fused_kernel_vllm_ref(
 
 
 @pytest.mark.hc_head_fused_kernel
+@pytest.mark.skipif(not HAS_VLLM, reason="vLLM not available")
 def test_hc_head_fused_kernel():
     bench = HCHeadFusedBenchmark(
         op_name="hc_head_fused_kernel",

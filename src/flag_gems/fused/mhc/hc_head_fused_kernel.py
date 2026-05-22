@@ -1,6 +1,10 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.autotune(
@@ -195,6 +199,7 @@ def hc_head_fused_kernel(
     hc_mult: int,
 ) -> torch.Tensor:
     """HC head fused kernel: fully fused Triton implementation."""
+    logger.debug("GEMS HC_HEAD_FUSED")
     assert hs_flat.dtype == torch.bfloat16
     assert fn.dtype == torch.float32
     assert hc_scale.dtype == torch.float32
