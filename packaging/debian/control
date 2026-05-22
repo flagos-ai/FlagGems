@@ -28,16 +28,16 @@ X-Build-Environment: This package is built in a container that provides
 
 Package: python3-flag-gems
 Architecture: amd64
-Depends: ${python3:Depends},
+Depends: python3:any,
          ${shlibs:Depends},
          ${misc:Depends},
          python3-numpy,
          python3-yaml,
          python3-sqlalchemy,
          python3-packaging
-# python3-torch is pulled in automatically via ${python3:Depends} from
-# pyproject.toml, so it is intentionally omitted from Recommends to avoid
-# a redundant (and conflicting) declaration.
+# python3-torch is intentionally NOT declared. The distro 'python3-torch'
+# is CPU-only and unsuitable for GPU workloads; users install matching
+# CUDA torch via pip — see packaging/INSTALL.md.
 Recommends: python3-flagtree-nvidia
 Description: FlagGems GPU operator library (Python module)
  FlagGems is a GPU operator library written in Triton, providing a

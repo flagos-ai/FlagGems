@@ -12,16 +12,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wget curl ca-certificates \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Build deps from pyproject.toml (build-system.requires) — must be installed
-# explicitly because we use --no-build-isolation. Versions pinned per FlagGems'
-# pyproject.toml.
-RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel build && \
+# Build deps mirrored from FlagGems setup.sh + tools/setup_nvidia.sh
+# (authoritative). We use --no-build-isolation, so every build-system.requires
+# entry plus the CUDA-flavoured torch must be pinned here explicitly.
+RUN pip3 install --no-cache-dir --upgrade pip && \
     pip3 install --no-cache-dir \
+        "setuptools>=64.0" \
         "scikit-build-core==0.12.2" \
         "pybind11==3.0.3" \
-        "cmake>=3.20,<4.0" \
+        "cmake>=3.20,<4" \
         "ninja==1.13.0" && \
-    pip3 install --no-cache-dir torch==2.5.0 --index-url https://download.pytorch.org/whl/cpu
+    pip3 install --no-cache-dir \
+        --index-url https://download.pytorch.org/whl/cu128 \
+        torch==2.9.0+cu128
 
 # Install libtriton-jit-dev from a locally-staged .deb. When the central
 # flagos-packaging repo goes live, switch to:
