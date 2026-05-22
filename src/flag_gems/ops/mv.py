@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
     configs=runtime.get_tuned_config("mv"),
     key=["M", "N"],
     strategy=["align32", "align32"],
+    flagtune_op_name="mv",
 )
 @triton.jit
 def mv_kernel(

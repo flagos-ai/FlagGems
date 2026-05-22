@@ -147,8 +147,31 @@ def __getattr__(name):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-register_flagtune_op("mm", default=True, description="matrix multiplication")
-register_flagtune_op("bmm", default=True, description="batched matrix multiplication")
+register_flagtune_op(
+    "mm", 
+    default=False, 
+    description="matrix multiplication"
+)
+register_flagtune_op(
+    "bmm", 
+    default=False, 
+    description="batched matrix multiplication"
+)
+register_flagtune_op(
+    "addmm",
+    default=False,
+    description="matrix multiplication with bias",
+)
+register_flagtune_op(
+    "baddbmm",
+    default=False,
+    description="batched matrix multiplication with bias",
+)
+register_flagtune_op(
+    "mv",
+    default=False,
+    description="matrix-vector multiplication",
+)
 register_flagtune_op(
     "w8a8_block_fp8_matmul",
     default=False,

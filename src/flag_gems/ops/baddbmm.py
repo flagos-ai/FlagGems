@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
     strategy=["align32", "align32", "align32"],
     warmup=5,
     rep=10,
+    flagtune_op_name="baddbmm",
 )
 @triton.heuristics(runtime.get_heuristic_config("baddbmm"))
 @triton.jit(do_not_specialize=["alpha", "beta"])

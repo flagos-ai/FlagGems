@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
     strategy=["align32", "align32", "align32"],
     warmup=5,
     rep=10,
+    flagtune_op_name="addmm",
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_kernel(
