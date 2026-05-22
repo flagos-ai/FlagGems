@@ -7,7 +7,7 @@ from . import base, consts
 
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name in ["ascend"],
-    reason="https://github.com/flagos-ai/FlagGems/issues/3387",
+    reason="Issue #3387: Not supported on Ascend",
 )
 
 
