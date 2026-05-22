@@ -1,16 +1,22 @@
 Source: flag-gems
-Section: science
+Section: python
 Priority: optional
 Maintainer: FlagOS Contributors <contact@flagos.io>
+# Phase 1 (current): the .deb is assembled from a pre-built wheel inside the
+# 2-stage Dockerfile.deb. Stage 1 (wheel-builder) is the only place that needs
+# the heavy build deps (cmake / ninja-build / python3-pybind11 / libtriton-jit-dev);
+# Stage 2 (this dpkg-buildpackage step) only unpacks the wheel via pip and
+# wraps it. Listing the Stage-1 deps in Build-Depends here would make
+# dpkg-checkbuilddeps fail because Stage 2 deliberately does not install them.
+#
+# Phase 2 (deferred): when we move to a single-stage build that also produces
+# libflaggems + libflaggems-dev, add back: cmake (>= 3.20), ninja-build,
+# python3-pybind11, libtriton-jit-dev.
 Build-Depends: debhelper-compat (= 13),
-               cmake (>= 3.20),
-               ninja-build,
                python3-all,
                python3-pip,
                python3-setuptools,
                python3-wheel,
-               python3-pybind11,
-               libtriton-jit-dev,
                dh-python
 Standards-Version: 4.6.2
 Homepage: https://github.com/flagos-ai/FlagGems

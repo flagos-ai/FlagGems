@@ -2,12 +2,16 @@
 
 Debian (.deb) and RPM (.rpm) packaging for FlagGems.
 
-## Status — scaffold only, NOT yet validated
+## Status
 
-The directory tree is in place and the control/spec/Dockerfile reflect
-the intended design. **No build has run yet.** Expect iteration before
-the first .deb lands; the FlagTree packaging required ~8 attempts to
-catch all edge cases, and FlagGems is a similar shape.
+- **.deb (Phase 1, bundled)**: builds locally on ubuntu:22.04 via the
+  multi-stage `Dockerfile.deb` (`wheel-builder` → `deb-assembler`); the
+  resulting `python3-flag-gems_*.deb` installs cleanly on ubuntu:24.04
+  with `apt -f` resolving the distro Depends.
+- **.rpm (Phase 1)**: builds locally on fedora:43; `dnf install` succeeds
+  on a fresh fedora:43 container.
+- **CI**: GitHub Actions `build-deb.yml` is currently `continue-on-error`
+  until the libtriton-jit dependency is wired up (see workflow comment).
 
 ## Two phases
 
@@ -46,15 +50,15 @@ packaging/
 │   ├── control          # 3 packages declared (2 commented out for Phase 1)
 │   ├── rules            # pip --target unpack of the wheel
 │   ├── changelog, copyright, source/format
-│   └── helpers/
+│   └── build-helpers/
 │       ├── Dockerfile.deb       # 2-stage: wheel build → deb assemble
 │       ├── build-flaggems.sh    # entrypoint
-│       └── local-deps/          # drop libtriton-jit*.deb here pre-build
+│       └── local-deps/          # drop libtriton-jit*.deb here (or set
+│                                # LIBTRITON_JIT_DEB_DIR=… to auto-copy)
 └── rpm/
-    ├── specs/flag-gems.spec     # to be written; mirrors Dockerfile.rpm
-    └── helpers/
-        ├── Dockerfile.rpm
-        └── build-flaggems-rpm.sh
+    ├── specs/flag-gems.spec
+    ├── dockerfiles/Dockerfile.rpm
+    └── build-flag-gems-rpm.sh
 ```
 
 ## Build prerequisites
