@@ -8,6 +8,13 @@ on:
     branches: [master]
     paths:
       - 'packaging/debian/**'
+      - 'src/**'
+      - 'include/**'
+      - 'lib/**'
+      - 'cmake/**'
+      - 'conf/**'
+      - 'CMakeLists.txt'
+      - 'pyproject.toml'
       - '.github/workflows/build-deb.yml'
   workflow_dispatch:
 
