@@ -175,7 +175,7 @@ nanmedian_dim_values:
     - [256, 4096]
     - [16, 131072]
   shape_desc: "M, N"
-  
+
 median:
   shapes:
     - [2]
