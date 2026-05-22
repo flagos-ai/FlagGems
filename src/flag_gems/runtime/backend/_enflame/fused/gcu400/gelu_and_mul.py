@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.utils import tl_extra_shim
 
-from ...gcu300.utils.pointwise_dynamic import pointwise_dynamic
+from ...gcu400.utils.pointwise_dynamic import pointwise_dynamic
 
 erf = tl_extra_shim.erf
 pow = tl_extra_shim.pow
