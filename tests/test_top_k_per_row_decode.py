@@ -14,7 +14,7 @@ import triton.language as tl
 import flag_gems
 from flag_gems.fused import top_k_per_row_decode
 
-from . import accuracy_utils as utils
+from . import conftest as cfg
 
 device = flag_gems.device
 
@@ -34,7 +34,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 # --- Shape configuration with QUICK_MODE support ---
-if utils.QUICK_MODE:
+if cfg.QUICK_MODE:
     VOCAB_SIZE_LIST = [129280]
     TOP_K_LIST = [1024]
 else:
