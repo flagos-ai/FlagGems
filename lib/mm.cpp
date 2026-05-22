@@ -276,6 +276,7 @@ void general_mm_tensor(
     /* BLOCK_K = */ BLOCK_K,
     /* GROUP_M = */ GROUP_M,
     /* IS_FP64 = */ a.dtype() == at::kDouble);
+#endif
   return;
 }
 
