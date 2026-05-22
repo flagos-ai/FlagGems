@@ -175,6 +175,30 @@ nanmedian_dim_values:
     - [256, 4096]
     - [16, 131072]
   shape_desc: "M, N"
+  
+median:
+  shapes:
+    - [2]
+    - [64]
+    - [65]
+    - [128]
+    - [256]
+    - [257]
+    - [1024]
+    - [4096]
+    - [4, 8, 16, 8]
+  shape_desc: "input shape"
+
+median_dim:
+  shapes:
+    - [1536, 640]
+    - [144, 8192]
+    - [768, 1536]
+    - [32, 384, 128]
+    - [[32, 384, 128], 1, false]
+    - [[640, 1536], 0, false]
+    - [[8, 64, 384, 64], 2, false]
+  shape_desc: "input shape or [input shape, dim, keepdim]"
 
 BlasBenchmark:
   shapes:
@@ -378,6 +402,18 @@ Conv2DBenchmark:
     - [64, 32, 18, 18, 32, 5, 5, 2, 1, 1]
     - [64, 32, 210, 210, 64, 5, 5, 2, 1, 1]
     - [16, 32, 24, 24, 24, 3, 3, 1, 1, 2]
+  shape_desc: "N, C_in, H, W, C_out, K_h, K_w, stride, padding, groups"
+
+conv_transpose2d:
+  shapes:
+    - [1, 64, 128, 128, 64, 3, 3, 1, 1, 1]
+    - [1, 64, 64, 64, 32, 3, 3, 2, 1, 1]
+    - [4, 32, 32, 32, 32, 3, 3, 2, 1, 1]
+    - [8, 16, 64, 64, 16, 5, 5, 2, 2, 1]
+    - [16, 32, 16, 16, 64, 3, 3, 2, 1, 1]
+    - [16, 32, 32, 32, 64, 3, 3, 2, 1, 1]
+    - [32, 64, 32, 32, 32, 3, 3, 1, 0, 1]
+    - [32, 64, 16, 16, 32, 3, 3, 2, 1, 1]
   shape_desc: "N, C_in, H, W, C_out, K_h, K_w, stride, padding, groups"
 
 Conv3DBenchmark:

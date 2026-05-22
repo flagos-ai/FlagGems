@@ -8,18 +8,38 @@ on:
 
 jobs:
   test:
-    runs-on: cpp
+    runs-on: h20
     steps:
-      - uses: Wandalen/wretry.action@3.8.0
-        with:
-          action: actions/checkout@v6
-          attempt_limit: 5
-          attempt_delay: 20000
+      - id: checkout-attempt-1
+        uses: actions/checkout@v6
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@v6
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@v6
       - shell: bash
         run: |
-          CXX=/usr/bin/g++-11 CC=/usr/bin/gcc-11 SKBUILD_CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON" pip install --no-build-isolation -v -e .
+          export PATH="/home/secure/.pyenv/bin:/usr/local/cuda-12.8/bin:$PATH"
+          eval "$(pyenv init -)"
+          export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DCMAKE_BUILD_TYPE=Release"
+          pip install -v -e . --no-build-isolation
       - shell: bash
         run: |
-          cd build/cpython-311/ctests
+          export PATH="/home/secure/.pyenv/bin:/usr/local/cuda-12.8/bin:$PATH"
+          eval "$(pyenv init -)"
+          cd build/cpython-*/ctests
           export FLAGGEMS_SOURCE_DIR=$(python -c "import os;import flag_gems;print(os.path.dirname(flag_gems.__file__))")
           ctest -V
