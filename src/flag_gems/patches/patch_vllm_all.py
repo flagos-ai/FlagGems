@@ -476,17 +476,6 @@ def custom_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
     )
 
 
-def custom_deepseek_v4_attention(
-    hidden_states: torch.Tensor,
-    positions: torch.Tensor,
-    out: torch.Tensor,
-    layer_name: str,
-) -> None:
-    from flag_gems.fused.dsv4_attention import dsv4_vllm_deepseek_v4_attention
-
-    dsv4_vllm_deepseek_v4_attention(hidden_states, positions, out, layer_name)
-
-
 def custom_deepseek_v4_fp8_einsum(
     a: torch.Tensor,
     a_scale: torch.Tensor,
@@ -758,7 +747,6 @@ def apply_gems_patches_to_vllm(verbose=True):
         dsv4_fp8_einsum,
         dsv4_fused_q_kv_rmsnorm,
         dsv4_qnorm_rope_kv_rope_quant_insert,
-        dsv4_vllm_deepseek_v4_attention,
     )
 
     dsv4_module_patches = [
@@ -767,7 +755,6 @@ def apply_gems_patches_to_vllm(verbose=True):
         ("flash_mla_sparse_fwd", dsv4_flash_mla_sparse_prefill),
         ("dsv4_flash_mla_sparse_decode", dsv4_flash_mla_sparse_decode),
         ("dsv4_qnorm_rope_kv_rope_quant_insert", dsv4_qnorm_rope_kv_rope_quant_insert),
-        ("dsv4_vllm_deepseek_v4_attention", dsv4_vllm_deepseek_v4_attention),
         ("dsv4_fp8_einsum", dsv4_fp8_einsum),
         ("combine_topk_swa_indices", dsv4_combine_topk_swa_indices),
         (
@@ -826,7 +813,6 @@ def apply_gems_patches_to_vllm(verbose=True):
         ("_C", "per_token_group_fp8_quant", custom_per_token_group_fp8_quant),
         ("_C", "apply_repetition_penalties_", custom_apply_repetition_penalties),
         ("_C_cache_ops", "concat_and_cache_mla", custom_concat_and_cache_mla),
-        ("vllm", "deepseek_v4_attention", custom_deepseek_v4_attention),
         ("vllm", "deepseek_v4_fp8_einsum", custom_deepseek_v4_fp8_einsum),
     ]
     for lib_name, fn_name, fn in lib_patches:

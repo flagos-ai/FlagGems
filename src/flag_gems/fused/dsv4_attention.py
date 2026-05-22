@@ -1080,7 +1080,6 @@ __all__ = [
     "dsv4_flash_mla_sparse_prefill",
     "dsv4_fused_q_kv_rmsnorm",
     "dsv4_qnorm_rope_kv_rope_quant_insert",
-    "dsv4_vllm_deepseek_v4_attention",
     "flash_mla_sparse_fwd",
     "fused_q_kv_rmsnorm",
 ]

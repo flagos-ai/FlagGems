@@ -50,7 +50,7 @@ _LIB_OPS = {
     "_moe_C": ["topk_softmax", "moe_align_block_size", "grouped_topk", "moe_sum"],
     "_vllm_fa3_C": ["get_scheduler_metadata"],
     "_C_cache_ops": ["concat_and_cache_mla"],
-    "vllm": ["deepseek_v4_attention", "deepseek_v4_fp8_einsum"],
+    "vllm": ["deepseek_v4_fp8_einsum"],
 }
 
 _OP_SIGNATURES = {
@@ -95,8 +95,6 @@ _OP_SIGNATURES = {
         "Tensor slot_mapping, str kv_cache_dtype, Tensor scale) -> ()",
     },
     "vllm": {
-        "deepseek_v4_attention": "(Tensor hidden_states, Tensor positions, "
-        "Tensor(a!) out, str layer_name) -> ()",
         "deepseek_v4_fp8_einsum": "(Tensor a, Tensor a_scale, Tensor b, "
         "Tensor b_scale, Tensor(a!) out, str equation, int[] recipe) -> ()",
     },
