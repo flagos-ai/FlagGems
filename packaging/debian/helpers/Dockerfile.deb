@@ -1,3 +1,11 @@
+# TODO(round-13): unify with the other Flag* PRs to ubuntu:24.04. Blocked by:
+#   1. PEP 668 (--break-system-packages or venv needed for the wheel-builder
+#      stage's pip installs of scikit-build-core / pybind11 / ninja / torch
+#      whose distro versions on noble are too old).
+#   2. Initial trial with --break-system-packages still failed inside buildkit
+#      (root cause not yet isolated). Need a follow-up investigation.
+# Until then, keep wheel-builder + deb-assembler on ubuntu:22.04 where the
+# existing pip install pattern works.
 # Two-stage Docker build for FlagGems Phase 1.
 # Single-chain (single-arch x86_64, single-OS Ubuntu 22.04, single-backend nvidia).
 
