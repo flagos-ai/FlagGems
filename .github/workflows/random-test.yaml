@@ -26,7 +26,7 @@ jobs:
       authorized: ${{ steps.makeDecision.outputs.continue }}
     steps:
       - id: checkUser
-        uses: tspascoal/get-user-teams-membership@v4.0.2
+        uses: tspascoal/get-user-teams-membership@b2546c5affc730fd8e3d8483ae9ad3621938c2f9  # v4.0.2
         with:
           username: ${{ github.actor }}
           team: 'FlagGems'
@@ -49,7 +49,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     steps:
       - id: checkout-attempt-1
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         continue-on-error: true
       - id: sleep-1
         if: steps.checkout-attempt-1.outcome == 'failure'
@@ -58,7 +58,7 @@ jobs:
 
       - id: checkout-attempt-2
         if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         continue-on-error: true
       - id: sleep-2
         if: steps.checkout-attempt-2.outcome == 'failure'
@@ -67,7 +67,7 @@ jobs:
 
       - id: checkout-attempt-3
         if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Setup FlagGems
         shell: bash
@@ -105,7 +105,7 @@ jobs:
           tools/run_tests.py --ops ${{ inputs.operators }} --gpus ${{ inputs.gpus }}
 
       - name: Upload results
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: random-test
           path: results/
