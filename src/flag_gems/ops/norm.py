@@ -322,6 +322,6 @@ def norm_scalaropt_dim(x, p, dim, keepdim=False):
     return norm(x, p=p, dim=dim, keepdim=keepdim)
 
 
-def norm_Scalar(x, p=2):
+def norm_scalar(x, p=2):
     logger.debug("GEMS NORM_SCALAR")
     return norm(x, p=p, dim=None, keepdim=False)
