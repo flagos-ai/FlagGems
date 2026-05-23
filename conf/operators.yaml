@@ -1374,6 +1374,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: cp_gather_indexer_k_quant_cache
+    description: This is a fused operator that gathers FP8 K cache values and scales.
+    for:
+      - None
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - Quantization
+    stages:
+      - beta: '5.1'
   - id: cross_entropy_loss
     description: Computes the cross entropy loss between input logits and target.
     for:
