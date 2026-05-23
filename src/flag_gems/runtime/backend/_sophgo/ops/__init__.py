@@ -10,6 +10,7 @@ from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .count_nonzero import count_nonzero
 from .cumsum import cumsum, normed_cumsum
+from .diag import diag
 from .diagonal import diagonal
 from .diag_embed import diag_embed
 from .dropout import dropout
@@ -95,6 +96,7 @@ __all__ = [
     "_conv_depthwise2d",
     "count_nonzero",
     "cumsum",
+    "diag",
     "diagonal",
     "diag_embed",
     "dropout",
