@@ -4175,7 +4175,29 @@ ops:
       Computes the norm of vectors, matrices, and tensors.
     for:
       - norm
+    labels:
+      - aten
+      - KernelGen
+      - reduction
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
+  - id: norm_scalar
+    description: A variant of `norm` that computes the norm over all elements.
+    for:
       - norm.Scalar
+    labels:
+      - aten
+      - KernelGen
+      - reduction
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
+  - id: norm_scalaropt_dim
+    description: A variant of `norm` that computes the norm along specified dimensions.
+    for:
       - norm.ScalarOpt_dim
     labels:
       - aten

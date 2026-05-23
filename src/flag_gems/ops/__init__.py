@@ -251,7 +251,7 @@ from flag_gems.ops.nllloss import (
 )
 from flag_gems.ops.nonzero import nonzero
 from flag_gems.ops.nonzero_numpy import nonzero_numpy
-from flag_gems.ops.norm import norm, norm_Scalar, norm_ScalarOpt_dim
+from flag_gems.ops.norm import norm, norm_scalar, norm_scalaropt_dim
 from flag_gems.ops.normal import (
     normal_,
     normal_float_tensor,
@@ -712,8 +712,8 @@ __all__ = [
     "nonzero",
     "nonzero_numpy",
     "norm",
-    "norm_Scalar",
-    "norm_ScalarOpt_dim",
+    "norm_scalar",
+    "norm_scalaropt_dim",
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
