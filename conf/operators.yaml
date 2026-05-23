@@ -4174,6 +4174,7 @@ ops:
     description: |
       Computes the norm of vectors, matrices, and tensors.
     for:
+      - norm
       - norm.Scalar
       - norm.ScalarOpt_dim
     labels:

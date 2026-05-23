@@ -33,7 +33,7 @@ def test_norm(shape, ord, dim, keepdim, dtype):
 @pytest.mark.norm
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_norm_Scalar(shape, dtype):
+def test_norm_scalar(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
