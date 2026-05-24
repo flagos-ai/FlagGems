@@ -279,6 +279,7 @@ from flag_gems.ops.pow import (
 from flag_gems.ops.prelu import prelu
 from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.quantile import quantile
+from flag_gems.ops.rad2deg import rad2deg, rad2deg_
 from flag_gems.ops.rand import rand
 from flag_gems.ops.rand_like import rand_like
 from flag_gems.ops.randn import randn
@@ -734,6 +735,8 @@ __all__ = [
     "prod",
     "prod_dim",
     "quantile",
+    "rad2deg",
+    "rad2deg_",
     "rand",
     "rand_like",
     "randn",

@@ -404,6 +404,8 @@ _FULL_CONFIG = (
     ("prod", prod),
     ("prod.dim_int", prod_dim),
     ("quantile", quantile),
+    ("rad2deg", rad2deg),
+    ("rad2deg_", rad2deg_),
     ("rand", rand),
     ("rand_like", rand_like),
     ("randn", randn),
