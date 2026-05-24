@@ -7,7 +7,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.inplace
 @pytest.mark.igammac_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 # igammac_cuda does not support Half/BFloat16
