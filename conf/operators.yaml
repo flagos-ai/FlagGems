@@ -4715,6 +4715,19 @@ ops:
     kind:
       - Distribution
     stages:
+      - stable: '2.1'
+  - id: randint_like
+    description: |
+      Returns a tensor with the same size as `input` that is filled with random integers
+      generated uniformly between `0` (inclusive) and `high` (exclusive).
+    for:
+      - randint_like
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Distribution
+    stages:
       - alpha: '5.1'
   - id: randperm
     description: Returns a random permutation of integers from `0` to `n - 1`.
