@@ -14,9 +14,9 @@ function speedupFormatter(cell) {
   if (isNaN(num)) return value;
   var el = cell.getElement();
   if (num >= 1.0) {
-    el.style.color = "#1a7431";
+    el.classList.add("speedup-good");
   } else if (num < 0.8) {
-    el.style.color = "#c5221f";
+    el.classList.add("speedup-bad");
   }
   return num.toFixed(3);
 }
