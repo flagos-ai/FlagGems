@@ -11,6 +11,7 @@ Notes
 """
 
 import logging
+import sys
 from pathlib import Path
 
 
@@ -25,6 +26,55 @@ class LogOncePerLocationFilter(logging.Filter):
             return False
         self.logged_locations.add(key)
         return True
+
+
+_ORIGINAL_LOGGER_DEBUG = logging.Logger.debug
+_COMPILE_SAFE_DEBUG_INSTALLED = False
+
+
+def install_compile_safe_debug_for_flaggems():
+    """Skip flag_gems debug logging while torch.compile is tracing.
+
+    Dynamo can graph-break on python logging internals when debug calls are
+    executed inside traced paths. We keep normal debug behavior outside compile.
+    """
+
+    global _COMPILE_SAFE_DEBUG_INSTALLED
+    if _COMPILE_SAFE_DEBUG_INSTALLED:
+        return
+
+    def _compile_safe_debug(self, msg, *args, **kwargs):
+        if self.name.startswith("flag_gems"):
+            torch_mod = sys.modules.get("torch")
+            if torch_mod is not None:
+                compiler = getattr(torch_mod, "compiler", None)
+                if compiler is not None and compiler.is_compiling():
+                    return
+        return _ORIGINAL_LOGGER_DEBUG(self, msg, *args, **kwargs)
+
+    logging.Logger.debug = _compile_safe_debug
+    _COMPILE_SAFE_DEBUG_INSTALLED = True
+
+
+def install_dynamo_ignore_logger_methods():
+    """Tell torch._dynamo to treat logging logger methods as no-ops."""
+
+    try:
+        import torch._dynamo.config as dynamo_config
+    except Exception:
+        return
+
+    dynamo_config.ignore_logger_methods.update(
+        {
+            logging.Logger.debug,
+            logging.Logger.info,
+            logging.Logger.warning,
+            logging.Logger.error,
+            logging.Logger.critical,
+            logging.Logger.exception,
+            logging.Logger.log,
+        }
+    )
 
 
 def _remove_file_handlers(logger: logging.Logger):

@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 from . import backend, common, error
 from .backend.device import DeviceDetector
 from .configloader import ConfigLoader
@@ -12,6 +14,27 @@ The dependency order of the sub-directory is strict, and changing the order arbi
 # torch_device_fn is like 'torch.cuda' object
 backend.set_torch_backend_device_fn(device.vendor_name)
 torch_device_fn = backend.gen_torch_device_object()
+if device.name == "cpu":
+    if not hasattr(torch_device_fn, "device"):
+
+        @contextmanager
+        def _noop_device_guard(_device=None):
+            yield
+
+        torch_device_fn.device = _noop_device_guard
+    if not hasattr(torch_device_fn, "_DeviceGuard"):
+
+        class _NoOpDeviceGuard:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        torch_device_fn._DeviceGuard = _NoOpDeviceGuard
 
 # torch_backend_device is like 'torch.backend.cuda' object
 torch_backend_device = backend.get_torch_backend_device_fn()

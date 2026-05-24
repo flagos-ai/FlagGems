@@ -9,7 +9,12 @@ from flag_gems import runtime
 from flag_gems.config import aten_patch_list, resolve_user_setting
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
-from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
+from flag_gems.logging_utils import (
+    install_compile_safe_debug_for_flaggems,
+    install_dynamo_ignore_logger_methods,
+    setup_flaggems_logging,
+    teardown_flaggems_logging,
+)
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
@@ -22,6 +27,8 @@ aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None
 runtime.replace_customized_ops(globals())
+install_compile_safe_debug_for_flaggems()
+install_dynamo_ignore_logger_methods()
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 
 
