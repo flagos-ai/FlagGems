@@ -4121,8 +4121,20 @@ ops:
     description: |
       Computes the element-wise logical NOT EQUAL of the given input tensors.
     for:
-      - not_equal.Scalar
       - not_equal.Tensor
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Logic
+    stages:
+      - alpha: '5.1'
+  - id: not_equal_scalar
+    description: |
+      Computes the element-wise logical NOT EQUAL comparing a tensor to a scalar.
+    for:
+      - not_equal.Scalar
     labels:
       - aten
       - KernelGen

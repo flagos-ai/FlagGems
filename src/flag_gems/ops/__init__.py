@@ -248,13 +248,13 @@ from flag_gems.ops.nllloss import (
 )
 from flag_gems.ops.nonzero import nonzero
 from flag_gems.ops.nonzero_numpy import nonzero_numpy
-from flag_gems.ops.not_equal import not_equal, not_equal_scalar
 from flag_gems.ops.normal import (
     normal_,
     normal_float_tensor,
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from flag_gems.ops.not_equal import not_equal, not_equal_scalar
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
