@@ -24,13 +24,11 @@ def test_reflection_pad1d_backward(shape, padding, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
-    # Compute forward to get output size
     padded_out = torch.ops.aten.reflection_pad1d(inp, padding)
-
-    # Create gradient of ones
     grad_output = torch.ones_like(padded_out)
+    ref_grad = utils.to_reference(grad_output)
 
-    ref_out = torch.ops.aten.reflection_pad1d_backward(grad_output, ref_inp, padding)
+    ref_out = torch.ops.aten.reflection_pad1d_backward(ref_grad, ref_inp, padding)
     with flag_gems.use_gems():
         res_out = torch.ops.aten.reflection_pad1d_backward(grad_output, inp, padding)
 
