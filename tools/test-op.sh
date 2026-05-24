@@ -74,6 +74,9 @@ for item in $CHANGED_FILES; do
   fi
 done
 
+# Temporary probe torch version
+python3 -c "import torch; print(f'Torch={torch.__version__}')"
+
 # Skip tests if no tests file is found
 if [[ ${#TEST_CASES[@]} -eq 0  && ${#PERF_TEST_CASES[@]} -eq 0 ]]; then
   exit 0

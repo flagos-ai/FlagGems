@@ -20,11 +20,11 @@ def gen_cat_shapes_dim(shapes):
     for tensor_shapes in shapes:
         assert all(
             [len(s) == len(tensor_shapes[0]) for s in tensor_shapes]
-        ), "All tensor rank must agree."
+        ), "All tensors rank must agree."
 
         assert all(
             [s[-1] == tensor_shapes[0][-1] for s in tensor_shapes]
-        ), "All tensor must have same shape except cat dim."
+        ), "All tensors must have same shape except cat dim."
 
         rank = len(tensor_shapes[0])
         results.append([tensor_shapes, 0])
