@@ -394,6 +394,7 @@ _FULL_CONFIG = (
     ("pixel_unshuffle", pixel_unshuffle),
     ("pixel_unshuffle.out", pixel_unshuffle_out),
     ("poisson", poisson),
+    ("permute_copy", permute_copy),
     ("polar", polar),
     ("pow.Scalar", pow_scalar),
     ("pow.Tensor_Scalar", pow_tensor_scalar),

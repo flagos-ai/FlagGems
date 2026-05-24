@@ -4374,6 +4374,19 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: permute_copy
+    description: |
+      Returns a copy of the tensor with its dimensions permuted.
+    for:
+      - permute_copy
+    labels:
+      - aten
+      - KernelGen
+      - Tensor
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: polar
     description: |
       Constructs a complex tensor whose elements are Cartesian coordinates corresponding to
