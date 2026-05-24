@@ -482,3 +482,56 @@ def test_conv_transpose2d_noncontiguous_tensors_match_pytorch(
 
     reduce_dim = max(weight.shape[0] * weight.shape[2] * weight.shape[3], 1)
     utils.gems_assert_close(res_out, ref_out, torch.float32, reduce_dim=reduce_dim)
+
+
+@pytest.mark.conv_transpose2d
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_conv_transpose2d_noncontiguous(dtype):
+    _skip_if_unsupported_test_device(dtype)
+    inp = torch.randn((2, 4, 16, 16), dtype=dtype, device=flag_gems.device)
+    inp = inp.permute(0, 1, 3, 2)  # noncontiguous
+    assert not inp.is_contiguous()
+    weight = torch.randn((4, 8, 3, 3), dtype=dtype, device=flag_gems.device)
+    ref_i = utils.to_reference(inp, True)
+    ref_w = utils.to_reference(weight, True)
+    ref_out = torch.nn.functional.conv_transpose2d(ref_i, ref_w).to(dtype)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.conv_transpose2d(inp, weight)
+    reduce_dim = max(weight.shape[0] * weight.shape[2] * weight.shape[3], 1)
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.conv_transpose2d
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_conv_transpose2d_output_padding(dtype):
+    _skip_if_unsupported_test_device(dtype)
+    inp = torch.randn((2, 4, 8, 8), dtype=dtype, device=flag_gems.device)
+    weight = torch.randn((4, 4, 3, 3), dtype=dtype, device=flag_gems.device)
+    ref_i = utils.to_reference(inp, True)
+    ref_w = utils.to_reference(weight, True)
+    ref_out = torch.nn.functional.conv_transpose2d(
+        ref_i, ref_w, output_padding=(1, 1), stride=2
+    ).to(dtype)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.conv_transpose2d(
+            inp, weight, output_padding=(1, 1), stride=2
+        )
+    reduce_dim = max(weight.shape[0] * weight.shape[2] * weight.shape[3], 1)
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.conv_transpose2d
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_conv_transpose2d_with_bias(dtype):
+    _skip_if_unsupported_test_device(dtype)
+    inp = torch.randn((2, 4, 8, 8), dtype=dtype, device=flag_gems.device)
+    weight = torch.randn((4, 8, 3, 3), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn(8, dtype=dtype, device=flag_gems.device)
+    ref_i = utils.to_reference(inp, True)
+    ref_w = utils.to_reference(weight, True)
+    ref_b = utils.to_reference(bias, True)
+    ref_out = torch.nn.functional.conv_transpose2d(ref_i, ref_w, bias=ref_b).to(dtype)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.conv_transpose2d(inp, weight, bias=bias)
+    reduce_dim = max(weight.shape[0] * weight.shape[2] * weight.shape[3], 1)
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
