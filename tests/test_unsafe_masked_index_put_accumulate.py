@@ -40,4 +40,5 @@ def test_unsafe_masked_index_put_accumulate(shape, dtype):
             inp, mask, (indices,), values
         )
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    # atomic_add in float16 has higher precision tolerance
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
