@@ -150,13 +150,11 @@ def test_avg_pool3d_noncontiguous(dtype):
     inp = torch.randn((2, 4, 16, 16, 16), dtype=dtype, device=flag_gems.device)
     inp = inp.permute(0, 1, 3, 2, 4)  # noncontiguous
     ref_inp = to_reference(inp, True)
-    ref_out = torch.ops.aten.avg_pool3d(
-        ref_inp, kernel_size=3, stride=2, padding=1
-    ).to(dtype)
+    ref_out = torch.ops.aten.avg_pool3d(ref_inp, kernel_size=3, stride=2, padding=1).to(
+        dtype
+    )
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.avg_pool3d(
-            inp, kernel_size=3, stride=2, padding=1
-        )
+        res_out = torch.ops.aten.avg_pool3d(inp, kernel_size=3, stride=2, padding=1)
     gems_assert_close(res_out, ref_out, dtype)
 
 
