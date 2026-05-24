@@ -25,6 +25,32 @@ def test_pixel_shuffle(shape_factor, dtype):
     utils.gems_assert_close(act_out, ref_out, dtype=dtype)
 
 
+@pytest.mark.pixel_shuffle
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_pixel_shuffle_noncontiguous(dtype):
+    upscale_factor = 2
+    input = torch.randn((2, 8, 32, 32), dtype=dtype, device=flag_gems.device)
+    input = input.permute(0, 1, 3, 2)  # noncontiguous
+    ref_i = utils.to_reference(input, True)
+    ref_out = torch.ops.aten.pixel_shuffle(ref_i, upscale_factor).to(dtype)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.pixel_shuffle(input, upscale_factor)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.pixel_shuffle
+@pytest.mark.parametrize("upscale_factor", [1, 2, 3, 4])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_pixel_shuffle_factors(dtype, upscale_factor):
+    c = 4 * upscale_factor * upscale_factor
+    input = torch.randn((2, c, 16, 16), dtype=dtype, device=flag_gems.device)
+    ref_i = utils.to_reference(input, True)
+    ref_out = torch.ops.aten.pixel_shuffle(ref_i, upscale_factor).to(dtype)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.pixel_shuffle(input, upscale_factor)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.pixel_shuffle_out
 @pytest.mark.parametrize(
     "shape_factor",
