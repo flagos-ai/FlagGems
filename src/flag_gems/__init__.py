@@ -410,6 +410,7 @@ _FULL_CONFIG = (
     ("rad2deg_", rad2deg_),
     ("rand", rand),
     ("rand_like", rand_like),
+    ("randint_like", randint_like),
     ("randn", randn),
     ("randn_like", randn_like),
     ("randint", randint),
