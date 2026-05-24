@@ -54,3 +54,30 @@ def test_leaky_relu_out(shape, dtype):
         torch.ops.aten.leaky_relu.out(inp, negative_slope=negative_slope, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.leaky_relu
+@pytest.mark.parametrize("negative_slope", [0.0, 0.01, 0.5, 1.0, 0.99])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_leaky_relu_slopes(negative_slope, dtype):
+    inp = torch.randn((64, 64), dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+    ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope=negative_slope)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu(inp, negative_slope=negative_slope)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.leaky_relu
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_leaky_relu_special_values(dtype):
+    inp = torch.tensor(
+        [0.0, -0.0, float("inf"), float("-inf"), float("nan")],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    ref_inp = utils.to_reference(inp, True)
+    ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope=0.01)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu(inp, negative_slope=0.01)
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
