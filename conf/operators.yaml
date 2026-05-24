@@ -2414,6 +2414,20 @@ ops:
     stages:
       - stable: '2.0'
     cpp: '4.0'
+  - id: gemma_rms_norm
+    description: |
+      Gemma-style RMS normalization: output = x * rsqrt(mean(x^2) + eps) * (1 + weight).
+      Supports optional fused residual addition. When residual is provided,
+      computes (x + residual) then applies normalization in a single kernel launch.
+    for:
+      - gemma_rms_norm
+    labels:
+      - fused
+      - Normalization
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.0'
   - id: fused_experts_impl
     description: An implementation of fused MoE.
     for:
