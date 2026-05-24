@@ -43,7 +43,7 @@ def bernoulli__input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.bernoulli_
-def test_perf_bernoulli_():
+def test_bernoulli_():
     bench = base.GenericBenchmark(
         op_name="bernoulli_",
         input_fn=bernoulli__input_fn,
