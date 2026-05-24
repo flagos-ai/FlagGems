@@ -5457,7 +5457,7 @@ ops:
       - KernelGen
       - Reduction
     kind:
-      - Math
+      - Reduction
     stages:
       - alpha: '5.1'
   - id: sqrt
