@@ -4542,6 +4542,17 @@ ops:
       - Distribution
     stages:
       - stable: '2.1'
+  - id: randint
+    description: Returns a tensor filled with random integers generated uniformly between low (inclusive) and high (exclusive).
+    for:
+      - randint
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Distribution
+    stages:
+      - alpha: '5.1'
   - id: randperm
     description: Returns a random permutation of integers from `0` to `n - 1`.
     for:

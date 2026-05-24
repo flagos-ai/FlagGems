@@ -408,6 +408,7 @@ _FULL_CONFIG = (
     ("rand_like", rand_like),
     ("randn", randn),
     ("randn_like", randn_like),
+    ("randint", randint),
     ("randperm", randperm),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),

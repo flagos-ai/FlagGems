@@ -281,6 +281,7 @@ from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.quantile import quantile
 from flag_gems.ops.rand import rand
 from flag_gems.ops.rand_like import rand_like
+from flag_gems.ops.randint import randint
 from flag_gems.ops.randn import randn
 from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
@@ -738,6 +739,7 @@ __all__ = [
     "rand_like",
     "randn",
     "randn_like",
+    "randint",
     "randperm",
     "reciprocal",
     "reciprocal_",
