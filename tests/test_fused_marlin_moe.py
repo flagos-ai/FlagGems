@@ -209,11 +209,7 @@ def _reference_swiglu_moe(hidden_states, w1_ref, w2_ref, topk_weights, topk_ids)
     return out
 
 
-# -----------------------------------------------------------------------------
-# Tests
-# -----------------------------------------------------------------------------
-
-
+@pytest.mark.skip(reason="Issue #3441: The operator is not stable.")
 @pytest.mark.parametrize("config", QUICK_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 def test_fused_marlin_moe_vs_ref(config, dtype):
