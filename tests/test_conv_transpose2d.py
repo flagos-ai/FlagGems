@@ -535,3 +535,51 @@ def test_conv_transpose2d_with_bias(dtype):
         res_out = torch.nn.functional.conv_transpose2d(inp, weight, bias=bias)
     reduce_dim = max(weight.shape[0] * weight.shape[2] * weight.shape[3], 1)
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.conv_transpose2d
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_conv_transpose2d_backward(dtype):
+    _skip_if_unsupported_test_device(dtype)
+    inp = torch.randn(
+        (1, 4, 8, 8), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    weight = torch.randn(
+        (4, 8, 3, 3), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    ref_i = utils.to_reference(inp, True).clone().detach().requires_grad_(True)
+    ref_w = utils.to_reference(weight, True).clone().detach().requires_grad_(True)
+    ref_out = torch.nn.functional.conv_transpose2d(ref_i, ref_w)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.conv_transpose2d(inp, weight)
+    out_grad = torch.randn_like(res_out)
+    ref_grad = utils.to_reference(out_grad, True)
+    ref_out.backward(ref_grad)
+    res_out.backward(out_grad)
+    reduce_dim = max(weight.shape[0] * weight.shape[2] * weight.shape[3], 1)
+    utils.gems_assert_close(inp.grad, ref_i.grad, dtype, reduce_dim=reduce_dim)
+    utils.gems_assert_close(weight.grad, ref_w.grad, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.conv_transpose2d
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_conv_transpose2d_backward_with_stride_padding(dtype):
+    _skip_if_unsupported_test_device(dtype)
+    inp = torch.randn(
+        (1, 4, 8, 8), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    weight = torch.randn(
+        (4, 4, 3, 3), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    ref_i = utils.to_reference(inp, True).clone().detach().requires_grad_(True)
+    ref_w = utils.to_reference(weight, True).clone().detach().requires_grad_(True)
+    ref_out = torch.nn.functional.conv_transpose2d(ref_i, ref_w, stride=2, padding=1)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.conv_transpose2d(inp, weight, stride=2, padding=1)
+    out_grad = torch.randn_like(res_out)
+    ref_grad = utils.to_reference(out_grad, True)
+    ref_out.backward(ref_grad)
+    res_out.backward(out_grad)
+    reduce_dim = max(weight.shape[0] * weight.shape[2] * weight.shape[3], 1)
+    utils.gems_assert_close(inp.grad, ref_i.grad, dtype, reduce_dim=reduce_dim)
+    utils.gems_assert_close(weight.grad, ref_w.grad, dtype, reduce_dim=reduce_dim)
