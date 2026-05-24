@@ -10,7 +10,6 @@ from . import accuracy_utils as utils
 # Test covers all FLOAT_DTYPES (fp16, fp32, bf16):
 # Kernel internally upcasts to fp32 for computation, then casts back to input dtype.
 # Testing all dtypes validates mathematical correctness and ensures no dtype-casting bugs.
-
 # Benchmark is fp32-only:
 # Benchmark compares against torch.special.bessel_j1 (CUDA reference), which only supports fp32/double.
 # fp16/bf16 benchmarks are meaningless (reference errors or CPU fallback).
