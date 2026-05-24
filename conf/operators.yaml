@@ -4626,6 +4626,32 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: reflection_pad3d
+    description: |
+      Pads the input 5D tensor by reflecting the boundary values at both edges
+      along the last three spatial dimensions (depth, height, width).
+    for:
+      - reflection_pad3d
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: reflection_pad3d_out
+    description: A variant of `reflection_pad3d` that assigns the output to `out` tensor.
+    for:
+      - reflection_pad3d.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
   - id: reglu
     description: |
       Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead of the sigmoid function for gating.
