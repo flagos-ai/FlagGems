@@ -89,6 +89,4 @@ def fused_q_kv_rmsnorm(
     return qr_out, kv_out
 
 
-dsv4_fused_q_kv_rmsnorm = fused_q_kv_rmsnorm
-
-__all__ = ["fused_q_kv_rmsnorm", "dsv4_fused_q_kv_rmsnorm"]
+__all__ = ["fused_q_kv_rmsnorm"]
