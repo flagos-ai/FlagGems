@@ -61,6 +61,7 @@ from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
 from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
 from flag_gems.fused.topk_softmax import topk_softmax
 from flag_gems.fused.topk_softplus_sqrt import topk_softplus_sqrt
+from flag_gems.fused.unpack_seq import unpack_seq_triton
 from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
@@ -118,6 +119,7 @@ __all__ = [
     "top_k_per_row_prefill",
     "topk_softmax",
     "topk_softplus_sqrt",
+    "unpack_seq_triton",
     "weight_norm",
     "sparse_attn_triton",
 ]

@@ -6145,6 +6145,18 @@ ops:
       - Distribution
     stages:
       - beta: '5.1'
+  - id: unpack_seq_triton
+    description: Unpack a packed sequence tensor back to its original variable-length form.
+    for:
+      - unpack_seq_triton
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   # - id: unsafe_view
   #   description: |
   #     Creates a new view of an existing tensor with a different shape without
