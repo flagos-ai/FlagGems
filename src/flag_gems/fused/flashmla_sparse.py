@@ -335,12 +335,8 @@ if HAS_TLE_FLASHMLA_SPARSE:
             valid_slot = valid_writer.acquire(pair)
             valid_row0 = tl.full([BK], 0, dtype=tl.int32)
             valid_row1 = tl.full([BK], 1, dtype=tl.int32)
-            valid_ptr0 = tle.gpu.local_ptr(
-                valid_slot.is_kv_valid, (valid_row0, offs_t)
-            )
-            valid_ptr1 = tle.gpu.local_ptr(
-                valid_slot.is_kv_valid, (valid_row1, offs_t)
-            )
+            valid_ptr0 = tle.gpu.local_ptr(valid_slot.is_kv_valid, (valid_row0, offs_t))
+            valid_ptr1 = tle.gpu.local_ptr(valid_slot.is_kv_valid, (valid_row1, offs_t))
             tl.store(valid_ptr0, valid0.to(tl.int8))
             tl.store(valid_ptr1, valid1.to(tl.int8))
             valid_writer.commit(pair)
@@ -412,25 +408,19 @@ if HAS_TLE_FLASHMLA_SPARSE:
 
             q_l_blk = tl.load(q_l_smem_ptr)
             q_r_blk = tl.load(q_r_smem_ptr)
-            k0_l_blk = tl.load(
-                tle.gpu.local_ptr(k0_l_slot.sK, (kv_rows, kv_cols_l))
-            )
+            k0_l_blk = tl.load(tle.gpu.local_ptr(k0_l_slot.sK, (kv_rows, kv_cols_l)))
 
             qk0 = tl.full([BH, BK], 0.0, dtype=tl.float32)
             qk0 = tl.dot(q_l_blk, tl.trans(k0_l_blk), qk0, out_dtype=tl.float32)
 
             k0_r_wait = k0_r_qk_reader.wait(pair)
             k0_r_slot = k0_r_wait.slot
-            k0_r_blk = tl.load(
-                tle.gpu.local_ptr(k0_r_slot.sK, (kv_rows, kv_cols_r))
-            )
+            k0_r_blk = tl.load(tle.gpu.local_ptr(k0_r_slot.sK, (kv_rows, kv_cols_r)))
             qk0 = tl.dot(q_r_blk, tl.trans(k0_r_blk), qk0, out_dtype=tl.float32)
             if HAVE_TAIL:
                 q_tail_blk = tl.load(tle.gpu.local_ptr(q_slot.sQ_tail))
                 k0_t_blk = tl.load(tle.gpu.local_ptr(k0_r_slot.sK_tail))
-                qk0 = tl.dot(
-                    q_tail_blk, tl.trans(k0_t_blk), qk0, out_dtype=tl.float32
-                )
+                qk0 = tl.dot(q_tail_blk, tl.trans(k0_t_blk), qk0, out_dtype=tl.float32)
 
             valid_wait = valid_reader.wait(pair)
             row0 = tl.full([BK], 0, dtype=tl.int32)
@@ -456,9 +446,7 @@ if HAS_TLE_FLASHMLA_SPARSE:
             tl.store(tle.gpu.local_ptr(sM_wg0_slot.sM), local_max)
             sM_wg0_writer.commit(pair)
 
-            k0_l_blk = tl.load(
-                tle.gpu.local_ptr(k0_l_slot.sK, (kv_rows, kv_cols_l))
-            )
+            k0_l_blk = tl.load(tle.gpu.local_ptr(k0_l_slot.sK, (kv_rows, kv_cols_l)))
             acc_l = tl.dot(prob0_b, k0_l_blk, acc_l, out_dtype=tl.float32)
             k0_l_reader.release(pair)
             k0_r_qk_reader.release(pair)
@@ -500,7 +488,9 @@ if HAS_TLE_FLASHMLA_SPARSE:
         inv_total_sum = tl.fdiv(1.0, total_sum)
         out_l_vals = acc_l * inv_total_sum[:, None]
         if HAVE_ATTN_SINK:
-            fin_log = (max_prev * log_scale + tl.math.log2(total_sum)) * 0.6931471805599453
+            fin_log = (
+                max_prev * log_scale + tl.math.log2(total_sum)
+            ) * 0.6931471805599453
             sink = tl.load(attn_sink_base + h_base + offs_h, mask_h, other=0.0)
             sink_scale = tl.fdiv(1.0, 1.0 + tl.math.exp(sink - fin_log))
             out_l_vals = out_l_vals * sink_scale[:, None]
@@ -568,23 +558,17 @@ if HAS_TLE_FLASHMLA_SPARSE:
 
             q_l_blk = tl.load(q_l_smem_ptr)
             q_r_blk = tl.load(q_r_smem_ptr)
-            k1_r_blk = tl.load(
-                tle.gpu.local_ptr(k1_r_slot.sK, (kv_rows, kv_cols_r))
-            )
+            k1_r_blk = tl.load(tle.gpu.local_ptr(k1_r_slot.sK, (kv_rows, kv_cols_r)))
 
             qk1 = tl.full([BH, BK], 0.0, dtype=tl.float32)
             qk1 = tl.dot(q_r_blk, tl.trans(k1_r_blk), qk1, out_dtype=tl.float32)
             if HAVE_TAIL:
                 q_tail_blk = tl.load(tle.gpu.local_ptr(q_slot.sQ_tail))
                 k1_t_blk = tl.load(tle.gpu.local_ptr(k1_r_slot.sK_tail))
-                qk1 = tl.dot(
-                    q_tail_blk, tl.trans(k1_t_blk), qk1, out_dtype=tl.float32
-                )
+                qk1 = tl.dot(q_tail_blk, tl.trans(k1_t_blk), qk1, out_dtype=tl.float32)
             k1_l_wait = k1_l_qk_reader.wait(pair)
             k1_l_slot = k1_l_wait.slot
-            k1_l_blk = tl.load(
-                tle.gpu.local_ptr(k1_l_slot.sK, (kv_rows, kv_cols_l))
-            )
+            k1_l_blk = tl.load(tle.gpu.local_ptr(k1_l_slot.sK, (kv_rows, kv_cols_l)))
             qk1 = tl.dot(q_l_blk, tl.trans(k1_l_blk), qk1, out_dtype=tl.float32)
 
             valid_wait = valid_reader.wait(pair)
@@ -649,9 +633,7 @@ if HAS_TLE_FLASHMLA_SPARSE:
         out_r_vals = acc_r * inv_total_sum[:, None]
         final_max_logits_log2 = max_prev * log_scale
         final_max_logits = final_max_logits_log2 * 0.6931471805599453
-        fin_log = (
-            final_max_logits_log2 + tl.math.log2(total_sum)
-        ) * 0.6931471805599453
+        fin_log = (final_max_logits_log2 + tl.math.log2(total_sum)) * 0.6931471805599453
         if HAVE_ATTN_SINK:
             sink = tl.load(attn_sink_base + h_base + offs_h, mask_h, other=0.0)
             sink_scale = tl.fdiv(1.0, 1.0 + tl.math.exp(sink - fin_log))
@@ -661,9 +643,7 @@ if HAS_TLE_FLASHMLA_SPARSE:
         tl.store(q_r_smem_ptr, out_r_vals.to(OUT_DTYPE), o_r_msk)
         tle.gpu.copy(q_slot.sQ_r, output_desc, [BH, DPH], [output_row, DPH])
 
-        final_max_logits = tl.where(
-            is_no_valid_tokens, float("-inf"), final_max_logits
-        )
+        final_max_logits = tl.where(is_no_valid_tokens, float("-inf"), final_max_logits)
         fin_log = tl.where(is_no_valid_tokens, float("inf"), fin_log)
         tl.store(tle.gpu.local_ptr(final_max_logits_smem), final_max_logits, mask_h)
         tl.store(tle.gpu.local_ptr(final_lse_smem), fin_log, mask_h)
@@ -708,7 +688,6 @@ if HAS_TLE_FLASHMLA_SPARSE:
     ):
         DPH: tl.constexpr = DP // 2
         stride_kvg: tl.constexpr = TD + D
-        stride_kvn = VG * stride_kvg
         stride_tg = TOPK
         stride_tm = VG * stride_tg
         stride_lm = H
@@ -892,12 +871,8 @@ if HAS_TLE_FLASHMLA_SPARSE:
         sM_wg1_pipe = tle.pipe(
             capacity=1, scope="cta", name="flashmla_wg1_bunch_0_ready", sM=sM_smem
         )
-        sS0_pipe = tle.pipe(
-            capacity=1, scope="cta", name="flashmla_sS0", sS0=sS0_smem
-        )
-        sS1_pipe = tle.pipe(
-            capacity=1, scope="cta", name="flashmla_sS1", sS1=sS1_smem
-        )
+        sS0_pipe = tle.pipe(capacity=1, scope="cta", name="flashmla_sS0", sS0=sS0_smem)
+        sS1_pipe = tle.pipe(capacity=1, scope="cta", name="flashmla_sS1", sS1=sS1_smem)
         sL_wg0_pipe = tle.pipe(
             capacity=2, scope="cta", name="flashmla_sL_wg0", sL=sL_smem
         )
