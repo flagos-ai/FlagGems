@@ -86,7 +86,9 @@ def _launch_reflection_pad1d_backward(
         grid = (B, triton.cdiv(W_in, 256))
         with torch_device_fn.device(x.device):
             _copy_rows_kernel_f32[grid](grad_output, grad_input, B, W_in, BLOCK_W=256)
-        return grad_input.to(x.dtype)
+        if grad_input.dtype == x.dtype:
+            return grad_input
+        return torch.ops.aten._to_copy(grad_input, dtype=x.dtype)
 
     # Validate input dimensions
     if W_in < 2:
@@ -103,7 +105,9 @@ def _launch_reflection_pad1d_backward(
         reflection_pad1d_backward_kernel[grid](
             grad_output, grad_input, B, W_in, pad_left, W_out, BLOCK_W=256
         )
-    return grad_input.to(x.dtype)
+    if grad_input.dtype == x.dtype:
+        return grad_input
+    return torch.ops.aten._to_copy(grad_input, dtype=x.dtype)
 
 
 @triton.jit
