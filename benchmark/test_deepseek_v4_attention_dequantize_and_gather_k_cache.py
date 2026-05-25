@@ -4,8 +4,14 @@ import torch
 from flag_gems.fused.deepseek_v4_attention_dequantize_and_gather_k_cache import (
     dequantize_and_gather_k_cache,
 )
+from flag_gems.utils.device_info import get_device_capability
 
 from . import base
+
+
+def is_support_fp8e4nv():
+    major, minor = get_device_capability()
+    return major * 10 + minor >= 89
 
 
 def torch_dequantize_and_gather_k_cache(
@@ -112,6 +118,9 @@ class DequantizeAndGatherKCacheBenchmark(base.Benchmark):
             )
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires cuda")
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not is_support_fp8e4nv(),
+    reason="requires cuda with fp8e4nv support (capability >= 89)",
+)
 def test_dequantize_and_gather_k_cache_benchmark():
     DequantizeAndGatherKCacheBenchmark().run()
