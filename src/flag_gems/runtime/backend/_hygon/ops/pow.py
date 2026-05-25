@@ -13,11 +13,11 @@ _pow = tl_extra_shim.pow
 @triton.jit
 def pow_func(x, exponent):
     if x.type.element_ty == tl.bfloat16:
-        return _pow(x.to(tl.float32), exponent)
+        return _pow(x.to(tl.float32), exponent.to(tl.float32))
     elif x.type.element_ty == tl.float16:
-        return _pow(x.to(tl.float32), exponent)
+        return _pow(x.to(tl.float32), exponent.to(tl.float32))
     else:
-        return _pow(x.to(tl.float64), exponent)
+        return _pow(x.to(tl.float64), exponent.to(tl.float64))
 
 
 def pow_tensor_tensor(A, exponent):
@@ -34,11 +34,11 @@ def pow_tensor_tensor_(A, exponent):
 @triton.jit
 def pow_func_tensor_scalar(x, exponent):
     if x.type.element_ty == tl.bfloat16:
-        return _pow(x.to(tl.float32), exponent)
+        return _pow(x.to(tl.float32), exponent.to(tl.float32))
     elif x.type.element_ty == tl.float16:
-        return _pow(x.to(tl.float32), exponent)
+        return _pow(x.to(tl.float32), exponent.to(tl.float32))
     else:
-        return _pow(x.to(tl.float64), exponent)
+        return _pow(x.to(tl.float64), exponent.to(tl.float64))
 
 
 def pow_tensor_scalar(A, exponent):
@@ -55,11 +55,11 @@ def pow_tensor_scalar_(A, exponent):
 @triton.jit
 def pow_func_scalar_tensor(x, exponent):
     if exponent.type.element_ty == tl.bfloat16:
-        return _pow(x.to(tl.float32), exponent)
+        return _pow(x.to(tl.float32), exponent.to(tl.float32))
     elif exponent.type.element_ty == tl.float16:
-        return _pow(x.to(tl.float32), exponent)
+        return _pow(x.to(tl.float32), exponent.to(tl.float32))
     else:
-        return _pow(x.to(tl.float64), exponent)
+        return _pow(x.to(tl.float64), exponent.to(tl.float64))
 
 
 def pow_scalar(A, exponent):

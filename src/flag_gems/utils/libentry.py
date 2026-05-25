@@ -29,7 +29,7 @@ from typing import (
 import triton
 
 from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device, torch_device_fn
 from flag_gems.runtime.backend import _state
 from flag_gems.utils.code_cache import config_cache_dir
 from flag_gems.utils.models import PersistantModel, SQLPersistantModel
@@ -685,6 +685,15 @@ class LibEntry(triton.KernelInterface):
     def key(self, spec_args, dns_args, const_args):
         def spec_arg(arg):
             if hasattr(arg, "data_ptr"):
+                if device.vendor_name == "hygon":
+                    from triton.backends.hcu.compiler import HIPBackend
+
+                    if hasattr(HIPBackend, "get_tensor_specialization"):
+                        return (
+                            arg.dtype,
+                            arg.data_ptr() % self.divisibility == 0,
+                            HIPBackend.get_tensor_specialization(arg),
+                        )
                 return (arg.dtype, arg.data_ptr() % self.divisibility == 0)
             return (type(arg), arg)
 
