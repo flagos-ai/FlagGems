@@ -334,6 +334,12 @@ def sqmma_descriptor_pre_hook(nargs):
     if os.environ.get("USE_FLAGTUNE") == "1"
     else [
         triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128, "GROUP_M": 8},
+            num_stages=1,
+            num_warps=4,
+            pre_hook=sqmma_descriptor_pre_hook,
+        ),
+        triton.Config(
             {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64, "GROUP_M": 8},
             num_stages=1,
             num_warps=4,
@@ -396,9 +402,18 @@ def mm_sqmma(A, B, M, N, K):
     assert a_type == b_type, "Mat A and Mat B should have the same dtype"
     c_dtype = get_higher_dtype(a_type, b_type)
     C = torch.empty((M, N), dtype=c_dtype, device=device)
+<<<<<<< HEAD
     desc_a = TensorDescriptor.from_tensor(A, [1, 1])
     desc_b = TensorDescriptor.from_tensor(B, [1, 1])
     desc_c = TensorDescriptor.from_tensor(C, [1, 1])
+=======
+    # Real block_shape values are filled in by matmul_sqmma_set_block_size_hook
+    # at autotune/launch time based on the BLOCK_M/N/K selected by libtuner.
+    dummy_block = [1, 1]
+    desc_a = TensorDescriptor(A, A.shape, A.stride(), dummy_block)
+    desc_b = TensorDescriptor(B, B.shape, B.stride(), dummy_block)
+    desc_c = TensorDescriptor(C, C.shape, C.stride(), dummy_block)
+>>>>>>> eee61af5b ([AABS] Add mthreads tune config)
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
         1,
@@ -411,7 +426,12 @@ def mm_sqmma(A, B, M, N, K):
         M,
         N,
         K,
+<<<<<<< HEAD
         str(a_type).split(".")[-1],
+=======
+        dtype=str(a_type).split(".")[-1],
+        GROUP_M=GROUP_M,
+>>>>>>> eee61af5b ([AABS] Add mthreads tune config)
     )
     return C
 
