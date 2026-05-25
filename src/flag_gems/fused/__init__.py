@@ -7,6 +7,9 @@ from flag_gems.fused.cp_gather_indexer_k_quant_cache import (
 )
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
+from flag_gems.fused.deepseek_v4_attention_compute_global_topk_indices_and_lens import (
+    compute_global_topk_indices_and_lens,
+)
 from flag_gems.fused.deepseek_v4_attention_fused_q_kv_rmsnorm import fused_q_kv_rmsnorm
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
 from flag_gems.fused.FLA import (
@@ -70,6 +73,7 @@ from flag_gems.fused.unpack_seq import unpack_seq_triton
 from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
+    "compute_global_topk_indices_and_lens",
     "fused_q_kv_rmsnorm",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
