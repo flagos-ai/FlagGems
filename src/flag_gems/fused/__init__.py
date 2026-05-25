@@ -7,6 +7,16 @@ from flag_gems.fused.cp_gather_indexer_k_quant_cache import (
 )
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
+from flag_gems.fused.deepseek_v4_ops import (
+    combine_topk_swa_indices,
+    compute_global_topk_indices_and_lens,
+    deepseek_v4_fp8_einsum,
+    dequantize_and_gather_k_cache,
+    flash_mla_sparse_decode,
+    fused_q_kv_rmsnorm,
+    get_mla_metadata,
+    persistent_topk,
+)
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
 from flag_gems.fused.dsv4_attention import (
     dsv4_attention_triton,
@@ -18,20 +28,6 @@ from flag_gems.fused.dsv4_attention import (
     dsv4_fp8_einsum,
     dsv4_fused_q_kv_rmsnorm,
     dsv4_qnorm_rope_kv_rope_quant_insert,
-)
-from flag_gems.fused.deepseek_v4_ops import (
-    combine_topk_swa_indices,
-    compute_global_topk_indices_and_lens,
-    cp_gather_indexer_k_quant_cache,
-    deepseek_v4_fp8_einsum,
-    dequantize_and_gather_k_cache,
-    flash_mla_sparse_decode,
-    flash_mla_sparse_fwd,
-    fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
-    fused_q_kv_rmsnorm,
-    get_mla_metadata,
-    persistent_topk,
-    top_k_per_row_prefill,
 )
 from flag_gems.fused.FLA import (
     chunk_gated_delta_rule_fwd,
@@ -101,7 +97,6 @@ __all__ = [
     "chunk_gated_delta_rule",
     "chunk_gated_delta_rule_fwd",
     "concat_and_cache_mla",
-    "cp_gather_indexer_k_quant_cache",
     "cutlass_scaled_mm",
     "cross_entropy_loss",
     "dispatch_fused_moe_kernel",
@@ -123,14 +118,11 @@ __all__ = [
     "dequantize_and_gather_k_cache",
     "flash_mla_sparse_decode",
     "flash_mla_sparse_fwd",
-    "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     "fused_q_kv_rmsnorm",
     "get_mla_metadata",
     "persistent_topk",
-    "top_k_per_row_prefill",
     "dswiglu",
     "flash_mla",
-    "flash_mla_sparse_fwd",
     "fused_add_rms_norm",
     "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     "fused_experts_impl",
