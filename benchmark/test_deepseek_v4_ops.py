@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from flag_gems.fused.deepseek_v4_ops import (
+from flag_gems.fused.deepseek_v4_attention import (
     combine_topk_swa_indices,
     compute_global_topk_indices_and_lens,
     deepseek_v4_fp8_einsum,

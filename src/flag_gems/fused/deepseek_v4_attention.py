@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Optional, Tuple
 
 import torch
@@ -6,6 +7,12 @@ import triton.language as tl
 
 from flag_gems.fused.flashmla_sparse import (
     flash_mla_sparse_fwd as _flash_mla_sparse_fwd_impl,
+)
+from flag_gems.fused.cp_gather_indexer_k_quant_cache import (
+    cp_gather_indexer_k_quant_cache as _cp_gather_indexer_k_quant_cache_impl,
+)
+from flag_gems.fused.top_k_per_row_prefill import (
+    top_k_per_row_prefill as _top_k_per_row_prefill_impl,
 )
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._nvidia.hopper.ops.w8a8_block_fp8_matmul import (
@@ -967,111 +974,255 @@ def dsv4_fp8_einsum(
         out[:, group_idx, :].copy_(out_group)
 
 
-def dsv4_attention_triton(
+def fused_q_kv_rmsnorm(
+    qr: torch.Tensor,
+    kv: torch.Tensor,
+    q_weight: torch.Tensor,
+    kv_weight: torch.Tensor,
+    eps: float,
+):
+    return dsv4_fused_q_kv_rmsnorm(qr, kv, q_weight, kv_weight, eps)
+
+
+def fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
     q: torch.Tensor,
     kv: torch.Tensor,
+    k_cache: torch.Tensor,
+    slot_mapping: torch.Tensor,
     positions: torch.Tensor,
-    out: torch.Tensor,
+    cos_sin_cache: torch.Tensor,
+    eps: float,
+    block_size: int,
     *,
-    k_cache: Optional[torch.Tensor] = None,
-    slot_mapping: Optional[torch.Tensor] = None,
-    cos_sin_cache: Optional[torch.Tensor] = None,
-    sm_scale: Optional[float] = None,
-    prefill_indices: Optional[torch.Tensor] = None,
-    decode_indices: Optional[torch.Tensor] = None,
-    attn_sink: Optional[torch.Tensor] = None,
+    rope_dim: int = 64,
+    nope_dim: Optional[int] = None,
+    scale_slots: Optional[int] = None,
+) -> None:
+    dsv4_qnorm_rope_kv_rope_quant_insert(
+        q=q,
+        kv=kv,
+        k_cache=k_cache,
+        slot_mapping=slot_mapping,
+        positions=positions,
+        cos_sin_cache=cos_sin_cache,
+        eps=eps,
+        block_size=block_size,
+        rope_dim=rope_dim,
+        nope_dim=nope_dim,
+        scale_slots=scale_slots,
+    )
+
+
+def dequantize_and_gather_k_cache(
+    out: torch.Tensor,
+    k_cache: torch.Tensor,
+    seq_lens: torch.Tensor,
+    gather_lens: Optional[torch.Tensor],
+    block_table: torch.Tensor,
+    block_size: int,
+    offset: int,
+    *,
+    rope_dim: int = 64,
+    nope_dim: Optional[int] = None,
+    scale_slots: Optional[int] = None,
+) -> None:
+    dsv4_dequantize_and_gather_k_cache(
+        out=out,
+        k_cache=k_cache,
+        seq_lens=seq_lens,
+        gather_lens=gather_lens,
+        block_table=block_table,
+        block_size=block_size,
+        offset=offset,
+        rope_dim=rope_dim,
+        nope_dim=nope_dim,
+        scale_slots=scale_slots,
+    )
+
+
+def compute_global_topk_indices_and_lens(
+    topk_indices: torch.Tensor,
+    token_to_req_indices: torch.Tensor,
+    block_table: torch.Tensor,
+    block_size: int,
+    is_valid_token: Optional[torch.Tensor] = None,
+):
+    if is_valid_token is None:
+        is_valid_token = torch.ones(
+            (topk_indices.shape[0],), device=topk_indices.device, dtype=torch.int32
+        )
+    return dsv4_compute_global_topk_indices_and_lens(
+        topk_indices=topk_indices,
+        token_to_req_indices=token_to_req_indices,
+        block_table=block_table,
+        block_size=block_size,
+        is_valid_token=is_valid_token,
+    )
+
+
+def combine_topk_swa_indices(
+    topk_indices: torch.Tensor,
+    query_start_loc: torch.Tensor,
+    seq_lens: torch.Tensor,
+    gather_lens: torch.Tensor,
+    window_size: int,
+    compress_ratio: int,
+    topk: int,
+    M: int,
+    N: int,
+):
+    return dsv4_combine_topk_swa_indices(
+        topk_indices=topk_indices,
+        query_start_loc=query_start_loc,
+        seq_lens=seq_lens,
+        gather_lens=gather_lens,
+        window_size=window_size,
+        compress_ratio=compress_ratio,
+        topk=topk,
+        M=M,
+        N=N,
+    )
+
+
+def flash_mla_sparse_fwd(
+    q: torch.Tensor,
+    kv: torch.Tensor,
+    indices: torch.Tensor,
+    sm_scale: float,
+    d_v: int,
+    attn_sink: torch.Tensor,
     topk_length: Optional[torch.Tensor] = None,
+    out: Optional[torch.Tensor] = None,
+):
+    return dsv4_flash_mla_sparse_prefill(
+        q=q,
+        kv=kv,
+        indices=indices,
+        sm_scale=sm_scale,
+        d_v=d_v,
+        attn_sink=attn_sink,
+        topk_length=topk_length,
+        out=out,
+    )
+
+
+def flash_mla_sparse_decode(
+    q: torch.Tensor,
+    k_cache: torch.Tensor,
+    indices: torch.Tensor,
+    sm_scale: float,
+    head_dim_v: int,
+    attn_sink: torch.Tensor,
     extra_k_cache: Optional[torch.Tensor] = None,
-    extra_decode_indices: Optional[torch.Tensor] = None,
+    extra_indices_in_kvcache: Optional[torch.Tensor] = None,
+    topk_length: Optional[torch.Tensor] = None,
     extra_topk_length: Optional[torch.Tensor] = None,
+    out: Optional[torch.Tensor] = None,
     block_size: int = 64,
     rope_dim: int = 64,
     nope_dim: Optional[int] = None,
     scale_slots: Optional[int] = None,
-    eps: float = 1.0e-6,
-) -> torch.Tensor:
-    """Minimal tensor-level DSV4 attention path.
-
-    This is intentionally independent from vLLM layer/context objects. Callers
-    pass already projected q/kv tensors plus explicit sparse metadata.
-    """
-    if sm_scale is None:
-        sm_scale = q.shape[-1] ** -0.5
-    if k_cache is not None and slot_mapping is not None and cos_sin_cache is not None:
-        dsv4_qnorm_rope_kv_rope_quant_insert(
-            q,
-            kv,
-            k_cache,
-            slot_mapping,
-            positions,
-            cos_sin_cache,
-            eps=eps,
-            block_size=block_size,
-            rope_dim=rope_dim,
-            nope_dim=nope_dim,
-            scale_slots=scale_slots,
-        )
-    if prefill_indices is not None:
-        dsv4_flash_mla_sparse_prefill(
-            q,
-            kv.view(-1, 1, kv.shape[-1]).contiguous(),
-            prefill_indices,
-            sm_scale,
-            d_v=out.shape[-1],
-            attn_sink=attn_sink,
-            topk_length=topk_length,
-            out=out,
-        )
-        return out
-    if decode_indices is not None:
-        assert k_cache is not None
-        dsv4_flash_mla_sparse_decode(
-            q.unsqueeze(1) if q.ndim == 3 else q,
-            k_cache,
-            decode_indices,
-            sm_scale,
-            head_dim_v=out.shape[-1],
-            attn_sink=attn_sink,
-            extra_k_cache=extra_k_cache,
-            extra_indices_in_kvcache=extra_decode_indices,
-            topk_length=topk_length,
-            extra_topk_length=extra_topk_length,
-            out=out.unsqueeze(1) if out.ndim == 3 else out,
-            block_size=block_size,
-            rope_dim=rope_dim,
-            nope_dim=nope_dim,
-            scale_slots=scale_slots,
-        )
-        return out
-    raise ValueError("Either prefill_indices or decode_indices must be provided.")
+):
+    return dsv4_flash_mla_sparse_decode(
+        q=q,
+        k_cache=k_cache,
+        indices=indices,
+        sm_scale=sm_scale,
+        head_dim_v=head_dim_v,
+        attn_sink=attn_sink,
+        extra_k_cache=extra_k_cache,
+        extra_indices_in_kvcache=extra_indices_in_kvcache,
+        topk_length=topk_length,
+        extra_topk_length=extra_topk_length,
+        out=out,
+        block_size=block_size,
+        rope_dim=rope_dim,
+        nope_dim=nope_dim,
+        scale_slots=scale_slots,
+    )
 
 
-def dsv4_vllm_deepseek_v4_attention(
-    hidden_states: torch.Tensor,
-    positions: torch.Tensor,
+def deepseek_v4_fp8_einsum(
+    a: torch.Tensor,
+    a_scale: torch.Tensor,
+    b: torch.Tensor,
+    b_scale: torch.Tensor,
     out: torch.Tensor,
-    layer_name: str,
+    equation: str,
+    recipe: Sequence[int],
 ) -> None:
-    from vllm.forward_context import get_forward_context
+    dsv4_fp8_einsum(
+        a=a,
+        a_scale=a_scale,
+        b=b,
+        b_scale=b_scale,
+        out=out,
+        equation=equation,
+        recipe=list(recipe),
+    )
 
-    forward_context = get_forward_context()
-    layer = forward_context.no_compile_layers[layer_name]
-    layer.attention_impl(hidden_states, positions, out)
+
+def get_mla_metadata(*args, **kwargs):
+    from vllm.v1.attention.ops.flashmla import get_mla_metadata as _get_mla_metadata
+
+    return _get_mla_metadata(*args, **kwargs)
 
 
-# vLLM-compatible aliases
-fused_q_kv_rmsnorm = dsv4_fused_q_kv_rmsnorm
-dequantize_and_gather_k_cache = dsv4_dequantize_and_gather_k_cache
-compute_global_topk_indices_and_lens = dsv4_compute_global_topk_indices_and_lens
-combine_topk_swa_indices = dsv4_combine_topk_swa_indices
-flash_mla_sparse_fwd = dsv4_flash_mla_sparse_prefill
+def persistent_topk(
+    logits: torch.Tensor,
+    lengths: torch.Tensor,
+    output: torch.Tensor,
+    workspace: torch.Tensor,
+    k: int,
+    max_seq_len: int,
+) -> None:
+    torch.ops._C.persistent_topk(logits, lengths, output, workspace, k, max_seq_len)
+
+
+def top_k_per_row_prefill(
+    logits: torch.Tensor,
+    row_starts: torch.Tensor,
+    row_ends: torch.Tensor,
+    out_indices: torch.Tensor,
+    num_rows: int,
+    stride0: int,
+    stride1: int,
+    topk: int,
+) -> None:
+    _top_k_per_row_prefill_impl(
+        logits,
+        row_starts,
+        row_ends,
+        out_indices,
+        num_rows,
+        stride0,
+        stride1,
+        topk,
+    )
+
+
+def cp_gather_indexer_k_quant_cache(
+    kv_cache: torch.Tensor,
+    dst_k: torch.Tensor,
+    dst_scale: torch.Tensor,
+    block_table: torch.Tensor,
+    cu_seq_lens: torch.Tensor,
+) -> None:
+    _cp_gather_indexer_k_quant_cache_impl(
+        kv_cache,
+        dst_k,
+        dst_scale,
+        block_table,
+        cu_seq_lens,
+    )
 
 
 __all__ = [
     "combine_topk_swa_indices",
     "compute_global_topk_indices_and_lens",
+    "cp_gather_indexer_k_quant_cache",
+    "deepseek_v4_fp8_einsum",
     "dequantize_and_gather_k_cache",
-    "dsv4_attention_triton",
     "dsv4_compute_global_topk_indices_and_lens",
     "dsv4_combine_topk_swa_indices",
     "dsv4_dequantize_and_gather_k_cache",
@@ -1080,6 +1231,11 @@ __all__ = [
     "dsv4_flash_mla_sparse_prefill",
     "dsv4_fused_q_kv_rmsnorm",
     "dsv4_qnorm_rope_kv_rope_quant_insert",
+    "flash_mla_sparse_decode",
     "flash_mla_sparse_fwd",
+    "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     "fused_q_kv_rmsnorm",
+    "get_mla_metadata",
+    "persistent_topk",
+    "top_k_per_row_prefill",
 ]
