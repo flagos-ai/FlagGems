@@ -18,49 +18,6 @@ def _parse_philox(
     return int(philox_seed.item()), int(philox_offset.item())
 
 
-def _smem_bytes(block_m, block_n, head_dim, num_stages, dtype_bytes=2):
-    q_do_tile = 2 * block_m * head_dim * dtype_bytes
-    kv_tile = 2 * block_n * head_dim * dtype_bytes * num_stages
-    return q_do_tile + kv_tile
-
-
-def _get_max_shared_mem():
-    props = torch.cuda.get_device_properties(torch.cuda.current_device())
-    return getattr(
-        props,
-        "shared_memory_per_block_optin",
-        props.shared_memory_per_block,
-    )
-
-
-def _prune_configs(configs, named_args, **kwargs):
-    head_dim = named_args.get("HEAD_DIM", 128)
-
-    max_smem = _get_max_shared_mem() - 4 * 1024
-
-    pruned = []
-    for cfg in configs:
-        bm = cfg.kwargs["BLOCK_M"]
-        bn = cfg.kwargs["BLOCK_N"]
-        ns = cfg.num_stages
-        if _smem_bytes(bm, bn, head_dim, ns) <= max_smem:
-            pruned.append(cfg)
-
-    if not pruned:
-        pruned = [
-            min(
-                configs,
-                key=lambda c: _smem_bytes(
-                    c.kwargs["BLOCK_M"],
-                    c.kwargs["BLOCK_N"],
-                    head_dim,
-                    c.num_stages,
-                ),
-            )
-        ]
-    return pruned
-
-
 _DQ_CONFIGS = [
     triton.Config({"BLOCK_M": 32, "BLOCK_N": 64}, num_warps=4, num_stages=2),
     triton.Config({"BLOCK_M": 64, "BLOCK_N": 32}, num_warps=4, num_stages=2),
@@ -90,7 +47,6 @@ _DKV_CONFIGS = [
 @triton.autotune(
     configs=_DQ_CONFIGS,
     key=["seqlen_q", "seqlen_k", "HEAD_DIM"],
-    prune_configs_by={"early_config_prune": _prune_configs},
 )
 @triton.jit
 def _flash_attn_bwd_dq_fused(
@@ -299,7 +255,6 @@ def _flash_attn_bwd_dq_fused(
 @triton.autotune(
     configs=_DKV_CONFIGS,
     key=["seqlen_q", "seqlen_k", "HEAD_DIM"],
-    prune_configs_by={"early_config_prune": _prune_configs},
 )
 @triton.jit
 def _flash_attn_bwd_dkv(
@@ -528,7 +483,6 @@ def _flash_attn_bwd_dkv(
 @triton.autotune(
     configs=_DQ_CONFIGS,
     key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM"],
-    prune_configs_by={"early_config_prune": _prune_configs},
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dq_fused(
@@ -739,7 +693,6 @@ def _flash_attn_bwd_varlen_dq_fused(
 @triton.autotune(
     configs=_DKV_CONFIGS,
     key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM"],
-    prune_configs_by={"early_config_prune": _prune_configs},
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dkv(
