@@ -4,6 +4,10 @@ from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
+from flag_gems.fused.deepseek_v4_attention_fused_q_kv_rmsnorm import (
+    dsv4_fused_q_kv_rmsnorm,
+    fused_q_kv_rmsnorm,
+)
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
 from flag_gems.fused.FLA import (
     chunk_gated_delta_rule_fwd,
@@ -62,6 +66,8 @@ from flag_gems.fused.topk_softplus_sqrt import topk_softplus_sqrt
 from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
+    "fused_q_kv_rmsnorm",
+    "dsv4_fused_q_kv_rmsnorm",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
     "bincount",
