@@ -3,8 +3,14 @@ import torch
 
 from . import base, consts
 
-# Custom shapes for permute_copy (3D tensors with non-trivial permutations)
-CUSTOM_SHAPES = [(2, 3, 4), (4, 2, 3), (16, 128, 64), (32, 64, 128), (64, 256, 512)]
+# Shapes covering 3D and 4D tensors
+CUSTOM_SHAPES = [
+    (2, 3, 4),
+    (16, 128, 64),
+    (32, 64, 128),
+    (2, 3, 4, 5),
+    (4, 16, 32, 64),
+]
 
 
 class PermuteCopyBenchmark(base.Benchmark):

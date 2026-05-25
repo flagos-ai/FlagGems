@@ -212,6 +212,6 @@ def permute_copy(x: torch.Tensor, dims):
                 BLOCK_SIZE=1024,
             )
         else:
-            # For ranks > 3, fall back to PyTorch
-            return torch.permute_copy(x, dims)
+            # For ranks > 3, fall back to aten (avoid recursive gems dispatch)
+            return x.permute(dims).contiguous()
     return out

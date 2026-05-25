@@ -64,3 +64,22 @@ def test_permute_copy_2d(shape, dtype, dims):
         res_out = torch.permute_copy(inp, dims)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.permute_copy
+@pytest.mark.parametrize(
+    # 4D shapes to exercise the fallback path (rank > 3)
+    "shape",
+    [(2, 3, 4, 5), (1, 16, 32, 64)],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dims", [(0, 2, 1, 3), (3, 2, 1, 0), (0, 3, 2, 1)])
+def test_permute_copy_4d(shape, dtype, dims):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.permute_copy(ref_inp, dims)
+    with flag_gems.use_gems():
+        res_out = torch.permute_copy(inp, dims)
+
+    gems_assert_close(res_out, ref_out, dtype)
