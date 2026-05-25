@@ -313,7 +313,6 @@ from flag_gems.ops.scatter_reduce import (
     scatter_reduce_,
     scatter_reduce_out,
 )
-from flag_gems.ops.scatter_reduce_ import scatter_reduce_
 from flag_gems.ops.segment_reduce import (
     _segment_reduce_backward,
     _segment_reduce_backward_out,
