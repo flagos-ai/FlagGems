@@ -158,20 +158,25 @@ case $VENDOR in
     ;;
 
   nvidia)
-    uv pip install -e .
-    uv pip install ".[nvidia,test]"
-
+    # We need pytorch first for building C++ wrapped operators
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.9.0+cu128" \
-        "torchvision==0.24.0+cu128" \
-        "torchaudio==2.9.0+cu128" \
-        "flagtree==0.5.0+3.5"
+        "torch==2.10.0+cu128" \
+        "torchvision==0.25.0+cu128" \
+        "torchaudio==2.10.0+cu128" \
+        "triton==3.6.0"
 
-    if [ -n "${USE_TRITON}" ]; then
-      uv pip uninstall flagtree
-      uv pip install --index ${FLAGOS_PYPI} \
-        "triton==3.5"
-    fi
+    # The follow environments are for C++ wrapped operators
+    export CMAKE_PREFIX_PATH=$(python -c 'import torch; print(torch.utils.cmake_refix_path)')
+    export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=CUDA"
+    uv pip install -e . --no-build-isolation
+    uv pip install ".[test]"
+
+    # We don't have flagtree for triton 3.6 yet
+    # if [ -n "${USE_TRITON}" ]; then
+    #   uv pip uninstall triton
+    #   uv pip install --index ${FLAGOS_PYPI} \
+    #     "flagtree==0.5.1+3.6"
+    # fi
     ;;
 
   spacemit)

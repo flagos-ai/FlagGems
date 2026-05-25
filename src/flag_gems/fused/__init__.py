@@ -1,5 +1,6 @@
 from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
 from flag_gems.fused.bincount import bincount
+from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
@@ -54,7 +55,10 @@ from flag_gems.fused.silu_and_mul_with_clamp import (
 from flag_gems.fused.skip_layernorm import skip_layer_norm
 from flag_gems.fused.sparse_attention import sparse_attn_triton
 from flag_gems.fused.swiglu import dswiglu, swiglu
+from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
+from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
 from flag_gems.fused.topk_softmax import topk_softmax
+from flag_gems.fused.topk_softplus_sqrt import topk_softplus_sqrt
 from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
@@ -62,6 +66,7 @@ __all__ = [
     "apply_rotary_pos_emb",
     "bincount",
     "bucket_sort_topk",
+    "chunk_gated_delta_rule",
     "chunk_gated_delta_rule_fwd",
     "concat_and_cache_mla",
     "cutlass_scaled_mm",
@@ -105,7 +110,10 @@ __all__ = [
     "sinkhorn_forward",
     "skip_layer_norm",
     "swiglu",
+    "top_k_per_row_decode",
+    "top_k_per_row_prefill",
     "topk_softmax",
+    "topk_softplus_sqrt",
     "weight_norm",
     "sparse_attn_triton",
 ]

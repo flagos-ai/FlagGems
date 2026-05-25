@@ -1,0 +1,165 @@
+#!/usr/bin/env python
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+STATUS_NORMALIZE = {
+    "pass": "Passed",
+    "passed": "Passed",
+    "fail": "Failed",
+    "failed": "Failed",
+    "error": "Error",
+    "notfound": "NotFound",
+    "skipped": "Skipped",
+    "timeout": "Timeout",
+}
+
+
+def parse_dir_name(name):
+    """Parse directory name into (platform, compiler, date)."""
+    m = re.match(r"^(.+)-(\w+)-(\d+)$", name)
+    if m:
+        return m.group(1), m.group(2), m.group(3)
+    m = re.match(r"^(.+)-(\d{4,})$", name)
+    if m:
+        return m.group(1), None, m.group(2)
+    return name, None, ""
+
+
+def select_best_dirs(raw_dir):
+    """Select one directory per platform: prefer flagtree, fallback to triton, latest date."""
+    raw_path = Path(raw_dir)
+    if not raw_path.is_dir():
+        return []
+
+    # Group by (platform, compiler), keep latest date
+    groups = {}
+    for d in sorted(raw_path.iterdir()):
+        if not d.is_dir():
+            continue
+        if not (d / "summary.json").exists():
+            continue
+        platform, compiler, date = parse_dir_name(d.name)
+        key = (platform, compiler)
+        if key not in groups or date > groups[key][1]:
+            groups[key] = (d, date, compiler)
+
+    # Per platform, prefer flagtree over triton over others
+    platform_best = {}
+    for (platform, compiler), (d, date, comp) in groups.items():
+        if platform not in platform_best:
+            platform_best[platform] = (d, comp, date)
+        else:
+            existing_comp = platform_best[platform][1]
+            if existing_comp != "flagtree" and comp == "flagtree":
+                platform_best[platform] = (d, comp, date)
+            elif existing_comp not in ("flagtree", "triton") and comp == "triton":
+                platform_best[platform] = (d, comp, date)
+
+    return [
+        (platform, d, comp) for platform, (d, comp, _) in sorted(platform_best.items())
+    ]
+
+
+def convert_summary(data_dir, platform, compiler):
+    """Convert a summary.json to the Hugo data format."""
+    summary_path = Path(data_dir) / "summary.json"
+    data = json.loads(summary_path.read_text())
+
+    timestamp = data.get("timestamp", "")
+    result = data.get("result", {})
+
+    operators = []
+    for op, item in sorted(result.items()):
+        acc = item.get("accuracy", {})
+        acc_status = acc.get("status", "Unknown")
+        acc_status = STATUS_NORMALIZE.get(acc_status.lower(), acc_status)
+
+        perf = item.get("performance", {})
+        perf_status = perf.get("status", "Unknown")
+        perf_status = STATUS_NORMALIZE.get(perf_status.lower(), perf_status)
+
+        row = {
+            "id": op,
+            "accuracy": acc_status,
+            "acc_passed": acc.get("passed", 0),
+            "acc_failed": acc.get("failed", 0),
+            "acc_skipped": acc.get("skipped", 0),
+            "perf_status": perf_status,
+        }
+
+        perf_data = perf.get("data", {})
+        if not isinstance(perf_data, dict):
+            perf_data = {}
+        for dtype in ["fp16", "fp32", "bf16"]:
+            spd = perf_data.get(dtype, {}).get("speedup")
+            row[dtype] = round(spd, 3) if spd is not None else None
+
+        # Extract note from failure/skip reasons
+        note = ""
+        if perf_status in ("Failed", "Skipped") and perf.get("reason"):
+            note = perf["reason"].split("\n")[0]
+        elif acc_status == "Failed":
+            details = acc.get("details", {})
+            for reason in details.get("failed", {}):
+                note = reason.split("\n")[0]
+                break
+        elif acc.get("skipped", 0) > 0 and acc.get("passed", 0) == 0:
+            details = acc.get("details", {})
+            for reason in details.get("skipped", {}):
+                note = reason.split("\n")[0]
+                break
+        row["note"] = note
+
+        operators.append(row)
+
+    return {
+        "platform": platform,
+        "compiler": compiler,
+        "timestamp": timestamp,
+        "operators": operators,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Convert summary.json files to Hugo data JSON for the docs site"
+    )
+    parser.add_argument(
+        "--raw-dir",
+        required=True,
+        help="directory containing per-platform result directories",
+    )
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        default="docs/benchmark",
+        help="output directory for JSON files",
+    )
+    args = parser.parse_args()
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    selections = select_best_dirs(args.raw_dir)
+    if not selections:
+        print("No data directories found.", file=sys.stderr)
+        return 1
+
+    for platform, data_dir, compiler in selections:
+        try:
+            result = convert_summary(data_dir, platform, compiler)
+            out_path = output_dir / f"{platform}.json"
+            out_path.write_text(json.dumps(result, indent=2))
+            print(f"  {out_path} ({compiler})")
+        except Exception as ex:
+            print(f"  Error processing {data_dir}: {ex}", file=sys.stderr)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
