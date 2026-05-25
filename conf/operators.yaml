@@ -5451,7 +5451,7 @@ ops:
     description: |
       Computes log(sum(exp(input), dim)) with numerical stability.
     for:
-      - special_logsumexp
+      - special.logsumexp
     labels:
       - aten
       - KernelGen
