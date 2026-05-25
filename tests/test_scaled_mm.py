@@ -133,6 +133,7 @@ def test_scaled_mm(M, N, K, case):
         bias = _make_matrix((N,), bias_dtype)
 
     ref = _reference_scaled_mm(mat1, mat2, scale_a, scale_b, bias, out_dtype)
+    scale_result = torch.tensor([2.0], device=flag_gems.device)
     with flag_gems.use_gems():
         res = torch._scaled_mm(
             mat1,
@@ -140,7 +141,7 @@ def test_scaled_mm(M, N, K, case):
             scale_a,
             scale_b,
             bias=bias,
-            scale_result=torch.tensor([2.0], device=flag_gems.device),
+            scale_result=scale_result,
             out_dtype=out_dtype,
             use_fast_accum=True,
         )
