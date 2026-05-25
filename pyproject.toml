@@ -1,7 +1,8 @@
 [build-system]
-# cmake locks to '>=3.20,<4.0' to sync with FlagTree
-
-requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
+# The cmake and ninja packages are not supposed to be listed in build-system.requires.
+# The version expectation is "cmake>=3.20,<4.0", "ninja==1.13.0".
+# They must be installed separately for `--no-build-isolation` to work.
+requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3"]
 
 build-backend = "scikit_build_core.build"
 
@@ -103,18 +104,23 @@ metax = [
 mthreads = [
     "torch==2.7.1+musa.4.0.0",
     "torch_musa==2.7.1",
-    "flagtree==0.5.0+mthreads3.1",
-    # "triton==3.1.0+musa1.4.6",
+    "flagtree==0.5.1+mthreads3.6",
     "numpy==1.26.4",
     "mkl==2024.0.0",
+    # "triton==3.1.0+musa1.4.6",
 ]
 
 nvidia = [
-    "torch==2.9.0+cu128",
-    "torchvision==0.24.0+cu128",
-    "torchaudio==2.9.0+cu128",
-    "flagtree==0.5.0+3.5",
-    # "triton==3.5",
+    "torch==2.10.0+cu128",
+    "torchvision==0.25.0+cu128",
+    "torchaudio==2.10.0+cu128",
+    "triton==3.6.0",
+    # "flagtree==0.5.1+3.6",
+]
+
+spacemit = [
+    "torch==2.8.0+spacemit.0",
+    "triton==3.6.0+spacemit.a4",
 ]
 
 tsingmicro = [
@@ -234,6 +240,12 @@ explicit = true
 [[tool.uv.index]]
 name = "nvidia-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-nvidia/simple"
+explicit = true
+
+# Source for SpaceMIT packages
+[[tool.uv.index]]
+name = "spacemit-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-spacemit/simple"
 explicit = true
 
 # Source for TsingMicro packages

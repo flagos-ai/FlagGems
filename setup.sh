@@ -24,6 +24,7 @@ declare -A PYTHON_SUPPORTED=(
   ["metax"]="3.12"
   ["mthreads"]="3.10"
   ["nvidia"]="3.12"
+  ["spacemit"]="3.12"
   ["tsingmicro"]="3.10"
 )
 
