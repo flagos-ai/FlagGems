@@ -1,4 +1,5 @@
 import copy
+import inspect
 import warnings
 
 import triton
@@ -75,8 +76,8 @@ class ConfigLoader(object):
             "num_stages": current_config["num_stages"],
             "num_ctas": current_config["num_ctas"],
         }
-        if self.device.vendor_name == "hygon":
-            kwargs["num_ldmatrixes"] = current_config["num_ldmatrixes"]
+        if self.device.vendor_name == "hygon" and "num_ldmatrixes" in inspect.signature(triton.Config).parameters:
+            kwargs["num_ldmatrixes"] = current_config.get("num_ldmatrixes", 0)
         return triton.Config(single_config["META"], **kwargs)
 
     def _build_configs_by_op(self, op_name, ranges, pre_hook=None):
