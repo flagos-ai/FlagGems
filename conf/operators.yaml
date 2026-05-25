@@ -903,6 +903,20 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.1'
+  - id: sparse_attn_indexer
+    description: |
+      Triton sparse attention indexer for DeepSeek V4 MLA prefill.
+      Selects top-K KV cache positions per query token via FP8 logit scoring
+      and binary-search threshold top-K selection.
+    for:
+      - None
+    labels:
+      - fused
+      - DSA
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: cat
     description: Concatenates the given sequence of tensors in tensors in the given dimension.
     for:
