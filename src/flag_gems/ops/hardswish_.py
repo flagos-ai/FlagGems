@@ -31,6 +31,29 @@ def hardswish_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(x_ptr + offsets, y, mask=mask)
 
 
+@triton.jit
+def hardswish_backward_kernel(
+    grad_output_ptr, self_ptr, grad_input_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(axis=0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    grad_output = tl.load(grad_output_ptr + offsets, mask=mask)
+    x = tl.load(self_ptr + offsets, mask=mask)
+    x_fp32 = x.to(tl.float32)
+    grad_fp32 = grad_output.to(tl.float32)
+    # hardswish(x) = x * hardsigmoid(x)
+    # hardswish'(x) = hardsigmoid(x) + x * hardsigmoid'(x)
+    #   x < -3: 0
+    #   -3 <= x <= 3: (x/6 + 0.5) + x/6 = x/3 + 0.5
+    #   x > 3: 1
+    lt_neg3 = x_fp32 < -3.0
+    gt_pos3 = x_fp32 > 3.0
+    inner = grad_fp32 * (x_fp32 / 3.0 + 0.5)
+    grad_input = tl.where(lt_neg3, 0.0, tl.where(gt_pos3, grad_fp32, inner))
+    tl.store(grad_input_ptr + offsets, grad_input.to(grad_output.dtype), mask=mask)
+
+
 def hardswish_(*args, **kwargs):
     logger.debug("GEMS HARDSWISH_")
     if len(args) >= 1:
@@ -62,3 +85,22 @@ def hardswish_(*args, **kwargs):
         orig.copy_(x_work)
 
     return orig
+
+
+def hardswish_backward(grad_output: torch.Tensor, self: torch.Tensor):
+    logger.debug("GEMS HARDSWISH BACKWARD")
+    if not grad_output.is_contiguous():
+        grad_output = grad_output.contiguous()
+    if not self.is_contiguous():
+        self = self.contiguous()
+    grad_input = torch.empty_like(self)
+    n_elements = self.numel()
+    if n_elements == 0:
+        return grad_input
+    BLOCK_SIZE = 1024
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+    with torch_device_fn.device(self.device):
+        hardswish_backward_kernel[grid](
+            grad_output, self, grad_input, n_elements, BLOCK_SIZE=BLOCK_SIZE
+        )
+    return grad_input
