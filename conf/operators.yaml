@@ -2922,6 +2922,19 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: igammac_
+    description: |
+      In-place version of igammac. Computes the regularized upper incomplete gamma function complement.
+    for:
+      - igammac_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: index
     description: |
       Extract, access or modify specific elements, slices, or subsets of data within a tensor.
