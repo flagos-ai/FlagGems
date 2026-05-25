@@ -4165,6 +4165,17 @@ ops:
       - aten
       - KernelGen
     kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
+  - id: reflection_pad3d_backward
+    description: Triton kernel implementation for reflection_pad3d_backward.
+    for:
+      - reflection_pad3d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
       - Math
     stages:
       - alpha: '5.1'
