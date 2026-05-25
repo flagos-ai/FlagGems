@@ -2,6 +2,9 @@ from flag_gems.fused.apply_repetition_penalties import apply_repetition_penaltie
 from flag_gems.fused.bincount import bincount
 from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
+from flag_gems.fused.cp_gather_indexer_k_quant_cache import (
+    cp_gather_indexer_k_quant_cache,
+)
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
@@ -72,6 +75,7 @@ __all__ = [
     "chunk_gated_delta_rule",
     "chunk_gated_delta_rule_fwd",
     "concat_and_cache_mla",
+    "cp_gather_indexer_k_quant_cache",
     "cutlass_scaled_mm",
     "cross_entropy_loss",
     "dispatch_fused_moe_kernel",
