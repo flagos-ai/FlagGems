@@ -234,7 +234,7 @@ from flag_gems.ops.median import median, median_dim, median_dim_values, median_o
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.mm import mm, mm_out, router_gemm
-from flag_gems.ops.mse_loss import mse_loss
+from flag_gems.ops.mse_loss import mse_loss, mse_loss_backward
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.mv import mv
@@ -692,6 +692,7 @@ __all__ = [
     "mm",
     "mm_out",
     "mse_loss",
+    "mse_loss_backward",
     "mul",
     "mul_",
     "multinomial",
