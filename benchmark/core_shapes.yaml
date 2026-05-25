@@ -522,6 +522,23 @@ PerTokenGroupQuantFp8Benchmark:
     - [83, 512, 64]
     - [2048, 4096, 256]
     - [2048, 13824, 512]
+
+
+fused_inv_rope_fp8_quant:
+  shapes:
+    - [256, 128, 8, false]
+    - [512, 128, 8, false]
+    - [1024, 128, 8, false]
+    - [2048, 128, 8, false]
+    - [4096, 128, 8, false]
+
+    - [256, 128, 8, true]
+    - [512, 128, 8, true]
+    - [1024, 128, 8, true]
+    - [2048, 128, 8, true]
+    - [4096, 128, 8, true]
+  shape_desc: "num_tokens, num_heads, n_groups, tma_aligned_scales"
+
 ReshapeAndCacheBenchmark:
   shapes:
     - [21, 4, 64, 8, 512]

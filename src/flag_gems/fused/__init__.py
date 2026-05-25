@@ -15,6 +15,7 @@ from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
 from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import (
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
 )
+from flag_gems.fused.fused_inv_rope_fp8_quant import fused_inv_rope_fp8_quant
 from flag_gems.fused.fused_moe import (
     dispatch_fused_moe_kernel,
     fused_experts_impl,
@@ -101,6 +102,7 @@ __all__ = [
     "reglu",
     "reshape_and_cache",
     "reshape_and_cache_flash",
+    "fused_inv_rope_fp8_quant",
     "rwkv_ka_fusion",
     "rwkv_mm_sparsity",
     "silu_and_mul",
