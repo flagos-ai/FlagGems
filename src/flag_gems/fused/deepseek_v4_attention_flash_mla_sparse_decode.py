@@ -238,6 +238,4 @@ def flash_mla_sparse_decode(
     return output, lse
 
 
-dsv4_flash_mla_sparse_decode = flash_mla_sparse_decode
-
-__all__ = ["flash_mla_sparse_decode", "dsv4_flash_mla_sparse_decode"]
+__all__ = ["flash_mla_sparse_decode"]

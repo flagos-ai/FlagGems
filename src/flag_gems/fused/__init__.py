@@ -5,7 +5,6 @@ from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
 from flag_gems.fused.deepseek_v4_attention_flash_mla_sparse_decode import (
-    dsv4_flash_mla_sparse_decode,
     flash_mla_sparse_decode,
 )
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
@@ -67,7 +66,6 @@ from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
     "flash_mla_sparse_decode",
-    "dsv4_flash_mla_sparse_decode",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
     "bincount",
