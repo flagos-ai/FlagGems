@@ -6,11 +6,21 @@ from flag_gems.fused.deepseek_v4_attention_fused_q_kv_rmsnorm import fused_q_kv_
 from . import base
 
 
+def torch_fused_q_kv_rmsnorm(qr, kv, q_weight, kv_weight, eps):
+    q = qr.float() * torch.rsqrt(
+        torch.mean(qr.float() * qr.float(), dim=-1, keepdim=True) + eps
+    )
+    k = kv.float() * torch.rsqrt(
+        torch.mean(kv.float() * kv.float(), dim=-1, keepdim=True) + eps
+    )
+    return (q * q_weight.float()).to(qr.dtype), (k * kv_weight.float()).to(kv.dtype)
+
+
 class FusedQKVRMSNormBenchmark(base.Benchmark):
     def __init__(self):
         super().__init__(
             "fused_q_kv_rmsnorm",
-            fused_q_kv_rmsnorm,
+            torch_fused_q_kv_rmsnorm,
             [torch.bfloat16],
             gems_op=fused_q_kv_rmsnorm,
         )
