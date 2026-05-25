@@ -25,12 +25,17 @@ def min_kernel_1(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
-    max_value = get_dtype_max(inp.type.element_ty)
+    dtype = inp.type.element_ty
+    max_value = get_dtype_max(dtype)
     inp_val = tl.load(inp_ptrs, mask=mask, other=max_value)
+    if dtype is tl.int16 or dtype is tl.int32:
+        inp_val = inp_val.to(tl.float32)
     # min(x) = -max(-x), use supported max operation
     neg_val = -inp_val
     max_neg = tl.max(neg_val, axis=0)
     min_val = -max_neg
+    if dtype is tl.int16 or dtype is tl.int32:
+        min_val = min_val.to(dtype)
     mid_ptr = mid + pid
     tl.store(mid_ptr, min_val)
 
@@ -41,12 +46,17 @@ def min_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < mid_size
-    max_value = get_dtype_max(mid.type.element_ty)
+    dtype = mid.type.element_ty
+    max_value = get_dtype_max(dtype)
     mid_val = tl.load(mid_ptrs, mask=mask, other=max_value)
+    if dtype is tl.int16 or dtype is tl.int32:
+        mid_val = mid_val.to(tl.float32)
     # min(x) = -max(-x), use supported max operation
     neg_val = -mid_val
     max_neg = tl.max(neg_val, axis=0)
     min_val = -max_neg
+    if dtype is tl.int16 or dtype is tl.int32:
+        min_val = min_val.to(dtype)
     tl.store(out, min_val)
 
 
@@ -89,9 +99,17 @@ def min_kernel_value_only(
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
     dtype = inp.type.element_ty
-    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
     max_value = get_dtype_max(dtype)
-    result_value = tl.full([BLOCK_M], value=max_value, dtype=acc_type)
+    if dtype is tl.float16 or dtype is tl.bfloat16:
+        acc_type = tl.float32
+        acc_init = max_value
+    elif dtype is tl.int16 or dtype is tl.int32:
+        acc_type = tl.float32
+        acc_init = float("inf")
+    else:
+        acc_type = dtype
+        acc_init = max_value
+    result_value = tl.full([BLOCK_M], value=acc_init, dtype=acc_type)
 
     for i in range(0, N, BLOCK_N):
         n_offset = i + tl.arange(0, BLOCK_N)
@@ -100,6 +118,8 @@ def min_kernel_value_only(
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
+        if dtype is tl.int16 or dtype is tl.int32:
+            inp_vals = inp_vals.to(acc_type)
 
         # min(x) = -max(-x), use supported max operation
         neg_vals = -inp_vals
@@ -113,21 +133,23 @@ def min_kernel_value_only(
     offset_index = m_offset * K + pid_k
     out_value_ptrs = out_value + offset_index
 
-    tl.store(out_value_ptrs, result_value, mask=mask1)
+    tl.store(out_value_ptrs, result_value.to(dtype), mask=mask1)
 
 
 def min(inp):
     logging.debug("GEMS MIN")
-    inp = inp.contiguous()
+    inp = inp.contiguous().flatten()
+    M = inp.numel()
+    BLOCK_SIZE = 4096
+    mid_size = triton.cdiv(M, BLOCK_SIZE)
+    mid = torch.empty((mid_size,), dtype=inp.dtype, device=inp.device)
 
-    # Use dimension-wise reduction instead of global reduction
-    # to avoid TPU emulator bug with axis=0 in global kernels
-    result = inp
-    for dim in range(inp.ndim):
-        # Always reduce the first dimension (0) since shape changes after each reduction
-        result = min_dim(result, dim=0, keepdim=False).values
+    with torch_device_fn.device(inp.device):
+        min_kernel_1[(mid_size,)](inp, mid, M, BLOCK_SIZE=BLOCK_SIZE)
+        result = torch.empty((), dtype=inp.dtype, device=inp.device)
+        min_kernel_2[(1,)](mid, result, mid_size, BLOCK_MID=BLOCK_SIZE)
 
-    return result
+    return result.squeeze()
 
 
 def min_dim(inp, dim=None, keepdim=False):
@@ -159,9 +181,8 @@ def min_dim(inp, dim=None, keepdim=False):
     out_value_cpu = out_value.cpu()
     expanded_values_cpu = out_value_cpu.expand_as(inp_cpu)
     mask_cpu = inp_cpu == expanded_values_cpu
-    out_index_cpu = mask_cpu.to(torch.int32).argmax(dim=dim, keepdim=True)
-    # Move indices back to TPU
-    out_index = out_index_cpu.to(inp.device)
+    out_index_cpu = mask_cpu.to(torch.int64).argmax(dim=dim, keepdim=True)
+    out_index = out_index_cpu
 
     if not keepdim:
         out_value = torch.squeeze(out_value, dim)
