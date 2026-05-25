@@ -2,6 +2,9 @@ from flag_gems.fused.apply_repetition_penalties import apply_repetition_penaltie
 from flag_gems.fused.bincount import bincount
 from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
+from flag_gems.fused.cp_gather_indexer_k_quant_cache import (
+    cp_gather_indexer_k_quant_cache,
+)
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
@@ -26,6 +29,7 @@ from flag_gems.fused.fused_moe import (
 from flag_gems.fused.geglu import dgeglu, geglu
 from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.grouped_topk import grouped_topk
+from flag_gems.fused.indexer_k_quant_and_cache import indexer_k_quant_and_cache
 from flag_gems.fused.instance_norm import instance_norm
 from flag_gems.fused.mhc import (
     hc_head_fused_kernel,
@@ -72,6 +76,7 @@ __all__ = [
     "chunk_gated_delta_rule",
     "chunk_gated_delta_rule_fwd",
     "concat_and_cache_mla",
+    "cp_gather_indexer_k_quant_cache",
     "cutlass_scaled_mm",
     "cross_entropy_loss",
     "dispatch_fused_moe_kernel",
@@ -89,6 +94,7 @@ __all__ = [
     "grouped_topk",
     "hc_head_fused_kernel",
     "hc_head_fused_kernel_ref",
+    "indexer_k_quant_and_cache",
     "inplace_fused_experts",
     "instance_norm",
     "invoke_fused_moe_triton_kernel",
