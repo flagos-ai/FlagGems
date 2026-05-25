@@ -66,6 +66,89 @@ def upsample_nearest2d_kernel(
         nc_iter += nc_stride
 
 
+@triton.jit
+def upsample_nearest2d_backward_kernel(
+    ptr_go,
+    ptr_gi,
+    n_elements_grad_out,
+    OH,
+    OW,
+    IH,
+    IW,
+    reciprocal_scale_h,
+    reciprocal_scale_w,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = idx < n_elements_grad_out
+
+    # Decode flat index into (n, c, oh, ow)
+    ow = idx % OW
+    tmp = idx // OW
+    oh = tmp % OH
+    tmp2 = tmp // OH
+    nc = tmp2
+
+    # Map output position to input position (nearest neighbor)
+    ih = tl.minimum((oh * reciprocal_scale_h).to(tl.int32), IH - 1)
+    iw = tl.minimum((ow * reciprocal_scale_w).to(tl.int32), IW - 1)
+
+    # Input flat index
+    offset_gi = (nc * IH + ih) * IW + iw
+
+    grad = tl.load(ptr_go + idx, mask=mask)
+    tl.atomic_add(ptr_gi + offset_gi, grad, mask=mask)
+
+
+def upsample_nearest2d_backward(
+    grad_output: torch.Tensor,
+    output_size: Tuple[int],
+    input_size: Tuple[int],
+    scales_h: Optional[float] = None,
+    scales_w: Optional[float] = None,
+) -> torch.Tensor:
+    logger.debug("GEMS UPSAMPLE NEAREST2D BACKWARD")
+    assert grad_output.ndim == 4
+    assert len(output_size) == 2
+    assert len(input_size) == 4
+    OH, OW = output_size
+    N, C, IH, IW = input_size
+    if scales_h is not None:
+        reciprocal_scale_h = 1 / scales_h
+    else:
+        reciprocal_scale_h = IH / OH
+    if scales_w is not None:
+        reciprocal_scale_w = 1 / scales_w
+    else:
+        reciprocal_scale_w = IW / OW
+
+    grad_output = grad_output.contiguous()
+    grad_input = torch.zeros(
+        (N, C, IH, IW), device=grad_output.device, dtype=grad_output.dtype
+    )
+    n_elements = grad_output.numel()
+    if n_elements == 0:
+        return grad_input
+
+    BLOCK_SIZE = 1024
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+    with torch_device_fn.device(grad_output.device):
+        upsample_nearest2d_backward_kernel[grid](
+            grad_output,
+            grad_input,
+            n_elements,
+            OH,
+            OW,
+            IH,
+            IW,
+            reciprocal_scale_h,
+            reciprocal_scale_w,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
+    return grad_input
+
+
 def upsample_nearest2d(
     input: torch.Tensor,
     output_size: Tuple[int],
