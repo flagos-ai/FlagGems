@@ -147,7 +147,9 @@ jobs:
 
   backend-ascend:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Ascend')
+    # The ascend backend runners need to be reconfigured.
+    if: false
+    # if: contains(needs.preprocess.outputs.labels, 'vendor/Ascend')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: ascend
@@ -186,7 +188,7 @@ jobs:
 
   backend-kunlunxin:
     needs: preprocess
-    # Skipping backend-kunlunxin because we don't have a backend runner
+    # Skipping backend-kunlunxin because we the backend runner is not ready
     if: false
     # if: contains(needs.preprocess.outputs.labels, 'vendor/Kunlunxin')
     uses: ./.github/workflows/backend-test.yaml
@@ -214,7 +216,9 @@ jobs:
 
   backend-mthreads:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
+    # mthreads runners are gone.
+    if: false
+    # if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: mthreads
@@ -240,7 +244,9 @@ jobs:
 
   backend-tsingmicro:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/TsingMicro')
+    # no tsingmicro runners available at the moment.
+    if: false
+    # if: contains(needs.preprocess.outputs.labels, 'vendor/TsingMicro')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: tsingmicro
