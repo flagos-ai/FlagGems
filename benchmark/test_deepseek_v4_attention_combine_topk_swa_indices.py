@@ -8,11 +8,67 @@ from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
 from . import base
 
 
+def torch_combine_topk_swa_indices(
+    topk_indices,
+    query_start_loc,
+    seq_lens,
+    gather_lens,
+    window_size,
+    compress_ratio,
+    topk,
+    M,
+    N,
+):
+    num_tokens = topk_indices.shape[0]
+    alignment = 128
+    combined_topk = (topk + window_size + alignment - 1) // alignment * alignment
+    combined = torch.full(
+        (num_tokens, combined_topk),
+        -1,
+        device=topk_indices.device,
+        dtype=torch.int32,
+    )
+    lens = torch.empty((num_tokens,), device=topk_indices.device, dtype=torch.int32)
+    base_start = int(query_start_loc[0].item())
+    for batch_idx in range(seq_lens.numel()):
+        query_start = int(query_start_loc[batch_idx].item()) - base_start
+        query_end = int(query_start_loc[batch_idx + 1].item()) - base_start
+        query_len = query_end - query_start
+        seq_len = int(seq_lens[batch_idx].item())
+        gather_len = int(gather_lens[batch_idx].item())
+        start_pos = seq_len - query_len
+        gather_start = seq_len - gather_len
+        for token_idx in range(query_start, query_end):
+            token_in_query = token_idx - query_start
+            pos = start_pos + token_in_query
+            topk_len = min((pos + 1) // compress_ratio, topk)
+            swa_len = min(pos + 1, window_size)
+            if topk_len > 0:
+                combined[token_idx, :topk_len] = (
+                    topk_indices[token_idx, :topk_len] + M * batch_idx
+                )
+            if swa_len > 0:
+                swa_values = (
+                    M * batch_idx
+                    + N
+                    + torch.arange(
+                        swa_len, device=topk_indices.device, dtype=torch.int32
+                    )
+                    + pos
+                    - swa_len
+                    + 1
+                    - gather_start
+                )
+                combined[token_idx, topk_len : topk_len + swa_len] = swa_values
+            lens[token_idx] = topk_len + swa_len
+    return combined, lens
+
+
 class CombineTopkSwaIndicesBenchmark(base.Benchmark):
     def __init__(self):
         super().__init__(
             "combine_topk_swa_indices",
-            combine_topk_swa_indices,
+            torch_combine_topk_swa_indices,
             [torch.int32],
             gems_op=combine_topk_swa_indices,
         )
