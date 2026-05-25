@@ -73,11 +73,13 @@ jobs:
         env:
           RUNNER_LABEL: ${{ inputs.runner_label }}
         run: |
+          source tools/set-env.sh ${{ inputs.vendor }}
           ./setup.sh ${{ inputs.vendor }}
       - id: check-gpu
         if: ${{ inputs.gpu_check_script != '' }}
         shell: bash
         run: |
+          source tools/set-env.sh ${{ inputs.vendor }}
           bash ${{ inputs.gpu_check_script }}
       - name: Test alpha ops
         if: ${{ inputs.test_script != '' }}
