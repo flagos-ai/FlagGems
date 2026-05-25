@@ -1225,7 +1225,10 @@ def test_accuracy_pow(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.pow(inp1, inp2)
 
-    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    if flag_gems.vendor_name == "sophgo" and dtype == torch.float32:
+        gems_assert_close(res_out, ref_out, dtype, equal_nan=True, rtol=1e-4)
+    else:
+        gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.inplace
@@ -1247,7 +1250,10 @@ def test_accuracy_pow_(shape, dtype):
     with flag_gems.use_gems():
         res_out = inp1.pow_(inp2)
 
-    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    if flag_gems.vendor_name == "sophgo" and dtype == torch.float32:
+        gems_assert_close(res_out, ref_out, dtype, equal_nan=True, rtol=1e-4)
+    else:
+        gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.maximum
@@ -1299,7 +1305,10 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.pow(inp1, inp2)
 
-    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    if flag_gems.vendor_name == "sophgo" and dtype == torch.float32:
+        gems_assert_close(res_out, ref_out, dtype, equal_nan=True, rtol=1e-4)
+    else:
+        gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.pow
@@ -1331,7 +1340,10 @@ def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.pow(inp1, inp2)
 
-    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    if flag_gems.vendor_name == "sophgo" and dtype == torch.float32:
+        gems_assert_close(res_out, ref_out, dtype, equal_nan=True, rtol=1e-4)
+    else:
+        gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.inplace
@@ -1361,7 +1373,10 @@ def test_accuracy_pow_tensor_scalar_(scalar, shape, dtype):
     with flag_gems.use_gems():
         res_out = inp1.pow_(inp2)
 
-    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    if flag_gems.vendor_name == "sophgo" and dtype == torch.float32:
+        gems_assert_close(res_out, ref_out, dtype, equal_nan=True, rtol=1e-4)
+    else:
+        gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.rsub

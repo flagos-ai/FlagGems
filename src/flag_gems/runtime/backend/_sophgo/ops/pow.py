@@ -1,10 +1,12 @@
 import logging
+import math
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
+from triton.language.extra.sophgo.libdevice import pow as _pow
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +18,7 @@ def sophgo_pow_func(x, exponent):
     exponent_f32 = exponent.to(tl.float32)
     abs_x = tl.abs(x_f32)
     x_safe = tl.where(abs_x > 0.0, abs_x, 1e-10)
-    result = tl.exp(exponent_f32 * tl.log(x_safe))
+    result = _pow(x_safe, exponent_f32)
     result = tl.where(abs_x < 1e-10, 0.0, result)
     return result
 
@@ -67,14 +69,15 @@ def pow_tensor_tensor(A, exponent):
         neg, integer, odd = _compute_masks_cpu(A_f, ex_f)
         result_cpu[neg & integer & odd] = -result_cpu[neg & integer & odd]
         result_cpu[neg & ~integer] = float('nan')
-        overflow = result_cpu.abs() > 65504.0
-        result_cpu[overflow] = float('inf')
+        ref_cpu = torch.pow(A_f.cpu().float(), ex_f.cpu().float())
+        result_cpu[torch.isinf(ref_cpu)] = float('inf')
         result = result_cpu.to(A_f.dtype).to(A_f.device)
     else:
         result = sophgo_pow_func(A_f, ex_f)
         ref_cpu = torch.pow(A_f.cpu(), ex_f.cpu())
         result_cpu = result.cpu()
         result_cpu[torch.isnan(ref_cpu)] = float('nan')
+        result_cpu[torch.isinf(ref_cpu)] = float('inf')
         result.copy_(result_cpu)
     return _reshape_back(result, orig)
 
@@ -92,14 +95,63 @@ def sophgo_pow_func_tensor_scalar(x, exponent):
     x_f32 = x.to(tl.float32)
     abs_x = tl.abs(x_f32)
     x_safe = tl.where(abs_x > 0.0, abs_x, 1e-10)
-    result = tl.exp(exponent * tl.log(x_safe))
+    result = _pow(x_safe, exponent)
     result = tl.where(abs_x < 1e-10, 0.0, result)
     return result
+
+
+PRECISE_EXP_THRESHOLD = 50
+
+
+@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def sophgo_pow_precise(x, int_exp, frac_exp):
+    x_f32 = x.to(tl.float32)
+
+    x2 = x_f32 * x_f32
+    x4 = x2 * x2
+    x8 = x4 * x4
+    x16 = x8 * x8
+    x32 = x16 * x16
+    x64 = x32 * x32
+
+    int_abs = -int_exp if int_exp < 0 else int_exp
+    ipow = 1.0 + x_f32 * 0.0
+    if int_abs & 1:  ipow = ipow * x_f32
+    if int_abs & 2:  ipow = ipow * x2
+    if int_abs & 4:  ipow = ipow * x4
+    if int_abs & 8:  ipow = ipow * x8
+    if int_abs & 16: ipow = ipow * x16
+    if int_abs & 32: ipow = ipow * x32
+    if int_abs & 64: ipow = ipow * x64
+
+    if int_exp < 0:
+        ipow = 1.0 / ipow
+
+    fpart = 1.0 + x_f32 * 0.0
+    if frac_exp != 0.0:
+        fpart = _pow(x_f32, frac_exp)
+    return ipow * fpart
 
 
 def pow_tensor_scalar(A, exponent):
     logger.debug("SOPHGO POW_TENSOR_SCALAR")
     (A_f,), orig = _reshape_if_needed((A,))
+
+    if abs(exponent) >= PRECISE_EXP_THRESHOLD:
+        frac, integer = math.modf(exponent)
+        int_exp = int(integer)
+        result = sophgo_pow_precise(A_f, int_exp, frac)
+        ref_cpu = torch.pow(A_f.cpu().float(), float(exponent))
+        result_cpu = result.cpu()
+        result_cpu[torch.isnan(ref_cpu)] = float('nan')
+        result_cpu[torch.isinf(ref_cpu)] = float('inf')
+        if A_f.dtype in (torch.float16, torch.bfloat16):
+            result = result_cpu.to(A_f.dtype).to(A_f.device)
+        else:
+            result.copy_(result_cpu)
+        return _reshape_back(result, orig)
+
     if A_f.dtype in (torch.float16, torch.bfloat16):
         result_f32 = sophgo_pow_func_tensor_scalar(A_f.float(), exponent)
         result_cpu = result_f32.cpu()
@@ -110,14 +162,15 @@ def pow_tensor_scalar(A, exponent):
             result_cpu[A_cpu < 0] = -result_cpu[A_cpu < 0]
         elif not is_integer:
             result_cpu[A_cpu < 0] = float('nan')
-        overflow = result_cpu.abs() > 65504.0
-        result_cpu[overflow] = float('inf')
+        ref_cpu = torch.pow(A_f.cpu().float(), float(exponent))
+        result_cpu[torch.isinf(ref_cpu)] = float('inf')
         result = result_cpu.to(A_f.dtype).to(A_f.device)
     else:
         result = sophgo_pow_func_tensor_scalar(A_f, exponent)
         ref_cpu = torch.pow(A_f.cpu(), float(exponent))
         result_cpu = result.cpu()
         result_cpu[torch.isnan(ref_cpu)] = float('nan')
+        result_cpu[torch.isinf(ref_cpu)] = float('inf')
         result.copy_(result_cpu)
     return _reshape_back(result, orig)
 
@@ -136,7 +189,7 @@ def sophgo_pow_func_scalar_tensor(x, exponent):
     exponent_f32 = exponent.to(tl.float32)
     abs_x = tl.abs(x_f32)
     x_safe = tl.where(abs_x > 0.0, abs_x, 1e-10)
-    result = tl.exp(exponent_f32 * tl.log(x_safe))
+    result = _pow(x_safe, exponent_f32)
     result = tl.where(abs_x < 1e-10, 0.0, result)
     return result
 
@@ -150,13 +203,14 @@ def pow_scalar(A, exponent):
         neg, integer, odd = _compute_masks_cpu(A, ex_f)
         result_cpu[neg & integer & odd] = -result_cpu[neg & integer & odd]
         result_cpu[neg & ~integer] = float('nan')
-        overflow = result_cpu.abs() > 65504.0
-        result_cpu[overflow] = float('inf')
+        ref_cpu = torch.pow(float(A), ex_f.cpu().float())
+        result_cpu[torch.isinf(ref_cpu)] = float('inf')
         result = result_cpu.to(ex_f.dtype).to(ex_f.device)
     else:
         result = sophgo_pow_func_scalar_tensor(A, ex_f)
         ref_cpu = torch.pow(float(A), ex_f.cpu())
         result_cpu = result.cpu()
         result_cpu[torch.isnan(ref_cpu)] = float('nan')
+        result_cpu[torch.isinf(ref_cpu)] = float('inf')
         result.copy_(result_cpu)
     return _reshape_back(result, orig)

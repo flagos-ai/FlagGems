@@ -1,15 +1,36 @@
 import logging
 
-# import torch
 import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
+from flag_gems.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
 
 # Use built-in triton.language functions instead of tl_extra_shim
 # to avoid None return values that cause compilation errors
-erf = tl.erf
 exp = tl.exp
+
+
+# Polynomial approximation of erf that does not rely on tl.math.erf
+# (which PPL compiler cannot handle). Abramowitz & Stegun 7.1.26,
+# max error ~1.5e-7.
+@triton.jit
+def erf_poly(x):
+    abs_x = tl.abs(x)
+    t = 1.0 / (1.0 + 0.3275911 * abs_x)
+    t2 = t * t
+    t3 = t2 * t
+    t4 = t3 * t
+    t5 = t4 * t
+    poly = (
+        0.254829592 * t
+        + (-0.284496736) * t2
+        + 1.421413741 * t3
+        + (-1.453152027) * t4
+        + 1.061405429 * t5
+    )
+    result = 1.0 - poly * tl.exp(-abs_x * abs_x)
+    return tl.where(x >= 0.0, result, -result)
 
 
 # pow is not available, use ** operator directly
@@ -22,16 +43,25 @@ def tanh(x):
 
 logger = logging.getLogger(__name__)
 
+_base = get_codegen_config()
+_gelu_config = CodeGenConfig(
+    max_tile_size=2048,
+    max_grid_size=(65536, 1, 1),
+    max_num_warps_per_cta=_base.max_num_warps_per_cta,
+    prefer_block_pointer=_base.prefer_block_pointer,
+    prefer_1d_tile=_base.prefer_1d_tile,
+)
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], config=_gelu_config)
 @triton.jit
 def gelu_none(x):
     scale: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
-    output = 0.5 * x * (1 + erf(x.to(tl.float32) * scale))
+    output = 0.5 * x * (1 + erf_poly(x.to(tl.float32) * scale))
     return output
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], config=_gelu_config)
 @triton.jit
 def gelu_tanh(x):
     x_fp32 = x.to(tl.float32)
@@ -39,7 +69,7 @@ def gelu_tanh(x):
     return output
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=_gelu_config)
 @triton.jit
 def gelu_backward_none(x, dy):
     scale1: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
@@ -48,15 +78,14 @@ def gelu_backward_none(x, dy):
     sx = scale1 * x_fp32
     dydx = (
         scale2 * x_fp32 * exp(-(sx * sx))
-        # scale2 * x_fp32 * torch.exp(-torch.pow(scale1 * x_fp32, 2))
-        + 0.5 * erf(scale1 * x_fp32)
+        + 0.5 * erf_poly(scale1 * x_fp32)
         + 0.5
     )
     dx = dydx * dy
     return dx
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=_gelu_config)
 @triton.jit
 def gelu_backward_tanh(x, dy):
     x_fp32 = x.to(tl.float32)

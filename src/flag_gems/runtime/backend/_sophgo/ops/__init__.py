@@ -14,6 +14,7 @@ from .diag import diag
 from .diagonal import diagonal
 from .diag_embed import diag_embed
 from .dropout import dropout
+from .erf import erf, erf_
 from .exponential_ import exponential_
 from .flip import flip
 from .full import full
@@ -100,6 +101,8 @@ __all__ = [
     "diagonal",
     "diag_embed",
     "dropout",
+    "erf",
+    "erf_",
     "exponential_",
     "flip",
     "full",
