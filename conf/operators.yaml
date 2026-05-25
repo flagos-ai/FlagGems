@@ -5923,6 +5923,33 @@ ops:
       - Tensor
     stages:
       - beta: '4.1'
+  - id: top_k_per_row_prefill
+    description: |
+      Triton top-K per row for DeepSeek V4 sparse attention prefill phase.
+      Replaces vLLM persistent_topk CUDA kernel with in-place masking + adaptive topk selection.
+    for:
+      - None
+    labels:
+      - fused
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: top_k_per_row_decode
+    description: |
+      Triton top-K per row for DeepSeek V4 decode-phase token selection.
+      Radix-select based approach with three dispatch tiers for different vocab sizes.
+    for:
+      - None
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: topk
     description: |
       Returns the `k` largest elements of the given `input` tensor along a given dimension.
@@ -5950,6 +5977,20 @@ ops:
       - MoE
     stages:
       - stable: '4.0'
+  - id: topk_softplus_sqrt
+    description: |
+      Fused softplus + sqrt + top-k selection and optional renormalization
+      for MoE gating in models like DeepSeek-V3/V4.
+    for:
+      - topk_softplus_sqrt
+    labels:
+      - fused
+      - KernelGen
+      - vLLM
+    kind:
+      - MoE
+    stages:
+      - beta: '5.1'
   - id: trace
     description: Returns the sum of the elements of the diagonal of the input 2-D matrix.
     for:

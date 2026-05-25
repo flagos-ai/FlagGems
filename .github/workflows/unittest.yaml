@@ -22,9 +22,9 @@ jobs:
       labels: ${{ fromJSON(steps.get-labels.outputs.result) }}
     steps:
       - id: changed-files
-        uses: tj-actions/changed-files@v47.0.6
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96  # v47.0.6
       - id: wait-for-triage
-        uses: ArcticLampyrid/action-wait-for-workflow@v1.3.0
+        uses: ArcticLampyrid/action-wait-for-workflow@ff297b23789206858260877c4b83026d90c6db8c  # v1.3.0
         with:
           workflow: .github/workflows/triage.yaml
       - id: get-pr-id
@@ -41,7 +41,7 @@ jobs:
           echo "PR_ID: ${PR_ID}"
 
       - id: get-labels
-        uses: actions/github-script@v9.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
         with:
           script: |
             // Determine if the event is a pull request
@@ -79,7 +79,7 @@ jobs:
     runs-on: jiuding
     steps:
       - id: checkout-attempt-1
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         continue-on-error: true
       - id: sleep-1
         if: steps.checkout-attempt-1.outcome == 'failure'
@@ -88,7 +88,7 @@ jobs:
 
       - id: checkout-attempt-2
         if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         continue-on-error: true
       - id: sleep-2
         if: steps.checkout-attempt-2.outcome == 'failure'
@@ -97,7 +97,7 @@ jobs:
 
       - id: checkout-attempt-3
         if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - shell: bash
         run: tools/gpu_check.sh
@@ -117,7 +117,7 @@ jobs:
     runs-on: jiuding
     steps:
       - id: checkout-attempt-1
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         continue-on-error: true
       - id: sleep-1
         if: steps.checkout-attempt-1.outcome == 'failure'
@@ -126,7 +126,7 @@ jobs:
 
       - id: checkout-attempt-2
         if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         continue-on-error: true
       - id: sleep-2
         if: steps.checkout-attempt-2.outcome == 'failure'
@@ -135,7 +135,7 @@ jobs:
 
       - id: checkout-attempt-3
         if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - shell: bash
         run: tools/gpu_check.sh
