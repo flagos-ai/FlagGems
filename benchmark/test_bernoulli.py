@@ -34,20 +34,3 @@ def test_bernoulli():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
-
-
-def bernoulli__input_fn(shape, cur_dtype, device):
-    self = torch.randn(shape, dtype=cur_dtype, device=device)
-    p = 0.5
-    yield self, p
-
-
-@pytest.mark.bernoulli_
-def test_bernoulli_():
-    bench = base.GenericBenchmark(
-        op_name="bernoulli_",
-        input_fn=bernoulli__input_fn,
-        torch_op=torch.Tensor.bernoulli_,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()

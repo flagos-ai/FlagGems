@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @libentry()
-@libtuner(
+@triton.autotune(
     configs=[
         triton.Config({"BLOCK": 64}, num_warps=2, num_stages=2),
         triton.Config({"BLOCK": 128}, num_warps=2, num_stages=2),
