@@ -16,6 +16,7 @@ from .topk import _get_finfo_val
 logger = logging.getLogger(__name__)
 
 NanMedian = namedtuple("nanmedian", ["values", "indices"])
+INT32_MAX = torch.iinfo(torch.int32).max
 MAX_BLOCK_N = 128
 RADIX_BLOCK_N = 1024
 RADIX_BITS = 2
@@ -48,6 +49,14 @@ ASCEND_FLOAT_SELECT_DTYPES = (
 )
 ASCEND_HISTOGRAM_BINS = 256
 ASCEND_MULTI_HISTOGRAM_MIN_N = 8192
+ASCEND_FLAT_SORT_DTYPES = (
+    torch.float16,
+    torch.float32,
+    torch.int8,
+    torch.uint8,
+    torch.int16,
+    torch.int32,
+)
 
 
 def _triton_version_at_least(major, minor):
@@ -64,8 +73,8 @@ def _triton_version_at_least(major, minor):
     return tuple(parts[:2]) >= (major, minor)
 
 
-def _use_cuda_masked_histogram():
-    return _triton_version_at_least(3, 4)
+# Triton added tl.histogram(..., mask) in 3.4.
+CUDA_SUPPORTS_MASKED_HISTOGRAM = _triton_version_at_least(3, 4)
 
 
 @triton.jit
@@ -812,70 +821,6 @@ def _empty_flat_value(inp):
     return out
 
 
-def _use_radix_select(inp, n):
-    if inp.is_cuda and inp.dtype in RADIX_SELECT_DTYPES:
-        return MAX_BLOCK_N < n <= LONG_RADIX_REDUCTION_N
-    return False
-
-
-def _use_ascend_float_sort_select(inp, n):
-    return (
-        inp.device.type == "npu"
-        and inp.dtype in ASCEND_FLOAT_SELECT_DTYPES
-        and MAX_BLOCK_N < n <= LONG_RADIX_REDUCTION_N
-    )
-
-
-def _use_ascend_histogram_select(inp, n):
-    return (
-        inp.device.type == "npu"
-        and inp.dtype in ASCEND_HISTOGRAM_SELECT_DTYPES
-        and MAX_BLOCK_N < n <= LONG_RADIX_REDUCTION_N
-    )
-
-
-def _use_ascend_multi_histogram_select(inp, n):
-    return _use_ascend_histogram_select(inp, n) and n >= ASCEND_MULTI_HISTOGRAM_MIN_N
-
-
-def _use_ascend_byte_histogram_select(inp, n):
-    return (
-        inp.device.type == "npu"
-        and inp.dtype in ASCEND_BYTE_HISTOGRAM_SELECT_DTYPES
-        and MAX_BLOCK_N < n <= LONG_RADIX_REDUCTION_N
-    )
-
-
-def _use_ascend_multi_byte_histogram_select(inp, n):
-    return (
-        _use_ascend_byte_histogram_select(inp, n) and n >= ASCEND_MULTI_HISTOGRAM_MIN_N
-    )
-
-
-def _use_cuda_flat_radix_select(inp):
-    return (
-        inp.is_cuda
-        and inp.dtype in RADIX_SELECT_DTYPES
-        and LONG_RADIX_REDUCTION_N < inp.numel() <= torch.iinfo(torch.int32).max
-    )
-
-
-def _use_ascend_flat_sort(inp):
-    return (
-        inp.device.type == "npu"
-        and inp.dtype
-        in (
-            torch.float16,
-            torch.float32,
-            torch.int8,
-            torch.uint8,
-            torch.int16,
-            torch.int32,
-        )
-        and inp.numel() >= ASCEND_FLAT_SORT_MIN_N
-    )
-
-
 def _radix_block_n(inp, n):
     block_n = triton.next_power_of_2(n)
     if inp.is_cuda:
@@ -1086,11 +1031,31 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
         return NanMedian(values=values, indices=indices)
 
     inp = dim_compress(inp, dim)
+    is_cuda = inp.is_cuda
+    is_ascend = inp.device.type == "npu"
+    in_radix_range = MAX_BLOCK_N < N <= LONG_RADIX_REDUCTION_N
     use_cuda_histogram = (
-        inp.is_cuda and N > MAX_BLOCK_N and _use_cuda_masked_histogram()
+        is_cuda
+        and CUDA_SUPPORTS_MASKED_HISTOGRAM
+        and N > MAX_BLOCK_N
+        and N == triton.next_power_of_2(N)
+    )
+    use_ascend_float_select_path = (
+        use_ascend_float_select
+        and is_ascend
+        and inp.dtype in ASCEND_FLOAT_SELECT_DTYPES
+        and in_radix_range
+    )
+    use_ascend_histogram = (
+        is_ascend and inp.dtype in ASCEND_HISTOGRAM_SELECT_DTYPES and in_radix_range
+    )
+    use_ascend_byte_histogram = (
+        is_ascend
+        and inp.dtype in ASCEND_BYTE_HISTOGRAM_SELECT_DTYPES
+        and in_radix_range
     )
 
-    if inp.dtype in RADIX_SELECT_DTYPES and _use_radix_select(inp, N):
+    if is_cuda and inp.dtype in RADIX_SELECT_DTYPES and in_radix_range:
         flat_values = values.reshape(M)
         flat_indices = indices.reshape(M)
         block_n = _radix_block_n(inp, N)
@@ -1104,14 +1069,14 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
                 N,
                 block_n,
                 _radix_bits(inp, N) if use_cuda_histogram else RADIX_BITS,
-                inp.is_cuda,
+                is_cuda,
                 use_cuda_histogram,
                 num_warps=num_warps,
                 num_stages=1,
             )
-    elif use_ascend_float_select and _use_ascend_float_sort_select(inp, N):
+    elif use_ascend_float_select_path:
         _nanmedian_ascend_float_sort_select(inp, M, N, values, indices)
-    elif _use_ascend_multi_histogram_select(inp, N):
+    elif use_ascend_histogram and N >= ASCEND_MULTI_HISTOGRAM_MIN_N:
         flat_values = values.reshape(M)
         flat_indices = indices.reshape(M)
         block_n = _radix_block_n(inp, N)
@@ -1147,7 +1112,7 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
                 num_warps=num_warps,
                 num_stages=1,
             )
-    elif _use_ascend_histogram_select(inp, N):
+    elif use_ascend_histogram:
         flat_values = values.reshape(M)
         flat_indices = indices.reshape(M)
         block_n = _radix_block_n(inp, N)
@@ -1164,7 +1129,7 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
                 num_warps=num_warps,
                 num_stages=1,
             )
-    elif _use_ascend_multi_byte_histogram_select(inp, N):
+    elif use_ascend_byte_histogram and N >= ASCEND_MULTI_HISTOGRAM_MIN_N:
         flat_values = values.reshape(M)
         flat_indices = indices.reshape(M)
         block_n = _radix_block_n(inp, N)
@@ -1221,7 +1186,7 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
                 num_warps=num_warps,
                 num_stages=1,
             )
-    elif _use_ascend_byte_histogram_select(inp, N):
+    elif use_ascend_byte_histogram:
         flat_values = values.reshape(M)
         flat_indices = indices.reshape(M)
         block_n = _radix_block_n(inp, N)
@@ -1250,7 +1215,7 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
                 M,
                 N,
                 block_n,
-                inp.is_cuda,
+                is_cuda,
             )
     else:
         result = _nanmedian_kthvalue_fallback(inp, M, N)
@@ -1281,17 +1246,18 @@ def _nanmedian_ascend_flat_sort(inp):
     return sorted_values[rank]
 
 
-def _nanmedian_cuda_flat_radix_select(inp):
+def _nanmedian_cuda_flat_radix_select(inp, out=None):
     flat = inp.reshape(-1).contiguous()
     n = flat.numel()
-    out = torch.empty((), dtype=flat.dtype, device=flat.device)
+    if out is None:
+        out = torch.empty((), dtype=flat.dtype, device=flat.device)
     valid_count = torch.empty((), dtype=torch.int64, device=flat.device)
     state = torch.empty((3,), dtype=torch.int64, device=flat.device)
     result_idx = torch.empty((), dtype=torch.int64, device=flat.device)
     block_n = min(triton.next_power_of_2(n), FLAT_RADIX_BLOCK_N)
     grid = (triton.cdiv(n, block_n),)
     nbits = flat.element_size() * 8
-    use_histogram = _use_cuda_masked_histogram()
+    use_histogram = CUDA_SUPPORTS_MASKED_HISTOGRAM and n % block_n == 0
     radix_bits = FLAT_RADIX_BITS if use_histogram else RADIX_BITS
     radix_size = 1 << radix_bits
     bin_counts = torch.empty((radix_size,), dtype=torch.int64, device=flat.device)
@@ -1355,25 +1321,58 @@ def _nanmedian_cuda_flat_radix_select(inp):
     return out
 
 
+def _nanmedian_flat_impl(inp, out=None):
+    n = inp.numel()
+    if n == 0:
+        result = _empty_flat_value(inp)
+        if out is not None:
+            out.copy_(result)
+            return out
+        return result
+
+    if (
+        inp.is_cuda
+        and inp.dtype in RADIX_SELECT_DTYPES
+        and LONG_RADIX_REDUCTION_N < n <= INT32_MAX
+    ):
+        return _nanmedian_cuda_flat_radix_select(inp, out=out)
+
+    if (
+        inp.device.type == "npu"
+        and inp.dtype in ASCEND_FLAT_SORT_DTYPES
+        and n >= ASCEND_FLAT_SORT_MIN_N
+    ):
+        result = _nanmedian_ascend_flat_sort(inp)
+        if out is not None:
+            out.copy_(result)
+            return out
+        return result
+
+    flat = inp.reshape(-1)
+    if out is None:
+        return _nanmedian_dim_impl(flat, 0, False, use_ascend_float_select=False).values
+
+    indices = torch.empty((), dtype=torch.long, device=inp.device)
+    _nanmedian_dim_impl(
+        flat,
+        0,
+        False,
+        out=(out, indices),
+        use_ascend_float_select=False,
+    )
+    return out
+
+
 def nanmedian(inp):
     logger.debug("GEMS NANMEDIAN")
     _check_supported_dtype(inp)
-    if inp.numel() == 0:
-        return _empty_flat_value(inp)
-    if _use_cuda_flat_radix_select(inp):
-        return _nanmedian_cuda_flat_radix_select(inp)
-    if _use_ascend_flat_sort(inp):
-        return _nanmedian_ascend_flat_sort(inp)
-    return _nanmedian_dim_impl(
-        inp.reshape(-1), 0, False, use_ascend_float_select=False
-    ).values
+    return _nanmedian_flat_impl(inp)
 
 
 def nanmedian_out(inp, *, out):
     logger.debug("GEMS NANMEDIAN OUT")
-    result = nanmedian(inp)
-    out.copy_(result)
-    return out
+    _check_supported_dtype(inp)
+    return _nanmedian_flat_impl(inp, out=out)
 
 
 def nanmedian_dim(inp, dim=-1, keepdim=False):
