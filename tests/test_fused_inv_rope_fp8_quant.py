@@ -508,7 +508,9 @@ def test_dequant_numerical_accuracy(tma_aligned_scales):
 @pytest.mark.parametrize(
     "num_heads,n_groups",
     utils.FUSED_INV_ROPE_FP8_QUANT_SHAPES["NUM_HEADS_AND_GROUPS"],
-    ids=["H64_G8", "H32_G4", "H128_G8"],
+    ids=_head_group_ids(
+        utils.FUSED_INV_ROPE_FP8_QUANT_SHAPES["OUTPUT_LAYOUT_NUM_HEADS_AND_GROUPS"]
+    ),
 )
 @pytest.mark.parametrize(
     "num_tokens", utils.FUSED_INV_ROPE_FP8_QUANT_SHAPES["NUM_TOKENS"]
