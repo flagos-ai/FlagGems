@@ -198,3 +198,16 @@ def soft_margin_loss_out(
             mean_val = (tmp_sum / float(n_elements)).to(dtype=input.dtype)
             out.fill_(mean_val)
         return out
+
+
+def soft_margin_loss_backward(grad_output, input, target, reduction=1):
+    logger.debug("GEMS SOFT_MARGIN_LOSS BACKWARD")
+    # d/dx soft_margin_loss = -target * sigmoid(-input * target)
+    neg_prod = -input * target
+    # Numerically stable sigmoid: use log_sigmoid
+    sig = torch.sigmoid(neg_prod)
+    grad_input = -target * sig * grad_output
+    if reduction == 1:  # mean
+        n_elements = input.numel()
+        grad_input = grad_input / n_elements
+    return grad_input
