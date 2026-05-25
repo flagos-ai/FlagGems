@@ -545,6 +545,29 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: as_strided_copy
+    description: |
+      Creates a contiguous copy of an `as_strided` view of the input tensor.
+    for:
+      - as_strided_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: as_strided_copy_out
+    description: A variant of `as_strided_copy()` that assigns the output to the `out` tensor.
+    for:
+      - as_strided_copy.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: assert_async
     description: |
       A utility used to perform data-dependent assertions on GPU tensors
