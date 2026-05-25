@@ -62,13 +62,6 @@ except Exception:
     transform_sf_into_required_layout = None
     DEEPGEMM_AVAILABLE = False
 
-try:
-    from vllm._custom_ops import router_gemm_bf16_fp32 as vllm_router_gemm_bf16_fp32
-
-    VLLM_ROUTER_GEMM_AVAILABLE = True
-except Exception:
-    vllm_router_gemm_bf16_fp32 = None
-    VLLM_ROUTER_GEMM_AVAILABLE = False
 
 PARALLEL_WORKER_ENV = "FLAGGEMS_BENCH_PARALLEL_WORKER"
 PARALLEL_RESULT_FILE_ENV = "FLAGGEMS_BENCH_RESULT_FILE"
@@ -1452,15 +1445,13 @@ def test_addr_benchmark():
 
 @pytest.mark.router_gemm
 def test_perf_router_gemm():
-    if not VLLM_ROUTER_GEMM_AVAILABLE:
-        pytest.skip(
-            "router_gemm benchmark requires vLLM router_gemm_bf16_fp32 baseline"
-        )
+    def torch_router_gemm(x, weight):
+        return torch.mm(x, weight.t()).to(torch.float32)
 
     bench = ParallelRouterGemmBenchmark(
         input_fn=router_gemm_input_fn,
         op_name="router_gemm",
-        torch_op=vllm_router_gemm_bf16_fp32,
+        torch_op=torch_router_gemm,
         dtypes=[torch.bfloat16],
     )
     bench.set_gems(flag_gems.router_gemm)
