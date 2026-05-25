@@ -44,6 +44,10 @@ def test_norm_scalar(shape, dtype):
 
 
 @pytest.mark.norm_scalaropt_dim
+@pytest.mark.skipif(
+    not hasattr(torch, "float8_e8m0fnu"),
+    reason="copy_ references torch.float8_e8m0fnu unsupported on this PyTorch version",
+)
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("ord", [2, float("inf"), -float("inf"), 0, 1])
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIMS)
