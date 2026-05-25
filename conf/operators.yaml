@@ -4501,6 +4501,18 @@ ops:
       Converts each element from angles in radians to degrees.
     for:
       - rad2deg
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: rad2deg_
+    description: |
+      In-place version of rad2deg.
+    for:
       - rad2deg_
     labels:
       - aten
