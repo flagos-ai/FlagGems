@@ -32,9 +32,7 @@ def test_upsample_nearest2d(dtype, shape, scale):
 @pytest.mark.parametrize("shape", utils.UPSAMPLE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_upsample_nearest2d_backward(dtype, shape, scale):
-    input = torch.randn(
-        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     output_size = [int(input.shape[i + 2] * scale[i]) for i in range(2)]
     # Reference: force CPU to avoid flag_gems kernel dispatch interference
     ref_i = input.cpu().clone().detach().to(torch.float32).requires_grad_(True)
@@ -51,9 +49,7 @@ def test_upsample_nearest2d_backward(dtype, shape, scale):
     # can accumulate significantly with large scale factors.
     res_grad = input.grad.cpu()
     ref_grad_input = ref_i.grad
-    torch.testing.assert_close(
-        res_grad, ref_grad_input.to(dtype), atol=5e-2, rtol=1e-3
-    )
+    torch.testing.assert_close(res_grad, ref_grad_input.to(dtype), atol=5e-2, rtol=1e-3)
 
 
 @pytest.mark.upsample_nearest2d
@@ -63,9 +59,7 @@ def test_upsample_nearest2d_noncontiguous(dtype):
     input = input.permute(0, 1, 3, 2)  # noncontiguous
     ref_i = utils.to_reference(input).to(torch.float32)
     output_size = [64, 64]
-    ref_out = torch._C._nn.upsample_nearest2d(
-        ref_i, output_size=output_size
-    ).to(dtype)
+    ref_out = torch._C._nn.upsample_nearest2d(ref_i, output_size=output_size).to(dtype)
     with flag_gems.use_gems():
         res_out = torch._C._nn.upsample_nearest2d(input, output_size=output_size)
     utils.gems_assert_close(res_out, ref_out, dtype)

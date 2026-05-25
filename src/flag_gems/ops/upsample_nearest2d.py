@@ -109,7 +109,9 @@ def upsample_nearest2d_backward_kernel(
     src_index_stride = nc_stride * OH * OW
     dst_index_stride = nc_stride * IH * IW
     while nc_iter < NC:
-        grad_val = tl.load(grad_output_ptr + grad_output_offset, mask=valid_mask, other=0.0)
+        grad_val = tl.load(
+            grad_output_ptr + grad_output_offset, mask=valid_mask, other=0.0
+        )
         tl.atomic_add(grad_input_ptr + grad_input_offset, grad_val, mask=valid_mask)
         grad_output_ptr += src_index_stride
         grad_input_ptr += dst_index_stride

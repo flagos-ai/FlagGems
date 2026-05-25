@@ -112,5 +112,8 @@ def test_max_pool3d_backward(
         kd, kh, kw = kernel_size
     kernel_volume = kd * kh * kw
     gems_assert_close(
-        res_in_grad, ref_in_grad, dtype, reduce_dim=kernel_volume * kernel_volume * kernel_volume
+        res_in_grad,
+        ref_in_grad,
+        dtype,
+        reduce_dim=kernel_volume * kernel_volume * kernel_volume,
     )
