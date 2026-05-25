@@ -5935,6 +5935,21 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.1'
+  - id: top_k_per_row_decode
+    description: |
+      Triton top-K per row for DeepSeek V4 decode-phase token selection.
+      Radix-select based approach with three dispatch tiers for different vocab sizes.
+    for:
+      - None
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: topk
     description: |
       Returns the `k` largest elements of the given `input` tensor along a given dimension.
