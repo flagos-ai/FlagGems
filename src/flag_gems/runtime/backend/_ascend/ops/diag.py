@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[
 def diag_1d_to_2d_kernel(
     data_ptr, output_ptr, N, M, stride, diagonal: tl.constexpr, BLOCK_SIZE: tl.constexpr
 ):
-    idx = tle.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    idx = ext.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 
     if diagonal >= 0:
         row_idx = idx
@@ -42,7 +42,7 @@ def diag_2d_to_1d_kernel(
     diagonal: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    idx = tle.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    idx = ext.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 
     if diagonal >= 0:
         row_idx = idx

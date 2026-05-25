@@ -8,6 +8,36 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 
+def _is_float8_e8m0fnu(dtype: torch.dtype) -> bool:
+    return str(dtype) == "torch.float8_e8m0fnu"
+
+
+def _should_use_uint8_view_path(
+    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
+) -> bool:
+    if len(A) == 0:
+        return False
+    first_dtype = A[0].dtype
+    if not _is_float8_e8m0fnu(first_dtype):
+        return False
+    if A[0].element_size() != 1:
+        return False
+    for tensor in A[1:]:
+        if tensor.dtype != first_dtype or tensor.element_size() != 1:
+            return False
+    return True
+
+
+def _cat_build_working_list_uint8_view(
+    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
+    dim: int,
+):
+    original_dtype = A[0].dtype
+    A_u8 = [tensor.view(torch.uint8) for tensor in A]
+    mode, payload = _cat_build_working_list(A_u8, dim)
+    return mode, payload, original_dtype
+
+
 @triton.jit
 def cat_copy_func_kernel_4(
     out_ptr,
@@ -21,10 +51,10 @@ def cat_copy_func_kernel_4(
     dim_size_in_d,
     dim_size_out,
     dim_prod_post,
-    dim_offset_a,
-    dim_offset_b,
-    dim_offset_c,
-    dim_offset_d,
+    dim_offset_a: tl.int64,
+    dim_offset_b: tl.int64,
+    dim_offset_c: tl.int64,
+    dim_offset_d: tl.int64,
     total_elements_a,
     total_elements_b,
     total_elements_c,
@@ -37,22 +67,22 @@ def cat_copy_func_kernel_4(
     if pid_y == 0:
         in_ptr = in_ptr_a
         dim_size_in = dim_size_in_a
-        dim_offset = dim_offset_a
+        dim_offset = tl.cast(dim_offset_a, tl.int64)
         total_elements = total_elements_a
     elif pid_y == 1:
         in_ptr = in_ptr_b
         dim_size_in = dim_size_in_b
-        dim_offset = dim_offset_b
+        dim_offset = tl.cast(dim_offset_b, tl.int64)
         total_elements = total_elements_b
     elif pid_y == 2:
         in_ptr = in_ptr_c
         dim_size_in = dim_size_in_c
-        dim_offset = dim_offset_c
+        dim_offset = tl.cast(dim_offset_c, tl.int64)
         total_elements = total_elements_c
     else:
         in_ptr = in_ptr_d
         dim_size_in = dim_size_in_d
-        dim_offset = dim_offset_d
+        dim_offset = tl.cast(dim_offset_d, tl.int64)
         total_elements = total_elements_d
 
     block_start = pid_x * BLOCK_X
@@ -75,65 +105,14 @@ def cat_copy_func_kernel_4(
     tl.store(out_ptr + out_idx, data, mask=mask)
 
 
-def cat(
-    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
-) -> torch.Tensor:
-    logger.debug("GEMS CAT")
-    if len(A) == 0:
-        raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
-    if len(A) == 1:
-        return A[0]
-
-    # remove torch.Size([0]) tensors
-    device = A[0].device
-    dtype = A[0].dtype
-    A = list(A)
-    for i in range(len(A) - 1, -1, -1):
-        if A[i].shape == torch.Size([0]):
-            A.pop(i)
-    if len(A) == 0:
-        return torch.tensor([], device=device, dtype=dtype)
-    elif len(A) == 1:
-        return A[0]
-
-    assert dim >= -A[0].ndim and dim < A[0].ndim, f"Invalid dim: {dim}"
-    dim %= A[0].ndim
-
-    # Same rank check
-    inp_shapes = [list(_.shape) for _ in A]
-    inp0_shape = inp_shapes[0]
-    for s in inp_shapes[1:]:
-        if len(s) != len(inp0_shape):
-            raise RuntimeError(
-                f"Tensors must have same number of dimensions: got {len(inp0_shape)} and {len(s)}"
-            )
-    for tensor_idx, inp_shape in enumerate(inp_shapes):
-        for idx, (common_length, length) in enumerate(zip(inp0_shape, inp_shape)):
-            if idx != dim and length != common_length:
-                raise RuntimeError(
-                    f"Sizes of tensors must match except in dimension {dim}. "
-                    f"Expected size {common_length} but got size {length} for tensor number "
-                    f"{tensor_idx} in the list"
-                )
-
-    # Type promotion: find the common dtype for all tensors
-    device = A[0].device
-    dtypes = [t.dtype for t in A]
-    dtype = dtypes[0]
-    for dt in dtypes[1:]:
-        dtype = torch.promote_types(dtype, dt)
-    # Convert all tensors to the common dtype if needed
-    A = [t.to(dtype) if t.dtype != dtype else t for t in A]
-
-    shapes = [t.shape for t in A]
-    cat_dim_sizes = [s[dim] for s in shapes]
-    out_shape = list(shapes[0])
-    out_shape[dim] = sum(cat_dim_sizes)
-    out = torch.empty(out_shape, dtype=dtype, device=device)
-
+def _cat_run_kernel(
+    A: List[torch.Tensor],
+    dim: int,
+    out_shape: List[int],
+    out: torch.Tensor,
+):
     BLOCK = 1024
     dim_offset = 0
-
     i = 0
     while i < len(A):
         tensors_in_batch = A[i : i + 4]
@@ -154,7 +133,6 @@ def cat(
                 total_elements_list.append(total_elements)
                 current_dim_offset += dim_size_in
             else:
-                # Add placeholders for unused tensor slots
                 args.extend([tensors_in_batch[0], 0, 0, 0])
                 total_elements_list.append(0)
 
@@ -212,4 +190,142 @@ def cat(
         dim_offset = current_dim_offset
         i += num_tensors_in_batch
 
+
+def _cat_build_working_list(
+    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int
+):
+    """Returns (mode, payload) where mode is 'single'|'empty'|'multi'."""
+    if len(A) == 0:
+        raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
+    if len(A) == 1:
+        return "single", A[0]
+
+    device = A[0].device
+    dtype = A[0].dtype
+    A = list(A)
+    for i in range(len(A) - 1, -1, -1):
+        if A[i].shape == torch.Size([0]):
+            A.pop(i)
+    if len(A) == 0:
+        return "empty", torch.tensor([], device=device, dtype=dtype)
+    if len(A) == 1:
+        return "single", A[0]
+
+    assert dim >= -A[0].ndim and dim < A[0].ndim, f"Invalid dim: {dim}"
+    dim %= A[0].ndim
+
+    inp_shapes = [list(_.shape) for _ in A]
+    inp0_shape = inp_shapes[0]
+    for s in inp_shapes[1:]:
+        if len(s) != len(inp0_shape):
+            raise RuntimeError(
+                f"Tensors must have same number of dimensions: got {len(inp0_shape)} and {len(s)}"
+            )
+    for tensor_idx, inp_shape in enumerate(inp_shapes):
+        for idx, (common_length, length) in enumerate(zip(inp0_shape, inp_shape)):
+            if idx != dim and length != common_length:
+                raise RuntimeError(
+                    f"Sizes of tensors must match except in dimension {dim}. "
+                    f"Expected size {common_length} but got size {length} for tensor number "
+                    f"{tensor_idx} in the list"
+                )
+
+    dtypes = [t.dtype for t in A]
+    dtype = dtypes[0]
+    for dt in dtypes[1:]:
+        dtype = torch.promote_types(dtype, dt)
+    A = [t.to(dtype) if t.dtype != dtype else t for t in A]
+
+    shapes = [t.shape for t in A]
+    cat_dim_sizes = [s[dim] for s in shapes]
+    out_shape = list(shapes[0])
+    out_shape[dim] = sum(cat_dim_sizes)
+    return "multi", (A, dim, out_shape, dtype, A[0].device)
+
+
+def cat_out(
+    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
+    dim: int = 0,
+    *,
+    out: torch.Tensor,
+) -> torch.Tensor:
+    logger.debug("GEMS CAT_OUT")
+    A = list(A)
+    if _should_use_uint8_view_path(A):
+        mode, payload, original_dtype = _cat_build_working_list_uint8_view(A, dim)
+        if mode == "single":
+            t = payload.view(original_dtype)
+            out.resize_(t.shape)
+            if out.dtype != t.dtype:
+                out.copy_(t.to(out.dtype))
+            else:
+                out.copy_(t)
+            return out
+        if mode == "empty":
+            t = payload.view(original_dtype)
+            out.resize_(t.shape)
+            out.copy_(t)
+            return out
+
+        A_u8, dim, out_shape, _, _ = payload
+        if out.dtype != original_dtype:
+            raise RuntimeError(
+                f"cat.out: expected out dtype {original_dtype}, got {out.dtype}"
+            )
+        if list(out.shape) != out_shape:
+            out.resize_(out_shape)
+        out_u8 = out.view(torch.uint8)
+        _cat_run_kernel(A_u8, dim, out_shape, out_u8)
+        return out
+
+    mode, payload = _cat_build_working_list(A, dim)
+    if mode == "single":
+        t = payload
+        out.resize_(t.shape)
+        if out.dtype != t.dtype:
+            out.copy_(t.to(out.dtype))
+        else:
+            out.copy_(t)
+        return out
+    if mode == "empty":
+        t = payload
+        out.resize_(t.shape)
+        out.copy_(t)
+        return out
+
+    A, dim, out_shape, dtype, device = payload
+    if out.dtype != dtype:
+        raise RuntimeError(f"cat.out: expected out dtype {dtype}, got {out.dtype}")
+    if list(out.shape) != out_shape:
+        out.resize_(out_shape)
+    _cat_run_kernel(A, dim, out_shape, out)
+    return out
+
+
+def cat(
+    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
+) -> torch.Tensor:
+    logger.debug("GEMS CAT")
+    A = list(A)
+    if _should_use_uint8_view_path(A):
+        mode, payload, original_dtype = _cat_build_working_list_uint8_view(A, dim)
+        if mode == "single":
+            return payload.view(original_dtype)
+        if mode == "empty":
+            return payload.view(original_dtype)
+
+        A_u8, dim, out_shape, _, device = payload
+        out_u8 = torch.empty(out_shape, dtype=torch.uint8, device=device)
+        _cat_run_kernel(A_u8, dim, out_shape, out_u8)
+        return out_u8.view(original_dtype)
+
+    mode, payload = _cat_build_working_list(A, dim)
+    if mode == "single":
+        return payload
+    if mode == "empty":
+        return payload
+
+    A, dim, out_shape, dtype, device = payload
+    out = torch.empty(out_shape, dtype=dtype, device=device)
+    _cat_run_kernel(A, dim, out_shape, out)
     return out

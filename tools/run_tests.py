@@ -5,17 +5,20 @@ import datetime
 import json
 import os
 import platform
-import re
+import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
-from decimal import Decimal, getcontext
+from decimal import getcontext
 from importlib import metadata
 from multiprocessing import Process
 from pathlib import Path
 
+import consts
 import distro
+import git
 import yaml
 
 import flag_gems
@@ -31,54 +34,26 @@ HAS_FLAGTREE = False
 ROOT = Path(__file__).parent.parent
 OUPUT_DIR = None
 OP_LIST = []
+DUMP_OUTPUT = False
 TIMEOUT = -100
-
-NO_CPU_LIST = [
-    "flash_attention_forward",
-    "get_scheduler_metadata",
-    "grouped_topk",
-    "per_token_group_quant_fp8",
-]
-
-DTYPE_MAP = {
-    "torch.float16": "fp16",
-    "torch.float32": "fp32",
-    "torch.bfloat16": "bf16",
-    "torch.int16": "int16",
-    "torch.int32": "int32",
-    "torch.bool": "bool",
-    "torch.complex64": "cf64",
-}
-
-# Regex for numeric validator
-NUM_RE = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$")
-
-# Regex for ANSI
-ANSI_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
+# A list of operators that can only run on GPU/DCUs
+NO_CPU_LIST = []
 
 
 def pinfo(str, **args):
-    print(f"\033[32m[INFO]\033[0m {str}", **args)
+    print(f"\033[32m[INFO]\033[0m {str}", flush=True, **args)
 
 
 def perror(str, **args):
-    print(f"\033[31m[ERROR]\033[0m {str}", **args)
+    print(f"\033[31m[ERROR]\033[0m {str}", flush=True, **args)
 
 
 def pwarn(str, **args):
-    print(f"\033[93m[WARN]\033[0m {str}", **args)
+    print(f"\033[93m[WARN]\033[0m {str}", flush=True, **args)
 
 
 def ensure_dir(p):
     p.mkdir(parents=True, exist_ok=True)
-
-
-def to_decimal(s):
-    stripped = s.strip()
-    is_number = bool(NUM_RE.match(stripped))
-    if not is_number:
-        raise ValueError(f"Not numeric: {s}")
-    return Decimal(stripped)
 
 
 def get_ops_from_inventory():
@@ -94,17 +69,13 @@ def get_ops_from_inventory():
     return catalog
 
 
-def init():
-    ENV_INFO["architecture"] = platform.machine()
-    ENV_INFO["os_name"] = distro.id()
-    ENV_INFO["os_release"] = distro.version()
-    ENV_INFO["python"] = platform.python_version()
-
+def _probe_torch():
+    ENV_INFO.setdefault("torch", {})
     try:
         import torch
 
         version = torch.__version__
-        ENV_INFO["torch"] = {"version": version}
+        ENV_INFO["torch"]["version"] = version
         pinfo(f"PyTorch detected ... {version}")
 
     except Exception as e:
@@ -132,6 +103,10 @@ def init():
     except Exception:
         ENV_INFO["torch"]["device_count"] = 0
 
+    return
+
+
+def _probe_triton():
     try:
         version = metadata.version("flagtree")
         ENV_INFO["flagtree"] = version
@@ -167,12 +142,18 @@ def init():
             perror("Neither FlagTree nor Triton is installed, please fix it.")
             sys.exit(-1)
 
+    return
+
+
+def _probe_flaggems():
     try:
         # This may print an error "no device detected on your machine."
-
         version = flag_gems.__version__
-        ENV_INFO["flag_gems"] = {"version": version}
-        pinfo(f"flag_gems detected ... {version}")
+        repo = git.Repo(search_parent_directories=True)
+        sha = repo.head.object.hexsha
+        ver_str = f"{version}+git{sha[:8]}"
+        ENV_INFO["flag_gems"] = {"version": ver_str}
+        pinfo(f"flag_gems detected ... {ver_str}")
     except RuntimeError as e:
         perror(f"{e}")
         sys.exit(-1)
@@ -201,61 +182,132 @@ def init():
         perror("flag_gems failed to detect device info.`")
         sys.exit(-1)
 
+    return
 
-def run_cmd_capture(cmd, cwd=None, env=None):
+
+def probe_env():
+    ENV_INFO["architecture"] = platform.machine()
+    ENV_INFO["os_name"] = distro.id()
+    ENV_INFO["os_release"] = distro.version()
+    ENV_INFO["python"] = platform.python_version()
+
+    _probe_torch()
+    _probe_triton()
+    _probe_flaggems()
+
+
+def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
+    stdout = subprocess.DEVNULL
+    stderr = subprocess.DEVNULL
+    if DUMP_OUTPUT:
+        op_dir = OUTPUT_DIR.joinpath(op)
+        stdout_log = str(op_dir / f"{flavor}_stdout.log")
+        stderr_log = str(op_dir / f"{flavor}_stderr.log")
+        try:
+            stdout = open(stdout_log, "w")
+            stderr = open(stderr_log, "w")
+        except Exception:
+            pass
+
     p = subprocess.Popen(
-        cmd,
-        cwd=str(cwd),
+        shlex.split(cmd),
+        cwd=cwd,
         env=env,
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+        stdout=stdout,
+        stderr=stderr,
+        start_new_session=True,
     )
-    # TODO(Qiming): chk if pytest-timeout is more suitable for this purpose
+
     try:
-        out, err = p.communicate(timeout=300)
+        p.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
-        p.kill()
-        out, err = p.communicate()
-        return out or "", err or "", TIMEOUT
-    return out or "", err or "", p.returncode
+        pgid = os.getpgid(p.pid)
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+        except Exception:
+            os.killpg(pgid, signal.SIGKILL)
+
+        return p.returncode
+    except Exception as e:
+        perror(f"run_cmd failed: {e}")
+        return -1
 
 
-def parse_accuracy_log(text):
-    record = {
-        "status": "",
-        "total": 0,
-        "passed": 0,
-        "failed": 0,
-        "skipped": 0,
-        "errors": 0,
+def parse_accuracy_data(result_file):
+    raw_data = {}
+    with result_file.open("r") as f:
+        raw_data = json.load(f)
+
+    passed = []
+    skipped = {}
+    failed = {}
+    num_skipped = 0
+    num_failed = 0
+    num_passed = 0
+    skipped_with_issue = False
+    for test_case, item in raw_data.items():
+        case_str = test_case[: test_case.find("[")]
+        result = item.get("result", "")
+        params = [case_str]
+        for k, v in item.get("params", {}).items():
+            params.append(str(v).replace(" ", ""))
+        param_str = ":".join(params)
+
+        if result == "passed":
+            passed.append(param_str)
+            num_passed += 1
+        elif result == "skipped":
+            reason = item.get("reason", "Unknown")
+            if reason.find("Issue"):
+                skipped_with_issue = True
+            skipped.setdefault(reason, set())
+            skipped[reason].add(param_str)
+            num_skipped += 1
+        else:
+            reason = item.get("reason", "Unknown")
+            failed.setdefault(reason, set())
+            failed[reason].add(param_str)
+            num_failed += 1
+
+    num_total = num_passed + num_skipped + num_failed
+    result = {
+        "total": num_total,
+        "skipped": num_skipped,
+        "failed": num_failed,
+        "passed": num_passed,
+        "details": {},
     }
+    if len(skipped) == 0 and len(failed) == 0:
+        if len(passed) == 0:
+            result["status"] = "NotFound"
+        else:
+            result["status"] = "Passed"
+        return result
 
-    clean = ANSI_RE.sub("", text)
-    for m in re.finditer(r"(\d+)\s+([A-Za-z_]+)", clean):
-        num = int(m.group(1))
-        key = m.group(2).lower()
-        if key in record:
-            record[key] = num
+    # Something is wrong ... check failed first
+    if num_failed > 0:
+        result["status"] = "Failed"
+        for k, v in failed.items():
+            failed[k] = list(v)
+        result["details"]["failed"] = failed
+        return result
 
-    total = record["failed"] + record["passed"] + record["skipped"]
-    record["total"] = total
-
-    if record["failed"] > 0:
-        record["status"] = "FAIL"
-    elif record["errors"] > 0 and total == 0:
-        record["status"] = "FAIL"  # pytest failed to start
-    elif record["passed"] == 0:
-        record["status"] = "FAIL"
+    # There are skipped tests
+    if skipped_with_issue:
+        result["status"] = "Failed"
     else:
-        record["status"] = "PASS"
+        result["status"] = "Skipped"
 
-    return record
+    for k, v in skipped.items():
+        skipped[k] = list(v)
+    result["details"]["skipped"] = skipped
+
+    return result
 
 
 def get_env(gpu_ids):
     env = os.environ.copy()
+
     vendor = ENV_INFO.get("flag_gems", {}).get("vendor", "")
 
     if vendor == "ascend":
@@ -285,30 +337,21 @@ def get_env(gpu_ids):
         env["CUDA_VISIBLE_DEVICES"] = gpu_ids
         return env
 
-    # TODO(Qiming): check T-Head vendor name
     if vendor == "thead":
-        env["PPU_VISIBLE_DEVICES"] = gpu_ids
+        env["CUDA_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
+    if vendor == "cambricon":
+        env["MLU_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
+    if vendor == "kunlunxin":
+        env["XPU_VISIBLE_DEVICES"] = gpu_ids
         return env
 
     env["CUDA_VISIBLE_DEVICES"] = gpu_ids
 
     return env
-
-
-def dedup(fn):
-    with open(fn) as f:
-        lines = f.readlines()
-
-    # Compress verbose output
-    seen = set()
-    uniq = []
-    for line in lines:
-        if line not in seen:
-            seen.add(line)
-            uniq.append(line)
-
-    with open(fn, "w") as f:
-        f.writelines(uniq)
 
 
 def run_accuracy(gpu_id, start, index, count):
@@ -321,17 +364,26 @@ def run_accuracy(gpu_id, start, index, count):
     env = get_env(str(gpu_id))
 
     if op in NO_CPU_LIST:
-        cmd = f'pytest -m "{op}" -vs'
+        cmd = f'pytest -m "{op}" --record json --output accuracy_{op}.json -vs'
     else:
-        cmd = f'pytest -m "{op}" --ref cpu -vs'
+        cmd = (
+            f'pytest -m "{op}" --record json --output accuracy_{op}.json --ref cpu -vs'
+        )
 
+    accuracy_dir = ROOT.joinpath("tests")
+    result_file = accuracy_dir / f"accuracy_{op}.json"
+    if result_file.exists():
+        result_file.unlink()
+
+    op_dir = OUTPUT_DIR.joinpath(op)
+    ensure_dir(op_dir)
     start = time.time()
-    stdout, stderr, code = run_cmd_capture(cmd, cwd=ROOT.joinpath("tests"), env=env)
+    code = run_cmd(op, cmd, cwd=accuracy_dir, env=env, flavor="accuracy")
     end = time.time()
 
     if code == TIMEOUT:  # Timeout
         return {
-            "status": "TIMEOUT",
+            "status": "Timeout",
             "exit_code": TIMEOUT,
             "total": 0,
             "passed": 0,
@@ -340,82 +392,64 @@ def run_accuracy(gpu_id, start, index, count):
             "errors": 0,
             "duration": end - start,
         }
+    # There are rare cases where the pytest process aborts
+    # with no result file generated.
+    if not result_file.exists():
+        return {
+            "status": "Error",
+            "exit_code": code,
+            "total": 0,
+            "passed": 0,
+            "failed": 0,
+            "skipped": 0,
+            "errors": 1,
+            "duration": end - start,
+            "data_file": None,
+        }
 
-    combined = stdout + "\n---\n" + stderr
     op_dir = OUTPUT_DIR.joinpath(op)
-    log_file = op_dir.joinpath("accuracy.log")
-    with open(log_file, "w") as f:
-        f.write(combined)
+    dest = op_dir / "accuracy_result.json"
+    shutil.move(result_file, str(dest))
+    result_file = dest
 
-    result = parse_accuracy_log(combined)
+    result = parse_accuracy_data(result_file)
     result["exit_code"] = code
     result["duration"] = end - start
-    result["log_file"] = str(log_file.relative_to(OUTPUT_DIR))
+    result["data_file"] = str(result_file.relative_to(OUTPUT_DIR))
 
     return result
 
 
-def parse_perf_log(op_dir):
-    record = {}
+def parse_perf_data(op, result_file):
+    raw_data = {}
+    with result_file.open("r") as f:
+        raw_data = json.load(f)
 
-    # Parse log output first
-    perf_log_file = op_dir / "performance_output.log"
-    lines = []
-    with perf_log_file.open("r") as f:
-        lines = f.readlines()
-    line_no = 0
-    data = {}
-    while line_no < len(lines):
-        line = lines[line_no]
-        if "deselected / 0 selected" in line:
-            record = {"status": "UNKNOWN", "error": "No test case.", "data": {}}
-            return record
+    data = raw_data.get(op, {})
+    if not data:
+        return {
+            "status": "NotFound",
+        }
 
-        if "FAILED" in line and "Operator" in line and "dtype" in line:
-            # skip stack trace
-            if "print" in line:
-                continue
-            pos1 = line.find("dtype=")
-            pos2 = line.find(" ", pos1)
-            dtype = line[pos1 + 6 : pos2]
-            dtype = DTYPE_MAP.get(dtype, dtype)
-            pos1 = line.find("<<<") + 3
-            pos2 = line.find(">>>")
-            err_str = line[pos1:pos2]
-            while (pos2 < 0) and line_no < len(lines):
-                line_no += 1
-                line = lines[line_no]
-                pos2 = line.find(">>>")
-                err_str += line[:pos2]
-            data[dtype] = {
-                "result": "FAILED",
-                "error": err_str,
-            }
-        line_no += 1
+    result = data.get("result", "NotFound")
+    if result in ["failed", "skipped"]:
+        return {
+            "status": result.title(),
+            "reason": data.get("reason", "Unknown"),
+            "test_case": data.get("test_case", "Unknown"),
+        }
 
-    # Check if there are usable records
-    perf_res_file = op_dir / "performance_result.log"
-    log_lines = []
-    with perf_res_file.open("r") as f:
-        log_lines = [
-            line for line in f.read().strip().split("\n") if line.startswith("[INFO] {")
-        ]
+    bench_res = {}
+    records = data.get("details", [])
 
-    for line in log_lines:
-        item = {}
-        try:
-            item = json.loads(line[7:])
-        except Exception:
-            # Bad (corrupted) JSON or empty string
-            continue
-
-        dtype = DTYPE_MAP.get(item["dtype"], item["dtype"])
+    for item in records:
+        dtype = consts.DTYPE_MAP.get(item["dtype"], item["dtype"])
         details = {}
         total = 0.0
         count = 0
         # Iterate through shapes
         for res in item.get("result", []):
-            shape = str(res.get("shape_detail", "UNKNOWN")).replace(" ", "")
+            shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
             details.setdefault(shape, {})
             details[shape]["base"] = res.get("latency_base", 0.0)
             details[shape]["gems"] = res.get("latency", 0.0)
@@ -425,20 +459,22 @@ def parse_perf_log(op_dir):
             total += speedup
 
         if details:
-            data[dtype] = {
+            bench_res[dtype] = {
                 "result": "OK",
                 "details": details,
                 "speedup": total / count,
             }
         else:
-            data[dtype] = {
-                "result": "UNKNOWN",
-                "details": details,
+            bench_res[dtype] = {
+                "result": "Unknown",
+                "details": {},
                 "speedup": 0,
             }
 
     return {
-        "data": data,
+        "status": result.title(),
+        "data": bench_res,
+        "test_case": data.get("test_case", "Unknown"),
     }
 
 
@@ -458,62 +494,38 @@ def run_benchmark(gpu_id, start, index, count):
     env = get_env(str(gpu_id))
 
     benchmark_dir = ROOT / "benchmark"
-    pattern = f"result-m_{op}--level_core--record_log.log"
-    for p in benchmark_dir.glob(pattern):
-        try:
-            p.unlink()
-        except Exception:
-            pass
+    result_file = benchmark_dir / f"benchmark_{op}.json"
+    if result_file.exists():
+        result_file.unlink()
+
+    op_dir = OUTPUT_DIR.joinpath(op)
+    ensure_dir(op_dir)
 
     start = time.time()
-    cmd = f'pytest -m "{op}" --level core --record log'
-    stdout, stderr, code = run_cmd_capture(cmd, cwd=benchmark_dir, env=env)
+    cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
+    code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     end = time.time()
 
-    # Write raw command output
-    op_dir = OUTPUT_DIR.joinpath(op)
-    output_file = op_dir.joinpath("performance_output.log")
-    with open(output_file, "w") as f:
-        f.write(stdout + "\n---\n" + stderr)
-
-    # Search for record logs which may and may not be there
-    result_file = None
-    for p in benchmark_dir.glob(pattern):
-        result_file = str(p)
-        break
-
-    status = "No Result"
-    if code == TIMEOUT:
-        status = "TIMEOUT"
-
     # Not found
-    if not result_file:
+    if not result_file.exists():
         return {
-            "status": status,
-            "duration": end - start,
+            "status": "NotFound",
             "exit_code": code,
-            "log_file": str(output_file.relative_to(OUTPUT_DIR)),
-            "result_file": None,
-            "data": [],
+            "data": {},
         }
 
     # Move record log to output directory
-    dest = op_dir / "performance_result.log"
+    dest = op_dir / "performance_result.json"
     shutil.move(result_file, str(dest))
     result_file = dest
 
-    # Remove duplicate lines in the result file
-    dedup(result_file)
-
     record = {
-        "status": "OK",
         "duration": end - start,
         "exit_code": code,
-        "log_file": str(output_file.relative_to(OUTPUT_DIR)),
-        "result_file": str(result_file.relative_to(OUTPUT_DIR)),
-        "data": [],
+        "data_file": str(result_file.relative_to(OUTPUT_DIR)),
+        "data": {},
     }
-    record.update(parse_perf_log(op_dir))
+    record.update(parse_perf_data(op, result_file))
 
     return record
 
@@ -549,6 +561,14 @@ def worker_proc(gpu_id, start, count):
 
 
 def get_ops_to_test(ops_file, ops_list, stages):
+    # Build list of operators which do NOT support CPU mode
+    op_catalog = get_ops_from_inventory()
+    for op in op_catalog:
+        labels = op.get("labels", [])
+        if "NoCPU" in labels:
+            NO_CPU_LIST.append(op["id"])
+
+    # This is the highest priority
     if ops_list:
         ops = []
         for op in ops_list.split(","):
@@ -557,6 +577,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
 
         return ops
 
+    # Parse the op list file if specified
     if ops_file:
         lines = []
         try:
@@ -581,7 +602,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
     effective_stages = []
     for s in stages.split(","):
         stage = s.strip()
-        if stage not in ["alpha", "beta", "stable", "all"]:
+        if stage not in ["alpha", "beta", "stable", "all", "removed"]:
             pwarn(f"ignoring unsupported stage name '{s}'...")
             continue
         # Stop checking if 'all' specified
@@ -594,7 +615,6 @@ def get_ops_to_test(ops_file, ops_list, stages):
     if not effective_stages:
         effective_stages = ["stable"]
 
-    op_catalog = get_ops_from_inventory()
     ops = []
     for op in op_catalog:
         stages = op.get("stages", [])
@@ -604,10 +624,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
         stage = next(iter(stages[-1].keys()), None)
         if stage not in effective_stages:
             continue
-        # Always skip operators not exposed.
-        if "exposed" in op and op["exposed"] is False:
-            continue
-        ops.append(op["name"].lstrip("_"))
+        ops.append(op["id"])
 
     return ops
 
@@ -615,19 +632,28 @@ def get_ops_to_test(ops_file, ops_list, stages):
 def main():
     global OUTPUT_DIR
     global OP_LIST
+    global DUMP_OUTPUT
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--op-list", required=False)
+    parser.add_argument("--op-list-file", required=False)
     parser.add_argument("--ops", required=False)
     parser.add_argument("--gpus", default="0")
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--stages", required=False, default="stable")
+    parser.add_argument(
+        "--dump-output",
+        action="store_true",
+        default=False,
+        help="Dump stdout/stderr of each test to log files",
+    )
     args = parser.parse_args()
 
-    # Probe environment setttings
-    init()
+    DUMP_OUTPUT = args.dump_output
 
-    ops = get_ops_to_test(args.op_list, args.ops, args.stages)
+    # Probe environment setttings
+    probe_env()
+
+    ops = get_ops_to_test(args.op_list_file, args.ops, args.stages)
     op_count = len(ops)
     if op_count == 0:
         pwarn("No operators to test. Please specify at lease one operator.")
@@ -649,8 +675,6 @@ def main():
     if gpu_count == 1:
         worker_proc(gpu_ids[0], 0, op_count)
     else:
-        # with ThreadPoolExecutor(max_workers=gpu_count) as exe:
-        #    futures = []
         processes = []
         m, n = divmod(op_count, gpu_count)
         start = 0
@@ -659,7 +683,6 @@ def main():
                 count = m + 1
             else:
                 count = m
-            # futures.append(exe.submit(worker_proc, gpu, start, count))
             p = Process(target=worker_proc, args=(gpu, start, count))
             p.start()
             processes.append(p)
@@ -687,7 +710,7 @@ def main():
 
     json_path = OUTPUT_DIR.joinpath("summary.json")
     with json_path.open("w") as f:
-        f.write(json.dumps(final_data))
+        json.dump(final_data, f, indent=2)
 
     pinfo("Test completed.")
 

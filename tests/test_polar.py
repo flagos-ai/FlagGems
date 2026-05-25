@@ -8,6 +8,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+# Issue #2840
 @pytest.mark.polar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])

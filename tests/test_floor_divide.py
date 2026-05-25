@@ -14,8 +14,68 @@ def replace_zeros(inp):
     return torch.where(inp == 0, 1, inp)
 
 
+@pytest.mark.floor_divide_scalar
+@pytest.mark.parametrize(
+    "dtype1,dtype2",
+    [
+        (torch.float32, torch.int32),
+        (torch.float32, torch.float32),
+        (torch.int32, torch.int32),
+    ],
+)
+def test_floor_divide_mixed(dtype1, dtype2):
+    if dtype1.is_floating_point:
+        x = torch.randn(128, device="cuda", dtype=dtype1)
+    else:
+        x = torch.randint(-10, 10, (128,), device="cuda", dtype=dtype1)
+
+    if dtype2.is_floating_point:
+        y = torch.randn(128, device="cuda", dtype=dtype2) + 0.1
+    else:
+        y = torch.randint(1, 10, (128,), device="cuda", dtype=dtype2)
+
+    # reference
+    ref = torch.div(x, y, rounding_mode="floor")
+
+    out = flag_gems.ops.floor_divide(x, y)
+
+    torch.testing.assert_close(out, ref)
+
+
+@pytest.mark.floor_divide_scalar
+@pytest.mark.parametrize(
+    "x_dtype,y_dtype",
+    [
+        (torch.int32, torch.int32),
+        (torch.int32, torch.float32),
+        (torch.float32, torch.int32),
+        (torch.float32, torch.float32),
+    ],
+)
+def test_floor_divide_scalar_tensor(x_dtype, y_dtype):
+    def make_tensor(shape, dtype):
+        if dtype.is_floating_point:
+            return torch.randn(shape, device="cuda", dtype=dtype)
+        else:
+            return torch.randint(1, 10, (shape,), device="cuda", dtype=dtype)
+
+    y = make_tensor(128, y_dtype)
+
+    if x_dtype.is_floating_point:
+        x = torch.randn(1, device="cuda", dtype=x_dtype).squeeze(0)
+    else:
+        x = torch.randint(1, 10, (), device="cuda", dtype=x_dtype).item()
+
+    ref = torch.div(x, y, rounding_mode="floor")
+
+    # flaggems
+    out = flag_gems.ops.floor_divide(x, y)
+
+    torch.testing.assert_close(out, ref)
+
+
 # TODO: failed at large size, eg. (65536 * 2048,)
-@pytest.mark.floor_divide
+@pytest.mark.floor_divide_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_floor_divide_float(shape, dtype):
@@ -32,7 +92,7 @@ def test_floor_divide_float(shape, dtype):
 
 
 # TODO: failed at large size, eg. (65536 * 2048,)
-@pytest.mark.floor_divide_
+@pytest.mark.floor_divide_tensor_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_floor_divide_float_(shape, dtype):
@@ -48,8 +108,8 @@ def test_floor_divide_float_(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.floor_divide
-@pytest.mark.skipif(flag_gems.vendor_name == "aipu", reason="TODO")
+@pytest.mark.floor_divide_tensor
+@pytest.mark.skipif(flag_gems.vendor_name == "aipu", reason="Issue #3025")
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
 def test_floor_divide_int(shape, dtype):
@@ -94,7 +154,7 @@ def test_floor_divide_int(shape, dtype):
         utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.floor_divide_
+@pytest.mark.floor_divide_tensor_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
 def test_floor_divide_int_(shape, dtype):
@@ -135,7 +195,7 @@ def test_floor_divide_int_(shape, dtype):
         utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.floor_divide
+@pytest.mark.floor_divide_scalar
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_floor_divide_scalar_scalar(dtype):
     if dtype == torch.float32:
@@ -153,3 +213,35 @@ def test_floor_divide_scalar_scalar(dtype):
         utils.gems_assert_equal(res_out, ref_out)
     else:
         utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.floor_divide_scalar_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_floor_divide_scalar_inplace_float(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    scalar = 2.5
+    ref_inp = utils.to_reference(inp.clone(), False)
+
+    ref_out = ref_inp.floor_divide_(scalar)
+    with flag_gems.use_gems():
+        res_out = inp.floor_divide_(scalar)
+
+    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+
+@pytest.mark.floor_divide_scalar_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_floor_divide_scalar_inplace_int(shape, dtype):
+    inp = torch.randint(
+        torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
+    ).to(flag_gems.device)
+    scalar = 3
+    ref_inp = utils.to_reference(inp.clone(), False)
+
+    ref_out = ref_inp.floor_divide_(scalar)
+    with flag_gems.use_gems():
+        res_out = inp.floor_divide_(scalar)
+
+    utils.gems_assert_equal(res_out, ref_out)

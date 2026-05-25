@@ -24,15 +24,10 @@ EXPAND_CONFIG_FILENAME = os.path.normpath(
     )
 )
 
-TMA_ON = False
-
 
 @functools.lru_cache
 def get_w8a8_block_fp8_hopper_configs(N: int, K: int) -> Optional[Dict[int, Any]]:
     device_name = torch.cuda.get_device_name().replace(" ", "_")
-    name_parts = device_name.split("_")
-    if any(part.startswith("H20") for part in name_parts):
-        device_name = "NVIDIA_H20"
     file_name = "w8a8_block_fp8_matmul_hopper.yaml"
 
     cfg_file = os.path.join(os.path.dirname(__file__), "..", file_name)
@@ -108,51 +103,6 @@ def _get_fixed_matmul_meta(M: int, N: int, K: int, block_n: int, block_k: int):
         "num_warps": config["num_warps"],
         "num_stages": config["num_stages"],
     }
-
-
-def is_tma_compatible(a, b, n, k):
-    """
-    Check if tensors are compatible with TMA (Tensor Memory Accelerator).
-
-    TMA requires 128-bit (16-byte) alignment for memory access.
-    For FP8 inputs (1 byte/element), both N and K must be multiples of 16
-    to satisfy the 16-byte alignment requirement.
-
-    Args:
-        a, b: Input tensors
-        n, k: Matrix dimensions
-
-    Returns:
-        bool: True if compatible with TMA's 128-bit alignment requirement
-    """
-    return (
-        a.dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
-        and b.dtype == a.dtype
-        and TMA_ON
-        and n % 16 == 0
-        and k % 16 == 0
-    )
-
-
-def matmul_tma_set_block_size_hook(nargs):
-    BLOCK_M = nargs["BLOCK_M"]
-    BLOCK_N = nargs["BLOCK_N"]
-    BLOCK_K = nargs["BLOCK_K"]
-    if nargs["A_ROW_MAJOR"]:
-        nargs["a_desc"].block_shape = [BLOCK_M, BLOCK_K]
-    else:
-        nargs["a_desc"].block_shape = [BLOCK_K, BLOCK_M]
-
-    if nargs["B_ROW_MAJOR"]:
-        # B is stored as [N, K] in row-major order, and the kernel loads an
-        # [BLOCK_N, BLOCK_K] tile before transposing it to [BLOCK_K, BLOCK_N].
-        nargs["b_desc"].block_shape = [BLOCK_N, BLOCK_K]
-    else:
-        # For the column-major case we build the descriptor on B.T with shape
-        # [K, N], so the loaded tile already has layout [BLOCK_K, BLOCK_N].
-        nargs["b_desc"].block_shape = [BLOCK_K, BLOCK_N]
-
-    nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
 
 
 @libentry()
@@ -250,26 +200,25 @@ def w8a8_block_fp8_matmul_kernel_general(
 @libentry()
 @libtuner(
     configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general_tma",
-        pre_hook=matmul_tma_set_block_size_hook,
+        "w8a8_block_fp8_general_splitk",
         yaml_path=EXPAND_CONFIG_FILENAME,
     )
     if os.environ.get("USE_FLAGTUNE") == "1"
-    else _get_placeholder_tuner_configs(pre_hook=matmul_tma_set_block_size_hook),
-    key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    else _get_placeholder_tuner_configs(pre_hook=None),
+    key=["M", "N", "K", "stride_am", "stride_bk"],
     strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
+        "w8a8_block_fp8_general_splitk", yaml_path=EXPAND_CONFIG_FILENAME
     )["strategy"]
     if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    else ["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=5,
 )
 @triton.jit
-def w8a8_block_fp8_matmul_kernel_host_tma(
-    a_desc,
-    b_desc,
-    c_desc,
+def w8a8_block_fp8_matmul_kernel_splitk(
+    A,
+    B,
+    C,
     As,
     Bs,
     M,
@@ -279,70 +228,76 @@ def w8a8_block_fp8_matmul_kernel_host_tma(
     group_k,
     stride_am,
     stride_ak,
-    stride_bn,
     stride_bk,
+    stride_bn,
     stride_cm,
     stride_cn,
     stride_As_m,
     stride_As_k,
-    stride_Bs_n,
     stride_Bs_k,
+    stride_Bs_n,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    A_ROW_MAJOR: tl.constexpr,
-    B_ROW_MAJOR: tl.constexpr,
-    dtype: tl.constexpr,
-    enable_warp_specialization=True,
+    SPLIT_K: tl.constexpr,
 ):
-    # matrix multiplication
     pid = tl.program_id(0)
-    grid_m = tl.cdiv(M, BLOCK_M)
-    grid_n = tl.cdiv(N, BLOCK_N)
-    # re-order program ID for better L2 performance
-    width = GROUP_M * grid_n
-    group_id = pid // width
-    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
-    pid_m = group_id * GROUP_M + (pid % group_size)
-    pid_n = (pid % width) // group_size
+    pid_k = tl.program_id(1)
 
-    offset_am = (pid_m * BLOCK_M).to(tl.int32)
-    offset_bn = (pid_n * BLOCK_N).to(tl.int32)
+    # grid_m = tl.cdiv(M, BLOCK_M)
+    grid_n = tl.cdiv(N, BLOCK_N)
+    pid_m = pid // grid_n
+    pid_n = pid % grid_n
+
+    offset_am = pid_m * BLOCK_M
+    offset_bn = pid_n * BLOCK_N
     offs_am = offset_am + tl.arange(0, BLOCK_M)
     offs_bn = offset_bn + tl.arange(0, BLOCK_N)
-    iters = tl.cdiv(K, BLOCK_K)
+
+    total_k_iters = tl.cdiv(K, BLOCK_K)
+    k_per_split = tl.cdiv(total_k_iters, SPLIT_K)
+    k_start = pid_k * k_per_split
+    k_end = min((pid_k + 1) * k_per_split, total_k_iters)
+
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(k_start, k_end):
+        offset_k = k * BLOCK_K
+        offs_k = offset_k + tl.arange(0, BLOCK_K)
 
-    for k in range(iters):
-        offset_ak = (k * BLOCK_K).to(tl.int32)
+        a = tl.load(
+            A + offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak,
+            mask=(offs_am[:, None] < M) & (offs_k[None, :] < K),
+            other=0.0,
+        )
+        b = tl.load(
+            B + offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn,
+            mask=(offs_k[:, None] < K) & (offs_bn[None, :] < N),
+            other=0.0,
+        )
 
-        if A_ROW_MAJOR:
-            a = a_desc.load([offset_am, offset_ak])
-        else:
-            a_t = a_desc.load([offset_ak, offset_am])
-            a = tl.trans(a_t)
-
-        if B_ROW_MAJOR:
-            b_t = b_desc.load([offset_bn, offset_ak])
-            b = tl.trans(b_t)
-        else:
-            b = b_desc.load([offset_ak, offset_bn])
-
-        offs_ks = (offset_ak // group_k).to(tl.int32)
+        offs_ks = offset_k // group_k
         a_s = tl.load(
             As + offs_am * stride_As_m + offs_ks * stride_As_k,
             mask=offs_am < M,
             other=0.0,
         )
         b_s = tl.load(
-            Bs + (offs_bn // group_n) * stride_Bs_n + offs_ks * stride_Bs_k,
+            Bs + offs_ks * stride_Bs_k + (offs_bn // group_n) * stride_Bs_n,
             mask=offs_bn < N,
             other=0.0,
         )
         acc += tl.dot(a, b, out_dtype=tl.float32) * a_s[:, None] * b_s[None, :]
 
-    c_desc.store([offset_am, offset_bn], acc.to(c_desc.dtype))
+    offs_cm = offset_am + tl.arange(0, BLOCK_M)
+    offs_cn = offset_bn + tl.arange(0, BLOCK_N)
+    c_ptrs = C + offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn
+    mask = (offs_cm < M)[:, None] & (offs_cn < N)[None, :]
+    if C.dtype.element_ty == tl.bfloat16:
+        tl.atomic_add(c_ptrs, acc.to(tl.bfloat16), mask=mask)
+    elif C.dtype.element_ty == tl.float16:
+        tl.atomic_add(c_ptrs, acc.to(tl.float16), mask=mask)
+    else:
+        tl.atomic_add(c_ptrs, acc.to(tl.float32), mask=mask)
 
 
 def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
@@ -355,108 +310,94 @@ def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
         a.stride(0) == 1,
         b.stride(0) == 1,
     )
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
-    )
+
     use_flagtune = os.environ.get("USE_FLAGTUNE") == "1"
-    fixed_meta = (
-        None
-        if use_flagtune
-        else _get_fixed_matmul_meta(M, N, K, block_n=group_n, block_k=group_k)
-    )
 
-    if hasattr(
-        triton.tools.tensor_descriptor, "TensorDescriptor"
-    ) and is_tma_compatible(a, b, N, K):
-        a_row_major = a.stride(1) == 1
-        b_row_major = b.stride(1) == 1
-        dummy_block = [1, 1]
-        # triton 3.5.0
-        from triton.tools.tensor_descriptor import TensorDescriptor
-
-        if a_row_major:
-            a_desc = TensorDescriptor(a, a.shape, a.stride(), dummy_block)
-        else:
-            a_desc = TensorDescriptor(a.T, a.T.shape, a.T.stride(), dummy_block)
-
-        if b_row_major:
-            b_desc = TensorDescriptor(b, b.shape, b.stride(), dummy_block)
-        else:
-            b_desc = TensorDescriptor(b.T, b.T.shape, b.T.stride(), dummy_block)
-
-        c_desc = TensorDescriptor(c, c.shape, c.stride(), dummy_block)
+    # Split-K path for small-N, large-K shapes
+    if M < 2048 and N < 2112 and K >= 4096:
         if use_flagtune:
-            launch = lambda: w8a8_block_fp8_matmul_kernel_host_tma[grid](
-                a_desc,
-                b_desc,
-                c_desc,
-                a_s,
-                b_s,
-                M,
-                N,
-                K,
-                group_n,
-                group_k,
-                a.stride(0),
-                a.stride(1),
-                b.stride(0),
-                b.stride(1),
-                c.stride(0),
-                c.stride(1),
-                a_s.stride(0),
-                a_s.stride(1),
-                b_s.stride(0),
-                b_s.stride(1),
-                A_ROW_MAJOR=a_row_major,
-                B_ROW_MAJOR=b_row_major,
-                dtype=str(a.dtype).split(".")[-1],
+            splitk_grid = lambda META: (
+                triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+                META["SPLIT_K"],
             )
+            c.zero_()
+            with torch_device_fn.device(a.device):
+                w8a8_block_fp8_matmul_kernel_splitk[splitk_grid](
+                    a,
+                    b,
+                    c,
+                    a_s,
+                    b_s,
+                    M,
+                    N,
+                    K,
+                    group_n,
+                    group_k,
+                    a.stride(0),
+                    a.stride(1),
+                    b.stride(1),
+                    b.stride(0),
+                    c.stride(0),
+                    c.stride(1),
+                    a_s.stride(0),
+                    a_s.stride(1),
+                    b_s.stride(1),
+                    b_s.stride(0),
+                )
         else:
-            # The fixed-config path bypasses libtuner, so we must apply the
-            # descriptor block-shape update that would normally run via the
-            # TMA pre_hook before launching the underlying JIT kernel.
-            matmul_tma_set_block_size_hook(
-                {
-                    "BLOCK_M": fixed_meta["BLOCK_M"],
-                    "BLOCK_N": fixed_meta["BLOCK_N"],
-                    "BLOCK_K": fixed_meta["BLOCK_K"],
-                    "a_desc": a_desc,
-                    "b_desc": b_desc,
-                    "c_desc": c_desc,
-                    "A_ROW_MAJOR": a_row_major,
-                    "B_ROW_MAJOR": b_row_major,
-                }
-            )
-            launch = lambda: w8a8_block_fp8_matmul_kernel_host_tma.fn.fn[grid](
-                a_desc,
-                b_desc,
-                c_desc,
-                a_s,
-                b_s,
-                M,
-                N,
-                K,
-                group_n,
-                group_k,
-                a.stride(0),
-                a.stride(1),
-                b.stride(0),
-                b.stride(1),
-                c.stride(0),
-                c.stride(1),
-                a_s.stride(0),
-                a_s.stride(1),
-                b_s.stride(0),
-                b_s.stride(1),
-                A_ROW_MAJOR=a_row_major,
-                B_ROW_MAJOR=b_row_major,
-                dtype=str(a.dtype).split(".")[-1],
-                **fixed_meta,
-            )
+            SPLITK_BLOCK_K = 128
+            SPLITK_BLOCK_M = 16 if M <= 16 else 64
+            SPLITK_BLOCK_N = 64 if N > 256 else 32
 
-        with torch_device_fn.device(a.device):
-            launch()
+            grid_m = triton.cdiv(M, SPLITK_BLOCK_M)
+            grid_n = triton.cdiv(N, SPLITK_BLOCK_N)
+            grid_mn = grid_m * grid_n
+            total_k_iters = triton.cdiv(K, SPLITK_BLOCK_K)
+
+            SM_COUNT = torch.cuda.get_device_properties(a.device).multi_processor_count
+            split_k = min(total_k_iters, max(4, 2 * SM_COUNT // max(grid_mn, 1)))
+
+            c.zero_()
+            splitk_grid = (grid_mn, split_k)
+
+            with torch_device_fn.device(a.device):
+                w8a8_block_fp8_matmul_kernel_splitk.fn.fn[splitk_grid](
+                    a,
+                    b,
+                    c,
+                    a_s,
+                    b_s,
+                    M,
+                    N,
+                    K,
+                    group_n,
+                    group_k,
+                    a.stride(0),
+                    a.stride(1),
+                    b.stride(1),
+                    b.stride(0),
+                    c.stride(0),
+                    c.stride(1),
+                    a_s.stride(0),
+                    a_s.stride(1),
+                    b_s.stride(1),
+                    b_s.stride(0),
+                    BLOCK_M=SPLITK_BLOCK_M,
+                    BLOCK_N=SPLITK_BLOCK_N,
+                    BLOCK_K=SPLITK_BLOCK_K,
+                    SPLIT_K=split_k,
+                )
+        return c
+
     else:
+        grid = lambda meta: (
+            triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
+        )
+        fixed_meta = (
+            None
+            if use_flagtune
+            else _get_fixed_matmul_meta(M, N, K, block_n=group_n, block_k=group_k)
+        )
 
         def alloc_fn(size: int, align: int, stream: Optional[int]):
             return torch.empty(size, dtype=torch.int8, device=a.device)
@@ -512,7 +453,7 @@ def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
 
         with torch_device_fn.device(a.device):
             launch()
-    return c
+        return c
 
 
 def w8a8_block_fp8_matmul(

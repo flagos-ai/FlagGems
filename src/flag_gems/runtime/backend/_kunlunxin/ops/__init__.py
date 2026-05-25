@@ -184,6 +184,7 @@ from .repeat_interleave import (
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
+from .round import round, round_, round_out
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
@@ -467,6 +468,9 @@ __all__ = [
     "repeat_interleave_tensor",
     "resolve_conj",
     "resolve_neg",
+    "round",
+    "round_",
+    "round_out",
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",

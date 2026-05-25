@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems.ops.index_select import index_select as default_index_select
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(
     f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
@@ -27,7 +27,7 @@ def index_select_dim0_1d_kernel(
     BLOCK_SIZE: tl.constexpr,
 ):
     """Kernel for dim=0 index_select - each program handles one row."""
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
 
     # Load the index for this row
     row_index = tl.load(index_ptr + pid)
@@ -61,8 +61,8 @@ def index_select_dim0_split_kernel(
     """Kernel for dim=0 index_select - 2D grid for large row_size.
     First dimension: indices, Second dimension: column chunks.
     """
-    pid_idx = tle.program_id(axis=0)
-    pid_col = tle.program_id(axis=1)
+    pid_idx = ext.program_id(axis=0)
+    pid_col = ext.program_id(axis=1)
 
     # Load the index for this row
     row_index = tl.load(index_ptr + pid_idx)
@@ -97,8 +97,8 @@ def index_select_dim1_kernel(
     """Optimized kernel for dim=1 index_select on 2D tensors.
     Each program handles a tile of rows x indices.
     """
-    pid_m = tle.program_id(axis=0)
-    pid_n = tle.program_id(axis=1)
+    pid_m = ext.program_id(axis=0)
+    pid_n = ext.program_id(axis=1)
 
     row_start = pid_m * BLOCK_M
     idx_start = pid_n * BLOCK_N

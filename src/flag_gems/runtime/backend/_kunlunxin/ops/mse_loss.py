@@ -8,7 +8,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -18,7 +18,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 @libentry()
 @triton.jit
 def kernel_1(inp, target, mid, M, BLOCK_SIZE: tl.constexpr, reduction: tl.constexpr):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     target_ptrs = target + offset
@@ -61,7 +61,7 @@ class Reduction(Enum):
 
 
 def mse_loss(inp, target, reduction=Reduction.MEAN.value):
-    logger.debug("GEMS MSE LOSS")
+    logger.debug("GEMS_KUNLUNXIN MSE LOSS")
     if reduction == Reduction.NONE.value:
         return func(inp, target)
 
@@ -85,13 +85,15 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
 
     mid = torch.empty(
         (mid_size,),
-        dtype=torch.float32
-        if (
-            dtype == torch.bfloat16
-            and mid_size > 1024
-            and reduction == Reduction.MEAN.value
-        )
-        else dtype,
+        dtype=(
+            torch.float32
+            if (
+                dtype == torch.bfloat16
+                and mid_size > 1024
+                and reduction == Reduction.MEAN.value
+            )
+            else dtype
+        ),
         device=inp.device,
     )
     out = torch.empty([], dtype=dtype, device=inp.device)

@@ -150,7 +150,7 @@ def reference_lighting_indexer_implementation(q, kv, weights, ks, ke):
 
 
 @pytest.mark.skip(
-    "RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+    "#2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
 )
 @pytest.mark.triton_lighting_indexer_k_tiled_interface
 @pytest.mark.parametrize("seq_len_q", [1024, 2048, 4096])
