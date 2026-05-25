@@ -12,6 +12,7 @@ def _input_fn(config, dtype, device):
 
 class ReflectionPad3dBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
+        # (shape, padding) pairs covering various volume sizes and padding configs
         self.shapes = [
             ((2, 4, 8, 16, 16), (1, 1, 1, 1, 1, 1)),
             ((1, 3, 16, 32, 32), (2, 3, 2, 3, 1, 1)),
@@ -29,6 +30,17 @@ class ReflectionPad3dBenchmark(base.Benchmark):
 
 @pytest.mark.reflection_pad3d
 def test_reflection_pad3d():
+    bench = ReflectionPad3dBenchmark(
+        op_name="reflection_pad3d",
+        torch_op=torch.ops.aten.reflection_pad3d,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+
+    bench.run()
+
+
+@pytest.mark.reflection_pad3d
+def test_reflection_pad3d_out():
     bench = ReflectionPad3dBenchmark(
         op_name="reflection_pad3d",
         torch_op=torch.ops.aten.reflection_pad3d,
