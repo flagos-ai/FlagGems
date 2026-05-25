@@ -4300,6 +4300,18 @@ ops:
       - MoE
     stages:
       - beta: '5.0'
+  - id: pack_seq_triton
+    description: Pack variable-length token sequences into a padded batched tensor.
+    for:
+      - pack_seq_triton
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: pad
     description: This pads a tenor using the specified mode.
     for:
