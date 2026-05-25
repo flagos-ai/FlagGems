@@ -82,9 +82,6 @@ def compute_global_topk_indices_and_lens(
     return global_indices, lens
 
 
-dsv4_compute_global_topk_indices_and_lens = compute_global_topk_indices_and_lens
-
 __all__ = [
     "compute_global_topk_indices_and_lens",
-    "dsv4_compute_global_topk_indices_and_lens",
 ]

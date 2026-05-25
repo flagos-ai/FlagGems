@@ -6,7 +6,6 @@ from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
 from flag_gems.fused.deepseek_v4_attention_compute_global_topk_indices_and_lens import (
     compute_global_topk_indices_and_lens,
-    dsv4_compute_global_topk_indices_and_lens,
 )
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
 from flag_gems.fused.FLA import (
@@ -67,7 +66,6 @@ from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
     "compute_global_topk_indices_and_lens",
-    "dsv4_compute_global_topk_indices_and_lens",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
     "bincount",
