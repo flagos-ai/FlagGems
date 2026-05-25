@@ -77,7 +77,7 @@ class ConfigLoader(object):
             "num_ctas": current_config["num_ctas"],
         }
         if self.device.vendor_name == "hygon" and "num_ldmatrixes" in inspect.signature(triton.Config).parameters:
-            kwargs["num_ldmatrixes"] = current_config.get("num_ldmatrixes", 0)
+            kwargs["num_ldmatrixes"] = current_config["num_ldmatrixes"]
         return triton.Config(single_config["META"], **kwargs)
 
     def _build_configs_by_op(self, op_name, ranges, pre_hook=None):
