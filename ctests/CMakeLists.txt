@@ -5,6 +5,11 @@ if(FLAGGEMS_BACKEND STREQUAL "MUSA")
     add_link_options("-Wl,--allow-shlib-undefined")
 endif()
 
+# GCU backend: link pybind11::embed so test_utils.h can auto-init torch_gcu
+if(FLAGGEMS_BACKEND STREQUAL "GCU")
+    link_libraries(${Python_LIBRARIES} pybind11::embed)
+endif()
+
 if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
   add_executable(test_triton_add test_triton_add.cpp)
   target_link_libraries(test_triton_add
@@ -14,7 +19,7 @@ if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
 
   add_executable(test_triton_div test_triton_div.cpp)
   target_link_libraries(test_triton_div
-    PRIVATE Torch::Torch operators gtest gtest_main)
+    PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
   target_compile_definitions(test_triton_div PRIVATE FLAGGEMS_POINTWISE_DYNAMIC)
   add_test(NAME test_triton_div COMMAND test_triton_div)
 

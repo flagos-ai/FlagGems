@@ -18,6 +18,7 @@ from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
 from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import (
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
 )
+from flag_gems.fused.fused_inv_rope_fp8_quant import fused_inv_rope_fp8_quant
 from flag_gems.fused.fused_moe import (
     dispatch_fused_moe_kernel,
     fused_experts_impl,
@@ -44,6 +45,7 @@ from flag_gems.fused.moe_align_block_size import (
 )
 from flag_gems.fused.moe_sum import moe_sum
 from flag_gems.fused.outer import outer
+from flag_gems.fused.pack_seq import pack_seq_triton
 from flag_gems.fused.reglu import dreglu, reglu
 from flag_gems.fused.reshape_and_cache import reshape_and_cache
 from flag_gems.fused.reshape_and_cache_flash import reshape_and_cache_flash
@@ -58,9 +60,11 @@ from flag_gems.fused.silu_and_mul_with_clamp import (
 from flag_gems.fused.skip_layernorm import skip_layer_norm
 from flag_gems.fused.sparse_attention import sparse_attn_triton
 from flag_gems.fused.swiglu import dswiglu, swiglu
+from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
 from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
 from flag_gems.fused.topk_softmax import topk_softmax
 from flag_gems.fused.topk_softplus_sqrt import topk_softplus_sqrt
+from flag_gems.fused.unpack_seq import unpack_seq_triton
 from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
@@ -101,9 +105,11 @@ __all__ = [
     "moe_align_block_size_triton",
     "outer",
     "outplace_fused_experts",
+    "pack_seq_triton",
     "reglu",
     "reshape_and_cache",
     "reshape_and_cache_flash",
+    "fused_inv_rope_fp8_quant",
     "rwkv_ka_fusion",
     "rwkv_mm_sparsity",
     "silu_and_mul",
@@ -113,9 +119,11 @@ __all__ = [
     "sinkhorn_forward",
     "skip_layer_norm",
     "swiglu",
+    "top_k_per_row_decode",
     "top_k_per_row_prefill",
     "topk_softmax",
     "topk_softplus_sqrt",
+    "unpack_seq_triton",
     "weight_norm",
     "sparse_attn_triton",
 ]
