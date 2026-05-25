@@ -12,6 +12,7 @@ case $VENDOR in
     ;;
   hygon)
     source /opt/dtk-26.04/env.sh
+    echo "PATH=$PATH"
     ;;
   iluvatar)
     export LD_LIBRARY_PATH=/usr/local/corex/lib:$LD_LIBRARY_PATH
