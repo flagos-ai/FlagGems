@@ -19,7 +19,7 @@ PDIST_SHAPES = [
 @pytest.mark.parametrize("shape", PDIST_SHAPES)
 # pdist CUDA kernel only supports float32; Half/BFloat16 raise RuntimeError
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_accuracy_pdist(shape, dtype):
+def test_pdist(shape, dtype):
     if shape[0] < 2:
         pytest.skip("pdist requires at least 2 rows")
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -37,7 +37,7 @@ def test_accuracy_pdist(shape, dtype):
 @pytest.mark.parametrize("shape", PDIST_SHAPES)
 # pdist CUDA kernel only supports float32; Half/BFloat16 raise RuntimeError
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_accuracy_pdist_p1(shape, dtype):
+def test_pdist_p1(shape, dtype):
     if shape[0] < 2:
         pytest.skip("pdist requires at least 2 rows")
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -55,7 +55,7 @@ def test_accuracy_pdist_p1(shape, dtype):
 @pytest.mark.parametrize("shape", PDIST_SHAPES)
 # pdist CUDA kernel only supports float32; Half/BFloat16 raise RuntimeError
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_accuracy_pdist_pinf(shape, dtype):
+def test_pdist_pinf(shape, dtype):
     if shape[0] < 2:
         pytest.skip("pdist requires at least 2 rows")
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)

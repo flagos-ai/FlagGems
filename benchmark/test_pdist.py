@@ -24,7 +24,7 @@ class PdistBenchmark(base.Benchmark):
 
 
 @pytest.mark.pdist
-def test_perf_pdist():
+def test_pdist():
     bench = PdistBenchmark(
         op_name="pdist",
         torch_op=torch.pdist,
