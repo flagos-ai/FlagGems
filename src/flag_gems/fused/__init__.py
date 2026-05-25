@@ -6,7 +6,6 @@ from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
 from flag_gems.fused.deepseek_v4_attention_dequantize_and_gather_k_cache import (
     dequantize_and_gather_k_cache,
-    dsv4_dequantize_and_gather_k_cache,
 )
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
 from flag_gems.fused.FLA import (
@@ -67,7 +66,6 @@ from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
     "dequantize_and_gather_k_cache",
-    "dsv4_dequantize_and_gather_k_cache",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
     "bincount",

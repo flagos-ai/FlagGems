@@ -136,6 +136,4 @@ def dequantize_and_gather_k_cache(
         )
 
 
-dsv4_dequantize_and_gather_k_cache = dequantize_and_gather_k_cache
-
-__all__ = ["dequantize_and_gather_k_cache", "dsv4_dequantize_and_gather_k_cache"]
+__all__ = ["dequantize_and_gather_k_cache"]
