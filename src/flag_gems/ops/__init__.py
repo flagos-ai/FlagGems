@@ -210,7 +210,7 @@ from flag_gems.ops.logical_and import logical_and, logical_and_
 from flag_gems.ops.logical_not import logical_not
 from flag_gems.ops.logical_or import logical_or, logical_or_
 from flag_gems.ops.logical_xor import logical_xor
-from flag_gems.ops.logit import logit, logit_out
+from flag_gems.ops.logit import logit, logit_backward, logit_out
 from flag_gems.ops.logit_ import logit_
 from flag_gems.ops.logspace import logspace
 from flag_gems.ops.logsumexp import logsumexp
@@ -337,7 +337,7 @@ from flag_gems.ops.softmax import (
     softmax_backward_out,
     softmax_out,
 )
-from flag_gems.ops.softplus import softplus
+from flag_gems.ops.softplus import softplus, softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
@@ -661,6 +661,7 @@ __all__ = [
     "logical_or_",
     "logical_xor",
     "logit",
+    "logit_backward",
     "logit_out",
     "logit_",
     "logspace",
@@ -810,6 +811,7 @@ __all__ = [
     "softmax_backward_out",
     "softmax_out",
     "softplus",
+    "softplus_backward",
     "softshrink",
     "softshrink_out",
     "sort",
