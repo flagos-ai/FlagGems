@@ -11,6 +11,8 @@ using namespace triton_jit;
 
 #if defined(FLAGGEMS_USE_MUSA)
 static const char* SORT_KERNEL_PATH = "runtime/backend/_mthreads/ops/sort.py";
+#elif defined(FLAGGEMS_USE_GCU)
+static const char* SORT_KERNEL_PATH = "runtime/backend/_enflame/gcu400/ops/sort.py";
 #else
 static const char* SORT_KERNEL_PATH = "ops/sort.py";
 #endif
@@ -39,7 +41,11 @@ std::tuple<at::Tensor, at::Tensor> radix_sort(const at::Tensor& arr, int64_t k_b
   const int64_t TILE_R_HIST = 16;
 
   int64_t grid_n_hist = utils::cdiv(n, CTA_TILE_N_HIST);
+#if defined(FLAGGEMS_USE_GCU)
+  unsigned int grid_x_hist = std::min((int64_t)(m * grid_n_hist), (int64_t)48);
+#else
   unsigned int grid_x_hist = m * grid_n_hist;
+#endif
 
   const TritonJITFunction& hist_kernel =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / SORT_KERNEL_PATH),
@@ -63,6 +69,9 @@ std::tuple<at::Tensor, at::Tensor> radix_sort(const at::Tensor& arr, int64_t k_b
               n_passes,
               m,
               n,
+#if defined(FLAGGEMS_USE_GCU)
+              grid_n_hist,
+#endif
               TILES_N_PER_CTA_HIST,
               TILE_N_HIST,
               TILE_R_HIST,
@@ -83,7 +92,12 @@ std::tuple<at::Tensor, at::Tensor> radix_sort(const at::Tensor& arr, int64_t k_b
   const int64_t TILE_N_SWEEP = 2048;
   int64_t grid_r_sweep = utils::cdiv(num_bins, TILE_R_SWEEP);
   int64_t grid_n_sweep = utils::cdiv(n, TILE_N_SWEEP);
+#if defined(FLAGGEMS_USE_GCU)
+  int64_t total_tasks_sweep = m * grid_n_sweep;
+  unsigned int grid_x_sweep = std::min(total_tasks_sweep, (int64_t)48);
+#else
   unsigned int grid_x_sweep = m * grid_n_sweep;
+#endif
   unsigned int grid_y_sweep = grid_r_sweep;
 
   at::Tensor status =
@@ -114,6 +128,9 @@ std::tuple<at::Tensor, at::Tensor> radix_sort(const at::Tensor& arr, int64_t k_b
                  m,
                  n,
                  grid_n_sweep,
+#if defined(FLAGGEMS_USE_GCU)
+                 total_tasks_sweep,
+#endif
                  TILE_N_SWEEP,
                  TILE_R_SWEEP,
                  k_bits,
