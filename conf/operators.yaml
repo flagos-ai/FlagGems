@@ -5642,6 +5642,19 @@ ops:
       - DSA
     stages:
       - beta: '5.0'
+  - id: special_bessel_y1
+    description: |
+      Computes the second kind Bessel function of order 1 for each element of input.
+    for:
+      - special_bessel_y1
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
