@@ -4,6 +4,8 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
+import triton
+import triton.language as tl
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
@@ -18,17 +20,10 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def scatter_add_2d_kernel(
-    out_ptr,
-    src_ptr,
-    index_ptr,
-    M,
-    N,
-    out_stride0,
-    out_stride1,
-    src_stride0,
-    src_stride1,
-    idx_stride0,
-    idx_stride1,
+    out_ptr, src_ptr, index_ptr,
+    M, N, out_stride0, out_stride1,
+    src_stride0, src_stride1,
+    idx_stride0, idx_stride1,
     scatter_dim: tl.constexpr,
     BLOCK: tl.constexpr,
     LOOP: tl.constexpr,
@@ -53,15 +48,13 @@ def scatter_add_2d_kernel(
         else:
             out_off = row * out_stride0 + cur_idx * out_stride1
 
-        tl.atomic_add(out_ptr + out_off, cur_src, mask=mask, sem="relaxed")
+        tl.atomic_add(out_ptr + out_off, cur_src, mask=mask, sem='relaxed')
         base += BLOCK
 
 
 @triton.jit
 def scatter_add_row_kernel(
-    out_ptr,
-    src_ptr,
-    index_ptr,
+    out_ptr, src_ptr, index_ptr,
     N,
     out_stride0,
     src_stride0,
@@ -78,7 +71,7 @@ def scatter_add_row_kernel(
         mask = offs < N
         s = tl.load(src_ptr + src_base + offs, mask=mask, other=0.0)
         i = tl.load(index_ptr + idx_base + offs, mask=mask, other=0)
-        tl.atomic_add(out_ptr + out_base + i, s, mask=mask, sem="relaxed")
+        tl.atomic_add(out_ptr + out_base + i, s, mask=mask, sem='relaxed')
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -89,7 +82,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems import runtime")
     code.writeline("import flag_gems")
-    # code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+    # code.writeline("from flag_gems.utils import triton_lang_extension as ext")
     code.newline()
     code.newline()
     return code
@@ -122,14 +115,6 @@ def generate_scatter_kernel(
 
     # the decorators
     code.writeline("@libentry()")
-    code.writeline("@triton.heuristics(")
-    with code.indent():
-        code.writeline("{")
-        with code.indent():
-            code.writeline('"BLOCK": heur_block,')
-            code.writeline('"LOOP": loop_count,')
-        code.writeline("}")
-    code.writeline(")")
     inp_stride_vars = ",".join(f"'inp_stride_{i}'" for i in range(rank))
     index_stride_vars = ",".join(f"'index_stride_{i}'" for i in range(rank))
     src_stride_vars = ",".join(f"'src_stride_{i}'" for i in range(rank))
@@ -295,7 +280,15 @@ def generate_destination_passing_wrapper(
         code.writeline('IS_MUL = reduce == "multiply"')
         code.writeline("int32_offset = int32_offset or True")
 
-        # kernel launch
+        code.writeline("import math")
+        code.writeline("BLOCK = 128")
+        code.writeline("LOOP = 4")
+        code.writeline("while math.ceil(N / (BLOCK * LOOP)) > 65535:")
+        code.writeline("    if BLOCK < 1024:")
+        code.writeline("        BLOCK *= 2")
+        code.writeline("    else:")
+        code.writeline("        LOOP *= 2")
+
         code.writeline("grid = lambda meta: (")
         with code.indent():
             code.writeline('triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]), ')
@@ -322,9 +315,10 @@ def generate_destination_passing_wrapper(
                 code.writeline("inp_size_dim,")
                 code.writeline("stride_dim,")
                 code.writeline("N,")
-                # reduce options
                 code.writeline("IS_ADD,")
                 code.writeline("IS_MUL,")
+                code.writeline("BLOCK=BLOCK,")
+                code.writeline("LOOP=LOOP,")
                 code.writeline("INT32_OFFSET=int32_offset,")
         code.writeline(")")
         code.writeline("return out")
@@ -392,6 +386,14 @@ class ScatterFunction:
 _scatter_func = ScatterFunction()
 
 
+def _reduce_name_to_scatter_reduce(reduce):
+    if reduce == "add":
+        return "sum"
+    elif reduce == "multiply":
+        return "prod"
+    return reduce
+
+
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER")
 
@@ -401,16 +403,20 @@ def scatter(inp, dim, index, src, reduce=None):
         inp = inp.to(torch.float32)
         src = src.to(torch.float32)
 
-    out = inp.clone()
-
     if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
+        out = inp.clone()
+        scatter_(out, dim, index, src, reduce=reduce)
+        if needs_upcast:
+            out = out.to(orig_dtype)
+        return out
+
+    out = inp.clone()
 
     if has_internal_overlapping(out) == MemOverlap.Yes:
         out = out.contiguous()
 
+    if index.dtype == torch.int64:
+        index = index.to(torch.int32)
     src_strided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(inp, dim, index.shape)
     dim_size = inp.size(dim)
@@ -445,19 +451,14 @@ def _adaptive_scatter_config(total):
         return 1024, 4
 
 
-@triton.jit(do_not_specialize=["total_elements"])
+@triton.jit(do_not_specialize=['total_elements'])
 def scatter_src_2d_kernel(
-    out_ptr,
-    src_ptr,
-    index_ptr,
+    out_ptr, src_ptr, index_ptr,
     total_elements,
     N,
-    out_stride0,
-    out_stride1,
-    src_stride0,
-    src_stride1,
-    idx_stride0,
-    idx_stride1,
+    out_stride0, out_stride1,
+    src_stride0, src_stride1,
+    idx_stride0, idx_stride1,
     scatter_dim: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
@@ -481,13 +482,10 @@ def scatter_src_2d_kernel(
     tl.store(out_ptr + out_off, cur_src, mask=mask)
 
 
-@triton.jit(do_not_specialize=["N", "M", "out_stride0", "src_stride0", "idx_stride0"])
+@triton.jit(do_not_specialize=['N', 'M', 'out_stride0', 'src_stride0', 'idx_stride0'])
 def scatter_src_row_kernel(
-    out_ptr,
-    src_ptr,
-    index_ptr,
-    N,
-    M,
+    out_ptr, src_ptr, index_ptr,
+    N, M,
     out_stride0,
     src_stride0,
     idx_stride0,
@@ -535,14 +533,9 @@ def scatter_(inp, dim, index, src, reduce=None):
         M, N_col = index.shape
         total = M * N_col
         src_strided = src.as_strided(index.shape, src.stride())
-        use_row = (
-            dim_actual == 1
-            and inp.stride(1) == 1
-            and src_strided.stride(1) == 1
-            and index.stride(1) == 1
-            and N_col >= 64
-            and total > 4096
-        )
+        use_row = (dim_actual == 1 and inp.stride(1) == 1
+                   and src_strided.stride(1) == 1 and index.stride(1) == 1
+                   and N_col >= 64 and total > 4096)
         MAX_GRID = 48
         if use_row:
             BLOCK_N = min(N_col, 8192)
@@ -551,17 +544,13 @@ def scatter_(inp, dim, index, src, reduce=None):
             nw = 1 if N_col <= 512 else 4
             grid_size = min(M, MAX_GRID)
             scatter_src_row_kernel[(grid_size,)](
-                inp,
-                src_strided,
-                index,
-                N_col,
-                M,
+                inp, src_strided, index,
+                N_col, M,
                 inp.stride(0),
                 src_strided.stride(0),
                 index.stride(0),
                 dim_actual,
-                BLOCK_N=BLOCK_N,
-                num_warps=nw,
+                BLOCK_N=BLOCK_N, num_warps=nw,
             )
         else:
             if total <= 8192:
@@ -575,20 +564,13 @@ def scatter_(inp, dim, index, src, reduce=None):
                 nw = 4
             grid = (triton.cdiv(total, BLOCK),)
             scatter_src_2d_kernel[grid](
-                inp,
-                src_strided,
-                index,
-                total,
-                N_col,
-                inp.stride(0),
-                inp.stride(1),
-                src.stride(0),
-                src.stride(1),
-                index.stride(0),
-                index.stride(1),
+                inp, src_strided, index,
+                total, N_col,
+                inp.stride(0), inp.stride(1),
+                src.stride(0), src.stride(1),
+                index.stride(0), index.stride(1),
                 dim_actual,
-                BLOCK=BLOCK,
-                num_warps=nw,
+                BLOCK=BLOCK, num_warps=nw,
             )
         return inp
 
@@ -611,11 +593,8 @@ def scatter_(inp, dim, index, src, reduce=None):
                         src[row_start:row_end],
                         idx_c,
                         N_col,
-                        inp.stride(0),
-                        src.stride(0),
-                        idx_c.stride(0),
-                        BLOCK_N=1024,
-                        num_warps=4,
+                        inp.stride(0), src.stride(0), idx_c.stride(0),
+                        BLOCK_N=1024, num_warps=4,
                     )
                 else:
                     ct = chunk_M * N_col
@@ -625,21 +604,13 @@ def scatter_(inp, dim, index, src, reduce=None):
                         LOOP *= 2
                     grid = (triton.cdiv(ct, BLOCK * LOOP),)
                     scatter_add_2d_kernel[grid](
-                        inp,
-                        src[row_start:row_end],
-                        idx_c,
-                        chunk_M,
-                        N_col,
-                        inp.stride(0),
-                        inp.stride(1),
-                        src.stride(0),
-                        src.stride(1),
-                        idx_c.stride(0),
-                        idx_c.stride(1),
+                        inp, src[row_start:row_end], idx_c,
+                        chunk_M, N_col,
+                        inp.stride(0), inp.stride(1),
+                        src.stride(0), src.stride(1),
+                        idx_c.stride(0), idx_c.stride(1),
                         dim_actual,
-                        BLOCK=BLOCK,
-                        LOOP=LOOP,
-                        num_warps=num_warps,
+                        BLOCK=BLOCK, LOOP=LOOP, num_warps=num_warps,
                     )
             return inp
         idx = index.to(torch.int32) if index.dtype == torch.int64 else index
@@ -649,17 +620,11 @@ def scatter_(inp, dim, index, src, reduce=None):
             LOOP *= 2
         grid = (triton.cdiv(total, BLOCK * LOOP),)
         scatter_add_2d_kernel[grid](
-            inp,
-            src,
-            idx,
-            M,
-            N_col,
-            inp.stride(0),
-            inp.stride(1),
-            src.stride(0),
-            src.stride(1),
-            idx.stride(0),
-            idx.stride(1),
+            inp, src, idx,
+            M, N_col,
+            inp.stride(0), inp.stride(1),
+            src.stride(0), src.stride(1),
+            idx.stride(0), idx.stride(1),
             dim_actual,
             BLOCK=BLOCK,
             LOOP=LOOP,
@@ -671,6 +636,8 @@ def scatter_(inp, dim, index, src, reduce=None):
         has_internal_overlapping(out) != MemOverlap.Yes
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
 
+    if index.dtype == torch.int64:
+        index = index.to(torch.int32)
     src_restrided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(out, dim, index.shape)
     dim_size = out.size(dim)
