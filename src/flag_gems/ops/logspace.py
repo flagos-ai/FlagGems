@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
-from ..utils import triton_lang_extension as tle
+from ..utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ def logspace_kernel(
     log2_base: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = idx < steps
 

@@ -94,8 +94,8 @@ def ref_paged_attn(
 
 
 @pytest.mark.flash_attn_varlen_func
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="#2815: Not supported")
-@pytest.mark.skipif(vendor_name == "hygon", reason="#2816: Not working")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2815: Not supported")
+@pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2816: Not working")
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (5, 18), (129, 463)]])
 @pytest.mark.parametrize("num_heads", [(4, 4), (8, 2), (16, 2)])
 @pytest.mark.parametrize("head_size", [128, 192, 256])
@@ -120,9 +120,6 @@ def test_flash_attn_varlen_func(
     num_blocks: int,
     optimize_init: bool,
 ) -> None:
-    if vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     # (Issue) numerical stability concern
     if alibi is True and soft_cap is not None:
         return
@@ -251,8 +248,8 @@ def test_flash_attn_varlen_func(
         torch.testing.assert_close(output, ref_output, atol=2e-2, rtol=1e-2, msg=msg)
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="#2815: Not working")
-@pytest.mark.skipif(vendor_name == "hygon", reason="#2816: Not working")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2815: Not working")
+@pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2816: Not working")
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (1, 18), (1, 463)]])
 @pytest.mark.parametrize("num_heads", [(8, 2)])
@@ -274,9 +271,6 @@ def test_flash_attn_varlen_func_swap_qg(
     soft_cap: Optional[float],
     num_blocks: int,
 ) -> None:
-    if vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     with torch.device(flag_gems.device):
         utils.init_seed(1234567890)
         num_seqs = len(seq_lens)
