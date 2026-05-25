@@ -76,7 +76,10 @@ class ConfigLoader(object):
             "num_stages": current_config["num_stages"],
             "num_ctas": current_config["num_ctas"],
         }
-        if self.device.vendor_name == "hygon" and "num_ldmatrixes" in inspect.signature(triton.Config).parameters:
+        if (
+            self.device.vendor_name == "hygon"
+            and "num_ldmatrixes" in inspect.signature(triton.Config).parameters
+        ):
             kwargs["num_ldmatrixes"] = current_config["num_ldmatrixes"]
         return triton.Config(single_config["META"], **kwargs)
 
