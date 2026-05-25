@@ -300,6 +300,7 @@ _FULL_CONFIG = (
     ("leaky_relu", leaky_relu),
     ("leaky_relu_", leaky_relu_),
     ("leaky_relu.out", leaky_relu_out),
+    ("leaky_relu_backward", leaky_relu_backward),
     ("lerp.Scalar", lerp_scalar),
     ("lerp.Tensor", lerp_tensor),
     ("lerp_.Scalar", lerp_scalar_),
