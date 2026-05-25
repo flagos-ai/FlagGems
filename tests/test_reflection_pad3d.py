@@ -124,7 +124,7 @@ def test_reflection_pad3d_out(shape, dtype, padding):
     ref_x = utils.to_reference(x, True)
     ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
 
-    out = torch.empty_like(ref_out, device=flag_gems.device)
+    out = torch.empty(ref_out.shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         flag_gems.reflection_pad3d_out(x, padding, out)
 
