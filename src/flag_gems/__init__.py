@@ -34,6 +34,7 @@ _FULL_CONFIG = (
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__or__.Scalar", bitwise_or_scalar),
     ("__or__.Tensor", bitwise_or_tensor),
+    ("_adaptive_avg_pool2d", adaptive_avg_pool2d),
     ("_assert_async", _assert_async),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_euclidean_dist", _euclidean_dist),
