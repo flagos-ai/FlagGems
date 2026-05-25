@@ -2419,6 +2419,21 @@ ops:
     stages:
       - stable: '2.0'
     cpp: '4.0'
+  - id: fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
+    description: |
+      Horizontally-fused DeepseekV4-MLA.
+      per-head RMSNorm + GPT-J RoPE for Q, and GPT-J RoPE + UE8M0 FP8
+      quant + paged cache insert for KV, all in one kernel launch.
+    for:
+      - torch.ops._C.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: fused_experts_impl
     description: An implementation of fused MoE.
     for:
