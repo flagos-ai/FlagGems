@@ -113,6 +113,4 @@ def combine_topk_swa_indices(
     return combined, lens
 
 
-dsv4_combine_topk_swa_indices = combine_topk_swa_indices
-
-__all__ = ["combine_topk_swa_indices", "dsv4_combine_topk_swa_indices"]
+__all__ = ["combine_topk_swa_indices"]
