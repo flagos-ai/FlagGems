@@ -4239,6 +4239,32 @@ ops:
       - Reduction
     stages:
       - stable: '2.1'
+  - id: not_equal
+    description: |
+      Computes the element-wise logical NOT EQUAL of the given input tensors.
+    for:
+      - not_equal.Tensor
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Logic
+    stages:
+      - alpha: '5.1'
+  - id: not_equal_scalar
+    description: |
+      Computes the element-wise logical NOT EQUAL comparing a tensor to a scalar.
+    for:
+      - not_equal.Scalar
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Logic
+    stages:
+      - alpha: '5.1'
   - id: one_hot
     description: |
       Takes LongTensor with index values of shape `(*)` and returns a tensor of shape `(*, num_classes)`
