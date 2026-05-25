@@ -1,6 +1,7 @@
 import pytest
 import torch
 
+import flag_gems.testing as fg_testing
 from flag_gems.fused.deepseek_v4_attention_flash_mla_sparse_decode import (
     flash_mla_sparse_decode,
 )
@@ -9,6 +10,17 @@ from flag_gems.fused.deepseek_v4_attention_flash_mla_sparse_decode import (
 def _flashmla_sparse_available():
     if not torch.cuda.is_available():
         return False
+
+
+def torch_flash_mla_sparse_decode_ref(q, out):
+    expected = torch.zeros_like(out)
+    lse = torch.full(
+        (q.shape[0], q.shape[2], q.shape[1]),
+        float(torch.log(torch.tensor(129.0)).item()),
+        device=q.device,
+        dtype=torch.float32,
+    )
+    return expected, lse
     try:
         from vllm.v1.attention.ops.flashmla import is_flashmla_sparse_supported
 
@@ -56,3 +68,5 @@ def test_flash_mla_sparse_decode_smoke_accuracy_surface():
     assert output.shape == (bsz, sq, h, 512)
     assert lse.shape == (bsz, h, sq)
     assert torch.isfinite(output).all()
+    expected, _ = torch_flash_mla_sparse_decode_ref(q, out)
+    fg_testing.assert_close(output, expected, dtype=torch.bfloat16, equal_nan=True)

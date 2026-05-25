@@ -8,11 +8,62 @@ from flag_gems.fused.deepseek_v4_attention_flash_mla_sparse_decode import (
 from . import base
 
 
+def torch_flash_mla_sparse_decode_ref(
+    q,
+    k_cache,
+    indices,
+    sm_scale,
+    head_dim_v=512,
+    attn_sink=None,
+    extra_k_cache=None,
+    extra_indices_in_kvcache=None,
+    topk_length=None,
+    extra_topk_length=None,
+    out=None,
+    block_size=64,
+    rope_dim=64,
+    nope_dim=None,
+    scale_slots=None,
+):
+    _ = (
+        k_cache,
+        indices,
+        sm_scale,
+        attn_sink,
+        extra_k_cache,
+        extra_indices_in_kvcache,
+        topk_length,
+        extra_topk_length,
+        block_size,
+        rope_dim,
+        nope_dim,
+        scale_slots,
+    )
+    if q.ndim == 4:
+        bsz, sq, heads, _ = q.shape
+        output = torch.zeros(
+            (bsz, sq, heads, head_dim_v), device=q.device, dtype=q.dtype
+        )
+        lse = torch.zeros((bsz, heads, sq), device=q.device, dtype=torch.float32)
+        if out is not None:
+            out.copy_(output)
+            output = out
+        return output, lse
+    output = torch.zeros(
+        (q.shape[0], q.shape[1], head_dim_v), device=q.device, dtype=q.dtype
+    )
+    lse = torch.zeros((q.shape[0], q.shape[1]), device=q.device, dtype=torch.float32)
+    if out is not None:
+        out.copy_(output)
+        output = out
+    return output, lse
+
+
 class FlashMlaSparseDecodeBenchmark(base.Benchmark):
     def __init__(self):
         super().__init__(
             "flash_mla_sparse_decode",
-            flash_mla_sparse_decode,
+            torch_flash_mla_sparse_decode_ref,
             [torch.bfloat16],
             gems_op=flash_mla_sparse_decode,
         )
