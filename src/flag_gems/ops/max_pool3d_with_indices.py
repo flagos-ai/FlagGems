@@ -173,12 +173,18 @@ def max_pool3d_forward_kernel(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 16}, num_warps=4),
-        triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 8}, num_warps=4),
-        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 32}, num_warps=4),
-        triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 32}, num_warps=8),
-        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 64}, num_warps=8),
-        triton.Config({"BLOCK_IN_H": 64, "BLOCK_IN_W": 16}, num_warps=8),
+        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 16}, num_stages=4, num_warps=4),
+        triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 8}, num_stages=3, num_warps=4),
+        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 32}, num_stages=3, num_warps=4),
+        triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 32}, num_stages=2, num_warps=8),
+        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 64}, num_stages=2, num_warps=8),
+        triton.Config({"BLOCK_IN_H": 64, "BLOCK_IN_W": 16}, num_stages=2, num_warps=8),
+        triton.Config({"BLOCK_IN_H": 64, "BLOCK_IN_W": 32}, num_stages=2, num_warps=8),
+        triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 64}, num_stages=2, num_warps=8),
+        triton.Config({"BLOCK_IN_H": 64, "BLOCK_IN_W": 64}, num_stages=2, num_warps=8),
+        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 8}, num_stages=5, num_warps=2),
+        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 8}, num_stages=5, num_warps=2),
+        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 16}, num_stages=5, num_warps=2),
     ],
     key=[
         "in_d",

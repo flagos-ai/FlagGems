@@ -1937,3 +1937,38 @@ def _conv_transpose2d_residue(
         num_warps=num_warps,
     )
     return output
+
+
+def conv_transpose2d_backward(
+    grad_output,
+    input,
+    weight,
+    bias_sizes,
+    stride,
+    padding,
+    dilation,
+    transposed,
+    output_padding,
+    groups,
+    output_mask,
+):
+    """Backward for conv_transpose2d.
+
+    Uses PyTorch native convolution_backward as fallback. The forward path
+    benefits from optimized Triton kernels while backward correctness is
+    delegated to the aten implementation.
+    """
+    logger.debug("GEMS CONV_TRANSPOSE2D BACKWARD")
+    return torch.ops.aten.convolution_backward(
+        grad_output,
+        input,
+        weight,
+        bias_sizes,
+        stride,
+        padding,
+        dilation,
+        transposed,
+        output_padding,
+        groups,
+        output_mask,
+    )

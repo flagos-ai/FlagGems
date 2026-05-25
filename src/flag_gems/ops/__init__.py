@@ -87,7 +87,7 @@ from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
-from flag_gems.ops.conv_transpose2d import conv_transpose2d
+from flag_gems.ops.conv_transpose2d import conv_transpose2d, conv_transpose2d_backward
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.cos import cos, cos_
@@ -368,7 +368,10 @@ from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from flag_gems.ops.upsample_linear1d import upsample_linear1d
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
-from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
+from flag_gems.ops.upsample_nearest2d import (
+    upsample_nearest2d,
+    upsample_nearest2d_backward,
+)
 from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
 from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
@@ -498,6 +501,7 @@ __all__ = [
     "conv3d",
     "conv_transpose1d",
     "conv_transpose2d",
+    "conv_transpose2d_backward",
     "copy",
     "copy_",
     "copysign",
@@ -862,6 +866,7 @@ __all__ = [
     "upsample_linear1d",
     "upsample_nearest1d",
     "upsample_nearest2d",
+    "upsample_nearest2d_backward",
     "upsample_nearest3d",
     "var_mean",
     "var",

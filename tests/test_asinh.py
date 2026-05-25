@@ -79,6 +79,19 @@ def test_accuracy_asinh_out(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.asinh
+@pytest.mark.parametrize("shape", [(17, 33), (5, 7, 9)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_asinh_noncontiguous(shape, dtype):
+    base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = base.transpose(-1, -2)
+    ref_inp = utils.to_reference(inp, True)
+    ref_out = torch.asinh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh(inp)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.asinh_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

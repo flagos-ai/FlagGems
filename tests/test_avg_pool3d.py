@@ -142,3 +142,32 @@ def test_avg_pool3d_backward(
     gems_assert_close(
         res_inp_grad, ref_inp_grad, dtype, reduce_dim=kernel_volume * kernel_volume
     )
+
+
+@pytest.mark.avg_pool3d
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_avg_pool3d_noncontiguous(dtype):
+    inp = torch.randn((2, 4, 16, 16, 16), dtype=dtype, device=flag_gems.device)
+    inp = inp.permute(0, 1, 3, 2, 4)  # noncontiguous
+    ref_inp = to_reference(inp, True)
+    ref_out = torch.ops.aten.avg_pool3d(ref_inp, kernel_size=3, stride=2, padding=1).to(
+        dtype
+    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.avg_pool3d(inp, kernel_size=3, stride=2, padding=1)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.avg_pool3d
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_avg_pool3d_divisor_override(dtype):
+    inp = torch.randn((2, 4, 8, 8, 8), dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+    ref_out = torch.ops.aten.avg_pool3d(
+        ref_inp, kernel_size=3, stride=2, padding=1, divisor_override=4
+    ).to(dtype)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.avg_pool3d(
+            inp, kernel_size=3, stride=2, padding=1, divisor_override=4
+        )
+    gems_assert_close(res_out, ref_out, dtype)
