@@ -344,9 +344,7 @@ class LibTuner(triton.runtime.Autotuner):
         assert len(strategy) == len(
             self.keys
         ), f"the length of strategy {len(strategy)} must match the length of keys {len(self.keys)}"
-        return [
-            LibTuner.get_strategy(s) if isinstance(s, str) else s for s in strategy
-        ]
+        return [LibTuner.get_strategy(s) if isinstance(s, str) else s for s in strategy]
 
     def _set_configs_and_strategy(self, configs, strategy):
         self.configs = configs

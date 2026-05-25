@@ -3,7 +3,6 @@ import warnings
 from dataclasses import dataclass
 from types import MappingProxyType
 
-
 USE_FLAGTUNE_ENV = "USE_FLAGTUNE"
 FLAGTUNE_INCLUDE_ENV = "FLAGTUNE_INCLUDE"
 
@@ -62,9 +61,7 @@ def get_supported_flagtune_ops():
 
 def get_default_flagtune_include():
     return frozenset(
-        name
-        for name, spec in _flagtune_op_registry.items()
-        if spec.default_enabled
+        name for name, spec in _flagtune_op_registry.items() if spec.default_enabled
     )
 
 
@@ -77,7 +74,9 @@ def _split_include(include):
     try:
         ops = [str(op).strip() for op in include]
     except TypeError as err:
-        raise TypeError("include must be a comma-separated string or an iterable") from err
+        raise TypeError(
+            "include must be a comma-separated string or an iterable"
+        ) from err
 
     return frozenset(op for op in ops if op)
 
@@ -133,10 +132,7 @@ def flagtune_enabled(op_name):
         return False
     if op_name not in get_supported_flagtune_ops():
         return False
-    return (
-        os.environ.get(USE_FLAGTUNE_ENV) == "1"
-        or op_name in get_flagtune_include()
-    )
+    return os.environ.get(USE_FLAGTUNE_ENV) == "1" or op_name in get_flagtune_include()
 
 
 def __getattr__(name):
@@ -147,16 +143,8 @@ def __getattr__(name):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-register_flagtune_op(
-    "mm", 
-    default=False, 
-    description="matrix multiplication"
-)
-register_flagtune_op(
-    "bmm", 
-    default=False, 
-    description="batched matrix multiplication"
-)
+register_flagtune_op("mm", default=False, description="matrix multiplication")
+register_flagtune_op("bmm", default=False, description="batched matrix multiplication")
 register_flagtune_op(
     "addmm",
     default=False,
