@@ -92,7 +92,6 @@ def test_perf_max_pool3d():
     bench.run()
 
 
-@pytest.mark.max_pool3d
 @pytest.mark.max_pool3d_backward
 def test_perf_max_pool3d_backward():
     bench = MaxPool3dBenchmark(
@@ -119,7 +118,7 @@ def test_perf_max_pool3d_with_indices():
     bench.run()
 
 
-@pytest.mark.max_pool3d_with_indices_backward
+@pytest.mark.max_pool3d_backward
 def test_perf_max_pool3d_with_indices_backward():
     bench = MaxPool3dBenchmark(
         input_fn=max_pool3d_backward_input_fn,
