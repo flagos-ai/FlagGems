@@ -7,6 +7,16 @@ from flag_gems.fused.deepseek_v4_attention_dequantize_and_gather_k_cache import 
 )
 from flag_gems.utils.device_info import get_device_capability
 
+try:
+    from vllm.v1.attention.ops.deepseek_v4_ops import (
+        dequantize_and_gather_k_cache as vllm_dequantize_and_gather_k_cache,
+    )
+
+    _HAS_VLLM_DEQUANTIZE_AND_GATHER_K_CACHE = True
+except Exception:
+    vllm_dequantize_and_gather_k_cache = None
+    _HAS_VLLM_DEQUANTIZE_AND_GATHER_K_CACHE = False
+
 
 def is_support_fp8e4nv():
     major, minor = get_device_capability()
@@ -91,3 +101,69 @@ def test_dequantize_and_gather_k_cache_accuracy(
     )
 
     fg_testing.assert_close(out, expected, dtype=torch.bfloat16, equal_nan=True)
+
+
+@pytest.mark.skipif(
+    (not torch.cuda.is_available())
+    or (not is_support_fp8e4nv())
+    or (not _HAS_VLLM_DEQUANTIZE_AND_GATHER_K_CACHE),
+    reason="requires cuda with fp8e4nv support and vllm deepseek_v4_ops.dequantize_and_gather_k_cache",
+)
+def test_dequantize_and_gather_k_cache_vllm_accuracy():
+    device = "cuda"
+    batch = 2
+    seq_len = 12
+    gather_len = 5
+    block_size = 64
+    nope_dim = 448
+    rope_dim = 64
+    scale_slots = 8
+    output_dim = nope_dim + rope_dim
+    token_data_size = nope_dim + rope_dim * 2
+    block_stride = block_size * token_data_size + block_size * scale_slots
+    blocks_per_seq = (seq_len + block_size - 1) // block_size
+    num_blocks = batch * blocks_per_seq
+    k_cache = torch.zeros((num_blocks, block_stride), device=device, dtype=torch.uint8)
+    expected_rows = torch.empty(
+        (batch, gather_len, output_dim), device=device, dtype=torch.bfloat16
+    )
+    rows = {}
+    for req in range(batch):
+        start_pos = seq_len - gather_len
+        for local_i in range(gather_len):
+            pos = start_pos + local_i
+            physical_block = req * blocks_per_seq + pos // block_size
+            slot = physical_block * block_size + pos % block_size
+            rows[slot] = expected_rows[req : req + 1, local_i : local_i + 1, :]
+    _fill_cache(k_cache, rows, block_size, nope_dim, rope_dim, scale_slots)
+
+    actual = torch.empty_like(expected_rows)
+    expected = torch.empty_like(expected_rows)
+    seq_lens = torch.full((batch,), seq_len, device=device, dtype=torch.int32)
+    gather_lens = torch.full((batch,), gather_len, device=device, dtype=torch.int32)
+    block_table = torch.arange(num_blocks, device=device, dtype=torch.int32).view(
+        batch, blocks_per_seq
+    )
+
+    dequantize_and_gather_k_cache(
+        actual,
+        k_cache,
+        seq_lens,
+        gather_lens,
+        block_table,
+        block_size,
+        rope_dim=rope_dim,
+        nope_dim=nope_dim,
+        scale_slots=scale_slots,
+    )
+    vllm_dequantize_and_gather_k_cache(
+        expected,
+        k_cache,
+        seq_lens,
+        gather_lens,
+        block_table,
+        block_size,
+        0,
+    )
+
+    fg_testing.assert_close(actual, expected, dtype=torch.bfloat16, equal_nan=True)
