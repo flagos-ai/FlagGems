@@ -355,7 +355,7 @@ class LibTuner(triton.runtime.Autotuner):
         self.benchmark_table_name = f"{self.__name__}_{self.cache_key}_benchmark"
         self.cache = libcache[self.config_table_name]
 
-    def maybe_apply_flagtune(self):
+    def apply_flagtune(self):
         if self._flagtune_op_name is None:
             return False
 
@@ -732,6 +732,7 @@ class LibEntry(triton.KernelInterface):
         self.arg_names = fn.arg_names
         self.divisibility = 16
         self.kernel_cache = tuple(dict() for _ in range(DEVICE_COUNT))
+        self._has_flagtune_tuner = self._contains_flagtune_tuner(fn)
 
         while not isinstance(fn, triton.runtime.JITFunction):
             fn = fn.fn
@@ -749,13 +750,26 @@ class LibEntry(triton.KernelInterface):
         self.lock = multiprocessing.Lock()
         self.signature = fn.signature
 
-    def _maybe_apply_flagtune(self):
+    @staticmethod
+    def _contains_flagtune_tuner(fn):
+        while not isinstance(fn, triton.runtime.JITFunction):
+            if (
+                getattr(fn, "apply_flagtune", None) is not None
+                and getattr(fn, "_flagtune_op_name", None) is not None
+            ):
+                return True
+            fn = getattr(fn, "fn", None)
+            if fn is None:
+                break
+        return False
+
+    def _apply_flagtune(self):
         changed = False
         fn = self.fn
         while not isinstance(fn, triton.runtime.JITFunction):
-            maybe_apply = getattr(fn, "maybe_apply_flagtune", None)
-            if maybe_apply is not None:
-                changed = maybe_apply() or changed
+            apply_flagtune = getattr(fn, "apply_flagtune", None)
+            if apply_flagtune is not None:
+                changed = apply_flagtune() or changed
             fn = getattr(fn, "fn", None)
             if fn is None:
                 break
@@ -787,7 +801,8 @@ class LibEntry(triton.KernelInterface):
 
     def run(self, *args, **kwargs):
         grid = kwargs["grid"]
-        self._maybe_apply_flagtune()
+        if self._has_flagtune_tuner:
+            self._apply_flagtune()
 
         # collect all the arguments
         spec_args = []  # specialize arguments

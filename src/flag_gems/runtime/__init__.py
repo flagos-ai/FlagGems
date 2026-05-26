@@ -4,10 +4,6 @@ from .configloader import ConfigLoader
 from .flagtune import (
     flagtune,
     flagtune_enabled,
-    get_default_flagtune_include,
-    get_flagtune_registry,
-    get_supported_flagtune_ops,
-    register_flagtune_op,
 )
 
 config_loader = ConfigLoader()
@@ -73,14 +69,10 @@ __all__ = [
     "error",
     "flagtune",
     "flagtune_enabled",
-    "get_default_flagtune_include",
     "get_expand_config",
-    "get_flagtune_registry",
     "get_heuristic_config",
-    "get_supported_flagtune_ops",
     "get_tuned_config",
     "ops_get_configs",
-    "register_flagtune_op",
     "replace_customized_ops",
     "torch_backend_device",
     "torch_device_fn",
