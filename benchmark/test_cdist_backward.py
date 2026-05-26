@@ -7,16 +7,13 @@ from . import base
 
 
 class CdistBackwardBenchmark(base.Benchmark):
-    def set_shapes(self, shape_file_path=None):
-        # (batch, n1, dim) shapes covering small/medium/large cases
-        self.shapes = [
+    def set_more_shapes(self):
+        return [
             (2, 16, 32),
             (4, 32, 64),
             (8, 64, 128),
+            (16, 128, 256),
         ]
-
-    def set_more_shapes(self):
-        return None
 
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:

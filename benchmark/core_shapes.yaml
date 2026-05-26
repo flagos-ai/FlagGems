@@ -26,6 +26,13 @@ ctc_loss_backward:
     - [1024, 32, 128, 96]
   shape_desc: "T, N, C, S"
 
+cdist_backward:
+  shapes:
+    - [2, 16, 32]
+    - [4, 32, 64]
+    - [8, 64, 128]
+  shape_desc: "batch, n1, dim"
+
 randperm:
   <<: *single_dim_shapes
 
