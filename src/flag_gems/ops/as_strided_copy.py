@@ -112,25 +112,32 @@ def _make_as_strided_view(
     return torch.as_strided(input, size, stride, storage_offset)
 
 
+def _native_copy_(out: torch.Tensor, src: torch.Tensor):
+    return torch.ops.aten.copy_.default.redispatch(_FALLBACK_KEYSET, out, src, False)
+
+
 def _fallback_as_strided_copy(input, size, stride, storage_offset=None):
-    return torch.ops.aten.as_strided_copy.default.redispatch(
-        _FALLBACK_KEYSET,
-        input,
-        size,
-        stride,
-        storage_offset,
-    )
+    view = _make_as_strided_view(input, size, stride, storage_offset)
+    out = torch.empty(tuple(size), dtype=input.dtype, device=input.device)
+    if out.numel() != 0:
+        # Call native copy_ directly so unsupported CUDA dtypes do not re-enter
+        # FlagGems copy kernels through the composite as_strided_copy fallback.
+        _native_copy_(out, view)
+    return out
 
 
 def _fallback_as_strided_copy_out(input, size, stride, storage_offset=None, *, out):
-    return torch.ops.aten.as_strided_copy.out.redispatch(
-        _FALLBACK_KEYSET,
-        input,
-        size,
-        stride,
-        storage_offset,
-        out=out,
-    )
+    view = _make_as_strided_view(input, size, stride, storage_offset)
+    if (
+        torch._C._is_alias_of(input, out)
+        or has_internal_overlapping(out) != MemOverlap.No
+    ):
+        temp = torch.empty(tuple(size), dtype=input.dtype, device=input.device)
+        if temp.numel() != 0:
+            _native_copy_(temp, view)
+        view = temp
+    _native_copy_(out, view)
+    return out
 
 
 def _can_use_triton(input: torch.Tensor, out: torch.Tensor) -> bool:
