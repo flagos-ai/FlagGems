@@ -27,7 +27,11 @@ class FusedQKVRMSNormBenchmark(base.Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         _ = shape_file_path
-        self.shapes = [(32, 64 * 576, 576)]
+        self.shapes = [
+            (32, 1536, 512),
+            (128, 1536, 512),
+            (32, 64 * 576, 576),
+        ]
 
     def get_input_iter(self, dtype):
         for tokens, qdim, kvdim in self.shapes:

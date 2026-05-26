@@ -58,13 +58,14 @@ class DequantizeAndGatherKCacheBenchmark(base.Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         _ = shape_file_path
-        self.shapes = [(4, 2048, 576)]
+        self.shapes = [
+            (4, 2048, 512, 448, 64),
+            (4, 2048, 576, 512, 64),
+        ]
 
     def get_input_iter(self, dtype):
         _ = dtype
-        for batch, gather_len, dim in self.shapes:
-            rope_dim = 64
-            nope_dim = dim - rope_dim
+        for batch, gather_len, dim, nope_dim, rope_dim in self.shapes:
             scale_slots = (nope_dim + 63) // 64 + (1 if nope_dim % 64 == 0 else 0)
             block_size = 64
             token_data_size = nope_dim + rope_dim * 2

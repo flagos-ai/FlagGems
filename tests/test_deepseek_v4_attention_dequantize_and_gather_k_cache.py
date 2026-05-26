@@ -37,28 +37,47 @@ def _fill_cache(k_cache, expected_rows, block_size, nope_dim, rope_dim, scale_sl
         row[..., nope_dim : nope_dim + rope_dim] = rope
 
 
+@pytest.mark.parametrize(
+    ("batch", "seq_len", "gather_len", "block_size", "nope_dim", "rope_dim"),
+    [
+        (1, 6, 3, 4, 64, 16),
+        (2, 12, 5, 64, 448, 64),
+    ],
+)
 @pytest.mark.skipif(
     not torch.cuda.is_available() or not is_support_fp8e4nv(),
     reason="requires cuda with fp8e4nv support (capability >= 89)",
 )
-def test_dequantize_and_gather_k_cache_accuracy():
+def test_dequantize_and_gather_k_cache_accuracy(
+    batch, seq_len, gather_len, block_size, nope_dim, rope_dim
+):
     device = "cuda"
-    block_size = 4
-    nope_dim = 64
-    rope_dim = 16
-    scale_slots = 2
+    scale_slots = (nope_dim + 63) // 64 + (1 if nope_dim % 64 == 0 else 0)
     output_dim = nope_dim + rope_dim
     token_data_size = nope_dim + rope_dim * 2
     block_stride = block_size * token_data_size + block_size * scale_slots
-    k_cache = torch.zeros((2, block_stride), device=device, dtype=torch.uint8)
-    out = torch.empty((1, 3, output_dim), device=device, dtype=torch.bfloat16)
+    blocks_per_seq = (seq_len + block_size - 1) // block_size
+    num_blocks = batch * blocks_per_seq
+    k_cache = torch.zeros((num_blocks, block_stride), device=device, dtype=torch.uint8)
+    out = torch.empty(
+        (batch, gather_len, output_dim), device=device, dtype=torch.bfloat16
+    )
     expected = torch.empty_like(out)
-    rows = {3: expected[:, 0:1, :], 4: expected[:, 1:2, :], 5: expected[:, 2:3, :]}
+    rows = {}
+    for req in range(batch):
+        start_pos = seq_len - gather_len
+        for local_i in range(gather_len):
+            pos = start_pos + local_i
+            physical_block = req * blocks_per_seq + pos // block_size
+            slot = physical_block * block_size + pos % block_size
+            rows[slot] = expected[req : req + 1, local_i : local_i + 1, :]
     _fill_cache(k_cache, rows, block_size, nope_dim, rope_dim, scale_slots)
 
-    seq_lens = torch.tensor([6], device=device, dtype=torch.int32)
-    gather_lens = torch.tensor([3], device=device, dtype=torch.int32)
-    block_table = torch.tensor([[0, 1]], device=device, dtype=torch.int32)
+    seq_lens = torch.full((batch,), seq_len, device=device, dtype=torch.int32)
+    gather_lens = torch.full((batch,), gather_len, device=device, dtype=torch.int32)
+    block_table = torch.arange(num_blocks, device=device, dtype=torch.int32).view(
+        batch, blocks_per_seq
+    )
     dequantize_and_gather_k_cache(
         out,
         k_cache,

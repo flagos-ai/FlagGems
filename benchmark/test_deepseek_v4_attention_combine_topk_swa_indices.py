@@ -29,29 +29,48 @@ class CombineTopkSwaIndicesBenchmark(base.Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         _ = shape_file_path
-        self.shapes = [(4096, 128)]
+        self.shapes = [
+            ([3, 2], [6, 4], [4, 3], 4, 4, 2, 20, 8),
+            ([4096], [4096], [4096], 128, 256, 4, 45056, 40960),
+            ([4096], [4096], [4096], 128, 256, 128, 8448, 1280),
+        ]
 
     def get_input_iter(self, dtype):
         _ = dtype
-        for num_tokens, topk in self.shapes:
+        for (
+            query_lens,
+            seq_lens_values,
+            gather_lens_values,
+            topk,
+            window_size,
+            compress_ratio,
+            M,
+            N,
+        ) in self.shapes:
+            num_tokens = sum(query_lens)
             topk_indices = torch.randint(
-                -1, 2048, (num_tokens, topk), device="cuda", dtype=torch.int32
+                -1, max(N, 1), (num_tokens, topk), device="cuda", dtype=torch.int32
             )
+            query_start_values = [0]
+            for query_len in query_lens:
+                query_start_values.append(query_start_values[-1] + query_len)
             query_start_loc = torch.tensor(
-                [0, num_tokens], device="cuda", dtype=torch.int32
+                query_start_values, device="cuda", dtype=torch.int32
             )
-            seq_lens = torch.tensor([num_tokens], device="cuda", dtype=torch.int32)
-            gather_lens = torch.tensor([num_tokens], device="cuda", dtype=torch.int32)
+            seq_lens = torch.tensor(seq_lens_values, device="cuda", dtype=torch.int32)
+            gather_lens = torch.tensor(
+                gather_lens_values, device="cuda", dtype=torch.int32
+            )
             yield (
                 topk_indices,
                 query_start_loc,
                 seq_lens,
                 gather_lens,
-                256,
-                8,
+                window_size,
+                compress_ratio,
                 topk,
-                8192,
-                4096,
+                M,
+                N,
             )
 
 

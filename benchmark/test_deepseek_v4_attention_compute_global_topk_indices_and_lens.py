@@ -29,26 +29,34 @@ class ComputeGlobalTopkIndicesAndLensBenchmark(base.Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         _ = shape_file_path
-        self.shapes = [(4096, 128)]
+        self.shapes = [
+            (5, 4, 2, 4, 64),
+            (4096, 128, 1, 640, 64),
+            (4096, 128, 4, 640, 64),
+        ]
 
     def get_input_iter(self, dtype):
         _ = dtype
-        for num_tokens, topk in self.shapes:
+        for num_tokens, topk, num_reqs, blocks_per_req, block_size in self.shapes:
             topk_indices = torch.randint(
-                -1, 64, (num_tokens, topk), device="cuda", dtype=torch.int32
+                -1,
+                blocks_per_req * block_size,
+                (num_tokens, topk),
+                device="cuda",
+                dtype=torch.int32,
             )
-            token_to_req_indices = torch.zeros(
-                (num_tokens,), device="cuda", dtype=torch.int32
+            token_to_req_indices = (
+                torch.arange(num_tokens, device="cuda", dtype=torch.int32) % num_reqs
             )
-            block_table = torch.arange(0, 256, device="cuda", dtype=torch.int32).view(
-                1, -1
-            )
+            block_table = torch.arange(
+                num_reqs * blocks_per_req, device="cuda", dtype=torch.int32
+            ).view(num_reqs, blocks_per_req)
             is_valid_token = torch.ones((num_tokens,), device="cuda", dtype=torch.int32)
             yield (
                 topk_indices,
                 token_to_req_indices,
                 block_table,
-                64,
+                block_size,
                 is_valid_token,
             )
 
