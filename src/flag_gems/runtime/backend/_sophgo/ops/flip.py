@@ -2,88 +2,107 @@ import logging
 
 import torch
 import triton
+import triton.language as tl
 
-from flag_gems.utils.codegen_config_utils import CodeGenConfig
-from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
-from flag_gems.utils.tensor_wrapper import StridedBuffer
+from flag_gems.utils import tl_extra_shim
 
-config_ = CodeGenConfig(
-    64,
-    (512, 1, 1),
-    32,
-    False,
-    prefer_1d_tile=int(triton.__version__[0]) < 3,
-)
+logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")], config=config_)
+def _next_pow2(n: int) -> int:
+    """Round up to the next power of 2."""
+    p = 1
+    while p < n:
+        p <<= 1
+    return p
+
+
 @triton.jit
-def copy_func(x):
-    return x
+def flip_kernel(
+    in_ptr,
+    out_ptr,
+    flip_dim: tl.constexpr,
+    flip_dim_pow2: tl.constexpr,
+):
+    """Flip contiguous elements along the innermost dimension."""
+    pid = tl.program_id(0)
+    base = pid * flip_dim
+    r = tl.arange(0, flip_dim_pow2)
+    offs = base + r
+    mask = r < flip_dim
+    x = tl.load(in_ptr + offs, mask=mask, other=0.0)
+    x_rev = tl_extra_shim.flip(x, 0)
+    tl.store(out_ptr + offs, x_rev, mask=mask)
 
 
-def _merge_to_4d(A: torch.Tensor, dims):
-    """Merge consecutive non-flip dims to reduce rank to <=4."""
-    ndim = A.ndim
-    flip_set = set(dims)
+@triton.jit
+def flip_copy_kernel(
+    in_ptr,
+    out_ptr,
+    flip_size: tl.constexpr,
+    post_size: tl.constexpr,
+    block_size: tl.constexpr,
+):
+    """Flip (flip_size, post_size) rows in reverse order.
+    Grid = pre_size. Each program loops over flip_size rows and post_size blocks,
+    loading block_size elements from row i, storing to row flip_size-1-i."""
+    pid = tl.program_id(0)
+    base = pid * flip_size * post_size
+    r = tl.arange(0, block_size)
 
-    while ndim > 4:
-        merge_idx = None
-        for i in range(ndim - 2, -1, -1):
-            if i not in flip_set and (i + 1) not in flip_set:
-                merge_idx = i
-                break
-        if merge_idx is None:
-            merge_idx = ndim - 2
-
-        new_shape = list(A.shape)
-        new_shape[merge_idx] = A.shape[merge_idx] * A.shape[merge_idx + 1]
-        new_shape.pop(merge_idx + 1)
-
-        new_dims = []
-        for d in dims:
-            if d <= merge_idx:
-                new_dims.append(d)
-            elif d == merge_idx + 1:
-                if merge_idx not in new_dims:
-                    new_dims.append(merge_idx)
-            else:
-                new_dims.append(d - 1)
-
-        A = A.reshape(new_shape)
-        dims = new_dims
-        flip_set = set(dims)
-        ndim = A.ndim
-
-    return A, dims
+    for block_start in range(0, post_size, block_size):
+        block_offs = block_start + r
+        block_mask = block_offs < post_size
+        for i in range(flip_size):
+            src_offs = base + i * post_size + block_offs
+            x = tl.load(in_ptr + src_offs, mask=block_mask, other=0.0)
+            dst_offs = base + (flip_size - 1 - i) * post_size + block_offs
+            tl.store(out_ptr + dst_offs, x, mask=block_mask)
 
 
 def flip(A: torch.Tensor, dims) -> torch.Tensor:
-    logging.debug("GEMS FLIP")
-    orig_shape = A.shape
-
-    if A.ndim > 4:
-        A, dims = _merge_to_4d(A.contiguous(), dims)
-
     ndim = A.ndim
     norm_dims = [d if d >= 0 else ndim + d for d in dims]
 
-    strides = list(A.stride())
-    offset = 0
-    for d in norm_dims:
-        if A.size(d) > 1 and A.stride(d) != 0:
-            offset += strides[d] * (A.shape[d] - 1)
-            strides[d] = -strides[d]
+    if A.numel() <= 1 or len(norm_dims) == 0:
+        return A.clone()
 
-    if offset == 0 or A.numel() <= 1:
-        result = A.clone()
-    else:
-        out = torch.empty_like(A)
-        flipped_A = StridedBuffer(A, strides=strides, offset=offset)
-        overload = copy_func.instantiate(ndim)
-        overload(flipped_A, out0=out)
-        result = out
+    A_work = A
+    for d in sorted(norm_dims):
+        shape = A_work.shape
+        flip_size = shape[d]
+        if flip_size <= 1:
+            continue
+        cur_ndim = len(shape)
 
-    if result.shape != orig_shape:
-        result = result.reshape(orig_shape)
-    return result
+        if d == cur_ndim - 1:
+            # Last dim: direct 2D flip_kernel
+            pre_size = A_work.numel() // flip_size
+            A_2d = A_work.reshape(pre_size, flip_size).contiguous()
+            out_2d = torch.empty_like(A_2d)
+            flip_kernel[(pre_size,)](
+                A_2d, out_2d,
+                flip_dim=flip_size,
+                flip_dim_pow2=_next_pow2(flip_size),
+            )
+            A_work = out_2d.reshape(shape)
+        else:
+            # Non-last dim: reshape to 3D, use flip_copy_kernel
+            pre_size = 1
+            for i in range(d):
+                pre_size *= shape[i]
+            post_size = 1
+            for i in range(d + 1, cur_ndim):
+                post_size *= shape[i]
+
+            A_3d = A_work.reshape(pre_size, flip_size, post_size).contiguous()
+            out_3d = torch.empty_like(A_3d)
+            flip_copy_kernel[(pre_size,)](
+                A_3d, out_3d,
+                flip_size=flip_size,
+                post_size=post_size,
+                block_size=512,
+            )
+            A_work = out_3d.reshape(shape)
+
+    return A_work.reshape(A.shape)
