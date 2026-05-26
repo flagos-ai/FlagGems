@@ -10,6 +10,7 @@ from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
 from flag_gems.ops.act_quant import act_quant_triton
 from flag_gems.ops.add import add, add_
+from flag_gems.ops.Add_RMSNorm import add_rms_norm
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
 from flag_gems.ops.addcmul import addcmul, addcmul_out
 from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
@@ -412,6 +413,7 @@ __all__ = [
     "act_quant_triton",
     "add",
     "add_",
+    "add_rms_norm",
     "addcdiv",
     "addcdiv_out",
     "addcmul",
