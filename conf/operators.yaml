@@ -1098,6 +1098,21 @@ ops:
       - Math
     stages:
       - alpha: '5.1'
+  - id: combine_topk_swa_indices
+    description: |
+      Combines compressed top-k sparse attention indices with sliding-window attention indices
+      for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.combine_topk_swa_indices
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: concat_and_cache_mla
     description: |
       Writes the latent and RoPE value into KV cache for Multi-head Latent Attention forward case.
@@ -1110,6 +1125,21 @@ ops:
       - Attention
     stages:
       - beta: '3.0'
+  - id: compute_global_topk_indices_and_lens
+    description: |
+      Converts local top-k sparse attention indices to global KV-cache indices and computes
+      valid top-k lengths for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.compute_global_topk_indices_and_lens
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: concatenate
     description: An alias of `cat()`.
     for:
@@ -1494,6 +1524,20 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.0'
+  - id: dequantize_and_gather_k_cache
+    description: |
+      Dequantizes FP8 K-cache entries and gathers them into a BF16 tensor for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.dequantize_and_gather_k_cache
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: dgeglu
     description: |
       Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid function.
@@ -2465,6 +2509,20 @@ ops:
       - fused
       - vLLM
       - MoE
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: fused_q_kv_rmsnorm
+    description: |
+      Applies RMSNorm to Q and KV tensors in a single fused kernel for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.fused_q_kv_rmsnorm
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
     kind:
       - NeuralNetwork
     stages:
