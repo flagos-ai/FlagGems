@@ -2,6 +2,7 @@ import gc
 import math
 import os
 import time
+from collections import OrderedDict
 from dataclasses import asdict
 from typing import Any, Generator, List, Optional, Tuple
 
@@ -22,6 +23,23 @@ from .consts import (
     check_metric_dependencies,
     model_shapes,
 )
+
+MM_BENCH_OPS = {"mm", "addmm", "bmm", "baddbmm"}
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.lower() not in {"0", "false", "off", "no"}
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
@@ -68,6 +86,7 @@ class Benchmark:
         self.is_backward = is_backward
         self.is_inplace = is_inplace
         self._input_iter = None
+        self._cuda_graph_latency_cache = OrderedDict()
 
         # Theoretical supported dtypes, metrics for the operation.
         # These are set by default.
@@ -256,6 +275,8 @@ class Benchmark:
             fn = lambda: torch.autograd.grad(
                 (out,), xs, grad_outputs=(dout,), retain_graph=True
             )
+        self._run_mm_a_prequantize(op, args, kwargs)
+        self._run_global_compile_warmup(fn)
         if Config.mode == consts.BenchMode.OPERATOR:
             for i in range(Config.warm_up):
                 fn()
@@ -267,14 +288,34 @@ class Benchmark:
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
         elif Config.mode == consts.BenchMode.KERNEL:
-            do_bench = triton.testing.do_bench
-            latency = do_bench(
-                fn,
-                warmup=Config.warm_up,
-                rep=Config.repetition,
-                return_mode="median",
-                grad_to_none=xs if self.is_backward else None,
+            do_bench = (
+                triton.musa_testing.do_bench
+                if device == "musa"
+                else triton.testing.do_bench
             )
+            if self._use_bench_cuda_graph():
+                try:
+                    latency = self._get_cuda_graph_latency(fn, op, args, kwargs)
+                except Exception as e:
+                    print(
+                        "[WARN] FLAGGEMS_BENCH_CUDA_GRAPH failed; "
+                        f"falling back to triton.do_bench: {e}"
+                    )
+                    latency = do_bench(
+                        fn,
+                        warmup=Config.warm_up,
+                        rep=Config.repetition,
+                        return_mode="median",
+                        grad_to_none=xs if self.is_backward else None,
+                    )
+            else:
+                latency = do_bench(
+                    fn,
+                    warmup=Config.warm_up,
+                    rep=Config.repetition,
+                    return_mode="median",
+                    grad_to_none=xs if self.is_backward else None,
+                )
         elif Config.mode == consts.BenchMode.WRAPPER:
             for i in range(Config.warm_up):
                 fn()
@@ -288,6 +329,160 @@ class Benchmark:
             raise ValueError("Undefined Value of Benchmark Mode.")
         # average latency in ms
         return latency
+
+    def _is_mm_bench_op(self) -> bool:
+        return self.op_name in MM_BENCH_OPS
+
+    @staticmethod
+    def _extract_mm_activation_weight(args: Tuple[Any, ...]):
+        if len(args) < 2:
+            return None, None
+        if len(args) == 2:
+            return args[0], args[1]
+        # addmm / baddbmm: (bias, mat1, mat2)
+        return args[1], args[2]
+
+    def _run_mm_a_prequantize(self, op, args, kwargs) -> None:
+        if self.is_backward or not self._is_mm_bench_op():
+            return
+        if not _env_flag("FLAGGEMS_MM_PREQUANTIZE_FP8", False):
+            return
+        if self.gems_op is None or op is not self.gems_op:
+            return
+        a, b = self._extract_mm_activation_weight(args)
+        if not torch.is_tensor(a):
+            return
+        try:
+            from flag_gems.runtime.backend._nvidia.hopper.ops import mm as hopper_mm
+        except ImportError:
+            return
+        if not hasattr(hopper_mm, "prequantize_mm_inputs_for_inference"):
+            return
+        if torch.is_tensor(b):
+            hopper_mm.prequantize_mm_inputs_for_inference(a, b)
+        else:
+            hopper_mm.prequantize_and_register_a_fp8(a)
+        torch_device_fn.synchronize()
+
+    def _run_global_compile_warmup(self, fn):
+        if self.is_backward or not self._is_mm_bench_op():
+            return
+        if not _env_flag("FLAGGEMS_MM_GLOBAL_COMPILE", False):
+            return
+        iters = max(0, _env_int("FLAGGEMS_MM_GLOBAL_COMPILE_ITERS", 5))
+        for _ in range(iters):
+            fn()
+        if iters:
+            torch_device_fn.synchronize()
+
+    def _use_bench_cuda_graph(self) -> bool:
+        return (
+            not self.is_backward
+            and self._is_mm_bench_op()
+            and device == "cuda"
+            and torch.cuda.is_available()
+            and _env_flag("FLAGGEMS_BENCH_CUDA_GRAPH", False)
+        )
+
+    def _cuda_graph_latency_cache_key(
+        self, op, args, kwargs, reps: int, batch_reps: bool
+    ) -> tuple:
+        registrar = getattr(flag_gems, "current_work_registrar", None)
+
+        def tensor_key(x):
+            if not torch.is_tensor(x):
+                return (type(x).__name__, x)
+            return (
+                "tensor",
+                int(x.data_ptr()),
+                tuple(x.shape),
+                tuple(x.stride()),
+                str(x.dtype),
+                str(x.device),
+                bool(x.requires_grad),
+            )
+
+        return (
+            getattr(op, "__module__", ""),
+            getattr(op, "__qualname__", getattr(op, "__name__", repr(op))),
+            "gems" if registrar is not None else "torch",
+            os.environ.get("USE_FLAGTUNE", "0"),
+            os.environ.get("FLAGGEMS_MM_FP8", "0"),
+            os.environ.get("FLAGGEMS_MM_PREQUANTIZE_FP8", "0"),
+            os.environ.get("FLAGGEMS_MM_BUCKET_M", "1"),
+            os.environ.get("FLAGGEMS_MM_REUSE_OUTPUT", "1"),
+            batch_reps,
+            reps,
+            tuple(tensor_key(x) for x in args),
+            tuple(sorted((k, tensor_key(v)) for k, v in kwargs.items())),
+        )
+
+    def _cuda_graph_latency_cache_max(self) -> int:
+        return max(4, _env_int("FLAGGEMS_BENCH_CUDA_GRAPH_CACHE_MAX", 512))
+
+    def _cuda_graph_batch_reps_enabled(self) -> bool:
+        if not _env_flag("FLAGGEMS_BENCH_CUDA_GRAPH_BATCH_REPS", False):
+            return False
+        target = os.environ.get("FLAGGEMS_BENCH_CUDA_GRAPH_BATCH_REPS_TARGET", "gems")
+        target = target.lower()
+        registrar = getattr(flag_gems, "current_work_registrar", None)
+        is_gems = registrar is not None
+        if target in {"0", "none", "off", "false"}:
+            return False
+        if target in {"1", "all", "both", "true"}:
+            return True
+        if target == "gems":
+            return is_gems
+        if target == "torch":
+            return not is_gems
+        return False
+
+    def _get_or_capture_cuda_graph(self, key: tuple, fn, reps: int, batch_reps: bool):
+        entry = self._cuda_graph_latency_cache.get(key)
+        if entry is not None:
+            self._cuda_graph_latency_cache.move_to_end(key)
+            return entry
+
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            graph_reps = reps if batch_reps else 1
+            for _ in range(graph_reps):
+                fn()
+
+        self._cuda_graph_latency_cache[key] = graph
+        self._cuda_graph_latency_cache.move_to_end(key)
+        while len(self._cuda_graph_latency_cache) > self._cuda_graph_latency_cache_max():
+            self._cuda_graph_latency_cache.popitem(last=False)
+        return graph
+
+    def _get_cuda_graph_latency(self, fn, op, args, kwargs) -> float:
+        warmup = max(1, Config.warm_up + _env_int("FLAGGEMS_MM_TIMED_WARMUP", 0))
+        for _ in range(warmup):
+            fn()
+        torch.cuda.current_stream().synchronize()
+
+        measures = max(1, _env_int("FLAGGEMS_BENCH_CUDA_GRAPH_MEASURES", 10))
+        reps = max(1, Config.repetition)
+        batch_reps = self._cuda_graph_batch_reps_enabled()
+        key = self._cuda_graph_latency_cache_key(op, args, kwargs, reps, batch_reps)
+        graph = self._get_or_capture_cuda_graph(key, fn, reps, batch_reps)
+        torch.cuda.current_stream().synchronize()
+
+        latencies = []
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        for _ in range(measures):
+            start.record()
+            if batch_reps:
+                graph.replay()
+            else:
+                for _ in range(reps):
+                    graph.replay()
+            end.record()
+            end.synchronize()
+            latencies.append(start.elapsed_time(end) / reps)
+        latencies.sort()
+        return latencies[len(latencies) // 2]
 
     def get_gbps(self, args, latency=None):
         # """Return the dynamic input iterator for each Operator."""
