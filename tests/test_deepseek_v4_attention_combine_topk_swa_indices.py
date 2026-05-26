@@ -7,20 +7,66 @@ from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
 )
 
 
+@pytest.mark.parametrize(
+    (
+        "topk_values",
+        "query_start_values",
+        "seq_len_values",
+        "gather_len_values",
+        "window_size",
+        "compress_ratio",
+        "topk",
+        "M",
+        "N",
+    ),
+    [
+        (
+            [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]],
+            [0, 2, 3],
+            [8, 10],
+            [8, 10],
+            4,
+            2,
+            4,
+            64,
+            16,
+        ),
+        (
+            [
+                [100, 101, 102, 103],
+                [110, 111, 112, 113],
+                [120, 121, 122, 123],
+                [130, 131, 132, 133],
+                [140, 141, 142, 143],
+            ],
+            [0, 3, 5],
+            [6, 4],
+            [4, 3],
+            3,
+            2,
+            4,
+            20,
+            8,
+        ),
+    ],
+)
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires cuda")
-def test_combine_topk_swa_indices_accuracy():
+def test_combine_topk_swa_indices_accuracy(
+    topk_values,
+    query_start_values,
+    seq_len_values,
+    gather_len_values,
+    window_size,
+    compress_ratio,
+    topk,
+    M,
+    N,
+):
     device = "cuda"
-    topk_indices = torch.tensor(
-        [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]], device=device, dtype=torch.int32
-    )
-    query_start_loc = torch.tensor([0, 2, 3], device=device, dtype=torch.int32)
-    seq_lens = torch.tensor([8, 10], device=device, dtype=torch.int32)
-    gather_lens = torch.tensor([8, 10], device=device, dtype=torch.int32)
-    window_size = 4
-    compress_ratio = 2
-    topk = 4
-    M = 64
-    N = 16
+    topk_indices = torch.tensor(topk_values, device=device, dtype=torch.int32)
+    query_start_loc = torch.tensor(query_start_values, device=device, dtype=torch.int32)
+    seq_lens = torch.tensor(seq_len_values, device=device, dtype=torch.int32)
+    gather_lens = torch.tensor(gather_len_values, device=device, dtype=torch.int32)
 
     actual, actual_lens = combine_topk_swa_indices(
         topk_indices,

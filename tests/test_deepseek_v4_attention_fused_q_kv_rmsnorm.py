@@ -16,13 +16,20 @@ def _rmsnorm_ref(x, weight, eps):
     return (y * weight.float()).to(x.dtype)
 
 
+@pytest.mark.parametrize(
+    ("tokens", "qdim", "kvdim"),
+    [
+        (4, 256, 128),
+        (8, 1536, 512),
+    ],
+)
 @pytest.mark.skipif(not _has_cuda(), reason="requires cuda")
-def test_fused_q_kv_rmsnorm_accuracy():
+def test_fused_q_kv_rmsnorm_accuracy(tokens, qdim, kvdim):
     device = "cuda"
-    qr = torch.randn((4, 256), device=device, dtype=torch.bfloat16)
-    kv = torch.randn((4, 128), device=device, dtype=torch.bfloat16)
-    q_weight = torch.randn((256,), device=device, dtype=torch.bfloat16)
-    kv_weight = torch.randn((128,), device=device, dtype=torch.bfloat16)
+    qr = torch.randn((tokens, qdim), device=device, dtype=torch.bfloat16)
+    kv = torch.randn((tokens, kvdim), device=device, dtype=torch.bfloat16)
+    q_weight = torch.randn((qdim,), device=device, dtype=torch.bfloat16)
+    kv_weight = torch.randn((kvdim,), device=device, dtype=torch.bfloat16)
     eps = 1e-6
 
     q_out, kv_out = fused_q_kv_rmsnorm(qr, kv, q_weight, kv_weight, eps)
