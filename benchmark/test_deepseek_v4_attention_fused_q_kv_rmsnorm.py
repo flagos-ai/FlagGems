@@ -3,31 +3,39 @@ import torch
 
 from flag_gems.fused.deepseek_v4_attention_fused_q_kv_rmsnorm import fused_q_kv_rmsnorm
 
+try:
+    from vllm.v1.attention.ops.deepseek_v4_ops import (
+        fused_q_kv_rmsnorm as vllm_fused_q_kv_rmsnorm,
+    )
+
+    _HAS_VLLM_FUSED_Q_KV_RMSNORM = True
+except Exception:
+    vllm_fused_q_kv_rmsnorm = None
+    _HAS_VLLM_FUSED_Q_KV_RMSNORM = False
+
 from . import base
-
-
-def torch_fused_q_kv_rmsnorm(qr, kv, q_weight, kv_weight, eps):
-    q = qr.float() * torch.rsqrt(
-        torch.mean(qr.float() * qr.float(), dim=-1, keepdim=True) + eps
-    )
-    k = kv.float() * torch.rsqrt(
-        torch.mean(kv.float() * kv.float(), dim=-1, keepdim=True) + eps
-    )
-    return (q * q_weight.float()).to(qr.dtype), (k * kv_weight.float()).to(kv.dtype)
 
 
 class FusedQKVRMSNormBenchmark(base.Benchmark):
     def __init__(self):
         super().__init__(
             "fused_q_kv_rmsnorm",
-            torch_fused_q_kv_rmsnorm,
+            vllm_fused_q_kv_rmsnorm,
             [torch.bfloat16],
             gems_op=fused_q_kv_rmsnorm,
         )
 
     def set_shapes(self, shape_file_path=None):
         _ = shape_file_path
-        self.shapes = [(32, 64 * 576, 576)]
+        self.shapes = [
+            (1, 1536, 512),
+            (32, 1536, 512),
+            (128, 1536, 512),
+            (512, 1536, 512),
+            (2048, 1536, 512),
+            (32, 64 * 576, 576),
+            (128, 64 * 576, 576),
+        ]
 
     def get_input_iter(self, dtype):
         for tokens, qdim, kvdim in self.shapes:
@@ -38,6 +46,9 @@ class FusedQKVRMSNormBenchmark(base.Benchmark):
             yield (qr, kv, q_weight, kv_weight, 1e-6)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires cuda")
+@pytest.mark.skipif(
+    (not torch.cuda.is_available()) or (not _HAS_VLLM_FUSED_Q_KV_RMSNORM),
+    reason="requires cuda and vllm deepseek_v4_ops.fused_q_kv_rmsnorm",
+)
 def test_fused_q_kv_rmsnorm_benchmark():
     FusedQKVRMSNormBenchmark().run()
