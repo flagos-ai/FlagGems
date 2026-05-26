@@ -7,6 +7,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.mark.cauchy_
 @pytest.mark.parametrize("shape", [(1024,), (256, 256)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("median", [0.0, 1.0, -0.5])
@@ -79,6 +80,7 @@ def test_cauchy_accuracy(shape, dtype, median, sigma):
     )
 
 
+@pytest.mark.cauchy
 @pytest.mark.parametrize("shape", [(1024,), (256, 256)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("median", [0.0, 1.0, -0.5])
@@ -137,6 +139,7 @@ def test_cauchy_out_accuracy(shape, dtype, median, sigma):
     )
 
 
+@pytest.mark.cauchy_
 @pytest.mark.parametrize("shape", [(1024,), (256, 256)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_cauchy_reproducibility(shape, dtype):
@@ -159,6 +162,7 @@ def test_cauchy_reproducibility(shape, dtype):
     utils.gems_assert_equal(x1, utils.to_reference(x2))
 
 
+@pytest.mark.cauchy_
 @pytest.mark.parametrize("shape", [(1024, 1024), (512, 512, 4)])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_cauchy_large_tensors(shape, dtype):
