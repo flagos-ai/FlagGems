@@ -100,6 +100,11 @@ def _is_float8(dtype: torch.dtype) -> bool:
     return str(dtype).startswith("torch.float8_")
 
 
+def _has_lazy_metadata(tensor: torch.Tensor) -> bool:
+    is_neg = getattr(tensor, "is_neg", lambda: False)
+    return tensor.is_conj() or is_neg()
+
+
 def _make_as_strided_view(
     input: torch.Tensor,
     size,
@@ -148,6 +153,22 @@ def _can_use_triton(input: torch.Tensor, out: torch.Tensor) -> bool:
     if input.is_quantized or out.is_quantized:
         return False
     if input.is_complex() or _is_float8(input.dtype):
+        return False
+    if out.numel() > _MAX_TRITON_ELEMENTS:
+        return False
+    return True
+
+
+def _can_use_byte_triton(input: torch.Tensor, out: torch.Tensor) -> bool:
+    if input.layout != torch.strided or out.layout != torch.strided:
+        return False
+    if input.device != out.device or input.dtype != out.dtype:
+        return False
+    if not _is_float8(input.dtype):
+        return False
+    if input.element_size() != 1 or out.element_size() != 1:
+        return False
+    if _has_lazy_metadata(input) or _has_lazy_metadata(out):
         return False
     if out.numel() > _MAX_TRITON_ELEMENTS:
         return False
@@ -213,6 +234,19 @@ def _launch_as_strided_copy(view: torch.Tensor, out: torch.Tensor):
     return out
 
 
+def _launch_byte_as_strided_copy(view: torch.Tensor, out: torch.Tensor):
+    # Copy one-byte dtypes through uint8 views to avoid Triton fp8 scalar codegen.
+    # The dtype-view API requires at least one logical dimension on some builds.
+    byte_view = (
+        view.reshape(1).view(torch.uint8) if view.dim() == 0 else view.view(torch.uint8)
+    )
+    byte_out = (
+        out.reshape(1).view(torch.uint8) if out.dim() == 0 else out.view(torch.uint8)
+    )
+    _launch_as_strided_copy(byte_view, byte_out)
+    return out
+
+
 def as_strided_copy(input, size, stride, storage_offset=None):
     logger.debug("GEMS AS_STRIDED_COPY")
     if input.device.type != "cuda":
@@ -223,11 +257,13 @@ def as_strided_copy(input, size, stride, storage_offset=None):
     if out.numel() == 0:
         _make_as_strided_view(input, size, stride, storage_offset)
         return out
-    if not _can_use_triton(input, out):
-        return _fallback_as_strided_copy(input, size, stride, storage_offset)
 
     view = _make_as_strided_view(input, size, stride, storage_offset)
-    return _launch_as_strided_copy(view, out)
+    if _can_use_triton(view, out):
+        return _launch_as_strided_copy(view, out)
+    if _can_use_byte_triton(view, out):
+        return _launch_byte_as_strided_copy(view, out)
+    return _fallback_as_strided_copy(input, size, stride, storage_offset)
 
 
 def as_strided_copy_out(input, size, stride, storage_offset=None, *, out):
@@ -257,8 +293,7 @@ def as_strided_copy_out(input, size, stride, storage_offset=None, *, out):
         return out
 
     if (
-        not _can_use_triton(input, out)
-        or torch._C._is_alias_of(input, out)
+        torch._C._is_alias_of(input, out)
         or has_internal_overlapping(out) != MemOverlap.No
     ):
         return _fallback_as_strided_copy_out(
@@ -266,4 +301,8 @@ def as_strided_copy_out(input, size, stride, storage_offset=None, *, out):
         )
 
     view = _make_as_strided_view(input, size, stride, storage_offset)
-    return _launch_as_strided_copy(view, out)
+    if _can_use_triton(view, out):
+        return _launch_as_strided_copy(view, out)
+    if _can_use_byte_triton(view, out):
+        return _launch_byte_as_strided_copy(view, out)
+    return _fallback_as_strided_copy_out(input, size, stride, storage_offset, out=out)

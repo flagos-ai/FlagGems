@@ -9,6 +9,11 @@ _BASE_DTYPES = (
     utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + [torch.int8, torch.uint8, torch.bool]
 )
 AS_STRIDED_COPY_DTYPES = list(dict.fromkeys(_BASE_DTYPES))
+FLOAT8_DTYPES = [
+    getattr(torch, dtype_name)
+    for dtype_name in ("float8_e4m3fn", "float8_e5m2", "float8_e8m0fnu")
+    if hasattr(torch, dtype_name)
+]
 
 AS_STRIDED_COPY_CASES = [
     ((4, 6), (2, 3), (6, 1), 0),
@@ -136,16 +141,38 @@ def test_accuracy_as_strided_copy_out_dtype_mismatch_raises():
 
 @pytest.mark.as_strided_copy
 @pytest.mark.skipif(
-    flag_gems.device != "cuda" or not hasattr(torch, "float8_e4m3fn"),
-    reason="float8_e4m3fn accuracy coverage requires CUDA and PyTorch float8 support",
+    flag_gems.device != "cuda" or not FLOAT8_DTYPES,
+    reason="float8 accuracy coverage requires CUDA and PyTorch float8 support",
 )
-def test_accuracy_as_strided_copy_float8_fallback():
-    dtype = torch.float8_e4m3fn
-    inp = torch.zeros((4, 6), dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
-    ref_out = torch.ops.aten.as_strided_copy(ref_inp, (2, 3), (1, 6), 0)
+@pytest.mark.parametrize("dtype", FLOAT8_DTYPES)
+def test_accuracy_as_strided_copy_float8_byte_path(dtype):
+    inp = torch.arange(24, dtype=torch.uint8, device=flag_gems.device).reshape(4, 6)
+    inp = inp.view(dtype)
+    ref_out = torch.ops.aten.as_strided_copy(inp, (2, 3), (1, 6), 0)
 
     with flag_gems.use_gems():
         res_out = torch.ops.aten.as_strided_copy(inp, (2, 3), (1, 6), 0)
 
-    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_out.view(torch.uint8), ref_out.view(torch.uint8))
+
+
+@pytest.mark.as_strided_copy_out
+@pytest.mark.skipif(
+    flag_gems.device != "cuda" or not FLOAT8_DTYPES,
+    reason="float8 accuracy coverage requires CUDA and PyTorch float8 support",
+)
+@pytest.mark.parametrize("dtype", FLOAT8_DTYPES)
+def test_accuracy_as_strided_copy_out_float8_byte_path(dtype):
+    inp = torch.arange(24, dtype=torch.uint8, device=flag_gems.device).reshape(4, 6)
+    inp = inp.view(dtype)
+    ref_out_buf = torch.empty((2, 3), dtype=dtype, device=flag_gems.device)
+    res_out_buf = torch.empty((2, 3), dtype=dtype, device=flag_gems.device)
+    ref_out = torch.ops.aten.as_strided_copy(inp, (2, 3), (1, 6), 0, out=ref_out_buf)
+
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.as_strided_copy(
+            inp, (2, 3), (1, 6), 0, out=res_out_buf
+        )
+
+    assert res_out.data_ptr() == res_out_buf.data_ptr()
+    utils.gems_assert_equal(res_out.view(torch.uint8), ref_out.view(torch.uint8))
