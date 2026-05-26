@@ -150,7 +150,10 @@ def mm_kernel(
 @libtuner(
     configs=runtime.ops_get_configs("gemv", yaml_path=EXPAND_CONFIG_FILENAME)
     if os.environ.get("USE_FLAGTUNE") == "1"
-    else [triton.Config({"BLOCK_M": 64, "BLOCK_K": 64}), triton.Config({"BLOCK_M": 128, "BLOCK_K": 64})],
+    else [
+        triton.Config({"BLOCK_M": 64, "BLOCK_K": 64}),
+        triton.Config({"BLOCK_M": 128, "BLOCK_K": 64}),
+    ],
     key=["M", "K", "stride_am", "stride_bk"],
     strategy=runtime.get_expand_config("gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
         "strategy"
@@ -333,7 +336,7 @@ def matmul_sqmma_set_block_size_hook(nargs):
 def sqmma_get_configs(pre_hook=matmul_sqmma_set_block_size_hook):
     return [
         triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128},  # BK >= 128 aabs BN to 16 will be wrong
+            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128},
             num_stages=1,
             num_warps=4,
             pre_hook=pre_hook,
