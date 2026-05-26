@@ -148,7 +148,8 @@ def test_accuracy_as_strided_copy_out_dtype_mismatch_raises():
 def test_accuracy_as_strided_copy_float8_byte_path(dtype):
     inp = torch.arange(24, dtype=torch.uint8, device=flag_gems.device).reshape(4, 6)
     inp = inp.view(dtype)
-    ref_out = torch.ops.aten.as_strided_copy(inp, (2, 3), (1, 6), 0)
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.ops.aten.as_strided_copy(ref_inp, (2, 3), (1, 6), 0)
 
     with flag_gems.use_gems():
         res_out = torch.ops.aten.as_strided_copy(inp, (2, 3), (1, 6), 0)
@@ -165,9 +166,12 @@ def test_accuracy_as_strided_copy_float8_byte_path(dtype):
 def test_accuracy_as_strided_copy_out_float8_byte_path(dtype):
     inp = torch.arange(24, dtype=torch.uint8, device=flag_gems.device).reshape(4, 6)
     inp = inp.view(dtype)
-    ref_out_buf = torch.empty((2, 3), dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+    ref_out_buf = torch.empty((2, 3), dtype=dtype, device=ref_inp.device)
     res_out_buf = torch.empty((2, 3), dtype=dtype, device=flag_gems.device)
-    ref_out = torch.ops.aten.as_strided_copy(inp, (2, 3), (1, 6), 0, out=ref_out_buf)
+    ref_out = torch.ops.aten.as_strided_copy(
+        ref_inp, (2, 3), (1, 6), 0, out=ref_out_buf
+    )
 
     with flag_gems.use_gems():
         res_out = torch.ops.aten.as_strided_copy(
