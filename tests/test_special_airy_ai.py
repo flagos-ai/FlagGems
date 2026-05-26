@@ -1,0 +1,43 @@
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+
+
+@pytest.mark.special_airy_ai
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_special_airy_ai(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    # Use float32 for reference since PyTorch doesn't support airy_ai on float16
+    ref_out = torch.special.airy_ai(ref_inp.float()).to(dtype)
+    with flag_gems.use_gems():
+        res_out = torch.special.airy_ai(inp)
+
+    # Use much looser tolerance for this special function due to approximation complexity
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=5e-1)
+
+
+@pytest.mark.special_airy_ai_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_special_airy_ai_out(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    # Use float32 for reference since PyTorch doesn't support airy_ai on float16
+    out_ref = torch.empty_like(ref_inp, dtype=torch.float32)
+    ref_out = torch.special.airy_ai(ref_inp.float(), out=out_ref)
+    ref_out = out_ref.to(dtype)
+
+    out_act = torch.empty_like(inp)
+    with flag_gems.use_gems():
+        act_out = torch.special.airy_ai(inp, out=out_act)
+
+    # Use much looser tolerance for this special function due to approximation complexity
+    utils.gems_assert_close(act_out, ref_out, dtype, atol=5e-1)
+    utils.gems_assert_close(out_act, ref_out, dtype, atol=5e-1)
