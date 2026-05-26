@@ -83,6 +83,7 @@ from .grid_sample import grid_sample
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .hstack import hstack
+from .hypot import hypot, hypot_out
 from .index import index
 from .index_add import index_add, index_add_
 from .index_select import index_select
@@ -97,6 +98,7 @@ from .linspace import linspace
 from .log import log
 from .log_sigmoid import log_sigmoid
 from .log_softmax import log_softmax
+from .logit import logit, logit_out
 from .logical_and import logical_and
 from .logical_not import logical_not
 from .logical_or import logical_or
@@ -106,7 +108,7 @@ from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .max import max, max_dim
-from .max_pool2d_with_indices import max_pool2d_backward, max_pool2d_with_indices
+from .max_pool2d_with_indices import max_pool2d_with_indices, max_pool2d_backward
 from .maximum import maximum
 from .mean import mean_dim
 from .min import min, min_dim
@@ -127,8 +129,6 @@ from .normal import (
 from .ones import ones
 from .ones_like import ones_like
 from .pad import pad
-
-# from .polar import polar
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -138,6 +138,7 @@ from .pow import (
 )
 from .randn import randn
 from .randn_like import randn_like
+from .randperm import randperm
 from .reciprocal import reciprocal, reciprocal_
 from .relu import relu, relu_
 from .remainder import remainder, remainder_
@@ -147,12 +148,15 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .replication_pad1d import replication_pad1d, replication_pad1d_out
+from .replication_pad3d import replication_pad3d
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt, rsqrt_
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .select_scatter import select_scatter
+from .selu import selu
+from .selu_ import selu_
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
@@ -161,6 +165,7 @@ from .softmax import softmax_backward
 from .softplus import softplus
 from .sort import sort, sort_stable
 from .sqrt import sqrt, sqrt_
+from .stack import stack
 from .sub import sub, sub_
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
@@ -438,4 +443,12 @@ __all__ = [
     "tril",
     "tril_",
     "tril_out",
+    "selu",
+    "selu_",
+    "hypot",
+    "hypot_out",
+    "stack",
+    "logit",
+    "logit_out",
+    "randperm",
 ]
