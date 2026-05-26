@@ -135,6 +135,8 @@ _FULL_CONFIG = (
     ("bmm.out", bmm_out),
     ("cat", cat),
     ("cat.out", cat_out),
+    ("cauchy", cauchy),
+    ("cauchy_", cauchy_),
     ("celu", celu),
     ("celu_", celu_),
     ("ceil", ceil),
@@ -404,10 +406,13 @@ _FULL_CONFIG = (
     ("prod", prod),
     ("prod.dim_int", prod_dim),
     ("quantile", quantile),
+    ("rad2deg", rad2deg),
+    ("rad2deg_", rad2deg_),
     ("rand", rand),
     ("rand_like", rand_like),
     ("randn", randn),
     ("randn_like", randn_like),
+    ("randint", randint),
     ("randperm", randperm),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
@@ -719,9 +724,9 @@ def all_registered_keys():
 
 
 __all__ = [
+    "all_registered_keys",
+    "all_registered_ops",
     "enable",
     "only_enable",
     "use_gems",
-    "all_registered_ops",
-    "all_registered_keys",
 ]
