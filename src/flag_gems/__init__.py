@@ -721,9 +721,9 @@ def all_registered_keys():
 
 
 __all__ = [
+    "all_registered_keys",
+    "all_registered_ops",
     "enable",
     "only_enable",
     "use_gems",
-    "all_registered_ops",
-    "all_registered_keys",
 ]
