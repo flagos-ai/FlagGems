@@ -44,7 +44,7 @@ def test_reflection_pad3d_backward(shape, dtype, padding):
     # Create gradient tensor with ones (simulating gradient of loss w.r.t. padded output)
     grad_output = torch.ones(padded_shape, dtype=dtype, device=flag_gems.device)
 
-    # Reference backward on CPU
+    # Reference backward
     ref_x = utils.to_reference(x)
     ref_grad = utils.to_reference(grad_output)
     ref_out = torch.ops.aten.reflection_pad3d_backward(ref_grad, ref_x, padding)

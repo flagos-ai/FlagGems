@@ -128,10 +128,6 @@ def reflection_pad3d_backward(grad_output, self, padding):
     # Validate input
     if self.dim() != 5:
         raise ValueError("input must be a 5D tensor")
-    if not grad_output.is_cuda:
-        raise ValueError("grad_output must be a CUDA tensor")
-    if not self.is_cuda:
-        raise ValueError("self must be a CUDA tensor")
 
     N, C, D_in, H_in, W_in = self.shape
     D_out, H_out, W_out = (
