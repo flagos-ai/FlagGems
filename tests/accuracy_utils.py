@@ -74,7 +74,18 @@ FP8_QUANT_SHAPES = {
     "GROUP_SIZE": [512] if QUICK_MODE else [64, 128, 256, 512],
     "SEEDS": [0],
 }
-
+FUSED_INV_ROPE_FP8_QUANT_SHAPES = {
+    "NUM_TOKENS": [7] if QUICK_MODE else [1, 7, 32, 128],
+    "NUM_HEADS_AND_GROUPS": ([(64, 8)] if QUICK_MODE else [(32, 4), (64, 8), (128, 8)]),
+    "OUTPUT_LAYOUT_NUM_TOKENS": [7] if QUICK_MODE else [1, 7, 32, 128],
+    "OUTPUT_LAYOUT_NUM_HEADS_AND_GROUPS": (
+        [(64, 8)] if QUICK_MODE else [(64, 8), (128, 8)]
+    ),
+    "PER_GROUP_CONTIGUITY_NUM_TOKENS": [7] if QUICK_MODE else [1, 7, 32, 128],
+    "REAL_ROPE_NUM_TOKENS": [32] if QUICK_MODE else [1, 32, 256],
+    "TMA_ALIGNED_SCALES": [False, True],
+    "SEEDS": [0, 42],
+}
 DISTRIBUTION_SHAPES = [(20, 320, 15)]
 REDUCTION_SHAPES = [(2, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 40999, 3)]
 REDUCTION_SMALL_SHAPES = (
