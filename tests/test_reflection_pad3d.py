@@ -102,7 +102,7 @@ def test_reflection_pad3d_4d_input(padding):
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.reflection_pad3d
+@pytest.mark.reflection_pad3d_out
 @pytest.mark.parametrize(
     # 5D shapes for out= variant
     "shape",

@@ -39,10 +39,10 @@ def test_reflection_pad3d():
     bench.run()
 
 
-@pytest.mark.reflection_pad3d
+@pytest.mark.reflection_pad3d_out
 def test_reflection_pad3d_out():
     bench = ReflectionPad3dBenchmark(
-        op_name="reflection_pad3d",
+        op_name="reflection_pad3d_out",
         torch_op=torch.ops.aten.reflection_pad3d,
         dtypes=consts.FLOAT_DTYPES,
     )
