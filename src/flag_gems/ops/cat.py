@@ -8,6 +8,36 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 
+def _is_float8_e8m0fnu(dtype: torch.dtype) -> bool:
+    return str(dtype) == "torch.float8_e8m0fnu"
+
+
+def _should_use_uint8_view_path(
+    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
+) -> bool:
+    if len(A) == 0:
+        return False
+    first_dtype = A[0].dtype
+    if not _is_float8_e8m0fnu(first_dtype):
+        return False
+    if A[0].element_size() != 1:
+        return False
+    for tensor in A[1:]:
+        if tensor.dtype != first_dtype or tensor.element_size() != 1:
+            return False
+    return True
+
+
+def _cat_build_working_list_uint8_view(
+    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
+    dim: int,
+):
+    original_dtype = A[0].dtype
+    A_u8 = [tensor.view(torch.uint8) for tensor in A]
+    mode, payload = _cat_build_working_list(A_u8, dim)
+    return mode, payload, original_dtype
+
+
 @triton.jit
 def cat_copy_func_kernel_4(
     out_ptr,
@@ -220,6 +250,34 @@ def cat_out(
     out: torch.Tensor,
 ) -> torch.Tensor:
     logger.debug("GEMS CAT_OUT")
+    A = list(A)
+    if _should_use_uint8_view_path(A):
+        mode, payload, original_dtype = _cat_build_working_list_uint8_view(A, dim)
+        if mode == "single":
+            t = payload.view(original_dtype)
+            out.resize_(t.shape)
+            if out.dtype != t.dtype:
+                out.copy_(t.to(out.dtype))
+            else:
+                out.copy_(t)
+            return out
+        if mode == "empty":
+            t = payload.view(original_dtype)
+            out.resize_(t.shape)
+            out.copy_(t)
+            return out
+
+        A_u8, dim, out_shape, _, _ = payload
+        if out.dtype != original_dtype:
+            raise RuntimeError(
+                f"cat.out: expected out dtype {original_dtype}, got {out.dtype}"
+            )
+        if list(out.shape) != out_shape:
+            out.resize_(out_shape)
+        out_u8 = out.view(torch.uint8)
+        _cat_run_kernel(A_u8, dim, out_shape, out_u8)
+        return out
+
     mode, payload = _cat_build_working_list(A, dim)
     if mode == "single":
         t = payload
@@ -248,6 +306,19 @@ def cat(
     A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
     logger.debug("GEMS CAT")
+    A = list(A)
+    if _should_use_uint8_view_path(A):
+        mode, payload, original_dtype = _cat_build_working_list_uint8_view(A, dim)
+        if mode == "single":
+            return payload.view(original_dtype)
+        if mode == "empty":
+            return payload.view(original_dtype)
+
+        A_u8, dim, out_shape, _, device = payload
+        out_u8 = torch.empty(out_shape, dtype=torch.uint8, device=device)
+        _cat_run_kernel(A_u8, dim, out_shape, out_u8)
+        return out_u8.view(original_dtype)
+
     mode, payload = _cat_build_working_list(A, dim)
     if mode == "single":
         return payload

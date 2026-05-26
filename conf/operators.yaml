@@ -244,6 +244,19 @@ ops:
       - BLAS
     stages:
       - stable: '4.0'
+  - id: affine_grid_generator
+    description: |
+      Generates a 2D or 3D flow field (sampling grid), given a batch of affine matrices theta.
+    for:
+      - affine_grid_generator
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: alias_copy
     description: |
       Creates a new tensor that shares the same storage data as the original tensor,
@@ -685,6 +698,7 @@ ops:
       - bernoulli_.float
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -1072,6 +1086,18 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: col2im
+    description: |
+      Rearranges column blocks back into a multidimensional tensor (inverse of im2col).
+    for:
+      - col2im
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: concat_and_cache_mla
     description: |
       Writes the latent and RoPE value into KV cache for Multi-head Latent Attention forward case.
@@ -1127,6 +1153,7 @@ ops:
       - contiguous
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -1217,6 +1244,18 @@ ops:
       - Convolution
     stages:
       - beta: '5.1'
+  - id: conv_transpose2d
+    description: |
+      Applies a 2D transposed convolution operator over an input image composed of several input planes.
+    for:
+      - conv_transpose2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - alpha: '5.1'
   - id: copy
     description: |
       As a wrapper of `copy_`, this operator copies elements from `src` to `out`
@@ -1241,6 +1280,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -1337,6 +1377,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: cp_gather_indexer_k_quant_cache
+    description: This is a fused operator that gathers FP8 K cache values and scales.
+    for:
+      - None
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - Quantization
+    stages:
+      - beta: '5.1'
   - id: cross_entropy_loss
     description: Computes the cross entropy loss between input logits and target.
     for:
@@ -1869,6 +1920,19 @@ ops:
       - Math
     stages:
       - stable: '5.0'
+  - id: euclidean_dist
+    description: |
+      Computes pairwise Euclidean distances between rows of two 2D tensors.
+    for:
+      - _euclidean_dist
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: erf
     description: Computes the error function of `input`.
     for:
@@ -1982,6 +2046,7 @@ ops:
       - exponential_
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -2255,6 +2320,54 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: fmod_scalar
+    description: |
+      Computes the element-wise remainder of division of input by a scalar divisor.
+    for:
+      - fmod.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: fmod_scalar_
+    description: |
+      In-place version of fmod with a scalar divisor.
+    for:
+      - fmod_.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: fmod_tensor
+    description: |
+      Computes the element-wise remainder of division of input by a tensor divisor.
+    for:
+      - fmod.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: fmod_tensor_
+    description: |
+      In-place version of fmod with a tensor divisor.
+    for:
+      - fmod_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: fp8_mqa_logits
     description: |
       For each token in the given E4M3 tensor, iterate all tokens from two other given tensors,
@@ -2271,12 +2384,13 @@ ops:
   - id: full
     description: |
       Creates a tensor of size `size` filled with `fill_value`.
-      The tensor’s dtype is inferred from `fill_value`.
+      The tensor's dtype is inferred from `fill_value`.
     for:
       - full
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -2316,6 +2430,21 @@ ops:
     stages:
       - stable: '2.0'
     cpp: '4.0'
+  - id: fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
+    description: |
+      Horizontally-fused DeepseekV4-MLA.
+      per-head RMSNorm + GPT-J RoPE for Q, and GPT-J RoPE + UE8M0 FP8
+      quant + paged cache insert for KV, all in one kernel launch.
+    for:
+      - torch.ops._C.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: fused_experts_impl
     description: An implementation of fused MoE.
     for:
@@ -2708,6 +2837,18 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.1'
+  - id: histc
+    description: |
+      Computes the histogram of a tensor, binning each element into equal-width bins.
+    for:
+      - histc
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: hstack
     description: |
       Stack tensors in sequence horizontally (column wise). This is equivalent to concatenation
@@ -2885,6 +3026,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: indexer_k_quant_and_cache
+    description: This is a fused operator that quantizes K tensors and writes them into the FP8 KV cache.
+    for:
+      - None
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - Quantization
+    stages:
+      - beta: '5.1'
   - id: inplace_fused_experts
     description: This operator writes output directly to `hidden_states`.
     for:
@@ -3435,6 +3587,18 @@ ops:
       - tensor
     stages:
       - stable: '4.0'
+  - id: logsumexp
+    description: |
+      Computes the log of the sum of exponentials of elements in the input tensor along given dimensions.
+    for:
+      - logsumexp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: lt
     description: Computes that `input` is less than `other` element-wise.
     for:
@@ -3488,6 +3652,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -3511,6 +3676,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -3862,6 +4028,7 @@ ops:
       - multinomial
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -4035,6 +4202,19 @@ ops:
     stages:
       - stable: '2.1'
     cpp: '4.0'
+  - id: nonzero_numpy
+    description: |
+      Returns a tuple of 1-D tensors, one for each dimension, containing the indices of
+      the nonzero elements in the input tensor (NumPy-style).
+    for:
+      - nonzero_numpy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: normal_float_float_
     description: |
       Returns a tensor of random numbers drawn from separate normal distributions
@@ -4045,6 +4225,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -4126,6 +4307,7 @@ ops:
       - ones
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -4165,6 +4347,18 @@ ops:
       - MoE
     stages:
       - beta: '5.0'
+  - id: pack_seq_triton
+    description: Pack variable-length token sequences into a padded batched tensor.
+    for:
+      - pack_seq_triton
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: pad
     description: This pads a tenor using the specified mode.
     for:
@@ -4361,6 +4555,32 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: rad2deg
+    description: |
+      Converts each element from angles in radians to degrees.
+    for:
+      - rad2deg
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: rad2deg_
+    description: |
+      In-place version of rad2deg.
+    for:
+      - rad2deg_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: rand
     description: Returns a tensor filled with random numbers from a uniform distribution on the interval `[0,1)`.
     for:
@@ -4413,6 +4633,7 @@ ops:
       - randperm
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -4546,7 +4767,7 @@ ops:
       - beta: '5.0'
   - id: remainder_scalar
     description: |
-      Computes Python’s modulus operation entrywise. The result has the same sign
+      Computes Python's modulus operation entrywise. The result has the same sign
       as the divisor `other` and its absolute value is less than that of `other`.
     for:
       - remainder.Scalar
@@ -4568,7 +4789,7 @@ ops:
       - stable: '2.2'
   - id: remainder_scalar_tensor
     description: |
-      Computes Python’s modulus operation entrywise. The result has the same sign
+      Computes Python's modulus operation entrywise. The result has the same sign
       as the divisor `other` and its absolute value is less than that of `other`.
     for:
       - remainder.Scalar_Tensor
@@ -4580,7 +4801,7 @@ ops:
       - stable: '2.2'
   - id: remainder_tensor
     description: |
-      Computes Python’s modulus operation entrywise. The result has the same sign
+      Computes Python's modulus operation entrywise. The result has the same sign
       as the divisor `other` and its absolute value is less than that of `other`.
     for:
       - remainder.Tensor
@@ -5407,6 +5628,7 @@ ops:
       - sort
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -5419,6 +5641,7 @@ ops:
       - sort.stable
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -5784,10 +6007,38 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
       - beta: '4.1'
+  - id: top_k_per_row_prefill
+    description: |
+      Triton top-K per row for DeepSeek V4 sparse attention prefill phase.
+      Replaces vLLM persistent_topk CUDA kernel with in-place masking + adaptive topk selection.
+    for:
+      - None
+    labels:
+      - fused
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: top_k_per_row_decode
+    description: |
+      Triton top-K per row for DeepSeek V4 decode-phase token selection.
+      Radix-select based approach with three dispatch tiers for different vocab sizes.
+    for:
+      - None
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: topk
     description: |
       Returns the `k` largest elements of the given `input` tensor along a given dimension.
@@ -5797,6 +6048,7 @@ ops:
       - topk
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -5815,6 +6067,20 @@ ops:
       - MoE
     stages:
       - stable: '4.0'
+  - id: topk_softplus_sqrt
+    description: |
+      Fused softplus + sqrt + top-k selection and optional renormalization
+      for MoE gating in models like DeepSeek-V3/V4.
+    for:
+      - topk_softplus_sqrt
+    labels:
+      - fused
+      - KernelGen
+      - vLLM
+    kind:
+      - MoE
+    stages:
+      - beta: '5.1'
   - id: trace
     description: Returns the sum of the elements of the diagonal of the input 2-D matrix.
     for:
@@ -5933,6 +6199,7 @@ ops:
       - uniform_
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -5955,6 +6222,18 @@ ops:
       - aten
     kind:
       - Distribution
+    stages:
+      - beta: '5.1'
+  - id: unpack_seq_triton
+    description: Unpack a packed sequence tensor back to its original variable-length form.
+    for:
+      - unpack_seq_triton
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
     stages:
       - beta: '5.1'
   # - id: unsafe_view
@@ -6271,6 +6550,7 @@ ops:
       - zeros
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -6286,3 +6566,123 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: _to_copy
+    description: Layout/memory operation (to_copy).
+    for:
+      - _to_copy
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: view
+    description: Pure layout operation (view).
+    for:
+      - view
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: reshape
+    description: Pure layout operation (reshape).
+    for:
+      - reshape
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: expand
+    description: Pure layout operation (expand).
+    for:
+      - expand
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: permute
+    description: Pure layout operation (permute).
+    for:
+      - permute
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: transpose
+    description: Pure layout operation (transpose).
+    for:
+      - transpose
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: clone
+    description: Pure layout/memory operation (clone).
+    for:
+      - clone
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: to
+    description: Device/dtype cast operation (to).
+    for:
+      - to
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: empty
+    description: Tensor factory operation (empty).
+    for:
+      - empty
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: normal_
+    description: Random sampling operator (normal_).
+    for:
+      - normal_
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: random_
+    description: Random sampling operator (random_).
+    for:
+      - random_
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: argsort
+    description: Sorting/selection operator (argsort).
+    for:
+      - argsort
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
