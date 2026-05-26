@@ -166,6 +166,7 @@ from .threshold import threshold, threshold_backward
 from .tile import tile
 from .to import to_dtype
 from .topk import topk
+from .tril import tril, tril_, tril_out
 from .uniform import uniform_
 from .unique import (
     _unique2,
@@ -430,4 +431,7 @@ __all__ = [
     "any",
     "any_dim",
     "any_dims",
+    "tril",
+    "tril_",
+    "tril_out",
 ]
