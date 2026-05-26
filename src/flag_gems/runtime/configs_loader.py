@@ -273,6 +273,25 @@ class TunedConfigLoader(object):
                 for maxnreg in maxnreg_values
             ]
 
+        if op_name == "mm_skinny":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
         if op_name == "w8a8_block_fp8_bmm":
             return [
                 triton.Config(
@@ -529,6 +548,7 @@ class TunedConfigLoader(object):
                     "compute_global_topk_indices_and_lens"
                 ),
             ),
+            "mm_skinny": self._build_single_expand_spec("mm_skinny"),
         }
 
     def load_all(self):
