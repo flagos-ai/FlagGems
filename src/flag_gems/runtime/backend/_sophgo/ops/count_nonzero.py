@@ -56,25 +56,23 @@ def count_nonzero_kernel_1(x_ptr, mid_ptr, numel, BLOCK_SIZE: tl.constexpr):
 @triton.jit
 def count_nonzero_kernel_2(mid_ptr, out_ptr, mid_size, BLOCK_MID: tl.constexpr):
     """
-    Stage 2: Aggregate intermediate results.
-    Uses 2D tensor mode to avoid scalar operations.
+    Stage 2: Aggregate intermediate results with int32 accumulation.
+
+    Uses chunked float32 sum (each chunk sum < 2^24 for exact integer
+    representation) and int32 element-wise addition to avoid precision
+    loss when the total count exceeds float32's precise integer range.
     """
-    offset = tl.arange(0, BLOCK_MID)
-    mask = offset < mid_size
+    total = tl.zeros([1], dtype=tl.int32)
 
-    # Load intermediate results [BLOCK_MID]
-    mid_val = tl.load(mid_ptr + offset, mask=mask, other=0.0)
+    for i in range(0, mid_size, BLOCK_MID):
+        offset = i + tl.arange(0, BLOCK_MID)
+        mask = offset < mid_size
+        mid_val = tl.load(mid_ptr + offset, mask=mask, other=0.0)
+        chunk_sum = tl.sum(mid_val[None, :], axis=1)
+        total = total + chunk_sum.to(tl.int32)
 
-    # Convert to 2D tensor [1, BLOCK_MID]
-    mid_val_2d = mid_val[None, :]
-
-    # Sum along axis=1, result is [1] tensor
-    total_count = tl.sum(mid_val_2d, axis=1)  # shape: [1]
-
-    # 1-element tensor store
     store_offset = tl.arange(0, 1)
-    store_mask = store_offset < 1
-    tl.store(out_ptr + store_offset, total_count, mask=store_mask)
+    tl.store(out_ptr + store_offset, total, mask=store_offset < 1)
 
 
 @libentry()
@@ -87,11 +85,8 @@ def count_nonzero_dim_kernel(
     TPU-adapted version: count non-zero elements per dimension.
     Uses 2D tensor mode to avoid scalar operations (see mean_dim_kernel).
 
-    Problem: The original count_nonzero_kernel uses tl.sum() returning a scalar,
-    causing tl.store() to trigger ppl.get_value which fails on TPU.
-
-    Fix: Use [BLOCK_M, BLOCK_N] 2D accumulator,
-    tl.sum(axis=1) returns [BLOCK_M] tensor instead of scalar.
+    Uses [BLOCK_M, 1] int32 accumulator to avoid float32 precision loss
+    when the reduced dimension exceeds 2^24 elements.
     """
     # Process BLOCK_M rows (2D mode)
     pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -99,8 +94,9 @@ def count_nonzero_dim_kernel(
     Out = Out + pid
     row_mask = pid < M
 
-    # 2D accumulator [BLOCK_M, BLOCK_N]
-    counts = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    # int32 accumulator to avoid float32 precision loss when row count > 2^24.
+    # Each chunk sum is < BLOCK_N, well within float32 precise range.
+    counts = tl.zeros([BLOCK_M, 1], dtype=tl.int32)
 
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
@@ -109,13 +105,9 @@ def count_nonzero_dim_kernel(
 
         x = tl.load(X + cols, mask=mask, other=0.0)
         is_nonzero = (x != 0).to(tl.float32)
-        counts += is_nonzero
+        counts += tl.sum(is_nonzero, axis=1).to(tl.int32)[:, None]
 
-    # Sum along axis=1 → [BLOCK_M] tensor (not scalar)
-    row_counts = tl.sum(counts, axis=1)
-    # Convert to 2D for storage [BLOCK_M, 1]
-    row_counts = row_counts[:, None]
-    tl.store(Out, row_counts.to(tl.int32), row_mask)
+    tl.store(Out, counts, row_mask)
 
 
 def count_nonzero(x, dim=None):
@@ -132,10 +124,13 @@ def count_nonzero(x, dim=None):
         dim = dim % x.ndim
         x = dim_compress(x, dim)
         N = shape[dim]
-        M = x.numel() // N
-
         out_shape = list(shape)
         del out_shape[dim]
+
+        if N == 0:
+            return torch.zeros(out_shape, dtype=torch.int32, device=x.device)
+
+        M = x.numel() // N
         out = torch.zeros(out_shape, dtype=torch.int32, device=x.device)
 
         grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
@@ -148,20 +143,30 @@ def count_nonzero(x, dim=None):
         x = x.contiguous().flatten()
         numel = x.numel()
 
+        if numel == 0:
+            return torch.tensor(0, dtype=torch.int32, device=x.device)
+
         # Calculate block size and number of programs (same as mean operator)
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(numel)))
         mid_size = triton.cdiv(numel, block_size)
-        block_mid = triton.next_power_of_2(mid_size)
+
+        # Safe BLOCK_MID: each chunk's float32 sum must be < 2^24
+        # Stage 1 partial count per block ≤ block_size, so
+        # BLOCK_MID * block_size < 2^24 for exact int representation.
+        # Must also be a power of 2 (tl.arange requirement).
+        max_safe_mid = max(1, (2**24 - 1) // block_size)
+        raw_mid = min(mid_size, max_safe_mid)
+        block_mid = 1 << (raw_mid.bit_length() - 1)
 
         # Allocate intermediate results and output
         mid = torch.empty((mid_size,), dtype=torch.float32, device=x.device)
-        out = torch.empty([], dtype=torch.float32, device=x.device)
+        out = torch.empty([], dtype=torch.int32, device=x.device)
 
         with torch_device_fn.device(x.device):
             # Stage 1: compute non-zero count for each block
             count_nonzero_kernel_1[(mid_size, 1, 1)](x, mid, numel, block_size)
 
-            # Stage 2: aggregate all intermediate results
+            # Stage 2: aggregate with int32 accumulation
             count_nonzero_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
 
-        return out.to(torch.int32)
+        return out

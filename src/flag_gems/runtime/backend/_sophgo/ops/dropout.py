@@ -103,7 +103,7 @@ def dropout_backward_kernel(
 UNROLL = 4
 
 
-def dropout(input, p, train=True):
+def native_dropout(input, p, train=True):
     logger.debug("GEMS NATIVE DROPOUT FORWARD")
     if not train or p == 0:
         out = input.clone()
@@ -144,6 +144,10 @@ def dropout(input, p, train=True):
             philox_offset_hi,
         )
     return out, mask
+
+
+def dropout(input, p, train=True):
+    return native_dropout(input, p, train)[0]
 
 
 def dropout_backward(grad_output, mask, scale):

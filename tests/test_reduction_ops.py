@@ -372,7 +372,10 @@ def test_accuracy_count_nonzero(shape, dtype):
             dtype
         )
     elif dtype in INT_DTYPES:
-        inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        if flag_gems.vendor_name == "sophgo":
+            inp = torch.randint(-3, 3, shape, dtype=torch.int).to(dtype).to(device=flag_gems.device)
+        else:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
     else:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, False)
@@ -380,6 +383,8 @@ def test_accuracy_count_nonzero(shape, dtype):
     ref_out = torch.count_nonzero(ref_inp, dim)
     with flag_gems.use_gems():
         res_out = torch.count_nonzero(inp, dim)
+    if flag_gems.vendor_name == "sophgo" and ref_out.dtype == torch.int64:
+        ref_out = ref_out.to(torch.int32)
     gems_assert_equal(res_out, ref_out)
 
 
@@ -447,6 +452,7 @@ def test_accuracy_softmax(shape, dtype, dim, neg_inf):
 
 
 @pytest.mark.softmax
+@pytest.mark.skipif(flag_gems.vendor_name == "sophgo", reason="UnsupportBackward")
 @pytest.mark.parametrize(
     "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
 )

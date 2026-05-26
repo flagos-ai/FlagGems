@@ -14,7 +14,7 @@ from .cumsum import cumsum, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal
-from .dropout import dropout
+from .dropout import dropout, native_dropout
 from .erf import erf, erf_
 from .exponential_ import exponential_
 from .flip import flip
@@ -67,6 +67,7 @@ from .sigmoid import sigmoid
 from .slice_scatter import slice_scatter
 from .stack import stack
 from .sum import sum, sum_dim, sum_dim_out, sum_out
+from .tanh import tanh, tanh_
 from .tile import tile
 from .uniform import uniform_
 from .unique import _unique2
@@ -135,6 +136,7 @@ __all__ = [
     "mm_out",
     "multinomial",
     "nan_to_num",
+    "native_dropout",
     "nll_loss2d_forward",
     "nll_loss_forward",
     "nonzero",
@@ -165,6 +167,8 @@ __all__ = [
     "sum_dim",
     "sum_dim_out",
     "sum_out",
+    "tanh",
+    "tanh_",
     "tile",
     "uniform_",
     "upsample_nearest2d",

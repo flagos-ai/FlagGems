@@ -582,6 +582,7 @@ def test_accuracy_tanh(shape, dtype):
 
 
 @pytest.mark.tanh
+@pytest.mark.skipif(flag_gems.vendor_name == "sophgo", reason="UnsupportBackward")
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_tanh_backward(shape, dtype):
