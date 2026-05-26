@@ -10,7 +10,7 @@ from flag_gems.utils import tl_extra_shim
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 try:
-    _isfinited = tl_extra_shim.isfinited
+    # _isfinited = tl_extra_shim.isfinited
     _finitef = tl_extra_shim.finitef
 except Exception:
     pass
@@ -41,7 +41,7 @@ def isclose_func(
     if not zero_tol:
         allowed = atol + tl.abs(rtol * cast_y)
         actual = tl.abs(cast_x - cast_y)
-        actual_finite = _isfinited(actual) if x.dtype.is_fp64() else _finitef(actual)
+        actual_finite = _finitef(actual.to(tl.float32))
         close |= actual_finite.to(tl.int1) & (actual <= allowed)
     return close
 
