@@ -13,7 +13,7 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
 _MAX_TRITON_ELEMENTS = torch.iinfo(torch.int32).max
-_BLOCK_SIZE = 1024
+_BLOCK_SIZE = 512
 _BLOCK_M = 16
 _BLOCK_N = 16
 
