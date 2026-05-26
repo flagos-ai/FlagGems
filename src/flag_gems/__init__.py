@@ -423,6 +423,7 @@ _FULL_CONFIG = (
     ("relu", relu),
     ("relu_", relu_),
     ("relu6", relu6),
+    ("remainder", remainder),
     ("remainder.Scalar", remainder),
     ("remainder.Scalar_Tensor", remainder),
     ("remainder.Tensor", remainder),
