@@ -20,7 +20,7 @@ TEST_SHAPES = [
 ]
 
 
-@pytest.mark.rshift_
+@pytest.mark.rshift
 @pytest.mark.parametrize("shape", TEST_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_INT_DTYPES)
 def test_rshift_performance(shape, dtype):
