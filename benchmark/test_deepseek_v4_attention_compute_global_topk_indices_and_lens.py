@@ -31,8 +31,11 @@ class ComputeGlobalTopkIndicesAndLensBenchmark(base.Benchmark):
         _ = shape_file_path
         self.shapes = [
             (5, 4, 2, 4, 64),
+            (128, 32, 1, 64, 64),
+            (512, 64, 2, 128, 64),
             (4096, 128, 1, 640, 64),
             (4096, 128, 4, 640, 64),
+            (8192, 128, 8, 1280, 64),
         ]
 
     def get_input_iter(self, dtype):

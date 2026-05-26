@@ -59,27 +59,28 @@ class DequantizeAndGatherKCacheBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         _ = shape_file_path
         self.shapes = [
-            (4, 2048, 512, 448, 64),
-            (4, 2048, 576, 512, 64),
+            (1, 512, 128, 512, 448, 64),
+            (2, 1024, 256, 512, 448, 64),
+            (4, 2048, 512, 512, 448, 64),
+            (4, 2048, 2048, 512, 448, 64),
+            (8, 4096, 1024, 512, 448, 64),
         ]
 
     def get_input_iter(self, dtype):
         _ = dtype
-        for batch, gather_len, dim, nope_dim, rope_dim in self.shapes:
+        for batch, seq_len, gather_len, dim, nope_dim, rope_dim in self.shapes:
             scale_slots = (nope_dim + 63) // 64 + (1 if nope_dim % 64 == 0 else 0)
             block_size = 64
             token_data_size = nope_dim + rope_dim * 2
             block_stride = block_size * token_data_size + block_size * scale_slots
-            num_blocks = batch * ((gather_len + block_size - 1) // block_size)
+            num_blocks = batch * ((seq_len + block_size - 1) // block_size)
             out = torch.empty(
                 (batch, gather_len, dim), device="cuda", dtype=torch.bfloat16
             )
             k_cache = torch.zeros(
                 (num_blocks, block_stride), device="cuda", dtype=torch.uint8
             )
-            seq_lens = torch.full(
-                (batch,), gather_len, device="cuda", dtype=torch.int32
-            )
+            seq_lens = torch.full((batch,), seq_len, device="cuda", dtype=torch.int32)
             gather_lens = torch.full(
                 (batch,), gather_len, device="cuda", dtype=torch.int32
             )
