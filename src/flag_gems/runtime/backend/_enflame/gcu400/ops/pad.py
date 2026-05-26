@@ -276,7 +276,7 @@ def generate_pad_kernel(
     code.writeline("):")
 
     with code.indent():
-        code.writeline("pid = tle.program_id(0)")
+        code.writeline("pid = tl.program_id(0)")
         code.writeline("block_offset = pid * BLOCK_SIZE")
         code.writeline("offset = block_offset + tl.arange(0, BLOCK_SIZE)")
         code.newline()
