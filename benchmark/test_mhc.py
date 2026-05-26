@@ -1,10 +1,16 @@
 import pytest
 import torch
 
-from flag_gems.fused.mhc.hc_head_fused_kernel import (
-    hc_head_fused_kernel,
-    hc_head_fused_kernel_ref,
-)
+from flag_gems.fused.mhc.hc_head_fused_kernel import hc_head_fused_kernel
+
+try:
+    from vllm.model_executor.layers.mhc import (
+        _hc_head_fused_kernel as _vllm_hc_head_fused,
+    )
+
+    HAS_VLLM = True
+except ImportError:
+    HAS_VLLM = False
 from flag_gems.fused.mhc.hc_split_sinkhorn import (
     hc_split_sinkhorn,
     mhc_split_sinkhorn_torch_ref,
@@ -216,6 +222,10 @@ class HCHeadFusedBenchmark(base.Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
+            (1, 1280, 4),
+            (4, 2560, 4),
+            (16, 4096, 4),
+            (64, 7168, 4),
             (256, 1280, 2),
             (256, 1280, 4),
             (512, 1280, 2),
@@ -245,12 +255,22 @@ class HCHeadFusedBenchmark(base.Benchmark):
             yield hs_flat, fn, hc_scale, hc_base, out, hidden_size, 1e-6, 1e-6, hc_mult
 
 
+def _hc_head_fused_kernel_ref(
+    hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
+):
+    _vllm_hc_head_fused(
+        hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
+    )
+    return out
+
+
 @pytest.mark.hc_head_fused_kernel
+@pytest.mark.skipif(not HAS_VLLM, reason="vLLM not available")
 def test_hc_head_fused_kernel():
     bench = HCHeadFusedBenchmark(
         op_name="hc_head_fused_kernel",
-        torch_op=hc_head_fused_kernel_ref,
+        torch_op=_hc_head_fused_kernel_ref,
         gems_op=hc_head_fused_kernel,
-        dtypes=[torch.float32, torch.float16, torch.bfloat16],
+        dtypes=[torch.bfloat16],
     )
     bench.run()
