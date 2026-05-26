@@ -189,6 +189,7 @@ _FULL_CONFIG = (
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
     ("diff", diff),
+    ("digamma", digamma),
     ("digamma_", digamma_),
     ("div.Scalar", true_divide),
     ("div.Scalar_mode", div_mode),
