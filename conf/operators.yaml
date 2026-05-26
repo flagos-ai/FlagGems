@@ -927,13 +927,13 @@ ops:
   - id: cauchy
     description: Draws random numbers from a Cauchy distribution.
     for:
-      - cauchy_.float
+      - cauchy.float
     labels:
       - aten
     kind:
       - Distribution
     stages:
-      - beta: '1.0'
+      - beta: '5.1'
   - id: cauchy_
     description: Fills the tensor with numbers drawn from the Cauchy distribution.
     for:
@@ -943,7 +943,7 @@ ops:
     kind:
       - Distribution
     stages:
-      - beta: '1.0'
+      - beta: '5.1'
   - id: ceil
     description: |
       Returns a new tensor with the ceil of the elements of `input`, the smallest integer greater than
