@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -26,23 +27,6 @@ def hardsigmoid_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(out_ptr + offsets, y, mask=mask)
 
 
-@triton.jit
-def hardsigmoid_backward_kernel(
-    grad_output_ptr, self_ptr, grad_input_ptr, n_elements, BLOCK_SIZE: tl.constexpr
-):
-    pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    grad_output = tl.load(grad_output_ptr + offsets, mask=mask)
-    x = tl.load(self_ptr + offsets, mask=mask)
-    x_fp32 = x.to(tl.float32)
-    grad_fp32 = grad_output.to(tl.float32)
-    # derivative: 1/6 if -3 < x < 3, else 0
-    in_range = (x_fp32 > -3.0) & (x_fp32 < 3.0)
-    grad_input = tl.where(in_range, grad_fp32 * (1.0 / 6.0), 0.0)
-    tl.store(grad_input_ptr + offsets, grad_input.to(grad_output.dtype), mask=mask)
-
-
 def hardsigmoid(x: torch.Tensor):
     out = torch.empty_like(x)
     n_elements = x.numel()
@@ -61,20 +45,15 @@ def hardsigmoid_out(x: torch.Tensor, out: torch.Tensor):
     return out
 
 
+@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def hardsigmoid_backward_kernel(dy, x):
+    x_f32 = x.to(tl.float32)
+    dy_f32 = dy.to(tl.float32)
+    in_range = (x_f32 > -3.0) & (x_f32 < 3.0)
+    return tl.where(in_range, dy_f32 * (1.0 / 6.0), 0.0)
+
+
 def hardsigmoid_backward(grad_output: torch.Tensor, self: torch.Tensor):
     logger.debug("GEMS HARDSIGMOID BACKWARD")
-    if not grad_output.is_contiguous():
-        grad_output = grad_output.contiguous()
-    if not self.is_contiguous():
-        self = self.contiguous()
-    grad_input = torch.empty_like(self)
-    n_elements = self.numel()
-    if n_elements == 0:
-        return grad_input
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    with torch_device_fn.device(self.device):
-        hardsigmoid_backward_kernel[grid](
-            grad_output, self, grad_input, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
-    return grad_input
+    return hardsigmoid_backward_kernel(grad_output, self)
