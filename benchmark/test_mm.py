@@ -14,7 +14,7 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
         yield inp1, inp2
 
 
-@pytest.mark.mm
+@pytest.mark.mm1
 def test_mm():
     bench = base.BlasBenchmark(
         op_name="mm",
