@@ -79,6 +79,7 @@ from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
 from .glu import glu
+from .grid_sample import grid_sample
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .hstack import hstack
@@ -145,7 +146,7 @@ from .repeat_interleave import (
     repeat_interleave_self_tensor,
     repeat_interleave_tensor,
 )
-from .replication_pad3d import replication_pad3d
+from .replication_pad1d import replication_pad1d, replication_pad1d_out
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt, rsqrt_
@@ -392,6 +393,7 @@ __all__ = [
     "ones",
     "ones_like",
     "zeros_like",
+    "grid_sample",
     "group_norm",
     "group_norm_backward",
     "_upsample_bicubic2d_aa",
@@ -402,6 +404,8 @@ __all__ = [
     "exponential_",
     "logspace",
     "replication_pad3d",
+    "replication_pad1d",
+    "replication_pad1d_out",
     "max_pool2d_with_indices",
     "max_pool2d_backward",
     "upsample_linear1d",
