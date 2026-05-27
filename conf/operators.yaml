@@ -4089,6 +4089,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: permute_copy
+    description: Triton kernel implementation for permute_copy.
+    for:
+      - permute_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: reflection_pad1d_backward
     description: Computes the gradient of reflection_pad1d with respect to the input tensor.
     for:
