@@ -7,6 +7,16 @@ from flag_gems.fused.cp_gather_indexer_k_quant_cache import (
 )
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
+from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
+    combine_topk_swa_indices,
+)
+from flag_gems.fused.deepseek_v4_attention_compute_global_topk_indices_and_lens import (
+    compute_global_topk_indices_and_lens,
+)
+from flag_gems.fused.deepseek_v4_attention_dequantize_and_gather_k_cache import (
+    dequantize_and_gather_k_cache,
+)
+from flag_gems.fused.deepseek_v4_attention_fused_q_kv_rmsnorm import fused_q_kv_rmsnorm
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
 from flag_gems.fused.FLA import (
     chunk_gated_delta_rule_fwd,
@@ -75,12 +85,15 @@ __all__ = [
     "bucket_sort_topk",
     "chunk_gated_delta_rule",
     "chunk_gated_delta_rule_fwd",
+    "combine_topk_swa_indices",
+    "compute_global_topk_indices_and_lens",
     "concat_and_cache_mla",
     "cp_gather_indexer_k_quant_cache",
-    "cutlass_scaled_mm",
     "cross_entropy_loss",
-    "dispatch_fused_moe_kernel",
+    "cutlass_scaled_mm",
+    "dequantize_and_gather_k_cache",
     "dgeglu",
+    "dispatch_fused_moe_kernel",
     "dreglu",
     "dswiglu",
     "flash_mla",
@@ -88,6 +101,8 @@ __all__ = [
     "fused_add_rms_norm",
     "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     "fused_experts_impl",
+    "fused_inv_rope_fp8_quant",
+    "fused_q_kv_rmsnorm",
     "fused_recurrent_gated_delta_rule_fwd",
     "geglu",
     "gelu_and_mul",
@@ -102,16 +117,15 @@ __all__ = [
     "mhc_bwd_ref",
     "mhc_post",
     "mhc_pre",
-    "moe_sum",
     "moe_align_block_size",
     "moe_align_block_size_triton",
+    "moe_sum",
     "outer",
     "outplace_fused_experts",
     "pack_seq_triton",
     "reglu",
     "reshape_and_cache",
     "reshape_and_cache_flash",
-    "fused_inv_rope_fp8_quant",
     "rwkv_ka_fusion",
     "rwkv_mm_sparsity",
     "silu_and_mul",
@@ -120,6 +134,7 @@ __all__ = [
     "silu_and_mul_with_clamp_out",
     "sinkhorn_forward",
     "skip_layer_norm",
+    "sparse_attn_triton",
     "swiglu",
     "top_k_per_row_decode",
     "top_k_per_row_prefill",
@@ -127,5 +142,4 @@ __all__ = [
     "topk_softplus_sqrt",
     "unpack_seq_triton",
     "weight_norm",
-    "sparse_attn_triton",
 ]
