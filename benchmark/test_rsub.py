@@ -19,7 +19,7 @@ def _scalar_input_fn(shape, dtype, device):
 def test_rsub_tensor():
     bench = base.GenericBenchmark(
         input_fn=_tensor_input_fn,
-        op_name="rsub.Tensor",
+        op_name="rsub_tensor",
         torch_op=torch.rsub,
         dtypes=consts.FLOAT_DTYPES,
     )
@@ -30,7 +30,7 @@ def test_rsub_tensor():
 def test_rsub_scalar():
     bench = base.GenericBenchmark(
         input_fn=_scalar_input_fn,
-        op_name="rsub.Scalar",
+        op_name="rsub_scalar",
         torch_op=torch.rsub,
         dtypes=consts.FLOAT_DTYPES,
     )
