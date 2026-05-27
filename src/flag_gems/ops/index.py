@@ -410,13 +410,13 @@ def index(inp, indices):
 
     # Step 7: Handle empty tensor case
     if inp.numel() == 0:
-        return out
+        return out.contiguous()
 
     # Step 8: Extract only tensor indices for kernel
     tensor_indices = [idx for idx in indices if idx is not None]
     if not tensor_indices:
         # All None, just reshape
-        return inp.view(*out_shape)
+        return inp.view(*out_shape).contiguous()
 
     # Step 9: Call kernel with tensor indices
     _index_func(inp, tensor_indices, out)
@@ -432,4 +432,4 @@ def index(inp, indices):
         new_order = pre_dims + broadcast_dims + post_dims
         out = out.permute(new_order)
 
-    return out
+    return out.contiguous()

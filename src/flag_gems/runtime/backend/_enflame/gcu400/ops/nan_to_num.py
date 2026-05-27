@@ -27,7 +27,6 @@ def nan_to_num_func(x, nan, posinf, neginf):
     return x
 
 
-# nan_to_num(Tensor self, float? nan=None, float? posinf=None, float? neginf=None) -> Tensor
 def nan_to_num(A, nan=None, posinf=None, neginf=None):
     logger.debug("GEMS NAN_TO_NUM TENSOR")
     if posinf is None:
@@ -37,3 +36,15 @@ def nan_to_num(A, nan=None, posinf=None, neginf=None):
     if nan is None:
         nan = 0.0
     return nan_to_num_func(A, nan, posinf, neginf)
+
+
+def nan_to_num_(A, nan=None, posinf=None, neginf=None):
+    logger.debug("GEMS NAN_TO_NUM_ TENSOR")
+    if posinf is None:
+        posinf = torch.finfo(A.dtype).max
+    if neginf is None:
+        neginf = torch.finfo(A.dtype).min
+    if nan is None:
+        nan = 0.0
+    nan_to_num_func(A, nan, posinf, neginf, out0=A)
+    return A

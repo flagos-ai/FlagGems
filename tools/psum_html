@@ -1,0 +1,439 @@
+#!/usr/bin/env python
+
+import argparse
+import html as html_module
+import json
+import re
+import sys
+from pathlib import Path
+
+import consts
+
+DATA = {}
+DATA_DIR = None
+
+ASSETS_DIR = Path(__file__).resolve().parent / "html_assets"
+
+
+def wrap_html(lines):
+    """Wrap HTML content lines in a complete HTML document with styling."""
+    header = [
+        "<!DOCTYPE html>",
+        "<html>",
+        "<head>",
+        '<meta charset="utf-8">',
+        "<title>FlagGems Test Report</title>",
+    ]
+
+    css = (ASSETS_DIR / "style.css").read_text()
+    header.append(f"<style>\n{css}</style>")
+    header.extend(["</head>", "<body>"])
+    js = (ASSETS_DIR / "script.js").read_text()
+    footer = [
+        f"<script>\n{js}</script>",
+        "</body>",
+        "</html>",
+    ]
+    return header + lines + footer
+
+
+def read_log_files(op_name, prefix):
+    """Read log files for an operator with the given prefix (accuracy_ or performance_).
+
+    Returns a list of (filename, content) tuples, or None if no files found.
+    """
+    if DATA_DIR is None:
+        return None
+    op_dir = Path(DATA_DIR) / op_name
+    if not op_dir.is_dir():
+        return None
+    log_files = sorted(op_dir.glob(f"{prefix}*"))
+    if not log_files:
+        return None
+    results = []
+    for lf in log_files:
+        try:
+            content = lf.read_text(errors="replace").strip()
+            if content:
+                results.append((lf.name, content))
+        except Exception:
+            pass
+    if not results:
+        return None
+    return results
+
+
+def load_data(data_path):
+    try:
+        with data_path.open("r") as f:
+            data = json.load(f)
+        return data, True
+    except Exception as ex:
+        print(f"Failed to load data: {ex}")
+    return {}, False
+
+
+def parse_lines():
+    data = DATA.get("result", {})
+    lines = []
+    for op, item in data.items():
+        fields = []
+        accu = item["accuracy"]["status"]
+        accud = "/".join(
+            [
+                str(item["accuracy"]["passed"]),
+                str(item["accuracy"]["failed"]),
+                str(item["accuracy"]["skipped"]),
+            ]
+        )
+        fields.extend([op, accu, accud])
+
+        perf_data = item["performance"]["data"]
+        perf_status = item["performance"]["status"]
+        if perf_status == "NotFound":
+            fields.append("NotFound")
+            fields.extend(
+                [""] * (len(consts.DTYPE_MAP) + 2)
+            )  # OPAverageSpeedUp + dtypes + note
+
+        elif perf_status in ["Failed", "Skipped"]:
+            reason = item["performance"]["reason"]
+            reason = reason.split("\n")[0]
+            fields.append(perf_status)
+            fields.extend(
+                [""] * (len(consts.DTYPE_MAP) + 1)
+            )  # OPAverageSpeedUp + dtypes
+            fields.append(f'"{reason}"')
+
+        else:
+            fields.append(perf_status)
+            speedup_values = []
+            for dtype in list(consts.DTYPE_MAP.values()):
+                dobj = perf_data.get(dtype, {})
+                speedup = dobj.get("speedup", None)
+                if speedup:
+                    fields.append(f"{speedup:6.3f}")
+                    speedup_values.append(speedup)
+                else:
+                    fields.append("")
+            # Compute OPAverageSpeedUp
+            if speedup_values:
+                avg_speedup = sum(speedup_values) / len(speedup_values)
+                op_avg_field = f"{avg_speedup:6.3f}"
+            else:
+                op_avg_field = ""
+            # Insert OPAverageSpeedUp right after PerfRes (before dtype columns)
+            fields.insert(4, op_avg_field)
+            fields.append("")  # note
+
+        lines.append(_build_html_row_with_logs(op, fields))
+
+    return sorted(lines)
+
+
+def _build_html_row_with_logs(op, fields):
+    """Build an HTML table row with expandable log content in AccRes and PerfRes cells."""
+    # Column layout: 0=ID, 1=AccRes, 2=AccStat, 3=PerfRes, 4=OPAverageSpeedUp, ...
+    # (No. column is prepended later in parse_multi)
+    cells = []
+    for i, val in enumerate(fields):
+        if i == 1:  # AccRes column
+            log_files = read_log_files(op, "accuracy_")
+            if log_files:
+                cell = _render_log_tabs(val, log_files, f"acc-{op}")
+            else:
+                cell = html_module.escape(val)
+        elif i == 3:  # PerfRes column
+            log_files = read_log_files(op, "performance_")
+            if log_files:
+                cell = _render_log_tabs(val, log_files, f"perf-{op}")
+            else:
+                cell = html_module.escape(val)
+        else:
+            cell = html_module.escape(val)
+        cells.append(f"<td>{cell}</td>")
+    return "<tr>" + "".join(cells) + "</tr>"
+
+
+def _render_log_tabs(summary_text, log_files, uid):
+    """Render a <details> block with tabbed log file content.
+
+    Args:
+        summary_text: The text shown in the clickable summary.
+        log_files: List of (filename, content) tuples.
+        uid: Unique ID prefix for this tab group.
+    """
+    parts = []
+    parts.append(f"<details><summary>{html_module.escape(summary_text)}</summary>")
+    parts.append(f'<div class="log-tabs" id="tabs-{uid}">')
+
+    # Tab buttons
+    parts.append('<div class="tab-buttons">')
+    for idx, (fname, _) in enumerate(log_files):
+        active = " active" if idx == 0 else ""
+        parts.append(
+            f'<button class="tab-btn{active}" '
+            f"onclick=\"switchTab('tabs-{uid}', {idx})\">"
+            f"{html_module.escape(fname)}</button>"
+        )
+    parts.append("</div>")
+
+    # Tab panels
+    for idx, (fname, content) in enumerate(log_files):
+        display = "" if idx == 0 else ' style="display:none"'
+        escaped = html_module.escape(content)
+        parts.append(f'<div class="tab-panel"{display}>')
+        parts.append(f'<pre class="log-content">{escaped}</pre>')
+        parts.append("</div>")
+
+    parts.append("</div>")
+    parts.append("</details>")
+    return "".join(parts)
+
+
+def parse_env():
+    timestamp = DATA.get("timestamp", "?")
+    env = DATA.get("env", {})
+    arch = env.get("architecture", "?")
+    os = env.get("os_name") + " " + env.get("os_release")
+    pyver = env.get("python", "?")
+    torch_obj = env.get("torch", {})
+    torch_ver = torch_obj.get("version", "?")
+    flagtree_ver = env.get("flagtree", "?")
+    triton_ver = env.get("triton", {}).get("version", "?")
+    flaggems_ver = env.get("flag_gems", {}).get("version", "?")
+    flaggems_vendor = env.get("flag_gems", {}).get("vendor", "?")
+    flaggems_device = env.get("flag_gems", {}).get("device", "?")
+
+    lines = []
+    lines.append("<h3>Test Environment</h3>")
+    lines.append("<table>")
+    lines.append("<thead><tr><th>Env</th><th>Setting</th></tr></thead>")
+    lines.append("<tbody>")
+    lines.append(f"<tr><td>Time</td><td><tt>{timestamp}</tt></td></tr>")
+    lines.append(f"<tr><td>Architecture</td><td><tt>{arch}</tt></td></tr>")
+    lines.append(f"<tr><td>OS</td><td><tt>{os}</tt></td></tr>")
+    lines.append(f"<tr><td>Python</td><td><tt>{pyver}</tt></td></tr>")
+    lines.append(f"<tr><td>Torch</td><td><tt>{torch_ver}</tt></td></tr>")
+    lines.append(f"<tr><td>FlagTree</td><td><tt>{flagtree_ver}</tt></td></tr>")
+    lines.append(f"<tr><td>Triton</td><td><tt>{triton_ver}</tt></td></tr>")
+    lines.append(f"<tr><td>FlagGems</td><td><tt>{flaggems_ver}</tt></td></tr>")
+    lines.append(f"<tr><td>Vendor</td><td><tt>{flaggems_vendor}</tt></td></tr>")
+    lines.append(f"<tr><td>Device</td><td><tt>{flaggems_device}</tt></td></tr>")
+    lines.append("</tbody>")
+    lines.append("</table>")
+
+    return lines
+
+
+def parse_single_accuracy_details(fmt, details, num, kind):
+    lines = []
+    if num == 0:
+        return lines
+
+    lines.append(f"#### {kind.title()} Cases")
+    lines.append("")
+
+    for reason, cases in details.get(kind, {}).items():
+        reason_strs = reason.split("\n")
+        lines.append("- **Reason**")
+        lines.append("")
+        for s in reason_strs:
+            lines.append(f"  > {s}")
+        lines.append("")
+        lines.append("  **Test cases**")
+        lines.append("")
+        for case in cases:
+            lines.append(f"  - `{case}`")
+        lines.append("")
+
+    return lines
+
+
+def parse_single_accuracy(fmt, op_data):
+    lines = []
+
+    lines.append("<h3>Accuracy Result</h3>")
+    lines.append("<h4>Summary</h4>")
+    lines.append("<table>")
+    lines.append("<thead><tr>")
+    lines.append("<th>Status</th><th>Duration (s)</th><th>Total</th>")
+    lines.append("<th>Passed</th><th>Skipped</th><th>Failed</th>")
+    lines.append("</tr></thead>")
+    lines.append("<tbody>")
+    lines.append(f"<tr><td>{op_data.get('status', '?')}</td>")
+    lines.append(f"<td>{op_data.get('duration', '?')}</td>")
+    lines.append(f"<td>{op_data.get('total', 0)}</td>")
+    lines.append(f"<td>{op_data.get('passed', 0)}</td>")
+    skipped = op_data.get("skipped", 0)
+    lines.append(f"<td>{skipped}</td>")
+    failed = op_data.get("failed", 0)
+    lines.append(f"<td>{failed}</td></tr>")
+    lines.append("</tbody>")
+    lines.append("</table>")
+
+    # Append failed and skipped cases if any
+    details = op_data.get("details", {})
+    f_lines = parse_single_accuracy_details(fmt, details, failed, "failed")
+    lines.extend(f_lines)
+    k_lines = parse_single_accuracy_details(fmt, details, skipped, "skipped")
+    lines.extend(k_lines)
+
+    return lines
+
+
+def parse_data():
+    lines = parse_lines()
+    header_fields = (
+        [
+            "No.",
+            "ID",
+            "AccRes",
+            "AccStat(pass/fail/skip)",
+            "PerfRes",
+            "OPAverageSpeedUp",
+        ]
+        + list(consts.DTYPE_MAP.values())
+        + ["Note"]
+    )
+
+    # Add sequence number to each sorted line
+    numbered_lines = []
+    for idx, line in enumerate(lines, 1):
+        seq = str(idx)
+        # Add sticky classes to No. and ID (first two) columns
+        row = line.replace(
+            "<tr>",
+            f'<tr><td class="sticky-col sticky-col-0">{seq}</td>',
+            1,
+        )
+        # Add sticky class to the original first <td> (now ID column)
+        row = row.replace("<td>", '<td class="sticky-col sticky-col-1">', 1)
+        numbered_lines.append(row)
+
+    return _build_styled_html_table(header_fields, numbered_lines)
+
+
+def _build_styled_html_table(header_fields, data_rows):
+    """Build the main HTML table with filter/sort controls and sticky columns."""
+    # Column indices (0-based): 0=No., 1=ID, 2=AccRes, 3=AccStat, 4=PerfRes, 5=OPAverageSpeedUp, ...
+    acc_col = 2
+    perf_col = 4
+    avg_col = 5
+
+    # Collect unique values for filter dropdowns from data rows
+    acc_values = set()
+    perf_values = set()
+    for row in data_rows:
+        cells = _extract_html_cells(row)
+        if len(cells) > acc_col:
+            val = _strip_html_tags(cells[acc_col])
+            if val:
+                acc_values.add(val)
+        if len(cells) > perf_col:
+            val = _strip_html_tags(cells[perf_col])
+            if val:
+                perf_values.add(val)
+
+    total = len(data_rows)
+    lines = [
+        f'<div class="table-stats">Total: <span id="total-count">{total}</span>'
+        f' | Showing: <span id="visible-count">{total}</span></div>',
+        '<div class="table-wrapper">',
+        '<table id="main-table">',
+        "<thead>",
+        "<tr>",
+    ]
+    for i, field in enumerate(header_fields):
+        cls = (
+            ' class="sticky-col sticky-col-0"'
+            if i == 0
+            else (' class="sticky-col sticky-col-1"' if i == 1 else "")
+        )
+        if i == acc_col:
+            select = _build_filter_select("accFilter", sorted(acc_values))
+            lines.append(f"<th{cls}>{field}<br>{select}</th>")
+        elif i == perf_col:
+            select = _build_filter_select("perfFilter", sorted(perf_values))
+            lines.append(f"<th{cls}>{field}<br>{select}</th>")
+        elif i == avg_col:
+            lines.append(
+                f"<th{cls}>{field}<br>"
+                f'<button class="sort-btn" onclick="sortTable({avg_col}, \'asc\')">&#9650;</button>'
+                f'<button class="sort-btn" onclick="sortTable({avg_col}, \'desc\')">&#9660;</button>'
+                f'<button class="sort-btn" onclick="sortTable({avg_col}, \'reset\')">&#8634;</button>'
+                f"</th>"
+            )
+        else:
+            lines.append(f"<th{cls}>{field}</th>")
+    lines.extend(["</tr>", "</thead>", "<tbody>"])
+    lines.extend(data_rows)
+    lines.extend(["</tbody>", "</table>", "</div>"])
+    return lines
+
+
+def _build_filter_select(name, values):
+    """Build a <select> dropdown for filtering."""
+    opts = ['<option value="">All</option>']
+    for v in values:
+        escaped = html_module.escape(v)
+        opts.append(f'<option value="{escaped}">{escaped}</option>')
+    return f'<select class="filter-select" onchange="filterTable()">{" ".join(opts)}</select>'
+
+
+def _extract_html_cells(row_html):
+    """Extract cell inner HTML from a <tr>...</tr> string."""
+    return re.findall(r"<td[^>]*>(.*?)</td>", row_html, re.DOTALL)
+
+
+def _strip_html_tags(s):
+    """Strip HTML tags to get plain text for filter matching."""
+    # For <details><summary>TEXT</summary>...</details>, extract summary text
+    m = re.search(r"<summary>(.*?)</summary>", s)
+    if m:
+        return re.sub(r"<[^>]+>", "", m.group(1)).strip()
+    return re.sub(r"<[^>]+>", "", s).strip()
+
+
+def main():
+    global DATA
+    global DATA_DIR
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("dir", default="result", help="the data directory to process")
+    parser.add_argument(
+        "-o", "--output", default="<stdout>", help="path to the output file."
+    )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action=argparse.BooleanOptionalAction,
+        help="flag for printing verbose information for debugging",
+    )
+    args = parser.parse_args()
+
+    data_path = Path(args.dir) / "summary.json"
+    DATA, res = load_data(data_path)
+    if not res:
+        return 1
+
+    DATA_DIR = args.dir
+
+    result_heading = ["<h3>Test Result</h3>"]
+    lines = parse_env() + result_heading + parse_data()
+    lines = wrap_html(lines)
+
+    # never dump debug information to result file
+    if args.output == "<stdout>" or args.debug:
+        for ln in lines:
+            print(ln)
+    else:
+        with open(args.output, "w") as f:
+            for ln in lines:
+                f.write(ln + "\n")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
