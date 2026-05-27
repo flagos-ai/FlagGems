@@ -10,15 +10,7 @@ from . import base, consts, utils
 
 class FractionalMaxPool2dBenchmark(base.GenericBenchmark):
     def get_input_iter(self, dtype) -> Generator:
-        # Standard 4D shapes for pooling benchmarks
-        shapes_4d = [
-            (4, 3, 224, 224),
-            (16, 64, 56, 56),
-            (32, 128, 28, 28),
-            (64, 256, 14, 14),
-            (128, 512, 7, 7),
-        ]
-        for shape in shapes_4d:
+        for shape in self.shapes:
             yield from self.input_fn(shape, dtype, self.device)
 
 
