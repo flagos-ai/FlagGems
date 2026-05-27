@@ -137,7 +137,6 @@ def embedding_backward(
     scale_grad_by_freq=False,
     sparse=False,
 ):
-    print("ENTER MY EMBEDDING BACKWARD")
     logger.debug("GEMS EMBEDDING BACKWARD")
     assert not sparse, "Currently do not support sparse format"
 
