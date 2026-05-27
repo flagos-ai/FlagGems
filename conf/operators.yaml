@@ -698,6 +698,7 @@ ops:
       - bernoulli_.float
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -924,6 +925,26 @@ ops:
     stages:
       - stable: '2.2'
     cpp: '4.0'
+  - id: cauchy
+    description: Draws random numbers from a Cauchy distribution.
+    for:
+      - cauchy.float
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
+  - id: cauchy_
+    description: Fills the tensor with numbers drawn from the Cauchy distribution.
+    for:
+      - cauchy_.float
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
   - id: ceil
     description: |
       Returns a new tensor with the ceil of the elements of `input`, the smallest integer greater than
@@ -1097,6 +1118,21 @@ ops:
       - Math
     stages:
       - alpha: '5.1'
+  - id: combine_topk_swa_indices
+    description: |
+      Combines compressed top-k sparse attention indices with sliding-window attention indices
+      for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.combine_topk_swa_indices
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: concat_and_cache_mla
     description: |
       Writes the latent and RoPE value into KV cache for Multi-head Latent Attention forward case.
@@ -1109,6 +1145,21 @@ ops:
       - Attention
     stages:
       - beta: '3.0'
+  - id: compute_global_topk_indices_and_lens
+    description: |
+      Converts local top-k sparse attention indices to global KV-cache indices and computes
+      valid top-k lengths for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.compute_global_topk_indices_and_lens
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: concatenate
     description: An alias of `cat()`.
     for:
@@ -1152,6 +1203,7 @@ ops:
       - contiguous
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -1278,6 +1330,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -1374,6 +1427,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: cp_gather_indexer_k_quant_cache
+    description: This is a fused operator that gathers FP8 K cache values and scales.
+    for:
+      - None
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - Quantization
+    stages:
+      - beta: '5.1'
   - id: cross_entropy_loss
     description: Computes the cross entropy loss between input logits and target.
     for:
@@ -1480,6 +1544,20 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.0'
+  - id: dequantize_and_gather_k_cache
+    description: |
+      Dequantizes FP8 K-cache entries and gathers them into a BF16 tensor for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.dequantize_and_gather_k_cache
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: dgeglu
     description: |
       Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid function.
@@ -2032,6 +2110,7 @@ ops:
       - exponential_
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -2375,6 +2454,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -2414,6 +2494,21 @@ ops:
     stages:
       - stable: '2.0'
     cpp: '4.0'
+  - id: fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
+    description: |
+      Horizontally-fused DeepseekV4-MLA.
+      per-head RMSNorm + GPT-J RoPE for Q, and GPT-J RoPE + UE8M0 FP8
+      quant + paged cache insert for KV, all in one kernel launch.
+    for:
+      - torch.ops._C.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: fused_experts_impl
     description: An implementation of fused MoE.
     for:
@@ -2434,6 +2529,20 @@ ops:
       - fused
       - vLLM
       - MoE
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: fused_q_kv_rmsnorm
+    description: |
+      Applies RMSNorm to Q and KV tensors in a single fused kernel for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.fused_q_kv_rmsnorm
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
     kind:
       - NeuralNetwork
     stages:
@@ -2995,6 +3104,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: indexer_k_quant_and_cache
+    description: This is a fused operator that quantizes K tensors and writes them into the FP8 KV cache.
+    for:
+      - None
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - Quantization
+    stages:
+      - beta: '5.1'
   - id: inplace_fused_experts
     description: This operator writes output directly to `hidden_states`.
     for:
@@ -3610,6 +3730,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -3633,6 +3754,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -3929,6 +4051,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: reflection_pad1d_backward
+    description: Computes the gradient of reflection_pad1d with respect to the input tensor.
+    for:
+      - reflection_pad1d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: smooth_l1_loss
     description: Compute the smooth L1 loss between input and target tensors.
     for:
@@ -3984,6 +4117,7 @@ ops:
       - multinomial
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -4180,6 +4314,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -4261,6 +4396,7 @@ ops:
       - ones
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -4300,6 +4436,18 @@ ops:
       - MoE
     stages:
       - beta: '5.0'
+  - id: pack_seq_triton
+    description: Pack variable-length token sequences into a padded batched tensor.
+    for:
+      - pack_seq_triton
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: pad
     description: This pads a tenor using the specified mode.
     for:
@@ -4496,6 +4644,32 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: rad2deg
+    description: |
+      Converts each element from angles in radians to degrees.
+    for:
+      - rad2deg
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: rad2deg_
+    description: |
+      In-place version of rad2deg.
+    for:
+      - rad2deg_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: rand
     description: Returns a tensor filled with random numbers from a uniform distribution on the interval `[0,1)`.
     for:
@@ -4542,12 +4716,24 @@ ops:
       - Distribution
     stages:
       - stable: '2.1'
+  - id: randint
+    description: Returns a tensor filled with random integers generated uniformly between low (inclusive) and high (exclusive).
+    for:
+      - randint
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Distribution
+    stages:
+      - alpha: '5.1'
   - id: randperm
     description: Returns a random permutation of integers from `0` to `n - 1`.
     for:
       - randperm
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -5542,6 +5728,7 @@ ops:
       - sort
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -5554,6 +5741,7 @@ ops:
       - sort.stable
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -5919,6 +6107,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -5935,6 +6124,21 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.1'
+  - id: top_k_per_row_decode
+    description: |
+      Triton top-K per row for DeepSeek V4 decode-phase token selection.
+      Radix-select based approach with three dispatch tiers for different vocab sizes.
+    for:
+      - None
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: topk
     description: |
       Returns the `k` largest elements of the given `input` tensor along a given dimension.
@@ -5944,6 +6148,7 @@ ops:
       - topk
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -5962,6 +6167,20 @@ ops:
       - MoE
     stages:
       - stable: '4.0'
+  - id: topk_softplus_sqrt
+    description: |
+      Fused softplus + sqrt + top-k selection and optional renormalization
+      for MoE gating in models like DeepSeek-V3/V4.
+    for:
+      - topk_softplus_sqrt
+    labels:
+      - fused
+      - KernelGen
+      - vLLM
+    kind:
+      - MoE
+    stages:
+      - beta: '5.1'
   - id: trace
     description: Returns the sum of the elements of the diagonal of the input 2-D matrix.
     for:
@@ -6080,6 +6299,7 @@ ops:
       - uniform_
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -6102,6 +6322,18 @@ ops:
       - aten
     kind:
       - Distribution
+    stages:
+      - beta: '5.1'
+  - id: unpack_seq_triton
+    description: Unpack a packed sequence tensor back to its original variable-length form.
+    for:
+      - unpack_seq_triton
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
     stages:
       - beta: '5.1'
   # - id: unsafe_view
@@ -6418,6 +6650,7 @@ ops:
       - zeros
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -6433,3 +6666,123 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: _to_copy
+    description: Layout/memory operation (to_copy).
+    for:
+      - _to_copy
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: view
+    description: Pure layout operation (view).
+    for:
+      - view
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: reshape
+    description: Pure layout operation (reshape).
+    for:
+      - reshape
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: expand
+    description: Pure layout operation (expand).
+    for:
+      - expand
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: permute
+    description: Pure layout operation (permute).
+    for:
+      - permute
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: transpose
+    description: Pure layout operation (transpose).
+    for:
+      - transpose
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: clone
+    description: Pure layout/memory operation (clone).
+    for:
+      - clone
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: to
+    description: Device/dtype cast operation (to).
+    for:
+      - to
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: empty
+    description: Tensor factory operation (empty).
+    for:
+      - empty
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: normal_
+    description: Random sampling operator (normal_).
+    for:
+      - normal_
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: random_
+    description: Random sampling operator (random_).
+    for:
+      - random_
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: argsort
+    description: Sorting/selection operator (argsort).
+    for:
+      - argsort
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
