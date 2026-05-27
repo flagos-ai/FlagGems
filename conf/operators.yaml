@@ -5609,6 +5609,17 @@ ops:
     stages:
       - stable: '3.0'
     cpp: '4.0'
+  - id: resize
+    description: Resizes the input tensor to the specified size.
+    for:
+      - resize
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.0'
   - id: resize_output
     description: |
       Resizes tensor output storage and copies overlapping elements.
