@@ -1,5 +1,3 @@
-import os
-
 import pytest
 import torch
 
@@ -64,7 +62,7 @@ def test_accuracy__convolution(
         False,  # deterministic
         True,  # cudnn_enabled
         True,  # allow_tf32
-    ).to(dtype)
+    )
 
     with flag_gems.use_gems():
         res_out = torch._convolution(
@@ -126,7 +124,7 @@ def test_accuracy__convolution_1d(monkeypatch, shape, kernel, stride, padding, d
         False,  # deterministic
         True,  # cudnn_enabled
         True,  # allow_tf32
-    ).to(dtype)
+    )
 
     with flag_gems.use_gems():
         res_out = torch._convolution(
@@ -191,7 +189,7 @@ def test_accuracy__convolution_3d(
         False,  # deterministic
         True,  # cudnn_enabled
         True,  # allow_tf32
-    ).to(dtype)
+    )
 
     with flag_gems.use_gems():
         res_out = torch._convolution(
