@@ -10,6 +10,16 @@ from flag_gems.utils.random_utils import philox_backend_seed_offset, uint_to_uni
 logger = logging.getLogger(__name__)
 
 
+def _get_configs(n):
+    if n <= 128:
+        return 128
+    if n <= 256:
+        return 256
+    if n <= 512:
+        return 512
+    return 1024
+
+
 @libentry()
 @triton.jit(
     do_not_specialize=[
@@ -30,7 +40,7 @@ def multinomial_with_replacement(
     philox_seed_hi: tl.uint32,
     philox_offset_lo: tl.uint32,
     philox_offset_hi: tl.uint32,
-    NBLOCK: tl.constexpr = 512,
+    NBLOCK: tl.constexpr = 256,
 ):
     y_off = tl.program_id(1) * N
     n = tl.program_id(0) * NBLOCK + tl.arange(0, NBLOCK)
@@ -70,20 +80,28 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
 
     if not with_replacement:
         if n_categories == 1:
-            return torch.zeros((*prob.shape[:-1], n_samples), dtype=torch.int64)
+            return torch.zeros(
+                (*prob.shape[:-1], n_samples), dtype=torch.int32, device=prob.device
+            )
         return torch.multinomial(prob.cpu(), n_samples, False, generator=gen)
 
     if n_samples == 1:
-        q = torch.empty_like(prob).exponential_(1.0)
+        assert not prob.isinf().any(), "probability tensor contains infinite values"
+        assert not prob.isnan().any(), "probability tensor contains NaN values"
+        assert (prob >= 0).all(), "probabilities cannot be negative"
+        assert (prob.sum(-1, dtype=torch.float32) > 0).all(), "probability tensor must have positive sum along last dim"
+        q = torch.empty_like(prob).exponential_(1.0, generator=gen)
         s = torch.div(prob, q, out=q)
-        if n_samples == 1:
-            return torch.argmax(s, dim=-1, keepdim=True).to(torch.int64)
-        vals, indices = torch.topk(s, n_samples, dim=-1)
-        return indices.to(torch.int64)
+        return torch.argmax(s, dim=-1, keepdim=True)
 
-    prob_cpu = prob.cpu()
-    cum_prob = torch.cumsum(prob_cpu, dim=-1) / torch.sum(prob_cpu, dim=-1, keepdim=True)
-    cum_prob = cum_prob.to(prob.device)
+    from .cumsum import cumsum
+
+    if prob.dtype == torch.float64:
+        cum_prob = cumsum(prob.to(torch.float32), dim=-1)
+    else:
+        cum_prob = cumsum(prob, dim=-1, dtype=torch.float32)
+    denom = cum_prob[..., -1:].clone()
+    cum_prob = cum_prob / denom
 
     if cum_prob.dim() == 1:
         n_dist = 1
@@ -97,6 +115,7 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
     philox_seed_lo = philox_seed & 0xFFFFFFFF
     philox_offset_hi = (philox_offset >> 32) & 0xFFFFFFFF
     philox_offset_lo = philox_offset & 0xFFFFFFFF
+    nb = _get_configs(n_samples)
     grid = lambda META: (triton.cdiv(n_samples, META["NBLOCK"]), n_dist)
     multinomial_with_replacement[grid](
         cum_prob,
@@ -107,5 +126,6 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
         philox_seed_hi,
         philox_offset_lo,
         philox_offset_hi,
+        NBLOCK=nb,
     )
     return out

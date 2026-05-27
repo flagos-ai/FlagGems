@@ -27,11 +27,14 @@ def masked_select_kernel(
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
 
-    inp = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
-    select_mask = tl.load(select_mask_ptr + offsets, mask=mask, other=0.0).to(tl.int1)
-    out_offset = tl.load(prefix_sum_ptr + offsets, mask=mask, other=0.0) - 1
+    select_mask = tl.load(select_mask_ptr + offsets, mask=mask, other=0).to(tl.int1)
+    active = select_mask & mask
+    inp_vals = tl.load(inp_ptr + offsets, mask=active, other=0)
+    prefix_vals = tl.load(prefix_sum_ptr + offsets, mask=active, other=0)
+    write_mask = active & (prefix_vals > 0)
+    out_offset = prefix_vals - 1
 
-    tl.store(out_ptr + out_offset, inp, mask=(select_mask and mask))
+    tl.store(out_ptr + out_offset, inp_vals, mask=write_mask)
 
 
 def masked_select(inp, mask):
@@ -50,9 +53,12 @@ def masked_select(inp, mask):
 
     mask_flattened = mask.ravel()
 
-    prefix_sum = torch.cumsum(mask_flattened.cpu(), dim=0, dtype=torch.int32).to(
-        inp.device
-    )
+    if mask_flattened.numel() <= 4096:
+        prefix_sum = torch.cumsum(mask_flattened, dim=0, dtype=torch.int32)
+    else:
+        prefix_sum = torch.cumsum(mask_flattened.cpu(), dim=0, dtype=torch.int32).to(
+            inp.device
+        )
     out = torch.empty(prefix_sum[-1].item(), dtype=inp.dtype, device=inp.device)
 
     n_elements = inp.numel()
