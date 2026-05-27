@@ -3448,6 +3448,18 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: log1p
+    description: |
+      Computes the natural logarithm of `1+x(y_i=log_e(x_i+1))` for each element in the input tensor.
+    for:
+      - log1p
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
   - id: log1p_
     description: |
       Computes the natural logarithm of `1+x(y_i=log_e(x_i+1))` for each element in the input tensor in-place.
