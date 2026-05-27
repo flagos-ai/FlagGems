@@ -198,6 +198,7 @@ from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tens
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
+from flag_gems.ops.log1p import log1p
 from flag_gems.ops.log1p_ import log1p_
 from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log_sigmoid import log_sigmoid
@@ -290,6 +291,7 @@ from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
+from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
@@ -661,6 +663,8 @@ __all__ = [
     "log_softmax_backward",
     "log_softmax_backward_out",
     "log_softmax_out",
+    "log1p",
+    "log1p_",
     "logaddexp",
     "logaddexp_out",
     "logical_and",
@@ -754,6 +758,7 @@ __all__ = [
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",
+    "reflection_pad1d_backward",
     "reflection_pad1d_out",
     "reflection_pad2d",
     "reflection_pad2d_out",
