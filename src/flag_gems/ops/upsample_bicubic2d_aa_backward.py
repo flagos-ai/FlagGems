@@ -439,8 +439,14 @@ def _gemm_backward_path(
     return out.reshape(N, C, H_in, W_in).to(grad_output.dtype)
 
 
-def _should_use_gemm_path(device_type):
-    return device_type == "npu"
+def _should_use_gemm_path(device_type, NC, H_in, W_in, H_out, W_out):
+    if device_type == "npu":
+        return True
+    if device_type == "cuda":
+        # On CUDA, the GEMM route only wins when a large NC batch amortizes the
+        # two mm launches. Small and low-NC shapes stay on the Triton paths.
+        return NC >= (1 << 17) and H_out >= H_in and W_out >= W_in
+    return False
 
 
 # CUDA keeps the previous total-element threshold until H20 benchmarks say the
@@ -493,7 +499,7 @@ def _upsample_bicubic2d_aa_backward(
     if NC == 0 or H_in == 0 or W_in == 0 or H_out == 0 or W_out == 0:
         return grad_output.new_zeros(input_size)
 
-    if _should_use_gemm_path(grad_output.device.type):
+    if _should_use_gemm_path(grad_output.device.type, NC, H_in, W_in, H_out, W_out):
         return _gemm_backward_path(
             grad_output,
             output_size,
