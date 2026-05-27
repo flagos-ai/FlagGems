@@ -72,7 +72,10 @@ and headers into libflaggems-dev.
 # Doesn't actually import flag_gems because that triggers torch + triton
 # imports, neither of which is in the build container (and shouldn't be:
 # those are install-time runtime concerns).
-PYTHONDONTWRITEBYTECODE=1 \
+# PYTHONSAFEPATH=1 keeps the cwd (the unpacked source tree, which also
+# contains flag_gems/) off sys.path, so find_spec resolves against the
+# installed copy under PYTHONPATH (sitearch/sitelib), not the source tree.
+PYTHONDONTWRITEBYTECODE=1 PYTHONSAFEPATH=1 \
     PYTHONPATH=%{buildroot}%{python3_sitearch}:%{buildroot}%{python3_sitelib} \
     python3 -c "import importlib.util; s = importlib.util.find_spec('flag_gems'); assert s and s.origin, 'flag_gems not findable'; print('OK: flag_gems at', s.origin)"
 
