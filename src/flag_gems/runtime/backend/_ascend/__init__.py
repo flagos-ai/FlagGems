@@ -1,4 +1,4 @@
-from flag_gems.runtime.backend.backend_utils import VendorInfoBase
+from backend_utils import VendorInfoBase  # noqa: F402
 
 from .utils import CORE_NUM  # noqa: F401
 
@@ -28,8 +28,10 @@ CUSTOMIZED_UNUSED_OPS = (
     "to_copy",
     "contiguous",
     "copy_",
+    "_to_copy",
     "sort",
     "sort_stable",
+    "topk",
 )
 
 
