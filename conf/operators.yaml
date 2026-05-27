@@ -5859,6 +5859,17 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: special_xlog1py
+    description: Triton kernel implementation for special_xlog1py.
+    for:
+      - special_xlog1py
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
