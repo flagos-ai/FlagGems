@@ -1,16 +1,18 @@
+import os
+
 import pytest
 import torch
+import yaml
 
 from . import base, consts
 
+SHAPE_FILE = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
+
+with open(SHAPE_FILE, "r") as f:
+    _yaml_config = yaml.safe_load(f)
+
 PIXEL_SHUFFLE_SHAPES = [
-    ((1, 4, 2, 3), 2),
-    ((2, 9, 4, 4), 3),
-    ((4, 64, 32, 32), 2),
-    ((2, 128, 64, 64), 2),
-    ((1, 64, 16, 16), 4),
-    ((8, 36, 64, 64), 3),
-    ((1, 16, 128, 128), 2),
+    (tuple(s[:-1]), s[-1]) for s in _yaml_config["pixel_shuffle"]["shapes"]
 ]
 
 
