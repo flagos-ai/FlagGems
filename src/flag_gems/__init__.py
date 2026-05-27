@@ -439,6 +439,7 @@ _FULL_CONFIG = (
     ("replication_pad1d", replication_pad1d),
     ("replication_pad1d.out", replication_pad1d_out),
     ("replication_pad3d", replication_pad3d),
+    ("resize_as", resize_as),
     ("resolve_conj", resolve_conj),
     ("resolve_neg", resolve_neg),
     ("rms_norm", rms_norm),
