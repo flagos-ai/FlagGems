@@ -64,3 +64,39 @@ def test_conv2d(monkeypatch):
     bench.set_gems(flag_gems.conv2d)
 
     bench.run()
+
+
+class Conv2DPaddingBenchmark(base.GenericBenchmark):
+    DEFAULT_SHAPES = [
+        (16, 32, 12, 12, 24, 3, 3, 1, "valid", 1),
+        (32, 64, 128, 128, 32, 3, 3, 1, "valid", 1),
+        (32, 64, 210, 210, 16, 5, 5, 1, "valid", 1),
+        (16, 32, 24, 24, 24, 3, 3, 1, "same", 1),
+        (32, 64, 128, 128, 32, 3, 3, 1, "same", 1),
+        (32, 64, 210, 210, 16, 5, 5, 1, "same", 1),
+        (16, 32, 24, 24, 24, 3, 3, 1, "same", 2),
+    ]
+
+    def set_more_shapes(self):
+        return []
+
+    def get_input_iter(self, dtype):
+        for shape in self.DEFAULT_SHAPES:
+            yield from self.input_fn(shape, dtype, self.device)
+
+
+@pytest.mark.conv2d_padding
+def test_conv2d_padding(monkeypatch):
+    if flag_gems.vendor_name == "hygon":
+        monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
+
+    torch.backends.cudnn.allow_tf32 = False
+    bench = Conv2DPaddingBenchmark(
+        input_fn=_input_fn,
+        op_name="conv2d_padding",
+        torch_op=torch.nn.functional.conv2d,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.conv2d)
+
+    bench.run()
