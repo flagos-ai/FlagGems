@@ -44,6 +44,10 @@ _FP8_A_PREFETCH_CACHE: "OrderedDict[tuple, torch.Tensor]" = OrderedDict()
 # Disable via FLAGGEMS_FP8_AUTO_CACHE_A=0 if you mutate A in-place between
 # mm() calls without reallocating.
 _FP8_AUTO_CACHE_A = os.environ.get("FLAGGEMS_FP8_AUTO_CACHE_A", "1") != "0"
+# Opt-in benchmark / inference cache mode: reuse fp8 tensors by logical shape
+# instead of allocation identity. Keep this off by default for mutation safety.
+_FP8_CACHE_A_BY_SHAPE = os.environ.get("FLAGGEMS_FP8_CACHE_A_BY_SHAPE", "0") != "0"
+_FP8_CACHE_B_BY_SHAPE = os.environ.get("FLAGGEMS_FP8_CACHE_B_BY_SHAPE", "0") != "0"
 
 # When True, hot-path mm() only reuses A fp8 from _FP8_A_PREFETCH_CACHE (via
 # prequantize_and_register_a_fp8). Callers should register A once before the
@@ -96,6 +100,26 @@ class _MmCudaGraphEntry:
 _mm_cuda_graph_cache: "OrderedDict[tuple, _MmCudaGraphEntry]" = OrderedDict()
 _mm_cuda_graph_disabled_keys: set = set()
 _mm_staging_outputs: dict[tuple, torch.Tensor] = {}
+_device_props_cache: dict[int, object] = {}
+_sm_count_cache: dict[int, int] = {}
+_shared_memory_limit_cache: dict[int, Optional[int]] = {}
+
+
+def _current_device_index() -> int:
+    if not torch.cuda.is_available():
+        return -1
+    return int(torch.cuda.current_device())
+
+
+def _get_current_device_properties():
+    device_idx = _current_device_index()
+    if device_idx < 0:
+        return None
+    props = _device_props_cache.get(device_idx)
+    if props is None:
+        props = torch.cuda.get_device_properties(device_idx)
+        _device_props_cache[device_idx] = props
+    return props
 
 
 def _is_capturing_stream() -> bool:
@@ -213,14 +237,18 @@ def _mm_cuda_graph_run(
 
 def _get_shared_memory_limit_bytes():
     """Return per-block opt-in shared-memory limit for current CUDA device."""
-    try:
-        if not torch.cuda.is_available():
-            return None
-        return torch.cuda.get_device_properties(
-            torch.cuda.current_device()
-        ).shared_memory_per_block_optin
-    except Exception:
+    device_idx = _current_device_index()
+    if device_idx < 0:
         return None
+    if device_idx in _shared_memory_limit_cache:
+        return _shared_memory_limit_cache[device_idx]
+    try:
+        props = _get_current_device_properties()
+        limit = None if props is None else props.shared_memory_per_block_optin
+    except Exception:
+        limit = None
+    _shared_memory_limit_cache[device_idx] = limit
+    return limit
 
 
 def _estimate_tma_shared_memory_bytes(block_m, block_n, block_k, num_stages):
@@ -262,14 +290,19 @@ def _mm_autotune_meta(named_args, **kwargs) -> dict:
 
 
 def _mm_target_grid_blocks() -> int:
+    device_idx = _current_device_index()
+    if device_idx < 0:
+        return 78
+    cached = _sm_count_cache.get(device_idx)
+    if cached is not None:
+        return cached
     try:
-        if torch.cuda.is_available():
-            return torch.cuda.get_device_properties(
-                torch.cuda.current_device()
-            ).multi_processor_count
+        props = _get_current_device_properties()
+        sm_count = 78 if props is None else int(props.multi_processor_count)
     except Exception:
-        pass
-    return 78
+        sm_count = 78
+    _sm_count_cache[device_idx] = sm_count
+    return sm_count
 
 
 def _mm_grid_blocks(M: int, N: int, block_m: int, block_n: int) -> int:
@@ -372,6 +405,8 @@ def _prune_mm_tma_autotune_configs(configs, named_args, **kwargs):
     shared_ok = [
         cfg for cfg in configs if _tma_config_shared_memory_ok(cfg, shared_mem_limit)
     ]
+    if not (K == 7168 and N == 64):
+        shared_ok = [cfg for cfg in shared_ok if cfg.kwargs["BLOCK_M"] >= 16]
     if (
         _MM_PREFER_SHAPE_CONFIG
         and os.environ.get("USE_FLAGTUNE") != "1"
@@ -599,7 +634,7 @@ def mm_kernel_general(
             acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
             offset_k += BLOCK_K
 
-        acc = acc.to(a_desc.dtype)
+        acc = acc.to(C.dtype.element_ty)
         c_desc.store([offset_am.to(tl.int32), offset_bn.to(tl.int32)], acc)
 
     else:
@@ -1654,9 +1689,10 @@ def _prequantize_fp8_once(
     return a_q, b_q
 
 
-def _make_fp8_cache_key(t: torch.Tensor, target_dtype: torch.dtype) -> tuple:
-    return (
-        t.data_ptr(),
+def _make_fp8_cache_key(
+    t: torch.Tensor, target_dtype: torch.dtype, *, by_shape: bool = False
+) -> tuple:
+    shape_key = (
         tuple(t.shape),
         tuple(t.stride()),
         t.dtype,
@@ -1664,12 +1700,15 @@ def _make_fp8_cache_key(t: torch.Tensor, target_dtype: torch.dtype) -> tuple:
         t.device.index,
         target_dtype,
     )
+    if by_shape:
+        return ("shape",) + shape_key
+    return ("ptr", int(t.data_ptr()), int(t.storage_offset())) + shape_key
 
 
 def _get_cached_b_fp8(b: torch.Tensor, target_dtype: torch.dtype) -> torch.Tensor:
     if b.dtype == target_dtype:
         return b
-    key = _make_fp8_cache_key(b, target_dtype)
+    key = _make_fp8_cache_key(b, target_dtype, by_shape=_FP8_CACHE_B_BY_SHAPE)
     cached = _FP8_B_CACHE.get(key)
     if cached is not None:
         _FP8_B_CACHE.move_to_end(key)
@@ -1694,6 +1733,9 @@ def clear_mm_caches() -> None:
     _mm_cuda_graph_cache.clear()
     _mm_cuda_graph_disabled_keys.clear()
     _mm_staging_outputs.clear()
+    _device_props_cache.clear()
+    _sm_count_cache.clear()
+    _shared_memory_limit_cache.clear()
 
 
 def get_mm_cache_stats() -> dict:
@@ -1705,6 +1747,8 @@ def get_mm_cache_stats() -> dict:
         "cuda_graph": len(_mm_cuda_graph_cache),
         "staging_output": len(_mm_staging_outputs),
         "auto_cache_a_enabled": _FP8_AUTO_CACHE_A,
+        "cache_a_by_shape": _FP8_CACHE_A_BY_SHAPE,
+        "cache_b_by_shape": _FP8_CACHE_B_BY_SHAPE,
         "td_cache_enabled": _TD_CACHE_ENABLED,
         "fp8_cache_max_entries": _FP8_CACHE_MAX_ENTRIES,
         "td_cache_max_entries": _TD_CACHE_MAX_ENTRIES,
@@ -1717,7 +1761,7 @@ def register_prequantized_a_fp8(a: torch.Tensor, a_fp8: torch.Tensor) -> None:
     """Register externally pre-quantized A for later mm/mm_out reuse."""
     if not _is_fp8_dtype(a_fp8.dtype):
         raise ValueError("a_fp8 must be fp8 tensor.")
-    key = _make_fp8_cache_key(a, a_fp8.dtype)
+    key = _make_fp8_cache_key(a, a_fp8.dtype, by_shape=_FP8_CACHE_A_BY_SHAPE)
     _FP8_A_PREFETCH_CACHE[key] = a_fp8
     _FP8_A_PREFETCH_CACHE.move_to_end(key)
     if len(_FP8_A_PREFETCH_CACHE) > _FP8_CACHE_MAX_ENTRIES:
@@ -1746,7 +1790,7 @@ def prequantize_mm_inputs_for_inference(
 
 
 def _get_prefetched_a_fp8(a: torch.Tensor, target_dtype: torch.dtype) -> Optional[torch.Tensor]:
-    key = _make_fp8_cache_key(a, target_dtype)
+    key = _make_fp8_cache_key(a, target_dtype, by_shape=_FP8_CACHE_A_BY_SHAPE)
     cached = _FP8_A_PREFETCH_CACHE.get(key)
     if cached is not None:
         _FP8_A_PREFETCH_CACHE.move_to_end(key)
@@ -1779,7 +1823,7 @@ def _get_or_cache_a_fp8(a: torch.Tensor, target_dtype: torch.dtype) -> torch.Ten
     if not _FP8_AUTO_CACHE_A:
         return a.to(target_dtype)
 
-    key = _make_fp8_cache_key(a, target_dtype)
+    key = _make_fp8_cache_key(a, target_dtype, by_shape=_FP8_CACHE_A_BY_SHAPE)
     a_q = a.to(target_dtype)
     _FP8_A_PREFETCH_CACHE[key] = a_q
     if len(_FP8_A_PREFETCH_CACHE) > _FP8_CACHE_MAX_ENTRIES:
@@ -1933,10 +1977,10 @@ def mm(a, b):
         b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
-    a, b = _quantize_mm_inputs(a, b)
-
     M, K = a.shape
     _, N = b.shape
+    a, b = _quantize_mm_inputs(a, b)
+
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = _mm_allocate_output(M, N, K, device, c_dtype)
     return _dispatch_mm(a, b, c, M, N, K)
@@ -1950,10 +1994,10 @@ def mm_out(a, b, *, out):
         b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
-    a, b = _quantize_mm_inputs(a, b)
-
     M, K = a.shape
     _, N = b.shape
+    a, b = _quantize_mm_inputs(a, b)
+
     return _dispatch_mm(a, b, out, M, N, K)
 
 
