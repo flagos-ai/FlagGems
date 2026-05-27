@@ -89,7 +89,7 @@ def test_batch_norm_backward():
 
     bench = NormBenchmark(
         input_fn=batch_norm_backward_input_fn,
-        op_name="native_batch_norm_backward",
+        op_name="batch_norm_backward",
         torch_op=torch.ops.aten.native_batch_norm_backward,
         dtypes=dtypes,
     )

@@ -17,38 +17,33 @@ logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[
 @triton.jit
 def mean_kernel_1(
     inp,
-    out,
+    mid,
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    num_jobs = tl.num_programs(axis=0)
-    block_start = pid * BLOCK_SIZE
-    step = num_jobs * BLOCK_SIZE
-    _tmp = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-    block_start = block_start.to(tl.int64)
-    for off in range(block_start, M, step):
-        offset = off + tl.arange(0, BLOCK_SIZE)
-        mask = offset < M
-        inp_val = tl.load(inp + offset, mask=mask, other=0.0)
-        _tmp = inp_val + _tmp
-
-    mean_val = tl.sum(_tmp, axis=0) / M
-    tl.atomic_add(out, mean_val)
+    off = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = off < M
+    inp_val = tl.load(inp + off, mask=mask, other=0.0).to(tl.float32)
+    partial_sum = tl.sum(inp_val, axis=0)
+    tl.store(mid + pid, partial_sum)
 
 
 def mean(inp, *, dtype=None):
-    logger.debug("GEMS MEAN")
+    logger.debug("GEMS_ASCEND MEAN")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    out = torch.zeros([], dtype=dtype, device=inp.device)
+    block_size = min(block_size, 2048)
+    out = torch.zeros([], dtype=torch.float32, device=inp.device)
+    num_ctas = triton.cdiv(M, block_size)
+    mid = torch.zeros([num_ctas], dtype=torch.float32, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        mean_kernel_1[(triton.cdiv(M, block_size), 1, 1)](inp, out, M, block_size)
-        # mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid)
-    return out
+        mean_kernel_1[(num_ctas, 1, 1)](inp, mid, M, block_size)
+        out = mid.sum() / M
+    return out.to(dtype)
 
 
 @libentry()
@@ -79,7 +74,7 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
-    logger.debug("GEMS MEAN DIM")
+    logger.debug("GEMS_ASCEND MEAN DIM")
 
     if dtype is None:
         dtype = x.dtype
