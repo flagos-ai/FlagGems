@@ -264,7 +264,10 @@ def test_accuracy_cumsum(shape, dtype):
 
     dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
     if dtype in INT_DTYPES:
-        inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        if flag_gems.vendor_name == "sophgo":
+            inp = torch.randint(-3, 3, shape, dtype=dtype).to(flag_gems.device)
+        else:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
         ref_inp = to_reference(inp)
     else:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)

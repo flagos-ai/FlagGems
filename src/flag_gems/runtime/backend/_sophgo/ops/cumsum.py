@@ -28,15 +28,7 @@ def scan_part_sum_kernel(
 
     inp_ptrs = inp + offset
     inp_vals = tl.load(inp_ptrs, mask=mask, other=0)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
-        inp_vals = inp_vals
-    elif tl.constexpr(inp_vals.dtype.is_int()):
-        inp_vals = inp_vals.to(tl.int32)
-    else:
-        inp_vals = inp_vals.to(tl.float32)
+    inp_vals = inp_vals.to(tl.float32)
     result = tl.cumsum(inp_vals, axis=0)
 
     part_sum_via_sum = tl.sum(inp_vals.to(tl.float32)).to(inp_vals.dtype)
@@ -88,24 +80,17 @@ def scan_part_sum_abc_kernel(
     pid_c = tle.program_id(2)
 
     a_idx = pid_a
-    b_idx = pid_b
-    c_idx = pid_c * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    c_idx = pid_c
 
     offset = a_idx * B * C + b_idx * C + c_idx
-    part_offset = a_idx * B * part_num + b_idx * part_num + pid_c
+    base_part_offset = a_idx * part_num * C + c_idx
+    part_offset = base_part_offset + pid_b * C
 
-    mask = c_idx < C
+    mask = b_idx < B
     inp_ptrs = inp + offset
     inp_vals = tl.load(inp_ptrs, mask=mask, other=0)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
-        inp_vals = inp_vals
-    elif tl.constexpr(inp_vals.dtype.is_int()):
-        inp_vals = inp_vals.to(tl.int32)
-    else:
-        inp_vals = inp_vals.to(tl.float32)
+    inp_vals = inp_vals.to(tl.float32)
     result = tl.cumsum(inp_vals, axis=0)
 
     part_sum_via_sum = tl.sum(inp_vals.to(tl.float32)).to(inp_vals.dtype)
@@ -132,17 +117,19 @@ def add_base_sum_abc_kernel(
     pid_c = tle.program_id(2)
 
     a_idx = pid_a
-    b_idx = pid_b
-    c_idx = pid_c * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    c_idx = pid_c
 
-    offset = a_idx * B * C + b_idx * C + c_idx
-    last_part_offset = a_idx * B * part_num + b_idx * part_num + pid_c - 1
+    base_offset = a_idx * B * C + c_idx
+    offset = base_offset + b_idx * C
+    base_part_offset = a_idx * part_num * C + c_idx
+    last_part_offset = base_part_offset + (pid_b - 1) * C
 
-    mask = c_idx < C
+    mask = b_idx < B
     out_ptrs = out + offset
     out_vals = tl.load(out_ptrs, mask=mask)
 
-    if pid_c > 0:
+    if pid_b > 0:
         partial_sum_ptrs = partial_sum + last_part_offset
         last_part_sum_via_sum = tl.load(partial_sum_ptrs)
 
@@ -150,10 +137,91 @@ def add_base_sum_abc_kernel(
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["n_elements", "part_num"])
+def scan_part_sum_batch_kernel(
+    inp,
+    out,
+    partial_sum,
+    M,
+    n_elements,
+    part_num,
+    BLOCK_SIZE: tl.constexpr,
+):
+    row_id = tle.program_id(0)
+    pid = tle.program_id(1)
+
+    row_offset = row_id * n_elements
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offset < n_elements
+
+    inp_ptrs = inp + row_offset + offset
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=0)
+    inp_vals = inp_vals.to(tl.float32)
+    result = tl.cumsum(inp_vals, axis=0)
+
+    part_sum_via_sum = tl.sum(inp_vals)
+
+    out_ptrs = out + row_offset + offset
+    tl.store(out_ptrs, result, mask=mask)
+
+    partial_sum_ptrs = partial_sum + row_id * part_num + pid
+    tl.store(partial_sum_ptrs, part_sum_via_sum)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["part_num"])
+def add_base_sum_batch_kernel(
+    out,
+    partial_sum,
+    M,
+    n_elements,
+    part_num,
+    BLOCK_SIZE: tl.constexpr,
+):
+    row_id = tle.program_id(0)
+    pid = tle.program_id(1)
+
+    row_offset = row_id * n_elements
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offset < n_elements
+
+    out_ptrs = out + row_offset + offset
+    out_vals = tl.load(out_ptrs, mask=mask, other=0)
+
+    if pid > 0:
+        partial_sum_ptrs = partial_sum + row_id * part_num + pid - 1
+        last_part_sum_via_sum = tl.load(partial_sum_ptrs)
+
+        final_vals = out_vals + last_part_sum_via_sum
+        tl.store(out_ptrs, final_vals, mask=mask)
+
+
+def scan_then_fan_batch_col(inp, out, M, n_ele, dtype):
+    BLOCK_SIZE = 4096
+    if n_ele <= 4096 * 4:
+        BLOCK_SIZE = triton.next_power_of_2(n_ele)
+    part_num = math.ceil(n_ele / BLOCK_SIZE)
+    partial_sum = torch.empty(M, part_num, dtype=dtype, device=inp.device)
+
+    grid = (M, part_num)
+    with torch_device_fn.device(inp.device):
+        scan_part_sum_batch_kernel[grid](
+            inp, out, partial_sum, M, n_ele, part_num, BLOCK_SIZE
+        )
+
+    if part_num >= 2:
+        scan_then_fan_batch_col(partial_sum, partial_sum, M, part_num, dtype)
+        with torch_device_fn.device(inp.device):
+            add_base_sum_batch_kernel[grid](
+                out, partial_sum, M, n_ele, part_num, BLOCK_SIZE
+            )
+
+
 def scan_then_fan_col(inp, out, n_ele, dtype):
     # TODO(all): tune on target board
-    BLOCK_SIZE = 1024
-    if n_ele <= 1024 * 4:
+    BLOCK_SIZE = 4096
+    if n_ele <= 4096 * 4:
         BLOCK_SIZE = triton.next_power_of_2(n_ele)
     part_num = math.ceil(n_ele / BLOCK_SIZE)
     partial_sum = torch.empty(part_num, dtype=dtype, device=inp.device)
@@ -170,20 +238,20 @@ def scan_then_fan_col(inp, out, n_ele, dtype):
 
 def scan_then_fan(inp, out, A, B, C, dtype):
     # TODO(all): tune on target board
-    BLOCK_SIZE = 1024
-    if C <= 1024 * 4:
-        BLOCK_SIZE = triton.next_power_of_2(C)
-    part_num = math.ceil(C / BLOCK_SIZE)
-    partial_sum = torch.empty(A, B, part_num, dtype=dtype, device=inp.device)
+    BLOCK_SIZE = 4096
+    if B <= 4096 * 4:
+        BLOCK_SIZE = triton.next_power_of_2(B)
+    part_num = math.ceil(B / BLOCK_SIZE)
+    partial_sum = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
 
-    grid = (A, B, part_num)
+    grid = (A, part_num, C)
     with torch_device_fn.device(inp.device):
         scan_part_sum_abc_kernel[grid](
             inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
         )
 
     if part_num >= 2:
-        scan_then_fan(partial_sum, partial_sum, A, B, part_num, dtype)
+        scan_then_fan(partial_sum, partial_sum, A, part_num, C, dtype)
         with torch_device_fn.device(inp.device):
             add_base_sum_abc_kernel[grid](out, partial_sum, B, C, part_num, BLOCK_SIZE)
 
@@ -209,16 +277,27 @@ def cumsum(inp, dim=1, *, dtype=None):
     compute_dtype = out.dtype
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
         compute_dtype = torch.float32
+    elif inp.dtype in (torch.int8, torch.uint8, torch.int16):
+        compute_dtype = torch.float32
 
-    inp_shape = inp.shape
     if M == 1 and K == 1:
         scan_then_fan_col(inp, out, N, compute_dtype)
+    elif N > 4096:
+        if dim == inp.ndim - 1:
+            inp_2d = inp.view(M, N)
+            out_2d = out.view(M, N)
+        else:
+            inp_2d = inp.view(M, N, K).transpose(1, 2).contiguous().view(M * K, N)
+            out_2d = torch.empty((M * K, N), dtype=out.dtype, device=inp.device)
+        scan_then_fan_batch_col(inp_2d, out_2d, M * K, N, compute_dtype)
+        if dim != inp.ndim - 1:
+            out.view(M, N, K).copy_(out_2d.view(M, K, N).transpose(1, 2))
+    elif K == 1:
+        inp_2d = inp.view(M, N)
+        out_2d = out.view(M, N)
+        scan_then_fan_batch_col(inp_2d, out_2d, M, N, compute_dtype)
     else:
-        if K > 1:
-            inp = inp.view(M, N, K).transpose(1, 2).contiguous().view(M, K, N)
-        scan_then_fan(inp, out, M, K, N, compute_dtype)
-        if K > 1:
-            out = out.view(M, K, N).transpose(1, 2).contiguous().view(inp_shape)
+        scan_then_fan(inp, out, M, N, K, compute_dtype)
     return out
 
 
@@ -278,8 +357,7 @@ def block_cumsum_kernel(
         for ti in range(0, t):
             cols_offset = cols * k_stride
             x = tl.load(inp + row_offset + cols_offset, mask=cols < K, other=0)
-            if x.dtype.is_fp16() | x.dtype.is_bf16():
-                x = x.to(tl.float32)
+            x = x.to(tl.float32)
             tile_sum = tl.sum(x, 0)[None]
             tile_cumsum = tl.cumsum(x, 0) + curr_cumsum
             curr_cumsum += tile_sum
@@ -298,8 +376,6 @@ def block_cumsum_kernel(
                     cols_offset = cols * out_k_stride
                     row_offset = row * out_r_stride
                 x = tl.load(out + row_offset + cols_offset, mask=cols < K, other=0)
-                if x.dtype.is_fp16() | x.dtype.is_bf16():
-                    x = x.to(tl.float32)
                 x = x / curr_cumsum
                 tl.store(out + row_offset + cols_offset, x, mask=cols < K)
                 cols += TILE
@@ -330,6 +406,7 @@ def block_update_kernel(
     out_r_stride,
     out_k_stride,
     rscale_stride,
+    NORMALIZE: tl.constexpr,
     HAS_OUT_LAYOUT: tl.constexpr,
     TILE: tl.constexpr,
 ):
@@ -338,23 +415,20 @@ def block_update_kernel(
     # cols = [ grid.x * t * tile, (grid.x + 1) * t * tile )
     gridx = tle.program_id(0).to(tl.int64)
     gridy = tle.program_id(1).to(tl.int64)
-    n_gridx = tle.num_programs(1)
+    n_gridx = tle.num_programs(0)
 
-    base += gridy * n_gridx + gridx
-    rscale_ptr += gridy * rscale_stride
-
-    for row in range(gridy, min(gridy + r, R)):
-        d = tl.load(base)
-        rscale = tl.load(rscale_ptr)
-        base += gridx
-        rscale_ptr += rscale_stride
+    for row in range(gridy * r, min((gridy + 1) * r, R)):
+        d = tl.load(base + row * n_gridx + gridx)
+        if NORMALIZE:
+            rscale = tl.load(rscale_ptr + row * rscale_stride)
         row_offset = row * r_stride
         cols = gridx * t * TILE + tl.arange(0, TILE)
         for _ in range(0, t):
             cols_offset = cols * k_stride
             x = tl.load(inp + row_offset + cols_offset, mask=cols < K, other=0)
             x += d
-            x /= rscale
+            if NORMALIZE:
+                x /= rscale
             if HAS_OUT_LAYOUT:
                 cols_offset = cols * out_k_stride
                 row_offset = row * out_r_stride
@@ -480,6 +554,7 @@ def normed_cumsum(inp, dim=-1):
             r_stride,
             k_stride,
             n_chunks,
+            NORMALIZE=True,
             HAS_OUT_LAYOUT=False,
             TILE=TILE,
         )
