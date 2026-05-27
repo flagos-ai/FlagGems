@@ -85,12 +85,6 @@ def special_airy_ai(A):
     return special_airy_ai_func(A)
 
 
-def special_airy_ai_(A):
-    logger.debug("GEMS SPECIAL_AIRY_AI_")
-    special_airy_ai_func(A, out0=A)
-    return A
-
-
 def special_airy_ai_out(A, *, out=None):
     logger.debug("GEMS SPECIAL_AIRY_AI_OUT")
     if out is None:
