@@ -4168,6 +4168,17 @@ ops:
       - Math
     stages:
       - alpha: '5.1'
+  - id: renorm_
+    description: Triton kernel implementation for renorm_.
+    for:
+      - renorm_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: smooth_l1_loss
     description: Compute the smooth L1 loss between input and target tensors.
     for:

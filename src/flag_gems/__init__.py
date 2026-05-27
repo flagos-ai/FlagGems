@@ -446,6 +446,7 @@ _FULL_CONFIG = (
     ("remainder.Tensor", remainder),
     ("remainder_.Scalar", remainder_),
     ("remainder_.Tensor", remainder_),
+    ("renorm_", renorm_),
     ("repeat", repeat),
     ("repeat_interleave.self_int", repeat_interleave_self_int),
     ("repeat_interleave.self_Tensor", repeat_interleave_self_tensor),
