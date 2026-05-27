@@ -57,13 +57,10 @@ def fractional_max_pool2d_backward_input_fn(shape, dtype, device):
 
 
 def torch_fractional_max_pool2d_backward_wrapper(grad_output, input, indices, **kwargs):
-    output, _ = torch.nn.functional.fractional_max_pool2d(
-        input, return_indices=True, **kwargs
+    return torch.ops.aten.fractional_max_pool2d_backward(
+        grad_output, input, indices,
+        kwargs["kernel_size"], kwargs["output_size"]
     )
-    grad_input = torch.autograd.grad(
-        outputs=(output,), inputs=(input,), grad_outputs=(grad_output,)
-    )
-    return grad_input[0]
 
 
 @pytest.mark.fractional_max_pool2d_backward

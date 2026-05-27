@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.utils import libentry
 from flag_gems.utils.limits import get_dtype_min
 
@@ -12,15 +13,7 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 32}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 16}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 32}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 8}, num_stages=4, num_warps=2),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 8}, num_stages=4, num_warps=2),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 16}, num_stages=4, num_warps=2),
-    ],
+    configs=runtime.get_tuned_config("fractional_max_pool2d_forward"),
     key=["out_h", "out_w", "kernel_h", "kernel_w"],
 )
 @triton.jit
@@ -103,15 +96,7 @@ def fractional_max_pool2d_forward_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 32}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 16}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 32}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 8}, num_stages=4, num_warps=2),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 8}, num_stages=4, num_warps=2),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 16}, num_stages=4, num_warps=2),
-    ],
+    configs=runtime.get_tuned_config("fractional_max_pool2d_backward"),
     key=["out_h", "out_w"],
 )
 @triton.jit
@@ -254,7 +239,7 @@ def fractional_max_pool2d_backward(
     kernel_size,
     output_size,
 ):
-    logger.debug("GEMS FRACTIONAL_MAX_POOL2D BACKWARD")
+    logger.debug("GEMS FRACTIONAL_MAX_POOL2D_BACKWARD")
     grad_output = grad_output.contiguous()
     indices = indices.contiguous()
 
