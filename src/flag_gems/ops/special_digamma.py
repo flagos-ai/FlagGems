@@ -54,9 +54,3 @@ def special_digamma_kernel(x):
 def special_digamma(A):
     logger.debug("GEMS SPECIAL_DIGAMMA")
     return special_digamma_kernel(A)
-
-
-def special_digamma_(A):
-    logger.debug("GEMS SPECIAL_DIGAMMA_")
-    special_digamma_kernel(A, out0=A)
-    return A
