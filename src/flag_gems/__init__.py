@@ -139,6 +139,7 @@ _FULL_CONFIG = (
     ("cauchy_", cauchy_),
     ("celu", celu),
     ("celu_", celu_),
+    ("celu_backward", celu_backward),
     ("ceil", ceil),
     ("ceil_", ceil_),
     ("ceil.out", ceil_out),
