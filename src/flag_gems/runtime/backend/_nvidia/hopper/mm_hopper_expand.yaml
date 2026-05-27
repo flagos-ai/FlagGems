@@ -9,6 +9,7 @@ mm_general_tma:
       num_stages: stages
       num_warps: warps
     block_m:
+      - 8
       - 16
       - 32
       - 64
