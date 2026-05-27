@@ -1,6 +1,15 @@
 import pytest
+import torch
 
 from . import base, consts
+
+
+@pytest.mark.log1p
+def test_log1p():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="log1p", torch_op=torch.log1p, dtypes=consts.FLOAT_DTYPES
+    )
+    bench.run()
 
 
 @pytest.mark.log1p_

@@ -1,0 +1,114 @@
+# ============================================================
+# FlagGems + vLLM — NVIDIA GPU container image
+# Two-stage build: devel (build C extensions) → runtime
+# ============================================================
+
+# ── Build arguments ────────────────────────────────────────────
+ARG CUDA_VERSION=12.8.0
+ARG UBUNTU_VERSION=22.04
+ARG PYTHON_VERSION=3.12
+ARG TORCH_INDEX=https://resource.flagos.net/repository/flagos-pypi-nvidia/simple
+
+# ════════════════════════════════════════════════════════════════
+#  Stage 1 — builder
+# ════════════════════════════════════════════════════════════════
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS builder
+
+ARG PYTHON_VERSION=3.12
+ARG TORCH_INDEX=https://resource.flagos.net/repository/flagos-pypi-nvidia/simple
+ARG DEBIAN_FRONTEND=noninteractive
+
+# ── System packages ────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        software-properties-common \
+        git \
+        curl \
+        ca-certificates \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python${PYTHON_VERSION} \
+        python${PYTHON_VERSION}-dev \
+        python${PYTHON_VERSION}-venv \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
+    && update-alternatives --install /usr/bin/python  python  /usr/bin/python${PYTHON_VERSION} 1 \
+    && curl -sS https://bootstrap.pypa.io/get-pip.py | python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Python build dependencies ──────────────────────────────────
+RUN pip install uv --no-cache-dir
+ENV VIRTUAL_ENV="/venv"
+RUN uv venv ${VIRTUAL_ENV}
+ENV PATH="${VIRTUAL_ENV}/"bin":/usr/local/cuda/bin:$PATH"
+RUN uv pip install --no-cache-dir \
+        "setuptools>=64.0,<80.0" \
+        "scikit-build-core==0.12.2" \
+        "pybind11==3.0.3" \
+        "cmake>=3.20,<4.0" \
+        "ninja==1.13.0"
+
+# ── PyTorch + Triton (NVIDIA cu128) ────────────────────────────
+RUN uv pip install --no-cache-dir \
+        --index-url ${TORCH_INDEX} \
+        "torch==2.10.0+cu128" \
+        "torchvision==0.25.0+cu128" \
+        "torchaudio==2.10.0+cu128" \
+        "triton==3.6.0"
+
+# ── Build FlagGems (with C extensions) ─────────────────────────
+WORKDIR /build
+COPY . /build/FlagGems
+WORKDIR /build/FlagGems
+
+ENV CMAKE_PREFIX_PATH="$(python -c 'import torch; print(torch.utils.cmake_prefix_path)')"
+ENV CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=CUDA"
+
+RUN uv pip install --no-cache-dir --no-build-isolation .
+RUN uv pip install --no-cache-dir --no-build-isolation ".[test]"
+
+# ── Install vLLM ───────────────────────────────────────────────
+# NOTE: The vllm installed is 0.21.0 currently (2026/05/27)
+# TODO: This drags in torch 2.11, torchaudio 2.11, torchvision 0.26 for cu128
+RUN uv pip install --no-cache-dir vllm --torch-backend=cu128
+
+
+# ════════════════════════════════════════════════════════════════
+#  Stage 2 — runtime
+# ════════════════════════════════════════════════════════════════
+FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu${UBUNTU_VERSION} AS runtime
+
+ARG PYTHON_VERSION
+ARG DEBIAN_FRONTEND=noninteractive
+
+# NOTE: This sets up a minimal Python runtime with gcc for operator compilation
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        software-properties-common \
+        build-essential \
+        ca-certificates \
+        gcc \
+        g++ \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        python${PYTHON_VERSION} \
+        python${PYTHON_VERSION}-dev \
+        python${PYTHON_VERSION}-venv \
+        python3-pip \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
+    && update-alternatives --install /usr/bin/python  python  /usr/bin/python${PYTHON_VERSION} 1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Copy installed packages from builder ───────────────────────
+COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --from=builder /venv /venv
+
+# ── NVIDIA runtime environment ─────────────────────────────────
+ENV NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}" \
+    PATH="/venv/bin:${PATH}"
+
+# ── Runtime defaults ───────────────────────────────────────────
+WORKDIR /workspace
+EXPOSE 8000
+
+ENTRYPOINT ["python", "-m", "vllm.entrypoints.openai.api_server"]

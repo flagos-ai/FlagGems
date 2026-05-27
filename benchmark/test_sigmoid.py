@@ -21,3 +21,14 @@ def test_sigmoid_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+@pytest.mark.sigmoid_backward
+def test_sigmoid_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="sigmoid_backward",
+        torch_op=torch.sigmoid,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
