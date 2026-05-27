@@ -4062,6 +4062,17 @@ ops:
       - Math
     stages:
       - alpha: '5.1'
+  - id: replication_pad1d_backward
+    description: Computes the gradient of replication_pad1d with respect to the input tensor.
+    for:
+      - replication_pad1d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: smooth_l1_loss
     description: Compute the smooth L1 loss between input and target tensors.
     for:
