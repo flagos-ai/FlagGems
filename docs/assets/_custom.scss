@@ -31,5 +31,19 @@ main {
   }
 }
 
+@media (prefers-color-scheme: dark) {
+  .book-menu {
+    background: #2a3540;
+  }
+
+  .markdown {
+    td {
+      code {
+        color: #7cc4e0;
+      }
+    }
+  }
+}
+
 // @import "plugins/numbered";
 // @import "plugins/scrollbars";

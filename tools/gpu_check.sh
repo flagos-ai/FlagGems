@@ -16,6 +16,10 @@ echo "Detected $gpu_count GPUs."
 
 nvidia-smi
 
+if [ -n "$GITHUB_ENV" ]; then
+    echo "GEMS_VENDOR=nvidia" >> "$GITHUB_ENV"
+fi
+
 while true; do
     # Query GPU memory usage and total memory
     memory_usage=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null)
