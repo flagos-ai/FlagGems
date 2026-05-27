@@ -37,6 +37,3 @@ tests/*.json
 *.air
 *.ipa
 *.apk
-
-# Generated benchmark data (lives in gh-pages only)
-docs/benchmark/
