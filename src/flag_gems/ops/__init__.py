@@ -280,6 +280,7 @@ from flag_gems.ops.pow import (
     pow_tensor_tensor_,
 )
 from flag_gems.ops.prelu import prelu
+from flag_gems.ops.prelu_backward import prelu_backward
 from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.quantile import quantile
 from flag_gems.ops.rad2deg import rad2deg, rad2deg_
@@ -746,6 +747,7 @@ __all__ = [
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
     "prelu",
+    "prelu_backward",
     "prod",
     "prod_dim",
     "quantile",

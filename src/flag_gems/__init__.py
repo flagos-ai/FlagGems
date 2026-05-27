@@ -407,6 +407,7 @@ _FULL_CONFIG = (
     ("pow_.Scalar", pow_tensor_scalar_),
     ("pow_.Tensor", pow_tensor_tensor_),
     ("prelu", prelu),
+    ("prelu_backward", prelu_backward),
     ("prod", prod),
     ("prod.dim_int", prod_dim),
     ("quantile", quantile),
