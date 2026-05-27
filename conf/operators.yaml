@@ -1282,6 +1282,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '2.2'
+  - id: convolution
+    description: |
+      General convolution function that dispatches to conv1d, conv2d, or conv3d based on input dimensions.
+    for:
+      - _convolution
+    labels:
+      - aten
+      - KernelGen
+      - Convolution
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: conv_transpose1d
     description: |
       Applies a 1D transposed convolution operator over an input image composed of several input planes.
