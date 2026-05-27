@@ -35,9 +35,6 @@ SHAPE_CONV3D = [
 def test_conv3d(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
-    if vendor_name == "mthreads" and dtype == torch.float16:
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
@@ -88,9 +85,6 @@ def test_conv3d(
 def test_conv3d_padding(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
-    if vendor_name == "mthreads" and dtype == torch.float16:
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False

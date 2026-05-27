@@ -16,6 +16,7 @@ from importlib import metadata
 from multiprocessing import Process
 from pathlib import Path
 
+import consts
 import distro
 import git
 import yaml
@@ -37,15 +38,6 @@ DUMP_OUTPUT = False
 TIMEOUT = -100
 # A list of operators that can only run on GPU/DCUs
 NO_CPU_LIST = []
-DTYPE_MAP = {
-    "torch.float16": "fp16",
-    "torch.float32": "fp32",
-    "torch.bfloat16": "bf16",
-    "torch.int16": "int16",
-    "torch.int32": "int32",
-    "torch.bool": "bool",
-    "torch.complex64": "cf64",
-}
 
 
 def pinfo(str, **args):
@@ -451,7 +443,7 @@ def parse_perf_data(op, result_file):
     records = data.get("details", [])
 
     for item in records:
-        dtype = DTYPE_MAP.get(item["dtype"], item["dtype"])
+        dtype = consts.DTYPE_MAP.get(item["dtype"], item["dtype"])
         details = {}
         total = 0.0
         count = 0
@@ -519,7 +511,7 @@ def run_benchmark(gpu_id, start, index, count):
         return {
             "status": "NotFound",
             "exit_code": code,
-            "data": [],
+            "data": {},
         }
 
     # Move record log to output directory
