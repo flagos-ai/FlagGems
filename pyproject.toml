@@ -123,6 +123,15 @@ spacemit = [
     "triton==3.6.0+spacemit.a4",
 ]
 
+sunrise = [
+    "torch==2.11.0+cpu",
+    "torchaudio==2.11.0+cpu",
+    "torchvision==0.26.0+cpu",
+    "torch-ptpu==0.2.1+gaf2c267.torch2.11",
+    "triton==3.4.0.5+git27a132da",
+    # "flagtree-0.4.0+sunrise3.4"
+]
+
 tsingmicro = [
     "torch==2.7.0+cpu",
     "torchvision==0.22.0",
@@ -188,6 +197,7 @@ conflicts = [
         { extra = "mthreads" },
         { extra = "nvidia" },
         { extra = "spacemit" },
+        { extra = "sunrise" },
         { extra = "thead" },
         { extra = "tsingmicro" },
     ],
@@ -246,6 +256,12 @@ explicit = true
 [[tool.uv.index]]
 name = "spacemit-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-spacemit/simple"
+explicit = true
+
+# Source for Sunrise packages
+[[tool.uv.index]]
+name = "sunrise-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-sunrise/simple"
 explicit = true
 
 # Source for TsingMicro packages

@@ -349,6 +349,10 @@ def get_env(gpu_ids):
         env["XPU_VISIBLE_DEVICES"] = gpu_ids
         return env
 
+    if vendor == "sunrise":
+        env["TANG_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
     env["CUDA_VISIBLE_DEVICES"] = gpu_ids
 
     return env
