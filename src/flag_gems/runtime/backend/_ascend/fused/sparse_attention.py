@@ -1,144 +1,83 @@
 import os
+os.environ['TRITON_ALL_BLOCKS_PARALLEL'] = '1'
 
 import torch
+import torch_npu
 import triton
 import triton.language as tl
-
-# Enable all blocks parallel to avoid coreDim > 65535 issue on NPU
-os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
+import math
 
 
-# ---------------------------------------------------------------------------
-# Triton kernel: sparse attention with attention-sink
-# Adapted for Ascend NPU: 1D grid, tiling for UB overflow
-# ---------------------------------------------------------------------------
 @triton.jit
 def sparse_attn_triton_kernel(
-    Q,  # (b, m, h, d)  bf16
-    KV,  # (b, n, d)     bf16
-    O,  # (b, m, h, d)  bf16
-    attn_sink,  # (h,)          fp32
-    topk_idxs,  # (b, m, topk)  int32
-    stride_qb,
-    stride_qm,
-    stride_qh,
-    stride_qd,
-    stride_kvb,
-    stride_kvn,
-    stride_kvd,
-    stride_ob,
-    stride_om,
-    stride_oh,
-    stride_od,
-    stride_idxb,
-    stride_idxm,
-    stride_idxk,
+    Q, KV, O, ATTN_SINK, TOPK_IDXS,
+    stride_qb, stride_qm, stride_qh, stride_qd,
+    stride_kvb, stride_kvn, stride_kvd,
+    stride_ob, stride_om, stride_oh, stride_od,
+    stride_ib, stride_im, stride_ik,
     scale,
     topk,
-    kv_len,
-    H_ACTUAL,
+    num_blocks: tl.constexpr,
     BLOCK: tl.constexpr,
-    BLOCK_SUB: tl.constexpr,
+    H_TILE: tl.constexpr,
     D: tl.constexpr,
-    H: tl.constexpr,
-    BATCH_STRIDE: tl.constexpr,
 ):
-    # 1D grid: each task handles one (batch, seq_pos)
-    pid = tl.program_id(0)
-    pid_b = pid // BATCH_STRIDE
-    pid_m = pid % BATCH_STRIDE
+    pid_m = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    pid_ht = tl.program_id(2)
 
-    # ---- load Q matrix: (H, D) — all heads at once ----
-    q_base = Q + pid_b * stride_qb + pid_m * stride_qm
-    offs_h = tl.arange(0, H)
+    h_start = pid_ht * H_TILE
+    offs_h = h_start + tl.arange(0, H_TILE)
     offs_d = tl.arange(0, D)
-    h_mask = offs_h < H_ACTUAL
-    q_ptrs = q_base + offs_h[:, None] * stride_qh + offs_d[None, :] * stride_qd
-    q_block = tl.load(q_ptrs, mask=h_mask[:, None], other=0.0)  # (H, D) bf16
+    offs_block = tl.arange(0, BLOCK)
 
-    # ---- base pointers ----
-    kv_base = KV + pid_b * stride_kvb
-    idx_base = topk_idxs + pid_b * stride_idxb + pid_m * stride_idxm
+    q_ptrs = Q + pid_b * stride_qb + pid_m * stride_qm + offs_h[:, None] * stride_qh + offs_d[None, :] * stride_qd
+    q = tl.load(q_ptrs).to(tl.bfloat16)
 
-    # ---- online softmax state ----
-    acc_o = tl.zeros([H, D], dtype=tl.float32)
-    scores_max = tl.full([H], float("-inf"), dtype=tl.float32)
-    sum_exp = tl.zeros([H], dtype=tl.float32)
+    acc_o = tl.zeros((H_TILE, D), dtype=tl.float32)
+    sum_exp = tl.zeros((H_TILE,), dtype=tl.float32)
+    scores_max = tl.full((H_TILE,), value=float('-inf'), dtype=tl.float32)
 
-    # Two-level tiling: BLOCK (outer) -> BLOCK_SUB (inner)
-    num_block_iter = (topk + BLOCK - 1) // BLOCK
-    num_sub_iter = (BLOCK + BLOCK_SUB - 1) // BLOCK_SUB
-    offs_blk = tl.arange(0, BLOCK_SUB)
+    for t in range(num_blocks):
+        idx_offs = t * BLOCK + offs_block
+        idx_ptrs = TOPK_IDXS + pid_b * stride_ib + pid_m * stride_im + idx_offs * stride_ik
+        mask_valid_load = idx_offs < topk
+        idxs = tl.load(idx_ptrs, mask=mask_valid_load, other=-1)
 
-    for t in range(num_block_iter):
-        block_start = t * BLOCK
-        # Process BLOCK elements in sub-tiles
-        for s in range(num_sub_iter):
-            sub_start = block_start + s * BLOCK_SUB
-            raw_offs = sub_start + offs_blk  # (BLOCK_SUB,)
-            idx_mask = raw_offs < topk
-            idxs = tl.load(
-                idx_base + raw_offs * stride_idxk, mask=idx_mask, other=0
-            )  # (BLOCK_SUB,)
+        valid = idxs != -1
+        safe_idxs = tl.where(valid, idxs, 0)
 
-            # Clamp negative indices to 0 (matching PyTorch behavior on NPU)
-            idxs = tl.where(idxs < 0, 0, idxs)
+        kv_ptrs = KV + pid_b * stride_kvb + safe_idxs[:, None] * stride_kvn + offs_d[None, :] * stride_kvd
+        kv = tl.load(kv_ptrs).to(tl.bfloat16)
+        kv = tl.where(valid[:, None], kv, 0.0)
 
-            # Check index validity: idxs must be >= 0 and < kv_len
-            # Create valid mask based on both position and index value
-            index_valid = (idxs >= 0) & (idxs < kv_len)
-            valid_mask = idx_mask & index_valid  # (BLOCK_SUB,)
+        acc_s = tl.dot(q, tl.trans(kv), out_dtype=tl.float32)
+        acc_s = tl.where(valid[None, :], acc_s, float('-inf'))
+        acc_s *= scale
 
-            # -- gather KV block: (BLOCK_SUB, D) --
-            kv_ptrs = (
-                kv_base + idxs[:, None] * stride_kvn + offs_d[None, :] * stride_kvd
-            )
-            kv_block = tl.load(
-                kv_ptrs, mask=valid_mask[:, None], other=0.0
-            )  # (BLOCK_SUB, D) bf16
+        scores_max_prev = scores_max
+        block_max = tl.max(acc_s, axis=1)
+        scores_max = tl.maximum(scores_max, block_max)
+        scores_scale = tl.exp(scores_max_prev - scores_max)
 
-            # -- scores: Q @ KV^T -> (H, BLOCK_SUB) via GEMM --
-            acc_s = tl.dot(
-                q_block, tl.trans(kv_block)
-            )  # (H, D) @ (D, BLOCK_SUB) = (H, BLOCK_SUB)
-            acc_s = acc_s * scale
-            # mask invalid positions to -inf
-            mask_bias = tl.where(valid_mask, 0.0, float("-inf"))  # (BLOCK_SUB,)
-            acc_s = acc_s + mask_bias[None, :]  # broadcast: (H, BLOCK_SUB)
+        acc_s = tl.exp(acc_s - scores_max[:, None])
+        scores_sum = tl.sum(acc_s, axis=1)
+        sum_exp = sum_exp * scores_scale + scores_sum
 
-            # -- online softmax update --
-            scores_max_prev = scores_max
-            block_max = tl.max(acc_s, axis=1)  # (H,)
-            scores_max = tl.maximum(scores_max, block_max)
+        acc_s_cast = acc_s.to(tl.bfloat16)
 
-            correction = tl.exp(scores_max_prev - scores_max)  # (H,)
-            p = tl.exp(acc_s - scores_max[:, None])  # (H, BLOCK_SUB)
+        acc_o = acc_o * scores_scale[:, None]
+        acc_o += tl.dot(acc_s_cast, kv, out_dtype=tl.float32)
 
-            # -- accumulate output: acc_o = acc_o * correction + P @ KV --
-            acc_o = acc_o * correction[:, None]
-            acc_o += tl.dot(
-                p.to(tl.bfloat16), kv_block
-            )  # (H, BLOCK_SUB) @ (BLOCK_SUB, D) = (H, D)
+    sink = tl.load(ATTN_SINK + offs_h)
+    sum_exp += tl.exp(sink - scores_max)
 
-            scores_sum = tl.sum(p, axis=1)  # (H,)
-            sum_exp = sum_exp * correction + scores_sum
-
-    # ---- incorporate attn_sink ----
-    sink_vals = tl.load(attn_sink + offs_h, mask=h_mask, other=0.0)  # (H,)
-    sum_exp = sum_exp + tl.exp(sink_vals - scores_max)
-
-    # ---- normalize ----
     acc_o = acc_o / sum_exp[:, None]
-
-    # ---- store output: (H, D) ----
-    o_base = O + pid_b * stride_ob + pid_m * stride_om
-    o_ptrs = o_base + offs_h[:, None] * stride_oh + offs_d[None, :] * stride_od
-    tl.store(o_ptrs, acc_o.to(tl.bfloat16), mask=h_mask[:, None])
+    o = acc_o.to(tl.bfloat16)
+    o_ptrs = O + pid_b * stride_ob + pid_m * stride_om + offs_h[:, None] * stride_oh + offs_d[None, :] * stride_od
+    tl.store(o_ptrs, o)
 
 
-# ---------------------------------------------------------------------------
-# Python wrapper
-# ---------------------------------------------------------------------------
 def sparse_attn_triton(
     q: torch.Tensor,
     kv: torch.Tensor,
@@ -146,54 +85,41 @@ def sparse_attn_triton(
     topk_idxs: torch.Tensor,
     softmax_scale: float,
 ) -> torch.Tensor:
-    b, m, h, d = q.shape
+    b, s, h, d = q.size()
+
+    orig_h = h
+    if h < 16:
+        q = torch.cat([q, q.new_zeros(b, s, 16 - h, d)], dim=2)
+        attn_sink = torch.cat([attn_sink, attn_sink.new_zeros(16 - h)])
+        h = 16
+
     topk = topk_idxs.shape[-1]
-    kv_len = kv.shape[1]
+    block = 16
+    num_blocks = math.ceil(topk / block)
+
+    h_tile = 16
+    n_h_tiles = h // h_tile
+
     o = torch.empty_like(q)
 
-    # NPU optimization: use tiling to avoid UB overflow
-    # BLOCK: number of KV elements per outer loop iteration
-    # BLOCK_SUB: tile size for UB management
-    # UB (192KB) constraint: need to fit q_block + kv_block + acc_o + intermediate buffers
-    # Use fixed BLOCK to avoid edge cases with non-power-of-2 topk
-    BLOCK = 64
-    BLOCK_SUB = 16  # smaller chunks to fit UB (192KB), with multi-buffer overhead
-
-    # H must be >= 16 for tl.dot; pad to next power of 2
-    H_padded = max(16, triton.next_power_of_2(h))
-
-    # NPU: use 1D grid, TRITON_ALL_BLOCKS_PARALLEL handles large grid
-    grid = (b * m,)
-
+    grid = (s, b, n_h_tiles)
     sparse_attn_triton_kernel[grid](
-        q,
-        kv,
-        o,
-        attn_sink,
-        topk_idxs,
-        q.stride(0),
-        q.stride(1),
-        q.stride(2),
-        q.stride(3),
-        kv.stride(0),
-        kv.stride(1),
-        kv.stride(2),
-        o.stride(0),
-        o.stride(1),
-        o.stride(2),
-        o.stride(3),
-        topk_idxs.stride(0),
-        topk_idxs.stride(1),
-        topk_idxs.stride(2),
+        q, kv, o, attn_sink, topk_idxs,
+        q.stride(0), q.stride(1), q.stride(2), q.stride(3),
+        kv.stride(0), kv.stride(1), kv.stride(2),
+        o.stride(0), o.stride(1), o.stride(2), o.stride(3),
+        topk_idxs.stride(0), topk_idxs.stride(1), topk_idxs.stride(2),
         softmax_scale,
         topk,
-        kv_len,
-        h,
-        BLOCK=BLOCK,
-        BLOCK_SUB=BLOCK_SUB,
+        num_blocks=num_blocks,
+        BLOCK=block,
+        H_TILE=h_tile,
         D=d,
-        H=H_padded,
-        BATCH_STRIDE=m,  # for 1D grid: pid = pid_b * m + pid_m
-        num_warps=4,  # reduced for NPU
+        num_warps=4,
+        num_stages=1,
     )
+
+    if orig_h < 16:
+        o = o.narrow(2, 0, orig_h).contiguous()
+
     return o
