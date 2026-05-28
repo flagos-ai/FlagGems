@@ -160,9 +160,9 @@ def _flash_mla_sparse_decode_kernel(
 
     for t in range(t_start, t_end):
         if t < topk:
-            token_idx = tl.load(
-                INDICES + b_idx * stride_idx_b + t * stride_idx_t
-            ).to(tl.int32)
+            token_idx = tl.load(INDICES + b_idx * stride_idx_b + t * stride_idx_t).to(
+                tl.int32
+            )
             page = token_idx // page_block_size
             offset = token_idx % page_block_size
 
@@ -296,9 +296,7 @@ def _flash_mla_sparse_decode_kernel(
 
         extra_tokens_per_split = (MAX_EXTRA_TOPK + SPLIT_TOKENS - 1) // SPLIT_TOKENS
         et_start = split_idx * extra_tokens_per_split
-        et_end = tl.minimum(
-            (split_idx + 1) * extra_tokens_per_split, MAX_EXTRA_TOPK
-        )
+        et_end = tl.minimum((split_idx + 1) * extra_tokens_per_split, MAX_EXTRA_TOPK)
 
         for t in range(et_start, et_end):
             if t < extra_topk:
@@ -308,18 +306,14 @@ def _flash_mla_sparse_decode_kernel(
                 page = token_idx // extra_page_block_size
                 offset = token_idx % extra_page_block_size
 
-                data_base = (
-                    page * extra_k_block_stride + offset * TOKEN_DATA_BYTES_C
-                )
+                data_base = page * extra_k_block_stride + offset * TOKEN_DATA_BYTES_C
                 scale_base = (
                     page * extra_k_block_stride
                     + extra_page_block_size * TOKEN_DATA_BYTES_C
                     + offset * SCALE_BYTES_C
                 )
 
-                fp8_ptr = (EXTRA_K_CACHE + data_base).to(
-                    tl.pointer_type(tl.float8e4nv)
-                )
+                fp8_ptr = (EXTRA_K_CACHE + data_base).to(tl.pointer_type(tl.float8e4nv))
 
                 s0 = tl.math.exp2(
                     (tl.load(EXTRA_K_CACHE + scale_base + 0).to(tl.int32) - 127).to(
@@ -524,9 +518,7 @@ def _flash_mla_reduction_kernel(
     # Attention sink: scale output by sigmoid(lse - sink) to dampen sink tokens
     if HAS_ATTN_SINK:
         sink_val = tl.load(ATTN_SINK + h_idx)
-        sink_scale = 1.0 / (
-            1.0 + tl.math.exp2((sink_val - lse_val) * _LOG2E)
-        )
+        sink_scale = 1.0 / (1.0 + tl.math.exp2((sink_val - lse_val) * _LOG2E))
         acc0 *= sink_scale
         acc1 *= sink_scale
         acc2 *= sink_scale
@@ -599,7 +591,7 @@ def flash_mla_with_kvcache(
     assert topk_length is not None, "topk_length must be provided"
 
     if softmax_scale is None:
-        softmax_scale = head_dim_v ** -0.5
+        softmax_scale = head_dim_v**-0.5
 
     # Handle 4D cache layout (num_blocks, block_size, 1, HEAD_BYTES) -> 2D
     if k_cache.ndim == 4:
@@ -614,17 +606,11 @@ def flash_mla_with_kvcache(
     block_stride = k_cache.shape[1]
     block_size = block_stride // _HEAD_BYTES
 
-    HAS_EXTRA = (
-        extra_k_cache is not None and extra_indices_in_kvcache is not None
-    )
-    HAS_ATTN_SINK = attn_sink is not None and not torch.all(
-        attn_sink == float("-inf")
-    )
+    HAS_EXTRA = extra_k_cache is not None and extra_indices_in_kvcache is not None
+    HAS_ATTN_SINK = attn_sink is not None and not torch.all(attn_sink == float("-inf"))
 
     MAX_TOPK = indices.shape[-1]
-    MAX_EXTRA_TOPK = (
-        extra_indices_in_kvcache.shape[-1] if HAS_EXTRA else 1
-    )
+    MAX_EXTRA_TOPK = extra_indices_in_kvcache.shape[-1] if HAS_EXTRA else 1
 
     k_block_stride = k_cache.stride(0)
     extra_k_block_stride = extra_k_cache.stride(0) if HAS_EXTRA else 0
