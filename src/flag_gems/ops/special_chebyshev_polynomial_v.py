@@ -8,20 +8,15 @@ from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
-_cos = tl_extra_shim.cos
-_acos = tl_extra_shim.acos
-
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def chebyshev_polynomial_v_func(x, n):
-    # Chebyshev polynomial of the third kind V_n^*(x) = cos((n + 0.5) * arccos(x)) / cos(arccos(x) / 2)
-    # Compute in float32 for numerical stability
     x_fp32 = x.to(tl.float32)
     n_fp32 = n.to(tl.float32)
-    acos_x = _acos(x_fp32)
-    numerator = _cos((n_fp32 + 0.5) * acos_x)
-    denominator = _cos(acos_x * 0.5)
+    acos_x = tl_extra_shim.acos(x_fp32)
+    numerator = tl_extra_shim.cos((n_fp32 + 0.5) * acos_x)
+    denominator = tl_extra_shim.cos(acos_x * 0.5)
     result = numerator / denominator
     return result.to(x.dtype)
 
