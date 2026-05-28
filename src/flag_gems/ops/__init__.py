@@ -353,6 +353,7 @@ from flag_gems.ops.softmax import (
     softmax_out,
 )
 from flag_gems.ops.softplus import softplus
+from flag_gems.ops.softplus_backward import softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.softshrink_backward import softshrink_backward
 from flag_gems.ops.hardshrink import hardshrink
@@ -855,6 +856,7 @@ __all__ = [
     "softmax_backward_out",
     "softmax_out",
     "softplus",
+    "softplus_backward",
     "softshrink",
     "softshrink_out",
     "softshrink_backward",

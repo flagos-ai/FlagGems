@@ -505,6 +505,7 @@ _FULL_CONFIG = (
     ("smooth_l1_loss.out", smooth_l1_loss_out),
     ("soft_margin_loss", soft_margin_loss),
     ("softplus", softplus),
+    ("softplus_backward", softplus_backward),
     ("softshrink", softshrink),
     ("softshrink.out", softshrink_out),
     ("softshrink_backward", softshrink_backward),
