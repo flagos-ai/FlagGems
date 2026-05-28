@@ -85,7 +85,7 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
     logger.debug("GEMS REPEAT_INTERLEAVE_TENSOR")
 
     assert repeats.ndim == 1, "repeat_interleave only accept 1D vector as repeat"
-
+    repeats = repeats.contiguous()
     cumsum = repeats.cumsum(axis=0)
     result_size = cumsum[-1].item()
 

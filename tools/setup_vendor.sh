@@ -112,7 +112,7 @@ case $VENDOR in
     if [ -n ${USE_TRITON} ]; then
       uv pip uninstall flagtree
       uv pip install --index ${FLAGOS_PYPI} \
-        "triton=3.0.0+0762702f"
+        "triton==3.0.0+0762702f"
     fi
     ;;
 
@@ -166,8 +166,8 @@ case $VENDOR in
         "triton==3.6.0"
 
     # The follow environments are for C++ wrapped operators
-    export CMAKE_PREFIX_PATH=$(python -c 'import torch; print(torch.utils.cmake_refix_path)')
-    export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=CUDA"
+    # export CMAKE_PREFIX_PATH=$(python -c 'import torch; print(torch.utils.cmake_prefix_path)')
+    # export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=CUDA"
     uv pip install -e . --no-build-isolation
     uv pip install ".[test]"
 
