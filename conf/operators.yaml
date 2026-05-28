@@ -545,6 +545,29 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: as_strided_copy
+    description: |
+      Creates a contiguous copy of an `as_strided` view of the input tensor.
+    for:
+      - as_strided_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: as_strided_copy_out
+    description: A variant of `as_strided_copy()` that assigns the output to the `out` tensor.
+    for:
+      - as_strided_copy.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: assert_async
     description: |
       A utility used to perform data-dependent assertions on GPU tensors
@@ -2305,6 +2328,32 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: floor
+    description: |
+      Performs an element-wise floor operation, rounding each element of a tensor
+      down to the nearest integer less than or equal to itself.
+    for:
+      - floor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: floor_out
+    description: |
+      Performs an element-wise floor operation with output tensor, rounding each element
+      down to the nearest integer less than or equal to itself.
+    for:
+      - floor.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
   - id: floor_
     description: |
       Performs an in-place element-wise floor operation, rounding each element of a tensor
@@ -3461,6 +3510,18 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: log1p
+    description: |
+      Computes the natural logarithm of `1+x(y_i=log_e(x_i+1))` for each element in the input tensor.
+    for:
+      - log1p
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
   - id: log1p_
     description: |
       Computes the natural logarithm of `1+x(y_i=log_e(x_i+1))` for each element in the input tensor in-place.
@@ -4064,6 +4125,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: reflection_pad1d_backward
+    description: Computes the gradient of reflection_pad1d with respect to the input tensor.
+    for:
+      - reflection_pad1d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: smooth_l1_loss
     description: Compute the smooth L1 loss between input and target tensors.
     for:

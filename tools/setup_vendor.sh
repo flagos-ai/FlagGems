@@ -112,7 +112,7 @@ case $VENDOR in
     if [ -n ${USE_TRITON} ]; then
       uv pip uninstall flagtree
       uv pip install --index ${FLAGOS_PYPI} \
-        "triton=3.0.0+0762702f"
+        "triton==3.0.0+0762702f"
     fi
     ;;
 
@@ -186,6 +186,25 @@ case $VENDOR in
         "torch==2.8.0+spacemit.0" \
         "triton==3.6.0+spacemit.a4"
     uv pip install ".[test]"
+    ;;
+
+  sunrise)
+    uv pip install -e .
+    uv pip install --index ${FLAGOS_PYPI} \
+        "torch==2.11.0+cpu" \
+        "torchaudio==2.11.0+cpu" \
+        "torchvision==0.26.0+cpu" \
+        "torch-ptpu==0.2.1+gaf2c267.torch2.11" \
+        "triton==3.4.0.5+git27a132da"
+    uv pip install ".[test]"
+
+    # We try triton first at this stage
+    # if [ -z "${USE_TRITON}" ]; then
+    #   uv pip uninstall triton
+    #   uv pip install --index ${FLAGOS_PYPI} \
+    #     "flagtree-0.4.0+sunrise3.4"
+    # fi
+
     ;;
 
   thead)
