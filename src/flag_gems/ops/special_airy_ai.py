@@ -39,9 +39,8 @@ def special_airy_ai_func(x):
     c6 = 0.000167045880663
     c7 = 0.000036694336230
 
-    small = (
-        c0
-        + xf * (c1 + xf * (c2 + xf * (c3 + xf * (c4 + xf * (c5 + xf * (c6 + xf * c7))))))
+    small = c0 + xf * (
+        c1 + xf * (c2 + xf * (c3 + xf * (c4 + xf * (c5 + xf * (c6 + xf * c7)))))
     )
 
     # Large region: |x| > 1.0
