@@ -583,20 +583,17 @@ def _attn_bwd(
     # load scales
     offs_k = tl.arange(0, BLOCK_DMODEL)
 
-    start_n = pid * BLOCK_N1
-    MASK_BLOCK_M1: tl.constexpr = BLOCK_M1 // BLK_SLICE_FACTOR
-
     # dK/dV: only execute when this pid covers a valid KV block
+    start_n = pid * BLOCK_N1
     if start_n < KV_CTX:
         start_m = start_n
-
-        offs_n = start_n + tl.arange(0, BLOCK_N1)
-        offs_n_mask = offs_n < KV_CTX
 
         dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
         dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
 
         # load K and V: they stay in SRAM throughout the inner loop.
+        offs_n = start_n + tl.arange(0, BLOCK_N1)
+        offs_n_mask = offs_n < KV_CTX
         key = tl.load(
             K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
             mask=offs_n_mask[:, None],
@@ -608,6 +605,7 @@ def _attn_bwd(
             other=0.0,
         )
 
+        MASK_BLOCK_M1: tl.constexpr = BLOCK_M1 // BLK_SLICE_FACTOR
         num_steps = BLOCK_N1 // MASK_BLOCK_M1
 
         dk, dv = _attn_bwd_dkdv(
@@ -638,8 +636,7 @@ def _attn_bwd(
         start_m += num_steps * MASK_BLOCK_M1
         remaining_m = Q_CTX - start_m
         num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
-
-        if num_steps > 0 and start_m < Q_CTX:
+        if num_steps > 0:
             dk, dv = _attn_bwd_dkdv(  #
                 dk,
                 dv,  #
@@ -673,19 +670,10 @@ def _attn_bwd(
         tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
 
     # dQ: only execute when this pid covers a valid Q block
-    MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
     start_m = pid * BLOCK_M2
-
     if start_m < Q_CTX:
-        # Causal boundary: for Q rows [start_m, start_m+BLOCK_M2), the diagonal
-        # is at column start_m (not pid*BLOCK_N1 which differs when BLOCK_N1 != BLOCK_M2)
-        diag_n = start_m
-        end_n = min(start_m + BLOCK_M2, KV_CTX)
-        num_steps = (end_n - diag_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
-
         offs_m = start_m + tl.arange(0, BLOCK_M2)
         offs_m_mask = offs_m < Q_CTX
-
         query = tl.load(
             Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
             mask=offs_m_mask[:, None],
@@ -697,9 +685,15 @@ def _attn_bwd(
             mask=offs_m_mask[:, None],
             other=0.0,
         )
-
         m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
         m = m[:, None]
+
+        # Causal boundary: for Q rows [start_m, start_m+BLOCK_M2), the diagonal
+        # is at column start_m (not pid*BLOCK_N1 which differs when BLOCK_N1 != BLOCK_M2)
+        end_n = min(start_m + BLOCK_M2, KV_CTX)
+        MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
+        diag_n = start_m
+        num_steps = (end_n - diag_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
         # Stage 1 - Compute dQ for masked (diagonal) blocks.
         if num_steps > 0:
@@ -948,12 +942,6 @@ def scaled_dot_product_attention_backward(
         D_HEAD=BLOCK_DMODEL,  #
     )
 
-    max_block_n1 = (
-        max([cfg.kwargs["BLOCK_N1"] for cfg in config_backward])
-        if config_backward
-        else 128
-    )
-    grid = (triton.cdiv(Q_CTX, max_block_n1), 1, BATCH * Q_HEAD)
     grid = lambda meta: (
         max(
             triton.cdiv(KV_CTX, meta["BLOCK_N1"]), # _attn_bwd_dq traverse the key-value sequence
