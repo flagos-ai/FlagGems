@@ -26,6 +26,7 @@ from typing import (
     overload,
 )
 
+import torch
 import triton
 
 from flag_gems import runtime
@@ -160,6 +161,7 @@ class LibCache(object):
         device_name = _state.vendor_module.vendor_info.device_name
         if db_url is None:
             try:
+                torch.cuda.init()
                 device_name: str = torch_device_fn.get_device_name().replace(" ", "_")
             except AttributeError:
                 device_name: str = device_name
