@@ -31,11 +31,11 @@ def test_true_divide_(shape, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), False)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    ref_out = ref_inp1.true_divide_(ref_inp2)
+    ref_inp1.true_divide_(ref_inp2)
     with flag_gems.use_gems():
-        res_out = inp1.true_divide_(inp2)
+        inp1.true_divide_(inp2)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    utils.gems_assert_close(inp1, ref_inp1, dtype, equal_nan=True)
 
 
 @pytest.mark.true_divide_tensor_scalar
