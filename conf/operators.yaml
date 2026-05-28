@@ -4123,6 +4123,17 @@ ops:
       - Math
     stages:
       - alpha: '5.1'
+  - id: rot90
+    description: Triton kernel implementation for rot90.
+    for:
+      - rot90
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: smooth_l1_loss
     description: Compute the smooth L1 loss between input and target tensors.
     for:
