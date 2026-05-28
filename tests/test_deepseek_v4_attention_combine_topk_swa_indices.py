@@ -6,6 +6,16 @@ from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
     combine_topk_swa_indices,
 )
 
+try:
+    from vllm.v1.attention.ops.deepseek_v4_ops import (
+        combine_topk_swa_indices as vllm_combine_topk_swa_indices,
+    )
+
+    _HAS_VLLM_COMBINE_TOPK_SWA_INDICES = True
+except Exception:
+    vllm_combine_topk_swa_indices = None
+    _HAS_VLLM_COMBINE_TOPK_SWA_INDICES = False
+
 
 @pytest.mark.parametrize(
     (
@@ -104,6 +114,29 @@ def test_combine_topk_swa_indices_accuracy(
                     M * batch + N + j + pos - swa_len + 1 - gather_start
                 )
             expected_lens[token_idx] = topk_len + swa_len
+
+    fg_testing.assert_equal(actual, expected)
+    fg_testing.assert_equal(actual_lens, expected_lens)
+
+
+@pytest.mark.skipif(
+    (not torch.cuda.is_available()) or (not _HAS_VLLM_COMBINE_TOPK_SWA_INDICES),
+    reason="requires cuda and vllm deepseek_v4_ops.combine_topk_swa_indices",
+)
+def test_combine_topk_swa_indices_vllm_accuracy():
+    device = "cuda"
+    topk_indices = torch.tensor(
+        [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]],
+        device=device,
+        dtype=torch.int32,
+    )
+    query_start_loc = torch.tensor([0, 2, 3], device=device, dtype=torch.int32)
+    seq_lens = torch.tensor([8, 10], device=device, dtype=torch.int32)
+    gather_lens = torch.tensor([8, 10], device=device, dtype=torch.int32)
+    args = (topk_indices, query_start_loc, seq_lens, gather_lens, 4, 2, 4, 64, 16)
+
+    actual, actual_lens = combine_topk_swa_indices(*args)
+    expected, expected_lens = vllm_combine_topk_swa_indices(*args)
 
     fg_testing.assert_equal(actual, expected)
     fg_testing.assert_equal(actual_lens, expected_lens)
