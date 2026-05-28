@@ -63,3 +63,12 @@ def test_resize_as_(shape, dtype):
             inp.resize_as_(template)
 
         utils.gems_assert_equal(inp, ref_inp)
+
+
+@pytest.mark.resize_as
+def test_resize_as_mismatched_numel():
+    inp = torch.randn(3, 4, device=flag_gems.device)
+    template = torch.randn(5, 5, device=flag_gems.device)
+    with flag_gems.use_gems():
+        with pytest.raises(RuntimeError):
+            inp.resize_as(template)

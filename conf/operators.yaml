@@ -5828,6 +5828,29 @@ ops:
       - DSA
     stages:
       - beta: '5.0'
+  - id: special_i0
+    description: Computes the zeroth order modified Bessel function of the first kind.
+    for:
+      - special_i0
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: special_i0_out
+    description: |
+      A variant of special_i0() with output saved to provided out.
+    for:
+      - special_i0.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
