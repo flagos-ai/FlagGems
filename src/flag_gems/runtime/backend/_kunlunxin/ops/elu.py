@@ -22,8 +22,7 @@ def elu_forward_kernel(x, alpha, scale, input_scale):
 
 
 @pointwise_dynamic(
-    is_tensor=[True, True, False, False, False, False],
-    promotion_methods=[(0, 1, "DEFAULT")],
+    is_tensor=[True, True, False, False, False, False], promotion_methods=[(0, 1, "DEFAULT")]
 )
 @triton.jit
 def elu_backward_kernel(grad_output, x, alpha, scale, input_scale, is_result):

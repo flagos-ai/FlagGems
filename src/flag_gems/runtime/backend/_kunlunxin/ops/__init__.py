@@ -57,6 +57,7 @@ from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .cummax import cummax
 from .cummin import cummin
+from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
@@ -201,6 +202,7 @@ from .softmax import softmax, softmax_backward
 from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
+from .square import square
 from .sqrt import sqrt, sqrt_
 from .stack import stack
 from .std import std
@@ -309,6 +311,8 @@ __all__ = [
     "count_nonzero",
     "cummax",
     "cummin",
+    "cumprod",
+    "cumprod_",
     "cumsum",
     "cumsum_out",
     "diag",
@@ -502,6 +506,7 @@ __all__ = [
     "softplus",
     "sort",
     "sort_stable",
+    "square",
     "sqrt",
     "sqrt_",
     "stack",
