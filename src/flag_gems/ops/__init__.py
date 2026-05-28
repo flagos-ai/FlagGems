@@ -78,6 +78,11 @@ from flag_gems.ops.clamp import (
     clamp_tensor,
     clamp_tensor_,
 )
+from flag_gems.ops.clamp_backward import (
+    clamp_max_tensor_backward,
+    clamp_min_tensor_backward,
+    clamp_tensor_backward,
+)
 from flag_gems.ops.clip import clip, clip_
 from flag_gems.ops.col2im import col2im
 from flag_gems.ops.concatenate import concatenate
@@ -507,6 +512,9 @@ __all__ = [
     "clamp_min_",
     "clamp_tensor",
     "clamp_tensor_",
+    "clamp_tensor_backward",
+    "clamp_min_tensor_backward",
+    "clamp_max_tensor_backward",
     "clip",
     "clip_",
     "col2im",
