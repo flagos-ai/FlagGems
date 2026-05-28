@@ -32,8 +32,9 @@ _H_Q = 128
 
 # --- vLLM CUDA reference ---
 try:
-    from vllm.third_party.flashmla.flash_mla_interface import \
-        flash_mla_with_kvcache as _cuda_flash_mla
+    from vllm.third_party.flashmla.flash_mla_interface import (
+        flash_mla_with_kvcache as _cuda_flash_mla,
+    )
     from vllm.third_party.flashmla.flash_mla_interface import get_mla_metadata
 
     HAS_VLLM = True
