@@ -62,8 +62,13 @@ jobs:
 
   build-doc:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'documentation')
-    uses: ./.github/workflows/mkdocs.yaml
+    if: (contains(needs.preprocess.outputs.labels, 'documentation') &&
+      github.event.pull_request.merged == true)
+    steps:
+      - id: sync-gh-pages
+        uses: ./.github/workflows/sync-docs.yaml
+      - id: deploy-docs
+        uses: ./.github/workflows/hugo-site.yaml
 
   cpp-op:
     needs: preprocess
