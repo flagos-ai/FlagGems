@@ -505,6 +505,8 @@ _FULL_CONFIG = (
     ("softshrink", softshrink),
     ("softshrink.out", softshrink_out),
     ("softshrink_backward", softshrink_backward),
+    ("hardshrink", hardshrink),
+    ("hardshrink_backward", hardshrink_backward),
     ("sort", sort),
     ("sort.stable", sort_stable),
     ("special_i0e", special_i0e),
