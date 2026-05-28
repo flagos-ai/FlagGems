@@ -73,6 +73,7 @@ from .uniform import uniform_
 from .unique import _unique2
 from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
+from .vector_norm import vector_norm
 from .vdot import vdot
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 
@@ -174,6 +175,7 @@ __all__ = [
     "upsample_nearest2d",
     "_unique2",
     "var_mean",
+    "vector_norm",
     "vdot",
     "where_scalar_other",
     "where_scalar_self",
