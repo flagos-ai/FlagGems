@@ -295,6 +295,7 @@ from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
 from flag_gems.ops.replication_pad1d_backward import replication_pad1d_backward
+from flag_gems.ops.replication_pad3d_backward import replication_pad3d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
@@ -787,6 +788,7 @@ __all__ = [
     "replication_pad1d_backward",
     "replication_pad1d_out",
     "replication_pad3d",
+    "replication_pad3d_backward",
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
