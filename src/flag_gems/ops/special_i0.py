@@ -103,9 +103,7 @@ def _launch_special_i0(out: torch.Tensor, x: torch.Tensor):
 def special_i0(x: torch.Tensor):
     logger.debug("GEMS SPECIAL_I0")
     if x.device.type != flag_gems.device:
-        raise ValueError(
-            f"special_i0: input tensor must be on {flag_gems.device} device"
-        )
+        raise ValueError(f"special_i0: input tensor must be on {flag_gems.device} device")
     out_dtype = x.dtype if x.is_floating_point() else torch.get_default_dtype()
     out = torch.empty_like(x.to(dtype=out_dtype), dtype=out_dtype, device=x.device)
     _launch_special_i0(out, x)
