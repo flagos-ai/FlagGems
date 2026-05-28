@@ -33,7 +33,7 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
         # by forcing the redispatch path, which issues the warning internally.
         return False
     if _FLOAT8_E8M0FNU is not None and (
-        src.dtype == torch.float8_e8m0fnu or dst.dtype == torch.float8_e8m0fnu
+        src.dtype == _FLOAT8_E8M0FNU or dst.dtype == _FLOAT8_E8M0FNU
     ):
         # Triton does not support float8 yet, so defer to PyTorch which has a reference implementation.
         return False
@@ -85,8 +85,9 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         return torch.ops.aten.copy_.default.redispatch(
             _FALLBACK_KEYSET, dst, src, non_blocking
         )
+
     if _FLOAT8_E8M0FNU is not None and (
-        src.dtype == torch.float8_e8m0fnu or dst.dtype == torch.float8_e8m0fnu
+        src.dtype == _FLOAT8_E8M0FNU or dst.dtype == _FLOAT8_E8M0FNU
     ):
         return torch.ops.aten.copy_.default.redispatch(
             _FALLBACK_KEYSET, dst, src, non_blocking
