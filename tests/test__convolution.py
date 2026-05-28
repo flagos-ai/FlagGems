@@ -27,7 +27,7 @@ def test_accuracy__convolution(
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(inp)
+    ref_inp = to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
 
@@ -35,12 +35,12 @@ def test_accuracy__convolution(
         bias_tensor = torch.randn(
             [weight.shape[0]], dtype=dtype, device=flag_gems.device
         )
-        bias_ref = to_reference(bias_tensor)
+        bias_ref = to_reference(bias_tensor, True)
     else:
         bias_tensor = None
         bias_ref = None
 
-    ref_weight = to_reference(weight)
+    ref_weight = to_reference(weight, True)
 
     # Convert stride/padding/dilation to lists as expected by _convolution
     stride_list = [stride, stride]
@@ -62,7 +62,7 @@ def test_accuracy__convolution(
         False,  # deterministic
         True,  # cudnn_enabled
         True,  # allow_tf32
-    )
+    ).to(dtype)
 
     with flag_gems.use_gems():
         res_out = torch._convolution(
@@ -101,9 +101,9 @@ def test_accuracy__convolution_1d(monkeypatch, shape, kernel, stride, padding, d
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(inp)
+    ref_inp = to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    ref_weight = to_reference(weight)
+    ref_weight = to_reference(weight, True)
 
     stride_list = [stride]
     padding_list = [padding]
@@ -124,7 +124,7 @@ def test_accuracy__convolution_1d(monkeypatch, shape, kernel, stride, padding, d
         False,  # deterministic
         True,  # cudnn_enabled
         True,  # allow_tf32
-    )
+    ).to(dtype)
 
     with flag_gems.use_gems():
         res_out = torch._convolution(
@@ -165,10 +165,10 @@ def test_accuracy__convolution_3d(
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(inp)
+    ref_inp = to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    ref_weight = to_reference(weight)
+    ref_weight = to_reference(weight, True)
 
     stride_list = [stride, stride, stride]
     padding_list = [padding, padding, padding]
@@ -189,7 +189,7 @@ def test_accuracy__convolution_3d(
         False,  # deterministic
         True,  # cudnn_enabled
         True,  # allow_tf32
-    )
+    ).to(dtype)
 
     with flag_gems.use_gems():
         res_out = torch._convolution(
