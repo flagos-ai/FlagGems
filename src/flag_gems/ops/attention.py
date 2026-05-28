@@ -953,6 +953,14 @@ def scaled_dot_product_attention_backward(
         else 128
     )
     grid = (triton.cdiv(Q_CTX, max_block_n1), 1, BATCH * Q_HEAD)
+    grid = lambda meta: (
+        max(
+            triton.cdiv(KV_CTX, meta["BLOCK_N1"]), # _attn_bwd_dq traverse the key-value sequence
+            triton.cdiv(Q_CTX, meta["BLOCK_M2"]),  # _attn_bwd_dkdv traverse the query sequence
+        ),
+        1,
+        BATCH * Q_HEAD,
+    )
     # logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
     # logger.info(f"{M.shape=}")
 
