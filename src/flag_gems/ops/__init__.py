@@ -301,6 +301,7 @@ from flag_gems.ops.replication_pad3d_backward import replication_pad3d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
+from flag_gems.ops.relu6_backward import relu6_backward
 from flag_gems.ops.remainder import remainder, remainder_
 from flag_gems.ops.repeat import repeat
 from flag_gems.ops.repeat_interleave import (
@@ -786,6 +787,7 @@ __all__ = [
     "reflection_pad2d_out",
     "relu",
     "relu6",
+    "relu6_backward",
     "relu_",
     "remainder",
     "remainder_",
