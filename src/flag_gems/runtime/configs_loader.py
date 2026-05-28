@@ -162,12 +162,14 @@ class TunedConfigLoader(object):
             ]
 
         if op_name == "mm_general_tma":
+            group_m_values = ranges.get("GROUP_M", [8])
             return [
                 triton.Config(
                     {
                         "BLOCK_M": block_m,
                         "BLOCK_N": block_n,
                         "BLOCK_K": block_k,
+                        "GROUP_M": group_m,
                     },
                     num_stages=s,
                     num_warps=w,
@@ -176,6 +178,7 @@ class TunedConfigLoader(object):
                 for block_m in ranges["BLOCK_M"]
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
+                for group_m in group_m_values
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -407,11 +410,16 @@ class TunedConfigLoader(object):
                 "bmm", expand_yaml_path=self._get_expand_config_path("bmm")
             ),
             "bmm_sqmma": self._build_single_expand_spec("bmm_sqmma"),
-            "gemv": self._build_single_expand_spec("gemv"),
+            "gemv": self._build_single_expand_spec(
+                "gemv", expand_yaml_path=self._get_expand_config_path("gemv")
+            ),
             "mm": self._build_single_expand_spec(
                 "mm", expand_yaml_path=self._get_expand_config_path("mm")
             ),
-            "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
+            "mm_general_tma": self._build_single_expand_spec(
+                "mm_general_tma",
+                expand_yaml_path=self._get_expand_config_path("mm_general_tma"),
+            ),
             "mv": self._build_single_expand_spec(
                 "mv", expand_yaml_path=self._get_expand_config_path("mv")
             ),
@@ -424,7 +432,9 @@ class TunedConfigLoader(object):
             "w8a8_block_fp8_general_tma": self._build_single_expand_spec(
                 "w8a8_block_fp8_general_tma"
             ),
-            "mm_splitk": self._build_single_expand_spec("mm_splitk"),
+            "mm_splitk": self._build_single_expand_spec(
+                "mm_splitk", expand_yaml_path=self._get_expand_config_path("mm_splitk")
+            ),
             "sparse_attention": self._build_single_expand_spec("sparse_attention"),
         }
 
