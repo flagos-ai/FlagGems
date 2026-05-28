@@ -15,7 +15,7 @@ else:
 
 
 @pytest.mark.weight_norm
-@pytest.mark.skip(reason="Temporarily skip for ci")
+@pytest.mark.skip(reason="Issue #2860: fails assertion")
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

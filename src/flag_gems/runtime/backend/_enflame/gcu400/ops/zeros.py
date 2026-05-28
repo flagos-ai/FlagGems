@@ -33,8 +33,6 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
         dtype = torch.get_default_dtype()
     if device is None:
         device = torch.device(device_.name)
-    if dtype == torch.int64:
-        dtype = torch.int32
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
@@ -42,3 +40,12 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     with torch_device_fn.device(device):
         zeros_kernel[grid_fn](out, N, BLOCK_SIZE=1024 * 16, num_warps=1)
     return out
+
+
+def zero_(x: torch.Tensor) -> torch.Tensor:
+    logger.debug("GEMS ZERO_")
+    N = x.numel()
+    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), 24),)
+    with torch_device_fn.device(x.device):
+        zeros_kernel[grid_fn](x, N, BLOCK_SIZE=1024 * 16, num_warps=1)
+    return x

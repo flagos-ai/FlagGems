@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 @libentry()
 @triton.jit
 def count_nonzero_kernel_1(x_ptr, out_ptr, numel, BLOCK_SIZE: tl.constexpr):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < numel
@@ -28,7 +28,7 @@ def count_nonzero_kernel_1(x_ptr, out_ptr, numel, BLOCK_SIZE: tl.constexpr):
 @triton.autotune(configs=runtime.get_tuned_config("count_nonzero"), key=["numel"])
 @triton.jit
 def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
-    pid_x = tle.program_id(0)
+    pid_x = ext.program_id(0)
 
     nonzero_count = tl.full((), value=0, dtype=out_ptr.dtype.element_ty)
     for start_n in range(0, N, BLOCK_SIZE):
@@ -46,7 +46,7 @@ def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
 @triton.autotune(configs=runtime.get_tuned_config("count_nonzero"), key=["numel"])
 @triton.jit
 def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
-    pid_x = tle.program_id(0)
+    pid_x = ext.program_id(0)
     nonzero_count = tl.full((), value=0, dtype=out_ptr.dtype.element_ty)
     for start_n in range(0, N, BLOCK_SIZE):
         cols_offsets = start_n + tl.arange(0, BLOCK_SIZE)
@@ -62,8 +62,8 @@ def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.const
 def count_nonzero_combin_kernel(
     x_ptr, combin_ptr, N, combin_N, numel, BLOCK_SIZE: tl.constexpr
 ):
-    pid_x = tle.program_id(0)
-    pid_y = tle.program_id(1)
+    pid_x = ext.program_id(0)
+    pid_y = ext.program_id(1)
     cols_offsets = pid_y * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     offset = pid_x * N + cols_offsets
     mask = offset < numel and cols_offsets < N

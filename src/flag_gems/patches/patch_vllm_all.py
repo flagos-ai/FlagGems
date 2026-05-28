@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 
 import flag_gems
+from flag_gems.fused import top_k_per_row_prefill
 from flag_gems.patches.patch_util import patch_module_method, patch_vllm_lib
 
 
@@ -259,6 +260,30 @@ def custom_silu_and_mul(out: torch.Tensor, input: torch.Tensor):
     flag_gems.silu_and_mul_out(x, y, out)
 
 
+def custom_silu_and_mul_with_clamp(
+    out: torch.Tensor, input: torch.Tensor, limit: float
+):
+    d = input.size(-1) // 2
+    x, y = input.split(d, dim=-1)
+    flag_gems.silu_and_mul_with_clamp_out(x, y, out, limit)
+
+
+def custom_hc_head_fused_kernel(
+    hs_flat: torch.Tensor,
+    fn: torch.Tensor,
+    hc_scale: torch.Tensor,
+    hc_base: torch.Tensor,
+    out: torch.Tensor,
+    hidden_size: int,
+    rms_eps: float,
+    hc_eps: float,
+    hc_mult: int,
+):
+    return flag_gems.hc_head_fused_kernel(
+        hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
+    )
+
+
 def custom_moe_align_block_size(
     topk_ids: torch.Tensor,
     num_experts: int,
@@ -413,6 +438,14 @@ def custom_cutlass_scaled_mm(
     bias: torch.Tensor | None = None,
 ):
     return flag_gems.cutlass_scaled_mm(output, input, weight, scale_a, scale_b, bias)
+
+
+def custom_top_k_per_row_prefill(
+    logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
+):
+    top_k_per_row_prefill(
+        logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
+    )
 
 
 def custom_concat_and_cache_mla(
@@ -594,6 +627,8 @@ def apply_gems_patches_to_vllm(verbose=True):
     lib_patches = [
         ("_C", "rms_norm", custom_rms_norm_out),
         ("_C", "silu_and_mul", custom_silu_and_mul),
+        ("_C", "silu_and_mul_with_clamp", custom_silu_and_mul_with_clamp),
+        ("_C", "hc_head_fused_kernel", custom_hc_head_fused_kernel),
         ("_C", "cutlass_scaled_mm", custom_cutlass_scaled_mm),
         ("_moe_C", "moe_align_block_size", custom_moe_align_block_size),
         ("_moe_C", "topk_softmax", custom_topk_softmax),
@@ -602,6 +637,7 @@ def apply_gems_patches_to_vllm(verbose=True):
         ("_moe_C", "grouped_topk", custom_moe_grouped_topk),
         ("_C", "per_token_group_fp8_quant", custom_per_token_group_fp8_quant),
         ("_C", "apply_repetition_penalties_", custom_apply_repetition_penalties),
+        ("_C", "top_k_per_row_prefill", custom_top_k_per_row_prefill),
         ("_C_cache_ops", "concat_and_cache_mla", custom_concat_and_cache_mla),
     ]
     for lib_name, fn_name, fn in lib_patches:

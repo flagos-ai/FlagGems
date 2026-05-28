@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.shape_utils import volume
 
 logger = logging.getLogger("flag_gems." + __name__)
@@ -20,7 +20,7 @@ def full_kernel(
     FILL_VALUE_IS_PTR: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
@@ -48,7 +48,7 @@ def full_kernel_scale(
     fill_value,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < N

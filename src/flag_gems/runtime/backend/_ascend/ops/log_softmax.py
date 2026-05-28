@@ -7,9 +7,9 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -24,8 +24,8 @@ def log_softmax_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid_m = tle.program_id(0)
-    pid_k = tle.program_id(1)
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
     # TODO(chenfeiyu): consider float64 add add a utility function to get accumulator type
@@ -69,8 +69,8 @@ def log_softmax_backward_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid_m = tle.program_id(0)
-    pid_k = tle.program_id(1)
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
     scale = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
@@ -111,6 +111,33 @@ def log_softmax(self, dim, half_to_float=False):
     else:
         dtype = self.dtype
     out = torch.empty_like(inp, dtype=dtype)
+    K = inp.numel() // M // N
+
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        K,
+    )
+    with torch_device_fn.device(inp.device):
+        log_softmax_kernel[grid](
+            out,
+            inp,
+            M,
+            N,
+            K,
+        )
+    return out
+
+
+def log_softmax_out(self, dim, half_to_float=False, *, out):
+    logger.debug("GEMS_ASCEND LOG_SOFTMAX OUT")
+
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+    dim = dim % self.ndim
+    M = 1
+    N = self.shape[dim]
+    for i in range(dim):
+        M *= self.shape[i]
+    inp = self.contiguous()
     K = inp.numel() // M // N
 
     grid = lambda meta: (

@@ -42,7 +42,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems.utils import libentry, libtuner")
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils.shape_utils import volume")
-    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+    code.writeline("from flag_gems.utils import triton_lang_extension as ext")
 
     code.newline()
     code.newline()
@@ -153,7 +153,7 @@ def generate_index_wrapper(
     with code.indent():
         code.writeline("# convert all the inputs to int32 only if they are int64")
         code.writeline("if input.dtype == torch.int64:")
-        code.writeline("  if isinstance(input, StridedBuffer):")
+        code.writeline("  if _has_strided_buffer and isinstance(input, StridedBuffer):")
         code.writeline("    input.convert_to_int32()")
         code.writeline("  else:")
         code.writeline("    input = input.to(torch.int32)")
@@ -163,7 +163,7 @@ def generate_index_wrapper(
             )
             code.writeline(f"   indices[{i}] = indices[{i}].to(torch.int32)")
         code.writeline("if out.dtype == torch.int64:")
-        code.writeline("  if isinstance(out, StridedBuffer):")
+        code.writeline("  if _has_strided_buffer and isinstance(out, StridedBuffer):")
         code.writeline("    out.convert_to_int32()")
         code.writeline("  else:")
         code.writeline("    out = out.to(torch.int32)")
