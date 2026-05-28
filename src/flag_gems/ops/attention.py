@@ -690,40 +690,44 @@ def _attn_bwd(
         m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
         m = m[:, None]
 
-        # Causal boundary: for Q rows [start_m, start_m+BLOCK_M2), the diagonal
-        # is at column start_m (not pid*BLOCK_N1 which differs when BLOCK_N1 != BLOCK_M2)
-        end_n = min(start_m + BLOCK_M2, KV_CTX)
         MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
-        diag_n = start_m
-        num_steps = (end_n - diag_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
-        # Stage 1 - Compute dQ for masked (diagonal) blocks.
-        if num_steps > 0:
-            dq = _attn_bwd_dq(
-                dq,
-                query,
-                K,
-                V,  #
-                do,
-                m,
-                D,  #
-                stride_tok,
-                stride_d,  #
-                H,
-                Q_CTX,  #
-                KV_CTX,  #
-                BLOCK_M2,
-                MASK_BLOCK_N2,
-                BLOCK_DMODEL,  #
-                start_m,
-                diag_n,
-                num_steps,  #
-                MASK=True,  #
-            )
+        if IS_CAUSAL:
+            # Masked diagonal phase: KV columns [diag_n, end_n)
+            diag_n = start_m
+            end_n = min(start_m + BLOCK_M2, KV_CTX)
+            num_steps = (end_n - diag_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
-        # Stage 2 - non-masked blocks (columns before the diagonal)
-        stage2_end_n = diag_n
-        stage2_num_steps = (stage2_end_n + BLOCK_N2 - 1) // BLOCK_N2
+            if num_steps > 0:
+                dq = _attn_bwd_dq(
+                    dq,
+                    query,
+                    K,
+                    V,  #
+                    do,
+                    m,
+                    D,  #
+                    stride_tok,
+                    stride_d,  #
+                    H,
+                    Q_CTX,  #
+                    KV_CTX,  #
+                    BLOCK_M2,
+                    MASK_BLOCK_N2,
+                    BLOCK_DMODEL,  #
+                    start_m,
+                    diag_n,
+                    num_steps,  #
+                    MASK=True,  #
+                )
+
+            # Unmasked phase: KV columns [0, diag_n), all fully visible.
+            stage2_end_n = min(diag_n, KV_CTX)
+            stage2_num_steps = (stage2_end_n + BLOCK_N2 - 1) // BLOCK_N2
+        else:
+            # Non-causal: single unmasked pass over all KV columns.
+            stage2_num_steps = (KV_CTX + BLOCK_N2 - 1) // BLOCK_N2
+            stage2_end_n = stage2_num_steps * BLOCK_N2
 
         if stage2_num_steps > 0:
             dq = _attn_bwd_dq(
