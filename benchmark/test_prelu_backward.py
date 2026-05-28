@@ -20,7 +20,9 @@ class PreluBackwardBenchmark(base.Benchmark):
             # Per-channel weight (only if shape has channel dim)
             if len(shape) >= 2:
                 num_channels = shape[1]
-                per_channel_weight = torch.randn(num_channels, dtype=dtype, device=self.device)
+                per_channel_weight = torch.randn(
+                    num_channels, dtype=dtype, device=self.device
+                )
                 yield grad_output, x, per_channel_weight
 
 

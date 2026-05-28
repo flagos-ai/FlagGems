@@ -16,7 +16,9 @@ class ReplicationPad3dBackwardBenchmark(base.Benchmark):
             padding = (1, 1, 1, 1, 1, 1)
             D, H, W = shape[2], shape[3], shape[4]
             grad_output_shape = (shape[0], shape[1], D + 2, H + 2, W + 2)
-            grad_output = torch.randn(grad_output_shape, dtype=dtype, device=self.device)
+            grad_output = torch.randn(
+                grad_output_shape, dtype=dtype, device=self.device
+            )
             yield grad_output, x, padding
 
 

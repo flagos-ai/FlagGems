@@ -173,6 +173,8 @@ from flag_gems.ops.hadamard_transform import (
     hadamard_transform_28N,
     hadamard_transform_40N,
 )
+from flag_gems.ops.hardshrink import hardshrink
+from flag_gems.ops.hardshrink_backward import hardshrink_backward
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
 from flag_gems.ops.hardswish_ import hardswish_
 from flag_gems.ops.histc import histc
@@ -294,8 +296,6 @@ from flag_gems.ops.randperm import randperm
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
-from flag_gems.ops.replication_pad1d_backward import replication_pad1d_backward
-from flag_gems.ops.replication_pad3d_backward import replication_pad3d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
@@ -307,7 +307,9 @@ from flag_gems.ops.repeat_interleave import (
     repeat_interleave_tensor,
 )
 from flag_gems.ops.replication_pad1d import replication_pad1d, replication_pad1d_out
+from flag_gems.ops.replication_pad1d_backward import replication_pad1d_backward
 from flag_gems.ops.replication_pad3d import replication_pad3d
+from flag_gems.ops.replication_pad3d_backward import replication_pad3d_backward
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
@@ -850,6 +852,8 @@ __all__ = [
     "softshrink",
     "softshrink_out",
     "softshrink_backward",
+    "hardshrink",
+    "hardshrink_backward",
     "sort",
     "sort_stable",
     "special_i0e",
