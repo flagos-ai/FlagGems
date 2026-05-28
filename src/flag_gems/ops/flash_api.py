@@ -528,6 +528,7 @@ def mha_varlan_fwd(
             batch_size,
             num_heads,
         )
+        is_contiguous_kvcache = is_paged and k.stride(0) == block_size * k.stride(-3)
         kernel = flash_varlen_fwd_kernel[grid]
         args = tuple(getattr(params, k) for k in params.__slots__)
 
@@ -559,8 +560,8 @@ def mha_varlan_fwd(
             "BLOCK_K": triton.next_power_of_2(head_size),
             "num_warps": cfg["num_warps"](args),
             "num_stages": 1 if not is_paged else cfg["num_stages"](args),
+            "IS_CONTIGUOUS_KVCACHE": is_contiguous_kvcache,
         }
-
         logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
         kernel(*args, **cfg_params)
 
@@ -878,6 +879,7 @@ def mha_varlan_fwd_opt(
             batch_size,
             num_heads,
         )
+        is_contiguous_kvcache = is_paged and k.stride(0) == block_size * k.stride(-3)
         kernel = flash_varlen_fwd_kernel[grid]
         args = tuple(getattr(params, k) for k in params.__slots__)
 
@@ -909,8 +911,8 @@ def mha_varlan_fwd_opt(
             "BLOCK_K": triton.next_power_of_2(head_size),
             "num_warps": cfg["num_warps"](args),
             "num_stages": 1 if not is_paged else cfg["num_stages"](args),
+            "IS_CONTIGUOUS_KVCACHE": is_contiguous_kvcache,
         }
-
         logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
         kernel(*args, **cfg_params)
 
