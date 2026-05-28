@@ -584,8 +584,6 @@ def _attn_bwd(
     # dK/dV: only execute when this pid covers a valid KV block
     start_n = pid * BLOCK_N1
     if start_n < KV_CTX:
-        start_m = start_n
-
         dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
         dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
 
@@ -604,38 +602,44 @@ def _attn_bwd(
         )
 
         MASK_BLOCK_M1: tl.constexpr = BLOCK_M1 // BLK_SLICE_FACTOR
-        num_steps = BLOCK_N1 // MASK_BLOCK_M1
 
-        dk, dv = _attn_bwd_dkdv(
-            dk,
-            dv,  #
-            Q,
-            key,
-            value,
-            sm_scale,  #
-            DO,  #
-            M,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            MASK_BLOCK_M1,
-            BLOCK_N1,
-            BLOCK_DMODEL,  #
-            start_n,
-            start_m,
-            num_steps,  #
-            MASK=True,  #
-        )
+        # Causal: masked diagonal phase, then unmasked above-diagonal phase.
+        # Non-causal: skip masked phase, single unmasked pass over all Q rows.
+        if IS_CAUSAL:
+            start_m = start_n
+            num_steps = BLOCK_N1 // MASK_BLOCK_M1
+            dk, dv = _attn_bwd_dkdv(
+                dk,
+                dv,  #
+                Q,
+                key,
+                value,
+                sm_scale,  #
+                DO,  #
+                M,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                MASK_BLOCK_M1,
+                BLOCK_N1,
+                BLOCK_DMODEL,  #
+                start_n,
+                start_m,
+                num_steps,  #
+                MASK=True,  #
+            )
+            start_m += num_steps * MASK_BLOCK_M1
+        else:
+            start_m = 0
 
-        # Compute dK and dV for non-masked blocks.
-        start_m += num_steps * MASK_BLOCK_M1
+        # Unmasked phase (shared): traverse remaining Q rows.
         remaining_m = Q_CTX - start_m
         num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
         if num_steps > 0:
-            dk, dv = _attn_bwd_dkdv(  #
+            dk, dv = _attn_bwd_dkdv(
                 dk,
                 dv,  #
                 Q,
