@@ -6518,6 +6518,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: upsample_trilinear3d
+    description: Upsamples the input (NCDHW) using trilinear interpolation.
+    for:
+      - upsample_trilinear3d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: var
     description: Calculates the variance over all dimensions.
     for:

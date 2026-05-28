@@ -537,6 +537,7 @@ _FULL_CONFIG = (
     ("upsample_nearest1d", upsample_nearest1d),
     ("upsample_nearest2d", upsample_nearest2d),
     ("upsample_nearest3d", upsample_nearest3d),
+    ("upsample_trilinear3d", upsample_trilinear3d),
     ("var_mean.correction", var_mean),
     ("var", var),
     ("var.correction", var_correction),
