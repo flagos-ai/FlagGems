@@ -348,6 +348,7 @@ from flag_gems.ops.softmax import (
 )
 from flag_gems.ops.softplus import softplus
 from flag_gems.ops.softshrink import softshrink, softshrink_out
+from flag_gems.ops.softshrink_backward import softshrink_backward
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
@@ -838,6 +839,7 @@ __all__ = [
     "softplus",
     "softshrink",
     "softshrink_out",
+    "softshrink_backward",
     "sort",
     "sort_stable",
     "special_i0e",

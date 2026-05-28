@@ -490,6 +490,7 @@ _FULL_CONFIG = (
     ("softplus", softplus),
     ("softshrink", softshrink),
     ("softshrink.out", softshrink_out),
+    ("softshrink_backward", softshrink_backward),
     ("sort", sort),
     ("sort.stable", sort_stable),
     ("special_i0e", special_i0e),
