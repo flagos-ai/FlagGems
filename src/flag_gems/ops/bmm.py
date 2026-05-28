@@ -1,5 +1,4 @@
 import logging
-import os
 
 import torch
 import triton
@@ -15,19 +14,18 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs("bmm", pre_hook=None)
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else runtime.get_tuned_config("bmm"),
+    configs=runtime.get_tuned_config("bmm"),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("bmm")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
+    strategy=[
         "log",
         "log",
         "log",
         "align32",
         "align32",
     ],
+    flagtune_op_name="bmm",
+    flagtune_expand_op_name="bmm",
+    flagtune_pre_hook=None,
 )
 @triton.heuristics(runtime.get_heuristic_config("bmm"))
 @triton.jit

@@ -305,21 +305,15 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "mm_general_tma",
-        pre_hook=matmul_tma_set_block_size_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else matmul_get_configs(),
+    configs=matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=runtime.get_expand_config(
-        "mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=["align32", "align32", "align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
+    flagtune_op_name="mm",
+    flagtune_expand_op_name="mm_general_tma",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=matmul_tma_set_block_size_hook,
 )
 @triton.jit
 def mm_kernel_general_host_tma(
@@ -488,23 +482,19 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "gemv", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
+    configs=[
         triton.Config(
             {"BLOCK_M": 32, "BLOCK_K": 256},
         )
     ],
     key=["M", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "default"],
+    strategy=["align32", "align32", "align32", "default"],
     warmup=5,
     rep=10,
+    flagtune_op_name="mm",
+    flagtune_expand_op_name="gemv",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=None,
 )
 @triton.jit
 def gemv_kernel(
@@ -586,22 +576,16 @@ def gemv_mm(a, b, c, M, K):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "mm_splitk",
-        pre_hook=None,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else runtime.get_tuned_config("mm_splitk"),
+    configs=runtime.get_tuned_config("mm_splitk"),
     key=["M", "N", "K", "stride_am", "stride_bk"],
     reset_to_zero=["C"],
-    strategy=runtime.get_expand_config("mm_splitk", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=10,
+    flagtune_op_name="mm",
+    flagtune_expand_op_name="mm_splitk",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=None,
 )
 @triton.jit
 def mm_kernel_splitk(
