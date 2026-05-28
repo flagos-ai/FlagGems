@@ -39,9 +39,3 @@ def xlog1py_func(x, y):
 def special_xlog1py(A, B):
     logger.debug("GEMS SPECIAL_XLOG1PY")
     return xlog1py_func(A, B)
-
-
-def special_xlog1py_(A, B):
-    logger.debug("GEMS SPECIAL_XLOG1PY_")
-    xlog1py_func(A, B, out0=A)
-    return A

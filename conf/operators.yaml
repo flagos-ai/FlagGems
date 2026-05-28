@@ -5870,17 +5870,6 @@ ops:
       - Math
     stages:
       - alpha: '5.1'
-  - id: special_xlog1py_
-    description: The in-place version of `special_xlog1py()`.
-    for:
-      - special_xlog1py_
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.1'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
