@@ -239,10 +239,12 @@ from flag_gems.ops.max_pool3d_with_indices import (
     max_pool3d_with_indices,
 )
 from flag_gems.ops.maximum import maximum
+from flag_gems.ops.maximum_backward import maximum_backward
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
+from flag_gems.ops.minimum_backward import minimum_backward
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mul import mul, mul_
@@ -715,6 +717,7 @@ __all__ = [
     "max_pool3d_backward",
     "max_pool3d_with_indices",
     "maximum",
+    "maximum_backward",
     "mean",
     "mean_dim",
     "median",
@@ -724,6 +727,7 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
+    "minimum_backward",
     "mm",
     "mm_out",
     "mse_loss",
