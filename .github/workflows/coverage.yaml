@@ -102,7 +102,7 @@ jobs:
 
       - id: push-change
         if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
-        uses: ad-m/github-push-action@fdfe7e83ff42edf5d49846b69f3c78d806169d51  # v1.2.0
+        uses: ad-m/github-push-action@881a6320fdb16eb5318c5054f31c218aec2b324c  # v1.3.0
         with:
           branch: gh-pages
           github_token: ${{ secrets.GITHUB_TOKEN }}
