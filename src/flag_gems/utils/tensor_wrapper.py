@@ -90,6 +90,15 @@ class StridedBuffer:
     def dim(self):
         return self.ndim
 
+    def is_contiguous(self):
+        """Check if this buffer is C-contiguous."""
+        s = 1
+        for size, stride in zip(reversed(self.shape), reversed(self._strides)):
+            if size > 1 and stride != s:
+                return False
+            s *= max(size, 1)
+        return True
+
     def unwrap(self):
         return self._base
 

@@ -117,9 +117,12 @@ def randn_heur_num_warps(args):
 
 def softmax_heur_tile_k(args):
     MAX_TILE_K = 8192
-    NUM_SMS = torch.cuda.get_device_properties(
-        torch.cuda.current_device()
-    ).multi_processor_count
+    try:
+        NUM_SMS = torch.cuda.get_device_properties(
+            torch.cuda.current_device()
+        ).multi_processor_count
+    except Exception:
+        NUM_SMS = 64
     tile_k = 1
     upper_bound = min(args["K"], MAX_TILE_K)
     while tile_k <= upper_bound:
@@ -129,11 +132,30 @@ def softmax_heur_tile_k(args):
             tile_k *= 2
         else:
             break
+    # Cap tile_k to keep TILE_N x TILE_K within local memory budget.
+    # TILE_N will be next_power_of_2(N), and the non_inner 2D layout
+    # requires working buffers roughly TILE_N x TILE_K in size.
+    # BlockNum=4 CTAs share 256KB lmem (64KB per CTA).
+    # f32 needs a smaller budget than fp16/bf16 because ppl-compile
+    # lowering of f32 ops creates more intermediate LOCAL tensors.
+    min_tile_n = triton.next_power_of_2(args["N"])
+    input_dtype = args["input_ptr"].dtype
+    if input_dtype == torch.float32:
+        budget = 256  # f32: fewer elements to leave room for intermediates
+    else:
+        budget = 1024  # fp16/bf16: more efficient lowering
+    max_tile_k = max(1, budget // min_tile_n)
+    # Round down to power of 2 (TILE_K must be power of 2 for tl.arange)
+    max_tile_k = 1 << (max_tile_k.bit_length() - 1)
+    if tile_k > max_tile_k:
+        tile_k = max_tile_k
     return tile_k
 
 
 def softmax_heur_tile_n_non_inner(args):
-    return triton.cdiv(8192, args["TILE_K"])
+    # Always use next_power_of_2(N) so ONE_TILE_PER_CTA is True.
+    # TILE_K is capped to keep TILE_N x TILE_K within local memory.
+    return triton.next_power_of_2(args["N"])
 
 
 def softmax_heur_one_tile_per_cta(args):

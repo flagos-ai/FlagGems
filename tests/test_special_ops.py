@@ -1004,7 +1004,10 @@ def test_accuracy_repeat_interleave_tensor(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    repeats = torch.randint(0, 30, (shape[dim],), device=flag_gems.device)
+    if flag_gems.vendor_name == "sophgo":
+        repeats = torch.randint(0, 30, (shape[dim],), dtype=torch.int32, device=flag_gems.device)
+    else:
+        repeats = torch.randint(0, 30, (shape[dim],), device=flag_gems.device)
     ref_inp = to_reference(inp)
     ref_repeats = to_reference(repeats)
 

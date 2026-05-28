@@ -56,7 +56,13 @@ from .pow import (
     pow_tensor_tensor_,
 )
 from .rand import rand
+from .repeat import repeat
 from .rand_like import rand_like
+from .repeat_interleave import (
+    repeat_interleave_self_int,
+    repeat_interleave_self_tensor,
+    repeat_interleave_tensor,
+)
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
@@ -65,6 +71,7 @@ from .scatter import scatter, scatter_
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid
 from .slice_scatter import slice_scatter
+from .softmax import softmax
 from .stack import stack
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .tanh import tanh, tanh_
@@ -154,14 +161,19 @@ __all__ = [
     "rand",
     "rand_like",
     "randn",
+    "repeat",
     "randn_like",
     "randperm",
+    "repeat_interleave_self_int",
+    "repeat_interleave_self_tensor",
+    "repeat_interleave_tensor",
     "rms_norm",
     "scatter",
     "scatter_",
     "select_scatter",
     "sigmoid",
     "slice_scatter",
+    "softmax",
     "stack",
     "sum",
     "sum_dim",
