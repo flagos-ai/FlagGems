@@ -5882,6 +5882,17 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: special_softmax
+    description: Applies the softmax function to an n-dimensional input Tensor.
+    for:
+      - special_softmax
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
