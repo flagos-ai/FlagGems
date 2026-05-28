@@ -672,91 +672,90 @@ def _attn_bwd(
         dk_ptrs = DK + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
         tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
 
-    # THIS BLOCK DOES DQ:
+    # dQ: only execute when this pid covers a valid Q block
     MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
     start_m = pid * BLOCK_M2
-    end_n = min(start_m + BLOCK_M2, KV_CTX)  # Ensure end_n does not exceed N_CTX
-    num_steps = (end_n - start_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
-    offs_m = start_m + tl.arange(0, BLOCK_M2)
-    offs_m_mask = offs_m < Q_CTX
+    if start_m < Q_CTX:
+        # Causal boundary: for Q rows [start_m, start_m+BLOCK_M2), the diagonal
+        # is at column start_m (not pid*BLOCK_N1 which differs when BLOCK_N1 != BLOCK_M2)
+        diag_n = start_m
+        end_n = min(start_m + BLOCK_M2, KV_CTX)
+        num_steps = (end_n - diag_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
-    query = tl.load(
-        Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_m_mask[:, None],
-        other=0.0,
-    )
-    dq = tl.zeros([BLOCK_M2, BLOCK_DMODEL], dtype=tl.float32)
-    do = tl.load(
-        DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_m_mask[:, None],
-        other=0.0,
-    )
+        offs_m = start_m + tl.arange(0, BLOCK_M2)
+        offs_m_mask = offs_m < Q_CTX
 
-    m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
-    m = m[:, None]
-
-    # Stage 1 - Compute dQ for masked (diagonal) blocks.
-    # NOTE: This code scans each row of QK^T backward (from right to left,
-    # but inside each call to _attn_bwd_dq, from left to right), but that's
-    # not due to anything important.  I just wanted to reuse the loop
-    # structure for dK & dV above as much as possible.
-
-    if num_steps > 0:
-        dq = _attn_bwd_dq(
-            dq,
-            query,
-            K,
-            V,  #
-            do,
-            m,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M2,
-            MASK_BLOCK_N2,
-            BLOCK_DMODEL,  #
-            start_m,
-            start_n,
-            num_steps,  #
-            MASK=True,  #
+        query = tl.load(
+            Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            mask=offs_m_mask[:, None],
+            other=0.0,
+        )
+        dq = tl.zeros([BLOCK_M2, BLOCK_DMODEL], dtype=tl.float32)
+        do = tl.load(
+            DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            mask=offs_m_mask[:, None],
+            other=0.0,
         )
 
-    # Stage 2 - non-masked blocks
-    stage2_end_n = start_n
-    stage2_num_steps = (stage2_end_n + BLOCK_N2 - 1) // BLOCK_N2
+        m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
+        m = m[:, None]
 
-    if stage2_num_steps > 0:
-        dq = _attn_bwd_dq(
-            dq,
-            query,
-            K,
-            V,  #
-            do,
-            m,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M2,
-            BLOCK_N2,
-            BLOCK_DMODEL,  #
-            start_m,
-            stage2_end_n - stage2_num_steps * BLOCK_N2,
-            stage2_num_steps,  #
-            MASK=False,  #
-        )
-    # Write back dQ.
-    dq_ptrs = DQ + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
-    dq *= LN2
-    # tl.store(dq_ptrs, dq)
+        # Stage 1 - Compute dQ for masked (diagonal) blocks.
+        if num_steps > 0:
+            dq = _attn_bwd_dq(
+                dq,
+                query,
+                K,
+                V,  #
+                do,
+                m,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                BLOCK_M2,
+                MASK_BLOCK_N2,
+                BLOCK_DMODEL,  #
+                start_m,
+                diag_n,
+                num_steps,  #
+                MASK=True,  #
+            )
 
-    tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None])
+        # Stage 2 - non-masked blocks (columns before the diagonal)
+        stage2_end_n = diag_n
+        stage2_num_steps = (stage2_end_n + BLOCK_N2 - 1) // BLOCK_N2
+
+        if stage2_num_steps > 0:
+            dq = _attn_bwd_dq(
+                dq,
+                query,
+                K,
+                V,  #
+                do,
+                m,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                BLOCK_M2,
+                BLOCK_N2,
+                BLOCK_DMODEL,  #
+                start_m,
+                stage2_end_n - stage2_num_steps * BLOCK_N2,
+                stage2_num_steps,  #
+                MASK=False,  #
+            )
+
+        # Write back dQ.
+        dq_ptrs = DQ + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
+        dq *= LN2
+        tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None])
 
 
 def scaled_dot_product_attention_forward(
