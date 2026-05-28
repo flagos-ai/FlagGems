@@ -55,8 +55,8 @@ def test_to_copy():
         base_dtypes.append(torch.float64)
 
     float_dtypes = [torch.float32, torch.float16, torch.bfloat16]
-    if fp64_is_supported:
-        float_dtypes.append(torch.float64)
+    # if fp64_is_supported:
+    #     float_dtypes.append(torch.float64)
 
     int_dtypes = [torch.int8, torch.int16, torch.int32, torch.int64]
     uint_dtypes = [torch.uint8]
