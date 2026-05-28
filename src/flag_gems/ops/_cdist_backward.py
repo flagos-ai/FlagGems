@@ -95,7 +95,6 @@ def _cdist_backward_kernel(
 
 def _cdist_backward(grad, x1, x2, p, cdist):
     logger.debug("GEMS _cdist_backward")
-    assert x1.is_cuda and x2.is_cuda and grad.is_cuda and cdist.is_cuda
     assert x1.device == x2.device == grad.device == cdist.device
     assert x1.shape[0] == x2.shape[0] == grad.shape[0] == cdist.shape[0]
     assert x1.shape[2] == x2.shape[2]  # feature dim must match
