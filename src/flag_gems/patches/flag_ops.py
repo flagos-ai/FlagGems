@@ -86,7 +86,7 @@ def enable_flag_ops() -> None:
     for name, schema, impl_func in _FLAG_OPS_REGISTRY:
         if getattr(torch.ops.flag_ops, name, None) is None:
             _flag_ops_def_lib.define(schema)
-        _flag_ops_impl_lib.impl(name, impl_func, dispatch_key, allow_override=True)
+            _flag_ops_impl_lib.impl(name, impl_func, dispatch_key)
 
 
 __all__ = ["enable_flag_ops"]
