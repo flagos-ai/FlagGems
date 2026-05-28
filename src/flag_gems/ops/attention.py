@@ -584,60 +584,33 @@ def _attn_bwd(
     offs_k = tl.arange(0, BLOCK_DMODEL)
 
     start_n = pid * BLOCK_N1
-    start_m = start_n
-
     MASK_BLOCK_M1: tl.constexpr = BLOCK_M1 // BLK_SLICE_FACTOR
-    offs_n = start_n + tl.arange(0, BLOCK_N1)
-    offs_n_mask = offs_n < KV_CTX
 
-    dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
-    dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
+    # dK/dV: only execute when this pid covers a valid KV block
+    if start_n < KV_CTX:
+        start_m = start_n
 
-    # load K and V: they stay in SRAM throughout the inner loop.
-    key = tl.load(
-        K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_n_mask[:, None],
-        other=0.0,
-    )
-    value = tl.load(
-        V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_n_mask[:, None],
-        other=0.0,
-    )
+        offs_n = start_n + tl.arange(0, BLOCK_N1)
+        offs_n_mask = offs_n < KV_CTX
 
-    num_steps = BLOCK_N1 // MASK_BLOCK_M1
+        dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
+        dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
 
-    dk, dv = _attn_bwd_dkdv(
-        dk,
-        dv,  #
-        Q,
-        key,
-        value,
-        sm_scale,  #
-        DO,  #
-        M,
-        D,  #
-        stride_tok,
-        stride_d,  #
-        H,
-        Q_CTX,  #
-        KV_CTX,  #
-        MASK_BLOCK_M1,
-        BLOCK_N1,
-        BLOCK_DMODEL,  #
-        start_n,
-        start_m,
-        num_steps,  #
-        MASK=True,  #
-    )
+        # load K and V: they stay in SRAM throughout the inner loop.
+        key = tl.load(
+            K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            mask=offs_n_mask[:, None],
+            other=0.0,
+        )
+        value = tl.load(
+            V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            mask=offs_n_mask[:, None],
+            other=0.0,
+        )
 
-    # Compute dK and dV for non-masked blocks.
-    start_m += num_steps * MASK_BLOCK_M1
-    remaining_m = Q_CTX - start_m
-    num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
+        num_steps = BLOCK_N1 // MASK_BLOCK_M1
 
-    if num_steps > 0 and start_m < Q_CTX:
-        dk, dv = _attn_bwd_dkdv(  #
+        dk, dv = _attn_bwd_dkdv(
             dk,
             dv,  #
             Q,
@@ -652,23 +625,52 @@ def _attn_bwd(
             H,
             Q_CTX,  #
             KV_CTX,  #
-            BLOCK_M1,
+            MASK_BLOCK_M1,
             BLOCK_N1,
             BLOCK_DMODEL,  #
             start_n,
             start_m,
             num_steps,  #
-            MASK=False,  #
+            MASK=True,  #
         )
-    # tl.device_print("dv: ", dv)
 
-    dv_ptrs = DV + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
-    tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
+        # Compute dK and dV for non-masked blocks.
+        start_m += num_steps * MASK_BLOCK_M1
+        remaining_m = Q_CTX - start_m
+        num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
 
-    # Write back dK.
-    dk *= sm_scale
-    dk_ptrs = DK + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
-    tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
+        if num_steps > 0 and start_m < Q_CTX:
+            dk, dv = _attn_bwd_dkdv(  #
+                dk,
+                dv,  #
+                Q,
+                key,
+                value,
+                sm_scale,  #
+                DO,  #
+                M,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                BLOCK_M1,
+                BLOCK_N1,
+                BLOCK_DMODEL,  #
+                start_n,
+                start_m,
+                num_steps,  #
+                MASK=False,  #
+            )
+
+        dv_ptrs = DV + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
+        tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
+
+        # Write back dK.
+        dk *= sm_scale
+        dk_ptrs = DK + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
+        tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
 
     # THIS BLOCK DOES DQ:
     MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
