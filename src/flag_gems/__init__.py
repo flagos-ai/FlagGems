@@ -560,6 +560,8 @@ _FULL_CONFIG = (
     ("vstack", vstack),
     ("where.self", where_self),
     ("where.self_out", where_self_out),
+    ("where.Self_backward", where_self_backward),
+    ("where.Other_backward", where_other_backward),
     ("zero", zero),
     ("zero_", zero_),
     ("zero.out", zero_out),
