@@ -23,11 +23,6 @@ def _resize_kernel(src_ptr, dst_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def resize(inp: torch.Tensor, size, memory_format=None):
-    """
-    Wrapper for aten::resize
-    Resizes the input tensor to the specified size.
-    Note: Non-inplace resize is deprecated in PyTorch, but we still implement it.
-    """
     logger.debug("GEMS RESIZE")
 
     # Convert size to tuple if it's not already
@@ -54,23 +49,11 @@ def resize(inp: torch.Tensor, size, memory_format=None):
     return out
 
 
-# Store reference to torch.Tensor.resize_ before flag_gems registration
-_original_resize_method = torch.Tensor.resize_
-
-
 def resize_(inp: torch.Tensor, size, memory_format=None):
-    """
-    Wrapper for aten::resize_
-    In-place version of resize.
-    """
     logger.debug("GEMS RESIZE_")
 
-    # Convert size to tuple if it's not already
     if not isinstance(size, tuple):
         size = tuple(size)
 
-    # For in-place resize:
-    # Use original method to avoid recursion
-    # Note: resize_ is an instance method, need to pass self as first arg
-    _original_resize_method(inp, size, memory_format=memory_format)
+    inp.set_(inp.untyped_storage(), 0, size)
     return inp
