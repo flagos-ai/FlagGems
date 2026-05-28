@@ -285,6 +285,7 @@ _FULL_CONFIG = (
     ("index_select", index_select),
     ("isclose", isclose),
     ("isfinite", isfinite),
+    ("istft", istft),
     ("isin.Scalar_Tensor", isin),
     ("isin.Tensor_Scalar", isin),
     ("isin.Tensor_Tensor", isin),
