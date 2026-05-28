@@ -545,6 +545,29 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: as_strided_copy
+    description: |
+      Creates a contiguous copy of an `as_strided` view of the input tensor.
+    for:
+      - as_strided_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: as_strided_copy_out
+    description: A variant of `as_strided_copy()` that assigns the output to the `out` tensor.
+    for:
+      - as_strided_copy.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: assert_async
     description: |
       A utility used to perform data-dependent assertions on GPU tensors
@@ -925,6 +948,26 @@ ops:
     stages:
       - stable: '2.2'
     cpp: '4.0'
+  - id: cauchy
+    description: Draws random numbers from a Cauchy distribution.
+    for:
+      - cauchy.float
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
+  - id: cauchy_
+    description: Fills the tensor with numbers drawn from the Cauchy distribution.
+    for:
+      - cauchy_.float
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
   - id: ceil
     description: |
       Returns a new tensor with the ceil of the elements of `input`, the smallest integer greater than
@@ -1098,6 +1141,21 @@ ops:
       - Math
     stages:
       - alpha: '5.1'
+  - id: combine_topk_swa_indices
+    description: |
+      Combines compressed top-k sparse attention indices with sliding-window attention indices
+      for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.combine_topk_swa_indices
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: concat_and_cache_mla
     description: |
       Writes the latent and RoPE value into KV cache for Multi-head Latent Attention forward case.
@@ -1110,6 +1168,21 @@ ops:
       - Attention
     stages:
       - beta: '3.0'
+  - id: compute_global_topk_indices_and_lens
+    description: |
+      Converts local top-k sparse attention indices to global KV-cache indices and computes
+      valid top-k lengths for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.compute_global_topk_indices_and_lens
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: concatenate
     description: An alias of `cat()`.
     for:
@@ -1494,6 +1567,20 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.0'
+  - id: dequantize_and_gather_k_cache
+    description: |
+      Dequantizes FP8 K-cache entries and gathers them into a BF16 tensor for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.dequantize_and_gather_k_cache
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: dgeglu
     description: |
       Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid function.
@@ -2241,6 +2328,32 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: floor
+    description: |
+      Performs an element-wise floor operation, rounding each element of a tensor
+      down to the nearest integer less than or equal to itself.
+    for:
+      - floor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: floor_out
+    description: |
+      Performs an element-wise floor operation with output tensor, rounding each element
+      down to the nearest integer less than or equal to itself.
+    for:
+      - floor.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
   - id: floor_
     description: |
       Performs an in-place element-wise floor operation, rounding each element of a tensor
@@ -2465,6 +2578,20 @@ ops:
       - fused
       - vLLM
       - MoE
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: fused_q_kv_rmsnorm
+    description: |
+      Applies RMSNorm to Q and KV tensors in a single fused kernel for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.fused_q_kv_rmsnorm
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
     kind:
       - NeuralNetwork
     stages:
@@ -3370,6 +3497,18 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: log1p
+    description: |
+      Computes the natural logarithm of `1+x(y_i=log_e(x_i+1))` for each element in the input tensor.
+    for:
+      - log1p
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
   - id: log1p_
     description: |
       Computes the natural logarithm of `1+x(y_i=log_e(x_i+1))` for each element in the input tensor in-place.
@@ -3973,6 +4112,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: reflection_pad1d_backward
+    description: Computes the gradient of reflection_pad1d with respect to the input tensor.
+    for:
+      - reflection_pad1d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: smooth_l1_loss
     description: Compute the smooth L1 loss between input and target tensors.
     for:
@@ -4555,6 +4705,32 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: rad2deg
+    description: |
+      Converts each element from angles in radians to degrees.
+    for:
+      - rad2deg
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: rad2deg_
+    description: |
+      In-place version of rad2deg.
+    for:
+      - rad2deg_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: rand
     description: Returns a tensor filled with random numbers from a uniform distribution on the interval `[0,1)`.
     for:
@@ -4601,6 +4777,17 @@ ops:
       - Distribution
     stages:
       - stable: '2.1'
+  - id: randint
+    description: Returns a tensor filled with random integers generated uniformly between low (inclusive) and high (exclusive).
+    for:
+      - randint
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Distribution
+    stages:
+      - alpha: '5.1'
   - id: randperm
     description: Returns a random permutation of integers from `0` to `n - 1`.
     for:
