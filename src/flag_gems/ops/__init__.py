@@ -310,6 +310,10 @@ from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from flag_gems.ops.roll import roll
 from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
+from flag_gems.ops.rrelu_with_noise_functional import (
+    rrelu_with_noise_functional,
+    rrelu_with_noise_functional_,
+)
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.rsub import rsub_scalar, rsub_tensor
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
@@ -788,6 +792,8 @@ __all__ = [
     "round_out",
     "router_gemm",
     "rrelu_with_noise_backward",
+    "rrelu_with_noise_functional",
+    "rrelu_with_noise_functional_",
     "rsqrt",
     "rsqrt_",
     "rsub_scalar",
