@@ -5,7 +5,6 @@ import torch
 
 from . import base, consts, utils
 
-
 # SELU constants from PyTorch
 ALPHA = 1.6732632423543772848170429916717
 SCALE = 1.0507009873554804934193349852946

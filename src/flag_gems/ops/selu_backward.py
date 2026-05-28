@@ -4,7 +4,6 @@ import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
 
-
 # SELU constants from PyTorch
 ALPHA = 1.6732632423543772848170429916717
 SCALE = 1.0507009873554804934193349852946
@@ -23,6 +22,8 @@ def selu_backward_kernel(grad_output, x, _alpha, _scale):
     return tl.where(is_pos, pos_grad, neg_grad)
 
 
-def selu_backward(grad_output: torch.Tensor, input: torch.Tensor, alpha: float, scale: float):
+def selu_backward(
+    grad_output: torch.Tensor, input: torch.Tensor, alpha: float, scale: float
+):
     # alpha and scale are ignored (use constants)
     return selu_backward_kernel(grad_output, input, alpha, scale)

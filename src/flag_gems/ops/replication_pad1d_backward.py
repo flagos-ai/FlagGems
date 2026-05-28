@@ -106,8 +106,6 @@ def _launch_replication_pad1d_backward(
     return result
 
 
-def replication_pad1d_backward(
-    grad_output: torch.Tensor, input: torch.Tensor, padding
-):
+def replication_pad1d_backward(grad_output: torch.Tensor, input: torch.Tensor, padding):
     logger.debug("GEMS REPLICATION_PAD1D_BACKWARD")
     return _launch_replication_pad1d_backward(grad_output, input, padding)

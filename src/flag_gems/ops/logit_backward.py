@@ -17,5 +17,7 @@ def logit_backward_kernel(grad_output, x, eps):
     return grad_input
 
 
-def logit_backward(grad_output: torch.Tensor, input: torch.Tensor, eps: float | None = None):
+def logit_backward(
+    grad_output: torch.Tensor, input: torch.Tensor, eps: float | None = None
+):
     return logit_backward_kernel(grad_output, input, eps if eps is not None else 0.0)

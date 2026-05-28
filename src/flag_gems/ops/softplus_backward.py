@@ -20,5 +20,7 @@ def softplus_backward_kernel(grad_output, x, beta, threshold):
     return grad_input
 
 
-def softplus_backward(grad_output: torch.Tensor, input: torch.Tensor, beta: float, threshold: float):
+def softplus_backward(
+    grad_output: torch.Tensor, input: torch.Tensor, beta: float, threshold: float
+):
     return softplus_backward_kernel(grad_output, input, beta, threshold)

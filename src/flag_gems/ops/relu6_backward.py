@@ -14,5 +14,7 @@ def relu6_backward_kernel(grad_output, x, _inplace):
     return tl.where(mask, grad_output, 0.0)
 
 
-def relu6_backward(grad_output: torch.Tensor, input: torch.Tensor, inplace: bool = False):
+def relu6_backward(
+    grad_output: torch.Tensor, input: torch.Tensor, inplace: bool = False
+):
     return relu6_backward_kernel(grad_output, input, inplace)

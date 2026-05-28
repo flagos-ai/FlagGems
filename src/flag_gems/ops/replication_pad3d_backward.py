@@ -52,8 +52,10 @@ def replication_pad3d_backward_kernel(
 
     # Output offsets
     od_idx = offs_d
-    mask_out = (od_idx < D_out) & (offs_h[:, None, None] < H_out) & (
-        offs_w[None, None, :] < W_out
+    mask_out = (
+        (od_idx < D_out)
+        & (offs_h[:, None, None] < H_out)
+        & (offs_w[None, None, :] < W_out)
     )
 
     # Compute corresponding input indices (clamp for replication)
@@ -155,7 +157,14 @@ def _launch_replication_pad3d_backward(
     BLOCK_H = 8
     BLOCK_D = 2
 
-    if pad_l == 0 and pad_r == 0 and pad_t == 0 and pad_b == 0 and pad_f == 0 and pad_ba == 0:
+    if (
+        pad_l == 0
+        and pad_r == 0
+        and pad_t == 0
+        and pad_b == 0
+        and pad_f == 0
+        and pad_ba == 0
+    ):
         # No padding, just copy
         grid = lambda META: (N * C * D_in * H_in * triton.cdiv(W_in, BLOCK_W),)
         with torch_device_fn.device(x.device):
