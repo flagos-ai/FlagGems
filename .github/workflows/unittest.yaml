@@ -64,6 +64,7 @@ jobs:
     needs: preprocess
     if: (contains(needs.preprocess.outputs.labels, 'documentation') &&
       github.event.pull_request.merged == true)
+    runs-on: ubuntu-latest
     steps:
       - id: sync-gh-pages
         uses: ./.github/workflows/sync-docs.yaml
