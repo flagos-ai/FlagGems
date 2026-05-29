@@ -156,9 +156,65 @@ def resolve_user_setting(user_setting_info, user_setting_type="include"):
     return []
 
 
+# Precision-check skip set – derived from conf/operators.yaml
+
+_CONF_DIR = Path(__file__).resolve().parent.parent.parent / "conf"
+_OPERATORS_YAML = _CONF_DIR / "operators.yaml"
+
+_skip_precision_check_ops: "frozenset[str] | None" = None
+
+
+def get_skip_precision_check_ops() -> "frozenset[str]":
+    """Return the frozenset of operator base-names that carry the
+    ``skip_precision_check`` label in ``conf/operators.yaml``.
+
+    The set is built by scanning each entry under the top-level ``ops`` key;
+    if its ``labels`` list contains ``"skip_precision_check"``, every name in
+    its ``for`` field is included (with any overload suffix like ``.Tensor``
+    stripped to yield the base name).
+
+    The result is cached after the first call so subsequent imports are free.
+    """
+    global _skip_precision_check_ops
+    if _skip_precision_check_ops is not None:
+        return _skip_precision_check_ops
+
+    ops: set = set()
+    if _OPERATORS_YAML.is_file():
+        try:
+            data = yaml.safe_load(_OPERATORS_YAML.read_text())
+        except Exception as err:  # noqa: BLE001
+            warnings.warn(
+                f"get_skip_precision_check_ops: failed to read "
+                f"{_OPERATORS_YAML}: {err}"
+            )
+            _skip_precision_check_ops = frozenset()
+            return _skip_precision_check_ops
+
+        if isinstance(data, dict):
+            for entry in data.get("ops", []):
+                labels = entry.get("labels", [])
+                if "skip_precision_check" in labels:
+                    for op_name in entry.get("for", []):
+                        if op_name is None:
+                            continue
+                        # Extract base name (strip overload suffix)
+                        base = str(op_name).split(".")[0]
+                        ops.add(base)
+    else:
+        warnings.warn(
+            f"get_skip_precision_check_ops: operators.yaml not found at "
+            f"{_OPERATORS_YAML}"
+        )
+
+    _skip_precision_check_ops = frozenset(ops)
+    return _skip_precision_check_ops
+
+
 __all__ = [
     "aten_patch_list",
     "has_c_extension",
     "use_c_extension",
     "resolve_user_setting",
+    "get_skip_precision_check_ops",
 ]
