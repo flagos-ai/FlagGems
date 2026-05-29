@@ -731,7 +731,7 @@ def _attn_bwd(
         else:
             # Non-causal: single unmasked pass over all KV columns.
             stage2_num_steps = (KV_CTX + BLOCK_N2 - 1) // BLOCK_N2
-            stage2_end_n = stage2_num_steps * BLOCK_N2
+            stage2_end_n = KV_CTX
 
         if stage2_num_steps > 0:
             dq = _attn_bwd_dq(
@@ -751,7 +751,7 @@ def _attn_bwd(
                 BLOCK_N2,
                 BLOCK_DMODEL,  #
                 start_m,
-                stage2_end_n - stage2_num_steps * BLOCK_N2,
+                0,
                 stage2_num_steps,  #
                 MASK=False,  #
             )
