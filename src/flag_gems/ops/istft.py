@@ -256,7 +256,7 @@ def istft(
         win_length = n_fft
 
     if onesided is None:
-        onesided = not self.is_complex()
+        onesided = self.is_complex()
 
     *batch_dims, n_freq, n_frames = self.shape
 

@@ -13,19 +13,21 @@ class ISTFTBenchmark(Benchmark):
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:
             n_frames, n_fft, n_channels = shape
+            hop_length = n_fft // 4  # Default hop length
+            # PyTorch istft expects input shape: (n_channels, n_freq, n_frames) for onesided
             real = torch.randn(
-                (n_frames, n_fft // 2 + 1, n_channels),
+                (n_channels, n_fft // 2 + 1, n_frames),
                 device=self.device,
                 dtype=torch.float32,
             )
             imag = torch.randn(
-                (n_frames, n_fft // 2 + 1, n_channels),
+                (n_channels, n_fft // 2 + 1, n_frames),
                 device=self.device,
                 dtype=torch.float32,
             )
             x = torch.complex(real, imag)
             window = torch.hann_window(n_fft, device=self.device, dtype=torch.float32)
-            yield x, n_fft, None, None, window
+            yield x, n_fft, hop_length, n_fft, window
 
     def get_tflops(self, op, *args, **kwargs):
         x = args[0]
