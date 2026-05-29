@@ -136,25 +136,25 @@ case $VENDOR in
 
   mthreads)
     uv pip install -e .
-    uv pip install ".[mthreads,test]"
+    uv pip install ".[test]"
 
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.7.1+musa.4.0.0" \
-        "torch_musa==2.7.1" \
+        "torch==2.9.0" \
+        "torch_musa==2.9.0" \
         "numpy==1.26.4" \
-        "mkl==2024.0.0"
+        "triton==3.6.0+git89458660"
 
     # Replace flagtree with Triton if requested
-    if [ -n "${USE_TRITON}" ]; then
-      uv pip uninstall flagtree
-      uv pip uninstall triton
-      uv pip install --index $FLAGOS_PYPI \
-        "triton==3.1.0+musa1.4.6"
-    else
-      uv pip uninstall triton
-      uv pip install --index $FLAGOS_PYPI \
-        "flagtree==0.5.1+mthreads3.6"
-    fi
+    # if [ -n "${USE_TRITON}" ]; then
+    #   uv pip uninstall flagtree
+    #   uv pip uninstall triton
+    #   uv pip install --index $FLAGOS_PYPI \
+    #     "triton==3.6.0+git89458660"
+    # else
+    #   uv pip uninstall triton
+    #   uv pip install --index $FLAGOS_PYPI \
+    #     "flagtree==0.5.1+mthreads3.6"
+    # fi
     ;;
 
   nvidia)
