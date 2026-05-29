@@ -610,32 +610,38 @@ def _attn_bwd(
         # Causal: masked diagonal phase, then unmasked above-diagonal phase.
         # Non-causal: skip masked phase, single unmasked pass over all Q rows.
         if IS_CAUSAL:
+            # The causal mask is q_idx >= kv_idx, so for KV block starting at
+            # start_n, the first Q row that can attend is start_n itself.
             start_m = start_n
-            num_steps = BLOCK_N1 // MASK_BLOCK_M1
-            dk, dv = _attn_bwd_dkdv(
-                dk,
-                dv,  #
-                Q,
-                key,
-                value,
-                sm_scale,  #
-                DO,  #
-                M,
-                D,  #
-                stride_tok,
-                stride_d,  #
-                H,
-                Q_CTX,  #
-                KV_CTX,  #
-                MASK_BLOCK_M1,
-                BLOCK_N1,
-                BLOCK_DMODEL,  #
-                start_n,
-                start_m,
-                num_steps,  #
-                MASK=True,  #
-            )
-            start_m += num_steps * MASK_BLOCK_M1
+            # Clamp to valid Q range
+            if start_m < Q_CTX:
+                end_m = min(start_m + BLOCK_N1, Q_CTX)
+                num_steps = (end_m - start_m + MASK_BLOCK_M1 - 1) // MASK_BLOCK_M1
+                dk, dv = _attn_bwd_dkdv(
+                    dk,
+                    dv,  #
+                    Q,
+                    key,
+                    value,
+                    sm_scale,  #
+                    DO,  #
+                    M,
+                    D,  #
+                    stride_tok,
+                    stride_d,  #
+                    H,
+                    Q_CTX,  #
+                    KV_CTX,  #
+                    MASK_BLOCK_M1,
+                    BLOCK_N1,
+                    BLOCK_DMODEL,  #
+                    start_n,
+                    start_m,
+                    num_steps,  #
+                    MASK=True,  #
+                )
+                start_m += num_steps * MASK_BLOCK_M1
+            # else: start_n >= Q_CTX, no Q rows can attend to this KV block
         else:
             start_m = 0
 
@@ -698,7 +704,9 @@ def _attn_bwd(
 
         if IS_CAUSAL:
             # Masked diagonal phase: KV columns [diag_n, end_n)
-            diag_n = start_m
+            # diag_n is the KV position where the causal boundary starts for
+            # this Q block. Only needed when diag_n < KV_CTX.
+            diag_n = min(start_m, KV_CTX)
             end_n = min(start_m + BLOCK_M2, KV_CTX)
             num_steps = (end_n - diag_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
@@ -726,12 +734,10 @@ def _attn_bwd(
                 )
 
             # Unmasked phase: KV columns [0, diag_n), all fully visible.
-            stage2_end_n = min(diag_n, KV_CTX)
-            stage2_num_steps = (stage2_end_n + BLOCK_N2 - 1) // BLOCK_N2
+            stage2_num_steps = (diag_n + BLOCK_N2 - 1) // BLOCK_N2
         else:
             # Non-causal: single unmasked pass over all KV columns.
             stage2_num_steps = (KV_CTX + BLOCK_N2 - 1) // BLOCK_N2
-            stage2_end_n = KV_CTX
 
         if stage2_num_steps > 0:
             dq = _attn_bwd_dq(
