@@ -6532,6 +6532,7 @@ ops:
       - var
     labels:
       - aten
+      - KernelGen
     kind:
       - Tensor
     stages:
