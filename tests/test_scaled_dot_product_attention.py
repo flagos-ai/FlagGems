@@ -185,7 +185,6 @@ def test_scaled_dot_product_attention_legacy(
     utils.gems_assert_close(gems_result, torch_result, dtype)
 
 
-@pytest.mark.skip(reason="Issue #2848: Not working")
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="Issue #2849: Not working")
 @pytest.mark.skipif(
     flag_gems.vendor_name == "hygon", reason="Issue #2849: RuntimeError"
