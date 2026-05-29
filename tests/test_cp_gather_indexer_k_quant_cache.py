@@ -155,8 +155,13 @@ def _make_gather_metadata(seq_lens, block_size, device):
 @pytest.mark.parametrize(
     "seq_lens,block_size,head_dim,quant_block_size,extra_tokens",
     [
+        ([19], 16, 128, 128, 3),
         ([13, 7, 16], 8, 128, 128, 0),
         ([17, 1, 33, 9], 16, 512, 128, 5),
+        ([3] * 9, 16, 128, 128, 2),
+        ([2] * 33, 16, 512, 128, 4),
+        ([1] * 129, 16, 512, 128, 3),
+        ([1, 2, 3, 4] * 64, 16, 512, 128, 5),
     ],
 )
 @torch.inference_mode()

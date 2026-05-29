@@ -25,43 +25,92 @@ def _cp_gather_indexer_quant_cache_kernel(
     QUANT_BLOCK_SIZE: tl.constexpr,
     BATCH_BLOCK: tl.constexpr,
 ):
-    tid = tl.program_id(0)
+    tid = tl.program_id(0) * BATCH_BLOCK + tl.arange(0, BATCH_BLOCK)
     quant_block_id = tl.program_id(1)
-    batch_offsets = tl.arange(0, BATCH_BLOCK)
-    batch_mask = batch_offsets < batch_size
-    seq_starts = tl.load(cu_seqlen_ptr + batch_offsets, mask=batch_mask, other=0)
-    seq_ends = tl.load(cu_seqlen_ptr + batch_offsets + 1, mask=batch_mask, other=0)
-    in_batch = (tid >= seq_starts) & (tid < seq_ends) & batch_mask
-    batch_id = tl.max(tl.where(in_batch, batch_offsets, -1), axis=0)
-    if batch_id < 0:
-        return
 
-    batch_start = tl.load(cu_seqlen_ptr + batch_id)
+    if batch_size <= 16 or batch_size > 256:
+        BATCH_SCAN_SIZE: tl.constexpr = 8
+        batch_id = tl.full((BATCH_BLOCK,), -1, dtype=tl.int32)
+        for iter in tl.static_range(0, (batch_size + 7) // 8):
+            batch_offsets = iter * BATCH_SCAN_SIZE + tl.arange(0, BATCH_SCAN_SIZE)
+            batch_mask = batch_offsets < batch_size
+            seq_starts = tl.load(
+                cu_seqlen_ptr + batch_offsets, mask=batch_mask, other=0
+            )
+            seq_ends = tl.load(
+                cu_seqlen_ptr + batch_offsets + 1, mask=batch_mask, other=0
+            )
+            in_batch = (
+                (tid[:, None] >= seq_starts[None, :])
+                & (tid[:, None] < seq_ends[None, :])
+                & batch_mask[None, :]
+            )
+            batch_id = tl.maximum(
+                batch_id,
+                tl.max(tl.where(in_batch, batch_offsets[None, :], -1), axis=1),
+            )
+    else:
+        left = tl.full((BATCH_BLOCK,), 0, dtype=tl.int32)
+        right = tl.full((BATCH_BLOCK,), batch_size + 1, dtype=tl.int32)
+        if batch_size <= 32:
+            SEARCH_STEPS: tl.constexpr = 6
+        elif batch_size <= 64:
+            SEARCH_STEPS: tl.constexpr = 7
+        elif batch_size <= 128:
+            SEARCH_STEPS: tl.constexpr = 8
+        else:
+            SEARCH_STEPS: tl.constexpr = 9
+        for _ in tl.static_range(0, SEARCH_STEPS):
+            mid = (left + right) // 2
+            seq_start = tl.load(
+                cu_seqlen_ptr + mid,
+                mask=mid <= batch_size,
+                other=2147483647,
+            )
+            seq_start_before_token = seq_start <= tid
+            left = tl.where(seq_start_before_token, mid + 1, left)
+            right = tl.where(seq_start_before_token, right, mid)
+        batch_id = left - 1
+    valid_batch = (batch_id >= 0) & (batch_id < batch_size)
+    safe_batch_id = tl.minimum(tl.maximum(batch_id, 0), batch_size - 1)
+    batch_start = tl.load(cu_seqlen_ptr + safe_batch_id, mask=valid_batch, other=0)
+    batch_end = tl.load(cu_seqlen_ptr + safe_batch_id + 1, mask=valid_batch, other=0)
+    valid_tokens = valid_batch & (tid >= batch_start) & (tid < batch_end)
     batch_offset = tid - batch_start
-
     block_table_id = batch_offset // block_size
     block_offset = batch_offset % block_size
-    block_table_offset = batch_id * block_table_stride + block_table_id
-    block_id = tl.load(block_table_ptr + block_table_offset)
+    block_table_offset = safe_batch_id * block_table_stride + block_table_id
+    block_id = tl.load(block_table_ptr + block_table_offset, mask=valid_tokens, other=0)
 
     offsets = quant_block_id * QUANT_BLOCK_SIZE + tl.arange(0, QUANT_BLOCK_SIZE)
-    mask = offsets < HEAD_DIM
-    src_cache_offset = block_id * kv_cache_stride + block_offset * HEAD_DIM
+    mask = valid_tokens[:, None] & (offsets[None, :] < HEAD_DIM)
+    src_cache_offset = (
+        block_id[:, None].to(tl.int64) * kv_cache_stride
+        + block_offset[:, None].to(tl.int64) * HEAD_DIM
+    )
     src_scale_offset = (
         block_id * kv_cache_scale_stride
         + block_offset * num_quant_blocks
         + quant_block_id
     )
-    dst_offset = tid * k_fp8_stride
+    dst_offset = tid[:, None].to(tl.int64) * k_fp8_stride
 
     src_scale_ptr = kv_cache_scale_ptr + src_scale_offset
     src_cache_ptr = kv_cache_ptr + src_cache_offset
     dst_k_ptr = k_fp8_ptr + dst_offset
 
-    scale_val = tl.load(src_scale_ptr)
-    tl.store(k_scale_ptr + tid * num_quant_blocks + quant_block_id, scale_val)
-    val = tl.load(src_cache_ptr + offsets, mask=mask)
-    tl.store(dst_k_ptr + offsets, val, mask=mask)
+    scale_val = tl.load(
+        src_scale_ptr,
+        mask=valid_tokens,
+        other=0.0,
+    )
+    tl.store(
+        k_scale_ptr + tid * num_quant_blocks + quant_block_id,
+        scale_val,
+        mask=valid_tokens,
+    )
+    val = tl.load(src_cache_ptr + offsets[None, :], mask=mask)
+    tl.store(dst_k_ptr + offsets[None, :], val, mask=mask)
 
 
 def cp_gather_indexer_k_quant_cache(
@@ -87,9 +136,21 @@ def cp_gather_indexer_k_quant_cache(
     k_fp8 = k_fp8.view(torch.uint8)
     k_fp8_scale = k_fp8_scale.view(torch.float32)
     batch_size = block_table.shape[0]
-    batch_block = triton.next_power_of_2(batch_size)
+    if num_tokens < 32:
+        batch_block = 1
+    elif num_tokens < 64:
+        batch_block = 2
+    elif num_tokens < 128:
+        batch_block = 4
+    elif num_tokens < 256:
+        batch_block = 8
+    elif num_tokens < 512:
+        batch_block = 16
+    else:
+        batch_block = 32
 
-    _cp_gather_indexer_quant_cache_kernel[(num_tokens, num_quant_blocks)](
+    grid = (triton.cdiv(num_tokens, batch_block), num_quant_blocks)
+    _cp_gather_indexer_quant_cache_kernel[grid](
         k_cache_value,
         k_cache_scale,
         k_fp8,
