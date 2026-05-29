@@ -9,6 +9,8 @@ SUPPORTED_VENDORS=(
   "metax"
   "mthreads"
   "nvidia"
+  "spacemit"
+  "sunrise"
   "thead"
   "tsingmicro"
 )
@@ -23,6 +25,8 @@ declare -A PYTHON_SUPPORTED=(
   ["metax"]="3.12"
   ["mthreads"]="3.10"
   ["nvidia"]="3.12"
+  ["spacemit"]="3.12"
+  ["sunrise"]="3.10"
   ["tsingmicro"]="3.10"
 )
 
@@ -81,7 +85,7 @@ fi
 # Validate uv install
 printf "Checking uv ... "
 uv_version=$(uv --version 2>/dev/null | cut -d ' ' -f 2)
-if [ "$?" == 0 ];  then
+if [ -n "$uv_version" ];  then
   printf "uv ${uv_version} ${GREEN}[OK]${NC}\n"
 else
   printf "${RED}NOT FOUND${NC}\n"
@@ -99,7 +103,7 @@ if [ "$?" != 0 ]; then
   printf "$RED{FAILED]$NC\n"
   exit 1
 else
-  printf "$RED[OK]$NC\n"
+  printf "$GREEN[OK]$NC\n"
   source .venv/bin/activate
 fi
 

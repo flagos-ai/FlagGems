@@ -1,8 +1,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 
@@ -18,9 +16,6 @@ def _input_fn(b, m, n, k, dtype, device, b_column_major):
 
 @pytest.mark.bmm
 def test_bmm(monkeypatch):
-    if flag_gems.vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     bench = base.BlasBenchmark(
         op_name="bmm",
         input_fn=_input_fn,
@@ -44,9 +39,6 @@ def _input_fn_out(b, m, n, k, dtype, device, b_column_major):
 
 @pytest.mark.bmm_out
 def test_bmm_out(monkeypatch):
-    if flag_gems.vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     bench = base.BlasBenchmark(
         op_name="bmm_out",
         input_fn=_input_fn_out,
