@@ -5366,6 +5366,7 @@ ops:
       - scatter_.reduce
     labels:
       - aten
+      - KernelGen
     kind:
       - Tensor
     stages:
