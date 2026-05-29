@@ -1,3 +1,4 @@
+import math
 from typing import Generator
 
 import pytest
@@ -44,6 +45,22 @@ def test_cat():
     bench.run()
 
 
+class CatOutBenchmark(CatBenchmark):
+    """Limit shapes to avoid OOM: cat_out needs 3 inputs + 1 output (3x size)."""
+
+    MAX_ELEMENTS = 2**24
+
+    def set_more_shapes(self):
+        shapes = super().set_more_shapes()
+        return [s for s in shapes if math.prod(s) <= self.MAX_ELEMENTS]
+
+    def init_user_config(self):
+        super().init_user_config()
+        self.shapes = [
+            s for s in self.shapes if math.prod(s) <= self.MAX_ELEMENTS
+        ]
+
+
 def _cat_out_input_fn(shape, dtype, device):
     inp1 = utils.generate_tensor_input(shape, dtype, device)
     inp2 = utils.generate_tensor_input(shape, dtype, device)
@@ -62,7 +79,7 @@ def _cat_out_input_fn(shape, dtype, device):
 
 @pytest.mark.cat_out
 def test_cat_out():
-    bench = CatBenchmark(
+    bench = CatOutBenchmark(
         op_name="cat_out",
         input_fn=_cat_out_input_fn,
         torch_op=torch.cat,
