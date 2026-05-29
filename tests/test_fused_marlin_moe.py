@@ -14,7 +14,11 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused.fused_marlin_moe import QUANT_TYPE_UINT4B8, fused_marlin_moe
+from flag_gems.fused.fused_marlin_moe import (
+    QUANT_TYPE_UINT4B8,
+    QUANT_TYPE_UINT8B128,
+    fused_marlin_moe,
+)
 
 # -----------------------------------------------------------------------------
 # Local GPTQ uint4b8 quantization helper (self-contained, no vllm dependency).
@@ -54,6 +58,48 @@ def _gptq_quantize_uint4b8(w_2d, group_size):
     w_q_signed = torch.round(w_grouped / scales_fp).clamp(-7, 7)
     w_ref_grouped = (w_q_signed * scales_fp).to(w_2d.dtype)
     w_q_unsigned = (w_q_signed + 8).clamp(0, 15).to(torch.uint8)
+
+    w_ref = w_ref_grouped.reshape(out_dim, in_dim)
+    w_q_unsigned = w_q_unsigned.reshape(out_dim, in_dim)
+    scales = scales_fp.squeeze(-1).to(w_2d.dtype)
+    return w_ref, w_q_unsigned, scales
+
+
+QUANT_TYPE_UINT8B128_TAG = "uint8b128"
+
+
+def _gptq_quantize_uint8b128(w_2d, group_size):
+    """
+    Symmetric per-group INT8 quantization with +128 offset (GPTQ uint8b128).
+
+    Sister function to _gptq_quantize_uint4b8. Self-contained replacement for
+    vllm.quantize_weights(w, scalar_types.uint8b128, group_size, False, False).
+    Produces unpacked integer codes (each cell a byte in [1, 255], i.e.
+    signed [-127, 127] shifted by +128) plus the exact dequantized FP
+    reference, in the layout fused_moe_kernel_gptq_awq's W8A16 branch consumes
+    (no nibble packing — one byte per element).
+
+    Args:
+        w_2d: (out_dim, in_dim), fp16 or bf16.
+        group_size: int, must divide in_dim.
+
+    Returns:
+        w_ref:  (out_dim, in_dim), same dtype.  Dequantized reference values.
+        w_q_unsigned: (out_dim, in_dim), uint8.  Each cell in [1, 255].
+        scales: (out_dim, in_dim // group_size), same dtype as w_2d.
+    """
+    out_dim, in_dim = w_2d.shape
+    assert in_dim % group_size == 0
+    ng = in_dim // group_size
+
+    w_grouped = w_2d.reshape(out_dim, ng, group_size).to(torch.float32)
+    max_abs = w_grouped.abs().amax(dim=-1, keepdim=True)
+    # scale = max_abs / 127 (symmetric INT8 range [-127, 127] after +128 -> [1, 255])
+    scales_fp = (max_abs / 127.0).clamp(min=1e-8)
+
+    w_q_signed = torch.round(w_grouped / scales_fp).clamp(-127, 127)
+    w_ref_grouped = (w_q_signed * scales_fp).to(w_2d.dtype)
+    w_q_unsigned = (w_q_signed + 128).clamp(0, 255).to(torch.uint8)
 
     w_ref = w_ref_grouped.reshape(out_dim, in_dim)
     w_q_unsigned = w_q_unsigned.reshape(out_dim, in_dim)
@@ -129,6 +175,41 @@ def _quantize_moe_weight(w_fp, group_size):
     return w_q, w_ref, scales
 
 
+def _quantize_moe_weight_int8(w_fp, group_size):
+    """
+    Per-expert GPTQ uint8b128 quantization. Sister of _quantize_moe_weight
+    (which is INT4 packed). INT8 weights are one byte per element — no
+    nibble packing — so the output K-dim is in_dim, not in_dim // 2.
+
+    Args:
+        w_fp: (E, out_dim, in_dim), fp16 or bf16.
+
+    Returns:
+        w_q:    (E, out_dim, in_dim), uint8   (each cell in [1, 255])
+        w_ref:  (E, out_dim, in_dim), same dtype as w_fp
+        scales: (E, out_dim, in_dim // group_size), same dtype as w_fp
+    """
+    E, out_dim, in_dim = w_fp.shape
+    assert (
+        in_dim % group_size == 0
+    ), f"in_dim={in_dim} not divisible by group_size={group_size}"
+    w_q = torch.empty(E, out_dim, in_dim, device=w_fp.device, dtype=torch.uint8)
+    w_ref = torch.empty_like(w_fp)
+    scales = torch.empty(
+        E,
+        out_dim,
+        in_dim // group_size,
+        device=w_fp.device,
+        dtype=w_fp.dtype,
+    )
+    for e in range(E):
+        ref_e, q_e, sc_e = _gptq_quantize_uint8b128(w_fp[e], group_size)
+        w_q[e] = q_e
+        w_ref[e] = ref_e
+        scales[e] = sc_e
+    return w_q, w_ref, scales
+
+
 def _make_inputs(
     num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
 ):
@@ -170,6 +251,64 @@ def _make_inputs(
 
     w1_q, w1_ref, w1_scale = _quantize_moe_weight(w1_fp, GROUP_SIZE)
     w2_q, w2_ref, w2_scale = _quantize_moe_weight(w2_fp, GROUP_SIZE)
+
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+    topk_weights = topk_weights.to(dtype)
+
+    return (
+        hidden_states,
+        w1_q,
+        w2_q,
+        w1_ref,
+        w2_ref,
+        topk_weights,
+        topk_ids,
+        w1_scale,
+        w2_scale,
+    )
+
+
+def _make_inputs_int8(
+    num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
+):
+    """
+    Build all tensors for one W8A16 test case. Sister of _make_inputs.
+
+    Returns:
+        hidden_states          (M, K)        fp16/bf16
+        w1_q, w2_q             unpacked uint8     -> wrapper input
+        w1_ref, w2_ref         fp16/bf16          -> reference GEMM input
+        topk_weights, topk_ids
+        w1_scale, w2_scale     3D scales matching w1_q/w2_q
+    """
+    torch.manual_seed(0)
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+
+    w1_fp = (
+        torch.randn(
+            num_experts,
+            intermediate_size * 2,
+            hidden_size,
+            device=device,
+            dtype=dtype,
+        )
+        / 10.0
+    )
+    w2_fp = (
+        torch.randn(
+            num_experts,
+            hidden_size,
+            intermediate_size,
+            device=device,
+            dtype=dtype,
+        )
+        / 10.0
+    )
+
+    w1_q, w1_ref, w1_scale = _quantize_moe_weight_int8(w1_fp, GROUP_SIZE)
+    w2_q, w2_ref, w2_scale = _quantize_moe_weight_int8(w2_fp, GROUP_SIZE)
 
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
     topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
@@ -243,6 +382,43 @@ def test_fused_marlin_moe_vs_ref(config, dtype):
     torch.cuda.synchronize()
 
     rtol = 1e-1
+    atol = max(5e-2, ref.abs().max().item() * 1e-3)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.parametrize("config", QUICK_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_fused_marlin_moe_vs_ref_int8(config, dtype):
+    """Compare fused_marlin_moe (unpacked INT8) against PyTorch reference (dequant)."""
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+
+    (hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s) = _make_inputs_int8(
+        num_tokens,
+        num_experts,
+        hidden_size,
+        intermediate_size,
+        topk,
+        dtype,
+        device,
+    )
+    result = fused_marlin_moe(
+        hidden_states=hs,
+        w1=w1_q,
+        w2=w2_q,
+        bias1=None,
+        bias2=None,
+        w1_scale=w1s,
+        w2_scale=w2s,
+        topk_weights=tw,
+        topk_ids=ti,
+        quant_type_id=QUANT_TYPE_UINT8B128,
+    )
+    ref = _reference_swiglu_moe(hs, w1_ref, w2_ref, tw, ti)
+    torch.cuda.synchronize()
+    rtol = 1e-1
+    # INT8 should be tighter than INT4, but keep same tolerance for first cut;
+    # tighten after we confirm correctness.
     atol = max(5e-2, ref.abs().max().item() * 1e-3)
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 

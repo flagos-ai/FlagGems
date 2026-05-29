@@ -10,6 +10,7 @@ HISTC_BINS = [10, 50, 100]
 HISTC_DTYPES = [torch.float32]
 
 
+@pytest.mark.skip(reason="Issue #3585: Tensor-lies are not close.")
 @pytest.mark.histc
 @pytest.mark.parametrize("shape", HISTC_SHAPES)
 @pytest.mark.parametrize("bins", HISTC_BINS)

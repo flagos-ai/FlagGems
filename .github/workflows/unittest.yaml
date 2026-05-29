@@ -62,8 +62,9 @@ jobs:
 
   build-doc:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'documentation')
-    uses: ./.github/workflows/mkdocs.yaml
+    if: (contains(needs.preprocess.outputs.labels, 'documentation') &&
+      github.event.pull_request.merged == true)
+    uses: ./.github/workflows/sync-docs.yaml
 
   cpp-op:
     needs: preprocess

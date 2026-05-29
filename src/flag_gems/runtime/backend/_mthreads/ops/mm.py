@@ -51,17 +51,14 @@ def prev_multiple_of(a, b):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs("mm", yaml_path=EXPAND_CONFIG_FILENAME)
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else runtime.get_tuned_config("mm"),
+    configs=runtime.get_tuned_config("mm"),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("mm", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=5,
+    flagtune_op_name="mm",
+    flagtune_expand_op_name="mm",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
 )
 @triton.jit
 def mm_kernel(
@@ -148,20 +145,17 @@ def mm_kernel(
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs("gemv", yaml_path=EXPAND_CONFIG_FILENAME)
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
+    configs=[
         triton.Config({"BLOCK_M": 64, "BLOCK_K": 64}),
         triton.Config({"BLOCK_M": 128, "BLOCK_K": 64}),
     ],
     key=["M", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "default"],
+    strategy=["align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
+    flagtune_op_name="mm",
+    flagtune_expand_op_name="gemv",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
 )
 @triton.jit
 def gemv_kernel(
