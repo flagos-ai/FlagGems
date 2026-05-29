@@ -722,6 +722,7 @@ ops:
     labels:
       - aten
       - skip_precision_check
+      - KernelGen
     kind:
       - Tensor
     stages:
