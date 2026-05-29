@@ -64,6 +64,7 @@ def _gptq_quantize_uint4b8(w_2d, group_size):
     scales = scales_fp.squeeze(-1).to(w_2d.dtype)
     return w_ref, w_q_unsigned, scales
 
+
 QUANT_TYPE_UINT8B128_TAG = "uint8b128"
 
 
@@ -104,6 +105,7 @@ def _gptq_quantize_uint8b128(w_2d, group_size):
     w_q_unsigned = w_q_unsigned.reshape(out_dim, in_dim)
     scales = scales_fp.squeeze(-1).to(w_2d.dtype)
     return w_ref, w_q_unsigned, scales
+
 
 # -----------------------------------------------------------------------------
 # Shape configs.
@@ -172,6 +174,7 @@ def _quantize_moe_weight(w_fp, group_size):
         scales[e] = sc_e
     return w_q, w_ref, scales
 
+
 def _quantize_moe_weight_int8(w_fp, group_size):
     """
     Per-expert GPTQ uint8b128 quantization. Sister of _quantize_moe_weight
@@ -205,6 +208,7 @@ def _quantize_moe_weight_int8(w_fp, group_size):
         w_ref[e] = ref_e
         scales[e] = sc_e
     return w_q, w_ref, scales
+
 
 def _make_inputs(
     num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
@@ -265,6 +269,7 @@ def _make_inputs(
         w2_scale,
     )
 
+
 def _make_inputs_int8(
     num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
 ):
@@ -321,6 +326,7 @@ def _make_inputs_int8(
         w1_scale,
         w2_scale,
     )
+
 
 def _reference_swiglu_moe(hidden_states, w1_ref, w2_ref, topk_weights, topk_ids):
     """Naive but obviously-correct SwiGLU MoE reference, using dequantized weights."""
@@ -379,6 +385,7 @@ def test_fused_marlin_moe_vs_ref(config, dtype):
     atol = max(5e-2, ref.abs().max().item() * 1e-3)
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 
+
 @pytest.mark.parametrize("config", QUICK_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 def test_fused_marlin_moe_vs_ref_int8(config, dtype):
@@ -414,6 +421,7 @@ def test_fused_marlin_moe_vs_ref_int8(config, dtype):
     # tighten after we confirm correctness.
     atol = max(5e-2, ref.abs().max().item() * 1e-3)
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
 
 # -----------------------------------------------------------------------------
 # MVP guardrails: features the wrapper rejects must raise NotImplementedError.

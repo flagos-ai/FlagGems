@@ -67,6 +67,7 @@ def _wna16_quantize_per_expert(w_fp):
         scales[e] = sc_e
     return w_q, scales
 
+
 def _wna16_quantize_per_expert_int8(w_fp):
     """
     Per-expert GPTQ-style INT8 quantization for FlagGems wna16 kernel layout.
@@ -93,6 +94,7 @@ def _wna16_quantize_per_expert_int8(w_fp):
         scales[e] = sc_e
     return w_q, scales
 
+
 def _marlin_quantize_per_expert(w_fp):
     """
     Per-expert Marlin-layout INT4 quantization for vLLM's fused_marlin_moe.
@@ -114,6 +116,7 @@ def _marlin_quantize_per_expert(w_fp):
     scales = torch.stack(scales_l, dim=0).contiguous()
     return qweight, scales
 
+
 def _marlin_quantize_per_expert_int8(w_fp):
     """
     Per-expert Marlin-layout INT8 quantization for vLLM's fused_marlin_moe.
@@ -130,6 +133,7 @@ def _marlin_quantize_per_expert_int8(w_fp):
     qweight = torch.stack(qweight_l, dim=0).contiguous()
     scales = torch.stack(scales_l, dim=0).contiguous()
     return qweight, scales
+
 
 class FusedMarlinMoEBenchmark(base.Benchmark):
     """
@@ -294,6 +298,7 @@ def test_fused_marlin_moe():
     )
     bench.set_gems(_gems_call)
     bench.run()
+
 
 class FusedMarlinMoEBenchmarkInt8(base.Benchmark):
     """
