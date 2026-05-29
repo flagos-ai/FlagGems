@@ -7,7 +7,7 @@ from benchmark.base import Benchmark
 
 
 class ChunkGatedDeltaRuleFwdBenchmark(Benchmark):
-    DEFAULT_DTYPES = [torch.bfloat16]
+    DEFAULT_DTYPES = [torch.bfloat16, torch.float16]
     DEFAULT_SHAPES = [(64,), (128,), (256,), (512,), (1024,)]
     DEFAULT_SHAPE_DESC = "T"
 
