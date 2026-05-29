@@ -1,7 +1,5 @@
 import logging
 
-import torch
-
 from flag_gems.ops.sort import sort_stable
 
 logger = logging.getLogger(__name__)
