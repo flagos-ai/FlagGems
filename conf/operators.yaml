@@ -5127,6 +5127,7 @@ ops:
       - roll
     labels:
       - aten
+      - KernelGen
     kind:
       - BLAS
     stages:
