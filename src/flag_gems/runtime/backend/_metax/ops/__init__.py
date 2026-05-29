@@ -1,3 +1,4 @@
+from .LayerNorm import layer_norm
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
@@ -49,6 +50,7 @@ __all__ = [
     "index_put_",
     "index_select",
     "isin",
+    "layer_norm",
     "log_softmax",
     "log_softmax_backward",
     "matmul_bf16",
