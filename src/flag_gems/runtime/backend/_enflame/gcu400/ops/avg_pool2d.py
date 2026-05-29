@@ -3,6 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+
 from flag_gems.ops.avg_pool2d import _parse_pool_params, pool2d_output_size
 from flag_gems.utils import libentry
 

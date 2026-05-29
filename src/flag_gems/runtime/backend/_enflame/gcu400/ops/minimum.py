@@ -2,6 +2,7 @@ import logging
 
 import triton
 import triton.language as tl
+
 from flag_gems.runtime import device
 
 from ..utils.pointwise_dynamic import pointwise_dynamic

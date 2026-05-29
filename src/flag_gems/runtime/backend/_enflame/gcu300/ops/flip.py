@@ -2,6 +2,7 @@ import logging
 
 import torch
 import triton
+
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 from ..utils.pointwise_dynamic import pointwise_dynamic

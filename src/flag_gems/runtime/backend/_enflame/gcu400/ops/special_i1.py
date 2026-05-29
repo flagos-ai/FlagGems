@@ -1,9 +1,10 @@
 import logging
 
-import flag_gems
 import torch
 import triton
 import triton.language as tl
+
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 

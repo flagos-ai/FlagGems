@@ -3,10 +3,11 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from torch.nn import _reduction as _Reduction
+
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from torch.nn import _reduction as _Reduction
 
 from ...gcu300.utils.config_utils import MAX_GRID_DIM
 

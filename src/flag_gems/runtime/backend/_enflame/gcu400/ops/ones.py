@@ -3,6 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils.shape_utils import volume
 

@@ -3,9 +3,10 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from torch import Tensor
+
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, tl_extra_shim
-from torch import Tensor
 
 logger = logging.getLogger(__name__)
 

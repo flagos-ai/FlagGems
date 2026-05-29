@@ -5,11 +5,12 @@ from typing import Callable, List, Mapping
 
 import torch
 import triton
+from triton import language as tl
+
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.libentry import libentry
-from triton import language as tl
 
 logger = logging.getLogger(__name__)
 

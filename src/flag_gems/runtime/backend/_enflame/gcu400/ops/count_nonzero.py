@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+
 from flag_gems.utils import dim_compress
 
 _NP2 = triton.next_power_of_2

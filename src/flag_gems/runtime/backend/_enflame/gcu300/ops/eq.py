@@ -1,9 +1,10 @@
 import logging
 
-import flag_gems
 import torch
 import triton
 import triton.language as tl
+
+import flag_gems
 from flag_gems.runtime import device
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
