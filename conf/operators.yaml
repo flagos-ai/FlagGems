@@ -545,6 +545,29 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: as_strided_copy
+    description: |
+      Creates a contiguous copy of an `as_strided` view of the input tensor.
+    for:
+      - as_strided_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: as_strided_copy_out
+    description: A variant of `as_strided_copy()` that assigns the output to the `out` tensor.
+    for:
+      - as_strided_copy.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: assert_async
     description: |
       A utility used to perform data-dependent assertions on GPU tensors
@@ -699,6 +722,7 @@ ops:
     labels:
       - aten
       - skip_precision_check
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -710,6 +734,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Reduction
     stages:
@@ -2194,6 +2219,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -2229,6 +2255,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -2305,6 +2332,32 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: floor
+    description: |
+      Performs an element-wise floor operation, rounding each element of a tensor
+      down to the nearest integer less than or equal to itself.
+    for:
+      - floor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: floor_out
+    description: |
+      Performs an element-wise floor operation with output tensor, rounding each element
+      down to the nearest integer less than or equal to itself.
+    for:
+      - floor.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
   - id: floor_
     description: |
       Performs an in-place element-wise floor operation, rounding each element of a tensor
@@ -4398,6 +4451,7 @@ ops:
     labels:
       - aten
       - nn.functional
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -5080,6 +5134,7 @@ ops:
       - roll
     labels:
       - aten
+      - KernelGen
     kind:
       - BLAS
     stages:
@@ -5313,6 +5368,7 @@ ops:
       - scatter_.reduce
     labels:
       - aten
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -6334,6 +6390,7 @@ ops:
       - unique_consecutive
     labels:
       - aten
+      - KernelGen
     kind:
       - Distribution
     stages:
@@ -6477,6 +6534,7 @@ ops:
       - var
     labels:
       - aten
+      - KernelGen
     kind:
       - Tensor
     stages:
