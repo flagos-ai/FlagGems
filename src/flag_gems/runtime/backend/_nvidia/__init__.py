@@ -3,7 +3,7 @@ from backend_utils import VendorInfoBase
 vendor_info = VendorInfoBase(
     vendor_name="nvidia",
     device_name="cuda",
-    device_query_cmd="nvidia-smi",
+    device_query_cmd="",
 )
 
 ARCH_MAP = {
