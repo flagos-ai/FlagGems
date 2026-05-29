@@ -1,46 +1,60 @@
-from flag_gems.fused.apply_repetition_penalties import \
-    apply_repetition_penalties
+from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
 from flag_gems.fused.bincount import bincount
 from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
-from flag_gems.fused.cp_gather_indexer_k_quant_cache import \
-    cp_gather_indexer_k_quant_cache
+from flag_gems.fused.cp_gather_indexer_k_quant_cache import (
+    cp_gather_indexer_k_quant_cache,
+)
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
-from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import \
-    combine_topk_swa_indices
-from flag_gems.fused.deepseek_v4_attention_compute_global_topk_indices_and_lens import \
-    compute_global_topk_indices_and_lens
-from flag_gems.fused.deepseek_v4_attention_dequantize_and_gather_k_cache import \
-    dequantize_and_gather_k_cache
-from flag_gems.fused.deepseek_v4_attention_fused_q_kv_rmsnorm import \
-    fused_q_kv_rmsnorm
+from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
+    combine_topk_swa_indices,
+)
+from flag_gems.fused.deepseek_v4_attention_compute_global_topk_indices_and_lens import (
+    compute_global_topk_indices_and_lens,
+)
+from flag_gems.fused.deepseek_v4_attention_dequantize_and_gather_k_cache import (
+    dequantize_and_gather_k_cache,
+)
+from flag_gems.fused.deepseek_v4_attention_fused_q_kv_rmsnorm import fused_q_kv_rmsnorm
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
 from flag_gems.fused.FLA import (
-    chunk_gated_delta_rule_fwd, fused_recurrent_gated_delta_rule_fwd,
-    fused_recurrent_gated_delta_rule_packed_decode)
+    chunk_gated_delta_rule_fwd,
+    fused_recurrent_gated_delta_rule_fwd,
+    fused_recurrent_gated_delta_rule_packed_decode,
+)
 from flag_gems.fused.flash_mla import flash_mla
 from flag_gems.fused.flashmla_sparse import flash_mla_sparse_fwd
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
-from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import \
-    fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
+from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import (
+    fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
+)
 from flag_gems.fused.fused_inv_rope_fp8_quant import fused_inv_rope_fp8_quant
-from flag_gems.fused.fused_moe import (dispatch_fused_moe_kernel,
-                                       fused_experts_impl,
-                                       inplace_fused_experts,
-                                       invoke_fused_moe_triton_kernel,
-                                       outplace_fused_experts)
+from flag_gems.fused.fused_moe import (
+    dispatch_fused_moe_kernel,
+    fused_experts_impl,
+    inplace_fused_experts,
+    invoke_fused_moe_triton_kernel,
+    outplace_fused_experts,
+)
 from flag_gems.fused.geglu import dgeglu, geglu
 from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.grouped_topk import grouped_topk
 from flag_gems.fused.indexer_k_quant_and_cache import indexer_k_quant_and_cache
 from flag_gems.fused.instance_norm import instance_norm
-from flag_gems.fused.mhc import (hc_head_fused_kernel,
-                                 hc_head_fused_kernel_ref, mhc_bwd,
-                                 mhc_bwd_ref, mhc_post, mhc_pre,
-                                 sinkhorn_forward)
-from flag_gems.fused.moe_align_block_size import (moe_align_block_size,
-                                                  moe_align_block_size_triton)
+from flag_gems.fused.mhc import (
+    hc_head_fused_kernel,
+    hc_head_fused_kernel_ref,
+    mhc_bwd,
+    mhc_bwd_ref,
+    mhc_post,
+    mhc_pre,
+    sinkhorn_forward,
+)
+from flag_gems.fused.moe_align_block_size import (
+    moe_align_block_size,
+    moe_align_block_size_triton,
+)
 from flag_gems.fused.moe_sum import moe_sum
 from flag_gems.fused.outer import outer
 from flag_gems.fused.pack_seq import pack_seq_triton
@@ -52,7 +66,9 @@ from flag_gems.fused.rwkv_ka_fusion import rwkv_ka_fusion
 from flag_gems.fused.rwkv_mm_sparsity import rwkv_mm_sparsity
 from flag_gems.fused.silu_and_mul import silu_and_mul, silu_and_mul_out
 from flag_gems.fused.silu_and_mul_with_clamp import (
-    silu_and_mul_with_clamp, silu_and_mul_with_clamp_out)
+    silu_and_mul_with_clamp,
+    silu_and_mul_with_clamp_out,
+)
 from flag_gems.fused.skip_layernorm import skip_layer_norm
 from flag_gems.fused.sparse_attention import sparse_attn_triton
 from flag_gems.fused.swiglu import dswiglu, swiglu

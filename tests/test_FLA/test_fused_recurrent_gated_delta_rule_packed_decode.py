@@ -4,9 +4,9 @@ import torch
 import flag_gems
 
 try:
-    from sglang.srt.layers.attention.fla.fused_recurrent import \
-        fused_recurrent_gated_delta_rule_packed_decode as \
-        base_fused_recurrent_gated_delta_rule_packed_decode
+    from sglang.srt.layers.attention.fla.fused_recurrent import (
+        fused_recurrent_gated_delta_rule_packed_decode as base_fused_recurrent_gated_delta_rule_packed_decode,
+    )
 
     SGLANG_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency guard
@@ -87,10 +87,7 @@ class FusedRecurrentGatedDeltaRulePackedDecodeTestKit:
         dt_bias = torch.randn((HV,), device=device, dtype=dtype)
 
         initial_state = (
-            torch.randn(
-                (cfg["num_slots"], HV, K, V), device=device, dtype=dtype
-            )
-            * 0.1
+            torch.randn((cfg["num_slots"], HV, K, V), device=device, dtype=dtype) * 0.1
         )
         out = torch.empty((B, 1, HV, V), device=device, dtype=dtype)
 
@@ -169,9 +166,7 @@ def _reference_packed_decode_pytorch(
             dt_bias_val = dt_bias[i_hv].float()
 
             x = a_val + dt_bias_val
-            softplus_x = torch.where(
-                x <= 20.0, torch.log(1.0 + torch.exp(x)), x
-            )
+            softplus_x = torch.where(x <= 20.0, torch.log(1.0 + torch.exp(x)), x)
             g_val = -torch.exp(logA_val) * softplus_x
             decay = torch.exp(g_val)
             beta_val = torch.sigmoid(b_val)
@@ -215,34 +210,30 @@ def test_fused_recurrent_gated_delta_rule_packed_decode(cfg, B):
     base_initial = inputs["initial_state"].clone()
     base_out = inputs["out"].clone()
 
-    flag_out, flag_final = (
-        flag_gems.fused_recurrent_gated_delta_rule_packed_decode(
-            mixed_qkv=inputs["mixed_qkv"],
-            a=inputs["a"],
-            b=inputs["b"],
-            A_log=inputs["A_log"],
-            dt_bias=inputs["dt_bias"],
-            scale=inputs["scale"],
-            initial_state=flag_initial,
-            out=flag_out,
-            ssm_state_indices=inputs["ssm_state_indices"],
-            use_qk_l2norm_in_kernel=inputs["use_qk_l2norm_in_kernel"],
-        )
+    flag_out, flag_final = flag_gems.fused_recurrent_gated_delta_rule_packed_decode(
+        mixed_qkv=inputs["mixed_qkv"],
+        a=inputs["a"],
+        b=inputs["b"],
+        A_log=inputs["A_log"],
+        dt_bias=inputs["dt_bias"],
+        scale=inputs["scale"],
+        initial_state=flag_initial,
+        out=flag_out,
+        ssm_state_indices=inputs["ssm_state_indices"],
+        use_qk_l2norm_in_kernel=inputs["use_qk_l2norm_in_kernel"],
     )
 
-    base_out, base_final = (
-        base_fused_recurrent_gated_delta_rule_packed_decode(
-            mixed_qkv=inputs["mixed_qkv"],
-            a=inputs["a"],
-            b=inputs["b"],
-            A_log=inputs["A_log"],
-            dt_bias=inputs["dt_bias"],
-            scale=inputs["scale"],
-            initial_state=base_initial,
-            out=base_out,
-            ssm_state_indices=inputs["ssm_state_indices"],
-            use_qk_l2norm_in_kernel=inputs["use_qk_l2norm_in_kernel"],
-        )
+    base_out, base_final = base_fused_recurrent_gated_delta_rule_packed_decode(
+        mixed_qkv=inputs["mixed_qkv"],
+        a=inputs["a"],
+        b=inputs["b"],
+        A_log=inputs["A_log"],
+        dt_bias=inputs["dt_bias"],
+        scale=inputs["scale"],
+        initial_state=base_initial,
+        out=base_out,
+        ssm_state_indices=inputs["ssm_state_indices"],
+        use_qk_l2norm_in_kernel=inputs["use_qk_l2norm_in_kernel"],
     )
 
     # Output: single-step decode, tolerance relaxed for bfloat16 recurrence.
@@ -295,19 +286,17 @@ def test_fused_recurrent_gated_delta_rule_packed_decode_accuracy(cfg, B):
         use_qk_l2norm_in_kernel=inputs["use_qk_l2norm_in_kernel"],
     )
 
-    flag_out, flag_final = (
-        flag_gems.fused_recurrent_gated_delta_rule_packed_decode(
-            mixed_qkv=inputs["mixed_qkv"],
-            a=inputs["a"],
-            b=inputs["b"],
-            A_log=inputs["A_log"],
-            dt_bias=inputs["dt_bias"],
-            scale=inputs["scale"],
-            initial_state=flag_initial,
-            out=flag_out,
-            ssm_state_indices=inputs["ssm_state_indices"],
-            use_qk_l2norm_in_kernel=inputs["use_qk_l2norm_in_kernel"],
-        )
+    flag_out, flag_final = flag_gems.fused_recurrent_gated_delta_rule_packed_decode(
+        mixed_qkv=inputs["mixed_qkv"],
+        a=inputs["a"],
+        b=inputs["b"],
+        A_log=inputs["A_log"],
+        dt_bias=inputs["dt_bias"],
+        scale=inputs["scale"],
+        initial_state=flag_initial,
+        out=flag_out,
+        ssm_state_indices=inputs["ssm_state_indices"],
+        use_qk_l2norm_in_kernel=inputs["use_qk_l2norm_in_kernel"],
     )
 
     torch.testing.assert_close(flag_out, ref_out, rtol=1e-1, atol=2e-1)

@@ -11,9 +11,9 @@ import flag_gems
 from benchmark.base import Benchmark
 
 try:
-    from sglang.srt.layers.attention.fla.fused_recurrent import \
-        fused_recurrent_gated_delta_rule_packed_decode as \
-        base_fused_recurrent_gated_delta_rule_packed_decode
+    from sglang.srt.layers.attention.fla.fused_recurrent import (
+        fused_recurrent_gated_delta_rule_packed_decode as base_fused_recurrent_gated_delta_rule_packed_decode,
+    )
 
     SGLANG_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency guard
@@ -24,12 +24,8 @@ except ImportError:  # pragma: no cover - optional dependency guard
 def _torch_op_wrapper(*args, **kwargs):
     """Wrapper: falls back to FlagGems op when sglang is unavailable."""
     if SGLANG_AVAILABLE:
-        return base_fused_recurrent_gated_delta_rule_packed_decode(
-            *args, **kwargs
-        )
-    return flag_gems.fused_recurrent_gated_delta_rule_packed_decode(
-        *args, **kwargs
-    )
+        return base_fused_recurrent_gated_delta_rule_packed_decode(*args, **kwargs)
+    return flag_gems.fused_recurrent_gated_delta_rule_packed_decode(*args, **kwargs)
 
 
 class FusedRecurrentGatedDeltaRulePackedDecodeBenchmark(Benchmark):
@@ -78,10 +74,7 @@ class FusedRecurrentGatedDeltaRulePackedDecodeBenchmark(Benchmark):
         A_log = torch.randn((HV,), device=device, dtype=dtype)
         dt_bias = torch.randn((HV,), device=device, dtype=dtype)
         initial_state = (
-            torch.randn(
-                (self.num_slots, HV, K, V), device=device, dtype=dtype
-            )
-            * 0.1
+            torch.randn((self.num_slots, HV, K, V), device=device, dtype=dtype) * 0.1
         )
         out = torch.empty((B, 1, HV, V), device=device, dtype=dtype)
         ssm_state_indices = torch.zeros(B, device=device, dtype=torch.long)
