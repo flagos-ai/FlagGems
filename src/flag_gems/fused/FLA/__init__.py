@@ -3,9 +3,13 @@
 # the following copyright notice:
 # Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
 from flag_gems.fused.FLA.chunk import chunk_gated_delta_rule_fwd
-from flag_gems.fused.FLA.fused_recurrent import fused_recurrent_gated_delta_rule_fwd
+from flag_gems.fused.FLA.fused_recurrent import \
+    fused_recurrent_gated_delta_rule_fwd
+from flag_gems.fused.FLA.fused_recurrent_packed_decode import \
+    fused_recurrent_gated_delta_rule_packed_decode
 
 __all__ = [
     "chunk_gated_delta_rule_fwd",
     "fused_recurrent_gated_delta_rule_fwd",
+    "fused_recurrent_gated_delta_rule_packed_decode",
 ]

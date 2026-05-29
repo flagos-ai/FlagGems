@@ -2612,6 +2612,21 @@ ops:
       - Attention
     stages:
       - alpha: '5.0'
+  - id: fused_recurrent_gated_delta_rule_packed_decode
+    description: |
+      Triton fused packed decode for `fused_recurrent_gated_delta_rule` in Flash Linear Attention (FLA).
+      Hybrid dispatch with two dedicated kernels optimized for the decode phase with packed mixed_qkv input.
+    for:
+      - fused_recurrent_gated_delta_rule_packed_decode
+    labels:
+      - fused
+      - FLA
+      - sglang
+      - KernelGen
+    kind:
+      - Attention
+    stages:
+      - alpha: '5.1'
   - id: gather
     description: Gathers values along an axis specified by `dim`.
     for:
