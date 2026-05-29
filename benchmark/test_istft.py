@@ -38,7 +38,7 @@ class ISTFTBenchmark(Benchmark):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.istft
-def test_perf_istft():
+def test_istft():
     def torch_istft(x, n_fft, hop_length, win_length, window):
         return torch.istft(
             x, n_fft, hop_length, win_length, window, return_complex=False
