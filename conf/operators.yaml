@@ -733,6 +733,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Reduction
     stages:
