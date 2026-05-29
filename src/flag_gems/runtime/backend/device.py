@@ -81,11 +81,18 @@ class DeviceDetector:
             if 'NVIDIA' in prop.name.upper():
                 return 'nvidia'
 
-        return None
+        return False
 
     def _get_vendor_from_env(self):
-        vendor = os.environ.get("GEMS_VENDOR", None) or os.environ.get("FLAGGEMS_VENDOR", None) 
-        return vendor if vendor in self.vendor_list else None
+        if "PPU_SDK" in os.environ.keys():
+            return "ppu"    
+        
+        env_keys = ("GEMS_VENDOR", "FLAGGEMS_VENDOR", "GEMS_BACKEND", "FLAGGEMS_BACKEND")
+        for key in env_keys:
+            if key in os.environ:
+                return str(os.environ.get(key).lower())
+
+        return False
 
     def _get_vendor_from_sys(self):
         vendor_infos = backend.get_vendor_infos()
