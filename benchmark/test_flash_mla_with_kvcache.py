@@ -267,7 +267,9 @@ class FlashMLAWithKVCacheBenchmark(base.Benchmark):
 def test_flash_mla_with_kvcache():
     bench = FlashMLAWithKVCacheBenchmark(
         op_name="flash_mla_with_kvcache",
-        torch_op=None,
+        torch_op=_cuda_flash_mla,
         dtypes=[torch.bfloat16],
     )
+    bench.torch_op = bench.get_torch_op()
+    bench.gems_op = bench.get_gems_op()
     bench.run()

@@ -36,7 +36,7 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 # DeepSeek V4 MLA cache layout constants
-_HEAD_DIM = 512
+_HEAD_DIM = tl.constexpr(512)
 _NOPE_DIM = 448
 _ROPE_DIM = 64
 # FP8 NoPE (448 bytes) + BF16 RoPE (64 * 2 = 128 bytes)
@@ -46,9 +46,9 @@ _SCALE_BYTES = 8
 _HEAD_BYTES = _TOKEN_DATA_BYTES + _SCALE_BYTES  # 584
 
 # 1 / ln(2) for exp2-based softmax
-_LOG2E = 1.4426950408889634
+_LOG2E = tl.constexpr(1.4426950408889634)
 # ln(2) for converting log2 back to natural log
-_LN2 = 0.6931471805599453
+_LN2 = tl.constexpr(0.6931471805599453)
 
 
 def _get_split_tokens(max_topk):
