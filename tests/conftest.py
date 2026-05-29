@@ -175,18 +175,21 @@ def get_reason(report):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_logreport(report):
+    result = TEST_RESULTS.setdefault(
+        report.nodeid, {"params": None, "result": None, "opname": None}
+    )
     if report.when == "setup":
         if report.outcome == "skipped":
             reason = get_reason(report)
-            TEST_RESULTS[report.nodeid]["result"] = "skipped"
-            TEST_RESULTS[report.nodeid]["reason"] = reason
+            result["result"] = "skipped"
+            result["reason"] = reason
     elif report.when == "call":
-        TEST_RESULTS[report.nodeid]["result"] = report.outcome
+        result["result"] = report.outcome
         if report.outcome in ["skipped", "failed"]:
             reason = get_reason(report)
-            TEST_RESULTS[report.nodeid]["reason"] = reason
+            result["reason"] = reason
         else:
-            TEST_RESULTS[report.nodeid]["reason"] = None
+            result["reason"] = None
 
 
 def pytest_terminal_summary(terminalreporter):
