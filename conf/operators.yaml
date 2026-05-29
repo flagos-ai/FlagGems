@@ -3504,7 +3504,6 @@ ops:
       - log_normal_
     labels:
       - aten
-      - skip_precision_check
       - KernelGen
     kind:
       - Distribution
