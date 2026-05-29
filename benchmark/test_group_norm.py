@@ -67,9 +67,7 @@ class NormBackwardBenchmark(NormBenchmark):
 
     def init_user_config(self):
         super().init_user_config()
-        self.shapes = [
-            s for s in self.shapes if math.prod(s) <= self.MAX_ELEMENTS
-        ]
+        self.shapes = [s for s in self.shapes if math.prod(s) <= self.MAX_ELEMENTS]
 
 
 @pytest.mark.group_norm_backward
