@@ -5,8 +5,20 @@ import json
 import sys
 from pathlib import Path
 
-import consts
-
+DTYPE_MAP = {
+    "torch.float16": "fp16",
+    "torch.float32": "fp32",
+    "torch.bfloat16": "bf16",
+    "torch.complex64": "cf64",
+    "torch.int16": "int16",
+    "torch.int32": "int32",
+    "torch.int8": "int8",
+    "torch.uint8": "uint8",
+    "torch.int64": "int64",
+    "torch.bool": "bool",
+    "torch.float8_e4m3fn": "f8-e4m3fn",
+    "torch.float8_e5m2": "f8-e5m2",
+}
 DATA = {}
 DEBUG = False
 DATA_DIR = None
@@ -30,72 +42,6 @@ def format_record(fields):
     # markdown
     line = " | ".join(fields)
     return f"| {line} |"
-
-
-def parse_lines():
-    """Write result.
-
-    The layout is as follows:
-    <id>,<astatus>,<pass/fail/skip>,<pstatus>,<fp16>,<fp32>,<bf16>,<cf64>,<i16>,<i32>,<i64>,<note>
-    """
-    data = DATA.get("result", {})
-    lines = []
-    for op, item in data.items():
-        if ARGS.debug:
-            print(f"[DEBUG] processing {op}", file=sys.stderr)
-
-        fields = []
-        accu = item["accuracy"]["status"]
-        accud = "/".join(
-            [
-                str(item["accuracy"]["passed"]),
-                str(item["accuracy"]["failed"]),
-                str(item["accuracy"]["skipped"]),
-            ]
-        )
-        fields.extend([op, accu, accud])
-
-        perf_data = item["performance"]["data"]
-        perf_status = item["performance"]["status"]
-        if perf_status == "NotFound":
-            fields.append("NotFound")
-            fields.extend(
-                [""] * (len(consts.DTYPE_MAP) + 2)
-            )  # OPAverageSpeedUp + dtypes + note
-
-        elif perf_status in ["Failed", "Skipped"]:
-            reason = item["performance"]["reason"]
-            reason = reason.split("\n")[0]
-            fields.append(perf_status)
-            fields.extend(
-                [""] * (len(consts.DTYPE_MAP) + 1)
-            )  # OPAverageSpeedUp + dtypes
-            fields.append(f'"{reason}"')
-
-        else:
-            fields.append(perf_status)
-            speedup_values = []
-            for dtype in list(consts.DTYPE_MAP.values()):
-                dobj = perf_data.get(dtype, {})
-                speedup = dobj.get("speedup", None)
-                if speedup is None:
-                    fields.append("")
-                else:
-                    fields.append(f"{speedup:6.3f}")
-                    speedup_values.append(speedup)
-            # Compute avg_speedup
-            if speedup_values:
-                avg_speedup = sum(speedup_values) / len(speedup_values)
-                op_avg_field = f"{avg_speedup:6.3f}"
-            else:
-                op_avg_field = ""
-
-            fields.insert(4, op_avg_field)
-            fields.append("")  # note
-
-        lines.append(format_record(fields))
-
-    return sorted(lines)
 
 
 def parse_env():
@@ -175,6 +121,13 @@ def parse_single_accuracy():
         p = op_data.get("passed", 0)
         k = op_data.get("skipped", 0)
         f = op_data.get("failed", 0)
+        if s == "Passed":
+            s = f"<span style='color:Green'>{s}</span>"
+        else:
+            s = f"<span style='color:Red'>{s}</span>"
+        p = f"<span style='color:Green'>{p}</span>"
+        k = f"<span style='color:DeepPink'>{k}</span>"
+        f = f"<span style='color:Red'>{f}</span>"
         return f"| {s} | {d:6.2f} sec | {t} | {p} | {k} | {f} |"
 
     if ARGS.compare:
@@ -185,6 +138,9 @@ def parse_single_accuracy():
 
     op = list(data1.keys())[0]
     op_data1 = data1.get(op, {}).get("accuracy", {})
+    op_data2 = {}
+    if ARGS.compare:
+        op_data2 = data2.get(op, {}).get("accuracy", {})
 
     lines = []
     lines.append("### Accuracy Result")
@@ -204,21 +160,19 @@ def parse_single_accuracy():
         lines.append(summary1)
     else:
         lines.append("| **Before** " + summary1)
-
-        op_data2 = data2.get(op, {}).get("accuracy", {})
         summary2 = _compose_summary(op_data2)
         lines.append("| **After** " + summary2)
 
     lines.append("")
 
-    # Append failed and skipped cases if any
+    # Append failed and skipped cases if any, for the first run
     details = op_data1.get("details", {})
     case = " Before" if ARGS.compare else ""
     if op_data1.get("failed", 0) > 0:
-        f_lines = parse_single_accuracy_details(details, "Failed", case)
+        f_lines = parse_single_accuracy_details(details, "failed", case)
         lines.extend(f_lines)
     if op_data1.get("skipped", 0) > 0:
-        k_lines = parse_single_accuracy_details(details, "Skipped", case)
+        k_lines = parse_single_accuracy_details(details, "skipped", case)
         lines.extend(k_lines)
 
     if not ARGS.compare:
@@ -226,10 +180,10 @@ def parse_single_accuracy():
 
     details = op_data2.get("details", {})
     if op_data2.get("failed", 0) > 0:
-        f_lines = parse_single_accuracy_details(details, "Failed", " After")
+        f_lines = parse_single_accuracy_details(details, "failed", " After")
         lines.extend(f_lines)
     if op_data2.get("skipped", 0) > 0:
-        k_lines = parse_single_accuracy_details(details, "Skipped", " After")
+        k_lines = parse_single_accuracy_details(details, "skipped", " After")
         lines.extend(k_lines)
 
     return lines
@@ -242,10 +196,16 @@ def parse_single_performance():
         if status in ["Skipped", "Failed"]:
             reason = op_data1.get("reason", "Unknown")
             reason = "<blockquote>" + reason.replace("\n", "<br/>") + "</blockquote>"
+            if status == "Failed":
+                status = "<span style='color:Red'>Failed</span>"
+            else:
+                status = "<span style='color:DeepPink'>Skipped</span>"
             line = f"| {status} | {duration:6.2f} seconds | {reason} |"
         elif status == "NotFound":
+            status = f"<span style='color:Gray'>{status}</span>"
             line = f"| {status} | {duration:6.2f} seconds | *No test case found.* |"
         else:
+            status = f"<span style='color:Green'>{status}</span>"
             line = f"| {status} | {duration:6.2f} seconds | *All tests completed.* |"
 
         if case is None:
@@ -300,29 +260,45 @@ def parse_single_performance():
     for dtype, ddata1 in perf_data1.items():
         ddata2 = perf_data2.get(dtype, {})
         speedup1 = ddata1.get("speedup", 0)
-        line = f"| {dtype} | **{speedup1:.3f}** | - | - | - |"
         if ARGS.compare:
             speedup2 = ddata2.get("speedup", 0)
-            line = f"| {dtype} | **{speedup1:.3f} -> {speedup2:.3f}** |" "- | - | - |"
+            spd_str = f"**{speedup1:.3f} -> {speedup2:.3f}**"
+            if speedup2 > speedup1:
+                spd_str = f"<span style='color:Green'>**{spd_str}**</span>"
+            else:
+                spd_str = f"<span style='color:Red'>**{spd_str}**</span>"
+
+            line = f"| {dtype} | {spd_str} | - | - | - |"
+        else:
+            line = f"| {dtype} | **{speedup1:.3f}** | - | - | - |"
         lines.append(line)
 
         for shp, res1 in ddata1.get("details", {}).items():
             s1 = res1.get("speedup", 0)
             b1 = res1.get("base", 0)
             g1 = res1.get("gems", 0)
-            line = f"| | {s1:6.3f} | {b1:6.3f} | {g1:6.3f} | `{shp}` |"
 
             if ARGS.compare and shp in ddata2.get("details", {}):
                 res2 = ddata2.get("details").get(shp)
                 s2 = res2.get("speedup", 0)
                 b2 = res2.get("base", 0)
                 g2 = res2.get("gems", 0)
+
+                spd_str = f"{s1:.3f} -> {s2:.3f}"
+                if s2 > s1:
+                    spd_str = f"<span style='color:Green'>{spd_str}</span>"
+                else:
+                    spd_str = f"<span style='color:Red'>{spd_str}</span>"
+
                 line = (
-                    f"| | {s1:6.3f} -> {s2:6.3f} |"
-                    f" {b1:6.3f} -> {b2:6.3f} |"
-                    f" {g1:6.3f} -> {g2:6.3f} |"
+                    f"| | {spd_str} |"
+                    f" {b1:.3f} -> {b2:.3f} |"
+                    f" {g1:.3f} -> {g2:.3f} |"
                     f" `{shp}` |"
                 )
+            else:
+                line = f"| | {s1:6.3f} | {b1:6.3f} | {g1:6.3f} | `{shp}` |"
+
             lines.append(line)
 
         # Deal with case where dtype in _after_ but not in _before_
@@ -334,15 +310,92 @@ def parse_single_performance():
                 b2 = res2.get("base", 0)
                 g2 = res2.get("gems", 0)
                 line = (
-                    f"| | 0 -> {s2:6.3f} |"
-                    f" 0 -> {b2:6.3f} |"
-                    f" 0 -> {g2:6.3f} |"
+                    f"| | 0 -> {s2:.3f} |"
+                    f" 0 -> {b2:.3f} |"
+                    f" 0 -> {g2:.3f} |"
                     f" `{shp}` |"
                 )
                 lines.append(line)
 
     lines.append("")
     return lines
+
+
+def parse_lines():
+    """Write result.
+
+    The layout is as follows:
+    <id>,<astatus>,<pass/fail/skip>,<pstatus>,[<metric for each dtype>],<note>
+    """
+    data = DATA.get("result", {})
+    lines = []
+    for op, item in data.items():
+        if ARGS.debug:
+            print(f"[DEBUG] processing {op}", file=sys.stderr)
+
+        fields = []
+        accu = item["accuracy"]["status"]
+        accud = "/".join(
+            [
+                str(item["accuracy"]["passed"]),
+                str(item["accuracy"]["failed"]),
+                str(item["accuracy"]["skipped"]),
+            ]
+        )
+        fields.extend([op, accu, accud])
+
+        perf_data = item["performance"]["data"]
+        perf_status = item["performance"]["status"]
+        if perf_status == "NotFound":
+            fields.append("NotFound")
+            fields.extend([""] * (len(DTYPE_MAP) + 1))
+
+        elif perf_status in ["Failed", "Skipped"]:
+            reason = item["performance"]["reason"]
+            reason = reason.split("\n")[0]
+            fields.append(perf_status)
+            fields.extend([""] * (len(DTYPE_MAP)))
+            fields.append(f'"{reason}"')
+
+        else:
+            fields.append(perf_status)
+            metric_list = []
+            for dtype in list(DTYPE_MAP.values()):
+                dobj = perf_data.get(dtype, {})
+
+                if ARGS.metric == "speedup":
+                    # Process `speedup`
+                    metric = dobj.get("speedup", None)
+                else:
+                    # Process `base` by averaging across all shapes
+                    total = 0
+                    count = 0
+                    for sdata in dobj.get("details", {}).values():
+                        total += sdata.get("base", 0)
+                        count += 1
+
+                    if count == 0:
+                        metric = None
+                    else:
+                        metric = total / count
+
+                if metric is None:
+                    fields.append("")
+                else:
+                    fields.append(f"{metric:.3f}")
+                    metric_list.append(metric)
+
+            if len(metric_list) > 0:
+                metric_avg = sum(metric_list) / len(metric_list)
+                fields.append(f"{metric_avg:.3f}")
+            else:
+                fields.append("")
+            # The note column
+            fields.append("")
+
+        lines.append(format_record(fields))
+
+    return sorted(lines)
 
 
 def parse_single():
@@ -361,10 +414,9 @@ def parse_multi():
             "AccRes",
             "AccStat(pass/fail/skip)",
             "PerfRes",
-            "OPAverageSpeedUp",
         ]
-        + list(consts.DTYPE_MAP.values())
-        + ["Note"]
+        + list(DTYPE_MAP.values())
+        + ["PerfAvg", "Note"]
     )
 
     # Add sequence number to each sorted line
@@ -420,6 +472,13 @@ def main():
         "--debug",
         action=argparse.BooleanOptionalAction,
         help="flag for printing verbose information for debugging",
+    )
+    parser.add_argument(
+        "-m",
+        "--metric",
+        choices=["speedup", "base"],
+        default="speedup",
+        help="metric to summarize from the summary JSON",
     )
 
     ARGS = parser.parse_args()
