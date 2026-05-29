@@ -1,8 +1,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 
 
@@ -19,9 +17,6 @@ def _input_fn(b, m, n, k, dtype, device, b_column_major):
 
 @pytest.mark.addmm
 def test_addmm(monkeypatch):
-    if flag_gems.vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     bench = base.BlasBenchmark(
         op_name="addmm",
         input_fn=_input_fn,
@@ -49,9 +44,6 @@ def _input_fn_dtype(b, m, n, k, dtype, device, b_column_major):
     reason="The operator addmm.dtype was added starting from 2.8.0",
 )
 def test_addmm_dtype(monkeypatch):
-    if flag_gems.vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     bench = base.BlasBenchmark(
         op_name="addmm_dtype",
         input_fn=_input_fn_dtype,
@@ -80,9 +72,6 @@ def _input_fn_dtype_out(b, m, n, k, dtype, device, b_column_major):
     reason="The operator addmm.dtype_out was added starting from 2.8.0",
 )
 def test_addmm_dtype_out(monkeypatch):
-    if flag_gems.vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     bench = base.BlasBenchmark(
         op_name="addmm",
         input_fn=_input_fn_dtype_out,
@@ -109,9 +98,6 @@ def _input_fn_out(b, m, n, k, dtype, device, b_column_major):
 
 @pytest.mark.addmm_out
 def test_addmm_out(monkeypatch):
-    if flag_gems.vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     bench = base.BlasBenchmark(
         op_name="addmm_out",
         input_fn=_input_fn_out,

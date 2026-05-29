@@ -7,7 +7,6 @@ import triton
 import triton.language as tl
 from triton.tools.tensor_descriptor import TensorDescriptor
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
@@ -73,17 +72,9 @@ def matmul_get_configs():
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else matmul_get_configs(),
+    configs=matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=5,
 )
@@ -377,24 +368,8 @@ def w8a8_block_fp8_matmul(
     a_2d = A.reshape(M, K)
     as_2d = As.reshape(M, As.shape[-1])
     c_2d = c.reshape(M, N)
-    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
-    os.environ["MUSA_ENABLE_SQMMA"] = "1"
-    try:
-        if is_sqmma_compatible(a_2d, B, output_dtype, N, K):
-            return sqmma_w8a8_block_fp8_matmul(
-                a_2d,
-                B,
-                c_2d,
-                as_2d,
-                Bs,
-                M,
-                N,
-                K,
-                block_n,
-                block_k,
-            ).reshape(c.shape)
-
-        return general_w8a8_block_fp8_matmul(
+    if is_sqmma_compatible(a_2d, B, output_dtype, N, K):
+        return sqmma_w8a8_block_fp8_matmul(
             a_2d,
             B,
             c_2d,
@@ -406,8 +381,16 @@ def w8a8_block_fp8_matmul(
             block_n,
             block_k,
         ).reshape(c.shape)
-    finally:
-        if prev_sqmma is None:
-            os.environ.pop("MUSA_ENABLE_SQMMA", None)
-        else:
-            os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+
+    return general_w8a8_block_fp8_matmul(
+        a_2d,
+        B,
+        c_2d,
+        as_2d,
+        Bs,
+        M,
+        N,
+        K,
+        block_n,
+        block_k,
+    ).reshape(c.shape)
