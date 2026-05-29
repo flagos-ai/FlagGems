@@ -68,26 +68,34 @@ class DeviceDetector:
     def _get_vendor_from_quick_cmd(self):
         try:
             import torch_npu
+
             torch_module = torch_npu
         except ImportError:
             torch_module = torch
 
         for vendor_name, attr in _VENDOR_TORCH_ATTR.items():
-            if hasattr(torch, attr):
+            if hasattr(torch_module, attr):
                 return str(vendor_name)
-            
-        if hasattr(torch, "cuda") and hasattr(torch.cuda, "get_device_properties"):
-            prop = torch.cuda.get_device_properties(0)
-            if 'NVIDIA' in prop.name.upper():
-                return 'nvidia'
+
+        if hasattr(torch_module, "cuda") and hasattr(
+            torch_module.cuda, "get_device_properties"
+        ):
+            prop = torch_module.cuda.get_device_properties(0)
+            if "NVIDIA" in prop.name.upper():
+                return "nvidia"
 
         return False
 
     def _get_vendor_from_env(self):
         if "PPU_SDK" in os.environ.keys():
-            return "ppu"    
-        
-        env_keys = ("GEMS_VENDOR", "FLAGGEMS_VENDOR", "GEMS_BACKEND", "FLAGGEMS_BACKEND")
+            return "ppu"
+
+        env_keys = (
+            "GEMS_VENDOR",
+            "FLAGGEMS_VENDOR",
+            "GEMS_BACKEND",
+            "FLAGGEMS_BACKEND",
+        )
         for key in env_keys:
             if key in os.environ:
                 return str(os.environ.get(key).lower())
