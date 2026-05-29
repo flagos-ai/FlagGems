@@ -202,7 +202,7 @@ from .softmax import softmax, softmax_backward
 from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
-from .square import square
+from .square import square, square_
 from .sqrt import sqrt, sqrt_
 from .stack import stack
 from .std import std
@@ -507,6 +507,7 @@ __all__ = [
     "sort",
     "sort_stable",
     "square",
+    "square_",
     "sqrt",
     "sqrt_",
     "stack",

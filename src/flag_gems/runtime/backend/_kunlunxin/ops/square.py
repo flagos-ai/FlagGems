@@ -31,5 +31,9 @@ def square_out(A, *, out=None):
 
 def square_(A):
     logger.debug("GEMS SQUARE_")
+    if A.dtype == torch.bfloat16:
+        square_func(A.float(), out0=A)
+        A = A.bfloat16()
+        return A
     square_func(A, out0=A)
     return A
