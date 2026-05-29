@@ -4,7 +4,7 @@ import torch
 import flag_gems
 from flag_gems.utils import shape_utils
 
-from . import base
+from . import base, consts
 
 
 class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
@@ -52,6 +52,18 @@ def scatter_input_fn_factory(reduce=None):
     return inner
 
 
+def scatter_reduce_input_fn_factory(reduce="sum"):
+    def inner(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        dim = -1
+        size_dim = shape[dim]
+        index = torch.randint(0, size_dim, shape, dtype=torch.long, device=device)
+        src = torch.randn(shape, dtype=dtype, device=device)
+        yield inp, dim, index, src, {"reduce": reduce}
+
+    return inner
+
+
 def scatter_inplace_input_fn_factory(reduce=None):
     def inner(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
@@ -84,7 +96,7 @@ def test_scatter_reduce_add():
         torch_op=torch.scatter,
         input_fn=scatter_input_fn_factory("add"),
         get_gbps=gather_scatter_gbps,
-        dtypes=[torch.float32],
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
@@ -96,7 +108,7 @@ def test_scatter_reduce_multiply():
         torch_op=torch.scatter,
         input_fn=scatter_input_fn_factory("multiply"),
         get_gbps=gather_scatter_gbps,
-        dtypes=[torch.float16, torch.float32],
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
@@ -108,7 +120,7 @@ def test_scatter_reduce_add_inplace():
         torch_op=torch.Tensor.scatter_,
         input_fn=scatter_inplace_input_fn_factory("add"),
         get_gbps=gather_scatter_gbps,
-        dtypes=[torch.float16, torch.float32],
+        dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
     bench.run()
@@ -121,7 +133,31 @@ def test_scatter_reduce_multiply_inplace():
         torch_op=torch.Tensor.scatter_,
         input_fn=scatter_inplace_input_fn_factory("multiply"),
         get_gbps=gather_scatter_gbps,
-        dtypes=[torch.float16, torch.float32],
+        dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_reduce_two
+def test_scatter_reduce_two_sum():
+    bench = TensorSelectBenchmark(
+        op_name="scatter_reduce.two",
+        torch_op=torch.scatter_reduce,
+        input_fn=scatter_reduce_input_fn_factory("sum"),
+        get_gbps=gather_scatter_gbps,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_reduce_two
+def test_scatter_reduce_two_amax():
+    bench = TensorSelectBenchmark(
+        op_name="scatter_reduce.two",
+        torch_op=torch.scatter_reduce,
+        input_fn=scatter_reduce_input_fn_factory("amax"),
+        get_gbps=gather_scatter_gbps,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

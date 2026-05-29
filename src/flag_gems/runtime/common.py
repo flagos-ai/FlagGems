@@ -1,4 +1,3 @@
-import os
 from enum import Enum
 
 
@@ -60,17 +59,6 @@ UNSUPPORT_INT64 = frozenset(
     }
 )
 
-DEFAULT_EXPAND_CONFIG_PATH = os.path.normpath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "utils",
-        "configs",
-        "general_ops_expand_configs.yaml",
-    )
-)
-
-
 DEFAULT_STRATEGIES = {
     "addmm": ["align32", "align32", "align32"],
     "addmm_sqmma": ["align32", "align32", "align32"],
@@ -111,6 +99,7 @@ DEFAULT_STRATEGIES = {
         "align32",
         "default",
     ],
+    "mm_splitk": ["align32", "align32", "align32", "align32", "align32"],
 }
 
 OP_KEY_ORDERS = {
@@ -127,6 +116,7 @@ OP_KEY_ORDERS = {
     "w8a8_block_fp8_general": ["M", "N", "K", "stride_am", "stride_bk"],
     "w8a8_block_fp8_general_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
     "w8a8_block_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    "mm_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
 }
 
 
