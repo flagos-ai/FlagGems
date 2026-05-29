@@ -91,7 +91,7 @@ class DeviceDetector:
 
     def _get_vendor_from_env(self):
         if "PPU_SDK" in os.environ.keys():
-            return "ppu"
+            return "thead"
 
         env_keys = (
             "GEMS_VENDOR",
