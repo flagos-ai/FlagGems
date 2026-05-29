@@ -6384,6 +6384,7 @@ ops:
       - unique_consecutive
     labels:
       - aten
+      - KernelGen
     kind:
       - Distribution
     stages:
