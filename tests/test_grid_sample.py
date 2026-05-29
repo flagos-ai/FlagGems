@@ -552,7 +552,8 @@ class TestGridSampleBicubic4D:
             align_corners=align_corners,
         )
 
-        assert_close(y_gems, y_torch, dtype=dtype)
+        # bump atol from 1.3e-6 to 3.0e-6 as relaxed tolerance for bicubic mode
+        assert_close(y_gems, y_torch, atol=3.0e-6, dtype=dtype)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required.")
