@@ -20,18 +20,9 @@ MAX_GRID = 48
 # Dim-reduction kernels (reduce along last dim after dim_compress)
 # ============================================================
 
-
 @libentry()
 @triton.jit(do_not_specialize=["M", "N"])
-def l2_norm_dim_kernel(
-    X,
-    Out,
-    M,
-    N,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    num_stages: tl.constexpr = 1,
-):
+def l2_norm_dim_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, num_stages: tl.constexpr = 1):
     pid = tl.program_id(0)
     step = tl.num_programs(0)
     num_tiles = (M + BLOCK_M - 1) // BLOCK_M
@@ -53,15 +44,7 @@ def l2_norm_dim_kernel(
 
 @libentry()
 @triton.jit(do_not_specialize=["M", "N"])
-def max_norm_dim_kernel(
-    X,
-    Out,
-    M,
-    N,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    num_stages: tl.constexpr = 1,
-):
+def max_norm_dim_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, num_stages: tl.constexpr = 1):
     pid = tl.program_id(0)
     step = tl.num_programs(0)
     num_tiles = (M + BLOCK_M - 1) // BLOCK_M
@@ -82,15 +65,7 @@ def max_norm_dim_kernel(
 
 @libentry()
 @triton.jit(do_not_specialize=["M", "N"])
-def min_norm_dim_kernel(
-    X,
-    Out,
-    M,
-    N,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    num_stages: tl.constexpr = 1,
-):
+def min_norm_dim_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, num_stages: tl.constexpr = 1):
     pid = tl.program_id(0)
     step = tl.num_programs(0)
     num_tiles = (M + BLOCK_M - 1) // BLOCK_M
@@ -102,9 +77,7 @@ def min_norm_dim_kernel(
         for off in range(0, N, BLOCK_N):
             cols = off + tl.arange(0, BLOCK_N)[None, :]
             mask = (m_offset < M) & (cols < N)
-            a = tl.load(X + m_offset * N + cols, mask, other=float("inf")).to(
-                tl.float32
-            )
+            a = tl.load(X + m_offset * N + cols, mask, other=float("inf")).to(tl.float32)
             _min = tl.minimum(tl.abs(a), _min)
 
         result = tl.min(_min, axis=1)[:, None]
@@ -113,15 +86,7 @@ def min_norm_dim_kernel(
 
 @libentry()
 @triton.jit(do_not_specialize=["M", "N"])
-def l0_norm_dim_kernel(
-    X,
-    Out,
-    M,
-    N,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    num_stages: tl.constexpr = 1,
-):
+def l0_norm_dim_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, num_stages: tl.constexpr = 1):
     pid = tl.program_id(0)
     step = tl.num_programs(0)
     num_tiles = (M + BLOCK_M - 1) // BLOCK_M
@@ -142,15 +107,7 @@ def l0_norm_dim_kernel(
 
 @libentry()
 @triton.jit(do_not_specialize=["M", "N"])
-def l1_norm_dim_kernel(
-    X,
-    Out,
-    M,
-    N,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    num_stages: tl.constexpr = 1,
-):
+def l1_norm_dim_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, num_stages: tl.constexpr = 1):
     pid = tl.program_id(0)
     step = tl.num_programs(0)
     num_tiles = (M + BLOCK_M - 1) // BLOCK_M
@@ -171,16 +128,7 @@ def l1_norm_dim_kernel(
 
 @libentry()
 @triton.jit(do_not_specialize=["M", "N", "ord"])
-def v_norm_dim_kernel(
-    X,
-    Out,
-    M,
-    N,
-    ord,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    num_stages: tl.constexpr = 1,
-):
+def v_norm_dim_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, num_stages: tl.constexpr = 1):
     pid = tl.program_id(0)
     step = tl.num_programs(0)
     num_tiles = (M + BLOCK_M - 1) // BLOCK_M
@@ -203,7 +151,6 @@ def v_norm_dim_kernel(
 # ============================================================
 # Global single-pass kernels (loop-based, 1 launch for small/medium M)
 # ============================================================
-
 
 @libentry()
 @triton.jit(do_not_specialize=["M"])
@@ -281,12 +228,9 @@ def v_global_single(X, Out, ord, M, BLOCK: tl.constexpr):
 # Global-reduction kernels (two-stage: partial → final)
 # ============================================================
 
-
 @libentry()
 @triton.jit(do_not_specialize=["M"])
-def l2_global_kernel_1(
-    X, Mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr = 1
-):
+def l2_global_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr = 1):
     pid = tl.program_id(0)
     num_prog = tl.num_programs(0)
     num_tile = (M + BLOCK_SIZE - 1) // BLOCK_SIZE
@@ -308,9 +252,7 @@ def l2_global_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 @libentry()
 @triton.jit(do_not_specialize=["M"])
-def max_global_kernel_1(
-    X, Mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr = 1
-):
+def max_global_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr = 1):
     pid = tl.program_id(0)
     num_prog = tl.num_programs(0)
     num_tile = (M + BLOCK_SIZE - 1) // BLOCK_SIZE
@@ -332,9 +274,7 @@ def max_global_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 @libentry()
 @triton.jit(do_not_specialize=["M"])
-def min_global_kernel_1(
-    X, Mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr = 1
-):
+def min_global_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr = 1):
     pid = tl.program_id(0)
     num_prog = tl.num_programs(0)
     num_tile = (M + BLOCK_SIZE - 1) // BLOCK_SIZE
@@ -356,9 +296,7 @@ def min_global_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 @libentry()
 @triton.jit(do_not_specialize=["M"])
-def l0_global_kernel_1(
-    X, Mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr = 1
-):
+def l0_global_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr = 1):
     pid = tl.program_id(0)
     num_prog = tl.num_programs(0)
     num_tile = (M + BLOCK_SIZE - 1) // BLOCK_SIZE
@@ -381,9 +319,7 @@ def l0_global_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 @libentry()
 @triton.jit(do_not_specialize=["M"])
-def l1_global_kernel_1(
-    X, Mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr = 1
-):
+def l1_global_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr = 1):
     pid = tl.program_id(0)
     num_prog = tl.num_programs(0)
     num_tile = (M + BLOCK_SIZE - 1) // BLOCK_SIZE
@@ -405,9 +341,7 @@ def l1_global_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 @libentry()
 @triton.jit(do_not_specialize=["M", "ord"])
-def v_global_kernel_1(
-    X, Mid, ord, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr = 1
-):
+def v_global_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr = 1):
     pid = tl.program_id(0)
     num_prog = tl.num_programs(0)
     num_tile = (M + BLOCK_SIZE - 1) // BLOCK_SIZE
@@ -430,7 +364,6 @@ def v_global_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
 # ============================================================
 # Host dispatch
 # ============================================================
-
 
 def _launch_global_norm(x, out, M, ord_val, dtype):
     SINGLE_PASS_LIMIT = 32768
@@ -462,39 +395,23 @@ def _launch_global_norm(x, out, M, ord_val, dtype):
         mid = torch.empty([mid_size], dtype=torch.float32, device=x.device)
 
         if ord_val == 2:
-            l2_global_kernel_1[(grid_size,)](
-                x, mid, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4
-            )
+            l2_global_kernel_1[(grid_size,)](x, mid, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4)
             l2_global_kernel_2[(1,)](mid, out, mid_size, block_mid, num_warps=1)
         elif ord_val == float("inf"):
-            max_global_kernel_1[(grid_size,)](
-                x, mid, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4
-            )
+            max_global_kernel_1[(grid_size,)](x, mid, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4)
             max_global_kernel_2[(1,)](mid, out, mid_size, block_mid, num_warps=1)
         elif ord_val == -float("inf"):
-            min_global_kernel_1[(grid_size,)](
-                x, mid, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4
-            )
+            min_global_kernel_1[(grid_size,)](x, mid, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4)
             min_global_kernel_2[(1,)](mid, out, mid_size, block_mid, num_warps=1)
         elif ord_val == 0:
-            l0_global_kernel_1[(grid_size,)](
-                x, mid, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4
-            )
+            l0_global_kernel_1[(grid_size,)](x, mid, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4)
             l0_global_kernel_2[(1,)](mid, out, mid_size, block_mid, num_warps=1)
         elif ord_val == 1:
-            l1_global_kernel_1[(grid_size,)](
-                x, mid, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4
-            )
+            l1_global_kernel_1[(grid_size,)](x, mid, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4)
             l1_global_kernel_2[(1,)](mid, out, mid_size, block_mid, num_warps=1)
         else:
             v_global_kernel_1[(grid_size,)](
-                x,
-                mid,
-                ord_val,
-                M,
-                BLOCK_SIZE=block_size,
-                num_stages=num_stages,
-                num_warps=4,
+                x, mid, ord_val, M, BLOCK_SIZE=block_size, num_stages=num_stages, num_warps=4
             )
             v_global_kernel_2[(1,)](mid, out, ord_val, mid_size, block_mid, num_warps=1)
 
@@ -506,29 +423,17 @@ def _launch_dim_norm(x, out, M, N, ord_val):
 
     with torch_device_fn.device(x.device):
         if ord_val == 2:
-            l2_norm_dim_kernel[(grid_m,)](
-                x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=1
-            )
+            l2_norm_dim_kernel[(grid_m,)](x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=1)
         elif ord_val == float("inf"):
-            max_norm_dim_kernel[(grid_m,)](
-                x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=1
-            )
+            max_norm_dim_kernel[(grid_m,)](x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=1)
         elif ord_val == -float("inf"):
-            min_norm_dim_kernel[(grid_m,)](
-                x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=1
-            )
+            min_norm_dim_kernel[(grid_m,)](x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=1)
         elif ord_val == 0:
-            l0_norm_dim_kernel[(grid_m,)](
-                x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=1
-            )
+            l0_norm_dim_kernel[(grid_m,)](x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=1)
         elif ord_val == 1:
-            l1_norm_dim_kernel[(grid_m,)](
-                x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=1
-            )
+            l1_norm_dim_kernel[(grid_m,)](x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=1)
         else:
-            v_norm_dim_kernel[(grid_m,)](
-                x, out, M, N, ord_val, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=1
-            )
+            v_norm_dim_kernel[(grid_m,)](x, out, M, N, ord_val, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=1)
 
 
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):

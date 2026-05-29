@@ -25,12 +25,7 @@ def transform_exponential_f32(u, inv_lambd, eps_minus):
 @libentry()
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
 def fused_exponential_kernel_f32(
-    out_ptr,
-    N,
-    inv_lambd,
-    eps_minus,
-    philox_seed,
-    philox_offset,
+    out_ptr, N, inv_lambd, eps_minus, philox_seed, philox_offset,
     BLOCK: tl.constexpr,
 ):
     philox_seed = philox_seed.to(tl.int64)
@@ -96,12 +91,7 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
     grid_size = triton.cdiv(N, BLOCK * UNROLL)
     with torch_device_fn.device(device):
         fused_exponential_kernel_f32[(grid_size,)](
-            out_buf,
-            N,
-            inv_lambd,
-            eps_minus,
-            philox_seed,
-            philox_offset,
+            out_buf, N, inv_lambd, eps_minus, philox_seed, philox_offset,
             BLOCK,
             num_warps=1,
         )

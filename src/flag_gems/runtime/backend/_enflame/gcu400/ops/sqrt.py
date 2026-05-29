@@ -49,9 +49,7 @@ def _launch_sqrt(inp, out, N_total):
 
     with torch_device_fn.device(inp.device):
         sqrt_flat_kernel[(grid_size,)](
-            inp,
-            out,
-            N_total,
+            inp, out, N_total,
             BLOCK=BLOCK,
             num_warps=nw,
         )

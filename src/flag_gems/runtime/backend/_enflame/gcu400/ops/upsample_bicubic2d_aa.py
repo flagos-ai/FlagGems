@@ -14,15 +14,10 @@ logger = logging.getLogger(__name__)
 
 @triton.jit(
     do_not_specialize=[
-        "NC",
-        "OH",
-        "OW",
-        "IH",
-        "IW",
-        "reciprocal_scale_h",
-        "reciprocal_scale_w",
+        "NC", "OH", "OW", "IH", "IW",
+        "reciprocal_scale_h", "reciprocal_scale_w",
         "total_rows",
-    ]
+    ],
 )
 def upsample_bicubic2d_aa_kernel_1d(
     ptr_o,
@@ -139,9 +134,7 @@ def upsample_bicubic2d_aa_kernel_1d(
 
             center_w = (ow + 0.5) * reciprocal_scale_w
             span_start_w = tl.maximum(center_w - 2.0 + 0.5, 0.0).to(tl.int32)
-            span_size_w = (tl.minimum(center_w + 2.0 + 0.5, IW) - span_start_w).to(
-                tl.int32
-            )
+            span_size_w = (tl.minimum(center_w + 2.0 + 0.5, IW) - span_start_w).to(tl.int32)
             smcw = span_start_w - center_w
 
             wx0 = tl.abs(0 + smcw + 0.5)
@@ -228,38 +221,12 @@ def upsample_bicubic2d_aa_kernel_1d(
                 iy = span_start_h + row
                 if iy < IH:
                     row_addr = base_in + iy * IW
-                    d0 = tl.load(
-                        ptr_i + row_addr + span_start_w + 0,
-                        mask=ow_mask & (span_start_w + 0 < IW),
-                        other=0,
-                    )
-                    d1 = tl.load(
-                        ptr_i + row_addr + span_start_w + 1,
-                        mask=ow_mask & (span_start_w + 1 < IW),
-                        other=0,
-                    )
-                    d2 = tl.load(
-                        ptr_i + row_addr + span_start_w + 2,
-                        mask=ow_mask & (span_start_w + 2 < IW),
-                        other=0,
-                    )
-                    d3 = tl.load(
-                        ptr_i + row_addr + span_start_w + 3,
-                        mask=ow_mask & (span_start_w + 3 < IW),
-                        other=0,
-                    )
-                    d4 = tl.load(
-                        ptr_i + row_addr + span_start_w + 4,
-                        mask=ow_mask & (span_start_w + 4 < IW),
-                        other=0,
-                    )
-                    row_val = (
-                        d0 * weight_x0
-                        + d1 * weight_x1
-                        + d2 * weight_x2
-                        + d3 * weight_x3
-                        + d4 * weight_x4
-                    )
+                    d0 = tl.load(ptr_i + row_addr + span_start_w + 0, mask=ow_mask & (span_start_w + 0 < IW), other=0)
+                    d1 = tl.load(ptr_i + row_addr + span_start_w + 1, mask=ow_mask & (span_start_w + 1 < IW), other=0)
+                    d2 = tl.load(ptr_i + row_addr + span_start_w + 2, mask=ow_mask & (span_start_w + 2 < IW), other=0)
+                    d3 = tl.load(ptr_i + row_addr + span_start_w + 3, mask=ow_mask & (span_start_w + 3 < IW), other=0)
+                    d4 = tl.load(ptr_i + row_addr + span_start_w + 4, mask=ow_mask & (span_start_w + 4 < IW), other=0)
+                    row_val = d0 * weight_x0 + d1 * weight_x1 + d2 * weight_x2 + d3 * weight_x3 + d4 * weight_x4
                 else:
                     row_val = tl.zeros((BLOCK_X,), dtype=tl.float32)
 
@@ -274,22 +241,15 @@ def upsample_bicubic2d_aa_kernel_1d(
                 elif row == 4:
                     result += row_val * weight_y4
 
-            tl.store(
-                ptr_o + base_out + ow, result.to(ptr_o.dtype.element_ty), mask=ow_mask
-            )
+            tl.store(ptr_o + base_out + ow, result.to(ptr_o.dtype.element_ty), mask=ow_mask)
 
 
 @triton.jit(
     do_not_specialize=[
-        "NC",
-        "OH",
-        "OW",
-        "IH",
-        "IW",
-        "reciprocal_scale_h",
-        "reciprocal_scale_w",
+        "NC", "OH", "OW", "IH", "IW",
+        "reciprocal_scale_h", "reciprocal_scale_w",
         "total_rows",
-    ]
+    ],
 )
 def general_interpolate_bicubic2d_aa_kernel_1d(
     ptr_o,
@@ -321,9 +281,7 @@ def general_interpolate_bicubic2d_aa_kernel_1d(
 
         center_h = (oh + 0.5) * reciprocal_scale_h
         span_start_h = tl.maximum(center_h - support_h + 0.5, 0.0).to(tl.int32)
-        span_size_h = (tl.minimum(center_h + support_h + 0.5, IH) - span_start_h).to(
-            tl.int32
-        )
+        span_size_h = (tl.minimum(center_h + support_h + 0.5, IH) - span_start_h).to(tl.int32)
         smch = span_start_h - center_h
 
         base_in = nc * IH * IW
@@ -335,9 +293,7 @@ def general_interpolate_bicubic2d_aa_kernel_1d(
 
             center_w = (ow + 0.5) * reciprocal_scale_w
             span_start_w = tl.maximum(center_w - support_w + 0.5, 0.0).to(tl.int32)
-            span_size_w = (
-                tl.minimum(center_w + support_w + 0.5, IW) - span_start_w
-            ).to(tl.int32)
+            span_size_w = (tl.minimum(center_w + support_w + 0.5, IW) - span_start_w).to(tl.int32)
             smcw = span_start_w - center_w
 
             weight_y_total = 0.0
@@ -389,9 +345,7 @@ def general_interpolate_bicubic2d_aa_kernel_1d(
 
             weight_y_total = tl.where(weight_y_total != 0, weight_y_total, 1.0)
             result /= weight_y_total
-            tl.store(
-                ptr_o + base_out + ow, result.to(ptr_o.dtype.element_ty), mask=ow_mask
-            )
+            tl.store(ptr_o + base_out + ow, result.to(ptr_o.dtype.element_ty), mask=ow_mask)
 
 
 def bicubic_reciprocal_scale(src_size, dst_size, align_corners, scale):
@@ -442,15 +396,8 @@ def _upsample_bicubic2d_aa(
         INTERP_H = int(support_h + 0.5) * 2 + 1
         with torch_device_fn.device(input.device):
             general_interpolate_bicubic2d_aa_kernel_1d[grid](
-                output,
-                input,
-                NC,
-                OH,
-                OW,
-                IH,
-                IW,
-                reciprocal_scale_h,
-                reciprocal_scale_w,
+                output, input, NC, OH, OW, IH, IW,
+                reciprocal_scale_h, reciprocal_scale_w,
                 total_rows,
                 BLOCK_X=BLOCK_X,
                 INTERP_H=INTERP_H,
@@ -460,15 +407,8 @@ def _upsample_bicubic2d_aa(
     else:
         with torch_device_fn.device(input.device):
             upsample_bicubic2d_aa_kernel_1d[grid](
-                output,
-                input,
-                NC,
-                OH,
-                OW,
-                IH,
-                IW,
-                reciprocal_scale_h,
-                reciprocal_scale_w,
+                output, input, NC, OH, OW, IH, IW,
+                reciprocal_scale_h, reciprocal_scale_w,
                 total_rows,
                 BLOCK_X=BLOCK_X,
                 num_warps=1,

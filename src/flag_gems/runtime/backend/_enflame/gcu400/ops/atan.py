@@ -5,7 +5,8 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, tl_extra_shim
+from flag_gems.utils import libentry
+from flag_gems.utils import tl_extra_shim
 
 _atan = tl_extra_shim.atan
 
@@ -51,11 +52,8 @@ def atan(A):
 
     with torch_device_fn.device(inp.device):
         atan_kernel[(grid_size,)](
-            inp,
-            out,
-            N,
-            BLOCK=BLOCK,
-            num_warps=8,
+            inp, out, N,
+            BLOCK=BLOCK, num_warps=8,
         )
     return out
 
@@ -71,10 +69,7 @@ def atan_(A):
 
     with torch_device_fn.device(inp.device):
         atan_kernel[(grid_size,)](
-            inp,
-            A,
-            N,
-            BLOCK=BLOCK,
-            num_warps=8,
+            inp, A, N,
+            BLOCK=BLOCK, num_warps=8,
         )
     return A

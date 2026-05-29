@@ -54,9 +54,7 @@ def rsqrt(A):
 
     with torch_device_fn.device(inp.device):
         rsqrt_flat_kernel[(grid_size,)](
-            inp,
-            out,
-            N_total,
+            inp, out, N_total,
             BLOCK=BLOCK,
             num_warps=nw,
         )
@@ -76,9 +74,7 @@ def rsqrt_(A):
 
     with torch_device_fn.device(inp.device):
         rsqrt_flat_kernel[(grid_size,)](
-            inp,
-            A,
-            N_total,
+            inp, A, N_total,
             BLOCK=BLOCK,
             num_warps=nw,
         )
