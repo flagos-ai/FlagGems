@@ -4,7 +4,6 @@ import math
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.limits import get_dtype_min
@@ -281,7 +280,9 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 out_shape[dim] = 1
             else:
                 del out_shape[dim]
-            return torch.zeros(out_shape, dtype=torch.int32, device=inp.device).to(torch.int64)
+            return torch.zeros(out_shape, dtype=torch.int32, device=inp.device).to(
+                torch.int64
+            )
 
         N = shape[dim]
         M = math.prod(shape[:dim])

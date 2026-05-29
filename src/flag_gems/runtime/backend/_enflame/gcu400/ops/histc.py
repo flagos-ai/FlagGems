@@ -4,7 +4,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -30,7 +29,9 @@ def histc_kernel_simple(
         off = block_id * BLOCK + arange
         mask = off < N_total
         inp_val = tl.load(inp_ptr + off, mask=mask, other=float("nan")).to(tl.float32)
-        bin_idx = tl.floor((inp_val - min_val) * bins / (max_val - min_val)).to(tl.int64)
+        bin_idx = tl.floor((inp_val - min_val) * bins / (max_val - min_val)).to(
+            tl.int64
+        )
         bin_idx = tl.where(inp_val == max_val, bins - 1, bin_idx)
         in_range = (inp_val >= min_val) & (inp_val <= max_val)
         bin_idx = tl.where(bin_idx < 0, 0, bin_idx)

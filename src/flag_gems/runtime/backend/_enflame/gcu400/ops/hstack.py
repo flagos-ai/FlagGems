@@ -2,7 +2,6 @@ import logging
 from typing import List, Tuple, Union
 
 import torch
-
 from flag_gems.runtime.backend._enflame.gcu400.ops.cat import cat
 
 logger = logging.getLogger(__name__)

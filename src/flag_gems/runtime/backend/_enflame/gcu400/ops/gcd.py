@@ -4,7 +4,6 @@ import torch
 import triton
 import triton.language as tl
 import triton.language.extra.libdevice as libdevice
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 

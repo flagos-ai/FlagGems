@@ -167,9 +167,9 @@ def topk_stage1_with_index_kernel(
             chunk_select_idx = tl.argmin(x_val, axis=0)
 
         selected_mask = cols == chunk_select_idx
-        original_idx = tl.sum(tl.where(
-            selected_mask, x_idx, tl.full([CHUNK_SIZE], 0, dtype=tl.int64)
-        ))
+        original_idx = tl.sum(
+            tl.where(selected_mask, x_idx, tl.full([CHUNK_SIZE], 0, dtype=tl.int64))
+        )
 
         tl.store(y_ptr + k_idx, chunk_select_val)
         tl.store(index_ptr + k_idx, original_idx)

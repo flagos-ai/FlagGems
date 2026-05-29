@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
@@ -19,60 +18,50 @@ def fast_sin_cos_normalized(x, REDUCED: tl.constexpr):
     if REDUCED:
         sin_x = x * (
             0.99999999999999999999
-            + x2 * (
+            + x2
+            * (
                 -0.16666666666666666654
-                + x2 * (
+                + x2
+                * (
                     0.00833333333333332876
-                    + x2 * (
-                        -0.00019841269841269616
-                        + x2 * 2.755731922398589e-6
-                    )
+                    + x2 * (-0.00019841269841269616 + x2 * 2.755731922398589e-6)
                 )
             )
         )
-        cos_x = (
-            1.0
-            + x2 * (
-                -0.49999999999999999983
-                + x2 * (
-                    0.04166666666666666636
-                    + x2 * (
-                        -0.00138888888888888742
-                        + x2 * 2.4801587301587299e-5
-                    )
-                )
+        cos_x = 1.0 + x2 * (
+            -0.49999999999999999983
+            + x2
+            * (
+                0.04166666666666666636
+                + x2 * (-0.00138888888888888742 + x2 * 2.4801587301587299e-5)
             )
         )
     else:
         sin_x = x * (
             0.99999999999999999999
-            + x2 * (
+            + x2
+            * (
                 -0.16666666666666666654
-                + x2 * (
+                + x2
+                * (
                     0.00833333333333332876
-                    + x2 * (
+                    + x2
+                    * (
                         -0.00019841269841269616
-                        + x2 * (
-                            2.755731922398589e-6
-                            + x2 * -2.505210838544172e-8
-                        )
+                        + x2 * (2.755731922398589e-6 + x2 * -2.505210838544172e-8)
                     )
                 )
             )
         )
-        cos_x = (
-            1.0
-            + x2 * (
-                -0.49999999999999999983
-                + x2 * (
-                    0.04166666666666666636
-                    + x2 * (
-                        -0.00138888888888888742
-                        + x2 * (
-                            2.4801587301587299e-5
-                            + x2 * -2.755731922398581e-7
-                        )
-                    )
+        cos_x = 1.0 + x2 * (
+            -0.49999999999999999983
+            + x2
+            * (
+                0.04166666666666666636
+                + x2
+                * (
+                    -0.00138888888888888742
+                    + x2 * (2.4801587301587299e-5 + x2 * -2.755731922398581e-7)
                 )
             )
         )
@@ -146,6 +135,14 @@ def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     with torch_device_fn.device(device):
-        reduced = (dtype != torch.float32)
-        randn_kernel[grid](out, N, philox_seed, philox_offset, BLOCK=BLOCK, REDUCED=reduced, num_warps=4)
+        reduced = dtype != torch.float32
+        randn_kernel[grid](
+            out,
+            N,
+            philox_seed,
+            philox_offset,
+            BLOCK=BLOCK,
+            REDUCED=reduced,
+            num_warps=4,
+        )
     return out

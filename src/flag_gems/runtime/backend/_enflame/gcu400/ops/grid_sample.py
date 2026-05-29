@@ -10,7 +10,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems import runtime
 from flag_gems.utils import libentry
 
@@ -4897,9 +4896,7 @@ def grid_sample(
                         for ni in range(N):
                             for c_start in range(0, C, 1):
                                 for h_start in range(0, H_out, max_h_per_group):
-                                    h_end = min(
-                                        h_start + max_h_per_group, H_out
-                                    )
+                                    h_end = min(h_start + max_h_per_group, H_out)
                                     batch_H = h_end - h_start
                                     sample_input = input[
                                         ni : ni + 1, c_start : c_start + 1
@@ -4910,9 +4907,7 @@ def grid_sample(
                                         h_start:h_end,
                                         :,
                                     ]
-                                    sample_grid = grid[
-                                        ni : ni + 1, h_start:h_end, :, :
-                                    ]
+                                    sample_grid = grid[ni : ni + 1, h_start:h_end, :, :]
                                     sample_grid_x = 1 * batch_H * W_out
                                     grid_size = (sample_grid_x,)
                                     kernel[grid_size](

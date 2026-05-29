@@ -5,7 +5,6 @@ from typing import List, Tuple, Union
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -391,9 +390,7 @@ def scan_part_max_abc_loop_kernel(
         prev_max_idx_b = tl.broadcast_to(prev_max_idx, (BLOCK_SIZE,))
 
         final_vals = tl.maximum(result, prev_max_val_b)
-        final_idx = tl.where(
-            result >= prev_max_val_b, cummax_indices, prev_max_idx_b
-        )
+        final_idx = tl.where(result >= prev_max_val_b, cummax_indices, prev_max_idx_b)
         prev_max_val = tl.sum(tl.where(last_mask, final_vals, 0.0), axis=0)
         prev_max_idx = tl.sum(tl.where(last_mask, final_idx, 0), axis=0)
 

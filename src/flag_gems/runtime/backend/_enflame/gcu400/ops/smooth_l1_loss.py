@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 
@@ -107,9 +106,7 @@ def _smooth_l1_loss_backward_kernel(
     target_val = tl.load(target + offsets, mask=mask, other=0.0).to(tl.float32)
     diff = inp_val - target_val
     if BETA_IS_ZERO:
-        grad = tl.where(
-            diff == 0.0, float("nan"), tl.where(diff > 0.0, 1.0, -1.0)
-        )
+        grad = tl.where(diff == 0.0, float("nan"), tl.where(diff > 0.0, 1.0, -1.0))
     else:
         grad = tl.where(diff < -beta, -1.0, tl.where(diff > beta, 1.0, diff / beta))
     if GRAD_OUTPUT_SCALAR:
@@ -299,9 +296,10 @@ def smooth_l1_loss_backward(
     n_elements = input.numel()
     if n_elements == 0:
         return out
-    if n_elements // BLOCK > 65535:
-        BLOCK = 65536
-    grid = triton.cdiv(n_elements, BLOCK)
+    block_size = BLOCK
+    if n_elements // block_size > 65535:
+        block_size = 65536
+    grid = triton.cdiv(n_elements, block_size)
     beta_f = float(beta)
     with torch_device_fn.device(input.device):
         _smooth_l1_loss_backward_kernel[(grid,)](
@@ -315,7 +313,7 @@ def smooth_l1_loss_backward(
             BETA_IS_ZERO=beta_f == 0.0,
             REDUCTION_MEAN=reduction == 1,
             GRAD_OUTPUT_SCALAR=grad_output.numel() == 1,
-            BLOCK_SIZE=BLOCK,
+            BLOCK_SIZE=block_size,
             num_warps=4,
         )
     return out

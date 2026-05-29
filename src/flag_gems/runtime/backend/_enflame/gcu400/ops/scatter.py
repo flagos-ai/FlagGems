@@ -4,7 +4,6 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
-
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import (
@@ -140,7 +139,9 @@ def generate_scatter_kernel(
                     with code.indent():
                         code.writeline(f"shape_{i} = shape_{i}.to(tl.int32)")
                         code.writeline(f"inp_stride_{i} = inp_stride_{i}.to(tl.int32)")
-                        code.writeline(f"index_stride_{i} = index_stride_{i}.to(tl.int32)")
+                        code.writeline(
+                            f"index_stride_{i} = index_stride_{i}.to(tl.int32)"
+                        )
                         code.writeline(f"src_stride_{i} = src_stride_{i}.to(tl.int32)")
                     code.writeline(f"mod = cur_idx % shape_{i}")
                     code.writeline(f"inp_offsets += mod * inp_stride_{i}")
@@ -179,12 +180,16 @@ def generate_scatter_kernel(
                         code.writeline(
                             "cur_inp = tl.load(out + inp_offsets, mask=mask, other=0)"
                         )
-                        code.writeline("res = tl.where(stop, cur_inp, cur_inp * cur_src)")
+                        code.writeline(
+                            "res = tl.where(stop, cur_inp, cur_inp * cur_src)"
+                        )
                         code.writeline(
                             "cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res, sem='relaxed')"
                         )
                         code.writeline("stop |= cur_inp == cas_res")
-                        code.writeline("block_stop = tl.sum(stop.to(tl.int32)) == BLOCK")
+                        code.writeline(
+                            "block_stop = tl.sum(stop.to(tl.int32)) == BLOCK"
+                        )
 
                 code.writeline("else: ")
                 with code.indent():

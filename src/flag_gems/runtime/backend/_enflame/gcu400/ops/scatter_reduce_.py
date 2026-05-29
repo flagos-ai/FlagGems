@@ -4,7 +4,6 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
-
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import (
@@ -567,7 +566,6 @@ def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
         inp = inp.to(torch.float32)
     out = inp
-    
 
     # Validate reduce operation
     assert reduce in (

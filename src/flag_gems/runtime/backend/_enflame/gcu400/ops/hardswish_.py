@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -52,9 +51,7 @@ def hardswish_(*args, **kwargs):
 
     grid = min(triton.cdiv(n_elements, BLOCK), NUM_SIPS * 2)
     with torch_device_fn.device(x_work.device):
-        hardswish_kernel_[(grid,)](
-            x_work, n_elements, BLOCK_SIZE=BLOCK, num_warps=4
-        )
+        hardswish_kernel_[(grid,)](x_work, n_elements, BLOCK_SIZE=BLOCK, num_warps=4)
 
     if x_work.data_ptr() != orig.data_ptr():
         orig.copy_(x_work)

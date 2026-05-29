@@ -4,7 +4,6 @@ import os
 from typing import Any, Callable, Mapping, Tuple
 
 import torch
-
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
@@ -134,7 +133,9 @@ def generate_index_wrapper(
             code.writeline("BLOCK_SIZE1 = 1")
         else:
             code.writeline("BLOCK_SIZE0 = min(_next_pow2(M), 4)")
-            code.writeline("BLOCK_SIZE1 = max(_next_pow2(max(triton.cdiv(N, 255), 1)), min(_next_pow2(N), 256))")
+            code.writeline(
+                "BLOCK_SIZE1 = max(_next_pow2(max(triton.cdiv(N, 255), 1)), min(_next_pow2(N), 256))"
+            )
             code.writeline("BLOCK_SIZE1 = min(BLOCK_SIZE1, 2048)")
         code.newline()
         code.writeline("grid = (")

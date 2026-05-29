@@ -100,8 +100,15 @@ def bincount_weights_fp32_kernel(
 
 
 def _fused_bincount_launch(
-    input_contig, weights_contig, n, pre_size, minlength,
-    out_dtype, grid, BLOCK_SIZE, num_warps,
+    input_contig,
+    weights_contig,
+    n,
+    pre_size,
+    minlength,
+    out_dtype,
+    grid,
+    BLOCK_SIZE,
+    num_warps,
 ):
     max_tensor = torch.zeros(1, dtype=torch.int32, device=input_contig.device)
     compute_dtype = torch.float32 if weights_contig is not None else torch.int32
@@ -110,13 +117,24 @@ def _fused_bincount_launch(
 
     if weights_contig is None:
         fused_max_bincount_kernel[grid](
-            input_contig, max_tensor, output, n, pre_size,
-            BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps,
+            input_contig,
+            max_tensor,
+            output,
+            n,
+            pre_size,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=num_warps,
         )
     else:
         fused_max_bincount_weights_fp32_kernel[grid](
-            input_contig, weights_contig, max_tensor, output, n, pre_size,
-            BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps,
+            input_contig,
+            weights_contig,
+            max_tensor,
+            output,
+            n,
+            pre_size,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=num_warps,
         )
 
     max_val = int(max_tensor.item())
@@ -128,13 +146,20 @@ def _fused_bincount_launch(
     output = torch.zeros(needed_size, dtype=compute_dtype, device=input_contig.device)
     if weights_contig is None:
         bincount_kernel[grid](
-            input_contig, output, n,
-            BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps,
+            input_contig,
+            output,
+            n,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=num_warps,
         )
     else:
         bincount_weights_fp32_kernel[grid](
-            input_contig, weights_contig, output, n,
-            BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps,
+            input_contig,
+            weights_contig,
+            output,
+            n,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=num_warps,
         )
     return output
 
@@ -167,8 +192,15 @@ def bincount(input, weights=None, minlength=0):
     out_dtype = weights.dtype if weights is not None else torch.int64
 
     output = _fused_bincount_launch(
-        input_contig, weights_contig, n, pre_size, minlength,
-        out_dtype, grid, BLOCK_SIZE, num_warps,
+        input_contig,
+        weights_contig,
+        n,
+        pre_size,
+        minlength,
+        out_dtype,
+        grid,
+        BLOCK_SIZE,
+        num_warps,
     )
 
     if weights is None:

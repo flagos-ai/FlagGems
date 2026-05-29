@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -80,7 +79,5 @@ def digamma_(*args, **kwargs):
     if N_total == 0:
         return x
     with torch_device_fn.device(x.device):
-        digamma_kernel_[(grid_size_fn(N_total),)](
-            x, N_total, BLOCK=BLOCK, num_warps=4
-        )
+        digamma_kernel_[(grid_size_fn(N_total),)](x, N_total, BLOCK=BLOCK, num_warps=4)
     return x

@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import device
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
@@ -45,7 +44,11 @@ def eq_scalar(A, B):
 
 @triton.jit
 def _equal_small_k(
-    x_ptr, y_ptr, out_ptr, numel, BLOCK_SIZE: tl.constexpr,
+    x_ptr,
+    y_ptr,
+    out_ptr,
+    numel,
+    BLOCK_SIZE: tl.constexpr,
 ):
     all_eq = tl.full((), 1, dtype=tl.int32)
     for off in range(0, numel, BLOCK_SIZE):
@@ -60,7 +63,12 @@ def _equal_small_k(
 
 @triton.jit
 def _equal_fused_k(
-    x_ptr, y_ptr, out_ptr, numel, num_progs, BLOCK_SIZE: tl.constexpr,
+    x_ptr,
+    y_ptr,
+    out_ptr,
+    numel,
+    num_progs,
+    BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     all_eq = tl.full((), 1, dtype=tl.int32)
@@ -103,15 +111,24 @@ def equal(x: torch.Tensor, y: torch.Tensor) -> bool:
 
     if numel <= _BS:
         _equal_small_k[(1,)](
-            x_flat, y_flat, out, numel,
-            BLOCK_SIZE=_NP2(numel), num_warps=1,
+            x_flat,
+            y_flat,
+            out,
+            numel,
+            BLOCK_SIZE=_NP2(numel),
+            num_warps=1,
         )
     else:
         NP = _NP2(_NPROGS)
         out_t = torch.ones(NP, dtype=torch.int32, device=x.device)
         _equal_fused_k[(_NPROGS,)](
-            x_flat, y_flat, out_t, numel, _NPROGS,
-            BLOCK_SIZE=_BS, num_warps=1,
+            x_flat,
+            y_flat,
+            out_t,
+            numel,
+            _NPROGS,
+            BLOCK_SIZE=_BS,
+            num_warps=1,
         )
         _reduce_min_k[(1,)](out_t, out, N=NP, num_warps=1)
 

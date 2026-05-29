@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
@@ -459,7 +458,11 @@ def _launch_tile(
 
     batch = total // (M * N)
     num_n_tiles = triton.cdiv(N, block_n)
-    grid = (triton.cdiv(M, block_m), min(num_n_tiles, _MAX_GRID_YZ), min(batch, _MAX_GRID_YZ))
+    grid = (
+        triton.cdiv(M, block_m),
+        min(num_n_tiles, _MAX_GRID_YZ),
+        min(batch, _MAX_GRID_YZ),
+    )
     with torch_device_fn.device(input.device):
         _tril_tile_kernel[grid](
             input,
@@ -583,7 +586,11 @@ def _launch_exact_diag0_tile(
 
     batch = total // (M * N)
     num_n_tiles = triton.cdiv(N, block_n)
-    grid = (triton.cdiv(M, block_m), min(num_n_tiles, _MAX_GRID_YZ), min(batch, _MAX_GRID_YZ))
+    grid = (
+        triton.cdiv(M, block_m),
+        min(num_n_tiles, _MAX_GRID_YZ),
+        min(batch, _MAX_GRID_YZ),
+    )
     with torch_device_fn.device(input.device):
         _tril_exact_diag0_tile_kernel[grid](
             input,
@@ -618,7 +625,11 @@ def _launch_tril_inplace_contiguous(
 
     batch = input.numel() // (M * N)
     num_n_tiles = triton.cdiv(N, block_n)
-    grid = (triton.cdiv(active_rows, block_m), min(num_n_tiles, _MAX_GRID_YZ), min(batch, _MAX_GRID_YZ))
+    grid = (
+        triton.cdiv(active_rows, block_m),
+        min(num_n_tiles, _MAX_GRID_YZ),
+        min(batch, _MAX_GRID_YZ),
+    )
     with torch_device_fn.device(input.device):
         _tril_inplace_zero_tile_kernel[grid](
             input,
@@ -668,7 +679,11 @@ def _launch_tril_inplace_strided(
     stride_m, stride_n = input.stride()[-2:]
 
     num_n_tiles = triton.cdiv(N, block_n)
-    grid = (triton.cdiv(active_rows, block_m), min(num_n_tiles, _MAX_GRID_YZ), min(batch, _MAX_GRID_YZ))
+    grid = (
+        triton.cdiv(active_rows, block_m),
+        min(num_n_tiles, _MAX_GRID_YZ),
+        min(batch, _MAX_GRID_YZ),
+    )
     with torch_device_fn.device(input.device):
         _tril_inplace_zero_strided_tile_kernel[grid](
             input,
@@ -724,7 +739,11 @@ def _launch_tril_strided_out(
     stride_m, stride_n = out.stride()[-2:]
 
     num_n_tiles = triton.cdiv(N, block_n)
-    grid = (triton.cdiv(M, block_m), min(num_n_tiles, _MAX_GRID_YZ), min(batch, _MAX_GRID_YZ))
+    grid = (
+        triton.cdiv(M, block_m),
+        min(num_n_tiles, _MAX_GRID_YZ),
+        min(batch, _MAX_GRID_YZ),
+    )
     with torch_device_fn.device(input.device):
         _tril_strided_out_tile_kernel[grid](
             input_to_use,

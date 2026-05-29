@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
@@ -55,7 +54,9 @@ def group_norm_kernel(
             block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
             order=(1, 0),
         )
-        X_val = tl.load(x_block, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
+        X_val = tl.load(x_block, boundary_check=(0, 1), padding_option="zero").to(
+            tl.float32
+        )
         _sum += X_val
         _sq += X_val * X_val
 
@@ -92,7 +93,9 @@ def group_norm_kernel(
             block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
             order=(1, 0),
         )
-        X_val = tl.load(x_block, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
+        X_val = tl.load(x_block, boundary_check=(0, 1), padding_option="zero").to(
+            tl.float32
+        )
         x_hat = (X_val - mean) * rstd
         Y_val = x_hat * weight + bias
         tl.store(y_block, Y_val.to(Y.dtype.element_ty), boundary_check=(0, 1))
@@ -137,16 +140,26 @@ def group_norm_backward_kernel(
     for off in tl.range(0, HW, BLOCK_HW_SIZE):
         dy_block = tl.make_block_ptr(
             base=grad_y + pid * num_elements,
-            shape=(group_size, HW), strides=(HW, 1),
-            offsets=(0, off), block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE), order=(1, 0),
+            shape=(group_size, HW),
+            strides=(HW, 1),
+            offsets=(0, off),
+            block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
+            order=(1, 0),
         )
         x_block = tl.make_block_ptr(
             base=X + pid * num_elements,
-            shape=(group_size, HW), strides=(HW, 1),
-            offsets=(0, off), block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE), order=(1, 0),
+            shape=(group_size, HW),
+            strides=(HW, 1),
+            offsets=(0, off),
+            block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
+            order=(1, 0),
         )
-        dY_val = tl.load(dy_block, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
-        X_val = tl.load(x_block, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
+        dY_val = tl.load(dy_block, boundary_check=(0, 1), padding_option="zero").to(
+            tl.float32
+        )
+        X_val = tl.load(x_block, boundary_check=(0, 1), padding_option="zero").to(
+            tl.float32
+        )
 
         x_hat = rstd * (X_val - mean)
         dx_hat = weight * dY_val
@@ -159,21 +172,34 @@ def group_norm_backward_kernel(
     for off in tl.range(0, HW, BLOCK_HW_SIZE):
         dy_block = tl.make_block_ptr(
             base=grad_y + pid * num_elements,
-            shape=(group_size, HW), strides=(HW, 1),
-            offsets=(0, off), block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE), order=(1, 0),
+            shape=(group_size, HW),
+            strides=(HW, 1),
+            offsets=(0, off),
+            block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
+            order=(1, 0),
         )
         x_block = tl.make_block_ptr(
             base=X + pid * num_elements,
-            shape=(group_size, HW), strides=(HW, 1),
-            offsets=(0, off), block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE), order=(1, 0),
+            shape=(group_size, HW),
+            strides=(HW, 1),
+            offsets=(0, off),
+            block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
+            order=(1, 0),
         )
         dx_block = tl.make_block_ptr(
             base=grad_x + pid * num_elements,
-            shape=(group_size, HW), strides=(HW, 1),
-            offsets=(0, off), block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE), order=(1, 0),
+            shape=(group_size, HW),
+            strides=(HW, 1),
+            offsets=(0, off),
+            block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
+            order=(1, 0),
         )
-        dY_val = tl.load(dy_block, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
-        X_val = tl.load(x_block, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
+        dY_val = tl.load(dy_block, boundary_check=(0, 1), padding_option="zero").to(
+            tl.float32
+        )
+        X_val = tl.load(x_block, boundary_check=(0, 1), padding_option="zero").to(
+            tl.float32
+        )
 
         x_hat = rstd * (X_val - mean)
         dx_hat = weight * dY_val
@@ -204,8 +230,12 @@ def weight_bias_backward_kernel(
     n_offset = tl.arange(0, BLOCK_N)
     mr_mask = n_offset < N
 
-    mean = tl.load(Mean + group + n_offset * num_groups, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
-    rstd = tl.load(Rstd + group + n_offset * num_groups, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
+    mean = tl.load(Mean + group + n_offset * num_groups, mask=mr_mask, other=0.0).to(
+        tl.float32
+    )[:, None]
+    rstd = tl.load(Rstd + group + n_offset * num_groups, mask=mr_mask, other=0.0).to(
+        tl.float32
+    )[:, None]
 
     dw_acc = tl.zeros([BLOCK_N, BLOCK_HW], dtype=tl.float32)
     db_acc = tl.zeros([BLOCK_N, BLOCK_HW], dtype=tl.float32)

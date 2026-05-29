@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import (
@@ -75,7 +74,9 @@ def poisson_kernel(
         use_small = lam < LAMBDA_THRESHOLD
         c0_small = c0_base + off.to(tl.uint32) * MAX_ITERS
         z = c0_small * 0
-        small_result = poisson_small_lambda(lam, philox_seed, c0_small, c1, z, MAX_ITERS)
+        small_result = poisson_small_lambda(
+            lam, philox_seed, c0_small, c1, z, MAX_ITERS
+        )
         c0_large = c0_base + off.to(tl.uint32)
         z_large = c0_large * 0
         large_result = poisson_large_lambda(lam, philox_seed, c0_large, c1, z_large)

@@ -1,7 +1,6 @@
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner
 
@@ -109,10 +108,18 @@ def mm(a, b):
         META["SPLIT_K"],
     )
     mm_kernel[grid](
-        a, b, c, M, N, K,
-        a.stride(0), a.stride(1),
-        b.stride(0), b.stride(1),
-        c.stride(0), c.stride(1),
+        a,
+        b,
+        c,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        c.stride(0),
+        c.stride(1),
         dot_out_dtype=tl.float32,
         GROUP_M=8,
     )
@@ -133,10 +140,18 @@ def mm_out(a, b, *, out):
         META["SPLIT_K"],
     )
     mm_kernel[grid](
-        a, b, c, M, N, K,
-        a.stride(0), a.stride(1),
-        b.stride(0), b.stride(1),
-        c.stride(0), c.stride(1),
+        a,
+        b,
+        c,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        c.stride(0),
+        c.stride(1),
         dot_out_dtype=tl.float32,
         GROUP_M=8,
     )

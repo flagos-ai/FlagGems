@@ -4,7 +4,6 @@ import math
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -16,21 +15,27 @@ NUM_SIPS = 24
 
 @libentry()
 @triton.jit(do_not_specialize=["start", "step", "size"])
-def arange_func(y_ptr, start, step, size,
-                BLOCK_SIZE: tl.constexpr, GRID_DIM: tl.constexpr):
+def arange_func(
+    y_ptr, start, step, size, BLOCK_SIZE: tl.constexpr, GRID_DIM: tl.constexpr
+):
     pid = tl.program_id(0)
     num_tiles = (size + BLOCK_SIZE - 1) // BLOCK_SIZE
     for tile_id in tl.range(pid, num_tiles, GRID_DIM):
         offs = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = offs < size
-        vals = (offs * step + start).to(tl.float32) if step != 1 else (offs + start).to(tl.float32)
+        vals = (
+            (offs * step + start).to(tl.float32)
+            if step != 1
+            else (offs + start).to(tl.float32)
+        )
         tl.store(y_ptr + offs, vals, mask=mask)
 
 
 @libentry()
 @triton.jit(do_not_specialize=["start", "step", "size"])
-def arange_int_func(y_ptr, start, step, size,
-                    BLOCK_SIZE: tl.constexpr, GRID_DIM: tl.constexpr):
+def arange_int_func(
+    y_ptr, start, step, size, BLOCK_SIZE: tl.constexpr, GRID_DIM: tl.constexpr
+):
     pid = tl.program_id(0)
     num_tiles = (size + BLOCK_SIZE - 1) // BLOCK_SIZE
     for tile_id in tl.range(pid, num_tiles, GRID_DIM):
@@ -81,13 +86,23 @@ def arange_start(
     with torch_device_fn.device(result.device):
         if is_int:
             arange_int_func[(grid_dim,)](
-                result, int(start), int(step), size,
-                BLOCK_SIZE=BLOCK_SIZE, GRID_DIM=grid_dim, num_warps=nw,
+                result,
+                int(start),
+                int(step),
+                size,
+                BLOCK_SIZE=BLOCK_SIZE,
+                GRID_DIM=grid_dim,
+                num_warps=nw,
             )
         else:
             arange_func[(grid_dim,)](
-                result, float(start), float(step), size,
-                BLOCK_SIZE=BLOCK_SIZE, GRID_DIM=grid_dim, num_warps=nw,
+                result,
+                float(start),
+                float(step),
+                size,
+                BLOCK_SIZE=BLOCK_SIZE,
+                GRID_DIM=grid_dim,
+                num_warps=nw,
             )
 
     return result

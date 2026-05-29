@@ -4,7 +4,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 
@@ -132,13 +131,18 @@ def _launch_global_sum(inp, out, M):
 
     with torch_device_fn.device(inp.device):
         sum_global_kernel_1[(grid_size, 1, 1)](
-            inp, mid, M,
+            inp,
+            mid,
+            M,
             BLOCK_SIZE=block_size,
             num_stages=1,
             num_warps=2,
         )
         sum_global_kernel_2[(1, 1, 1)](
-            mid, out, mid_size, block_mid,
+            mid,
+            out,
+            mid_size,
+            block_mid,
             num_warps=1,
         )
 
@@ -150,7 +154,10 @@ def _launch_dim_sum(inp, out, M, N):
 
     with torch_device_fn.device(inp.device):
         sum_dim_kernel[(grid_m,)](
-            inp, out, M, N,
+            inp,
+            out,
+            M,
+            N,
             BLOCK_M=BLOCK_M,
             BLOCK_N=BLOCK_N,
             num_stages=1,
@@ -211,7 +218,9 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
                 for d in dims_to_reduce:
                     out_shape[d % inp.ndim] = 1
             else:
-                for d in sorted(dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True):
+                for d in sorted(
+                    dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True
+                ):
                     out_shape.pop(d % inp.ndim)
         return torch.zeros(out_shape, dtype=dtype, device=inp.device)
 

@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import (
@@ -73,7 +72,14 @@ def uniform_(self, from_=0.0, to=1.0, *, generator=None):
     nw = 2 if dtype == torch.float32 else 4
     with torch_device_fn.device(self.device):
         uniform_kernel_gcu400[grid](
-            self, N, philox_seed, philox_offset, from_, to,
-            BLOCK=BLOCK, num_warps=nw, num_stages=1,
+            self,
+            N,
+            philox_seed,
+            philox_offset,
+            from_,
+            to,
+            BLOCK=BLOCK,
+            num_warps=nw,
+            num_stages=1,
         )
     return self

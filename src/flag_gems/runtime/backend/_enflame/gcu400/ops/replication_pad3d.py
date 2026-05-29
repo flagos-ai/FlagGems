@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -121,13 +120,24 @@ def replication_pad3d(x, padding):
 
     with torch_device_fn.device(x.device):
         replicationpad3d_kernel[(grid_size,)](
-            x, out,
-            D_in, H_in, W_in,
-            pad_l, pad_t, pad_f,
-            stride_nc, x.stride(2), x.stride(3),
+            x,
+            out,
+            D_in,
+            H_in,
+            W_in,
+            pad_l,
+            pad_t,
+            pad_f,
+            stride_nc,
+            x.stride(2),
+            x.stride(3),
             NCD_total,
-            NUM_HW_BLOCKS=NUM_HW_BLOCKS, D_out=D_out, H_out=H_out,
-            W_out=W_out, HW_OUT=HW_out, BLOCK=BLOCK,
+            NUM_HW_BLOCKS=NUM_HW_BLOCKS,
+            D_out=D_out,
+            H_out=H_out,
+            W_out=W_out,
+            HW_OUT=HW_out,
+            BLOCK=BLOCK,
             num_warps=4,
         )
 

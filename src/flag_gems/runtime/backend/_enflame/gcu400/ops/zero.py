@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -37,9 +36,13 @@ def _launch_zero_kernel(tensor: torch.Tensor) -> torch.Tensor:
     n_elements = tensor.numel()
     if n_elements == 0:
         return tensor
-    grid_fn = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), GRID_SIZE),)
+    grid_fn = lambda meta: (
+        min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), GRID_SIZE),
+    )
     with torch_device_fn.device(tensor.device):
-        zero_kernel[grid_fn](tensor, n_elements, BLOCK_SIZE=BLOCK_SIZE, num_warps=NUM_WARPS)
+        zero_kernel[grid_fn](
+            tensor, n_elements, BLOCK_SIZE=BLOCK_SIZE, num_warps=NUM_WARPS
+        )
     return tensor
 
 

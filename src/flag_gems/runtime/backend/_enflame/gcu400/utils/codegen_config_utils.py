@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import Tuple
 
 import triton
-
 from flag_gems.runtime import device
 from flag_gems.runtime.backend import _state
 from flag_gems.runtime.common import vendors

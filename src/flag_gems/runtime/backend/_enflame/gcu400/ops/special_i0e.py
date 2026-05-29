@@ -1,10 +1,9 @@
 import logging
 
+import flag_gems
 import torch
 import triton
 import triton.language as tl
-
-import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -32,7 +31,8 @@ def special_i0e_kernel(x_ptr, out_ptr, N_total, BLOCK: tl.constexpr):
             + t2
             * (
                 3.0899424
-                + t2 * (1.2067492 + t2 * (0.2659732 + t2 * (0.0360768 + t2 * 0.0045813)))
+                + t2
+                * (1.2067492 + t2 * (0.2659732 + t2 * (0.0360768 + t2 * 0.0045813)))
             )
         )
         small = p * tl.exp(-ax)
@@ -83,9 +83,7 @@ def _run_special_i0e_kernel(x: torch.Tensor, out: torch.Tensor):
     BLOCK = 8192
     grid_size = min((N_total + BLOCK - 1) // BLOCK, NUM_SIPS * 2)
     with torch_device_fn.device(x.device):
-        special_i0e_kernel[(grid_size,)](
-            x_c, out_c, N_total, BLOCK=BLOCK, num_warps=4
-        )
+        special_i0e_kernel[(grid_size,)](x_c, out_c, N_total, BLOCK=BLOCK, num_warps=4)
 
     if out_c.data_ptr() != out.data_ptr():
         out.copy_(out_c)

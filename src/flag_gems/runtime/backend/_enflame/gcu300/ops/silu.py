@@ -2,7 +2,6 @@ import logging
 
 import triton
 import triton.language as tl
-
 from flag_gems.utils.triton_lang_extension import div_rn
 
 from ..utils.pointwise_dynamic import pointwise_dynamic

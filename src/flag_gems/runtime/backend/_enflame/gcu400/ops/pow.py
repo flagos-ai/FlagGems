@@ -26,7 +26,7 @@ def pow_func_fast(x, exponent):
     result = tl.math.exp2(e_f * tl.math.log2(abs_x))
     is_neg = x_f < 0.0
     e_int = e_f.to(tl.int32)
-    is_int = (e_f == e_int.to(tl.float32))
+    is_int = e_f == e_int.to(tl.float32)
     is_odd = (e_int & 1) != 0
     result = tl.where(is_neg & is_int & is_odd, -result, result)
     result = tl.where(is_neg & ~is_int, float("nan"), result)

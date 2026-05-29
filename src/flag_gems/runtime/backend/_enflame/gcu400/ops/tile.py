@@ -5,12 +5,11 @@ from typing import Callable, List, Mapping
 
 import torch
 import triton
-from triton import language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.libentry import libentry
+from triton import language as tl
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,10 @@ NUM_SIPS = 24
 @libentry()
 @triton.jit(do_not_specialize=["in_numel", "tile_factor"])
 def tile_first_dim_kernel(
-    in_ptr, out_ptr, in_numel, tile_factor,
+    in_ptr,
+    out_ptr,
+    in_numel,
+    tile_factor,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -48,8 +50,12 @@ def _tile_first_dim(inp, out, tile_factor):
     grid_size = min(NUM_BLOCKS, NUM_SIPS * 2)
     with torch_device_fn.device(inp.device):
         tile_first_dim_kernel[(grid_size,)](
-            inp, out, in_numel, tile_factor,
-            BLOCK=BLOCK, num_warps=1,
+            inp,
+            out,
+            in_numel,
+            tile_factor,
+            BLOCK=BLOCK,
+            num_warps=1,
         )
     return out
 
@@ -70,6 +76,7 @@ def _can_use_flat_copy(inp, dims_shape, in_shape):
 
 
 # ============= Codegen-based general path =============
+
 
 def parameter_for_wrapper() -> str:
     parameters: List[str] = []
@@ -231,9 +238,7 @@ def generate_destination_passing_tile_wrapper(
                 shape_args: str = ", ".join(f"shape[{i}]" for i in range(rank))
                 code.writeline(f"{shape_args}, # task indexing space")
                 in_shape_args: str = ", ".join(f"in0_shape[{i}]" for i in range(rank))
-                code.writeline(
-                    f"{in_shape_args}, # input shape for modular indexing"
-                )
+                code.writeline(f"{in_shape_args}, # input shape for modular indexing")
                 code.writeline("num_tasks, # num tasks")
                 code.writeline("tiles_per_cta=tiles_per_cta,")
                 code.writeline("tile_size=tile_size,")

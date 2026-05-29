@@ -3,10 +3,9 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from triton.language.core import _unwrap_if_constexpr
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from triton.language.core import _unwrap_if_constexpr
 
 from ..utils.config_utils import MAX_GRID_DIM
 from .topk import _get_finfo_val, _get_iinfo_val, argsort

@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -45,19 +44,27 @@ def round_kernel(
             if IS_FP32:
                 out = round_half_to_even_impl(x)
             elif IS_FP16:
-                out = tl.cast(round_half_to_even_impl(tl.cast(x, tl.float32)), tl.float16)
+                out = tl.cast(
+                    round_half_to_even_impl(tl.cast(x, tl.float32)), tl.float16
+                )
             elif IS_BF16:
-                out = tl.cast(round_half_to_even_impl(tl.cast(x, tl.float32)), tl.bfloat16)
+                out = tl.cast(
+                    round_half_to_even_impl(tl.cast(x, tl.float32)), tl.bfloat16
+                )
         else:
             scale = 10.0**decimals
             if IS_FP32:
                 out = round_half_to_even_impl(x * scale) / scale
             elif IS_FP16:
                 x_fp32 = tl.cast(x, tl.float32)
-                out = tl.cast(round_half_to_even_impl(x_fp32 * scale) / scale, tl.float16)
+                out = tl.cast(
+                    round_half_to_even_impl(x_fp32 * scale) / scale, tl.float16
+                )
             elif IS_BF16:
                 x_fp32 = tl.cast(x, tl.float32)
-                out = tl.cast(round_half_to_even_impl(x_fp32 * scale) / scale, tl.bfloat16)
+                out = tl.cast(
+                    round_half_to_even_impl(x_fp32 * scale) / scale, tl.bfloat16
+                )
             else:
                 out = x
 

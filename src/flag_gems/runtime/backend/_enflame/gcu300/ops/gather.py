@@ -4,7 +4,6 @@ import os
 from typing import Any, Callable, Mapping, Tuple
 
 import torch
-
 from flag_gems.ops.scatter import scatter_
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic

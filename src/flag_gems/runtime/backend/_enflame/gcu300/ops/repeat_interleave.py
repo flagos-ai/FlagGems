@@ -2,10 +2,9 @@ import logging
 
 import torch
 import triton
-from triton import language as tl
-
 from flag_gems.utils.shape_utils import c_contiguous_stride
 from flag_gems.utils.tensor_wrapper import StridedBuffer
+from triton import language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 

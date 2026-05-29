@@ -4,7 +4,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
@@ -56,7 +55,7 @@ def selu(*args, **kwargs):
     y = torch.empty_like(x_contig)
 
     n_elements = y.numel()
-    
+
     BLOCK_SIZE = 1024
     if n_elements // BLOCK_SIZE > 65535:
         BLOCK_SIZE = 16384

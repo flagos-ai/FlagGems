@@ -6,12 +6,10 @@ from typing import Any, Callable, List, Mapping, Tuple
 import torch
 import triton
 import triton.language as tl
-
+from flag_gems.utils import dim_compress
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import restride_dim
-
-from flag_gems.utils import dim_compress
 
 logger = logging.getLogger(__name__)
 

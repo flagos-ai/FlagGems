@@ -6,7 +6,6 @@ from collections import namedtuple
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.limits import get_dtype_max
@@ -193,7 +192,11 @@ def min_dim(inp, dim=None, keepdim=False):
             grid_m = _min(triton.cdiv(M, BLOCK_M), 48)
             with torch_device_fn.device(inp.device):
                 min_kernel_inner_batch[(grid_m,)](
-                    inp, out_value, out_index, M, N,
+                    inp,
+                    out_value,
+                    out_index,
+                    M,
+                    N,
                     BLOCK_M=BLOCK_M,
                     num_warps=1,
                 )
@@ -202,9 +205,14 @@ def min_dim(inp, dim=None, keepdim=False):
             num_stages = 3 if M > grid_m else 1
             with torch_device_fn.device(inp.device):
                 min_kernel_inner_1d[(grid_m,)](
-                    inp, out_value, out_index, M, N,
+                    inp,
+                    out_value,
+                    out_index,
+                    M,
+                    N,
                     BLOCK_N=BLOCK_N,
-                    num_stages=num_stages, num_warps=1,
+                    num_stages=num_stages,
+                    num_warps=1,
                 )
     else:
         BLOCK_K = _min(triton.next_power_of_2(K), 128)
@@ -219,9 +227,17 @@ def min_dim(inp, dim=None, keepdim=False):
 
         with torch_device_fn.device(inp.device):
             min_kernel_non_inner[(grid_size,)](
-                inp, out_value, out_index, M, N, K, num_k_tiles,
-                BLOCK_K=BLOCK_K, BLOCK_N=BLOCK_N,
-                num_stages=num_stages, num_warps=1,
+                inp,
+                out_value,
+                out_index,
+                M,
+                N,
+                K,
+                num_k_tiles,
+                BLOCK_K=BLOCK_K,
+                BLOCK_N=BLOCK_N,
+                num_stages=num_stages,
+                num_warps=1,
             )
 
     if not keepdim:

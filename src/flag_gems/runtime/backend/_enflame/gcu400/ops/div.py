@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.utils.triton_lang_extension import div_rn, div_rz, fmod, trunc
 
 from ..utils.pointwise_dynamic import pointwise_dynamic

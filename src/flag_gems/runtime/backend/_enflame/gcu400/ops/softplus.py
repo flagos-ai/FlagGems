@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -75,12 +74,20 @@ def softplus(self, beta=1.0, threshold=20.0):
     with torch_device_fn.device(inp.device):
         if beta == 1.0 and threshold == 20.0:
             softplus_beta1_kernel[(grid_size,)](
-                inp, out, N,
-                BLOCK=BLOCK, num_warps=4,
+                inp,
+                out,
+                N,
+                BLOCK=BLOCK,
+                num_warps=4,
             )
         else:
             softplus_kernel[(grid_size,)](
-                inp, out, N, float(beta), float(threshold),
-                BLOCK=BLOCK, num_warps=4,
+                inp,
+                out,
+                N,
+                float(beta),
+                float(threshold),
+                BLOCK=BLOCK,
+                num_warps=4,
             )
     return out

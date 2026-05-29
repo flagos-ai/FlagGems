@@ -4,7 +4,6 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
-
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
@@ -261,6 +260,7 @@ def index_add(inp, dim, index, src, alpha=1):
         alpha,
     )
     return out
+
 
 def index_add_(inp, dim, index, src, alpha=1):
     logger.debug("GEMS INDEX ADD_")

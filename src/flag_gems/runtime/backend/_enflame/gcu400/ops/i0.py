@@ -1,10 +1,9 @@
 import logging
 
+import flag_gems
 import torch
 import triton
 import triton.language as tl
-
-import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -84,9 +83,7 @@ def _launch_i0(out: torch.Tensor, x: torch.Tensor):
     BLOCK = 8192
     grid_size = min((N_total + BLOCK - 1) // BLOCK, NUM_SIPS * 2)
     with torch_device_fn.device(x_contig.device):
-        i0_kernel[(grid_size,)](
-            x_contig, out_contig, N_total, BLOCK=BLOCK, num_warps=4
-        )
+        i0_kernel[(grid_size,)](x_contig, out_contig, N_total, BLOCK=BLOCK, num_warps=4)
 
     if out_was_noncontig:
         out_in.copy_(out_contig)
