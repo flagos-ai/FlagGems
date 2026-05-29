@@ -451,6 +451,7 @@ mha_varlan_fwd_internal(const at::Tensor& q,
       params.page_table,
       params.page_table_batch_stride,
       params.block_size,
+      k.stride(0),
       // kernel compile-time config
       BLOCK_M,
       BLOCK_N,

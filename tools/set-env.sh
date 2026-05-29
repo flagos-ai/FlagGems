@@ -12,6 +12,7 @@ case $VENDOR in
     ;;
   hygon)
     source /opt/dtk-26.04/env.sh
+    echo "PATH=$PATH"
     ;;
   iluvatar)
     export LD_LIBRARY_PATH=/usr/local/corex/lib:$LD_LIBRARY_PATH
@@ -27,6 +28,10 @@ case $VENDOR in
       SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.12/site-packages
       export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/backends/metax/lib:$LD_LIBRARY_PATH
     fi
+    ;;
+  nvidia)
+    export PATH=/usr/local/cuda/bin:$PATH
+    export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
     ;;
   mthreads)
     export MUSA_HOME=/usr/local/musa

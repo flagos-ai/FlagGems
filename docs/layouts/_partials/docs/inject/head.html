@@ -1,0 +1,129 @@
+{{ if .Params.useTabulator }}
+<link rel="stylesheet" href="{{ "css/tabulator.min.css" | relURL }}">
+<style>
+  .benchmark-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+  .benchmark-tabs button {
+    padding: 6px 16px;
+    border: 1px solid #ccc;
+    background: #f5f5f5;
+    cursor: pointer;
+    border-radius: 4px 4px 0 0;
+    font-size: 14px;
+  }
+  .benchmark-tabs button.active {
+    background: #fff;
+    border-bottom-color: #fff;
+    font-weight: bold;
+  }
+  .benchmark-panel { display: none; }
+  .benchmark-panel.active { display: block; }
+  .tabulator .cell-passed { background-color: #e6f4ea; color: #1a7431; }
+  .tabulator .cell-failed { background-color: #fce8e6; color: #c5221f; }
+  .tabulator .cell-notfound { background-color: #f0f0f0; color: #666; }
+  .tabulator .cell-skipped { background-color: #e8f5fa; color: #0277bd; }
+  .tabulator .cell-timeout { background-color: #fff3e0; color: #e65100; }
+  .tabulator .tabulator-tableholder { overflow-y: scroll !important; }
+  .tabulator .speedup-good { color: #1a7431; }
+  .tabulator .speedup-bad { color: #c5221f; }
+
+  @media (prefers-color-scheme: dark) {
+    .benchmark-tabs button {
+      border-color: #555;
+      background: #3a3f44;
+      color: #e9ecef;
+    }
+    .benchmark-tabs button.active {
+      background: #343a40;
+      border-bottom-color: #343a40;
+    }
+    .tabulator {
+      background-color: #495057 !important;
+      border-color: #555 !important;
+    }
+    .tabulator .tabulator-header {
+      background-color: #3a3f44 !important;
+      border-color: #555 !important;
+      color: #e9ecef !important;
+    }
+    .tabulator .tabulator-header .tabulator-col {
+      background: #3a3f44 !important;
+      border-color: #555 !important;
+    }
+    .tabulator .tabulator-tableholder .tabulator-table {
+      background-color: #343a40 !important;
+      color: #e9ecef !important;
+    }
+    .tabulator-row {
+      background-color: #343a40 !important;
+      color: #e9ecef !important;
+    }
+    .tabulator-row.tabulator-row-even {
+      background-color: #3a3f44 !important;
+    }
+    .tabulator-row .tabulator-cell {
+      border-color: #555 !important;
+    }
+    .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input,
+    .tabulator .tabulator-header .tabulator-col .tabulator-header-filter select {
+      background: #495057 !important;
+      color: #e9ecef !important;
+      border-color: #666 !important;
+    }
+    .tabulator .tabulator-footer {
+      background-color: #3a3f44 !important;
+      border-color: #555 !important;
+      color: #e9ecef !important;
+    }
+    .tabulator .tabulator-footer .tabulator-calcs-holder {
+      background: #3a3f44 !important;
+      border-color: #555 !important;
+    }
+    .tabulator .tabulator-footer .tabulator-calcs-holder .tabulator-row {
+      background: #3a3f44 !important;
+    }
+    .tabulator .tabulator-header .tabulator-calcs-holder {
+      background: #3a3f44 !important;
+      border-color: #555 !important;
+    }
+    .tabulator .tabulator-header .tabulator-calcs-holder .tabulator-row {
+      background: #3a3f44 !important;
+    }
+    .tabulator-row.tabulator-calcs {
+      background: #2d3238 !important;
+    }
+    .tabulator .cell-passed { background-color: #1a3d2a !important; color: #6fcf8a !important; }
+    .tabulator .cell-failed { background-color: #3d1a1a !important; color: #f28b82 !important; }
+    .tabulator .cell-notfound { background-color: #2d2d2d !important; color: #999 !important; }
+    .tabulator .cell-skipped { background-color: #1a2d3d !important; color: #7bc8f0 !important; }
+    .tabulator .cell-timeout { background-color: #3d2d1a !important; color: #ffb74d !important; }
+    .tabulator .speedup-good { color: #6fcf8a !important; }
+    .tabulator .speedup-bad { color: #f28b82 !important; }
+
+    .tabulator-popup-container {
+      background: #343a40 !important;
+      border-color: #555 !important;
+      color: #e9ecef !important;
+    }
+    .tabulator-edit-list .tabulator-edit-list-item {
+      color: #e9ecef !important;
+    }
+    .tabulator-edit-list .tabulator-edit-list-item.active,
+    .tabulator-edit-list .tabulator-edit-list-item:hover {
+      background: #1d68cd !important;
+      color: #fff !important;
+    }
+
+    .tabulator .tabulator-header .tabulator-frozen {
+      background-color: #3a3f44 !important;
+    }
+    .tabulator-row .tabulator-cell.tabulator-frozen {
+      background-color: inherit !important;
+    }
+  }
+</style>
+{{ end }}

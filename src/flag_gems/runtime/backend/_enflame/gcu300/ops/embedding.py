@@ -110,6 +110,8 @@ def embedding_grad_scale_kernel(
 
 
 def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
+    original_weight_dtype = weight.dtype
+    need_restore_int64 = original_weight_dtype == torch.int64
     if indices.dtype == torch.int64:
         indices = indices.to(torch.int32)
     if weight.dtype == torch.float64:
@@ -134,6 +136,8 @@ def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=
     with torch_device_fn.device(weight.device):
         embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
 
+    if need_restore_int64:
+        return output.to(torch.int64)
     return output
 
 
@@ -145,13 +149,13 @@ def embedding_backward(
     scale_grad_by_freq=False,
     sparse=False,
 ):
-    if grad_outputs.dtype == torch.int64:
+    original_grad_dtype = grad_outputs.dtype
+    need_restore_int64 = original_grad_dtype == torch.int64
+    if need_restore_int64:
         grad_outputs = grad_outputs.to(torch.int32)
     logger.debug("GEMS EMBEDDING BACKWARD")
     assert not sparse, "Currently do not support sparse format"
 
-    if grad_outputs.dtype == torch.int64:
-        grad_outputs = grad_outputs.to(torch.int32)
     if indices.dtype == torch.int64:
         indices = indices.to(torch.int32)
     M = indices.numel()
@@ -202,8 +206,8 @@ def embedding_backward(
             embedding_grad_scale_kernel[M,](
                 grad_inputs, indice_freq, num_weights, N, BLOCK_SIZE
             )
-    return (
-        grad_inputs.to(torch.bfloat16)
-        if grad_outputs.dtype is torch.bfloat16
-        else grad_inputs
-    )
+    if original_grad_dtype is torch.bfloat16:
+        return grad_inputs.to(torch.bfloat16)
+    if need_restore_int64:
+        return grad_inputs.to(torch.int64)
+    return grad_inputs
