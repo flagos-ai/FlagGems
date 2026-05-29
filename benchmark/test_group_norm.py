@@ -1,3 +1,5 @@
+import math
+
 import pytest
 import torch
 
@@ -54,9 +56,25 @@ def test_group_norm():
     bench.run()
 
 
+class NormBackwardBenchmark(NormBenchmark):
+    """Limit shapes to avoid Triton compilation error: numel exceeds maximum (1048576)."""
+
+    MAX_ELEMENTS = 2**20
+
+    def set_more_shapes(self):
+        shapes = super().set_more_shapes()
+        return [s for s in shapes if math.prod(s) <= self.MAX_ELEMENTS]
+
+    def init_user_config(self):
+        super().init_user_config()
+        self.shapes = [
+            s for s in self.shapes if math.prod(s) <= self.MAX_ELEMENTS
+        ]
+
+
 @pytest.mark.group_norm_backward
 def test_group_norm_backward():
-    bench = NormBenchmark(
+    bench = NormBackwardBenchmark(
         input_fn=group_norm_input_fn,
         op_name="group_norm_backward",
         torch_op=torch.nn.functional.group_norm,
