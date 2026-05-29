@@ -80,9 +80,12 @@ class DeviceDetector:
         if hasattr(torch_module, "cuda") and hasattr(
             torch_module.cuda, "get_device_properties"
         ):
-            prop = torch_module.cuda.get_device_properties(0)
-            if "NVIDIA" in prop.name.upper():
-                return "nvidia"
+            try:
+                prop = torch_module.cuda.get_device_properties(0)
+                if "NVIDIA" in prop.name.upper():
+                    return "nvidia"
+            except Exception:
+                return False
 
         return False
 
