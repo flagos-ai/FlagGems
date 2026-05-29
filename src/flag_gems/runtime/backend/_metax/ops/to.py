@@ -4,7 +4,7 @@ from typing import Optional
 import torch
 import triton
 
-from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger("flag_gems." + __name__)
 
