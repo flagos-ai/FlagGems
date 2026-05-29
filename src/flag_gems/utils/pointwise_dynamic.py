@@ -301,7 +301,9 @@ class KernelGenerator:
             if ndim > 0:
                 # strides for inputs
                 for i in range(schema.num_input_tensors()):
-                    stride_args = _cs(f"in{i}_stride{j}: int" for j in range(ndim))
+                    stride_args = _cs(
+                        f"in{i}_stride{j}: tl.constexpr" for j in range(ndim)
+                    )
                     code.writeline(f"{stride_args}, # strides for in{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
@@ -311,7 +313,9 @@ class KernelGenerator:
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
-                    stride_args = _cs(f"out{i}_stride{j}: int" for j in range(ndim))
+                    stride_args = _cs(
+                        f"out{i}_stride{j}: tl.constexpr" for j in range(ndim)
+                    )
                     code.writeline(f"{stride_args}, # strides for out{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
