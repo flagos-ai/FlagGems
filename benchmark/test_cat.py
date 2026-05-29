@@ -56,9 +56,7 @@ class CatOutBenchmark(CatBenchmark):
 
     def init_user_config(self):
         super().init_user_config()
-        self.shapes = [
-            s for s in self.shapes if math.prod(s) <= self.MAX_ELEMENTS
-        ]
+        self.shapes = [s for s in self.shapes if math.prod(s) <= self.MAX_ELEMENTS]
 
 
 def _cat_out_input_fn(shape, dtype, device):
