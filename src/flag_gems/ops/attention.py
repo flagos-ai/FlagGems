@@ -542,6 +542,9 @@ def _attn_bwd(
     stride_d,  #
     kv_stride_z,
     kv_stride_h,  #
+    dk_stride_z,
+    dk_stride_h,
+    dk_stride_tok,  #
     H,  # query head num
     Q_CTX,  #
     KV_CTX,  #
@@ -564,6 +567,7 @@ def _attn_bwd(
     kv_head_id = q_head_id // GROUP_HEAD
     adj = (stride_h * q_head_id + stride_z * batch_id).to(tl.int64)
     kv_adj = (kv_stride_h * kv_head_id + kv_stride_z * batch_id).to(tl.int64)
+    dk_adj = (dk_stride_h * q_head_id + dk_stride_z * batch_id).to(tl.int64)
 
     pid = tl.program_id(0)
 
@@ -573,8 +577,8 @@ def _attn_bwd(
     V += kv_adj
     DO += adj
     DQ += adj
-    DK += adj
-    DV += adj
+    DK += dk_adj
+    DV += dk_adj
     M += off_chz
     D += off_chz
 
@@ -663,12 +667,12 @@ def _attn_bwd(
                 MASK=False,  #
             )
 
-        dv_ptrs = DV + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
+        dv_ptrs = DV + offs_n[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
         tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
 
         # Write back dK.
         dk *= sm_scale
-        dk_ptrs = DK + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
+        dk_ptrs = DK + offs_n[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
         tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
 
     # dQ: only execute when this pid covers a valid Q block
@@ -976,6 +980,9 @@ def scaled_dot_product_attention_backward(
         query.stride(3),  #
         key.stride(0),
         key.stride(1),  #
+        dk.stride(0),
+        dk.stride(1),
+        dk.stride(2),  #
         Q_HEAD,
         Q_CTX,  #
         KV_CTX,  #
@@ -987,8 +994,7 @@ def scaled_dot_product_attention_backward(
         # BLOCK_N2=BLOCK_N2,  #
         BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  #
         BLOCK_DMODEL=BLOCK_DMODEL,  #
-        # num_warps=NUM_WARPS,  #
-        # num_stages=NUM_STAGES,  #
+        IS_CAUSAL=is_causal,  #
     )
 
     if group_head > 1:
