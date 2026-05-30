@@ -1,6 +1,6 @@
+import fcntl
 import json
 import logging
-import os
 from datetime import datetime
 
 import pytest
@@ -194,13 +194,16 @@ def pytest_runtest_logreport(report):
 
 def pytest_terminal_summary(terminalreporter):
     data = TEST_RESULTS
-    if os.path.exists(REPORT_FILE):
-        with open(REPORT_FILE, "r") as json_file:
-            existing_data = json.load(json_file)
-        existing_data.update(TEST_RESULTS)
-        data = existing_data
-
-    with open(REPORT_FILE, "w") as json_file:
+    with open(REPORT_FILE, "a+") as json_file:
+        fcntl.flock(json_file, fcntl.LOCK_EX)
+        json_file.seek(0)
+        content = json_file.read()
+        if content:
+            existing_data = json.loads(content)
+            existing_data.update(TEST_RESULTS)
+            data = existing_data
+        json_file.seek(0)
+        json_file.truncate()
         json.dump(data, json_file, indent=2, default=str)
 
 
