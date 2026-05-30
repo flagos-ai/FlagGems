@@ -5,14 +5,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-PDIST_SHAPES = [
-    (4, 8),
-    (8, 16),
-    (16, 32),
-    (32, 64),
-    (64, 128),
-    (128, 256),
-]
+# pdist CUDA kernel only supports float32; Half/BFloat16 raise RuntimeError
+PDIST_SHAPES = utils.PDIST_SHAPES
 
 
 @pytest.mark.pdist
