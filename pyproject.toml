@@ -106,7 +106,7 @@ mthreads = [
     "torch_musa==2.9.0",
     "numpy==1.26.4",
     "triton==3.6.0+git89458660",
-    "mkl==2026.0.0",
+    "mkl==2024.0.0",
     # "flagtree==0.5.1+mthreads3.6",
 ]
 
