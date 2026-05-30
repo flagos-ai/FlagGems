@@ -31,5 +31,6 @@ def test_renorm_(shape, dtype, dim, p, maxnorm):
         res_out = torch.ops.aten.renorm_(inp, p, dim, maxnorm)
 
     # renorm_ is in-place, so both tensors should be modified
-    # Compare the modified tensors
+    # Compare the modified tensors (return value and mutated input)
     utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(inp, ref_inp, dtype)
