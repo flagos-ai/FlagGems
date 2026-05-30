@@ -5,19 +5,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-_UNSAFE_MASKED_INDEX_PUT_SHAPES = [
-    (10,),
-    (20,),
-    (50,),
-    (100,),
-]
-
 # tl.atomic_add does not support bfloat16; only float16/float32 are valid
 _UNSAFE_MASKED_INDEX_PUT_DTYPES = [torch.float16, torch.float32]
 
 
 @pytest.mark.unsafe_masked_index_put_accumulate
-@pytest.mark.parametrize("shape", _UNSAFE_MASKED_INDEX_PUT_SHAPES)
+@pytest.mark.parametrize("shape", utils._UNSAFE_MASKED_INDEX_PUT_SHAPES)
 @pytest.mark.parametrize("dtype", _UNSAFE_MASKED_INDEX_PUT_DTYPES)
 def test_unsafe_masked_index_put_accumulate(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
