@@ -722,6 +722,7 @@ ops:
     labels:
       - aten
       - skip_precision_check
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -733,6 +734,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Reduction
     stages:
@@ -2217,6 +2219,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -2252,6 +2255,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -4456,6 +4460,7 @@ ops:
     labels:
       - aten
       - nn.functional
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -5138,6 +5143,7 @@ ops:
       - roll
     labels:
       - aten
+      - KernelGen
     kind:
       - BLAS
     stages:
@@ -5371,6 +5377,7 @@ ops:
       - scatter_.reduce
     labels:
       - aten
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -6392,6 +6399,7 @@ ops:
       - unique_consecutive
     labels:
       - aten
+      - KernelGen
     kind:
       - Distribution
     stages:
@@ -6535,6 +6543,7 @@ ops:
       - var
     labels:
       - aten
+      - KernelGen
     kind:
       - Tensor
     stages:

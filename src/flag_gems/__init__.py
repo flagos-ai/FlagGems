@@ -13,6 +13,7 @@ from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_lo
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
+from flag_gems.runtime import flagtune
 from flag_gems.runtime.register import Register
 
 __version__ = "5.0.2"
@@ -733,6 +734,7 @@ __all__ = [
     "all_registered_keys",
     "all_registered_ops",
     "enable",
+    "flagtune",
     "only_enable",
     "use_gems",
 ]
