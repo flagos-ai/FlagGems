@@ -142,6 +142,7 @@ case $VENDOR in
         "torch==2.9.0" \
         "torch_musa==2.9.0" \
         "numpy==1.26.4" \
+        "mkl==2026.0.0" \
         "triton==3.6.0+git89458660"
 
     # Replace flagtree with Triton if requested
