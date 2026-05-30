@@ -6852,6 +6852,7 @@ ops:
       - argsort
     labels:
       - skip_precision_check
+      - KernelGen
     kind:
       - Tensor
     stages:
