@@ -4,10 +4,10 @@ import torch
 from . import base, consts
 
 
-@pytest.mark.true_divide
+@pytest.mark.div_tensor
 def test_true_divide():
     bench = base.BinaryPointwiseBenchmark(
-        op_name="true_divide",
+        op_name="div_tensor",
         torch_op=torch.true_divide,
         dtypes=consts.FLOAT_DTYPES,
     )
