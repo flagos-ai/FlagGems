@@ -5,21 +5,11 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# Test shapes covering basic cases, edge cases (W_in=1, W_in=2, no padding, max padding)
-REPLICATION_PAD1D_SHAPES = [
-    (3, (2, 3)),  # Basic case
-    (5, (1, 1)),  # Small padding
-    (10, (2, 2)),  # Larger input, small padding
-    (4, (0, 0)),  # No padding
-    (4, (3, 3)),  # Large padding
-    (1, (5, 5)),  # W_in=1 edge case
-    (8, (7, 7)),  # Max padding case
-    (2, (3, 4)),  # W_in=2 edge case
-]
+REPLICATION_PAD1D_BACKWARD_SHAPES = utils.REPLICATION_PAD1D_BACKWARD_SHAPES
 
 
 @pytest.mark.replication_pad1d_backward
-@pytest.mark.parametrize("shape,padding", REPLICATION_PAD1D_SHAPES)
+@pytest.mark.parametrize("shape,padding", REPLICATION_PAD1D_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_replication_pad1d_backward(shape, padding, dtype):
     W_in = shape if isinstance(shape, int) else shape[-1]
