@@ -5810,7 +5810,7 @@ ops:
     description: |
       Triton kernel implementation for special_chebyshev_polynomial_v.
     for:
-      - special_chebyshev_polynomial_v
+      - special.chebyshev_polynomial_v
     labels:
       - aten
       - KernelGen
