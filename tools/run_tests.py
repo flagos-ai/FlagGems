@@ -29,15 +29,16 @@ getcontext().prec = 18
 # Global lock for writing result file and the result file
 GLOBAL_RESULTS = {}
 ENV_INFO = {}
-HAS_TRITON = False
-HAS_FLAGTREE = False
 ROOT = Path(__file__).parent.parent
-OUPUT_DIR = None
+OUTPUT_DIR = None
 OP_LIST = []
 DUMP_OUTPUT = False
 TIMEOUT = -100
 # A list of operators that can only run on GPU/DCUs
 NO_CPU_LIST = []
+# Track worker processes for cleanup on interrupt
+WORKER_PROCESSES = []
+INTERRUPTED = False
 
 
 def pinfo(str, **args):
@@ -54,6 +55,51 @@ def pwarn(str, **args):
 
 def ensure_dir(p):
     p.mkdir(parents=True, exist_ok=True)
+
+
+def cleanup_intermediate_files():
+    patterns = [
+        (ROOT / "tests", "accuracy_*.json"),
+        (ROOT / "benchmark", "benchmark_*.json"),
+    ]
+    for directory, pattern in patterns:
+        for f in directory.glob(pattern):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+
+    if OUTPUT_DIR:
+        for f in OUTPUT_DIR.glob("summary*.tmp"):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+
+
+def terminate_workers():
+    for p in WORKER_PROCESSES:
+        if p.is_alive():
+            try:
+                os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+            except (OSError, ProcessLookupError):
+                pass
+    for p in WORKER_PROCESSES:
+        p.join(timeout=5)
+        if p.is_alive():
+            p.kill()
+
+
+def handle_interrupt(signum, frame):
+    global INTERRUPTED
+    if INTERRUPTED:
+        return
+    INTERRUPTED = True
+    pwarn("Interrupted. Cleaning up ...")
+    terminate_workers()
+    cleanup_intermediate_files()
+    pwarn("Cleanup done.")
+    sys.exit(1)
 
 
 def get_ops_from_inventory():
@@ -111,9 +157,9 @@ def _probe_triton():
         version = metadata.version("flagtree")
         ENV_INFO["flagtree"] = version
         pinfo(f"FlagTree (flagtree) detected ... {version}")
-        HAS_FLAGTREE = True
+        has_flagtree = True
     except Exception:
-        HAS_FLAGTREE = False
+        has_flagtree = False
         ENV_INFO["flagtree"] = None
         pwarn("FlagTree (flagtree) not installed, testing Triton ...")
 
@@ -125,7 +171,7 @@ def _probe_triton():
         pinfo(f"Triton (triton) detected ... {version}")
 
         # TODO(Qiming): Fix this. FlagTree contains a Triton, which should not be treated as conflict.
-        # if HAS_FLAGTREE:
+        # if has_flagtree:
         #     perror(
         #        "Both FlagTree and Triton are installed, please uninstall one of them."
         #    )
@@ -138,7 +184,7 @@ def _probe_triton():
 
     except Exception:
         ENV_INFO["triton"] = None
-        if not HAS_FLAGTREE:
+        if not has_flagtree:
             perror("Neither FlagTree nor Triton is installed, please fix it.")
             sys.exit(-1)
 
@@ -220,6 +266,7 @@ def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
 
     try:
         p.wait(timeout=timeout)
+        return p.returncode
     except subprocess.TimeoutExpired:
         pgid = os.getpgid(p.pid)
         try:
@@ -227,10 +274,15 @@ def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
         except Exception:
             os.killpg(pgid, signal.SIGKILL)
 
-        return p.returncode
+        return TIMEOUT
     except Exception as e:
         perror(f"run_cmd failed: {e}")
         return -1
+    finally:
+        if stdout != subprocess.DEVNULL:
+            stdout.close()
+        if stderr != subprocess.DEVNULL:
+            stderr.close()
 
 
 def parse_accuracy_data(result_file):
@@ -258,7 +310,7 @@ def parse_accuracy_data(result_file):
             num_passed += 1
         elif result == "skipped":
             reason = item.get("reason", "Unknown")
-            if reason.find("Issue"):
+            if "Issue" in reason:
                 skipped_with_issue = True
             skipped.setdefault(reason, set())
             skipped[reason].add(param_str)
@@ -558,8 +610,10 @@ def worker_proc(gpu_id, start, count):
         worker_result.setdefault(op, result)
 
         json_path = OUTPUT_DIR.joinpath(f"summary{gpu_id}.json")
-        with open(json_path, "w") as f:
+        tmp_path = json_path.with_suffix(".tmp")
+        with open(tmp_path, "w") as f:
             json.dump(worker_result, f, indent=2)
+        os.replace(tmp_path, json_path)
 
     return
 
@@ -638,6 +692,9 @@ def main():
     global OP_LIST
     global DUMP_OUTPUT
 
+    signal.signal(signal.SIGINT, handle_interrupt)
+    signal.signal(signal.SIGTERM, handle_interrupt)
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--op-list-file", required=False)
     parser.add_argument("--ops", required=False)
@@ -679,7 +736,6 @@ def main():
     if gpu_count == 1:
         worker_proc(gpu_ids[0], 0, op_count)
     else:
-        processes = []
         m, n = divmod(op_count, gpu_count)
         start = 0
         for i, gpu in enumerate(gpu_ids):
@@ -689,10 +745,10 @@ def main():
                 count = m
             p = Process(target=worker_proc, args=(gpu, start, count))
             p.start()
-            processes.append(p)
+            WORKER_PROCESSES.append(p)
             start += count
 
-        for p in processes:
+        for p in WORKER_PROCESSES:
             p.join()
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -716,6 +772,7 @@ def main():
     with json_path.open("w") as f:
         json.dump(final_data, f, indent=2)
 
+    cleanup_intermediate_files()
     pinfo("Test completed.")
 
 
