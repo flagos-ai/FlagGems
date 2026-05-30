@@ -38,7 +38,7 @@ def test_true_divide_(shape, dtype):
     utils.gems_assert_close(inp1, ref_inp1, dtype, equal_nan=True)
 
 
-@pytest.mark.div_tensor
+@pytest.mark.div_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -52,6 +52,22 @@ def test_true_divide_tensor_scalar(shape, scalar, dtype):
         res_out = torch.true_divide(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.div_scalar_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_true_divide_tensor_scalar_(shape, scalar, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = scalar
+    ref_inp1 = utils.to_reference(inp1.clone(), False)
+
+    ref_inp1.true_divide_(inp2)
+    with flag_gems.use_gems():
+        inp1.true_divide_(inp2)
+
+    utils.gems_assert_close(inp1, ref_inp1, dtype, equal_nan=True)
 
 
 @pytest.mark.div_scalar
