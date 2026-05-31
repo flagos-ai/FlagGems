@@ -154,6 +154,38 @@ def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
     return out
 
 
+def addmm_sqmma_descriptor_pre_hook(nargs):
+    nargs["a_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_K"]]
+    nargs["b_desc"].block_shape = [nargs["BLOCK_SIZE_K"], nargs["BLOCK_SIZE_N"]]
+    nargs["bias_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_N"]]
+    nargs["c_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_N"]]
+
+
+@libentry()
+@libtuner(
+    configs=runtime.ops_get_configs(
+        "addmm_sqmma",
+        pre_hook=addmm_sqmma_descriptor_pre_hook,
+        yaml_path=EXPAND_CONFIG_FILENAME,
+    )
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else [
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
+            num_stages=1,
+            num_warps=4,
+            pre_hook=addmm_sqmma_descriptor_pre_hook,
+        )
+    ],
+    key=["M", "N", "K"],
+    strategy=runtime.get_expand_config("addmm_sqmma", yaml_path=EXPAND_CONFIG_FILENAME)[
+        "strategy"
+    ]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["default", "default", "default"],
+    warmup=5,
+    rep=5,
+)
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_sqmma_kernel(
     a_desc,
@@ -188,15 +220,6 @@ def addmm_sqmma_kernel(
     tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], result)
 
 
-def get_triton_type(elem_type):
-    type_map = {
-        torch.float16: tl.float16,
-        torch.bfloat16: tl.bfloat16,
-        torch.float8_e4m3fn: tl.float8e4nv,
-    }
-    return type_map.get(elem_type, None)
-
-
 def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
     logger.debug("GEMS_MTHREADS ADDMM(SQMMA)")
     device = mat1.device
@@ -213,15 +236,12 @@ def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
     c_type = a_type
     C = torch.empty((M, N), dtype=c_type, device=device)
     bias = bias.broadcast_to(C.shape).contiguous()
-    BLOCK_SIZE_M = 128
-    BLOCK_SIZE_N = 128
-    BLOCK_SIZE_K = 64
-    desc_a = TensorDescriptor.from_tensor(mat1, [BLOCK_SIZE_M, BLOCK_SIZE_K])
-    desc_b = TensorDescriptor.from_tensor(mat2, [BLOCK_SIZE_K, BLOCK_SIZE_N])
-    desc_bias = TensorDescriptor.from_tensor(bias, [BLOCK_SIZE_M, BLOCK_SIZE_N])
-    desc_c = TensorDescriptor.from_tensor(C, [BLOCK_SIZE_M, BLOCK_SIZE_N])
+    desc_a = TensorDescriptor.from_tensor(mat1, [1, 1])
+    desc_b = TensorDescriptor.from_tensor(mat2, [1, 1])
+    desc_bias = TensorDescriptor.from_tensor(bias, [1, 1])
+    desc_c = TensorDescriptor.from_tensor(C, [1, 1])
     grid = lambda META: (
-        triton.cdiv(M, BLOCK_SIZE_M) * triton.cdiv(N, BLOCK_SIZE_N),
+        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
         1,
         1,
     )
@@ -235,11 +255,6 @@ def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
         K,
         alpha,
         beta,
-        BLOCK_SIZE_M,
-        BLOCK_SIZE_N,
-        BLOCK_SIZE_K,
-        num_warps=4,
-        num_stages=1,
     )
     return C
 

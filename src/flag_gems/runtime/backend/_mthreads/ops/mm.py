@@ -385,16 +385,7 @@ def mm_sqmma_kernel(
     tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], accumulator.to(c_desc.dtype))
 
 
-def get_triton_type(elem_type):
-    type_map = {
-        torch.float16: tl.float16,
-        torch.bfloat16: tl.bfloat16,
-        torch.float8_e4m3fn: tl.float8e4nv,
-    }
-    return type_map.get(elem_type, None)
-
-
-def mm_sqmma(A, B, M, N, K, GROUP_M):
+def mm_sqmma(A, B, M, N, K):
     logger.debug("GEMS_MTHREADS MM(SQMMA)")
     device = A.device
     if not A.is_contiguous():
@@ -441,14 +432,12 @@ def mm(a, b):
         return gemv_mm(a, b, c, M, K)
 
     if is_sqmma_compatible(a, b, N, K):
-        GROUP_M = 8
         return mm_sqmma(
             a,
             b,
             M,
             N,
             K,
-            GROUP_M,
         )
     else:
         return mm_fma(a, b)
