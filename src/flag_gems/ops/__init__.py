@@ -70,7 +70,7 @@ from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
-from flag_gems.ops.celu import celu, celu_
+from flag_gems.ops.celu import celu, celu_, celu_backward
 from flag_gems.ops.clamp import (
     clamp,
     clamp_,
@@ -279,6 +279,7 @@ from flag_gems.ops.pow import (
     pow_tensor_tensor_,
 )
 from flag_gems.ops.prelu import prelu
+from flag_gems.ops.prelu_backward import prelu_backward
 from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.quantile import quantile
 from flag_gems.ops.rad2deg import rad2deg, rad2deg_
@@ -291,6 +292,8 @@ from flag_gems.ops.randperm import randperm
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
+from flag_gems.ops.replication_pad1d_backward import replication_pad1d_backward
+from flag_gems.ops.replication_pad3d_backward import replication_pad3d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
@@ -345,6 +348,9 @@ from flag_gems.ops.softmax import (
 )
 from flag_gems.ops.softplus import softplus
 from flag_gems.ops.softshrink import softshrink, softshrink_out
+from flag_gems.ops.softshrink_backward import softshrink_backward
+from flag_gems.ops.hardshrink import hardshrink
+from flag_gems.ops.hardshrink_backward import hardshrink_backward
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
@@ -491,6 +497,7 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "celu_backward",
     "clamp",
     "clamp_",
     "clamp_min",
@@ -746,6 +753,7 @@ __all__ = [
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
     "prelu",
+    "prelu_backward",
     "prod",
     "prod_dim",
     "quantile",
@@ -774,8 +782,10 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "replication_pad1d",
+    "replication_pad1d_backward",
     "replication_pad1d_out",
     "replication_pad3d",
+    "replication_pad3d_backward",
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
@@ -833,6 +843,9 @@ __all__ = [
     "softplus",
     "softshrink",
     "softshrink_out",
+    "softshrink_backward",
+    "hardshrink",
+    "hardshrink_backward",
     "sort",
     "sort_stable",
     "special_i0e",
