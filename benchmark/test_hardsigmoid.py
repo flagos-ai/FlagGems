@@ -23,3 +23,13 @@ def test_hardsigmoid_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.hardsigmoid_backward
+def test_hardsigmoid_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="hardsigmoid_backward",
+        torch_op=torch.ops.aten.hardsigmoid_backward,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
