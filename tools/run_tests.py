@@ -12,6 +12,7 @@ import datetime
 import json
 import os
 import platform
+import queue as queue_module
 import shlex
 import shutil
 import signal
@@ -57,9 +58,6 @@ if not IS_TTY:
     RED = GREEN = YELLOW = CYAN = DIM = NC = ""
 
 
-# ── Logging helpers (used during probe_env, before workers start) ─────────
-
-
 def pinfo(msg, **kwargs):
     print(f"{GREEN}[INFO]{NC} {msg}", flush=True, **kwargs)
 
@@ -76,19 +74,36 @@ def ensure_dir(p):
     p.mkdir(parents=True, exist_ok=True)
 
 
-# ── Display engine ────────────────────────────────────────────────────────
-
-
 class LiveDisplay:
     """Manages terminal output with a pinned footer for GPU status lines."""
 
-    def __init__(self, gpu_ids, op_width=20):
+    def __init__(self, gpu_ids, op_count, op_width=20):
         self.gpu_ids = gpu_ids
-        self.n = len(gpu_ids)
+        self.op_count = op_count
         self.op_width = op_width
-        self.gpu_index = {gid: i for i, gid in enumerate(gpu_ids)}
-        self.footer = [f"{DIM}[GPU {gid:2d}] idle{NC}" for gid in gpu_ids]
+        self.gpu_index = {gid: i + 1 for i, gid in enumerate(gpu_ids)}
+        # Match progress line width to scrolling log lines (55 + op_width visible chars).
+        # Progress line: "[Progress] [" (12) + bar + "]  " (3) + nums_str
+        nums_width = len(f"{op_count}/{op_count} ops")
+        self.bar_width = max(20, 55 + op_width - 12 - 3 - nums_width)
+        self.nums_width = nums_width
+        progress_line = self._fmt_progress(0)
+        gpu_lines = [f"{DIM}[GPU {gid:2d}] idle{NC}" for gid in gpu_ids]
+        self.footer = [progress_line] + gpu_lines
+        self.n = len(self.footer)
         self.footer_drawn = False
+
+    def _fmt_progress(self, tests_done):
+        total_tests = self.op_count * 2
+        color = GREEN if tests_done >= total_tests else CYAN
+        bar = (
+            _progress_bar(tests_done, total_tests, self.bar_width, color=color)
+            if self.op_count
+            else " " * self.bar_width
+        )
+        ops_done = tests_done // 2
+        nums = f"{ops_done}/{self.op_count} ops"
+        return f"[Progress] [{color}{bar}{NC}]  {nums:>{self.nums_width}}"
 
     def _draw_footer(self):
         if not IS_TTY:
@@ -128,6 +143,13 @@ class LiveDisplay:
             self._erase_footer()
             self._draw_footer()
 
+    def update_progress(self, tests_done):
+        """Update the global progress bar."""
+        self.footer[0] = self._fmt_progress(tests_done)
+        if IS_TTY:
+            self._erase_footer()
+            self._draw_footer()
+
     def finish(self):
         """Clear the footer when done."""
         if IS_TTY:
@@ -135,9 +157,18 @@ class LiveDisplay:
             sys.stdout.flush()
 
 
-def _progress_bar(index, count):
-    n = (index + 1) * 40 // count
-    return "█" * n + " " * (40 - n)
+def _progress_bar(done, total, width=40, color=""):
+    if not total:
+        return " " * width
+    frac = done * width / total
+    full = int(frac)
+    has_half = (frac - full) >= 0.5 and full < width
+    empty = width - full - (1 if has_half else 0)
+    bar = "█" * full
+    if has_half:
+        bar += f"{DIM}█{NC}{color}"
+    bar += " " * empty
+    return bar
 
 
 def _format_status(status, dur):
@@ -151,9 +182,6 @@ def _format_status(status, dur):
     }
     color, label = STATUS_MAP.get(status, (YELLOW, status.upper()))
     return f"{color}[{label:<8} {dur:>6.1f}s]{NC}"
-
-
-# ── Environment probing (identical to run_tests.py) ───────────────────────
 
 
 def get_ops_from_inventory():
@@ -275,9 +303,6 @@ def probe_env():
     _probe_torch()
     _probe_triton()
     _probe_flaggems()
-
-
-# ── Shared helpers ────────────────────────────────────────────────────────
 
 
 def get_env(gpu_ids):
@@ -492,10 +517,7 @@ def parse_perf_data(op, result_file):
     }
 
 
-# ── Worker (runs in subprocess, sends events via queue) ───────────────────
-
-
-def run_accuracy_q(gpu_id, op, queue):
+def run_accuracy_q(gpu_id, op):
     """Run accuracy test for one op. Returns result dict."""
     env = get_env(str(gpu_id))
 
@@ -554,7 +576,7 @@ def run_accuracy_q(gpu_id, op, queue):
     return result
 
 
-def run_benchmark_q(gpu_id, op, queue):
+def run_benchmark_q(gpu_id, op):
     """Run benchmark for one op. Returns result dict."""
     env = get_env(str(gpu_id))
 
@@ -601,24 +623,26 @@ def run_benchmark_q(gpu_id, op, queue):
     return record
 
 
-def worker_proc(gpu_id, start, count, queue):
+def worker_proc(gpu_id, work_queue, display_queue):
     worker_result = {}
-    for i in range(count):
-        op = CFG.ops[start + i].strip()
+    while True:
+        try:
+            op = work_queue.get_nowait()
+        except queue_module.Empty:
+            break
+        op = op.strip()
         if not op:
             continue
 
         op_dir = CFG.output_dir.joinpath(op)
         ensure_dir(op_dir)
 
-        queue.put(("start", gpu_id, i, count, "accuracy", op))
-        acc = run_accuracy_q(gpu_id, op, queue)
-        queue.put(
+        display_queue.put(("start", gpu_id, "accuracy", op))
+        acc = run_accuracy_q(gpu_id, op)
+        display_queue.put(
             (
                 "done",
                 gpu_id,
-                i,
-                count,
                 "accuracy",
                 op,
                 acc.get("status", "Error"),
@@ -626,14 +650,12 @@ def worker_proc(gpu_id, start, count, queue):
             )
         )
 
-        queue.put(("start", gpu_id, i, count, "benchmark", op))
-        perf = run_benchmark_q(gpu_id, op, queue)
-        queue.put(
+        display_queue.put(("start", gpu_id, "benchmark", op))
+        perf = run_benchmark_q(gpu_id, op)
+        display_queue.put(
             (
                 "done",
                 gpu_id,
-                i,
-                count,
                 "benchmark",
                 op,
                 perf.get("status", "Error"),
@@ -655,14 +677,14 @@ def worker_proc(gpu_id, start, count, queue):
             json.dump(worker_result, f, indent=2)
         os.replace(tmp_path, json_path)
 
-    queue.put(("exit", gpu_id))
-
-
-# ── Display loop (runs in main process) ───────────────────────────────────
+    display_queue.put(("exit", gpu_id))
 
 
 def display_loop(queue, display, n_workers):
     exited = 0
+    tests_done = 0
+    per_gpu_done = {gid: 0 for gid in display.gpu_ids}
+
     while exited < n_workers:
         try:
             msg = queue.get(timeout=1)
@@ -673,17 +695,12 @@ def display_loop(queue, display, n_workers):
 
         if kind == "exit":
             gpu_id = msg[1]
-            done_bar = "█" * 40
-            display.update_gpu(
-                gpu_id,
-                f"[GPU {gpu_id:2d}] [{GREEN}{done_bar}{NC}] done",
-            )
+            n = per_gpu_done.get(gpu_id, 0)
+            display.update_gpu(gpu_id, f"{DIM}[GPU {gpu_id:2d}] done ({n} ops){NC}")
             exited += 1
 
         elif kind == "start":
-            _, gpu_id, index, count, phase, op = msg
-            prog = _progress_bar(index, count)
-            nums = f"{index + 1}/{count}"
+            _, gpu_id, phase, op = msg
             label = "accuracy " if phase == "accuracy" else "benchmark"
             op_display = (
                 op
@@ -691,17 +708,18 @@ def display_loop(queue, display, n_workers):
                 else op[: display.op_width - 3] + "..."
             )
             op_col = op_display.ljust(display.op_width)
+            n = per_gpu_done.get(gpu_id, 0)
             if IS_TTY:
-                footer_line = (
-                    f"[GPU {gpu_id:2d}] [{CYAN}{prog}{NC}] {nums:>7}  {label} {op_col}"
+                display.update_gpu(
+                    gpu_id,
+                    f"[GPU {gpu_id:2d}] ({n:>3} done)  {label} {op_col}",
                 )
-                display.update_gpu(gpu_id, footer_line)
             else:
                 ts = datetime.datetime.now().strftime("%H:%M:%S")
                 display.log(f"[INFO] [{ts}][GPU {gpu_id:2d}]" f" {label} {op_col} ...")
 
         elif kind == "done":
-            _, gpu_id, index, count, phase, op, status, dur = msg
+            _, gpu_id, phase, op, status, dur = msg
             ts = datetime.datetime.now().strftime("%H:%M:%S")
             label = "accuracy " if phase == "accuracy" else "benchmark"
             op_display = (
@@ -717,8 +735,10 @@ def display_loop(queue, display, n_workers):
             )
             display.log(log_line)
 
-
-# ── Cleanup ───────────────────────────────────────────────────────────────
+            tests_done += 1
+            if phase == "benchmark":
+                per_gpu_done[gpu_id] = per_gpu_done.get(gpu_id, 0) + 1
+            display.update_progress(tests_done)
 
 
 def cleanup_intermediate_files():
@@ -766,9 +786,6 @@ def handle_interrupt(signum, frame):
     cleanup_intermediate_files()
     pwarn("Cleanup done.")
     sys.exit(1)
-
-
-# ── Op list ───────────────────────────────────────────────────────────────
 
 
 def get_ops_to_test():
@@ -832,9 +849,6 @@ def get_ops_to_test():
     return ops
 
 
-# ── Main ──────────────────────────────────────────────────────────────────
-
-
 def main():
     global OPTS
 
@@ -893,31 +907,24 @@ def main():
     gpu_count = len(gpu_ids)
 
     op_width = min(max(len(op) for op in ops), 40) if ops else 20
-    queue = Queue()
-    display = LiveDisplay(gpu_ids, op_width=op_width)
 
-    if gpu_count == 1:
-        p = Process(target=worker_proc, args=(gpu_ids[0], 0, op_count, queue))
+    work_queue = Queue()
+    for op in ops:
+        work_queue.put(op)
+
+    display_queue = Queue()
+    display = LiveDisplay(gpu_ids, op_count, op_width=op_width)
+
+    for gpu in gpu_ids:
+        p = Process(target=worker_proc, args=(gpu, work_queue, display_queue))
         p.start()
         WORKER_PROCESSES.append(p)
-        display.init()
-        display_loop(queue, display, 1)
+
+    display.init()
+    display_loop(display_queue, display, gpu_count)
+
+    for p in WORKER_PROCESSES:
         p.join()
-    else:
-        m, n = divmod(op_count, gpu_count)
-        start = 0
-        for i, gpu in enumerate(gpu_ids):
-            count = m + 1 if i < n else m
-            p = Process(target=worker_proc, args=(gpu, start, count, queue))
-            p.start()
-            WORKER_PROCESSES.append(p)
-            start += count
-
-        display.init()
-        display_loop(queue, display, gpu_count)
-
-        for p in WORKER_PROCESSES:
-            p.join()
 
     display.finish()
 
