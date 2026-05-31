@@ -15,14 +15,15 @@ from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime import flagtune
 from flag_gems.runtime.register import Register
+from flag_gems.runtime.backend import OpSpecRegistrar
 
 __version__ = "5.0.2"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
+OpSpecRegistrar(globals()).apply()
 current_work_registrar = None
-runtime.replace_customized_ops(globals())
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 
 

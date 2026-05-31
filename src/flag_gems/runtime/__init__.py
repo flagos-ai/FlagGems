@@ -26,24 +26,6 @@ def get_heuristic_config(op_name):
     return config_loader.get_heuristics_config(op_name)
 
 
-def replace_customized_ops(_globals):
-    event = backend.BackendArchEvent()
-    arch_specific_ops = event.get_arch_ops() if event.has_arch else None
-    extended_ops = backend.get_customized_ops(device.vendor_name)
-    if device.vendor != common.vendors.NVIDIA:
-        try:
-            for fn_name, fn in extended_ops:
-                _globals[fn_name] = fn
-        except RuntimeError as e:
-            error.customized_op_replace_error(e)
-    if arch_specific_ops:
-        try:
-            for fn_name, fn in arch_specific_ops:
-                _globals[fn_name] = fn
-        except RuntimeError as e:
-            error.customized_op_replace_error(e)
-
-
 def get_expand_config(op_name, yaml_path=None):
     return config_loader.get_expand_config(op_name=op_name, yaml_path=yaml_path)
 
