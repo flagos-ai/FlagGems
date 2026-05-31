@@ -4127,6 +4127,31 @@ ops:
       - Math
     stages:
       - alpha: '5.1'
+  - id: rrelu_with_noise_functional
+    description: |
+      Triton kernel implementation for rrelu_with_noise_functional.
+    for:
+      - rrelu_with_noise_functional
+      - rrelu_with_noise_functional_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: rrelu_with_noise_functional_
+    description: |
+      In-place version of rrelu_with_noise_functional.
+    for:
+      - rrelu_with_noise_functional_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: smooth_l1_loss
     description: Compute the smooth L1 loss between input and target tensors.
     for:
