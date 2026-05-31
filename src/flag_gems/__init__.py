@@ -255,6 +255,8 @@ _FULL_CONFIG = (
     ("fmod.Tensor", fmod_tensor),
     ("fmod_.Scalar", fmod_scalar_),
     ("fmod_.Tensor", fmod_tensor_),
+    ("fractional_max_pool2d", fractional_max_pool2d),
+    ("fractional_max_pool2d_backward", fractional_max_pool2d_backward),
     ("full", full),
     ("full_like", full_like),
     ("gather", gather),

@@ -2078,3 +2078,29 @@ conv_transpose1d:
       BLOCK_IC: 32
     num_warps: 4
     num_stages: 3
+
+fractional_max_pool2d_forward:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_H: block_h
+        BLOCK_W: block_w
+      num_stages: stages
+      num_warps: warps
+    block_h: [8, 16, 32]
+    block_w: [8, 16, 32]
+    stages: [2, 3, 4]
+    warps: [2, 4, 8]
+
+fractional_max_pool2d_backward:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_H: block_h
+        BLOCK_W: block_w
+      num_stages: stages
+      num_warps: warps
+    block_h: [8, 16, 32]
+    block_w: [8, 16, 32]
+    stages: [2, 3, 4]
+    warps: [2, 4, 8]

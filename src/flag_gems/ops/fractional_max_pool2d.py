@@ -1,0 +1,287 @@
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems import runtime
+from flag_gems.utils import libentry
+from flag_gems.utils.limits import get_dtype_min
+
+logger = logging.getLogger(__name__)
+
+
+@libentry()
+@triton.autotune(
+    configs=runtime.get_tuned_config("fractional_max_pool2d_forward"),
+    key=["out_h", "out_w", "kernel_h", "kernel_w"],
+)
+@triton.jit
+def fractional_max_pool2d_forward_kernel(
+    input_ptr,
+    output_ptr,
+    indices_ptr,
+    # Input tensor strides
+    in_stride_n,
+    in_stride_c,
+    in_stride_h,
+    in_stride_w,
+    # Input/Output shapes
+    in_n,
+    in_c,
+    in_h,
+    in_w,
+    out_h,
+    out_w,
+    # Pooling parameters
+    kernel_h: tl.constexpr,
+    kernel_w: tl.constexpr,
+    stride_h,
+    stride_w,
+    # Tiling meta-parameters
+    BLOCK_H: tl.constexpr,
+    BLOCK_W: tl.constexpr,
+):
+    pid_nc = tl.program_id(0)
+    pid_hw = tl.program_id(1)
+    num_w_blocks = tl.cdiv(out_w, BLOCK_W)
+    h_block_idx = pid_hw // num_w_blocks
+    w_block_idx = pid_hw % num_w_blocks
+    n_idx = pid_nc // in_c
+    c_idx = pid_nc % in_c
+
+    h_out_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
+    w_out_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
+
+    dtype = input_ptr.type.element_ty
+    min_val = get_dtype_min(dtype)
+
+    input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
+
+    max_val_acc = tl.full((BLOCK_H, BLOCK_W), min_val, dtype=dtype)
+    max_idx_acc = tl.full((BLOCK_H, BLOCK_W), -1, dtype=tl.int64)
+
+    # Compute base position for output block (no random offset for now)
+    h_base = h_out_offsets[:, None] * stride_h
+    w_base = w_out_offsets[None, :] * stride_w
+
+    for kh in range(kernel_h):
+        for kw in range(kernel_w):
+            h_in = h_base + kh
+            w_in = w_base + kw
+
+            in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
+
+            input_offset = h_in * in_stride_h + w_in * in_stride_w
+            current_val = tl.load(
+                input_base_ptr + input_offset, mask=in_mask, other=min_val
+            )
+            current_idx = h_in * in_w + w_in
+
+            is_new_max = current_val > max_val_acc
+            max_val_acc = tl.where(is_new_max, current_val, max_val_acc)
+            max_idx_acc = tl.where(is_new_max & in_mask, current_idx, max_idx_acc)
+
+    out_base_ptr = output_ptr + pid_nc * out_h * out_w
+    indices_base_ptr = indices_ptr + pid_nc * out_h * out_w
+    out_h_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
+    out_w_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
+    output_block_ptr = out_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
+    indices_block_ptr = indices_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
+
+    out_mask = (h_out_offsets[:, None] < out_h) & (out_w_offsets[None, :] < out_w)
+    tl.store(output_block_ptr, max_val_acc, mask=out_mask)
+    tl.store(indices_block_ptr, max_idx_acc, mask=out_mask)
+
+
+@libentry()
+@triton.autotune(
+    configs=runtime.get_tuned_config("fractional_max_pool2d_backward"),
+    key=["out_h", "out_w"],
+)
+@triton.jit
+def fractional_max_pool2d_backward_kernel(
+    grad_output_ptr,
+    indices_ptr,
+    grad_input_ptr,
+    # Shape info
+    in_n,
+    in_c,
+    in_h,
+    in_w,
+    out_h,
+    out_w,
+    # Strides
+    out_stride_nc,
+    out_stride_h,
+    out_stride_w,
+    # Tiling meta-parameters
+    BLOCK_H: tl.constexpr,
+    BLOCK_W: tl.constexpr,
+):
+    pid_nc = tl.program_id(0)
+    pid_hw = tl.program_id(1)
+    num_w_blocks = tl.cdiv(out_w, BLOCK_W)
+    h_block_idx = pid_hw // num_w_blocks
+    w_block_idx = pid_hw % num_w_blocks
+
+    h_out_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
+    w_out_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
+
+    # Load gradients and indices for this block
+    grad_output_block_ptr = grad_output_ptr + pid_nc * out_stride_nc
+    indices_block_ptr = indices_ptr + pid_nc * out_stride_nc
+
+    # Compute flat indices for output positions in this block
+    h_expanded = h_out_offsets[:, None]
+    w_expanded = w_out_offsets[None, :]
+    out_flat_indices = h_expanded * out_w + w_expanded
+
+    # Load gradients and indices
+    grad_output_block = tl.load(
+        grad_output_block_ptr + h_expanded * out_stride_h + w_expanded * out_stride_w,
+        mask=(h_out_offsets[:, None] < out_h) & (w_out_offsets[None, :] < out_w),
+        other=0.0,
+    )
+    indices_block = tl.load(
+        indices_block_ptr + out_flat_indices,
+        mask=(h_out_offsets[:, None] < out_h) & (w_out_offsets[None, :] < out_w),
+        other=-1,
+    )
+
+    # Compute input positions from indices
+    h_in = indices_block // in_w
+    w_in = indices_block % in_w
+
+    # Store gradients at the input positions
+    in_base_ptr = grad_input_ptr + pid_nc * in_h * in_w
+    store_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
+
+    # Compute output position in the block for boundary check
+    out_mask = (h_out_offsets[:, None] < out_h) & (w_out_offsets[None, :] < out_w)
+
+    # Store gradient at input position
+    in_offsets = h_in * in_w + w_in
+    tl.store(
+        in_base_ptr + in_offsets,
+        grad_output_block,
+        mask=out_mask & store_mask,
+    )
+
+
+def fractional_max_pool2d(
+    input: torch.Tensor,
+    kernel_size,
+    output_size,
+    random_samples: torch.Tensor = None,
+):
+    logger.debug("GEMS FRACTIONAL_MAX_POOL2D FORWARD")
+    input = input.contiguous()
+
+    if isinstance(kernel_size, int):
+        kernel_h = kernel_w = kernel_size
+    else:
+        kernel_h, kernel_w = kernel_size
+
+    if isinstance(output_size, int):
+        out_h = out_w = output_size
+    else:
+        out_h, out_w = output_size
+
+    in_n, in_c, in_h, in_w = input.shape
+
+    # Compute stride as ceil(in_size / out_size)
+    stride_h = (in_h + out_h - 1) // out_h if out_h > 0 else 1
+    stride_w = (in_w + out_w - 1) // out_w if out_w > 0 else 1
+
+    output = torch.empty(
+        (in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype
+    )
+    indices = torch.empty(
+        (in_n, in_c, out_h, out_w), device=input.device, dtype=torch.int64
+    )
+
+    if output.numel() == 0:
+        return output, indices
+
+    grid = lambda meta: (
+        in_n * in_c,
+        triton.cdiv(out_h, meta["BLOCK_H"]) * triton.cdiv(out_w, meta["BLOCK_W"]),
+    )
+
+    fractional_max_pool2d_forward_kernel[grid](
+        input,
+        output,
+        indices,
+        input.stride(0),
+        input.stride(1),
+        input.stride(2),
+        input.stride(3),
+        in_n,
+        in_c,
+        in_h,
+        in_w,
+        out_h,
+        out_w,
+        kernel_h,
+        kernel_w,
+        stride_h,
+        stride_w,
+    )
+
+    return output, indices
+
+
+def fractional_max_pool2d_backward(
+    grad_output: torch.Tensor,
+    input: torch.Tensor,
+    indices: torch.Tensor,
+    kernel_size,
+    output_size,
+):
+    logger.debug("GEMS FRACTIONAL_MAX_POOL2D_BACKWARD")
+    grad_output = grad_output.contiguous()
+    indices = indices.contiguous()
+
+    if isinstance(kernel_size, int):
+        kernel_h = kernel_w = kernel_size
+    else:
+        kernel_h, kernel_w = kernel_size
+
+    if isinstance(output_size, int):
+        out_h = out_w = output_size
+    else:
+        out_h, out_w = output_size
+
+    in_n, in_c, in_h, in_w = input.shape
+
+    grad_input = torch.zeros_like(input, dtype=torch.float32)
+
+    if grad_input.numel() == 0:
+        return grad_input.to(grad_output.dtype)
+
+    grid = lambda meta: (
+        in_n * in_c,
+        triton.cdiv(out_h, meta["BLOCK_H"]) * triton.cdiv(out_w, meta["BLOCK_W"]),
+    )
+
+    out_stride_nc = out_h * out_w
+    out_stride_h = out_w
+    out_stride_w = 1
+
+    fractional_max_pool2d_backward_kernel[grid](
+        grad_output,
+        indices,
+        grad_input,
+        in_n,
+        in_c,
+        in_h,
+        in_w,
+        out_h,
+        out_w,
+        out_stride_nc,
+        out_stride_h,
+        out_stride_w,
+    )
+
+    return grad_input.to(grad_output.dtype)

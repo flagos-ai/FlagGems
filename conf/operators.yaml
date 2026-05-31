@@ -2498,6 +2498,30 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.1'
+  - id: fractional_max_pool2d
+    description: |
+      Applies 2D fractional max pooling over an input signal composed of several input planes.
+    for:
+      - fractional_max_pool2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: fractional_max_pool2d_backward
+    description: |
+      Computes the gradient of fractional_max_pool2d.
+    for:
+      - fractional_max_pool2d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: full
     description: |
       Creates a tensor of size `size` filled with `fill_value`.
