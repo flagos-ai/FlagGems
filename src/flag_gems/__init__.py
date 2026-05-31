@@ -72,6 +72,7 @@ _FULL_CONFIG = (
     ("acos", acos),
     ("add.Tensor", add),
     ("add_.Tensor", add_),
+    ("add_rms_norm", add_rms_norm),
     ("addcdiv", addcdiv),
     ("addcdiv.out", addcdiv_out),
     ("addcmul", addcmul),
