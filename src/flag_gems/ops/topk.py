@@ -15,7 +15,7 @@ except ImportError:
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max, get_dtype_min
 from flag_gems.utils.triton_version_utils import HAS_TLE
 
@@ -85,9 +85,9 @@ def topk_stage1_kernel(
     CHUNK_SIZE: tl.constexpr,
     DESCENDING: tl.constexpr,
 ):
-    cur_batch = ext.program_id(0)
-    cur_chunk_idx = ext.program_id(1)
-    chunk_num = ext.num_programs(1)
+    cur_batch = tle.program_id(0)
+    cur_chunk_idx = tle.program_id(1)
+    chunk_num = tle.num_programs(1)
 
     y_ptr += cur_batch * chunk_num * k + cur_chunk_idx * k
     index_ptr += cur_batch * chunk_num * k + cur_chunk_idx * k
@@ -98,31 +98,26 @@ def topk_stage1_kernel(
     cols = tl.arange(0, CHUNK_SIZE)
     mask = (chunk_offset + cols) < N
 
-    mask_val = _get_finfo_val(x_ptr.dtype.element_ty, return_max=not DESCENDING)
+    mask_val = float("-inf") if DESCENDING else float("inf")
     x_val = tl.load(x_ptr + cols, mask=mask, other=mask_val).to(tl.float32)
+    available = mask
+
     for k_idx in range(k):
         if DESCENDING:
             chunk_select_val = tl.max(x_val)
-            chunk_select_idx = tl.argmax(x_val, axis=0)
         else:
             chunk_select_val = tl.min(x_val)
-            chunk_select_idx = tl.argmin(x_val, axis=0)
+        is_candidate = available & (x_val == chunk_select_val)
+        candidate_indices = tl.where(is_candidate, cols, CHUNK_SIZE)
+        chunk_select_idx = tl.argmin(candidate_indices, axis=0)
 
         tl.store(y_ptr + k_idx, chunk_select_val)
         tl.store(index_ptr + k_idx, chunk_select_idx + chunk_offset)
-
         if DESCENDING:
-            x_val = tl.where(
-                cols == chunk_select_idx,
-                _get_finfo_val(tl.float32, return_max=False),
-                x_val,
-            )
+            x_val = tl.where(cols == chunk_select_idx, float("-inf"), x_val)
         else:
-            x_val = tl.where(
-                cols == chunk_select_idx,
-                _get_finfo_val(tl.float32, return_max=True),
-                x_val,
-            )
+            x_val = tl.where(cols == chunk_select_idx, float("inf"), x_val)
+        available = available & (cols != chunk_select_idx)
 
 
 """
@@ -248,28 +243,42 @@ def topk_stage2_kernel(
     BLOCK_SIZE: tl.constexpr,
     DESCENDING: tl.constexpr,
 ):
-    cur_batch = ext.program_id(0)
+    cur_batch = tle.program_id(0)
     chunk_x += cur_batch * N
     chunk_index += cur_batch * N
     y_ptr += cur_batch * k
     index_ptr += cur_batch * k
-
     cols = tl.arange(0, BLOCK_SIZE)
     mask = cols < N
 
-    mask_val = _get_finfo_val(chunk_x.dtype.element_ty, return_max=not DESCENDING)
+    pad_val = float("-inf") if DESCENDING else float("inf")
     mask_index_val = _MIN_INT32_VAL if DESCENDING else _MAX_INT32_VAL
 
-    chunk_x_val = tl.load(chunk_x + cols, mask=mask, other=mask_val).to(tl.float32)
+    chunk_x_val = tl.load(chunk_x + cols, mask=mask, other=pad_val).to(tl.float32)
     chunk_index_val = tl.load(chunk_index + cols, mask=mask, other=mask_index_val).to(
         tl.int32
     )
 
-    sorted_chunk_x, sorted_chunk_index = argsort(
-        chunk_x_val, chunk_index_val, 0, descending=DESCENDING
-    )
-    tl.store(y_ptr + cols, sorted_chunk_x, mask=cols < k)
-    tl.store(index_ptr + cols, sorted_chunk_index, mask=cols < k)
+    # Use iterative selection instead of argsort to avoid NaN from -inf * 0
+    # in the bitonic sort's compare-and-swap (y * mask where mask has 0).
+    available = mask
+    for k_idx in range(k):
+        if DESCENDING:
+            select_val = tl.max(chunk_x_val)
+        else:
+            select_val = tl.min(chunk_x_val)
+        is_candidate = available & (chunk_x_val == select_val)
+        candidate_indices = tl.where(is_candidate, cols, BLOCK_SIZE)
+        select_idx = tl.argmin(candidate_indices, axis=0)
+
+        tl.store(y_ptr + k_idx, select_val)
+        select_global_idx = tl.sum(tl.where(cols == select_idx, chunk_index_val, 0))
+        tl.store(index_ptr + k_idx, select_global_idx)
+        if DESCENDING:
+            chunk_x_val = tl.where(cols == select_idx, float("-inf"), chunk_x_val)
+        else:
+            chunk_x_val = tl.where(cols == select_idx, float("inf"), chunk_x_val)
+        available = available & (cols != select_idx)
 
 
 if HAS_TLE:
