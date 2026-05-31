@@ -6052,6 +6052,23 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: swish
+    description: |
+      Computes the Swish activation function (x * sigmoid(x)), which is mathematically
+      equivalent to SiLU. Includes forward, backward, and in-place variants.
+    for:
+      - swish
+      - swish_
+      - swish_backward
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+      - Activation
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: "5.0"
   - id: t_copy
     description: Transpose a 2D tensor into a new tensor with contiguous memory layout.
     for:
