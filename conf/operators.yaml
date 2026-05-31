@@ -5889,6 +5889,29 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: special_spherical_bessel_j0
+    description: |
+      Computes the spherical Bessel function of the first kind of order 0.
+    for:
+      - special_spherical_bessel_j0
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: special_spherical_bessel_j0_
+    description: The in-place version of `special_spherical_bessel_j0()`.
+    for:
+      - special_spherical_bessel_j0_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
