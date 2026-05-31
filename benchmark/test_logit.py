@@ -34,3 +34,13 @@ def test_logit_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.logit_backward
+def test_logit_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="logit_backward",
+        torch_op=torch.ops.aten.logit_backward,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
