@@ -70,7 +70,7 @@ from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
-from flag_gems.ops.celu import celu, celu_
+from flag_gems.ops.celu import celu, celu_, celu_backward
 from flag_gems.ops.clamp import (
     clamp,
     clamp_,
@@ -279,6 +279,7 @@ from flag_gems.ops.pow import (
     pow_tensor_tensor_,
 )
 from flag_gems.ops.prelu import prelu
+from flag_gems.ops.prelu_backward import prelu_backward
 from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.quantile import quantile
 from flag_gems.ops.rad2deg import rad2deg, rad2deg_
@@ -291,6 +292,7 @@ from flag_gems.ops.randperm import randperm
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
+from flag_gems.ops.replication_pad1d_backward import replication_pad1d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
@@ -491,6 +493,7 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "celu_backward",
     "clamp",
     "clamp_",
     "clamp_min",
@@ -746,6 +749,7 @@ __all__ = [
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
     "prelu",
+    "prelu_backward",
     "prod",
     "prod_dim",
     "quantile",
@@ -774,6 +778,7 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "replication_pad1d",
+    "replication_pad1d_backward",
     "replication_pad1d_out",
     "replication_pad3d",
     "resolve_conj",
