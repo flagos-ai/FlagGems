@@ -14,6 +14,7 @@ class vendors(Enum):
     ASCEND = 9
     TSINGMICRO = 10
     SUNRISE = 11
+    ARM = 15
     ENFLAME = 12
     SPACEMIT = 13
     THEAD = 14
