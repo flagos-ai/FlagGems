@@ -33,3 +33,13 @@ def test_leaky_relu_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.leaky_relu_backward
+def test_leaky_relu_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="leaky_relu_backward",
+        torch_op=torch.ops.aten.leaky_relu_backward,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
