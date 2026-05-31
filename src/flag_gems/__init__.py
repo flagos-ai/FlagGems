@@ -326,6 +326,7 @@ _FULL_CONFIG = (
     ("logical_and", logical_and),
     ("logical_and_", logical_and_),
     ("logical_not", logical_not),
+    ("logical_not_", logical_not_),
     ("logical_or", logical_or),
     ("logical_or_", logical_or_),
     ("logical_xor", logical_xor),
