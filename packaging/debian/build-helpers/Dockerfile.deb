@@ -1,0 +1,84 @@
+# TODO(round-13): unify with the other Flag* PRs to ubuntu:24.04. Blocked by:
+#   1. PEP 668 (--break-system-packages or venv needed for the wheel-builder
+#      stage's pip installs of scikit-build-core / pybind11 / ninja / torch
+#      whose distro versions on noble are too old).
+#   2. Initial trial with --break-system-packages still failed inside buildkit
+#      (root cause not yet isolated). Need a follow-up investigation.
+# Until then, keep wheel-builder + deb-assembler on ubuntu:22.04 where the
+# existing pip install pattern works.
+# Two-stage Docker build for FlagGems Phase 1.
+# Single-chain (single-arch x86_64, single-OS Ubuntu 22.04, single-backend nvidia).
+
+# ---------- Stage 1: build the wheel ----------
+FROM ubuntu:22.04 AS wheel-builder
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-dev \
+        build-essential cmake ninja-build git \
+        wget curl ca-certificates \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Build deps mirrored from FlagGems setup.sh + tools/setup_nvidia.sh
+# (authoritative). We use --no-build-isolation, so every build-system.requires
+# entry plus the CUDA-flavoured torch must be pinned here explicitly.
+RUN pip3 install --no-cache-dir --upgrade pip && \
+    pip3 install --no-cache-dir \
+        "setuptools>=64.0" \
+        "scikit-build-core==0.12.2" \
+        "pybind11==3.0.3" \
+        "cmake>=3.20,<4" \
+        "ninja==1.13.0" && \
+    pip3 install --no-cache-dir \
+        --index-url https://download.pytorch.org/whl/cu128 \
+        torch==2.9.0+cu128
+
+# Phase 1 (FLAGGEMS_BUILD_C_EXTENSIONS=OFF, pure-Python wheel) does not
+# need libtriton-jit at build time. Phase 2 will reintroduce a
+#   COPY packaging/debian/build-helpers/local-deps/*.deb /tmp/deps/
+#   RUN dpkg -i /tmp/deps/*.deb ...
+# step once we move to the FlagOS APT repo or a download-artifact CI step.
+
+WORKDIR /src
+# Narrow COPY: only paths the wheel build needs (skip packaging/, docs/, etc.
+# so packaging-only edits don't bust the wheel cache).
+COPY CMakeLists.txt pyproject.toml LICENSE README.md /src/
+COPY cmake /src/cmake
+COPY include /src/include
+COPY lib /src/lib
+COPY src /src/src
+COPY conf /src/conf
+
+RUN cd /src && pip3 wheel . --no-build-isolation -w /wheels -v && \
+    ls -lh /wheels/ && \
+    test -n "$(ls /wheels/flag_gems-*.whl 2>/dev/null)"
+
+# ---------- Stage 2: assemble the .deb ----------
+FROM ubuntu:22.04 AS deb-assembler
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        debhelper dh-python python3-all python3-pip python3-setuptools \
+        python3-wheel devscripts fakeroot lintian \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY packaging/debian /build/debian
+COPY --from=wheel-builder /wheels /build/dist
+ENV WHEEL_DIR=/build/dist
+
+RUN dpkg-buildpackage -us -uc -b && \
+    ls -lh /python3-flag-gems_*.deb
+
+# Run lintian against the produced .deb — surface packaging warnings
+# (unused-license-paragraph, no-manual-page, missing-build-dependency, etc.)
+# in the build log without failing the build.
+RUN lintian --info --display-info /python3-flag-gems_*.deb || true
+
+# ---------- Stage 3: extract the .deb ----------
+FROM scratch AS deb-output
+COPY --from=deb-assembler /python3-flag-gems_*.deb /output/
+COPY --from=deb-assembler /flag-gems_*.changes /output/

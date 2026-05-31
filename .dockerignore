@@ -1,0 +1,21 @@
+# VCS
+.git/
+.gitignore
+
+# Python build artifacts
+*.egg-info/
+__pycache__/
+*.py[cod]
+*.so
+build/
+dist/
+.eggs/
+
+# Packaging outputs (avoid re-bundling previous build products)
+debian-packages/
+rpm-packages/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
