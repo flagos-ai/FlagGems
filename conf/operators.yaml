@@ -5889,6 +5889,18 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: special_scaled_modified_bessel_k0
+    description: |
+      Computes the scaled modified Bessel function of the second kind of order 0, K_0(x) * exp(x).
+    for:
+      - special_scaled_modified_bessel_k0
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
