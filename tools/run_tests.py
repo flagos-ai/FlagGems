@@ -423,8 +423,8 @@ def run_accuracy(gpu_id, start, index, count):
     prog = "█" * n + " " * (10 - n)
     nums = f"{index + 1}/{count}"
     lead = f"GPU {gpu_id:2d}][{nums:>7}"
-    ts = datetime.datetime.now().strftime("%H:%M:%s")
-    pinfo(f"[{ts}]{lead}[{prog}] Running accuracy tests for '{op}'", end="")
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    pinfo(f"[{ts}][{lead}][{prog}] accuracy  '{op}' ...")
 
     env = get_env(str(gpu_id))
 
@@ -446,8 +446,11 @@ def run_accuracy(gpu_id, start, index, count):
     code = run_cmd(op, cmd, cwd=accuracy_dir, env=env, flavor="accuracy")
     dur = time.time() - dur
 
-    if code == TIMEOUT:  # Timeout
-        print(f"\033[31m [TIMEOUT {dur:.1f}s]\0330m")
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    prefix = f"[{ts}][{lead}][{prog}] accuracy  '{op}'"
+
+    if code == TIMEOUT:
+        pinfo(f"{prefix} {RED}[TIMEOUT {dur:.1f}s]{NC}")
         return {
             "status": "Timeout",
             "exit_code": TIMEOUT,
@@ -458,10 +461,8 @@ def run_accuracy(gpu_id, start, index, count):
             "errors": 0,
             "duration": dur,
         }
-    # There are rare cases where the pytest process aborts
-    # with no result file generated.
     if not result_file.exists():
-        print(f" {RED}[ERROR ({code}) {dur:.1f}s]{NC}")
+        pinfo(f"{prefix} {RED}[ERROR ({code}) {dur:.1f}s]{NC}")
         return {
             "status": "Error",
             "exit_code": code,
@@ -482,12 +483,11 @@ def run_accuracy(gpu_id, start, index, count):
     result = parse_accuracy_data(result_file)
     s = result["status"]
     if s == "Passed":
-        print(f" {GREEN}[OK {dur:.1f}s]{NC}")
+        pinfo(f"{prefix} {GREEN}[OK {dur:.1f}s]{NC}")
     elif s == "Failed":
-        print(f" {RED}[FAILED {dur:.1f}s]{NC}")
+        pinfo(f"{prefix} {RED}[FAILED {dur:.1f}s]{NC}")
     else:
-        s = s.upper()
-        print(f" {YELLOW} [{s} {dur:.1f}s]{NC}")
+        pinfo(f"{prefix} {YELLOW}[{s.upper()} {dur:.1f}s]{NC}")
 
     result["exit_code"] = code
     result["duration"] = dur
@@ -564,10 +564,10 @@ def run_benchmark(gpu_id, start, index, count):
     prog = "█" * n + " " * (10 - n)
     nums = f"{index + 1}/{count}"
     lead = f"GPU {gpu_id:2d}][{nums:>7}"
-    ts = datetime.datetime.now().strftime("%H:%M:%s")
     if (index + 1) == count:
         prog = f"\033[32m{prog}\033[0m"
-    pinfo(f"[{ts}][{lead}][{prog}] Running perf benchmark for '{op}'", end="")
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    pinfo(f"[{ts}][{lead}][{prog}] benchmark '{op}' ...")
 
     env = get_env(str(gpu_id))
 
@@ -584,8 +584,11 @@ def run_benchmark(gpu_id, start, index, count):
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     dur = time.time() - dur
 
-    if code == TIMEOUT:  # Timeout
-        print(f" {RED}[TIMEOUT {dur:.1f}s]{NC}")
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    prefix = f"[{ts}][{lead}][{prog}] benchmark '{op}'"
+
+    if code == TIMEOUT:
+        pinfo(f"{prefix} {RED}[TIMEOUT {dur:.1f}s]{NC}")
         return {
             "status": "Timeout",
             "exit_code": TIMEOUT,
@@ -593,9 +596,8 @@ def run_benchmark(gpu_id, start, index, count):
             "data": {},
         }
 
-    # Not found
     if not result_file.exists():
-        print(f" {YELLOW}[NOTFOUND {dur:.1f}s]{NC}")
+        pinfo(f"{prefix} {YELLOW}[NOTFOUND {dur:.1f}s]{NC}")
         return {
             "status": "NotFound",
             "duration": dur,
@@ -617,12 +619,11 @@ def run_benchmark(gpu_id, start, index, count):
     res = parse_perf_data(op, result_file)
     s = res["status"]
     if s in ["Passed", "OK"]:
-        print(f" {GREEN}[OK {dur:.1f}s]{NC}")
+        pinfo(f"{prefix} {GREEN}[OK {dur:.1f}s]{NC}")
     elif s == "Failed":
-        print(f" {RED}[FAILED {dur:.1f}s]{NC}")
+        pinfo(f"{prefix} {RED}[FAILED {dur:.1f}s]{NC}")
     else:
-        s = s.upper()
-        print(f" {YELLOW} [{s} {dur:.1f}s]{NC}")
+        pinfo(f"{prefix} {YELLOW}[{s.upper()} {dur:.1f}s]{NC}")
 
     record.update(res)
 
@@ -727,7 +728,7 @@ def get_ops_to_test():
         stage = next(iter(stages[-1].keys()), None)
         if stage not in effective_stages:
             continue
-        if OPTS.start is not None and op["id"] <= OPTS.start:
+        if OPTS.start is not None and op["id"] < OPTS.start:
             continue
         ops.append(op["id"])
 
