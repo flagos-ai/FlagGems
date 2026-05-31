@@ -26,6 +26,10 @@ import flag_gems
 
 # increase decimal precision
 getcontext().prec = 18
+RED = "\033[31m"
+GREEN = "\033[32m"
+YELLOW = "\033[93m"
+NC = "\033[0m"
 
 ROOT = Path(__file__).parent.parent
 
@@ -45,16 +49,16 @@ WORKER_PROCESSES = []
 INTERRUPTED = False
 
 
-def pinfo(str, **args):
-    print(f"\033[32m[INFO]\033[0m {str}", flush=True, **args)
+def pinfo(str, **kwargs):
+    print(f"{GREEN}[INFO]{NC} {str}", flush=True, **kwargs)
 
 
-def perror(str, **args):
-    print(f"\033[31m[ERROR]\033[0m {str}", flush=True, **args)
+def perror(str, **kwargs):
+    print(f"{RED}[ERROR]{NC} {str}", flush=True, **kwargs)
 
 
-def pwarn(str, **args):
-    print(f"\033[93m[WARN]\033[0m {str}", flush=True, **args)
+def pwarn(str, **kwargs):
+    print(f"{YELLOW}[WARN]{NC} {str}", flush=True, **kwargs)
 
 
 def ensure_dir(p):
@@ -418,7 +422,9 @@ def run_accuracy(gpu_id, start, index, count):
     n = (index + 1) * 10 // count
     prog = "█" * n + " " * (10 - n)
     nums = f"{index + 1}/{count}"
-    pinfo(f"[GPU {gpu_id:2d}][{nums:>7}][{prog}] Running accuracy tests for '{op}'")
+    lead = f"GPU {gpu_id:2d}][{nums:>7}"
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    pinfo(f"[{ts}][{lead}][{prog}] accuracy  '{op}' ...")
 
     env = get_env(str(gpu_id))
 
@@ -436,11 +442,15 @@ def run_accuracy(gpu_id, start, index, count):
 
     op_dir = CFG.output_dir.joinpath(op)
     ensure_dir(op_dir)
-    start = time.time()
+    dur = time.time()
     code = run_cmd(op, cmd, cwd=accuracy_dir, env=env, flavor="accuracy")
-    end = time.time()
+    dur = time.time() - dur
 
-    if code == TIMEOUT:  # Timeout
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    prefix = f"[{ts}][{lead}][{prog}] accuracy  '{op}'"
+
+    if code == TIMEOUT:
+        pinfo(f"{prefix} {RED}[TIMEOUT {dur:.1f}s]{NC}")
         return {
             "status": "Timeout",
             "exit_code": TIMEOUT,
@@ -449,11 +459,10 @@ def run_accuracy(gpu_id, start, index, count):
             "failed": 0,
             "skipped": 0,
             "errors": 0,
-            "duration": end - start,
+            "duration": dur,
         }
-    # There are rare cases where the pytest process aborts
-    # with no result file generated.
     if not result_file.exists():
+        pinfo(f"{prefix} {RED}[ERROR ({code}) {dur:.1f}s]{NC}")
         return {
             "status": "Error",
             "exit_code": code,
@@ -462,7 +471,7 @@ def run_accuracy(gpu_id, start, index, count):
             "failed": 0,
             "skipped": 0,
             "errors": 1,
-            "duration": end - start,
+            "duration": dur,
             "data_file": None,
         }
 
@@ -472,8 +481,16 @@ def run_accuracy(gpu_id, start, index, count):
     result_file = dest
 
     result = parse_accuracy_data(result_file)
+    s = result["status"]
+    if s == "Passed":
+        pinfo(f"{prefix} {GREEN}[OK {dur:.1f}s]{NC}")
+    elif s == "Failed":
+        pinfo(f"{prefix} {RED}[FAILED {dur:.1f}s]{NC}")
+    else:
+        pinfo(f"{prefix} {YELLOW}[{s.upper()} {dur:.1f}s]{NC}")
+
     result["exit_code"] = code
-    result["duration"] = end - start
+    result["duration"] = dur
     result["data_file"] = str(result_file.relative_to(CFG.output_dir))
 
     return result
@@ -545,10 +562,12 @@ def run_benchmark(gpu_id, start, index, count):
     op = CFG.ops[start + index].strip()
     n = (index + 1) * 10 // count
     prog = "█" * n + " " * (10 - n)
+    nums = f"{index + 1}/{count}"
+    lead = f"GPU {gpu_id:2d}][{nums:>7}"
     if (index + 1) == count:
         prog = f"\033[32m{prog}\033[0m"
-    nums = f"{index + 1}/{count}"
-    pinfo(f"[GPU {gpu_id:2d}][{nums:>7}][{prog}] Running perf benchmark for '{op}'")
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    pinfo(f"[{ts}][{lead}][{prog}] benchmark '{op}' ...")
 
     env = get_env(str(gpu_id))
 
@@ -560,23 +579,28 @@ def run_benchmark(gpu_id, start, index, count):
     op_dir = CFG.output_dir.joinpath(op)
     ensure_dir(op_dir)
 
-    start = time.time()
+    dur = time.time()
     cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
-    end = time.time()
+    dur = time.time() - dur
 
-    if code == TIMEOUT:  # Timeout
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    prefix = f"[{ts}][{lead}][{prog}] benchmark '{op}'"
+
+    if code == TIMEOUT:
+        pinfo(f"{prefix} {RED}[TIMEOUT {dur:.1f}s]{NC}")
         return {
             "status": "Timeout",
             "exit_code": TIMEOUT,
-            "duration": end - start,
+            "duration": dur,
             "data": {},
         }
 
-    # Not found
     if not result_file.exists():
+        pinfo(f"{prefix} {YELLOW}[NOTFOUND {dur:.1f}s]{NC}")
         return {
             "status": "NotFound",
+            "duration": dur,
             "exit_code": code,
             "data": {},
         }
@@ -587,12 +611,21 @@ def run_benchmark(gpu_id, start, index, count):
     result_file = dest
 
     record = {
-        "duration": end - start,
+        "duration": dur,
         "exit_code": code,
         "data_file": str(result_file.relative_to(CFG.output_dir)),
         "data": {},
     }
-    record.update(parse_perf_data(op, result_file))
+    res = parse_perf_data(op, result_file)
+    s = res["status"]
+    if s in ["Passed", "OK"]:
+        pinfo(f"{prefix} {GREEN}[OK {dur:.1f}s]{NC}")
+    elif s == "Failed":
+        pinfo(f"{prefix} {RED}[FAILED {dur:.1f}s]{NC}")
+    else:
+        pinfo(f"{prefix} {YELLOW}[{s.upper()} {dur:.1f}s]{NC}")
+
+    record.update(res)
 
     return record
 
@@ -695,7 +728,7 @@ def get_ops_to_test():
         stage = next(iter(stages[-1].keys()), None)
         if stage not in effective_stages:
             continue
-        if OPTS.start is not None and op["id"] <= OPTS.start:
+        if OPTS.start is not None and op["id"] < OPTS.start:
             continue
         ops.append(op["id"])
 
