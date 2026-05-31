@@ -44,3 +44,39 @@ def test_bernoulli_various_p(shape, dtype, p):
         # Check that the mean is approximately p
         mean = x.float().mean().item()
         assert abs(mean - p) < 0.15
+
+
+@pytest.mark.bernoulli
+@pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_bernoulli(shape, dtype):
+    prob = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    ref_prob = utils.to_reference(prob, True)
+
+    with flag_gems.use_gems():
+        res = torch.ops.aten.bernoulli(prob)
+    ref = torch.ops.aten.bernoulli(ref_prob)
+
+    assert res.shape == prob.shape
+    assert res.dtype == dtype
+    assert ref.shape == prob.shape
+    res_cpu = utils.to_reference(res)
+    assert torch.all((res_cpu == 0) | (res_cpu == 1))
+
+
+@pytest.mark.bernoulli
+@pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_bernoulli_p(shape, dtype):
+    x = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    ref_x = utils.to_reference(x, True)
+
+    with flag_gems.use_gems():
+        res = torch.ops.aten.bernoulli.p(x, p=0.5)
+    ref = torch.ops.aten.bernoulli.p(ref_x, p=0.5)
+
+    assert res.shape == x.shape
+    assert res.dtype == dtype
+    assert ref.shape == x.shape
+    res_cpu = utils.to_reference(res)
+    assert torch.all((res_cpu == 0) | (res_cpu == 1))
