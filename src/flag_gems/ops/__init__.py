@@ -70,7 +70,7 @@ from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
-from flag_gems.ops.celu import celu, celu_
+from flag_gems.ops.celu import celu, celu_, celu_backward
 from flag_gems.ops.clamp import (
     clamp,
     clamp_,
@@ -172,6 +172,7 @@ from flag_gems.ops.hadamard_transform import (
     hadamard_transform_40N,
 )
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
+from flag_gems.ops.hardsigmoid_backward import hardsigmoid_backward
 from flag_gems.ops.hardswish_ import hardswish_
 from flag_gems.ops.histc import histc
 from flag_gems.ops.hstack import hstack
@@ -214,6 +215,7 @@ from flag_gems.ops.logical_or import logical_or, logical_or_
 from flag_gems.ops.logical_xor import logical_xor
 from flag_gems.ops.logit import logit, logit_out
 from flag_gems.ops.logit_ import logit_
+from flag_gems.ops.logit_backward import logit_backward
 from flag_gems.ops.logspace import logspace
 from flag_gems.ops.logsumexp import logsumexp
 from flag_gems.ops.lt import lt, lt_scalar
@@ -279,6 +281,7 @@ from flag_gems.ops.pow import (
     pow_tensor_tensor_,
 )
 from flag_gems.ops.prelu import prelu
+from flag_gems.ops.prelu_backward import prelu_backward
 from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.quantile import quantile
 from flag_gems.ops.rad2deg import rad2deg, rad2deg_
@@ -291,6 +294,8 @@ from flag_gems.ops.randperm import randperm
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
+from flag_gems.ops.replication_pad1d_backward import replication_pad1d_backward
+from flag_gems.ops.replication_pad3d_backward import replication_pad3d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
@@ -323,6 +328,7 @@ from flag_gems.ops.select_backward import select_backward
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.selu import selu
 from flag_gems.ops.selu_ import selu_
+from flag_gems.ops.selu_backward import selu_backward
 from flag_gems.ops.sgn_ import sgn_
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.signbit import signbit, signbit_out
@@ -344,7 +350,11 @@ from flag_gems.ops.softmax import (
     softmax_out,
 )
 from flag_gems.ops.softplus import softplus
+from flag_gems.ops.softplus_backward import softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
+from flag_gems.ops.softshrink_backward import softshrink_backward
+from flag_gems.ops.hardshrink import hardshrink
+from flag_gems.ops.hardshrink_backward import hardshrink_backward
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
@@ -491,6 +501,7 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "celu_backward",
     "clamp",
     "clamp_",
     "clamp_min",
@@ -617,6 +628,7 @@ __all__ = [
     "hadamard_transform_40N",
     "hardsigmoid",
     "hardsigmoid_out",
+    "hardsigmoid_backward",
     "hardswish_",
     "histc",
     "hstack",
@@ -678,6 +690,7 @@ __all__ = [
     "logit",
     "logit_",
     "logit_out",
+    "logit_backward",
     "logspace",
     "logsumexp",
     "lt",
@@ -746,6 +759,7 @@ __all__ = [
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
     "prelu",
+    "prelu_backward",
     "prod",
     "prod_dim",
     "quantile",
@@ -774,8 +788,10 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "replication_pad1d",
+    "replication_pad1d_backward",
     "replication_pad1d_out",
     "replication_pad3d",
+    "replication_pad3d_backward",
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
@@ -807,6 +823,7 @@ __all__ = [
     "select_scatter",
     "selu",
     "selu_",
+    "selu_backward",
     "sgn_",
     "sigmoid",
     "sigmoid_",
@@ -831,8 +848,12 @@ __all__ = [
     "softmax_backward_out",
     "softmax_out",
     "softplus",
+    "softplus_backward",
     "softshrink",
     "softshrink_out",
+    "softshrink_backward",
+    "hardshrink",
+    "hardshrink_backward",
     "sort",
     "sort_stable",
     "special_i0e",
