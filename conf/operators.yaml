@@ -5836,6 +5836,20 @@ ops:
       - DSA
     stages:
       - beta: '5.0'
+  - id: special_digamma
+    description: |
+      Computes the digamma function (logarithmic derivative of the gamma function)
+      using reflection formula, recurrence relation, and asymptotic expansion.
+    for:
+      - digamma
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
