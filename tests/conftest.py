@@ -1,6 +1,7 @@
 import fcntl
 import json
 import logging
+import os
 from datetime import datetime
 
 import pytest
@@ -205,6 +206,8 @@ def pytest_terminal_summary(terminalreporter):
         json_file.seek(0)
         json_file.truncate()
         json.dump(data, json_file, indent=2, default=str)
+        json_file.flush()
+        os.fsync(json_file.fileno())
 
 
 def pytest_collection_modifyitems(session, config, items):
