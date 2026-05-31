@@ -106,6 +106,17 @@ STACK_SHAPES = [
     [(16, 256), (16, 256)],
     [(20, 320, 15), (20, 320, 15), (20, 320, 15)],
 ]
+# Test shapes for replication_pad1d_backward covering basic/edge cases
+REPLICATION_PAD1D_BACKWARD_SHAPES = [
+    (3, (2, 3)),  # Basic case
+    (5, (1, 1)),  # Small padding
+    (10, (2, 2)),  # Larger input, small padding
+    (4, (0, 0)),  # No padding
+    (4, (3, 3)),  # Large padding
+    (1, (5, 5)),  # W_in=1 edge case
+    (8, (7, 7)),  # Max padding case
+    (2, (3, 4)),  # W_in=2 edge case
+]
 CONTIGUOUS_SHAPE_STRIDES_1D = [
     ((1,), (1,)),
     ((1024,), (1,)),
