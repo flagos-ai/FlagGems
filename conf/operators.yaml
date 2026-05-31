@@ -5054,6 +5054,26 @@ ops:
       - Tensor
     stages:
       - beta: '5.0'
+  - id: replication_pad1d_backward
+    description: Compute the gradient of `replication_pad1d` with respect to the input tensor.
+    for:
+      - replication_pad1d_backward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: replication_pad1d_backward_grad_input
+    description: A variant of `replication_pad1d_backward` that writes the gradient into a pre-allocated tensor.
+    for:
+      - replication_pad1d_backward.grad_input
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: replication_pad3d
     description: Pads the edge of a 3D input tensor by repeating the boundary values.
     for:
