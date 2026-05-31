@@ -1,0 +1,176 @@
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+logger = logging.getLogger(__name__)
+
+
+@triton.jit
+def gcd_kernel(
+    a_ptr,
+    b_ptr,
+    output_ptr,
+    N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr = 1024,
+):
+    # Get the block ID and compute the starting index
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = tl.arange(0, BLOCK_SIZE) + block_start
+
+    # Create a mask for valid indices
+    mask = offsets < N
+
+    # Load a and b (only for valid indices)
+    a = tl.load(a_ptr + offsets, mask=mask, other=0)
+    b = tl.load(b_ptr + offsets, mask=mask, other=0)
+
+    # Binary GCD (Stein's algorithm) - uses bit shifts and subtraction
+    # instead of modulo to avoid division by zero issues
+
+    # Handle case where either is 0
+    # gcd(a, 0) = a, gcd(0, b) = b
+    # Use abs since we might have negative numbers
+    x = tl.abs(a)
+    y = tl.abs(b)
+
+    # If both are 0, return 0
+    # If one is 0, return the other (handled below)
+
+    # Count common factors of 2
+    # gcd(2k, 2m) = 2 * gcd(k, m)
+    # gcd(2k, 2m+1) = gcd(k, 2m+1)
+    # gcd(2k+1, 2m) = gcd(2k+1, m)
+
+    # First, extract common factor of 2
+    # While both are even, divide by 2 and count
+    # Actually, let's use a simpler approach:
+    # Use the identity: gcd(a, b) = 2*gcd(a/2, b/2) if both even
+    #                   = gcd(a/2, b) if a even, b odd
+    #                   = gcd(a, b/2) if a odd, b even
+    #                   = 2*gcd(a-b, b) if both odd and a >= b
+
+    # Simplified: iterative with subtraction (slower but correct)
+    # Keep subtracting until one becomes 0
+
+    for _ in range(128):  # More iterations to be safe
+        # If either is 0, we're done
+        # Use a loop condition check: if y == 0, break
+        # But we can't break, so use tl.where to continue or stop
+        # Actually, continue subtracting
+
+        # If x < y, swap (using min/max or conditional)
+        # x, y = min(x, y), max(x, y) doesn't work directly
+        # Use: tmp = tl.minimum(x, y), x = tl.maximum(x, y), y = tmp
+        tmp_min = tl.minimum(x, y)
+        tmp_max = tl.maximum(x, y)
+        x = tmp_max
+        y = tmp_min
+
+        # Now x >= y
+        # If y == 0, we're done, x is the GCD
+        # Compute x - y
+        diff = x - y
+
+        # Update: if y == 0, keep x, else update x = diff
+        x = tl.where(y == 0, x, diff)
+
+        # If x became 0, swap so y is the GCD
+        # Actually after subtraction, x could be 0 if x == y
+        # So: if x == 0, then x = y, y = 0
+        # But we can handle this in next iteration
+
+    # After loop, the GCD is in x if y == 0, or we need one more swap
+    # Actually, the standard way: when y becomes 0, x contains the GCD
+    # Let's ensure: if y != 0, swap
+    result = tl.where(y != 0, y, x)
+
+    # Store result
+    tl.store(output_ptr + offsets, result, mask=mask)
+
+
+def gcd(A: torch.Tensor, B: torch.Tensor):
+    logger.debug("GEMS GCD")
+    # Handle device mismatch
+    if B.device != A.device:
+        B = B.to(A.device)
+
+    # Handle broadcast if needed
+    output_shape = torch.broadcast_shapes(A.shape, B.shape)
+    A = A.expand(output_shape)
+    B = B.expand(output_shape)
+
+    # Allocate output
+    N = A.numel()
+    output = torch.empty_like(A)
+
+    # Define grid
+    def grid(META):
+        return (triton.cdiv(N, META["BLOCK_SIZE"]),)
+
+    # Launch kernel
+    gcd_kernel[grid](
+        A.reshape(-1).contiguous(),
+        B.reshape(-1).contiguous(),
+        output.reshape(-1).contiguous(),
+        N,
+        BLOCK_SIZE=1024,
+    )
+
+    return output.reshape(A.shape)
+
+
+def gcd_(A: torch.Tensor, B: torch.Tensor):
+    logger.debug("GEMS GCD_")
+    # Handle device mismatch
+    if B.device != A.device:
+        B = B.to(A.device)
+
+    # Handle broadcast if needed
+    output_shape = torch.broadcast_shapes(A.shape, B.shape)
+    A = A.expand(output_shape)
+    B = B.expand(output_shape)
+
+    N = A.numel()
+
+    # Call the kernel, writing directly to A's storage
+    def grid(META):
+        return (triton.cdiv(N, META["BLOCK_SIZE"]),)
+
+    gcd_kernel[grid](
+        A.reshape(-1).contiguous(),
+        B.reshape(-1).contiguous(),
+        A.reshape(-1).contiguous(),
+        N,
+        BLOCK_SIZE=1024,
+    )
+
+    return A
+
+
+def gcd_scalar(A, B):
+    logger.debug("GEMS GCD SCALAR")
+    if isinstance(A, torch.Tensor):
+        return gcd(A, B)
+    else:
+        return gcd(B, A)
+
+
+def gcd_scalar_(A, B):
+    logger.debug("GEMS GCD_ SCALAR")
+    if isinstance(A, torch.Tensor):
+        return gcd_(A, B)
+    else:
+        raise ValueError("Cannot do in-place GCD with scalar as the target")
+
+
+def gcd_scalar_tensor(A, B):
+    logger.debug("GEMS GCD SCALAR TENSOR")
+    return gcd(B, A)
+
+
+def gcd_scalar_tensor_(A, B):
+    logger.debug("GEMS GCD_ SCALAR TENSOR")
+    return gcd_(B, A)
