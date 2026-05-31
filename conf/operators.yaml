@@ -2412,6 +2412,31 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: fmax
+    description: |
+      Computes the element-wise maximum of two tensors with IEEE-754 NaN handling:
+      if one input is NaN and the other is a number, `fmax()` returns the number.
+      Both NaN inputs propagate NaN. Supports broadcasting and type promotion.
+    for:
+      - fmax
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: fmax_out
+    description: A variant of `fmax()` that writes its result into a pre-allocated `out` tensor.
+    for:
+      - fmax.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
   - id: fmin
     description: |
       Computes the element-wise minimum of two tensors, specially handling NaN values
