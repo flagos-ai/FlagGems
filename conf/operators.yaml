@@ -3336,6 +3336,29 @@ ops:
       - Reduction
     stages:
       - stable: '3.0'
+  - id: ldexp
+    description: |
+      Computes element-wise `input * 2**other`, the inverse of `frexp`.
+    for:
+      - ldexp.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: ldexp_out
+    description: A variant of `ldexp` that writes its result into a pre-allocated `out` tensor.
+    for:
+      - ldexp.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
   - id: le
     description: Computes that `input` is less than or equal to `other` element-wise.
     for:
