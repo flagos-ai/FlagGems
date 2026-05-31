@@ -11,6 +11,7 @@ import signal
 import subprocess
 import sys
 import time
+import types
 from decimal import getcontext
 from importlib import metadata
 from multiprocessing import Process
@@ -26,13 +27,16 @@ import flag_gems
 # increase decimal precision
 getcontext().prec = 18
 
-# Global lock for writing result file and the result file
+ROOT = Path(__file__).parent.parent
+
+# Global variable for option settings
+OPTS = argparse.Namespace()
+CFG = types.SimpleNamespace()
+
+# Outputs
 GLOBAL_RESULTS = {}
 ENV_INFO = {}
-ROOT = Path(__file__).parent.parent
-OUTPUT_DIR = None
-OP_LIST = []
-DUMP_OUTPUT = False
+
 TIMEOUT = -100
 # A list of operators that can only run on GPU/DCUs
 NO_CPU_LIST = []
@@ -69,12 +73,11 @@ def cleanup_intermediate_files():
             except OSError:
                 pass
 
-    if OUTPUT_DIR:
-        for f in OUTPUT_DIR.glob("summary*.tmp"):
-            try:
-                f.unlink()
-            except OSError:
-                pass
+    for f in CFG.output_dir.glob("summary*.tmp"):
+        try:
+            f.unlink()
+        except OSError:
+            pass
 
 
 def terminate_workers():
@@ -245,8 +248,8 @@ def probe_env():
 def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
     stdout = subprocess.DEVNULL
     stderr = subprocess.DEVNULL
-    if DUMP_OUTPUT:
-        op_dir = OUTPUT_DIR.joinpath(op)
+    if CFG.dump_output:
+        op_dir = CFG.output_dir.joinpath(op)
         stdout_log = str(op_dir / f"{flavor}_stdout.log")
         stderr_log = str(op_dir / f"{flavor}_stderr.log")
         try:
@@ -411,7 +414,7 @@ def get_env(gpu_ids):
 
 
 def run_accuracy(gpu_id, start, index, count):
-    op = OP_LIST[start + index].strip()
+    op = CFG.ops[start + index].strip()
     n = (index + 1) * 10 // count
     prog = "█" * n + " " * (10 - n)
     nums = f"{index + 1}/{count}"
@@ -419,7 +422,7 @@ def run_accuracy(gpu_id, start, index, count):
 
     env = get_env(str(gpu_id))
 
-    if op in NO_CPU_LIST:
+    if op in CFG.skip_cpu_tests:
         cmd = f'pytest -m "{op}" --record json --output accuracy_{op}.json -vs'
     else:
         cmd = (
@@ -431,7 +434,7 @@ def run_accuracy(gpu_id, start, index, count):
     if result_file.exists():
         result_file.unlink()
 
-    op_dir = OUTPUT_DIR.joinpath(op)
+    op_dir = CFG.output_dir.joinpath(op)
     ensure_dir(op_dir)
     start = time.time()
     code = run_cmd(op, cmd, cwd=accuracy_dir, env=env, flavor="accuracy")
@@ -463,7 +466,7 @@ def run_accuracy(gpu_id, start, index, count):
             "data_file": None,
         }
 
-    op_dir = OUTPUT_DIR.joinpath(op)
+    op_dir = CFG.output_dir.joinpath(op)
     dest = op_dir / "accuracy_result.json"
     shutil.move(result_file, str(dest))
     result_file = dest
@@ -471,7 +474,7 @@ def run_accuracy(gpu_id, start, index, count):
     result = parse_accuracy_data(result_file)
     result["exit_code"] = code
     result["duration"] = end - start
-    result["data_file"] = str(result_file.relative_to(OUTPUT_DIR))
+    result["data_file"] = str(result_file.relative_to(CFG.output_dir))
 
     return result
 
@@ -539,7 +542,7 @@ def run_benchmark(gpu_id, start, index, count):
 
     This returns a dict as report summary.
     """
-    op = OP_LIST[start + index].strip()
+    op = CFG.ops[start + index].strip()
     n = (index + 1) * 10 // count
     prog = "█" * n + " " * (10 - n)
     if (index + 1) == count:
@@ -554,13 +557,21 @@ def run_benchmark(gpu_id, start, index, count):
     if result_file.exists():
         result_file.unlink()
 
-    op_dir = OUTPUT_DIR.joinpath(op)
+    op_dir = CFG.output_dir.joinpath(op)
     ensure_dir(op_dir)
 
     start = time.time()
     cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     end = time.time()
+
+    if code == TIMEOUT:  # Timeout
+        return {
+            "status": "Timeout",
+            "exit_code": TIMEOUT,
+            "duration": end - start,
+            "data": {},
+        }
 
     # Not found
     if not result_file.exists():
@@ -578,7 +589,7 @@ def run_benchmark(gpu_id, start, index, count):
     record = {
         "duration": end - start,
         "exit_code": code,
-        "data_file": str(result_file.relative_to(OUTPUT_DIR)),
+        "data_file": str(result_file.relative_to(CFG.output_dir)),
         "data": {},
     }
     record.update(parse_perf_data(op, result_file))
@@ -589,11 +600,11 @@ def run_benchmark(gpu_id, start, index, count):
 def worker_proc(gpu_id, start, count):
     worker_result = {}
     for i in range(count):
-        op = OP_LIST[start + i].strip()
+        op = CFG.ops[start + i].strip()
         if not op:
             continue
 
-        op_dir = OUTPUT_DIR.joinpath(op)
+        op_dir = CFG.output_dir.joinpath(op)
         ensure_dir(op_dir)
 
         acc = run_accuracy(gpu_id, start, i, count)
@@ -609,7 +620,7 @@ def worker_proc(gpu_id, start, count):
         }
         worker_result.setdefault(op, result)
 
-        json_path = OUTPUT_DIR.joinpath(f"summary{gpu_id}.json")
+        json_path = CFG.output_dir.joinpath(f"summary{gpu_id}.json")
         tmp_path = json_path.with_suffix(".tmp")
         with open(tmp_path, "w") as f:
             json.dump(worker_result, f, indent=2)
@@ -618,28 +629,30 @@ def worker_proc(gpu_id, start, count):
     return
 
 
-def get_ops_to_test(ops_file, ops_list, stages):
+def get_ops_to_test():
     # Build list of operators which do NOT support CPU mode
     op_catalog = get_ops_from_inventory()
+    skip_cpu_tests = []
     for op in op_catalog:
         labels = op.get("labels", [])
         if "NoCPU" in labels:
-            NO_CPU_LIST.append(op["id"])
+            skip_cpu_tests.append(op["id"])
+    CFG.skip_cpu_tests = skip_cpu_tests
 
     # This is the highest priority
-    if ops_list:
+    if OPTS.ops:
         ops = []
-        for op in ops_list.split(","):
+        for op in OPTS.ops.split(","):
             # Leading underscores are not valid pytest marks
             ops.append(op.strip().lstrip("_"))
 
         return ops
 
     # Parse the op list file if specified
-    if ops_file:
+    if OPTS.op_list_file:
         lines = []
         try:
-            with open(ops_file, "r") as f:
+            with open(OPTS.op_list_file, "r") as f:
                 lines = f.readlines()
         except Exception as e:
             perror(f"Failed reading the specified op list file: {e}")
@@ -658,7 +671,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
 
     # Now fall-back to inventory
     effective_stages = []
-    for s in stages.split(","):
+    for s in OPTS.stages.split(","):
         stage = s.strip()
         if stage not in ["alpha", "beta", "stable", "all", "removed"]:
             pwarn(f"ignoring unsupported stage name '{s}'...")
@@ -682,39 +695,51 @@ def get_ops_to_test(ops_file, ops_list, stages):
         stage = next(iter(stages[-1].keys()), None)
         if stage not in effective_stages:
             continue
+        if len(OPTS.start) > 0 and op["id"] <= OPTS.start:
+            continue
         ops.append(op["id"])
 
     return ops
 
 
 def main():
-    global OUTPUT_DIR
-    global OP_LIST
-    global DUMP_OUTPUT
+    global OPTS
 
     signal.signal(signal.SIGINT, handle_interrupt)
     signal.signal(signal.SIGTERM, handle_interrupt)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--op-list-file", required=False)
-    parser.add_argument("--ops", required=False)
-    parser.add_argument("--gpus", default="0")
-    parser.add_argument("--output-dir", default=None)
-    parser.add_argument("--stages", required=False, default="stable")
+    parser.add_argument(
+        "--ops", required=False, help="a comma-separated list of op IDs"
+    )
+    parser.add_argument(
+        "--op-list-file", required=False, help="path to operator list file"
+    )
+    parser.add_argument("--start", required=False, help="the ID of the first operator")
+    parser.add_argument("--gpus", default="0", help="a comma-separated list of GPU IDs")
+    parser.add_argument(
+        "--output-dir", default="results", help="relative path to root for test data"
+    )
+    parser.add_argument(
+        "--stages",
+        required=False,
+        default="stable",
+        help="a comma-separate list of op stages",
+    )
     parser.add_argument(
         "--dump-output",
         action="store_true",
         default=False,
         help="Dump stdout/stderr of each test to log files",
     )
-    args = parser.parse_args()
-
-    DUMP_OUTPUT = args.dump_output
+    OPTS = parser.parse_args()
+    CFG.dump_output = OPTS.dump_output
+    CFG.start = OPTS.start
 
     # Probe environment setttings
     probe_env()
 
-    ops = get_ops_to_test(args.op_list_file, args.ops, args.stages)
+    ops = get_ops_to_test()
     op_count = len(ops)
     if op_count == 0:
         pwarn("No operators to test. Please specify at lease one operator.")
@@ -722,16 +747,19 @@ def main():
     else:
         pinfo(f"Testing {op_count} operators ...")
 
-    # Set global variable for convenience
-    OP_LIST = ops
+    CFG.ops = ops
 
-    OUTPUT_DIR = ROOT.joinpath("results")
-    if args.output_dir:
-        OUTPUT_DIR = Path(args.output_dir)
-    ensure_dir(OUTPUT_DIR)
+    output_dir = Path(OPTS.output_dir)
+    ensure_dir(output_dir)
+    CFG.output_dir = output_dir
 
     # Split the operators among GPUs
-    gpu_ids = [int(x) for x in args.gpus.split(",") if x.strip()]
+    gpu_list = OPTS.gpus.strip().split(",")
+    if len(gpu_list) == 0:
+        pwarn("Empty GPU list specified.")
+        sys.exit(1)
+
+    gpu_ids = [int(x) for x in gpu_list if x.strip()]
     gpu_count = len(gpu_ids)
     if gpu_count == 1:
         worker_proc(gpu_ids[0], 0, op_count)
@@ -754,7 +782,7 @@ def main():
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     op_data = {}
     for gpu_id in gpu_ids:
-        gpu_file = OUTPUT_DIR.joinpath(f"summary{gpu_id}.json")
+        gpu_file = CFG.output_dir.joinpath(f"summary{gpu_id}.json")
         if not gpu_file.exists():
             perror(f"GPU {gpu_id} failed to produce a summary, recovery needed.")
             continue
@@ -768,7 +796,7 @@ def main():
         "result": op_data,
     }
 
-    json_path = OUTPUT_DIR.joinpath("summary.json")
+    json_path = CFG.output_dir.joinpath("summary.json")
     with json_path.open("w") as f:
         json.dump(final_data, f, indent=2)
 
