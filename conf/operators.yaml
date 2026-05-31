@@ -5836,6 +5836,17 @@ ops:
       - DSA
     stages:
       - beta: '5.0'
+  - id: special_entr
+    description: "Computes the entropy function element-wise: entr(x) = -x * ln(x) for x > 0, 0 for x == 0, -inf for x < 0."
+    for:
+      - special_entr
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
