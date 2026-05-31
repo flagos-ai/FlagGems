@@ -5064,6 +5064,26 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.0'
+  - id: replication_pad3d_backward
+    description: Compute the gradient of `replication_pad3d` with respect to the input tensor.
+    for:
+      - replication_pad3d_backward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: replication_pad3d_backward_grad_input
+    description: A variant of `replication_pad3d_backward` that writes into a pre-allocated tensor.
+    for:
+      - replication_pad3d_backward.grad_input
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: reshape_and_cache
     description: Store the key/value token states into the pre-allcated kv_cache buffers of paged attention.
     for:
