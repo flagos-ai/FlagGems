@@ -1,6 +1,17 @@
 import pytest
+import torch
 
 from . import base, consts
+
+
+@pytest.mark.digamma
+def test_digamma():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="digamma",
+        torch_op=torch.digamma,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
 
 
 @pytest.mark.digamma_
