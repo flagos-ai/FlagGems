@@ -285,6 +285,7 @@ from flag_gems.ops.rad2deg import rad2deg, rad2deg_
 from flag_gems.ops.rand import rand
 from flag_gems.ops.rand_like import rand_like
 from flag_gems.ops.randint import randint
+from flag_gems.ops.randint_like import randint_like
 from flag_gems.ops.randn import randn
 from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
@@ -754,6 +755,7 @@ __all__ = [
     "rand",
     "rand_like",
     "randint",
+    "randint_like",
     "randn",
     "randn_like",
     "randperm",
