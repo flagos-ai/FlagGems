@@ -1170,6 +1170,7 @@ def virtual_to_cache_offset(
     block_size,
     k_row_stride,
     k_page_stride,
+    IS_CONTIGUOUS_KVCACHE: tl.constexpr,
     boundary_check: tl.constexpr = False,
 ):
     # virtual_index is the kv sequence index in the current batch element
@@ -1185,6 +1186,8 @@ def virtual_to_cache_offset(
         ).to(tl.int64)
     else:
         page_block_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int64)
+    if IS_CONTIGUOUS_KVCACHE:
+        return (page_block_index * block_size + page_offset).to(tl.int64) * k_row_stride
     return page_block_index * k_page_stride + page_offset * k_row_stride
 
 
@@ -1200,6 +1203,7 @@ def load_from_kvcache(
     k_row_stride,
     BLOCK_K: tl.constexpr,
     k_page_stride=0,
+    IS_CONTIGUOUS_KVCACHE: tl.constexpr = False,
     boundary_check: tl.constexpr = False,
 ):
     cache_offset = virtual_to_cache_offset(
@@ -1209,6 +1213,7 @@ def load_from_kvcache(
         block_size,
         k_row_stride,
         k_page_stride,
+        IS_CONTIGUOUS_KVCACHE,
         boundary_check,
     )
     k_offset = tl.arange(0, BLOCK_K)[:, None] + cache_offset[None, :]
@@ -1244,7 +1249,6 @@ def load_from_kvcache(
         "seqlen_q_rounded",
         "seqlen_k_rounded",
         "total_q",
-        "k_page_stride",
     ]
 )
 def flash_varlen_fwd_kernel(
@@ -1319,6 +1323,7 @@ def flash_varlen_fwd_kernel(
     BLOCK_K: tl.constexpr,
     num_warps: tl.constexpr,
     num_stages: tl.constexpr,
+    IS_CONTIGUOUS_KVCACHE: tl.constexpr,
 ):
     m_block = tl.program_id(0)
     bid = tl.program_id(1)
@@ -1437,6 +1442,7 @@ def flash_varlen_fwd_kernel(
                 k_row_stride,
                 BLOCK_K=BLOCK_K,
                 k_page_stride=k_page_stride,
+                IS_CONTIGUOUS_KVCACHE=IS_CONTIGUOUS_KVCACHE,
                 boundary_check=True,
             )
         else:
@@ -1534,6 +1540,7 @@ def flash_varlen_fwd_kernel(
                 k_row_stride,
                 BLOCK_K=BLOCK_K,
                 k_page_stride=k_page_stride,
+                IS_CONTIGUOUS_KVCACHE=IS_CONTIGUOUS_KVCACHE,
             )
         else:
             start_n = n_block * BLOCK_N
