@@ -115,9 +115,39 @@ def test_reflection_pad2d_out(shape, dtype, padding):
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.reflection_pad2d_backward
+@pytest.mark.parametrize(
+    "shape", [(3, 33, 33), (2, 4, 32, 64), (8, 16, 64, 64), (32, 64, 128, 256)]
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize(
+    "padding",
+    [
+        (1, 1, 1, 1),
+        (2, 3, 2, 3),
+        (3, 5, 3, 5),
+        (0, 4, 0, 4),
+    ],
+)
+def test_reflection_pad2d_backward(shape, dtype, padding):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_x = utils.to_reference(x, True)
+
+    ref_out = torch.ops.aten.reflection_pad2d(ref_x, padding)
+    with flag_gems.use_gems():
+        res_out = flag_gems.reflection_pad2d(x, padding)
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = utils.to_reference(out_grad, True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_x, ref_grad)
+
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, x, out_grad)
+
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, equal_nan=True)
+
+
 @pytest.mark.reflection_pad2d_out
-@pytest.mark.parametrize("padding", [(1, 1, 1, 1), (2, 3, 4, 5)])
-def test_reflection_pad2d_out_3d_input(padding):
     shape = (3, 32, 64)
     dtype = torch.float32
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
