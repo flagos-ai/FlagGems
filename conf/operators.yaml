@@ -2321,6 +2321,23 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.1'
+  - id: flash_mla_with_kvcache
+    description: |
+      Triton sparse MLA decode attention with FP8 KV cache for DeepSeek V4.
+      Token-parallel split-reduce approach for the decode path with SWA and
+      optional extra compressed cache support.
+    for:
+      - vllm.third_party.flashmla.flash_mla_interface.flash_mla_with_kvcache
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: flip
     description: Reverse the order of an n-D tensor along given axis in dims.
     for:
