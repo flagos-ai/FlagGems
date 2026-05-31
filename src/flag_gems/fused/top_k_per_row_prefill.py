@@ -25,19 +25,33 @@ Performance (DeepSeek V4 config, vocab=129280, top_k=1024):
     - num_rows=32: 0.38x vs vLLM CUDA (bounded by torch.topk on large vocab)
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
+logger = logging.getLogger(__name__)
 
+
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_SIZE": 4096}, num_warps=2),
+        triton.Config({"BLOCK_SIZE": 8192}, num_warps=2),
+        triton.Config({"BLOCK_SIZE": 8192}, num_warps=4),
+        triton.Config({"BLOCK_SIZE": 16384}, num_warps=4),
+    ],
+    key=["vocab_size"],
+)
 @triton.jit
 def _mask_invalid_kernel(
     logits_ptr,
     row_starts_ptr,
     row_ends_ptr,
-    stride0,  # logits row stride (= vocab_size for contiguous tensor)
-    BLOCK_SIZE: tl.constexpr,  # 8192: tuned for 129280 vocab (16 blocks/row)
-    VOCAB_SIZE: tl.constexpr,  # total vocabulary size (e.g. 129280)
+    stride0,
+    num_rows,
+    vocab_size,
+    BLOCK_SIZE: tl.constexpr,
 ):
     """Mask logits outside [row_starts[i], row_ends[i]) to -inf, in-place.
 
@@ -46,7 +60,7 @@ def _mask_invalid_kernel(
     Early exits when the row uses full vocab to avoid unnecessary stores.
     """
     pid = tl.program_id(0)
-    num_blocks_per_row = tl.cdiv(VOCAB_SIZE, BLOCK_SIZE)
+    num_blocks_per_row = tl.cdiv(vocab_size, BLOCK_SIZE)
     row_id = pid // num_blocks_per_row
     block_id = pid % num_blocks_per_row
 
@@ -55,27 +69,27 @@ def _mask_invalid_kernel(
 
     # Early exit: most rows in inference use full vocab (start=0, end=vocab_size).
     # Skipping these avoids ~90% of memory writes in typical workloads.
-    if start == 0 and end >= VOCAB_SIZE:
+    if start == 0 and end >= vocab_size:
         return
 
     # Compute which positions in this block are outside the valid range
     offs = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     out_of_range = (offs < start) | (offs >= end)
     # Only write to positions that are both within vocab bounds AND out of valid range
-    mask = (offs < VOCAB_SIZE) & out_of_range
+    mask = (offs < vocab_size) & out_of_range
 
     tl.store(logits_ptr + row_id * stride0 + offs, float("-inf"), mask=mask)
 
 
 @triton.jit
 def _fused_postprocess_kernel(
-    src_ptr,  # source indices (from argsort or topk)
-    dst_ptr,  # destination: output indices buffer [num_rows, top_k]
-    row_starts_ptr,  # per-row start offsets for index adjustment
+    src_ptr,
+    dst_ptr,
+    row_starts_ptr,
     num_rows: tl.constexpr,
-    top_k: tl.constexpr,  # 1024 in DeepSeek V4
-    src_stride0: tl.constexpr,  # row stride of src (vocab_size for argsort, top_k for topk)
-    BLOCK_SIZE: tl.constexpr,  # next_power_of_2(top_k), e.g. 1024
+    top_k: tl.constexpr,
+    src_stride0: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
     """Fused slice + cast + subtract: convert absolute indices to row-relative.
 
@@ -122,31 +136,28 @@ def top_k_per_row_prefill(
         stride1: logits.stride(1), typically == 1 for contiguous tensor.
         top_k: number of top elements per row (1024 in DeepSeek V4).
     """
+    logger.debug("GEMS TOP_K_PER_ROW_PREFILL")
+
     vocab_size = logits.shape[1]
 
     if top_k > vocab_size:
         raise ValueError(f"top_k ({top_k}) must not exceed vocab_size ({vocab_size})")
 
     # --- Phase 1: Mask invalid ranges to -inf ---
-    # BLOCK_SIZE=8192 chosen to balance occupancy vs. grid size:
-    # For vocab=129280, this gives ceil(129280/8192)=16 blocks per row.
-    # num_warps=2 is sufficient since masking is memory-bound (simple store).
-    MASK_BS = 8192
-    num_mask_blocks = (vocab_size + MASK_BS - 1) // MASK_BS
-    _mask_invalid_kernel[(num_rows * num_mask_blocks,)](
+    grid = lambda META: (num_rows * triton.cdiv(vocab_size, META["BLOCK_SIZE"]),)
+    _mask_invalid_kernel[grid](
         logits,
         row_starts,
         row_ends,
         stride0,
-        BLOCK_SIZE=MASK_BS,
-        VOCAB_SIZE=vocab_size,
-        num_warps=2,
+        num_rows,
+        vocab_size,
     )
 
     # --- Phase 2: Select top-K indices ---
     # POSTPROC_BLOCK must be power-of-2 >= top_k for tl.arange.
-    # For top_k=1024, this is exactly 1024 (no waste).
     POSTPROC_BLOCK = triton.next_power_of_2(top_k)
+    num_warps_post = min(max(POSTPROC_BLOCK // 256, 1), 8)
 
     if num_rows == 1:
         # Single row path: torch.argsort uses CUB radix sort under the hood.
@@ -154,7 +165,6 @@ def top_k_per_row_prefill(
         # than torch.topk's heap-based O(N log k) because it fully utilizes GPU
         # parallelism without the sequential heap maintenance bottleneck.
         sorted_idx = torch.argsort(logits, dim=1, descending=True, stable=False)
-        # src_stride0=vocab_size because argsort returns full-width sorted indices
         _fused_postprocess_kernel[(1,)](
             sorted_idx,
             indices,
@@ -163,7 +173,7 @@ def top_k_per_row_prefill(
             top_k=top_k,
             src_stride0=vocab_size,
             BLOCK_SIZE=POSTPROC_BLOCK,
-            num_warps=4,
+            num_warps=num_warps_post,
         )
     else:
         # Multi-row path: torch.topk with sorted=False.
@@ -171,7 +181,6 @@ def top_k_per_row_prefill(
         # than argsort (which serializes the full sort per row).
         # sorted=False avoids an unnecessary final sort pass.
         _, top_idx = torch.topk(logits, top_k, dim=1, largest=True, sorted=False)
-        # src_stride0=top_k because topk output shape is [num_rows, top_k]
         _fused_postprocess_kernel[(num_rows,)](
             top_idx,
             indices,
@@ -180,5 +189,5 @@ def top_k_per_row_prefill(
             top_k=top_k,
             src_stride0=top_k,
             BLOCK_SIZE=POSTPROC_BLOCK,
-            num_warps=4,
+            num_warps=num_warps_post,
         )
