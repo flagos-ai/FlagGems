@@ -42,9 +42,7 @@ def _make_input(shape, dim, dtype, pattern):
         slice_shape = list(shape)
         slice_shape[dim] = k
         if dtype in utils.INT_DTYPES:
-            base = torch.randint(
-                -3, 3, slice_shape, device=flag_gems.device
-            ).to(dtype)
+            base = torch.randint(-3, 3, slice_shape, device=flag_gems.device).to(dtype)
         else:
             base = torch.randn(slice_shape, dtype=dtype, device=flag_gems.device)
         # Repeat the base slices to fill ``size_dim`` entries.
