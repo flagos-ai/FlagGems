@@ -546,6 +546,8 @@ _FULL_CONFIG = (
     ("vstack", vstack),
     ("where.self", where_self),
     ("where.self_out", where_self_out),
+    ("xlogy.Tensor", xlogy),
+    ("xlogy.OutTensor", xlogy_out),
     ("zero", zero),
     ("zero_", zero_),
     ("zero.out", zero_out),
