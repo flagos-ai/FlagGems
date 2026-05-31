@@ -79,3 +79,15 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
         kernel_1[(mid_size, 1, 1)](inp, target, mid, M, block_size, reduction)
         kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
+
+
+def mse_loss_backward(grad_output, input, target, reduction=Reduction.MEAN.value):
+    logger.debug("GEMS MSE LOSS BACKWARD")
+    # d/dx mse_loss = 2 * (input - target) * grad_output
+    # For mean: divide by n_elements
+    diff = input - target
+    grad_input = 2 * grad_output * diff
+    if reduction == Reduction.MEAN.value:
+        n_elements = input.numel()
+        grad_input = grad_input / n_elements
+    return grad_input
