@@ -36,6 +36,7 @@ _FULL_CONFIG = (
     ("__or__.Scalar", bitwise_or_scalar),
     ("__or__.Tensor", bitwise_or_tensor),
     ("_assert_async", _assert_async),
+    ("_batch_norm_no_update", _batch_norm_no_update),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_forward", flash_attention_forward),
