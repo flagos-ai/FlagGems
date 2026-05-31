@@ -5086,6 +5086,28 @@ ops:
     stages:
       - stable: '3.0'
     cpp: '4.0'
+  - id: resize
+    description: Resizes the input tensor to the specified size.
+    for:
+      - resize
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.0'
+  - id: resize_
+    description: The in-place version of `resize()`.
+    for:
+      - resize_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.0'
   - id: resolve_conj
     description: |
       Returns a new tensor with materialized conjugation if `input`'s conjugate bit is set to True,
