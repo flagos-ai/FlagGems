@@ -4210,6 +4210,53 @@ ops:
       - Math
     stages:
       - stable: '3.0'
+  - id: nanmedian
+    description: Returns the median of the values in `input`, ignoring `NaN` values.
+    for:
+      - nanmedian
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.1'
+  - id: nanmedian_out
+    description: A variant of `nanmedian()` with the `out` argument.
+    for:
+      - nanmedian.out
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.1'
+  - id: nanmedian_dim
+    description: |
+      Returns a namedtuple `(values, indices)` where `values` contains the median
+      of each row of `input` in the dimension `dim`, ignoring `NaN` values, and
+      `indices` contains the index location of each median value found.
+    for:
+      - nanmedian.dim
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.1'
+  - id: nanmedian_dim_values
+    description: A variant of `nanmedian_dim()` with the `out` argument.
+    for:
+      - nanmedian.dim_values
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.1'
   - id: ne
     description: Computes that `input` is not equal to `other` element-wise.
     for:
