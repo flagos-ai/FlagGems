@@ -695,7 +695,7 @@ def get_ops_to_test():
         stage = next(iter(stages[-1].keys()), None)
         if stage not in effective_stages:
             continue
-        if len(OPTS.start) > 0 and op["id"] <= OPTS.start:
+        if OPTS.start is not None and op["id"] <= OPTS.start:
             continue
         ops.append(op["id"])
 
