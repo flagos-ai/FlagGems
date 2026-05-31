@@ -2412,6 +2412,30 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: fmax
+    description: |
+      Computes the element-wise maximum of input and other, ignoring NaNs.
+    for:
+      - fmax
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: fmax_out
+    description: |
+      Computes the element-wise maximum of input and other, ignoring NaNs (out variant).
+    for:
+      - fmax.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: fmin
     description: |
       Computes the element-wise minimum of two tensors, specially handling NaN values
