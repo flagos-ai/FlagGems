@@ -495,6 +495,7 @@ _FULL_CONFIG = (
     ("special_i0e.out", special_i0e_out),
     ("special_i1", special_i1),
     ("special_i1.out", special_i1_out),
+    ("special_xlog1py", special_xlog1py),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
     ("square", square),
