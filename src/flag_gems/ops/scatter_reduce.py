@@ -322,6 +322,11 @@ def scatter_reduce_sum_kernel(
     src_shape_2,
     src_shape_3,
     src_shape_4,
+    idx_shape_0,
+    idx_shape_1,
+    idx_shape_2,
+    idx_shape_3,
+    idx_shape_4,
     idx_stride_0,
     idx_stride_1,
     idx_stride_2,
@@ -343,14 +348,14 @@ def scatter_reduce_sum_kernel(
         mask = offsets < N
 
         remaining = offsets
-        coord0 = remaining // (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
-        coord1 = remaining // (src_shape_2 * src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_2 * src_shape_3 * src_shape_4)
-        coord2 = remaining // (src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_3 * src_shape_4)
-        coord3 = remaining // src_shape_4
-        coord4 = remaining % src_shape_4
+        coord0 = remaining // (idx_shape_1 * idx_shape_2 * idx_shape_3 * idx_shape_4)
+        remaining = remaining % (idx_shape_1 * idx_shape_2 * idx_shape_3 * idx_shape_4)
+        coord1 = remaining // (idx_shape_2 * idx_shape_3 * idx_shape_4)
+        remaining = remaining % (idx_shape_2 * idx_shape_3 * idx_shape_4)
+        coord2 = remaining // (idx_shape_3 * idx_shape_4)
+        remaining = remaining % (idx_shape_3 * idx_shape_4)
+        coord3 = remaining // idx_shape_4
+        coord4 = remaining % idx_shape_4
 
         idx_offsets = (
             coord0 * idx_stride_0
@@ -443,6 +448,11 @@ def scatter_reduce_prod_kernel(
     src_shape_2,
     src_shape_3,
     src_shape_4,
+    idx_shape_0,
+    idx_shape_1,
+    idx_shape_2,
+    idx_shape_3,
+    idx_shape_4,
     idx_stride_0,
     idx_stride_1,
     idx_stride_2,
@@ -464,14 +474,14 @@ def scatter_reduce_prod_kernel(
         mask = offsets < N
 
         remaining = offsets
-        coord0 = remaining // (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
-        coord1 = remaining // (src_shape_2 * src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_2 * src_shape_3 * src_shape_4)
-        coord2 = remaining // (src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_3 * src_shape_4)
-        coord3 = remaining // src_shape_4
-        coord4 = remaining % src_shape_4
+        coord0 = remaining // (idx_shape_1 * idx_shape_2 * idx_shape_3 * idx_shape_4)
+        remaining = remaining % (idx_shape_1 * idx_shape_2 * idx_shape_3 * idx_shape_4)
+        coord1 = remaining // (idx_shape_2 * idx_shape_3 * idx_shape_4)
+        remaining = remaining % (idx_shape_2 * idx_shape_3 * idx_shape_4)
+        coord2 = remaining // (idx_shape_3 * idx_shape_4)
+        remaining = remaining % (idx_shape_3 * idx_shape_4)
+        coord3 = remaining // idx_shape_4
+        coord4 = remaining % idx_shape_4
 
         idx_offsets = (
             coord0 * idx_stride_0
@@ -581,6 +591,11 @@ def scatter_reduce_mean_kernel(
     src_shape_2,
     src_shape_3,
     src_shape_4,
+    idx_shape_0,
+    idx_shape_1,
+    idx_shape_2,
+    idx_shape_3,
+    idx_shape_4,
     idx_stride_0,
     idx_stride_1,
     idx_stride_2,
@@ -602,14 +617,14 @@ def scatter_reduce_mean_kernel(
         mask = offsets < N
 
         remaining = offsets
-        coord0 = remaining // (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
-        coord1 = remaining // (src_shape_2 * src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_2 * src_shape_3 * src_shape_4)
-        coord2 = remaining // (src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_3 * src_shape_4)
-        coord3 = remaining // src_shape_4
-        coord4 = remaining % src_shape_4
+        coord0 = remaining // (idx_shape_1 * idx_shape_2 * idx_shape_3 * idx_shape_4)
+        remaining = remaining % (idx_shape_1 * idx_shape_2 * idx_shape_3 * idx_shape_4)
+        coord1 = remaining // (idx_shape_2 * idx_shape_3 * idx_shape_4)
+        remaining = remaining % (idx_shape_2 * idx_shape_3 * idx_shape_4)
+        coord2 = remaining // (idx_shape_3 * idx_shape_4)
+        remaining = remaining % (idx_shape_3 * idx_shape_4)
+        coord3 = remaining // idx_shape_4
+        coord4 = remaining % idx_shape_4
 
         idx_offsets = (
             coord0 * idx_stride_0
@@ -707,6 +722,11 @@ def scatter_reduce_amax_kernel(
     src_shape_2,
     src_shape_3,
     src_shape_4,
+    idx_shape_0,
+    idx_shape_1,
+    idx_shape_2,
+    idx_shape_3,
+    idx_shape_4,
     idx_stride_0,
     idx_stride_1,
     idx_stride_2,
@@ -728,14 +748,14 @@ def scatter_reduce_amax_kernel(
         mask = offsets < N
 
         remaining = offsets
-        coord0 = remaining // (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
-        coord1 = remaining // (src_shape_2 * src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_2 * src_shape_3 * src_shape_4)
-        coord2 = remaining // (src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_3 * src_shape_4)
-        coord3 = remaining // src_shape_4
-        coord4 = remaining % src_shape_4
+        coord0 = remaining // (idx_shape_1 * idx_shape_2 * idx_shape_3 * idx_shape_4)
+        remaining = remaining % (idx_shape_1 * idx_shape_2 * idx_shape_3 * idx_shape_4)
+        coord1 = remaining // (idx_shape_2 * idx_shape_3 * idx_shape_4)
+        remaining = remaining % (idx_shape_2 * idx_shape_3 * idx_shape_4)
+        coord2 = remaining // (idx_shape_3 * idx_shape_4)
+        remaining = remaining % (idx_shape_3 * idx_shape_4)
+        coord3 = remaining // idx_shape_4
+        coord4 = remaining % idx_shape_4
 
         idx_offsets = (
             coord0 * idx_stride_0
@@ -897,6 +917,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
 
     # Convert strides/shapes to int64 to avoid overflow in kernel arithmetic
     src_shapes = [int(x) for x in _pad5(list(src.shape), 1)]
+    idx_shapes = [int(x) for x in _pad5(list(index.shape), 1)]
     src_strides_p = [int(x) for x in _pad5(list(src.stride()), 0)]
     idx_strides_p = [int(x) for x in _pad5(list(index.stride()), 0)]
     out_strides_p = [int(x) for x in _pad5(list(out.stride()), 0)]
@@ -907,7 +928,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
     mask_ptr = reduced_mask if use_mask else dummy_mask
 
     # Use 2D fast path for 2D tensors (most common case)
-    use_2d = inp.ndim == 2
+    use_2d = inp.ndim == 2 and tuple(index.shape) == tuple(src.shape)
 
     # For 2D kernels, use raw dim (0 or 1) instead of padded_dim
     dim_2d = dim
@@ -951,6 +972,11 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                     src_shapes[2],
                     src_shapes[3],
                     src_shapes[4],
+                    idx_shapes[0],
+                    idx_shapes[1],
+                    idx_shapes[2],
+                    idx_shapes[3],
+                    idx_shapes[4],
                     idx_strides_p[0],
                     idx_strides_p[1],
                     idx_strides_p[2],
@@ -1000,6 +1026,11 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                     src_shapes[2],
                     src_shapes[3],
                     src_shapes[4],
+                    idx_shapes[0],
+                    idx_shapes[1],
+                    idx_shapes[2],
+                    idx_shapes[3],
+                    idx_shapes[4],
                     idx_strides_p[0],
                     idx_strides_p[1],
                     idx_strides_p[2],
@@ -1051,6 +1082,11 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                     src_shapes[2],
                     src_shapes[3],
                     src_shapes[4],
+                    idx_shapes[0],
+                    idx_shapes[1],
+                    idx_shapes[2],
+                    idx_shapes[3],
+                    idx_shapes[4],
                     idx_strides_p[0],
                     idx_strides_p[1],
                     idx_strides_p[2],
@@ -1109,6 +1145,11 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                     src_shapes[2],
                     src_shapes[3],
                     src_shapes[4],
+                    idx_shapes[0],
+                    idx_shapes[1],
+                    idx_shapes[2],
+                    idx_shapes[3],
+                    idx_shapes[4],
                     idx_strides_p[0],
                     idx_strides_p[1],
                     idx_strides_p[2],
