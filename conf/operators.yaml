@@ -5836,6 +5836,18 @@ ops:
       - DSA
     stages:
       - beta: '5.0'
+  - id: special_hermite_polynomial_he
+    description: |
+      Probabilists' Hermite polynomial He_n(input).
+    for:
+      - special.hermite_polynomial_he
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
