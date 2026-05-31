@@ -49,4 +49,5 @@ def test_pixel_shuffle_out(shape_factor, dtype):
             input_tensor, upscale_factor, out=out_act
         )
 
+    assert act_out is out_act
     utils.gems_assert_close(act_out, ref_out, dtype=dtype)
