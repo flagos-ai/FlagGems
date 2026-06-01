@@ -3303,6 +3303,7 @@ ops:
       - isneginf
     labels:
       - aten
+      - KernelGen
       - pointwise
     kind:
       - Math
@@ -3314,6 +3315,7 @@ ops:
       - isneginf.out
     labels:
       - aten
+      - KernelGen
       - pointwise
     kind:
       - Math
