@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+run_tests.py — Run accuracy and performance tests for FlagGems operators.
+
+When stdout is a TTY, shows a live display: completed results scroll upward
+while a pinned footer shows one status line per GPU. When output is piped or
+redirected, falls back to plain line-by-line output with no ANSI codes.
+"""
 import argparse
 import datetime
 import json
 import os
 import platform
+import queue as queue_module
 import shlex
 import shutil
 import signal
@@ -14,7 +22,7 @@ import time
 import types
 from decimal import getcontext
 from importlib import metadata
-from multiprocessing import Process
+from multiprocessing import Process, Queue
 from pathlib import Path
 
 import consts
@@ -24,101 +32,167 @@ import yaml
 
 import flag_gems
 
-# increase decimal precision
 getcontext().prec = 18
 RED = "\033[31m"
 GREEN = "\033[32m"
 YELLOW = "\033[93m"
+CYAN = "\033[36m"
+DIM = "\033[2m"
 NC = "\033[0m"
 
 ROOT = Path(__file__).parent.parent
 
-# Global variable for option settings
 OPTS = argparse.Namespace()
 CFG = types.SimpleNamespace()
 
-# Outputs
 GLOBAL_RESULTS = {}
 ENV_INFO = {}
 
 TIMEOUT = -100
-# A list of operators that can only run on GPU/DCUs
-NO_CPU_LIST = []
-# Track worker processes for cleanup on interrupt
 WORKER_PROCESSES = []
 INTERRUPTED = False
 
+IS_TTY = sys.stdout.isatty()
 
-def pinfo(str, **kwargs):
-    print(f"{GREEN}[INFO]{NC} {str}", flush=True, **kwargs)
-
-
-def perror(str, **kwargs):
-    print(f"{RED}[ERROR]{NC} {str}", flush=True, **kwargs)
+if not IS_TTY:
+    RED = GREEN = YELLOW = CYAN = DIM = NC = ""
 
 
-def pwarn(str, **kwargs):
-    print(f"{YELLOW}[WARN]{NC} {str}", flush=True, **kwargs)
+def pinfo(msg, **kwargs):
+    print(f"{GREEN}[INFO]{NC} {msg}", flush=True, **kwargs)
+
+
+def perror(msg, **kwargs):
+    print(f"{RED}[ERROR]{NC} {msg}", flush=True, **kwargs)
+
+
+def pwarn(msg, **kwargs):
+    print(f"{YELLOW}[WARN]{NC} {msg}", flush=True, **kwargs)
 
 
 def ensure_dir(p):
     p.mkdir(parents=True, exist_ok=True)
 
 
-def cleanup_intermediate_files():
-    patterns = [
-        (ROOT / "tests", "accuracy_*.json"),
-        (ROOT / "benchmark", "benchmark_*.json"),
-    ]
-    for directory, pattern in patterns:
-        for f in directory.glob(pattern):
-            try:
-                f.unlink()
-            except OSError:
-                pass
+class LiveDisplay:
+    """Manages terminal output with a pinned footer for GPU status lines."""
 
-    for f in CFG.output_dir.glob("summary*.tmp"):
-        try:
-            f.unlink()
-        except OSError:
-            pass
+    def __init__(self, gpu_ids, op_count, op_width=20):
+        self.gpu_ids = gpu_ids
+        self.op_count = op_count
+        self.op_width = op_width
+        self.gpu_index = {gid: i + 1 for i, gid in enumerate(gpu_ids)}
+        # Match progress line width to scrolling log lines (55 + op_width visible chars).
+        # Progress line: "[Progress] [" (12) + bar + "]  " (3) + nums_str
+        nums_width = len(f"{op_count}/{op_count} ops")
+        self.bar_width = max(20, 55 + op_width - 12 - 3 - nums_width)
+        self.nums_width = nums_width
+        progress_line = self._fmt_progress(0)
+        gpu_lines = [f"{DIM}[GPU {gid:2d}] idle{NC}" for gid in gpu_ids]
+        self.footer = [progress_line] + gpu_lines
+        self.n = len(self.footer)
+        self.footer_drawn = False
+
+    def _fmt_progress(self, tests_done):
+        total_tests = self.op_count * 2
+        color = GREEN if tests_done >= total_tests else CYAN
+        bar = (
+            _progress_bar(tests_done, total_tests, self.bar_width, color=color)
+            if self.op_count
+            else " " * self.bar_width
+        )
+        ops_done = tests_done // 2
+        nums = f"{ops_done}/{self.op_count} ops"
+        return f"[Progress] [{color}{bar}{NC}]  {nums:>{self.nums_width}}"
+
+    def _draw_footer(self):
+        if not IS_TTY:
+            return
+        for line in self.footer:
+            sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+        self.footer_drawn = True
+
+    def _erase_footer(self):
+        if not IS_TTY or not self.footer_drawn:
+            return
+        for _ in range(self.n):
+            sys.stdout.write("\033[A\033[2K")
+
+    def init(self):
+        if IS_TTY:
+            self._draw_footer()
+
+    def log(self, msg):
+        """Print a scrolling log line above the footer."""
+        if IS_TTY:
+            self._erase_footer()
+            sys.stdout.write(msg + "\n")
+            self._draw_footer()
+        else:
+            sys.stdout.write(msg + "\n")
+            sys.stdout.flush()
+
+    def update_gpu(self, gpu_id, status_line):
+        """Update a GPU's footer line."""
+        idx = self.gpu_index.get(gpu_id)
+        if idx is None:
+            return
+        self.footer[idx] = status_line
+        if IS_TTY:
+            self._erase_footer()
+            self._draw_footer()
+
+    def update_progress(self, tests_done):
+        """Update the global progress bar."""
+        self.footer[0] = self._fmt_progress(tests_done)
+        if IS_TTY:
+            self._erase_footer()
+            self._draw_footer()
+
+    def finish(self):
+        """Clear the footer when done."""
+        if IS_TTY:
+            self._erase_footer()
+            sys.stdout.flush()
 
 
-def terminate_workers():
-    for p in WORKER_PROCESSES:
-        if p.is_alive():
-            try:
-                os.killpg(os.getpgid(p.pid), signal.SIGTERM)
-            except (OSError, ProcessLookupError):
-                pass
-    for p in WORKER_PROCESSES:
-        p.join(timeout=5)
-        if p.is_alive():
-            p.kill()
+def _progress_bar(done, total, width=40, color=""):
+    if not total:
+        return " " * width
+    frac = done * width / total
+    full = int(frac)
+    has_half = (frac - full) >= 0.5 and full < width
+    empty = width - full - (1 if has_half else 0)
+    bar = "█" * full
+    if has_half:
+        bar += f"{DIM}█{NC}{color}"
+    bar += " " * empty
+    return bar
 
 
-def handle_interrupt(signum, frame):
-    global INTERRUPTED
-    if INTERRUPTED:
-        return
-    INTERRUPTED = True
-    pwarn("Interrupted. Cleaning up ...")
-    terminate_workers()
-    cleanup_intermediate_files()
-    pwarn("Cleanup done.")
-    sys.exit(1)
+def _format_status(status, dur):
+    STATUS_MAP = {
+        "Passed": (GREEN, "OK"),
+        "Failed": (RED, "FAILED"),
+        "Timeout": (RED, "TIMEOUT"),
+        "Error": (RED, "ERROR"),
+        "NotFound": (YELLOW, "NOTFOUND"),
+        "Skipped": (YELLOW, "SKIPPED"),
+    }
+    color, label = STATUS_MAP.get(status, (YELLOW, status.upper()))
+    return f"{color}[{label:<8} {dur:>6.1f}s]{NC}"
 
 
 def get_ops_from_inventory():
     catalog = []
     try:
-        op_inventory = ROOT / "conf" / "operators.yaml"  # noqa: E226
+        op_inventory = ROOT / "conf" / "operators.yaml"
         with open(str(op_inventory), "r") as f:
             data = yaml.safe_load(f)
             catalog = data.get("ops", [])
     except Exception as e:
         perror(f"Failed to load operator inventory: {e}")
-
     return catalog
 
 
@@ -130,7 +204,6 @@ def _probe_torch():
         version = torch.__version__
         ENV_INFO["torch"]["version"] = version
         pinfo(f"PyTorch detected ... {version}")
-
     except Exception as e:
         perror(f"pytorch not installed, please fix it - {e}")
         sys.exit(-1)
@@ -156,8 +229,6 @@ def _probe_torch():
     except Exception:
         ENV_INFO["torch"]["device_count"] = 0
 
-    return
-
 
 def _probe_triton():
     try:
@@ -177,30 +248,19 @@ def _probe_triton():
         ENV_INFO["triton"] = {"version": version}
         pinfo(f"Triton (triton) detected ... {version}")
 
-        # TODO(Qiming): Fix this. FlagTree contains a Triton, which should not be treated as conflict.
-        # if has_flagtree:
-        #     perror(
-        #        "Both FlagTree and Triton are installed, please uninstall one of them."
-        #    )
-        #    sys.exit(-1)
-
         if version:
             has_config = hasattr(triton, "Config")
             ENV_INFO["triton"]["has_config"] = has_config
             pinfo(f"Triton (triton) has Config ... [{has_config}]")
-
     except Exception:
         ENV_INFO["triton"] = None
         if not has_flagtree:
             perror("Neither FlagTree nor Triton is installed, please fix it.")
             sys.exit(-1)
 
-    return
-
 
 def _probe_flaggems():
     try:
-        # This may print an error "no device detected on your machine."
         version = flag_gems.__version__
         repo = git.Repo(search_parent_directories=True)
         sha = repo.head.object.hexsha
@@ -219,7 +279,6 @@ def _probe_flaggems():
         vendor = flag_gems.vendor_name
         ENV_INFO["flag_gems"]["vendor"] = vendor
         pinfo(f"flag_gems vendor detection ... {vendor}")
-
     except Exception as e:
         perror(f"{e}")
         perror("flag_gems failed to detect vendor info.`")
@@ -229,13 +288,10 @@ def _probe_flaggems():
         device = flag_gems.device
         ENV_INFO["flag_gems"]["device"] = device
         pinfo(f"flag_gems device detection ... {device}")
-
     except Exception as e:
         perror(f"{e}")
         perror("flag_gems failed to detect device info.`")
         sys.exit(-1)
-
-    return
 
 
 def probe_env():
@@ -247,6 +303,29 @@ def probe_env():
     _probe_torch()
     _probe_triton()
     _probe_flaggems()
+
+
+def get_env(gpu_ids):
+    env = os.environ.copy()
+    vendor = ENV_INFO.get("flag_gems", {}).get("vendor", "")
+
+    vendor_env_map = {
+        "ascend": ["ASCEND_RT_VISIBLE_DEVICES", "NPU_VISIBLE_DEVICES"],
+        "hygon": ["HIP_VISIBLE_DEVICES"],
+        "metax": ["MACA_VISIBLE_DEVICES"],
+        "mthreads": ["MUSA_VISIBLE_DEVICES"],
+        "tsingmicro": ["TXDA_VISIBLE_DEVICES"],
+        "iluvatar": ["ILUVATAR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES"],
+        "thead": ["CUDA_VISIBLE_DEVICES"],
+        "cambricon": ["MLU_VISIBLE_DEVICES"],
+        "kunlunxin": ["XPU_VISIBLE_DEVICES"],
+        "sunrise": ["TANG_VISIBLE_DEVICES"],
+    }
+
+    env_vars = vendor_env_map.get(vendor, ["CUDA_VISIBLE_DEVICES"])
+    for var in env_vars:
+        env[var] = gpu_ids
+    return env
 
 
 def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
@@ -278,9 +357,15 @@ def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
         pgid = os.getpgid(p.pid)
         try:
             os.killpg(pgid, signal.SIGTERM)
-        except Exception:
-            os.killpg(pgid, signal.SIGKILL)
-
+        except ProcessLookupError:
+            return TIMEOUT
+        try:
+            p.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
         return TIMEOUT
     except Exception as e:
         perror(f"run_cmd failed: {e}")
@@ -294,8 +379,18 @@ def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
 
 def parse_accuracy_data(result_file):
     raw_data = {}
-    with result_file.open("r") as f:
-        raw_data = json.load(f)
+    try:
+        with result_file.open("r") as f:
+            raw_data = json.load(f)
+    except (json.JSONDecodeError, ValueError):
+        return {
+            "total": 0,
+            "skipped": 0,
+            "failed": 0,
+            "passed": 0,
+            "status": "Error",
+            "details": {"error": f"Invalid JSON in {result_file}"},
+        }
 
     passed = []
     skipped = {}
@@ -343,7 +438,6 @@ def parse_accuracy_data(result_file):
             result["status"] = "Passed"
         return result
 
-    # Something is wrong ... check failed first
     if num_failed > 0:
         result["status"] = "Failed"
         for k, v in failed.items():
@@ -351,7 +445,6 @@ def parse_accuracy_data(result_file):
         result["details"]["failed"] = failed
         return result
 
-    # There are skipped tests
     if skipped_with_issue:
         result["status"] = "Failed"
     else:
@@ -360,152 +453,23 @@ def parse_accuracy_data(result_file):
     for k, v in skipped.items():
         skipped[k] = list(v)
     result["details"]["skipped"] = skipped
-
-    return result
-
-
-def get_env(gpu_ids):
-    env = os.environ.copy()
-
-    vendor = ENV_INFO.get("flag_gems", {}).get("vendor", "")
-
-    if vendor == "ascend":
-        env["ASCEND_RT_VISIBLE_DEVICES"] = gpu_ids
-        env["NPU_VISIBLE_DEVICES"] = gpu_ids
-        return env
-
-    if vendor == "hygon":
-        env["HIP_VISIBLE_DEVICES"] = gpu_ids
-        return env
-
-    if vendor == "metax":
-        env["MACA_VISIBLE_DEVICES"] = gpu_ids
-        return env
-
-    if vendor == "mthreads":
-        env["MUSA_VISIBLE_DEVICES"] = gpu_ids
-        return env
-
-    if vendor == "tsingmicro":
-        env["TXDA_VISIBLE_DEVICES"] = gpu_ids
-        return env
-
-    # NOTE: Iluvatar said to support CUDA_VISIBLE_DEVICES as well
-    if vendor == "iluvatar":
-        env["ILUVATAR_VISIBLE_DEVICES"] = gpu_ids
-        env["CUDA_VISIBLE_DEVICES"] = gpu_ids
-        return env
-
-    if vendor == "thead":
-        env["CUDA_VISIBLE_DEVICES"] = gpu_ids
-        return env
-
-    if vendor == "cambricon":
-        env["MLU_VISIBLE_DEVICES"] = gpu_ids
-        return env
-
-    if vendor == "kunlunxin":
-        env["XPU_VISIBLE_DEVICES"] = gpu_ids
-        return env
-
-    if vendor == "sunrise":
-        env["TANG_VISIBLE_DEVICES"] = gpu_ids
-        return env
-
-    env["CUDA_VISIBLE_DEVICES"] = gpu_ids
-
-    return env
-
-
-def run_accuracy(gpu_id, start, index, count):
-    op = CFG.ops[start + index].strip()
-    n = (index + 1) * 10 // count
-    prog = "█" * n + " " * (10 - n)
-    nums = f"{index + 1}/{count}"
-    lead = f"GPU {gpu_id:2d}][{nums:>7}"
-    ts = datetime.datetime.now().strftime("%H:%M:%S")
-    pinfo(f"[{ts}][{lead}][{prog}] accuracy  '{op}' ...")
-
-    env = get_env(str(gpu_id))
-
-    if op in CFG.skip_cpu_tests:
-        cmd = f'pytest -m "{op}" --record json --output accuracy_{op}.json -vs'
-    else:
-        cmd = (
-            f'pytest -m "{op}" --record json --output accuracy_{op}.json --ref cpu -vs'
-        )
-
-    accuracy_dir = ROOT.joinpath("tests")
-    result_file = accuracy_dir / f"accuracy_{op}.json"
-    if result_file.exists():
-        result_file.unlink()
-
-    op_dir = CFG.output_dir.joinpath(op)
-    ensure_dir(op_dir)
-    dur = time.time()
-    code = run_cmd(op, cmd, cwd=accuracy_dir, env=env, flavor="accuracy")
-    dur = time.time() - dur
-
-    ts = datetime.datetime.now().strftime("%H:%M:%S")
-    prefix = f"[{ts}][{lead}][{prog}] accuracy  '{op}'"
-
-    if code == TIMEOUT:
-        pinfo(f"{prefix} {RED}[TIMEOUT {dur:.1f}s]{NC}")
-        return {
-            "status": "Timeout",
-            "exit_code": TIMEOUT,
-            "total": 0,
-            "passed": 0,
-            "failed": 0,
-            "skipped": 0,
-            "errors": 0,
-            "duration": dur,
-        }
-    if not result_file.exists():
-        pinfo(f"{prefix} {RED}[ERROR ({code}) {dur:.1f}s]{NC}")
-        return {
-            "status": "Error",
-            "exit_code": code,
-            "total": 0,
-            "passed": 0,
-            "failed": 0,
-            "skipped": 0,
-            "errors": 1,
-            "duration": dur,
-            "data_file": None,
-        }
-
-    op_dir = CFG.output_dir.joinpath(op)
-    dest = op_dir / "accuracy_result.json"
-    shutil.move(result_file, str(dest))
-    result_file = dest
-
-    result = parse_accuracy_data(result_file)
-    s = result["status"]
-    if s == "Passed":
-        pinfo(f"{prefix} {GREEN}[OK {dur:.1f}s]{NC}")
-    elif s == "Failed":
-        pinfo(f"{prefix} {RED}[FAILED {dur:.1f}s]{NC}")
-    else:
-        pinfo(f"{prefix} {YELLOW}[{s.upper()} {dur:.1f}s]{NC}")
-
-    result["exit_code"] = code
-    result["duration"] = dur
-    result["data_file"] = str(result_file.relative_to(CFG.output_dir))
-
     return result
 
 
 def parse_perf_data(op, result_file):
     raw_data = {}
-    with result_file.open("r") as f:
-        raw_data = json.load(f)
+    try:
+        with result_file.open("r") as f:
+            raw_data = json.load(f)
+    except (json.JSONDecodeError, ValueError):
+        return {
+            "status": "Error",
+            "reason": f"Invalid JSON in {result_file}",
+        }
 
     data = raw_data.get(op, {})
     if not data:
-        return {
-            "status": "NotFound",
-        }
+        return {"status": "NotFound"}
 
     result = data.get("result", "NotFound")
     if result in ["failed", "skipped"]:
@@ -523,7 +487,6 @@ def parse_perf_data(op, result_file):
         details = {}
         total = 0.0
         count = 0
-        # Iterate through shapes
         for res in item.get("result", []):
             shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
             details.setdefault(shape, {})
@@ -554,21 +517,67 @@ def parse_perf_data(op, result_file):
     }
 
 
-def run_benchmark(gpu_id, start, index, count):
-    """Run benchmark for a specific operator on a specific GPU/DCU.
+def run_accuracy_q(gpu_id, op):
+    """Run accuracy test for one op. Returns result dict."""
+    env = get_env(str(gpu_id))
 
-    This returns a dict as report summary.
-    """
-    op = CFG.ops[start + index].strip()
-    n = (index + 1) * 10 // count
-    prog = "█" * n + " " * (10 - n)
-    nums = f"{index + 1}/{count}"
-    lead = f"GPU {gpu_id:2d}][{nums:>7}"
-    if (index + 1) == count:
-        prog = f"\033[32m{prog}\033[0m"
-    ts = datetime.datetime.now().strftime("%H:%M:%S")
-    pinfo(f"[{ts}][{lead}][{prog}] benchmark '{op}' ...")
+    if op in CFG.skip_cpu_tests:
+        cmd = f'pytest -m "{op}" --record json --output accuracy_{op}.json -vs'
+    else:
+        cmd = (
+            f'pytest -m "{op}" --record json --output accuracy_{op}.json --ref cpu -vs'
+        )
 
+    accuracy_dir = ROOT.joinpath("tests")
+    result_file = accuracy_dir / f"accuracy_{op}.json"
+    if result_file.exists():
+        result_file.unlink()
+
+    op_dir = CFG.output_dir.joinpath(op)
+    ensure_dir(op_dir)
+    dur = time.time()
+    code = run_cmd(op, cmd, cwd=accuracy_dir, env=env, flavor="accuracy")
+    dur = time.time() - dur
+
+    if code == TIMEOUT:
+        return {
+            "status": "Timeout",
+            "exit_code": TIMEOUT,
+            "total": 0,
+            "passed": 0,
+            "failed": 0,
+            "skipped": 0,
+            "errors": 0,
+            "duration": dur,
+        }
+
+    if not result_file.exists():
+        return {
+            "status": "Error",
+            "exit_code": code,
+            "total": 0,
+            "passed": 0,
+            "failed": 0,
+            "skipped": 0,
+            "errors": 1,
+            "duration": dur,
+            "data_file": None,
+        }
+
+    op_dir = CFG.output_dir.joinpath(op)
+    dest = op_dir / "accuracy_result.json"
+    shutil.move(result_file, str(dest))
+    result_file = dest
+
+    result = parse_accuracy_data(result_file)
+    result["exit_code"] = code
+    result["duration"] = dur
+    result["data_file"] = str(result_file.relative_to(CFG.output_dir))
+    return result
+
+
+def run_benchmark_q(gpu_id, op):
+    """Run benchmark for one op. Returns result dict."""
     env = get_env(str(gpu_id))
 
     benchmark_dir = ROOT / "benchmark"
@@ -584,11 +593,7 @@ def run_benchmark(gpu_id, start, index, count):
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     dur = time.time() - dur
 
-    ts = datetime.datetime.now().strftime("%H:%M:%S")
-    prefix = f"[{ts}][{lead}][{prog}] benchmark '{op}'"
-
     if code == TIMEOUT:
-        pinfo(f"{prefix} {RED}[TIMEOUT {dur:.1f}s]{NC}")
         return {
             "status": "Timeout",
             "exit_code": TIMEOUT,
@@ -597,7 +602,6 @@ def run_benchmark(gpu_id, start, index, count):
         }
 
     if not result_file.exists():
-        pinfo(f"{prefix} {YELLOW}[NOTFOUND {dur:.1f}s]{NC}")
         return {
             "status": "NotFound",
             "duration": dur,
@@ -605,7 +609,6 @@ def run_benchmark(gpu_id, start, index, count):
             "data": {},
         }
 
-    # Move record log to output directory
     dest = op_dir / "performance_result.json"
     shutil.move(result_file, str(dest))
     result_file = dest
@@ -616,36 +619,51 @@ def run_benchmark(gpu_id, start, index, count):
         "data_file": str(result_file.relative_to(CFG.output_dir)),
         "data": {},
     }
-    res = parse_perf_data(op, result_file)
-    s = res["status"]
-    if s in ["Passed", "OK"]:
-        pinfo(f"{prefix} {GREEN}[OK {dur:.1f}s]{NC}")
-    elif s == "Failed":
-        pinfo(f"{prefix} {RED}[FAILED {dur:.1f}s]{NC}")
-    else:
-        pinfo(f"{prefix} {YELLOW}[{s.upper()} {dur:.1f}s]{NC}")
-
-    record.update(res)
-
+    record.update(parse_perf_data(op, result_file))
     return record
 
 
-def worker_proc(gpu_id, start, count):
+def worker_proc(gpu_id, work_queue, display_queue):
     worker_result = {}
-    for i in range(count):
-        op = CFG.ops[start + i].strip()
+    while True:
+        try:
+            op = work_queue.get_nowait()
+        except queue_module.Empty:
+            break
+        op = op.strip()
         if not op:
             continue
 
         op_dir = CFG.output_dir.joinpath(op)
         ensure_dir(op_dir)
 
-        acc = run_accuracy(gpu_id, start, i, count)
-        perf = run_benchmark(gpu_id, start, i, count)
+        display_queue.put(("start", gpu_id, "accuracy", op))
+        acc = run_accuracy_q(gpu_id, op)
+        display_queue.put(
+            (
+                "done",
+                gpu_id,
+                "accuracy",
+                op,
+                acc.get("status", "Error"),
+                acc.get("duration", 0),
+            )
+        )
 
-        customized_ops = [
-            op[0] for op in flag_gems.runtime.backend.get_customized_ops()
-        ]
+        display_queue.put(("start", gpu_id, "benchmark", op))
+        perf = run_benchmark_q(gpu_id, op)
+        display_queue.put(
+            (
+                "done",
+                gpu_id,
+                "benchmark",
+                op,
+                perf.get("status", "Error"),
+                perf.get("duration", 0),
+            )
+        )
+
+        customized_ops = [o[0] for o in flag_gems.runtime.backend.get_customized_ops()]
         result = {
             "customized": op in customized_ops,
             "accuracy": acc,
@@ -659,11 +677,118 @@ def worker_proc(gpu_id, start, count):
             json.dump(worker_result, f, indent=2)
         os.replace(tmp_path, json_path)
 
-    return
+    display_queue.put(("exit", gpu_id))
+
+
+def display_loop(queue, display, n_workers):
+    exited = 0
+    tests_done = 0
+    per_gpu_done = {gid: 0 for gid in display.gpu_ids}
+
+    while exited < n_workers:
+        try:
+            msg = queue.get(timeout=1)
+        except Exception:
+            continue
+
+        kind = msg[0]
+
+        if kind == "exit":
+            gpu_id = msg[1]
+            n = per_gpu_done.get(gpu_id, 0)
+            display.update_gpu(gpu_id, f"{DIM}[GPU {gpu_id:2d}] done ({n} ops){NC}")
+            exited += 1
+
+        elif kind == "start":
+            _, gpu_id, phase, op = msg
+            label = "accuracy " if phase == "accuracy" else "benchmark"
+            op_display = (
+                op
+                if len(op) <= display.op_width
+                else op[: display.op_width - 3] + "..."
+            )
+            op_col = op_display.ljust(display.op_width)
+            n = per_gpu_done.get(gpu_id, 0)
+            if IS_TTY:
+                display.update_gpu(
+                    gpu_id,
+                    f"[GPU {gpu_id:2d}] ({n:>3} done)  {label} {op_col}",
+                )
+            else:
+                ts = datetime.datetime.now().strftime("%H:%M:%S")
+                display.log(f"[INFO] [{ts}][GPU {gpu_id:2d}]" f" {label} {op_col} ...")
+
+        elif kind == "done":
+            _, gpu_id, phase, op, status, dur = msg
+            ts = datetime.datetime.now().strftime("%H:%M:%S")
+            label = "accuracy " if phase == "accuracy" else "benchmark"
+            op_display = (
+                op
+                if len(op) <= display.op_width
+                else op[: display.op_width - 3] + "..."
+            )
+            op_col = op_display.ljust(display.op_width)
+            status_str = _format_status(status, dur)
+            log_line = (
+                f"{GREEN}[INFO]{NC} [{ts}][GPU {gpu_id:2d}]"
+                f" {label} {op_col} {status_str}"
+            )
+            display.log(log_line)
+
+            tests_done += 1
+            if phase == "benchmark":
+                per_gpu_done[gpu_id] = per_gpu_done.get(gpu_id, 0) + 1
+            display.update_progress(tests_done)
+
+
+def cleanup_intermediate_files():
+    patterns = [
+        (ROOT / "tests", "accuracy_*.json"),
+        (ROOT / "benchmark", "benchmark_*.json"),
+    ]
+    for directory, pattern in patterns:
+        for f in directory.glob(pattern):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+
+    if hasattr(CFG, "output_dir"):
+        for f in CFG.output_dir.glob("summary*.tmp"):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+
+
+def terminate_workers():
+    for p in WORKER_PROCESSES:
+        if p.is_alive():
+            try:
+                os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+            except (OSError, ProcessLookupError):
+                pass
+    for p in WORKER_PROCESSES:
+        p.join(timeout=5)
+        if p.is_alive():
+            p.kill()
+
+
+def handle_interrupt(signum, frame):
+    global INTERRUPTED
+    if INTERRUPTED:
+        return
+    INTERRUPTED = True
+    if IS_TTY:
+        sys.stdout.write("\n")
+    pwarn("Interrupted. Cleaning up ...")
+    terminate_workers()
+    cleanup_intermediate_files()
+    pwarn("Cleanup done.")
+    sys.exit(1)
 
 
 def get_ops_to_test():
-    # Build list of operators which do NOT support CPU mode
     op_catalog = get_ops_from_inventory()
     skip_cpu_tests = []
     for op in op_catalog:
@@ -672,16 +797,12 @@ def get_ops_to_test():
             skip_cpu_tests.append(op["id"])
     CFG.skip_cpu_tests = skip_cpu_tests
 
-    # This is the highest priority
     if OPTS.ops:
         ops = []
         for op in OPTS.ops.split(","):
-            # Leading underscores are not valid pytest marks
             ops.append(op.strip().lstrip("_"))
-
         return ops
 
-    # Parse the op list file if specified
     if OPTS.op_list_file:
         lines = []
         try:
@@ -694,28 +815,22 @@ def get_ops_to_test():
         ops = []
         for ln in lines:
             ln = ln.strip()
-            # comment line
             if ln.startswith("#"):
                 continue
-            # Remove leading underscore to make valid pytest mark
             ops.append(ln.lstrip("_"))
-
         return ops
 
-    # Now fall-back to inventory
     effective_stages = []
     for s in OPTS.stages.split(","):
         stage = s.strip()
         if stage not in ["alpha", "beta", "stable", "all", "removed"]:
             pwarn(f"ignoring unsupported stage name '{s}'...")
             continue
-        # Stop checking if 'all' specified
         if stage == "all":
             effective_stages = ["alpha", "beta", "stable"]
             break
         effective_stages.append(stage)
 
-    # Fall back to 'stable' if no effective filter specified
     if not effective_stages:
         effective_stages = ["stable"]
 
@@ -723,7 +838,6 @@ def get_ops_to_test():
     for op in op_catalog:
         stages = op.get("stages", [])
         if len(stages) == 0:
-            # won't happen
             continue
         stage = next(iter(stages[-1].keys()), None)
         if stage not in effective_stages:
@@ -769,7 +883,6 @@ def main():
     CFG.dump_output = OPTS.dump_output
     CFG.start = OPTS.start
 
-    # Probe environment setttings
     probe_env()
 
     ops = get_ops_to_test()
@@ -777,8 +890,7 @@ def main():
     if op_count == 0:
         pwarn("No operators to test. Please specify at lease one operator.")
         sys.exit(1)
-    else:
-        pinfo(f"Testing {op_count} operators ...")
+    pinfo(f"Testing {op_count} operators ...")
 
     CFG.ops = ops
 
@@ -786,7 +898,6 @@ def main():
     ensure_dir(output_dir)
     CFG.output_dir = output_dir
 
-    # Split the operators among GPUs
     gpu_list = OPTS.gpus.strip().split(",")
     if len(gpu_list) == 0:
         pwarn("Empty GPU list specified.")
@@ -794,23 +905,28 @@ def main():
 
     gpu_ids = [int(x) for x in gpu_list if x.strip()]
     gpu_count = len(gpu_ids)
-    if gpu_count == 1:
-        worker_proc(gpu_ids[0], 0, op_count)
-    else:
-        m, n = divmod(op_count, gpu_count)
-        start = 0
-        for i, gpu in enumerate(gpu_ids):
-            if i < n:
-                count = m + 1
-            else:
-                count = m
-            p = Process(target=worker_proc, args=(gpu, start, count))
-            p.start()
-            WORKER_PROCESSES.append(p)
-            start += count
 
-        for p in WORKER_PROCESSES:
-            p.join()
+    op_width = min(max(len(op) for op in ops), 40) if ops else 20
+
+    work_queue = Queue()
+    for op in ops:
+        work_queue.put(op)
+
+    display_queue = Queue()
+    display = LiveDisplay(gpu_ids, op_count, op_width=op_width)
+
+    for gpu in gpu_ids:
+        p = Process(target=worker_proc, args=(gpu, work_queue, display_queue))
+        p.start()
+        WORKER_PROCESSES.append(p)
+
+    display.init()
+    display_loop(display_queue, display, gpu_count)
+
+    for p in WORKER_PROCESSES:
+        p.join()
+
+    display.finish()
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     op_data = {}
@@ -820,7 +936,11 @@ def main():
             perror(f"GPU {gpu_id} failed to produce a summary, recovery needed.")
             continue
         with gpu_file.open("r") as f:
-            result = json.load(f)
+            try:
+                result = json.load(f)
+            except (json.JSONDecodeError, ValueError):
+                perror(f"GPU {gpu_id} summary is invalid JSON, skipping.")
+                continue
             op_data.update(result)
 
     final_data = {
