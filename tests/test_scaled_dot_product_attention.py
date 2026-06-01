@@ -225,9 +225,9 @@ def test_scaled_dot_product_attention_legacy_backward(
         device,
         requires_grad=True,
     )
-    ref_q = utils.to_reference(q, False)
-    ref_k = utils.to_reference(k, False)
-    ref_v = utils.to_reference(v, False)
+    ref_q = utils.to_reference(q, False).detach().requires_grad_(True)
+    ref_k = utils.to_reference(k, False).detach().requires_grad_(True)
+    ref_v = utils.to_reference(v, False).detach().requires_grad_(True)
     scale = float(1.0 / np.sqrt(head_size))
 
     # forward
