@@ -40,7 +40,7 @@ class SQLPersistantModel(PersistantModel):
         values: Mapping[str, Union[Any, Type]] = {},
     ) -> Type[Base]:
         annotations: Dict[str, Type] = {
-            k: sqlalchemy.orm.Mapped[v if isinstance(v, Type) else type(v)]
+            k: sqlalchemy.orm.Mapped[v if isinstance(v, type) else type(v)]
             for k, v in chain(keys.items(), values.items())
         }
         cols: Dict[str, sqlalchemy.orm.MappedColumn] = {
