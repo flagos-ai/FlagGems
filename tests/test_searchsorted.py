@@ -12,6 +12,11 @@ SEARCHSORTED_DTYPES = list(
 )
 SIDE_CASES = [(False, None), (True, None), (False, "left"), (False, "right")]
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend" and not utils.TO_CPU,
+    reason="Ascend native torch.searchsorted reference has dtype and side/right semantic gaps; run with --ref cpu.",
+)
+
 
 def _tensor(data, dtype, device):
     if dtype.is_floating_point:
