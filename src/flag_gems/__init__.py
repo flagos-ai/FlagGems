@@ -117,6 +117,7 @@ _FULL_CONFIG = (
     ("atan2", atan2),
     ("atan2.out", atan2_out),
     ("arctanh_", arctanh_),
+    ("atanh", atanh),
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
     ("avg_pool3d", avg_pool3d),
