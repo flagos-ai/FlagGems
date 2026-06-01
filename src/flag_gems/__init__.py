@@ -434,6 +434,7 @@ _FULL_CONFIG = (
     ("mm.out", mm_out),
     ("mode", mode),
     ("mse_loss", mse_loss),
+    ("mse_loss_backward", mse_loss_backward),
     ("mul.Tensor", mul),
     ("mul_.Tensor", mul_),
     ("multinomial", multinomial),
