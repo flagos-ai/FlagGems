@@ -38,7 +38,7 @@ def test_diff():
 @pytest.mark.diff
 def test_diff_n2():
     bench = DiffBenchmark(
-        op_name="diff_n2",
+        op_name="diff",
         torch_op=functools.partial(torch.diff, n=2),
         input_fn=_input_fn,
         dtypes=consts.FLOAT_DTYPES,
