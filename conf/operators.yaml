@@ -109,6 +109,19 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: add_rms_norm
+    description: |
+      Add two inputs element-wise and apply Root Mean Square Layer Normalization.
+    for:
+      - add_rms_norm
+    labels:
+      - aten
+      - KernelGen
+      - Normalization
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: addcdiv
     description: |
       Performs the element-wise division of `tensor1` by `tensor2`, multiplies the result
@@ -3290,6 +3303,7 @@ ops:
       - isneginf
     labels:
       - aten
+      - KernelGen
       - pointwise
     kind:
       - Math
@@ -3301,6 +3315,7 @@ ops:
       - isneginf.out
     labels:
       - aten
+      - KernelGen
       - pointwise
     kind:
       - Math
