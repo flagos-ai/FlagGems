@@ -79,9 +79,6 @@ jobs:
             h20)
               VENDOR="nvidia"
               ;;
-            moore)
-              VENDOR="mthreads"
-              ;;
             *)
               VENDOR="${RUNNER_LABEL}"
               ;;

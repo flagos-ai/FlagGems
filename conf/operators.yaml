@@ -109,6 +109,19 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: add_rms_norm
+    description: |
+      Add two inputs element-wise and apply Root Mean Square Layer Normalization.
+    for:
+      - add_rms_norm
+    labels:
+      - aten
+      - KernelGen
+      - Normalization
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: addcdiv
     description: |
       Performs the element-wise division of `tensor1` by `tensor2`, multiplies the result
@@ -545,6 +558,29 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: as_strided_copy
+    description: |
+      Creates a contiguous copy of an `as_strided` view of the input tensor.
+    for:
+      - as_strided_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: as_strided_copy_out
+    description: A variant of `as_strided_copy()` that assigns the output to the `out` tensor.
+    for:
+      - as_strided_copy.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: assert_async
     description: |
       A utility used to perform data-dependent assertions on GPU tensors
@@ -699,6 +735,7 @@ ops:
     labels:
       - aten
       - skip_precision_check
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -710,6 +747,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Reduction
     stages:
@@ -1040,6 +1078,32 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: clamp_max
+    description: |
+      Clamps all elements in `input` to be smaller or equal `max`.
+    for:
+      - clamp_max
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: clamp_max_
+    description: |
+      The in-place version of `clamp_max()`.
+    for:
+      - clamp_max_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: clamp_min
     description: A variant of `clamp()` with `min` set to `min`.
     for:
@@ -2194,6 +2258,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -2229,6 +2294,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -3263,6 +3329,7 @@ ops:
       - isneginf
     labels:
       - aten
+      - KernelGen
       - pointwise
     kind:
       - Math
@@ -3274,6 +3341,7 @@ ops:
       - isneginf.out
     labels:
       - aten
+      - KernelGen
       - pointwise
     kind:
       - Math
@@ -4422,6 +4490,7 @@ ops:
     labels:
       - aten
       - nn.functional
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -5104,6 +5173,7 @@ ops:
       - roll
     labels:
       - aten
+      - KernelGen
     kind:
       - BLAS
     stages:
@@ -5337,6 +5407,7 @@ ops:
       - scatter_.reduce
     labels:
       - aten
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -6358,6 +6429,7 @@ ops:
       - unique_consecutive
     labels:
       - aten
+      - KernelGen
     kind:
       - Distribution
     stages:
@@ -6501,6 +6573,7 @@ ops:
       - var
     labels:
       - aten
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -6820,6 +6893,7 @@ ops:
       - argsort
     labels:
       - skip_precision_check
+      - KernelGen
     kind:
       - Tensor
     stages:

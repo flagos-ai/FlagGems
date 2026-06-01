@@ -10,6 +10,7 @@ SUPPORTED_VENDORS=(
   "mthreads"
   "nvidia"
   "spacemit"
+  "sunrise"
   "thead"
   "tsingmicro"
 )
@@ -25,6 +26,8 @@ declare -A PYTHON_SUPPORTED=(
   ["mthreads"]="3.10"
   ["nvidia"]="3.12"
   ["spacemit"]="3.12"
+  ["sunrise"]="3.10"
+  ["thead"]="3.12"
   ["tsingmicro"]="3.10"
 )
 

@@ -184,7 +184,7 @@ def index_add_heur_block_m(args):
 
 
 def index_add_heur_block_n(args):
-    return min(8192, triton.next_power_of_2(args["N"]))
+    return min(4096, triton.next_power_of_2(args["N"]))
 
 
 def mm_heur_even_k(args):
