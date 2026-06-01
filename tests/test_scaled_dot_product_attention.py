@@ -167,7 +167,6 @@ def test_scaled_dot_product_attention_legacy(
     utils.gems_assert_close(gems_result, torch_result, dtype)
 
 
-@pytest.mark.skip(reason="Issue #2848: Not working")
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="Issue #2849: Not working")
 @pytest.mark.skipif(
     flag_gems.vendor_name == "hygon", reason="Issue #2849: RuntimeError"
@@ -269,9 +268,9 @@ def test_scaled_dot_product_attention_legacy_backward(
     utils.gems_assert_close(gems_result, torch_result, dtype)
 
     # backward
-    dout = torch.randn_like(ref_q)
-    torch_result.backward(dout)
-    gems_result.backward(dout)
+    ref_dout = torch.randn_like(ref_q)
+    torch_result.backward(ref_dout)
+    gems_result.backward(ref_dout.to(gems_result.device))
     torch_q_grad = ref_q.grad.clone() if ref_q.grad is not None else None
     torch_k_grad = ref_k.grad.clone() if ref_k.grad is not None else None
     torch_v_grad = ref_v.grad.clone() if ref_v.grad is not None else None
