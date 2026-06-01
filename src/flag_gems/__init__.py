@@ -100,6 +100,8 @@ _FULL_CONFIG = (
     ("abs_", abs_),
     ("absolute", absolute),
     ("acos", acos),
+    ("acosh", acosh),
+    ("acosh_", acosh_),
     ("add.Tensor", add),
     ("add_.Tensor", add_),
     ("add_rms_norm", add_rms_norm),
