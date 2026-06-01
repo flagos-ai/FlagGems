@@ -360,7 +360,7 @@ def test_scaled_dot_product_attention_nonsquare_qk(
 )
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
-def test_accuracy_scaled_dot_product_attention_math(
+def test_scaled_dot_product_attention_math(
     batch,
     num_head,
     seq_len,
