@@ -65,6 +65,15 @@ def mul_all_real_func(x: torch.Tensor, y: torch.Tensor):
     return output
 
 
+def _can_use_fast_mul_all_real(x: torch.Tensor, y: torch.Tensor) -> bool:
+    return (
+        x.shape == y.shape
+        and x.dtype == y.dtype
+        and x.is_contiguous()
+        and y.is_contiguous()
+    )
+
+
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def mul_func_scalar(x, y):
@@ -132,7 +141,7 @@ def mul(A, B):
                 out_real = mul_func_scalar(Br, Ar)  # Br is tensor, Ar is scalar
             return torch.view_as_complex(out_real).to(torch.result_type(A, B))
     elif isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        if len(A.shape) == len(B.shape):
+        if _can_use_fast_mul_all_real(A, B):
             return mul_all_real_func(A, B)
         else:
             return mul_func(A, B)
