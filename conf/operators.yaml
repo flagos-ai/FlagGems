@@ -5411,6 +5411,52 @@ ops:
       - Tensor
     stages:
       - stable: '3.0'
+  - id: searchsorted
+    description: |
+      Finds insertion indices for tensor values in sorted innermost-dimension boundaries.
+    for:
+      - searchsorted.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: searchsorted_out
+    description: A variant of `searchsorted.Tensor` that assigns the result to `out`.
+    for:
+      - searchsorted.Tensor_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: searchsorted_scalar
+    description: |
+      Finds insertion indices for a scalar value in one-dimensional sorted boundaries.
+    for:
+      - searchsorted.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: searchsorted_scalar_out
+    description: A variant of `searchsorted.Scalar` that assigns the result to `out`.
+    for:
+      - searchsorted.Scalar_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: select_backward
     description: Calculate the gradient during the backward pass in the neural network.
     for:
