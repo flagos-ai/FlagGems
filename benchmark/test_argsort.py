@@ -15,7 +15,7 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.argsort
-def test_perf_argsort():
+def test_argsort():
     bench = ArgsortBenchmark(
         input_fn=_input_fn,
         op_name="argsort",
