@@ -655,6 +655,7 @@ _FULL_CONFIG = (
     ("sin_", sin_),
     ("sinc", sinc),
     ("sinc_", sinc_),
+    ("sinh", sinh),
     ("sinh_", sinh_),
     ("slice_backward", slice_backward),
     ("slice_scatter", slice_scatter),
