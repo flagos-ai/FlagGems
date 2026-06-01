@@ -14,6 +14,13 @@
 
 from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops.__lshift__ import __lshift__
+from flag_gems.ops.__xor__ import (  # noqa: F401
+    xor,
+    xor_,
+    xor_scalar,
+    xor_scalar_,
+    xor_scalar_tensor,
+)
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
@@ -1166,6 +1173,7 @@ __all__ = [
     "rsqrt_",
     "rsub_scalar",
     "rsub_tensor",
+    "scalar_tensor",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
@@ -1224,7 +1232,6 @@ __all__ = [
     "softplus_backward",
     "softshrink",
     "softshrink_out",
-    "scalar_tensor",
     "sort",
     "sort_stable",
     "special_airy_ai",
@@ -1321,6 +1328,11 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "xor",
+    "xor_",
+    "xor_scalar",
+    "xor_scalar_",
+    "xor_scalar_tensor",
     "zero",
     "zero_",
     "zero_out",

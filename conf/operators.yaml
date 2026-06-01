@@ -9514,6 +9514,23 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: xor__
+    description: |
+      Computes the bitwise XOR of input tensors or a tensor and a scalar.
+    for:
+      - __xor__
+      - __xor__.Tensor
+      - __xor__.Scalar
+      - __ixor__.Tensor
+      - __ixor__.Scalar
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: zeros
     description: |
       Returns a tensor filled with the scalar value 0, with the shape defined by
