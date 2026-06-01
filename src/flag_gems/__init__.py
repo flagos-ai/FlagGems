@@ -13,6 +13,7 @@ from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_lo
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
+from flag_gems.runtime import flagtune
 from flag_gems.runtime.register import Register
 
 __version__ = "5.0.2"
@@ -71,6 +72,7 @@ _FULL_CONFIG = (
     ("acos", acos),
     ("add.Tensor", add),
     ("add_.Tensor", add_),
+    ("add_rms_norm", add_rms_norm),
     ("addcdiv", addcdiv),
     ("addcdiv.out", addcdiv_out),
     ("addcmul", addcmul),
@@ -102,6 +104,9 @@ _FULL_CONFIG = (
     ("arcsinh_", arcsinh_),
     ("argmax", argmax),
     ("argmin", argmin),
+    ("argsort", argsort),
+    ("as_strided_copy", as_strided_copy),
+    ("as_strided_copy.out", as_strided_copy_out),
     ("asinh", asinh),
     ("asinh.out", asinh_out),
     ("asinh_", asinh_),
@@ -144,9 +149,11 @@ _FULL_CONFIG = (
     ("ceil.out", ceil_out),
     ("clamp", clamp),
     ("clamp.Tensor", clamp_tensor),
+    ("clamp_max", clamp_max),
     ("clamp_min", clamp_min),
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
+    ("clamp_max_", clamp_max_),
     ("clamp_min_", clamp_min_),
     ("clip", clip),
     ("clip_", clip_),
@@ -730,6 +737,7 @@ __all__ = [
     "all_registered_keys",
     "all_registered_ops",
     "enable",
+    "flagtune",
     "only_enable",
     "use_gems",
 ]
