@@ -4650,6 +4650,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: sinh
+    description: |
+      Computes the hyperbolic sine (e^x - e^{-x}) / 2 element-wise.
+    for:
+      - sinh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: mul
     description: Multiplies `input` by `other`.
     for:
