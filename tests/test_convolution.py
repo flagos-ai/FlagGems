@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import gems_assert_close, to_reference
+from .accuracy_utils import FLOAT_DTYPES, gems_assert_close, to_reference
 
 # Test shapes for _convolution (using 2D shapes)
 SHAPE_CONVOLUTION = [
@@ -17,7 +17,7 @@ SHAPE_CONVOLUTION = [
 @pytest.mark.parametrize("shape, kernel, groups", SHAPE_CONVOLUTION)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dilation", [1])
 @pytest.mark.parametrize("bias", [True, False])
 def test_convolution(
@@ -95,7 +95,7 @@ SHAPE_CONVOLUTION_1D = [
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONVOLUTION_1D)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_convolution_1d(monkeypatch, shape, kernel, stride, padding, dtype):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
@@ -157,10 +157,8 @@ SHAPE_CONVOLUTION_3D = [
 @pytest.mark.parametrize("shape, kernel, groups", SHAPE_CONVOLUTION_3D)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_convolution_3d(
-    monkeypatch, shape, kernel, stride, padding, groups, dtype
-):
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_convolution_3d(monkeypatch, shape, kernel, stride, padding, groups, dtype):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
