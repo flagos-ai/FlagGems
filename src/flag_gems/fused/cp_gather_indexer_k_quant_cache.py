@@ -23,43 +23,27 @@ def _cp_gather_indexer_quant_cache_kernel(
     batch_size: tl.constexpr,
     HEAD_DIM: tl.constexpr,
     QUANT_BLOCK_SIZE: tl.constexpr,
-    BATCH_BLOCK: tl.constexpr,
+    TOKEN_BLOCK: tl.constexpr,
+    BATCH_SCAN_SIZE: tl.constexpr,
+    SEARCH_STEPS: tl.constexpr,
 ):
-    tid = tl.program_id(0) * BATCH_BLOCK + tl.arange(0, BATCH_BLOCK)
+    tid = tl.program_id(0) * TOKEN_BLOCK + tl.arange(0, TOKEN_BLOCK)
     quant_block_id = tl.program_id(1)
 
-    if batch_size <= 16 or batch_size > 256:
-        BATCH_SCAN_SIZE: tl.constexpr = 8
-        batch_id = tl.full((BATCH_BLOCK,), -1, dtype=tl.int32)
-        for iter in tl.static_range(0, (batch_size + 7) // 8):
-            batch_offsets = iter * BATCH_SCAN_SIZE + tl.arange(0, BATCH_SCAN_SIZE)
-            batch_mask = batch_offsets < batch_size
-            seq_starts = tl.load(
-                cu_seqlen_ptr + batch_offsets, mask=batch_mask, other=0
-            )
-            seq_ends = tl.load(
-                cu_seqlen_ptr + batch_offsets + 1, mask=batch_mask, other=0
-            )
-            in_batch = (
-                (tid[:, None] >= seq_starts[None, :])
-                & (tid[:, None] < seq_ends[None, :])
-                & batch_mask[None, :]
-            )
-            batch_id = tl.maximum(
-                batch_id,
-                tl.max(tl.where(in_batch, batch_offsets[None, :], -1), axis=1),
-            )
+    if batch_size <= 16:
+        batch_offsets = tl.arange(0, BATCH_SCAN_SIZE)
+        batch_mask = batch_offsets < batch_size
+        seq_starts = tl.load(cu_seqlen_ptr + batch_offsets, mask=batch_mask, other=0)
+        seq_ends = tl.load(cu_seqlen_ptr + batch_offsets + 1, mask=batch_mask, other=0)
+        in_batch = (
+            (tid[:, None] >= seq_starts[None, :])
+            & (tid[:, None] < seq_ends[None, :])
+            & batch_mask[None, :]
+        )
+        batch_id = tl.max(tl.where(in_batch, batch_offsets[None, :], -1), axis=1)
     else:
-        left = tl.full((BATCH_BLOCK,), 0, dtype=tl.int32)
-        right = tl.full((BATCH_BLOCK,), batch_size + 1, dtype=tl.int32)
-        if batch_size <= 32:
-            SEARCH_STEPS: tl.constexpr = 6
-        elif batch_size <= 64:
-            SEARCH_STEPS: tl.constexpr = 7
-        elif batch_size <= 128:
-            SEARCH_STEPS: tl.constexpr = 8
-        else:
-            SEARCH_STEPS: tl.constexpr = 9
+        left = tl.full((TOKEN_BLOCK,), 0, dtype=tl.int32)
+        right = tl.full((TOKEN_BLOCK,), batch_size + 1, dtype=tl.int32)
         for _ in tl.static_range(0, SEARCH_STEPS):
             mid = (left + right) // 2
             seq_start = tl.load(
@@ -83,7 +67,7 @@ def _cp_gather_indexer_quant_cache_kernel(
     block_id = tl.load(block_table_ptr + block_table_offset, mask=valid_tokens, other=0)
 
     offsets = quant_block_id * QUANT_BLOCK_SIZE + tl.arange(0, QUANT_BLOCK_SIZE)
-    mask = valid_tokens[:, None] & (offsets[None, :] < HEAD_DIM)
+    mask = valid_tokens[:, None]
     src_cache_offset = (
         block_id[:, None].to(tl.int64) * kv_cache_stride
         + block_offset[:, None].to(tl.int64) * HEAD_DIM
@@ -137,19 +121,25 @@ def cp_gather_indexer_k_quant_cache(
     k_fp8_scale = k_fp8_scale.view(torch.float32)
     batch_size = block_table.shape[0]
     if num_tokens < 32:
-        batch_block = 1
+        token_block = 1
     elif num_tokens < 64:
-        batch_block = 2
+        token_block = 2
     elif num_tokens < 128:
-        batch_block = 4
+        token_block = 4
     elif num_tokens < 256:
-        batch_block = 8
+        token_block = 8
     elif num_tokens < 512:
-        batch_block = 16
+        token_block = 16
     else:
-        batch_block = 32
+        token_block = 32
+    if batch_size <= 16:
+        batch_scan_size = triton.next_power_of_2(batch_size)
+    else:
+        # Unused by the binary-search path; kept as a valid constexpr placeholder.
+        batch_scan_size = 1
+    search_steps = batch_size.bit_length()
 
-    grid = (triton.cdiv(num_tokens, batch_block), num_quant_blocks)
+    grid = (triton.cdiv(num_tokens, token_block), num_quant_blocks)
     _cp_gather_indexer_quant_cache_kernel[grid](
         k_cache_value,
         k_cache_scale,
@@ -166,5 +156,7 @@ def cp_gather_indexer_k_quant_cache(
         batch_size,
         head_dim,
         quant_block_size,
-        batch_block,
+        token_block,
+        batch_scan_size,
+        search_steps,
     )
