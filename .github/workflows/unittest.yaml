@@ -22,9 +22,9 @@ jobs:
       labels: ${{ fromJSON(steps.get-labels.outputs.result) }}
     steps:
       - id: changed-files
-        uses: tj-actions/changed-files@v47
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96  # v47.0.6
       - id: wait-for-triage
-        uses: ArcticLampyrid/action-wait-for-workflow@v1.3.0
+        uses: ArcticLampyrid/action-wait-for-workflow@ff297b23789206858260877c4b83026d90c6db8c  # v1.3.0
         with:
           workflow: .github/workflows/triage.yaml
       - id: get-pr-id
@@ -41,7 +41,7 @@ jobs:
           echo "PR_ID: ${PR_ID}"
 
       - id: get-labels
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
         with:
           script: |
             // Determine if the event is a pull request
@@ -62,8 +62,9 @@ jobs:
 
   build-doc:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'documentation')
-    uses: ./.github/workflows/mkdocs.yaml
+    if: (contains(needs.preprocess.outputs.labels, 'documentation') &&
+      github.event.pull_request.merged == true)
+    uses: ./.github/workflows/sync-docs.yaml
 
   cpp-op:
     needs: preprocess
@@ -79,7 +80,7 @@ jobs:
     runs-on: jiuding
     steps:
       - id: checkout-attempt-1
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         continue-on-error: true
       - id: sleep-1
         if: steps.checkout-attempt-1.outcome == 'failure'
@@ -88,7 +89,7 @@ jobs:
 
       - id: checkout-attempt-2
         if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         continue-on-error: true
       - id: sleep-2
         if: steps.checkout-attempt-2.outcome == 'failure'
@@ -97,7 +98,7 @@ jobs:
 
       - id: checkout-attempt-3
         if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - shell: bash
         run: tools/gpu_check.sh
@@ -116,11 +117,27 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - uses: Wandalen/wretry.action@v3.8.0
-        with:
-          action: actions/checkout@v6
-          attempt_limit: 5
-          attempt_delay: 20000
+      - id: checkout-attempt-1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        shell: bash
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
       - shell: bash
         run: tools/gpu_check.sh
       - shell: bash
@@ -131,7 +148,9 @@ jobs:
 
   backend-ascend:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Ascend')
+    # The ascend backend runners need to be reconfigured.
+    if: false
+    # if: contains(needs.preprocess.outputs.labels, 'vendor/Ascend')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: ascend
@@ -170,7 +189,7 @@ jobs:
 
   backend-kunlunxin:
     needs: preprocess
-    # Skipping backend-kunlunxin because we don't have a backend runner
+    # Skipping backend-kunlunxin because we the backend runner is not ready
     if: false
     # if: contains(needs.preprocess.outputs.labels, 'vendor/Kunlunxin')
     uses: ./.github/workflows/backend-test.yaml
@@ -202,7 +221,7 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: mthreads
-      runner_label: moore
+      runner_label: mthreads
       gpu_check_script: tools/gpu_check_mthreads.sh
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
@@ -224,7 +243,9 @@ jobs:
 
   backend-tsingmicro:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/TsingMicro')
+    # no tsingmicro runners available at the moment.
+    if: false
+    # if: contains(needs.preprocess.outputs.labels, 'vendor/TsingMicro')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: tsingmicro

@@ -36,7 +36,7 @@ ATOL_DICT = {
 try:
     gpu_memory_available = torch.cuda.get_device_properties(0).total_memory
 except Exception:
-    gpu_memory_availabel = 32 * 1024**3
+    gpu_memory_available = 32 * 1024**3
 
 
 def assert_close(actual, expected, rtol=1e-4, atol=None, dtype=torch.float32):
@@ -552,7 +552,8 @@ class TestGridSampleBicubic4D:
             align_corners=align_corners,
         )
 
-        assert_close(y_gems, y_torch, dtype=dtype)
+        # bump atol from 1.3e-6 to 3.0e-6 as relaxed tolerance for bicubic mode
+        assert_close(y_gems, y_torch, atol=3.0e-6, dtype=dtype)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required.")

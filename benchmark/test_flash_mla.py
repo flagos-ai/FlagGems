@@ -101,9 +101,6 @@ def test_flash_mla(monkeypatch):
             lse[i] = LSE
         return out, lse
 
-    if flag_gems.vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     bench = FlashMLABenchmark(
         op_name="flash_mla",
         input_fn=flash_mla_kwargs,
