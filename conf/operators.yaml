@@ -7578,3 +7578,20 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: xor__
+    description: |
+      Computes the bitwise XOR of input tensors or a tensor and a scalar.
+    for:
+      - __xor__
+      - __xor__.Tensor
+      - __xor__.Scalar
+      - __ixor__.Tensor
+      - __ixor__.Scalar
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'

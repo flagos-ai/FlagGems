@@ -1,4 +1,11 @@
 from flag_gems.ops.__ilshift__ import __ilshift__
+from flag_gems.ops.__xor__ import (  # noqa: F401
+    xor,
+    xor_,
+    xor_scalar,
+    xor_scalar_,
+    xor_scalar_tensor,
+)
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -1022,4 +1029,10 @@ __all__ = [
     "zero_out",
     "zeros",
     "zeros_like",
+    "__xor__",
+    "xor",
+    "xor_",
+    "xor_scalar",
+    "xor_scalar_",
+    "xor_scalar_tensor",
 ]
