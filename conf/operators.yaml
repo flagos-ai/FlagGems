@@ -2143,6 +2143,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: embedding_bag_per_sample_weights_backward
+    description: |
+      Triton kernel implementation for _embedding_bag_per_sample_weights_backward.
+    for:
+      - _embedding_bag_per_sample_weights_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: embedding_dense_backward
     description: Calculates the gradient of the weight matrix for a dense embedding layer during backpropagation.
     for:
