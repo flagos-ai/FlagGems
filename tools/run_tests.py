@@ -318,7 +318,7 @@ def get_env(gpu_ids):
         "iluvatar": ["ILUVATAR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES"],
         "thead": ["CUDA_VISIBLE_DEVICES"],
         "cambricon": ["MLU_VISIBLE_DEVICES"],
-        "kunlunxin": ["XPU_VISIBLE_DEVICES"],
+        "kunlunxin": ["CUDA_VISIBLE_DEVICES"],
         "sunrise": ["TANG_VISIBLE_DEVICES"],
     }
 
