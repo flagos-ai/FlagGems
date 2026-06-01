@@ -273,6 +273,31 @@ mm:
       BLOCK_K: 32
     num_stages: 4
     num_warps: 8
+scaled_mm:
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 128
+      BLOCK_K: 64
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 64
+      BLOCK_K: 128
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 64
+      BLOCK_K: 128
+    num_stages: 4
+    num_warps: 4
 mm_self_transpose:
   - META:
       BLOCK_M: 32
