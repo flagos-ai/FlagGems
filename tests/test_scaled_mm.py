@@ -97,11 +97,16 @@ def _scale_for_output(scale, rows, cols, is_left_scale):
 def _reference_scaled_mm(mat1, mat2, scale_a, scale_b, bias, out_dtype):
     rows = mat1.shape[0]
     cols = mat2.shape[1]
-    ref = mat1.detach().cpu().float().mm(mat2.detach().cpu().float())
-    ref = ref * _scale_for_output(scale_a.detach().cpu().float(), rows, cols, True)
-    ref = ref * _scale_for_output(scale_b.detach().cpu().float(), rows, cols, False)
+    ref_mat1 = utils.to_reference(mat1, True)
+    ref_mat2 = utils.to_reference(mat2, True)
+    ref_scale_a = utils.to_reference(scale_a, True)
+    ref_scale_b = utils.to_reference(scale_b, True)
+
+    ref = ref_mat1.mm(ref_mat2)
+    ref = ref * _scale_for_output(ref_scale_a, rows, cols, True)
+    ref = ref * _scale_for_output(ref_scale_b, rows, cols, False)
     if bias is not None:
-        ref = ref + bias.detach().cpu().float()
+        ref = ref + utils.to_reference(bias, True)
     return ref.to(out_dtype or mat1.dtype)
 
 
