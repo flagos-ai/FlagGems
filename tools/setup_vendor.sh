@@ -61,9 +61,6 @@ case $VENDOR in
 
 
   iluvatar)
-    uv pip install -e .
-    uv pip install ".[iluvatar, test]"
-
     uv pip install --index ${FLAGOS_PYPI} \
         "torch==2.7.1+corex.4.4.0" \
         "torchaudio==2.7.1+corex.4.4.0" \
@@ -76,6 +73,9 @@ case $VENDOR in
       uv pip install --index $FLAGOS_PYPI \
         "triton==3.1.0+corex.4.4.0"
     fi
+
+    uv pip install -e .
+    uv pip install ".[test]"
     ;;
 
   kunlunxin)
