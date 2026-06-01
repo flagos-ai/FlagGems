@@ -1,3 +1,4 @@
+from flag_gems.fused.add_rms_norm import add_rms_norm
 from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
 from flag_gems.fused.bincount import bincount
 from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
@@ -79,6 +80,7 @@ from flag_gems.fused.unpack_seq import unpack_seq_triton
 from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
+    "add_rms_norm",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
     "bincount",
