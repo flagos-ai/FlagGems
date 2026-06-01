@@ -13,6 +13,7 @@ from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_lo
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
+from flag_gems.runtime import flagtune
 from flag_gems.runtime.register import Register
 
 __version__ = "5.0.2"
@@ -50,6 +51,8 @@ _FULL_CONFIG = (
     ("_log_softmax_backward_data", log_softmax_backward),
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
     ("_safe_softmax", _safe_softmax),
+    ("_scaled_mm", scaled_mm, lambda: torch_ge("2.5")),
+    ("_scaled_mm.out", scaled_mm_out, lambda: torch_ge("2.5")),
     ("_segment_reduce_backward", _segment_reduce_backward),
     ("_segment_reduce_backward.out", _segment_reduce_backward_out),
     ("_softmax", softmax),
@@ -73,6 +76,7 @@ _FULL_CONFIG = (
     ("acos", acos),
     ("add.Tensor", add),
     ("add_.Tensor", add_),
+    ("add_rms_norm", add_rms_norm),
     ("addcdiv", addcdiv),
     ("addcdiv.out", addcdiv_out),
     ("addcmul", addcmul),
@@ -104,6 +108,9 @@ _FULL_CONFIG = (
     ("arcsinh_", arcsinh_),
     ("argmax", argmax),
     ("argmin", argmin),
+    ("argsort", argsort),
+    ("as_strided_copy", as_strided_copy),
+    ("as_strided_copy.out", as_strided_copy_out),
     ("asinh", asinh),
     ("asinh.out", asinh_out),
     ("asinh_", asinh_),
@@ -137,6 +144,8 @@ _FULL_CONFIG = (
     ("bmm.out", bmm_out),
     ("cat", cat),
     ("cat.out", cat_out),
+    ("cauchy", cauchy),
+    ("cauchy_", cauchy_),
     ("celu", celu),
     ("celu_", celu_),
     ("ceil", ceil),
@@ -144,9 +153,11 @@ _FULL_CONFIG = (
     ("ceil.out", ceil_out),
     ("clamp", clamp),
     ("clamp.Tensor", clamp_tensor),
+    ("clamp_max", clamp_max),
     ("clamp_min", clamp_min),
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
+    ("clamp_max_", clamp_max_),
     ("clamp_min_", clamp_min_),
     ("clip", clip),
     ("clip_", clip_),
@@ -240,6 +251,8 @@ _FULL_CONFIG = (
     ("fill_.Tensor", fill_tensor_),
     ("flip", flip),
     ("floor_", floor_),
+    ("floor", floor),
+    ("floor.out", floor_out),
     ("floor_divide", floor_divide),
     ("floor_divide.Scalar", floor_divide),
     ("floor_divide_.Scalar", floor_divide_),
@@ -313,6 +326,7 @@ _FULL_CONFIG = (
     ("log10", log10),
     ("log10_", log10_),
     ("log10.out", log10_out),
+    ("log1p", log1p),
     ("log1p_", log1p_),
     ("log_sigmoid", log_sigmoid),
     ("logaddexp", logaddexp),
@@ -406,15 +420,19 @@ _FULL_CONFIG = (
     ("prod", prod),
     ("prod.dim_int", prod_dim),
     ("quantile", quantile),
+    ("rad2deg", rad2deg),
+    ("rad2deg_", rad2deg_),
     ("rand", rand),
     ("rand_like", rand_like),
     ("randn", randn),
     ("randn_like", randn_like),
+    ("randint", randint),
     ("randperm", randperm),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
     ("reflection_pad1d", reflection_pad1d),
     ("reflection_pad1d.out", reflection_pad1d_out),
+    ("reflection_pad1d_backward", reflection_pad1d_backward),
     ("reflection_pad2d", reflection_pad2d),
     ("reflection_pad2d.out", reflection_pad2d_out),
     ("relu", relu),
@@ -722,9 +740,10 @@ def all_registered_keys():
 
 
 __all__ = [
+    "all_registered_keys",
+    "all_registered_ops",
     "enable",
+    "flagtune",
     "only_enable",
     "use_gems",
-    "all_registered_ops",
-    "all_registered_keys",
 ]
