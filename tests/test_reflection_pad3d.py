@@ -39,7 +39,7 @@ def test_reflection_pad3d(shape, dtype, padding):
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.reflection_pad3d
+@pytest.mark.reflection_pad3d_list_padding
 @pytest.mark.parametrize(
     "padding",
     [
@@ -62,7 +62,7 @@ def test_reflection_pad3d_list_padding(padding):
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.reflection_pad3d
+@pytest.mark.reflection_pad3d_empty_padding
 def test_reflection_pad3d_empty_padding():
     # Fixed shape for zero-padding edge case
     shape = (2, 4, 8, 16, 16)
@@ -79,7 +79,7 @@ def test_reflection_pad3d_empty_padding():
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.reflection_pad3d
+@pytest.mark.reflection_pad3d_4d_input
 @pytest.mark.parametrize(
     "padding",
     [
