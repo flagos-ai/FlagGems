@@ -2850,6 +2850,28 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: frac
+    description: Computes the fractional part of each element, returning x - trunc(x).
+    for:
+      - frac
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: frac_
+    description: In-place fractional part computation, returning x - trunc(x).
+    for:
+      - frac_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: full
     description: |
       Creates a tensor of size `size` filled with `fill_value`.
