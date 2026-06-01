@@ -549,6 +549,7 @@ _FULL_CONFIG = (
     ("var.correction", var_correction),
     ("var.dim", var_dim),
     ("vdot", vdot),
+    ("view_copy", view_copy),
     ("vstack", vstack),
     ("where.self", where_self),
     ("where.self_out", where_self_out),
