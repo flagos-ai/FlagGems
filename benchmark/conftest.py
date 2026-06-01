@@ -119,6 +119,23 @@ def pytest_addoption(parser):
         "--query", action="store_true", default=False, help="Enable query mode"
     )
 
+    try:
+        parser.addoption(
+            "--flash-attn-varlen-fa-version",
+            action="store",
+            type=int,
+            default=2,
+            choices=[2, 3],
+            help=(
+                "FA version used by flash_attn_varlen_func accuracy and benchmark "
+                "tests."
+            ),
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register this option in
+        # tests/conftest.py. Reuse the existing option in that case.
+        pass
+
     parser.addoption(
         "--metrics",
         action="append",
