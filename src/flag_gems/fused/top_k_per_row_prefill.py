@@ -1,28 +1,13 @@
-"""Triton top_k_per_row_prefill for DeepSeek V4 sparse attention.
+"""Pure Triton top_k_per_row_prefill - 4-way merge via sort(4096).
 
-Replaces vLLM's persistent_topk CUDA kernel with a Triton implementation.
+NO torch.topk or torch.argsort.
 
-Background:
-    In DeepSeek V4 prefill, each token computes attention logits over a subset of
-    the vocabulary [row_starts[i], row_ends[i]) and selects the top-K indices.
-    Typical config: vocab_size=129280, top_k=1024, num_rows=1 (decode) or 32+ (prefill).
-
-Strategy:
-    1. In-place masking kernel: set logits outside [row_starts, row_ends) to -inf.
-       Early exit when the row uses full vocab (start==0, end>=vocab_size), which is
-       the common case during inference and avoids unnecessary memory writes.
-    2. Adaptive top-K selection:
-       - num_rows=1: torch.argsort (backed by CUB radix sort, O(N) for single row,
-         ~2x faster than torch.topk for large vocab on a single row)
-       - num_rows>1: torch.topk with sorted=False (heap-based O(N log k), better
-         parallelism across rows than argsort)
-    3. Fused postprocess kernel: single Triton kernel performs slice + cast + subtract
-       in one pass, converting absolute vocab indices to 0-based indices relative to
-       row_starts[i]. Saves one kernel launch vs separate slice/subtract ops.
-
-Performance (DeepSeek V4 config, vocab=129280, top_k=1024):
-    - num_rows=1:  0.89x vs vLLM CUDA (competitive, bounded by argsort)
-    - num_rows=32: 0.38x vs vLLM CUDA (bounded by torch.topk on large vocab)
+Strategy: Merge 4 top-k lists at once using tl.sort(4096).
+  - Stage 1: 32 chunks × sort(4096) → extract top-1024 each
+  - Stage 2: 8 groups × sort(4096) (merge 4×1024) → 8 top-1024 lists
+  - Stage 3: 2 groups × sort(4096) (merge 4×1024) → 2 top-1024 lists
+  - Stage 4: 1 group × sort(2048) (merge 2×1024) → final top-1024
+Total: 4 serial stages instead of 5.
 """
 
 import torch
@@ -35,16 +20,11 @@ def _mask_invalid_kernel(
     logits_ptr,
     row_starts_ptr,
     row_ends_ptr,
-    stride0,  # logits row stride (= vocab_size for contiguous tensor)
-    BLOCK_SIZE: tl.constexpr,  # 8192: tuned for 129280 vocab (16 blocks/row)
-    VOCAB_SIZE: tl.constexpr,  # total vocabulary size (e.g. 129280)
+    stride0,
+    BLOCK_SIZE: tl.constexpr,
+    VOCAB_SIZE: tl.constexpr,
 ):
-    """Mask logits outside [row_starts[i], row_ends[i]) to -inf, in-place.
-
-    Grid: (num_rows * num_blocks_per_row,) — 1D flat grid.
-    Each program handles one BLOCK_SIZE chunk of one row.
-    Early exits when the row uses full vocab to avoid unnecessary stores.
-    """
+    """Mask logits outside [row_starts[i], row_ends[i]) to -inf."""
     pid = tl.program_id(0)
     num_blocks_per_row = tl.cdiv(VOCAB_SIZE, BLOCK_SIZE)
     row_id = pid // num_blocks_per_row
@@ -53,36 +33,192 @@ def _mask_invalid_kernel(
     start = tl.load(row_starts_ptr + row_id)
     end = tl.load(row_ends_ptr + row_id)
 
-    # Early exit: most rows in inference use full vocab (start=0, end=vocab_size).
-    # Skipping these avoids ~90% of memory writes in typical workloads.
     if start == 0 and end >= VOCAB_SIZE:
         return
 
-    # Compute which positions in this block are outside the valid range
     offs = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     out_of_range = (offs < start) | (offs >= end)
-    # Only write to positions that are both within vocab bounds AND out of valid range
     mask = (offs < VOCAB_SIZE) & out_of_range
 
     tl.store(logits_ptr + row_id * stride0 + offs, float("-inf"), mask=mask)
 
 
 @triton.jit
-def _fused_postprocess_kernel(
-    src_ptr,  # source indices (from argsort or topk)
-    dst_ptr,  # destination: output indices buffer [num_rows, top_k]
-    row_starts_ptr,  # per-row start offsets for index adjustment
-    num_rows: tl.constexpr,
-    top_k: tl.constexpr,  # 1024 in DeepSeek V4
-    src_stride0: tl.constexpr,  # row stride of src (vocab_size for argsort, top_k for topk)
-    BLOCK_SIZE: tl.constexpr,  # next_power_of_2(top_k), e.g. 1024
-):
-    """Fused slice + cast + subtract: convert absolute indices to row-relative.
+def _float_to_sortkey(values):
+    """Convert float32 values to int64 sort keys (descending order)."""
+    bits = values.to(tl.int32, bitcast=True)
+    bits64 = bits.to(tl.int64)
+    is_neg = bits64 < 0
+    unsigned_ord = tl.where(is_neg, bits64 ^ 0xFFFFFFFF, bits64 ^ 0x80000000)
+    signed_ord = unsigned_ord - 0x80000000
+    return -signed_ord
 
-    For each row i, computes: dst[i, :top_k] = src[i, :top_k] - row_starts[i]
-    This converts absolute vocab indices to 0-based indices within the valid range.
-    Grid: (num_rows,) — one program per row.
+
+@triton.jit
+def _sort_chunk_extract_topk(
+    logits_ptr,
+    output_indices_ptr,
+    stride0,
+    output_stride0,
+    output_stride1,
+    vocab_size: tl.constexpr,
+    top_k: tl.constexpr,
+    num_chunks: tl.constexpr,
+    CHUNK_SIZE: tl.constexpr,
+):
+    """Sort a chunk and extract top-k indices."""
+    pid = tl.program_id(0)
+    row_id = pid // num_chunks
+    chunk_id = pid % num_chunks
+    chunk_start = chunk_id * CHUNK_SIZE
+    row_offset = row_id * stride0
+
+    offs = chunk_start + tl.arange(0, CHUNK_SIZE)
+    mask = offs < vocab_size
+    values = tl.load(logits_ptr + row_offset + offs, mask=mask, other=float('-inf'))
+
+    sort_key = _float_to_sortkey(values)
+    packed = (sort_key << 32) | offs.to(tl.int64)
+    sorted_packed = tl.sort(packed)
+
+    all_indices = (sorted_packed & 0xFFFFFFFF).to(tl.int32)
+    out_offs = tl.arange(0, CHUNK_SIZE)
+    out_mask = out_offs < top_k
+    out_base = row_id * output_stride0 + chunk_id * output_stride1
+    tl.store(output_indices_ptr + out_base + out_offs, all_indices, mask=out_mask)
+
+
+@triton.jit
+def _merge_4way_topk(
+    input_indices_ptr,
+    logits_ptr,
+    output_indices_ptr,
+    stride0,
+    in_stride0,
+    in_stride1,
+    out_stride0,
+    out_stride1,
+    num_groups: tl.constexpr,
+    top_k: tl.constexpr,
+    SORT_SIZE: tl.constexpr,
+):
+    """4-way merge: combine 4 top-k lists into 1 via sort(4*top_k).
+
+    Grid: (num_rows * num_groups,)
+    SORT_SIZE must be next_power_of_2(4 * top_k).
     """
+    pid = tl.program_id(0)
+    row_id = pid // num_groups
+    group_id = pid % num_groups
+    row_offset = row_id * stride0
+
+    sort_offs = tl.arange(0, SORT_SIZE)
+    quarter = SORT_SIZE // 4
+
+    q0 = sort_offs < quarter
+    q1 = (sort_offs >= quarter) & (sort_offs < 2 * quarter)
+    q2 = (sort_offs >= 2 * quarter) & (sort_offs < 3 * quarter)
+    q3 = sort_offs >= 3 * quarter
+
+    local_offs = sort_offs % quarter
+    valid0 = q0 & (local_offs < top_k)
+    valid1 = q1 & (local_offs < top_k)
+    valid2 = q2 & (local_offs < top_k)
+    valid3 = q3 & (local_offs < top_k)
+
+    base0 = row_id * in_stride0 + (group_id * 4 + 0) * in_stride1
+    base1 = row_id * in_stride0 + (group_id * 4 + 1) * in_stride1
+    base2 = row_id * in_stride0 + (group_id * 4 + 2) * in_stride1
+    base3 = row_id * in_stride0 + (group_id * 4 + 3) * in_stride1
+
+    idx0 = tl.load(input_indices_ptr + base0 + local_offs, mask=valid0, other=0)
+    idx1 = tl.load(input_indices_ptr + base1 + local_offs, mask=valid1, other=0)
+    idx2 = tl.load(input_indices_ptr + base2 + local_offs, mask=valid2, other=0)
+    idx3 = tl.load(input_indices_ptr + base3 + local_offs, mask=valid3, other=0)
+
+    combined_idx = tl.where(q0, idx0, tl.where(q1, idx1, tl.where(q2, idx2, idx3)))
+    valid = valid0 | valid1 | valid2 | valid3
+
+    combined_val = tl.load(
+        logits_ptr + row_offset + combined_idx,
+        mask=valid,
+        other=float('-inf')
+    )
+
+    sort_key = _float_to_sortkey(combined_val)
+    packed = (sort_key << 32) | combined_idx.to(tl.int64)
+    sorted_packed = tl.sort(packed)
+
+    sorted_indices = (sorted_packed & 0xFFFFFFFF).to(tl.int32)
+    out_base = row_id * out_stride0 + group_id * out_stride1
+    out_mask = sort_offs < top_k
+    tl.store(output_indices_ptr + out_base + sort_offs, sorted_indices, mask=out_mask)
+
+
+@triton.jit
+def _merge_2way_topk(
+    input_indices_ptr,
+    logits_ptr,
+    output_indices_ptr,
+    stride0,
+    in_stride0,
+    in_stride1,
+    out_stride0,
+    out_stride1,
+    num_pairs: tl.constexpr,
+    top_k: tl.constexpr,
+    MERGE_SIZE: tl.constexpr,
+):
+    """2-way merge: combine 2 top-k lists into 1."""
+    pid = tl.program_id(0)
+    row_id = pid // num_pairs
+    pair_id = pid % num_pairs
+    row_offset = row_id * stride0
+
+    merge_offs = tl.arange(0, MERGE_SIZE)
+    half = MERGE_SIZE // 2
+    first_half = merge_offs < half
+    local_offs = merge_offs % half
+
+    valid_first = first_half & (local_offs < top_k)
+    valid_second = ~first_half & (local_offs < top_k)
+
+    a_base = row_id * in_stride0 + (pair_id * 2) * in_stride1
+    b_base = row_id * in_stride0 + (pair_id * 2 + 1) * in_stride1
+
+    idx_a = tl.load(input_indices_ptr + a_base + local_offs, mask=valid_first, other=0)
+    idx_b = tl.load(input_indices_ptr + b_base + local_offs, mask=valid_second, other=0)
+
+    combined_idx = tl.where(first_half, idx_a, idx_b)
+    valid = valid_first | valid_second
+
+    combined_val = tl.load(
+        logits_ptr + row_offset + combined_idx,
+        mask=valid,
+        other=float('-inf')
+    )
+
+    sort_key = _float_to_sortkey(combined_val)
+    packed = (sort_key << 32) | combined_idx.to(tl.int64)
+    sorted_packed = tl.sort(packed)
+
+    sorted_indices = (sorted_packed & 0xFFFFFFFF).to(tl.int32)
+    out_base = row_id * out_stride0 + pair_id * out_stride1
+    out_mask = merge_offs < top_k
+    tl.store(output_indices_ptr + out_base + merge_offs, sorted_indices, mask=out_mask)
+
+
+@triton.jit
+def _fused_postprocess_kernel(
+    src_ptr,
+    dst_ptr,
+    row_starts_ptr,
+    num_rows: tl.constexpr,
+    top_k: tl.constexpr,
+    src_stride0: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Convert absolute indices to row-relative indices."""
     row_id = tl.program_id(0)
     if row_id >= num_rows:
         return
@@ -95,7 +231,6 @@ def _fused_postprocess_kernel(
     src_idx = row_id * src_stride0 + offs
     src_vals = tl.load(src_ptr + src_idx, mask=mask, other=0)
 
-    # Subtract row_start to get 0-based index within [row_start, row_end)
     dst_vals = (src_vals - row_start).to(tl.int32)
 
     dst_idx = row_id * top_k + offs
@@ -105,80 +240,107 @@ def _fused_postprocess_kernel(
 def top_k_per_row_prefill(
     logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
 ):
-    """Top-K per row for prefill phase of DeepSeek V4 sparse attention.
-
-    Masks invalid ranges in-place, then selects top-K indices per row.
-    Output indices are 0-based relative to row_starts[i].
-
-    Args:
-        logits: [num_rows, vocab_size] float32 tensor, modified in-place (masked to -inf).
-                In DeepSeek V4: vocab_size=129280.
-        row_starts: [num_rows] int32 — start of valid range per row (inclusive).
-        row_ends: [num_rows] int32 — end of valid range per row (exclusive).
-        indices: [num_rows, top_k] int32 — output buffer, filled with 0-based indices
-                 relative to row_starts[i]. Caller pre-allocates this.
-        num_rows: number of rows (1 for decode, 32/64/2048 for prefill batches).
-        stride0: logits.stride(0), typically == vocab_size for contiguous tensor.
-        stride1: logits.stride(1), typically == 1 for contiguous tensor.
-        top_k: number of top elements per row (1024 in DeepSeek V4).
-    """
+    """Pure Triton top-k with 4-way merge using sort(4096)."""
     vocab_size = logits.shape[1]
 
     if top_k > vocab_size:
         raise ValueError(f"top_k ({top_k}) must not exceed vocab_size ({vocab_size})")
 
-    # --- Phase 1: Mask invalid ranges to -inf ---
-    # BLOCK_SIZE=8192 chosen to balance occupancy vs. grid size:
-    # For vocab=129280, this gives ceil(129280/8192)=16 blocks per row.
-    # num_warps=2 is sufficient since masking is memory-bound (simple store).
+    # Phase 1: Mask invalid ranges
     MASK_BS = 8192
-    num_mask_blocks = (vocab_size + MASK_BS - 1) // MASK_BS
+    num_mask_blocks = triton.cdiv(vocab_size, MASK_BS)
     _mask_invalid_kernel[(num_rows * num_mask_blocks,)](
-        logits,
-        row_starts,
-        row_ends,
-        stride0,
+        logits, row_starts, row_ends, stride0,
         BLOCK_SIZE=MASK_BS,
         VOCAB_SIZE=vocab_size,
         num_warps=2,
     )
 
-    # --- Phase 2: Select top-K indices ---
-    # POSTPROC_BLOCK must be power-of-2 >= top_k for tl.arange.
-    # For top_k=1024, this is exactly 1024 (no waste).
-    POSTPROC_BLOCK = triton.next_power_of_2(top_k)
+    # Phase 2: Sort-based top-k with 4-way merge
+    CHUNK_SIZE = 4096
+    num_chunks = triton.cdiv(vocab_size, CHUNK_SIZE)  # 32
+    K_BLOCK = triton.next_power_of_2(top_k)  # 1024
+    MERGE_2WAY = 2 * K_BLOCK  # 2048
+    SORT_4WAY = 4 * K_BLOCK   # 4096
 
-    if num_rows == 1:
-        # Single row path: torch.argsort uses CUB radix sort under the hood.
-        # For large vocab (129280) with a single row, radix sort O(N) is ~2x faster
-        # than torch.topk's heap-based O(N log k) because it fully utilizes GPU
-        # parallelism without the sequential heap maintenance bottleneck.
-        sorted_idx = torch.argsort(logits, dim=1, descending=True, stable=False)
-        # src_stride0=vocab_size because argsort returns full-width sorted indices
-        _fused_postprocess_kernel[(1,)](
-            sorted_idx,
-            indices,
-            row_starts,
-            num_rows=1,
-            top_k=top_k,
-            src_stride0=vocab_size,
-            BLOCK_SIZE=POSTPROC_BLOCK,
-            num_warps=4,
-        )
-    else:
-        # Multi-row path: torch.topk with sorted=False.
-        # For batched rows, topk's heap approach has better parallelism across rows
-        # than argsort (which serializes the full sort per row).
-        # sorted=False avoids an unnecessary final sort pass.
-        _, top_idx = torch.topk(logits, top_k, dim=1, largest=True, sorted=False)
-        # src_stride0=top_k because topk output shape is [num_rows, top_k]
-        _fused_postprocess_kernel[(num_rows,)](
-            top_idx,
-            indices,
-            row_starts,
-            num_rows=num_rows,
-            top_k=top_k,
-            src_stride0=top_k,
-            BLOCK_SIZE=POSTPROC_BLOCK,
-            num_warps=4,
-        )
+    # Pre-allocate buffers (use fixed buffer_stride = num_chunks * top_k)
+    buffer_stride0 = num_chunks * top_k
+    buffer_a = torch.empty(
+        (num_rows, num_chunks, top_k),
+        dtype=torch.int32,
+        device=logits.device
+    )
+    buffer_b = torch.empty(
+        (num_rows, num_chunks, top_k),
+        dtype=torch.int32,
+        device=logits.device
+    )
+
+    # Stage 1: Sort each chunk, extract top-k
+    _sort_chunk_extract_topk[(num_rows * num_chunks,)](
+        logits, buffer_a,
+        stride0=stride0,
+        output_stride0=buffer_stride0,
+        output_stride1=top_k,
+        vocab_size=vocab_size,
+        top_k=top_k,
+        num_chunks=num_chunks,
+        CHUNK_SIZE=CHUNK_SIZE,
+        num_warps=8,
+    )
+
+    # Stage 2: 4-way merge (32→8)
+    num_groups_4 = num_chunks // 4  # 8
+    _merge_4way_topk[(num_rows * num_groups_4,)](
+        buffer_a, logits, buffer_b,
+        stride0=stride0,
+        in_stride0=buffer_stride0,
+        in_stride1=top_k,
+        out_stride0=buffer_stride0,
+        out_stride1=top_k,
+        num_groups=num_groups_4,
+        top_k=top_k,
+        SORT_SIZE=SORT_4WAY,
+        num_warps=8,
+    )
+
+    # Stage 3: 4-way merge (8→2)
+    num_groups_4b = num_groups_4 // 4  # 2
+    _merge_4way_topk[(num_rows * num_groups_4b,)](
+        buffer_b, logits, buffer_a,
+        stride0=stride0,
+        in_stride0=buffer_stride0,
+        in_stride1=top_k,
+        out_stride0=buffer_stride0,
+        out_stride1=top_k,
+        num_groups=num_groups_4b,
+        top_k=top_k,
+        SORT_SIZE=SORT_4WAY,
+        num_warps=8,
+    )
+
+    # Stage 4: 2-way merge (2→1)
+    _merge_2way_topk[(num_rows * 1,)](
+        buffer_a, logits, buffer_b,
+        stride0=stride0,
+        in_stride0=buffer_stride0,
+        in_stride1=top_k,
+        out_stride0=buffer_stride0,
+        out_stride1=top_k,
+        num_pairs=1,
+        top_k=top_k,
+        MERGE_SIZE=MERGE_2WAY,
+        num_warps=8,
+    )
+
+    # Copy final result
+    indices.copy_(buffer_b[:, 0, :])
+
+    # Phase 3: Postprocess
+    POSTPROC_BLOCK = triton.next_power_of_2(top_k)
+    _fused_postprocess_kernel[(num_rows,)](
+        indices, indices, row_starts,
+        num_rows=num_rows, top_k=top_k, src_stride0=top_k,
+        BLOCK_SIZE=POSTPROC_BLOCK,
+        num_warps=4,
+    )
