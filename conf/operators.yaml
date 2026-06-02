@@ -6880,10 +6880,12 @@ ops:
     stages:
       - alpha: '5.1'
   - id: empty
-    description: Tensor factory operation (empty).
+    description: Tensor factory returning uninitialized memory, used for deferred init or output buffers.
     for:
       - empty
     labels:
+      - aten
+      - KernelGen
       - skip_precision_check
     kind:
       - Tensor
