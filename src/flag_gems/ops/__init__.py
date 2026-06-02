@@ -165,6 +165,7 @@ from flag_gems.ops.greater import (
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.group_gemm import group_mm
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
+from flag_gems.ops.GRUAttention import GRUAttention
 from flag_gems.ops.gt import gt, gt_scalar
 from flag_gems.ops.hadamard_transform import (
     hadamard_transform,
@@ -614,6 +615,7 @@ __all__ = [
     "group_mm",
     "group_norm",
     "group_norm_backward",
+    "GRUAttention",
     "gt",
     "gt_scalar",
     "hadamard_transform",

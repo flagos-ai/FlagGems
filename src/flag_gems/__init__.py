@@ -279,6 +279,7 @@ _FULL_CONFIG = (
     ("greater.Scalar_out", greater_scalar_out),
     ("greater.out", greater_out),
     ("grid_sample", grid_sample),
+    ("GRUAttention", GRUAttention),
     ("gt.Scalar", gt_scalar),
     ("gt.Tensor", gt),
     ("hardsigmoid", hardsigmoid),

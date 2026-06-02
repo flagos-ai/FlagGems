@@ -2926,6 +2926,17 @@ ops:
       - MoE
     stages:
       - stable: '5.0'
+  - id: GRUAttention
+    description: Triton kernel implementation for GRUAttention.
+    for:
+      - GRUAttention
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: gt
     description: Computes that `input` is greater than `other` element-wise.
     for:
