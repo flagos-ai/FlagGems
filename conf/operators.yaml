@@ -5889,6 +5889,17 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: special_modified_bessel_k0
+    description: Triton kernel implementation for special_modified_bessel_k0.
+    for:
+      - special_modified_bessel_k0
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
