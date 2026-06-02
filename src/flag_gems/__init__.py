@@ -291,6 +291,7 @@ _FULL_CONFIG = (
     ("index_copy_", index_copy_),
     ("index_put", index_put),
     ("index_put_", index_put_),
+    ("index_reduce_", index_reduce_),
     ("index_select", index_select),
     ("isclose", isclose),
     ("isfinite", isfinite),
