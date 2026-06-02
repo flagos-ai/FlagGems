@@ -369,6 +369,7 @@ from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
+from flag_gems.ops.xlogy import xlogy
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -893,6 +894,7 @@ __all__ = [
     "weight_norm_interface_backward",
     "where_scalar_other",
     "where_scalar_self",
+    "xlogy",
     "where_self",
     "where_self_out",
     "zero",
