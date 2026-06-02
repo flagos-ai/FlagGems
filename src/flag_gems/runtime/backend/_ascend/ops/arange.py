@@ -30,10 +30,16 @@ def arange_start(
 ):
     logger.debug("GEMS_ASCEND ARANGE")
     if dtype is torch.int64:
+        start = int(start)
+        end = int(end)
+        step = int(step)
+        if step == 0:
+            raise RuntimeError("step must be nonzero")
         sgn = (step > 0) - (step < 0)
         size = (end - start + step - sgn) // step
     else:
         size = math.ceil((end - start) / step)
+    size = int(size)
 
     BLOCK_SIZE = 128
     grid = min(triton.cdiv(size, BLOCK_SIZE), 65535)

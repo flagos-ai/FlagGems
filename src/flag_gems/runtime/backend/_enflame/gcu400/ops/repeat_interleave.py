@@ -2,41 +2,84 @@ import logging
 
 import torch
 import triton
-from triton import language as tl
+import triton.language as tl
 
-from flag_gems.utils.shape_utils import c_contiguous_stride
-from flag_gems.utils.tensor_wrapper import StridedBuffer
-
-from ..utils.pointwise_dynamic import pointwise_dynamic
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+NUM_SIPS = 24
 
-@pointwise_dynamic(num_inputs=1, promotion_methods=[(0, "DEFAULT")])
+
+@libentry()
 @triton.jit
-def copy_func(x):
-    return x
+def repeat_interleave_kernel(
+    x_ptr,
+    out_ptr,
+    N_total,
+    inner_size,
+    repeat_inner: tl.constexpr,
+    NUM_BLOCKS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+
+    for block_id in tl.range(pid, NUM_BLOCKS, num_pids):
+        off = block_id * BLOCK + arange
+        mask = off < N_total
+
+        inner_idx = off % inner_size
+        outer_idx = off // repeat_inner
+        src_idx = outer_idx * inner_size + inner_idx
+
+        vals = tl.load(x_ptr + src_idx, mask=mask)
+        tl.store(out_ptr + off, vals, mask=mask)
+
+
+@libentry()
+@triton.jit
+def repeat_interleave_flat_kernel(
+    x_ptr,
+    out_ptr,
+    N_total,
+    repeats: tl.constexpr,
+    NUM_BLOCKS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+
+    for block_id in tl.range(pid, NUM_BLOCKS, num_pids):
+        off = block_id * BLOCK + arange
+        mask = off < N_total
+
+        src_idx = off // repeats
+
+        vals = tl.load(x_ptr + src_idx, mask=mask)
+        tl.store(out_ptr + off, vals, mask=mask)
 
 
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
     logger.debug("GEMS REPEAT_INTERLEAVE_SELF_INT")
     if dim is None:
-        inp = inp.flatten()
+        inp = inp.contiguous().flatten()
         dim = 0
     else:
-        if (dim < -inp.ndim) or (dim >= inp.ndim):
+        if dim < -inp.ndim or dim >= inp.ndim:
             raise IndexError(
                 "Dimension out of range (expected to be in range of [{}, {}], but got {})".format(
                     -inp.ndim, inp.ndim - 1, dim
                 )
             )
+        if dim < 0:
+            dim = dim + inp.ndim
+
     inp_shape = list(inp.shape)
-    inp_stride = list(inp.stride())
     output_shape = list(inp.shape)
-
-    if dim < 0:
-        dim = dim + len(inp_shape)
-
     output_shape[dim] *= repeats
 
     if output_size is not None and output_size != output_shape[dim]:
@@ -51,14 +94,39 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
     if repeats == 0:
         return output
 
-    in_view_stride = inp_stride[: dim + 1] + [0] + inp_stride[dim + 1 :]
-    out_view_shape = inp_shape[: dim + 1] + [repeats] + inp_shape[dim + 1 :]
-    out_view_stride = c_contiguous_stride(out_view_shape)
+    inp = inp.contiguous()
+    N_total = output.numel()
 
-    in_view = StridedBuffer(inp, out_view_shape, in_view_stride)
-    out_view = StridedBuffer(output, out_view_shape, out_view_stride)
-    ndim = len(out_view_shape)
-    copy_func.instantiate(ndim)(in_view, out0=out_view)
+    BLOCK = 2048
+    NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
+    grid_size = min(NUM_BLOCKS, NUM_SIPS * 4)
+
+    inner_size = 1
+    for i in range(dim + 1, len(inp_shape)):
+        inner_size *= inp_shape[i]
+
+    with torch_device_fn.device(inp.device):
+        if inner_size == 1:
+            repeat_interleave_flat_kernel[(grid_size,)](
+                inp,
+                output,
+                N_total,
+                repeats=repeats,
+                NUM_BLOCKS=NUM_BLOCKS,
+                BLOCK=BLOCK,
+            )
+        else:
+            repeat_inner = repeats * inner_size
+            repeat_interleave_kernel[(grid_size,)](
+                inp,
+                output,
+                N_total,
+                inner_size,
+                repeat_inner=repeat_inner,
+                NUM_BLOCKS=NUM_BLOCKS,
+                BLOCK=BLOCK,
+            )
+
     return output
 
 
@@ -83,17 +151,12 @@ def repeat_interleave_tensor_kernel(
 
 def repeat_interleave_tensor(repeats, *, output_size=None):
     logger.debug("GEMS REPEAT_INTERLEAVE_TENSOR")
-
     assert repeats.ndim == 1, "repeat_interleave only accept 1D vector as repeat"
-
     cumsum = repeats.cumsum(axis=0)
     result_size = cumsum[-1].item()
-
     assert result_size >= 0, "repeats can not be negative"
-
     out = torch.empty((result_size,), dtype=repeats.dtype, device=repeats.device)
     size = repeats.size(0)
-
     grid = (size,)
     BLOCK_SIZE = 32
     repeat_interleave_tensor_kernel[grid](
@@ -109,38 +172,27 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
 
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
     logger.debug("GEMS REPEAT_INTERLEAVE_SELF_TENSOR")
-
     if dim is None:
         inp = inp.flatten()
         dim = 0
     else:
-        if (dim < -inp.ndim) or (dim >= inp.ndim):
+        if dim < -inp.ndim or dim >= inp.ndim:
             raise IndexError(
                 "Dimension out of range (expected to be in range of [{}, {}], but got {})".format(
                     -inp.ndim, inp.ndim - 1, dim
                 )
             )
-
     if repeats.ndim == 0 or (repeats.ndim == 1 and repeats.size(0) == 1):
         return repeat_interleave_self_int(
             inp, repeats.item(), dim=dim, output_size=output_size
         )
     elif repeats.ndim > 1:
         raise RuntimeError("repeats must be 0-dim or 1-dim tensor")
-
     inp_shape = list(inp.shape)
     if dim < 0:
         dim = dim + len(inp_shape)
-
     if repeats.size(0) != inp_shape[dim]:
-        raise RuntimeError(
-            "repeats must have the same size as input along dim, but got \
-                repeats.size(0) = {} and input.size({}) = {}".format(
-                repeats.size(0), dim, inp_shape[dim]
-            )
-        )
-
+        raise RuntimeError("repeats must have the same size as input along dim")
     indices = repeat_interleave_tensor(repeats)
     res = torch.index_select(inp, dim, indices)
-
     return res
