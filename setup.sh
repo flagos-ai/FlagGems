@@ -27,6 +27,7 @@ declare -A PYTHON_SUPPORTED=(
   ["nvidia"]="3.12"
   ["spacemit"]="3.12"
   ["sunrise"]="3.10"
+  ["thead"]="3.12"
   ["tsingmicro"]="3.10"
 )
 
