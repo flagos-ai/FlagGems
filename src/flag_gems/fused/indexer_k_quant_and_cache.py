@@ -28,7 +28,7 @@ def _is_fp8_fnuz(dtype: torch.dtype) -> bool:
 
 
 @triton.jit
-def _indexer_k_quant_and_cache_kernel(
+def _kernel_2d(
     k_ptr,
     kv_cache_ptr,
     kv_cache_scale_ptr,
@@ -47,9 +47,8 @@ def _indexer_k_quant_and_cache_kernel(
     quant_block_offsets = tl.arange(0, 4)
     head_offsets = tl.arange(0, QUANT_BLOCK_SIZE)
     offsets = (
-        (quant_block_id + quant_block_offsets[:, None]) * QUANT_BLOCK_SIZE
-        + head_offsets[None, :]
-    )
+        quant_block_id + quant_block_offsets[:, None]
+    ) * QUANT_BLOCK_SIZE + head_offsets[None, :]
     mask = offsets < head_dim
 
     src_ptr = k_ptr + tid * head_dim
@@ -84,6 +83,61 @@ def _indexer_k_quant_and_cache_kernel(
     tl.store(dst_scale_ptr + quant_block_offsets, scale, mask=scale_mask)
 
 
+@triton.jit
+def _kernel_1d_loop(
+    k_ptr,
+    kv_cache_ptr,
+    kv_cache_scale_ptr,
+    slot_mapping_ptr,
+    kv_cache_scale_stride,
+    kv_cache_value_stride,
+    block_size,
+    num_quant_blocks,
+    head_dim: tl.constexpr,
+    QUANT_BLOCK_SIZE: tl.constexpr,
+    IS_FNUZ: tl.constexpr,
+    USE_UE8M0: tl.constexpr,
+):
+    GROUP_SIZE: tl.constexpr = 4
+    tid = tl.program_id(0)
+    slot_id = tl.load(slot_mapping_ptr + tid)
+    if slot_id < 0:
+        return
+
+    block_id = slot_id // block_size
+    block_offset = slot_id % block_size
+    src_ptr = k_ptr + tid * head_dim
+    dst_base_ptr = (
+        kv_cache_ptr + block_id * kv_cache_value_stride + block_offset * head_dim
+    )
+    scale_base_ptr = (
+        kv_cache_scale_ptr
+        + block_id * kv_cache_scale_stride
+        + block_offset * num_quant_blocks
+    )
+
+    for q_start in range(0, num_quant_blocks, GROUP_SIZE):
+        quant_offsets = q_start + tl.arange(0, GROUP_SIZE)
+        head_offsets = tl.arange(0, QUANT_BLOCK_SIZE)
+        offsets = (quant_offsets[:, None] * QUANT_BLOCK_SIZE) + head_offsets[None, :]
+        mask = offsets < head_dim
+
+        val = tl.load(src_ptr + offsets, mask=mask, other=0.0)
+        amax = tl.max(tl.abs(val).to(tl.float32), axis=1)
+        if IS_FNUZ:
+            scale = tl.maximum(1e-4, amax) / 224.0
+        else:
+            scale = tl.maximum(1e-4, amax) / 448.0
+        if USE_UE8M0:
+            scale = tl.exp2(tl.ceil(tl.log2(scale)))
+
+        fp8_val = (val.to(tl.float32) / scale[:, None]).to(kv_cache_ptr.type.element_ty)
+        tl.store(dst_base_ptr + offsets, fp8_val, mask=mask)
+
+        scale_mask = quant_offsets < num_quant_blocks
+        tl.store(scale_base_ptr + quant_offsets, scale, mask=scale_mask)
+
+
 def indexer_k_quant_and_cache(
     k: torch.Tensor,
     kv_cache: torch.Tensor,
@@ -103,7 +157,16 @@ def indexer_k_quant_and_cache(
     fp8_dtype = _get_fp8_dtype()
     kv_cache_value = kv_cache_flat[:, : block_size * head_dim].view(fp8_dtype)
     kv_cache_scale = kv_cache_flat[:, block_size * head_dim :].view(torch.float32)
-    _indexer_k_quant_and_cache_kernel[(num_tokens, triton.cdiv(num_quant_blocks, 4))](
+
+    if 5 <= num_quant_blocks <= 6:
+        kernel_fn = _kernel_1d_loop
+        grid = (num_tokens,)
+    else:
+        kernel_fn = _kernel_2d
+        grid = (num_tokens, triton.cdiv(num_quant_blocks, 4))
+
+    num_warps = 4
+    kernel_fn[grid](
         k,
         kv_cache_value,
         kv_cache_scale,
@@ -116,4 +179,5 @@ def indexer_k_quant_and_cache(
         quant_block_size,
         IS_FNUZ=_is_fp8_fnuz(fp8_dtype),
         USE_UE8M0=scale_fmt == "ue8m0",
+        num_warps=num_warps,
     )

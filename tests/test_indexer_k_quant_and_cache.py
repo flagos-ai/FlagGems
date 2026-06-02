@@ -168,6 +168,7 @@ def _make_slot_mapping(num_tokens, num_blocks, block_size, device):
         (torch.float16, 23, 5, 16, 512, 128, "ue8m0"),
         (torch.float16, 29, 6, 16, 384, 128, "ue8m0"),
         (torch.float16, 31, 7, 16, 640, 128, "ue8m0"),
+        (torch.float16, 37, 8, 16, 768, 128, "ue8m0"),
         (torch.bfloat16, 17, 4, 64, 512, 128, "ue8m0"),
     ],
 )
