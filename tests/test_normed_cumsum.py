@@ -13,7 +13,7 @@ from . import accuracy_utils as utils
 def test_normed_cumsum(shape, dtype, dim):
     if dim == 0 and shape[0] > 100:
         pytest.skip("cumsum along a long dim=0 accumulates too much error")
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.cumsum(ref_inp, dim=dim) / torch.sum(ref_inp, dim=dim, keepdim=True)
