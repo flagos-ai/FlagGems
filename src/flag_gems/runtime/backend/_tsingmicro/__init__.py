@@ -64,6 +64,6 @@ vendor_info = VendorInfoBase(
     dispatch_key="PrivateUse1",
 )
 
-CUSTOMIZED_UNUSED_OPS = ()
+CUSTOMIZED_UNUSED_OPS = ("sort", "sort_stable", "gelu", "gelu_", "index")
 
 __all__ = ["*"]

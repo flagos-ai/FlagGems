@@ -3,9 +3,8 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
-from flag_gems.runtime import device, get_heuristic_config, torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
+from flag_gems.runtime import device, torch_device_fn, get_heuristic_config
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,
@@ -125,3 +124,4 @@ def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     with torch_device_fn.device(device):
         randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out
+

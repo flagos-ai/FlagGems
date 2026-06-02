@@ -6,9 +6,6 @@ import triton
 
 import flag_gems
 from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.random_utils import philox_backend_seed_offset
-
 from .flash_kernel import (
     block_m_splitkv_heuristic,
     block_n_splitkv_heuristic,
@@ -17,6 +14,8 @@ from .flash_kernel import (
     flash_fwd_splitkv_kernel,
     flash_varlen_fwd_kernel,
 )
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 TOTAL_CORE_NUM = torch_device_fn.get_device_properties().multi_processor_count
 
@@ -253,6 +252,33 @@ def mha_varlan_fwd(
     return_softmax,
     gen,
 ):
+    # print q, k, v, out's shape and stride
+    # print(f"q shape: {q.shape}, stride: {q.stride()}")
+    # print(f"k shape: {k.shape}, stride: {k.stride()}")
+    # print(f"v shape: {v.shape}, stride: {v.stride()}")
+    # print(f"out shape: {out.shape}, stride: {out.stride()}")
+    # if cu_seqlens_q is not None:
+    #     print(f"cu_seqlens_q shape: {cu_seqlens_q.shape}, stride: {cu_seqlens_q.stride()}")
+    # if cu_seqlens_k is not None:
+    #     print(f"cu_seqlens_k shape: {cu_seqlens_k.shape}, stride: {cu_seqlens_k.stride()}")
+    # if seqused_k is not None:
+    #     print(f"seqused_k shape: {seqused_k.shape}, stride: {seqused_k.stride()}")
+    # if page_table is not None:
+    #     print(f"page_table shape: {page_table.shape}, stride: {page_table.stride()}")
+    # if alibi_slopes is not None:
+    #     print(f"alibi_slopes shape: {alibi_slopes.shape}, stride: {alibi_slopes.stride()}")
+    # print(f"max_seqlen_q: {max_seqlen_q}")
+    # print(f"max_seqlen_k: {max_seqlen_k}")
+    # print(f"p_dropout: {p_dropout}")
+    # print(f"softmax_scale: {softmax_scale}")
+    # print(f"zero_tensors: {zero_tensors}")
+    # print(f"is_causal: {is_causal}")
+    # print(f"window_size_left: {window_size_left}")
+    # print(f"window_size_right: {window_size_right}")
+    # print(f"softcap: {softcap}")
+    # print(f"return_softmax: {return_softmax}")
+    # print(f"gen: {gen}")
+
     CHECK_DEVICE(q), CHECK_DEVICE(k), CHECK_DEVICE(v)
     q_device = q.device
     q_dtype = q.dtype
@@ -342,8 +368,10 @@ def mha_varlan_fwd(
         # o_batch_stride = out.stride(0) * max_seqlen_q
     else:
         q_batch_stride = 0
-        k_batch_stride = 0
-        v_batch_stride = 0
+        # Paged KV cache may be a per-layer view with a non-compact block
+        # stride, so the kernel must receive the physical block stride.
+        k_batch_stride = k.stride(0)
+        v_batch_stride = v.stride(0)
         o_batch_stride = 0
 
     total_q = q.size(0)
@@ -523,10 +551,10 @@ def mha_varlan_fwd(
         # to avoid breaking a kv block onto multiple cache pages.
         cfg = runtime.get_heuristic_config("mha_varlen_fwd")
         cfg_params = {
-            "BLOCK_M": cfg["BLOCK_M"](params),
-            "BLOCK_N": cfg["BLOCK_N"](params),
-            "num_warps": cfg["num_warps"](params),
-            "num_stages": cfg["num_stages"](params),
+            "BLOCK_M": cfg["BLOCK_M"](args),
+            "BLOCK_N": cfg["BLOCK_N"](args),
+            "num_warps": cfg["num_warps"](args),
+            "num_stages": cfg["num_stages"](args),
         }
         # BLOCK_M, BLOCK_N, num_warps, num_stages = 128, 32, 4, 3
         assert (

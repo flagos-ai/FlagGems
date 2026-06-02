@@ -9,11 +9,10 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.config import use_c_extension
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
-
 from .flash_api import mha_fwd, mha_varlan_fwd
 from .flash_kernel import keep
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +145,7 @@ configs += SMALL_HEAD_DIM_CONFIGS
 
 @libentry()
 @libtuner(
-    # configs=list(filter(partial(keep, must_keep=SMALL_HEAD_DIM_CONFIGS), configs)),
+    #configs=list(filter(partial(keep, must_keep=SMALL_HEAD_DIM_CONFIGS), configs)),
     configs=list(filter(partial(keep), configs)),
     key=["KV_CTX", "HEAD_DIM"],
 )
