@@ -134,6 +134,82 @@ def soft_margin_loss(input: torch.Tensor, target: torch.Tensor, reduction="mean"
             return mean_val
 
 
+@triton.jit
+def _soft_margin_loss_backward_kernel(
+    grad_output_ptr,
+    input_ptr,
+    target_ptr,
+    out_ptr,
+    n_elements,
+    reduction_elements,
+    reduction: tl.constexpr,
+    GRAD_OUTPUT_SCALAR: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    input_val = tl.load(input_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    target_val = tl.load(target_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+
+    # d(loss)/d(input) = -target * sigmoid(-input * target)
+    z = -input_val * target_val
+    sigmoid_neg_z = tl.sigmoid(z)
+    grad = -target_val * sigmoid_neg_z
+
+    if GRAD_OUTPUT_SCALAR:
+        grad_out = tl.load(grad_output_ptr).to(tl.float32)
+        if reduction == 1:
+            grad_out = grad_out * (1.0 / reduction_elements)
+    else:
+        grad_out = tl.load(grad_output_ptr + offsets, mask=mask, other=0.0).to(
+            tl.float32
+        )
+        if reduction == 1:
+            grad_out = grad_out * (1.0 / reduction_elements)
+
+    tl.store(out_ptr + offsets, grad * grad_out, mask=mask)
+
+
+def soft_margin_loss_backward(
+    grad_output: torch.Tensor,
+    input: torch.Tensor,
+    target: torch.Tensor,
+    reduction="mean",
+):
+    logger.debug("GEMS SOFT_MARGIN_LOSS BACKWARD")
+    input, target = _check_tensors(input, target)
+    red = _normalize_reduction(reduction)
+    n_elements = input.numel()
+
+    if n_elements == 0:
+        return torch.empty_like(input)
+
+    if grad_output.numel() != 1:
+        grad_output = torch.broadcast_to(grad_output, input.shape)
+        if not grad_output.is_contiguous():
+            grad_output = grad_output.contiguous()
+
+    reduction_elements = n_elements
+    out = torch.empty_like(input)
+    BLOCK_SIZE = 1024
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    _soft_margin_loss_backward_kernel[grid](
+        grad_output,
+        input,
+        target,
+        out,
+        n_elements,
+        reduction_elements,
+        reduction=red,
+        GRAD_OUTPUT_SCALAR=grad_output.numel() == 1,
+        BLOCK_SIZE=BLOCK_SIZE,
+    )
+    return out
+
+
 def soft_margin_loss_out(
     input: torch.Tensor,
     target: torch.Tensor,
