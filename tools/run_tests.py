@@ -590,6 +590,8 @@ def run_benchmark_q(gpu_id, op):
 
     dur = time.time()
     cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
+    if ENV_INFO["flag_gems"]["vendor"] == "kunlunxin":
+        cmd += " --fg_mode operator"
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     dur = time.time() - dur
 
