@@ -100,29 +100,34 @@ def _define_op_if_not_exists(lib_name, op_name, signature):
             print(f"Warning: Failed to define {lib_name}::{op_name}: {e}")
 
 
-_libs_loaded = {}
-for lib_name, ops in _LIB_OPS.items():
-    loaded = _ensure_vllm_library_exists(lib_name, ops)
-    _libs_loaded[lib_name] = loaded
+libs = {}
 
-    # looks like it happens only when vllm is not compiled
-    # with custom ops like tsingmicro vllm
-    if not loaded:
-        if lib_name in _OP_SIGNATURES:
-            for op_name, signature in _OP_SIGNATURES[lib_name].items():
-                _define_op_if_not_exists(lib_name, op_name, signature)
 
-vllm_C_lib = torch.library.Library("_C", "IMPL")
-vllm_moe_C_lib = torch.library.Library("_moe_C", "IMPL")
-vllm_fa3_C_lib = torch.library.Library("_vllm_fa3_C", "IMPL")
-vllm_C_cache_ops_lib = torch.library.Library("_C_cache_ops", "IMPL")
+def init_vllm_libraries():
+    _libs_loaded = {}
+    for lib_name, ops in _LIB_OPS.items():
+        loaded = _ensure_vllm_library_exists(lib_name, ops)
+        _libs_loaded[lib_name] = loaded
 
-libs = {
-    "_C": vllm_C_lib,
-    "_moe_C": vllm_moe_C_lib,
-    "_vllm_fa3_C": vllm_fa3_C_lib,
-    "_C_cache_ops": vllm_C_cache_ops_lib,
-}
+        # looks like it happens only when vllm is not compiled
+        # with custom ops like tsingmicro vllm
+        if not loaded:
+            if lib_name in _OP_SIGNATURES:
+                for op_name, signature in _OP_SIGNATURES[lib_name].items():
+                    _define_op_if_not_exists(lib_name, op_name, signature)
+
+    vllm_C_lib = torch.library.Library("_C", "IMPL")
+    vllm_moe_C_lib = torch.library.Library("_moe_C", "IMPL")
+    vllm_fa3_C_lib = torch.library.Library("_vllm_fa3_C", "IMPL")
+    vllm_C_cache_ops_lib = torch.library.Library("_C_cache_ops", "IMPL")
+
+    global libs
+    libs = {
+        "_C": vllm_C_lib,
+        "_moe_C": vllm_moe_C_lib,
+        "_vllm_fa3_C": vllm_fa3_C_lib,
+        "_C_cache_ops": vllm_C_cache_ops_lib,
+    }
 
 
 def patch_module_method(cls, method_name: str, new_method: callable, verbose=True):

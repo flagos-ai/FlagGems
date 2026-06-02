@@ -412,6 +412,207 @@ def _fht_kernel_2d(
 
 
 # ============================================================
+# M×N fused kernels: H_M column transform + FHT in registers
+# No intermediate DRAM write, no padding to next power of 2.
+# ============================================================
+
+
+@triton.jit
+def _h3_fht_kernel(
+    X_ptr,
+    OUT_ptr,
+    stride_batch,
+    stride_row,
+    SCALE: tl.constexpr,
+    IS_FP16: tl.constexpr,
+    IS_BF16: tl.constexpr,
+    N_COLS: tl.constexpr,
+    LOG_N: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offs = tl.arange(0, N_COLS)
+    base = pid * stride_batch
+    a = tl.load(X_ptr + base + 0 * stride_row + offs).to(tl.float32)
+    b = tl.load(X_ptr + base + 1 * stride_row + offs).to(tl.float32)
+    c = tl.load(X_ptr + base + 2 * stride_row + offs).to(tl.float32)
+    y0 = a + b + c
+    y1 = a - b + c
+    y2 = a + b - c
+    for s_rev in tl.static_range(LOG_N):
+        y0 = _butterfly_stage_1d(y0, N_COLS, 1 << (LOG_N - 1 - s_rev))
+        y1 = _butterfly_stage_1d(y1, N_COLS, 1 << (LOG_N - 1 - s_rev))
+        y2 = _butterfly_stage_1d(y2, N_COLS, 1 << (LOG_N - 1 - s_rev))
+    y0 = y0 * SCALE
+    y1 = y1 * SCALE
+    y2 = y2 * SCALE
+    if IS_FP16:
+        y0 = y0.to(tl.float16)
+        y1 = y1.to(tl.float16)
+        y2 = y2.to(tl.float16)
+    elif IS_BF16:
+        y0 = y0.to(tl.bfloat16)
+        y1 = y1.to(tl.bfloat16)
+        y2 = y2.to(tl.bfloat16)
+    tl.store(OUT_ptr + base + 0 * stride_row + offs, y0, eviction_policy="evict_first")
+    tl.store(OUT_ptr + base + 1 * stride_row + offs, y1, eviction_policy="evict_first")
+    tl.store(OUT_ptr + base + 2 * stride_row + offs, y2, eviction_policy="evict_first")
+
+
+@triton.jit
+def _h5_fht_kernel(
+    X_ptr,
+    OUT_ptr,
+    stride_batch,
+    stride_row,
+    SCALE: tl.constexpr,
+    IS_FP16: tl.constexpr,
+    IS_BF16: tl.constexpr,
+    N_COLS: tl.constexpr,
+    LOG_N: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offs = tl.arange(0, N_COLS)
+    base = pid * stride_batch
+    a = tl.load(X_ptr + base + 0 * stride_row + offs).to(tl.float32)
+    b = tl.load(X_ptr + base + 1 * stride_row + offs).to(tl.float32)
+    c = tl.load(X_ptr + base + 2 * stride_row + offs).to(tl.float32)
+    d = tl.load(X_ptr + base + 3 * stride_row + offs).to(tl.float32)
+    e = tl.load(X_ptr + base + 4 * stride_row + offs).to(tl.float32)
+    y0 = a + b + c + d + e
+    y1 = a - b + c - d + e
+    y2 = a + b - c + d - e
+    y3 = a - b - c - d - e
+    y4 = a + b + c - d - e
+    for s_rev in tl.static_range(LOG_N):
+        y0 = _butterfly_stage_1d(y0, N_COLS, 1 << (LOG_N - 1 - s_rev))
+        y1 = _butterfly_stage_1d(y1, N_COLS, 1 << (LOG_N - 1 - s_rev))
+        y2 = _butterfly_stage_1d(y2, N_COLS, 1 << (LOG_N - 1 - s_rev))
+        y3 = _butterfly_stage_1d(y3, N_COLS, 1 << (LOG_N - 1 - s_rev))
+        y4 = _butterfly_stage_1d(y4, N_COLS, 1 << (LOG_N - 1 - s_rev))
+    y0 = y0 * SCALE
+    y1 = y1 * SCALE
+    y2 = y2 * SCALE
+    y3 = y3 * SCALE
+    y4 = y4 * SCALE
+    if IS_FP16:
+        y0 = y0.to(tl.float16)
+        y1 = y1.to(tl.float16)
+        y2 = y2.to(tl.float16)
+        y3 = y3.to(tl.float16)
+        y4 = y4.to(tl.float16)
+    elif IS_BF16:
+        y0 = y0.to(tl.bfloat16)
+        y1 = y1.to(tl.bfloat16)
+        y2 = y2.to(tl.bfloat16)
+        y3 = y3.to(tl.bfloat16)
+        y4 = y4.to(tl.bfloat16)
+    tl.store(OUT_ptr + base + 0 * stride_row + offs, y0, eviction_policy="evict_first")
+    tl.store(OUT_ptr + base + 1 * stride_row + offs, y1, eviction_policy="evict_first")
+    tl.store(OUT_ptr + base + 2 * stride_row + offs, y2, eviction_policy="evict_first")
+    tl.store(OUT_ptr + base + 3 * stride_row + offs, y3, eviction_policy="evict_first")
+    tl.store(OUT_ptr + base + 4 * stride_row + offs, y4, eviction_policy="evict_first")
+
+
+@triton.jit
+def _h7_fht_kernel(
+    X_ptr,
+    OUT_ptr,
+    stride_batch,
+    stride_row,
+    SCALE: tl.constexpr,
+    IS_FP16: tl.constexpr,
+    IS_BF16: tl.constexpr,
+    N_COLS: tl.constexpr,
+    LOG_N: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offs = tl.arange(0, N_COLS)
+    base = pid * stride_batch
+    a = tl.load(X_ptr + base + 0 * stride_row + offs).to(tl.float32)
+    b = tl.load(X_ptr + base + 1 * stride_row + offs).to(tl.float32)
+    c = tl.load(X_ptr + base + 2 * stride_row + offs).to(tl.float32)
+    d = tl.load(X_ptr + base + 3 * stride_row + offs).to(tl.float32)
+    e = tl.load(X_ptr + base + 4 * stride_row + offs).to(tl.float32)
+    f = tl.load(X_ptr + base + 5 * stride_row + offs).to(tl.float32)
+    g = tl.load(X_ptr + base + 6 * stride_row + offs).to(tl.float32)
+    y0 = a + b + c + d + e + f + g
+    y1 = a - b + c - d + e - f + g
+    y2 = a + b - c + d - e + f - g
+    y3 = a - b - c - d - e - f - g
+    y4 = a + b + c - d - e - f - g
+    y5 = a - b + c + d - e + f + g
+    y6 = a + b - c - d + e + f - g
+    for s_rev in tl.static_range(LOG_N):
+        y0 = _butterfly_stage_1d(y0, N_COLS, 1 << (LOG_N - 1 - s_rev))
+        y1 = _butterfly_stage_1d(y1, N_COLS, 1 << (LOG_N - 1 - s_rev))
+        y2 = _butterfly_stage_1d(y2, N_COLS, 1 << (LOG_N - 1 - s_rev))
+        y3 = _butterfly_stage_1d(y3, N_COLS, 1 << (LOG_N - 1 - s_rev))
+        y4 = _butterfly_stage_1d(y4, N_COLS, 1 << (LOG_N - 1 - s_rev))
+        y5 = _butterfly_stage_1d(y5, N_COLS, 1 << (LOG_N - 1 - s_rev))
+        y6 = _butterfly_stage_1d(y6, N_COLS, 1 << (LOG_N - 1 - s_rev))
+    y0 = y0 * SCALE
+    y1 = y1 * SCALE
+    y2 = y2 * SCALE
+    y3 = y3 * SCALE
+    y4 = y4 * SCALE
+    y5 = y5 * SCALE
+    y6 = y6 * SCALE
+    if IS_FP16:
+        y0 = y0.to(tl.float16)
+        y1 = y1.to(tl.float16)
+        y2 = y2.to(tl.float16)
+        y3 = y3.to(tl.float16)
+        y4 = y4.to(tl.float16)
+        y5 = y5.to(tl.float16)
+        y6 = y6.to(tl.float16)
+    elif IS_BF16:
+        y0 = y0.to(tl.bfloat16)
+        y1 = y1.to(tl.bfloat16)
+        y2 = y2.to(tl.bfloat16)
+        y3 = y3.to(tl.bfloat16)
+        y4 = y4.to(tl.bfloat16)
+        y5 = y5.to(tl.bfloat16)
+        y6 = y6.to(tl.bfloat16)
+    tl.store(OUT_ptr + base + 0 * stride_row + offs, y0, eviction_policy="evict_first")
+    tl.store(OUT_ptr + base + 1 * stride_row + offs, y1, eviction_policy="evict_first")
+    tl.store(OUT_ptr + base + 2 * stride_row + offs, y2, eviction_policy="evict_first")
+    tl.store(OUT_ptr + base + 3 * stride_row + offs, y3, eviction_policy="evict_first")
+    tl.store(OUT_ptr + base + 4 * stride_row + offs, y4, eviction_policy="evict_first")
+    tl.store(OUT_ptr + base + 5 * stride_row + offs, y5, eviction_policy="evict_first")
+    tl.store(OUT_ptr + base + 6 * stride_row + offs, y6, eviction_policy="evict_first")
+
+
+def _launch_mn_fused_kernel(x: torch.Tensor, M: int, scale: float) -> torch.Tensor:
+    """Launch the appropriate H_M fused kernel for dim = M * 2^k."""
+    *leading, dim = x.shape
+    batch = x.numel() // dim
+    n_cols = dim // M
+    log_n = n_cols.bit_length() - 1
+    dtype = x.dtype
+    xm = x.reshape(batch, M, n_cols).contiguous()
+    out = torch.empty_like(xm)
+    num_warps = 2 if n_cols <= 1024 else (4 if n_cols <= 2048 else 8)
+    kwargs = dict(
+        SCALE=scale,
+        IS_FP16=(dtype == torch.float16),
+        IS_BF16=(dtype == torch.bfloat16),
+        N_COLS=n_cols,
+        LOG_N=log_n,
+        num_warps=num_warps,
+        num_stages=1,
+    )
+    if M == 3:
+        _h3_fht_kernel[(batch,)](xm, out, xm.stride(0), xm.stride(1), **kwargs)
+    elif M == 5:
+        _h5_fht_kernel[(batch,)](xm, out, xm.stride(0), xm.stride(1), **kwargs)
+    elif M == 7:
+        _h7_fht_kernel[(batch,)](xm, out, xm.stride(0), xm.stride(1), **kwargs)
+    else:
+        raise ValueError(f"Unsupported M={M}")
+    return out.reshape(*leading, dim)
+
+
+# ============================================================
 # Precomputed lookup tables for fast dispatch
 # ============================================================
 
@@ -668,29 +869,28 @@ def hadamard_transform(x, scale=1.0):
 # ============================================================
 # XXN variants (non-power-of-2 dims)
 #
-# Dao-AILab decomposes dim = M * 2^k, applying a small M×M
-# Hadamard-like matrix then a standard 2^k FHT.
-# For now these use the standard FHT with implicit zero-padding
-# to the next power of 2, which is correct but not optimal.
-# TODO: implement proper M×N decomposition for better efficiency.
+# Decomposes dim = M * 2^k via H_M ⊗ H_{2^k}:
+#   1. Reshape to (batch, M, 2^k)
+#   2. Apply H_M column transform + FHT in a single fused kernel
+# No padding to next power of 2, no intermediate DRAM write.
 # ============================================================
 
 
 def hadamard_transform_12N(x, scale=1.0):
-    """Hadamard transform for dim = 12 * 2^k (e.g. 12*512 = 6144)."""
-    return HadamardTransformFn.apply(x, scale)
+    """Hadamard transform for dim = 3 * 2^k (e.g. 1536, 3072, 6144, 12288)."""
+    return _launch_mn_fused_kernel(x, M=3, scale=scale)
 
 
 def hadamard_transform_20N(x, scale=1.0):
-    """Hadamard transform for dim = 20 * 2^k (e.g. 20*1024 = 20480)."""
-    return HadamardTransformFn.apply(x, scale)
+    """Hadamard transform for dim = 5 * 2^k (e.g. 5120, 10240, 20480)."""
+    return _launch_mn_fused_kernel(x, M=5, scale=scale)
 
 
 def hadamard_transform_28N(x, scale=1.0):
-    """Hadamard transform for dim = 28 * 2^k (e.g. 28*1024 = 28672)."""
-    return HadamardTransformFn.apply(x, scale)
+    """Hadamard transform for dim = 7 * 2^k (e.g. 7168, 14336, 28672)."""
+    return _launch_mn_fused_kernel(x, M=7, scale=scale)
 
 
 def hadamard_transform_40N(x, scale=1.0):
-    """Hadamard transform for dim = 40 * 2^k (e.g. 40*1024 = 40960)."""
-    return HadamardTransformFn.apply(x, scale)
+    """Hadamard transform for dim = 5 * 2^k (e.g. 10240, 20480, 40960)."""
+    return _launch_mn_fused_kernel(x, M=5, scale=scale)

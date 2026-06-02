@@ -1,3 +1,4 @@
+import fcntl
 import json
 import logging
 import os
@@ -175,30 +176,38 @@ def get_reason(report):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_logreport(report):
+    result = TEST_RESULTS.setdefault(
+        report.nodeid, {"params": None, "result": None, "opname": None}
+    )
     if report.when == "setup":
         if report.outcome == "skipped":
             reason = get_reason(report)
-            TEST_RESULTS[report.nodeid]["result"] = "skipped"
-            TEST_RESULTS[report.nodeid]["reason"] = reason
+            result["result"] = "skipped"
+            result["reason"] = reason
     elif report.when == "call":
-        TEST_RESULTS[report.nodeid]["result"] = report.outcome
+        result["result"] = report.outcome
         if report.outcome in ["skipped", "failed"]:
             reason = get_reason(report)
-            TEST_RESULTS[report.nodeid]["reason"] = reason
+            result["reason"] = reason
         else:
-            TEST_RESULTS[report.nodeid]["reason"] = None
+            result["reason"] = None
 
 
 def pytest_terminal_summary(terminalreporter):
     data = TEST_RESULTS
-    if os.path.exists(REPORT_FILE):
-        with open(REPORT_FILE, "r") as json_file:
-            existing_data = json.load(json_file)
-        existing_data.update(TEST_RESULTS)
-        data = existing_data
-
-    with open(REPORT_FILE, "w") as json_file:
+    with open(REPORT_FILE, "a+") as json_file:
+        fcntl.flock(json_file, fcntl.LOCK_EX)
+        json_file.seek(0)
+        content = json_file.read()
+        if content:
+            existing_data = json.loads(content)
+            existing_data.update(TEST_RESULTS)
+            data = existing_data
+        json_file.seek(0)
+        json_file.truncate()
         json.dump(data, json_file, indent=2, default=str)
+        json_file.flush()
+        os.fsync(json_file.fileno())
 
 
 def pytest_collection_modifyitems(session, config, items):

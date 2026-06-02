@@ -25,3 +25,15 @@ def test_nll_loss2d_forward():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.nll_loss2d_backward
+def test_nll_loss2d_backward():
+    bench = base.GenericBenchmark4DOnly(
+        input_fn=nll_loss_input_fn,
+        op_name="nll_loss2d_backward",
+        torch_op=torch.nn.functional.nll_loss,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()

@@ -1,6 +1,5 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
@@ -27,9 +26,5 @@ def gt_func_scalar(x, y):
 
 
 def gt_scalar(A, B):
-    if A.dtype == torch.int64:
-        A = A.to(torch.int32)
-    if A.dtype == torch.float64:
-        A = A.to(torch.float32)
     logger.debug("GEMS GT SCALAR")
     return gt_func_scalar(A, B)

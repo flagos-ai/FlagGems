@@ -4,26 +4,35 @@ import torch
 import flag_gems
 
 from .accuracy_utils import gems_assert_close, to_reference
+from .conftest import QUICK_MODE
 
 # conv_transpose1d test shapes: (input_shape, weight_shape)
 # input: (N, in_channels, L_in)
 # weight: (in_channels, out_channels/groups, kernel_width)
-SHAPE_CONV_TRANSPOSE1D = [
-    ((2, 4, 8), (4, 8, 3)),
-    ((4, 8, 16), (8, 16, 3)),
-    ((2, 16, 32), (16, 32, 5)),
-]
+if QUICK_MODE:
+    SHAPE_CONV_TRANSPOSE1D = [
+        ((2, 4, 8), (4, 8, 3)),
+    ]
+    FLOAT_DTYPES = [torch.float32]
+    STRIDES = [1]
+    PADDINGS = [1]
+else:
+    SHAPE_CONV_TRANSPOSE1D = [
+        ((2, 4, 8), (4, 8, 3)),
+        ((4, 8, 16), (8, 16, 3)),
+        ((2, 16, 32), (16, 32, 5)),
+    ]
+    FLOAT_DTYPES = [torch.float32, torch.float16]
+    STRIDES = [1, 2]
+    PADDINGS = [0, 1]
 
 
 @pytest.mark.conv_transpose1d
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV_TRANSPOSE1D)
-@pytest.mark.parametrize("stride", [1, 2])
-@pytest.mark.parametrize("padding", [0, 1])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("stride", STRIDES)
+@pytest.mark.parametrize("padding", PADDINGS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_conv_transpose1d(shape, kernel, stride, padding, dtype, monkeypatch):
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
@@ -48,13 +57,10 @@ def test_conv_transpose1d(shape, kernel, stride, padding, dtype, monkeypatch):
 
 @pytest.mark.conv_transpose1d
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV_TRANSPOSE1D)
-@pytest.mark.parametrize("stride", [1, 2])
-@pytest.mark.parametrize("padding", [0, 1])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("stride", STRIDES)
+@pytest.mark.parametrize("padding", PADDINGS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_conv_transpose1d_bias(shape, kernel, stride, padding, dtype, monkeypatch):
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
@@ -89,15 +95,12 @@ def test_conv_transpose1d_bias(shape, kernel, stride, padding, dtype, monkeypatc
         ((4, 12, 32), (12, 4, 3), 3),
     ],
 )
-@pytest.mark.parametrize("stride", [1, 2])
-@pytest.mark.parametrize("padding", [0, 1])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("stride", STRIDES)
+@pytest.mark.parametrize("padding", PADDINGS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_conv_transpose1d_groups(
     shape, kernel, groups, stride, padding, dtype, monkeypatch
 ):
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)

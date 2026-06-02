@@ -198,6 +198,48 @@ void general_mm_tensor(
   backend::StreamType stream = backend::getCurrentStream();
   backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
+#if defined(FLAGGEMS_USE_GCU)
+  const int BLOCK_M = 32;
+  const int BLOCK_N = 32;
+  const int BLOCK_K = 32;
+  const int num_stages = 1;
+  const int num_warps = 1;
+  const int GROUP_M = 8;
+  const int SPLIT_K = 1;
+  bool EVEN_K = (K % BLOCK_K) == 0;
+
+  const TritonJITFunction &f =
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "runtime" / "backend" /
+                                                  "_enflame" / "gcu400" / "ops" / "mm.py"),
+                                      "mm_kernel");
+
+  unsigned int grid_x = cdiv(M, BLOCK_M) * cdiv(N, BLOCK_N);
+  f(/* stream = */ raw_stream,
+    /* grid_x = */ grid_x,
+    /* grid_y = */ SPLIT_K,
+    /* grid_z = */ 1,
+    num_warps,
+    num_stages,
+    a,
+    b,
+    c,
+    M,
+    N,
+    K,
+    a.stride(0),
+    a.stride(1),
+    b.stride(0),
+    b.stride(1),
+    c.stride(0),
+    c.stride(1),
+    /* dot_out_dtype = */ "tl.float32",
+    /* BLOCK_M = */ BLOCK_M,
+    /* BLOCK_N = */ BLOCK_N,
+    /* BLOCK_K = */ BLOCK_K,
+    /* GROUP_M = */ GROUP_M,
+    /* SPLIT_K = */ SPLIT_K,
+    /* EVEN_K = */ EVEN_K);
+#else
   // CUDA/other path: use ops/mm.py with mm_kernel_general
   const int BLOCK_M = 64;
   const int BLOCK_N = 128;
@@ -232,7 +274,9 @@ void general_mm_tensor(
     /* BLOCK_M = */ BLOCK_M,
     /* BLOCK_N = */ BLOCK_N,
     /* BLOCK_K = */ BLOCK_K,
-    /* GROUP_M = */ GROUP_M);
+    /* GROUP_M = */ GROUP_M,
+    /* IS_FP64 = */ a.dtype() == at::kDouble);
+#endif
   return;
 }
 

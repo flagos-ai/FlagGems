@@ -165,6 +165,37 @@ def bmm_fma(A, B):
     return out
 
 
+def bmm_sqmma_descriptor_pre_hook(nargs):
+    nargs["a_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_K"]]
+    nargs["b_desc"].block_shape = [nargs["BLOCK_SIZE_K"], nargs["BLOCK_SIZE_N"]]
+    nargs["c_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_N"]]
+
+
+@libentry()
+@libtuner(
+    configs=runtime.ops_get_configs(
+        "bmm_sqmma",
+        pre_hook=bmm_sqmma_descriptor_pre_hook,
+        yaml_path=EXPAND_CONFIG_FILENAME,
+    )
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else [
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
+            num_stages=1,
+            num_warps=4,
+            pre_hook=bmm_sqmma_descriptor_pre_hook,
+        )
+    ],
+    key=["M", "N", "K"],
+    strategy=runtime.get_expand_config("bmm_sqmma", yaml_path=EXPAND_CONFIG_FILENAME)[
+        "strategy"
+    ][:3]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32", "align32"],
+    warmup=5,
+    rep=5,
+)
 @triton.jit
 def bmm_sqmma_kernel(
     a_desc,
@@ -198,33 +229,15 @@ def bmm_sqmma_kernel(
     tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], accumulator.to(c_desc.dtype))
 
 
-def get_triton_type(elem_type):
-    type_map = {
-        torch.float16: tl.float16,
-        torch.bfloat16: tl.bfloat16,
-        torch.float8_e4m3fn: tl.float8e4nv,
-    }
-    return type_map.get(elem_type, None)
-
-
 def bmm_sqmma(A, B, elem_type, batch, M, N, K):
     device = "musa"
     c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
     C = torch.empty((batch, M, N), dtype=torch.float16, device=device).to(c_type)
-    BLOCK_SIZE_M = 128
-    BLOCK_SIZE_N = 128
-    BLOCK_SIZE_K = 64
-    desc_a = TensorDescriptor.from_tensor(
-        A.reshape(batch * M, K), [BLOCK_SIZE_M, BLOCK_SIZE_K]
-    )
-    desc_b = TensorDescriptor.from_tensor(
-        B.reshape(batch * K, N), [BLOCK_SIZE_K, BLOCK_SIZE_N]
-    )
-    desc_c = TensorDescriptor.from_tensor(
-        C.reshape(batch * M, N), [BLOCK_SIZE_M, BLOCK_SIZE_N]
-    )
+    desc_a = TensorDescriptor.from_tensor(A.reshape(batch * M, K), [1, 1])
+    desc_b = TensorDescriptor.from_tensor(B.reshape(batch * K, N), [1, 1])
+    desc_c = TensorDescriptor.from_tensor(C.reshape(batch * M, N), [1, 1])
     grid = lambda META: (
-        triton.cdiv(M, BLOCK_SIZE_M) * triton.cdiv(N, BLOCK_SIZE_N),
+        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
         batch,
         1,
     )
@@ -236,33 +249,15 @@ def bmm_sqmma(A, B, elem_type, batch, M, N, K):
         M,
         N,
         K,
-        BLOCK_SIZE_M,
-        BLOCK_SIZE_N,
-        BLOCK_SIZE_K,
-        num_warps=4,
-        num_stages=1,
     )
     return C
 
 
 def bmm(a, b):
     a_dtype = a.dtype
-    b_dtype = b.dtype
     batch, M, K = a.shape
     _, _, N = b.shape
-    need_sqmma = a_dtype != torch.float32 and b_dtype != torch.float32
-    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
-    if need_sqmma:
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+    if is_sqmma_compatible(a, b, N, K) and M >= 128:
+        return bmm_sqmma(a, b, a_dtype, batch, M, N, K)
     else:
-        os.environ.pop("MUSA_ENABLE_SQMMA", None)
-    try:
-        if is_sqmma_compatible(a, b, N, K) and M >= 128:
-            return bmm_sqmma(a, b, a_dtype, batch, M, N, K)
-        else:
-            return bmm_fma(a, b)
-    finally:
-        if prev_sqmma is None:
-            os.environ.pop("MUSA_ENABLE_SQMMA", None)
-        else:
-            os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+        return bmm_fma(a, b)

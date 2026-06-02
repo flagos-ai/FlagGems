@@ -12,6 +12,9 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
 
+# Check if float8_e8m0fnu dtype is available in current PyTorch version
+_FLOAT8_E8M0FNU = getattr(torch, "float8_e8m0fnu", None)
+
 
 @pointwise_dynamic(
     is_tensor=[
@@ -86,6 +89,21 @@ def to_copy(
 
     # Triton does not support complex dtypes; fall back to PyTorch.
     if x.dtype.is_complex or target_dtype.is_complex:
+        return torch.ops.aten._to_copy.default.redispatch(
+            _FALLBACK_KEYSET,
+            x,
+            dtype=target_dtype,
+            layout=layout,
+            device=target_device,
+            pin_memory=pin_memory,
+            non_blocking=non_blocking,
+            memory_format=target_memory_format,
+        )
+
+    # Triton does not support float8_e8m0fnu dtypes; fall back to PyTorch.
+    if _FLOAT8_E8M0FNU is not None and (
+        x.dtype == torch.float8_e8m0fnu or target_dtype == torch.float8_e8m0fnu
+    ):
         return torch.ops.aten._to_copy.default.redispatch(
             _FALLBACK_KEYSET,
             x,
