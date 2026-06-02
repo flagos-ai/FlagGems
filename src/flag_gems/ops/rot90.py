@@ -10,16 +10,16 @@ from flag_gems.runtime import torch_device_fn
 logger = logging.getLogger(__name__)
 
 
-# Autotuning configurations
-@triton.autotune(
-    configs=[
+def _rot90_autotune_configs():
+    return [
         triton.Config({"BLOCK_SIZE": 512}, num_stages=1, num_warps=2),
         triton.Config({"BLOCK_SIZE": 1024}, num_stages=1, num_warps=4),
         triton.Config({"BLOCK_SIZE": 2048}, num_stages=1, num_warps=8),
         triton.Config({"BLOCK_SIZE": 4096}, num_stages=1, num_warps=16),
-    ],
-    key=["n_elements"],
-)
+    ]
+
+
+@triton.autotune(configs=_rot90_autotune_configs(), key=["n_elements"])
 @triton.jit
 def rot90_kernel_2d(
     in_ptr,
