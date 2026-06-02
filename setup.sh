@@ -10,6 +10,7 @@ SUPPORTED_VENDORS=(
   "mthreads"
   "nvidia"
   "spacemit"
+  "sunrise"
   "thead"
   "tsingmicro"
 )
@@ -24,7 +25,9 @@ declare -A PYTHON_SUPPORTED=(
   ["metax"]="3.12"
   ["mthreads"]="3.10"
   ["nvidia"]="3.12"
-  ["spacemit"]="3.14"
+  ["spacemit"]="3.12"
+  ["sunrise"]="3.10"
+  ["thead"]="3.12"
   ["tsingmicro"]="3.10"
 )
 
@@ -83,7 +86,7 @@ fi
 # Validate uv install
 printf "Checking uv ... "
 uv_version=$(uv --version 2>/dev/null | cut -d ' ' -f 2)
-if [ "$?" == 0 ];  then
+if [ -n "$uv_version" ];  then
   printf "uv ${uv_version} ${GREEN}[OK]${NC}\n"
 else
   printf "${RED}NOT FOUND${NC}\n"

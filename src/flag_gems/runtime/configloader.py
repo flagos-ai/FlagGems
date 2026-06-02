@@ -1,4 +1,6 @@
 import copy
+import inspect
+import os
 import warnings
 
 import triton
@@ -75,7 +77,10 @@ class ConfigLoader(object):
             "num_stages": current_config["num_stages"],
             "num_ctas": current_config["num_ctas"],
         }
-        if self.device.vendor_name == "hygon":
+        if (
+            self.device.vendor_name == "hygon"
+            and "num_ldmatrixes" in inspect.signature(triton.Config).parameters
+        ):
             kwargs["num_ldmatrixes"] = current_config["num_ldmatrixes"]
         return triton.Config(single_config["META"], **kwargs)
 
@@ -342,25 +347,73 @@ class ConfigLoader(object):
             "expand_yaml_path": expand_yaml_path,
         }
 
+    def _iter_expand_config_candidates(self, op_name):
+        vendor_name = self.device.vendor_name
+        contexts = []
+        try:
+            arch_event = backend.BackendArchEvent()
+            current_arch_path = getattr(arch_event, "current_arch_path", None)
+            arch_name = getattr(arch_event, "arch", None)
+            if arch_event.has_arch and current_arch_path:
+                contexts.append((current_arch_path, arch_name))
+        except Exception:
+            pass
+
+        backend_dir = os.path.join(os.path.dirname(__file__), "backend")
+        contexts.append((os.path.join(backend_dir, f"_{vendor_name}"), vendor_name))
+
+        seen = set()
+        for base_dir, backend_name in contexts:
+            filenames = []
+            if op_name:
+                filenames.extend(
+                    (
+                        f"{op_name}_{backend_name}_expand.yaml",
+                        f"{op_name}_{vendor_name}_expand.yaml",
+                        f"{op_name}_expand.yaml",
+                    )
+                )
+            filenames.extend(
+                (
+                    f"general_ops_{backend_name}_configs.yaml",
+                    f"general_ops_{vendor_name}_configs.yaml",
+                    "general_ops_configs.yaml",
+                )
+            )
+
+            for filename in filenames:
+                path = os.path.normpath(os.path.join(base_dir, filename))
+                if path in seen:
+                    continue
+                seen.add(path)
+                yield path
+
+    def _get_expand_config_path(self, op_name):
+        for path in self._iter_expand_config_candidates(op_name):
+            if os.path.exists(path):
+                return path
+        return None
+
     def _build_expand_registry(self):
-        DEFAULT_EXPAND_CONFIG_PATH = common.DEFAULT_EXPAND_CONFIG_PATH
         return {
             "addmm": self._build_single_expand_spec(
-                "addmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
+                "addmm", expand_yaml_path=self._get_expand_config_path("addmm")
             ),
             "addmm_sqmma": self._build_single_expand_spec("addmm_sqmma"),
             "baddbmm": self._build_single_expand_spec(
-                "baddbmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
+                "baddbmm", expand_yaml_path=self._get_expand_config_path("baddbmm")
             ),
             "bmm": self._build_single_expand_spec(
-                "bmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
+                "bmm", expand_yaml_path=self._get_expand_config_path("bmm")
             ),
             "bmm_sqmma": self._build_single_expand_spec("bmm_sqmma"),
             "gemv": self._build_single_expand_spec("gemv"),
-            "mm": self._build_single_expand_spec("mm"),
+            "mm": self._build_single_expand_spec(
+                "mm", expand_yaml_path=self._get_expand_config_path("mm")
+            ),
             "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
             "mv": self._build_single_expand_spec(
-                "mv", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
+                "mv", expand_yaml_path=self._get_expand_config_path("mv")
             ),
             "w8a8_block_fp8_general": self._build_single_expand_spec(
                 "w8a8_block_fp8_general"
@@ -493,8 +546,10 @@ class ConfigLoader(object):
 
         key = op_spec.get("key", [])
         default_strategy = op_spec.get("default_strategy")
-        expand_yaml_path = op_spec.get("expand_yaml_path") or yaml_path
+        expand_yaml_path = yaml_path or op_spec.get("expand_yaml_path")
         yaml_op_name = op_spec.get("yaml_op_name", op_name)
+        if not expand_yaml_path:
+            return -1
 
         try:
             expand_configs = backend.get_expand_config(

@@ -4,6 +4,8 @@ import torch
 import flag_gems
 from flag_gems.utils.device_info import get_device_capability
 
+from .conftest import QUICK_MODE
+
 
 def is_support_fp8e4nv():
     major, minor = get_device_capability()
@@ -249,6 +251,7 @@ def fused_impl(q, kv, k_cache, slot_mapping, positions, cos_sin_cache, eps, bs):
 # ── Test 1: Q path numerical parity ──────────────────────────────────────────
 
 
+@pytest.mark.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
 @pytest.mark.skipif(
     not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
 )
@@ -308,6 +311,7 @@ def _ue8m0_per_block_scales(kv_roped_nope_f32: torch.Tensor, qblock: int):
     return torch.pow(2.0, exponent)  # [n_tok, n_blocks]
 
 
+@pytest.mark.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
 @pytest.mark.skipif(
     not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
 )
@@ -355,6 +359,7 @@ def test_kv_path_matches_reference(num_tokens: int, block_size: int):
 # ── Test 2b: DP padding (slot_mapping shorter than q/kv) ─────────────────────
 
 
+@pytest.mark.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
 @pytest.mark.skipif(
     not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
 )
@@ -406,11 +411,13 @@ def test_kv_path_with_dp_padding(num_tokens: int, pad: int, block_size: int):
 # ── Test 3: combined single-call Q + KV parity ───────────────────────────────
 
 
+@pytest.mark.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
 @pytest.mark.skipif(
     not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
 )
 @pytest.mark.parametrize(
-    "num_tokens", [1, 4, 17, 64, 8192, 32768, 65536, 98304, 131072]
+    "num_tokens",
+    [1, 4, 17, 64] if QUICK_MODE else [1, 4, 17, 64, 8192, 32768, 65536, 98304, 131072],
 )
 @pytest.mark.parametrize("n_heads", [64, 128])
 @pytest.mark.parametrize("block_size", [16, 64])

@@ -1,13 +1,12 @@
 #!/bin/bash
 
-set -e
-
 PR_ID=$1
 
 # Leave this for debugging's purpose
 echo "PR_ID=${PR_ID}"
 
 COLLECT_COVERAGE=""
+FAIL_FAST=false
 
 if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   # Replace "__ALL__" with all tests
@@ -20,6 +19,7 @@ if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   COLLECT_COVERAGE="yes"
 else
   # for per-PR test, fail early
+  FAIL_FAST=true
   EXTRA_OPTS="-x"
   SUFFIX="-${GITHUB_SHA::7}"
 fi
@@ -82,23 +82,32 @@ fi
 # Clear existing coverage data if any
 coverage erase
 
-# TODO(Qiming): Check if utils test should use a different data file
+FAILURES=()
 for item in "${TEST_CASES[@]}"; do
   echo "Running unit tests for ${item}"
-  coverage run -m pytest -s ${EXTRA_OPTS} ${item}
+  if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item}; then
+    if $FAIL_FAST; then exit 1; fi
+    FAILURES+=("${item}")
+  fi
 done
 
 # Run quick-cpu test if necessary
 for item in "${TEST_CASES_CPU[@]}"; do
   echo "Running quick-cpu mode unit tests for ${item}"
-  coverage run -m pytest -s ${EXTRA_OPTS} ${item}  --ref=cpu --quick
+  if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item} --ref=cpu --quick; then
+    if $FAIL_FAST; then exit 1; fi
+    FAILURES+=("${item} (quick-cpu)")
+  fi
 done
 
 # Run benchmark test if necessary
 for item in "${PERF_TEST_CASES[@]}"; do
   echo "Running benchmark tests for ${item}"
   echo "pytest -s ${item} --level core --record log"
-  pytest -s ${item} --level core --record log
+  if ! pytest -s ${item} --level core --record log; then
+    if $FAIL_FAST; then exit 1; fi
+    FAILURES+=("${item} (benchmark)")
+  fi
 done
 
 # Process coverage data only when full-range testing
@@ -111,4 +120,14 @@ if [ -n "$COLLECT_COVERAGE" ]; then
   mv htmlcov coverage/
   echo "${PR_ID}${SUFFIX::7}" > coverage/COVERAGE_ID
   mv ${PR_ID}-summary.md coverage/ut-summary.md
+fi
+
+# Report failures
+if [[ ${#FAILURES[@]} -gt 0 ]]; then
+  echo ""
+  echo "=== FAILED TESTS (${#FAILURES[@]}) ==="
+  for f in "${FAILURES[@]}"; do
+    echo "  - ${f}"
+  done
+  exit 1
 fi
