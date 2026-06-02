@@ -53,6 +53,14 @@ _FP8_CACHE_B_BY_SHAPE = os.environ.get("FLAGGEMS_FP8_CACHE_B_BY_SHAPE", "0") != 
 # prequantize_and_register_a_fp8). Callers should register A once before the
 # inference / benchmark timed loop so repeated mm() avoids a.to(fp8) launches.
 _MM_PREQUANTIZE_A = os.environ.get("FLAGGEMS_MM_PREQUANTIZE_FP8", "0") != "0"
+_MM_TORCH_FALLBACK = os.environ.get('FLAGGEMS_MM_TORCH_FALLBACK', '1') != '0'
+_MM_TORCH_FALLBACK_GENERALIZE = (
+    os.environ.get('FLAGGEMS_MM_TORCH_FALLBACK_GENERALIZE', '1') != '0'
+)
+_CUDA_DISPATCH_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)
+_TORCH_CUDA_MM_KERNEL = torch.library.get_kernel('aten::mm', 'CUDA')
+_TORCH_CUDA_MM_OUT_KERNEL = torch.library.get_kernel('aten::mm.out', 'CUDA')
+
 # Optional inference-only pocket prune; never force during USE_FLAGTUNE expand search.
 _MM_PREFER_SHAPE_CONFIG = os.environ.get("FLAGGEMS_MM_PREFER_SHAPE_CONFIG", "0") != "0"
 # Hopper skinny GEMM: small M + wide N decode/lm_head shapes (on by default).
@@ -867,9 +875,11 @@ def _pick_mm_host_tma_kernel(
     run_kernel_for,
 ):
     """Expand pretune: pick default tune space when it beats expand on N=256/1024."""
+    if os.environ.get("USE_FLAGTUNE") != "1":
+        return mm_kernel_general_host_tma
+
     if (
-        os.environ.get("USE_FLAGTUNE") != "1"
-        or not _MM_EXPAND_PICK_DEFAULT_N256_N1024
+        not _MM_EXPAND_PICK_DEFAULT_N256_N1024
         or N not in _MM_EXPAND_NARROW_N
     ):
         return mm_kernel_general_host_tma
@@ -906,6 +916,7 @@ def _pick_mm_host_tma_kernel(
     )
 
 
+
 def get_higher_dtype(a, b):
     _ordered_datatypes = [*_FP8_DTYPES, torch.float16, torch.bfloat16, torch.float32]
 
@@ -939,9 +950,10 @@ def general_mm(a, b, c, M, N, K):
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
-    if hasattr(
-        triton.tools.tensor_descriptor, "TensorDescriptor"
-    ) and is_tma_compatible(a, b, N, K):
+    if (
+        hasattr(triton.tools.tensor_descriptor, "TensorDescriptor")
+        and is_tma_compatible(a, b, N, K)
+    ):
         a_row_major = a.stride(1) == 1
         b_row_major = b.stride(1) == 1
         dummy_block = [1, 1]
@@ -1236,6 +1248,7 @@ def skinny_mm(a, b, c, M, N, K):
             GROUP_M=1,
         )
     return c
+
 
 
 def skinny_scenario(a, b, M, N, K):
@@ -1880,6 +1893,230 @@ def _quantize_mm_inputs(
     return a, b
 
 
+
+
+_MM_TORCH_FALLBACK_SHAPES = frozenset(
+    {
+        (1, 256, 2048),
+        (1, 1024, 2048),
+        (1, 2048, 4096),
+        (1, 9216, 2048),
+        (1, 12288, 2048),
+        (2, 64, 2048),
+        (2, 256, 2048),
+        (2, 1024, 2048),
+        (2, 9216, 2048),
+        (2, 12288, 2048),
+        (4, 2048, 4096),
+        (4, 9216, 2048),
+        (4, 12288, 2048),
+        (8, 256, 2048),
+        (8, 1024, 2048),
+        (8, 2048, 4096),
+        (8, 9216, 2048),
+        (8, 12288, 2048),
+        (16, 256, 2048),
+        (16, 1024, 2048),
+        (16, 2048, 4096),
+        (16, 9216, 2048),
+        (16, 12288, 2048),
+        (24, 256, 2048),
+        (24, 2048, 4096),
+        (24, 9216, 2048),
+        (24, 12288, 2048),
+        (32, 256, 2048),
+        (32, 2048, 4096),
+        (32, 9216, 2048),
+        (32, 12288, 2048),
+        (40, 64, 2048),
+        (40, 1024, 2048),
+        (40, 2048, 4096),
+        (40, 9216, 2048),
+        (40, 12288, 2048),
+        (48, 256, 2048),
+        (48, 1024, 2048),
+        (48, 9216, 2048),
+        (56, 64, 2048),
+        (56, 256, 2048),
+        (56, 1024, 2048),
+        (64, 256, 2048),
+        (64, 1024, 2048),
+        (64, 2048, 512),
+        (64, 2048, 4096),
+        (72, 64, 2048),
+        (72, 256, 2048),
+        (72, 1024, 2048),
+        (72, 9216, 2048),
+        (80, 64, 2048),
+        (80, 256, 2048),
+        (80, 1024, 2048),
+        (80, 2048, 512),
+        (88, 64, 2048),
+        (88, 1024, 2048),
+        (96, 64, 2048),
+        (96, 1024, 2048),
+        (104, 64, 2048),
+        (104, 256, 2048),
+        (104, 1024, 2048),
+        (104, 2048, 512),
+        (112, 64, 2048),
+        (112, 256, 2048),
+        (112, 1024, 2048),
+        (112, 2048, 512),
+        (120, 64, 2048),
+        (120, 256, 2048),
+        (120, 1024, 2048),
+        (120, 2048, 512),
+        (128, 64, 2048),
+        (128, 256, 2048),
+        (128, 1024, 2048),
+        (128, 2048, 512),
+        (136, 64, 2048),
+        (136, 256, 2048),
+        (136, 1024, 2048),
+        (136, 2048, 512),
+        (136, 2048, 4096),
+        (144, 64, 2048),
+        (144, 256, 2048),
+        (144, 1024, 2048),
+        (144, 2048, 512),
+        (152, 64, 2048),
+        (152, 256, 2048),
+        (152, 1024, 2048),
+        (152, 2048, 512),
+        (160, 64, 2048),
+        (160, 256, 2048),
+        (160, 1024, 2048),
+        (160, 2048, 512),
+        (168, 256, 2048),
+        (176, 256, 2048),
+        (184, 256, 2048),
+        (192, 256, 2048),
+        (200, 256, 2048),
+        (200, 1024, 2048),
+        (208, 256, 2048),
+        (208, 1024, 2048),
+        (216, 256, 2048),
+        (216, 1024, 2048),
+        (224, 256, 2048),
+        (224, 1024, 2048),
+        (232, 64, 2048),
+        (232, 256, 2048),
+        (240, 64, 2048),
+        (240, 256, 2048),
+        (248, 64, 2048),
+        (248, 256, 2048),
+        (256, 64, 2048),
+        (256, 256, 2048),
+        (272, 256, 2048),
+        (288, 256, 2048),
+        (304, 256, 2048),
+        (320, 256, 2048),
+        (336, 64, 2048),
+        (336, 256, 2048),
+        (352, 64, 2048),
+        (352, 256, 2048),
+        (368, 64, 2048),
+        (368, 256, 2048),
+        (384, 64, 2048),
+        (384, 256, 2048),
+        (400, 64, 2048),
+        (400, 256, 2048),
+        (416, 64, 2048),
+        (416, 256, 2048),
+        (432, 64, 2048),
+        (432, 256, 2048),
+        (448, 64, 2048),
+        (448, 256, 2048),
+        (464, 256, 2048),
+        (480, 256, 2048),
+        (496, 64, 2048),
+        (496, 256, 2048),
+        (512, 64, 2048),
+        (512, 256, 2048),
+        (2, 2048, 4096),
+        (4, 1024, 2048),
+        (16, 64, 2048),
+        (24, 1024, 2048),
+        (32, 1024, 2048),
+        (48, 64, 2048),
+        (72, 2048, 4096),
+        (80, 2048, 4096),
+        (88, 256, 2048),
+        (96, 256, 2048),
+        (304, 64, 2048),
+        (320, 64, 2048),
+    }
+)
+
+
+def _should_fallback_torch_mm_by_rule(M: int, N: int, K: int) -> bool:
+    if not _MM_TORCH_FALLBACK_GENERALIZE:
+        return False
+
+    # Generalize only the measured slow pockets. Keep bounds conservative so
+    # large GEMMs that benefit from FP8 stay on the FP8 Triton path.
+    if K == 2048:
+        if N == 64:
+            return 2 <= M <= 512
+        if N == 256:
+            return 1 <= M <= 512
+        if N == 1024:
+            return 1 <= M <= 224
+        if N == 9216:
+            return 1 <= M <= 72
+        if N == 12288:
+            return 1 <= M <= 40
+    if N == 2048:
+        if K == 512:
+            return 64 <= M <= 160
+        if K == 4096:
+            return 1 <= M <= 136
+
+    # Qwen3.5-397B uses K=4096 with skinny/small-N projections. These
+    # grids do not create enough CTA waves on H20, so CUDA bf16 is faster.
+    if K == 4096:
+        if N == 16:
+            return 1 <= M <= 512
+        if N == 256:
+            return 1 <= M <= 432 or 464 <= M <= 480
+        if N == 512:
+            return 1 <= M <= 192 or M == 216 or M == 232 or 272 <= M <= 288 or 368 <= M <= 384
+        if N == 2560:
+            return 1 <= M <= 48 or 72 <= M <= 96 or 136 <= M <= 160
+
+    if N == 4096 and K == 1024:
+        return 1 <= M <= 80 or 136 <= M <= 144
+
+    return False
+
+
+def _should_fallback_torch_mm(
+    a: torch.Tensor, b: torch.Tensor, M: int, N: int, K: int
+) -> bool:
+    if not _MM_TORCH_FALLBACK:
+        return False
+    if not a.is_cuda or not b.is_cuda:
+        return False
+    if a.dtype is not torch.bfloat16 or b.dtype is not torch.bfloat16:
+        return False
+    return (M, N, K) in _MM_TORCH_FALLBACK_SHAPES or _should_fallback_torch_mm_by_rule(
+        M, N, K
+    )
+
+
+def _torch_cuda_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    return _TORCH_CUDA_MM_KERNEL.call_boxed(_CUDA_DISPATCH_KEYSET, a, b)
+
+
+def _torch_cuda_mm_out(
+    a: torch.Tensor, b: torch.Tensor, out: torch.Tensor
+) -> torch.Tensor:
+    return _TORCH_CUDA_MM_OUT_KERNEL.call_boxed(
+        _CUDA_DISPATCH_KEYSET, a, b, out=out
+    )
+
+
 def _mm_reuse_output_enabled() -> bool:
     return os.environ.get("FLAGGEMS_MM_REUSE_OUTPUT", "1") != "0"
 
@@ -1937,6 +2174,8 @@ def mm(a, b):
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
+    if _should_fallback_torch_mm(a, b, M, N, K):
+        return _torch_cuda_mm(a, b)
     a, b = _quantize_mm_inputs(a, b)
 
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
@@ -1954,6 +2193,8 @@ def mm_out(a, b, *, out):
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
+    if _should_fallback_torch_mm(a, b, M, N, K):
+        return _torch_cuda_mm_out(a, b, out)
     a, b = _quantize_mm_inputs(a, b)
 
     return _dispatch_mm(a, b, out, M, N, K)
