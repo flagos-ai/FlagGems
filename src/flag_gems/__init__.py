@@ -18,7 +18,7 @@ from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
 __version__ = "5.0.2"
-device_name = runtime.device.name
+device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 backend_info = runtime.device
 aten_lib = torch.library.Library("aten", "IMPL")
