@@ -8,8 +8,11 @@ Shapes match DeepSeek V4 production config:
     - num_rows=64: larger prefill batch
     - num_rows=2048: max prefill sequence length
 
-The baseline uses vLLM's persistent_topk CUDA kernel as the reference implementation.
+The baseline uses vLLM's persistent_topk CUDA kernel when available,
+falling back to torch.topk otherwise.
 """
+
+import os
 
 import pytest
 import torch
@@ -27,22 +30,35 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-_VLLM_SO = "/data/yzw/vllm/vllm/_C.abi3.so"
-_loaded = False
+_VLLM_SO = os.environ.get("VLLM_SO_PATH", "/data/yzw/vllm/vllm/_C.abi3.so")
+_vllm_available = False
 
 
-def _ensure_vllm_loaded():
-    global _loaded
-    if not _loaded:
-        torch.ops.load_library(_VLLM_SO)
-        _loaded = True
+def _try_load_vllm():
+    global _vllm_available
+    if _vllm_available:
+        return True
+    try:
+        if os.path.exists(_VLLM_SO):
+            torch.ops.load_library(_VLLM_SO)
+            _vllm_available = True
+    except Exception:
+        pass
+    return _vllm_available
+
+
+def _torch_topk_ref(
+    logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
+):
+    """torch.topk baseline (fallback when vLLM is not available)."""
+    _, top_idx = torch.topk(logits, top_k, dim=1, largest=True, sorted=False)
+    indices.copy_(top_idx.to(torch.int32))
 
 
 def _vllm_top_k_ref(
     logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
 ):
     """vLLM persistent_topk CUDA kernel reference."""
-    _ensure_vllm_loaded()
     torch.ops._C.top_k_per_row_prefill(
         logits,
         row_starts,
@@ -55,15 +71,16 @@ def _vllm_top_k_ref(
     )
 
 
+def _get_ref_op():
+    if _try_load_vllm():
+        return _vllm_top_k_ref
+    return _torch_topk_ref
+
+
 class TopKPerRowPrefillBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "num_rows, vocab_size, top_k"
 
     def set_shapes(self, shape_file_path=None):
-        # DeepSeek V4 production shapes:
-        # - (1, 129280, 1024): decode path, single token, latency-critical
-        # - (32, 129280, 1024): typical prefill micro-batch
-        # - (64, 129280, 1024): larger prefill batch
-        # - (2048, 129280, 1024): max sequence length prefill
         self.shapes = [
             (1, 129280, 1024),
             (32, 129280, 1024),
@@ -76,15 +93,13 @@ class TopKPerRowPrefillBenchmark(base.Benchmark):
             logits = torch.randn(
                 num_rows, vocab_size, device=device, dtype=torch.float32
             )
-            # Full vocab range: row_starts=0, row_ends=vocab_size (common case)
             row_starts = torch.zeros(num_rows, dtype=torch.int32, device=device)
             row_ends = torch.full(
                 (num_rows,), vocab_size, dtype=torch.int32, device=device
             )
-            # Pre-allocated output buffer (matches vLLM calling convention)
             indices = torch.empty((num_rows, top_k), dtype=torch.int32, device=device)
-            stride0 = logits.stride(0)  # = vocab_size for contiguous
-            stride1 = logits.stride(1)  # = 1 for contiguous
+            stride0 = logits.stride(0)
+            stride1 = logits.stride(1)
 
             yield logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
 
@@ -93,7 +108,7 @@ class TopKPerRowPrefillBenchmark(base.Benchmark):
 def test_top_k_per_row_prefill():
     bench = TopKPerRowPrefillBenchmark(
         op_name="top_k_per_row_prefill",
-        torch_op=_vllm_top_k_ref,
+        torch_op=_get_ref_op(),
         gems_op=top_k_per_row_prefill,
         dtypes=[torch.float32],
     )

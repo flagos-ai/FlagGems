@@ -75,7 +75,7 @@ def _sort_chunk_extract_topk(
 
     offs = chunk_start + tl.arange(0, CHUNK_SIZE)
     mask = offs < vocab_size
-    values = tl.load(logits_ptr + row_offset + offs, mask=mask, other=float('-inf'))
+    values = tl.load(logits_ptr + row_offset + offs, mask=mask, other=float("-inf"))
 
     sort_key = _float_to_sortkey(values)
     packed = (sort_key << 32) | offs.to(tl.int64)
@@ -140,9 +140,7 @@ def _merge_4way_topk(
     valid = valid0 | valid1 | valid2 | valid3
 
     combined_val = tl.load(
-        logits_ptr + row_offset + combined_idx,
-        mask=valid,
-        other=float('-inf')
+        logits_ptr + row_offset + combined_idx, mask=valid, other=float("-inf")
     )
 
     sort_key = _float_to_sortkey(combined_val)
@@ -193,9 +191,7 @@ def _merge_2way_topk(
     valid = valid_first | valid_second
 
     combined_val = tl.load(
-        logits_ptr + row_offset + combined_idx,
-        mask=valid,
-        other=float('-inf')
+        logits_ptr + row_offset + combined_idx, mask=valid, other=float("-inf")
     )
 
     sort_key = _float_to_sortkey(combined_val)
@@ -250,7 +246,10 @@ def top_k_per_row_prefill(
     MASK_BS = 8192
     num_mask_blocks = triton.cdiv(vocab_size, MASK_BS)
     _mask_invalid_kernel[(num_rows * num_mask_blocks,)](
-        logits, row_starts, row_ends, stride0,
+        logits,
+        row_starts,
+        row_ends,
+        stride0,
         BLOCK_SIZE=MASK_BS,
         VOCAB_SIZE=vocab_size,
         num_warps=2,
@@ -261,24 +260,21 @@ def top_k_per_row_prefill(
     num_chunks = triton.cdiv(vocab_size, CHUNK_SIZE)  # 32
     K_BLOCK = triton.next_power_of_2(top_k)  # 1024
     MERGE_2WAY = 2 * K_BLOCK  # 2048
-    SORT_4WAY = 4 * K_BLOCK   # 4096
+    SORT_4WAY = 4 * K_BLOCK  # 4096
 
     # Pre-allocate buffers (use fixed buffer_stride = num_chunks * top_k)
     buffer_stride0 = num_chunks * top_k
     buffer_a = torch.empty(
-        (num_rows, num_chunks, top_k),
-        dtype=torch.int32,
-        device=logits.device
+        (num_rows, num_chunks, top_k), dtype=torch.int32, device=logits.device
     )
     buffer_b = torch.empty(
-        (num_rows, num_chunks, top_k),
-        dtype=torch.int32,
-        device=logits.device
+        (num_rows, num_chunks, top_k), dtype=torch.int32, device=logits.device
     )
 
     # Stage 1: Sort each chunk, extract top-k
     _sort_chunk_extract_topk[(num_rows * num_chunks,)](
-        logits, buffer_a,
+        logits,
+        buffer_a,
         stride0=stride0,
         output_stride0=buffer_stride0,
         output_stride1=top_k,
@@ -292,7 +288,9 @@ def top_k_per_row_prefill(
     # Stage 2: 4-way merge (32→8)
     num_groups_4 = num_chunks // 4  # 8
     _merge_4way_topk[(num_rows * num_groups_4,)](
-        buffer_a, logits, buffer_b,
+        buffer_a,
+        logits,
+        buffer_b,
         stride0=stride0,
         in_stride0=buffer_stride0,
         in_stride1=top_k,
@@ -307,7 +305,9 @@ def top_k_per_row_prefill(
     # Stage 3: 4-way merge (8→2)
     num_groups_4b = num_groups_4 // 4  # 2
     _merge_4way_topk[(num_rows * num_groups_4b,)](
-        buffer_b, logits, buffer_a,
+        buffer_b,
+        logits,
+        buffer_a,
         stride0=stride0,
         in_stride0=buffer_stride0,
         in_stride1=top_k,
@@ -321,7 +321,9 @@ def top_k_per_row_prefill(
 
     # Stage 4: 2-way merge (2→1)
     _merge_2way_topk[(num_rows * 1,)](
-        buffer_a, logits, buffer_b,
+        buffer_a,
+        logits,
+        buffer_b,
         stride0=stride0,
         in_stride0=buffer_stride0,
         in_stride1=top_k,
@@ -339,8 +341,12 @@ def top_k_per_row_prefill(
     # Phase 3: Postprocess
     POSTPROC_BLOCK = triton.next_power_of_2(top_k)
     _fused_postprocess_kernel[(num_rows,)](
-        indices, indices, row_starts,
-        num_rows=num_rows, top_k=top_k, src_stride0=top_k,
+        indices,
+        indices,
+        row_starts,
+        num_rows=num_rows,
+        top_k=top_k,
+        src_stride0=top_k,
         BLOCK_SIZE=POSTPROC_BLOCK,
         num_warps=4,
     )
