@@ -6,6 +6,8 @@ from packaging.version import InvalidVersion, Version
 
 from flag_gems.fused import indexer_k_quant_and_cache
 
+from . import accuracy_utils as utils
+
 _TARGET_VLLM_VERSION = Version("0.20.2")
 _NEXT_VLLM_VERSION = Version("0.21.0")
 
@@ -210,4 +212,4 @@ def test_indexer_k_quant_and_cache_matches_reference(
     )
     torch.cuda.synchronize()
 
-    torch.testing.assert_close(gems_cache, reference_cache, rtol=0, atol=0)
+    utils.gems_assert_equal(gems_cache, utils.to_reference(reference_cache))

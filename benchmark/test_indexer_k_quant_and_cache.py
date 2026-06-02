@@ -76,7 +76,7 @@ class IndexerKQuantAndCacheBenchmark(base.Benchmark):
         super().__init__(
             op_name="indexer_k_quant_and_cache",
             torch_op=vllm_op,
-            dtypes=[torch.float16, torch.bfloat16],
+            dtypes=[torch.float16, torch.bfloat16],  # vLLM supports both K dtypes.
         )
         self.set_gems(indexer_k_quant_and_cache)
         self.shape_desc = (
