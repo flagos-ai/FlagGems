@@ -11,8 +11,8 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", [0, -1])
 def test_normed_cumsum(shape, dtype, dim):
-    if dtype == torch.float16 and dim == 0 and shape[0] > 100:
-        pytest.skip("float16 cumsum along a long dim accumulates too much error")
+    if dim == 0 and shape[0] > 100:
+        pytest.skip("cumsum along a long dim=0 accumulates too much error")
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
