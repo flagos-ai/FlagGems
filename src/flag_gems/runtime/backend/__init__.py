@@ -42,6 +42,7 @@ class BackendState:
 # Global singleton instance
 _state = BackendState()
 
+
 class TritonVersionEvent(BackendEventBase):
     _instance = None
     has_version_spec = False
@@ -61,7 +62,7 @@ class TritonVersionEvent(BackendEventBase):
 
     def is_available(self):
         return self.has_version_spec
-    
+
     def get_version_spec_dir(self, path=None):
         dir_name = f"triton_{self.version}"
         backend_path = Path(path or _state.vendor_module.__path__[0])
@@ -72,10 +73,10 @@ class TritonVersionEvent(BackendEventBase):
             for p in backend_path.iterdir()
             if p.is_dir() and p.name not in excluded and not p.name.startswith("_")
         }.get(dir_name, None)
-    
+
     def get_functions_from_module(self, module):
         return inspect.getmembers(module, inspect.isfunction) if module else []
-    
+
     def get_version_spec_module(self):
         module_name = f"triton_{self.version}"
         path_dir = os.path.dirname(self.dir)
@@ -83,7 +84,7 @@ class TritonVersionEvent(BackendEventBase):
         version_module = importlib.import_module(module_name)
         sys.path.remove(str(path_dir))
         return version_module
-    
+
     def get_ops(self):
         return self.get_version_ops()
 
@@ -122,10 +123,10 @@ class BackendArchEvent(BackendEventBase):
             self.arch_module = self.get_arch_module()
             self.autotune_configs = self.get_autotune_configs()
             self.heuristics_configs = self.get_heuristics_configs()
-    
+
     def is_available(self):
         return self.has_arch
-    
+
     def get_functions_from_module(self, module):
         return inspect.getmembers(module, inspect.isfunction) if module else []
 
@@ -186,9 +187,9 @@ class BackendArchEvent(BackendEventBase):
         return current_arch_module
 
     def get_ops(self):
-        '''Provide a unified interface for the upper layer'''
+        """Provide a unified interface for the upper layer"""
         return self.get_arch_ops()
-    
+
     def get_arch_ops(self):
         arch_specialized_ops = []
         sys.path.append(self.current_arch_path)
@@ -209,7 +210,8 @@ class BackendArchEvent(BackendEventBase):
 
         return arch_specialized_ops
 
-class OpSpecRegistrar:
+
+class SpecOpRegistrar:
     def __init__(self, _globals):
         self._globals = _globals
 
@@ -373,9 +375,11 @@ def get_customized_ops(vendor_name=None):
         _state.customized_ops += fused_ops
     return _state.customized_ops
 
+
 def get_ops(vendor_name=None):
-    '''Provide a unified interface for the upper layer'''
+    """Provide a unified interface for the upper layer"""
     return get_customized_ops(vendor_name)
+
 
 def get_unused_ops(vendor_name=None):
     global vendor_module  # noqa: F824

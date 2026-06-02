@@ -1,9 +1,9 @@
 from . import backend, common, error
 from .backend.device import DeviceDetector
-from .configloader import ConfigLoader
+from .configs_loader import TunedConfigLoader
 from .flagtune import flagtune, flagtune_enabled
 
-config_loader = ConfigLoader()
+config_loader = TunedConfigLoader()
 device = DeviceDetector()
 
 """
@@ -39,7 +39,7 @@ def ops_get_configs(op_name, pre_hook=None, yaml_path=None):
 
 
 __all__ = [
-    "ConfigLoader",
+    "TunedConfigLoader",
     "DeviceDetector",
     "backend",
     "common",
