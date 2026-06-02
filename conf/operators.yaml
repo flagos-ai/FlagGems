@@ -5889,6 +5889,32 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: special_modified_bessel_i0
+    description: |
+      Computes the modified Bessel function of the first kind of order 0 (I_0(x)) for each element
+      in the input tensor, designed for special mathematical functions.
+    for:
+      - special_modified_bessel_i0
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: special_modified_bessel_i0_out
+    description: A variant of `special_modified_bessel_i0` that allows the output to be assigned to another tensor.
+    for:
+      - special_modified_bessel_i0.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
