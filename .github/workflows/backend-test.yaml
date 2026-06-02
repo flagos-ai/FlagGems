@@ -5,7 +5,7 @@ on:
   workflow_call:
     inputs:
       vendor:
-        description: 'GEMS_VENDOR value (e.g. iluvatar, ascend, moore)'
+        description: 'GEMS_VENDOR value (e.g. iluvatar, ascend, mthreads)'
         required: true
         type: string
       runner_label:
