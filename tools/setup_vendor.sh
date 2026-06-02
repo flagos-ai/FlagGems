@@ -61,21 +61,21 @@ case $VENDOR in
 
 
   iluvatar)
-    uv pip install -e .
-    uv pip install ".[iluvatar, test]"
-
     uv pip install --index ${FLAGOS_PYPI} \
         "torch==2.7.1+corex.4.4.0" \
         "torchaudio==2.7.1+corex.4.4.0" \
         "torchvision==0.22.1+corex.4.4.0" \
-        "flagtree==0.5.1+iluvatar3.1"
-
-    # Replace flagtree by Triton if requested
-    if [ -n "${USE_TRITON}" ]; then
-      uv pip uninstall flagtree
-      uv pip install --index $FLAGOS_PYPI \
         "triton==3.1.0+corex.4.4.0"
-    fi
+
+    # Replace Triton by FlagTree when FlagTree doesn't coredump
+    # if [ -z "${USE_TRITON}" ]; then
+    #   uv pip uninstall triton
+    #   uv pip install --index $FLAGOS_PYPI \
+    #     "flagtree==0.5.1+iluvatar3.1"
+    # fi
+
+    uv pip install -e .
+    uv pip install ".[test]"
     ;;
 
   kunlunxin)
@@ -136,34 +136,34 @@ case $VENDOR in
 
   mthreads)
     uv pip install -e .
-    uv pip install ".[mthreads,test]"
+    uv pip install ".[test]"
 
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.7.1+musa.4.0.0" \
-        "torch_musa==2.7.1" \
+        "torch==2.9.0" \
+        "torch_musa==2.9.0" \
         "numpy==1.26.4" \
-        "mkl==2024.0.0"
+        "mkl==2024.0.0" \
+        "triton==3.6.0+git89458660"
 
     # Replace flagtree with Triton if requested
-    if [ -n "${USE_TRITON}" ]; then
-      uv pip uninstall flagtree
-      uv pip uninstall triton
-      uv pip install --index $FLAGOS_PYPI \
-        "triton==3.1.0+musa1.4.6"
-    else
-      uv pip uninstall triton
-      uv pip install --index $FLAGOS_PYPI \
-        "flagtree==0.5.1+mthreads3.6"
-    fi
+    # if [ -n "${USE_TRITON}" ]; then
+    #   uv pip uninstall flagtree
+    #   uv pip uninstall triton
+    #   uv pip install --index $FLAGOS_PYPI \
+    #     "triton==3.6.0+git89458660"
+    # else
+    #   uv pip uninstall triton
+    #   uv pip install --index $FLAGOS_PYPI \
+    #     "flagtree==0.5.1+mthreads3.6"
+    # fi
     ;;
 
   nvidia)
     # We need pytorch first for building C++ wrapped operators
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.11.0+cu130" \
-        "torchvision==0.26.0+cu130" \
-        "torchaudio==2.11.0+cu130" \
-        "triton==3.6.0"
+        "torch==2.12.0+cu132" \
+        "torchvision==0.27.0+cu132" \
+        "triton==3.7.0"
 
     # The follow environments are for C++ wrapped operators
     # export CMAKE_PREFIX_PATH=$(python -c 'import torch; print(torch.utils.cmake_prefix_path)')

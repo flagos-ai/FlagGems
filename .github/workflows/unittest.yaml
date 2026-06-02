@@ -217,13 +217,11 @@ jobs:
 
   backend-mthreads:
     needs: preprocess
-    # mthreads runners are gone.
-    if: false
-    # if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
+    if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: mthreads
-      runner_label: moore
+      runner_label: mthreads
       gpu_check_script: tools/gpu_check_mthreads.sh
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
