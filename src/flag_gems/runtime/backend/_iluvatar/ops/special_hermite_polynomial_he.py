@@ -192,7 +192,7 @@ def hermite_polynomial_he(x, n):
     Returns:
         Tensor with the Hermite polynomial values
     """
-    logger.debug("ILUVATAR GEMS SPECIAL_HERMITE_POLYNOMIAL_HE")
+    logger.debug("GEMS_ILUVATAR SPECIAL_HERMITE_POLYNOMIAL_HE")
 
     # Handle different input types
     if isinstance(x, torch.Tensor) and isinstance(n, torch.Tensor):
