@@ -116,5 +116,4 @@ def indexer_k_quant_and_cache(
         quant_block_size,
         IS_FNUZ=_is_fp8_fnuz(fp8_dtype),
         USE_UE8M0=scale_fmt == "ue8m0",
-        num_warps=4,
     )

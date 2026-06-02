@@ -1,4 +1,3 @@
-import math
 import os
 
 import pytest
@@ -11,16 +10,6 @@ from . import base
 
 _TARGET_VLLM_VERSION = Version("0.20.2")
 _NEXT_VLLM_VERSION = Version("0.21.0")
-_SHAPE_KEYS = (
-    "case",
-    "num_tokens",
-    "num_blocks",
-    "block_size",
-    "head_dim",
-    "quant_block_size",
-    "cache_stride",
-    "scale_fmt",
-)
 
 
 def is_fp8e4nv_supported():
@@ -34,72 +23,17 @@ def run_vllm_benchmark(bench):
     original_str = base.BenchmarkResult.__str__
 
     def vllm_str(result):
-        formatted = format_indexer_benchmark_result(result)
-        if formatted is not None:
-            return formatted
-        return original_str(result).replace(
-            "Torch Latency (ms)", "vLLM CUDA Latency (ms)"
-        ).replace("Torch GBPS ", "vLLM CUDA GBPS ")
+        return (
+            original_str(result)
+            .replace("Torch Latency (ms)", "vLLM CUDA Latency (ms)")
+            .replace("Torch GBPS ", "vLLM CUDA GBPS ")
+        )
 
     base.BenchmarkResult.__str__ = vllm_str
     try:
         bench.run()
     finally:
         base.BenchmarkResult.__str__ = original_str
-
-
-def format_indexer_benchmark_result(result):
-    if not result.result:
-        return None
-
-    shape_details = [metric.shape_detail for metric in result.result]
-    if not all(isinstance(shape_detail, dict) for shape_detail in shape_details):
-        return None
-
-    fixed_items = []
-    variable_keys = []
-    for key in _SHAPE_KEYS:
-        values = [shape_detail.get(key) for shape_detail in shape_details]
-        if any(value is None for value in values):
-            continue
-        if all(value == values[0] for value in values):
-            fixed_items.append((key, values[0]))
-        else:
-            variable_keys.append(key)
-
-    fixed_desc = ", ".join(f"{key}={value}" for key, value in fixed_items)
-    title = (
-        f"\nOperator: {result.op_name}  Performance Test "
-        f"(dtype={result.dtype}, mode={result.mode}, level={result.level})\n"
-    )
-    if fixed_desc:
-        title += f"Fixed: {fixed_desc}\n"
-
-    columns = [
-        ("vLLM CUDA Latency (ms)", 24),
-        ("Gems Latency (ms)", 20),
-        ("Gems Speedup", 16),
-    ]
-    columns.extend((key, max(len(key) + 2, 14)) for key in variable_keys)
-    header = "".join(f"{name:>{width}}" for name, width in columns) + "\n"
-    lines = [title, header, "-" * len(header.rstrip()) + "\n"]
-
-    for metric in result.result:
-        latency_base = (
-            f"{metric.latency_base:.6f}" if metric.latency_base is not None else "N/A"
-        )
-        latency = f"{metric.latency:.6f}" if metric.latency is not None else "N/A"
-        speedup = f"{metric.speedup:.3f}" if metric.speedup is not None else "N/A"
-        line = (
-            f"{latency_base:>{columns[0][1]}}"
-            f"{latency:>{columns[1][1]}}"
-            f"{speedup:>{columns[2][1]}}"
-        )
-        for key, width in columns[3:]:
-            line += f"{metric.shape_detail[key]:>{width}}"
-        lines.append(line + "\n")
-
-    return "".join(lines)
 
 
 def load_vllm_cuda_op():
@@ -146,13 +80,13 @@ class IndexerKQuantAndCacheBenchmark(base.Benchmark):
         )
         self.set_gems(indexer_k_quant_and_cache)
         self.shape_desc = (
-            "case, num_tokens, num_blocks, block_size, head_dim, quant_block_size"
+            "num_tokens, num_blocks, block_size, head_dim, quant_block_size"
         )
-        self._shape_detail_queue = []
 
     def set_shapes(self, shape_file_path=None):
         head_dim = 512
         quant_block_size = 128
+        block_size = 16
         token_sweep = (
             1,
             2,
@@ -173,76 +107,30 @@ class IndexerKQuantAndCacheBenchmark(base.Benchmark):
             32768,
             65536,
         )
-
-        block_size = 16
-        packed_shapes = [
+        self.shapes = [
             (
-                "packed",
                 num_tokens,
-                math.ceil(num_tokens / block_size),
+                max(1, (2 * num_tokens + block_size - 1) // block_size),
                 block_size,
                 head_dim,
                 quant_block_size,
             )
             for num_tokens in token_sweep
         ]
-        decode_shapes = [
-            (
-                "decode",
-                num_tokens,
-                num_tokens,
-                block_size,
-                head_dim,
-                quant_block_size,
-            )
-            for num_tokens in (2, 4, 8, 16, 32, 64, 128, 256)
-        ]
-
         block_size = 64
-        block64_shapes = [
+        self.shapes += [
             (
-                "packed",
                 num_tokens,
-                math.ceil(num_tokens / block_size),
+                max(1, (2 * num_tokens + block_size - 1) // block_size),
                 block_size,
                 head_dim,
                 quant_block_size,
             )
             for num_tokens in (8192, 32768, 65536)
         ]
-        block64_decode_shapes = [
-            (
-                "decode",
-                num_tokens,
-                num_tokens,
-                block_size,
-                head_dim,
-                quant_block_size,
-            )
-            for num_tokens in (16, 64, 128, 256)
-        ]
-        self.shapes = (
-            packed_shapes + decode_shapes + block64_shapes + block64_decode_shapes
-        )
-
-    def record_shapes(self, *args, **kwargs):
-        if self._shape_detail_queue:
-            return self._shape_detail_queue.pop(0)
-        return super().record_shapes(*args, **kwargs)
-
-    def make_slot_mapping(self, case, num_tokens, block_size, device):
-        if case == "decode":
-            return torch.arange(
-                num_tokens,
-                dtype=torch.long,
-                device=device,
-            ) * block_size
-        return torch.arange(num_tokens, dtype=torch.long, device=device)
 
     def get_input_iter(self, dtype):
-        self._shape_detail_queue = []
         for (
-            case,
             num_tokens,
             num_blocks,
             block_size,
@@ -255,12 +143,12 @@ class IndexerKQuantAndCacheBenchmark(base.Benchmark):
                 dtype=dtype,
                 device=self.device,
             )
-            slot_mapping = self.make_slot_mapping(
-                case,
-                num_tokens,
-                block_size,
+            slot_mapping = torch.randperm(
+                num_blocks * block_size,
                 device=self.device,
-            )
+            )[
+                :num_tokens
+            ].to(torch.long)
             cache_stride = head_dim + head_dim * 4 // quant_block_size
             kv_cache = torch.empty(
                 num_blocks,
@@ -268,18 +156,6 @@ class IndexerKQuantAndCacheBenchmark(base.Benchmark):
                 cache_stride,
                 dtype=torch.uint8,
                 device=self.device,
-            )
-            self._shape_detail_queue.append(
-                {
-                    "case": case,
-                    "num_tokens": num_tokens,
-                    "num_blocks": num_blocks,
-                    "block_size": block_size,
-                    "head_dim": head_dim,
-                    "quant_block_size": quant_block_size,
-                    "cache_stride": cache_stride,
-                    "scale_fmt": "ue8m0",
-                }
             )
             yield k, kv_cache, slot_mapping, quant_block_size, {"scale_fmt": "ue8m0"}
 
