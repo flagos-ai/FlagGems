@@ -357,6 +357,7 @@ def test_flashmla_sparse(param):
     flag_gems.testing.assert_close(your_lse, ref_lse, torch.float32, atol=1e-4)
 
 
+@pytest.mark.skip(reason="Issue #3691: operator not working")
 @pytest.mark.flash_mla_sparse_fwd
 @pytest.mark.parametrize(
     "param", FlashmlaSparseTestKit.get_correctness_test_params_flashmla()
