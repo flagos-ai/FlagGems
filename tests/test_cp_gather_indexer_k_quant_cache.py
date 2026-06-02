@@ -7,6 +7,8 @@ from packaging.version import InvalidVersion, Version
 
 from flag_gems.fused import cp_gather_indexer_k_quant_cache
 
+from . import accuracy_utils as utils
+
 _TARGET_VLLM_VERSION = Version("0.20.2")
 _NEXT_VLLM_VERSION = Version("0.21.0")
 
@@ -239,13 +241,19 @@ def test_cp_gather_indexer_k_quant_cache_matches_reference(
     )
     torch.cuda.synchronize()
 
-    torch.testing.assert_close(
+    utils.gems_assert_equal(
         gems_k.view(torch.uint8),
-        reference_k.view(torch.uint8),
-        rtol=0,
-        atol=0,
+        utils.to_reference(reference_k.view(torch.uint8)),
     )
-    torch.testing.assert_close(gems_scale, reference_scale, rtol=0, atol=0)
+    utils.gems_assert_equal(gems_scale, utils.to_reference(reference_scale))
     if extra_tokens:
-        assert torch.all(gems_k[valid_tokens:].view(torch.uint8) == sentinel)
-        assert torch.all(gems_scale[valid_tokens:] == sentinel)
+        utils.gems_assert_equal(
+            gems_k[valid_tokens:].view(torch.uint8),
+            utils.to_reference(
+                torch.full_like(gems_k[valid_tokens:].view(torch.uint8), sentinel)
+            ),
+        )
+        utils.gems_assert_equal(
+            gems_scale[valid_tokens:],
+            utils.to_reference(torch.full_like(gems_scale[valid_tokens:], sentinel)),
+        )
