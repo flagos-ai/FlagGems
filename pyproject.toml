@@ -75,7 +75,8 @@ iluvatar = [
     "torch==2.7.1+corex.4.4.0",
     "torchaudio==2.7.1+corex.4.4.0",
     "torchvision==0.22.1+corex.4.4.0",
-    "flagtree==0.5.1+iluvatar3.1"
+    "triton==3.1.0+corex.4.4.0",
+    # "flagtree==0.5.1+iluvatar3.1"
 ]
 
 kunlunxin = [
@@ -102,18 +103,17 @@ metax = [
 ]
 
 mthreads = [
-    "torch==2.7.1+musa.4.0.0",
-    "torch_musa==2.7.1",
-    "flagtree==0.5.1+mthreads3.6",
+    "torch==2.9.0",
+    "torch_musa==2.9.0",
     "numpy==1.26.4",
+    "triton==3.6.0+git89458660",
     "mkl==2024.0.0",
-    # "triton==3.1.0+musa1.4.6",
+    # "flagtree==0.5.1+mthreads3.6",
 ]
 
 nvidia = [
-    "torch==2.11.0+cu130",
-    "torchvision==0.26.0+cu130",
-    "torchaudio==2.11.0+cu130",
+    "torch==2.12.0+cu132",
+    "torchvision==0.27.0+cu132",
     "triton==3.6.0",
     # "flagtree==0.5.1+3.6",
 ]

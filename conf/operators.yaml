@@ -109,6 +109,19 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: add_rms_norm
+    description: |
+      Add two inputs element-wise and apply Root Mean Square Layer Normalization.
+    for:
+      - add_rms_norm
+    labels:
+      - aten
+      - KernelGen
+      - Normalization
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: addcdiv
     description: |
       Performs the element-wise division of `tensor1` by `tensor2`, multiplies the result
@@ -1065,6 +1078,32 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: clamp_max
+    description: |
+      Clamps all elements in `input` to be smaller or equal `max`.
+    for:
+      - clamp_max
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: clamp_max_
+    description: |
+      The in-place version of `clamp_max()`.
+    for:
+      - clamp_max_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: clamp_min
     description: A variant of `clamp()` with `min` set to `min`.
     for:
@@ -3290,6 +3329,7 @@ ops:
       - isneginf
     labels:
       - aten
+      - KernelGen
       - pointwise
     kind:
       - Math
@@ -3301,6 +3341,7 @@ ops:
       - isneginf.out
     labels:
       - aten
+      - KernelGen
       - pointwise
     kind:
       - Math
@@ -5302,6 +5343,28 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: scaled_mm
+    description: |
+      Performs a scaled matrix multiplication. The result of `self @ mat2` is
+      multiplied by `scale_a` and `scale_b`, then an optional bias is added.
+    for:
+      - _scaled_mm
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
+  - id: scaled_mm_out
+    description: A variant of `_scaled_mm` that writes the result into `out`.
+    for:
+      - _scaled_mm.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
   - id: scaled_softmax_backward
     description: |
       The backward pass for a scaled softmax function, commonly used in Scaled Dot-Product Attention (SDPA)
@@ -6852,6 +6915,7 @@ ops:
       - argsort
     labels:
       - skip_precision_check
+      - KernelGen
     kind:
       - Tensor
     stages:
