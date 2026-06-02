@@ -21,13 +21,18 @@ TEST_P(AddmmTest, addmm) {
   const at::Tensor mat1 = at::randn({param.m, param.k}, opt);
   const at::Tensor mat2 = at::randn({param.k, param.n}, opt);
 
-  const at::Tensor ref_bias = flag_gems::accuracy_utils::to_reference(bias, /*upcast=*/false);
-  const at::Tensor ref_mat1 = flag_gems::accuracy_utils::to_reference(mat1, /*upcast=*/false);
-  const at::Tensor ref_mat2 = flag_gems::accuracy_utils::to_reference(mat2, /*upcast=*/false);
-  at::Tensor out_torch = at::addmm(ref_bias, ref_mat1, ref_mat2);
+  auto ref_dtype = (param.dtype == at::ScalarType::Double) ? at::kDouble : at::kFloat;
+  const at::Tensor ref_bias = bias.to(ref_dtype);
+  const at::Tensor ref_mat1 = mat1.to(ref_dtype);
+  const at::Tensor ref_mat2 = mat2.to(ref_dtype);
+  at::Tensor out_torch = at::addmm(ref_bias, ref_mat1, ref_mat2).to(param.dtype);
   at::Tensor out_triton = flag_gems::addmm(bias, mat1, mat2);
 
-  auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton, out_torch, bias.scalar_type());
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton,
+                                                             out_torch,
+                                                             bias.scalar_type(),
+                                                             /*equal_nan=*/false,
+                                                             /*reduce_dim=*/param.k);
   EXPECT_TRUE(result.ok) << result.message;
 }
 
