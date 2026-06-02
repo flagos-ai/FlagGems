@@ -31,7 +31,7 @@ def test_upsample_trilinear3d(align_corners):
 
     bench = UpsampleBenchmark(
         input_fn=upsample_trilinear3d_input_fn,
-        op_name=f"upsample_trilinear3d_align_{align_corners}",
+        op_name="upsample_trilinear3d",
         torch_op=torch.ops.aten.upsample_trilinear3d.default,
         dtypes=consts.FLOAT_DTYPES,
     )
