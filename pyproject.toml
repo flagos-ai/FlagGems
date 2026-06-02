@@ -1,7 +1,8 @@
 [build-system]
-# cmake locks to '>=3.20,<4.0' to sync with FlagTree
-
-requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
+# The cmake and ninja packages are not supposed to be listed in build-system.requires.
+# The version expectation is "cmake>=3.20,<4.0", "ninja==1.13.0".
+# They must be installed separately for `--no-build-isolation` to work.
+requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3"]
 
 build-backend = "scikit_build_core.build"
 
@@ -74,7 +75,8 @@ iluvatar = [
     "torch==2.7.1+corex.4.4.0",
     "torchaudio==2.7.1+corex.4.4.0",
     "torchvision==0.22.1+corex.4.4.0",
-    "flagtree==0.5.1+iluvatar3.1"
+    "triton==3.1.0+corex.4.4.0",
+    # "flagtree==0.5.1+iluvatar3.1"
 ]
 
 kunlunxin = [
@@ -101,25 +103,33 @@ metax = [
 ]
 
 mthreads = [
-    "torch==2.7.1+musa.4.0.0",
-    "torch_musa==2.7.1",
-    "flagtree==0.5.1+mthreads3.6",
-    # "triton==3.1.0+musa1.4.6",
+    "torch==2.9.0",
+    "torch_musa==2.9.0",
     "numpy==1.26.4",
+    "triton==3.6.0+git89458660",
     "mkl==2024.0.0",
+    # "flagtree==0.5.1+mthreads3.6",
 ]
 
 nvidia = [
-    "torch==2.9.0+cu128",
-    "torchvision==0.24.0+cu128",
-    "torchaudio==2.9.0+cu128",
-    "flagtree==0.5.0+3.5",
-    # "triton==3.5",
+    "torch==2.12.0+cu132",
+    "torchvision==0.27.0+cu132",
+    "triton==3.6.0",
+    # "flagtree==0.5.1+3.6",
 ]
 
 spacemit = [
     "torch==2.8.0+spacemit.0",
     "triton==3.6.0+spacemit.a4",
+]
+
+sunrise = [
+    "torch==2.11.0+cpu",
+    "torchaudio==2.11.0+cpu",
+    "torchvision==0.26.0+cpu",
+    "torch-ptpu==0.2.1+gaf2c267.torch2.11",
+    "triton==3.4.0.5+git27a132da",
+    # "flagtree-0.4.0+sunrise3.4"
 ]
 
 tsingmicro = [
@@ -187,6 +197,7 @@ conflicts = [
         { extra = "mthreads" },
         { extra = "nvidia" },
         { extra = "spacemit" },
+        { extra = "sunrise" },
         { extra = "thead" },
         { extra = "tsingmicro" },
     ],
@@ -247,23 +258,16 @@ name = "spacemit-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-spacemit/simple"
 explicit = true
 
+# Source for Sunrise packages
+[[tool.uv.index]]
+name = "sunrise-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-sunrise/simple"
+explicit = true
+
 # Source for TsingMicro packages
 [[tool.uv.index]]
 name = "tsingmicro-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-tsingmicro/simple"
-explicit = true
-
-# TODO(Qiming): double check the following two index URLs
-# Source for Pytorch CU12.8
-[[tool.uv.index]]
-name = "torch-pypi-128"
-url = "https://download.pytorch.org/whl/cu128"
-explicit = true
-
-# Source for Pytorch CU11.8
-[[tool.uv.index]]
-name = "torch-pypi-118"
-url = "https://download.pytorch.org/whl/cu118"
 explicit = true
 
 # Source for common packages

@@ -13,6 +13,8 @@ from flag_gems.utils.shape_utils import (
     restride_dim,
 )
 
+from ..utils.config_utils import MAX_GRID_DIM
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +26,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems import runtime")
     code.writeline("import flag_gems")
-    # code.writeline("from flag_gems.utils import triton_lang_extension as ext")
+    # code.writeline("from flag_gems.utils import triton_lang_extension as tle")
     code.newline()
     code.newline()
     return code
@@ -42,15 +44,16 @@ def generate_scatter_kernel(
 
     code.writeline("def heur_block(args):")
     with code.indent():
-        # TODO: tune the block size
+        code.writeline("if(flag_gems.vendor_name in ['metax', 'iluvatar']):")
+        with code.indent():
+            code.writeline("return 256")
         code.writeline("return 128")
     code.newline()
     code.newline()
 
     code.writeline("def loop_count(args):")
     with code.indent():
-        # TODO: tune the loop Count
-        code.writeline("return 8")
+        code.writeline("return 4")
     code.newline()
     code.newline()
 
@@ -108,82 +111,92 @@ def generate_scatter_kernel(
     # Kernel Code
     with code.indent():
         code.writeline("pid = tl.program_id(0)")
-        # code.writeline("if not INT32_OFFSET:")
-        # with code.indent():
-        #     code.writeline("pid = pid.to(tl.int64)")
-        code.writeline("offsets = pid * LOOP * BLOCK + tl.arange(0, BLOCK)")
-
-        #   1. Calculate inp_offsets and idx_offsets
-        code.writeline("for loop_iter in tl.static_range(LOOP):")
+        code.writeline("num_ctas = tl.num_programs(0)")
+        code.writeline("num_jobs = tl.cdiv(N, BLOCK * LOOP)")
+        code.writeline("for job_id in range(pid, num_jobs, num_ctas):")
         with code.indent():
-            code.writeline("mask = offsets < N")
-            code.writeline("cur_idx = offsets")
-            code.writeline("if INT32_OFFSET:")
+            code.writeline("if not INT32_OFFSET:")
             with code.indent():
-                code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
-                code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
-                code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
-            code.writeline("else:")
+                code.writeline("job_id = job_id.to(tl.int64)")
+            code.writeline("offsets = job_id * LOOP * BLOCK + tl.arange(0, BLOCK)")
+
+            #   1. Calculate inp_offsets and idx_offsets
+            code.writeline("for loop_iter in tl.static_range(LOOP):")
             with code.indent():
-                code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
-                code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
-                code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
-            for i in range(rank)[::-1]:
+                code.writeline("mask = offsets < N")
+                code.writeline("cur_idx = offsets")
                 code.writeline("if INT32_OFFSET:")
                 with code.indent():
-                    code.writeline(f"shape_{i} = shape_{i}.to(tl.int32)")
-                    code.writeline(f"inp_stride_{i} = inp_stride_{i}.to(tl.int32)")
-                    code.writeline(f"index_stride_{i} = index_stride_{i}.to(tl.int32)")
-                    code.writeline(f"src_stride_{i} = src_stride_{i}.to(tl.int32)")
-                code.writeline(f"mod = cur_idx % shape_{i}")
-                code.writeline(f"inp_offsets += mod * inp_stride_{i}")
-                code.writeline(f"idx_offsets += mod * index_stride_{i}")
-                code.writeline(f"src_offsets += mod * src_stride_{i}")
-                if i != 0:
-                    code.writeline(f"cur_idx = cur_idx // shape_{i}")
-
-            #   2. Use offsets to scatter
-            code.writeline(
-                "cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)"
-            )
-            code.writeline(
-                "cur_index = tl.load(index + idx_offsets, mask=mask, other=0)"
-            )
-            code.writeline("if INT32_OFFSET:")
-            with code.indent():
-                code.writeline("cur_index = cur_index.to(tl.int32)")
-                code.writeline("stride_dim = stride_dim.to(tl.int32)")
-
-            code.writeline("dim_offsets = cur_index * stride_dim")
-            code.writeline("inp_offsets += dim_offsets")
-            code.newline()
-            code.writeline("if IS_ADD: ")
-            with code.indent():
-                code.writeline(
-                    "tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
-                )
-            code.writeline("elif IS_MUL: ")
-            with code.indent():
-                code.writeline("stop = tl.where(mask, 0, 1).to(tl.int1)")
-                code.writeline("block_stop = False")
-                code.writeline("while not block_stop:")
+                    code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                    code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                    code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                code.writeline("else:")
                 with code.indent():
-                    code.writeline
-                    code.writeline(
-                        "cur_inp = tl.load(out + inp_offsets, mask=mask, other=0)"
-                    )
-                    code.writeline("res = tl.where(stop, cur_inp, cur_inp * cur_src)")
-                    code.writeline(
-                        "cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res, sem='relaxed')"
-                    )
-                    code.writeline("stop |= cur_inp == cas_res")
-                    code.writeline("block_stop = tl.sum(stop.to(tl.int32)) == BLOCK")
+                    code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
+                    code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
+                    code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
+                for i in range(rank)[::-1]:
+                    code.writeline("if INT32_OFFSET:")
+                    with code.indent():
+                        code.writeline(f"shape_{i} = shape_{i}.to(tl.int32)")
+                        code.writeline(f"inp_stride_{i} = inp_stride_{i}.to(tl.int32)")
+                        code.writeline(
+                            f"index_stride_{i} = index_stride_{i}.to(tl.int32)"
+                        )
+                        code.writeline(f"src_stride_{i} = src_stride_{i}.to(tl.int32)")
+                    code.writeline(f"mod = cur_idx % shape_{i}")
+                    code.writeline(f"inp_offsets += mod * inp_stride_{i}")
+                    code.writeline(f"idx_offsets += mod * index_stride_{i}")
+                    code.writeline(f"src_offsets += mod * src_stride_{i}")
+                    if i != 0:
+                        code.writeline(f"cur_idx = cur_idx // shape_{i}")
 
-            code.writeline("else: ")
-            with code.indent():
-                code.writeline("tl.store(out + inp_offsets, cur_src, mask=mask)")
+                #   2. Use offsets to scatter
+                code.writeline(
+                    "cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)"
+                )
+                code.writeline(
+                    "cur_index = tl.load(index + idx_offsets, mask=mask, other=0)"
+                )
+                code.writeline("if INT32_OFFSET:")
+                with code.indent():
+                    code.writeline("cur_index = cur_index.to(tl.int32)")
+                    code.writeline("stride_dim = stride_dim.to(tl.int32)")
 
-            code.writeline("offsets += BLOCK")
+                code.writeline("dim_offsets = cur_index * stride_dim")
+                code.writeline("inp_offsets += dim_offsets")
+                code.newline()
+                code.writeline("if IS_ADD: ")
+                with code.indent():
+                    code.writeline(
+                        "tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
+                    )
+                code.writeline("elif IS_MUL: ")
+                with code.indent():
+                    code.writeline("stop = tl.where(mask, 0, 1).to(tl.int1)")
+                    code.writeline("block_stop = False")
+                    code.writeline("while not block_stop:")
+                    with code.indent():
+                        code.writeline
+                        code.writeline(
+                            "cur_inp = tl.load(out + inp_offsets, mask=mask, other=0)"
+                        )
+                        code.writeline(
+                            "res = tl.where(stop, cur_inp, cur_inp * cur_src)"
+                        )
+                        code.writeline(
+                            "cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res, sem='relaxed')"
+                        )
+                        code.writeline("stop |= cur_inp == cas_res")
+                        code.writeline(
+                            "block_stop = tl.sum(stop.to(tl.int32)) == BLOCK"
+                        )
+
+                code.writeline("else: ")
+                with code.indent():
+                    code.writeline("tl.store(out + inp_offsets, cur_src, mask=mask)")
+
+                code.writeline("offsets += BLOCK")
 
     code.newline()
     code.newline()
@@ -218,25 +231,6 @@ def generate_destination_passing_wrapper(
     code.writeline(wrapper_signature)
 
     with code.indent():
-        code.writeline("# convert all the inputs to int32 only if they are int64")
-        code.writeline("if src_strided.dtype == torch.int64:")
-        code.writeline("  if isinstance(src_strided, StridedBuffer):")
-        code.writeline("    src_strided.convert_to_int32()")
-        code.writeline("  else:")
-        code.writeline("    src_strided = src_strided.to(torch.int32)")
-        code.writeline("if inp.dtype == torch.int64:")
-        code.writeline("  if isinstance(inp, StridedBuffer):")
-        code.writeline("    inp.convert_to_int32()")
-        code.writeline("  else:")
-        code.writeline("    inp = inp.to(torch.int32)")
-        code.writeline("if out.dtype == torch.int64:")
-        code.writeline("  if isinstance(out, StridedBuffer):")
-        code.writeline("    out.convert_to_int32()")
-        code.writeline("  else:")
-        code.writeline("    out = out.to(torch.int32)")
-        code.writeline("if index.dtype == torch.int64:")
-        code.writeline("  index = index.to(torch.int32)")
-
         code.writeline("inp_strides = list(inp.stride())")
         code.writeline("index_strides = index.stride()")
         code.writeline("src_strides = src_strided.stride()")
@@ -251,7 +245,9 @@ def generate_destination_passing_wrapper(
         # kernel launch
         code.writeline("grid = lambda meta: (")
         with code.indent():
-            code.writeline('triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]), ')
+            code.writeline(
+                f'min(triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]), {MAX_GRID_DIM}), '
+            )
         code.writeline(")")
 
         kernel_launch: str = f"{kernel_name}[grid]("
@@ -322,8 +318,7 @@ class ScatterFunction:
             file_name = f"scatter_rank_{key}.py"
             file_path = code_cache_dir() / file_name
             write_atomic(file_path, code.getvalue())
-            # print(f"[scatter]file_path: {file_path}")
-            # print(f"[scatter]code: {code.getvalue()}")
+
             # load
             spec = importlib.util.spec_from_file_location(
                 f"_gen_module_rank_{key}",
@@ -348,6 +343,13 @@ _scatter_func = ScatterFunction()
 
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER")
+
+    orig_dtype = inp.dtype
+    needs_upcast = reduce == "multiply" and orig_dtype == torch.float16
+    if needs_upcast:
+        inp = inp.to(torch.float32)
+        src = src.to(torch.float32)
+
     out = inp.clone()
 
     if reduce is not None:
@@ -378,15 +380,24 @@ def scatter(inp, dim, index, src, reduce=None):
         int32_offset=use_int32_offset,
     )
 
+    if needs_upcast:
+        out = out.to(orig_dtype)
     return out
 
 
 def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER_")
-    out = inp
+
+    orig_dtype = inp.dtype
+    needs_upcast = reduce == "multiply" and orig_dtype == torch.float16
+    if needs_upcast:
+        out = inp.to(torch.float32)
+        src = src.to(torch.float32)
+    else:
+        out = inp
 
     if reduce is not None:
-        assert inp.dtype not in (
+        assert orig_dtype not in (
             torch.bfloat16,
         ), "Unsupported operation: reduce scatter bfloat tensors."
 
@@ -395,13 +406,13 @@ def scatter_(inp, dim, index, src, reduce=None):
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
 
     src_restrided = src.as_strided(index.shape, src.stride())
-    inp_restrided = restride_dim(inp, dim, index.shape)
-    dim_size = inp.size(dim)
-    dim_stride = inp.stride(dim)
+    inp_restrided = restride_dim(out, dim, index.shape)
+    dim_size = out.size(dim)
+    dim_stride = out.stride(dim)
     N = index.numel()
 
     int32_size_dim = lambda x: x.stride(dim) * x.size(dim) < 2**32
-    use_int32_offset = all(map(int32_size_dim, (inp, index, src)))
+    use_int32_offset = all(map(int32_size_dim, (out, index, src)))
     _scatter_func(
         src_restrided,
         index,
@@ -414,4 +425,6 @@ def scatter_(inp, dim, index, src, reduce=None):
         int32_offset=use_int32_offset,
     )
 
+    if needs_upcast:
+        inp.copy_(out.to(orig_dtype))
     return inp
