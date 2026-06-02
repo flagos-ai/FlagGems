@@ -7,24 +7,57 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
 
 random.seed(time.time() // 100)
 
 
-@pytest.mark.upsample_bicubic2d_aa
-@pytest.mark.parametrize("align_corners", [False, True])
-@pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.7)])
-@pytest.mark.parametrize(
-    "shape",
-    [
+if QUICK_MODE:
+    ALIGN_CORNERS_FWD = [False]
+    SCALES = [(2, 2)]
+    SHAPES_FWD = [(32, 16, 128, 128)]
+    FLOAT_DTYPES = [torch.float16]
+    PARAMS_BWD = [(1, 3, 16, 16, 8, 8, False)]
+else:
+    ALIGN_CORNERS_FWD = [False, True]
+    SCALES = [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.7)]
+    SHAPES_FWD = [
         (32, 16, 128, 128),
         (15, 37, 256, 256),
         (3, 5, 127, 127),
         (128, 192, 42, 51),
         (3, 7, 1023, 1025),
-    ],
-)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    ]
+    FLOAT_DTYPES = utils.FLOAT_DTYPES
+    PARAMS_BWD = [
+        (1, 3, 16, 16, 8, 8, False),
+        (2, 4, 8, 8, 16, 16, False),
+        (1, 3, 32, 32, 10, 10, False),
+        (1, 1, 10, 10, 23, 23, False),
+        (1, 3, 16, 16, 8, 8, True),
+        (1, 3, 8, 8, 16, 16, True),
+        (2, 64, 32, 32, 16, 16, False),
+        (1, 3, 7, 11, 13, 5, False),
+        (1, 1, 4, 4, 4, 4, False),
+        (1, 1, 8, 8, 1, 1, True),
+        # Extra cases
+        (1, 1, 64, 64, 16, 16, False),
+        (1, 1, 64, 64, 128, 128, False),
+        (512, 1024, 32, 32, 8, 8, False),
+        (256, 512, 64, 64, 16, 16, False),
+        (4, 16, 16, 16, 4, 4, False),
+        (4, 16, 4, 4, 16, 16, False),
+        (4, 16, 64, 128, 32, 64, False),
+        (4, 16, 64, 128, 128, 256, True),
+        (1, 1, 4096, 4096, 1024, 1024, False),
+    ]
+
+
+@pytest.mark.upsample_bicubic2d_aa
+@pytest.mark.parametrize("align_corners", ALIGN_CORNERS_FWD)
+@pytest.mark.parametrize("scale", SCALES)
+@pytest.mark.parametrize("shape", SHAPES_FWD)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     input = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     ref_i = utils.to_reference(input, True)
@@ -87,32 +120,8 @@ def upsample_bicubic2d_aa_backward_call(grad, input_size, align_corners):
 
 
 @pytest.mark.upsample_bicubic2d_aa_backward
-@pytest.mark.parametrize(
-    "N,C,H_in,W_in,H_out,W_out,align_corners",
-    [
-        (1, 3, 16, 16, 8, 8, False),
-        (2, 4, 8, 8, 16, 16, False),
-        (1, 3, 32, 32, 10, 10, False),
-        (1, 1, 10, 10, 23, 23, False),
-        (1, 3, 16, 16, 8, 8, True),
-        (1, 3, 8, 8, 16, 16, True),
-        (2, 64, 32, 32, 16, 16, False),
-        (1, 3, 7, 11, 13, 5, False),
-        (1, 1, 4, 4, 4, 4, False),
-        (1, 1, 8, 8, 1, 1, True),
-        # Extra cases
-        (1, 1, 64, 64, 16, 16, False),
-        (1, 1, 64, 64, 128, 128, False),
-        (512, 1024, 32, 32, 8, 8, False),
-        (256, 512, 64, 64, 16, 16, False),
-        (4, 16, 16, 16, 4, 4, False),
-        (4, 16, 4, 4, 16, 16, False),
-        (4, 16, 64, 128, 32, 64, False),
-        (4, 16, 64, 128, 128, 256, True),
-        (1, 1, 4096, 4096, 1024, 1024, False),
-    ],
-)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("N,C,H_in,W_in,H_out,W_out,align_corners", PARAMS_BWD)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_upsample_bicubic2d_aa_backward(
     N, C, H_in, W_in, H_out, W_out, align_corners, dtype
 ):
