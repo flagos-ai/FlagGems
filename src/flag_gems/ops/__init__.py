@@ -5,6 +5,7 @@ from flag_gems.ops._functional_sym_constrain_range_for_size import (
 from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
+from flag_gems.ops.GRUAttention import GRUAttention
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
@@ -97,6 +98,7 @@ from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
+from flag_gems.ops.CrossAttention import CrossAttention
 from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
 from flag_gems.ops.cummax import cummax
@@ -525,6 +527,7 @@ __all__ = [
     "cosh_",
     "cosh_out",
     "count_nonzero",
+    "CrossAttention",
     "ctc_loss",
     "cudnn_convolution",
     "cummax",
@@ -614,6 +617,7 @@ __all__ = [
     "group_mm",
     "group_norm",
     "group_norm_backward",
+    "GRUAttention",
     "gt",
     "gt_scalar",
     "hadamard_transform",
