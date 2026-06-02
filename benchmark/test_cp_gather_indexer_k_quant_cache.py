@@ -17,87 +17,17 @@ def run_vllm_benchmark(bench):
     original_str = base.BenchmarkResult.__str__
 
     def vllm_str(result):
-        fixed_shape = ""
-        if result.result:
-            first_shape = result.result[0].shape_detail
-            if isinstance(first_shape, dict):
-                fixed_shape = (
-                    f", head_dim={first_shape['head_dim']}, "
-                    f"quant_block_size={first_shape['quant_block_size']}"
-                )
-        header_title = (
-            f"\nOperator: {result.op_name}  Performance Test "
-            f"(dtype={result.dtype}, mode={result.mode},"
-            f"level={result.level}{fixed_shape})\n"
+        return (
+            original_str(result)
+            .replace("Torch Latency (ms)", "vLLM CUDA Latency (ms)")
+            .replace("Torch GBPS ", "vLLM CUDA GBPS ")
         )
-        col_names = [
-            f"{'vLLM CUDA Latency (ms)':>24}",
-            f"{'Gems Latency (ms)':>20}",
-            f"{'Gems Speedup':>16}",
-        ]
-        if result.result[0].tflops and result.result[0].tflops != 0.0:
-            col_names.append(f"{'TFLOPS':>20}")
-        if result.result[0].gbps is not None:
-            col_names.append(f"{'vLLM CUDA GBPS':>20}")
-            col_names.append(f"{'Gems GBPS':>20}")
-        col_names.append("Shape Detail\n")
-        header_col_names = " ".join(col_names)
-        header_break = "-" * len(header_col_names) + "\n"
-
-        metrics_lines = []
-        for metrics in result.result:
-            latency_base_str = (
-                f"{metrics.latency_base:.6f}"
-                if metrics.latency_base is not None
-                else "N/A"
-            )
-            latency_str = (
-                f"{metrics.latency:.6f}" if metrics.latency is not None else "N/A"
-            )
-            speedup_str = (
-                f"{metrics.speedup:.3f}" if metrics.speedup is not None else "N/A"
-            )
-            data_line = (
-                f"{latency_base_str:>24}"
-                f"{latency_str:>20}"
-                f"{speedup_str:>16}"
-            )
-            if metrics.tflops and metrics.tflops != 0.0:
-                tflops_str = (
-                    f"{metrics.tflops:.3f}" if metrics.tflops is not None else "N/A"
-                )
-                data_line += f"{tflops_str:>20}"
-            if metrics.gbps is not None:
-                torch_gbps_str = (
-                    f"{metrics.gbps_base:.3f}"
-                    if metrics.gbps_base is not None
-                    else "N/A"
-                )
-                gems_gbps_str = (
-                    f"{metrics.gbps:.3f}" if metrics.gbps is not None else "N/A"
-                )
-                data_line += f"{torch_gbps_str:>20}{gems_gbps_str:>20}"
-            shape_detail = format_shape_detail(metrics.shape_detail)
-            data_line += f"  {shape_detail}\n"
-            metrics_lines.append(data_line)
-        return header_title + header_col_names + header_break + "".join(metrics_lines)
 
     base.BenchmarkResult.__str__ = vllm_str
     try:
         bench.run()
     finally:
         base.BenchmarkResult.__str__ = original_str
-
-
-def format_shape_detail(shape_detail):
-    if not isinstance(shape_detail, dict):
-        return shape_detail if shape_detail is not None else "N/A"
-    return (
-        f"batch_size={shape_detail['batch_size']}, "
-        f"seq_len={shape_detail['seq_len']}, "
-        f"num_tokens={shape_detail['num_tokens']}, "
-        f"block_size={shape_detail['block_size']}"
-    )
 
 
 def load_vllm_cuda_op_and_fp8_dtype():
@@ -236,25 +166,6 @@ class CpGatherIndexerKQuantCacheBenchmark(base.Benchmark):
             + multi_batch_shapes
             + block_size_64_shapes
         )
-
-    def record_shapes(self, k_cache, k_fp8, k_fp8_scale, block_table, cu_seqlen):
-        del cu_seqlen
-        batch_size = block_table.size(0)
-        num_tokens = k_fp8.size(0)
-        seq_len = num_tokens // batch_size
-        block_size = k_cache.size(1)
-        head_dim = k_fp8.size(1)
-        quant_block_size = head_dim * 4 // k_fp8_scale.size(1)
-        return {
-            "batch_size": batch_size,
-            "seq_len": seq_len,
-            "num_tokens": num_tokens,
-            "block_size": block_size,
-            "head_dim": head_dim,
-            "quant_block_size": quant_block_size,
-            "num_blocks": k_cache.size(0),
-            "blocks_per_seq": block_table.size(1),
-        }
 
     def get_input_iter(self, dtype):
         del dtype
