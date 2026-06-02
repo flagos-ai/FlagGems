@@ -1,11 +1,17 @@
+from ._functional_sym_constrain_range_for_size import (
+    _functional_sym_constrain_range_for_size,
+)
 from .abs import abs, abs_
+from .absolute import absolute
 from .add import add, add_
 from .addcmul import addcmul
 from .addmm import addmm, addmm_out
+from .alias_copy import alias_copy, alias_copy_out
 from .all import all, all_dim, all_dims
 from .angle import angle
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
+from .arctanh_ import arctanh_
 from .argmax import argmax
 from .argmin import argmin
 from .atan import atan, atan_
@@ -45,6 +51,7 @@ from .cat import cat
 from .ceil import ceil, ceil_
 from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
+from .concatenate import concatenate
 from .contiguous import contiguous
 from .copy import copy, copy_
 from .cos import cos, cos_
@@ -54,6 +61,7 @@ from .cummin import cummin
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .digamma_ import digamma_
 from .div import (
     floor_divide,
     floor_divide_,
@@ -71,17 +79,27 @@ from .exp2 import exp2, exp2_
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
+from .feature_dropout import feature_dropout, feature_dropout_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
+from .floor_ import floor_
+from .fmin import fmin, fmin_out
 from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
+from .gcd import gcd, gcd_out
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
 from .glu import glu
+from .grid_sample import grid_sample
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
+from .hardsigmoid import hardsigmoid, hardsigmoid_out
+from .hardswish_ import hardswish_
+from .histc import histc
 from .hstack import hstack
+from .hypot import hypot, hypot_out
+from .i0 import i0, i0_, i0_out
 from .index import index
 from .index_add import index_add, index_add_
 from .index_select import index_select
@@ -91,7 +109,9 @@ from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
 from .le import le, le_scalar
+from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
+from .lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from .linspace import linspace
 from .log import log
 from .log_sigmoid import log_sigmoid
@@ -100,6 +120,7 @@ from .logical_and import logical_and
 from .logical_not import logical_not
 from .logical_or import logical_or
 from .logical_xor import logical_xor
+from .logit import logit, logit_, logit_out
 from .logspace import logspace
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
@@ -126,8 +147,7 @@ from .normal import (
 from .ones import ones
 from .ones_like import ones_like
 from .pad import pad
-
-# from .polar import polar
+from .poisson import poisson
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -137,35 +157,52 @@ from .pow import (
 )
 from .randn import randn
 from .randn_like import randn_like
+from .randperm import randperm
 from .reciprocal import reciprocal, reciprocal_
 from .relu import relu, relu_
+from .relu6 import relu6
 from .remainder import remainder, remainder_
 from .repeat_interleave import (
     repeat_interleave_self_int,
     repeat_interleave_self_tensor,
     repeat_interleave_tensor,
 )
+from .replication_pad1d import replication_pad1d, replication_pad1d_out
 from .replication_pad3d import replication_pad3d
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
+from .round import round, round_, round_out
+from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .select_scatter import select_scatter
+from .selu import selu
+from .selu_ import selu_
+from .sgn_ import sgn_
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
+from .sinh_ import sinh_
+from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
+from .smooth_l1_loss import smooth_l1_loss, smooth_l1_loss_backward, smooth_l1_loss_out
+from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 from .softmax import softmax_backward
 from .softplus import softplus
+from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
+from .special_i0e import special_i0e, special_i0e_out
+from .special_i1 import special_i1, special_i1_out
 from .sqrt import sqrt, sqrt_
+from .stack import stack
 from .sub import sub, sub_
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .tile import tile
 from .to import to_dtype
 from .topk import topk
+from .tril import tril, tril_, tril_out
 from .uniform import uniform_
 from .unique import (
     _unique2,
@@ -181,7 +218,8 @@ from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
-from .zeros import zero_, zeros
+from .zero import zero, zero_, zero_out
+from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
@@ -190,8 +228,10 @@ __all__ = [
     "avg_pool2d_backward",
     "count_nonzero",
     "mean_dim",
-    "zeros",
+    "zero",
     "zero_",
+    "zero_out",
+    "zeros",
     "scatter",
     "scatter_",
     "topk",
@@ -204,6 +244,9 @@ __all__ = [
     "sort",
     "sort_stable",
     "cat",
+    "concatenate",
+    "alias_copy",
+    "alias_copy_out",
     "mm",
     "true_divide",
     "true_divide_",
@@ -314,6 +357,9 @@ __all__ = [
     "contiguous",
     "eye_m",
     "dropout",
+    "feature_dropout",
+    "feature_dropout_",
+    "_functional_sym_constrain_range_for_size",
     "index",
     "index_add",
     "index_add_",
@@ -321,9 +367,23 @@ __all__ = [
     "bmm_out",
     "diag_embed",
     "diagonal_backward",
+    "digamma_",
     "flip",
+    "floor_",
+    "fmin",
+    "fmin_out",
+    "gcd",
+    "gcd_out",
+    "hardsigmoid",
+    "hardsigmoid_out",
+    "hardswish_",
+    "histc",
+    "lift_fresh_copy",
+    "lift_fresh_copy_out",
+    "poisson",
     "abs",
     "abs_",
+    "absolute",
     "addcmul",
     "addmm",
     "addmm_out",
@@ -353,6 +413,9 @@ __all__ = [
     "log_sigmoid",
     "logical_not",
     "mse_loss",
+    "leaky_relu",
+    "leaky_relu_",
+    "leaky_relu_out",
     "nan_to_num",
     "neg",
     "neg_",
@@ -364,6 +427,8 @@ __all__ = [
     "reciprocal_",
     "relu",
     "relu_",
+    "relu6",
+    "rrelu_with_noise_backward",
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
@@ -377,6 +442,7 @@ __all__ = [
     "silu_backward",
     "sin",
     "sin_",
+    "sinh_",
     "tanh",
     "tanh_",
     "tanh_backward",
@@ -386,11 +452,13 @@ __all__ = [
     "linspace",
     "arange",
     "arange_start",
+    "arctanh_",
     "slice_scatter",
     "select_scatter",
     "ones",
     "ones_like",
     "zeros_like",
+    "grid_sample",
     "group_norm",
     "group_norm_backward",
     "_upsample_bicubic2d_aa",
@@ -401,6 +469,8 @@ __all__ = [
     "exponential_",
     "logspace",
     "replication_pad3d",
+    "replication_pad1d",
+    "replication_pad1d_out",
     "max_pool2d_with_indices",
     "max_pool2d_backward",
     "upsample_linear1d",
@@ -418,7 +488,14 @@ __all__ = [
     "celu",
     "celu_",
     "tile",
+    "smooth_l1_loss",
+    "smooth_l1_loss_backward",
+    "smooth_l1_loss_out",
+    "soft_margin_loss",
+    "soft_margin_loss_out",
     "softplus",
+    "softshrink",
+    "softshrink_out",
     "atan",
     "atan_",
     "hstack",
@@ -430,4 +507,28 @@ __all__ = [
     "any",
     "any_dim",
     "any_dims",
+    "tril",
+    "tril_",
+    "tril_out",
+    "selu",
+    "selu_",
+    "hypot",
+    "hypot_out",
+    "i0",
+    "i0_",
+    "i0_out",
+    "round",
+    "round_",
+    "round_out",
+    "sgn_",
+    "special_i0e",
+    "special_i0e_out",
+    "special_i1",
+    "special_i1_out",
+    "stack",
+    "logit",
+    "logit_",
+    "logit_out",
+    "randperm",
+    "slice_backward",
 ]

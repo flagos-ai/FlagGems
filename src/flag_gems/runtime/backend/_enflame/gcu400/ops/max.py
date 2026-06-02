@@ -181,7 +181,7 @@ def max(inp):
     dtype = inp.dtype
 
     if M <= 10 * 1024 * 1024:
-        bsize = 65536
+        bsize = 16384
         num_programs = min(triton.cdiv(M, bsize), 48)
         block_mid = triton.next_power_of_2(num_programs)
         mid = torch.empty((num_programs,), dtype=dtype, device=inp.device)
