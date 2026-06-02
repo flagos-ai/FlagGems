@@ -66,22 +66,44 @@ class DeviceDetector:
             return self._get_vendor_from_sys()
 
     def _get_vendor_from_quick_cmd(self):
-        for vendor_name, attr in _VENDOR_TORCH_ATTR.items():
-            if hasattr(torch, attr):
-                return vendor_name
         try:
             import torch_npu
 
-            for vendor_name, attr in _VENDOR_TORCH_ATTR.items():
-                if hasattr(torch_npu, attr):
-                    return vendor_name
+            torch_module = torch_npu
         except ImportError:
-            pass
-        return None
+            torch_module = torch
+
+        for vendor_name, attr in _VENDOR_TORCH_ATTR.items():
+            if hasattr(torch_module, attr):
+                return str(vendor_name)
+
+        if hasattr(torch_module, "cuda") and hasattr(
+            torch_module.cuda, "get_device_properties"
+        ):
+            try:
+                prop = torch_module.cuda.get_device_properties(0)
+                if "NVIDIA" in prop.name.upper():
+                    return "nvidia"
+            except Exception:
+                return False
+
+        return False
 
     def _get_vendor_from_env(self):
-        vendor = os.environ.get("GEMS_VENDOR")
-        return vendor if vendor in self.vendor_list else None
+        if "PPU_SDK" in os.environ.keys():
+            return "thead"
+
+        env_keys = (
+            "GEMS_VENDOR",
+            "FLAGGEMS_VENDOR",
+            "GEMS_BACKEND",
+            "FLAGGEMS_BACKEND",
+        )
+        for key in env_keys:
+            if key in os.environ:
+                return str(os.environ.get(key).lower())
+
+        return False
 
     def _get_vendor_from_sys(self):
         vendor_infos = backend.get_vendor_infos()
