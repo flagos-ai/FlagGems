@@ -3719,6 +3719,18 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: logical_xor_
+    description: The in-place version of `logical_xor()`.
+    for:
+      - logical_xor_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '5.0'
   - id: logit
     description: |
       Returns a new tensor with the logit of the elements of `input`.
