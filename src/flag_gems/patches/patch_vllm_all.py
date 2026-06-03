@@ -13,6 +13,7 @@ from flag_gems.patches.patch_util import (
     patch_vllm_lib,
 )
 
+
 def custom_gems_rms_forward_cuda(self, x, residual=None):
     from flag_gems.modules.normalization import gems_rms_forward
 
@@ -666,10 +667,6 @@ def apply_gems_patches_to_vllm(verbose=True):
         patch_vllm_vit_to_attn(vitw)
 
 
-# =============================================================================
-# flag_ops library registration
-# =============================================================================
-
 _flag_ops_registered = False
 
 
@@ -704,5 +701,4 @@ def patch_empty_vllm() -> None:
     # Register implementations for all operators
     for lib_name, ops_dict in _VLLM_OPS_IMPLS.items():
         for op_name, impl_func in ops_dict.items():
-            patch_vllm_lib(lib_name, op_name, impl_func, dispatch_key, verbose=False)
-
+            patch_vllm_lib(lib_name, op_name, impl_func, dispatch_key, verbose=True)
