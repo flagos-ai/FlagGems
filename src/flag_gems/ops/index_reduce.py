@@ -488,9 +488,9 @@ def _should_scan_duplicate_index(index, out_dim, reduce, dtype):
         return False
     if _TRITON_SUPPORTS_BF16_ATOMIC_ADD:
         return False
-    if index.numel() <= out_dim:
+    if reduce != "prod" and not _needs_cas(reduce, dtype):
         return False
-    return reduce == "prod" or _needs_cas(reduce, dtype)
+    return not _index_is_unique(index, out_dim)
 
 
 def _index_is_unique(index, out_dim):
