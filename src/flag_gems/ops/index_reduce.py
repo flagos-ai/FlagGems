@@ -464,8 +464,29 @@ def _needs_cas(reduce, dtype):
     )
 
 
+def _triton_version_at_least(major, minor):
+    version = triton.__version__.split("+", 1)[0]
+    parts = []
+    for part in version.split(".")[:2]:
+        number = ""
+        for char in part:
+            if not char.isdigit():
+                break
+            number += char
+        parts.append(int(number or 0))
+    while len(parts) < 2:
+        parts.append(0)
+    return tuple(parts) >= (major, minor)
+
+
+# Triton 3.3.x rejects bf16 atomic_add during semantic type checking.
+_TRITON_SUPPORTS_BF16_ATOMIC_ADD = _triton_version_at_least(3, 4)
+
+
 def _should_scan_duplicate_index(index, out_dim, reduce, dtype):
     if flag_gems.vendor_name == "ascend":
+        return False
+    if _TRITON_SUPPORTS_BF16_ATOMIC_ADD:
         return False
     if index.numel() <= out_dim:
         return False
@@ -542,6 +563,12 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
     dim = dim % inp.ndim
     index = index.contiguous()
     reduce_id = _reduce_id(reduce)
+    use_fp32_workspace = (
+        flag_gems.vendor_name != "ascend"
+        and reduce == "mean"
+        and inp.dtype == torch.bfloat16
+        and not _TRITON_SUPPORTS_BF16_ATOMIC_ADD
+    )
 
     if _should_scan_duplicate_index(index, inp.size(dim), reduce, inp.dtype):
         inp_work = dim_compress(inp, dim)
@@ -571,7 +598,6 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
             )
         return _restore_dim(out.to(inp.dtype), inp, dim)
 
-    use_fp32_workspace = False
     if (
         flag_gems.vendor_name != "ascend"
         and inp.is_contiguous()
@@ -682,10 +708,10 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
                 out_n,
                 reduce_id,
                 include_self,
+                False,
             )
         return _restore_dim(out.to(inp.dtype), inp, dim)
 
-    use_fp32_workspace = False
     if use_fp32_workspace:
         inp_compute = inp_work.to(torch.float32)
         source_compute = source_work.to(torch.float32)
