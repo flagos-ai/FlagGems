@@ -31,7 +31,7 @@ def ge_func(x, y):
 
 
 def ge(A, B):
-    logger.debug("GEMS GE")
+    logger.debug("GEMS_KUNLUNXIN GE")
     os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = ge_func(A, B)
@@ -51,6 +51,6 @@ def ge_func_scalar(x, y):
 
 
 def ge_scalar(A, B):
-    logger.debug("GEMS GE SCALAR")
+    logger.debug("GEMS_KUNLUNXIN GE SCALAR")
     res = ge_func_scalar(A, B)
     return res

@@ -77,7 +77,7 @@ def index_add_kernel(
 
 
 def index_add(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS INDEX ADD")
+    logger.debug("GEMS_KUNLUNXIN INDEX ADD")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device="cuda")
     ), "0 <= index < self.size(dim)"
@@ -120,7 +120,7 @@ def index_add(inp, dim, index, src, alpha=1):
 
 
 def index_add_(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS INDEX ADD_")
+    logger.debug("GEMS_KUNLUNXIN INDEX ADD_")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device="cuda")
     ), "0 <= index < self.size(dim)"

@@ -106,7 +106,7 @@ def argmin_kernel(
 
 
 def argmin(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS argmin")
+    logger.debug("GEMS_KUNLUNXIN argmin")
     if dim is None:
         M = inp.numel()
         if dtype is None:
