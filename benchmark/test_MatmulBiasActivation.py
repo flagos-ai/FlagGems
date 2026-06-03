@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -30,6 +32,7 @@ def test_MatmulBiasActivation():
         input_fn=MatmulBiasActivation_input_fn,
         op_name="MatmulBiasActivation",
         torch_op=mma_torch_op,
+        gems_op=flag_gems.MatmulBiasActivation,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
