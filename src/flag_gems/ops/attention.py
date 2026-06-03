@@ -69,7 +69,7 @@ def _attn_fwd_inner(
         if PRE_LOAD_V:
             value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
 
-        qk = tl.dot(query, key, allow_tf32=False)
+        qk = tl.dot(query, key)
         # incase not divisible.
         qk = tl.where(kv_load_mask[None, :], qk, -float("inf"))
         # qk = qk.to(tl.float32)
@@ -115,7 +115,7 @@ def _attn_fwd_inner(
         else:
             p = p.to(query.dtype)
         p = p.to(value.dtype)
-        acc = tl.dot(p, value, acc, allow_tf32=False)
+        acc = tl.dot(p, value, acc)
         # update m_i and l_i
         m_i = m_ij
 
@@ -411,7 +411,7 @@ def _attn_bwd_dkdv(
         m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))  # (BLOCK_M1, )
 
         # key: (BLOCK_N1, BLOCK_DMODEL)
-        qkT = tl.dot(key, qT, allow_tf32=False)  # (BLOCK_N1, BLOCK_M1)
+        qkT = tl.dot(key, qT)  # (BLOCK_N1, BLOCK_M1)
         m = tl.broadcast_to(m[None, :], (BLOCK_N1, BLOCK_M1))  # (BLOCK_N1, BLOCK_M1)
         m = tl.where(offs_n_mask[:, None], m, float("inf"))  # (BLOCK_N1, BLOCK_M1)
         pT = tl.math.exp2(qkT - m)
@@ -430,12 +430,12 @@ def _attn_bwd_dkdv(
         )  # (BLOCK_M1, BLOCK_DMODEL)
 
         # Compute dV.
-        dv += tl.dot(pT, do.to(tl.float32), allow_tf32=False)  # (BLOCK_N1, BLOCK_DMODEL)
+        dv += tl.dot(pT, do.to(tl.float32))  # (BLOCK_N1, BLOCK_DMODEL)
         # D (= delta) is pre-divided by ds_scale.
         Di = tl.load(D + offs_m, mask=offs_m_mask, other=0.0)  # (BLOCK_M1, )
 
         # Compute dP and dS.
-        dpT = tl.dot(value, tl.trans(do), allow_tf32=False).to(
+        dpT = tl.dot(value, tl.trans(do)).to(
             tl.float32
         )  # (BLOCK_N1, BLOCK_DMODEL) @ (BLOCK_M1, BLOCK_DMODEL).T -> (BLOCK_N1, BLOCK_M1)
         dsT = pT * (dpT - Di[None, :])  # (BLOCK_N1, BLOCK_M1)
@@ -445,7 +445,7 @@ def _attn_bwd_dkdv(
             offs_m_mask[None, :] & offs_n_mask[:, None], dsT, 0.0
         )  # (BLOCK_N1, BLOCK_M1)
         dk += tl.dot(
-            dsT, tl.trans(qT), allow_tf32=False
+            dsT, tl.trans(qT)
         )  # (BLOCK_N1, BLOCK_M1) @ (BLOCK_DMODEL, BLOCK_M1).T -> (BLOCK_N1, BLOCK_DMODEL)
         # Increment pointers.
         curr_m += step_m
@@ -496,7 +496,7 @@ def _attn_bwd_dq(
 
         kT = tl.load(kT_ptrs, mask=offs_n_mask[None, :], other=0.0)
         vT = tl.load(vT_ptrs, mask=offs_n_mask[None, :], other=0.0)
-        qk = tl.dot(query, kT, allow_tf32=False)
+        qk = tl.dot(query, kT)
         p = tl.math.exp2(qk - m)
         mask = (offs_m < Q_CTX)[:, None] & (offs_n < KV_CTX)[None, :]
         # Autoregressive masking.
@@ -506,12 +506,12 @@ def _attn_bwd_dq(
             mask &= offs_m[:, None] >= offs_n[None, :]
         p = tl.where(mask, p, 0.0)
         # Compute dP and dS.
-        dp = tl.dot(do, vT, allow_tf32=False).to(tl.float32)
+        dp = tl.dot(do, vT).to(tl.float32)
         ds = p * (dp - Di[:, None])
         ds = tl.where(mask, ds, 0.0).to(kT.dtype)
         # Compute dQ.
         # NOTE: We need to de-scale dq in the end, because kT was pre-scaled.
-        dq += tl.dot(ds, tl.trans(kT), allow_tf32=False)
+        dq += tl.dot(ds, tl.trans(kT))
         # Increment pointers.
         curr_n += step_n
     return dq
