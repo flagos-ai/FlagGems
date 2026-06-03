@@ -1,4 +1,3 @@
-import os
 from enum import Enum
 
 
@@ -59,17 +58,6 @@ UNSUPPORT_INT64 = frozenset(
         vendors.TSINGMICRO,
     }
 )
-
-DEFAULT_EXPAND_CONFIG_PATH = os.path.normpath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "utils",
-        "configs",
-        "general_ops_expand_configs.yaml",
-    )
-)
-
 
 DEFAULT_STRATEGIES = {
     "addmm": ["align32", "align32", "align32"],
