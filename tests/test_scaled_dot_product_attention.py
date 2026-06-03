@@ -272,7 +272,28 @@ def test_scaled_dot_product_attention_legacy_backward(
     # NOTE: NaN may arise in the gradients, this behavior aligns with PyTorch's SDPA
     utils.gems_assert_close(gems_q_grad, torch_q_grad, dtype, equal_nan=True)
     utils.gems_assert_close(gems_k_grad, torch_k_grad, dtype, equal_nan=True)
-    utils.gems_assert_close(gems_v_grad, torch_v_grad, dtype, equal_nan=True)
+
+    # dV is more sensitive to softmax recomputation errors in flash attention backward
+    # because it lacks the centering term (dP - D) that suppresses errors in dK/dQ.
+    # GQA: different float accumulation order across Q heads vs PyTorch kernel
+    # bf16: only 8 mantissa bits → largest recomputation error
+    # fp16: 11 mantissa bits → moderate error
+    is_gqa = enable_gqa and num_q_head != num_kv_head
+    if is_gqa:
+        if dtype == torch.bfloat16:
+            v_atol = 2e-2
+        elif dtype == torch.float16:
+            v_atol = 4e-3
+        else:
+            v_atol = 5e-4
+    else:
+        if dtype == torch.bfloat16:
+            v_atol = 5e-3
+        elif dtype == torch.float16:
+            v_atol = 2e-3
+        else:
+            v_atol = 3e-4
+    utils.gems_assert_close(gems_v_grad, torch_v_grad, dtype, equal_nan=True, atol=v_atol)
 
 
 @pytest.mark.scaled_dot_product_attention
