@@ -8,7 +8,7 @@ from flag_gems import runtime
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-from ..utils.shape_utils import dim_compress
+from ..utils.shape_utils import dim_compress, safe_permute_contiguous
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,6 @@ def index_select(inp, dim, index):
     if dim != out.ndim - 1:
         order = [i for i in range(out.ndim - 1)]
         order.insert(dim, out.ndim - 1)
-        return out.permute(order).contiguous()
+        return safe_permute_contiguous(out, order)
     else:
         return out
