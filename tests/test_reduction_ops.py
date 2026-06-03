@@ -217,8 +217,9 @@ def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction, weight):
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     if flag_gems.vendor_name == "sophgo":
-        target = torch.randint(0, shape[dim], target_shape, 
-                               dtype=torch.int32, device=flag_gems.device)
+        target = torch.randint(
+            0, shape[dim], target_shape, dtype=torch.int32, device=flag_gems.device
+        )
     else:
         target = torch.randint(0, shape[dim], target_shape, device=flag_gems.device)
     if weight:
@@ -376,7 +377,11 @@ def test_accuracy_count_nonzero(shape, dtype):
         )
     elif dtype in INT_DTYPES:
         if flag_gems.vendor_name == "sophgo":
-            inp = torch.randint(-3, 3, shape, dtype=torch.int).to(dtype).to(device=flag_gems.device)
+            inp = (
+                torch.randint(-3, 3, shape, dtype=torch.int)
+                .to(dtype)
+                .to(device=flag_gems.device)
+            )
         else:
             inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
     else:
@@ -409,9 +414,7 @@ def test_accuracy_log_softmax(shape, dtype, dim):
 
 
 @pytest.mark.log_softmax
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "sophgo", reason="Not support backward"
-)
+@pytest.mark.skipif(flag_gems.vendor_name == "sophgo", reason="Not support backward")
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", [0, 1] if flag_gems.vendor_name == "cambricon" else [1])
@@ -529,9 +532,13 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
         random.randint(1, min(src_shape[2], inp_shape[2])),
     ]
     if flag_gems.vendor_name == "sophgo":
-        index = torch.empty(tuple(index_shape), dtype=torch.int32, device=flag_gems.device)
+        index = torch.empty(
+            tuple(index_shape), dtype=torch.int32, device=flag_gems.device
+        )
     else:
-        index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
+        index = torch.empty(
+            tuple(index_shape), dtype=torch.long, device=flag_gems.device
+        )
 
     m, n, o = index_shape
 
@@ -577,9 +584,13 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
         random.randint(1, min(src_shape[2], inp_shape[2])),
     ]
     if flag_gems.vendor_name == "sophgo":
-        index = torch.empty(tuple(index_shape), dtype=torch.int32, device=flag_gems.device)
+        index = torch.empty(
+            tuple(index_shape), dtype=torch.int32, device=flag_gems.device
+        )
     else:
-        index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
+        index = torch.empty(
+            tuple(index_shape), dtype=torch.long, device=flag_gems.device
+        )
 
     m, n, o = index_shape
 
@@ -626,9 +637,13 @@ def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
         random.randint(1, min(src_shape[2], inp_shape[2])),
     ]
     if flag_gems.vendor_name == "sophgo":
-        index = torch.empty(tuple(index_shape), dtype=torch.int32, device=flag_gems.device)
+        index = torch.empty(
+            tuple(index_shape), dtype=torch.int32, device=flag_gems.device
+        )
     else:
-        index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
+        index = torch.empty(
+            tuple(index_shape), dtype=torch.long, device=flag_gems.device
+        )
 
     m, n, o = index_shape
 
@@ -1268,7 +1283,12 @@ def gen_indices(input_shape, indices_shape, accumulate):
         index = np.random.choice(
             np.arange(input_shape[i]), size=shape, replace=accumulate
         )
-        indices.append(torch.tensor(index, device=flag_gems.device))
+        if flag_gems.vendor_name == "sophgo":
+            indices.append(
+                torch.tensor(index, dtype=torch.int32, device=flag_gems.device)
+            )
+        else:
+            indices.append(torch.tensor(index, device=flag_gems.device))
     return indices
 
 

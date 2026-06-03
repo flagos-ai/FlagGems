@@ -129,7 +129,7 @@ def sort_by_key(key, value, valid_bits, generator=None):
     key_cpu = key.cpu()
     sorted_key_cpu, sorted_indices_cpu = torch.sort(key_cpu)
 
-    sorted_indices = sorted_indices_cpu.to(key.device)
+    sorted_indices = sorted_indices_cpu.to(torch.int32).to(key.device)
 
     # ========== Step 2: Use TPU scatter to reorder values ==========
     # This is the main compute-intensive operation, executed on TPU.
@@ -170,7 +170,7 @@ def sort_by_key(key, value, valid_bits, generator=None):
         # Sort random keys (lightweight CPU operation)
         random_keys_cpu = random_keys.cpu()
         _, shuffle_indices_cpu = torch.sort(random_keys_cpu)
-        shuffle_indices = shuffle_indices_cpu.to(key.device)
+        shuffle_indices = shuffle_indices_cpu.to(torch.int32).to(key.device)
 
         # Apply shuffle on TPU
         sorted_value = sorted_value[shuffle_indices]

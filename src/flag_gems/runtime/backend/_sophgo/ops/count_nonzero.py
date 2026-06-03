@@ -31,6 +31,8 @@ def count_nonzero_kernel_1(x_ptr, mid_ptr, numel, BLOCK_SIZE: tl.constexpr):
 
     # Load data and convert to non-zero mask [BLOCK_SIZE]
     x = tl.load(x_ptr + offset, mask=mask, other=0)
+    if x.dtype.is_floating():
+        x = tl.abs(x)
     is_nonzero = (x != 0).to(
         tl.float32
     )  # Use FP32 (PPL avgPool2D does not support INT32)
@@ -104,6 +106,8 @@ def count_nonzero_dim_kernel(
         mask = row_mask and col_mask
 
         x = tl.load(X + cols, mask=mask, other=0.0)
+        if x.dtype.is_floating():
+            x = tl.abs(x)
         is_nonzero = (x != 0).to(tl.float32)
         counts += tl.sum(is_nonzero, axis=1).to(tl.int32)[:, None]
 
