@@ -5,8 +5,17 @@ import torch
 import torch.nn.functional as F
 
 import flag_gems
-from flag_gems.fused import top_k_per_row_prefill
+import flag_gems.runtime as runtime
+from flag_gems.fused import (
+    cutlass_scaled_mm,
+    silu_and_mul,
+    silu_and_mul_out,
+    silu_and_mul_with_clamp,
+    silu_and_mul_with_clamp_out,
+    top_k_per_row_prefill,
+)
 from flag_gems.patches.patch_util import (
+    _VLLM_OPS_SIGNATURES,
     init_vllm_libraries,
     patch_module_method,
     patch_vllm_lib,
@@ -642,7 +651,6 @@ def apply_gems_patches_to_vllm(verbose=True):
     from vllm.v1.attention.backends.mla.triton_mla import TritonMLAImpl
 
     dispatch_key = flag_gems.runtime.device.dispatch_key
-    init_vllm_libraries()
 
     module_patches = [
         (RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda),
@@ -656,6 +664,7 @@ def apply_gems_patches_to_vllm(verbose=True):
     for cls, method_name, new_method in module_patches:
         patch_module_method(cls, method_name, new_method, verbose)
 
+    init_vllm_libraries()
     # Patch library ops using function objects directly
     for lib_name, ops_dict in _VLLM_OPS_IMPLS.items():
         for op_name, impl_func in ops_dict.items():
@@ -663,3 +672,56 @@ def apply_gems_patches_to_vllm(verbose=True):
 
     if vitw is not None:
         patch_vllm_vit_to_attn(vitw)
+
+
+# =============================================================================
+# flag_ops library registration
+# =============================================================================
+
+# flag_ops implementations registry
+_FLAG_OPS_IMPLS = {
+    "silu_and_mul": silu_and_mul,
+    "silu_and_mul_out": silu_and_mul_out,
+    "silu_and_mul_with_clamp": silu_and_mul_with_clamp,
+    "silu_and_mul_with_clamp_out": silu_and_mul_with_clamp_out,
+    "cutlass_scaled_mm": cutlass_scaled_mm,
+}
+
+_flag_ops_registered = False
+_flag_ops_def_lib = None
+_flag_ops_impl_lib = None
+
+
+def enable_flag_ops() -> None:
+    """
+    Register flag_ops custom operators to torch.ops.flag_ops namespace.
+
+    This function is idempotent - calling it multiple times will only register once.
+
+    Registered operators:
+    - torch.ops.flag_ops.silu_and_mul(A, B) -> Tensor
+    - torch.ops.flag_ops.silu_and_mul_out(A, B, *, out) -> Tensor
+    - torch.ops.flag_ops.silu_and_mul_with_clamp(x, y, limit) -> Tensor
+    - torch.ops.flag_ops.silu_and_mul_with_clamp_out(x, y, *, out, limit) -> Tensor
+    - torch.ops.flag_ops.cutlass_scaled_mm(c, a, b, a_scale, b_scale, bias=None) -> Tensor
+    """
+    global _flag_ops_registered, _flag_ops_def_lib, _flag_ops_impl_lib
+    if _flag_ops_registered:
+        return
+    _flag_ops_registered = True
+
+    # Create library instances
+    # Store as module-level variables to prevent garbage collection
+    _flag_ops_def_lib = torch.library.Library("flag_ops", "DEF")
+    _flag_ops_impl_lib = torch.library.Library("flag_ops", "IMPL")
+
+    dispatch_key = runtime.device.dispatch_key
+    flag_ops_signatures = _VLLM_OPS_SIGNATURES.get("flag_ops", {})
+
+    # Register all operators from registry
+    for op_name, impl_func in _FLAG_OPS_IMPLS.items():
+        if getattr(torch.ops.flag_ops, op_name, None) is None:
+            signature = flag_ops_signatures.get(op_name)
+            if signature:
+                _flag_ops_def_lib.define(signature)
+                _flag_ops_impl_lib.impl(op_name, impl_func, dispatch_key)
