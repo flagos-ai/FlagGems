@@ -163,7 +163,7 @@ case $VENDOR in
     uv pip install --index ${FLAGOS_PYPI} \
         "torch==2.12.0+cu132" \
         "torchvision==0.27.0+cu132" \
-        "triton==3.7.0"
+        "triton==3.6.0"
 
     # The follow environments are for C++ wrapped operators
     # export CMAKE_PREFIX_PATH=$(python -c 'import torch; print(torch.utils.cmake_prefix_path)')
