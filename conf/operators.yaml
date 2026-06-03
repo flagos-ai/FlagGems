@@ -3566,6 +3566,17 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: log_normal_
+    description: Fills `self` tensor with numbers samples from the log-normal distribution.
+    for:
+      - log_normal_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
   - id: log_sigmoid
     description: Applies the Logsigmoid function element-wise.
     for:

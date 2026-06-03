@@ -331,6 +331,7 @@ _FULL_CONFIG = (
     ("log10.out", log10_out),
     ("log1p", log1p),
     ("log1p_", log1p_),
+    ("log_normal_", log_normal_),
     ("log_sigmoid", log_sigmoid),
     ("logaddexp", logaddexp),
     ("logaddexp.out", logaddexp_out),
