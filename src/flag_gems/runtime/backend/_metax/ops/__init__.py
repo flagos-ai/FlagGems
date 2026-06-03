@@ -17,6 +17,7 @@ from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .min import min, min_dim
 from .mm import mm, mm_out
+from .MoE_Load_Balance_Loss import moe_load_balance_loss
 from .nonzero import nonzero
 from .ones import ones
 from .ones_like import ones_like
@@ -59,6 +60,7 @@ __all__ = [
     "min",
     "mm",
     "mm_out",
+    "moe_load_balance_loss",
     "nonzero",
     "ones",
     "ones_like",

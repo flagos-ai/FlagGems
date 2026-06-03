@@ -394,6 +394,7 @@ _FULL_CONFIG = (
     ("mm", mm),
     ("mm.out", mm_out),
     ("mode", mode),
+    ("MoELoadBalanceLoss", MoELoadBalanceLoss),
     ("mse_loss", mse_loss),
     ("mul.Tensor", mul),
     ("mul_.Tensor", mul_),
