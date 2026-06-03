@@ -340,22 +340,51 @@ def _index_reduce_scan_kernel(
     OUT_N,
     REDUCE: tl.constexpr,
     INCLUDE_SELF: tl.constexpr,
+    USE_FP64: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     mask_out = pid < TOTAL
     row = pid // OUT_N
     dst_col = (pid - row * OUT_N).to(tl.int64)
-    inp_val = tl.load(inp + pid, mask=mask_out, other=0.0).to(tl.float32)
+    inp_val = tl.load(inp + pid, mask=mask_out, other=0.0)
+    if USE_FP64:
+        inp_val = inp_val.to(tl.float64)
+    else:
+        inp_val = inp_val.to(tl.float32)
 
     if REDUCE == 0:
-        acc = inp_val if INCLUDE_SELF else tl.full((), 1.0, dtype=tl.float32)
+        if USE_FP64:
+            acc = inp_val if INCLUDE_SELF else tl.full((), 1.0, dtype=tl.float64)
+        else:
+            acc = inp_val if INCLUDE_SELF else tl.full((), 1.0, dtype=tl.float32)
     elif REDUCE == 1:
-        acc = inp_val if INCLUDE_SELF else tl.full((), 0.0, dtype=tl.float32)
+        if USE_FP64:
+            acc = inp_val if INCLUDE_SELF else tl.full((), 0.0, dtype=tl.float64)
+        else:
+            acc = inp_val if INCLUDE_SELF else tl.full((), 0.0, dtype=tl.float32)
     elif REDUCE == 2:
-        acc = inp_val if INCLUDE_SELF else tl.full((), float("-inf"), dtype=tl.float32)
+        if USE_FP64:
+            acc = (
+                inp_val
+                if INCLUDE_SELF
+                else tl.full((), float("-inf"), dtype=tl.float64)
+            )
+        else:
+            acc = (
+                inp_val
+                if INCLUDE_SELF
+                else tl.full((), float("-inf"), dtype=tl.float32)
+            )
     else:
-        acc = inp_val if INCLUDE_SELF else tl.full((), float("inf"), dtype=tl.float32)
+        if USE_FP64:
+            acc = (
+                inp_val if INCLUDE_SELF else tl.full((), float("inf"), dtype=tl.float64)
+            )
+        else:
+            acc = (
+                inp_val if INCLUDE_SELF else tl.full((), float("inf"), dtype=tl.float32)
+            )
 
     hit_count = tl.full((), 1 if INCLUDE_SELF else 0, dtype=tl.int32)
     if REDUCE == 0:
@@ -363,7 +392,11 @@ def _index_reduce_scan_kernel(
         while col < N:
             current_col = tl.load(index + col).to(tl.int64)
             matched = current_col == dst_col
-            value = tl.load(src + row * N + col, mask=matched, other=1.0).to(tl.float32)
+            value = tl.load(src + row * N + col, mask=matched, other=1.0)
+            if USE_FP64:
+                value = value.to(tl.float64)
+            else:
+                value = value.to(tl.float32)
             acc *= tl.where(matched, value, 1.0)
             hit_count += matched.to(tl.int32)
             col += 1
@@ -375,7 +408,11 @@ def _index_reduce_scan_kernel(
             mask = cols < N
             dst_cols = tl.load(index + cols, mask=mask, other=-1).to(tl.int64)
             matched = mask & (dst_cols == dst_col)
-            values = tl.load(src + row * N + cols, mask=mask, other=0.0).to(tl.float32)
+            values = tl.load(src + row * N + cols, mask=mask, other=0.0)
+            if USE_FP64:
+                values = values.to(tl.float64)
+            else:
+                values = values.to(tl.float32)
 
             matched_count = tl.sum(matched.to(tl.int32), axis=0)
             hit_count += matched_count
@@ -425,6 +462,14 @@ def _needs_cas(reduce, dtype):
     return flag_gems.vendor_name in ("iluvatar",) or (
         reduce in ("amax", "amin") and dtype in (torch.float16, torch.bfloat16)
     )
+
+
+def _should_scan_duplicate_index(index, out_dim, reduce, dtype):
+    if flag_gems.vendor_name == "ascend":
+        return False
+    if index.numel() <= out_dim:
+        return False
+    return reduce == "prod" or _needs_cas(reduce, dtype)
 
 
 def _index_is_unique(index, out_dim):
@@ -497,6 +542,34 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
     dim = dim % inp.ndim
     index = index.contiguous()
     reduce_id = _reduce_id(reduce)
+
+    if _should_scan_duplicate_index(index, inp.size(dim), reduce, inp.dtype):
+        inp_work = dim_compress(inp, dim)
+        source_work = dim_compress(source, dim)
+        N = index.numel()
+        out_n = inp_work.size(-1)
+        compute_dtype = (
+            torch.float64 if inp_work.dtype == torch.float64 else torch.float32
+        )
+        inp_compute = inp_work.to(compute_dtype)
+        source_compute = source_work.to(compute_dtype)
+        out = torch.empty_like(inp_compute)
+        total = inp_compute.numel()
+        grid = (total,)
+        with torch_device_fn.device(inp.device):
+            _index_reduce_scan_kernel[grid](
+                out,
+                index,
+                source_compute,
+                inp_compute,
+                total,
+                N,
+                out_n,
+                reduce_id,
+                include_self,
+                compute_dtype == torch.float64,
+            )
+        return _restore_dim(out.to(inp.dtype), inp, dim)
 
     use_fp32_workspace = False
     if (
@@ -588,6 +661,7 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
                 out_n,
                 reduce_id,
                 include_self,
+                False,
             )
         return _restore_dim(out, inp, dim)
 
