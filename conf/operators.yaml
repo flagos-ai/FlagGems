@@ -5766,6 +5766,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.1'
+  - id: soft_margin_loss_backward
+    description: >
+      Backward pass for soft margin loss, a two-class classification
+      logistic loss between input and target tensors.
+    for:
+      - soft_margin_loss_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: softmax
     description: Apply a softmax function.
     for:
