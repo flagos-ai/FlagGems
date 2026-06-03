@@ -157,3 +157,81 @@ def reflection_pad2d(input: torch.Tensor, padding):
 def reflection_pad2d_out(input: torch.Tensor, padding, out: torch.Tensor):
     logger.debug("GEMS REFLECTION_PAD2D_OUT")
     return launch_reflection_pad2d(input, padding, out=out)
+
+
+@triton.jit
+def reflection_pad2d_backward_kernel(
+    grad_out_ptr,
+    grad_in_ptr,
+    B,
+    H_in,
+    W_in,
+    pad_left,
+    pad_top,
+    H_out,
+    W_out,
+    BLOCK_HW: tl.constexpr,
+):
+    pid_b = tl.program_id(axis=0)
+    pid_n = tl.program_id(axis=1)
+
+    offs_n = pid_n * BLOCK_HW + tl.arange(0, BLOCK_HW)
+    h_idx = offs_n // W_out
+    w_idx = offs_n % W_out
+
+    mask = (offs_n < H_out * W_out) & (pid_b < B)
+
+    base_out = pid_b * (H_out * W_out)
+    base_in = pid_b * (H_in * W_in)
+
+    # Compute reflected indices (same as forward)
+    y = h_idx.to(tl.int32) - pad_top
+    Hm1 = H_in - 1
+    pH = 2 * Hm1
+    t_h = tl.abs(y)
+    m_h = t_h % pH
+    ih = tl.where(m_h < H_in, m_h, pH - m_h)
+
+    x = w_idx.to(tl.int32) - pad_left
+    Wm1 = W_in - 1
+    pW = 2 * Wm1
+    t_w = tl.abs(x)
+    m_w = t_w % pW
+    iw = tl.where(m_w < W_in, m_w, pW - m_w)
+
+    # Load grad from output and scatter-add to input
+    in_offs = ih * W_in + iw
+    grad_val = tl.load(grad_out_ptr + base_out + offs_n, mask=mask, other=0)
+    tl.atomic_add(grad_in_ptr + base_in + in_offs, grad_val, mask=mask)
+
+
+def reflection_pad2d_backward(grad_output, input, padding):
+    logger.debug("GEMS REFLECTION_PAD2D BACKWARD")
+    if not isinstance(padding, (list, tuple)):
+        raise ValueError("padding must be a sequence")
+    if len(padding) != 4:
+        raise ValueError("padding must be a sequence of length 4")
+    pad_left, pad_right, pad_top, pad_bottom = [int(p) for p in padding]
+
+    x = input.contiguous()
+    g = grad_output.contiguous()
+    H_in = int(x.shape[-2])
+    W_in = int(x.shape[-1])
+    H_out = H_in + pad_top + pad_bottom
+    W_out = W_in + pad_left + pad_right
+
+    leading_shape = x.shape[:-2]
+    B = int(math.prod(leading_shape)) if len(leading_shape) > 0 else 1
+
+    grad_input = torch.zeros_like(x)
+
+    if pad_left == 0 and pad_right == 0 and pad_top == 0 and pad_bottom == 0:
+        grad_input = g.clone()
+        return grad_input
+
+    BLOCK_HW = 256
+    grid = (B, triton.cdiv(H_out * W_out, BLOCK_HW))
+    reflection_pad2d_backward_kernel[grid](
+        g, grad_input, B, H_in, W_in, pad_left, pad_top, H_out, W_out, BLOCK_HW=BLOCK_HW
+    )
+    return grad_input
