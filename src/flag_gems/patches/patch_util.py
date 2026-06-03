@@ -85,16 +85,6 @@ _VLLM_OPS_SIGNATURES = {
         "concat_and_cache_mla": "(Tensor kv_c, Tensor k_pe, Tensor(a!) kv_cache, "
         "Tensor slot_mapping, str kv_cache_dtype, Tensor scale) -> ()",
     },
-    # flag_ops library for standalone FlagGems operators
-    "flag_ops": {
-        "silu_and_mul": "silu_and_mul(Tensor A, Tensor B) -> Tensor",
-        "silu_and_mul_out": "silu_and_mul_out(Tensor A, Tensor B, *, Tensor(a!) out) -> Tensor(a!)",
-        "silu_and_mul_with_clamp": "silu_and_mul_with_clamp(Tensor x, Tensor y, float limit) -> Tensor",
-        "silu_and_mul_with_clamp_out": "silu_and_mul_with_clamp_out("
-        "Tensor x, Tensor y, *, Tensor(a!) out, float limit) -> Tensor(a!)",
-        "cutlass_scaled_mm": "cutlass_scaled_mm(Tensor(a!) c, Tensor a, Tensor b, Tensor a_scale, "
-        "Tensor b_scale, Tensor? bias=None) -> Tensor(a!)",
-    },
 }
 
 

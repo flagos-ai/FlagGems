@@ -6,14 +6,7 @@ import torch.nn.functional as F
 
 import flag_gems
 import flag_gems.runtime as runtime
-from flag_gems.fused import (
-    cutlass_scaled_mm,
-    silu_and_mul,
-    silu_and_mul_out,
-    silu_and_mul_with_clamp,
-    silu_and_mul_with_clamp_out,
-    top_k_per_row_prefill,
-)
+from flag_gems.fused import top_k_per_row_prefill
 from flag_gems.patches.patch_util import (
     _VLLM_OPS_SIGNATURES,
     init_vllm_libraries,
@@ -678,15 +671,6 @@ def apply_gems_patches_to_vllm(verbose=True):
 # flag_ops library registration
 # =============================================================================
 
-# flag_ops implementations registry
-_FLAG_OPS_IMPLS = {
-    "silu_and_mul": silu_and_mul,
-    "silu_and_mul_out": silu_and_mul_out,
-    "silu_and_mul_with_clamp": silu_and_mul_with_clamp,
-    "silu_and_mul_with_clamp_out": silu_and_mul_with_clamp_out,
-    "cutlass_scaled_mm": cutlass_scaled_mm,
-}
-
 _flag_ops_registered = False
 _flag_ops_def_lib = None
 _flag_ops_impl_lib = None
@@ -694,16 +678,16 @@ _flag_ops_impl_lib = None
 
 def enable_flag_ops() -> None:
     """
-    Register flag_ops custom operators to torch.ops.flag_ops namespace.
+    Register all FlagGems operators to torch.ops.flag_ops namespace.
 
     This function is idempotent - calling it multiple times will only register once.
 
-    Registered operators:
-    - torch.ops.flag_ops.silu_and_mul(A, B) -> Tensor
-    - torch.ops.flag_ops.silu_and_mul_out(A, B, *, out) -> Tensor
-    - torch.ops.flag_ops.silu_and_mul_with_clamp(x, y, limit) -> Tensor
-    - torch.ops.flag_ops.silu_and_mul_with_clamp_out(x, y, *, out, limit) -> Tensor
-    - torch.ops.flag_ops.cutlass_scaled_mm(c, a, b, a_scale, b_scale, bias=None) -> Tensor
+    Registers all operators from _VLLM_OPS_IMPLS to torch.ops.flag_ops, including:
+    - vLLM custom ops (_C, _moe_C, _vllm_fa3_C, _C_cache_ops)
+    - All FlagGems fused operators
+
+    The signatures are defined per-library in _VLLM_OPS_SIGNATURES but registered
+    under the unified "flag_ops" namespace for standalone use.
     """
     global _flag_ops_registered, _flag_ops_def_lib, _flag_ops_impl_lib
     if _flag_ops_registered:
@@ -716,12 +700,19 @@ def enable_flag_ops() -> None:
     _flag_ops_impl_lib = torch.library.Library("flag_ops", "IMPL")
 
     dispatch_key = runtime.device.dispatch_key
-    flag_ops_signatures = _VLLM_OPS_SIGNATURES.get("flag_ops", {})
 
-    # Register all operators from registry
-    for op_name, impl_func in _FLAG_OPS_IMPLS.items():
-        if getattr(torch.ops.flag_ops, op_name, None) is None:
-            signature = flag_ops_signatures.get(op_name)
+    # Register all operators from all libraries to flag_ops namespace
+    for lib_name, ops_dict in _VLLM_OPS_IMPLS.items():
+        lib_signatures = _VLLM_OPS_SIGNATURES.get(lib_name, {})
+
+        for op_name, impl_func in ops_dict.items():
+            # Check if already registered
+            if getattr(torch.ops.flag_ops, op_name, None) is not None:
+                continue
+
+            signature = lib_signatures.get(op_name)
             if signature:
-                _flag_ops_def_lib.define(signature)
+                # Create schema with flag_ops namespace
+                schema = f"{op_name}{signature}" if not signature.startswith(op_name) else signature
+                _flag_ops_def_lib.define(schema)
                 _flag_ops_impl_lib.impl(op_name, impl_func, dispatch_key)
