@@ -39,6 +39,17 @@ def get_tune_config(vendor_name=None, file_mode="r", file_path=None):
     return config
 
 
+class BackendEventBase:
+    def __init__(self):
+        ...
+
+    def get_ops(self):
+        ...
+
+    def is_available(self):
+        ...
+
+
 @functools.lru_cache(maxsize=None)
 def _load_expand_config(file_path, file_mode="r"):
     with open(file_path, file_mode) as file:

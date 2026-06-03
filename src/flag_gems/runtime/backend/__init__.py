@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ..common import vendors
 from . import backend_utils
+from .backend_utils import BackendEventBase
 
 
 class BackendState:
@@ -42,7 +43,63 @@ class BackendState:
 _state = BackendState()
 
 
-class BackendArchEvent:
+class TritonVersionEvent(BackendEventBase):
+    _instance = None
+    has_version_spec = False
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self, version=None):
+        self.has_version_spec = False
+        self.version = version if version is not None else self.get_version()
+        self.dir = self.get_version_spec_dir()
+        if self.dir and Path(self.dir).exists():
+            self.module = self.get_version_spec_module()
+            self.has_version_spec = True
+
+    def is_available(self):
+        return self.has_version_spec
+
+    def get_version_spec_dir(self, path=None):
+        dir_name = f"triton_{self.version}"
+        backend_path = Path(path or _state.vendor_module.__path__[0])
+        backend_path = backend_path.parent if backend_path.is_file() else backend_path
+        excluded = ("ops", "fused")
+        return {
+            p.name: str(p)
+            for p in backend_path.iterdir()
+            if p.is_dir() and p.name not in excluded and not p.name.startswith("_")
+        }.get(dir_name, None)
+
+    def get_functions_from_module(self, module):
+        return inspect.getmembers(module, inspect.isfunction) if module else []
+
+    def get_version_spec_module(self):
+        module_name = f"triton_{self.version}"
+        path_dir = os.path.dirname(self.dir)
+        sys.path.insert(0, str(path_dir))
+        version_module = importlib.import_module(module_name)
+        sys.path.remove(str(path_dir))
+        return version_module
+
+    def get_ops(self):
+        return self.get_version_ops()
+
+    def get_version_ops(self):
+        pass
+
+    def get_version(self):
+        try:
+            import triton
+        except ImportError:
+            return None
+        return triton.__version__
+
+
+class BackendArchEvent(BackendEventBase):
     has_arch: bool = False
     _instance = None
     _initialized: bool = False
@@ -66,6 +123,9 @@ class BackendArchEvent:
             self.arch_module = self.get_arch_module()
             self.autotune_configs = self.get_autotune_configs()
             self.heuristics_configs = self.get_heuristics_configs()
+
+    def is_available(self):
+        return self.has_arch
 
     def get_functions_from_module(self, module):
         return inspect.getmembers(module, inspect.isfunction) if module else []
@@ -126,6 +186,10 @@ class BackendArchEvent:
         sys.path.remove(str(path_dir))
         return current_arch_module
 
+    def get_ops(self):
+        """Provide a unified interface for the upper layer"""
+        return self.get_arch_ops()
+
     def get_arch_ops(self):
         arch_specialized_ops = []
         sys.path.append(self.current_arch_path)
@@ -145,6 +209,23 @@ class BackendArchEvent:
             arch_specialized_ops.extend(self.get_functions_from_module(ops_module))
 
         return arch_specialized_ops
+
+
+class SpecOpRegistrar:
+    def __init__(self, _globals):
+        self._globals = _globals
+
+    def apply(self):
+        spec_events = self._get_specific_events()
+        for event in spec_events:
+            if not event.is_available():
+                continue
+            operators = event.get_ops()
+            for fn_name, fn in operators:
+                self._globals[fn_name] = fn
+
+    def _get_specific_events(self):
+        return (BackendArchEvent(), TritonVersionEvent())
 
 
 def _import_module_safe(module_name, vendor_name, module_type):
@@ -293,6 +374,11 @@ def get_customized_ops(vendor_name=None):
         fused_ops = inspect.getmembers(_state.fused_module, inspect.isfunction)
         _state.customized_ops += fused_ops
     return _state.customized_ops
+
+
+def get_ops(vendor_name=None):
+    """Provide a unified interface for the upper layer"""
+    return get_customized_ops(vendor_name)
 
 
 def get_unused_ops(vendor_name=None):

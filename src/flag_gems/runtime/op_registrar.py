@@ -4,7 +4,7 @@ from . import backend, common, error
 from .backend.device import DeviceDetector
 
 
-class Register:
+class GeneralOpRegistrar:
     def __init__(
         self,
         config,

@@ -9,12 +9,12 @@ from . import backend, common
 from .backend.device import DeviceDetector
 
 
-class ConfigLoader(object):
+class TunedConfigLoader(object):
     _instance = None
 
     def __new__(cls, *args, **kargs):
         if cls._instance is None:
-            cls._instance = super(ConfigLoader, cls).__new__(cls)
+            cls._instance = super(TunedConfigLoader, cls).__new__(cls)
         return cls._instance
 
     def __init__(self):
