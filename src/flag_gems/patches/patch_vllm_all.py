@@ -7,7 +7,6 @@ import torch.nn.functional as F
 import flag_gems
 from flag_gems.fused import top_k_per_row_prefill
 from flag_gems.patches.patch_util import (
-    _VLLM_OPS_REGISTRY,
     init_vllm_libraries,
     patch_module_method,
     patch_vllm_lib,
@@ -598,6 +597,34 @@ def custom_rms_norm_out(result, input, weight, epsilon):
     rms_norm_out(result, input, list(weight.size()), weight, epsilon)
 
 
+# vLLM ops implementations registry: {lib_name: {op_name: impl_func}}
+# Function objects directly referenced, no string lookups needed
+_VLLM_OPS_IMPLS = {
+    "_C": {
+        "rms_norm": custom_rms_norm_out,
+        "silu_and_mul": custom_silu_and_mul,
+        "silu_and_mul_with_clamp": custom_silu_and_mul_with_clamp,
+        "hc_head_fused_kernel": custom_hc_head_fused_kernel,
+        "cutlass_scaled_mm": custom_cutlass_scaled_mm,
+        "per_token_group_fp8_quant": custom_per_token_group_fp8_quant,
+        "apply_repetition_penalties_": custom_apply_repetition_penalties,
+        "top_k_per_row_prefill": custom_top_k_per_row_prefill,
+    },
+    "_moe_C": {
+        "topk_softmax": custom_topk_softmax,
+        "moe_align_block_size": custom_moe_align_block_size,
+        "grouped_topk": custom_moe_grouped_topk,
+        "moe_sum": custom_moe_sum,
+    },
+    "_vllm_fa3_C": {
+        "get_scheduler_metadata": custom_get_scheduler_metadata,
+    },
+    "_C_cache_ops": {
+        "concat_and_cache_mla": custom_concat_and_cache_mla,
+    },
+}
+
+
 def apply_gems_patches_to_vllm(verbose=True):
     import vllm  # noqa: F401
     import vllm._custom_ops as ops  # noqa: F401
@@ -629,11 +656,9 @@ def apply_gems_patches_to_vllm(verbose=True):
     for cls, method_name, new_method in module_patches:
         patch_module_method(cls, method_name, new_method, verbose)
 
-    # Patch library ops from unified registry
-    for lib_name, ops_dict in _VLLM_OPS_REGISTRY.items():
-        for op_name, op_config in ops_dict.items():
-            impl_func_name = op_config["impl"]
-            impl_func = globals()[impl_func_name]
+    # Patch library ops using function objects directly
+    for lib_name, ops_dict in _VLLM_OPS_IMPLS.items():
+        for op_name, impl_func in ops_dict.items():
             patch_vllm_lib(lib_name, op_name, impl_func, dispatch_key, verbose)
 
     if vitw is not None:
