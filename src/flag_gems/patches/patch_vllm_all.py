@@ -7,39 +7,11 @@ import torch.nn.functional as F
 import flag_gems
 from flag_gems.fused import top_k_per_row_prefill
 from flag_gems.patches.patch_util import (
-    get_lib_patches,
+    _VLLM_OPS_REGISTRY,
     init_vllm_libraries,
     patch_module_method,
     patch_vllm_lib,
-    register_lib_patch,
 )
-
-
-# Registry of all library patches to register
-def _register_all_lib_patches():
-    """注册所有 vLLM library patches 到统一注册表"""
-    # 注意: custom_* 函数在下面定义，这里只是前向引用
-    patches_to_register = [
-        ("_C", "rms_norm", "custom_rms_norm_out"),
-        ("_C", "silu_and_mul", "custom_silu_and_mul"),
-        ("_C", "silu_and_mul_with_clamp", "custom_silu_and_mul_with_clamp"),
-        ("_C", "hc_head_fused_kernel", "custom_hc_head_fused_kernel"),
-        ("_C", "cutlass_scaled_mm", "custom_cutlass_scaled_mm"),
-        ("_C", "per_token_group_fp8_quant", "custom_per_token_group_fp8_quant"),
-        ("_C", "apply_repetition_penalties_", "custom_apply_repetition_penalties"),
-        ("_C", "top_k_per_row_prefill", "custom_top_k_per_row_prefill"),
-        ("_moe_C", "moe_align_block_size", "custom_moe_align_block_size"),
-        ("_moe_C", "topk_softmax", "custom_topk_softmax"),
-        ("_moe_C", "moe_sum", "custom_moe_sum"),
-        ("_moe_C", "grouped_topk", "custom_moe_grouped_topk"),
-        ("_vllm_fa3_C", "get_scheduler_metadata", "custom_get_scheduler_metadata"),
-        ("_C_cache_ops", "concat_and_cache_mla", "custom_concat_and_cache_mla"),
-    ]
-    return patches_to_register
-
-
-_PATCHES_TO_REGISTER = _register_all_lib_patches()
-
 
 def custom_gems_rms_forward_cuda(self, x, residual=None):
     from flag_gems.modules.normalization import gems_rms_forward
@@ -645,9 +617,6 @@ def apply_gems_patches_to_vllm(verbose=True):
     dispatch_key = flag_gems.runtime.device.dispatch_key
     init_vllm_libraries()
 
-    # Register all patches to unified registry
-    _register_patches_to_registry()
-
     module_patches = [
         (RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda),
         (RotaryEmbedding, "forward_cuda", custom_gems_rope_forward_cuda),
@@ -661,17 +630,11 @@ def apply_gems_patches_to_vllm(verbose=True):
         patch_module_method(cls, method_name, new_method, verbose)
 
     # Patch library ops from unified registry
-    patches = get_lib_patches()
-    for lib_name, ops_dict in patches.items():
-        for op_name, config in ops_dict.items():
-            patch_vllm_lib(lib_name, op_name, config["impl"], dispatch_key, verbose)
+    for lib_name, ops_dict in _VLLM_OPS_REGISTRY.items():
+        for op_name, op_config in ops_dict.items():
+            impl_func_name = op_config["impl"]
+            impl_func = globals()[impl_func_name]
+            patch_vllm_lib(lib_name, op_name, impl_func, dispatch_key, verbose)
 
     if vitw is not None:
         patch_vllm_vit_to_attn(vitw)
-
-
-def _register_patches_to_registry():
-    """将所有 custom 函数注册到统一的 patch 注册表"""
-    for lib_name, op_name, func_name in _PATCHES_TO_REGISTER:
-        impl_func = globals()[func_name]
-        register_lib_patch(lib_name, op_name, impl_func)
