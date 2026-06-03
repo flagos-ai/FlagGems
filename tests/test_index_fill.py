@@ -5,7 +5,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 INDEX_FILL_CASES = [
     ((8,), 0, [0, 3, 7]),
     ((4, 5), 1, [0, 2, 4]),
@@ -161,6 +160,23 @@ def test_index_fill_empty_index(dtype):
 
 
 @pytest.mark.index_fill
+@pytest.mark.parametrize("dtype", INDEX_FILL_DTYPES)
+def test_index_fill_negative_indices(dtype):
+    inp = _make_input((3, 4), dtype)
+    index = torch.tensor([-1, -4], dtype=torch.int64, device=flag_gems.device)
+    value = _scalar_value(dtype)
+
+    ref_inp = utils.to_reference(inp)
+    ref_index = utils.to_reference(index)
+    ref_out = torch.index_fill(ref_inp, 1, ref_index, value)
+
+    with flag_gems.use_gems():
+        res_out = torch.index_fill(inp, 1, index, value)
+
+    _assert_matches(res_out, ref_out, dtype)
+
+
+@pytest.mark.index_fill
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_index_fill_noncontiguous_input(dtype):
     base = _make_input((5, 4), dtype)
@@ -187,4 +203,15 @@ def test_index_fill_invalid_index_rank_raises():
 
     with flag_gems.use_gems():
         with pytest.raises(RuntimeError, match="Index has to be a vector/scalar"):
+            torch.index_fill(inp, 1, index, 1.0)
+
+
+@pytest.mark.index_fill
+@pytest.mark.parametrize("index_values", ([4], [-5]))
+def test_index_fill_out_of_bounds_raises(index_values):
+    inp = torch.zeros((3, 4), device=flag_gems.device)
+    index = torch.tensor(index_values, dtype=torch.int64, device=flag_gems.device)
+
+    with flag_gems.use_gems():
+        with pytest.raises(IndexError, match="out of bounds"):
             torch.index_fill(inp, 1, index, 1.0)

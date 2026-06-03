@@ -64,6 +64,9 @@ def _generate_index_fill_kernel(
         code.writeline(
             "index_values = tl.load(index + index_pos, mask=mask, other=0).to(tl.int64)"
         )
+        code.writeline(
+            "index_values = tl.where(index_values < 0, index_values + dim_size, index_values)"
+        )
         code.writeline("out_offsets += index_values * dim_stride")
         code.writeline("fill_value = value")
         code.writeline("if HAS_VALUE_TENSOR:")
@@ -201,10 +204,15 @@ def _check_index_fill_input(inp, dim, index, value):
 
     dim = _normalize_dim(dim, inp.ndim)
     if index.numel() > 0:
-        valid = ((0 <= index) & (index < inp.size(dim))).all()
-        assert valid.item(), (
-            f"index out of bounds for dimension {dim} with size {inp.size(dim)}"
-        )
+        dim_size = inp.size(dim)
+        index_for_bounds = index.reshape(-1)
+        min_index = index_for_bounds.min().item()
+        max_index = index_for_bounds.max().item()
+        if min_index < -dim_size or max_index >= dim_size:
+            bad_index = min_index if min_index < -dim_size else max_index
+            raise IndexError(
+                f"index {bad_index} is out of bounds for dimension {dim} with size {dim_size}"
+            )
     return dim
 
 
