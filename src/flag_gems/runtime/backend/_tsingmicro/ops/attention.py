@@ -769,7 +769,7 @@ def scaled_dot_product_attention_forward(
     scale=None,
     enable_gqa=False,
 ):
-    logger.debug("GEMS_TSINGMICRO SCALED DOT PRODUCT ATTENTION FORWARD")
+    logger.debug("GEMS_TSINGMICRO SCALED_DOT_PRODUCT_ATTENTION_FORWARD")
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
