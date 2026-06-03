@@ -1,4 +1,15 @@
 ops:
+  - id: AdaptiveAttentionSpan
+    description: Computes adaptive attention span using sigmoid activation, mapping input values to (0, 1) range.
+    for:
+      - AdaptiveAttentionSpan
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: abs
     description: |
       Computes the absolute value of each element in `input`.

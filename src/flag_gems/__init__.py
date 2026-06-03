@@ -36,6 +36,7 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    ("AdaptiveAttentionSpan", adaptive_attention_span),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__or__.Scalar", bitwise_or_scalar),
