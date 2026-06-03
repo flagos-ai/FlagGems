@@ -69,7 +69,7 @@ def _attn_fwd_inner(
         if PRE_LOAD_V:
             value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
 
-        qk = tl.dot(query, key)
+        qk = tl.dot(query, key, allow_tf32=False)
         # incase not divisible.
         qk = tl.where(kv_load_mask[None, :], qk, -float("inf"))
         # qk = qk.to(tl.float32)
@@ -115,7 +115,7 @@ def _attn_fwd_inner(
         else:
             p = p.to(query.dtype)
         p = p.to(value.dtype)
-        acc = tl.dot(p, value, acc)
+        acc = tl.dot(p, value, acc, allow_tf32=False)
         # update m_i and l_i
         m_i = m_ij
 
