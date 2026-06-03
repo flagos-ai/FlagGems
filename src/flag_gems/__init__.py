@@ -260,6 +260,8 @@ _FULL_CONFIG = (
     ("floor_divide.Scalar", floor_divide),
     ("floor_divide_.Scalar", floor_divide_),
     ("floor_divide_.Tensor", floor_divide_),
+    ("fmax", fmax),
+    ("fmax.out", fmax_out),
     ("fmin", fmin),
     ("fmin.out", fmin_out),
     ("fmod.Scalar", fmod_scalar),
