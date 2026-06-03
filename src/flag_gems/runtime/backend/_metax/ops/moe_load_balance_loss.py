@@ -45,7 +45,7 @@ def moe_load_balance_loss_kernel(
         gates = tl.load(
             gates_ptr + gate_offsets,
             mask=(mask[:, None] & expert_mask[None, :]),
-            other=0.0
+            other=0.0,
         ).to(tl.float32)
 
         # Accumulate squares: sum over experts dimension
