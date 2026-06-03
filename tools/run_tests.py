@@ -149,6 +149,9 @@ class LiveDisplay:
         if IS_TTY:
             self._erase_footer()
             self._draw_footer()
+        else:
+            sys.stdout.write(self.footer[0] + "\n")
+            sys.stdout.flush()
 
     def finish(self):
         """Clear the footer when done."""
@@ -626,6 +629,11 @@ def run_benchmark_q(gpu_id, op):
 
 
 def worker_proc(gpu_id, work_queue, display_queue):
+    # Suppress direct stdout/stderr from worker processes to prevent
+    # corrupting the main process's terminal cursor positioning.
+    sys.stdout = open(os.devnull, "w")
+    sys.stderr = open(os.devnull, "w")
+
     worker_result = {}
     while True:
         try:
@@ -735,12 +743,14 @@ def display_loop(queue, display, n_workers):
                 f"{GREEN}[INFO]{NC} [{ts}][GPU {gpu_id:2d}]"
                 f" {label} {op_col} {status_str}"
             )
-            display.log(log_line)
 
             tests_done += 1
             if phase == "benchmark":
                 per_gpu_done[gpu_id] = per_gpu_done.get(gpu_id, 0) + 1
-            display.update_progress(tests_done)
+            # Update progress state BEFORE log so the footer is drawn once
+            # with the correct progress value.
+            display.footer[0] = display._fmt_progress(tests_done)
+            display.log(log_line)
 
 
 def cleanup_intermediate_files():
