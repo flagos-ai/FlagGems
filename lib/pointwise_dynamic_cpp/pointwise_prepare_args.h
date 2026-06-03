@@ -232,28 +232,65 @@ inline std::pair<at::ScalarType, at::ScalarType> compute_promoted_dtype(
     const std::vector<double>& scalar_args,
     const std::vector<bool>& is_tensor_mask,
     const PromotionRule& rule) {
-  // Collect ScalarTypes directly — no tensor allocation needed
-  at::ScalarType common_dtype = at::ScalarType::Undefined;
-  bool first = true;
-
-  for (int idx : rule.arg_indices) {
-    at::ScalarType this_dtype;
-    if (is_tensor_mask[idx]) {
-      int tensor_idx = 0;
-      for (int k = 0; k < idx; ++k) {
-        if (is_tensor_mask[k]) tensor_idx++;
-      }
-      this_dtype = inputs[tensor_idx].scalar_type();
-    } else {
-      // Python scalars default to float64 (double)
-      this_dtype = at::kDouble;
+  auto tensor_index_for_arg = [&](int arg_idx) {
+    int tensor_idx = 0;
+    for (int k = 0; k < arg_idx; ++k) {
+      if (is_tensor_mask[k]) tensor_idx++;
     }
+    return tensor_idx;
+  };
 
-    if (first) {
-      common_dtype = this_dtype;
-      first = false;
-    } else {
-      common_dtype = at::promote_types(common_dtype, this_dtype);
+  auto scalar_index_for_arg = [&](int arg_idx) {
+    int scalar_idx = 0;
+    for (int k = 0; k < arg_idx; ++k) {
+      if (!is_tensor_mask[k]) scalar_idx++;
+    }
+    return scalar_idx;
+  };
+
+  auto result_type_for_two_args = [&](int lhs_idx, int rhs_idx) {
+    const bool lhs_is_tensor = is_tensor_mask[lhs_idx];
+    const bool rhs_is_tensor = is_tensor_mask[rhs_idx];
+    if (lhs_is_tensor && rhs_is_tensor) {
+      return at::result_type(inputs[tensor_index_for_arg(lhs_idx)],
+                             inputs[tensor_index_for_arg(rhs_idx)]);
+    }
+    if (lhs_is_tensor) {
+      return at::result_type(inputs[tensor_index_for_arg(lhs_idx)],
+                             at::Scalar(scalar_args[scalar_index_for_arg(rhs_idx)]));
+    }
+    if (rhs_is_tensor) {
+      return at::result_type(at::Scalar(scalar_args[scalar_index_for_arg(lhs_idx)]),
+                             inputs[tensor_index_for_arg(rhs_idx)]);
+    }
+    return at::result_type(at::Scalar(scalar_args[scalar_index_for_arg(lhs_idx)]),
+                           at::Scalar(scalar_args[scalar_index_for_arg(rhs_idx)]));
+  };
+
+  // For binary pointwise ops, defer to ATen result_type so 0-dim tensors
+  // follow PyTorch's scalar-like promotion semantics.
+  at::ScalarType common_dtype = at::ScalarType::Undefined;
+  if (rule.arg_indices.size() == 2) {
+    common_dtype = result_type_for_two_args(rule.arg_indices[0], rule.arg_indices[1]);
+  } else {
+    // Collect ScalarTypes directly — no tensor allocation needed
+    bool first = true;
+
+    for (int idx : rule.arg_indices) {
+      at::ScalarType this_dtype;
+      if (is_tensor_mask[idx]) {
+        this_dtype = inputs[tensor_index_for_arg(idx)].scalar_type();
+      } else {
+        // Python scalars default to float64 (double)
+        this_dtype = at::kDouble;
+      }
+
+      if (first) {
+        common_dtype = this_dtype;
+        first = false;
+      } else {
+        common_dtype = at::promote_types(common_dtype, this_dtype);
+      }
     }
   }
 
