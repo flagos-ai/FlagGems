@@ -8,7 +8,6 @@ import flag_gems
 import flag_gems.runtime as runtime
 from flag_gems.fused import top_k_per_row_prefill
 from flag_gems.patches.patch_util import (
-    _VLLM_OPS_SIGNATURES,
     init_vllm_libraries,
     patch_module_method,
     patch_vllm_lib,
@@ -672,47 +671,38 @@ def apply_gems_patches_to_vllm(verbose=True):
 # =============================================================================
 
 _flag_ops_registered = False
-_flag_ops_def_lib = None
-_flag_ops_impl_lib = None
 
 
 def enable_flag_ops() -> None:
     """
-    Register all FlagGems operators to torch.ops.flag_ops namespace.
+    Register all FlagGems operators to their corresponding torch.ops namespaces.
 
     This function is idempotent - calling it multiple times will only register once.
 
-    Registers all operators from _VLLM_OPS_IMPLS to torch.ops.flag_ops, including:
-    - vLLM custom ops (_C, _moe_C, _vllm_fa3_C, _C_cache_ops)
-    - All FlagGems fused operators
+    Registers all operators from _VLLM_OPS_IMPLS to their respective libraries:
+    - _C: rms_norm, silu_and_mul, cutlass_scaled_mm, etc.
+    - _moe_C: topk_softmax, moe_align_block_size, grouped_topk, moe_sum
+    - _vllm_fa3_C: get_scheduler_metadata
+    - _C_cache_ops: concat_and_cache_mla
 
-    The signatures are defined per-library in _VLLM_OPS_SIGNATURES but registered
-    under the unified "flag_ops" namespace for standalone use.
+    Usage:
+        import flag_gems
+        flag_gems.enable_flag_ops()
+        torch.ops._C.rms_norm(...)
+        torch.ops._moe_C.topk_softmax(...)
     """
-    global _flag_ops_registered, _flag_ops_def_lib, _flag_ops_impl_lib
+    global _flag_ops_registered
     if _flag_ops_registered:
         return
     _flag_ops_registered = True
 
-    # Create library instances
-    # Store as module-level variables to prevent garbage collection
-    _flag_ops_def_lib = torch.library.Library("flag_ops", "DEF")
-    _flag_ops_impl_lib = torch.library.Library("flag_ops", "IMPL")
-
     dispatch_key = runtime.device.dispatch_key
 
-    # Register all operators from all libraries to flag_ops namespace
+    # Initialize libraries and register operators
+    init_vllm_libraries()
+
+    # Register implementations for all operators
     for lib_name, ops_dict in _VLLM_OPS_IMPLS.items():
-        lib_signatures = _VLLM_OPS_SIGNATURES.get(lib_name, {})
-
         for op_name, impl_func in ops_dict.items():
-            # Check if already registered
-            if getattr(torch.ops.flag_ops, op_name, None) is not None:
-                continue
+            patch_vllm_lib(lib_name, op_name, impl_func, dispatch_key, verbose=False)
 
-            signature = lib_signatures.get(op_name)
-            if signature:
-                # Create schema with flag_ops namespace
-                schema = f"{op_name}{signature}" if not signature.startswith(op_name) else signature
-                _flag_ops_def_lib.define(schema)
-                _flag_ops_impl_lib.impl(op_name, impl_func, dispatch_key)
