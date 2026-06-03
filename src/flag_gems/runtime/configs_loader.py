@@ -378,9 +378,9 @@ class TunedConfigLoader(object):
                 )
             filenames.extend(
                 (
-                    f"general_ops_{backend_name}_configs.yaml",
-                    f"general_ops_{vendor_name}_configs.yaml",
-                    "general_ops_configs.yaml",
+                    f"general_ops_{backend_name}_expand.yaml",
+                    f"general_ops_{vendor_name}_expand.yaml",
+                    "general_ops_expand.yaml",
                 )
             )
 
@@ -410,16 +410,11 @@ class TunedConfigLoader(object):
                 "bmm", expand_yaml_path=self._get_expand_config_path("bmm")
             ),
             "bmm_sqmma": self._build_single_expand_spec("bmm_sqmma"),
-            "gemv": self._build_single_expand_spec(
-                "gemv", expand_yaml_path=self._get_expand_config_path("gemv")
-            ),
+            "gemv": self._build_single_expand_spec("gemv"),
             "mm": self._build_single_expand_spec(
                 "mm", expand_yaml_path=self._get_expand_config_path("mm")
             ),
-            "mm_general_tma": self._build_single_expand_spec(
-                "mm_general_tma",
-                expand_yaml_path=self._get_expand_config_path("mm_general_tma"),
-            ),
+            "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
             "mv": self._build_single_expand_spec(
                 "mv", expand_yaml_path=self._get_expand_config_path("mv")
             ),
@@ -432,9 +427,7 @@ class TunedConfigLoader(object):
             "w8a8_block_fp8_general_tma": self._build_single_expand_spec(
                 "w8a8_block_fp8_general_tma"
             ),
-            "mm_splitk": self._build_single_expand_spec(
-                "mm_splitk", expand_yaml_path=self._get_expand_config_path("mm_splitk")
-            ),
+            "mm_splitk": self._build_single_expand_spec("mm_splitk"),
             "sparse_attention": self._build_single_expand_spec("sparse_attention"),
         }
 

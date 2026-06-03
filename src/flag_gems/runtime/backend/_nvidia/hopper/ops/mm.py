@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Optional
 
 import torch
@@ -15,6 +16,9 @@ from flag_gems.utils.triton_version_utils import HAS_TLE, HAS_TLE_DEVICE_MESH
 
 logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.mm")
 CACHE_USAGE_THRESHOLD = 0.8
+EXPAND_CONFIG_FILENAME = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "mm_hopper_expand.yaml")
+)
 _SHARED_MEM_SAFETY_MARGIN_BYTES = 1024
 
 
@@ -308,6 +312,7 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     rep=5,
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_general_tma",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     flagtune_pre_hook=matmul_tma_set_block_size_hook,
 )
 @triton.jit
@@ -487,6 +492,7 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
     rep=10,
     flagtune_op_name="mm",
     flagtune_expand_op_name="gemv",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     flagtune_pre_hook=None,
 )
 @triton.jit
@@ -577,6 +583,7 @@ def gemv_mm(a, b, c, M, K):
     rep=10,
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_splitk",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     flagtune_pre_hook=None,
 )
 @triton.jit
