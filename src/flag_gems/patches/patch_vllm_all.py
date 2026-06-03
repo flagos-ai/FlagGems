@@ -673,7 +673,7 @@ def apply_gems_patches_to_vllm(verbose=True):
 _flag_ops_registered = False
 
 
-def enable_flag_ops() -> None:
+def patch_empty_vllm() -> None:
     """
     Register all FlagGems operators to their corresponding torch.ops namespaces.
 
@@ -687,7 +687,7 @@ def enable_flag_ops() -> None:
 
     Usage:
         import flag_gems
-        flag_gems.enable_flag_ops()
+        flag_gems.patch_empty_vllm()
         torch.ops._C.rms_norm(...)
         torch.ops._moe_C.topk_softmax(...)
     """

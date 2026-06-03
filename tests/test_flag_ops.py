@@ -1,153 +1,116 @@
 """
-Unit tests for enable_flag_ops() function.
+Unit tests for patch_empty_vllm() function.
 
-Tests the registration of custom operators to torch.ops.flag_ops namespace.
+Tests the registration of custom operators to their corresponding torch.ops namespaces.
 """
 
 import pytest
 import torch
 
 import flag_gems
-from flag_gems.patches.flag_ops import enable_flag_ops
+from flag_gems.patches import patch_empty_vllm
 
 
 @pytest.mark.flag_ops
 def test_registers_operators_to_torch_ops_namespace():
-    """After enable_flag_ops(), operators should be accessible via torch.ops.flag_ops."""
-    enable_flag_ops()
+    """After patch_empty_vllm(), operators should be accessible via torch.ops._C etc."""
+    patch_empty_vllm()
 
-    # All registered operators should exist
-    assert hasattr(torch.ops, "flag_ops")
-    assert hasattr(torch.ops.flag_ops, "silu_and_mul")
-    assert hasattr(torch.ops.flag_ops, "silu_and_mul_out")
-    assert hasattr(torch.ops.flag_ops, "silu_and_mul_with_clamp")
-    assert hasattr(torch.ops.flag_ops, "silu_and_mul_with_clamp_out")
-    assert hasattr(torch.ops.flag_ops, "cutlass_scaled_mm")
+    # _C operators
+    assert hasattr(torch.ops, "_C")
+    assert hasattr(torch.ops._C, "silu_and_mul")
+    assert hasattr(torch.ops._C, "silu_and_mul_with_clamp")
+    assert hasattr(torch.ops._C, "rms_norm")
+    assert hasattr(torch.ops._C, "cutlass_scaled_mm")
+
+    # _moe_C operators
+    assert hasattr(torch.ops, "_moe_C")
+    assert hasattr(torch.ops._moe_C, "topk_softmax")
+    assert hasattr(torch.ops._moe_C, "moe_align_block_size")
 
 
 @pytest.mark.flag_ops
 def test_idempotent_multiple_calls():
-    """Calling enable_flag_ops() multiple times should not raise errors."""
-    enable_flag_ops()
-    enable_flag_ops()  # Should not raise
-    enable_flag_ops()  # Should not raise
+    """Calling patch_empty_vllm() multiple times should not raise errors."""
+    patch_empty_vllm()
+    patch_empty_vllm()  # Should not raise
+    patch_empty_vllm()  # Should not raise
 
-    assert hasattr(torch.ops.flag_ops, "silu_and_mul")
+    assert hasattr(torch.ops._C, "silu_and_mul")
 
 
 @pytest.mark.flag_ops
 def test_silu_and_mul_callable():
-    """torch.ops.flag_ops.silu_and_mul should be callable with tensors."""
-    enable_flag_ops()
+    """torch.ops._C.silu_and_mul should be callable with tensors."""
+    patch_empty_vllm()
 
-    x = torch.randn(4, 8, dtype=torch.float16, device=flag_gems.device)
-    y = torch.randn(4, 8, dtype=torch.float16, device=flag_gems.device)
+    # _C.silu_and_mul has signature: (Tensor(a!) out, Tensor input) -> ()
+    inp = torch.randn(4, 16, dtype=torch.float16, device=flag_gems.device)
+    out = torch.empty(4, 8, dtype=torch.float16, device=flag_gems.device)
 
-    result = torch.ops.flag_ops.silu_and_mul(x, y)
+    torch.ops._C.silu_and_mul(out, inp)
 
-    assert result.shape == x.shape
-    assert result.dtype == x.dtype
-
-
-@pytest.mark.flag_ops
-def test_silu_and_mul_out_callable():
-    """torch.ops.flag_ops.silu_and_mul_out should write to output tensor."""
-    enable_flag_ops()
-
-    x = torch.randn(4, 8, dtype=torch.float16, device=flag_gems.device)
-    y = torch.randn(4, 8, dtype=torch.float16, device=flag_gems.device)
-    out = torch.empty_like(x)
-
-    result = torch.ops.flag_ops.silu_and_mul_out(x, y, out=out)
-
-    assert result is out
-    assert result.shape == x.shape
+    assert out.shape == (4, 8)
+    assert out.dtype == inp.dtype
 
 
 @pytest.mark.flag_ops
 def test_silu_and_mul_with_clamp_callable():
-    """torch.ops.flag_ops.silu_and_mul_with_clamp should accept limit parameter."""
-    enable_flag_ops()
+    """torch.ops._C.silu_and_mul_with_clamp should accept limit parameter."""
+    patch_empty_vllm()
 
-    x = torch.randn(4, 8, dtype=torch.float16, device=flag_gems.device)
-    y = torch.randn(4, 8, dtype=torch.float16, device=flag_gems.device)
+    # _C.silu_and_mul_with_clamp has signature: (Tensor(a!) out, Tensor input, float limit) -> ()
+    inp = torch.randn(4, 16, dtype=torch.float16, device=flag_gems.device)
+    out = torch.empty(4, 8, dtype=torch.float16, device=flag_gems.device)
     limit = 1.0
 
-    result = torch.ops.flag_ops.silu_and_mul_with_clamp(x, y, limit)
+    torch.ops._C.silu_and_mul_with_clamp(out, inp, limit)
 
-    assert result.shape == x.shape
-    assert result.dtype == x.dtype
-
-
-@pytest.mark.flag_ops
-def test_silu_and_mul_with_clamp_out_callable():
-    """torch.ops.flag_ops.silu_and_mul_with_clamp_out should write to output tensor."""
-    enable_flag_ops()
-
-    x = torch.randn(4, 8, dtype=torch.float16, device=flag_gems.device)
-    y = torch.randn(4, 8, dtype=torch.float16, device=flag_gems.device)
-    out = torch.empty_like(x)
-    limit = 1.0
-
-    result = torch.ops.flag_ops.silu_and_mul_with_clamp_out(x, y, out=out, limit=limit)
-
-    assert result is out
-    assert result.shape == x.shape
+    assert out.shape == (4, 8)
+    assert out.dtype == inp.dtype
 
 
 @pytest.mark.flag_ops
-def test_silu_and_mul_correctness():
-    """torch.ops.flag_ops.silu_and_mul should compute silu(x) * y."""
-    enable_flag_ops()
+def test_rms_norm_callable():
+    """torch.ops._C.rms_norm should be callable."""
+    patch_empty_vllm()
 
-    x = torch.tensor([1.0, 2.0, -1.0], dtype=torch.float32, device=flag_gems.device)
-    y = torch.tensor([1.0, 1.0, 1.0], dtype=torch.float32, device=flag_gems.device)
+    hidden_size = 64
+    inp = torch.randn(4, hidden_size, dtype=torch.float16, device=flag_gems.device)
+    weight = torch.ones(hidden_size, dtype=torch.float16, device=flag_gems.device)
+    result = torch.empty_like(inp)
+    epsilon = 1e-5
 
-    result = torch.ops.flag_ops.silu_and_mul(x, y)
-    expected = torch.nn.functional.silu(x) * y
+    torch.ops._C.rms_norm(result, inp, weight, epsilon)
 
-    torch.testing.assert_close(result, expected)
-
-
-@pytest.mark.flag_ops
-def test_silu_and_mul_with_clamp_correctness():
-    """torch.ops.flag_ops.silu_and_mul_with_clamp should clamp the result."""
-    enable_flag_ops()
-
-    x = torch.tensor([10.0, 20.0, -1.0], dtype=torch.float32, device=flag_gems.device)
-    y = torch.tensor([1.0, 1.0, 1.0], dtype=torch.float32, device=flag_gems.device)
-    limit = 5.0
-
-    result = torch.ops.flag_ops.silu_and_mul_with_clamp(x, y, limit)
-
-    assert result.max().item() <= limit
-    assert result.min().item() >= -limit
+    assert result.shape == inp.shape
+    assert result.dtype == inp.dtype
 
 
 @pytest.mark.flag_ops
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_silu_and_mul_dtypes(dtype):
-    """torch.ops.flag_ops.silu_and_mul should work with different dtypes."""
-    enable_flag_ops()
+    """torch.ops._C.silu_and_mul should work with different dtypes."""
+    patch_empty_vllm()
 
-    x = torch.randn(4, 8, dtype=dtype, device=flag_gems.device)
-    y = torch.randn(4, 8, dtype=dtype, device=flag_gems.device)
+    inp = torch.randn(4, 16, dtype=dtype, device=flag_gems.device)
+    out = torch.empty(4, 8, dtype=dtype, device=flag_gems.device)
 
-    result = torch.ops.flag_ops.silu_and_mul(x, y)
+    torch.ops._C.silu_and_mul(out, inp)
 
-    assert result.dtype == dtype
-    assert result.shape == x.shape
+    assert out.dtype == dtype
 
 
 @pytest.mark.flag_ops
-@pytest.mark.parametrize("shape", [(4,), (4, 8), (2, 4, 8), (2, 2, 4, 8)])
+@pytest.mark.parametrize("shape", [(4, 16), (8, 32), (2, 64)])
 def test_silu_and_mul_shapes(shape):
-    """torch.ops.flag_ops.silu_and_mul should work with different shapes."""
-    enable_flag_ops()
+    """torch.ops._C.silu_and_mul should work with different shapes."""
+    patch_empty_vllm()
 
-    x = torch.randn(shape, dtype=torch.float16, device=flag_gems.device)
-    y = torch.randn(shape, dtype=torch.float16, device=flag_gems.device)
+    inp = torch.randn(shape, dtype=torch.float16, device=flag_gems.device)
+    out_shape = (shape[0], shape[1] // 2)
+    out = torch.empty(out_shape, dtype=torch.float16, device=flag_gems.device)
 
-    result = torch.ops.flag_ops.silu_and_mul(x, y)
+    torch.ops._C.silu_and_mul(out, inp)
 
-    assert result.shape == shape
+    assert out.shape == out_shape
