@@ -72,6 +72,14 @@ _OP_SIGNATURES = {
         "float fp8_max, bool scale_ue8m0=False) -> ()",
         "apply_repetition_penalties_": "(Tensor(a!) logits, Tensor prompt_mask, "
         "Tensor output_mask, Tensor repetition_penalties) -> Tensor",
+        # Additional ops from patch_vllm_all.py
+        "rms_norm": "(Tensor(a!) result, Tensor input, Tensor weight, float epsilon) -> ()",
+        "silu_and_mul_with_clamp": "(Tensor(a!) out, Tensor input, float limit) -> ()",
+        "hc_head_fused_kernel": "(Tensor hs_flat, Tensor fn, Tensor hc_scale, "
+        "Tensor hc_base, Tensor(a!) out, int hidden_size, float rms_eps, "
+        "float hc_eps, int hc_mult) -> ()",
+        "top_k_per_row_prefill": "(Tensor logits, Tensor row_starts, Tensor row_ends, "
+        "Tensor(a!) indices, int num_rows, int stride0, int stride1, int top_k) -> ()",
     },
     "_vllm_fa3_C": {
         "get_scheduler_metadata": "(int batch_size, int max_seqlen_q, int max_seqlen_k, "
