@@ -92,6 +92,37 @@ _OP_SIGNATURES = {
 }
 
 
+# Unified patch registry
+_LIB_PATCHES = {}
+
+
+def register_lib_patch(lib_name: str, op_name: str, impl_func: callable, signature: str = None):
+    """注册 vLLM library patch
+
+    Args:
+        lib_name: Library name (_C, _moe_C, etc.)
+        op_name: Operation name
+        impl_func: Implementation function
+        signature: Optional signature override (uses _OP_SIGNATURES if None)
+    """
+    if lib_name not in _LIB_PATCHES:
+        _LIB_PATCHES[lib_name] = {}
+
+    # 获取 signature
+    if signature is None:
+        signature = _OP_SIGNATURES.get(lib_name, {}).get(op_name)
+
+    _LIB_PATCHES[lib_name][op_name] = {
+        "impl": impl_func,
+        "signature": signature
+    }
+
+
+def get_lib_patches():
+    """返回所有已注册的 library patches"""
+    return _LIB_PATCHES
+
+
 def _define_op_if_not_exists(lib_name, op_name, signature):
     if not _is_op_registered(lib_name, op_name):
         try:
