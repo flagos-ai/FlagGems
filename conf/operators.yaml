@@ -807,6 +807,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: ilshift__
+    description: Computes the in-place bitwise left shift of `self` by `other` bits.
+    for:
+      - __ilshift__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: bitwise_left_shift
     description: Computes the left arithmetic shift of `input` by `other` bits.
     for:
