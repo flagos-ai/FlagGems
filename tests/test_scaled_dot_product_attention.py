@@ -293,7 +293,9 @@ def test_scaled_dot_product_attention_legacy_backward(
             v_atol = 2e-3
         else:
             v_atol = 3e-4
-    utils.gems_assert_close(gems_v_grad, torch_v_grad, dtype, equal_nan=True, atol=v_atol)
+    utils.gems_assert_close(
+        gems_v_grad, torch_v_grad, dtype, equal_nan=True, atol=v_atol
+    )
 
 
 @pytest.mark.scaled_dot_product_attention
