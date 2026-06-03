@@ -88,18 +88,6 @@ _VLLM_OPS_SIGNATURES = {
 }
 
 
-def get_lib_ops(lib_name: str) -> list:
-    """获取指定库的所有 op 名称列表"""
-    if lib_name in _VLLM_OPS_SIGNATURES:
-        return list(_VLLM_OPS_SIGNATURES[lib_name].keys())
-    return []
-
-
-def get_op_signature(lib_name: str, op_name: str) -> str:
-    """获取指定 op 的 signature"""
-    return _VLLM_OPS_SIGNATURES.get(lib_name, {}).get(op_name)
-
-
 def _define_op_if_not_exists(lib_name, op_name, signature):
     if not _is_op_registered(lib_name, op_name):
         try:
