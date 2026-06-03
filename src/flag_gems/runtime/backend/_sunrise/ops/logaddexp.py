@@ -66,7 +66,7 @@ def _launch_logaddexp_kernel(x: torch.Tensor, y: torch.Tensor, out: torch.Tensor
 
 
 def logaddexp(x, y):
-    logger.debug("GEMS LOGADDEXP")
+    logger.debug("GEMS_SUNRISE LOGADDEXP")
     # Determine device
     device = None
     if torch.is_tensor(x) and x.is_ptpu:
@@ -96,7 +96,7 @@ def logaddexp(x, y):
 
 
 def logaddexp_out(x, y, out):
-    logger.debug("GEMS LOGADDEXP_OUT")
+    logger.debug("GEMS_SUNRISE LOGADDEXP_OUT")
     if not torch.is_tensor(out):
         raise ValueError("out must be a tensor")
 

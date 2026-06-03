@@ -103,7 +103,7 @@ def should_use_broadcast_configs(A, B):
 
 
 def add(A, B, *, alpha=1):
-    logger.debug("GEMS ADD")
+    logger.debug("GEMS_SUNRISE ADD")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         if B.device != A.device:
             B = B.to(A.device)
@@ -122,7 +122,7 @@ def add(A, B, *, alpha=1):
 
 
 def add_(A, B, *, alpha=1):
-    logger.debug("GEMS ADD_")
+    logger.debug("GEMS_SUNRISE ADD_")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         if B.device != A.device:
             B = B.to(A.device)

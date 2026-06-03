@@ -31,7 +31,7 @@ def _margin_ranking_loss_kernel(
 
 
 def margin_ranking_loss(*args, **kwargs):
-    logger.debug("GEMS MARGIN_RANKING_LOSS")
+    logger.debug("GEMS_SUNRISE MARGIN_RANKING_LOSS")
     # Parse inputs: (input1, input2, target, margin=0.0, reduction='mean')
     if len(args) < 3 and not all(k in kwargs for k in ("self", "other", "target")):
         raise TypeError(

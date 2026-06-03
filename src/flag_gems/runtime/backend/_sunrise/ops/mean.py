@@ -62,7 +62,7 @@ def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def mean(inp, *, dtype=None):
-    logger.debug("GEMS MEAN")
+    logger.debug("GEMS_SUNRISE MEAN")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -224,7 +224,7 @@ def mean_dim_kernel(
 
 
 def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
-    logger.debug("GEMS MEAN_DIM")
+    logger.debug("GEMS_SUNRISE MEAN_DIM")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
@@ -306,6 +306,6 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
 
 
 def mean_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS MEAN_DIM (wrapper)")
+    logger.debug("GEMS_SUNRISE MEAN_DIM (wrapper)")
 
     return mean_dim_comm(inp, dim, keepdim, dtype=dtype)

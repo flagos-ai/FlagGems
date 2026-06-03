@@ -98,7 +98,7 @@ def _launch_i0(out: torch.Tensor, x: torch.Tensor):
 
 
 def i0(x: torch.Tensor):
-    logger.debug("GEMS I0")
+    logger.debug("GEMS_SUNRISE I0")
     if not x.is_ptpu:
         raise ValueError("i0: input tensor must be on PTPU device")
     # Result dtype follows PyTorch's floating type behavior
@@ -109,7 +109,7 @@ def i0(x: torch.Tensor):
 
 
 def i0_out(x: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS I0_OUT")
+    logger.debug("GEMS_SUNRISE I0_OUT")
     if not (x.is_ptpu and out.is_ptpu):
         raise ValueError("i0_out: input and output tensors must be on PTPU device")
     if not out.is_floating_point():

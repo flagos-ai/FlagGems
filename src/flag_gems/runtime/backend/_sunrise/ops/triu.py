@@ -77,7 +77,7 @@ INT32_MAX = torch.iinfo(torch.int32).max
 
 
 def triu(A, diagonal=0):
-    logger.debug("GEMS TRIU")
+    logger.debug("GEMS_SUNRISE TRIU")
     A = A.contiguous()
     ori_type = A.dtype
     out = torch.empty(A.shape, device="ptpu").as_strided(A.shape, A.stride())
