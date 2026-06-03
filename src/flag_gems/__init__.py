@@ -688,7 +688,7 @@ class use_gems:
         self.lib = torch.library.Library("aten", "IMPL")
         self.exclude = exclude if isinstance(exclude, (list, tuple, set, str)) else []
         self.include = include if isinstance(include, (list, tuple, set, str)) else []
-        self.registrar = Register
+        self.registrar = GeneralOpRegistrar
         self.record = record
         self.once = once
         self.path = path
