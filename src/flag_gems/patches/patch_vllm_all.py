@@ -645,6 +645,9 @@ def apply_gems_patches_to_vllm(verbose=True):
     dispatch_key = flag_gems.runtime.device.dispatch_key
     init_vllm_libraries()
 
+    # Register all patches to unified registry
+    _register_patches_to_registry()
+
     module_patches = [
         (RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda),
         (RotaryEmbedding, "forward_cuda", custom_gems_rope_forward_cuda),
@@ -657,24 +660,18 @@ def apply_gems_patches_to_vllm(verbose=True):
     for cls, method_name, new_method in module_patches:
         patch_module_method(cls, method_name, new_method, verbose)
 
-    lib_patches = [
-        ("_C", "rms_norm", custom_rms_norm_out),
-        ("_C", "silu_and_mul", custom_silu_and_mul),
-        ("_C", "silu_and_mul_with_clamp", custom_silu_and_mul_with_clamp),
-        ("_C", "hc_head_fused_kernel", custom_hc_head_fused_kernel),
-        ("_C", "cutlass_scaled_mm", custom_cutlass_scaled_mm),
-        ("_moe_C", "moe_align_block_size", custom_moe_align_block_size),
-        ("_moe_C", "topk_softmax", custom_topk_softmax),
-        ("_moe_C", "moe_sum", custom_moe_sum),
-        ("_vllm_fa3_C", "get_scheduler_metadata", custom_get_scheduler_metadata),
-        ("_moe_C", "grouped_topk", custom_moe_grouped_topk),
-        ("_C", "per_token_group_fp8_quant", custom_per_token_group_fp8_quant),
-        ("_C", "apply_repetition_penalties_", custom_apply_repetition_penalties),
-        ("_C", "top_k_per_row_prefill", custom_top_k_per_row_prefill),
-        ("_C_cache_ops", "concat_and_cache_mla", custom_concat_and_cache_mla),
-    ]
-    for lib_name, fn_name, fn in lib_patches:
-        patch_vllm_lib(lib_name, fn_name, fn, dispatch_key, verbose)
+    # Patch library ops from unified registry
+    patches = get_lib_patches()
+    for lib_name, ops_dict in patches.items():
+        for op_name, config in ops_dict.items():
+            patch_vllm_lib(lib_name, op_name, config["impl"], dispatch_key, verbose)
 
     if vitw is not None:
         patch_vllm_vit_to_attn(vitw)
+
+
+def _register_patches_to_registry():
+    """将所有 custom 函数注册到统一的 patch 注册表"""
+    for lib_name, op_name, func_name in _PATCHES_TO_REGISTER:
+        impl_func = globals()[func_name]
+        register_lib_patch(lib_name, op_name, impl_func)
