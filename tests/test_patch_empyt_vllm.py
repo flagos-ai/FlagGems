@@ -11,7 +11,7 @@ import flag_gems
 from flag_gems.patches import patch_empty_vllm
 
 
-@pytest.mark.flag_ops
+@pytest.mark.patch_empty_vllm
 def test_registers_operators_to_torch_ops_namespace():
     """After patch_empty_vllm(), operators should be accessible via torch.ops._C etc."""
     patch_empty_vllm()
@@ -29,7 +29,7 @@ def test_registers_operators_to_torch_ops_namespace():
     assert hasattr(torch.ops._moe_C, "moe_align_block_size")
 
 
-@pytest.mark.flag_ops
+@pytest.mark.patch_empty_vllm
 def test_idempotent_multiple_calls():
     """Calling patch_empty_vllm() multiple times should not raise errors."""
     patch_empty_vllm()
@@ -39,7 +39,7 @@ def test_idempotent_multiple_calls():
     assert hasattr(torch.ops._C, "silu_and_mul")
 
 
-@pytest.mark.flag_ops
+@pytest.mark.patch_empty_vllm
 def test_silu_and_mul_callable():
     """torch.ops._C.silu_and_mul should be callable with tensors."""
     patch_empty_vllm()
@@ -54,7 +54,7 @@ def test_silu_and_mul_callable():
     assert out.dtype == inp.dtype
 
 
-@pytest.mark.flag_ops
+@pytest.mark.patch_empty_vllm
 def test_silu_and_mul_with_clamp_callable():
     """torch.ops._C.silu_and_mul_with_clamp should accept limit parameter."""
     patch_empty_vllm()
@@ -70,7 +70,7 @@ def test_silu_and_mul_with_clamp_callable():
     assert out.dtype == inp.dtype
 
 
-@pytest.mark.flag_ops
+@pytest.mark.patch_empty_vllm
 def test_rms_norm_callable():
     """torch.ops._C.rms_norm should be callable."""
     patch_empty_vllm()
@@ -87,7 +87,7 @@ def test_rms_norm_callable():
     assert result.dtype == inp.dtype
 
 
-@pytest.mark.flag_ops
+@pytest.mark.patch_empty_vllm
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_silu_and_mul_dtypes(dtype):
     """torch.ops._C.silu_and_mul should work with different dtypes."""
@@ -101,7 +101,7 @@ def test_silu_and_mul_dtypes(dtype):
     assert out.dtype == dtype
 
 
-@pytest.mark.flag_ops
+@pytest.mark.patch_empty_vllm
 @pytest.mark.parametrize("shape", [(4, 16), (8, 32), (2, 64)])
 def test_silu_and_mul_shapes(shape):
     """torch.ops._C.silu_and_mul should work with different shapes."""
