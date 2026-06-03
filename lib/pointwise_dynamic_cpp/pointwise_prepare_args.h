@@ -252,8 +252,7 @@ inline std::pair<at::ScalarType, at::ScalarType> compute_promoted_dtype(
     const bool lhs_is_tensor = is_tensor_mask[lhs_idx];
     const bool rhs_is_tensor = is_tensor_mask[rhs_idx];
     if (lhs_is_tensor && rhs_is_tensor) {
-      return at::result_type(inputs[tensor_index_for_arg(lhs_idx)],
-                             inputs[tensor_index_for_arg(rhs_idx)]);
+      return at::result_type(inputs[tensor_index_for_arg(lhs_idx)], inputs[tensor_index_for_arg(rhs_idx)]);
     }
     if (lhs_is_tensor) {
       return at::result_type(inputs[tensor_index_for_arg(lhs_idx)],

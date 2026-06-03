@@ -21,7 +21,8 @@ TEST(type_promotion_test, add_float32_tensor_float64_zerod_tensor) {
   torch::Tensor out_triton = flag_gems::add_tensor(x, z);
 
   // Check dtype promotion
-  EXPECT_EQ(out_torch.dtype(), torch::kFloat32) << "PyTorch output should be float32 for float64 0-dim tensor";
+  EXPECT_EQ(out_torch.dtype(), torch::kFloat32)
+      << "PyTorch output should be float32 for float64 0-dim tensor";
   EXPECT_EQ(out_triton.dtype(), out_torch.dtype()) << "FlagGems output should match PyTorch dtype";
 
   // Check numerical correctness
@@ -66,7 +67,8 @@ TEST(type_promotion_test, add_mixed_dtype_tensors) {
   torch::Tensor out_triton = flag_gems::add_tensor(x, y);
 
   // Check dtype promotion
-  EXPECT_EQ(out_torch.dtype(), torch::kFloat64) << "PyTorch output should be float64 for mixed shaped tensors";
+  EXPECT_EQ(out_torch.dtype(), torch::kFloat64)
+      << "PyTorch output should be float64 for mixed shaped tensors";
   EXPECT_EQ(out_triton.dtype(), out_torch.dtype()) << "FlagGems output should match PyTorch dtype";
 
   // Check numerical correctness
