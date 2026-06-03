@@ -36,3 +36,29 @@ def test_logit_(shape, dtype):
     with flag_gems.use_gems():
         res_out = inp.logit_(eps=1e-6)
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.logit_backward
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_logit_backward(shape, dtype):
+    torch.manual_seed(0)
+    base = torch.empty(shape, device=flag_gems.device, dtype=torch.float32).uniform_(
+        -4.0, 4.0
+    )
+    inp = torch.sigmoid(base).to(dtype=dtype)
+    res_inp = inp.detach().requires_grad_(True)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.logit(ref_inp, eps=1e-6)
+    with flag_gems.use_gems():
+        res_out = torch.logit(res_inp, eps=1e-6)
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = utils.to_reference(out_grad, True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, res_inp, out_grad)
+
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
