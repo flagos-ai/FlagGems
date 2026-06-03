@@ -5,7 +5,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 # Bitwise ops need integer-only shapes, extracted from shared hand-tuned test suite
 INPLACE_BITWISE_SHAPES = [
     ((512, 1024), (512, 1024)),

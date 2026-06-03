@@ -1,5 +1,4 @@
 import pytest
-import torch
 
 from . import base, consts
 
@@ -13,4 +12,3 @@ def test_ilshift__():
         is_inplace=True,
     )
     bench.run()
-
