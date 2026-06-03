@@ -441,6 +441,7 @@ _FULL_CONFIG = (
     ("relu", relu),
     ("relu_", relu_),
     ("relu6", relu6),
+    ("relu6_backward", relu6_backward),
     ("remainder.Scalar", remainder),
     ("remainder.Scalar_Tensor", remainder),
     ("remainder.Tensor", remainder),
