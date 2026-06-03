@@ -7,10 +7,38 @@ import torch.nn.functional as F
 import flag_gems
 from flag_gems.fused import top_k_per_row_prefill
 from flag_gems.patches.patch_util import (
+    get_lib_patches,
     init_vllm_libraries,
     patch_module_method,
     patch_vllm_lib,
+    register_lib_patch,
 )
+
+
+# Registry of all library patches to register
+def _register_all_lib_patches():
+    """注册所有 vLLM library patches 到统一注册表"""
+    # 注意: custom_* 函数在下面定义，这里只是前向引用
+    patches_to_register = [
+        ("_C", "rms_norm", "custom_rms_norm_out"),
+        ("_C", "silu_and_mul", "custom_silu_and_mul"),
+        ("_C", "silu_and_mul_with_clamp", "custom_silu_and_mul_with_clamp"),
+        ("_C", "hc_head_fused_kernel", "custom_hc_head_fused_kernel"),
+        ("_C", "cutlass_scaled_mm", "custom_cutlass_scaled_mm"),
+        ("_C", "per_token_group_fp8_quant", "custom_per_token_group_fp8_quant"),
+        ("_C", "apply_repetition_penalties_", "custom_apply_repetition_penalties"),
+        ("_C", "top_k_per_row_prefill", "custom_top_k_per_row_prefill"),
+        ("_moe_C", "moe_align_block_size", "custom_moe_align_block_size"),
+        ("_moe_C", "topk_softmax", "custom_topk_softmax"),
+        ("_moe_C", "moe_sum", "custom_moe_sum"),
+        ("_moe_C", "grouped_topk", "custom_moe_grouped_topk"),
+        ("_vllm_fa3_C", "get_scheduler_metadata", "custom_get_scheduler_metadata"),
+        ("_C_cache_ops", "concat_and_cache_mla", "custom_concat_and_cache_mla"),
+    ]
+    return patches_to_register
+
+
+_PATCHES_TO_REGISTER = _register_all_lib_patches()
 
 
 def custom_gems_rms_forward_cuda(self, x, residual=None):
