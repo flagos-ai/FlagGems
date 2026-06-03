@@ -363,6 +363,7 @@ def test_flash_attn_varlen_func(monkeypatch):
         op_name="flash_attn_varlen_func",
         torch_op=get_flash_attn_varlen_baseline(),
         gems_op=flag_gems.ops.flash_attn_varlen_func,
+        # Match the supported flash_attn_varlen_func dtype coverage.
         dtypes=[torch.float16, torch.bfloat16],
     )
     bench.run()
@@ -387,6 +388,7 @@ def test_flash_attn_varlen_func_noncontig(monkeypatch):
         op_name="flash_attn_varlen_func_noncontig",
         torch_op=get_flash_attn_varlen_baseline(),
         gems_op=flag_gems.ops.flash_attn_varlen_func,
+        # Match the supported flash_attn_varlen_func dtype coverage.
         dtypes=[torch.float16, torch.bfloat16],
         cache_non_contiguous=True,
     )
