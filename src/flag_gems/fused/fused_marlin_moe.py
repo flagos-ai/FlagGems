@@ -27,6 +27,7 @@ from typing import Any, Callable, Optional
 import torch
 import triton.language as tl
 
+from flag_gems.fused.fused_marlin_moe_w4a16 import fused_moe_w4a16_gptq
 from flag_gems.fused.fused_moe import (
     MoEActivation,
     _get_config_dtype_str,
@@ -374,6 +375,39 @@ def fused_marlin_moe(
 
     if inplace and output is not None:
         raise ValueError("Cannot pass both inplace=True and output")
+
+    if (
+        use_int4_w4a16
+        and hidden_states.dtype in (torch.float16, torch.bfloat16)
+        and w1.dtype == torch.uint8
+        and w2.dtype == torch.uint8
+        and bias1 is None
+        and bias2 is None
+        and w1_zeros is None
+        and w2_zeros is None
+        and expert_map is None
+        and (global_num_experts == -1 or global_num_experts == w1.size(0))
+        and group_size >= 128
+        and w1_scale.dtype == hidden_states.dtype
+        and w2_scale.dtype == hidden_states.dtype
+    ):
+        result = fused_moe_w4a16_gptq(
+            hidden_states=hidden_states,
+            w1=w1,
+            w2=w2,
+            w1_scale=w1_scale,
+            w2_scale=w2_scale,
+            topk_weights=topk_weights,
+            topk_ids=topk_ids,
+            activation=activation_str,
+            group_size=group_size,
+            apply_router_weight_on_input=apply_router_weight_on_input,
+            inplace=inplace,
+        )
+        if output is not None:
+            output.copy_(result)
+            return output
+        return result
 
     result = _fused_marlin_moe_impl(
         hidden_states=hidden_states,
