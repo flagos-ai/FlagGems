@@ -4,16 +4,26 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
+
+if QUICK_MODE:
+    SORT_BATCH_SIZES = [4]
+    SORT_HIDDENSIZES = [256, 2048]
+    SORT_DESCENDING = [False]
+    SORT_DIMS = [-1]
+else:
+    SORT_BATCH_SIZES = [4, 8]
+    SORT_HIDDENSIZES = [1, 256, 2048, 9333, 65536, 32768, 128 * 1024, 256 * 1024]
+    SORT_DESCENDING = [True, False]
+    SORT_DIMS = [0, -1]
 
 
 @pytest.mark.sort
-@pytest.mark.parametrize("batch_size", [4, 8])
-@pytest.mark.parametrize(
-    "hiddensize", [1, 256, 2048, 9333, 65536, 32768, 128 * 1024, 256 * 1024]
-)
-@pytest.mark.parametrize("descending", [True, False])
+@pytest.mark.parametrize("batch_size", SORT_BATCH_SIZES)
+@pytest.mark.parametrize("hiddensize", SORT_HIDDENSIZES)
+@pytest.mark.parametrize("descending", SORT_DESCENDING)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES)
-@pytest.mark.parametrize("dim", [0, -1])
+@pytest.mark.parametrize("dim", SORT_DIMS)
 def test_sort(batch_size, hiddensize, descending, dtype, dim):
     if dtype in utils.BOOL_TYPES:
         y = torch.randint(
@@ -43,13 +53,11 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
 
 
 @pytest.mark.sort_stable
-@pytest.mark.parametrize("batch_size", [4, 8])
-@pytest.mark.parametrize(
-    "hiddensize", [1, 256, 2048, 9333, 65536, 32768, 128 * 1024, 256 * 1024]
-)
-@pytest.mark.parametrize("descending", [True, False])
+@pytest.mark.parametrize("batch_size", SORT_BATCH_SIZES)
+@pytest.mark.parametrize("hiddensize", SORT_HIDDENSIZES)
+@pytest.mark.parametrize("descending", SORT_DESCENDING)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES)
-@pytest.mark.parametrize("dim", [0, -1])
+@pytest.mark.parametrize("dim", SORT_DIMS)
 def test_sort_stable(batch_size, hiddensize, descending, dtype, dim):
     if dtype in utils.BOOL_TYPES:
         y = torch.randint(
