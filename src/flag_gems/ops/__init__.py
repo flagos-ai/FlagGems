@@ -1,3 +1,5 @@
+from flag_gems.ops.fix import fix
+from flag_gems.ops.deg2rad import deg2rad
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -398,6 +400,7 @@ from flag_gems.ops.where import (
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
+from flag_gems.ops.negative import negative
 
 __all__ = [
     "_assert_async",
@@ -533,6 +536,7 @@ __all__ = [
     "cumprod_",
     "cumsum",
     "cumsum_out",
+    "deg2rad",
     "diag",
     "diag_embed",
     "diagonal_backward",
@@ -568,6 +572,7 @@ __all__ = [
     "feature_dropout",
     "feature_dropout_",
     "fft",
+    "fix",
     "fill_scalar",
     "fill_scalar_",
     "fill_scalar_out",
@@ -722,6 +727,7 @@ __all__ = [
     "ne_scalar",
     "neg",
     "neg_",
+    "negative",
     "new_full",
     "nll_loss2d_backward",
     "nll_loss2d_forward",

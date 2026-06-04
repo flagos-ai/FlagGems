@@ -6920,3 +6920,42 @@ ops:
       - Tensor
     stages:
       - alpha: '5.1'
+
+- id: deg2rad
+  description: "deg2rad operator"
+  for:
+    - deg2rad
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - stable: '5.0'
+
+
+- id: fix
+  description: "fix operator"
+  for:
+    - fix
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - stable: '5.0'
+
+
+- id: negative
+  description: "negative operator"
+  for:
+    - negative
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - stable: '5.0'
+
