@@ -1,4 +1,3 @@
-import os
 from enum import Enum
 
 
@@ -18,6 +17,7 @@ class vendors(Enum):
     ENFLAME = 12
     SPACEMIT = 13
     THEAD = 14
+    ARM = 15
 
     @classmethod
     def get_all_vendors(cls) -> dict:
@@ -59,17 +59,6 @@ UNSUPPORT_INT64 = frozenset(
         vendors.TSINGMICRO,
     }
 )
-
-DEFAULT_EXPAND_CONFIG_PATH = os.path.normpath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "utils",
-        "configs",
-        "general_ops_expand_configs.yaml",
-    )
-)
-
 
 DEFAULT_STRATEGIES = {
     "addmm": ["align32", "align32", "align32"],
