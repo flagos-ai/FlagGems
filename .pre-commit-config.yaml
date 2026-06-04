@@ -30,3 +30,12 @@ repos:
   hooks:
     - id: black
     - id: black-jupyter
+
+- repo: local
+  hooks:
+    - id: check-debug-log-format
+      name: Check backend debug log format
+      entry: python3 tools/check_debug_log_format.py
+      language: system
+      files: ^src/flag_gems/runtime/backend/_[^/]+/ops/.*\.py$
+      types: [python]
