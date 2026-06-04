@@ -53,6 +53,11 @@ _QUANT_TYPE_INT8 = {QUANT_TYPE_UINT8B128}
 _SUPPORTED_QUANT_TYPES = _QUANT_TYPE_INT4 | _QUANT_TYPE_INT8
 
 
+@functools.lru_cache(maxsize=1)
+def _is_hopper() -> bool:
+    return torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 9
+
+
 # ----------------------------------------------------------------------------
 # Phase-2 impl: copy of fused_experts_impl but with the dequant shortcut
 # removed so the wna16 Triton kernel is actually invoked for W4A16/W8A16.
@@ -377,7 +382,10 @@ def fused_marlin_moe(
         raise ValueError("Cannot pass both inplace=True and output")
 
     if (
-        use_int4_w4a16
+        # The magic-trick kernel's bf16 dequant uses sub.bf16x2/mul.bf16 PTX,
+        # which require sm_90+; on pre-Hopper fall back to the generic wna16 kernel.
+        _is_hopper()
+        and use_int4_w4a16
         and hidden_states.dtype in (torch.float16, torch.bfloat16)
         and w1.dtype == torch.uint8
         and w2.dtype == torch.uint8

@@ -20,6 +20,17 @@ from flag_gems.fused.fused_marlin_moe import (
     fused_marlin_moe,
 )
 
+
+def _is_hopper():
+    # The fused_marlin_moe_w4a16 kernel's bf16 dequant uses sm_90-only PTX
+    # (sub.bf16x2 / mul.bf16); the W4A16 fast path is gated to Hopper.
+    if flag_gems.device != "cuda":
+        return False
+    major, minor = torch.cuda.get_device_capability()
+    sm = major * 10 + minor
+    return 90 <= sm < 100
+
+
 # -----------------------------------------------------------------------------
 # Local GPTQ uint4b8 quantization helper (self-contained, no vllm dependency).
 # Matches the layout produced by vllm.quantize_weights(..., uint4b8): values
@@ -365,6 +376,10 @@ def _reference_swiglu_moe(hidden_states, w1_ref, w2_ref, topk_weights, topk_ids)
     return out
 
 
+@pytest.mark.skipif(
+    not _is_hopper(),
+    reason="W4A16 fast path uses Hopper-only bf16 SIMD PTX (sm_90+)",
+)
 @pytest.mark.parametrize("config", FULL_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 def test_fused_marlin_moe_vs_ref(config, dtype):
