@@ -5009,6 +5009,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: remainder
+    description: |
+      Computes Python's modulus operation entrywise. The result has the same sign
+      as the divisor `other` and its absolute value is less than that of `other`.
+    for:
+      - remainder
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: remainder_scalar
     description: |
       Computes Python's modulus operation entrywise. The result has the same sign
