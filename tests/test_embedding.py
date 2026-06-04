@@ -14,20 +14,12 @@ random.seed(time.time() // 100)
 
 device = flag_gems.device
 
-if QUICK_MODE:
-    EMBEDDING_SIZES = [4096]
-    EMBEDDING_BATCHES = [2]
-    EMBEDDING_M = [4]
-    EMBEDDING_N = [128]
-    EMBEDDING_PADDING_IDX = [None]
-    EMBEDDING_SCALE_GRAD = [False]
-else:
-    EMBEDDING_SIZES = [1024] if cfg.TO_CPU else [4096]
-    EMBEDDING_BATCHES = [2] if cfg.TO_CPU else [2, 4]
-    EMBEDDING_M = [4] if cfg.TO_CPU else [4, 8]
-    EMBEDDING_N = [8] if cfg.TO_CPU else [128, 256, 4096]
-    EMBEDDING_PADDING_IDX = [None, -1, 1, 2]
-    EMBEDDING_SCALE_GRAD = [True, False]
+EMBEDDING_SIZES = [1024] if cfg.TO_CPU else [4096]
+EMBEDDING_BATCHES = [2] if cfg.TO_CPU else ([2] if QUICK_MODE else [2, 4])
+EMBEDDING_M = [4] if cfg.TO_CPU else ([4] if QUICK_MODE else [4, 8])
+EMBEDDING_N = [8] if cfg.TO_CPU else ([128] if QUICK_MODE else [128, 256, 4096])
+EMBEDDING_PADDING_IDX = [None] if QUICK_MODE else [None, -1, 1, 2]
+EMBEDDING_SCALE_GRAD = [False] if QUICK_MODE else [True, False]
 
 
 @pytest.mark.embedding
