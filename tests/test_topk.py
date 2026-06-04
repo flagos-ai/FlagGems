@@ -60,16 +60,21 @@ def test_topk(batch_size, hiddensize, topk, largest, dtype):
     utils.gems_assert_equal(res_index, ref_index)
 
 
-@pytest.mark.topk
-@pytest.mark.parametrize(
-    "shape, topk",
-    [
+if QUICK_MODE:
+    TOPK_3D_CASES = [
+        ((4, 128, 64), 64),
+    ]
+else:
+    TOPK_3D_CASES = [
         ((16, 1024, 256), 256),
         ((8, 512, 32), 32),
         ((4, 128, 64), 64),
         ((2, 33, 128), 128),
-    ],
-)
+    ]
+
+
+@pytest.mark.topk
+@pytest.mark.parametrize("shape, topk", TOPK_3D_CASES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_topk_3d_lastdim(shape, topk, dtype):
     batch_size = int(np.prod(shape[:-1]))
