@@ -9,7 +9,7 @@ from flag_gems.utils import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def shifted_chebyshev_polynomial_w_kernel(x, n):
     """
