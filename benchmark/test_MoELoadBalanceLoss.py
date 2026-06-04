@@ -33,8 +33,8 @@ class MoELoadBalanceLossBenchmark(base.Benchmark):
 
 @pytest.mark.MoELoadBalanceLoss
 def test_MoELoadBalanceLoss():
-    if flag_gems.vendor_name == "metax":
-        pytest.skip("Metax backend CI validates correctness; skip backend benchmark.")
+    if flag_gems.vendor_name == "metax" or flag_gems.device == "cpu":
+        pytest.skip("Metax/CPU fallback CI validates correctness; skip benchmark.")
 
     bench = MoELoadBalanceLossBenchmark(
         op_name="MoELoadBalanceLoss",
