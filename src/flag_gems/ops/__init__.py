@@ -5,6 +5,10 @@ from flag_gems.ops._functional_sym_constrain_range_for_size import (
 from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
+from flag_gems.ops._upsample_nearest_exact2d import (
+    _upsample_nearest_exact2d,
+    _upsample_nearest_exact2d_backward,
+)
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
@@ -70,6 +74,7 @@ from flag_gems.ops.bitwise_right_shift import bitwise_right_shift
 from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
+from flag_gems.ops.channel_shuffle import channel_shuffle
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.clamp import (
@@ -295,6 +300,8 @@ from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
+from flag_gems.ops.reflection_pad3d import reflection_pad3d, reflection_pad3d_out
+from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
 from flag_gems.ops.remainder import remainder, remainder_
@@ -413,6 +420,8 @@ __all__ = [
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact1d",
+    "_upsample_nearest_exact2d",
+    "_upsample_nearest_exact2d_backward",
     "abs",
     "abs_",
     "absolute",
@@ -492,6 +501,7 @@ __all__ = [
     "cat_out",
     "cauchy",
     "cauchy_",
+    "channel_shuffle",
     "ceil",
     "ceil_",
     "ceil_out",
@@ -773,6 +783,9 @@ __all__ = [
     "reflection_pad1d_out",
     "reflection_pad2d",
     "reflection_pad2d_out",
+    "reflection_pad3d",
+    "reflection_pad3d_backward",
+    "reflection_pad3d_out",
     "relu",
     "relu6",
     "relu_",
