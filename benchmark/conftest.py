@@ -279,13 +279,15 @@ def setup_once(request):
 @pytest.fixture(scope="function", autouse=True)
 def clear_function_cache():
     yield
-    torch_device_fn.empty_cache()
+    if hasattr(torch_device_fn, "empty_cache"):
+        torch_device_fn.empty_cache()
 
 
 @pytest.fixture(scope="module", autouse=True)
 def clear_module_cache():
     yield
-    torch_device_fn.empty_cache()
+    if hasattr(torch_device_fn, "empty_cache"):
+        torch_device_fn.empty_cache()
 
 
 @pytest.fixture()
