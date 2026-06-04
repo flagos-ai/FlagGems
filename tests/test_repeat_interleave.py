@@ -9,6 +9,7 @@ from .conftest import QUICK_MODE
 if QUICK_MODE:
     REPEAT_INTERLEAVE_SHAPES = [(1024, 1024)]
     REPEAT_INTERLEAVE_DIM = [-1]
+    REPEAT_INTERLEAVE_SELF_TENSOR_DIM = [-1]
 else:
     REPEAT_INTERLEAVE_SHAPES = [
         (1024, 1024),
@@ -17,6 +18,7 @@ else:
         (16, 7, 57, 32, 29),
     ]
     REPEAT_INTERLEAVE_DIM = [-1, 0, None]
+    REPEAT_INTERLEAVE_SELF_TENSOR_DIM = [-1, 0, 1]
 
 
 @pytest.mark.repeat_interleave_self_int
@@ -67,7 +69,7 @@ def test_repeat_interleave_tensor(shape, dtype):
 
 @pytest.mark.repeat_interleave_self_tensor
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
-@pytest.mark.parametrize("dim", [-1, 0, 1])
+@pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_SELF_TENSOR_DIM)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_repeat_interleave_self_tensor(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
