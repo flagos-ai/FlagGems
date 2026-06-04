@@ -4,16 +4,22 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
 
-BITWISE_SHAPES = [
-    ((512, 1024), (512, 1024)),
-    ((256, 512), (1, 512)),
-    ((256, 512), (256, 1)),
-    ((1, 512), (256, 512)),
-    ((256, 1), (256, 512)),
-    ((1024,), ()),
-    ((), (1024,)),
-]
+if QUICK_MODE:
+    BITWISE_SHAPES = [
+        ((512, 1024), (512, 1024)),
+    ]
+else:
+    BITWISE_SHAPES = [
+        ((512, 1024), (512, 1024)),
+        ((256, 512), (1, 512)),
+        ((256, 512), (256, 1)),
+        ((1, 512), (256, 512)),
+        ((256, 1), (256, 512)),
+        ((1024,), ()),
+        ((), (1024,)),
+    ]
 
 
 @pytest.mark.bitwise_left_shift
@@ -34,12 +40,17 @@ def test_bitwise_left_shift(shapes, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-INPLACE_BITWISE_SHAPES = [
-    ((512, 1024), (512, 1024)),
-    ((256, 512), (1, 512)),
-    ((256, 512), (256, 1)),
-    ((1024,), ()),
-]
+if QUICK_MODE:
+    INPLACE_BITWISE_SHAPES = [
+        ((512, 1024), (512, 1024)),
+    ]
+else:
+    INPLACE_BITWISE_SHAPES = [
+        ((512, 1024), (512, 1024)),
+        ((256, 512), (1, 512)),
+        ((256, 512), (256, 1)),
+        ((1024,), ()),
+    ]
 
 
 @pytest.mark.bitwise_left_shift_

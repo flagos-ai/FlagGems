@@ -4,12 +4,18 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
 
-HSTACK_SHAPES = [
-    [(8,), (16,)],
-    [(16, 256), (16, 128)],
-    [(20, 320, 15), (20, 160, 15), (20, 80, 15)],
-]
+if QUICK_MODE:
+    HSTACK_SHAPES = [
+        [(8,), (16,)],
+    ]
+else:
+    HSTACK_SHAPES = [
+        [(8,), (16,)],
+        [(16, 256), (16, 128)],
+        [(20, 320, 15), (20, 160, 15), (20, 80, 15)],
+    ]
 
 HSTACK_EXCEPTION_SHAPES = [
     [(16, 256), (16,)],
