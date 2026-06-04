@@ -5,16 +5,22 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
 
 # Custom shapes for pairwise distance computation
-EUCLIDEAN_DIST_SHAPES = [
-    ((4, 8), (5, 8)),
-    ((8, 16), (8, 16)),
-    ((16, 32), (12, 32)),
-    ((32, 64), (32, 64)),
-    ((64, 128), (64, 128)),
-    ((128, 256), (128, 256)),
-]
+if QUICK_MODE:
+    EUCLIDEAN_DIST_SHAPES = [
+        ((4, 8), (5, 8)),
+    ]
+else:
+    EUCLIDEAN_DIST_SHAPES = [
+        ((4, 8), (5, 8)),
+        ((8, 16), (8, 16)),
+        ((16, 32), (12, 32)),
+        ((32, 64), (32, 64)),
+        ((64, 128), (64, 128)),
+        ((128, 256), (128, 256)),
+    ]
 
 
 @pytest.mark.euclidean_dist

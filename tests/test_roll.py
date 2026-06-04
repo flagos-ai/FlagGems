@@ -4,13 +4,17 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
 
-ROLL_SHIFTS_DIMS = [
-    (1, 0),
-    (-1, 0),
-    (2, -1),
-    (3, 1),
-]
+if QUICK_MODE:
+    ROLL_SHIFTS_DIMS = [(1, 0)]
+else:
+    ROLL_SHIFTS_DIMS = [
+        (1, 0),
+        (-1, 0),
+        (2, -1),
+        (3, 1),
+    ]
 
 
 @pytest.mark.roll
@@ -38,11 +42,14 @@ def test_roll_single_dim(shape, dtype, shifts_dims):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-ROLL_MULTI_DIMS = [
-    ((1, 2), (0, 1)),
-    ((-1, 1), (0, -1)),
-    ((2, -2), (-2, -1)),
-]
+if QUICK_MODE:
+    ROLL_MULTI_DIMS = [((1, 2), (0, 1))]
+else:
+    ROLL_MULTI_DIMS = [
+        ((1, 2), (0, 1)),
+        ((-1, 1), (0, -1)),
+        ((2, -2), (-2, -1)),
+    ]
 
 
 @pytest.mark.roll
@@ -68,7 +75,7 @@ def test_roll_multi_dims(shape, dtype, shifts_dims):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-ROLL_FLATTEN_SHIFTS = [1, -1, 5, -3]
+ROLL_FLATTEN_SHIFTS = [1] if QUICK_MODE else [1, -1, 5, -3]
 
 
 @pytest.mark.roll

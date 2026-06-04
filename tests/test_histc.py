@@ -4,9 +4,14 @@ import torch
 import flag_gems
 
 from .accuracy_utils import gems_assert_close, to_reference
+from .conftest import QUICK_MODE
 
-HISTC_SHAPES = [(64,), (1024,), (4096,), (100, 100), (32, 64, 16)]
-HISTC_BINS = [10, 50, 100]
+if QUICK_MODE:
+    HISTC_SHAPES = [(64,)]
+    HISTC_BINS = [50]
+else:
+    HISTC_SHAPES = [(64,), (1024,), (4096,), (100, 100), (32, 64, 16)]
+    HISTC_BINS = [10, 50, 100]
 HISTC_DTYPES = [torch.float32]
 
 

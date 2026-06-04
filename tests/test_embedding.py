@@ -8,19 +8,35 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .conftest import QUICK_MODE
 
 random.seed(time.time() // 100)
 
 device = flag_gems.device
 
+if QUICK_MODE:
+    EMBEDDING_SIZES = [4096]
+    EMBEDDING_BATCHES = [2]
+    EMBEDDING_M = [4]
+    EMBEDDING_N = [128]
+    EMBEDDING_PADDING_IDX = [None]
+    EMBEDDING_SCALE_GRAD = [False]
+else:
+    EMBEDDING_SIZES = [1024] if cfg.TO_CPU else [4096]
+    EMBEDDING_BATCHES = [2] if cfg.TO_CPU else [2, 4]
+    EMBEDDING_M = [4] if cfg.TO_CPU else [4, 8]
+    EMBEDDING_N = [8] if cfg.TO_CPU else [128, 256, 4096]
+    EMBEDDING_PADDING_IDX = [None, -1, 1, 2]
+    EMBEDDING_SCALE_GRAD = [True, False]
+
 
 @pytest.mark.embedding
-@pytest.mark.parametrize("EmbeddingSize", [1024] if cfg.TO_CPU else [4096])
-@pytest.mark.parametrize("Batch", [2] if cfg.TO_CPU else [2, 4])
-@pytest.mark.parametrize("M", [4] if cfg.TO_CPU else [4, 8])
-@pytest.mark.parametrize("N", [8] if cfg.TO_CPU else [128, 256, 4096])
-@pytest.mark.parametrize("padding_idx", [None, -1, 1, 2])
-@pytest.mark.parametrize("scale_grad_by_freq", [True, False])
+@pytest.mark.parametrize("EmbeddingSize", EMBEDDING_SIZES)
+@pytest.mark.parametrize("Batch", EMBEDDING_BATCHES)
+@pytest.mark.parametrize("M", EMBEDDING_M)
+@pytest.mark.parametrize("N", EMBEDDING_N)
+@pytest.mark.parametrize("padding_idx", EMBEDDING_PADDING_IDX)
+@pytest.mark.parametrize("scale_grad_by_freq", EMBEDDING_SCALE_GRAD)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype):
     if flag_gems.vendor_name == "kunlunxin":
@@ -50,12 +66,12 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
 
 
 @pytest.mark.embedding_backward
-@pytest.mark.parametrize("EmbeddingSize", [1024] if cfg.TO_CPU else [4096])
-@pytest.mark.parametrize("Batch", [2] if cfg.TO_CPU else [2, 4])
-@pytest.mark.parametrize("M", [4] if cfg.TO_CPU else [4, 8])
-@pytest.mark.parametrize("N", [8] if cfg.TO_CPU else [128, 256, 4096])
-@pytest.mark.parametrize("padding_idx", [-1, 1, 2])
-@pytest.mark.parametrize("scale_grad_by_freq", [True, False])
+@pytest.mark.parametrize("EmbeddingSize", EMBEDDING_SIZES)
+@pytest.mark.parametrize("Batch", EMBEDDING_BATCHES)
+@pytest.mark.parametrize("M", EMBEDDING_M)
+@pytest.mark.parametrize("N", EMBEDDING_N)
+@pytest.mark.parametrize("padding_idx", [-1] if QUICK_MODE else [-1, 1, 2])
+@pytest.mark.parametrize("scale_grad_by_freq", EMBEDDING_SCALE_GRAD)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_embedding_backward(
     EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype
