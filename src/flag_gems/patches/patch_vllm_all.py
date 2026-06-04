@@ -600,7 +600,6 @@ def custom_rms_norm_out(result, input, weight, epsilon):
 
 
 # vLLM ops implementations registry: {lib_name: {op_name: impl_func}}
-# Function objects directly referenced, no string lookups needed
 _VLLM_OPS_IMPLS = {
     "_C": {
         "rms_norm": custom_rms_norm_out,
