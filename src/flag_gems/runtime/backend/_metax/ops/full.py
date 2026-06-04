@@ -110,7 +110,7 @@ def full_(out, N, dtype, device, fill_value):
 
 
 def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("METAX GEMS FULL")
+    logger.debug("GEMS_METAX FULL")
     if device is None:
         device = torch.device("cpu")
     if dtype is None:
