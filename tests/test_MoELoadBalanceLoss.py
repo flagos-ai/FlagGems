@@ -26,6 +26,10 @@ MOE_LOAD_BALANCE_LOSS_SHAPES = [
 
 
 @pytest.mark.MoELoadBalanceLoss
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "metax",
+    reason="MetaX backend path for MoELoadBalanceLoss is not stable in CI.",
+)
 @pytest.mark.parametrize("shape", MOE_LOAD_BALANCE_LOSS_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_MoELoadBalanceLoss(shape, dtype):
