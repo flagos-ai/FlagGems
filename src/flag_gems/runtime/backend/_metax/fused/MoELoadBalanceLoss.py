@@ -1,5 +1,6 @@
 import logging
 
+import numpy as np
 import torch
 import triton
 import triton.language as tl
@@ -13,16 +14,21 @@ logger = logging.getLogger("flag_gems." + __name__)
 
 def _torch_moe_load_balance_loss(gate_logits: torch.Tensor) -> torch.Tensor:
     num_tokens, num_experts = gate_logits.shape
-    softmax_probs = torch.ops.aten._softmax(gate_logits, -1, False)
-    expert_loads = torch.ops.aten.sum.dim_IntList(softmax_probs, [0], False)
-    expert_loads_normalized = torch.ops.aten.div.Tensor(expert_loads, num_tokens)
-    loss = torch.ops.aten.mul.Tensor(
-        torch.ops.aten.sum.default(
-            torch.ops.aten.pow.Tensor_Scalar(expert_loads_normalized, 2)
-        ),
-        num_experts,
-    )
-    return loss.to(gate_logits.dtype)
+    gate_logits_cpu = gate_logits.detach().cpu()
+    if gate_logits.dtype == torch.bfloat16:
+        logits = (
+            gate_logits_cpu.view(torch.uint16).numpy().astype(np.uint32) << 16
+        ).view(np.float32)
+    else:
+        logits = gate_logits_cpu.numpy().astype(np.float32)
+
+    logits = logits - np.max(logits, axis=-1, keepdims=True)
+    softmax_probs = np.exp(logits)
+    softmax_probs /= np.sum(softmax_probs, axis=-1, keepdims=True)
+    expert_loads = np.sum(softmax_probs, axis=0)
+    expert_loads_normalized = expert_loads / num_tokens
+    loss = num_experts * np.sum(expert_loads_normalized**2)
+    return torch.tensor(loss, dtype=gate_logits.dtype, device=gate_logits.device)
 
 
 @libentry()
