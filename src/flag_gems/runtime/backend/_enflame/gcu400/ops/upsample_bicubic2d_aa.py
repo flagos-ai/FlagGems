@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
         "reciprocal_scale_h",
         "reciprocal_scale_w",
         "total_rows",
-    ]
+    ],
 )
 def upsample_bicubic2d_aa_kernel_1d(
     ptr_o,
@@ -289,7 +289,7 @@ def upsample_bicubic2d_aa_kernel_1d(
         "reciprocal_scale_h",
         "reciprocal_scale_w",
         "total_rows",
-    ]
+    ],
 )
 def general_interpolate_bicubic2d_aa_kernel_1d(
     ptr_o,

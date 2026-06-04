@@ -1,3 +1,4 @@
+from flag_gems.fused.add_rms_norm import add_rms_norm
 from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
 from flag_gems.fused.bincount import bincount
 from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
@@ -23,6 +24,7 @@ from flag_gems.fused.FLA import (
     fused_recurrent_gated_delta_rule_fwd,
 )
 from flag_gems.fused.flash_mla import flash_mla
+from flag_gems.fused.flash_mla_with_kvcache import flash_mla_with_kvcache
 from flag_gems.fused.flashmla_sparse import flash_mla_sparse_fwd
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
 from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import (
@@ -79,6 +81,7 @@ from flag_gems.fused.unpack_seq import unpack_seq_triton
 from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
+    "add_rms_norm",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
     "bincount",
@@ -98,6 +101,7 @@ __all__ = [
     "dswiglu",
     "flash_mla",
     "flash_mla_sparse_fwd",
+    "flash_mla_with_kvcache",
     "fused_add_rms_norm",
     "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     "fused_experts_impl",
