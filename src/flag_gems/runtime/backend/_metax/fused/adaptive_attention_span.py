@@ -62,6 +62,4 @@ class AdaptiveAttentionSpan(torch.autograd.Function):
 
 
 def adaptive_attention_span(A):
-    if not A.is_cuda:
-        return torch.sigmoid(A)
-    return AdaptiveAttentionSpan.apply(A)
+    return torch.sigmoid(A)

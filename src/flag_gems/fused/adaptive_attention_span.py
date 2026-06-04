@@ -22,6 +22,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ def adaptive_attention_span_forward(x):
 
 def adaptive_attention_span(A):
     logger.debug("GEMS ADAPTIVE_ATTENTION_SPAN")
-    if not A.is_cuda:
+    if runtime.device.vendor_name == "metax" or not A.is_cuda:
         return torch.sigmoid(A)
     return adaptive_attention_span_forward(A)
 
