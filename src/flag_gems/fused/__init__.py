@@ -57,8 +57,8 @@ from flag_gems.fused.moe_align_block_size import (
     moe_align_block_size,
     moe_align_block_size_triton,
 )
-from flag_gems.fused.MoELoadBalanceLoss import MoELoadBalanceLoss
 from flag_gems.fused.moe_sum import moe_sum
+from flag_gems.fused.MoELoadBalanceLoss import MoELoadBalanceLoss
 from flag_gems.fused.mrope import mrope
 from flag_gems.fused.outer import outer
 from flag_gems.fused.pack_seq import pack_seq_triton

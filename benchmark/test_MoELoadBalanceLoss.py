@@ -33,6 +33,9 @@ class MoELoadBalanceLossBenchmark(base.Benchmark):
 
 @pytest.mark.MoELoadBalanceLoss
 def test_MoELoadBalanceLoss():
+    if flag_gems.vendor_name == "metax":
+        pytest.skip("Metax backend CI validates correctness; skip backend benchmark.")
+
     bench = MoELoadBalanceLossBenchmark(
         op_name="MoELoadBalanceLoss",
         torch_op=flag_gems.MoELoadBalanceLoss,

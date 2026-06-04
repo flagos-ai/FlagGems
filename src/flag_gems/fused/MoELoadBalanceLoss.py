@@ -27,6 +27,15 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 
+def _torch_moe_load_balance_loss(gate_logits: torch.Tensor) -> torch.Tensor:
+    num_tokens, num_experts = gate_logits.shape
+    softmax_probs = torch.softmax(gate_logits, dim=-1)
+    expert_loads = torch.sum(softmax_probs, dim=0)
+    expert_loads_normalized = expert_loads / num_tokens
+    loss = num_experts * torch.sum(expert_loads_normalized**2)
+    return loss.to(gate_logits.dtype)
+
+
 @libentry()
 @triton.jit
 def MoELoadBalanceLoss_kernel(
@@ -82,6 +91,9 @@ def MoELoadBalanceLoss(gate_logits: torch.Tensor) -> torch.Tensor:
     logger.debug("GEMS MOE_LOAD_BALANCE_LOSS")
 
     assert gate_logits.ndim == 2, f"Expected 2D input, got {gate_logits.ndim}D"
+    if gate_logits.device.type == "cpu":
+        return _torch_moe_load_balance_loss(gate_logits)
+
     num_tokens, num_experts = gate_logits.shape
 
     gate_logits = gate_logits.contiguous()
