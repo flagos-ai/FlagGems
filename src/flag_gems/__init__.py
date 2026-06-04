@@ -119,6 +119,7 @@ _FULL_CONFIG = (
     ("asinh_", asinh_),
     ("atan", atan),
     ("atan_", atan_),
+    ("atanh_", atanh_),
     ("atan2", atan2),
     ("atan2.out", atan2_out),
     ("arctanh_", arctanh_),

@@ -615,6 +615,20 @@ ops:
       - Math
     stages:
       - stable: '4.0'
+  - id: atanh_
+    description: |
+      Computes the element-wise inverse hyperbolic tangent of a given input tensor.
+      This is an in-place version.
+    for:
+      - atanh_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: atan2
     description: |
       Computes the element-wise arc tangent of `input/other(y/x)`,
