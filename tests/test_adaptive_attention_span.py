@@ -7,6 +7,10 @@ from . import accuracy_utils as utils
 
 
 @pytest.mark.adaptive_attention_span
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "metax",
+    reason="MetaX backend path for adaptive_attention_span is not stable in CI.",
+)
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_adaptive_attention_span(shape, dtype):
