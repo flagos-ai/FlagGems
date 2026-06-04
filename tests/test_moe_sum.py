@@ -11,7 +11,7 @@ from .conftest import QUICK_MODE
 if QUICK_MODE:
     M_VALUES = [33]
     TOP_KS = [2]
-    K_VALUES = [512]
+    K_VALUES = [511]
 else:
     M_VALUES = [1, 33, 64, 222]
     TOP_KS = [2, 6]
