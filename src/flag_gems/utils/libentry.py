@@ -727,6 +727,7 @@ class LibEntry(triton.KernelInterface):
         self.divisibility = 16
         self.kernel_cache = tuple(dict() for _ in range(DEVICE_COUNT))
         self._has_flagtune_tuner = self._contains_flagtune_tuner(fn)
+        self._cpu_cache = dict()
 
         while not isinstance(fn, triton.runtime.JITFunction):
             fn = fn.fn
@@ -850,7 +851,14 @@ class LibEntry(triton.KernelInterface):
 
         entry_key = self.key(spec_args, dns_args, const_args)
         device = torch_device_fn.current_device()
-        cache = self.kernel_cache[device]
+        # CPU has one device per process and `current_device()` returns the
+        # string "cpu" (can't index into the int-keyed `kernel_cache` tuple).
+        # This branch is CPU-generic — any future x86 / RISC-V CPU backend
+        # reuses the same path; no ARM-specific assumption here.
+        if device == "cpu":
+            cache = self._cpu_cache
+        else:
+            cache = self.kernel_cache[device]
         while entry_key not in cache:
             # NOTE: we serialize the first run of a jit function regardless of which device to run on
             # because Triton runtime is currently not threadsafe.
