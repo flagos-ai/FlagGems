@@ -82,7 +82,9 @@ def _launch_special_modified_bessel_k1(x: torch.Tensor, out: torch.Tensor):
     BLOCK_SIZE = 1024
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(x.device):
-        special_modified_bessel_k1_kernel[grid](x, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
+        special_modified_bessel_k1_kernel[grid](
+            x, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
+        )
 
 
 def special_modified_bessel_k1(self: torch.Tensor):
