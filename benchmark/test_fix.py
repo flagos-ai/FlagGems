@@ -1,12 +1,12 @@
 import pytest
 import torch
 
-from flag_gems.testing import consts
+from . import base, consts
 
 
 @pytest.mark.fix
-@pytest.mark.parametrize("shape", consts.POINTWISE_BENCH_SHAPES)
-@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
-def test_fix_benchmark(shape, dtype, benchmark):
-    inp = torch.randn(shape, dtype=dtype, device="cuda") * 10
-    benchmark(torch.ops.aten.fix, inp)
+def test_fix():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="fix", torch_op=torch.fix, dtypes=consts.FLOAT_DTYPES
+    )
+    bench.run()
