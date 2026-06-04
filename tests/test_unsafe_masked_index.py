@@ -10,9 +10,6 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.UT_SHAPES_1D)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_unsafe_masked_index(shape, dtype):
-    if len(shape) != 1:
-        # Only test 1D case for simplicity
-        pytest.skip("_unsafe_masked_index 1D only implementation")
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.rand(shape, device=flag_gems.device) > 0.3
     indices = torch.randint(0, max(inp.numel(), 1), shape, device=flag_gems.device)
