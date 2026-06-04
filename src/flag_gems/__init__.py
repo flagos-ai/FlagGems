@@ -84,6 +84,7 @@ _FULL_CONFIG = (
     ("addcdiv.out", addcdiv_out),
     ("addcmul", addcmul),
     ("addcmul.out", addcmul_out),
+    ("addcmul_", addcmul_),
     ("addmv", addmv),
     ("addmv.out", addmv_out),
     ("addmm", addmm),

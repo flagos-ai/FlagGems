@@ -12,6 +12,7 @@ from flag_gems.ops.act_quant import act_quant_triton
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
 from flag_gems.ops.addcmul import addcmul, addcmul_out
+from flag_gems.ops.addcmul_ import addcmul_
 from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addr import addr
@@ -421,6 +422,7 @@ __all__ = [
     "addcdiv",
     "addcdiv_out",
     "addcmul",
+    "addcmul_",
     "addcmul_out",
     "addmm",
     "addmm_dtype",

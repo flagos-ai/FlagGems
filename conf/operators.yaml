@@ -162,6 +162,19 @@ ops:
       - LinearAlg
     stages:
       - stable: '4.0'
+  - id: addcmul_
+    description: |
+      The in-place version of `addcmul()`.
+    for:
+      - addcmul_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.1'
   - id: addcmul_out
     description: |
       A variant of `addcmul` that allows the output to be assigned to `out`.
