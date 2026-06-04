@@ -2933,6 +2933,7 @@ ops:
     labels:
       - aten
       - KernelGen
+      - fused
     kind:
       - Math
     stages:

@@ -44,9 +44,7 @@ def test_GRUAttention(shape, dtype):
 
     # Run with FlagGems
     with flag_gems.use_gems():
-        from flag_gems.ops.GRUAttention import GRUAttention
-
-        res_out = GRUAttention(query, key, value, scale=scale)
+        res_out = flag_gems.GRUAttention(query, key, value, scale=scale)
 
     # Compare outputs
     utils.gems_assert_close(res_out, ref_out, dtype)
