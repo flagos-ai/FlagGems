@@ -9,15 +9,27 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .conftest import QUICK_MODE
 
 random.seed(time.time() // 100)
 
+if QUICK_MODE:
+    TOPK_BATCH_SIZES = [4]
+    TOPK_HIDDENSIZES = [128]
+    TOPK_VALUES = [5]
+    TOPK_LARGEST = [True]
+else:
+    TOPK_BATCH_SIZES = [4, 8]
+    TOPK_HIDDENSIZES = [128, 256]
+    TOPK_VALUES = [0, 5]
+    TOPK_LARGEST = [True, False]
+
 
 @pytest.mark.topk
-@pytest.mark.parametrize("batch_size", [4, 8])
-@pytest.mark.parametrize("hiddensize", [128, 256])
-@pytest.mark.parametrize("topk", [0, 5])
-@pytest.mark.parametrize("largest", [True, False])
+@pytest.mark.parametrize("batch_size", TOPK_BATCH_SIZES)
+@pytest.mark.parametrize("hiddensize", TOPK_HIDDENSIZES)
+@pytest.mark.parametrize("topk", TOPK_VALUES)
+@pytest.mark.parametrize("largest", TOPK_LARGEST)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_topk(batch_size, hiddensize, topk, largest, dtype):
     x = torch.arange(hiddensize, dtype=dtype, device=flag_gems.device)
