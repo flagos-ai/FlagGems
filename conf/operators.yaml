@@ -6390,10 +6390,10 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
-  - id: trunc_
+  - id: trunc
     description: Rounds each element of the input tensor to the nearest integer towards zero.
     for:
-      - trunc_
+      - trunc
     labels:
       - aten
       - KernelGen
@@ -6401,10 +6401,10 @@ ops:
       - Math
     stages:
       - alpha: '5.1'
-  - id: trunc__
-    description: The in-place version of `trunc_()`.
+  - id: trunc_
+    description: The in-place version of `trunc()`.
     for:
-      - trunc__
+      - trunc_
     labels:
       - aten
       - KernelGen
