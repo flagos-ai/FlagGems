@@ -1,0 +1,80 @@
+{
+  "name": "FlagGems - CUDA",
+  "build": {
+    "context": "./",
+    "dockerfile": "./Dockerfile",
+    "args": {
+      "USERNAME": "vscode",
+      "BUILDKIT_INLINE_CACHE": "0"
+    }
+  },
+  "runArgs": [
+        "--gpus=all",
+        "--net=host",
+        "--ipc=host",
+        "--privileged"
+  ], 
+  // 映射 --ulimit memlock=-1 和 stack=67108864
+  "hostRequirements": {
+      "ulimits": {
+          "memlock": {
+              "soft": -1,
+              "hard": -1
+          },
+          "stack": {
+              "soft": 67108864,
+              "hard": 67108864
+          }
+      }
+  },
+  // Mount the full repo only after the container starts
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/FlagGems,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace/FlagGems",
+  // 映射 -v 挂载目录
+  // 注意：VS Code 会默认挂载当前项目目录，
+  // 如果你显式需要挂载家目录和其他目录，请按如下配置：
+  "mounts": [
+      // Mount a large-capacity storage volume 
+      "source=/data,target=/data,type=bind",
+      "source=/tmp,target=/host_tmp,type=bind",
+      // 将宿主机的家目录挂载到容器的 /home/host
+      // localEnv:HOME 对应 Linux/Mac 的 $HOME 变量
+      "source=${localEnv:HOME},target=/home/host,type=bind",
+      // 使用命名数据卷持久化 .claude 文件夹
+      "source=claude-code-data,target=/home/vscode/.claude,type=volume"
+  ],
+  "containerEnv": {
+    "PIP_USER": "0" // <‑‑ disable implicit --user
+  },
+
+  // Ensure /data exists before mounting to avoid silent directory creation
+  "initializeCommand": "mkdir -p /data",
+
+// Use 'forwardPorts' to make a list of ports inside the container available locally.
+  // "forwardPorts": [],
+
+  // Use 'postCreateCommand' to run commands after the container is created.
+  "postCreateCommand": "bash .devcontainer/cuda/scripts/install-dev-tools.sh",
+  // Configure tool-specific properties.
+  // "customizations": {},
+  "customizations": {
+    "vscode": {
+      "extensions": [
+          "streetsidesoftware.code-spell-checker",
+          "ms-python.python"
+      ]
+    }
+  },
+
+  // Features to add to the dev container. More info: https://containers.dev/features.
+  "features": {
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+  },
+
+  // VSCode will automatically update the container user's UID/GID to match the host user
+  "updateRemoteUserUID": true,
+
+  // Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+  // "remoteUser": "root"
+  "remoteUser": "vscode"
+}
