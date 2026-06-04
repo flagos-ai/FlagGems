@@ -298,6 +298,7 @@ from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_ou
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
 from flag_gems.ops.remainder import remainder, remainder_
+from flag_gems.ops.renorm import renorm, renorm_
 from flag_gems.ops.repeat import repeat
 from flag_gems.ops.repeat_interleave import (
     repeat_interleave_self_int,
@@ -777,6 +778,8 @@ __all__ = [
     "relu_",
     "remainder",
     "remainder_",
+    "renorm",
+    "renorm_",
     "repeat",
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",

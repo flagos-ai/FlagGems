@@ -4157,6 +4157,30 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: renorm
+    description: >
+      Returns a tensor where each sub-tensor along the given dimension
+      is normalized such that the p-norm is lower than a max norm value.
+    for:
+      - renorm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: renorm_
+    description: The in-place version of `renorm()`.
+    for:
+      - renorm_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: reflection_pad1d_backward
     description: Computes the gradient of reflection_pad1d with respect to the input tensor.
     for:
