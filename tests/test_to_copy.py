@@ -74,8 +74,8 @@ def test_to_copy_preserve_strides(memory_format):
 @pytest.mark.parametrize("src_dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("dst_dtype", utils.ALL_FLOAT_DTYPES)
 def test_to_copy_float_to_float(shape, src_dtype, dst_dtype):
-    if src_dtype == dst_dtype:
-        pytest.skip("Skip same dtype conversion")
+    # if src_dtype == dst_dtype:
+    #     pytest.skip("Skip same dtype conversion")
     if flag_gems.vendor_name == "ascend" and (
         src_dtype == torch.bfloat16 or dst_dtype == torch.bfloat16
     ):
@@ -123,8 +123,8 @@ def test_to_copy_int_to_float(shape, src_dtype, dst_dtype):
 @pytest.mark.parametrize("src_dtype", [torch.int8, torch.int16, torch.int32])
 @pytest.mark.parametrize("dst_dtype", [torch.int8, torch.int16, torch.int32])
 def test_to_copy_int_to_int(shape, src_dtype, dst_dtype):
-    if src_dtype == dst_dtype:
-        pytest.skip("Skip same dtype conversion")
+    # if src_dtype == dst_dtype:
+    #     pytest.skip("Skip same dtype conversion")
     x = torch.randint(-100, 100, shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
