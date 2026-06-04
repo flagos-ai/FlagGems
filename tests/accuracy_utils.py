@@ -227,7 +227,7 @@ ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPE
 BOOL_TYPES = [torch.bool]
 COMPLEX_DTYPES = [torch.complex32, torch.complex64]
 
-SCALARS = [0.001] if QUICK_MODE else [0.001, -0.999, 100.001, -111.999]
+SCALARS = [0.001, -0.999, 100.001, -111.999]
 STACK_DIM_LIST = [-2, -1, 0, 1]
 
 ARANGE_START = [0] if TO_CPU else [0, 1, 3]
