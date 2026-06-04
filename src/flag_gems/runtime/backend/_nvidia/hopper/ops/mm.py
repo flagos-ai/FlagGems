@@ -53,6 +53,9 @@ _FP8_CACHE_B_BY_SHAPE = os.environ.get("FLAGGEMS_FP8_CACHE_B_BY_SHAPE", "0") != 
 # prequantize_and_register_a_fp8). Callers should register A once before the
 # inference / benchmark timed loop so repeated mm() avoids a.to(fp8) launches.
 _MM_PREQUANTIZE_A = os.environ.get("FLAGGEMS_MM_PREQUANTIZE_FP8", "0") != "0"
+_MM_FP8_OUTPUT_DTYPE = os.environ.get(
+    "FLAGGEMS_MM_FP8_OUTPUT_DTYPE", "bf16"
+).lower()
 _MM_TORCH_FALLBACK = os.environ.get('FLAGGEMS_MM_TORCH_FALLBACK', '1') != '0'
 _MM_TORCH_FALLBACK_GENERALIZE = (
     os.environ.get('FLAGGEMS_MM_TORCH_FALLBACK_GENERALIZE', '1') != '0'
@@ -958,17 +961,32 @@ def _pick_mm_host_tma_kernel(
 
 
 
+def _fp8_mm_output_dtype(input_dtype: torch.dtype) -> torch.dtype:
+    if _MM_FP8_OUTPUT_DTYPE in ("bf16", "bfloat16"):
+        return torch.bfloat16
+    if _MM_FP8_OUTPUT_DTYPE in ("fp8", "float8"):
+        return input_dtype if input_dtype in _FP8_DTYPES else _default_fp8_dtype()
+    raise ValueError(
+        "FLAGGEMS_MM_FP8_OUTPUT_DTYPE must be one of: bf16, fp8; "
+        + "got %r" % (_MM_FP8_OUTPUT_DTYPE,)
+    )
+
+
 def get_higher_dtype(a, b):
     _ordered_datatypes = [*_FP8_DTYPES, torch.float16, torch.bfloat16, torch.float32]
 
     if a is b:
         if a in _FP8_DTYPES:
-            # fp8xfp8 keeps fp32 accumulation in kernel and writes fp16 output.
-            return torch.float16
+            # FP8 inputs keep fp32 accumulation in kernel; output dtype is
+            # selected outside the kernel for benchmark/inference tradeoffs.
+            return _fp8_mm_output_dtype(a)
         return a
 
     assert a in _ordered_datatypes
     assert b in _ordered_datatypes
+
+    if a in _FP8_DTYPES and b in _FP8_DTYPES:
+        return _fp8_mm_output_dtype(a)
 
     for d in _ordered_datatypes:
         if a is d:
