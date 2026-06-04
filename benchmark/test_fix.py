@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from flag_gems.testing import benchmark, consts
+from flag_gems.testing import consts
 
 
 @pytest.mark.fix
