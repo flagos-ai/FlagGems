@@ -7,7 +7,7 @@ import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import get_device_properties, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 device = device.name
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ def scan_part_sum_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -58,7 +58,7 @@ def add_base_sum_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -84,9 +84,9 @@ def scan_part_sum_abc_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = tle.program_id(0)
-    pid_b = tle.program_id(1)
-    pid_c = tle.program_id(2)
+    pid_a = ext.program_id(0)
+    pid_b = ext.program_id(1)
+    pid_c = ext.program_id(2)
 
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -129,9 +129,9 @@ def add_base_sum_abc_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = tle.program_id(0)
-    pid_b = tle.program_id(1)
-    pid_c = tle.program_id(2)
+    pid_a = ext.program_id(0)
+    pid_b = ext.program_id(1)
+    pid_c = ext.program_id(2)
 
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -234,7 +234,7 @@ def cumsum_out(inp, dim=1, *, dtype=None, out):
 @libentry()
 @triton.jit(do_not_specialize=["K"])
 def normed_cumsum_kernel(inp, out, K, BLOCK: tl.constexpr):
-    row_start = tle.program_id(0) * K
+    row_start = ext.program_id(0) * K
     row_off = tl.arange(0, BLOCK)
     x = tl.load(inp + row_start + row_off, mask=row_off < K, other=0)
     if x.dtype.is_fp16():
@@ -276,9 +276,9 @@ def block_cumsum_kernel(
     # One CTA processes a (r, t*tile) chunk
     # rows = [ grid.y, grid.y + r )
     # cols = [ grid.x * t * tile, (grid.x + 1) * t * tile )
-    gridx = tle.program_id(0).to(tl.int64)
-    gridy = tle.program_id(1).to(tl.int64)
-    n_chunks = tle.num_programs(0)
+    gridx = ext.program_id(0).to(tl.int64)
+    gridy = ext.program_id(1).to(tl.int64)
+    n_chunks = ext.num_programs(0)
 
     for row in range(gridy * r, min((gridy + 1) * r, R)):
         curr_cumsum = tl.zeros((1,), tl.float32)
@@ -345,9 +345,9 @@ def block_update_kernel(
     # One CTA processes a (r, t*tile) chunk
     # rows = [ grid.y, grid.y + r )
     # cols = [ grid.x * t * tile, (grid.x + 1) * t * tile )
-    gridx = tle.program_id(0).to(tl.int64)
-    gridy = tle.program_id(1).to(tl.int64)
-    n_gridx = tle.num_programs(1)
+    gridx = ext.program_id(0).to(tl.int64)
+    gridy = ext.program_id(1).to(tl.int64)
+    n_gridx = ext.num_programs(1)
 
     base += gridy * n_gridx + gridx
     rscale_ptr += gridy * rscale_stride

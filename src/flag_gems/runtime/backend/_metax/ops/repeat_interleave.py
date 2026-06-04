@@ -4,7 +4,7 @@ import torch
 import triton
 from triton import language as tl
 
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.shape_utils import c_contiguous_stride
 from flag_gems.utils.tensor_wrapper import StridedBuffer
@@ -19,7 +19,7 @@ def copy_func(x):
 
 
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
-    logger.debug("METAX GEMS REPEAT_INTERLEAVE_SELF_INT")
+    logger.debug("GEMS_METAX REPEAT_INTERLEAVE_SELF_INT")
     if dim is None:
         inp = inp.flatten()
         dim = 0
@@ -66,7 +66,7 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
 def repeat_interleave_tensor_kernel(
     repeats_ptr, cumsum_ptr, out_ptr, size, BLOCK_SIZE: tl.constexpr
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     mask = pid < size
     cumsum = tl.load(cumsum_ptr + pid, mask, other=0)
     repeats = tl.load(repeats_ptr + pid, mask, other=0)
@@ -85,7 +85,7 @@ def repeat_interleave_tensor_kernel(
 def fused_repeat_and_index_select_kernel(
     inp, out, M, N, repeats, BLOCK_SIZE: tl.constexpr
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     row_idx_mask = pid > 0
     start_row_idx = tl.load(repeats + pid - 1, mask=row_idx_mask, other=0)
     end_row_idx = tl.load(repeats + pid)
@@ -107,7 +107,7 @@ def fused_repeat_and_index_select_kernel(
 
 
 def repeat_interleave_tensor(repeats, *, output_size=None):
-    logger.debug("METAX GEMS REPEAT_INTERLEAVE_TENSOR")
+    logger.debug("GEMS_METAX REPEAT_INTERLEAVE_TENSOR")
 
     assert repeats.ndim == 1, "repeat_interleave only accept 1D vector as repeat"
 
@@ -133,7 +133,7 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
 
 
 def fused_repeat_and_index_select(inp, repeats, dim):
-    logger.debug("METAX GEMS FUSED_REPEAT_AND_INDEX_SELECT")
+    logger.debug("GEMS_METAX FUSED_REPEAT_AND_INDEX_SELECT")
 
     assert repeats.ndim == 1, "repeat_interleave only accept 1D vector as repeat"
 
@@ -157,7 +157,7 @@ def fused_repeat_and_index_select(inp, repeats, dim):
 
 
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
-    logger.debug("METAX GEMS REPEAT_INTERLEAVE_SELF_TENSOR")
+    logger.debug("GEMS_METAX REPEAT_INTERLEAVE_SELF_TENSOR")
 
     if dim is None:
         inp = inp.flatten()

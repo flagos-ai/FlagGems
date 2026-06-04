@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,7 +64,8 @@ def copy_1d_strided_kernel(
 
 
 def _launch_t_copy_kernel(inp: torch.Tensor, out: torch.Tensor):
-    assert inp.is_cuda and out.is_cuda, "t_copy kernels require CUDA tensors"
+    if inp.device.type != flag_gems.device or out.device.type != flag_gems.device:
+        raise ValueError(f"t_copy kernels require {flag_gems.device} tensors")
     assert inp.dtype == out.dtype, "dtype mismatch between input and output"
 
     dim = inp.dim()

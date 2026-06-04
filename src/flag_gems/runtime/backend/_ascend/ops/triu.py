@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -24,7 +24,7 @@ def triu_kernel(
     M_BLOCK_SIZE: tl.constexpr,
     N_BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     row = pid * M_BLOCK_SIZE + tl.arange(0, M_BLOCK_SIZE)[:, None]
     m_mask = row < M
     X += row * N
@@ -56,9 +56,9 @@ def triu_batch_kernel(
     BATCH_BLOCK_SIZE: tl.constexpr,
     MN_BLOCK_SIZE: tl.constexpr,
 ):
-    batch_id = tle.program_id(0)
-    mn_id = tle.program_id(1)
-    batch_workers = tle.num_programs(0)
+    batch_id = ext.program_id(0)
+    mn_id = ext.program_id(1)
+    batch_workers = ext.num_programs(0)
 
     total_batch_workloads = tl.cdiv(batch, BATCH_BLOCK_SIZE)
     batch_workloads = 1

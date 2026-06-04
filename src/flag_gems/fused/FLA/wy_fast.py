@@ -67,7 +67,7 @@ def recompute_w_u_fwd_kernel(
     )
     b_beta = tl.load(p_beta, boundary_check=(0,))
     b_A = tl.load(p_A, boundary_check=(0, 1))
-    b_g = tl.exp(tl.load(p_g, boundary_check=(0,)))
+    b_g = tl.exp(tl.load(p_g, boundary_check=(0,)).to(tl.float32))
 
     for i_v in range(tl.cdiv(V, BV)):
         p_v = tl.make_block_ptr(
@@ -134,7 +134,11 @@ def recompute_w_u_fwd(
     BV = 64
     u = torch.empty_like(v)
     w = k.new_empty(B, T, H, K)
-    recompute_w_u_fwd_kernel[(NT, B * H)](
+    # Varlen kernels get the sequence from chunk_indices; i_b is unused in the
+    # IS_VARLEN path, so H programs cover every chunk/head exactly once even
+    # when the packed storage has B > 1.
+    NH = H if cu_seqlens is not None else B * H
+    recompute_w_u_fwd_kernel[(NT, NH)](
         k=k,
         v=v,
         beta=beta,

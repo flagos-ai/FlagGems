@@ -8,7 +8,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(
     f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
@@ -78,7 +78,7 @@ def prod_kernel_mid(
 ):
     dtype = inp.type.element_ty
     acc_dtype = tl.float32
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -110,7 +110,7 @@ def prod_kernel_dim_64(
     STRIDE_OUTER,
     BLOCK_M: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)
     row_mask = rows < M
     base_ptr = inp + rows * STRIDE_OUTER
@@ -130,7 +130,7 @@ def prod_kernel_dim_contig(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)
     row_mask = rows < M
     base_ptr = inp + rows * STRIDE_OUTER
@@ -161,7 +161,7 @@ def prod_kernel_dim_dense(
 ):
     dtype = inp.type.element_ty
     acc_dtype = tl.float32
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)
     outer_idx = rows // INNER
     inner_idx = rows % INNER
@@ -201,7 +201,7 @@ def prod_kernel_dim(
 ):
     dtype = inp.type.element_ty
     acc_dtype = tl.float32
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)
     rows = rows.to(tl.int64)
     row_mask = rows < M

@@ -7,7 +7,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 from ...gcu300.utils.config_utils import MAX_GRID_DIM
 
@@ -34,7 +34,7 @@ def skip_layer_norm_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     Y += (pid * BLOCK_SIZE_M - 1) * y_stride_r
     X += (pid * BLOCK_SIZE_M - 1) * x_stride_r
     R += (pid * BLOCK_SIZE_M - 1) * r_stride_r

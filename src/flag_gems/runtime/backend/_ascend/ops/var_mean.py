@@ -6,8 +6,9 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -37,7 +38,7 @@ def var_mean_welford_kernel(
     BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of X it should compute.
-    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Var = Var + pid
     Mean = Mean + pid
@@ -104,7 +105,7 @@ def var_mean_welford_kernel_simple(
     BLOCK_N: tl.constexpr,
 ):
     # 程序ID映射
-    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Var = Var + pid
     Mean = Mean + pid
@@ -161,7 +162,7 @@ def var_mean_kernel_1(
     BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of X it should compute.
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_N + tl.arange(0, BLOCK_N)
 
     X = X + offset
@@ -182,7 +183,7 @@ def var_mean_kernel_1(
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("var_mean"))
+@triton.heuristics(_hcu.HEURISTICS_CONFIGS["var_mean"])
 @triton.jit(do_not_specialize=["correction"])
 def var_mean_kernel_2(
     Acc,

@@ -267,11 +267,7 @@ class Benchmark:
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
         elif Config.mode == consts.BenchMode.KERNEL:
-            do_bench = (
-                triton.musa_testing.do_bench
-                if device == "musa"
-                else triton.testing.do_bench
-            )
+            do_bench = triton.testing.do_bench
             latency = do_bench(
                 fn,
                 warmup=Config.warm_up,
@@ -679,8 +675,8 @@ class BinaryPointwiseBenchmark(Benchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
     def set_more_shapes(self):
-        special_shapes_2d = [[1024, 2**i] for i in range(0, 20, 4)]
-        shapes_3d = [[64, 64, 2**i] for i in range(0, 20, 4)]
+        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        shapes_3d = [(64, 64, 2**i) for i in range(0, 20, 4)]
         return special_shapes_2d + shapes_3d
 
     def get_input_iter(self, dtype) -> Generator:
@@ -703,8 +699,8 @@ class ScalarBinaryPointwiseBenchmark(Benchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
     def set_more_shapes(self):
-        special_shapes_2d = [[1024, 2**i] for i in range(0, 20, 4)]
-        shapes_3d = [[64, 64, 2**i] for i in range(0, 20, 4)]
+        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        shapes_3d = [(64, 64, 2**i) for i in range(0, 20, 4)]
         return special_shapes_2d + shapes_3d
 
     def get_input_iter(self, cur_dtype) -> Generator:
