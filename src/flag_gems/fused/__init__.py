@@ -1,4 +1,5 @@
 from flag_gems.fused.add_rms_norm import add_rms_norm
+from flag_gems.fused.adaptive_attention_span import adaptive_attention_span
 from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
 from flag_gems.fused.bincount import bincount
 from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
@@ -82,6 +83,7 @@ from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
     "add_rms_norm",
+    "adaptive_attention_span",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
     "bincount",

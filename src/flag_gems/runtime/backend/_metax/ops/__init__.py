@@ -1,4 +1,4 @@
-from .AdaptiveAttentionSpan import adaptive_attention_span
+from .adaptive_attention_span import adaptive_attention_span
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start

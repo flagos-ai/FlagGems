@@ -7,37 +7,26 @@ import triton.language as tl
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
 logger = logging.getLogger("flag_gems." + __name__)
-exp = tl_extra_shim.exp
-log = tl_extra_shim.log
+exp2 = tl_extra_shim.exp2
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def adaptive_attention_span_forward(x):
-    """
-    Adaptive Attention Span forward pass.
-    This implements a softplus-like function commonly used in attention mechanisms
-    to compute adaptive attention spans.
-    Formula: softplus(x) = log(1 + exp(x))
-    """
-    return log(1.0 + exp(x.to(tl.float32)))
+    log2e: tl.constexpr = 1.4426950408889634
+    return 1 / (1 + exp2(-x.to(tl.float32) * log2e))
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def adaptive_attention_span_backward(y, dy):
-    """
-    Adaptive Attention Span backward pass.
-    Derivative of softplus: sigmoid(x) = 1 / (1 + exp(-x))
-    Since y = softplus(x), we have: dy/dx = sigmoid(x) = y / (1 + y)
-    """
-    return dy * (y / (1.0 + y))
+    return dy * y * (1.0 - y)
 
 
-class Adaptive_Attention_Span(torch.autograd.Function):
+class AdaptiveAttentionSpan(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logger.debug("METAX GEMS ADAPTIVE_ATTENTION_SPAN FORWARD")
+        logger.debug("GEMS_METAX ADAPTIVE_ATTENTION_SPAN FORWARD")
         if A.requires_grad is True:
             out = adaptive_attention_span_forward(A.to(torch.float32))
             ctx.save_for_backward(out)
@@ -48,11 +37,11 @@ class Adaptive_Attention_Span(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("METAX GEMS ADAPTIVE_ATTENTION_SPAN BACKWARD")
+        logger.debug("GEMS_METAX ADAPTIVE_ATTENTION_SPAN BACKWARD")
         (out,) = ctx.saved_tensors
         in_grad = adaptive_attention_span_backward(out, out_grad)
         return in_grad
 
 
 def adaptive_attention_span(A):
-    return Adaptive_Attention_Span.apply(A)
+    return AdaptiveAttentionSpan.apply(A)

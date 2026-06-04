@@ -1,10 +1,10 @@
 ops:
-  - id: AdaptiveAttentionSpan
+  - id: adaptive_attention_span
     description: Computes adaptive attention span using sigmoid activation, mapping input values to (0, 1) range.
     for:
-      - AdaptiveAttentionSpan
+      - adaptive_attention_span
     labels:
-      - aten
+      - fused
       - KernelGen
     kind:
       - Math

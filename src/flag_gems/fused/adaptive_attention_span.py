@@ -19,3 +19,6 @@ def adaptive_attention_span_forward(x):
 def adaptive_attention_span(A):
     logger.debug("GEMS ADAPTIVE_ATTENTION_SPAN")
     return adaptive_attention_span_forward(A)
+
+
+__all__ = ["adaptive_attention_span"]
