@@ -6,7 +6,11 @@ import torch.nn.functional as F
 
 import flag_gems
 from flag_gems.fused import top_k_per_row_prefill
-from flag_gems.patches.patch_util import patch_module_method, patch_vllm_lib
+from flag_gems.patches.patch_util import (
+    init_vllm_libraries,
+    patch_module_method,
+    patch_vllm_lib,
+)
 
 
 def custom_gems_rms_forward_cuda(self, x, residual=None):
@@ -611,6 +615,7 @@ def apply_gems_patches_to_vllm(verbose=True):
     from vllm.v1.attention.backends.mla.triton_mla import TritonMLAImpl
 
     dispatch_key = flag_gems.runtime.device.dispatch_key
+    init_vllm_libraries()
 
     module_patches = [
         (RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda),
