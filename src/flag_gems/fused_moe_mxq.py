@@ -1235,6 +1235,7 @@ def fused_moe_kernel_w8a16_gateup_silu_large(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     APPLY_ROUTED_WEIGHT: tl.constexpr,
+    SWAP_AB: tl.constexpr,
     compute_type: tl.constexpr,
 ):
     """Large-token fast path for has_zp=False, group_size=128 W8A16 gateup_silu."""
@@ -1256,6 +1257,9 @@ def fused_moe_kernel_w8a16_gateup_silu_large(
 
     gate_acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     up_acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    if SWAP_AB:
+        gate_acc_nm = tl.zeros((BLOCK_SIZE_N, BLOCK_SIZE_M), dtype=tl.float32)
+        up_acc_nm = tl.zeros((BLOCK_SIZE_N, BLOCK_SIZE_M), dtype=tl.float32)
     offs_k = tl.arange(0, BLOCK_SIZE_K)
 
     for k_start in range(0, H, BLOCK_SIZE_K):
@@ -1305,11 +1309,19 @@ def fused_moe_kernel_w8a16_gateup_silu_large(
             eviction_policy="evict_first",
         ).to(tl.float32)
 
-        b_deq_gate = (b_int_gate - 128.0) * s_gate[:, None]
-        b_deq_up = (b_int_up - 128.0) * s_up[:, None]
+        b_deq_gate = b_int_gate * s_gate[:, None] + (-128.0 * s_gate[:, None])
+        b_deq_up = b_int_up * s_up[:, None] + (-128.0 * s_up[:, None])
 
-        gate_acc += tl.dot(a, tl.trans(b_deq_gate.to(a.dtype)))
-        up_acc += tl.dot(a, tl.trans(b_deq_up.to(a.dtype)))
+        if SWAP_AB:
+            gate_acc_nm += tl.dot(b_deq_gate.to(a.dtype), tl.trans(a))
+            up_acc_nm += tl.dot(b_deq_up.to(a.dtype), tl.trans(a))
+        else:
+            gate_acc += tl.dot(a, tl.trans(b_deq_gate.to(a.dtype)))
+            up_acc += tl.dot(a, tl.trans(b_deq_up.to(a.dtype)))
+
+    if SWAP_AB:
+        gate_acc = tl.trans(gate_acc_nm)
+        up_acc = tl.trans(up_acc_nm)
 
     silu_gate = gate_acc * tl.sigmoid(gate_acc)
     result = silu_gate * up_acc
@@ -1369,6 +1381,7 @@ def fused_moe_kernel_w8a16_down(
     DOWN_GRID_N_FIRST: tl.constexpr,
     INTER_PREWEIGHTED: tl.constexpr,
     SMALL_TOKEN_MXQ_PATH: tl.constexpr,
+    SWAP_AB: tl.constexpr,
     compute_type: tl.constexpr,
 ):
     """y = W2[expert] @ intermediate, output[token] += weight * y. Full H coverage."""
@@ -1392,6 +1405,8 @@ def fused_moe_kernel_w8a16_down(
 
     n_mask = offs_n < H
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    if SWAP_AB:
+        accumulator_nm = tl.zeros((BLOCK_SIZE_N, BLOCK_SIZE_M), dtype=tl.float32)
     offs_k = tl.arange(0, BLOCK_SIZE_K)
 
     for k_start in range(0, I, BLOCK_SIZE_K):
@@ -1518,9 +1533,12 @@ def fused_moe_kernel_w8a16_down(
                     ).to(tl.float32)
                 b_deq = (b_int - zp[:, None]) * s[:, None]
             else:
-                b_deq = (b_int - 128.0) * s[:, None]
+                b_deq = b_int * s[:, None] + (-128.0 * s[:, None])
 
-            accumulator += tl.dot(a, tl.trans(b_deq.to(a.dtype)))
+            if SWAP_AB:
+                accumulator_nm += tl.dot(b_deq.to(a.dtype), tl.trans(a))
+            else:
+                accumulator += tl.dot(a, tl.trans(b_deq.to(a.dtype)))
         else:
             scale_groups = k_indices // group_size
             scale_mask = n_mask[:, None] & k_mask[None, :]
@@ -1568,9 +1586,15 @@ def fused_moe_kernel_w8a16_down(
                     ).to(tl.float32)
                 b_deq = (b_int - zp) * s
             else:
-                b_deq = (b_int - 128.0) * s
+                b_deq = b_int * s + (-128.0 * s)
 
-            accumulator += tl.dot(a, tl.trans(b_deq.to(a.dtype)))
+            if SWAP_AB:
+                accumulator_nm += tl.dot(b_deq.to(a.dtype), tl.trans(a))
+            else:
+                accumulator += tl.dot(a, tl.trans(b_deq.to(a.dtype)))
+
+    if SWAP_AB:
+        accumulator = tl.trans(accumulator_nm)
 
     if not INTER_PREWEIGHTED:
         weights = tl.load(topk_weights + offs_m, mask=token_mask, other=0.0).to(tl.float32)
@@ -3492,6 +3516,28 @@ def _mxq_use_gateup_large_h4096_fast(
     )
 
 
+def _mxq_swap_ab_gateup_large(num_valid_tokens: int) -> bool:
+    """A/B switch for PR-2085 style swapped dot in gateup_silu_large."""
+    forced = os.getenv("FLAG_GEMS_MXQ_SWAP_AB_GATEUP")
+    if forced is not None:
+        return _get_env_int("FLAG_GEMS_MXQ_SWAP_AB_GATEUP", 0) != 0
+    return (
+        _get_env_int("FLAG_GEMS_MXQ_SWAP_AB", 0) != 0
+        and num_valid_tokens >= _get_env_int("FLAG_GEMS_MXQ_SWAP_AB_MIN_TOKENS", 2)
+    )
+
+
+def _mxq_swap_ab_down(num_valid_tokens: int) -> bool:
+    """A/B switch for PR-2085 style swapped dot in down."""
+    forced = os.getenv("FLAG_GEMS_MXQ_SWAP_AB_DOWN")
+    if forced is not None:
+        return _get_env_int("FLAG_GEMS_MXQ_SWAP_AB_DOWN", 0) != 0
+    return (
+        _get_env_int("FLAG_GEMS_MXQ_SWAP_AB", 0) != 0
+        and num_valid_tokens >= _get_env_int("FLAG_GEMS_MXQ_SWAP_AB_MIN_TOKENS", 2)
+    )
+
+
 def _launch_w8a16_gateup_silu_large(
     x,
     W1_q,
@@ -3624,6 +3670,7 @@ def _launch_w8a16_gateup_silu_large(
         stride_inter_n=intermediate.stride(1),
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         APPLY_ROUTED_WEIGHT=preweight_intermediate,
+        SWAP_AB=_mxq_swap_ab_gateup_large(num_valid_tokens),
         compute_type=compute_type,
     )
 
@@ -3797,6 +3844,7 @@ def _launch_w8a16_down(
         DOWN_GRID_N_FIRST=down_grid_n_first,
         INTER_PREWEIGHTED=preweight_intermediate,
         SMALL_TOKEN_MXQ_PATH=small_token_mxq_path,
+        SWAP_AB=_mxq_swap_ab_down(num_valid_tokens),
         compute_type=compute_type,
     )
 
@@ -3812,12 +3860,12 @@ def _mxq_down_grid_n_first(num_valid_tokens: int) -> bool:
 
 def _mxq_fused_gateup_silu_large_min_tokens() -> int:
     """Min valid tokens to select ``gateup_silu_large`` (no zp, gs=128 fast path)."""
-    return _get_env_int("FLAG_GEMS_MXQ_FUSED_GATEUP_SILU_LARGE_TOKENS", 1024)
+    return _get_env_int("FLAG_GEMS_MXQ_FUSED_GATEUP_SILU_LARGE_TOKENS", 2)
 
 
 def _mxq_large_dual_path_min_tokens() -> int:
-    """Min T for chenzb split-B2 large path; default T>=1024."""
-    return _get_env_int("FLAG_GEMS_MXQ_LARGE_DUAL_PATH_MIN_TOKENS", 1024)
+    """Min T for chenzb split-B2 path; default T>1."""
+    return _get_env_int("FLAG_GEMS_MXQ_LARGE_DUAL_PATH_MIN_TOKENS", 2)
 
 
 def _mxq_unified_mi_max_tokens() -> int:
@@ -3831,8 +3879,10 @@ def _mxq_use_unified_mi_fusion(num_valid_tokens: int) -> bool:
 
 
 def _mxq_use_chenzb_full_swiglu(num_valid_tokens: int) -> bool:
-    """Use chenzb split-B2 only for large batches."""
-    return num_valid_tokens >= _mxq_large_dual_path_min_tokens()
+    """Use chenzb unified single-kernel for T=1, split-B2 for T>1."""
+    return _mxq_use_unified_mi_fusion(num_valid_tokens) or (
+        num_valid_tokens >= _mxq_large_dual_path_min_tokens()
+    )
 
 
 def _mxq_unified_b2_fused_min_tokens() -> int:
@@ -4838,7 +4888,9 @@ def _select_bsm_launch_config(num_post_padded: int, n_dim: int, k_dim: int) -> d
     return cfg
 
 
-def _select_bsm_block_m(num_tokens: int) -> int:
+def _select_bsm_block_m(
+    num_tokens: int, top_k: Optional[int] = None, num_experts: Optional[int] = None
+) -> int:
     """Choose routing BSM.
 
     P3 optimization: tiny token batches were dominated by BSM=64 padding
@@ -4846,10 +4898,9 @@ def _select_bsm_block_m(num_tokens: int) -> int:
     throughput, but default to smaller routing blocks for small batches.
     ``FLAG_GEMS_MXQ_BSM_BLOCK_M`` remains a hard override for A/B testing.
 
-    Full-SwiGLU dispatch uses this only when ``num_tokens <=``
-    ``FLAG_GEMS_MXQ_SPLIT_SMALL_LARGE_THRESHOLD`` (default 512); above that
-    threshold routing uses `_select_bsm_block_m_rollback_large_path` to match
-    the stable rollback logs.
+    When top-k and expert count are available, use the PR-2085 style occupancy
+    heuristic based on average routed tokens per expert.  This reduces BSM
+    padding for sparse E=512/topk=10 batches without needing token-only buckets.
     """
     forced = os.getenv("FLAG_GEMS_MXQ_BSM_BLOCK_M")
     if forced is not None:
@@ -4859,6 +4910,23 @@ def _select_bsm_block_m(num_tokens: int) -> int:
                 return forced_bsm
         except ValueError:
             pass
+
+    use_avg_heuristic = _get_env_int("FLAG_GEMS_MXQ_BSM_AVG_EXPERT_HEURISTIC", 1) != 0
+    if use_avg_heuristic and top_k is not None and num_experts is not None:
+        avg_tokens_per_expert = (int(num_tokens) * int(top_k)) // max(
+            int(num_experts), 1
+        )
+        if avg_tokens_per_expert <= 16:
+            if num_tokens <= _get_env_int("FLAG_GEMS_MXQ_BSM_TINY_TOKEN_THRESHOLD", 4):
+                return _get_env_int("FLAG_GEMS_MXQ_BSM_TINY_BLOCK_M", 4)
+            if num_tokens <= _get_env_int("FLAG_GEMS_MXQ_BSM_SHORT_TOKEN_THRESHOLD", 64):
+                return _get_env_int("FLAG_GEMS_MXQ_BSM_SHORT_BLOCK_M", 8)
+            return _get_env_int("FLAG_GEMS_MXQ_BSM_AVG_LE16_BLOCK_M", 16)
+        if avg_tokens_per_expert <= 32:
+            return _get_env_int("FLAG_GEMS_MXQ_BSM_AVG_LE32_BLOCK_M", 32)
+        if avg_tokens_per_expert <= 48:
+            return _get_env_int("FLAG_GEMS_MXQ_BSM_AVG_LE48_BLOCK_M", 48)
+        return _get_env_int("FLAG_GEMS_MXQ_BSM_AVG_GT48_BLOCK_M", 64)
 
     small_threshold = _get_env_int("FLAG_GEMS_MXQ_BSM_SMALL_TOKEN_THRESHOLD", 64)
     # b2opt: BSM=32 through T≤512 cuts M_padded / INTER HBM vs 170907 (256).
@@ -5299,6 +5367,7 @@ def invoke_fused_moe_full_swiglu(
                         stride_inter_n=unified_inter.stride(1),
                         BLOCK_SIZE_M=BLOCK_SIZE_M,
                         APPLY_ROUTED_WEIGHT=preweight_intermediate,
+                        SWAP_AB=_mxq_swap_ab_gateup_large(num_valid_tokens),
                         compute_type=compute_type,
                     )
                 else:
@@ -5377,6 +5446,7 @@ def invoke_fused_moe_full_swiglu(
                     DOWN_GRID_N_FIRST=down_grid_n_first,
                     INTER_PREWEIGHTED=preweight_intermediate,
                     SMALL_TOKEN_MXQ_PATH=small_token_mxq_path,
+                    SWAP_AB=_mxq_swap_ab_down(num_valid_tokens),
                     compute_type=compute_type,
                 )
         return
@@ -5429,6 +5499,7 @@ def invoke_fused_moe_full_swiglu(
                 stride_inter_n=intermediate.stride(1),
                 BLOCK_SIZE_M=BLOCK_SIZE_M,
                 APPLY_ROUTED_WEIGHT=preweight_intermediate,
+                SWAP_AB=_mxq_swap_ab_gateup_large(num_valid_tokens),
                 compute_type=compute_type,
             )
         else:
@@ -5571,6 +5642,7 @@ def invoke_fused_moe_full_swiglu(
         DOWN_GRID_N_FIRST=down_grid_n_first,
         INTER_PREWEIGHTED=preweight_intermediate,
         SMALL_TOKEN_MXQ_PATH=small_token_mxq_path,
+        SWAP_AB=_mxq_swap_ab_down(num_valid_tokens),
         compute_type=compute_type,
     )
 
@@ -5791,8 +5863,8 @@ def fused_moe(
     # (which runs the full SwiGLU MoE: gate_up = W1@x, h = silu(gate)*up,
     # y = W2@h) an "apples vs. orange" comparison.
     #
-    # Only T>=1024 takes the chenzb split-B2 path.  Smaller shapes intentionally
-    # fall through to the original zhiyuan dispatch below.
+    # T=1 takes chenzb unified single-kernel without INTER; T>1 takes
+    # chenzb split-B2.
     #
     # Set FLAG_GEMS_MXQ_FULL_SWIGLU=0 to fall back to the legacy partial-N /
     # W1-only path (useful for regression / debugging).
@@ -5808,11 +5880,7 @@ def fused_moe(
         and W2_scales is not None
     )
     if use_full_swiglu:
-        split_th = _mxq_split_small_large_threshold()
-        if num_tokens <= split_th:
-            bsm_block_m = _select_bsm_block_m(num_tokens)
-        else:
-            bsm_block_m = _select_bsm_block_m_rollback_large_path(num_tokens)
+        bsm_block_m = _select_bsm_block_m(num_tokens, top_k, num_experts)
         (
             sorted_tids_bsm,
             eids_per_block_bsm,
@@ -5856,7 +5924,7 @@ def fused_moe(
         and W1_scales is not None
     )
     if use_bsm:
-        bsm_block_m = _select_bsm_block_m(num_tokens)
+        bsm_block_m = _select_bsm_block_m(num_tokens, top_k, num_experts)
         (
             sorted_tids_bsm,
             eids_per_block_bsm,

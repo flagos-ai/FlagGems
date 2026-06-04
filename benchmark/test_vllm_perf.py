@@ -1,14 +1,44 @@
 import dataclasses
+import os
 import random
+from collections import OrderedDict
 from itertools import product
 from math import ceil
-from typing import List
+from typing import List, Optional
 
 import pytest
 import torch
 
 import flag_gems
-from benchmark.performance_utils import Benchmark
+from benchmark.performance_utils import Benchmark, device as bench_device
+
+
+_mxq_graph_out_buffers: "OrderedDict[tuple, torch.Tensor]" = OrderedDict()
+
+
+def _mxq_graph_staging_out(hidden_states: torch.Tensor) -> Optional[torch.Tensor]:
+    """Pre-allocated output for ``fused_moe(..., out=)`` when CUDA Graph mode is on."""
+    if os.getenv("FLAG_GEMS_MXQ_CUDA_GRAPH", "0") == "0":
+        return None
+    if bench_device != "cuda" or not torch.cuda.is_available():
+        return None
+    if hidden_states.device.type != "cuda":
+        return None
+    key = (
+        int(hidden_states.shape[0]),
+        int(hidden_states.shape[1]),
+        int(hidden_states.device.index or 0),
+        hidden_states.dtype,
+    )
+    buf = _mxq_graph_out_buffers.get(key)
+    if buf is None or buf.shape != hidden_states.shape or buf.dtype != hidden_states.dtype:
+        buf = torch.empty_like(hidden_states)
+        _mxq_graph_out_buffers[key] = buf
+        _mxq_graph_out_buffers.move_to_end(key)
+    cap = max(4, int(os.getenv("FLAG_GEMS_MXQ_CUDA_GRAPH_OUT_CACHE_MAX", "16")))
+    while len(_mxq_graph_out_buffers) > cap:
+        _mxq_graph_out_buffers.popitem(last=False)
+    return buf
 
 
 def is_vllm_available():
@@ -1158,6 +1188,11 @@ class FusedMoEMXQW8A16Benchmark(Benchmark):
 
     Uses QuantMode.W8A16: INT8 weights, FP16 activations.
     Tests SwiGLU MoE: y = W2 @ (silu(W1 @ x) * (W3 @ x))
+
+    Optional CUDA Graph (Gems path only): set ``FLAG_GEMS_MXQ_CUDA_GRAPH=1`` and keep
+    ``FLAGGEMS_BENCH_USE_CUDA_GRAPH=1`` (default).  Requires the **unified** Triton path
+    (no large ``intermediate`` HBM buffer); if capture fails, timing falls back to
+    ``triton.testing.do_bench`` automatically.
     """
 
     def __init__(self, op_name, torch_op, dtypes):
@@ -1165,37 +1200,61 @@ class FusedMoEMXQW8A16Benchmark(Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
-            # Mixtral-like shapes
-            (1, 8, 4096, 14336, 2),
-            (4, 8, 4096, 14336, 2),
-            (16, 8, 4096, 14336, 2),
-            (64, 8, 4096, 14336, 2),
-            (128, 8, 4096, 14336, 2),
-            (256, 8, 4096, 14336, 2),
-            (512, 8, 4096, 14336, 2),
-            # DeepSeek-V3-like shapes (smaller E to avoid OOM)
-            (1, 64, 7168, 2048, 8),
-            (4, 64, 7168, 2048, 8),
-            (16, 64, 7168, 2048, 8),
-            (64, 64, 7168, 2048, 8),
-            (128, 64, 7168, 2048, 8),
-            (256, 64, 7168, 2048, 8),
-            # Qwen3.5-397B-A17B (smaller E to avoid OOM)
-            (1, 128, 4096, 1024, 10),
-            (4, 128, 4096, 1024, 10),
-            (16, 128, 4096, 1024, 10),
-            (64, 128, 4096, 1024, 10),
-            (128, 128, 4096, 1024, 10),
-            (256, 128, 4096, 1024, 10),
+
+            (1, 512, 4096, 1024, 10),
+            (4, 512, 4096, 1024, 10),
+            (16, 512, 4096, 1024, 10),
+            (64, 512, 4096, 1024, 10),
+            (128, 512, 4096, 1024, 10),
+            (256, 512, 4096, 1024, 10),
+            (512, 512, 4096, 1024, 10),
+            (1024, 512, 4096, 1024, 10),
+            (4096, 512, 4096, 1024, 10),
+            (16384, 512, 4096, 1024, 10),
+            (32768, 512, 4096, 1024, 10),
         ]
+        token_filter = os.getenv("FLAG_GEMS_MXQ_BENCH_TOKENS")
+        if token_filter:
+            wanted_tokens = {
+                int(token.strip())
+                for token in token_filter.split(",")
+                if token.strip()
+            }
+            self.shapes = [
+                shape for shape in self.shapes if shape[0] in wanted_tokens
+            ]
 
     def set_more_metrics(self):
         # Display both QC TFLOPS (gems latency) and FP16 ref TFLOPS (torch latency_base).
         return ["tflops", "tflops_base"]
 
+    def get_latency(self, op, *args, **kwargs):
+        # CUDA Graph capture is only safe for the Gems path (static buffers + routing cache).
+        self._mxq_graph_timing_gems = op is self.gems_op
+        try:
+            return super().get_latency(op, *args, **kwargs)
+        finally:
+            self._mxq_graph_timing_gems = False
+
+    def _should_use_cuda_graph(self) -> bool:
+        if self.is_backward or bench_device != "cuda" or not torch.cuda.is_available():
+            return False
+        if not getattr(self, "_mxq_graph_timing_gems", False):
+            return False
+        if os.getenv("FLAG_GEMS_MXQ_CUDA_GRAPH", "0") == "0":
+            return False
+        return Benchmark._get_bool_env("FLAGGEMS_BENCH_USE_CUDA_GRAPH", True)
+
     def get_input_iter(self, cur_dtype):
         for config in self.shapes:
             yield from self._w8a16_mxq_input_fn(config)
+
+    def get_nvtx_range_name(self, phase: str, *args, **kwargs) -> str:
+        del kwargs
+        num_tokens = -1
+        if args and torch.is_tensor(args[0]) and args[0].dim() >= 1:
+            num_tokens = int(args[0].shape[0])
+        return f"{self.op_name}:{phase}:tokens={num_tokens}"
 
     def _w8a16_mxq_input_fn(self, config):
         num_tokens, num_experts, hidden_size, intermediate_size, topk = config
@@ -1366,6 +1425,34 @@ def _baseline_w8a16_mxq_wrapper_vllm(
     )
 
 
+def _baseline_w8a16_mxq_wrapper_vllm_bf16(
+    hidden_states,
+    w1_fp16,
+    w2_fp16,
+    w1_q,
+    w2_q,
+    w3_q,
+    w1_scale,
+    w2_scale,
+    w3_scale,
+    topk_weights,
+    topk_ids,
+    num_experts,
+    topk,
+):
+    """Wrapper to call vLLM fused_experts_impl with bf16 weights."""
+    del w1_q, w2_q, w3_q, w1_scale, w2_scale, w3_scale, num_experts, topk
+    return vllm_fused_experts_impl(
+        hidden_states.clone(),
+        w1_fp16,
+        w2_fp16,
+        topk_weights,
+        topk_ids,
+        inplace=False,
+        activation="silu",
+    )
+
+
 def _gems_fused_moe_mxq_w8a16_wrapper(
     hidden_states,
     w1_fp16,
@@ -1386,6 +1473,7 @@ def _gems_fused_moe_mxq_w8a16_wrapper(
     from flag_gems.fused_moe_mxq import QuantConfig, QuantMode, fused_moe
 
     quant_config = QuantConfig(mode=QuantMode.W8A16, has_zero_point=False)
+    staging = _mxq_graph_staging_out(hidden_states)
     return fused_moe(
         hidden_states,
         w1=None,
@@ -1405,6 +1493,7 @@ def _gems_fused_moe_mxq_w8a16_wrapper(
         w3_q=w3_q,
         w3_scales=w3_scale,
         w3_zeros=None,
+        out=staging,
     )
 
 
@@ -1433,6 +1522,22 @@ def test_perf_fused_moe_w8a16_mxq_gems_vs_vllm():
     bench = FusedMoEMXQW8A16Benchmark(
         op_name="fused_moe_w8a16_mxq_gems_vs_vllm",
         torch_op=_baseline_w8a16_mxq_wrapper_vllm,
+        dtypes=[torch.bfloat16],
+    )
+    bench.set_gems(_gems_fused_moe_mxq_w8a16_wrapper)
+    bench.run()
+
+
+@pytest.mark.fused_moe
+@pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vllm not installed")
+@pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires NVIDIA Hopper architecture")
+def test_perf_fused_moe_w8a16_mxq_gems_vs_vllm_bf16():
+    """
+    Benchmark flag_gems.fused_moe_mxq W8A16 vs vLLM bf16 fused_experts_impl.
+    """
+    bench = FusedMoEMXQW8A16Benchmark(
+        op_name="fused_moe_w8a16_mxq_gems_vs_vllm_bf16",
+        torch_op=_baseline_w8a16_mxq_wrapper_vllm_bf16,
         dtypes=[torch.bfloat16],
     )
     bench.set_gems(_gems_fused_moe_mxq_w8a16_wrapper)
