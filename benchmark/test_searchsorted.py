@@ -13,6 +13,12 @@ SEARCHSORTED_SHAPES = [
     ((256, 1024), (256, 512), False, False, True),
 ]
 
+SEARCHSORTED_SCALAR_SHAPES = [
+    ((1024,), False, False),
+    ((4096,), True, False),
+    ((8192,), False, True),
+]
+
 SEARCHSORTED_DTYPES = [
     torch.float16,
     torch.float32,
@@ -61,6 +67,10 @@ def _make_values(shape, dtype, device):
     return base.reshape(view_shape).expand(shape).contiguous()
 
 
+def _make_scalar_value(dtype):
+    return 0.0 if dtype.is_floating_point else 0
+
+
 class SearchsortedBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "sorted_sequence shape, values shape, sorter, right, out_int32"
 
@@ -98,9 +108,34 @@ class SearchsortedOutBenchmark(SearchsortedBenchmark):
             yield sorted_sequence, values, kwargs
 
 
+class SearchsortedScalarBenchmark(base.Benchmark):
+    DEFAULT_SHAPE_DESC = "sorted_sequence shape, right, out_int32"
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = SEARCHSORTED_SCALAR_SHAPES
+
+    def get_input_iter(self, dtype) -> Generator:
+        for sequence_shape, right, out_int32 in self.shapes:
+            sorted_sequence = _make_monotonic(sequence_shape, dtype, self.device)
+            value = _make_scalar_value(dtype)
+            kwargs = {"out_int32": out_int32, "right": right}
+            yield sorted_sequence, value, kwargs
+
+
+class SearchsortedScalarOutBenchmark(SearchsortedScalarBenchmark):
+    def get_input_iter(self, dtype) -> Generator:
+        for sequence_shape, right, out_int32 in self.shapes:
+            sorted_sequence = _make_monotonic(sequence_shape, dtype, self.device)
+            value = _make_scalar_value(dtype)
+            out_dtype = torch.int32 if out_int32 else torch.int64
+            out = torch.empty((), dtype=out_dtype, device=self.device)
+            kwargs = {"out_int32": out_int32, "right": right, "out": out}
+            yield sorted_sequence, value, kwargs
+
+
 @pytest.mark.searchsorted
 @pytest.mark.parametrize("dtype", SEARCHSORTED_DTYPES)
-def test_searchsorted_perf(dtype):
+def test_searchsorted(dtype):
     bench = SearchsortedBenchmark(
         op_name="searchsorted",
         torch_op=torch.searchsorted,
@@ -109,11 +144,33 @@ def test_searchsorted_perf(dtype):
     bench.run()
 
 
+@pytest.mark.searchsorted_scalar
+@pytest.mark.parametrize("dtype", SEARCHSORTED_DTYPES)
+def test_searchsorted_scalar(dtype):
+    bench = SearchsortedScalarBenchmark(
+        op_name="searchsorted_scalar",
+        torch_op=torch.searchsorted,
+        dtypes=[dtype],
+    )
+    bench.run()
+
+
 @pytest.mark.searchsorted_out
 @pytest.mark.parametrize("dtype", SEARCHSORTED_DTYPES)
-def test_searchsorted_out_perf(dtype):
+def test_searchsorted_out(dtype):
     bench = SearchsortedOutBenchmark(
         op_name="searchsorted_out",
+        torch_op=torch.searchsorted,
+        dtypes=[dtype],
+    )
+    bench.run()
+
+
+@pytest.mark.searchsorted_scalar_out
+@pytest.mark.parametrize("dtype", SEARCHSORTED_DTYPES)
+def test_searchsorted_scalar_out(dtype):
+    bench = SearchsortedScalarOutBenchmark(
+        op_name="searchsorted_scalar_out",
         torch_op=torch.searchsorted,
         dtypes=[dtype],
     )
