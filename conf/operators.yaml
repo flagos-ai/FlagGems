@@ -6035,6 +6035,19 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: split_with_sizes_copy
+    description: |
+      Splits a tensor into sub-tensors along a given dimension,
+      where each split has a specified size. Always returns copies.
+    for:
+      - split_with_sizes_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
