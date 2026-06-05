@@ -15,7 +15,9 @@ case $VENDOR in
     echo "PATH=$PATH"
     ;;
   iluvatar)
-    export LD_LIBRARY_PATH=/usr/local/corex/lib:$LD_LIBRARY_PATH
+    export COREX_ROOT=/usr/local/corex
+    export PATH=$COREX_ROOT/bin:$PATH
+    export LD_LIBRARY_PATH=$COREX_ROOT/lib:$LD_LIBRARY_PATH
     ;;
   kunlunxin)
     export LD_LIBRARY_PATH=/xcudart/lib:/usr/local/cuda/lib64
