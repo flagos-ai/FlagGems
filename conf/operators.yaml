@@ -5974,6 +5974,18 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: special_i0_out
+    description: |
+      A variant of special_i0() with output saved to provided out.
+    for:
+      - special_i0.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: special_i0e_out
     description: |
       A variant of `special_i0e()` with output saved to provided `out`..
