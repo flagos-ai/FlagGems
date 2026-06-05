@@ -71,6 +71,18 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.0'
+  - id: adaptive_avg_pool3d_backward
+    description: |
+      Computes the gradient of adaptive average pooling 3D.
+    for:
+      - _adaptive_avg_pool3d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: adaptive_avg_pool3d_out
     description: |
       A variant of `_adaptive_avg_pool3d` that assigns the output to the `out` tensor.

@@ -1,3 +1,4 @@
+from flag_gems.ops._adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -407,6 +408,7 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "_adaptive_avg_pool3d_backward",
     "_assert_async",
     "_conv_depthwise2d",
     "_euclidean_dist",
