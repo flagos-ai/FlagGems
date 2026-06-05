@@ -24,7 +24,7 @@ backend_info = runtime.device
 aten_lib = torch.library.Library("aten", "IMPL")
 
 # Register all ops in the current backend with SpecOpRegistrar to support architecture-specialized implementations
-SpecOpRegistrar(globals()).apply()
+SpecOpRegistrar(registry=globals(), vendor=vendor_name).apply()
 
 registrar = GeneralOpRegistrar
 current_work_registrar = None
@@ -122,6 +122,7 @@ _FULL_CONFIG = (
     ("atan2", atan2),
     ("atan2.out", atan2_out),
     ("arctanh_", arctanh_),
+    ("atanh", atanh),
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
     ("avg_pool3d", avg_pool3d),
@@ -432,6 +433,7 @@ _FULL_CONFIG = (
     ("randn", randn),
     ("randn_like", randn_like),
     ("randint", randint),
+    ("randint_like", randint_like),
     ("randperm", randperm),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
@@ -443,11 +445,14 @@ _FULL_CONFIG = (
     ("relu", relu),
     ("relu_", relu_),
     ("relu6", relu6),
+    ("remainder", remainder),
     ("remainder.Scalar", remainder),
     ("remainder.Scalar_Tensor", remainder),
     ("remainder.Tensor", remainder),
     ("remainder_.Scalar", remainder_),
     ("remainder_.Tensor", remainder_),
+    ("renorm", renorm),
+    ("renorm_", renorm_),
     ("repeat", repeat),
     ("repeat_interleave.self_int", repeat_interleave_self_int),
     ("repeat_interleave.self_Tensor", repeat_interleave_self_tensor),
