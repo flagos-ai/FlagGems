@@ -457,6 +457,15 @@ index:
     - [[512, 512, 512], [[2, 128]]]
     - [[64, 64, 64], [[2, 8], [2, 8]]]
 
+index_select_backward:
+  shapes:
+    - [16, 64]
+    - [32, 128]
+    - [64, 256]
+    - [16, 16, 64]
+    - [32, 32, 128]
+  shape_desc: "N, M"
+
 FlashMLABenchmark:
   shapes:
     - [1024]

@@ -3242,6 +3242,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: index_select_backward
+    description: Backward of index_select. Accumulates gradients into the output at positions specified by the index.
+    for:
+      - index_select_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: indexer_k_quant_and_cache
     description: This is a fused operator that quantizes K tensors and writes them into the FP8 KV cache.
     for:
