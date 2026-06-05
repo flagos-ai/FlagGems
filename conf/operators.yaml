@@ -6264,6 +6264,19 @@ ops:
       - Math
     stages:
       - stable: '3.0'
+  - id: tensor_split
+    description: |
+      Splits a tensor into multiple sub-tensors along a given dimension,
+      using either a number of sections or a list of split indices.
+    for:
+      - tensor_split
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: threshold
     description: Apply a threshold to each element of the input Tensor.
     for:
