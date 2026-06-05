@@ -104,7 +104,7 @@ def mvlgamma__(A, p=2):
 
 def mvlgamma_(A, p=2):
     """
-    Multivariate log-gamma function.
+    Multivariate log-gamma function (in-place).
 
     Computes the multivariate log-gamma function with dimension p element-wise.
 
@@ -113,8 +113,7 @@ def mvlgamma_(A, p=2):
         p: Dimension of the multivariate gamma function (default: 2)
 
     Returns:
-        Tensor with multivariate log-gamma computed
+        Tensor with multivariate log-gamma computed in-place
     """
-    logger.debug("GEMS MVLGAMMA")
-    result = A.clone()
-    return mvlgamma__(result, p)
+    logger.debug("GEMS MVLGAMMA_")
+    return mvlgamma__(A, p)
