@@ -1453,6 +1453,144 @@ def _baseline_w8a16_mxq_wrapper_vllm_bf16(
     )
 
 
+_mxq_marlin_cache: "OrderedDict[tuple, tuple]" = OrderedDict()
+
+
+def _pack_mxq_weight_for_vllm_marlin(q_weight: torch.Tensor) -> torch.Tensor:
+    """Convert (E, N, K) uint8 weights to GPTQ-packed (E, K/4, N) int32."""
+    num_experts, size_n, size_k = q_weight.shape
+    assert size_k % 4 == 0
+    packed = torch.empty(
+        (num_experts, size_k // 4, size_n),
+        dtype=torch.int32,
+        device=q_weight.device,
+    )
+    chunk_e = max(1, int(os.getenv("FLAG_GEMS_MXQ_MARLIN_PACK_EXPERT_CHUNK", "8")))
+    for e_start in range(0, num_experts, chunk_e):
+        e_end = min(num_experts, e_start + chunk_e)
+        q = q_weight[e_start:e_end].permute(0, 2, 1).contiguous()
+        packed[e_start:e_end] = (
+            q[:, 0::4, :].to(torch.int32)
+            | (q[:, 1::4, :].to(torch.int32) << 8)
+            | (q[:, 2::4, :].to(torch.int32) << 16)
+            | (q[:, 3::4, :].to(torch.int32) << 24)
+        )
+    return packed
+
+
+def _prepare_vllm_marlin_moe_w8a16(
+    w1_q: torch.Tensor,
+    w2_q: torch.Tensor,
+    w1_scale: torch.Tensor,
+    w2_scale: torch.Tensor,
+):
+    """Prepare MXQ W8A16 weights for vLLM's CUDA Marlin MoE path."""
+    from vllm import _custom_ops as vllm_ops
+    from vllm.model_executor.layers.quantization.utils.marlin_utils import (
+        marlin_moe_permute_scales,
+    )
+
+    key = (
+        w1_q.data_ptr(),
+        w2_q.data_ptr(),
+        w1_scale.data_ptr(),
+        w2_scale.data_ptr(),
+    )
+    cached = _mxq_marlin_cache.get(key)
+    if cached is not None:
+        _mxq_marlin_cache.move_to_end(key)
+        return cached
+
+    num_experts, n_w1, hidden_size = w1_q.shape
+    _, hidden_size_w2, intermediate_size = w2_q.shape
+    assert hidden_size_w2 == hidden_size
+    group_size = hidden_size // w1_scale.shape[2]
+    assert group_size == intermediate_size // w2_scale.shape[2]
+
+    g_idx_sort = torch.empty((num_experts, 0), dtype=torch.int32, device=w1_q.device)
+
+    w1_packed = _pack_mxq_weight_for_vllm_marlin(w1_q)
+    w2_packed = _pack_mxq_weight_for_vllm_marlin(w2_q)
+    w1_marlin = vllm_ops.gptq_marlin_moe_repack(
+        w1_packed,
+        g_idx_sort,
+        hidden_size,
+        n_w1,
+        8,
+        is_a_8bit=False,
+    )
+    w2_marlin = vllm_ops.gptq_marlin_moe_repack(
+        w2_packed,
+        g_idx_sort,
+        intermediate_size,
+        hidden_size,
+        8,
+        is_a_8bit=False,
+    )
+
+    w1_scales_marlin = marlin_moe_permute_scales(
+        w1_scale.transpose(1, 2).contiguous(),
+        size_k=hidden_size,
+        size_n=n_w1,
+        group_size=group_size,
+        is_a_8bit=False,
+    )
+    w2_scales_marlin = marlin_moe_permute_scales(
+        w2_scale.transpose(1, 2).contiguous(),
+        size_k=intermediate_size,
+        size_n=hidden_size,
+        group_size=group_size,
+        is_a_8bit=False,
+    )
+
+    value = (w1_marlin, w2_marlin, w1_scales_marlin, w2_scales_marlin)
+    _mxq_marlin_cache[key] = value
+    _mxq_marlin_cache.move_to_end(key)
+    cap = max(1, int(os.getenv("FLAG_GEMS_MXQ_MARLIN_CACHE_MAX", "1")))
+    while len(_mxq_marlin_cache) > cap:
+        _mxq_marlin_cache.popitem(last=False)
+    return value
+
+
+def _baseline_w8a16_mxq_wrapper_vllm_marlin_w8a16(
+    hidden_states,
+    w1_fp16,
+    w2_fp16,
+    w1_q,
+    w2_q,
+    w3_q,
+    w1_scale,
+    w2_scale,
+    w3_scale,
+    topk_weights,
+    topk_ids,
+    num_experts,
+    topk,
+):
+    """Wrapper to call vLLM CUDA Marlin MoE with W8A16 weights."""
+    del w1_fp16, w2_fp16, w3_q, w3_scale, num_experts, topk
+    from vllm.model_executor.layers.fused_moe.activation import MoEActivation
+    from vllm.model_executor.layers.fused_moe.fused_marlin_moe import fused_marlin_moe
+    from vllm.scalar_type import scalar_types
+
+    w1_marlin, w2_marlin, w1_scales_marlin, w2_scales_marlin = (
+        _prepare_vllm_marlin_moe_w8a16(w1_q, w2_q, w1_scale, w2_scale)
+    )
+    return fused_marlin_moe(
+        hidden_states.clone(),
+        w1_marlin,
+        w2_marlin,
+        None,
+        None,
+        w1_scales_marlin,
+        w2_scales_marlin,
+        topk_weights.float(),
+        topk_ids,
+        quant_type_id=scalar_types.uint8b128.id,
+        activation=MoEActivation.SILU,
+    )
+
+
 def _gems_fused_moe_mxq_w8a16_wrapper(
     hidden_states,
     w1_fp16,
@@ -1542,6 +1680,28 @@ def test_perf_fused_moe_w8a16_mxq_gems_vs_vllm_bf16():
     )
     bench.set_gems(_gems_fused_moe_mxq_w8a16_wrapper)
     bench.run()
+
+
+@pytest.mark.fused_moe
+@pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vllm not installed")
+@pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires NVIDIA Hopper architecture")
+def test_perf_fused_moe_w8a16_mxq_gems_vs_vllm_marlin_w8a16():
+    """
+    Benchmark flag_gems.fused_moe_mxq W8A16 vs vLLM CUDA Marlin W8A16 MoE.
+    """
+    bench = FusedMoEMXQW8A16Benchmark(
+        op_name="fused_moe_w8a16_mxq_gems_vs_vllm_marlin_w8a16",
+        torch_op=_baseline_w8a16_mxq_wrapper_vllm_marlin_w8a16,
+        dtypes=[torch.bfloat16],
+    )
+    bench.set_gems(_gems_fused_moe_mxq_w8a16_wrapper)
+    bench.run()
+
+
+@pytest.mark.fused_moe
+@pytest.mark.skip(reason="vLLM Marlin MoE has no unquantized bf16 expert path")
+def test_perf_fused_moe_w8a16_mxq_gems_vs_vllm_marlin_bf16():
+    pass
 
 
 try:
