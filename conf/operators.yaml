@@ -4179,6 +4179,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: mvlgamma_
+    description: In-place version of multivariate log-gamma function.
+    for:
+      - mvlgamma_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: renorm
     description: >
       Returns a tensor where each sub-tensor along the given dimension
