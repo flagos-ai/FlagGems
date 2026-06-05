@@ -14,15 +14,20 @@ from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime import flagtune
-from flag_gems.runtime.register import Register
+from flag_gems.runtime.backend import SpecOpRegistrar
+from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
 __version__ = "5.0.2"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
+backend_info = runtime.device
 aten_lib = torch.library.Library("aten", "IMPL")
-registrar = Register
+
+# Register all ops in the current backend with SpecOpRegistrar to support architecture-specialized implementations
+SpecOpRegistrar(registry=globals(), vendor=vendor_name).apply()
+
+registrar = GeneralOpRegistrar
 current_work_registrar = None
-runtime.replace_customized_ops(globals())
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 
 
@@ -117,6 +122,7 @@ _FULL_CONFIG = (
     ("atan2", atan2),
     ("atan2.out", atan2_out),
     ("arctanh_", arctanh_),
+    ("atanh", atanh),
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
     ("avg_pool3d", avg_pool3d),
@@ -425,6 +431,7 @@ _FULL_CONFIG = (
     ("randn", randn),
     ("randn_like", randn_like),
     ("randint", randint),
+    ("randint_like", randint_like),
     ("randperm", randperm),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
@@ -436,11 +443,14 @@ _FULL_CONFIG = (
     ("relu", relu),
     ("relu_", relu_),
     ("relu6", relu6),
+    ("remainder", remainder),
     ("remainder.Scalar", remainder),
     ("remainder.Scalar_Tensor", remainder),
     ("remainder.Tensor", remainder),
     ("remainder_.Scalar", remainder_),
     ("remainder_.Tensor", remainder_),
+    ("renorm", renorm),
+    ("renorm_", renorm_),
     ("repeat", repeat),
     ("repeat_interleave.self_int", repeat_interleave_self_int),
     ("repeat_interleave.self_Tensor", repeat_interleave_self_tensor),
@@ -523,6 +533,7 @@ _FULL_CONFIG = (
     ("tanh", tanh),
     ("tanh_", tanh_),
     ("tanh_backward", tanh_backward),
+    ("tensor_split", tensor_split),
     ("threshold", threshold),
     ("threshold_backward", threshold_backward),
     ("tile", tile),
@@ -550,6 +561,7 @@ _FULL_CONFIG = (
     ("var.correction", var_correction),
     ("var.dim", var_dim),
     ("vdot", vdot),
+    ("view_copy", view_copy),
     ("vstack", vstack),
     ("where.self", where_self),
     ("where.self_out", where_self_out),
@@ -684,7 +696,7 @@ class use_gems:
         self.lib = torch.library.Library("aten", "IMPL")
         self.exclude = exclude if isinstance(exclude, (list, tuple, set, str)) else []
         self.include = include if isinstance(include, (list, tuple, set, str)) else []
-        self.registrar = Register
+        self.registrar = GeneralOpRegistrar
         self.record = record
         self.once = once
         self.path = path
