@@ -1,7 +1,6 @@
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.utils import libentry, tl_extra_shim
 
 

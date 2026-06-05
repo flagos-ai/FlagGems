@@ -5,9 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import device, error, torch_device_fn
+from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
-from flag_gems.utils.device_info import get_device_capability
 
 vendor_name = device.vendor_name
 device = device.name

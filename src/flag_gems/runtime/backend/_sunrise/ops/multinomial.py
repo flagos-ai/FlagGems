@@ -8,7 +8,6 @@ from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset, uniform
 
 from .cumsum import normed_cumsum
-from .topk import topk
 
 logger = logging.getLogger(f'flag_gems.runtime._sunrise.ops.{__name__.split(".")[-1]}')
 
