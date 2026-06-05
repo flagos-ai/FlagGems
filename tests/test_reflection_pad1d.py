@@ -31,7 +31,9 @@ def test_reflection_pad1d(shape, dtype, padding):
 
 
 @pytest.mark.reflection_pad1d_out
-@pytest.mark.parametrize("shape", [(3, 33)] if QUICK_MODE else [(3, 33), (2, 4, 64), (32, 64, 2048)])
+@pytest.mark.parametrize(
+    "shape", [(3, 33)] if QUICK_MODE else [(3, 33), (2, 4, 64), (32, 64, 2048)]
+)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("padding", REFLECTION_PAD1D_PADDINGS)
 def test_reflection_pad1d_out(shape, dtype, padding):
