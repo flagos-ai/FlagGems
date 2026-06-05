@@ -658,7 +658,9 @@ def _length_stats(lengths):
             return cached[1]
 
     # [sunrise fix] Could not run 'aten::min' with arguments from the 'ptpu' backend.
-    stats_tensor = torch.stack((lengths.cpu().min(), lengths.cpu().max(), lengths.cpu().sum()))
+    stats_tensor = torch.stack(
+        (lengths.cpu().min(), lengths.cpu().max(), lengths.cpu().sum())
+    )
     stats = tuple(int(value) for value in stats_tensor.tolist())
     if key is not None:
         if len(_LENGTH_STATS_CACHE) >= _LENGTH_STATS_CACHE_LIMIT:
@@ -854,8 +856,17 @@ class CtcLossFunction(torch.autograd.Function):
                 # denom = work_target_lengths.clamp_min(1)
                 # output = (neg_log_likelihood / denom).mean()
                 # [sunrise fix] Could not run 'aten::min' & 'aten::mean' with arguments from the 'ptpu' backend.
-                denom = work_target_lengths.cpu().clamp_min(1).to(work_target_lengths.device)
-                output = (neg_log_likelihood / denom).cpu().mean().to(neg_log_likelihood.device)
+                denom = (
+                    work_target_lengths.cpu()
+                    .clamp_min(1)
+                    .to(work_target_lengths.device)
+                )
+                output = (
+                    (neg_log_likelihood / denom)
+                    .cpu()
+                    .mean()
+                    .to(neg_log_likelihood.device)
+                )
 
             if output.dtype != original_dtype:
                 output = output.to(original_dtype)
@@ -910,8 +921,12 @@ class CtcLossFunction(torch.autograd.Function):
             # denom = work_target_lengths.clamp_min(1)
             # output = (neg_log_likelihood / denom).mean()
             # [sunrise fix] Could not run 'aten::min' & 'aten::mean'  with arguments from the 'ptpu' backend.
-            denom = work_target_lengths.cpu().clamp_min(1).to(work_target_lengths.device)
-            output = (neg_log_likelihood / denom).cpu().mean().to(neg_log_likelihood.device)
+            denom = (
+                work_target_lengths.cpu().clamp_min(1).to(work_target_lengths.device)
+            )
+            output = (
+                (neg_log_likelihood / denom).cpu().mean().to(neg_log_likelihood.device)
+            )
 
         if output.dtype != original_dtype:
             output = output.to(original_dtype)

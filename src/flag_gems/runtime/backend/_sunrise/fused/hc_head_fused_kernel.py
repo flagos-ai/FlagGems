@@ -112,7 +112,7 @@ def hc_head_fused_kernel(
     rsqrt = torch.rsqrt(sqrsum / (hc_mult * hidden_size) + rms_eps)
     pre_mix = torch.sigmoid(mixes * rsqrt * hc_scale[0] + hc_base) + hc_eps
 
-    if hs_flat.device.type not in ["cuda", "ptpu"]: # [sunrise fix]
+    if hs_flat.device.type not in ["cuda", "ptpu"]:  # [sunrise fix]
         return hc_head_fused_kernel_ref(
             hs_flat,
             fn,

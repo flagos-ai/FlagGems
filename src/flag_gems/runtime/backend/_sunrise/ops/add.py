@@ -4,8 +4,8 @@ import torch
 import triton
 
 from flag_gems.utils import pointwise_dynamic
-from flag_gems.utils.pointwise_dynamic import ComplexMode
 from flag_gems.utils.codegen_config_utils import CodeGenConfig
+from flag_gems.utils.pointwise_dynamic import ComplexMode
 
 logger = logging.getLogger(__name__)
 

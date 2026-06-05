@@ -5,8 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
-from flag_gems.utils.pointwise_dynamic import ComplexMode
-from flag_gems.utils.pointwise_dynamic import CodeGenConfig
+from flag_gems.utils.pointwise_dynamic import CodeGenConfig, ComplexMode
 from flag_gems.utils.triton_lang_extension import div_rn, div_rz, fmod, trunc
 
 logger = logging.getLogger(__name__)
@@ -42,6 +41,7 @@ def div_complex_kernel(ar, ai, br, bi):
     real = tl.where(use_br, real1, real2)
     imag = tl.where(use_br, imag1, imag2)
     return real, imag
+
 
 MAX_GRID_SIZES = (65535, 65535, 65535)
 config = CodeGenConfig(
@@ -135,9 +135,7 @@ def _operand_as_real_ptpu_safe(
     if isinstance(value, torch.Tensor):
         tensor = value if value.is_complex() else value.to(complex_dtype)
         return _view_as_real_ptpu_safe(tensor)
-    return _scalar_complex_as_real_ptpu_safe(
-        value, complex_dtype, target_shape, device
-    )
+    return _scalar_complex_as_real_ptpu_safe(value, complex_dtype, target_shape, device)
 
 
 # [sunrise fix]
@@ -652,5 +650,7 @@ def remainder_(A, B):
         return rem_tt(A, B.clone(), out0=A)
     else:
         scalar = _scalar_tensor_value(B)
-        rhs = torch.full(A.shape, scalar, dtype=torch.result_type(A, B), device=A.device)
+        rhs = torch.full(
+            A.shape, scalar, dtype=torch.result_type(A, B), device=A.device
+        )
         return rem_tt(A, rhs, out0=A)

@@ -80,9 +80,7 @@ def _operand_as_real_ptpu_safe(
     if isinstance(value, torch.Tensor):
         tensor = value if value.is_complex() else value.to(complex_dtype)
         return _view_as_real_ptpu_safe(tensor)
-    return _scalar_complex_as_real_ptpu_safe(
-        value, complex_dtype, target_shape, device
-    )
+    return _scalar_complex_as_real_ptpu_safe(value, complex_dtype, target_shape, device)
 
 
 def _complex_sub(A, B, alpha):
@@ -112,7 +110,9 @@ def _complex_sub(A, B, alpha):
         if isinstance(B, torch.Tensor):
             Br = _operand_as_real_ptpu_safe(B, result_dtype, target_shape, device)
         else:
-            Br = _scalar_complex_as_real_ptpu_safe(B, result_dtype, target_shape, device)
+            Br = _scalar_complex_as_real_ptpu_safe(
+                B, result_dtype, target_shape, device
+            )
         common_dtype = torch.promote_types(Ar.dtype, Br.dtype)
         Ar, Br = Ar.to(common_dtype), Br.to(common_dtype)
         out_real = sub_func(Ar, Br, alpha)

@@ -4,8 +4,8 @@ import torch
 import triton
 
 from flag_gems.utils import pointwise_dynamic
-from flag_gems.utils.pointwise_dynamic import ComplexMode
 from flag_gems.utils.codegen_config_utils import CodeGenConfig
+from flag_gems.utils.pointwise_dynamic import ComplexMode
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +94,7 @@ def _operand_as_real_ptpu_safe(
     if isinstance(value, torch.Tensor):
         tensor = value if value.is_complex() else value.to(complex_dtype)
         return _view_as_real_ptpu_safe(tensor)
-    return _scalar_complex_as_real_ptpu_safe(
-        value, complex_dtype, target_shape, device
-    )
+    return _scalar_complex_as_real_ptpu_safe(value, complex_dtype, target_shape, device)
 
 
 def _complex_mul(A, B):

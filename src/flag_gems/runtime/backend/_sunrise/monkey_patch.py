@@ -5,7 +5,6 @@ import numbers
 import torch
 import torch.nn.functional as F
 
-
 _PTPU_DEVICE = "ptpu"
 
 
@@ -34,7 +33,9 @@ def _is_cpu_device(device):
 
 
 def _has_tensor_base_view(tensor):
-    return isinstance(tensor, torch.Tensor) and getattr(tensor, "_base", None) is not None
+    return (
+        isinstance(tensor, torch.Tensor) and getattr(tensor, "_base", None) is not None
+    )
 
 
 def _to_cpu_if_ptpu(value):
@@ -202,8 +203,10 @@ def _patch_tensor_property(name, aten_op):
     if original_set is None:
         new_descriptor = property(getter)
     else:
+
         def setter(self, value):
             return original_set(self, value)
+
         new_descriptor = property(getter, setter)
 
     setattr(torch.Tensor, name, new_descriptor)
@@ -437,7 +440,13 @@ def _patch_torch_creation_function(name, aten_op):
             if isinstance(out, torch.Tensor) and _is_ptpu_tensor(out):
                 cpu_kwargs["out"] = None
             result = original_fn(*args, **cpu_kwargs)
-            return _finalize_cpu_result(result, kwargs.get("out"), torch.device(device) if not isinstance(device, torch.device) else device)
+            return _finalize_cpu_result(
+                result,
+                kwargs.get("out"),
+                torch.device(device)
+                if not isinstance(device, torch.device)
+                else device,
+            )
 
     setattr(torch, name, creation_with_ptpu_cpu_fallback)
     setattr(torch, patched_attr, True)
@@ -495,7 +504,9 @@ def _patch_torch_randn_complex_dtype():
             except RuntimeError as exc:
                 if _flag_gems_use_gems_active():
                     raise
-                if complex_quirk_marker not in str(exc) and float64_quirk_marker not in str(exc):
+                if complex_quirk_marker not in str(
+                    exc
+                ) and float64_quirk_marker not in str(exc):
                     raise
                 cpu_kwargs = dict(kwargs)
                 cpu_kwargs["device"] = "cpu"
@@ -647,19 +658,24 @@ def _patch_torch_div_floor_trunc_integer_dtype():
             if _flag_gems_use_gems_active():
                 return original_fn(*args, **kwargs)
             tensor = _find_ptpu_integer_tensor(args, kwargs)
-            operands = args[:2] if len(args) >= 2 else (
-                tuple(args) + tuple(
-                    value
-                    for value in (kwargs.get("input"), kwargs.get("other"))
-                    if value is not None
+            operands = (
+                args[:2]
+                if len(args) >= 2
+                else (
+                    tuple(args)
+                    + tuple(
+                        value
+                        for value in (kwargs.get("input"), kwargs.get("other"))
+                        if value is not None
+                    )
                 )
             )
-            if tensor is not None and operands and all(
-                _is_integer_like_div_operand(value) for value in operands
+            if (
+                tensor is not None
+                and operands
+                and all(_is_integer_like_div_operand(value) for value in operands)
             ):
-                return _torch_function_cpu_fallback(
-                    tensor, args, kwargs, original_fn
-                )
+                return _torch_function_cpu_fallback(tensor, args, kwargs, original_fn)
         return original_fn(*args, **kwargs)
 
     torch.div = div_with_ptpu_integer_dtype_fix
@@ -813,9 +829,9 @@ def _patch_complex_tensor_scalar_mul_runtime_error():
     def tensor_mul_with_complex_scalar_cpu_fallback(self, other):
         reference_tensor = _ptpu_mul_reference_tensor(self, other)
         if reference_tensor is not None and not _flag_gems_use_gems_active():
-            return original_tensor_mul(_to_cpu_if_ptpu(self), _to_cpu_if_ptpu(other)).to(
-                reference_tensor.device
-            )
+            return original_tensor_mul(
+                _to_cpu_if_ptpu(self), _to_cpu_if_ptpu(other)
+            ).to(reference_tensor.device)
         try:
             return original_tensor_mul(self, other)
         except RuntimeError as exc:
@@ -899,7 +915,11 @@ def _patch_complex_tensor_add_runtime_error():
 
     def _first_ptpu_complex_tensor(*values):
         for value in values:
-            if isinstance(value, torch.Tensor) and value.device.type == _PTPU_DEVICE and value.is_complex():
+            if (
+                isinstance(value, torch.Tensor)
+                and value.device.type == _PTPU_DEVICE
+                and value.is_complex()
+            ):
                 return value
         return None
 
@@ -978,11 +998,19 @@ def _patch_complex_tensor_add_runtime_error():
     @functools.wraps(original_function_add)
     def function_add_with_complex_cpu_fallback(*args, **kwargs):
         tensor = _first_ptpu_complex_tensor(
-            *(args[:2] if len(args) >= 2 else (kwargs.get("input"), kwargs.get("other")))
+            *(
+                args[:2]
+                if len(args) >= 2
+                else (kwargs.get("input"), kwargs.get("other"))
+            )
         )
         other = args[1] if len(args) > 1 else kwargs.get("other")
         reference_tensor = _ptpu_add_reference_tensor(
-            *(args[:2] if len(args) >= 2 else (kwargs.get("input"), kwargs.get("other")))
+            *(
+                args[:2]
+                if len(args) >= 2
+                else (kwargs.get("input"), kwargs.get("other"))
+            )
         )
         if reference_tensor is not None and not _flag_gems_use_gems_active():
             cpu_args = tuple(_to_cpu_if_ptpu(arg) for arg in args)
@@ -1160,9 +1188,8 @@ def _patch_torch_einsum_low_precision_reference():
     def einsum_with_ptpu_low_precision_cpu_reference(equation, *operands):
         if not _flag_gems_use_gems_active():
             tensors = list(_operand_tensors(operands))
-            if (
-                any(_is_ptpu_tensor(t) for t in tensors)
-                and any(t.dtype in low_precision_dtypes for t in tensors)
+            if any(_is_ptpu_tensor(t) for t in tensors) and any(
+                t.dtype in low_precision_dtypes for t in tensors
             ):
                 cpu_operands = tuple(
                     _to_cpu_if_ptpu(operand)
@@ -1174,9 +1201,7 @@ def _patch_torch_einsum_low_precision_reference():
                     )
                     for operand in operands
                 )
-                device = next(
-                    (t.device for t in tensors if _is_ptpu_tensor(t)), None
-                )
+                device = next((t.device for t in tensors if _is_ptpu_tensor(t)), None)
                 result = original_fn(equation, *cpu_operands)
                 return _to_device_if_tensor(result, device)
         return original_fn(equation, *operands)
@@ -1202,7 +1227,9 @@ def _patch_bool_sum_cpu_reference():
     """
     tensor_attr = "_flag_gems_sunrise_tensor_bool_sum_cpu_patched"
     function_attr = "_flag_gems_sunrise_function_bool_sum_cpu_patched"
-    if getattr(torch.Tensor, tensor_attr, False) and getattr(torch, function_attr, False):
+    if getattr(torch.Tensor, tensor_attr, False) and getattr(
+        torch, function_attr, False
+    ):
         return
 
     original_tensor_sum = torch.Tensor.sum
@@ -1397,7 +1424,7 @@ def apply_sunrise_monkey_patches():
     _patch_torch_out("hypot", "aten::hypot.out")
     _patch_torch_creation_function("randperm", "aten::randperm.generator_out")
     _patch_tensor_property("real", "aten::view_as_real")
-    _patch_tensor_property("imag", "aten::view_as_real") 
+    _patch_tensor_property("imag", "aten::view_as_real")
     _patch_torch_nn_functional("pad", "aten::replication_pad3d.out")
     _patch_torch_nn_functional("logsigmoid", "aten::log_sigmoid_forward")
     _patch_torch_nn_functional_one_hot_cpu_reference()

@@ -340,9 +340,7 @@ def sort_by_key(key, value, valid_bits, generator=None):
         # step2
         digit_hist_slice = torch.sum(digit_hist_slice, dim=2, keepdim=False)
         # digit_hist_slice = digit_hist_slice.cumsum(dim=1)  # shape of [passes, bins + 1]
-        digit_hist_slice = (
-            digit_hist_slice.cpu().cumsum(dim=1).to(key.device)
-        )
+        digit_hist_slice = digit_hist_slice.cpu().cumsum(dim=1).to(key.device)
         digit_hist.copy_(digit_hist_slice)
 
         bit_offset = 0

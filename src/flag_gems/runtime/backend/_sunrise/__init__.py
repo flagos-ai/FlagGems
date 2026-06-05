@@ -70,11 +70,11 @@ CUSTOMIZED_AUTOGRAD_OPS = (
     "square.out",
     "svd",
     "tile",
-    "vstack"
+    "vstack",
 )
 
 
-def _sunrise_extra_config_entries():    # 有些公共库也没有注册的op，只能先放在这里了。使得tests能过
+def _sunrise_extra_config_entries():  # 有些公共库也没有注册的op，只能先放在这里了。使得tests能过
     from .ops import amax_out, amin, amin_out, aminmax_out, hypot_out
 
     return (
@@ -130,9 +130,7 @@ def _install_register_config_patch():
         if full_config_by_func is None:
             return merged_config, None
 
-        merged_map = {
-            key: list(value) for key, value in full_config_by_func.items()
-        }
+        merged_map = {key: list(value) for key, value in full_config_by_func.items()}
         for item in extra_entries:
             fn = item[1]
             func_name = fn.__name__ if hasattr(fn, "__name__") else str(fn)
@@ -199,10 +197,7 @@ def _install_pointwise_dynamic_complex_patch():
     import torch
 
     from flag_gems.utils.pointwise_dynamic import ComplexMode, PointwiseDynamicFunction
-    from flag_gems.utils.shape_utils import (
-        all_the_same_shape,
-        all_the_same_stride,
-    )
+    from flag_gems.utils.shape_utils import all_the_same_shape, all_the_same_stride
     from flag_gems.utils.tensor_wrapper import StridedBuffer
 
     if getattr(PointwiseDynamicFunction, "_sunrise_complex_patched", False):
@@ -412,7 +407,9 @@ def _install_pointwise_dynamic_complex_patch():
         return self._call_real_impl(*new_args, **kwargs)
 
     def _call_complex_elementwise(self, operands, others, result_dtype, kwargs):
-        real_tensors = {i: self._view_as_real_for_kernel(t) for i, t in operands.items()}
+        real_tensors = {
+            i: self._view_as_real_for_kernel(t) for i, t in operands.items()
+        }
         out_kwargs = dict(kwargs)
         out_complex = out_kwargs.get("out0")
         if out_complex is None:
@@ -453,10 +450,10 @@ def _install_pointwise_dynamic_complex_patch():
             return False
         if all(_tensor_is_contiguous(tensor) for tensor in tensors):
             return True
-        return all(
-            isinstance(tensor, torch.Tensor) for tensor in tensors
-        ) and all_the_same_stride(tensors) and torch.ops.aten.is_non_overlapping_and_dense(
-            tensors[0]
+        return (
+            all(isinstance(tensor, torch.Tensor) for tensor in tensors)
+            and all_the_same_stride(tensors)
+            and torch.ops.aten.is_non_overlapping_and_dense(tensors[0])
         )
 
     PointwiseDynamicFunction._call_real_impl = _call_real_impl
@@ -466,13 +463,9 @@ def _install_pointwise_dynamic_complex_patch():
     PointwiseDynamicFunction._view_as_real_for_kernel = _view_as_real_for_kernel
     PointwiseDynamicFunction._split_complex_components = _split_complex_components
     PointwiseDynamicFunction._view_as_complex_result = _view_as_complex_result
-    PointwiseDynamicFunction._cross_components_for_kernel = (
-        _cross_components_for_kernel
-    )
+    PointwiseDynamicFunction._cross_components_for_kernel = _cross_components_for_kernel
     PointwiseDynamicFunction._cpu_fallback_value = _cpu_fallback_value
-    PointwiseDynamicFunction._should_cpu_fallback_complex = (
-        _should_cpu_fallback_complex
-    )
+    PointwiseDynamicFunction._should_cpu_fallback_complex = _should_cpu_fallback_complex
     PointwiseDynamicFunction._cpu_fallback_complex_dispatch = (
         _cpu_fallback_complex_dispatch
     )
@@ -547,7 +540,7 @@ def _install_ptpu_manual_seed_patch():
 
 _install_ptpu_manual_seed_patch()
 _install_autograd_dispatch_patch()
-_install_register_config_patch()    # 有些公共库也没有注册的op，只能先放在这里了。使得tests能过
+_install_register_config_patch()  # 有些公共库也没有注册的op，只能先放在这里了。使得tests能过
 _install_pointwise_dynamic_post_import_hook()
 
 

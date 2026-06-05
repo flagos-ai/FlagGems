@@ -377,9 +377,7 @@ def generate_pad_kernel(
             code.writeline(
                 "x_loaded = tl.load(in0_ptr + safe_src_offset, mask=offset < out_elem_cnt, other=0)"
             )
-            code.writeline(
-                "x_val = tl.where(cond, x_loaded, value)"
-            )
+            code.writeline("x_val = tl.where(cond, x_loaded, value)")
         code.writeline("else: ")
         with code.indent():
             code.writeline(

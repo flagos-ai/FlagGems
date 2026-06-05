@@ -5,8 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import tensor_wrapper
+from flag_gems.utils import libentry, libtuner, tensor_wrapper
 
 logger = logging.getLogger(__name__)
 

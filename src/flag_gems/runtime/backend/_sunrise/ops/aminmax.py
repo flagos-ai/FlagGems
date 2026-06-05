@@ -7,7 +7,9 @@ logger = logging.getLogger(__name__)
 
 def _aminmax_cpu_reference(op_name, inp, *args, out=None, **kwargs):
     cpu_inp = inp.cpu()
-    cpu_args = tuple(arg.cpu() if isinstance(arg, torch.Tensor) else arg for arg in args)
+    cpu_args = tuple(
+        arg.cpu() if isinstance(arg, torch.Tensor) else arg for arg in args
+    )
     cpu_kwargs = {
         key: value.cpu() if isinstance(value, torch.Tensor) else value
         for key, value in kwargs.items()

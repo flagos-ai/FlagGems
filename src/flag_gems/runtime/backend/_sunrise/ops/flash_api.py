@@ -6,6 +6,7 @@ import triton
 
 import flag_gems
 from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._sunrise.ops.flash_kernel import (
     block_m_splitkv_heuristic,
     block_n_splitkv_heuristic,
@@ -14,7 +15,6 @@ from flag_gems.runtime.backend._sunrise.ops.flash_kernel import (
     flash_fwd_splitkv_kernel,
     flash_varlen_fwd_kernel,
 )
-from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 logger = logging.getLogger(__name__)

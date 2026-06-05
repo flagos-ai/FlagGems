@@ -6,10 +6,10 @@ import triton.language as tl
 from torch import Tensor
 
 from flag_gems import runtime
-from flag_gems.utils import libentry
-from flag_gems.utils import tensor_wrapper
+from flag_gems.utils import libentry, tensor_wrapper
 
 logger = logging.getLogger(__name__)
+
 
 def _view_as_complex_ptpu_safe(x: torch.Tensor) -> torch.Tensor:
     """`torch.view_as_complex(x)` with a CPU bounce when x is on PTPU."""
@@ -19,6 +19,7 @@ def _view_as_complex_ptpu_safe(x: torch.Tensor) -> torch.Tensor:
         if x.device.type != "ptpu":
             raise
         return torch.view_as_complex(x.cpu()).to(x.device)
+
 
 @triton.jit
 def compute_vdot(

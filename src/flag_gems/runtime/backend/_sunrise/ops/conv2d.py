@@ -580,11 +580,7 @@ class Conv2d(torch.autograd.Function):
         if bias is not None:
             if out_grad.dtype in (torch.float16, torch.bfloat16):
                 # [sunrise fix] Fallback to high precision.
-                bias_grad = (
-                    out_grad.float()
-                    .sum(dim=(0, 2, 3))
-                    .to(dtype=bias.dtype)
-                )
+                bias_grad = out_grad.float().sum(dim=(0, 2, 3)).to(dtype=bias.dtype)
             else:
                 bias_grad = out_grad.sum(dim=(0, 2, 3))
         else:

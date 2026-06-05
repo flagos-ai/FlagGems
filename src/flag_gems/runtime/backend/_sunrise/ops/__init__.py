@@ -1,15 +1,10 @@
 from .. import _install_typed_ptr_device_patch
-
-# Run after runtime initialization; importing tensor_wrapper in _sunrise/__init__.py
-# would hit a circular import through flag_gems.utils.
-_install_typed_ptr_device_patch()
-
 from ._safe_softmax import _safe_softmax
 from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from .abs import abs, abs_
 from .add import add, add_
 from .addmm import addmm, addmm_out
-from .aminmax import amin, amin_out, amax, amax_out, aminmax, aminmax_out
+from .aminmax import amax, amax_out, amin, amin_out, aminmax, aminmax_out
 from .angle import angle
 from .arcsinh import arcsinh, arcsinh_out
 from .attention import (
@@ -46,10 +41,10 @@ from .clamp import (
     clamp_tensor,
     clamp_tensor_,
 )
+from .conj_physical import conj_physical
 from .conv2d import conv2d
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
-from .conj_physical import conj_physical
 from .ctc_loss import ctc_loss
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .div import (
@@ -67,6 +62,7 @@ from .dropout import dropout, dropout_backward
 from .embedding import embedding, embedding_backward
 from .eq import eq, eq_scalar, equal
 from .exponential_ import exponential_
+from .fft import fft
 from .fill import (
     fill_scalar,
     fill_scalar_,
@@ -75,7 +71,6 @@ from .fill import (
     fill_tensor_,
     fill_tensor_out,
 )
-from .fft import fft
 from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
@@ -147,6 +142,11 @@ from .upsample_nearest2d import upsample_nearest2d
 from .vdot import vdot
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zero import zero, zero_out
+
+# Run after runtime initialization; importing tensor_wrapper in _sunrise/__init__.py
+# would hit a circular import through flag_gems.utils.
+_install_typed_ptr_device_patch()
+
 
 __all__ = [
     "_safe_softmax",

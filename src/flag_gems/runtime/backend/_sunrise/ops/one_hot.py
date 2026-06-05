@@ -118,7 +118,9 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
             raise RuntimeError(
                 "Can not infer total number of classes from empty tensor."
             )
-        return torch.empty((*tensor.shape, num_classes), device=tensor.device, dtype=torch.int64)
+        return torch.empty(
+            (*tensor.shape, num_classes), device=tensor.device, dtype=torch.int64
+        )
 
     if num_classes == -1:
         num_classes = int(tensor.max().item()) + 1
@@ -133,7 +135,9 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
         raise RuntimeError("Class values must be smaller than num_classes.")
 
     if not tensor.is_ptpu:
-        out = torch.zeros((*tensor.shape, num_classes), device=tensor.device, dtype=torch.int64)
+        out = torch.zeros(
+            (*tensor.shape, num_classes), device=tensor.device, dtype=torch.int64
+        )
         out.scatter_(-1, tensor.unsqueeze(-1), 1)
         return out
 

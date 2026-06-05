@@ -6,7 +6,7 @@ import triton.language as tl
 from torch import Tensor
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry, tl_extra_shim
+from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils import triton_lang_extension as ext
 
 from .topk import _get_finfo_val, argsort
@@ -233,7 +233,7 @@ def quantile(
                 sorted_vals, q, output, N, M, Q, interpolation=interpolation
             )
 
-    if Q == 1:   # [sunrise fix] PTPU可能会报错
+    if Q == 1:  # [sunrise fix] PTPU可能会报错
         output = output.cpu().squeeze(-1).to(q.device)
     else:
         output = output.cpu().movedim(-1, 0).to(q.device)
