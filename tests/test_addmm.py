@@ -113,11 +113,9 @@ def test_addmm_dtype_fp32_accum(M, N, K):
             bias, mat1, mat2, torch.float32, beta=1.0, alpha=1.0
         )
 
-    if utils.TO_CPU:
-        res_out = res_out.to("cpu")
-    else:
-        ref_out = ref_out.to(flag_gems.device)
-    utils.gems_assert_close(res_out, ref_out, torch.float32, reduce_dim=K)
+    utils.gems_assert_close(
+        res_out, ref_out.to(flag_gems.device), torch.float32, reduce_dim=K
+    )
 
 
 @pytest.mark.addmm_dtype_out
@@ -146,8 +144,6 @@ def test_addmm_dtype_out_fp32_accum(M, N, K):
             bias, mat1, mat2, torch.float32, beta=1.0, alpha=1.0, out=out
         )
 
-    if utils.TO_CPU:
-        out = out.to("cpu")
-    else:
-        ref_out = ref_out.to(flag_gems.device)
-    utils.gems_assert_close(out, ref_out, torch.float32, reduce_dim=K)
+    utils.gems_assert_close(
+        out, ref_out.to(flag_gems.device), torch.float32, reduce_dim=K
+    )

@@ -386,7 +386,6 @@ def test_fused_marlin_moe_vs_ref(config, dtype):
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 
 
-@pytest.mark.skip(reason="Issue #3733: assertion failure.")
 @pytest.mark.parametrize("config", QUICK_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 def test_fused_marlin_moe_vs_ref_int8(config, dtype):

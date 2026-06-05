@@ -24,7 +24,7 @@ backend_info = runtime.device
 aten_lib = torch.library.Library("aten", "IMPL")
 
 # Register all ops in the current backend with SpecOpRegistrar to support architecture-specialized implementations
-SpecOpRegistrar(registry=globals(), vendor=vendor_name).apply()
+SpecOpRegistrar(globals()).apply()
 
 registrar = GeneralOpRegistrar
 current_work_registrar = None
@@ -68,6 +68,7 @@ _FULL_CONFIG = (
         lambda: version.parse(torch.__version__) >= version.parse("2.4"),
     ),
     ("_unique2", _unique2),
+    ("_unsafe_masked_index", _unsafe_masked_index),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
     ("_upsample_nearest_exact1d", _upsample_nearest_exact1d),
@@ -90,7 +91,6 @@ _FULL_CONFIG = (
     ("addmm.out", addmm_out),
     ("addmm.dtype", addmm_dtype),
     ("addmm.dtype_out", addmm_dtype_out),
-    ("addmm_", addmm_),
     ("addr", addr),
     ("affine_grid_generator", affine_grid_generator),
     ("alias_copy", alias_copy),
@@ -123,7 +123,6 @@ _FULL_CONFIG = (
     ("atan2", atan2),
     ("atan2.out", atan2_out),
     ("arctanh_", arctanh_),
-    ("atanh", atanh),
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
     ("avg_pool3d", avg_pool3d),
@@ -432,7 +431,6 @@ _FULL_CONFIG = (
     ("randn", randn),
     ("randn_like", randn_like),
     ("randint", randint),
-    ("randint_like", randint_like),
     ("randperm", randperm),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
@@ -444,14 +442,11 @@ _FULL_CONFIG = (
     ("relu", relu),
     ("relu_", relu_),
     ("relu6", relu6),
-    ("remainder", remainder),
     ("remainder.Scalar", remainder),
     ("remainder.Scalar_Tensor", remainder),
     ("remainder.Tensor", remainder),
     ("remainder_.Scalar", remainder_),
     ("remainder_.Tensor", remainder_),
-    ("renorm", renorm),
-    ("renorm_", renorm_),
     ("repeat", repeat),
     ("repeat_interleave.self_int", repeat_interleave_self_int),
     ("repeat_interleave.self_Tensor", repeat_interleave_self_tensor),

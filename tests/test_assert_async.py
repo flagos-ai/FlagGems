@@ -2,7 +2,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.runtime import torch_device_fn
 
 
 @pytest.mark.assert_async
@@ -23,18 +22,17 @@ def test_assert_async(shape, value, expected_err, match_str):
             with pytest.raises(expected_err, match=match_str):
                 flag_gems._assert_async(inp_triton, msg)
                 if value == 0:
-                    torch_device_fn.synchronize()
+                    torch.cuda.synchronize()
     else:
         with flag_gems.use_gems():
             flag_gems._assert_async(inp_triton, msg)
-            torch_device_fn.synchronize()
+            torch.cuda.synchronize()
 
-    if flag_gems.device == "cuda":
-        if expected_err:
-            with pytest.raises(expected_err, match=match_str):
-                torch._assert_async(inp_pt, msg)
-                if value == 0:
-                    torch_device_fn.synchronize()
-        else:
+    if expected_err:
+        with pytest.raises(expected_err, match=match_str):
             torch._assert_async(inp_pt, msg)
-            torch_device_fn.synchronize()
+            if value == 0:
+                torch.cuda.synchronize()
+    else:
+        torch._assert_async(inp_pt, msg)
+        torch.cuda.synchronize()

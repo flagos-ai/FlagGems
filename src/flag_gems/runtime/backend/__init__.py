@@ -38,13 +38,6 @@ class BackendState:
         self.device_fn_cache = {}
         self.customized_ops = None
 
-    def is_available(self):
-        return True
-
-    def get_ops(self, vendor=None):
-        """Provide a unified interface for the upper layer"""
-        return get_customized_ops(vendor)
-
 
 # Global singleton instance
 _state = BackendState()
@@ -92,7 +85,7 @@ class TritonVersionEvent(BackendEventBase):
         sys.path.remove(str(path_dir))
         return version_module
 
-    def get_ops(self, *args, **kwargs):
+    def get_ops(self):
         return self.get_version_ops()
 
     def get_version_ops(self):
@@ -193,7 +186,7 @@ class BackendArchEvent(BackendEventBase):
         sys.path.remove(str(path_dir))
         return current_arch_module
 
-    def get_ops(self, *args, **kwargs):
+    def get_ops(self):
         """Provide a unified interface for the upper layer"""
         return self.get_arch_ops()
 
@@ -219,22 +212,20 @@ class BackendArchEvent(BackendEventBase):
 
 
 class SpecOpRegistrar:
-    def __init__(self, registry, vendor=None):
-        self._globals = registry
-        self.vendor = vendor
+    def __init__(self, _globals):
+        self._globals = _globals
 
-    def apply(self, vendor=None):
-        vendor = vendor or self.vendor
+    def apply(self):
         spec_events = self._get_specific_events()
         for event in spec_events:
             if not event.is_available():
                 continue
-            operators = event.get_ops(vendor)
+            operators = event.get_ops()
             for fn_name, fn in operators:
                 self._globals[fn_name] = fn
 
     def _get_specific_events(self):
-        return (_state, BackendArchEvent(), TritonVersionEvent())
+        return (BackendArchEvent(), TritonVersionEvent())
 
 
 def _import_module_safe(module_name, vendor_name, module_type):
