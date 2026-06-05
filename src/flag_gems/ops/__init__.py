@@ -3,6 +3,7 @@ from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
 from flag_gems.ops._is_all_true import _is_all_true
+from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops.abs import abs, abs_
@@ -420,6 +421,7 @@ __all__ = [
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
     "_is_all_true",
+    "_linalg_eigvals",
     "_safe_softmax",
     "_unique2",
     "_upsample_bicubic2d_aa",

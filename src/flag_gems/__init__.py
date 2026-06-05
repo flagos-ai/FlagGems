@@ -55,6 +55,7 @@ _FULL_CONFIG = (
     ("_log_softmax.out", log_softmax_out),
     ("_log_softmax_backward_data", log_softmax_backward),
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
+    ("_linalg_eigvals", _linalg_eigvals),
     ("_safe_softmax", _safe_softmax),
     ("_scaled_mm", scaled_mm, lambda: torch_ge("2.5")),
     ("_scaled_mm.out", scaled_mm_out, lambda: torch_ge("2.5")),

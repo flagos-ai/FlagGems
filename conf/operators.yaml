@@ -3649,6 +3649,17 @@ ops:
     stages:
       - alpha: '2.0'
       - stable: '3.0'
+  - id: linalg_eigvals
+    description: Computes the eigenvalues of a square matrix.
+    for:
+      - _linalg_eigvals
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.0'
   - id: logaddexp
     description: Computes the element-wise logarithm of the sum of the exponentials of two input tensors.
     for:
