@@ -167,3 +167,55 @@ def bmm(A, B):
         SUB_BLK_K=SUB_BLK_K,
     )
     return out
+
+
+def bmm_out(A, B, out):
+    logger.debug("GEMS_SPACEMIT BMM_OUT")
+    batch, M, K = A.shape
+    _, _, N = B.shape
+    if A.stride(0) > 1 and A.stride(1) > 1:
+        A = A.contiguous()
+    if B.stride(0) > 1 and B.stride(1) > 1:
+        B = B.contiguous()
+
+    if K == 1 and batch == 1:
+        vec_a = A[0, :, 0]
+        vec_b = B[0, 0, :]
+        result = outer(vec_a, vec_b)
+        out.copy_(result.unsqueeze(0))
+        return out
+
+    if K == 1:
+        out.copy_(mul(A, B))
+        return out
+
+    def grid_fn(meta):
+        return (
+            triton.cdiv(meta["M"], meta["TILE_M"]),
+            triton.cdiv(meta["N"], meta["TILE_N"]),
+            batch,
+        )
+
+    TILE_K = triton.next_power_of_2(K)
+    SUB_BLK_K = min(1024, TILE_K)
+
+    bmm_kernel[grid_fn](
+        A,
+        B,
+        out,
+        M,
+        N,
+        K,
+        A.stride(0),
+        A.stride(1),
+        A.stride(2),
+        B.stride(0),
+        B.stride(1),
+        B.stride(2),
+        out.stride(0),
+        out.stride(1),
+        out.stride(2),
+        TILE_K=TILE_K,
+        SUB_BLK_K=SUB_BLK_K,
+    )
+    return out
