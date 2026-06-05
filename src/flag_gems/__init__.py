@@ -549,6 +549,7 @@ _FULL_CONFIG = (
     ("true_divide_.Scalar", true_divide_),
     ("true_divide_.Tensor", true_divide_),
     ("unfold_backward", unfold_backward),
+    ("unfold_copy", unfold_copy),
     ("uniform_", uniform_),
     ("unique_consecutive", unique_consecutive),
     ("upsample_bicubic2d", upsample_bicubic2d),
