@@ -156,6 +156,7 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
+    print("src/flag_gems/runtime/backend/_metax/ops/mm.py")
     logger.debug("GEMS_METAX MM")
     device = a.device
     # handle non-contiguous inputs if necessary

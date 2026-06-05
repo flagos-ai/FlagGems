@@ -551,6 +551,7 @@ def streamk_scenario(a, b, M, N, K):
 
 
 def mm(a, b):
+    print("src/flag_gems/ops/mm.py")
     logger.debug("GEMS MM")
 
     device = a.device
