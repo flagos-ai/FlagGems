@@ -5,7 +5,6 @@ import flag_gems
 
 from . import base
 
-
 # Shapes representing realistic optimizer parameter sizes:
 # small embedding / attention weights / MLP weights
 _FUSED_ADAM_SHAPES = [
