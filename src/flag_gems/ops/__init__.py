@@ -326,6 +326,12 @@ from flag_gems.ops.scatter_reduce import (
     scatter_reduce_,
     scatter_reduce_out,
 )
+from flag_gems.ops.searchsorted import (
+    searchsorted,
+    searchsorted_out,
+    searchsorted_scalar,
+    searchsorted_scalar_out,
+)
 from flag_gems.ops.select_backward import select_backward
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.selu import selu
@@ -825,6 +831,10 @@ __all__ = [
     "scatter_reduce",
     "scatter_reduce_",
     "scatter_reduce_out",
+    "searchsorted",
+    "searchsorted_out",
+    "searchsorted_scalar",
+    "searchsorted_scalar_out",
     "select_backward",
     "select_scatter",
     "selu",
