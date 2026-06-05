@@ -23,9 +23,9 @@ def test_upsample_nearest_exact2d_backward(shape, dtype):
     ref_out = torch.ops.aten._upsample_nearest_exact2d(
         ref_x, [out_h, out_w], None, None
     )
-    # Create grad_output from forward output (using ones for gradient)
-    # Move to GPU since ref_out is on CPU due to utils.to_reference
-    grad_output = torch.ones_like(ref_out).to(flag_gems.device)
+    # Create grad_output from forward output (using ones for gradient).
+    # Keep on CPU for reference impl, move to GPU for GEMS kernel.
+    grad_output = torch.ones_like(ref_out)
 
     # Compute backward
     input_size = tuple(x.shape)  # (N, C, H, W)
@@ -36,7 +36,7 @@ def test_upsample_nearest_exact2d_backward(shape, dtype):
 
     with flag_gems.use_gems():
         res_grad_input = torch.ops.aten._upsample_nearest_exact2d_backward.default(
-            grad_output, output_size, input_size
+            grad_output.to(flag_gems.device), output_size, input_size
         )
 
     utils.gems_assert_close(res_grad_input, ref_grad_input, dtype)
@@ -59,8 +59,9 @@ def test_upsample_nearest_exact2d_backward_with_scales(shape, dtype):
 
     # Compute reference forward output using torch.ops.aten
     ref_out = torch.ops.aten._upsample_nearest_exact2d(ref_x, None, [scale_h, scale_w])
-    # Create grad_output - move to GPU since ref_out is on CPU
-    grad_output = torch.ones_like(ref_out).to(flag_gems.device)
+    # Create grad_output from forward output (using ones for gradient).
+    # Keep on CPU for reference impl, move to GPU for GEMS kernel.
+    grad_output = torch.ones_like(ref_out)
 
     input_size = tuple(x.shape)
 
@@ -70,7 +71,7 @@ def test_upsample_nearest_exact2d_backward_with_scales(shape, dtype):
 
     with flag_gems.use_gems():
         res_grad_input = torch.ops.aten._upsample_nearest_exact2d_backward.default(
-            grad_output, output_size, input_size, scale_h, scale_w
+            grad_output.to(flag_gems.device), output_size, input_size, scale_h, scale_w
         )
 
     utils.gems_assert_close(res_grad_input, ref_grad_input, dtype)
