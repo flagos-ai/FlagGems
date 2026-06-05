@@ -45,11 +45,7 @@ def pool3d_kernel(
                     and w_in < W
                 )
                 if valid:
-                    offset = (
-                        d_in * stride_d
-                        + h_in * stride_h
-                        + w_in * stride_w
-                    )
+                    offset = d_in * stride_d + h_in * stride_h + w_in * stride_w
                     acc += tl.load(x_base + offset)
                     count += 1
 

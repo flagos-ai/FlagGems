@@ -44,11 +44,7 @@ def max_pool3d_kernel(
                     and w_in < W
                 )
                 if valid:
-                    offset = (
-                        d_in * stride_d
-                        + h_in * stride_h
-                        + w_in * stride_w
-                    )
+                    offset = d_in * stride_d + h_in * stride_h + w_in * stride_w
                     val = tl.load(x_base + offset)
                     max_val = tl.maximum(max_val, val)
 

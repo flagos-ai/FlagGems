@@ -2,7 +2,6 @@ import torch
 import triton
 import triton.language as tl
 
-
 # --- TRITON KERNEL: Chunked Gated Delta Rule ---
 
 
