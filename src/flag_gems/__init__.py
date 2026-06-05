@@ -511,6 +511,8 @@ _FULL_CONFIG = (
     ("special_i0e.out", special_i0e_out),
     ("special_i1", special_i1),
     ("special_i1.out", special_i1_out),
+    ("special_modified_bessel_i0", special_modified_bessel_i0),
+    ("special_modified_bessel_i0.out", special_modified_bessel_i0_out),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
     ("square", square),
