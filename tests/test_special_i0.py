@@ -21,7 +21,7 @@ def test_special_i0(shape, dtype):
     utils.gems_assert_close(act_out, ref_out, dtype)
 
 
-@pytest.mark.special_i0
+@pytest.mark.special_i0_out
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_special_i0_out(shape, dtype):
