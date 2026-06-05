@@ -232,6 +232,7 @@ class SpecOpRegistrar:
             operators = event.get_ops(vendor)
             for fn_name, fn in operators:
                 self._globals[fn_name] = fn
+            print(f"operators: {operators}")
 
     def _get_specific_events(self):
         return (_state, BackendArchEvent(), TritonVersionEvent())
