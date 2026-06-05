@@ -3193,6 +3193,17 @@ ops:
       - stable: '2.2'
       - removed: '3.0'
       - beta: '5.1'
+  - id: irshift__
+    description: Triton kernel implementation for __irshift__.
+    for:
+      - __irshift__
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: is_all_true
     description: The low-level implementation for checking if all elements in a tensor are True.
     for:
