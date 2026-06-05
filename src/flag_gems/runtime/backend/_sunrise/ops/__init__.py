@@ -129,6 +129,7 @@ from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out
 from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
+from .svd import svd
 from .t_copy import t_copy, t_copy_out
 from .tile import tile
 from .to import to_copy
@@ -303,6 +304,7 @@ __all__ = [
     "special_i1_out",
     "sub",
     "sub_",
+    "svd",
     "sum",
     "sum_dim",
     "sum_dim_out",
