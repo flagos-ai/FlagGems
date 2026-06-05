@@ -5,11 +5,11 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import device
+from flag_gems import runtime
+from flag_gems.runtime import device, torch_device_fn
 
 device = device.name
-
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def configs():

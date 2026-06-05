@@ -5,7 +5,7 @@ import triton
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.pointwise_dynamic import CodeGenConfig
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 MAX_GRID_SIZES = (65535, 65535, 65535)
@@ -34,9 +34,7 @@ def bitwise_and_tensor_(A, B):
     return bitwise_and_func(A, B, out0=A)
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")], config=config
-)
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")], config=config)
 @triton.jit
 def bitwise_and_func_scalar(x, y):
     return x & y

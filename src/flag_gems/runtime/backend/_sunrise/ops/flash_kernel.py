@@ -1,6 +1,7 @@
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.utils import libentry, tl_extra_shim
 
 
@@ -226,7 +227,7 @@ def is_even_mn(M, N, BM, BN, WL, WR):
 
 
 def block_m_splitkv_heuristic_spec_args(args):
-    return 128 if args["d"] <= 128 else 64
+    return 64 if args["d"] <= 64 else 32
 
 
 def block_n_splitkv_heuristic_spec_args(args):
@@ -748,8 +749,8 @@ def flash_fwd_splitkv_kernel_heur_block_k(args):
         "BLOCK_M": block_m_splitkv_heuristic_spec_args,
         "BLOCK_N": block_n_splitkv_heuristic_spec_args,
         "BLOCK_K": flash_fwd_splitkv_kernel_heur_block_k,
-        "num_warps": lambda args: 4,
-        "num_stages": lambda args: 3,
+        "num_warps": lambda args: 8,
+        "num_stages": lambda args: 2 if args["d"] > 128 else 3,
         "PRE_LOAD_V": lambda args: True,
         "IS_EVEN_MN": is_even_mn_spec_args,
     }

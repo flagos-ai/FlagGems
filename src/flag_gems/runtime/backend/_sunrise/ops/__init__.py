@@ -1,8 +1,15 @@
+from .. import _install_typed_ptr_device_patch
+
+# Run after runtime initialization; importing tensor_wrapper in _sunrise/__init__.py
+# would hit a circular import through flag_gems.utils.
+_install_typed_ptr_device_patch()
+
 from ._safe_softmax import _safe_softmax
 from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from .abs import abs, abs_
 from .add import add, add_
 from .addmm import addmm, addmm_out
+from .aminmax import amin, amin_out, amax, amax_out, aminmax, aminmax_out
 from .angle import angle
 from .arcsinh import arcsinh, arcsinh_out
 from .attention import (
@@ -30,10 +37,20 @@ from .bitwise_right_shift import (
     bitwise_right_shift_,
     bitwise_right_shift_out,
 )
-from .clamp import clamp, clamp_, clamp_min, clamp_min_, clamp_tensor, clamp_tensor_
+from .clamp import (
+    clamp,
+    clamp_,
+    clamp_min,
+    clamp_min_,
+    clamp_min_out,
+    clamp_tensor,
+    clamp_tensor_,
+)
 from .conv2d import conv2d
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
+from .conj_physical import conj_physical
+from .ctc_loss import ctc_loss
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .div import (
     div_mode,
@@ -58,9 +75,11 @@ from .fill import (
     fill_tensor_,
     fill_tensor_out,
 )
+from .fft import fft
 from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
+from .hypot import hypot, hypot_out
 from .i0 import i0, i0_out
 from .i0_ import i0_
 from .index_add import index_add, index_add_
@@ -79,9 +98,11 @@ from .margin_ranking_loss import margin_ranking_loss
 from .masked_select import masked_select
 from .mean import mean, mean_dim
 from .mul import mul, mul_
+from .multinomial import multinomial
 from .mv import mv
 from .neg import neg, neg_
 from .nonzero import nonzero
+from .one_hot import one_hot
 from .pad import constant_pad_nd, pad
 from .polar import polar
 from .pow import (
@@ -101,6 +122,7 @@ from .repeat_interleave import (
     repeat_interleave_self_tensor,
     repeat_interleave_tensor,
 )
+from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .scatter import scatter, scatter_
 from .select_backward import select_backward
@@ -110,6 +132,7 @@ from .softmax import softmax, softmax_backward
 from .sort import sort, sort_stable
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out
+from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .t_copy import t_copy, t_copy_out
 from .tile import tile
@@ -117,9 +140,11 @@ from .to import to_copy
 from .topk import topk
 from .triu import triu
 from .unique import _unique2
+from .unique_consecutive import unique_consecutive
 from .upsample_bicubic2d import upsample_bicubic2d
 from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest2d import upsample_nearest2d
+from .vdot import vdot
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zero import zero, zero_out
 
@@ -132,6 +157,12 @@ __all__ = [
     "add_",
     "addmm",
     "addmm_out",
+    "amin",
+    "amin_out",
+    "amax",
+    "amax_out",
+    "aminmax",
+    "aminmax_out",
     "angle",
     "arcsinh",
     "arcsinh_out",
@@ -152,10 +183,13 @@ __all__ = [
     "clamp_tensor_",
     "clamp_min",
     "clamp_min_",
+    "clamp_min_out",
     "conv2d",
     "cos",
     "cos_",
     "count_nonzero",
+    "conj_physical",
+    "ctc_loss",
     "cumsum",
     "cumsum_out",
     "normed_cumsum",
@@ -184,6 +218,7 @@ __all__ = [
     "fill_tensor_out",
     "flash_attention_forward",
     "flash_attn_varlen_func",
+    "fft",
     "gather",
     "gather_backward",
     "ge",
@@ -191,6 +226,8 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "hypot",
+    "hypot_out",
     "i0",
     "i0_out",
     "i0_",
@@ -219,10 +256,12 @@ __all__ = [
     "mean_dim",
     "mul",
     "mul_",
+    "multinomial",
     "mv",
     "neg",
     "neg_",
     "nonzero",
+    "one_hot",
     "pad",
     "polar",
     "constant_pad_nd",
@@ -239,6 +278,7 @@ __all__ = [
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
+    "resolve_neg",
     "rms_norm",
     "rms_norm_forward",
     "rms_norm_backward",
@@ -261,6 +301,8 @@ __all__ = [
     "special_i0e_out",
     "special_i1",
     "special_i1_out",
+    "sub",
+    "sub_",
     "sum",
     "sum_dim",
     "sum_dim_out",
@@ -273,9 +315,11 @@ __all__ = [
     "topk",
     "triu",
     "_unique2",
+    "unique_consecutive",
     "upsample_bicubic2d",
     "upsample_linear1d",
     "upsample_nearest2d",
+    "vdot",
     "where_scalar_other",
     "where_scalar_self",
     "where_self",
