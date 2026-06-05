@@ -1,0 +1,15 @@
+<div class="benchmark-tabs" id="benchmark-tabs">
+  {{ range $name, $data := hugo.Data.benchmark }}
+  <button data-platform="{{ $name }}" onclick="switchTab('{{ $name }}')">{{ $name }}</button>
+  {{ end }}
+</div>
+
+{{ range $name, $data := hugo.Data.benchmark }}
+<div class="benchmark-panel" id="panel-{{ $name }}">
+  <p><strong>Compiler:</strong> {{ $data.compiler }} &nbsp; <strong>Timestamp:</strong> {{ $data.timestamp }}</p>
+  <div id="table-{{ $name }}"></div>
+</div>
+<script id="data-{{ $name }}" type="application/json">
+  {{ $data.operators | jsonify }}
+</script>
+{{ end }}
