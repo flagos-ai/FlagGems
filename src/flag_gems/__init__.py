@@ -40,6 +40,10 @@ _FULL_CONFIG = (
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__or__.Scalar", bitwise_or_scalar),
     ("__or__.Tensor", bitwise_or_tensor),
+    (
+        "_amp_foreach_non_finite_check_and_unscale_",
+        _amp_foreach_non_finite_check_and_unscale_,
+    ),
     ("_assert_async", _assert_async),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_euclidean_dist", _euclidean_dist),
