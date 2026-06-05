@@ -22,8 +22,8 @@ from flag_gems.fused.fused_marlin_moe import (
 
 
 def _is_hopper():
-    # The fused_marlin_moe_w4a16 kernel's bf16 dequant uses sm_90-only PTX
-    # (sub.bf16x2 / mul.bf16); the W4A16 fast path is gated to Hopper.
+    # The W4A16 fast-path kernel's bf16 dequant uses sm_90-only PTX
+    # (sub.bf16x2 / mul.bf16); the fast path is gated to Hopper.
     if flag_gems.device != "cuda":
         return False
     major, minor = torch.cuda.get_device_capability()
@@ -147,6 +147,10 @@ FULL_CONFIGS = QUICK_CONFIGS + [
     (1, 512, 4096, 1024, 10),
     (16, 512, 4096, 1024, 10),
     (64, 512, 4096, 1024, 10),
+    # DeepSeek-V4-Flash
+    (1, 256, 4096, 2048, 6),
+    (16, 256, 4096, 2048, 6),
+    (64, 256, 4096, 2048, 6),
 ]
 
 GROUP_SIZE = 128
