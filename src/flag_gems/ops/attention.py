@@ -10,11 +10,24 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.config import use_c_extension
 from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
-from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
+
+
+# Filter function for autotune configs used by scaled_dot_product_attention.
+# Keeps the two (BLOCK_M, BLOCK_N, num_warps) combinations known to work well,
+# plus any configs in must_keep (e.g., small head_dim configs).
+def keep(cfg, must_keep=None):
+    BM = cfg.kwargs["BLOCK_M"]
+    BN = cfg.kwargs["BLOCK_N"]
+    w = cfg.num_warps
+
+    # we always keep configurations in `must_keep`
+    return (BM, BN, w) in ((128, 32, 4), (128, 128, 8)) or (
+        must_keep and cfg in must_keep
+    )
 
 
 # Modified from Triton tutorial: https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html

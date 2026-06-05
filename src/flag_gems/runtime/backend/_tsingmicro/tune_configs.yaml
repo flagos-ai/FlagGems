@@ -24,6 +24,35 @@ attention:
       - 1
     stages:
       - 1
+# flash_fwd is used by flash_fwd_kernel (flash attention forward).
+# Separate from `attention` which is used by scaled_dot_product_attention.
+# prune_fwd_configs in flash_kernel.py narrows BLOCK_M at runtime based on seqlen_q.
+flash_fwd:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        PRE_LOAD_V: pre_load_v
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 32
+      - 64
+      - 128
+      - 256
+      - 512
+    block_n:
+      - 32
+      - 64
+      - 128
+    pre_load_v:
+      - true
+      - false
+    warps:
+      - 1
+    stages:
+      - 1
 attention_bwd:
   - gen: true
     param_map:

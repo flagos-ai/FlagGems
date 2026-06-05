@@ -25,6 +25,54 @@ attention:
       - 2
       - 3
       - 4
+# flash_fwd is the autotune config for flash_fwd_kernel (flash attention forward pass).
+# It is separate from `attention` which is used by scaled_dot_product_attention.
+# Vendors override this key in their own tune_configs.yaml to restrict search space.
+# This default (used by NVIDIA and as fallback for other vendors) keeps the two
+# combinations that are known to work well on NVIDIA GPUs.
+flash_fwd:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        PRE_LOAD_V: pre_load_v
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 128
+    block_n:
+      - 32
+    pre_load_v:
+      - true
+      - false
+    warps:
+      - 4
+    stages:
+      - 2
+      - 3
+      - 4
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        PRE_LOAD_V: pre_load_v
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 128
+    block_n:
+      - 128
+    pre_load_v:
+      - true
+      - false
+    warps:
+      - 8
+    stages:
+      - 2
+      - 3
+      - 4
 attention_bwd:
   - gen: true
     param_map:

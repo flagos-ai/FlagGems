@@ -25,6 +25,34 @@ attention:
   - 1
   - 2
   - 3
+# flash_fwd is used by flash_fwd_kernel (flash attention forward).
+# Separate from `attention` which is used by scaled_dot_product_attention.
+# Hygon only supports BLOCK_N=16; keep all three BLOCK_M values for autotune.
+flash_fwd:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      PRE_LOAD_V: pre_load_v
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 32
+  - 64
+  - 128
+  block_n:
+  - 16
+  pre_load_v:
+  - true
+  - false
+  warps:
+  - 4
+  - 8
+  stages:
+  - 1
+  - 2
+  - 3
 bmm:
 - META:
     TILE_M: 32

@@ -254,17 +254,6 @@ def is_even_mn_spec_args(args):
     return False
 
 
-def keep(cfg, must_keep=None):
-    BM = cfg.kwargs["BLOCK_M"]
-    BN = cfg.kwargs["BLOCK_N"]
-    w = cfg.num_warps
-
-    # we always keep configurations in `must_keep`
-    return (BM, BN, w) in ((128, 32, 4), (128, 128, 8)) or (
-        must_keep and cfg in must_keep
-    )
-
-
 def prune_fwd_configs(configs, nargs, **kwargs):
     is_dropout = nargs["is_dropout"]
     if is_dropout:
@@ -281,7 +270,7 @@ def flash_fwd_kernel_heur_block_k(args):
 
 @libentry()
 @triton.autotune(
-    configs=list(filter(keep, runtime.get_tuned_config("attention"))),
+    configs=runtime.get_tuned_config("flash_fwd"),
     prune_configs_by={"early_config_prune": prune_fwd_configs},
     key=["d", "is_dropout"],
 )
