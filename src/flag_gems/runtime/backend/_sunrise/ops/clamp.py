@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.pointwise_dynamic import CodeGenConfig
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 MAX_GRID_SIZES = (65535, 65535, 65535)
 config_f16 = CodeGenConfig(
@@ -149,6 +149,10 @@ def clamp_min(A, mini):
     logger.debug("GEMS CLAMP MIN")
     if mini is None:
         raise ValueError("Mini must not be None")
+    if isinstance(mini, torch.Tensor):
+        if A.dtype == torch.half:
+            return clamp_func_min_tensor_f16(A, mini)
+        return clamp_func_min_tensor(A, mini)
     return clamp_func_min(A, mini)
 
 
@@ -156,7 +160,22 @@ def clamp_min_(A, mini):
     logger.debug("GEMS CLAMP_ MIN")
     if mini is None:
         raise ValueError("Mini must not be None")
+    if isinstance(mini, torch.Tensor):
+        if A.dtype == torch.half:
+            return clamp_func_min_tensor_f16(A, mini, out0=A)
+        return clamp_func_min_tensor(A, mini, out0=A)
     return clamp_func_min(A, mini, out0=A)
+
+
+def clamp_min_out(A, mini, *, out=None):
+    logger.debug("GEMS CLAMP MIN OUT")
+    if mini is None:
+        raise ValueError("Mini must not be None")
+    if isinstance(mini, torch.Tensor):
+        if A.dtype == torch.half:
+            return clamp_func_min_tensor_f16(A, mini, out0=out)
+        return clamp_func_min_tensor(A, mini, out0=out)
+    return clamp_func_min(A, mini, out0=out)
 
 
 def clamp(A, mini=None, maxi=None):

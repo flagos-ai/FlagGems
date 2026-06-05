@@ -12,7 +12,7 @@ from flag_gems.utils import get_device_properties, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 device = device.name
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @functools.lru_cache

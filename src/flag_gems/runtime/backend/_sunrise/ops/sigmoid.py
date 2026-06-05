@@ -6,7 +6,7 @@ import triton.language as tl
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 from flag_gems.utils.pointwise_dynamic import CodeGenConfig
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 exp2 = tl_extra_shim.exp2
 
 

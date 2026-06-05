@@ -353,9 +353,20 @@ def generate_pad_kernel(
 
         code.newline()
 
+        for i in range(rank):
+            code.writeline(
+                f"safe_src_index_{i} = tl.where(src_index_{i} < x_shape{i}, src_index_{i}, x_shape{i} - 1)"
+            )
+
+        code.newline()
+
         code.writeline("src_offset = src_index_0 * in_strides0")
         for i in range(1, rank):
             code.writeline(f"src_offset += src_index_{i} * in_strides{i}")
+
+        code.writeline("safe_src_offset = safe_src_index_0 * in_strides0")
+        for i in range(1, rank):
+            code.writeline(f"safe_src_offset += safe_src_index_{i} * in_strides{i}")
 
         code.writeline("load_cond = src_index_0 < x_shape0")
         for i in range(1, rank):
@@ -363,10 +374,10 @@ def generate_pad_kernel(
 
         code.writeline("if IS_CONSTANT: ")
         with code.indent():
-            # use explicit comparison and bitwise-and for non-scalar masks
             code.writeline(
-                "x_val = tl.load(in0_ptr + src_offset, mask=((if_pad == 0) & load_cond), other=value)"
+                "x_loaded = tl.load(in0_ptr + safe_src_offset, mask=offset < out_elem_cnt, other=0)"
             )
+            code.writeline("x_val = tl.where(cond, x_loaded, value)")
         code.writeline("else: ")
         with code.indent():
             code.writeline(

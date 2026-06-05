@@ -20,7 +20,7 @@ config = CodeGenConfig(
     prefer_1d_tile=True,
 )
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])

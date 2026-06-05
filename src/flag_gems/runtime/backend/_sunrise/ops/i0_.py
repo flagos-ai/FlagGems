@@ -5,7 +5,9 @@ import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+import flag_gems
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -80,8 +82,8 @@ def i0_(*args, **kwargs):
             "i0_ expects a tensor as the first positional argument or in keyword 'input'/'self'/'x'."
         )
 
-    if not x.is_ptpu:
-        raise AssertionError("Input tensor must be on a PTPU device.")
+    if x.device.type != flag_gems.device:
+        raise AssertionError(f"Input tensor must be on a {flag_gems.device} device.")
     if not x.is_contiguous():
         raise AssertionError("Input tensor must be contiguous.")
     if x.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):

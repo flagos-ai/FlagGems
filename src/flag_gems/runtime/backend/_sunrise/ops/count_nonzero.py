@@ -108,10 +108,12 @@ def count_nonzero(x, dim=None):
     else:
         x = x.contiguous().flatten()
         numel = x.numel()
+
         out = torch.zeros(1, dtype=torch.int32, device=x.device)
 
         BLOCK_SIZE = 1024
         grid = lambda meta: (triton.cdiv(numel, meta["BLOCK_SIZE"]),)
+
         count_nonzero_kernel_1[grid](x, out, numel, BLOCK_SIZE=BLOCK_SIZE)
 
         return out[0].to(torch.int64)
