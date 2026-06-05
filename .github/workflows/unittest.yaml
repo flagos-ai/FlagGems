@@ -243,9 +243,7 @@ jobs:
 
   backend-tsingmicro:
     needs: preprocess
-    # no tsingmicro runners available at the moment.
-    if: false
-    # if: contains(needs.preprocess.outputs.labels, 'vendor/TsingMicro')
+    if: contains(needs.preprocess.outputs.labels, 'vendor/TsingMicro')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: tsingmicro
