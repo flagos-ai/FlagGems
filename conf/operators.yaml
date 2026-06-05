@@ -3268,6 +3268,19 @@ ops:
       - Math
     stages:
       - stable: '2.1'
+  - id: istft
+    description: |
+      Computes the inverse Short Time Fourier Transform (ISTFT).
+      Converts a frequency-domain representation back to the time domain.
+    for:
+      - istft
+    labels:
+      - aten
+      - signal
+    kind:
+      - SignalProcessing
+    stages:
+      - alpha: '5.0'
   - id: isin
     description: |
       Tests if each element of `elements` is in `test_elements`.

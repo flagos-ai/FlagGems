@@ -101,6 +101,13 @@ SVD_TINY_RANK_DEGENERATE_CASES = [
     "zero_column_8x2",
     "zero_row_2x8",
 ]
+
+ISTFT_SHAPES = [
+    {"n_fft": 128, "hop_length": 32, "n_frames": 50},
+    {"n_fft": 256, "hop_length": 64, "n_frames": 30},
+    {"n_fft": 512, "hop_length": 128, "n_frames": 50},
+]
+
 STACK_SHAPES = [
     [(16,), (16,)],
     [(16, 256), (16, 256)],
