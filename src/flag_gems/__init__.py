@@ -90,6 +90,7 @@ _FULL_CONFIG = (
     ("addmm.out", addmm_out),
     ("addmm.dtype", addmm_dtype),
     ("addmm.dtype_out", addmm_dtype_out),
+    ("addmm_", addmm_),
     ("addr", addr),
     ("affine_grid_generator", affine_grid_generator),
     ("alias_copy", alias_copy),
