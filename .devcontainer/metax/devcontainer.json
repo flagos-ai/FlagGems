@@ -1,0 +1,55 @@
+{
+  "name": "FlagGems - MetaX",
+  "build": {
+    "context": "./",
+    "dockerfile": "./Dockerfile",
+    "args": {
+      "USERNAME": "vscode",
+      "BUILDKIT_INLINE_CACHE": "0"
+    }
+  },
+  "runArgs": [
+    "--device=/dev/dri",
+    "--net=host",
+    "--ipc=host",
+    "--privileged"
+  ],
+  "hostRequirements": {
+    "ulimits": {
+      "memlock": {
+        "soft": -1,
+        "hard": -1
+      },
+      "stack": {
+        "soft": 67108864,
+        "hard": 67108864
+      }
+    }
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/FlagGems,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace/FlagGems",
+  "mounts": [
+    "source=/data,target=/data,type=bind",
+    "source=/tmp,target=/host_tmp,type=bind",
+    "source=${localEnv:HOME},target=/home/host,type=bind",
+    "source=claude-code-data,target=/home/vscode/.claude,type=volume"
+  ],
+  "containerEnv": {
+    "PIP_USER": "0"
+  },
+  "initializeCommand": "mkdir -p /data",
+  "postCreateCommand": "bash .devcontainer/metax/scripts/install-dev-tools.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "streetsidesoftware.code-spell-checker",
+        "ms-python.python"
+      ]
+    }
+  },
+  "features": {
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+  },
+  "updateRemoteUserUID": true,
+  "remoteUser": "vscode"
+}

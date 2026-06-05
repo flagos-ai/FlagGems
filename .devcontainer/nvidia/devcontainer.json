@@ -1,5 +1,5 @@
 {
-  "name": "FlagGems - CUDA",
+  "name": "FlagGems - NVIDIA",
   "build": {
     "context": "./",
     "dockerfile": "./Dockerfile",
@@ -54,7 +54,9 @@
   // "forwardPorts": [],
 
   // Use 'postCreateCommand' to run commands after the container is created.
-  "postCreateCommand": "bash .devcontainer/cuda/scripts/install-dev-tools.sh",
+  "postCreateCommand": "bash .devcontainer/nvidia/scripts/install-dev-tools.sh",
+  // install-dev-tools.sh sources .devcontainer/nvidia/flaggems.env then calls
+  // .devcontainer/common/scripts/install-flaggems.sh for the shared build logic
   // Configure tool-specific properties.
   // "customizations": {},
   "customizations": {
