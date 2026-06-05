@@ -25,8 +25,9 @@ def test_amp_foreach_non_finite_check_and_unscale_(dtype):
     # Reference
     ref_tensors = [utils.to_reference(t.clone()) for t in tensors]
     ref_found_inf = utils.to_reference(found_inf.clone())
+    ref_inv_scale = utils.to_reference(inv_scale.clone())
     getattr(torch, "_amp_foreach_non_finite_check_and_unscale_")(
-        ref_tensors, ref_found_inf, inv_scale
+        ref_tensors, ref_found_inf, ref_inv_scale
     )
 
     # GEMS
@@ -63,8 +64,9 @@ def test_amp_foreach_non_finite_check_and_unscale__inf(dtype):
     # Reference
     ref_tensors = [utils.to_reference(t.clone()) for t in tensors]
     ref_found_inf = utils.to_reference(found_inf.clone())
+    ref_inv_scale = utils.to_reference(inv_scale.clone())
     getattr(torch, "_amp_foreach_non_finite_check_and_unscale_")(
-        ref_tensors, ref_found_inf, inv_scale
+        ref_tensors, ref_found_inf, ref_inv_scale
     )
 
     # GEMS
@@ -102,8 +104,9 @@ def test_amp_foreach_non_finite_check_and_unscale__nan(dtype):
     # Reference
     ref_tensors = [utils.to_reference(t.clone()) for t in tensors]
     ref_found_inf = utils.to_reference(found_inf.clone())
+    ref_inv_scale = utils.to_reference(inv_scale.clone())
     getattr(torch, "_amp_foreach_non_finite_check_and_unscale_")(
-        ref_tensors, ref_found_inf, inv_scale
+        ref_tensors, ref_found_inf, ref_inv_scale
     )
 
     # GEMS
