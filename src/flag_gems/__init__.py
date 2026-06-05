@@ -24,7 +24,7 @@ backend_info = runtime.device
 aten_lib = torch.library.Library("aten", "IMPL")
 
 # Register all ops in the current backend with SpecOpRegistrar to support architecture-specialized implementations
-SpecOpRegistrar(globals()).apply()
+SpecOpRegistrar(registry=globals(), vendor=vendor_name).apply()
 
 registrar = GeneralOpRegistrar
 current_work_registrar = None
