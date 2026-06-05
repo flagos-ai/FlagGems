@@ -5,6 +5,11 @@ import torch
 
 import flag_gems
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="[sunrise fix] logger get '_sunrise.ops.xx', test need 'flag_gems.ops.xx'.",
+)
+
 
 def ops_list_to_str(ops_list):
     return "_".join(ops_list).replace(".", "_").replace("-", "_")

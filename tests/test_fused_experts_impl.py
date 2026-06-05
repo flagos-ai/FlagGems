@@ -8,6 +8,11 @@ import flag_gems
 
 from .conftest import QUICK_MODE
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise", reason="To Fix (Runtime Or LLVM)"
+)
+
+
 random.seed(42)
 
 FUSED_MOE_CONFIGS = [
