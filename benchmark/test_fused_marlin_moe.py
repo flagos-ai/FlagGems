@@ -55,6 +55,10 @@ CUDA_AVAILABLE = is_cuda_available()
 GROUP_SIZE = 128
 
 
+def _filter_shapes_by_tokens(shapes):
+    return shapes
+
+
 def _wna16_quantize_per_expert(w_fp):
     """
     Per-expert GPTQ-style INT4 quantization for FlagGems wna16 kernel layout.
@@ -352,16 +356,18 @@ class FusedMarlinMoEBenchmarkInt8(base.Benchmark):
         super().__init__(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = [
-            # Mixtral-8x7B-like
-            (1, 8, 4096, 14336, 2),
-            (16, 8, 4096, 14336, 2),
-            (64, 8, 4096, 14336, 2),
-            # DeepSeek-V3-like (TP=8 shard)
-            (1, 256, 7168, 2048, 8),
-            (16, 256, 7168, 2048, 8),
-            (64, 256, 7168, 2048, 8),
-        ]
+        self.shapes = _filter_shapes_by_tokens(
+            [
+                # Mixtral-8x7B-like
+                (1, 8, 4096, 14336, 2),
+                (16, 8, 4096, 14336, 2),
+                (64, 8, 4096, 14336, 2),
+                # DeepSeek-V3-like (TP=8 shard)
+                (1, 256, 7168, 2048, 8),
+                (16, 256, 7168, 2048, 8),
+                (64, 256, 7168, 2048, 8),
+            ]
+        )
 
     def get_input_iter(self, cur_dtype):
         for config in self.shapes:
@@ -423,6 +429,27 @@ class FusedMarlinMoEBenchmarkInt8(base.Benchmark):
             w2_scale_marlin,
             topk_weights,
             topk_ids,
+        )
+
+
+class FusedMarlinMoEBenchmarkInt8MXQ(FusedMarlinMoEBenchmarkInt8):
+    """Qwen/MXQ W8A16 shape set for fused_marlin_moe INT8 benchmarking."""
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = _filter_shapes_by_tokens(
+            [
+                (1, 512, 4096, 1024, 10),
+                (4, 512, 4096, 1024, 10),
+                (16, 512, 4096, 1024, 10),
+                (64, 512, 4096, 1024, 10),
+                (128, 512, 4096, 1024, 10),
+                (256, 512, 4096, 1024, 10),
+                (512, 512, 4096, 1024, 10),
+                (1024, 512, 4096, 1024, 10),
+                (4096, 512, 4096, 1024, 10),
+                (16384, 512, 4096, 1024, 10),
+                (32768, 512, 4096, 1024, 10),
+            ]
         )
 
 
@@ -727,3 +754,28 @@ def test_fused_marlin_moe_mxfp4():
     )
     bench.set_gems(_gems_call_mxfp4)
     bench.run()
+
+@pytest.mark.fused_marlin_moe
+@pytest.mark.skipif(
+    not HAS_VLLM_FUSED_MARLIN_MOE, reason="vllm not installed; baseline unavailable"
+)
+@pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires NVIDIA Hopper architecture")
+def test_fused_marlin_moe_int8_mxq():
+    """
+    Benchmark FlagGems fused_marlin_moe W8A16 on the MXQ/Qwen 512-expert
+    shape set against vLLM CUDA Marlin W8A16 MoE.
+    """
+    bench = FusedMarlinMoEBenchmarkInt8MXQ(
+        op_name="fused_marlin_moe_int8_mxq",
+        torch_op=_vllm_baseline_int8,
+        dtypes=[torch.bfloat16],
+    )
+    bench.set_gems(_gems_call_int8)
+    bench.run()
+
+
+@pytest.mark.fused_marlin_moe
+@pytest.mark.skip(reason="vLLM Marlin MoE has no unquantized bf16 expert path")
+def test_fused_marlin_moe_bf16_mxq():
+    pass
+
