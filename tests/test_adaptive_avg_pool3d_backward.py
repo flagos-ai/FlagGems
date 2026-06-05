@@ -46,7 +46,7 @@ def test_adaptive_avg_pool3d_backward(shape, output_size, dtype):
     # GEMS implementation
     with flag_gems.use_gems():
         gems_grad = torch.ops.aten._adaptive_avg_pool3d_backward.default(
-            grad_output, inp
+            grad_output.to(flag_gems.device), inp
         )
 
     utils.gems_assert_close(gems_grad, ref_grad, dtype)
