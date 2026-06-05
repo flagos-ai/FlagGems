@@ -16,6 +16,35 @@ vendor_info = VendorInfoBase(
 CUSTOMIZED_UNUSED_OPS = ()
 
 
+def _sunrise_rebuild_ptpu_tensor_from_cpu(
+    tensor_cls, cpu_tensor, device, requires_grad
+):
+    import torch
+    from torch.nn.parameter import Parameter
+
+    tensor = cpu_tensor.to(device=device)
+    if tensor_cls == Parameter:
+        return Parameter(tensor, requires_grad=requires_grad)
+    if tensor_cls not in (torch.Tensor, type(tensor)):
+        try:
+            tensor = tensor.as_subclass(tensor_cls)
+        except Exception:
+            pass
+    tensor.requires_grad = requires_grad
+    return tensor
+
+
+def _should_stage_ptpu_tensor_for_multiprocessing(tensor):
+    import torch
+
+    return (
+        isinstance(tensor, torch.Tensor)
+        and tensor.device.type == "ptpu"
+        and tensor.layout == torch.strided
+        and not tensor.is_nested
+    )
+
+
 def _sunrise_monkey_patch_enabled():
     value = os.getenv("FLAG_GEMS_SUNRISE_ENABLE_MONKEY_PATCH", "1").strip().lower()
     return value not in {"0", "false", "no", "off"}
@@ -536,6 +565,59 @@ def _install_ptpu_manual_seed_patch():
     ptpu_mod._is_in_bad_fork = _is_in_bad_fork
     ptpu_mod.manual_seed_all = manual_seed_all
     ptpu_mod._sunrise_manual_seed_patched = True
+
+
+def _install_ptpu_multiprocessing_reduction_patch():
+    import multiprocessing.reduction as mp_reduction
+
+    import torch
+    import torch.multiprocessing.reductions as reductions
+    from torch.nn.parameter import Parameter
+
+    if getattr(reductions, "_sunrise_ptpu_reduce_tensor_patched", False):
+        return
+
+    original_reduce_tensor = reductions.reduce_tensor
+
+    # Keep this in `_sunrise/__init__.py` instead of `monkey_patch.py` because
+    # multiprocessing reducers are registered eagerly in Python's global
+    # pickling table. This is import-time runtime wiring, not a call-site-level
+    # torch API fallback that can be caught and retried after a NotImplemented.
+    def reduce_tensor_with_ptpu_cpu_staging(tensor):
+        if not _should_stage_ptpu_tensor_for_multiprocessing(tensor):
+            return original_reduce_tensor(tensor)
+
+        if tensor.requires_grad and not tensor.is_leaf:
+            raise RuntimeError(
+                "Cowardly refusing to serialize non-leaf tensor which requires_grad, "
+                "since autograd does not support crossing process boundaries.  "
+                "If you just want to transfer the data, call detach() on the tensor "
+                "before serializing (e.g., putting it on the queue)."
+            )
+
+        reductions.check_serializing_named_tensor(tensor)
+        torch.utils.hooks.warn_if_has_hooks(tensor)
+
+        return (
+            reductions._sunrise_rebuild_ptpu_tensor_from_cpu,
+            (
+                type(tensor),
+                tensor.detach().cpu(),
+                tensor.device,
+                tensor.requires_grad,
+            ),
+        )
+
+    reductions._sunrise_rebuild_ptpu_tensor_from_cpu = (
+        _sunrise_rebuild_ptpu_tensor_from_cpu
+    )
+    reductions._sunrise_original_reduce_tensor = original_reduce_tensor
+    reductions.reduce_tensor = reduce_tensor_with_ptpu_cpu_staging
+    for tensor_cls in torch._tensor_classes:
+        mp_reduction.register(tensor_cls, reduce_tensor_with_ptpu_cpu_staging)
+    mp_reduction.register(torch.Tensor, reduce_tensor_with_ptpu_cpu_staging)
+    mp_reduction.register(Parameter, reduce_tensor_with_ptpu_cpu_staging)
+    reductions._sunrise_ptpu_reduce_tensor_patched = True
 
 
 _install_ptpu_manual_seed_patch()
