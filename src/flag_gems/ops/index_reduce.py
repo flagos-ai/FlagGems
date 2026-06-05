@@ -55,40 +55,52 @@ def index_reduce_kernel(
     batch_source = source_ptr + pid_batch * strd_batch_source
     batch_output = output_ptr + pid_batch * strd_batch_input
 
-    if include_self:
-        acc = tl.load(batch_input + offsets, mask=mask, other=0.0)
-    else:
-        if reduce_op == 0:  # prod: identity = 1
-            acc = tl.full((BLOCK_SIZE,), 1.0, dtype=tl.float32)
-        elif reduce_op == 1:  # mean: accumulator starts at 0
-            acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
-        elif reduce_op == 2:  # amax: identity = -inf
-            acc = tl.full((BLOCK_SIZE,), float("-inf"), dtype=tl.float32)
-        elif reduce_op == 3:  # amin: identity = +inf
-            acc = tl.full((BLOCK_SIZE,), float("inf"), dtype=tl.float32)
+    # Always start with the input value: non-source positions must preserve it
+    # Cast to float32 for consistent accumulator dtype across all operations
+    acc = tl.load(batch_input + offsets, mask=mask, other=0.0).to(tl.float32)
 
     if reduce_op == 1:
-        count = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+        # For mean: count starts at 1 if include_self, 0 otherwise
+        if include_self:
+            count = tl.where(mask, 1.0, 0.0)
+        else:
+            count = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+
+    # Track whether a position has received at least one source value
+    has_source = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
 
     for i in range(index_size):
         idx_val = tl.load(index_ptr + i)
         src_val = tl.load(batch_source + i)
         is_target = (idx_val == offsets) & mask
+        is_first = is_target & (has_source == 0)
 
         if reduce_op == 0:  # prod
+            # On first source with include_self=False, reset acc to 1 (identity)
+            if not include_self:
+                acc = tl.where(is_first, 1.0, acc)
             new_val = acc * src_val
             acc = tl.where(is_target, new_val, acc)
         elif reduce_op == 1:  # mean
+            # On first source with include_self=False, reset acc to 0 (identity)
+            if not include_self:
+                acc = tl.where(is_first, 0.0, acc)
             new_count = count + 1.0
             new_acc = acc + src_val
             acc = tl.where(is_target, new_acc, acc)
             count = tl.where(is_target, new_count, count)
         elif reduce_op == 2:  # amax
+            if not include_self:
+                acc = tl.where(is_first, float("-inf"), acc)
             new_val = tl.maximum(acc, src_val)
             acc = tl.where(is_target, new_val, acc)
         elif reduce_op == 3:  # amin
+            if not include_self:
+                acc = tl.where(is_first, float("inf"), acc)
             new_val = tl.minimum(acc, src_val)
             acc = tl.where(is_target, new_val, acc)
+
+        has_source = has_source | is_target.to(tl.int32)
 
     if reduce_op == 1:
         acc = tl.where((count > 0) & mask, acc / count, acc)
