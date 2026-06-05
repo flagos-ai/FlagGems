@@ -2,7 +2,7 @@ import logging
 
 import torch
 
-from flag_gems.runtime.configloader import ConfigLoader
+from flag_gems.runtime.configs_loader import TunedConfigLoader
 
 _GEMM_CONFIG_0 = {
     torch.float32: [{"MICRO_M": 8, "MICRO_N": 32, "MICRO_K": 32}],
@@ -206,4 +206,6 @@ def get_tuned_config(func):
 
 
 def setup_triton_config():
-    ConfigLoader.get_tuned_config = get_tuned_config(ConfigLoader.get_tuned_config)
+    TunedConfigLoader.get_tuned_config = get_tuned_config(
+        TunedConfigLoader.get_tuned_config
+    )

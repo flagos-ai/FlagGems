@@ -1,6 +1,5 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
@@ -54,38 +53,36 @@ def gelu_backward_none(x, dy):
 def gelu_backward_tanh(x, dy):
     x_fp32 = x.to(tl.float32)
     # 0.79788456 = math.sqrt(2 / math.pi)
-    tanh_out = tanh(0.79788456 * x * (1 + 0.044715 * pow(x_fp32, 2)))
-    dydx = 0.5 * x * (
+    tanh_out = tanh(0.79788456 * x_fp32 * (1 + 0.044715 * pow(x_fp32, 2)))
+    dydx = 0.5 * x_fp32 * (
         (1 - pow(tanh_out, 2)) * (0.79788456 + 0.1070322243 * pow(x_fp32, 2))
     ) + 0.5 * (1 + tanh_out)
     dx = dydx * dy
     return dx
 
 
-class Gelu(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, A, approximate):
-        logging.debug("GEMS_SPACEMIT GELU_FORWARD")
-        if approximate == "tanh":
-            out = gelu_tanh(A)
-        else:
-            out = gelu_none(A)
-        ctx.save_for_backward(A)
-        ctx.approximate = approximate
-        return out
-
-    @staticmethod
-    def backward(ctx, out_grad):
-        logging.debug("GEMS_SPACEMIT GELU_BACKWARD")
-        (inp,) = ctx.saved_tensors
-        approximate = ctx.approximate
-        if approximate == "tanh":
-            in_grad = gelu_backward_tanh(inp, out_grad)
-        else:
-            in_grad = gelu_backward_none(inp, out_grad)
-        return in_grad, None
-
-
 def gelu(A, *, approximate="none"):
-    # print("\n.......test for mutibackend specific gelu........\n")
-    return Gelu.apply(A, approximate)
+    logging.debug("GEMS_SPACEMIT GELU FORWARD")
+    if approximate == "tanh":
+        out = gelu_tanh(A)
+    else:
+        out = gelu_none(A)
+    return out
+
+
+def gelu_backward(grad_output, self, *, approximate="none"):
+    logging.debug("GEMS_SPACEMIT GELU_BACKWARD")
+    if approximate == "tanh":
+        in_grad = gelu_backward_tanh(self, grad_output)
+    else:
+        in_grad = gelu_backward_none(self, grad_output)
+    return in_grad
+
+
+def gelu_(A, *, approximate="none"):
+    logging.debug("GEMS_SPACEMIT GELU_ FORWARD")
+    if approximate == "tanh":
+        out = gelu_tanh(A, out0=A)
+    else:
+        out = gelu_none(A, out0=A)
+    return out

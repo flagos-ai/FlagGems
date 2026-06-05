@@ -214,7 +214,7 @@ def mm_kernel(
 def mm(a, b):
     if not a.is_contiguous():
         a = a.contiguous()
-    if not b.is_contiguous():
+    if b.stride(0) > 1 and b.stride(1) > 1:
         b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
@@ -247,3 +247,41 @@ def mm(a, b):
         SUB_BLK_K=SUB_BLK_K,
     )
     return c
+
+
+def mm_out(a, b, *, out):
+    if not a.is_contiguous():
+        a = a.contiguous()
+    if b.stride(0) > 1 and b.stride(1) > 1:
+        b = b.contiguous()
+
+    # checks constraints
+    assert a.shape[1] == b.shape[0], "incompatible dimensions"
+    M, K = a.shape
+    _, N = b.shape
+
+    # launch kernel
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_SIZE_M"]),
+        triton.cdiv(N, META["BLOCK_SIZE_N"]),
+    )
+    BLOCK_SIZE_K = triton.next_power_of_2(K)
+    SUB_BLK_K = min(512, BLOCK_SIZE_K)
+
+    mm_kernel[grid](
+        a,
+        b,
+        out,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        out.stride(0),
+        out.stride(1),
+        BLOCK_SIZE_K=BLOCK_SIZE_K,
+        SUB_BLK_K=SUB_BLK_K,
+    )
+    return out

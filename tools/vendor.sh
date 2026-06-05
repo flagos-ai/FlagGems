@@ -170,7 +170,7 @@ case $VENDOR in
   spacemit)
     uv pip install --index ${FLAGOS_PYPI} \
         "torch==2.8.0+spacemit.0" \
-        "triton==3.6.0+spacemit.a4"
+        "triton==3.6.0+spacemit.a5"
 
     uv pip install -e .
     uv pip install ".[test]"
