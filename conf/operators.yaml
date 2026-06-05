@@ -4956,6 +4956,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: reflection_pad2d_backward
+    description: |
+      Computes the gradient of `reflection_pad2d` with respect to the input tensor.
+      Uses Triton kernel with atomic_add for scatter gradient accumulation.
+    for:
+      - reflection_pad2d_backward
+    labels:
+      - aten
+      - backward
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
   - id: reglu
     description: |
       Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead of the sigmoid function for gating.
