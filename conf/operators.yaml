@@ -640,6 +640,28 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: atanh
+    description: Triton kernel implementation for atanh.
+    for:
+      - atanh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: atanh_
+    description: The in-place version of `atanh()`.
+    for:
+      - atanh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: avg_pool2d
     description: |
       Applies 2D average-pooling operation in `kH \mul kW` regions by step size `sH \mul sW` steps.
