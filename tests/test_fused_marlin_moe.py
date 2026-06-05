@@ -420,7 +420,6 @@ def test_fused_marlin_moe_vs_ref(config, dtype):
     assert max_diff < 0.04, f"max_diff={max_diff:.4f}"
 
 
-# @pytest.mark.skip(reason="Issue #3733: assertion failure.")
 @pytest.mark.parametrize("config", QUICK_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 def test_fused_marlin_moe_vs_ref_int8(config, dtype):
