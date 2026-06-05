@@ -3206,6 +3206,30 @@ ops:
       - Tensor
     stages:
       - beta: '5.1'
+  - id: index_reduce
+    description: >
+      Accumulates the elements of `source` into the `input` tensor at the
+      indices given by `index`, applying the specified reduction operation.
+    for:
+      - index_reduce
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
+  - id: index_reduce_
+    description: The in-place version of `index_reduce()`.
+    for:
+      - index_reduce_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
   - id: index_select
     description: |
       Returns a new tensor which indexes the `input` tensor along dimension `dim`
