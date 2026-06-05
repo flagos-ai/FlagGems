@@ -31,10 +31,10 @@ def arange_start(
     logger.debug("GEMS_TSINGMICRO ARANGE")
     if dtype is torch.int64:
         sgn = (step > 0) - (step < 0)
-        size = (end - start + step - sgn) // step
+        size = int((end - start + step - sgn) // step)
     else:
-        size = math.ceil((end - start) / step)
-    
+        size = int(math.ceil((end - start) // step))
+
     if dtype is torch.bfloat16:
         acc_dtype = torch.float32
     else:

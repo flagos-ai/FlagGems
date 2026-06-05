@@ -59,7 +59,9 @@ def generate_index_add_kernel(
         # Kernel Code
         with code.indent():
             code.writeline("pid = tl.program_id(axis=0)")
-            code.writeline("offsets = pid.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)")
+            code.writeline(
+                "offsets = pid.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)"
+            )
             code.writeline("mask = offsets < N")
 
             for i in range(rank - 1, -1, -1):
@@ -218,7 +220,7 @@ _index_add_func = IndexAddFunction()
 
 
 def index_add(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS_TSINGMICRO INDEX ADD")
+    logger.debug("GEMS_TSINGMICRO INDEX_ADD")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
     ), "0 <= index < self.size(dim)"
@@ -259,7 +261,7 @@ def index_add(inp, dim, index, src, alpha=1):
 
 
 def index_add_(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS INDEX ADD_")
+    logger.debug("GEMS_TSINGMICRO INDEX_ADD_")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
     ), "0 <= index < self.size(dim)"

@@ -12,6 +12,10 @@ from . import accuracy_utils as utils
 @pytest.mark.addcmul
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_addcmul(shape, dtype):
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     t1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -41,6 +45,10 @@ def test_addcmul(shape, dtype):
     ],
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_addcmul_out_broadcast(inp_shape, t1_shape, t2_shape, out_shape, dtype):
     res_inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     t1 = torch.randn(t1_shape, dtype=dtype, device=flag_gems.device)

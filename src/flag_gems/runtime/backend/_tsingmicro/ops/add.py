@@ -12,28 +12,28 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
     is_tensor=[True, True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
 )
 @triton.jit
-def sub_func(x, y, alpha, inplace):
-    return x - y * alpha
+def add_func(x, y, alpha, inplace):
+    return x + y * alpha
 
 
 @pointwise_dynamic(
     is_tensor=[True, False, False, False], promotion_methods=[(0, 1, "DEFAULT")]
 )
 @triton.jit
-def sub_func_tensor_scalar(x, y, alpha, inplace):
-    return x - y * alpha
+def add_func_tensor_scalar(x, y, alpha, inplace):
+    return x + y * alpha
 
 
 @pointwise_dynamic(
     is_tensor=[False, True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
 )
 @triton.jit
-def sub_func_scalar_tensor(x, y, alpha, inplace):
-    return x - y * alpha
+def add_func_scalar_tensor(x, y, alpha, inplace):
+    return x + y * alpha
 
 
-def sub(A, B, *, alpha=1):
-    logger.debug("GEMS_TSINGMICRO SUB")
+def add(A, B, *, alpha=1):
+    logger.debug("GEMS_TSINGMICRO ADD")
     A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
         A, complex
     )
@@ -46,7 +46,7 @@ def sub(A, B, *, alpha=1):
             Br = torch.view_as_real(B)
             common_dtype = torch.promote_types(Ar.dtype, Br.dtype)
             Ar, Br = Ar.to(common_dtype), Br.to(common_dtype)
-            out_real = sub_func(Ar, Br, alpha, False)
+            out_real = add_func(Ar, Br, alpha, False)
             return torch.view_as_complex(out_real).to(torch.result_type(A, B))
         elif A_is_complex and not B_is_complex:
             Ar = torch.view_as_real(A)
@@ -58,7 +58,7 @@ def sub(A, B, *, alpha=1):
                 )
             common_dtype = torch.promote_types(Ar.dtype, Br.dtype)
             Ar, Br = Ar.to(common_dtype), Br.to(common_dtype)
-            out_real = sub_func(Ar, Br, alpha, False)
+            out_real = add_func(Ar, Br, alpha, False)
             return torch.view_as_complex(out_real).to(torch.result_type(A, B))
         else:
             Br = torch.view_as_real(B)
@@ -70,22 +70,29 @@ def sub(A, B, *, alpha=1):
                 )
             common_dtype = torch.promote_types(Ar.dtype, Br.dtype)
             Ar, Br = Ar.to(common_dtype), Br.to(common_dtype)
-            out_real = sub_func(Ar, Br, alpha, False)
+            out_real = add_func(Ar, Br, alpha, False)
             return torch.view_as_complex(out_real).to(torch.result_type(A, B))
     elif isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        return sub_func(A, B, alpha, False)
+        if B.device != A.device:
+            B = B.to(A.device)
+        return add_func(A, B, alpha, False)
     elif isinstance(A, torch.Tensor):
-        return sub_func_tensor_scalar(A, B, alpha, False)
+        return add_func_tensor_scalar(A, B, alpha, False)
     elif isinstance(B, torch.Tensor):
-        return sub_func_scalar_tensor(A, B, alpha, False)
+        return add_func_scalar_tensor(A, B, alpha, False)
     else:
-        # Both scalar
-        return torch.tensor(A - B * alpha)
+        return torch.tensor(A + B * alpha)
 
 
-def sub_(A, B, *, alpha=1):
-    logger.debug("GEMS_TSINGMICRO SUB_")
-    if isinstance(B, torch.Tensor):
-        return sub_func(A, B, alpha, True, out0=A)
+def add_(A, B, *, alpha=1):
+    logger.debug("GEMS_TSINGMICRO ADD_")
+    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        if B.device != A.device:
+            B = B.to(A.device)
+        return add_func(A, B, alpha, True, out0=A)
+    elif isinstance(A, torch.Tensor):
+        return add_func_tensor_scalar(A, B, alpha, True, out0=A)
+    # elif isinstance(B, torch.Tensor):
+    #     return add_func_scalar_tensor(A, B, alpha, out0=A)
     else:
-        return sub_func_tensor_scalar(A, B, alpha, True, out0=A)
+        raise ValueError("Unreachable.")

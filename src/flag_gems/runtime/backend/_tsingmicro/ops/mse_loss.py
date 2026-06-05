@@ -59,7 +59,7 @@ class Reduction(Enum):
 
 
 def mse_loss(inp, target, reduction=Reduction.MEAN.value):
-    logger.debug("GEMS_TSINGMICRO MSE LOSS")
+    logger.debug("GEMS_TSINGMICRO MSE_LOSS")
     if reduction == Reduction.NONE.value:
         return func(inp, target)
 
@@ -74,14 +74,14 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
 
     mid = torch.empty((mid_size,), dtype=torch.float32, device=inp.device)
     if reduction == 2:
-        out = torch.empty([], dtype=torch.float32, device=inp.device) 
+        out = torch.empty([], dtype=torch.float32, device=inp.device)
     else:
         out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
         kernel_1[(mid_size, 1, 1)](inp, target, mid, M, block_size, reduction)
         kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
-    
+
     if reduction == 2:
         return out.to(dtype)
     else:

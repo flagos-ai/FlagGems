@@ -143,4 +143,3 @@ def reshape_and_cache_flash(
                 # autotune parameters
                 TILE_SIZE=TILE_SIZE,
             )
-

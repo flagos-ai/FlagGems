@@ -89,7 +89,9 @@ def generate_index_kernel(
             "offset0 = pid0.to(tl.int64)* BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0).to(tl.int64)[:, None]"
         )
         if inp_rank == indices_len:
-            code.writeline("offset1 = pid1.to(tl.int64) * 1 + tl.arange(0, 1).to(tl.int64)[None, :]")
+            code.writeline(
+                "offset1 = pid1.to(tl.int64) * 1 + tl.arange(0, 1).to(tl.int64)[None, :]"
+            )
         else:
             code.writeline(
                 "offset1 = pid1.to(tl.int64) * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1).to(tl.int64)[None, :]"

@@ -354,9 +354,7 @@ def generate_repeat_kernel(
             code.writeline("for j in range(0, tiles_per_cta):")
             with code.indent():
                 if rank > 0:
-                    _gen_index_decomp(
-                        code, rank, "(pid + j * num_ctas) * tile_size"
-                    )
+                    _gen_index_decomp(code, rank, "(pid + j * num_ctas) * tile_size")
 
                 # loads
                 code.writeline("# loads")
@@ -377,9 +375,7 @@ def generate_repeat_kernel(
                 dst_ptrs: str = " + ".join(
                     f"i{j} * out0_stride{j}" for j in range(rank)
                 )
-                store_stmt: str = (
-                    f"tl.store(out0_ptr + {dst_ptrs}, out0, mask=mask)"
-                )
+                store_stmt: str = f"tl.store(out0_ptr + {dst_ptrs}, out0, mask=mask)"
                 code.writeline(store_stmt)
                 code.newline()
     return code

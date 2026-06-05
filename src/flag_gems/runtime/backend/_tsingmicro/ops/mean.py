@@ -1,5 +1,4 @@
 import logging
-import math
 from functools import reduce
 
 import torch

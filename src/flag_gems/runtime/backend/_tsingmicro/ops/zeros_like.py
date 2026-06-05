@@ -4,8 +4,8 @@ import torch
 import triton
 
 from flag_gems.runtime import torch_device_fn
-from .zeros import zeros_kernel
 
+from .zeros import zeros_kernel
 
 TOTAL_CORE_NUM = torch_device_fn.get_device_properties().multi_processor_count
 

@@ -2,8 +2,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import libentry, tl_extra_shim
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry, libtuner, tl_extra_shim
 
 
 @triton.jit
@@ -272,31 +271,21 @@ def prune_fwd_configs(configs, nargs, **kwargs):
     else:
         seqlen_q = nargs["seqlen_q"]
         if seqlen_q >= 1024:
-            return list(
-                filter(lambda cfg: cfg.kwargs["BLOCK_M"] == 512, configs)
-            )
+            return list(filter(lambda cfg: cfg.kwargs["BLOCK_M"] == 512, configs))
         elif seqlen_q >= 512:
-            return list(
-                filter(lambda cfg: cfg.kwargs["BLOCK_M"] == 256, configs)
-            )
+            return list(filter(lambda cfg: cfg.kwargs["BLOCK_M"] == 256, configs))
         elif seqlen_q >= 256:
-            return list(
-                filter(lambda cfg: cfg.kwargs["BLOCK_M"] == 128, configs)
-            )
+            return list(filter(lambda cfg: cfg.kwargs["BLOCK_M"] == 128, configs))
         elif seqlen_q >= 128:
-            return list(
-                filter(lambda cfg: cfg.kwargs["BLOCK_M"] == 64, configs)
-            )
+            return list(filter(lambda cfg: cfg.kwargs["BLOCK_M"] == 64, configs))
         elif seqlen_q >= 64:
-            return list(
-                filter(lambda cfg: cfg.kwargs["BLOCK_M"] == 32, configs)
-            )
+            return list(filter(lambda cfg: cfg.kwargs["BLOCK_M"] == 32, configs))
         return configs
 
 
 @libentry()
 @libtuner(
-    #configs=list(filter(keep, runtime.get_tuned_config("attention"))),
+    # configs=list(filter(keep, runtime.get_tuned_config("attention"))),
     configs=runtime.get_tuned_config("attention"),
     prune_configs_by={"early_config_prune": prune_fwd_configs},
     key=["seqlen_q", "d", "is_dropout"],

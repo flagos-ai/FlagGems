@@ -5,11 +5,11 @@ from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import torch
 import triton
+from _tsingmicro.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
 from triton.runtime.jit import JITFunction
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
-from _tsingmicro.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
 from flag_gems.utils.device_info import get_device_capability
 from flag_gems.utils.shape_utils import (
     MemOverlap,
@@ -24,7 +24,7 @@ from flag_gems.utils.shape_utils import (
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
 
-from .. import SPM_SIZE, SYS_SPM_RESERVED_SIZE, OPS_SPM_RESERVED_SIZE
+from .. import OPS_SPM_RESERVED_SIZE, SPM_SIZE, SYS_SPM_RESERVED_SIZE
 
 
 # ------------------ Operation Description ---------------------------
@@ -491,7 +491,8 @@ class KernelGenerator:
                     )
                     code.writeline(
                         f"in{i} = tl.load(in{i}_bptr, boundary_check=({order})).to(in{i}_ptr.type.element_ty) "
-                        "# workaround the bug on bool, we should use the original pointer's dtype(instead of block pointer's)"
+                        "# workaround the bug on bool, "
+                        "#we should use the original pointer's dtype(instead of block pointer's)"
                     )
             else:
                 code.writeline(
@@ -500,7 +501,8 @@ class KernelGenerator:
                 )
                 code.writeline(
                     f"in{i} = tl.load(in{i}_bptr, boundary_check=({order})).to(in{i}_ptr.type.element_ty) "
-                    "# workaround the bug on bool, we should use the original pointer's dtype(instead of block pointer's)"
+                    "# workaround the bug on bool, "
+                    "#we should use the original pointer's dtype(instead of block pointer's)"
                 )
         code.newline()
 
@@ -919,15 +921,23 @@ class WrapperGenerator:
                     f"tile_sizes = heuristics_for_tile_size({max_tile_size}, num_tasks)"
                 )
 
-            # code.writeline("tile_size = tile_sizes[0]")            
-            code.writeline(f"tile_size = triton.next_power_of_2(num_tasks // {max_grid_size0})")
+            # code.writeline("tile_size = tile_sizes[0]")
+            code.writeline(
+                f"tile_size = triton.next_power_of_2(num_tasks // {max_grid_size0})"
+            )
             code.writeline(f"if tile_size == 0 or tile_size > {max_tile_size}:")
             with code.indent():
                 code.writeline(f"tile_size = {max_tile_size}")
             code.writeline("")
-            code.writeline(f"num_tensors = {self.fx.num_input_tensors() +  self.fx.num_output_tensors()}")
-            code.writeline(f"available_spm_size = {SPM_SIZE} - {SYS_SPM_RESERVED_SIZE} - {OPS_SPM_RESERVED_SIZE}")
-            code.writeline("while tile_size * in0.element_size() * num_tensors >= available_spm_size:")
+            code.writeline(
+                f"num_tensors = {self.fx.num_input_tensors() + self.fx.num_output_tensors()}"
+            )
+            code.writeline(
+                f"available_spm_size = {SPM_SIZE} - {SYS_SPM_RESERVED_SIZE} - {OPS_SPM_RESERVED_SIZE}"
+            )
+            code.writeline(
+                "while tile_size * in0.element_size() * num_tensors >= available_spm_size:"
+            )
             with code.indent():
                 code.writeline("tile_size = tile_size // 2")
             # code.writeline("print(f\"num_tasks={num_tasks}\")")
@@ -1372,14 +1382,14 @@ class PointwiseDynamicFunction:
             wrapper_name,
             self.config,
         )
-        
-        if ndim ==2 :         
-            rm_prefer_1d_tile = self.config.prefer_1d_tile   
+
+        if ndim == 2:
+            rm_prefer_1d_tile = self.config.prefer_1d_tile
             self.config.prefer_1d_tile = False
-            module_gen.codegen(code)            
+            module_gen.codegen(code)
             self.config.prefer_1d_tile = rm_prefer_1d_tile
         else:
-            module_gen.codegen(code)    
+            module_gen.codegen(code)
 
         # NOTE: [why write the generated code to a file]
         # triton uses inpsect to get the source of the jitted function, which requires

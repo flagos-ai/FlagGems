@@ -350,9 +350,7 @@ def generate_tile_kernel(
             code.writeline("for j in range(0, tiles_per_cta):")
             with code.indent():
                 if rank > 0:
-                    _gen_index_decomp(
-                        code, rank, "(pid + j * num_ctas) * tile_size"
-                    )
+                    _gen_index_decomp(code, rank, "(pid + j * num_ctas) * tile_size")
 
                 # loads
                 code.writeline("# loads")

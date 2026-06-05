@@ -28,12 +28,12 @@ def count_nonzero_kernel_1(x_ptr, out_ptr, numel, BLOCK_SIZE: tl.constexpr):
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("count_nonzero"), 
+    configs=runtime.get_tuned_config("count_nonzero"),
     key=["numel"],
     strategy=["align32"],
     warmup=1,
     rep=2,
-    )
+)
 @triton.jit
 def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
     pid_0 = tle.program_id(0).to(tl.int64)
@@ -73,12 +73,12 @@ def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("count_nonzero"), 
+    configs=runtime.get_tuned_config("count_nonzero"),
     key=["numel"],
     strategy=["align32"],
     warmup=1,
     rep=2,
-    )
+)
 @triton.jit
 def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
     pid_x = tle.program_id(0).to(tl.int64)
@@ -112,7 +112,6 @@ def count_nonzero_combin_kernel(
 
 def count_nonzero(x, dim=None):
     logger.debug("GEMS_TSINGMICRO COUNT NONZERO")
-    print("GEMS_TSINGMICRO COUNT NONZERO")
     if dim is not None:
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         shape = x.shape

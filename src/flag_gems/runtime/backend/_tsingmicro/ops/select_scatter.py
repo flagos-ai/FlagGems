@@ -1,14 +1,16 @@
 import logging
+
 import torch
 import triton
 import triton.language as tl
-import os
+
 from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
 
 logger = logging.getLogger(__name__)
 
 # the uplimit f32 can present the precision of i32
 _F32_PRECISION_NUMEL_THRESHOLD = 2**24
+
 
 @triton.jit
 def select_scatter_kernel(
@@ -59,6 +61,7 @@ def select_scatter_kernel(
         src_data = tl.load(src_ptr + src_idx, mask=mask & select_mask)
         result = tl.where(select_mask, src_data, inp_data)
         tl.store(out_ptr + idx, result, mask=mask)
+
 
 def select_scatter(inp, src, dim, index):
     logger.debug("GEMS_TSINGMICRO SELECT_SCATTER")

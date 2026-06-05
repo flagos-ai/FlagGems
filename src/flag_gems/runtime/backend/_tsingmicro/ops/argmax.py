@@ -8,8 +8,8 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils.shape_utils import can_use_int32_index
 from flag_gems.utils.limits import get_dtype_min
+from flag_gems.utils.shape_utils import can_use_int32_index
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -76,15 +76,11 @@ def argmax_kernel_1(
 
 @libentry()
 @triton.jit
-def argmax_kernel_2(
-    mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
-):
+def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr):
     min_value = get_dtype_min(mid_value.type.element_ty)
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid_value + offset
-    mid_val = tl.load(
-        mid_ptrs, mask=(offset < mid_size), other=min_value
-    )
+    mid_val = tl.load(mid_ptrs, mask=(offset < mid_size), other=min_value)
     index_val = tl.argmax(mid_val, axis=0)
     mid_index_ptrs = mid_index + index_val
     out_val = tl.load(mid_index_ptrs)
