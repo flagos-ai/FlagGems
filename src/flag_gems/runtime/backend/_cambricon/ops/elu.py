@@ -58,7 +58,7 @@ def elu_(A, alpha=1.0, scale=1.0, input_scale=1.0):
 
 
 def elu_backward(grad_output, alpha, scale, input_scale, is_result, self_or_result):
-    logger.debug("GEMS ELU BACKWARD")
+    logger.debug("GEMS_CAMBRICON ELU_BACKWARD")
     if is_result:
         return elu_backward_kernel_with_result(
             grad_output, alpha, scale, input_scale, self_or_result
