@@ -28,12 +28,14 @@ from flag_gems.ops.arcsinh_ import arcsinh_
 from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
+from flag_gems.ops.argsort import argsort
 from flag_gems.ops.as_strided_copy import as_strided_copy, as_strided_copy_out
 from flag_gems.ops.asinh import asinh, asinh_out
 from flag_gems.ops.asinh_ import asinh_
 from flag_gems.ops.assert_async import _assert_async
 from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.atan2 import atan2, atan2_out
+from flag_gems.ops.atanh import atanh, atanh_
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -79,6 +81,7 @@ from flag_gems.ops.clamp import (
     clamp_tensor,
     clamp_tensor_,
 )
+from flag_gems.ops.clamp_max import clamp_max, clamp_max_  # noqa: F401
 from flag_gems.ops.clip import clip, clip_
 from flag_gems.ops.col2im import col2im
 from flag_gems.ops.concatenate import concatenate
@@ -285,6 +288,7 @@ from flag_gems.ops.rad2deg import rad2deg, rad2deg_
 from flag_gems.ops.rand import rand
 from flag_gems.ops.rand_like import rand_like
 from flag_gems.ops.randint import randint
+from flag_gems.ops.randint_like import randint_like
 from flag_gems.ops.randn import randn
 from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
@@ -295,6 +299,7 @@ from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_ou
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
 from flag_gems.ops.remainder import remainder, remainder_
+from flag_gems.ops.renorm import renorm, renorm_
 from flag_gems.ops.repeat import repeat
 from flag_gems.ops.repeat_interleave import (
     repeat_interleave_self_int,
@@ -307,10 +312,12 @@ from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from flag_gems.ops.roll import roll
+from flag_gems.ops.rot90 import rot90
 from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.rsub import rsub_scalar, rsub_tensor
+from flag_gems.ops.scaled_mm import scaled_mm, scaled_mm_out
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
 from flag_gems.ops.scatter_add_ import scatter_add_
@@ -359,6 +366,7 @@ from flag_gems.ops.swish import swish, swish_, swish_backward
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
+from flag_gems.ops.tensor_split import tensor_split
 from flag_gems.ops.threshold import threshold, threshold_backward
 from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
@@ -377,10 +385,12 @@ from flag_gems.ops.upsample_linear1d import upsample_linear1d
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
+from flag_gems.ops.upsample_trilinear3d import upsample_trilinear3d
 from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
+from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vstack import vstack
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from flag_gems.ops.weightnorm import (
@@ -448,6 +458,7 @@ __all__ = [
     "arctanh_",
     "argmax",
     "argmin",
+    "argsort",
     "as_strided_copy",
     "as_strided_copy_out",
     "asinh",
@@ -457,6 +468,8 @@ __all__ = [
     "atan2",
     "atan2_out",
     "atan_",
+    "atanh",
+    "atanh_",
     "avg_pool2d",
     "avg_pool2d_backward",
     "avg_pool3d",
@@ -494,6 +507,8 @@ __all__ = [
     "celu_",
     "clamp",
     "clamp_",
+    "clamp_max",
+    "clamp_max_",
     "clamp_min",
     "clamp_min_",
     "clamp_tensor",
@@ -755,6 +770,7 @@ __all__ = [
     "rand",
     "rand_like",
     "randint",
+    "randint_like",
     "randn",
     "randn_like",
     "randperm",
@@ -770,6 +786,8 @@ __all__ = [
     "relu_",
     "remainder",
     "remainder_",
+    "renorm",
+    "renorm_",
     "repeat",
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
@@ -783,6 +801,7 @@ __all__ = [
     "rms_norm_backward",
     "rms_norm_forward",
     "roll",
+    "rot90",
     "round",
     "round_",
     "round_out",
@@ -795,6 +814,8 @@ __all__ = [
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "scaled_mm",
+    "scaled_mm_out",
     "scaled_softmax_backward",
     "scaled_softmax_forward",
     "ScaleDotProductAttention",
@@ -865,6 +886,7 @@ __all__ = [
     "tanh",
     "tanh_",
     "tanh_backward",
+    "tensor_split",
     "threshold",
     "threshold_backward",
     "tile",
@@ -887,12 +909,14 @@ __all__ = [
     "upsample_nearest1d",
     "upsample_nearest2d",
     "upsample_nearest3d",
+    "upsample_trilinear3d",
     "var",
     "var_correction",
     "var_dim",
     "var_mean",
     "vdot",
     "vector_norm",
+    "view_copy",
     "vstack",
     "w8a8_block_fp8_matmul",
     "weight_norm_interface",
