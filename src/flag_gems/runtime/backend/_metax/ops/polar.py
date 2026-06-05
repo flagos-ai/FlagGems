@@ -39,7 +39,7 @@ def polar_kernel_kernel(
 
 
 def polar(abs, angle):
-    logger.debug("METAX GEMS polar")
+    logger.debug("GEMS_METAX polar")
     output = torch.empty((*abs.shape, 2), dtype=abs.dtype, device=abs.device)
     n_input = abs.numel()
     n_output = output.numel()
