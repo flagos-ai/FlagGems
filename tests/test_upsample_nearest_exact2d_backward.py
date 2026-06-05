@@ -1,0 +1,76 @@
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+
+
+@pytest.mark.upsample_nearest_exact2d_backward
+@pytest.mark.parametrize("shape", utils.UPSAMPLE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_upsample_nearest_exact2d_backward(shape, dtype):
+    # Create input tensor and upsample it to get output size
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_x = utils.to_reference(x)
+
+    # Forward pass to get output size
+    out_h = shape[2] * 2
+    out_w = shape[3] * 2
+    output_size = (out_h, out_w)
+
+    # Compute reference forward output using torch.ops.aten
+    ref_out = torch.ops.aten._upsample_nearest_exact2d(
+        ref_x, [out_h, out_w], None, None
+    )
+    # Create grad_output from forward output (using ones for gradient)
+    # Move to GPU since ref_out is on CPU due to utils.to_reference
+    grad_output = torch.ones_like(ref_out).to(flag_gems.device)
+
+    # Compute backward
+    input_size = tuple(x.shape)  # (N, C, H, W)
+
+    ref_grad_input = torch.ops.aten._upsample_nearest_exact2d_backward.default(
+        grad_output, output_size, input_size
+    )
+
+    with flag_gems.use_gems():
+        res_grad_input = torch.ops.aten._upsample_nearest_exact2d_backward.default(
+            grad_output, output_size, input_size
+        )
+
+    utils.gems_assert_close(res_grad_input, ref_grad_input, dtype)
+
+
+@pytest.mark.upsample_nearest_exact2d_backward
+@pytest.mark.parametrize("shape", utils.UPSAMPLE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_upsample_nearest_exact2d_backward_with_scales(shape, dtype):
+    # Test with explicit scales
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_x = utils.to_reference(x)
+
+    # Use scales instead of output_size
+    scale_h = 2.0
+    scale_w = 2.0
+    out_h = int(shape[2] * scale_h)
+    out_w = int(shape[3] * scale_w)
+    output_size = (out_h, out_w)
+
+    # Compute reference forward output using torch.ops.aten
+    ref_out = torch.ops.aten._upsample_nearest_exact2d(ref_x, None, [scale_h, scale_w])
+    # Create grad_output - move to GPU since ref_out is on CPU
+    grad_output = torch.ones_like(ref_out).to(flag_gems.device)
+
+    input_size = tuple(x.shape)
+
+    ref_grad_input = torch.ops.aten._upsample_nearest_exact2d_backward.default(
+        grad_output, output_size, input_size, scale_h, scale_w
+    )
+
+    with flag_gems.use_gems():
+        res_grad_input = torch.ops.aten._upsample_nearest_exact2d_backward.default(
+            grad_output, output_size, input_size, scale_h, scale_w
+        )
+
+    utils.gems_assert_close(res_grad_input, ref_grad_input, dtype)
