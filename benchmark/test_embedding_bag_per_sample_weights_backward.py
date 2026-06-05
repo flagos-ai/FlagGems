@@ -46,7 +46,7 @@ class EmbeddingBagPerSampleWeightsBackwardBenchmark(base.Benchmark):
 @pytest.mark.embedding_bag_per_sample_weights_backward
 def test_embedding_bag_per_sample_weights_backward():
     bench = EmbeddingBagPerSampleWeightsBackwardBenchmark(
-        op_name="embedding_bag_per_sample_weights_backward",
+        op_name="_embedding_bag_per_sample_weights_backward",
         torch_op=torch.ops.aten._embedding_bag_per_sample_weights_backward,
         # _embedding_bag_per_sample_weights_backward only supports float32 in PyTorch
         dtypes=[torch.float32],
