@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base
 
 
 # Shapes representing realistic optimizer parameter sizes:
