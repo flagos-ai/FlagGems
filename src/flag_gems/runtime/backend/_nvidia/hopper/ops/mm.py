@@ -268,7 +268,7 @@ def mm_kernel_general(
 def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     configs = [
         triton.Config(
-            {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
+            {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK, "GROUP_M": 8},
             num_stages=s,
             num_warps=w,
             pre_hook=pre_hook,
@@ -448,7 +448,6 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
                 b.stride(1),
                 c.stride(0),
                 c.stride(1),
-                GROUP_M=8,
                 A_ROW_MAJOR=a_row_major,
                 B_ROW_MAJOR=b_row_major,
                 dtype=dtype_str,
