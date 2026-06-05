@@ -4,23 +4,33 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
 
-
-@pytest.mark.reflection_pad2d
-@pytest.mark.parametrize(
-    "shape", [(3, 33, 33), (2, 4, 32, 64), (8, 16, 64, 64), (32, 64, 128, 256)]
-)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize(
-    "padding",
-    [
+if QUICK_MODE:
+    REFLECTION_PAD2D_SHAPES = [(3, 33, 33)]
+    REFLECTION_PAD2D_DTYPES = [torch.float32]
+    REFLECTION_PAD2D_PADDINGS = [(1, 1, 1, 1)]
+else:
+    REFLECTION_PAD2D_SHAPES = [
+        (3, 33, 33),
+        (2, 4, 32, 64),
+        (8, 16, 64, 64),
+        (32, 64, 128, 256),
+    ]
+    REFLECTION_PAD2D_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
+    REFLECTION_PAD2D_PADDINGS = [
         (1, 1, 1, 1),
         (2, 3, 2, 3),
         (3, 5, 3, 5),
         (0, 4, 0, 4),
         (4, 0, 4, 0),
-    ],
-)
+    ]
+
+
+@pytest.mark.reflection_pad2d
+@pytest.mark.parametrize("shape", REFLECTION_PAD2D_SHAPES)
+@pytest.mark.parametrize("dtype", REFLECTION_PAD2D_DTYPES)
+@pytest.mark.parametrize("padding", REFLECTION_PAD2D_PADDINGS)
 def test_reflection_pad2d(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -84,20 +94,9 @@ def test_reflection_pad2d_3d_input(padding):
 
 
 @pytest.mark.reflection_pad2d_out
-@pytest.mark.parametrize(
-    "shape", [(3, 33, 33), (2, 4, 32, 64), (8, 16, 64, 64), (32, 64, 128, 256)]
-)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize(
-    "padding",
-    [
-        (1, 1, 1, 1),
-        (2, 3, 2, 3),
-        (3, 5, 3, 5),
-        (0, 4, 0, 4),
-        (4, 0, 4, 0),
-    ],
-)
+@pytest.mark.parametrize("shape", REFLECTION_PAD2D_SHAPES)
+@pytest.mark.parametrize("dtype", REFLECTION_PAD2D_DTYPES)
+@pytest.mark.parametrize("padding", REFLECTION_PAD2D_PADDINGS)
 def test_reflection_pad2d_out(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     pad_left, pad_right, pad_top, pad_bottom = padding
