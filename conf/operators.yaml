@@ -188,6 +188,20 @@ ops:
     stages:
       - stable: '1.0'
     cpp: '4.0'
+  - id: addmm_
+    description: |
+      The in-place version of `addmm`. Performs the matrix multiplication of `mat1`
+      and `mat2`, multiplied by `alpha`, then adds `beta` times `input` to the result
+      in-place.
+    for:
+      - addmm_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - stable: '2.2'
   - id: addmm_dtype
     description: |
       A variant of `addmm` that allows the dtype of the output tensor to be specified.
@@ -640,6 +654,28 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: atanh
+    description: Triton kernel implementation for atanh.
+    for:
+      - atanh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: atanh_
+    description: The in-place version of `atanh()`.
+    for:
+      - atanh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: avg_pool2d
     description: |
       Applies 2D average-pooling operation in `kH \mul kW` regions by step size `sH \mul sW` steps.
@@ -4157,6 +4193,30 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: renorm
+    description: >
+      Returns a tensor where each sub-tensor along the given dimension
+      is normalized such that the p-norm is lower than a max norm value.
+    for:
+      - renorm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: renorm_
+    description: The in-place version of `renorm()`.
+    for:
+      - renorm_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: reflection_pad1d_backward
     description: Computes the gradient of reflection_pad1d with respect to the input tensor.
     for:
@@ -4833,6 +4893,19 @@ ops:
     kind:
       - Distribution
     stages:
+      - stable: '2.1'
+  - id: randint_like
+    description: |
+      Returns a tensor with the same size as `input` that is filled with random integers
+      generated uniformly between `0` (inclusive) and `high` (exclusive).
+    for:
+      - randint_like
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Distribution
+    stages:
       - alpha: '5.1'
   - id: randperm
     description: Returns a random permutation of integers from `0` to `n - 1`.
@@ -4972,6 +5045,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: remainder
+    description: |
+      Computes Python's modulus operation entrywise. The result has the same sign
+      as the divisor `other` and its absolute value is less than that of `other`.
+    for:
+      - remainder
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: remainder_scalar
     description: |
       Computes Python's modulus operation entrywise. The result has the same sign
@@ -6494,17 +6580,6 @@ ops:
   #     - Tensor
   #   stages:
   #     - alpha: '5.0'
-  - id: unsafe_masked_index
-    description: Triton kernel implementation for _unsafe_masked_index.
-    for:
-      - _unsafe_masked_index
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.1'
   - id: upsample_bicubic2d
     description: A variant of `upsample()` that has `mode` set to `bicubic`.
     for:
