@@ -206,4 +206,6 @@ def get_tuned_config(func):
 
 
 def setup_triton_config():
-    TunedConfigLoader.get_tuned_config = get_tuned_config(TunedConfigLoader.get_tuned_config)
+    TunedConfigLoader.get_tuned_config = get_tuned_config(
+        TunedConfigLoader.get_tuned_config
+    )
