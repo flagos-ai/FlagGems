@@ -4214,6 +4214,17 @@ ops:
       - Math
     stages:
       - alpha: '5.1'
+  - id: rot90
+    description: Triton kernel implementation for rot90.
+    for:
+      - rot90
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: smooth_l1_loss
     description: Compute the smooth L1 loss between input and target tensors.
     for:
@@ -6687,6 +6698,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: upsample_trilinear3d
+    description: Upsamples the input (NCDHW) using trilinear interpolation.
+    for:
+      - upsample_trilinear3d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: var
     description: Calculates the variance over all dimensions.
     for:
