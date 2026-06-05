@@ -31,5 +31,5 @@ def smooth_l1_triton(x, y, beta=1.0):
     n = x.numel()
     out = torch.empty_like(x)
     grid = ((n + 1024 - 1) // 1024,)
-    smooth_l1_kernel[grid](<x, y, out, beta, n, 1024>)
+    smooth_l1_kernel[grid](x, y, out, beta, n, 1024)
     return out
