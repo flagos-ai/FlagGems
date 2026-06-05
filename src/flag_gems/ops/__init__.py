@@ -35,6 +35,7 @@ from flag_gems.ops.asinh_ import asinh_
 from flag_gems.ops.assert_async import _assert_async
 from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.atan2 import atan2, atan2_out
+from flag_gems.ops.atanh import atanh, atanh_
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -287,6 +288,7 @@ from flag_gems.ops.rad2deg import rad2deg, rad2deg_
 from flag_gems.ops.rand import rand
 from flag_gems.ops.rand_like import rand_like
 from flag_gems.ops.randint import randint
+from flag_gems.ops.randint_like import randint_like
 from flag_gems.ops.randn import randn
 from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
@@ -297,6 +299,7 @@ from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_ou
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
 from flag_gems.ops.remainder import remainder, remainder_
+from flag_gems.ops.renorm import renorm, renorm_
 from flag_gems.ops.repeat import repeat
 from flag_gems.ops.repeat_interleave import (
     repeat_interleave_self_int,
@@ -384,6 +387,7 @@ from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
+from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vstack import vstack
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from flag_gems.ops.weightnorm import (
@@ -461,6 +465,8 @@ __all__ = [
     "atan2",
     "atan2_out",
     "atan_",
+    "atanh",
+    "atanh_",
     "avg_pool2d",
     "avg_pool2d_backward",
     "avg_pool3d",
@@ -761,6 +767,7 @@ __all__ = [
     "rand",
     "rand_like",
     "randint",
+    "randint_like",
     "randn",
     "randn_like",
     "randperm",
@@ -776,6 +783,8 @@ __all__ = [
     "relu_",
     "remainder",
     "remainder_",
+    "renorm",
+    "renorm_",
     "repeat",
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
@@ -899,6 +908,7 @@ __all__ = [
     "var_mean",
     "vdot",
     "vector_norm",
+    "view_copy",
     "vstack",
     "w8a8_block_fp8_matmul",
     "weight_norm_interface",

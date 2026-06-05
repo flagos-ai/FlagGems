@@ -318,37 +318,36 @@ def mm_out(a, b, *, out):
     return c
 
 
-def matmul_sqmma_set_block_size_hook(nargs):
-    BLOCK_M = nargs["BLOCK_M"]
-    BLOCK_N = nargs["BLOCK_N"]
-    BLOCK_K = nargs["BLOCK_K"]
-    nargs["a_desc"].block_shape = [BLOCK_M, BLOCK_K]
-    nargs["b_desc"].block_shape = [BLOCK_K, BLOCK_N]
-    nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
-
-
-def sqmma_get_configs(pre_hook=matmul_sqmma_set_block_size_hook):
-    return [
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128},
-            num_stages=1,
-            num_warps=4,
-            pre_hook=pre_hook,
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64},
-            num_stages=1,
-            num_warps=4,
-            pre_hook=pre_hook,
-        ),
-    ]
+def sqmma_descriptor_pre_hook(nargs):
+    nargs["a_desc"].block_shape = [nargs["BLOCK_M"], nargs["BLOCK_K"]]
+    nargs["b_desc"].block_shape = [nargs["BLOCK_K"], nargs["BLOCK_N"]]
+    nargs["c_desc"].block_shape = [nargs["BLOCK_M"], nargs["BLOCK_N"]]
 
 
 @libentry()
 @libtuner(
-    configs=sqmma_get_configs(),
-    key=["M", "N", "K", "dtype"],
-    strategy=["align32", "align32", "align32", "default"],
+    configs=runtime.ops_get_configs(
+        "mm_general_tma",
+        pre_hook=sqmma_descriptor_pre_hook,
+        yaml_path=EXPAND_CONFIG_FILENAME,
+    )
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else [
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64, "GROUP_M": 8},
+            num_stages=1,
+            num_warps=4,
+            pre_hook=sqmma_descriptor_pre_hook,
+        )
+    ],
+    key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    strategy=runtime.get_expand_config(
+        "mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
+    )["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    warmup=5,
+    rep=5,
 )
 @triton.jit
 def mm_sqmma_kernel(
@@ -385,16 +384,7 @@ def mm_sqmma_kernel(
     tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], accumulator.to(c_desc.dtype))
 
 
-def get_triton_type(elem_type):
-    type_map = {
-        torch.float16: tl.float16,
-        torch.bfloat16: tl.bfloat16,
-        torch.float8_e4m3fn: tl.float8e4nv,
-    }
-    return type_map.get(elem_type, None)
-
-
-def mm_sqmma(A, B, M, N, K, GROUP_M):
+def mm_sqmma(A, B, M, N, K):
     logger.debug("GEMS_MTHREADS MM(SQMMA)")
     device = A.device
     if not A.is_contiguous():
@@ -406,12 +396,9 @@ def mm_sqmma(A, B, M, N, K, GROUP_M):
     assert a_type == b_type, "Mat A and Mat B should have the same dtype"
     c_dtype = get_higher_dtype(a_type, b_type)
     C = torch.empty((M, N), dtype=c_dtype, device=device)
-    # Real block_shape values are filled in by matmul_sqmma_set_block_size_hook
-    # at autotune/launch time based on the BLOCK_M/N/K selected by libtuner.
-    dummy_block = [1, 1]
-    desc_a = TensorDescriptor(A, A.shape, A.stride(), dummy_block)
-    desc_b = TensorDescriptor(B, B.shape, B.stride(), dummy_block)
-    desc_c = TensorDescriptor(C, C.shape, C.stride(), dummy_block)
+    desc_a = TensorDescriptor.from_tensor(A, [1, 1])
+    desc_b = TensorDescriptor.from_tensor(B, [1, 1])
+    desc_c = TensorDescriptor.from_tensor(C, [1, 1])
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
         1,
@@ -424,8 +411,7 @@ def mm_sqmma(A, B, M, N, K, GROUP_M):
         M,
         N,
         K,
-        dtype=str(a_type).split(".")[-1],
-        GROUP_M=GROUP_M,
+        str(a_type).split(".")[-1],
     )
     return C
 
@@ -441,14 +427,12 @@ def mm(a, b):
         return gemv_mm(a, b, c, M, K)
 
     if is_sqmma_compatible(a, b, N, K):
-        GROUP_M = 8
         return mm_sqmma(
             a,
             b,
             M,
             N,
             K,
-            GROUP_M,
         )
     else:
         return mm_fma(a, b)

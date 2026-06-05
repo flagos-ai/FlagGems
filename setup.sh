@@ -128,7 +128,7 @@ fi
 # export USE_TRITON=0
 
 ## Vendor-specific installation steps
-source tools/set-env.sh ${VENDOR}
-source tools/setup_vendor.sh ${VENDOR}
+source tools/env.sh ${VENDOR}
+source tools/vendor.sh ${VENDOR}
 
 [ "$?" == 0 ] || { echo "Failed to setup FlagGems" ; exit 1; }
