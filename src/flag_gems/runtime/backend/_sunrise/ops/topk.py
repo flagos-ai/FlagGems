@@ -9,7 +9,7 @@ import triton.language.core as core
 try:
     # TODO: Triton 2.1 does not implement _log2.
     # Remove the try-catch block once all vendors upgrade to a newer version of Triton.
-    from triton.language.standard import _log2, zeros_like
+    from triton.language.standard import _log2
 except ImportError:
     pass
 
