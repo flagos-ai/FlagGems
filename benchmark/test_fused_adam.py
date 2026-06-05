@@ -3,7 +3,28 @@ import torch
 
 import flag_gems
 
-from . import base
+from . import base, consts
+
+
+# Shapes representing realistic optimizer parameter sizes:
+# small embedding / attention weights / MLP weights
+_FUSED_ADAM_SHAPES = [
+    (256, 256),
+    (512, 512),
+    (1024, 256),
+    (2048, 512),
+    (4096, 256),
+    (65536,),
+]
+
+
+class FusedAdamBenchmark(base.GenericBenchmark):
+    # fused_adam uses 6 tensors per case (param, grad, 3 state, step)
+    # so shapes are kept moderate to avoid OOM on CI GPUs
+    DEFAULT_SHAPES = _FUSED_ADAM_SHAPES
+
+    def set_shapes(self, shape_file=None):
+        self.shapes = list(_FUSED_ADAM_SHAPES)
 
 
 def fused_adam_input_fn(shape, dtype, device):
@@ -58,7 +79,7 @@ def test_fused_adam():
             maximize=False,
         )
 
-    bench = base.GenericBenchmark(
+    bench = FusedAdamBenchmark(
         input_fn=fused_adam_input_fn,
         op_name="fused_adam",
         torch_op=torch_op,
@@ -89,7 +110,7 @@ def test_fused_adam_():
         )
         return param
 
-    bench = base.GenericBenchmark(
+    bench = FusedAdamBenchmark(
         input_fn=fused_adam_input_fn,
         op_name="fused_adam_",
         torch_op=torch_op,
