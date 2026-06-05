@@ -35,6 +35,7 @@ from flag_gems.ops.asinh_ import asinh_
 from flag_gems.ops.assert_async import _assert_async
 from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.atan2 import atan2, atan2_out
+from flag_gems.ops.atanh import atanh, atanh_
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -311,6 +312,7 @@ from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from flag_gems.ops.roll import roll
+from flag_gems.ops.rot90 import rot90
 from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
@@ -323,6 +325,12 @@ from flag_gems.ops.scatter_reduce import (
     scatter_reduce,
     scatter_reduce_,
     scatter_reduce_out,
+)
+from flag_gems.ops.searchsorted import (
+    searchsorted,
+    searchsorted_out,
+    searchsorted_scalar,
+    searchsorted_scalar_out,
 )
 from flag_gems.ops.select_backward import select_backward
 from flag_gems.ops.select_scatter import select_scatter
@@ -353,6 +361,7 @@ from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
+from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
 from flag_gems.ops.stack import stack
@@ -363,6 +372,7 @@ from flag_gems.ops.svd import svd
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
+from flag_gems.ops.tensor_split import tensor_split
 from flag_gems.ops.threshold import threshold, threshold_backward
 from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
@@ -381,10 +391,12 @@ from flag_gems.ops.upsample_linear1d import upsample_linear1d
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
+from flag_gems.ops.upsample_trilinear3d import upsample_trilinear3d
 from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
+from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vstack import vstack
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from flag_gems.ops.weightnorm import (
@@ -462,6 +474,8 @@ __all__ = [
     "atan2",
     "atan2_out",
     "atan_",
+    "atanh",
+    "atanh_",
     "avg_pool2d",
     "avg_pool2d_backward",
     "avg_pool3d",
@@ -793,6 +807,7 @@ __all__ = [
     "rms_norm_backward",
     "rms_norm_forward",
     "roll",
+    "rot90",
     "round",
     "round_",
     "round_out",
@@ -816,6 +831,10 @@ __all__ = [
     "scatter_reduce",
     "scatter_reduce_",
     "scatter_reduce_out",
+    "searchsorted",
+    "searchsorted_out",
+    "searchsorted_scalar",
+    "searchsorted_scalar_out",
     "select_backward",
     "select_scatter",
     "selu",
@@ -852,6 +871,7 @@ __all__ = [
     "special_i0e_out",
     "special_i1",
     "special_i1_out",
+    "split_with_sizes_copy",
     "sqrt",
     "sqrt_",
     "square",
@@ -874,6 +894,7 @@ __all__ = [
     "tanh",
     "tanh_",
     "tanh_backward",
+    "tensor_split",
     "threshold",
     "threshold_backward",
     "tile",
@@ -896,12 +917,14 @@ __all__ = [
     "upsample_nearest1d",
     "upsample_nearest2d",
     "upsample_nearest3d",
+    "upsample_trilinear3d",
     "var",
     "var_correction",
     "var_dim",
     "var_mean",
     "vdot",
     "vector_norm",
+    "view_copy",
     "vstack",
     "w8a8_block_fp8_matmul",
     "weight_norm_interface",
