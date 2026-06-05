@@ -2,6 +2,7 @@ from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from flag_gems.ops._fused_adam import _fused_adam, _fused_adam_
 from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
@@ -418,6 +419,8 @@ __all__ = [
     "_conv_depthwise2d",
     "_euclidean_dist",
     "_functional_sym_constrain_range_for_size",
+    "_fused_adam",
+    "_fused_adam_",
     "_index_put_impl_",
     "_is_all_true",
     "_safe_softmax",
