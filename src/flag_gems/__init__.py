@@ -155,6 +155,7 @@ _FULL_CONFIG = (
     ("ceil", ceil),
     ("ceil_", ceil_),
     ("ceil.out", ceil_out),
+    ("channel_shuffle", channel_shuffle),
     ("clamp", clamp),
     ("clamp.Tensor", clamp_tensor),
     ("clamp_max", clamp_max),
