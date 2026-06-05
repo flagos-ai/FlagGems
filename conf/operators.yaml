@@ -6002,6 +6002,20 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: special_log_ndtr
+    description: |
+      Computes the log of the standard normal cumulative distribution function
+      log(Phi(x)) for each element of `input`, where Phi is the CDF of the
+      standard normal distribution.
+    for:
+      - special_log_ndtr
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
