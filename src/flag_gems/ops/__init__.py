@@ -5,6 +5,11 @@ from flag_gems.ops._functional_sym_constrain_range_for_size import (
 from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
+from flag_gems.ops._weight_norm import (
+    _weight_norm,
+    weight_norm_interface,
+    weight_norm_interface_backward,
+)
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
@@ -392,10 +397,6 @@ from flag_gems.ops.vector_norm import vector_norm
 from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vstack import vstack
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
-from flag_gems.ops.weightnorm import (
-    weight_norm_interface,
-    weight_norm_interface_backward,
-)
 from flag_gems.ops.where import (
     where_scalar_other,
     where_scalar_self,
@@ -418,6 +419,7 @@ __all__ = [
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact1d",
+    "_weight_norm",
     "abs",
     "abs_",
     "absolute",

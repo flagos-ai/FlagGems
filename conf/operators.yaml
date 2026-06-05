@@ -6803,8 +6803,10 @@ ops:
       from its direction (v). It is a hook that compute the actual weight before
       each forward pass.
     for:
-      - weight_norm
+      - _weight_norm
     labels:
+      - KernelGen
+      - aten
       - fused
     kind:
       - NeuralNetwork

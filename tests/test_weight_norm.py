@@ -7,6 +7,7 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 
 if cfg.QUICK_MODE:
+    # Use limited dtype in quick mode to reduce CI runtime
     FLOAT_DTYPES = [torch.float32]
     DIM_LIST = [-1]
 else:
@@ -15,7 +16,9 @@ else:
 
 
 @pytest.mark.weight_norm
-@pytest.mark.skip(reason="Issue #2860: fails assertion")
+@pytest.mark.skipif(
+    True, reason="Temporarely skip for ci"
+)  # todo: improve backward precision
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -36,8 +39,9 @@ def test_weight_norm(shape, dtype, dim):
 
     ref_v = utils.to_reference(v, True)
     ref_g = utils.to_reference(g, True)
-    ref_w_out = torch._weight_norm(ref_v, ref_g, dim)
-    res_w_out = flag_gems.weight_norm(v, g, dim)
+    ref_w_out = torch.ops.aten._weight_norm(ref_v, ref_g, dim)
+    with flag_gems.use_gems():
+        res_w_out = flag_gems.weight_norm(v, g, dim)
     utils.gems_assert_close(res_w_out, ref_w_out, dtype, reduce_dim=reduce_size)
 
     res_w_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
