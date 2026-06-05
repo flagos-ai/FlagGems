@@ -39,7 +39,69 @@ from flag_gems.fused.fused_marlin_moe import (
 )
 from flag_gems.fused.fused_marlin_moe import fused_marlin_moe as gems_fused_marlin_moe
 
-from . import base
+from . import base, consts
+from .conftest import Config
+
+
+def _env_int(name: str, default: int) -> int:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+
+def _moe_cuda_graph_latency(fn) -> float:
+    """Median latency (ms) from CUDA Graph capture + replay."""
+    warmup = max(1, Config.warm_up)
+    rep = max(1, Config.repetition)
+    measures = max(1, _env_int("FLAGGEMS_BENCH_CUDA_GRAPH_MEASURES", 10))
+
+    prev_mxq_graph = os.environ.get("FLAG_GEMS_MXQ_CUDA_GRAPH")
+    os.environ["FLAG_GEMS_MXQ_CUDA_GRAPH"] = "1"
+    try:
+        for _ in range(3):
+            fn()
+        torch.cuda.synchronize()
+
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            fn()
+
+        for _ in range(warmup):
+            graph.replay()
+        torch.cuda.synchronize()
+
+        latencies = []
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        for _ in range(measures):
+            start.record()
+            for _ in range(rep):
+                graph.replay()
+            end.record()
+            end.synchronize()
+            latencies.append(start.elapsed_time(end) / rep)
+        latencies.sort()
+        return latencies[len(latencies) // 2]
+    finally:
+        if prev_mxq_graph is None:
+            os.environ.pop("FLAG_GEMS_MXQ_CUDA_GRAPH", None)
+        else:
+            os.environ["FLAG_GEMS_MXQ_CUDA_GRAPH"] = prev_mxq_graph
+
+
+class FusedMarlinMoEBenchmarkCudaGraphMixin:
+    def get_latency(self, op, *args, **kwargs):
+        if (
+            flag_gems.device != "cuda"
+            or not torch.cuda.is_available()
+            or Config.mode != consts.BenchMode.KERNEL
+        ):
+            return super().get_latency(op, *args, **kwargs)
+        return _moe_cuda_graph_latency(lambda: op(*args, **kwargs))
 
 
 def is_cuda_available():
@@ -453,6 +515,12 @@ class FusedMarlinMoEBenchmarkInt8MXQ(FusedMarlinMoEBenchmarkInt8):
         )
 
 
+class FusedMarlinMoEBenchmarkInt8MXQCudaGraph(
+    FusedMarlinMoEBenchmarkCudaGraphMixin, FusedMarlinMoEBenchmarkInt8MXQ
+):
+    """MXQ W8A16 benchmark with CUDA Graph replay timing."""
+
+
 def _vllm_baseline_int8(
     hidden_states,
     w1_q_wna16,
@@ -767,6 +835,25 @@ def test_fused_marlin_moe_int8_mxq():
     """
     bench = FusedMarlinMoEBenchmarkInt8MXQ(
         op_name="fused_marlin_moe_int8_mxq",
+        torch_op=_vllm_baseline_int8,
+        dtypes=[torch.bfloat16],
+    )
+    bench.set_gems(_gems_call_int8)
+    bench.run()
+
+
+@pytest.mark.fused_marlin_moe
+@pytest.mark.cuda_graph
+@pytest.mark.skipif(
+    not HAS_VLLM_FUSED_MARLIN_MOE, reason="vllm not installed; baseline unavailable"
+)
+@pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires NVIDIA Hopper architecture")
+def test_fused_marlin_moe_int8_mxq_cuda_graph():
+    """
+    MXQ/Qwen 512-expert W8A16 fused_marlin_moe with CUDA Graph replay timing.
+    """
+    bench = FusedMarlinMoEBenchmarkInt8MXQCudaGraph(
+        op_name="fused_marlin_moe_int8_mxq_cuda_graph",
         torch_op=_vllm_baseline_int8,
         dtypes=[torch.bfloat16],
     )
