@@ -4,10 +4,25 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
+
+if QUICK_MODE:
+    FILL_VALUES = [0]
+    FILL_SLICE_CASES = [
+        ((4, 128), (slice(None), slice(64, None))),
+    ]
+else:
+    FILL_VALUES = [0, 1, 9]
+    FILL_SLICE_CASES = [
+        # (shape, slice)
+        ((4, 128), (slice(None), slice(64, None))),
+        ((2, 1, 1, 512), (slice(None), slice(None), slice(None), slice(358, None))),
+        ((8, 32, 64), (slice(None), slice(16, None))),
+    ]
 
 
 @pytest.mark.fill_tensor
-@pytest.mark.parametrize("value", [0, 1, 9])
+@pytest.mark.parametrize("value", FILL_VALUES)
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_fill_tensor(value, shape, dtype):
@@ -24,7 +39,7 @@ def test_fill_tensor(value, shape, dtype):
 
 
 @pytest.mark.fill_scalar
-@pytest.mark.parametrize("value", [0, 1, 9])
+@pytest.mark.parametrize("value", FILL_VALUES)
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_fill_scalar(value, shape, dtype):
@@ -39,7 +54,7 @@ def test_fill_scalar(value, shape, dtype):
 
 
 @pytest.mark.fill_tensor_out
-@pytest.mark.parametrize("value", [0, 1, 9])
+@pytest.mark.parametrize("value", FILL_VALUES)
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_fill_tensor_out(value, shape, dtype):
@@ -66,7 +81,7 @@ def test_fill_tensor_out(value, shape, dtype):
 
 
 @pytest.mark.fill_scalar_out
-@pytest.mark.parametrize("value", [0, 1, 9])
+@pytest.mark.parametrize("value", FILL_VALUES)
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_fill_scalar_out(value, shape, dtype):
@@ -85,7 +100,7 @@ def test_fill_scalar_out(value, shape, dtype):
 
 # fill_.Scalar
 @pytest.mark.fill_scalar_
-@pytest.mark.parametrize("value", [0, 1, 9])
+@pytest.mark.parametrize("value", FILL_VALUES)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_fill_scalar_(value, shape, dtype):
@@ -96,14 +111,6 @@ def test_fill_scalar_(value, shape, dtype):
     ref_x.fill_(value)
     with flag_gems.use_gems():
         x.fill_(value)
-
-
-FILL_SLICE_CASES = [
-    # (shape, slice)
-    ((4, 128), (slice(None), slice(64, None))),
-    ((2, 1, 1, 512), (slice(None), slice(None), slice(None), slice(358, None))),
-    ((8, 32, 64), (slice(None), slice(16, None))),
-]
 
 
 @pytest.mark.fill_scalar_
@@ -129,7 +136,7 @@ def test_fill_scalar_sliced_view(shape, slc, dtype, value):
 
 # fill_.Tensor
 @pytest.mark.fill_tensor_
-@pytest.mark.parametrize("value", [0, 1, 9])
+@pytest.mark.parametrize("value", FILL_VALUES)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_fill_(value, shape, dtype):

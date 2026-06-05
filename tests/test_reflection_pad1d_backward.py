@@ -4,11 +4,16 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
 
-# 2D/3D shapes covering small to medium width; pad1d operates on last dim
-REFLECTION_PAD1D_SHAPES = [(2, 3), (1, 5), (4, 10), (1, 8, 16)]
-# Asymmetric and symmetric padding combinations
-REFLECTION_PAD1D_PADDING = [(1, 1), (0, 2), (2, 1), (1, 2)]
+if QUICK_MODE:
+    REFLECTION_PAD1D_SHAPES = [(2, 3)]
+    REFLECTION_PAD1D_PADDING = [(1, 1)]
+else:
+    # 2D/3D shapes covering small to medium width; pad1d operates on last dim
+    REFLECTION_PAD1D_SHAPES = [(2, 3), (1, 5), (4, 10), (1, 8, 16)]
+    # Asymmetric and symmetric padding combinations
+    REFLECTION_PAD1D_PADDING = [(1, 1), (0, 2), (2, 1), (1, 2)]
 
 
 @pytest.mark.reflection_pad1d_backward
