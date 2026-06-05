@@ -114,7 +114,7 @@ jobs:
           EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
         run: |
           source .venv/bin/activate
-          source tools/set-env.sh ${VENDOR}
+          source tools/env.sh ${VENDOR}
           tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
             --dump-output \
             --output-dir results_new
