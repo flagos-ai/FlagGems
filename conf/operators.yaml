@@ -6028,6 +6028,18 @@ ops:
       - DSA
     stages:
       - beta: '5.0'
+  - id: special_hermite_polynomial_h
+    description: |
+      Computes the physicist's Hermite polynomial of degree `n` at input.
+    for:
+      - special.hermite_polynomial_h
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
