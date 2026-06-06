@@ -1202,7 +1202,7 @@ def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
 
 def scatter_reduce_out(inp, dim, index, src, reduce, *, include_self=True, out=None):
     """Out-variant of scatter_reduce. Writes result to out tensor if provided."""
-    logger.debug("GEMS SCATTER_REDUCE_TWO_OUT")
+    logger.debug("GEMS_SUNRISE SCATTER_REDUCE_TWO_OUT")
 
     result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
     if out is not None:
