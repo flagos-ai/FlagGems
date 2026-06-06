@@ -73,7 +73,7 @@ def _input_fn_dtype_out(b, m, n, k, dtype, device, b_column_major):
 )
 def test_addmm_dtype_out(monkeypatch):
     bench = base.BlasBenchmark(
-        op_name="addmm",
+        op_name="addmm_dtype_out",
         input_fn=_input_fn_dtype_out,
         torch_op=lambda bias, mat1, mat2, out_dtype, out: torch.ops.aten.addmm.dtype_out(
             bias, mat1, mat2, out_dtype, beta=1.0, alpha=1.0, out=out
