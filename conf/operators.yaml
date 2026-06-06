@@ -2498,6 +2498,17 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: fmod_
+    description: In-place remainder of division (fmod_), computes element-wise remainder with truncation toward zero.
+    for:
+      - fmod_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: fmod_scalar
     description: |
       Computes the element-wise remainder of division of input by a scalar divisor.
