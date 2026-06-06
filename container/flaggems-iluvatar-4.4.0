@@ -6,7 +6,7 @@
 ARG BASE_IMAGE=iluvatar:4.4.0
 ARG PYTHON_VERSION=3.12
 ARG FLAGOS_PYPI=https://resource.flagos.net/repository/flagos-pypi-iluvatar/simple
-ARG EXTRA_PYPI=http://mirros.aliyun.com/pypi/simple
+ARG EXTRA_PYPI=http://mirrors.aliyun.com/pypi/simple
 
 # ════════════════════════════════════════════════════════════════
 #  Stage 1 — builder
