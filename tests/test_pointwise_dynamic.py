@@ -932,6 +932,9 @@ def test_dynamic_function_with_multithread(use_block_pointer):
         torch.testing.assert_close(out, expected_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise", reason="spawn not support ptpu tensor"
+)
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
 def test_dynamic_function_with_multiprocess(use_block_pointer):
     shape = [128]
