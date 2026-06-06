@@ -120,6 +120,7 @@ from .repeat_interleave import (
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .scatter import scatter, scatter_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .select_backward import select_backward
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
@@ -288,6 +289,9 @@ __all__ = [
     "scaled_dot_product_attention_forward",
     "scatter",
     "scatter_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "select_backward",
     "sigmoid",
     "sigmoid_",
