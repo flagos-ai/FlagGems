@@ -1193,7 +1193,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
 
 def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
     """In-place variant of scatter_reduce. Modifies inp in-place."""
-    logger.debug("GEMS SCATTER_REDUCE_TWO_")
+    logger.debug("GEMS_SUNRISE SCATTER_REDUCE_TWO_")
 
     result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
     inp.copy_(result)
