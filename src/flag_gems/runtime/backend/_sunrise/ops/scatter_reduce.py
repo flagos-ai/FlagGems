@@ -878,7 +878,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
     Returns:
         Output tensor with same shape and dtype as inp.
     """
-    logger.debug("GEMS SCATTER_REDUCE_TWO")
+    logger.debug("GEMS_SUNRISE SCATTER_REDUCE_TWO")
 
     assert reduce in (
         "sum",
