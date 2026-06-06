@@ -62,8 +62,9 @@ jobs:
 
   build-doc:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'documentation')
-    uses: ./.github/workflows/mkdocs.yaml
+    if: (contains(needs.preprocess.outputs.labels, 'documentation') &&
+      github.event.pull_request.merged == true)
+    uses: ./.github/workflows/sync-docs.yaml
 
   cpp-op:
     needs: preprocess
@@ -160,6 +161,19 @@ jobs:
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
+  backend-enflame:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Enflame')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: enflame
+      runner_label: enflame
+      # gpu_check_script: tools/gpu_check_hygon.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
   backend-hygon:
     needs: preprocess
     if: contains(needs.preprocess.outputs.labels, 'vendor/Hygon')
@@ -216,13 +230,11 @@ jobs:
 
   backend-mthreads:
     needs: preprocess
-    # mthreads runners are gone.
-    if: false
-    # if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
+    if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: mthreads
-      runner_label: moore
+      runner_label: mthreads
       gpu_check_script: tools/gpu_check_mthreads.sh
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
@@ -242,16 +254,27 @@ jobs:
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
-  backend-tsingmicro:
+  backend-spacemit:
     needs: preprocess
-    # no tsingmicro runners available at the moment.
-    if: false
-    # if: contains(needs.preprocess.outputs.labels, 'vendor/TsingMicro')
+    if: contains(needs.preprocess.outputs.labels, 'vendor/SpaceMit')
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: tsingmicro
-      runner_label: tsingmicro
-      gpu_check_script: tools/gpu_check_tsingmicro.sh
+      vendor: spacemit
+      runner_label: spacemit
+      # gpu_check_script: tools/gpu_check_thead.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-sunrise:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Sunrise')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: sunrise
+      runner_label: sunrise
+      # gpu_check_script: tools/gpu_check_thead.sh
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
@@ -265,6 +288,20 @@ jobs:
       vendor: thead
       runner_label: thead
       gpu_check_script: tools/gpu_check_thead.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+
+  backend-tsingmicro:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/TsingMicro')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: tsingmicro
+      runner_label: tsingmicro
+      gpu_check_script: tools/gpu_check_tsingmicro.sh
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
