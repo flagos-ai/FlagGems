@@ -14,7 +14,8 @@ from . import conftest as cfg
 # Note: tl.math.div_rz only support float32, cast will cause diff
 # with torch, so we only do float32 test for now.
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "sunrise", reason="trunc_divide's behavior if different."
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3839: trunc_divide's behavior is different.",
 )
 @pytest.mark.trunc_divide
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
@@ -49,7 +50,8 @@ def test_trunc_div(shape, dtype):
 # Note : tl.math.div_rz only support float32, cast will cause diff
 # with torch, so we only do float32 test for now.
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "sunrise", reason="trunc_divide's behavior if different."
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3839: trunc_divide's behavior is different.",
 )
 @pytest.mark.trunc_divide_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)

@@ -9,7 +9,7 @@ import flag_gems
 from .conftest import QUICK_MODE
 
 pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name == "sunrise", reason="To Fix (Runtime Or LLVM)"
+    flag_gems.vendor_name == "sunrise", reason="Issues #3834: To Fix (Runtime Or LLVM)"
 )
 
 

@@ -11,7 +11,7 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 
 pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name == "sunrise", reason="To Fix (Runtime Or LLVM)"
+    flag_gems.vendor_name == "sunrise", reason="Issues #3836: To Fix (Runtime Or LLVM)"
 )
 
 

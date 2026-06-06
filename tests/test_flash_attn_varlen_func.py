@@ -275,9 +275,6 @@ def test_flash_attn_varlen_func(
 
         msg = f"{torch.max(torch.abs(output - ref_output))}"
         if vendor_name == "sunrise":
-            # The sunrise/PTPU kernel is accurate (~4e-3 vs an fp32 golden), but a
-            # few bf16 + soft_cap cases land just past the tight bf16-vs-bf16 atol
-            # purely from reference-side bf16 quantization noise (max ~2.7e-2).
             torch.testing.assert_close(
                 output, ref_output, atol=3e-2, rtol=1e-2, msg=msg
             )

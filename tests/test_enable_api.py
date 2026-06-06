@@ -7,7 +7,7 @@ import flag_gems
 
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name == "sunrise",
-    reason="[sunrise fix] logger get '_sunrise.ops.xx', test need 'flag_gems.ops.xx'.",
+    reason="Issues #3832: logger get '_sunrise.ops.xx', test need 'flag_gems.ops.xx'.",
 )
 
 
