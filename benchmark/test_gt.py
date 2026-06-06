@@ -23,7 +23,7 @@ def test_gt():
 def test_gt_scalar():
     bench = base.GenericBenchmark(
         input_fn=_scalar_input_fn,
-        op_name="gt.Scalar",
+        op_name="gt_scalar",
         torch_op=torch.gt,
         dtypes=consts.FLOAT_DTYPES,
     )
