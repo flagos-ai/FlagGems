@@ -12,8 +12,16 @@ from .accuracy_utils import (
     gems_assert_close,
     to_reference,
 )
+from .conftest import QUICK_MODE
 
 random.seed(time.time() // 100)
+
+if QUICK_MODE:
+    UPSAMPLE_LINEAR_SCALES = [2]
+    UPSAMPLE_LINEAR_ALIGN_CORNERS = [False]
+else:
+    UPSAMPLE_LINEAR_SCALES = [2, 2.5, 0.3, 0.7]
+    UPSAMPLE_LINEAR_ALIGN_CORNERS = [False, True]
 
 BOUNDARY_CASES = [
     ("W_in_1_upsample", (2, 3, 1), [5], True, None),
@@ -79,8 +87,8 @@ def test_upsample_linear1d_boundaries(dtype, case):
 
 @pytest.mark.upsample_linear1d
 @pytest.mark.skip(reason="Issue #2498: Result not close.")
-@pytest.mark.parametrize("align_corners", [False, True])
-@pytest.mark.parametrize("scale", [2, 2.5, 0.3, 0.7])
+@pytest.mark.parametrize("align_corners", UPSAMPLE_LINEAR_ALIGN_CORNERS)
+@pytest.mark.parametrize("scale", UPSAMPLE_LINEAR_SCALES)
 @pytest.mark.parametrize("shape", UPSAMPLE_SHAPES_1D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_upsample_linear1d(dtype, shape, scale, align_corners):

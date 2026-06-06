@@ -7,12 +7,18 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
 
 random.seed(time.time() // 100)
 
+if QUICK_MODE:
+    UPSAMPLE_SCALES_1D = [2]
+else:
+    UPSAMPLE_SCALES_1D = [2, 2.5, 0.3, 0.7]
+
 
 @pytest.mark.upsample_nearest1d
-@pytest.mark.parametrize("scale", [2, 2.5, 0.3, 0.7])
+@pytest.mark.parametrize("scale", UPSAMPLE_SCALES_1D)
 @pytest.mark.parametrize("shape", utils.UPSAMPLE_SHAPES_1D)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_upsample_nearest1d(dtype, shape, scale):
