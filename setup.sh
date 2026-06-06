@@ -129,6 +129,9 @@ fi
 
 ## Vendor-specific installation steps
 source tools/env.sh ${VENDOR}
-source tools/vendor.sh ${VENDOR}
+# source tools/vendor.sh ${VENDOR}
+uv pip install ".[${VENDOR}]" --default-index ${FLAGOS_PYPI} \
+  --index https://mirrors.aliyun.com/pypi/simple
+uv pip install ".[test]"
 
 [ "$?" == 0 ] || { echo "Failed to setup FlagGems" ; exit 1; }
