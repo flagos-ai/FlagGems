@@ -204,17 +204,17 @@ case $VENDOR in
   tsingmicro)
     uv pip install --index ${FLAGOS_PYPI} \
         "torch==2.7.0+cpu" \
-        "torchvision==0.22.0" \
-        "torchaudio==2.7.0" \
-        "torch_txda==0.1.0+20260310.294fc4a6" \
-        "txops==0.1.0+20260225.5cc33e4e" \
+        "torchvision==0.22.0+cpu" \
+        "torchaudio==2.7.0+cpu" \
+        "torch_txda==0.1.0+20260416.b8f53e8a" \
+        "txops==0.1.0+20260508.60287151" \
         "flagtree==0.5.0+tsingmicro3.3"
 
     # Replace flagtree with Triton if requested
     if [ -n "${USE_TRITON}" ]; then
       uv pip uninstall flagtree
       uv pip install --index ${FLAGOS_PYPI} \
-        "triton==3.3.0+gitfe2a28fa"
+        "triton==3.3.0+git2e9c1195"
     fi
 
     uv pip install -e .
