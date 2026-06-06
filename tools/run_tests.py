@@ -53,8 +53,9 @@ WORKER_PROCESSES = []
 INTERRUPTED = False
 
 IS_TTY = sys.stdout.isatty()
+USE_COLORS = IS_TTY
 
-if not IS_TTY:
+if not USE_COLORS:
     RED = GREEN = YELLOW = CYAN = DIM = NC = ""
 
 
@@ -149,6 +150,9 @@ class LiveDisplay:
         if IS_TTY:
             self._erase_footer()
             self._draw_footer()
+        else:
+            sys.stdout.write(self.footer[0] + "\n")
+            sys.stdout.flush()
 
     def finish(self):
         """Clear the footer when done."""
@@ -626,6 +630,11 @@ def run_benchmark_q(gpu_id, op):
 
 
 def worker_proc(gpu_id, work_queue, display_queue):
+    # Suppress direct stdout/stderr from worker processes to prevent
+    # corrupting the main process's terminal cursor positioning.
+    sys.stdout = open(os.devnull, "w")
+    sys.stderr = open(os.devnull, "w")
+
     worker_result = {}
     while True:
         try:
@@ -735,12 +744,22 @@ def display_loop(queue, display, n_workers):
                 f"{GREEN}[INFO]{NC} [{ts}][GPU {gpu_id:2d}]"
                 f" {label} {op_col} {status_str}"
             )
-            display.log(log_line)
 
             tests_done += 1
             if phase == "benchmark":
                 per_gpu_done[gpu_id] = per_gpu_done.get(gpu_id, 0) + 1
-            display.update_progress(tests_done)
+
+            ops_done = tests_done // 2
+            total_ops = display.op_count
+            pct = ops_done * 100 // total_ops
+            if not IS_TTY:
+                total_w = len(str(total_ops))
+                log_line += f"  ({pct:>3}% {ops_done:>{total_w}}/{total_ops} ops)"
+
+            # Update progress state BEFORE log so the footer is drawn once
+            # with the correct progress value.
+            display.footer[0] = display._fmt_progress(tests_done)
+            display.log(log_line)
 
 
 def cleanup_intermediate_files():
@@ -881,9 +900,31 @@ def main():
         default=False,
         help="Dump stdout/stderr of each test to log files",
     )
+    parser.add_argument(
+        "--color",
+        choices=["auto", "always", "never"],
+        default="auto",
+        help="Control ANSI color output: auto (TTY only), always, or never",
+    )
     OPTS = parser.parse_args()
     CFG.dump_output = OPTS.dump_output
     CFG.start = OPTS.start
+
+    # Apply color mode (IS_TTY controls cursor-based footer, USE_COLORS controls ANSI colors)
+    global USE_COLORS, RED, GREEN, YELLOW, CYAN, DIM, NC
+    if OPTS.color == "always":
+        USE_COLORS = True
+        RED, GREEN, YELLOW, CYAN, DIM, NC = (
+            "\033[31m",
+            "\033[32m",
+            "\033[93m",
+            "\033[36m",
+            "\033[2m",
+            "\033[0m",
+        )
+    elif OPTS.color == "never":
+        USE_COLORS = False
+        RED = GREEN = YELLOW = CYAN = DIM = NC = ""
 
     probe_env()
 
