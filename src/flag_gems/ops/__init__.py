@@ -350,7 +350,11 @@ from flag_gems.ops.smooth_l1_loss import (
     smooth_l1_loss_backward,
     smooth_l1_loss_out,
 )
-from flag_gems.ops.soft_margin_loss import soft_margin_loss, soft_margin_loss_out
+from flag_gems.ops.soft_margin_loss import (
+    soft_margin_loss,
+    soft_margin_loss_backward,
+    soft_margin_loss_out,
+)
 from flag_gems.ops.softmax import (
     softmax,
     softmax_backward,
@@ -859,6 +863,7 @@ __all__ = [
     "smooth_l1_loss_backward",
     "smooth_l1_loss_out",
     "soft_margin_loss",
+    "soft_margin_loss_backward",
     "soft_margin_loss_out",
     "softmax",
     "softmax_backward",
