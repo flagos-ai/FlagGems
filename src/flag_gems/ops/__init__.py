@@ -274,7 +274,6 @@ from flag_gems.ops.pixel_shuffle import pixel_shuffle
 from flag_gems.ops.pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from flag_gems.ops.poisson import poisson
 from flag_gems.ops.polar import polar
-from flag_gems.ops.positive import positive
 from flag_gems.ops.pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -763,7 +762,6 @@ __all__ = [
     "pixel_unshuffle_out",
     "poisson",
     "polar",
-    "positive",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_scalar_",

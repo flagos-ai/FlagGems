@@ -55,6 +55,7 @@ from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
 from .polar import polar
+from .positive import positive
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -161,6 +162,7 @@ __all__ = [
     "ones_like",
     "outer",
     "polar",
+    "positive",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_scalar_",
