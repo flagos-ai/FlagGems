@@ -6,18 +6,22 @@ import torch
 
 import flag_gems
 
+from . import conftest as cfg
 from .accuracy_utils import FLOAT_DTYPES, gems_assert_equal, to_reference
 
 random.seed(time.time() // 100)
 
 device = flag_gems.device
 
+PAD_SHAPES = (
+    [[16, 16], [4, 4, 4, 4], [1, 4, 16, 16], [4, 4, 16]]
+    if cfg.QUICK_MODE
+    else [[1024, 1024], [64, 64, 64, 64], [1, 64, 112, 112], [4, 64, 128]]
+)
+
 
 @pytest.mark.pad
-@pytest.mark.parametrize(
-    "shape",
-    [[1024, 1024], [64, 64, 64, 64], [1, 64, 112, 112], [4, 64, 128]],
-)
+@pytest.mark.parametrize("shape", PAD_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("pad_mode", ["constant", "reflect", "replicate", "circular"])
 @pytest.mark.parametrize("contiguous", [True, False])
