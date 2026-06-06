@@ -107,16 +107,17 @@ case $VENDOR in
 
   metax)
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.8.0+metax3.5.3.9" \
-        "torchaudio==2.4.1+metax3.5.3.9" \
-        "torchvision==0.15.1+metax3.5.3.9" \
-        "flagtree==3.1.0+metax3.5.3.9"
+        "torch==2.8.0+metax3.7.2.0" \
+        "torchaudio==2.4.1+metax3.7.2.0" \
+        "torchvision==0.15.1+metax3.7.2.0" \
+        "flagtree==3.1.0+metax3.7.2.0" \
+        "flash_attn==2.6.3+metax3.7.2.0torch2.8"
 
-    if [ -n "${USE_TRITON}" ]; then
-      uv pip uninstall flagtree
-      uv pip install --index ${FLAGOS_PYPI} \
-        "triton==3.0.0+metax3.5.3.9"
-    fi
+    # if [ -n "${USE_TRITON}" ]; then
+    #   uv pip uninstall flagtree
+    #   uv pip install --index ${FLAGOS_PYPI} \
+    #     "triton==3.0.0+metax3.7.2.0"
+    # fi
 
     uv pip install -e  .
     uv pip install ".[test]"
