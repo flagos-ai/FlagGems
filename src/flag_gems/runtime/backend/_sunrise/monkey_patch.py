@@ -729,6 +729,19 @@ def _patch_tensor_to_cpu_for_complex_views():
             return first.device.type == "cpu"
         return False
 
+    def _to_target_dtype(args, kwargs):
+        dtype = kwargs.get("dtype")
+        if isinstance(dtype, torch.dtype):
+            return dtype
+        if not args:
+            return None
+        first = args[0]
+        if isinstance(first, torch.dtype):
+            return first
+        if isinstance(first, torch.Tensor):
+            return first.dtype
+        return None
+
     def _rebuild_complex_view_on_cpu(self):
         if self.is_conj():
             cpu_view = _rebuild_complex_view_on_cpu(self.conj()).conj()
@@ -760,7 +773,20 @@ def _patch_tensor_to_cpu_for_complex_views():
         if _should_route_through_base(self) and _to_targets_cpu(args, kwargs):
             cpu_view = _rebuild_complex_view_on_cpu(self)
             return original_to(cpu_view, *args, **kwargs)
-        return original_to(self, *args, **kwargs)
+        try:
+            return original_to(self, *args, **kwargs)
+        except RuntimeError as exc:
+            target_dtype = _to_target_dtype(args, kwargs)
+            if (
+                not _is_ptpu_tensor(self)
+                or self.is_complex()
+                or not isinstance(target_dtype, torch.dtype)
+                or not target_dtype.is_complex
+                or "failed to dispatch data type complex" not in str(exc).lower()
+            ):
+                raise
+            cpu_cast = original_to(original_cpu(self), *args, **kwargs)
+            return original_to(cpu_cast, device=self.device)
 
     @functools.wraps(original_cpu)
     def cpu_with_complex_conj_cpu_route(self, *args, **kwargs):
@@ -813,22 +839,24 @@ def _patch_complex_tensor_scalar_mul_runtime_error():
         return (
             isinstance(tensor, torch.Tensor)
             and tensor.device.type == _PTPU_DEVICE
-            and tensor.is_complex()
             and not isinstance(other, torch.Tensor)
+            and (tensor.is_complex() or isinstance(other, complex))
         )
 
     def _ptpu_mul_reference_tensor(*values):
+        scalar_complex = any(isinstance(value, complex) for value in values)
         for value in values:
-            if (
-                isinstance(value, torch.Tensor)
-                and value.device.type == _PTPU_DEVICE
-                and (value.is_complex() or value.dtype == torch.float64)
-            ):
+            if not isinstance(value, torch.Tensor) or value.device.type != _PTPU_DEVICE:
+                continue
+            if value.is_complex() or value.dtype == torch.float64:
+                return value
+            if scalar_complex:
                 return value
         return None
 
     original_tensor_mul = torch.Tensor.mul
     original_tensor_dunder_mul = torch.Tensor.__mul__
+    original_tensor_dunder_rmul = torch.Tensor.__rmul__
     original_function_mul = torch.mul
 
     @functools.wraps(original_tensor_mul)
@@ -867,10 +895,40 @@ def _patch_complex_tensor_scalar_mul_runtime_error():
                 raise
             return original_tensor_dunder_mul(self.cpu(), other).to(self.device)
 
+    @functools.wraps(original_tensor_dunder_rmul)
+    def tensor_dunder_rmul_with_complex_scalar_cpu_fallback(self, other):
+        reference_tensor = _ptpu_mul_reference_tensor(self, other)
+        if reference_tensor is not None and not _flag_gems_use_gems_active():
+            return original_tensor_dunder_rmul(
+                _to_cpu_if_ptpu(self), _to_cpu_if_ptpu(other)
+            ).to(reference_tensor.device)
+        try:
+            return original_tensor_dunder_rmul(self, other)
+        except RuntimeError as exc:
+            if _flag_gems_use_gems_active():
+                raise
+            if not _should_fallback_complex_scalar_mul(self, other):
+                raise
+            if quirk_marker not in str(exc).lower():
+                raise
+            return original_tensor_dunder_rmul(self.cpu(), other).to(self.device)
+
     @functools.wraps(original_function_mul)
     def function_mul_with_complex_scalar_cpu_fallback(*args, **kwargs):
-        tensor = args[0] if args else kwargs.get("input")
-        other = args[1] if len(args) > 1 else kwargs.get("other")
+        tensor = next((arg for arg in args[:2] if isinstance(arg, torch.Tensor)), None)
+        if tensor is None:
+            tensor = kwargs.get("input")
+        if tensor is None:
+            tensor = kwargs.get("other")
+        other = None
+        if len(args) > 1:
+            other = args[1] if tensor is args[0] else args[0]
+        else:
+            other = (
+                kwargs.get("other")
+                if tensor is kwargs.get("input")
+                else kwargs.get("input")
+            )
         reference_tensor = _ptpu_mul_reference_tensor(tensor, other)
         if reference_tensor is not None and not _flag_gems_use_gems_active():
             cpu_args = tuple(_to_cpu_if_ptpu(arg) for arg in args)
@@ -893,6 +951,7 @@ def _patch_complex_tensor_scalar_mul_runtime_error():
 
     torch.Tensor.mul = tensor_mul_with_complex_scalar_cpu_fallback
     torch.Tensor.__mul__ = tensor_dunder_mul_with_complex_scalar_cpu_fallback
+    torch.Tensor.__rmul__ = tensor_dunder_rmul_with_complex_scalar_cpu_fallback
     torch.mul = function_mul_with_complex_scalar_cpu_fallback
     setattr(torch.Tensor, tensor_mul_attr, True)
     setattr(torch, function_mul_attr, True)
@@ -1127,6 +1186,169 @@ def _patch_torch_isclose_allclose_complex_dtype():
     torch.isclose = isclose_with_complex_cpu_fallback
     torch.allclose = allclose_with_complex_cpu_fallback
     setattr(torch, patched_attr, True)
+
+
+def _patch_complex_matmul_runtime_error():
+    """Fallback reference matmul-family ops to CPU on Sunrise/PTPU.
+
+    Complex reconstruction paths such as `u @ diag(s) @ v.mH` can fail outside
+    `flag_gems.use_gems()` with runtime errors from lowerings like:
+
+    - `addbmm_out not implemented for ComplexFloat`
+    - `baddbmm_out only supports float/half/bfloat16, got ComplexFloat`
+
+    Separately, some real-valued *degenerate batched matmuls* such as
+    `(..., 17, 1) @ (..., 1, 1)` can silently produce garbage on PTPU in the
+    same reference-style reconstruction path, even though the upstream SVD
+    factors themselves are correct. Route those narrow cases to CPU too.
+
+    This is a reference-path/runtime gap rather than a FlagGems kernel bug.
+    Keep the guard tight:
+
+    - only outside `flag_gems.use_gems()`
+    - always for PTPU complex/fp64 tensors
+    - additionally for PTPU real floating batched matmuls where at least one
+      tensor has a singleton matrix dimension (`min(shape[-2:]) == 1`)
+    - wrap matmul-family entry points that the Python surface can hit during
+      reconstruction: `Tensor.__matmul__`, `Tensor.matmul`, `torch.matmul`,
+      `torch.bmm`, `torch.addbmm`, `torch.baddbmm`
+    """
+    tensor_attr = "_flag_gems_sunrise_tensor_matmul_complex_patched"
+    function_attr = "_flag_gems_sunrise_function_matmul_complex_patched"
+    if getattr(torch.Tensor, tensor_attr, False) and getattr(
+        torch, function_attr, False
+    ):
+        return
+
+    quirk_markers = (
+        "addbmm_out not implemented for complex",
+        "baddbmm_out only supports float/half/bfloat16, got complex",
+        "unsupported scalar type: complex",
+    )
+
+    def _ptpu_matmul_reference_tensor(*values):
+        first_ptpu_tensor = None
+        for value in values:
+            if not isinstance(value, torch.Tensor) or value.device.type != _PTPU_DEVICE:
+                continue
+            if first_ptpu_tensor is None:
+                first_ptpu_tensor = value
+            if value.is_complex() or value.dtype == torch.float64:
+                return value
+        return first_ptpu_tensor
+
+    def _ptpu_tensor_args(*values):
+        return [
+            value
+            for value in values
+            if isinstance(value, torch.Tensor) and value.device.type == _PTPU_DEVICE
+        ]
+
+    def _should_route_reference_matmul(*values):
+        tensors = _ptpu_tensor_args(*values)
+        if not tensors:
+            return False
+        if any(t.is_complex() or t.dtype == torch.float64 for t in tensors):
+            return True
+        return any(
+            t.ndim >= 3
+            and t.is_floating_point()
+            and not t.is_complex()
+            and min(t.shape[-2:]) == 1
+            for t in tensors
+        )
+
+    def _cpu_dispatch_to_reference_device(reference_tensor, original_fn, args, kwargs):
+        cpu_args = tuple(_to_cpu_if_ptpu(arg) for arg in args)
+        cpu_kwargs = {key: _to_cpu_if_ptpu(value) for key, value in kwargs.items()}
+        result = original_fn(*cpu_args, **cpu_kwargs)
+        out = kwargs.get("out")
+        return _finalize_cpu_result(result, out, reference_tensor.device)
+
+    original_tensor_matmul = torch.Tensor.matmul
+    original_tensor_dunder_matmul = torch.Tensor.__matmul__
+    original_function_matmul = torch.matmul
+    original_function_bmm = torch.bmm
+    original_function_addbmm = torch.addbmm
+    original_function_baddbmm = torch.baddbmm
+
+    @functools.wraps(original_tensor_matmul)
+    def tensor_matmul_with_complex_cpu_fallback(self, other):
+        reference_tensor = _ptpu_matmul_reference_tensor(self, other)
+        if not _flag_gems_use_gems_active() and _should_route_reference_matmul(
+            self, other
+        ):
+            return _cpu_dispatch_to_reference_device(
+                reference_tensor, original_tensor_matmul, (self, other), {}
+            )
+        try:
+            return original_tensor_matmul(self, other)
+        except RuntimeError as exc:
+            if _flag_gems_use_gems_active():
+                raise
+            if reference_tensor is None or not any(
+                marker in str(exc).lower() for marker in quirk_markers
+            ):
+                raise
+            return _cpu_dispatch_to_reference_device(
+                reference_tensor, original_tensor_matmul, (self, other), {}
+            )
+
+    @functools.wraps(original_tensor_dunder_matmul)
+    def tensor_dunder_matmul_with_complex_cpu_fallback(self, other):
+        reference_tensor = _ptpu_matmul_reference_tensor(self, other)
+        if not _flag_gems_use_gems_active() and _should_route_reference_matmul(
+            self, other
+        ):
+            return _cpu_dispatch_to_reference_device(
+                reference_tensor, original_tensor_dunder_matmul, (self, other), {}
+            )
+        try:
+            return original_tensor_dunder_matmul(self, other)
+        except RuntimeError as exc:
+            if _flag_gems_use_gems_active():
+                raise
+            if reference_tensor is None or not any(
+                marker in str(exc).lower() for marker in quirk_markers
+            ):
+                raise
+            return _cpu_dispatch_to_reference_device(
+                reference_tensor, original_tensor_dunder_matmul, (self, other), {}
+            )
+
+    def _patch_torch_matmul_like(name, original_fn):
+        @functools.wraps(original_fn)
+        def fn_with_complex_cpu_fallback(*args, **kwargs):
+            reference_tensor = _ptpu_matmul_reference_tensor(*args, *kwargs.values())
+            if not _flag_gems_use_gems_active() and _should_route_reference_matmul(
+                *args, *kwargs.values()
+            ):
+                return _cpu_dispatch_to_reference_device(
+                    reference_tensor, original_fn, args, kwargs
+                )
+            try:
+                return original_fn(*args, **kwargs)
+            except RuntimeError as exc:
+                if _flag_gems_use_gems_active():
+                    raise
+                if reference_tensor is None or not any(
+                    marker in str(exc).lower() for marker in quirk_markers
+                ):
+                    raise
+                return _cpu_dispatch_to_reference_device(
+                    reference_tensor, original_fn, args, kwargs
+                )
+
+        setattr(torch, name, fn_with_complex_cpu_fallback)
+
+    torch.Tensor.matmul = tensor_matmul_with_complex_cpu_fallback
+    torch.Tensor.__matmul__ = tensor_dunder_matmul_with_complex_cpu_fallback
+    _patch_torch_matmul_like("matmul", original_function_matmul)
+    _patch_torch_matmul_like("bmm", original_function_bmm)
+    _patch_torch_matmul_like("addbmm", original_function_addbmm)
+    _patch_torch_matmul_like("baddbmm", original_function_baddbmm)
+    setattr(torch.Tensor, tensor_attr, True)
+    setattr(torch, function_attr, True)
 
 
 def _flag_gems_use_gems_active():
@@ -1554,6 +1776,7 @@ def apply_sunrise_monkey_patches():
     _patch_torch_function("mean", "aten::mean")
     _patch_torch_function("norm", "aten::linalg_vector_norm.out")
     _patch_torch_linalg_function("vector_norm", "aten::linalg_vector_norm.out")
+    _patch_torch_linalg_function("qr", "aten::linalg_qr.out")
     _patch_torch_function("unique_consecutive", "aten::unique_consecutive")
 
     # misc test helpers
@@ -1574,6 +1797,8 @@ def apply_sunrise_monkey_patches():
     _patch_torch_function("isclose", "aten::bitwise_and.Tensor_out")
     _patch_torch_function("allclose", "aten::bitwise_and.Tensor_out")
     _patch_torch_function("complex", "aten::complex.out")
+    _patch_torch_creation_function("eye", "aten::eye.m_out")
+    _patch_torch_creation_function("linspace", "aten::linspace.out")
     _patch_torch_out("hypot", "aten::hypot.out")
     _patch_torch_creation_function("randperm", "aten::randperm.generator_out")
     _patch_tensor_property("real", "aten::view_as_real")
@@ -1587,6 +1812,7 @@ def apply_sunrise_monkey_patches():
     _patch_tensor_to_cpu_for_complex_views()
     _patch_complex_tensor_scalar_mul_runtime_error()
     _patch_complex_tensor_add_runtime_error()
+    _patch_complex_matmul_runtime_error()
     _patch_torch_isclose_allclose_complex_dtype()
     _patch_torch_einsum_low_precision_reference()
     _patch_torch_packet("elu", "aten::elu.out")

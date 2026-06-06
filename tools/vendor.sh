@@ -149,8 +149,8 @@ case $VENDOR in
   nvidia)
     # We need pytorch first for building C++ wrapped operators
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.12.0+cu132" \
-        "torchvision==0.27.0+cu132" \
+        "torch==2.11.0+cu130" \
+        "torchvision==0.26.0+cu130" \
         "triton==3.6.0"
 
     # The follow environments are for C++ wrapped operators
@@ -170,7 +170,7 @@ case $VENDOR in
   spacemit)
     uv pip install --index ${FLAGOS_PYPI} \
         "torch==2.8.0+spacemit.0" \
-        "triton==3.6.0+spacemit.a4"
+        "triton==3.6.0+spacemit.a5"
 
     uv pip install -e .
     uv pip install ".[test]"
