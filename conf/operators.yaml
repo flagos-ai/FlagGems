@@ -3207,6 +3207,19 @@ ops:
       - Tensor
     stages:
       - stable: '3.0'
+  - id: index_reduce_
+    description: |
+      Accumulates the elements of `source` into `input` at the indices specified
+      by `index` along `dim`, using `prod`, `mean`, `amax`, or `amin` reduction.
+    for:
+      - index_reduce_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.3'
   - id: index_put_impl
     description: An internal C++ function that handles the heavy lifting for placing values into a tensor at specific indices.
     for:
