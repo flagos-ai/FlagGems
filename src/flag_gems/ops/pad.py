@@ -141,7 +141,7 @@ def generate_destination_passing_padding_wrapper(
 
     with code.indent():
         # docstring
-        code.writeline("pad_configs = runtime.get_tuned_config(\"pad\")")
+        code.writeline('pad_configs = runtime.get_tuned_config("pad")')
         code.writeline(
             'BLOCK_SIZE = pad_configs[0].kwargs.get("BLOCK_SIZE", 256) '
             "if pad_configs else 256"
