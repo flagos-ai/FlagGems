@@ -43,8 +43,12 @@ def _indexer_k_quant_and_cache_kernel(
     USE_UE8M0: tl.constexpr,
 ):
     tid = tl.program_id(0)
-    quant_block_id = tl.program_id(1)
-    offsets = quant_block_id * QUANT_BLOCK_SIZE + tl.arange(0, QUANT_BLOCK_SIZE)
+    quant_block_id = tl.program_id(1) * 4
+    quant_block_offsets = tl.arange(0, 4)
+    head_offsets = tl.arange(0, QUANT_BLOCK_SIZE)
+    offsets = (
+        quant_block_id + quant_block_offsets[:, None]
+    ) * QUANT_BLOCK_SIZE + head_offsets[None, :]
     mask = offsets < head_dim
 
     src_ptr = k_ptr + tid * head_dim
@@ -56,7 +60,7 @@ def _indexer_k_quant_and_cache_kernel(
     block_offset = slot_id % block_size
 
     val = tl.load(src_ptr + offsets, mask=mask, other=0.0)
-    amax = tl.max(tl.abs(val).to(tl.float32), axis=0)
+    amax = tl.max(tl.abs(val).to(tl.float32), axis=1)
     if IS_FNUZ:
         scale = tl.maximum(1e-4, amax) / 224.0
     else:
@@ -65,7 +69,7 @@ def _indexer_k_quant_and_cache_kernel(
     if USE_UE8M0:
         scale = tl.exp2(tl.ceil(tl.log2(scale)))
 
-    fp8_val = (val.to(tl.float32) / scale).to(kv_cache_ptr.type.element_ty)
+    fp8_val = (val.to(tl.float32) / scale[:, None]).to(kv_cache_ptr.type.element_ty)
     dst_ptr = kv_cache_ptr + block_id * kv_cache_value_stride + block_offset * head_dim
     tl.store(dst_ptr + offsets, fp8_val, mask=mask)
 
@@ -75,7 +79,8 @@ def _indexer_k_quant_and_cache_kernel(
         + block_offset * num_quant_blocks
         + quant_block_id
     )
-    tl.store(dst_scale_ptr, scale)
+    scale_mask = quant_block_id + quant_block_offsets < num_quant_blocks
+    tl.store(dst_scale_ptr + quant_block_offsets, scale, mask=scale_mask)
 
 
 def indexer_k_quant_and_cache(
@@ -97,7 +102,7 @@ def indexer_k_quant_and_cache(
     fp8_dtype = _get_fp8_dtype()
     kv_cache_value = kv_cache_flat[:, : block_size * head_dim].view(fp8_dtype)
     kv_cache_scale = kv_cache_flat[:, block_size * head_dim :].view(torch.float32)
-    _indexer_k_quant_and_cache_kernel[(num_tokens, num_quant_blocks)](
+    _indexer_k_quant_and_cache_kernel[(num_tokens, triton.cdiv(num_quant_blocks, 4))](
         k,
         kv_cache_value,
         kv_cache_scale,
