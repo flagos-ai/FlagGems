@@ -267,6 +267,7 @@ _FULL_CONFIG = (
     ("fmod.Tensor", fmod_tensor),
     ("fmod_.Scalar", fmod_scalar_),
     ("fmod_.Tensor", fmod_tensor_),
+    ("fmod_", fmod_),
     ("full", full),
     ("full_like", full_like),
     ("gather", gather),
