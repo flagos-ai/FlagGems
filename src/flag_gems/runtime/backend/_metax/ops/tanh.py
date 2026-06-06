@@ -66,7 +66,7 @@ def tanh_backward_custom(x: torch.Tensor, y: torch.Tensor):
 class Tanh(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logger.debug("METAX GEMS TANH FORWARD")
+        logger.debug("GEMS_METAX TANH FORWARD")
         if A.requires_grad is True:
             out = tanh_forward(A.to(torch.float32))
             ctx.save_for_backward(out)
@@ -77,7 +77,7 @@ class Tanh(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("METAX GEMS TANH BACKWARD")
+        logger.debug("GEMS_METAX TANH BACKWARD")
         (out,) = ctx.saved_tensors
 
         is_grad_stride_0 = True

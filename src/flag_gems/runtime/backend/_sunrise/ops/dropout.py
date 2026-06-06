@@ -11,7 +11,7 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.heuristics(runtime.get_heuristic_config("dropout"))
@@ -61,30 +61,10 @@ def dropout_forward_kernel(
     y2 = x2 * p * mask2  # tl.where(mask2, x2 * p, 0.0)
     y3 = x3 * p * mask3  # tl.where(mask3, x3 * p, 0.0)
 
-    tl.store(
-        dropout_mask + off_0,
-        mask0.to(tl.int32),
-        mask=off_0 < N,
-        eviction_policy="evict_first",
-    )
-    tl.store(
-        dropout_mask + off_1,
-        mask1.to(tl.int32),
-        mask=off_1 < N,
-        eviction_policy="evict_first",
-    )
-    tl.store(
-        dropout_mask + off_2,
-        mask2.to(tl.int32),
-        mask=off_2 < N,
-        eviction_policy="evict_first",
-    )
-    tl.store(
-        dropout_mask + off_3,
-        mask3.to(tl.int32),
-        mask=off_3 < N,
-        eviction_policy="evict_first",
-    )
+    tl.store(dropout_mask + off_0, mask0, mask=off_0 < N, eviction_policy="evict_first")
+    tl.store(dropout_mask + off_1, mask1, mask=off_1 < N, eviction_policy="evict_first")
+    tl.store(dropout_mask + off_2, mask2, mask=off_2 < N, eviction_policy="evict_first")
+    tl.store(dropout_mask + off_3, mask3, mask=off_3 < N, eviction_policy="evict_first")
 
     tl.store(Y + off_0, y0, mask=off_0 < N, eviction_policy="evict_first")
     tl.store(Y + off_1, y1, mask=off_1 < N, eviction_policy="evict_first")
@@ -130,7 +110,7 @@ def dropout(input, p, train=True):
     # TODO: remove contiguous enforcement
     input = input.contiguous()
     out = torch.empty_like(input)
-    mask = torch.empty_like(input, dtype=torch.int)
+    mask = torch.empty_like(input, dtype=torch.bool)
     N = input.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,

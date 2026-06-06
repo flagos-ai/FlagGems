@@ -12,7 +12,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def launch_arg(BLOCK_M, BLOCK_N, N, num_warps):
@@ -211,7 +211,6 @@ def isin_by_search(
         )
     else:
         in1_ravel, _ = torch.sort(in1.ravel())
-
     # launch kernel func
     M = in0_ravel.numel()
     N = in1_ravel.numel()

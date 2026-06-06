@@ -80,17 +80,21 @@ iluvatar = [
 ]
 
 kunlunxin = [
+    "apex==0.1",
     "benchflow==1.0.0",
     "colorama==0.4.6",
+    "flash_attn==2.4.2+7e2dd4d",
+    "hydrax==0.1.0",
     "hyperparameter==0.5.6",
-    "torch==2.5.1+cu118",
-    "torchaudio==2.5.1+cu118",
-    "torchvision==0.20.1+cu118",
-    "torch_klx==0.1.0",
-    "torch_xray==0.2.1",
     "psutil==6.1.0",
     "regex==2026.4.4",
-    "flagtree==0.5.1+xpu3.0",
+    "torch==2.9.0+cu129",
+    "torchaudio==2.9.0+cu129",
+    "torchvision==0.24.0+cu129",
+    "torch_plugin==0.1.0",
+    "torch_xray==2.0.4",
+    "triton==3.0.0+a48aedef",
+    "xformers==0.0.29+137a8ec.d20260114",
     "xmlir==1.0.0.1"
 ]
 
@@ -112,15 +116,15 @@ mthreads = [
 ]
 
 nvidia = [
-    "torch==2.12.0+cu132",
-    "torchvision==0.27.0+cu132",
+    "torch==2.11.0+cu130",
+    "torchvision==0.26.0+cu130",
     "triton==3.6.0",
     # "flagtree==0.5.1+3.6",
 ]
 
 spacemit = [
     "torch==2.8.0+spacemit.0",
-    "triton==3.6.0+spacemit.a4",
+    "triton==3.6.0+spacemit.a5",
 ]
 
 sunrise = [
