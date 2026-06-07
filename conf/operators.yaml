@@ -109,6 +109,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: add_relu
+    description: Triton kernel implementation for _add_relu.
+    for:
+      - _add_relu.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: addcdiv
     description: |
       Performs the element-wise division of `tensor1` by `tensor2`, multiplies the result

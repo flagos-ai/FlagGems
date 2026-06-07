@@ -1,3 +1,4 @@
+from flag_gems.ops._add_relu import add_relu
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -397,6 +398,7 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "_add_relu",
     "_assert_async",
     "_conv_depthwise2d",
     "_euclidean_dist",
@@ -415,6 +417,7 @@ __all__ = [
     "act_quant_triton",
     "add",
     "add_",
+    "add_relu",
     "addcdiv",
     "addcdiv_out",
     "addcmul",
