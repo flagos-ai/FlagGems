@@ -9,5 +9,6 @@ def test_copysign_():
         op_name="copysign_",
         torch_op=lambda a, b: a.copysign_(b),
         dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
     )
     bench.run()
