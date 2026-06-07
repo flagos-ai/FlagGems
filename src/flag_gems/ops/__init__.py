@@ -3,6 +3,7 @@ from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
+from flag_gems.ops._chunk_cat import chunk_cat as _chunk_cat
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range import (
     _functional_sym_constrain_range,
@@ -551,6 +552,7 @@ __all__ = [
     "_assert_async",
     "_batch_norm_no_update",
     "_cdist_backward",
+    "_chunk_cat",
     "_conv_depthwise2d",
     "_euclidean_dist",
     "_functional_sym_constrain_range",
@@ -1057,6 +1059,7 @@ __all__ = [
     "rsqrt_",
     "rsub_scalar",
     "rsub_tensor",
+    "scalar_tensor",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
@@ -1114,7 +1117,6 @@ __all__ = [
     "softplus_backward",
     "softshrink",
     "softshrink_out",
-    "scalar_tensor",
     "sort",
     "sort_stable",
     "special_chebyshev_polynomial_v",
