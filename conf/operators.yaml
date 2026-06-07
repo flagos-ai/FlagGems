@@ -6526,6 +6526,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: upsample_nearest_exact2d
+    description: Triton kernel implementation for _upsample_nearest_exact2d.
+    for:
+      - _upsample_nearest_exact2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: var
     description: Calculates the variance over all dimensions.
     for:
