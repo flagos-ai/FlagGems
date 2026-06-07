@@ -1016,6 +1016,19 @@ ops:
       - Distribution
     stages:
       - beta: '5.3'
+  - id: cdist_backward
+    description: |
+      Computes the backward pass for the batched pairwise distance (cdist) computation,
+      computing the gradient with respect to the input tensors.
+    for:
+      - _cdist_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: ceil
     description: |
       Returns a new tensor with the ceil of the elements of `input`, the smallest integer greater than
