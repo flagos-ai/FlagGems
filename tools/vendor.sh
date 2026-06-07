@@ -22,10 +22,12 @@ case $VENDOR in
 
   enflame)
     uv pip install --index ${FLAGOS_PYPI} \
-      "torch==2.9.1+cpu" \
-      "torch-gcu==2.9.1+3.7.1" \
-      "triton==3.3.0" \
-      "triton-gcu==3.3.1+1.0.20260323" \
+      "pyefml==1.9.10" \
+      "torch==2.10.0+cpu" \
+      "torchaudio==2.10.0+cpu" \
+      "torchvision==0.25.0+cpu" \
+      "torch-gcu==2.10.0+3.7.20260408" \
+      "triton-gcu==3.6.0+1.0.20260521.cc.1.9.10" \
       "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323"
 
     # Replace triton with flagtree if requested
@@ -33,7 +35,7 @@ case $VENDOR in
     # if [ -n "${USE_TRITON}" ]; then
     #   uv pip uninstall flagtree
     #   uv pip install --index ${FLAGOS_PYPI} \
-    #     flagtree==0.5.0+enflame3.6
+    #     flagtree==0.5.0+enflame.gitadb592d5
     # fi
     uv pip install -e .
     uv pip install ".[test]"
