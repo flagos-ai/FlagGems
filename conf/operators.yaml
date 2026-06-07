@@ -1153,6 +1153,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.0'
+  - id: chunk_cat
+    description: Triton kernel implementation for _chunk_cat.
+    for:
+      - _chunk_cat
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: chunk_gated_delta_rule_fwd
     description: |
       The forward case for `ChunkGatedDeltaRuleFunction` with Flash Linear Attention (FLA).
