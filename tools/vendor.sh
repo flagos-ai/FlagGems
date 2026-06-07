@@ -107,16 +107,17 @@ case $VENDOR in
 
   metax)
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.8.0+metax3.5.3.9" \
-        "torchaudio==2.4.1+metax3.5.3.9" \
-        "torchvision==0.15.1+metax3.5.3.9" \
-        "flagtree==3.1.0+metax3.5.3.9"
+        "torch==2.8.0+metax3.7.2.0" \
+        "torchaudio==2.4.1+metax3.7.2.0" \
+        "torchvision==0.15.1+metax3.7.2.0" \
+        "flagtree==3.1.0+metax3.7.2.0" \
+        "flash_attn==2.6.3+metax3.7.2.0torch2.8"
 
-    if [ -n "${USE_TRITON}" ]; then
-      uv pip uninstall flagtree
-      uv pip install --index ${FLAGOS_PYPI} \
-        "triton==3.0.0+metax3.5.3.9"
-    fi
+    # if [ -n "${USE_TRITON}" ]; then
+    #   uv pip uninstall flagtree
+    #   uv pip install --index ${FLAGOS_PYPI} \
+    #     "triton==3.0.0+metax3.7.2.0"
+    # fi
 
     uv pip install -e  .
     uv pip install ".[test]"
@@ -149,8 +150,8 @@ case $VENDOR in
   nvidia)
     # We need pytorch first for building C++ wrapped operators
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.12.0+cu132" \
-        "torchvision==0.27.0+cu132" \
+        "torch==2.11.0+cu130" \
+        "torchvision==0.26.0+cu130" \
         "triton==3.6.0"
 
     # The follow environments are for C++ wrapped operators
@@ -170,7 +171,7 @@ case $VENDOR in
   spacemit)
     uv pip install --index ${FLAGOS_PYPI} \
         "torch==2.8.0+spacemit.0" \
-        "triton==3.6.0+spacemit.a4"
+        "triton==3.6.0+spacemit.a5"
 
     uv pip install -e .
     uv pip install ".[test]"
@@ -203,17 +204,17 @@ case $VENDOR in
   tsingmicro)
     uv pip install --index ${FLAGOS_PYPI} \
         "torch==2.7.0+cpu" \
-        "torchvision==0.22.0" \
-        "torchaudio==2.7.0" \
-        "torch_txda==0.1.0+20260310.294fc4a6" \
-        "txops==0.1.0+20260225.5cc33e4e" \
+        "torchvision==0.22.0+cpu" \
+        "torchaudio==2.7.0+cpu" \
+        "torch_txda==0.1.0+20260416.b8f53e8a" \
+        "txops==0.1.0+20260508.60287151" \
         "flagtree==0.5.0+tsingmicro3.3"
 
     # Replace flagtree with Triton if requested
     if [ -n "${USE_TRITON}" ]; then
       uv pip uninstall flagtree
       uv pip install --index ${FLAGOS_PYPI} \
-        "triton==3.3.0+gitfe2a28fa"
+        "triton==3.3.0+git2e9c1195"
     fi
 
     uv pip install -e .
