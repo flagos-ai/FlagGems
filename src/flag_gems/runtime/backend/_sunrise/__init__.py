@@ -104,13 +104,25 @@ CUSTOMIZED_AUTOGRAD_OPS = (
 
 
 def _sunrise_extra_config_entries():  # 有些公共库也没有注册的op，只能先放在这里了。使得tests能过
-    from .ops import amax_out, amin, amin_out, aminmax_out, hypot_out
+    from .ops import (
+        amax_out,
+        amin,
+        amin_out,
+        aminmax_out,
+        clamp_min,
+        clamp_min_,
+        clamp_min_out,
+        hypot_out,
+    )
 
     return (
         ("amax.out", amax_out),
         ("amin", amin),
         ("amin.out", amin_out),
         ("aminmax.out", aminmax_out),
+        ("clamp_min.Tensor", clamp_min),
+        ("clamp_min.Tensor_out", clamp_min_out),
+        ("clamp_min_.Tensor", clamp_min_),
         ("hypot.out", hypot_out),
     )
 
