@@ -204,7 +204,7 @@ from flag_gems.ops.greater import (
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.group_gemm import group_mm
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
-from flag_gems.ops.gt import gt, gt_scalar
+from flag_gems.ops.gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from flag_gems.ops.hadamard_transform import (
     hadamard_transform,
     hadamard_transform_12N,
@@ -736,6 +736,8 @@ __all__ = [
     "group_norm_backward",
     "gt",
     "gt_scalar",
+    "gt_scalar_",
+    "gt_tensor_",
     "hadamard_transform",
     "hadamard_transform_12N",
     "hadamard_transform_20N",
