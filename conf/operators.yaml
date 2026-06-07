@@ -3704,6 +3704,30 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: gt_scalar_
+    description: In-place version of gt for scalar comparison, computes element-wise greater-than with a scalar storing result in input.
+    for:
+      - gt_.Scalar
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: gt_tensor_
+    description: In-place version of gt for tensor comparison, computes element-wise greater-than with a tensor storing result in input.
+    for:
+      - gt_.Tensor
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: hardsigmoid
     description: |
       An activation function that provides a piecewise linear approximation of the standard sigmoid function,

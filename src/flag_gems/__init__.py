@@ -391,6 +391,8 @@ _FULL_CONFIG = (
     ("grid_sample", grid_sample),
     ("gt.Scalar", gt_scalar),
     ("gt.Tensor", gt),
+    ("gt_.Scalar", gt_scalar_),
+    ("gt_.Tensor", gt_tensor_),
     ("hardsigmoid", hardsigmoid),
     ("hardsigmoid.out", hardsigmoid_out),
     ("hardswish_", hardswish_),
