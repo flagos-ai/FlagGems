@@ -105,6 +105,15 @@ def cat_copy_func_kernel_4(
     tl.store(out_ptr + out_idx, data, mask=mask)
 
 
+def _cat_build_working_list(
+    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
+    dim: int,
+):
+    """Helper function to build the list of tensors and compute dim offset."""
+    # Placeholder implementation
+    return A, None
+
+
 def _cat_run_kernel(
     A: List[torch.Tensor],
     dim: int,
@@ -144,6 +153,28 @@ def _cat_run_kernel(
         grid_y = num_tensors_in_batch
         max_elements_in_batch = max(total_elements_list) if total_elements_list else 0
         grid = (triton.cdiv(max_elements_in_batch, BLOCK), grid_y)
+
+        cat_copy_func_kernel_4[grid](
+            out,
+            *args[:4],  # in_ptr_a, dim_size_in_a, dim_offset_a, total_elements_a
+            *args[8:12],  # in_ptr_b, dim_size_in_b, dim_offset_b, total_elements_b
+            *args[16:20],  # in_ptr_c, dim_size_in_c, dim_offset_c, total_elements_c
+            *args[24:28],  # in_ptr_d, dim_size_in_d, dim_offset_d, total_elements_d
+            dim_size_out,
+            dim_prod_post,
+            0,  # dim_offset_a placeholder
+            0,  # dim_offset_b placeholder
+            0,  # dim_offset_c placeholder
+            0,  # dim_offset_d placeholder
+            total_elements_list[0] if total_elements_list else 0,
+            total_elements_list[1] if len(total_elements_list) > 1 else 0,
+            total_elements_list[2] if len(total_elements_list) > 2 else 0,
+            total_elements_list[3] if len(total_elements_list) > 3 else 0,
+            BLOCK_X=BLOCK,
+        )
+
+        i += 4
+        dim_offset = current_dim_offsetid_y)
 
         (
             tensor_a,
