@@ -4,12 +4,15 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
+
+FLOAT_DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
 
 
 @pytest.mark.clamp_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("isnone", [None, "max", "min"])
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_clamp_tensor(shape, isnone, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     maxi = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -32,7 +35,7 @@ def test_clamp_tensor(shape, isnone, dtype):
 @pytest.mark.clamp_tensor_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("isnone", [None, "max", "min"])
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_clamp_tensor_(shape, isnone, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     maxi = torch.randn(shape, dtype=dtype, device=flag_gems.device)

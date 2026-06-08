@@ -4,6 +4,9 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
+
+FLOAT_DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
 
 
 @pytest.mark.clamp
@@ -11,7 +14,7 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("maxi", utils.SCALARS)
 @pytest.mark.parametrize("mini", utils.SCALARS)
 @pytest.mark.parametrize("isnone", [None, "max", "min"])
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_clamp(shape, maxi, mini, isnone, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if isnone == "min":
@@ -32,7 +35,7 @@ def test_clamp(shape, maxi, mini, isnone, dtype):
 @pytest.mark.parametrize("maxi", utils.SCALARS)
 @pytest.mark.parametrize("mini", utils.SCALARS)
 @pytest.mark.parametrize("isnone", [None, "max", "min"])
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_clamp_(shape, maxi, mini, isnone, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if isnone == "min":
