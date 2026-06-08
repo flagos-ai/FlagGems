@@ -1,9 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="NVIDIA-only CUDA JIT kernel; not supported on other backends",
+)
 @pytest.mark.special_shifted_chebyshev_polynomial_w
 def test_special_shifted_chebyshev_polynomial_w():
     bench = base.BinaryPointwiseBenchmark(

@@ -30,5 +30,4 @@ def test_special_shifted_chebyshev_polynomial_w(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.special.shifted_chebyshev_polynomial_w(inp1, inp2)
 
-    ref_out = ref_out.to(res_out.device)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out.cpu(), ref_out, dtype)
