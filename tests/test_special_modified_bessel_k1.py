@@ -17,7 +17,7 @@ def test_special_modified_bessel_k1(shape, dtype):
     )  # Ensure positive values
     ref_inp = utils.to_reference(inp, True)
 
-    ref_out = torch.ops.aten.special_modified_bessel_k1(ref_inp).to(dtype)
+    ref_out = torch.ops.aten.special_modified_bessel_k1(ref_inp.cpu()).to(dtype)
     with flag_gems.use_gems():
         res_out = torch.ops.aten.special_modified_bessel_k1(inp)
 
