@@ -5,14 +5,18 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .conftest import QUICK_MODE
+
+ALL_DTYPES = (
+    [torch.float32]
+    if QUICK_MODE
+    else utils.COMPLEX_DTYPES + utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BOOL_TYPES
+)
 
 
 @pytest.mark.angle
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize(
-    "dtype",
-    utils.COMPLEX_DTYPES + utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BOOL_TYPES,
-)
+@pytest.mark.parametrize("dtype", ALL_DTYPES)
 def test_angle(shape, dtype):
     if cfg.TO_CPU and dtype == torch.complex32:
         # Complex32 on CPU is not supported
