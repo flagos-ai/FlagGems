@@ -640,6 +640,21 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: arctan2_
+    description: |
+      The in-place version of `atan2()`.
+      Computes the element-wise arc tangent of `self/other(y/x)`,
+      returning angles in radians between `-PI` and `PI` and stores the result in `self`.
+    for:
+      - arctan2_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: atanh
     description: Triton kernel implementation for atanh.
     for:
