@@ -96,7 +96,7 @@ def _input_fn(accumulate, unsafe=False):
 @pytest.mark.index_put_impl
 def test_index_put_impl_acc_false():
     bench = IndexPutAccFalseBenchmark(
-        op_name="_index_put_impl_",
+        op_name="index_put_impl",
         torch_op=torch._index_put_impl_,
         input_fn=_input_fn(False, unsafe=False),
         dtypes=consts.FLOAT_DTYPES,
@@ -124,7 +124,7 @@ class IndexPutAccTrueBenchmark(base.GenericBenchmark):
 @pytest.mark.index_put_impl
 def test_index_put_impl_acc_true():
     bench = IndexPutAccTrueBenchmark(
-        op_name="_index_put_impl_",
+        op_name="index_put_impl",
         torch_op=torch._index_put_impl_,
         input_fn=_input_fn(True, unsafe=False),
         dtypes=[torch.float16, torch.float32],

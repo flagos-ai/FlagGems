@@ -1,6 +1,16 @@
 import pytest
 import torch
 
+from flag_gems.fused.mhc.hc_head_fused_kernel import hc_head_fused_kernel
+
+try:
+    from vllm.model_executor.layers.mhc import (
+        _hc_head_fused_kernel as _vllm_hc_head_fused,
+    )
+
+    HAS_VLLM = True
+except ImportError:
+    HAS_VLLM = False
 from flag_gems.fused.mhc.hc_split_sinkhorn import (
     hc_split_sinkhorn,
     mhc_split_sinkhorn_torch_ref,
@@ -154,11 +164,10 @@ class MHCSplitSinkhornBenchmark(base.Benchmark):
             yield mixes, hc_scale, hc_base, hc_mult, self.sinkhorn_iters, self.eps
 
 
-# TODO(Qiming): Find out where this is implemented
 @pytest.mark.hc_split_sinkhorn_forward
 def test_hc_split_sinkhorn_forward():
     bench = MHCSplitSinkhornBenchmark(
-        op_name="hc_split_sinkhorn",
+        op_name="hc_split_sinkhorn_forward",
         torch_op=mhc_split_sinkhorn_torch_ref,
         dtypes=[torch.float32],
     )
@@ -204,5 +213,64 @@ def test_mhc_bwd():
         torch_op=mhc_bwd_ref,
         gems_op=mhc_bwd,
         dtypes=[torch.float32],
+    )
+    bench.run()
+
+
+class HCHeadFusedBenchmark(base.Benchmark):
+    DEFAULT_SHAPE_DESC = "N, hidden_size"
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (1, 1280, 4),
+            (4, 2560, 4),
+            (16, 4096, 4),
+            (64, 7168, 4),
+            (256, 1280, 2),
+            (256, 1280, 4),
+            (512, 1280, 2),
+            (512, 1280, 4),
+            (512, 2560, 2),
+            (512, 2560, 4),
+            (1024, 2560, 2),
+            (1024, 2560, 4),
+            (2048, 4096, 2),
+            (2048, 4096, 4),
+            (4096, 4096, 2),
+            (4096, 4096, 4),
+        ]
+
+    def get_input_iter(self, dtype):
+        for n, hidden_size, hc_mult in self.shapes:
+            device = self.device
+            torch.manual_seed(42)
+            hs_flat = torch.randn((n, hc_mult, hidden_size), dtype=dtype, device=device)
+            fn = torch.randn(
+                (hc_mult, hc_mult * hidden_size), dtype=torch.float32, device=device
+            )
+            hc_scale = torch.randn((1,), dtype=torch.float32, device=device) * 0.1
+            hc_base = torch.randn((hc_mult,), dtype=torch.float32, device=device) * 0.1
+            out = torch.empty((n, hidden_size), dtype=dtype, device=device)
+
+            yield hs_flat, fn, hc_scale, hc_base, out, hidden_size, 1e-6, 1e-6, hc_mult
+
+
+def _hc_head_fused_kernel_ref(
+    hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
+):
+    _vllm_hc_head_fused(
+        hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
+    )
+    return out
+
+
+@pytest.mark.hc_head_fused_kernel
+@pytest.mark.skipif(not HAS_VLLM, reason="vLLM not available")
+def test_hc_head_fused_kernel():
+    bench = HCHeadFusedBenchmark(
+        op_name="hc_head_fused_kernel",
+        torch_op=_hc_head_fused_kernel_ref,
+        gems_op=hc_head_fused_kernel,
+        dtypes=[torch.bfloat16],
     )
     bench.run()

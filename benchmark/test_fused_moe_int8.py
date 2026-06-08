@@ -168,7 +168,7 @@ def test_fused_experts_impl_int8():
     Benchmark FlagGems vs vLLM fused_experts_impl with INT8 W8A8 quantization.
     """
     bench = FusedMoEINT8Benchmark(
-        op_name="fused_moe_int8_gems_vs_vllm",
+        op_name="fused_experts_impl",
         torch_op=_vllm_fused_moe_int8_wrapper,
         dtypes=[torch.bfloat16],
     )

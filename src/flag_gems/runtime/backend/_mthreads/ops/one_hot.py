@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(
     f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
@@ -22,7 +22,7 @@ def one_hot_kernel_16(
     actual_classes,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < num_elements
@@ -47,7 +47,7 @@ def one_hot_kernel_32(
     actual_classes,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < num_elements
@@ -72,7 +72,7 @@ def one_hot_kernel_64(
     actual_classes,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < num_elements
@@ -101,7 +101,7 @@ def one_hot_set_one_kernel(
     Kernel that only writes 1s to the correct positions.
     Output tensor should be pre-initialized with zeros.
     """
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < num_elements

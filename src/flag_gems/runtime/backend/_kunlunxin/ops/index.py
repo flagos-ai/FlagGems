@@ -42,7 +42,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils.shape_utils import volume")
-    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+    code.writeline("from flag_gems.utils import triton_lang_extension as ext")
 
     code.newline()
     code.newline()
@@ -113,8 +113,8 @@ def generate_index_kernel(
     code.writeline("):")
 
     with code.indent():
-        code.writeline("pid0 = tle.program_id(axis=0)")
-        code.writeline("pid1 = tle.program_id(axis=1)")
+        code.writeline("pid0 = ext.program_id(axis=0)")
+        code.writeline("pid1 = ext.program_id(axis=1)")
         code.writeline(
             "offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
         )

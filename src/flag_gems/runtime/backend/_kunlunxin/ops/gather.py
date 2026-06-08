@@ -22,7 +22,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.newline()
     code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems import runtime")
-    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+    code.writeline("from flag_gems.utils import triton_lang_extension as ext")
 
     code.newline()
     code.newline()
@@ -113,8 +113,8 @@ def generate_gather_kernel(
 
     # Kernel Code
     with code.indent():
-        code.writeline("pid_x = tle.program_id(0)")
-        code.writeline("pid_y = tle.program_id(1)")
+        code.writeline("pid_x = ext.program_id(0)")
+        code.writeline("pid_y = ext.program_id(1)")
         code.writeline(
             "rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]"
         )

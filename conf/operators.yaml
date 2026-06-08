@@ -109,6 +109,19 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: add_rms_norm
+    description: |
+      Add two inputs element-wise and apply Root Mean Square Layer Normalization.
+    for:
+      - add_rms_norm
+    labels:
+      - aten
+      - KernelGen
+      - Normalization
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: addcdiv
     description: |
       Performs the element-wise division of `tensor1` by `tensor2`, multiplies the result
@@ -244,6 +257,19 @@ ops:
       - BLAS
     stages:
       - stable: '4.0'
+  - id: affine_grid_generator
+    description: |
+      Generates a 2D or 3D flow field (sampling grid), given a batch of affine matrices theta.
+    for:
+      - affine_grid_generator
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: alias_copy
     description: |
       Creates a new tensor that shares the same storage data as the original tensor,
@@ -532,6 +558,29 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: as_strided_copy
+    description: |
+      Creates a contiguous copy of an `as_strided` view of the input tensor.
+    for:
+      - as_strided_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: as_strided_copy_out
+    description: A variant of `as_strided_copy()` that assigns the output to the `out` tensor.
+    for:
+      - as_strided_copy.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: assert_async
     description: |
       A utility used to perform data-dependent assertions on GPU tensors
@@ -591,6 +640,28 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: atanh
+    description: Triton kernel implementation for atanh.
+    for:
+      - atanh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: atanh_
+    description: The in-place version of `atanh()`.
+    for:
+      - atanh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: avg_pool2d
     description: |
       Applies 2D average-pooling operation in `kH \mul kW` regions by step size `sH \mul sW` steps.
@@ -685,6 +756,8 @@ ops:
       - bernoulli_.float
     labels:
       - aten
+      - skip_precision_check
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -696,6 +769,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Reduction
     stages:
@@ -911,6 +985,26 @@ ops:
     stages:
       - stable: '2.2'
     cpp: '4.0'
+  - id: cauchy
+    description: Draws random numbers from a Cauchy distribution.
+    for:
+      - cauchy.float
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
+  - id: cauchy_
+    description: Fills the tensor with numbers drawn from the Cauchy distribution.
+    for:
+      - cauchy_.float
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
   - id: ceil
     description: |
       Returns a new tensor with the ceil of the elements of `input`, the smallest integer greater than
@@ -1006,6 +1100,32 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: clamp_max
+    description: |
+      Clamps all elements in `input` to be smaller or equal `max`.
+    for:
+      - clamp_max
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: clamp_max_
+    description: |
+      The in-place version of `clamp_max()`.
+    for:
+      - clamp_max_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: clamp_min
     description: A variant of `clamp()` with `min` set to `min`.
     for:
@@ -1072,6 +1192,33 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: col2im
+    description: |
+      Rearranges column blocks back into a multidimensional tensor (inverse of im2col).
+    for:
+      - col2im
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: combine_topk_swa_indices
+    description: |
+      Combines compressed top-k sparse attention indices with sliding-window attention indices
+      for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.combine_topk_swa_indices
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: concat_and_cache_mla
     description: |
       Writes the latent and RoPE value into KV cache for Multi-head Latent Attention forward case.
@@ -1084,6 +1231,32 @@ ops:
       - Attention
     stages:
       - beta: '3.0'
+  - id: compute_global_topk_indices_and_lens
+    description: |
+      Converts local top-k sparse attention indices to global KV-cache indices and computes
+      valid top-k lengths for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.compute_global_topk_indices_and_lens
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: concatenate
+    description: An alias of `cat()`.
+    for:
+      - concatenate
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: conj_physical
     description: |
       Computes the element-wise conjugate of the given `input` tensor.
@@ -1116,6 +1289,7 @@ ops:
       - contiguous
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -1189,10 +1363,35 @@ ops:
     labels:
       - aten
       - Convolution
+      - NoCPU
     kind:
       - NeuralNetwork
     stages:
       - beta: '2.2'
+  - id: conv_transpose1d
+    description: |
+      Applies a 1D transposed convolution operator over an input image composed of several input planes.
+    for:
+      - conv_transpose1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - beta: '5.1'
+  - id: conv_transpose2d
+    description: |
+      Applies a 2D transposed convolution operator over an input image composed of several input planes.
+    for:
+      - conv_transpose2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - alpha: '5.1'
   - id: copy
     description: |
       As a wrapper of `copy_`, this operator copies elements from `src` to `out`
@@ -1217,6 +1416,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -1313,6 +1513,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: cp_gather_indexer_k_quant_cache
+    description: This is a fused operator that gathers FP8 K cache values and scales.
+    for:
+      - None
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - Quantization
+    stages:
+      - beta: '5.1'
   - id: cross_entropy_loss
     description: Computes the cross entropy loss between input logits and target.
     for:
@@ -1325,6 +1536,18 @@ ops:
     stages:
       - stable: '2.0'
       - removed: '3.0'
+  - id: cudnn_convolution
+    description: |
+      A wrapper for cuDNN convolution backend.
+    for:
+      - cudnn_convolution
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: cummax
     description: |
       Returns a named tuple `(values, indices)` where `values` is the cumulative maximum of elements
@@ -1353,6 +1576,28 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: cumprod
+    description: Returns the cumulative product of elements of `input` in the dimension `dim`.
+    for:
+      - cumprod
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: cumprod_
+    description: This is the in-place version of `cumprod()`.
+    for:
+      - cumprod_
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: cumsum
     destination: Returns the cumulative sum of elements of `input` in the dimension `dim`.
     for:
@@ -1385,6 +1630,20 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.0'
+  - id: dequantize_and_gather_k_cache
+    description: |
+      Dequantizes FP8 K-cache entries and gathers them into a BF16 tensor for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.dequantize_and_gather_k_cache
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: dgeglu
     description: |
       Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid function.
@@ -1442,6 +1701,18 @@ ops:
       - LinearAlg
     stages:
       - stable: '2.2'
+  - id: diff
+    description: |
+      Computes the n-th forward difference along the given dimension.
+    for:
+      - diff
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: digamma_
     description: |
       Computes the in-place digamma function, which is the logarithmic derivative of the Gamma function.
@@ -1684,6 +1955,19 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: einsum
+    description: |
+      Sums the product of the elements of the input `operands` along dimensions specified using a notation
+      based on the Einstein summation convention.
+    for:
+      - einsum
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
   - id: elu
     description: Apply the Exponential Linear Unit (ELU) function element-wise.
     for:
@@ -1738,6 +2022,7 @@ ops:
       - embedding_backward
     labels:
       - aten
+      - NoCPU
     kind:
       - NeuralNetwork
     stages:
@@ -1785,6 +2070,19 @@ ops:
       - Math
     stages:
       - stable: '5.0'
+  - id: euclidean_dist
+    description: |
+      Computes pairwise Euclidean distances between rows of two 2D tensors.
+    for:
+      - _euclidean_dist
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: erf
     description: Computes the error function of `input`.
     for:
@@ -1898,6 +2196,7 @@ ops:
       - exponential_
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -1926,6 +2225,30 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: feature_dropout
+    description: |
+      Applies feature dropout to the `input` tensor. Randomly zeroes out entire channels of the `input` tensor with probability `p`.
+      Each batch element has its own independent channel mask.
+    for:
+      - feature_dropout
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: feature_dropout_
+    description: The in-place version of `feature_dropout()`.
+    for:
+      - feature_dropout_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: fill_scalar
     description: Fills a scalar with the specified value.
     for:
@@ -1957,6 +2280,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -1992,6 +2316,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -2001,6 +2326,7 @@ ops:
       - _flash_attention_forward
     labels:
       - aten
+      - NoCPU
     kind:
       - NeuralNetwork
     stages:
@@ -2052,6 +2378,8 @@ ops:
       - fused
       - Attention
       - vLLM
+    kind:
+      - NeuralNetwork
     stages:
       - alpha: '5.1'
   - id: flip
@@ -2065,6 +2393,32 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: floor
+    description: |
+      Performs an element-wise floor operation, rounding each element of a tensor
+      down to the nearest integer less than or equal to itself.
+    for:
+      - floor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: floor_out
+    description: |
+      Performs an element-wise floor operation with output tensor, rounding each element
+      down to the nearest integer less than or equal to itself.
+    for:
+      - floor.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
   - id: floor_
     description: |
       Performs an in-place element-wise floor operation, rounding each element of a tensor
@@ -2144,15 +2498,88 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: fmod_
+    description: In-place remainder of division (fmod_), computes element-wise remainder with truncation toward zero.
+    for:
+      - fmod_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: fmod_scalar
+    description: |
+      Computes the element-wise remainder of division of input by a scalar divisor.
+    for:
+      - fmod.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: fmod_scalar_
+    description: |
+      In-place version of fmod with a scalar divisor.
+    for:
+      - fmod_.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: fmod_tensor
+    description: |
+      Computes the element-wise remainder of division of input by a tensor divisor.
+    for:
+      - fmod.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: fmod_tensor_
+    description: |
+      In-place version of fmod with a tensor divisor.
+    for:
+      - fmod_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: fp8_mqa_logits
+    description: |
+      For each token in the given E4M3 tensor, iterate all tokens from two other given tensors,
+      calculate the logit.
+    for:
+      - vllm.utils.deep_gemm.fp8_mqa_logits
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: full
     description: |
       Creates a tensor of size `size` filled with `fill_value`.
-      The tensor’s dtype is inferred from `fill_value`.
+      The tensor's dtype is inferred from `fill_value`.
     for:
       - full
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -2192,6 +2619,21 @@ ops:
     stages:
       - stable: '2.0'
     cpp: '4.0'
+  - id: fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
+    description: |
+      Horizontally-fused DeepseekV4-MLA.
+      per-head RMSNorm + GPT-J RoPE for Q, and GPT-J RoPE + UE8M0 FP8
+      quant + paged cache insert for KV, all in one kernel launch.
+    for:
+      - torch.ops._C.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: fused_experts_impl
     description: An implementation of fused MoE.
     for:
@@ -2212,6 +2654,20 @@ ops:
       - fused
       - vLLM
       - MoE
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: fused_q_kv_rmsnorm
+    description: |
+      Applies RMSNorm to Q and KV tensors in a single fused kernel for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.fused_q_kv_rmsnorm
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
     kind:
       - NeuralNetwork
     stages:
@@ -2392,6 +2848,7 @@ ops:
     for:
       - get_scheduler_metadata
     labels:
+      - NoCPU
       - vLLM
     kind:
       - Attention
@@ -2516,6 +2973,7 @@ ops:
       - _moe_C.grouped_topk
     labels:
       - fused
+      - NoCPU
       - vLLM
     kind:
       - MoE
@@ -2602,6 +3060,18 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.1'
+  - id: histc
+    description: |
+      Computes the histogram of a tensor, binning each element into equal-width bins.
+    for:
+      - histc
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: hstack
     description: |
       Stack tensors in sequence horizontally (column wise). This is equivalent to concatenation
@@ -2711,6 +3181,30 @@ ops:
       - Tensor
     stages:
       - stable: '4.0'
+  - id: index_copy
+    description: |
+      Copies the elements from `source` into `input` at the positions specified by
+      `index` along the given `dim`.
+    for:
+      - index_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: index_copy_
+    description: The in-place version of `index_copy()`.
+    for:
+      - index_copy_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: index_put
     description: |
       Puts values from the tensor `values` into the tensor `input` using the indices specified
@@ -2733,6 +3227,19 @@ ops:
       - Tensor
     stages:
       - stable: '3.0'
+  - id: index_reduce_
+    description: |
+      Accumulates the elements of `source` into `input` at the indices specified
+      by `index` along `dim`, using `prod`, `mean`, `amax`, or `amin` reduction.
+    for:
+      - index_reduce_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.3'
   - id: index_put_impl
     description: An internal C++ function that handles the heavy lifting for placing values into a tensor at specific indices.
     for:
@@ -2755,6 +3262,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: indexer_k_quant_and_cache
+    description: This is a fused operator that quantizes K tensors and writes them into the FP8 KV cache.
+    for:
+      - None
+    labels:
+      - fused
+      - vLLM
+    kind:
+      - Quantization
+    stages:
+      - beta: '5.1'
   - id: inplace_fused_experts
     description: This operator writes output directly to `hidden_states`.
     for:
@@ -2877,6 +3395,7 @@ ops:
       - isneginf
     labels:
       - aten
+      - KernelGen
       - pointwise
     kind:
       - Math
@@ -2888,6 +3407,7 @@ ops:
       - isneginf.out
     labels:
       - aten
+      - KernelGen
       - pointwise
     kind:
       - Math
@@ -3088,6 +3608,18 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: log1p
+    description: |
+      Computes the natural logarithm of `1+x(y_i=log_e(x_i+1))` for each element in the input tensor.
+    for:
+      - log1p
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
   - id: log1p_
     description: |
       Computes the natural logarithm of `1+x(y_i=log_e(x_i+1))` for each element in the input tensor in-place.
@@ -3305,6 +3837,18 @@ ops:
       - tensor
     stages:
       - stable: '4.0'
+  - id: logsumexp
+    description: |
+      Computes the log of the sum of exponentials of elements in the input tensor along given dimensions.
+    for:
+      - logsumexp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: lt
     description: Computes that `input` is less than `other` element-wise.
     for:
@@ -3358,6 +3902,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -3381,6 +3926,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -3524,6 +4070,21 @@ ops:
       - Reduction
     stages:
       - stable: '2.0'
+  - id: hc_head_fused_kernel
+    description: |
+      The head fusion kernel for MHC (Manifold-Constrained Hyper-Connections).
+      This fused implementation computes RMS-normalized hidden states and applies
+      per-head weighted mixing to produce the output activations.
+    for:
+      - mhc_head_fused_kernel
+    labels:
+      - fused
+      - vLLM
+      - DSA
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.2'
   - id: mhc_bwd
     description: |
       The backward case for MHC (Manifold-Constrained Hyper-Connections).
@@ -3662,6 +4223,76 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: renorm
+    description: >
+      Returns a tensor where each sub-tensor along the given dimension
+      is normalized such that the p-norm is lower than a max norm value.
+    for:
+      - renorm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: renorm_
+    description: The in-place version of `renorm()`.
+    for:
+      - renorm_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: reflection_pad1d_backward
+    description: Computes the gradient of reflection_pad1d with respect to the input tensor.
+    for:
+      - reflection_pad1d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: rot90
+    description: Triton kernel implementation for rot90.
+    for:
+      - rot90
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: smooth_l1_loss
+    description: Compute the smooth L1 loss between input and target tensors.
+    for:
+      - smooth_l1_loss
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: smooth_l1_loss_backward
+    description: Compute the gradient of smooth L1 loss with respect to the input tensor.
+    for:
+      - smooth_l1_loss_backward
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: mul
     description: Multiplies `input` by `other`.
     for:
@@ -3693,6 +4324,7 @@ ops:
       - multinomial
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -3866,6 +4498,19 @@ ops:
     stages:
       - stable: '2.1'
     cpp: '4.0'
+  - id: nonzero_numpy
+    description: |
+      Returns a tuple of 1-D tensors, one for each dimension, containing the indices of
+      the nonzero elements in the input tensor (NumPy-style).
+    for:
+      - nonzero_numpy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: normal_float_float_
     description: |
       Returns a tensor of random numbers drawn from separate normal distributions
@@ -3876,6 +4521,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -3945,6 +4591,7 @@ ops:
     labels:
       - aten
       - nn.functional
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -3957,6 +4604,7 @@ ops:
       - ones
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -3996,6 +4644,18 @@ ops:
       - MoE
     stages:
       - beta: '5.0'
+  - id: pack_seq_triton
+    description: Pack variable-length token sequences into a padded batched tensor.
+    for:
+      - pack_seq_triton
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: pad
     description: This pads a tenor using the specified mode.
     for:
@@ -4016,6 +4676,7 @@ ops:
     for:
       - _C.per_token_group_fp8_quant
     labels:
+      - NoCPU
       - vLLM
     kind:
       - Quantization
@@ -4056,6 +4717,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: poisson
+    description: |
+      Returns a tensor of the same size as `input` with each element sampled
+      from a Poisson distribution with rate given by the corresponding element in `input`.
+    for:
+      - poisson
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: polar
     description: |
       Constructs a complex tensor whose elements are Cartesian coordinates corresponding to
@@ -4178,6 +4852,32 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: rad2deg
+    description: |
+      Converts each element from angles in radians to degrees.
+    for:
+      - rad2deg
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: rad2deg_
+    description: |
+      In-place version of rad2deg.
+    for:
+      - rad2deg_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: rand
     description: Returns a tensor filled with random numbers from a uniform distribution on the interval `[0,1)`.
     for:
@@ -4224,12 +4924,37 @@ ops:
       - Distribution
     stages:
       - stable: '2.1'
+  - id: randint
+    description: Returns a tensor filled with random integers generated uniformly between low (inclusive) and high (exclusive).
+    for:
+      - randint
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Distribution
+    stages:
+      - stable: '2.1'
+  - id: randint_like
+    description: |
+      Returns a tensor with the same size as `input` that is filled with random integers
+      generated uniformly between `0` (inclusive) and `high` (exclusive).
+    for:
+      - randint_like
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Distribution
+    stages:
+      - alpha: '5.1'
   - id: randperm
     description: Returns a random permutation of integers from `0` to `n - 1`.
     for:
       - randperm
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -4361,9 +5086,22 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: remainder
+    description: |
+      Computes Python's modulus operation entrywise. The result has the same sign
+      as the divisor `other` and its absolute value is less than that of `other`.
+    for:
+      - remainder
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: remainder_scalar
     description: |
-      Computes Python’s modulus operation entrywise. The result has the same sign
+      Computes Python's modulus operation entrywise. The result has the same sign
       as the divisor `other` and its absolute value is less than that of `other`.
     for:
       - remainder.Scalar
@@ -4385,7 +5123,7 @@ ops:
       - stable: '2.2'
   - id: remainder_scalar_tensor
     description: |
-      Computes Python’s modulus operation entrywise. The result has the same sign
+      Computes Python's modulus operation entrywise. The result has the same sign
       as the divisor `other` and its absolute value is less than that of `other`.
     for:
       - remainder.Scalar_Tensor
@@ -4397,7 +5135,7 @@ ops:
       - stable: '2.2'
   - id: remainder_tensor
     description: |
-      Computes Python’s modulus operation entrywise. The result has the same sign
+      Computes Python's modulus operation entrywise. The result has the same sign
       as the divisor `other` and its absolute value is less than that of `other`.
     for:
       - remainder.Tensor
@@ -4562,6 +5300,7 @@ ops:
       - roll
     labels:
       - aten
+      - KernelGen
     kind:
       - BLAS
     stages:
@@ -4635,6 +5374,28 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: rsub_scalar
+    description: Substracts `other`, scaled by `alpha`, from `input`. This is the scalar version.
+    for:
+      - rsub.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: rsub_tensor
+    description: Substracts `other`, scaled by `alpha`, from `input`. This is the tensor version.
+    for:
+      - rsub.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: rwkv_ka_fusion
     description: |
       Merges, aligns, and enhances features from different data sources or spatial directions
@@ -4709,6 +5470,28 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: scaled_mm
+    description: |
+      Performs a scaled matrix multiplication. The result of `self @ mat2` is
+      multiplied by `scale_a` and `scale_b`, then an optional bias is added.
+    for:
+      - _scaled_mm
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
+  - id: scaled_mm_out
+    description: A variant of `_scaled_mm` that writes the result into `out`.
+    for:
+      - _scaled_mm.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
   - id: scaled_softmax_backward
     description: |
       The backward pass for a scaled softmax function, commonly used in Scaled Dot-Product Attention (SDPA)
@@ -4773,10 +5556,24 @@ ops:
       - scatter_.reduce
     labels:
       - aten
+      - KernelGen
     kind:
       - Tensor
     stages:
       - stable: '3.0'
+  - id: scatter_reduce_two_
+    description: |
+      A specific low-level ATen operator primarily encountered during model compilation
+      or when using advanced backends like TensorRT or MPS.
+    for:
+      - scatter_reduce_.two
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.1'
   - id: scatter_src
     description: |
       Writes all values from the tensor `src` into provided tensor at the indices
@@ -4804,6 +5601,52 @@ ops:
       - Tensor
     stages:
       - stable: '3.0'
+  - id: searchsorted
+    description: |
+      Finds insertion indices for tensor values in sorted innermost-dimension boundaries.
+    for:
+      - searchsorted.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: searchsorted_out
+    description: A variant of `searchsorted.Tensor` that assigns the result to `out`.
+    for:
+      - searchsorted.Tensor_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: searchsorted_scalar
+    description: |
+      Finds insertion indices for a scalar value in one-dimensional sorted boundaries.
+    for:
+      - searchsorted.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: searchsorted_scalar_out
+    description: A variant of `searchsorted.Scalar` that assigns the result to `out`.
+    for:
+      - searchsorted.Scalar_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: select_backward
     description: Calculate the gradient during the backward pass in the neural network.
     for:
@@ -4975,6 +5818,30 @@ ops:
       - Activation
     stages:
       - stable: '2.0'
+  - id: silu_and_mul_with_clamp
+    description: A custom operator in vLLM as activation function for SwiGLU.
+    for:
+      - silu_and_mul_with_clamp
+    labels:
+      - fused
+      - pointwise
+      - vLLM
+    kind:
+      - Activation
+    stages:
+      - stable: '5.1'
+  - id: silu_and_mul_with_clamp_out
+    description: A variant of `silu_and_mul_with_clamp` with an extra `out` argument.
+    for:
+      - silu_and_mul_with_clamp.out
+    labels:
+      - fused
+      - pointwise
+      - vLLM
+    kind:
+      - Activation
+    stages:
+      - stable: '5.1'
   - id: silu_backward
     description: A variant of `silu()` for backward case.
     for:
@@ -5165,6 +6032,7 @@ ops:
       - sort
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -5177,6 +6045,7 @@ ops:
       - sort.stable
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -5256,6 +6125,19 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: split_with_sizes_copy
+    description: |
+      Splits a tensor into sub-tensors along a given dimension,
+      where each split has a specified size. Always returns copies.
+    for:
+      - split_with_sizes_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
@@ -5496,6 +6378,19 @@ ops:
       - Math
     stages:
       - stable: '3.0'
+  - id: tensor_split
+    description: |
+      Splits a tensor into multiple sub-tensors along a given dimension,
+      using either a number of sections or a list of split indices.
+    for:
+      - tensor_split
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: threshold
     description: Apply a threshold to each element of the input Tensor.
     for:
@@ -5542,10 +6437,38 @@ ops:
     labels:
       - aten
       - pointwise
+      - skip_precision_check
     kind:
       - Tensor
     stages:
       - beta: '4.1'
+  - id: top_k_per_row_prefill
+    description: |
+      Triton top-K per row for DeepSeek V4 sparse attention prefill phase.
+      Replaces vLLM persistent_topk CUDA kernel with in-place masking + adaptive topk selection.
+    for:
+      - None
+    labels:
+      - fused
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: top_k_per_row_decode
+    description: |
+      Triton top-K per row for DeepSeek V4 decode-phase token selection.
+      Radix-select based approach with three dispatch tiers for different vocab sizes.
+    for:
+      - None
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: topk
     description: |
       Returns the `k` largest elements of the given `input` tensor along a given dimension.
@@ -5555,6 +6478,7 @@ ops:
       - topk
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -5573,6 +6497,20 @@ ops:
       - MoE
     stages:
       - stable: '4.0'
+  - id: topk_softplus_sqrt
+    description: |
+      Fused softplus + sqrt + top-k selection and optional renormalization
+      for MoE gating in models like DeepSeek-V3/V4.
+    for:
+      - topk_softplus_sqrt
+    labels:
+      - fused
+      - KernelGen
+      - vLLM
+    kind:
+      - MoE
+    stages:
+      - beta: '5.1'
   - id: trace
     description: Returns the sum of the elements of the diagonal of the input 2-D matrix.
     for:
@@ -5596,6 +6534,28 @@ ops:
       - BLAS
     stages:
       - beta: '5.0'
+  - id: tril_
+    description: |
+      The in-place version of `tril()`.
+    for:
+      - tril_
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
+  - id: tril_out
+    description: |
+      A variant of `tril()` that explicitly assigns the output to the `out` parameter.
+    for:
+      - tril.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.1'
   - id: triton_lighting_indexer_k_tiled_interface
     description: Part of FP8 MQA framework. It is currently not exposed as an operator for use.
     for:
@@ -5669,6 +6629,7 @@ ops:
       - uniform_
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Distribution
     stages:
@@ -5689,8 +6650,21 @@ ops:
       - unique_consecutive
     labels:
       - aten
+      - KernelGen
     kind:
       - Distribution
+    stages:
+      - beta: '5.1'
+  - id: unpack_seq_triton
+    description: Unpack a packed sequence tensor back to its original variable-length form.
+    for:
+      - unpack_seq_triton
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
     stages:
       - beta: '5.1'
   # - id: unsafe_view
@@ -5814,12 +6788,24 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: upsample_trilinear3d
+    description: Upsamples the input (NCDHW) using trilinear interpolation.
+    for:
+      - upsample_trilinear3d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: var
     description: Calculates the variance over all dimensions.
     for:
       - var
     labels:
       - aten
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -5891,6 +6877,19 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: view_copy
+    description: |
+      Returns a copy of the tensor with the specified shape.
+      Unlike view(), this always returns a new tensor rather than an alias.
+    for:
+      - view_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: w8a8_block_fp8_matmul
     description: Performs matrix multiplication with block-wise quantization.
     for:
@@ -6007,6 +7006,7 @@ ops:
       - zeros
     labels:
       - aten
+      - skip_precision_check
     kind:
       - Tensor
     stages:
@@ -6022,3 +7022,124 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: _to_copy
+    description: Layout/memory operation (to_copy).
+    for:
+      - _to_copy
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: view
+    description: Pure layout operation (view).
+    for:
+      - view
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: reshape
+    description: Pure layout operation (reshape).
+    for:
+      - reshape
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: expand
+    description: Pure layout operation (expand).
+    for:
+      - expand
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: permute
+    description: Pure layout operation (permute).
+    for:
+      - permute
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: transpose
+    description: Pure layout operation (transpose).
+    for:
+      - transpose
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: clone
+    description: Pure layout/memory operation (clone).
+    for:
+      - clone
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: to
+    description: Device/dtype cast operation (to).
+    for:
+      - to
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: empty
+    description: Tensor factory operation (empty).
+    for:
+      - empty
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: normal_
+    description: Random sampling operator (normal_).
+    for:
+      - normal_
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: random_
+    description: Random sampling operator (random_).
+    for:
+      - random_
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: argsort
+    description: Sorting/selection operator (argsort).
+    for:
+      - argsort
+    labels:
+      - skip_precision_check
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'

@@ -20,7 +20,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.newline()
     code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems import runtime")
-    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+    code.writeline("from flag_gems.utils import triton_lang_extension as ext")
 
     code.newline()
     code.newline()
@@ -200,6 +200,12 @@ _gather_func = GatherFunction()
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
     logger.debug("GEMS GATHER")
+
+    # index must have same number of dimensions as input
+    if index.ndim != inp.ndim:
+        raise IndexError(
+            "Index tensor must have the same number of dimensions as input tensor"
+        )
 
     return_dtype = inp.dtype
     if inp.dtype == torch.int64:

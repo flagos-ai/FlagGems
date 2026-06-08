@@ -7,7 +7,7 @@ from torch import Tensor
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 from .topk import _get_finfo_val, argsort
 
@@ -48,8 +48,8 @@ def quantile_kernel(
     BLOCK_N: tl.constexpr,
     interpolation: tl.constexpr,
 ):
-    pid_Q = tle.program_id(0)
-    pid_N = tle.program_id(1)
+    pid_Q = ext.program_id(0)
+    pid_N = ext.program_id(1)
     ctype = inp.dtype.element_ty
 
     offsets_Q = pid_Q * BLOCK_Q + tl.arange(0, BLOCK_Q)
@@ -105,7 +105,7 @@ def quantile_bitonic_kernel(
     BLOCK_M: tl.constexpr,
     interpolation: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     ctype = inp.dtype.element_ty
 
     cols = tl.arange(0, BLOCK_M)

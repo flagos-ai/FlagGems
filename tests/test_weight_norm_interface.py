@@ -38,7 +38,7 @@ def test_weight_norm_interface(shape, dtype, dim):
 
 
 @pytest.mark.weight_norm_interface_backward
-@pytest.mark.skipif(True, reason="Temporarely skip for ci")
+@pytest.mark.skip(reason="Issue #3007: assertion fails")
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

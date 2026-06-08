@@ -24,7 +24,8 @@ device = flag_gems.device
 def test_pad(shape, dtype, pad_mode, contiguous):
     rank = len(shape)
     if pad_mode != "constant" and rank < 3:
-        pytest.skip("PyTorch non-constant padding requires 3D+ input tensors")
+        # Invalid combination: PyTorch non-constant padding requires 3D+ input tensors
+        return
 
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)

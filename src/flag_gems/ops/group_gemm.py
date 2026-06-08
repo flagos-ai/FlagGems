@@ -5,12 +5,13 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import libentry, libtuner
+from flag_gems.utils.device_info import get_device_capability, get_sm_count
 
 logger = logging.getLogger(__name__)
 
 
 def supports_tma():
-    return torch.cuda.get_device_capability()[0] >= 9
+    return get_device_capability()[0] >= 9
 
 
 if hasattr(tl, "make_tensor_descriptor"):
@@ -519,7 +520,7 @@ def group_gemm(group_A, group_B, group_C, offs_table, alpha=1, beta=0):
     d_output_ptrs = torch.tensor(out_addrs, device=group_A.device)
     d_g_sizes = torch.tensor(group_sizes, dtype=torch.int32, device=group_A.device)
     d_g_lds = torch.tensor(group_lds, dtype=torch.int32, device=group_A.device)
-    NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
+    NUM_SMS = get_sm_count()
 
     if _support_device_tensor_descriptor and supports_tma():
 
@@ -569,7 +570,7 @@ def group_mm(A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor) -> torch.Tens
     strideBK, strideBN = B.stride(1), B.stride(2)
 
     assert num_groups == offs.numel()
-    NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
+    NUM_SMS = get_sm_count()
     C = A.new_empty(M, N)
     if _support_host_tensor_descriptor and supports_tma():
         dummy_block = [1, 1]
