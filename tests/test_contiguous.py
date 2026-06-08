@@ -4,11 +4,16 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
+
+CONTIGUOUS_DTYPES = (
+    [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES
+)
 
 
 @pytest.mark.contiguous
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES)
+@pytest.mark.parametrize("dtype", CONTIGUOUS_DTYPES)
 def test_accuracy_contiguous(shape, dtype):
     if shape[0] <= 2:
         return
