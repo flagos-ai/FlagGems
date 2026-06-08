@@ -111,12 +111,61 @@ class CpGatherIndexerKQuantCacheBenchmark(base.Benchmark):
         self.shape_desc = "batch_size, seq_len, block_size, head_dim, quant_block_size"
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = [
-            (4, 256, 16, 128, 128),
-            (8, 512, 16, 128, 128),
-            (16, 1024, 16, 512, 128),
-            (32, 1024, 16, 512, 128),
+        block_size = 16
+        block_size_deepseek_insert = 64
+        deepseek_head_dim = 512
+        quant_block_size = 128
+        single_seq_shapes = [
+            (1, num_tokens, block_size, deepseek_head_dim, quant_block_size)
+            for num_tokens in (
+                1,
+                2,
+                4,
+                8,
+                16,
+                17,
+                32,
+                64,
+                128,
+                256,
+                512,
+                1024,
+                2048,
+                4096,
+                8192,
+                16384,
+                32768,
+                65536,
+            )
         ]
+        decode_batch_shapes = [
+            (batch_size, 1, block_size, deepseek_head_dim, quant_block_size)
+            for batch_size in (2, 4, 8, 16, 32, 64, 128, 256)
+        ]
+        multi_batch_shapes = [
+            (2, 4096, block_size, deepseek_head_dim, quant_block_size),
+            (4, 4096, block_size, deepseek_head_dim, quant_block_size),
+            (8, 4096, block_size, deepseek_head_dim, quant_block_size),
+            (16, 2048, block_size, deepseek_head_dim, quant_block_size),
+            (32, 1024, block_size, deepseek_head_dim, quant_block_size),
+            (64, 512, block_size, deepseek_head_dim, quant_block_size),
+            (128, 256, block_size, deepseek_head_dim, quant_block_size),
+            (256, 128, block_size, deepseek_head_dim, quant_block_size),
+        ]
+        block_size_64_shapes = [
+            (1, 8192, block_size_deepseek_insert, deepseek_head_dim, quant_block_size),
+            (1, 32768, block_size_deepseek_insert, deepseek_head_dim, quant_block_size),
+            (1, 65536, block_size_deepseek_insert, deepseek_head_dim, quant_block_size),
+            (16, 2048, block_size_deepseek_insert, deepseek_head_dim, quant_block_size),
+            (64, 512, block_size_deepseek_insert, deepseek_head_dim, quant_block_size),
+            (256, 128, block_size_deepseek_insert, deepseek_head_dim, quant_block_size),
+        ]
+        self.shapes = (
+            single_seq_shapes
+            + decode_batch_shapes
+            + multi_batch_shapes
+            + block_size_64_shapes
+        )
 
     def get_input_iter(self, dtype):
         del dtype
