@@ -6768,6 +6768,20 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: upsample_nearest_exact3d
+    description: |
+      Increases the depth, height, and width of a 3D tensor using nearest-neighbor interpolation,
+      ensuring the output aligns with library-standard algorithms like PIL.
+    for:
+      - _upsample_nearest_exact3d
+    labels:
+      - aten
+      - NeuralNetwork
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: upsample_trilinear3d
     description: Upsamples the input (NCDHW) using trilinear interpolation.
     for:
