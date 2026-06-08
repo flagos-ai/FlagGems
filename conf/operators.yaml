@@ -952,6 +952,17 @@ ops:
     stages:
       - stable: '5.0'
     cpp: '4.0'
+  - id: broadcast_to
+    description: Broadcasts input to the shape size. Equivalent to calling input.expand(size).
+    for:
+      - broadcast_to
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: bucket_sort_topk
     description: A wrapper of the TLE version and the Triton version bucket-sort topk operation.
     for:
