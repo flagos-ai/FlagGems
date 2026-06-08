@@ -303,6 +303,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logger.debug("GEMS_KUNLUNXIN GATHER BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN GATHER_BACKWARD")
     result = grad.new_zeros(self.shape)
     return scatter_(result, dim, index, grad, reduce="add")

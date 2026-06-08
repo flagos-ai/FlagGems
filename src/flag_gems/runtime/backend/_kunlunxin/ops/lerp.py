@@ -49,18 +49,18 @@ def lerp_scalar_kernel_tail(input, end, weight):
 
 
 def lerp_tensor(input, end, weight):
-    logger.debug("GEMS_KUNLUNXIN LERP TENSOR")
+    logger.debug("GEMS_KUNLUNXIN LERP_TENSOR")
     out = lerp_tensor_kernel(input, end, weight)
     return out
 
 
 def lerp_tensor_(input, end, weight):
-    logger.debug("GEMS_KUNLUNXIN LERP INPLACE TENSOR")
+    logger.debug("GEMS_KUNLUNXIN LERP_INPLACE_TENSOR")
     return lerp_tensor_kernel(input, end, weight, out0=input)
 
 
 def lerp_scalar(input, end, weight):
-    logger.debug("GEMS_KUNLUNXIN LERP TENSOR")
+    logger.debug("GEMS_KUNLUNXIN LERP_TENSOR")
     if weight < 0.5:
         out = lerp_scalar_kernel_head(input, end, weight)
     else:
@@ -69,7 +69,7 @@ def lerp_scalar(input, end, weight):
 
 
 def lerp_scalar_(input, end, weight):
-    logger.debug("GEMS_KUNLUNXIN LERP INPLACE TENSOR")
+    logger.debug("GEMS_KUNLUNXIN LERP_INPLACE_TENSOR")
     if weight < 0.5:
         return lerp_scalar_kernel_head(input, end, weight, out0=input)
     else:

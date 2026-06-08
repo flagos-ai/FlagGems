@@ -52,6 +52,6 @@ def gt_func_scalar(x, y):
 
 
 def gt_scalar(A, B):
-    logger.debug("GEMS_KUNLUNXIN GT SCALAR")
+    logger.debug("GEMS_KUNLUNXIN GT_SCALAR")
     res = gt_func_scalar(A, B)
     return res

@@ -51,6 +51,6 @@ def ge_func_scalar(x, y):
 
 
 def ge_scalar(A, B):
-    logger.debug("GEMS_KUNLUNXIN GE SCALAR")
+    logger.debug("GEMS_KUNLUNXIN GE_SCALAR")
     res = ge_func_scalar(A, B)
     return res

@@ -784,7 +784,7 @@ def scaled_dot_product_attention_backward(
     scale=None,
     enable_gqa=False,
 ):
-    logger.debug("GEMS_KUNLUNXIN SCALED DOT PRODUCT ATTENTION BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN SCALED_DOT_PRODUCT_ATTENTION_BACKWARD")
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
@@ -906,7 +906,7 @@ class ScaleDotProductAttention(torch.autograd.Function):
         scale=None,
         enable_gqa=False,
     ):
-        logger.debug("GEMS_KUNLUNXIN SCALED DOT PRODUCT ATTENTION")
+        logger.debug("GEMS_KUNLUNXIN SCALED_DOT_PRODUCT_ATTENTION")
         # shape constraints
         HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
         # when v is in float8_e5m2 it is transposed.
@@ -1222,7 +1222,7 @@ def flash_attn_varlen_func(
             normalization factor).
     """
     if use_c_extension:
-        logger.debug("GEMS_KUNLUNXIN FLASH_ATTN_VARLEN_FUNC(C EXTENSION)")
+        logger.debug("GEMS_KUNLUNXIN FLASH_ATTN_VARLEN_FUNC_C_EXTENSION")
         with torch_device_fn.device(q.device):
             out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
                 q,

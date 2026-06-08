@@ -51,6 +51,6 @@ def lt_func_scalar(x, y):
 
 
 def lt_scalar(A, B):
-    logger.debug("GEMS_KUNLUNXIN LT SCALAR")
+    logger.debug("GEMS_KUNLUNXIN LT_SCALAR")
     res = lt_func_scalar(A, B)
     return res

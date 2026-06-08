@@ -50,6 +50,6 @@ def ne_func_scalar(x, y):
 
 
 def ne_scalar(A, B):
-    logger.debug("GEMS_KUNLUNXIN NE SCALAR")
+    logger.debug("GEMS_KUNLUNXIN NE_SCALAR")
     res = ne_func_scalar(A, B)
     return res

@@ -154,7 +154,7 @@ def log_softmax(self, dim, half_to_float=False):
 
 
 def log_softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS_KUNLUNXIN LOG_SOFTMAX VJP")
+    logger.debug("GEMS_KUNLUNXIN LOG_SOFTMAX_VJP")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
