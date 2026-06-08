@@ -2160,6 +2160,28 @@ ops:
       - Math
     stages:
       - stable: '4.0'
+  - id: expand
+    description: Pure layout operation (expand).
+    for:
+      - expand
+    labels:
+      - aten
+      - KernelGen
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: expand_
+    description: Pure layout operation (expand, in-place).
+    for:
+      - expand_
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: expm1
     description: Computes the exponential of the elements minus 1 of `input`.
     for:
@@ -7026,16 +7048,6 @@ ops:
     description: Pure layout operation (reshape).
     for:
       - reshape
-    labels:
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.1'
-  - id: expand
-    description: Pure layout operation (expand).
-    for:
-      - expand
     labels:
       - skip_precision_check
     kind:
