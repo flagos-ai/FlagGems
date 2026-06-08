@@ -13,6 +13,8 @@ from flag_gems.utils.shape_utils import (
     restride_dim,
 )
 
+from ..utils.config_utils import MAX_GRID_DIM
+
 logger = logging.getLogger(__name__)
 
 
@@ -109,82 +111,92 @@ def generate_scatter_kernel(
     # Kernel Code
     with code.indent():
         code.writeline("pid = tl.program_id(0)")
-        code.writeline("if not INT32_OFFSET:")
+        code.writeline("num_ctas = tl.num_programs(0)")
+        code.writeline("num_jobs = tl.cdiv(N, BLOCK * LOOP)")
+        code.writeline("for job_id in range(pid, num_jobs, num_ctas):")
         with code.indent():
-            code.writeline("pid = pid.to(tl.int64)")
-        code.writeline("offsets = pid * LOOP * BLOCK + tl.arange(0, BLOCK)")
+            code.writeline("if not INT32_OFFSET:")
+            with code.indent():
+                code.writeline("job_id = job_id.to(tl.int64)")
+            code.writeline("offsets = job_id * LOOP * BLOCK + tl.arange(0, BLOCK)")
 
-        #   1. Calculate inp_offsets and idx_offsets
-        code.writeline("for loop_iter in tl.static_range(LOOP):")
-        with code.indent():
-            code.writeline("mask = offsets < N")
-            code.writeline("cur_idx = offsets")
-            code.writeline("if INT32_OFFSET:")
+            #   1. Calculate inp_offsets and idx_offsets
+            code.writeline("for loop_iter in tl.static_range(LOOP):")
             with code.indent():
-                code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
-                code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
-                code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
-            code.writeline("else:")
-            with code.indent():
-                code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
-                code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
-                code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
-            for i in range(rank)[::-1]:
+                code.writeline("mask = offsets < N")
+                code.writeline("cur_idx = offsets")
                 code.writeline("if INT32_OFFSET:")
                 with code.indent():
-                    code.writeline(f"shape_{i} = shape_{i}.to(tl.int32)")
-                    code.writeline(f"inp_stride_{i} = inp_stride_{i}.to(tl.int32)")
-                    code.writeline(f"index_stride_{i} = index_stride_{i}.to(tl.int32)")
-                    code.writeline(f"src_stride_{i} = src_stride_{i}.to(tl.int32)")
-                code.writeline(f"mod = cur_idx % shape_{i}")
-                code.writeline(f"inp_offsets += mod * inp_stride_{i}")
-                code.writeline(f"idx_offsets += mod * index_stride_{i}")
-                code.writeline(f"src_offsets += mod * src_stride_{i}")
-                if i != 0:
-                    code.writeline(f"cur_idx = cur_idx // shape_{i}")
-
-            #   2. Use offsets to scatter
-            code.writeline(
-                "cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)"
-            )
-            code.writeline(
-                "cur_index = tl.load(index + idx_offsets, mask=mask, other=0)"
-            )
-            code.writeline("if INT32_OFFSET:")
-            with code.indent():
-                code.writeline("cur_index = cur_index.to(tl.int32)")
-                code.writeline("stride_dim = stride_dim.to(tl.int32)")
-
-            code.writeline("dim_offsets = cur_index * stride_dim")
-            code.writeline("inp_offsets += dim_offsets")
-            code.newline()
-            code.writeline("if IS_ADD: ")
-            with code.indent():
-                code.writeline(
-                    "tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
-                )
-            code.writeline("elif IS_MUL: ")
-            with code.indent():
-                code.writeline("stop = tl.where(mask, 0, 1).to(tl.int1)")
-                code.writeline("block_stop = False")
-                code.writeline("while not block_stop:")
+                    code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                    code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                    code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                code.writeline("else:")
                 with code.indent():
-                    code.writeline
-                    code.writeline(
-                        "cur_inp = tl.load(out + inp_offsets, mask=mask, other=0)"
-                    )
-                    code.writeline("res = tl.where(stop, cur_inp, cur_inp * cur_src)")
-                    code.writeline(
-                        "cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res, sem='relaxed')"
-                    )
-                    code.writeline("stop |= cur_inp == cas_res")
-                    code.writeline("block_stop = tl.sum(stop.to(tl.int32)) == BLOCK")
+                    code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
+                    code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
+                    code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
+                for i in range(rank)[::-1]:
+                    code.writeline("if INT32_OFFSET:")
+                    with code.indent():
+                        code.writeline(f"shape_{i} = shape_{i}.to(tl.int32)")
+                        code.writeline(f"inp_stride_{i} = inp_stride_{i}.to(tl.int32)")
+                        code.writeline(
+                            f"index_stride_{i} = index_stride_{i}.to(tl.int32)"
+                        )
+                        code.writeline(f"src_stride_{i} = src_stride_{i}.to(tl.int32)")
+                    code.writeline(f"mod = cur_idx % shape_{i}")
+                    code.writeline(f"inp_offsets += mod * inp_stride_{i}")
+                    code.writeline(f"idx_offsets += mod * index_stride_{i}")
+                    code.writeline(f"src_offsets += mod * src_stride_{i}")
+                    if i != 0:
+                        code.writeline(f"cur_idx = cur_idx // shape_{i}")
 
-            code.writeline("else: ")
-            with code.indent():
-                code.writeline("tl.store(out + inp_offsets, cur_src, mask=mask)")
+                #   2. Use offsets to scatter
+                code.writeline(
+                    "cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)"
+                )
+                code.writeline(
+                    "cur_index = tl.load(index + idx_offsets, mask=mask, other=0)"
+                )
+                code.writeline("if INT32_OFFSET:")
+                with code.indent():
+                    code.writeline("cur_index = cur_index.to(tl.int32)")
+                    code.writeline("stride_dim = stride_dim.to(tl.int32)")
 
-            code.writeline("offsets += BLOCK")
+                code.writeline("dim_offsets = cur_index * stride_dim")
+                code.writeline("inp_offsets += dim_offsets")
+                code.newline()
+                code.writeline("if IS_ADD: ")
+                with code.indent():
+                    code.writeline(
+                        "tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
+                    )
+                code.writeline("elif IS_MUL: ")
+                with code.indent():
+                    code.writeline("stop = tl.where(mask, 0, 1).to(tl.int1)")
+                    code.writeline("block_stop = False")
+                    code.writeline("while not block_stop:")
+                    with code.indent():
+                        code.writeline
+                        code.writeline(
+                            "cur_inp = tl.load(out + inp_offsets, mask=mask, other=0)"
+                        )
+                        code.writeline(
+                            "res = tl.where(stop, cur_inp, cur_inp * cur_src)"
+                        )
+                        code.writeline(
+                            "cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res, sem='relaxed')"
+                        )
+                        code.writeline("stop |= cur_inp == cas_res")
+                        code.writeline(
+                            "block_stop = tl.sum(stop.to(tl.int32)) == BLOCK"
+                        )
+
+                code.writeline("else: ")
+                with code.indent():
+                    code.writeline("tl.store(out + inp_offsets, cur_src, mask=mask)")
+
+                code.writeline("offsets += BLOCK")
 
     code.newline()
     code.newline()
@@ -233,7 +245,9 @@ def generate_destination_passing_wrapper(
         # kernel launch
         code.writeline("grid = lambda meta: (")
         with code.indent():
-            code.writeline('triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]), ')
+            code.writeline(
+                f'min(triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]), {MAX_GRID_DIM}), '
+            )
         code.writeline(")")
 
         kernel_launch: str = f"{kernel_name}[grid]("
