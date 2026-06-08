@@ -1,9 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="NVIDIA-only CUDA JIT kernel; not supported on other backends",
+)
 @pytest.mark.special_hermite_polynomial_he
 def test_special_hermite_polynomial_he():
     bench = base.BinaryPointwiseBenchmark(
