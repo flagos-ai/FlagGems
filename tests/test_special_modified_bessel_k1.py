@@ -6,6 +6,10 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="NVIDIA-only CUDA JIT kernel; not supported on other backends",
+)
 @pytest.mark.special_modified_bessel_k1
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 # PyTorch reference only supports float32 for special_modified_bessel_k1
