@@ -67,6 +67,7 @@ _FULL_CONFIG = (
         to_copy,
         lambda: version.parse(torch.__version__) >= version.parse("2.4"),
     ),
+    ("_sparse_semi_structured_mm", _sparse_semi_structured_mm),
     ("_unique2", _unique2),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),

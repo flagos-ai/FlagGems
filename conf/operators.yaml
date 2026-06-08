@@ -6052,6 +6052,19 @@ ops:
       - DSA
     stages:
       - beta: '5.0'
+  - id: sparse_semi_structured_mm
+    description: >
+      Performs a sparse semi-structured matrix multiplication of a dense matrix
+      with a 2:4 sparsity pattern against a dense matrix.
+    for:
+      - _sparse_semi_structured_mm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.1'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
