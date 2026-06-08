@@ -4,11 +4,14 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
+
+FLOAT_DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
 
 
 @pytest.mark.sigmoid
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_sigmoid(shape, dtype):
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(res_inp, True)
@@ -22,7 +25,7 @@ def test_sigmoid(shape, dtype):
 
 @pytest.mark.sigmoid_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_sigmoid_(shape, dtype):
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(res_inp.clone(), True)
@@ -36,7 +39,7 @@ def test_sigmoid_(shape, dtype):
 
 @pytest.mark.sigmoid_backward
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_sigmoid_backward(shape, dtype):
     res_out = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_grad = torch.randn_like(res_out)

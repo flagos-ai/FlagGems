@@ -7,11 +7,14 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
+
+FLOAT_DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
 
 
 @pytest.mark.mul
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mul_tensor_tensor(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -28,7 +31,7 @@ def test_mul_tensor_tensor(shape, dtype):
 @pytest.mark.mul
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mul_tensor_scalar(shape, scalar, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
@@ -44,7 +47,7 @@ def test_mul_tensor_scalar(shape, scalar, dtype):
 @pytest.mark.mul
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mul_scalar_tensor(shape, scalar, dtype):
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -79,7 +82,7 @@ def test_mul_scalar_scalar(dtype):
 
 @pytest.mark.mul_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mul_tensor_tensor_(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -96,7 +99,7 @@ def test_mul_tensor_tensor_(shape, dtype):
 @pytest.mark.mul_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mul_tensor_scalar_(shape, scalar, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
@@ -109,17 +112,24 @@ def test_mul_tensor_scalar_(shape, scalar, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.mul
-@pytest.mark.parametrize(
-    "shape_a, shape_b",
-    [
+BROADCAST_SHAPES = (
+    [((10, 1), (1, 5))]
+    if QUICK_MODE
+    else [
         ((10, 1), (1, 5)),
         ((1, 5), (10, 1)),
         ((1048576, 1), (1, 32)),
         ((3, 1, 5), (1, 4, 1)),
-    ],
+    ]
 )
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize(
+    "shape_a, shape_b",
+    BROADCAST_SHAPES,
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mul_broadcast_shape(shape_a, shape_b, dtype):
     inp1 = torch.randn(shape_a, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape_b, dtype=dtype, device=flag_gems.device)
