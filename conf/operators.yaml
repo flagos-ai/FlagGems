@@ -1701,6 +1701,19 @@ ops:
       - LinearAlg
     stages:
       - stable: '2.2'
+  - id: diagonal_copy
+    description: |
+      Performs the same operation as torch.diagonal, but all output tensors
+      are freshly created instead of aliasing the input.
+    for:
+      - diagonal_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: diff
     description: |
       Computes the n-th forward difference along the given dimension.
