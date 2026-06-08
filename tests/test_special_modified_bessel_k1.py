@@ -25,6 +25,5 @@ def test_special_modified_bessel_k1(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.ops.aten.special_modified_bessel_k1(inp)
 
-    ref_out = ref_out.to(res_out.device)
     # Use relaxed tolerance since approximation has ~4% max error
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=0.05)
+    utils.gems_assert_close(res_out.cpu(), ref_out, dtype, atol=0.05)
