@@ -62,14 +62,14 @@ def _compute_broadcast_shape(tensors):
 
 def broadcast_tensors(*tensors):
     """Broadcasts the given tensors according to broadcasting semantics."""
+    logger.debug("GEMS BROADCAST_TENSORS")
+
     # Handle case where tensors are passed as a list
     if len(tensors) == 1 and isinstance(tensors[0], (list, tuple)):
         tensors = tuple(tensors[0])
 
     if not tensors:
         return []
-
-    logger.debug("GEMS BROADCAST_TENSORS")
 
     if len(tensors) == 1:
         return [tensors[0].expand(1) if tensors[0].ndim == 0 else tensors[0].clone()]
