@@ -1850,6 +1850,28 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.0'
+  - id: dunder_iand_scalar
+    description: The scalar version of `dunder_iand_tensor`.
+    for:
+      - __iand__.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
+  - id: dunder_iand_tensor
+    description: The in-place version of bitwise and operation for tensor and scalar.
+    for:
+      - __iand__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: dunder_ior_scalar
     description: The scalar version of `dunder_ior_tensor`.
     for:
