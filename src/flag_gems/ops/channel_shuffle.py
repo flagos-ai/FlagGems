@@ -79,25 +79,34 @@ def channel_shuffle_kernel(
     tl.store(out_ptr + out_index, x, mask=mask)
 
 
-def _launch_channel_shuffle_kernel(inp: torch.Tensor, groups: int, out: torch.Tensor):
-    assert inp.is_contiguous(), "Input must be contiguous (NCHW)"
-    assert out.is_contiguous(), "Output must be contiguous (NCHW)"
-    N, C, H, W = inp.shape
+def channel_shuffle(input: torch.Tensor, groups: int) -> torch.Tensor:
+    logger.debug("GEMS CHANNEL_SHUFFLE")
+    x = input
+    if not x.is_contiguous():
+        x = x.contiguous()
+
+    # Channel shuffle expects (*, C, H, W) where C is divisible by groups
+    if x.ndim < 3:
+        raise ValueError(
+            f"Input must have at least 3 dimensions (C, H, W), got {x.ndim}"
+        )
+
+    N, C, H, W = x.shape[-4:]
     g = int(groups)
     assert g > 0, "groups must be > 0"
-    assert C % g == 0, "C must be divisible by groups"
-    assert out.shape == (N, C, H, W), "Output has incorrect shape"
+    assert C % g == 0, f"C ({C}) must be divisible by groups ({g})"
 
-    n_elements = inp.numel()
+    out = torch.empty_like(x)
+    n_elements = x.numel()
     if n_elements == 0:
-        return
+        return out
 
     # 1024 is a common choice balancing occupancy and register pressure for element-wise kernels
     BLOCK_SIZE = 1024
     grid = lambda META: (triton.cdiv(n_elements, META["BLOCK_SIZE"]),)
-    with torch_device_fn.device(inp.device):
+    with torch_device_fn.device(x.device):
         channel_shuffle_kernel[grid](
-            inp,
+            x,
             out,
             n_elements,
             N,
@@ -108,29 +117,4 @@ def _launch_channel_shuffle_kernel(inp: torch.Tensor, groups: int, out: torch.Te
             C,
             BLOCK_SIZE=BLOCK_SIZE,
         )
-
-
-def channel_shuffle(input: torch.Tensor, groups: int) -> torch.Tensor:
-    logger.debug("GEMS CHANNEL_SHUFFLE")
-    x = input
-    if not x.is_contiguous():
-        x = x.contiguous()
-
-    # Handle arbitrary batch dimensions
-    # Channel shuffle expects (*, C, H, W) where C is divisible by groups
-    if x.ndim < 3:
-        raise ValueError(
-            f"Input must have at least 3 dimensions (C, H, W), got {x.ndim}"
-        )
-
-    # Get the last 4 dimensions for processing
-    # For input like (N, C, H, W)
-    C = x.shape[-3]
-
-    g = int(groups)
-    assert g > 0, "groups must be > 0"
-    assert C % g == 0, f"C ({C}) must be divisible by groups ({g})"
-
-    out = torch.empty_like(x)
-    _launch_channel_shuffle_kernel(x, g, out)
     return out
