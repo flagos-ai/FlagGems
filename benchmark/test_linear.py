@@ -5,7 +5,6 @@ from . import base, consts
 
 
 class LinearBenchmark(base.BlasBenchmark):
-
     def get_tflops(self, op, *args, **kwargs):
         input_tensor = args[0]
         weight = args[1]
