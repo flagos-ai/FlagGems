@@ -10,7 +10,10 @@ from .conftest import QUICK_MODE
 ALL_DTYPES = (
     [torch.float32]
     if QUICK_MODE
-    else utils.COMPLEX_DTYPES + utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BOOL_TYPES
+    else utils.COMPLEX_DTYPES
+    + utils.FLOAT_DTYPES
+    + utils.ALL_INT_DTYPES
+    + utils.BOOL_TYPES
 )
 
 
