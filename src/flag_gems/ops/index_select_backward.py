@@ -79,7 +79,7 @@ def index_select_backward(grad, self_sizes, dim, index):
 
     However, we implement it without atomic operations for better performance.
     """
-    logger.debug("GEMS INDEX SELECT BACKWARD")
+    logger.debug("GEMS INDEX_SELECT_BACKWARD")
 
     # Handle scalar index
     if index.ndim == 0:
