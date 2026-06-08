@@ -5,12 +5,12 @@ When you open this repo in VS Code, it will prompt you to select a configuration
 
 ## Available Backends
 
-| Directory    | Backend     | CMake Flag              | Hardware         |
-|--------------|-------------|-------------------------|------------------|
-| `nvidia/`    | CUDA        | `FLAGGEMS_BACKEND=CUDA` | NVIDIA GPU       |
-| `iluvatar/`  | IX (Iluvatar)| `FLAGGEMS_BACKEND=IX`  | 天数智芯 GPU     |
-| `metax/`     | GCU (MetaX) | `FLAGGEMS_BACKEND=GCU`  | 沐曦 GPU         |
-| `mthreads/`  | MUSA (Moore Threads) | `FLAGGEMS_BACKEND=MUSA` | 摩尔线程 GPU |
+| Directory    | Backend| CMake Flag              | Hardware         |
+|--------------|--------|-------------------------|------------------|
+| `nvidia/`    | CUDA   | `FLAGGEMS_BACKEND=CUDA` | NVIDIA GPU       |
+| `iluvatar/`  | IX     | `FLAGGEMS_BACKEND=IX`   | Iluvatar GPU     |
+| `Enflame/`   | GCU    | `FLAGGEMS_BACKEND=GCU`  | Enflame GCU      |
+| `mthreads/`  | MUSA   | `FLAGGEMS_BACKEND=MUSA` | Moore Threads GPU |
 
 ## Structure
 
@@ -41,7 +41,7 @@ When you open this repo in VS Code, it will prompt you to select a configuration
 The `FLAGGEMS_BACKEND` values come from `CMakeLists.txt`:
 
 - `CUDA`  → `FLAGGEMS_USE_CUDA`  (also used by Iluvatar IX backend)
-- `IX`    → `FLAGGEMS_USE_IX`    (天数智芯)
-- `MUSA`  → `FLAGGEMS_USE_MUSA`  (摩尔线程)
+- `IX`    → `FLAGGEMS_USE_IX`    (Iluvatar)
+- `MUSA`  → `FLAGGEMS_USE_MUSA`  (Moore Threads)
 - `NPU`   → `FLAGGEMS_USE_NPU`   (Ascend)
-- `GCU`   → `FLAGGEMS_USE_GCU`   (MetaX / Enflame)
+- `GCU`   → `FLAGGEMS_USE_GCU`   (Enflame)

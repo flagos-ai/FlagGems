@@ -29,8 +29,8 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/FlagGems,type=bind,consistency=cached",
   "workspaceFolder": "/workspace/FlagGems",
   "mounts": [
-    "source=/data,target=/data,type=bind",
-    "source=/tmp,target=/host_tmp,type=bind",
+    //"source=/data,target=/data,type=bind",
+    //"source=/tmp,target=/host_tmp,type=bind",
     "source=${localEnv:HOME},target=/home/host,type=bind",
     "source=claude-code-data,target=/home/vscode/.claude,type=volume"
   ],
