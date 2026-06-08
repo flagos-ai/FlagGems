@@ -24,7 +24,7 @@ backend_info = runtime.device
 aten_lib = torch.library.Library("aten", "IMPL")
 
 # Register all ops in the current backend with SpecOpRegistrar to support architecture-specialized implementations
-SpecOpRegistrar(globals()).apply()
+SpecOpRegistrar(registry=globals(), vendor=vendor_name).apply()
 
 registrar = GeneralOpRegistrar
 current_work_registrar = None
@@ -122,6 +122,7 @@ _FULL_CONFIG = (
     ("atan2", atan2),
     ("atan2.out", atan2_out),
     ("arctanh_", arctanh_),
+    ("atanh", atanh),
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
     ("avg_pool3d", avg_pool3d),
@@ -266,6 +267,7 @@ _FULL_CONFIG = (
     ("fmod.Tensor", fmod_tensor),
     ("fmod_.Scalar", fmod_scalar_),
     ("fmod_.Tensor", fmod_tensor_),
+    ("fmod_", fmod_),
     ("full", full),
     ("full_like", full_like),
     ("gather", gather),
@@ -302,6 +304,7 @@ _FULL_CONFIG = (
     ("index_copy_", index_copy_),
     ("index_put", index_put),
     ("index_put_", index_put_),
+    ("index_reduce_", index_reduce_),
     ("index_select", index_select),
     ("isclose", isclose),
     ("isfinite", isfinite),
@@ -461,6 +464,7 @@ _FULL_CONFIG = (
     ("resolve_neg", resolve_neg),
     ("rms_norm", rms_norm),
     ("roll", roll),
+    ("rot90", rot90),
     ("round", round),
     ("round_", round_),
     ("round.out", round_out),
@@ -479,6 +483,10 @@ _FULL_CONFIG = (
     ("scatter_reduce.two", scatter_reduce),
     ("scatter_reduce_.two", scatter_reduce_),
     ("scatter_reduce.two_out", scatter_reduce_out),
+    ("searchsorted.Tensor", searchsorted),
+    ("searchsorted.Tensor_out", searchsorted_out),
+    ("searchsorted.Scalar", searchsorted_scalar),
+    ("searchsorted.Scalar_out", searchsorted_scalar_out),
     ("select_backward", select_backward),
     ("select_scatter", select_scatter),
     ("selu", selu),
@@ -510,6 +518,7 @@ _FULL_CONFIG = (
     ("special_i0e.out", special_i0e_out),
     ("special_i1", special_i1),
     ("special_i1.out", special_i1_out),
+    ("split_with_sizes_copy", split_with_sizes_copy),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
     ("square", square),
@@ -531,6 +540,7 @@ _FULL_CONFIG = (
     ("tanh", tanh),
     ("tanh_", tanh_),
     ("tanh_backward", tanh_backward),
+    ("tensor_split", tensor_split),
     ("threshold", threshold),
     ("threshold_backward", threshold_backward),
     ("tile", tile),
@@ -553,11 +563,13 @@ _FULL_CONFIG = (
     ("upsample_nearest1d", upsample_nearest1d),
     ("upsample_nearest2d", upsample_nearest2d),
     ("upsample_nearest3d", upsample_nearest3d),
+    ("upsample_trilinear3d", upsample_trilinear3d),
     ("var_mean.correction", var_mean),
     ("var", var),
     ("var.correction", var_correction),
     ("var.dim", var_dim),
     ("vdot", vdot),
+    ("view_copy", view_copy),
     ("vstack", vstack),
     ("where.self", where_self),
     ("where.self_out", where_self_out),
