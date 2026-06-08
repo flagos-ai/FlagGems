@@ -3423,6 +3423,30 @@ ops:
       - Reduction
     stages:
       - stable: '3.0'
+  - id: lcm
+    description: >
+      Computes the element-wise least common multiple (LCM) of input
+      and other.
+    for:
+      - lcm.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: lcm_
+    description: The in-place version of lcm().
+    for:
+      - lcm_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: le
     description: Computes that `input` is less than or equal to `other` element-wise.
     for:
