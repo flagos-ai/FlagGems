@@ -36,4 +36,4 @@ def threshold_func(x, threshold, value):
 
 def threshold_(A, threshold, value):
     logger.debug("GEMS THRESHOLD_")
-    return threshold_func(A, threshold, value)
+    return threshold_func(A, threshold, value, out0=A)
