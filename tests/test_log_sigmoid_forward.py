@@ -20,5 +20,11 @@ def test_log_sigmoid_forward(shape, dtype):
         res_out = torch.ops.aten.log_sigmoid_forward(inp)
 
     # Both output and buffer should match
-    utils.gems_assert_close(res_out[0], ref_out[0].to(res_out[0].device), dtype)
-    utils.gems_assert_close(res_out[1], ref_out[1].to(res_out[1].device), dtype)
+    # In quick-cpu mode (TO_CPU=True), gems_assert_close handles device conversion
+    # internally; we must not move the CPU reference back to a non-CPU device
+    if utils.TO_CPU:
+        utils.gems_assert_close(res_out[0], ref_out[0], dtype)
+        utils.gems_assert_close(res_out[1], ref_out[1], dtype)
+    else:
+        utils.gems_assert_close(res_out[0], ref_out[0].to(res_out[0].device), dtype)
+        utils.gems_assert_close(res_out[1], ref_out[1].to(res_out[1].device), dtype)
