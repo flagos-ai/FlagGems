@@ -558,6 +558,8 @@ _FULL_CONFIG = (
     ("unfold_backward", unfold_backward),
     ("uniform_", uniform_),
     ("unique_consecutive", unique_consecutive),
+    ("unsqueeze", unsqueeze),
+    ("unsqueeze_", unsqueeze_),
     ("upsample_bicubic2d", upsample_bicubic2d),
     ("upsample_linear1d", upsample_linear1d),
     ("upsample_nearest1d", upsample_nearest1d),

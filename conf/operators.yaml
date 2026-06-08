@@ -6673,6 +6673,28 @@ ops:
   #     - Tensor
   #   stages:
   #     - alpha: '5.0'
+  - id: unsqueeze
+    description: Returns a new tensor with a dimension of size one inserted at the specified position.
+    for:
+      - unsqueeze
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
+  - id: unsqueeze_
+    description: In-place version of `unsqueeze()`.
+    for:
+      - unsqueeze_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: upsample_bicubic2d
     description: A variant of `upsample()` that has `mode` set to `bicubic`.
     for:
