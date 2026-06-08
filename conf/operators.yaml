@@ -3521,6 +3521,18 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: less
+    description: Computes whether `input` is less than `other` element-wise.
+    for:
+      - less.Scalar
+      - less.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: lift_fresh_copy
     description: |
       Creates a new, independent copy of a tensor within a compiled graph.
