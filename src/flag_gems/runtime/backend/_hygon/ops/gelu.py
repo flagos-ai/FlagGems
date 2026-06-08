@@ -68,7 +68,7 @@ def gelu_backward_tanh(x, dy):
 class Gelu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A, approximate):
-        logger.debug("GEMS_HYGON GELU FORWARD")
+        logger.debug("GEMS_HYGON GELU_FORWARD")
         if approximate == "tanh":
             out = gelu_tanh(A)
         else:
@@ -79,7 +79,7 @@ class Gelu(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_HYGON GELU BACKWARD")
+        logger.debug("GEMS_HYGON GELU_BACKWARD")
         (inp,) = ctx.saved_tensors
         approximate = ctx.approximate
         if approximate == "tanh":
@@ -96,7 +96,7 @@ def gelu(A, *, approximate="none"):
 class InplaceGelu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A, approximate):
-        logger.debug("GEMS_HYGON GELU_ FORWARD")
+        logger.debug("GEMS_HYGON GELU_INPLACE_FORWARD")
         ctx.save_for_backward(A.clone())
         ctx.mark_dirty(A)
         ctx.approximate = approximate
@@ -109,7 +109,7 @@ class InplaceGelu(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_HYGON GELU_ BACKWARD")
+        logger.debug("GEMS_HYGON GELU_INPLACE_BACKWARD")
         (inp,) = ctx.saved_tensors
         approximate = ctx.approximate
         if approximate == "tanh":
