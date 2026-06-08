@@ -6,11 +6,14 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
+
+INT_DTYPES = [torch.int32] if QUICK_MODE else utils.INT_DTYPES + utils.BOOL_TYPES
 
 
 @pytest.mark.bitwise_or_scalar_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_bitwise_or_scalar_tensor(shape, dtype):
     if dtype in utils.BOOL_TYPES:
         inp1 = bool(random.randint(0, 2))
