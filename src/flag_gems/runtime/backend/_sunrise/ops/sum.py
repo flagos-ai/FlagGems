@@ -12,7 +12,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -137,7 +137,7 @@ def sum_out(inp, *, dtype=None, out):
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("sum_non_inner"))
+@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
 @triton.jit
 def sum_dim_kernel_non_inner(
     output_ptr,
@@ -188,7 +188,7 @@ def sum_dim_kernel_non_inner(
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("sum_inner"))
+@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
 @triton.jit
 def sum_dim_kernel_inner(
     output_ptr,
@@ -297,7 +297,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
     dim = [d % inp.ndim for d in dim]
 
     if check_dim0(inp, dim):
-        return sum_dim0(inp, dim, keepdim, dtype)
+        return sum_dim0(inp, dim, keepdim, dtype, out=out)
 
     if len(dim) == 1:
         dim = dim[0]
@@ -306,7 +306,16 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
         inp = inp.contiguous()
         K = inp.numel() // M // N
         shape[dim] = 1
-        if out is None:
+        _out_provided = out is not None
+        if _out_provided:
+            # Resize out to the expected output shape, matching native PyTorch
+            # sum.out behavior. The caller (e.g. logsumexp) may pass a
+            # zero-size placeholder that needs to be resized before use.
+            if keepdim:
+                out.resize_(shape)
+            else:
+                out.resize_(shape[:dim] + shape[dim + 1 :])
+        else:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         with torch_device_fn.device(inp.device):
@@ -327,7 +336,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
                     M,
                     N,
                 )
-        if not keepdim:
+        if not keepdim and not _out_provided:
             out = out.squeeze(dim=dim)
         return out
     else:
@@ -337,14 +346,22 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             N *= shape[i]
             shape[i] = 1
         M = inp.numel() // N
-        if out is None:
+        _out_provided = out is not None
+        if _out_provided:
+            dim_set = set(dim)
+            if keepdim:
+                out.resize_(shape)
+            else:
+                out.resize_([s for i, s in enumerate(shape) if i not in dim_set])
+        else:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
             sum_dim_kernel[grid](inp, out, M, N)
-        if not keepdim:
-            out = out.squeeze(dim=dim)
+        if not keepdim and not _out_provided:
+            for d in sorted(dim, reverse=True):
+                out = out.squeeze(dim=d)
         return out
 
 
@@ -363,18 +380,25 @@ def check_dim0(inp, dim):
     return True
 
 
-def sum_dim0(inp, dim, keepdim, dtype):
+def sum_dim0(inp, dim, keepdim, dtype, out=None):
     shape = list(inp.shape)
     N = 1
     for i in dim:
         N *= shape[i]
         shape[i] = 1
     M = inp.numel() // N
-    out = torch.empty(shape, dtype=dtype, device=inp.device)
+    _out_provided = out is not None
+    if _out_provided:
+        if keepdim:
+            out.resize_(shape)
+        else:
+            out.resize_([s for i, s in enumerate(shape) if i not in set(dim)])
+    else:
+        out = torch.empty(shape, dtype=dtype, device=inp.device)
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):
         sum_kernel_dim0[grid](inp, out, M, N)
-    if not keepdim:
+    if not keepdim and not _out_provided:
         out = out.squeeze(dim=dim)
     return out
 
