@@ -1812,6 +1812,7 @@ def apply_sunrise_monkey_patches():
     _patch_tensor_to_cpu_for_complex_views()
     _patch_complex_tensor_scalar_mul_runtime_error()
     _patch_complex_tensor_add_runtime_error()
+    _patch_complex_tensor_add_runtime_error()
     _patch_complex_matmul_runtime_error()
     _patch_torch_isclose_allclose_complex_dtype()
     _patch_torch_einsum_low_precision_reference()
