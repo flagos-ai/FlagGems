@@ -3544,6 +3544,19 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: linalg_multi_dot
+    description: |
+      Efficiently multiplies two or more matrices by reordering the multiplications
+      so that the fewest arithmetic operations are performed.
+    for:
+      - linalg_multi_dot
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.1'
   - id: log
     description: Returns a new tensor with the natural logarithm of the elements of `input`.
     for:

@@ -200,6 +200,7 @@ from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
+from flag_gems.ops.linalg_multi_dot import linalg_multi_dot
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
 from flag_gems.ops.log1p import log1p
@@ -680,6 +681,7 @@ __all__ = [
     "lerp_tensor_",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
+    "linalg_multi_dot",
     "linspace",
     "log",
     "log10",
