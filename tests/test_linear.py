@@ -10,7 +10,9 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_linear_2d_with_bias(dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skiping fp32 linear test on tsingmicro platform")
+        pytest.skip(
+            "Issue #2834: Skipping fp32 linear test on tsingmicro platform"
+        )
 
     # Test 2D input with bias
     # Common MLP hidden layer sizes to verify correctness with realistic tensor shapes
@@ -41,7 +43,9 @@ def test_linear_2d_with_bias(dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_linear_2d_without_bias(dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skiping fp32 linear test on tsingmicro platform")
+        pytest.skip(
+            "Issue #2834: Skipping fp32 linear test on tsingmicro platform"
+        )
 
     # Test 2D input without bias
     # Common MLP hidden layer sizes to verify correctness without bias term
@@ -70,7 +74,9 @@ def test_linear_2d_without_bias(dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_linear_3d_with_bias(dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skiping fp32 linear test on tsingmicro platform")
+        pytest.skip(
+            "Issue #2834: Skipping fp32 linear test on tsingmicro platform"
+        )
 
     # Test 3D input (batch > 1 in leading dims) with bias
     # Multi-dimensional batch input to verify batch flattening logic handles >2 dims
@@ -102,7 +108,9 @@ def test_linear_3d_with_bias(dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_linear_1d_with_bias(dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skiping fp32 linear test on tsingmicro platform")
+        pytest.skip(
+            "Issue #2834: Skipping fp32 linear test on tsingmicro platform"
+        )
 
     # Test 1D input (single sample) with bias
     # Minimum-dimensional input to verify unsqueeze/squeeze logic for 1D inputs

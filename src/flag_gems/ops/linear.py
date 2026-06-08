@@ -70,11 +70,8 @@ def linear_kernel(
     offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     offs_k = tl.arange(0, BLOCK_SIZE_K)
 
-    # Load input: input_ptr + offs_m[:, None] * stride_im + offs_k[None, :] * stride_ik
     input_ptrs = input_ptr + (offs_m[:, None] * stride_im + offs_k[None, :] * stride_ik)
 
-    # Load weight: weight_ptr + offs_n[None, :] * stride_wn + offs_k[:, None] * stride_wk
-    # Note: weight is (N, K), we need to access as (offs_k, offs_n) for matmul
     weight_ptrs = weight_ptr + (
         offs_k[:, None] * stride_wk + offs_n[None, :] * stride_wn
     )
@@ -138,7 +135,8 @@ def linear(input, weight, bias=None):
     Returns:
         Output tensor of shape (*, out_features)
     """
-    # Handle input dimensions
+    logger.debug("GEMS LINEAR")
+
     input_dim = input.dim()
     if input_dim == 1:
         # Single 1D input: treat as (1, in_features)
@@ -164,8 +162,6 @@ def linear(input, weight, bias=None):
 
     # Allocate output
     output = torch.empty((M, N), device=input.device, dtype=input.dtype)
-
-    logger.debug("GEMS LINEAR")
 
     # Launch kernel
     grid = lambda META: (
