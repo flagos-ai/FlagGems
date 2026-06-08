@@ -4,11 +4,14 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
+
+INT_DTYPES = [torch.int32] if QUICK_MODE else utils.INT_DTYPES + utils.BOOL_TYPES
 
 
 @pytest.mark.bitwise_and_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_bitwise_and_tensor(shape, dtype):
     if dtype in utils.BOOL_TYPES:
         inp1 = torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(
@@ -37,7 +40,7 @@ def test_bitwise_and_tensor(shape, dtype):
 
 @pytest.mark.bitwise_and_tensor_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_bitwise_and_tensor_(shape, dtype):
     if dtype in utils.BOOL_TYPES:
         inp1 = torch.randint(0, 2, size=shape, dtype=dtype, device=flag_gems.device)

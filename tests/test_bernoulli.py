@@ -4,11 +4,14 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
+
+FLOAT_DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
 
 
 @pytest.mark.bernoulli_
 @pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_bernoulli_(shape, dtype):
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
     p = 0.5
@@ -25,7 +28,7 @@ def test_bernoulli_(shape, dtype):
 
 @pytest.mark.bernoulli_
 @pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("p", [0.0, 0.3, 0.7, 1.0])
 def test_bernoulli_various_p(shape, dtype, p):
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
