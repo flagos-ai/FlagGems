@@ -84,17 +84,40 @@ def true_divide(A, B):
         return torch.tensor(A / B)
 
 
-def true_divide_out(A, B, out):
+def _true_divide_out_broadcast_shape(A, B):
+    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        return torch.broadcast_shapes(A.shape, B.shape)
+    if isinstance(A, torch.Tensor):
+        return torch.broadcast_shapes(A.shape, ())
+    if isinstance(B, torch.Tensor):
+        return torch.broadcast_shapes((), B.shape)
+    return ()
+
+
+def true_divide_out(A, B, *, out):
     logger.debug("GEMS TRUE_DIVIDE OUT")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        return true_div_func(A, B, out0=out)
+        broadcast_shape = _true_divide_out_broadcast_shape(A, B)
+        if list(out.shape) != list(broadcast_shape):
+            out.resize_(broadcast_shape)
+        true_div_func(A, B, out0=out)
+        return out
     elif isinstance(A, torch.Tensor):
-        return true_div_func_tensor_scalar(A, B, out0=out)
+        broadcast_shape = _true_divide_out_broadcast_shape(A, B)
+        if list(out.shape) != list(broadcast_shape):
+            out.resize_(broadcast_shape)
+        true_div_func_tensor_scalar(A, B, out0=out)
+        return out
     elif isinstance(B, torch.Tensor):
-        return true_div_func_scalar_tensor(A, B, out0=out)
+        broadcast_shape = _true_divide_out_broadcast_shape(A, B)
+        if list(out.shape) != list(broadcast_shape):
+            out.resize_(broadcast_shape)
+        true_div_func_scalar_tensor(A, B, out0=out)
+        return out
     else:
         # Both scalar
-        return torch.tensor(A / B) if out is None else out.fill_(A / B)
+        out.fill_(A / B)
+        return out
 
 
 def true_divide_(A, B):

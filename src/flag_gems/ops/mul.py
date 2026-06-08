@@ -53,6 +53,15 @@ def mul(A, B):
         return torch.tensor(A * B)
 
 
+def mul_out(A, B, *, out):
+    logger.debug("GEMS MUL_OUT")
+    broadcast_shape = torch.broadcast_shapes(A.shape, B.shape)
+    if list(out.shape) != list(broadcast_shape):
+        out.resize_(broadcast_shape)
+    mul_func(A, B, out0=out)
+    return out
+
+
 def mul_(A, B):
     logger.debug("GEMS MUL_")
     if isinstance(B, torch.Tensor):
