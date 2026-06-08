@@ -3624,6 +3624,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: log_sigmoid_forward
+    description: >
+      Computes the output and buffer for the log-sigmoid function, used in autograd backward pass.
+    for:
+      - log_sigmoid_forward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: log_softmax
     description: An internal IR for applying a softmax followed by a logarithm.
     for:
