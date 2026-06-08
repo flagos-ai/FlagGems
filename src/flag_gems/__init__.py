@@ -573,6 +573,8 @@ _FULL_CONFIG = (
     ("vstack", vstack),
     ("where.self", where_self),
     ("where.self_out", where_self_out),
+    ("special.xlogy", special_xlogy),
+    ("special.xlogy_", special_xlogy_),
     ("zero", zero),
     ("zero_", zero_),
     ("zero.out", zero_out),

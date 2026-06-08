@@ -6946,6 +6946,29 @@ ops:
     stages:
       - alpha: '2.1'
       - stable: '2.2'
+  - id: special_xlogy
+    description: >
+      Computes x * log(y). Returns 0 if x == 0.
+    for:
+      - special.xlogy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: special_xlogy_
+    description: The in-place version of `special_xlogy()`.
+    for:
+      - special.xlogy_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: zero
     description: Fills tensor with zeros.
     for:
