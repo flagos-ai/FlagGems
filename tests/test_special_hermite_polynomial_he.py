@@ -22,6 +22,7 @@ def test_special_hermite_polynomial_he(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.special.hermite_polynomial_he(inp1, inp2)
 
+    ref_out = ref_out.to(res_out.device)
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
     # Also test scalar n path
@@ -30,4 +31,5 @@ def test_special_hermite_polynomial_he(shape, dtype):
         with flag_gems.use_gems():
             res_out = torch.special.hermite_polynomial_he(inp1, n)
 
+        ref_out = ref_out.to(res_out.device)
         utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
