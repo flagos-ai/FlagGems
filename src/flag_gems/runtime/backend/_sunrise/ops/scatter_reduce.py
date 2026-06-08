@@ -50,6 +50,11 @@ def heur_loop(args):
     return 4
 
 
+def heur_scan_block(args):
+    """Source-dimension tile size for deterministic product scan."""
+    return 128
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -72,6 +77,202 @@ def _needs_cas_fallback():
     CAS (Compare-And-Swap) loop for amax/amin reduce modes.
     """
     return flag_gems.vendor_name in ["iluvatar"]
+
+
+@libentry()
+@triton.heuristics({"BLOCK": heur_scan_block})
+@triton.jit(do_not_specialize=["out_numel"])
+def scatter_reduce_prod_scan_kernel(
+    index_ptr,
+    src_ptr,
+    out_ptr,
+    mask_ptr,
+    out_numel,
+    DIM: tl.constexpr,
+    USE_MASK: tl.constexpr,
+    src_shape_dim: tl.constexpr,
+    src_stride_0,
+    src_stride_1,
+    src_stride_2,
+    src_stride_3,
+    src_stride_4,
+    idx_shape_0,
+    idx_shape_1,
+    idx_shape_2,
+    idx_shape_3,
+    idx_shape_4,
+    src_shape_0,
+    src_shape_1,
+    src_shape_2,
+    src_shape_3,
+    src_shape_4,
+    idx_stride_0,
+    idx_stride_1,
+    idx_stride_2,
+    idx_stride_3,
+    idx_stride_4,
+    out_shape_0,
+    out_shape_1,
+    out_shape_2,
+    out_shape_3,
+    out_shape_4,
+    out_stride_0,
+    out_stride_1,
+    out_stride_2,
+    out_stride_3,
+    out_stride_4,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(axis=0).to(tl.int64)
+    in_bounds = pid < out_numel
+
+    remaining = pid
+    coord0 = remaining // (out_shape_1 * out_shape_2 * out_shape_3 * out_shape_4)
+    remaining = remaining % (out_shape_1 * out_shape_2 * out_shape_3 * out_shape_4)
+    coord1 = remaining // (out_shape_2 * out_shape_3 * out_shape_4)
+    remaining = remaining % (out_shape_2 * out_shape_3 * out_shape_4)
+    coord2 = remaining // (out_shape_3 * out_shape_4)
+    remaining = remaining % (out_shape_3 * out_shape_4)
+    coord3 = remaining // out_shape_4
+    coord4 = remaining % out_shape_4
+
+    out_offset = (
+        coord0 * out_stride_0
+        + coord1 * out_stride_1
+        + coord2 * out_stride_2
+        + coord3 * out_stride_3
+        + coord4 * out_stride_4
+    )
+    idx_full_offset = (
+        coord0 * idx_stride_0
+        + coord1 * idx_stride_1
+        + coord2 * idx_stride_2
+        + coord3 * idx_stride_3
+        + coord4 * idx_stride_4
+    )
+    src_full_offset = (
+        coord0 * src_stride_0
+        + coord1 * src_stride_1
+        + coord2 * src_stride_2
+        + coord3 * src_stride_3
+        + coord4 * src_stride_4
+    )
+
+    if DIM == 0:
+        target = coord0
+        idx_base = idx_full_offset - coord0 * idx_stride_0
+        src_base = src_full_offset - coord0 * src_stride_0
+        idx_scan_stride = idx_stride_0
+        src_scan_stride = src_stride_0
+        idx_scan_shape = idx_shape_0
+        valid_other = (
+            (coord1 < idx_shape_1)
+            & (coord2 < idx_shape_2)
+            & (coord3 < idx_shape_3)
+            & (coord4 < idx_shape_4)
+            & (coord1 < src_shape_1)
+            & (coord2 < src_shape_2)
+            & (coord3 < src_shape_3)
+            & (coord4 < src_shape_4)
+        )
+    elif DIM == 1:
+        target = coord1
+        idx_base = idx_full_offset - coord1 * idx_stride_1
+        src_base = src_full_offset - coord1 * src_stride_1
+        idx_scan_stride = idx_stride_1
+        src_scan_stride = src_stride_1
+        idx_scan_shape = idx_shape_1
+        valid_other = (
+            (coord0 < idx_shape_0)
+            & (coord2 < idx_shape_2)
+            & (coord3 < idx_shape_3)
+            & (coord4 < idx_shape_4)
+            & (coord0 < src_shape_0)
+            & (coord2 < src_shape_2)
+            & (coord3 < src_shape_3)
+            & (coord4 < src_shape_4)
+        )
+    elif DIM == 2:
+        target = coord2
+        idx_base = idx_full_offset - coord2 * idx_stride_2
+        src_base = src_full_offset - coord2 * src_stride_2
+        idx_scan_stride = idx_stride_2
+        src_scan_stride = src_stride_2
+        idx_scan_shape = idx_shape_2
+        valid_other = (
+            (coord0 < idx_shape_0)
+            & (coord1 < idx_shape_1)
+            & (coord3 < idx_shape_3)
+            & (coord4 < idx_shape_4)
+            & (coord0 < src_shape_0)
+            & (coord1 < src_shape_1)
+            & (coord3 < src_shape_3)
+            & (coord4 < src_shape_4)
+        )
+    elif DIM == 3:
+        target = coord3
+        idx_base = idx_full_offset - coord3 * idx_stride_3
+        src_base = src_full_offset - coord3 * src_stride_3
+        idx_scan_stride = idx_stride_3
+        src_scan_stride = src_stride_3
+        idx_scan_shape = idx_shape_3
+        valid_other = (
+            (coord0 < idx_shape_0)
+            & (coord1 < idx_shape_1)
+            & (coord2 < idx_shape_2)
+            & (coord4 < idx_shape_4)
+            & (coord0 < src_shape_0)
+            & (coord1 < src_shape_1)
+            & (coord2 < src_shape_2)
+            & (coord4 < src_shape_4)
+        )
+    else:
+        target = coord4
+        idx_base = idx_full_offset - coord4 * idx_stride_4
+        src_base = src_full_offset - coord4 * src_stride_4
+        idx_scan_stride = idx_stride_4
+        src_scan_stride = src_stride_4
+        idx_scan_shape = idx_shape_4
+        valid_other = (
+            (coord0 < idx_shape_0)
+            & (coord1 < idx_shape_1)
+            & (coord2 < idx_shape_2)
+            & (coord3 < idx_shape_3)
+            & (coord0 < src_shape_0)
+            & (coord1 < src_shape_1)
+            & (coord2 < src_shape_2)
+            & (coord3 < src_shape_3)
+        )
+
+    lanes = tl.arange(0, BLOCK)
+    acc = tl.load(out_ptr + out_offset, mask=in_bounds, other=1.0).to(tl.float32)
+    has_contrib = False
+
+    for start in range(0, src_shape_dim, BLOCK):
+        scan = start + lanes
+        valid = (
+            in_bounds & valid_other & (scan < src_shape_dim) & (scan < idx_scan_shape)
+        )
+        idx_val = tl.load(
+            index_ptr + idx_base + scan * idx_scan_stride,
+            mask=valid,
+            other=-1,
+        ).to(tl.int64)
+        match = valid & (idx_val == target)
+        src_val = tl.load(
+            src_ptr + src_base + scan * src_scan_stride,
+            mask=valid,
+            other=1.0,
+        ).to(tl.float32)
+        factors = tl.where(match, src_val, 1.0)
+        prefix = tl.cumprod(factors, 0)
+        tile_prod = tl.sum(tl.where(lanes == (BLOCK - 1), prefix, 0.0))
+        acc *= tile_prod
+        has_contrib |= tl.sum(match.to(tl.int32)) > 0
+
+    tl.store(out_ptr + out_offset, acc, mask=in_bounds)
+    if USE_MASK:
+        tl.store(mask_ptr + out_offset, has_contrib.to(tl.int32), mask=in_bounds)
 
 
 # ---------------------------------------------------------------------------
@@ -878,7 +1079,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
     Returns:
         Output tensor with same shape and dtype as inp.
     """
-    logger.debug("GEMS_SUNRISE SCATTER_REDUCE_TWO")
+    logger.debug("GEMS SCATTER_REDUCE_TWO")
 
     assert reduce in (
         "sum",
@@ -934,6 +1135,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
     src_shapes = [int(x) for x in _pad5(list(src.shape), 1)]
     src_strides_p = [int(x) for x in _pad5(list(src.stride()), 0)]
     idx_strides_p = [int(x) for x in _pad5(list(index.stride()), 0)]
+    out_shapes = [int(x) for x in _pad5(list(out.shape), 1)]
     out_strides_p = [int(x) for x in _pad5(list(out.stride()), 0)]
 
     grid = lambda meta: (triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]),)
@@ -1005,61 +1207,47 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                     out_strides_p[4],
                 )
         elif reduce == "prod":
-            if use_2d:
-                idx_ncols = index.shape[1]
-                src_ncols = src.shape[1]
-                out_ncols = out.shape[1]
-                scatter_reduce_prod_2d_kernel[grid](
-                    index,
-                    src,
-                    out,
-                    mask_ptr,
-                    N,
-                    idx_ncols,
-                    src_ncols,
-                    out_ncols,
-                    dim_2d,
-                    use_mask,
-                )
-            else:
-                scatter_reduce_prod_kernel[grid](
-                    index,
-                    src,
-                    out,
-                    mask_ptr,
-                    N,
-                    out_stride_dim,
-                    src_stride_dim,
-                    src_shape_dim,
-                    out_shape_dim,
-                    padded_dim,
-                    use_mask,
-                    src_strides_p[0],
-                    src_strides_p[1],
-                    src_strides_p[2],
-                    src_strides_p[3],
-                    src_strides_p[4],
-                    idx_shapes[0],
-                    idx_shapes[1],
-                    idx_shapes[2],
-                    idx_shapes[3],
-                    idx_shapes[4],
-                    src_shapes[0],
-                    src_shapes[1],
-                    src_shapes[2],
-                    src_shapes[3],
-                    src_shapes[4],
-                    idx_strides_p[0],
-                    idx_strides_p[1],
-                    idx_strides_p[2],
-                    idx_strides_p[3],
-                    idx_strides_p[4],
-                    out_strides_p[0],
-                    out_strides_p[1],
-                    out_strides_p[2],
-                    out_strides_p[3],
-                    out_strides_p[4],
-                )
+            scan_grid = (out.numel(),)
+            scatter_reduce_prod_scan_kernel[scan_grid](
+                index,
+                src,
+                out,
+                mask_ptr,
+                out.numel(),
+                padded_dim,
+                use_mask,
+                src_shape_dim,
+                src_strides_p[0],
+                src_strides_p[1],
+                src_strides_p[2],
+                src_strides_p[3],
+                src_strides_p[4],
+                idx_shapes[0],
+                idx_shapes[1],
+                idx_shapes[2],
+                idx_shapes[3],
+                idx_shapes[4],
+                src_shapes[0],
+                src_shapes[1],
+                src_shapes[2],
+                src_shapes[3],
+                src_shapes[4],
+                idx_strides_p[0],
+                idx_strides_p[1],
+                idx_strides_p[2],
+                idx_strides_p[3],
+                idx_strides_p[4],
+                out_shapes[0],
+                out_shapes[1],
+                out_shapes[2],
+                out_shapes[3],
+                out_shapes[4],
+                out_strides_p[0],
+                out_strides_p[1],
+                out_strides_p[2],
+                out_strides_p[3],
+                out_strides_p[4],
+            )
         elif reduce == "mean":
             if use_2d:
                 idx_ncols = index.shape[1]
@@ -1193,7 +1381,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
 
 def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
     """In-place variant of scatter_reduce. Modifies inp in-place."""
-    logger.debug("GEMS_SUNRISE SCATTER_REDUCE_TWO_")
+    logger.debug("GEMS SCATTER_REDUCE_TWO_")
 
     result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
     inp.copy_(result)
@@ -1202,7 +1390,7 @@ def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
 
 def scatter_reduce_out(inp, dim, index, src, reduce, *, include_self=True, out=None):
     """Out-variant of scatter_reduce. Writes result to out tensor if provided."""
-    logger.debug("GEMS_SUNRISE SCATTER_REDUCE_TWO_OUT")
+    logger.debug("GEMS SCATTER_REDUCE_TWO_OUT")
 
     result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
     if out is not None:
