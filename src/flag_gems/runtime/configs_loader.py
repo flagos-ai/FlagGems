@@ -9,12 +9,12 @@ from . import backend, common
 from .backend.device import DeviceDetector
 
 
-class ConfigLoader(object):
+class TunedConfigLoader(object):
     _instance = None
 
     def __new__(cls, *args, **kargs):
         if cls._instance is None:
-            cls._instance = super(ConfigLoader, cls).__new__(cls)
+            cls._instance = super(TunedConfigLoader, cls).__new__(cls)
         return cls._instance
 
     def __init__(self):
@@ -162,12 +162,14 @@ class ConfigLoader(object):
             ]
 
         if op_name == "mm_general_tma":
+            group_m_values = ranges.get("GROUP_M", [8])
             return [
                 triton.Config(
                     {
                         "BLOCK_M": block_m,
                         "BLOCK_N": block_n,
                         "BLOCK_K": block_k,
+                        "GROUP_M": group_m,
                     },
                     num_stages=s,
                     num_warps=w,
@@ -176,6 +178,7 @@ class ConfigLoader(object):
                 for block_m in ranges["BLOCK_M"]
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
+                for group_m in group_m_values
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -375,9 +378,9 @@ class ConfigLoader(object):
                 )
             filenames.extend(
                 (
-                    f"general_ops_{backend_name}_configs.yaml",
-                    f"general_ops_{vendor_name}_configs.yaml",
-                    "general_ops_configs.yaml",
+                    f"general_ops_{backend_name}_expand.yaml",
+                    f"general_ops_{vendor_name}_expand.yaml",
+                    "general_ops_expand.yaml",
                 )
             )
 
