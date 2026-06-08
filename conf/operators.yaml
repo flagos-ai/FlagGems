@@ -6753,6 +6753,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: sparse_semi_structured_addmm
+    description: |
+      Performs a matrix multiplication of the sparse semi-structured
+      (2:4 sparsity) matrices mat1 and mat2 with input added.
+    for:
+      - _sparse_semi_structured_addmm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.1'
   - id: special_chebyshev_polynomial_v
     description: |
       Triton kernel implementation for special_chebyshev_polynomial_v.
@@ -6771,8 +6784,8 @@ ops:
       A variant with output saved to a provided `out` tensor is also registered
       as `special.gammainc.out`.
     for:
-      - special.gammainc
-      - special.gammainc.out
+      - special_gammainc
+      - special_gammainc.out
     labels:
       - aten
       - KernelGen

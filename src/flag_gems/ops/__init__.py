@@ -10,6 +10,7 @@ from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
+from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
     _thnn_fused_lstm_cell_backward_impl,
 )
@@ -498,8 +499,8 @@ __all__ = [
     "_safe_softmax",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_sparse_semi_structured_addmm",
     "_thnn_fused_lstm_cell_backward_impl",
-    "_unique2",
     "_unsafe_masked_index",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
