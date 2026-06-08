@@ -325,6 +325,14 @@ GenericBenchmark4DOnly:
     - [4096, 4096,4,8]
     - [1024, 65536,4,8]
 
+IndexReduceBenchmark:
+  shapes:
+    - [1048576]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [64, 512, 512]
+  shape_desc: "(B), M, N"
+
 UnaryReductionBenchmark:
   shapes:
     - [1048576] # 1024 * 1024
