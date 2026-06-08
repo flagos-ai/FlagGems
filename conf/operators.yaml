@@ -6052,6 +6052,17 @@ ops:
       - DSA
     stages:
       - beta: '5.0'
+  - id: special_expit
+    description: Computes the expit (sigmoid) function element-wise. Returns 1 / (1 + exp(-x)).
+    for:
+      - special.expit
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
