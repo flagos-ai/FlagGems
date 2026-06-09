@@ -684,7 +684,6 @@ __all__ = [
     "log_softmax_out",
     "log1p",
     "log1p_",
-    "log_normal_",
     "logaddexp",
     "logaddexp_out",
     "logical_and",
