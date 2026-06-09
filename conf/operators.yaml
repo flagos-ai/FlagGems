@@ -4243,6 +4243,13 @@ ops:
       Resizes tensor output storage and copies overlapping elements.
     for:
       - _resize_output
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: rot90
     description: Triton kernel implementation for rot90.
     for:
