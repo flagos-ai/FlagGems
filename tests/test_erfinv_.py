@@ -35,4 +35,4 @@ def test_erfinv_(shape, dtype):
         res_out = inp.erfinv_()
 
     utils.gems_assert_close(res_out, ref_out, dtype)
-    utils.gems_assert_close(ref_inp, inp, dtype)
+    utils.gems_assert_close(inp, ref_inp, dtype)
