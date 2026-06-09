@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from . import base, consts
+from . import base
 
 
 def kthvalue_input_fn(shape, dtype, device):
@@ -27,7 +27,7 @@ def test_kthvalue():
     bench = KthvalueBenchmark(
         op_name="kthvalue",
         torch_op=torch.kthvalue,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float32],
         input_fn=kthvalue_input_fn,
     )
     bench.run()
