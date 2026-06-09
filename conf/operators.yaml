@@ -467,6 +467,17 @@ ops:
       - tensor
     stages:
       - stable: '2.1'
+  - id: arccos_
+    description: Computes the inverse cosine of each element, in-place.
+    for:
+      - arccos_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: arcsinh
     description: Performs an element-wise inverse hyperbolic sine computation on the given tensor.
     for:
