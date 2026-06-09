@@ -39,6 +39,6 @@ def silu_backward(grad_output, self):
 
 
 def silu_(A):
-    logger.debug("GEMS_HYGON SILU_INPLACE_FORWARD")
+    logger.debug("GEMS_HYGON SILU_FORWARD_")
     out = silu_forward(A, out0=A)
     return out
