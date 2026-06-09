@@ -4638,6 +4638,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: pdist_backward
+    description: Computes the gradient of pairwise distance computation.
+    for:
+      - _pdist_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: mul
     description: Multiplies `input` by `other`.
     for:

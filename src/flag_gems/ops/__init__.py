@@ -8,6 +8,7 @@ from flag_gems.ops._functional_sym_constrain_range_for_size import (
 )
 from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
+from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
@@ -494,6 +495,7 @@ __all__ = [
     "_index_put_impl_",
     "_is_all_true",
     "_linalg_eigvals",
+    "_pdist_backward",
     "_resize_output",
     "_safe_softmax",
     "_segment_reduce_backward",
