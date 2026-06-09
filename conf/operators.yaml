@@ -6105,6 +6105,20 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: special_psi
+    description: |
+      Computes the logarithmic derivative of the Gamma function (also known as
+      the digamma function) for each element of the input tensor.
+    for:
+      - special_psi
+      - digamma
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,
