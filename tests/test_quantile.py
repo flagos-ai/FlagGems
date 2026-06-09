@@ -29,7 +29,7 @@ QUANTILE_FLOAT_DTYPES = [torch.float32]
 
 @pytest.mark.quantile
 @pytest.mark.skipif(
-    utils.SkipVersion("triton", "<3.0"), reason="Skipping Triton version."
+    utils.SkipVersion("triton", "<3.0"), reason="Triton has to be version 3.0+."
 )
 @pytest.mark.parametrize("shape", QUANTILE_SHAPES)
 @pytest.mark.parametrize("dtype", QUANTILE_FLOAT_DTYPES)
@@ -50,7 +50,7 @@ def test_quantile(shape, dtype, q, interpolation):
 
 @pytest.mark.quantile
 @pytest.mark.skipif(
-    utils.SkipVersion("triton", "<3.0"), reason="Skipping Triton version."
+    utils.SkipVersion("triton", "<3.0"), reason="Triton has to be 3.0+."
 )
 @pytest.mark.parametrize("shape", QUANTILE_SHAPES)
 @pytest.mark.parametrize("keepdim", KEEPDIM)

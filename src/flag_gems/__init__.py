@@ -1,3 +1,4 @@
+# ruff: noqa: F405
 import warnings
 
 import torch
@@ -12,15 +13,22 @@ from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_lo
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
-from flag_gems.runtime.register import Register
+from flag_gems.runtime import flagtune
+from flag_gems.runtime.backend import SpecOpRegistrar
+from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
 __version__ = "5.0.2"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
+backend_info = runtime.device
 aten_lib = torch.library.Library("aten", "IMPL")
-registrar = Register
+
+# Register all ops in the current backend with SpecOpRegistrar to support architecture-specialized implementations
+SpecOpRegistrar(registry=globals(), vendor=vendor_name).apply()
+
+registrar = GeneralOpRegistrar
 current_work_registrar = None
-runtime.replace_customized_ops(globals())
+AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 
 
 def torch_ge(v):
@@ -34,6 +42,7 @@ _FULL_CONFIG = (
     ("__or__.Tensor", bitwise_or_tensor),
     ("_assert_async", _assert_async),
     ("_conv_depthwise2d", _conv_depthwise2d),
+    ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_forward", flash_attention_forward),
     (
         "_functional_sym_constrain_range_for_size",
@@ -47,6 +56,8 @@ _FULL_CONFIG = (
     ("_log_softmax_backward_data", log_softmax_backward),
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
     ("_safe_softmax", _safe_softmax),
+    ("_scaled_mm", scaled_mm, lambda: torch_ge("2.5")),
+    ("_scaled_mm.out", scaled_mm_out, lambda: torch_ge("2.5")),
     ("_softmax", softmax),
     ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
@@ -68,6 +79,7 @@ _FULL_CONFIG = (
     ("acos", acos),
     ("add.Tensor", add),
     ("add_.Tensor", add_),
+    ("add_rms_norm", add_rms_norm),
     ("addcdiv", addcdiv),
     ("addcdiv.out", addcdiv_out),
     ("addcmul", addcmul),
@@ -79,6 +91,7 @@ _FULL_CONFIG = (
     ("addmm.dtype", addmm_dtype),
     ("addmm.dtype_out", addmm_dtype_out),
     ("addr", addr),
+    ("affine_grid_generator", affine_grid_generator),
     ("alias_copy", alias_copy),
     ("all", all),
     ("all.dim", all_dim),
@@ -98,6 +111,9 @@ _FULL_CONFIG = (
     ("arcsinh_", arcsinh_),
     ("argmax", argmax),
     ("argmin", argmin),
+    ("argsort", argsort),
+    ("as_strided_copy", as_strided_copy),
+    ("as_strided_copy.out", as_strided_copy_out),
     ("asinh", asinh),
     ("asinh.out", asinh_out),
     ("asinh_", asinh_),
@@ -106,6 +122,7 @@ _FULL_CONFIG = (
     ("atan2", atan2),
     ("atan2.out", atan2_out),
     ("arctanh_", arctanh_),
+    ("atanh", atanh),
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
     ("avg_pool3d", avg_pool3d),
@@ -131,6 +148,8 @@ _FULL_CONFIG = (
     ("bmm.out", bmm_out),
     ("cat", cat),
     ("cat.out", cat_out),
+    ("cauchy", cauchy),
+    ("cauchy_", cauchy_),
     ("celu", celu),
     ("celu_", celu_),
     ("ceil", ceil),
@@ -138,12 +157,16 @@ _FULL_CONFIG = (
     ("ceil.out", ceil_out),
     ("clamp", clamp),
     ("clamp.Tensor", clamp_tensor),
+    ("clamp_max", clamp_max),
     ("clamp_min", clamp_min),
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
+    ("clamp_max_", clamp_max_),
     ("clamp_min_", clamp_min_),
     ("clip", clip),
     ("clip_", clip_),
+    ("col2im", col2im),
+    ("concatenate", concatenate),
     ("conj_physical", conj_physical),
     ("constant_pad_nd", constant_pad_nd),
     # ("contiguous", contiguous),
@@ -151,8 +174,10 @@ _FULL_CONFIG = (
     ("conv1d.padding", conv1d),
     ("conv2d", conv2d),
     ("conv2d.padding", conv2d),
+    ("conv_transpose2d", conv_transpose2d),
     ("conv3d", conv3d),
     ("conv3d.padding", conv3d),
+    ("conv_transpose1d", conv_transpose1d),
     (
         "copy_",
         copy_,
@@ -166,13 +191,19 @@ _FULL_CONFIG = (
     ("copysign", copysign),
     ("copysign.out", copysign_out),
     ("count_nonzero", count_nonzero),
+    ("ctc_loss.IntList", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("ctc_loss.Tensor", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("cudnn_convolution", cudnn_convolution),
     ("cummax", cummax),
     ("cummin", cummin),
+    ("cumprod", cumprod),
+    ("cumprod_", cumprod_),
     ("cumsum", cumsum),
     ("cumsum.out", cumsum_out),
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
+    ("diff", diff),
     ("digamma_", digamma_),
     ("div.Scalar", true_divide),
     ("div.Scalar_mode", div_mode),
@@ -212,6 +243,8 @@ _FULL_CONFIG = (
     ("expm1_", expm1_),
     ("expm1.out", expm1_out),
     ("exponential_", exponential_),
+    ("feature_dropout", feature_dropout),
+    ("feature_dropout_", feature_dropout_),
     ("eye", eye),
     ("eye.m", eye_m),
     ("fill.Scalar", fill_scalar),
@@ -222,12 +255,19 @@ _FULL_CONFIG = (
     ("fill_.Tensor", fill_tensor_),
     ("flip", flip),
     ("floor_", floor_),
+    ("floor", floor),
+    ("floor.out", floor_out),
     ("floor_divide", floor_divide),
     ("floor_divide.Scalar", floor_divide),
     ("floor_divide_.Scalar", floor_divide_),
     ("floor_divide_.Tensor", floor_divide_),
     ("fmin", fmin),
     ("fmin.out", fmin_out),
+    ("fmod.Scalar", fmod_scalar),
+    ("fmod.Tensor", fmod_tensor),
+    ("fmod_.Scalar", fmod_scalar_),
+    ("fmod_.Tensor", fmod_tensor_),
+    ("fmod_", fmod_),
     ("full", full),
     ("full_like", full_like),
     ("gather", gather),
@@ -251,6 +291,7 @@ _FULL_CONFIG = (
     ("hardsigmoid", hardsigmoid),
     ("hardsigmoid.out", hardsigmoid_out),
     ("hardswish_", hardswish_),
+    ("histc", histc),
     ("hstack", hstack),
     ("hypot", hypot),
     ("i0", i0),
@@ -259,8 +300,11 @@ _FULL_CONFIG = (
     ("index.Tensor", index),
     ("index_add", index_add),
     ("index_add_", index_add_),
+    ("index_copy", index_copy),
+    ("index_copy_", index_copy_),
     ("index_put", index_put),
     ("index_put_", index_put_),
+    ("index_reduce_", index_reduce_),
     ("index_select", index_select),
     ("isclose", isclose),
     ("isfinite", isfinite),
@@ -288,6 +332,7 @@ _FULL_CONFIG = (
     ("log10", log10),
     ("log10_", log10_),
     ("log10.out", log10_out),
+    ("log1p", log1p),
     ("log1p_", log1p_),
     ("log_sigmoid", log_sigmoid),
     ("logaddexp", logaddexp),
@@ -302,6 +347,7 @@ _FULL_CONFIG = (
     ("logit.out", logit_out),
     ("logit_", logit_),
     ("logspace", logspace),
+    ("logsumexp", logsumexp),
     ("lt.Scalar", lt_scalar),
     ("lt.Tensor", lt),
     ("margin_ranking_loss", margin_ranking_loss),
@@ -321,6 +367,10 @@ _FULL_CONFIG = (
     ("maximum", maximum),
     ("mean", mean),
     ("mean.dim", mean_dim),
+    ("median", median),
+    ("median.out", median_out),
+    ("median.dim", median_dim),
+    ("median.dim_values", median_dim_values),
     ("min", min),
     ("min.dim", min_dim),
     ("minimum", minimum),
@@ -353,6 +403,7 @@ _FULL_CONFIG = (
     ("nll_loss2d_backward", nll_loss2d_backward),
     ("nll_loss2d_forward", nll_loss2d_forward),
     ("nonzero", nonzero),
+    ("nonzero_numpy", nonzero_numpy),
     ("normal.Tensor_float", normal_tensor_float),
     ("normal.Tensor_Tensor", normal_tensor_tensor),
     ("normal.float_Tensor", normal_float_tensor),
@@ -365,6 +416,7 @@ _FULL_CONFIG = (
     ("pixel_shuffle", pixel_shuffle),
     ("pixel_unshuffle", pixel_unshuffle),
     ("pixel_unshuffle.out", pixel_unshuffle_out),
+    ("poisson", poisson),
     ("polar", polar),
     ("pow.Scalar", pow_scalar),
     ("pow.Tensor_Scalar", pow_tensor_scalar),
@@ -375,25 +427,33 @@ _FULL_CONFIG = (
     ("prod", prod),
     ("prod.dim_int", prod_dim),
     ("quantile", quantile),
+    ("rad2deg", rad2deg),
+    ("rad2deg_", rad2deg_),
     ("rand", rand),
     ("rand_like", rand_like),
     ("randn", randn),
     ("randn_like", randn_like),
+    ("randint", randint),
+    ("randint_like", randint_like),
     ("randperm", randperm),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
     ("reflection_pad1d", reflection_pad1d),
     ("reflection_pad1d.out", reflection_pad1d_out),
+    ("reflection_pad1d_backward", reflection_pad1d_backward),
     ("reflection_pad2d", reflection_pad2d),
     ("reflection_pad2d.out", reflection_pad2d_out),
     ("relu", relu),
     ("relu_", relu_),
     ("relu6", relu6),
+    ("remainder", remainder),
     ("remainder.Scalar", remainder),
     ("remainder.Scalar_Tensor", remainder),
     ("remainder.Tensor", remainder),
     ("remainder_.Scalar", remainder_),
     ("remainder_.Tensor", remainder_),
+    ("renorm", renorm),
+    ("renorm_", renorm_),
     ("repeat", repeat),
     ("repeat_interleave.self_int", repeat_interleave_self_int),
     ("repeat_interleave.self_Tensor", repeat_interleave_self_tensor),
@@ -405,12 +465,15 @@ _FULL_CONFIG = (
     ("resolve_neg", resolve_neg),
     ("rms_norm", rms_norm),
     ("roll", roll),
+    ("rot90", rot90),
     ("round", round),
     ("round_", round_),
     ("round.out", round_out),
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
     ("rsqrt", rsqrt),
     ("rsqrt_", rsqrt_),
+    ("rsub.Scalar", rsub_scalar),
+    ("rsub.Tensor", rsub_tensor),
     ("scaled_softmax_backward", scaled_softmax_backward),
     ("scaled_softmax_forward", scaled_softmax_forward),
     ("scatter.reduce", scatter),
@@ -418,6 +481,13 @@ _FULL_CONFIG = (
     ("scatter_.reduce", scatter_),
     ("scatter_.src", scatter_),
     ("scatter_add_", scatter_add_),
+    ("scatter_reduce.two", scatter_reduce),
+    ("scatter_reduce_.two", scatter_reduce_),
+    ("scatter_reduce.two_out", scatter_reduce_out),
+    ("searchsorted.Tensor", searchsorted),
+    ("searchsorted.Tensor_out", searchsorted_out),
+    ("searchsorted.Scalar", searchsorted_scalar),
+    ("searchsorted.Scalar_out", searchsorted_scalar_out),
     ("select_backward", select_backward),
     ("select_scatter", select_scatter),
     ("selu", selu),
@@ -436,6 +506,9 @@ _FULL_CONFIG = (
     ("sinh_", sinh_),
     ("slice_backward", slice_backward),
     ("slice_scatter", slice_scatter),
+    ("smooth_l1_loss", smooth_l1_loss),
+    ("smooth_l1_loss_backward", smooth_l1_loss_backward),
+    ("smooth_l1_loss.out", smooth_l1_loss_out),
     ("soft_margin_loss", soft_margin_loss),
     ("softplus", softplus),
     ("softshrink", softshrink),
@@ -446,6 +519,7 @@ _FULL_CONFIG = (
     ("special_i0e.out", special_i0e_out),
     ("special_i1", special_i1),
     ("special_i1.out", special_i1_out),
+    ("split_with_sizes_copy", split_with_sizes_copy),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
     ("square", square),
@@ -459,6 +533,7 @@ _FULL_CONFIG = (
     ("sum.IntList_out", sum_dim_out),
     ("sum.dim_IntList", sum_dim),
     ("sum.out", sum_out),
+    ("svd", svd),
     ("t_copy", t_copy),
     ("t_copy.out", t_copy_out),
     ("tan", tan),
@@ -466,12 +541,15 @@ _FULL_CONFIG = (
     ("tanh", tanh),
     ("tanh_", tanh_),
     ("tanh_backward", tanh_backward),
+    ("tensor_split", tensor_split),
     ("threshold", threshold),
     ("threshold_backward", threshold_backward),
     ("tile", tile),
     ("topk", topk),
     ("trace", trace),
     ("tril", tril),
+    ("tril.out", tril_out),
+    ("tril_", tril_),
     ("triu", triu),
     ("triu_", triu_),
     ("true_divide.Scalar", true_divide),
@@ -486,11 +564,13 @@ _FULL_CONFIG = (
     ("upsample_nearest1d", upsample_nearest1d),
     ("upsample_nearest2d", upsample_nearest2d),
     ("upsample_nearest3d", upsample_nearest3d),
+    ("upsample_trilinear3d", upsample_trilinear3d),
     ("var_mean.correction", var_mean),
     ("var", var),
     ("var.correction", var_correction),
     ("var.dim", var_dim),
     ("vdot", vdot),
+    ("view_copy", view_copy),
     ("vstack", vstack),
     ("where.self", where_self),
     ("where.self_out", where_self_out),
@@ -625,7 +705,7 @@ class use_gems:
         self.lib = torch.library.Library("aten", "IMPL")
         self.exclude = exclude if isinstance(exclude, (list, tuple, set, str)) else []
         self.include = include if isinstance(include, (list, tuple, set, str)) else []
-        self.registrar = Register
+        self.registrar = GeneralOpRegistrar
         self.record = record
         self.once = once
         self.path = path
@@ -678,9 +758,10 @@ def all_registered_keys():
 
 
 __all__ = [
+    "all_registered_keys",
+    "all_registered_ops",
     "enable",
+    "flagtune",
     "only_enable",
     "use_gems",
-    "all_registered_ops",
-    "all_registered_keys",
 ]

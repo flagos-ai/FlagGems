@@ -19,9 +19,13 @@ def ref_sparse_mla_fwd_interface(
     b, _, _, dim_v = v.shape
     g_index = g
     h_index = h // g
-    compressed_casual_mask = torch.arange(0, sq, dtype=torch.int32, device="cuda").view(
-        -1, 1
-    ) >= torch.arange(1 - 1, sk * 1, 1, dtype=torch.int32, device="cuda").view(1, -1)
+    compressed_casual_mask = torch.arange(
+        0, sq, dtype=torch.int32, device=q.device
+    ).view(-1, 1) >= torch.arange(
+        1 - 1, sk * 1, 1, dtype=torch.int32, device=q.device
+    ).view(
+        1, -1
+    )
 
     mask = q.new_zeros(b, g_index, sq, sk + 1, dtype=torch.bool).scatter(
         3, indices.long(), 1

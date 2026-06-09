@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -22,7 +22,7 @@ def zero_kernel(
     BLOCK_SIZE: tl.constexpr,
 ):
     """Write-only kernel: no dummy load, stores 0 directly with dtype handled by Triton."""
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements

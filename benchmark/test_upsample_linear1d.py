@@ -29,7 +29,7 @@ def test_upsample_linear1d(align_corners):
 
     bench = UpsampleBenchmark(
         input_fn=upsample_linear1d_input_fn,
-        op_name=f"upsample_linear1d_align_{align_corners}",
+        op_name="upsample_linear1d",
         torch_op=torch._C._nn.upsample_linear1d,
         dtypes=consts.FLOAT_DTYPES,
     )

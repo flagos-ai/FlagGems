@@ -7,7 +7,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -26,7 +26,7 @@ def fused_add_rmsnorm_kernel(
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     X += pid * x_stride_r
     R += pid * r_stride_r
 

@@ -15,7 +15,7 @@ except ImportError:
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_max, get_dtype_min
 from flag_gems.utils.triton_version_utils import HAS_TLE
 
@@ -85,9 +85,9 @@ def topk_stage1_kernel(
     CHUNK_SIZE: tl.constexpr,
     DESCENDING: tl.constexpr,
 ):
-    cur_batch = tle.program_id(0)
-    cur_chunk_idx = tle.program_id(1)
-    chunk_num = tle.num_programs(1)
+    cur_batch = ext.program_id(0)
+    cur_chunk_idx = ext.program_id(1)
+    chunk_num = ext.num_programs(1)
 
     y_ptr += cur_batch * chunk_num * k + cur_chunk_idx * k
     index_ptr += cur_batch * chunk_num * k + cur_chunk_idx * k
@@ -248,7 +248,7 @@ def topk_stage2_kernel(
     BLOCK_SIZE: tl.constexpr,
     DESCENDING: tl.constexpr,
 ):
-    cur_batch = tle.program_id(0)
+    cur_batch = ext.program_id(0)
     chunk_x += cur_batch * N
     chunk_index += cur_batch * N
     y_ptr += cur_batch * k

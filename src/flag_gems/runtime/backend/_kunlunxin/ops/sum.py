@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
 
@@ -30,7 +30,7 @@ def sum_kernel_1(
     else:
         cdtype = inp.dtype.element_ty
 
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -93,7 +93,7 @@ def sum_kernel(
         cdtype = inp.dtype.element_ty
 
     # Map the program id to the row of inp it should compute.
-    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + pid * N
     out = out + pid
     row_mask = pid < M

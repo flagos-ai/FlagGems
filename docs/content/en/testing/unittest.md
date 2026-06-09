@@ -19,7 +19,7 @@ pytest tests/test_${name}.py
 The following command runs the tests on CPU:
 
 ```shell
-pytest tests/test_${case}.py --ref cpu
+pytest tests/test_foo.py --ref cpu
 ```
 
 ## 2. Accuracy in the context of models
@@ -33,23 +33,11 @@ pytest examples/${name}_test.py
 To test CUDA performance
 
 ```shell
-pytest benchmark/test_xx_perf.py -s
+pytest benchmark/test_foo.py -s
 ```
 
 To benchmark the end-to-end performance for operators:
 
 ```shell
-pytest benchmark/test_xx_perf.py -s --mode cpu
+pytest benchmark/test_foo.py -s --ref cpu
 ```
-
-## 4. Run tests with logging infomation
-
-```bash
-pytest program.py --log-cli-level debug
-```
-
-This is NOT recommended when conducting performance benchmarks.
-
-## 5. The daily full-range unit tests
-
-(TBD)

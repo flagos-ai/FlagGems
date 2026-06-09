@@ -194,7 +194,7 @@ except ImportError:
 
 
 @pytest.mark.fused_experts_impl
-@pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vllm not installed")
+@pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vLLM is required")
 @pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 def test_fused_moe_vs_vllm(config, dtype):
@@ -548,9 +548,11 @@ def torch_w8a8_block_fp8_moe(
 def test_fused_moe_fp8_blockwise(config, block_shape):
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
     if hidden_size % block_shape[1] != 0:
-        pytest.skip("Invalid shape for block-wise quantization")
+        # Invalid shape for block-wise quantization
+        return
     if intermediate_size % block_shape[0] != 0:
-        pytest.skip("Invalid shape for block-wise quantization")
+        # Invalid shape for block-wise quantization
+        return
 
     device = flag_gems.device
     dtype = torch.bfloat16

@@ -114,7 +114,8 @@ FILL_SLICE_CASES = [
 )
 def test_fill_scalar_sliced_view(shape, slc, dtype, value):
     if dtype == torch.bool and value == float("-inf"):
-        pytest.skip("bool tensor does not support -inf")
+        # bool value cannot be -inf
+        return
 
     x = torch.randn(shape, device=flag_gems.device).to(dtype)
     ref_x = utils.to_reference(x, False)

@@ -15,13 +15,6 @@ from . import conftest as cfg
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + [None])
 @pytest.mark.parametrize("pin_memory", [False])
 def test_logspace(start, end, steps, base, dtype, pin_memory):
-    if (
-        flag_gems.vendor_name == "kunlunxin"
-        and dtype is torch.half
-        and torch.__version__ < "2.5"
-    ):
-        pytest.skip("#2828: Implementation for lerp cpu half is not ready")
-
     temp = torch.logspace(
         start,
         end,

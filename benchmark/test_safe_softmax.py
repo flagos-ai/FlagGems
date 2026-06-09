@@ -16,7 +16,7 @@ class SafeSoftmaxBenchmark(base.Benchmark):
 @pytest.mark.safe_softmax
 def test_safe_softmax():
     bench = SafeSoftmaxBenchmark(
-        op_name="_safe_softmax",
+        op_name="safe_softmax",
         torch_op=torch.ops.aten._safe_softmax,
         dtypes=consts.FLOAT_DTYPES,
     )
