@@ -11,7 +11,7 @@ from . import accuracy_utils as utils
 # Issue #2840
 @pytest.mark.polar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_polar(shape, dtype):
     abs = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 5
     angle = (torch.rand(shape, dtype=dtype, device=flag_gems.device) - 0.5) * (
