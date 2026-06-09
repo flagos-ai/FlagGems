@@ -97,7 +97,7 @@ def _thnn_fused_lstm_cell_backward_impl_kernel(
     # dL/d(cell_gate) = dL/dcy * i * (1 - g^2)
     grad_g = d_cy * i_val * (1.0 - g_val * g_val)
 
-    # Store gradients
+    # Store input gate gradients
     tl.store(grad_input_gates_ptr + base_offset + hidden_idx, grad_i, mask=mask)
     tl.store(
         grad_input_gates_ptr + base_offset + hidden_size + hidden_idx, grad_f, mask=mask
@@ -113,8 +113,22 @@ def _thnn_fused_lstm_cell_backward_impl_kernel(
         mask=mask,
     )
 
-    # Store hidden gate gradients (approximate as zeros)
-    tl.store(grad_hidden_gates_ptr + idx, tl.zeros_like(grad_i), mask=mask)
+    # Hidden gate gradients are identical to input gate gradients
+    # because forward computes: gate = input_gates + hidden_gates + bias
+    tl.store(grad_hidden_gates_ptr + base_offset + hidden_idx, grad_i, mask=mask)
+    tl.store(
+        grad_hidden_gates_ptr + base_offset + hidden_size + hidden_idx, grad_f, mask=mask
+    )
+    tl.store(
+        grad_hidden_gates_ptr + base_offset + hidden_size * 2 + hidden_idx,
+        grad_g,
+        mask=mask,
+    )
+    tl.store(
+        grad_hidden_gates_ptr + base_offset + hidden_size * 3 + hidden_idx,
+        grad_o,
+        mask=mask,
+    )
 
 
 def _thnn_fused_lstm_cell_backward_impl(
@@ -157,13 +171,11 @@ def _thnn_fused_lstm_cell_backward_impl(
         (batch_size, 4 * hidden_size), dtype=cx.dtype, device=cx.device
     )
     grad_hidden_gates = torch.empty(
-        (batch_size, hidden_size), dtype=cx.dtype, device=cx.device
+        (batch_size, 4 * hidden_size), dtype=cx.dtype, device=cx.device
     )
-    grad_biases = (
-        torch.empty((4 * hidden_size,), dtype=cx.dtype, device=cx.device)
-        if has_bias
-        else torch.zeros(0, dtype=cx.dtype, device=cx.device)
-    )
+
+    # dummy zeros tensor for kernel (bias computed in wrapper after launch)
+    dummy_bias = torch.empty(0, dtype=cx.dtype, device=cx.device)
 
     # Launch Triton kernel
     BLOCK_SIZE = 128
@@ -177,11 +189,17 @@ def _thnn_fused_lstm_cell_backward_impl(
         workspace,
         grad_input_gates,
         grad_hidden_gates,
-        grad_biases,
+        dummy_bias,
         batch_size,
         hidden_size,
         has_bias,
         BLOCK_SIZE,
     )
+
+    # Bias gradient is the sum over batch dimension of input gate gradients
+    if has_bias:
+        grad_biases = grad_input_gates.sum(dim=0)
+    else:
+        grad_biases = torch.zeros(0, dtype=cx.dtype, device=cx.device)
 
     return grad_input_gates, grad_hidden_gates, grad_biases
