@@ -1382,7 +1382,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: copysign_out
     description: |
       A variant of `copysign` that allows the output to be saved into `out`.
