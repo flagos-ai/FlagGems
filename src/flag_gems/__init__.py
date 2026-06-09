@@ -524,6 +524,7 @@ _FULL_CONFIG = (
     ("square", square),
     ("square_", square_),
     ("square.out", square_out),
+    ("squeeze_copy", squeeze_copy),
     ("stack", stack),
     ("std.correction", std),
     ("sub.Tensor", sub),
