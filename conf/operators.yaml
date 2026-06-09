@@ -1246,6 +1246,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.1'
+  - id: Concat
+    description: An alias of `cat()`.
+    for:
+      - Concat
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: concatenate
     description: An alias of `cat()`.
     for:

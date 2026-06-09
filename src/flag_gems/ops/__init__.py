@@ -1,3 +1,4 @@
+from flag_gems.ops import Concat
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -84,6 +85,7 @@ from flag_gems.ops.clamp import (
 from flag_gems.ops.clamp_max import clamp_max, clamp_max_  # noqa: F401
 from flag_gems.ops.clip import clip, clip_
 from flag_gems.ops.col2im import col2im
+from flag_gems.ops.Concat import concat
 from flag_gems.ops.concatenate import concatenate
 from flag_gems.ops.conj_physical import conj_physical
 from flag_gems.ops.contiguous import contiguous
@@ -416,6 +418,7 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "Concat",
     "_assert_async",
     "_conv_depthwise2d",
     "_euclidean_dist",
@@ -524,6 +527,7 @@ __all__ = [
     "clip",
     "clip_",
     "col2im",
+    "concat",
     "concatenate",
     "conj_physical",
     "constant_pad_nd",
