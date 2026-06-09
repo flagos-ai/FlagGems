@@ -15,7 +15,7 @@ def _reference_resize_output(inp, size, device):
     old_numel = inp.numel()
 
     # Create output
-    out = torch.empty(size, dtype=inp.dtype, device=flag_gems.device)
+    out = torch.empty(size, dtype=inp.dtype, device=device)
 
     # Copy data
     copy_numel = min(old_numel, new_numel)
@@ -51,7 +51,9 @@ def test_resize_output(shape, dtype):
     device = inp.device
 
     # Use reference implementation
-    ref_out = _reference_resize_output(inp, target_size, device)
+    ref_inp = utils.to_reference(inp)
+    ref_device = torch.device("cpu") if utils.TO_CPU else device
+    ref_out = _reference_resize_output(ref_inp, target_size, ref_device)
     with flag_gems.use_gems():
         res_out = torch.ops.aten._resize_output(inp, target_size, device)
 
