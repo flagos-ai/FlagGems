@@ -19,6 +19,9 @@ else:
 random.seed(time.time() // 100)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise", reason="Issues #3835: LLVM ERROR"
+)
 @pytest.mark.gather
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])

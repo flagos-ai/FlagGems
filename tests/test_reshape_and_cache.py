@@ -78,7 +78,9 @@ def test_reshape_and_cache(
         slot_mapping_lst = random.sample(range(num_slots), num_tokens)
         slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
 
-        qkv = torch.randn(num_tokens, 3, num_heads, head_size, dtype=dtype)
+        qkv = torch.randn(
+            num_tokens, 3, num_heads, head_size, dtype=dtype, device=device
+        )
         _, key, value = qkv.unbind(dim=1)
 
         # Create the KV caches.

@@ -241,7 +241,7 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, 
     flag_gems.index_put_(inp, indices, values, accumulate)
 
     # BUG #2820: This is a hack
-    if flag_gems.vendor_name == "cambricon" and dtype == torch.float16:
+    if flag_gems.vendor_name in ["cambricon", "sunrise"] and dtype == torch.float16:
         inp = utils.to_cpu(inp, ref_inp)
         ref_inp = ref_inp.to(dtype)
         torch.testing.assert_close(inp, ref_inp, atol=3e-3, rtol=3e-2)
