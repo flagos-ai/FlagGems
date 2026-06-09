@@ -106,6 +106,8 @@ _FULL_CONFIG = (
     ("arange", arange),
     ("arange.start", arange_start),
     ("arange.start_step", arange_start),
+    ("arccos", arccos),
+    ("arccos_", arccos_),
     ("arcsinh", arcsinh),
     ("arcsinh.out", arcsinh_out),
     ("arcsinh_", arcsinh_),

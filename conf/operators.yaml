@@ -467,6 +467,28 @@ ops:
       - tensor
     stages:
       - stable: '2.1'
+  - id: arccos
+    description: Returns a new tensor with the arccosine of the elements of `input`.
+    for:
+      - arccos
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: arccos_
+    description: The in-place version of `arccos()`.
+    for:
+      - arccos_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: arcsinh
     description: Performs an element-wise inverse hyperbolic sine computation on the given tensor.
     for:
