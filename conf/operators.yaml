@@ -6738,6 +6738,16 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: unique_dim
+    description: Returns the unique slices of the input tensor along a dimension.
+    for:
+      - unique_dim
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: unique_consecutive
     description: Eliminates all but the first element from every consecutive group of equivalent elements.
     for:
