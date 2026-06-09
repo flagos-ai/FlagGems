@@ -32,9 +32,10 @@ def test_pdist_backward(shape, dtype):
     pdist_out_gems = torch.pdist(inp, p=p)
 
     # Compute backward with gradient of ones
-    grad_output = torch.ones_like(pdist_out)
+    ref_grad_output = torch.ones_like(pdist_out)
+    grad_output = torch.ones_like(pdist_out_gems)
 
-    ref_out = torch.ops.aten._pdist_backward(grad_output, ref_inp, p, pdist_out)
+    ref_out = torch.ops.aten._pdist_backward(ref_grad_output, ref_inp, p, pdist_out)
     with flag_gems.use_gems():
         res_out = torch.ops.aten._pdist_backward(grad_output, inp, p, pdist_out_gems)
 
@@ -57,9 +58,10 @@ def test_pdist_backward_p1(shape, dtype):
     pdist_out_gems = torch.pdist(inp, p=p)
 
     # Compute backward with gradient of ones
-    grad_output = torch.ones_like(pdist_out)
+    ref_grad_output = torch.ones_like(pdist_out)
+    grad_output = torch.ones_like(pdist_out_gems)
 
-    ref_out = torch.ops.aten._pdist_backward(grad_output, ref_inp, p, pdist_out)
+    ref_out = torch.ops.aten._pdist_backward(ref_grad_output, ref_inp, p, pdist_out)
     with flag_gems.use_gems():
         res_out = torch.ops.aten._pdist_backward(grad_output, inp, p, pdist_out_gems)
 
