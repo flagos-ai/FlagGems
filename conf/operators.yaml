@@ -1860,7 +1860,7 @@ ops:
     kind:
       - Math
     stages:
-      - beta: '5.1'
+      - beta: '5.3'
   - id: dunder_iand_tensor
     description: The in-place version of bitwise and operation for tensor and scalar.
     for:
@@ -1871,7 +1871,7 @@ ops:
     kind:
       - Math
     stages:
-      - beta: '5.1'
+      - beta: '5.3'
   - id: dunder_ior_scalar
     description: The scalar version of `dunder_ior_tensor`.
     for:
