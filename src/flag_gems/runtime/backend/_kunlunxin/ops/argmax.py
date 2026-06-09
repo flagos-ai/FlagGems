@@ -154,7 +154,7 @@ def argmax_kernel_small_n(
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS ARGMAX")
+    logger.debug("GEMS_KUNLUNXIN ARGMAX")
     if dim is None:
         M = inp.numel()
         if dtype is None:
