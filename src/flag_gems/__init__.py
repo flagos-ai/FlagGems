@@ -114,6 +114,7 @@ _FULL_CONFIG = (
     ("argsort", argsort),
     ("as_strided_copy", as_strided_copy),
     ("as_strided_copy.out", as_strided_copy_out),
+    ("asin_", asin_),
     ("asinh", asinh),
     ("asinh.out", asinh_out),
     ("asinh_", asinh_),
