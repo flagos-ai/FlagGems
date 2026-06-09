@@ -2119,6 +2119,24 @@ conv_transpose1d:
     num_warps: 4
     num_stages: 3
 
+adaptive_max_pool3d_backward:
+  - META:
+      BLOCK_SIZE: 16
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 32
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 64
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 128
+    num_warps: 4
+    num_stages: 3
+
 rot90:
   - META:
       BLOCK_SIZE: 512
