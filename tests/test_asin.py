@@ -35,4 +35,4 @@ def test_asin_(shape, dtype):
     ref_out = ref_out.to(res_out.dtype)
     ref_inp = ref_inp.to(res_inp.dtype)
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
-    utils.gems_assert_close(ref_inp, res_inp, dtype, equal_nan=True)
+    utils.gems_assert_close(res_inp, ref_inp, dtype, equal_nan=True)
