@@ -44,7 +44,7 @@ def sigmoid_backward_kernel(dy, y):
 
 
 def sigmoid(self):
-    logger.debug("GEMS_KUNLUNXIN SIGMOID_FORWARD")
+    logger.debug("GEMS_KUNLUNXIN SIGMOID")
     output = sigmoid_forward(self)
     return output
 
@@ -56,6 +56,6 @@ def sigmoid_backward(grad_output, output):
 
 
 def sigmoid_(A):
-    logger.debug("GEMS_KUNLUNXIN SIGMOID__FORWARD")
+    logger.debug("GEMS_KUNLUNXIN SIGMOID_")
     out = sigmoid_forward(A, out0=A)
     return out

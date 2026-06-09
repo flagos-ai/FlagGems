@@ -251,7 +251,7 @@ def max_pool2d_with_indices(
     dilation=1,
     ceil_mode=False,
 ):
-    logger.debug("GEMS_KUNLUNXIN MAX_POOL2D_WITH_INDICES_FORWARD")
+    logger.debug("GEMS_KUNLUNXIN MAX_POOL2D_WITH_INDICES")
     input = input.contiguous()
 
     params = _parse_pool_params(kernel_size, stride, padding, dilation)

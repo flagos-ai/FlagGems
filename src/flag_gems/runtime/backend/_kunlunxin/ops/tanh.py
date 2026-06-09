@@ -26,7 +26,7 @@ def tanh_backward_kernel(y, dy):
 
 
 def tanh(self):
-    logger.debug("GEMS_KUNLUNXIN TANH_FORWARD")
+    logger.debug("GEMS_KUNLUNXIN TANH")
     out = tanh_kernel(self)
     return out
 
@@ -38,6 +38,6 @@ def tanh_backward(grad_output, output):
 
 
 def tanh_(A):
-    logger.debug("GEMS_KUNLUNXIN TANH__FORWARD")
+    logger.debug("GEMS_KUNLUNXIN TANH_")
     out = tanh_kernel(A, out0=A)
     return out

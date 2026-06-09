@@ -38,7 +38,7 @@ def glu_backward_kernel(grad_output, a, b):
 
 def glu(self, dim=-1):
     assert self.shape[dim] % 2 == 0, "Split dimension must be even"
-    logger.debug("GEMS_KUNLUNXIN GLU_FORWARD")
+    logger.debug("GEMS_KUNLUNXIN GLU")
     # Split into a and b
     a, b = torch.chunk(self, 2, dim=dim)
     out = glu_kernel(a, b)

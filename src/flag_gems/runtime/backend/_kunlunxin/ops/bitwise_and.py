@@ -47,7 +47,7 @@ def bitwise_and_scalar(A, B):
 
 
 def bitwise_and_scalar_(A, B):
-    logger.debug("GEMS_KUNLUNXIN BITWISE_AND__SCALAR")
+    logger.debug("GEMS_KUNLUNXIN BITWISE_AND_SCALAR_")
     return bitwise_and_func_scalar(A, B, out0=A)
 
 
