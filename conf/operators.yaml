@@ -640,6 +640,28 @@ ops:
       - Math
     stages:
       - beta: '5.1'
+  - id: atanh
+    description: Triton kernel implementation for atanh.
+    for:
+      - atanh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: atanh_
+    description: The in-place version of `atanh()`.
+    for:
+      - atanh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: avg_pool2d
     description: |
       Applies 2D average-pooling operation in `kH \mul kW` regions by step size `sH \mul sW` steps.
@@ -2475,6 +2497,17 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: fmod_
+    description: In-place remainder of division (fmod_), computes element-wise remainder with truncation toward zero.
+    for:
+      - fmod_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: fmod_scalar
     description: |
       Computes the element-wise remainder of division of input by a scalar divisor.
@@ -3173,6 +3206,19 @@ ops:
       - Tensor
     stages:
       - stable: '3.0'
+  - id: index_reduce_
+    description: |
+      Accumulates the elements of `source` into `input` at the indices specified
+      by `index` along `dim`, using `prod`, `mean`, `amax`, or `amin` reduction.
+    for:
+      - index_reduce_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.3'
   - id: index_put_impl
     description: An internal C++ function that handles the heavy lifting for placing values into a tensor at specific indices.
     for:
@@ -4156,10 +4202,45 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: renorm
+    description: >
+      Returns a tensor where each sub-tensor along the given dimension
+      is normalized such that the p-norm is lower than a max norm value.
+    for:
+      - renorm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: renorm_
+    description: The in-place version of `renorm()`.
+    for:
+      - renorm_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: reflection_pad1d_backward
     description: Computes the gradient of reflection_pad1d with respect to the input tensor.
     for:
       - reflection_pad1d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: rot90
+    description: Triton kernel implementation for rot90.
+    for:
+      - rot90
     labels:
       - aten
       - KernelGen
@@ -4832,6 +4913,19 @@ ops:
     kind:
       - Distribution
     stages:
+      - stable: '2.1'
+  - id: randint_like
+    description: |
+      Returns a tensor with the same size as `input` that is filled with random integers
+      generated uniformly between `0` (inclusive) and `high` (exclusive).
+    for:
+      - randint_like
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Distribution
+    stages:
       - alpha: '5.1'
   - id: randperm
     description: Returns a random permutation of integers from `0` to `n - 1`.
@@ -4971,6 +5065,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: remainder
+    description: |
+      Computes Python's modulus operation entrywise. The result has the same sign
+      as the divisor `other` and its absolute value is less than that of `other`.
+    for:
+      - remainder
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: remainder_scalar
     description: |
       Computes Python's modulus operation entrywise. The result has the same sign
@@ -5473,6 +5580,52 @@ ops:
       - Tensor
     stages:
       - stable: '3.0'
+  - id: searchsorted
+    description: |
+      Finds insertion indices for tensor values in sorted innermost-dimension boundaries.
+    for:
+      - searchsorted.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: searchsorted_out
+    description: A variant of `searchsorted.Tensor` that assigns the result to `out`.
+    for:
+      - searchsorted.Tensor_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: searchsorted_scalar
+    description: |
+      Finds insertion indices for a scalar value in one-dimensional sorted boundaries.
+    for:
+      - searchsorted.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
+  - id: searchsorted_scalar_out
+    description: A variant of `searchsorted.Scalar` that assigns the result to `out`.
+    for:
+      - searchsorted.Scalar_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: select_backward
     description: Calculate the gradient during the backward pass in the neural network.
     for:
@@ -5951,6 +6104,19 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: split_with_sizes_copy
+    description: |
+      Splits a tensor into sub-tensors along a given dimension,
+      where each split has a specified size. Always returns copies.
+    for:
+      - split_with_sizes_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
@@ -6191,6 +6357,19 @@ ops:
       - Math
     stages:
       - stable: '3.0'
+  - id: tensor_split
+    description: |
+      Splits a tensor into multiple sub-tensors along a given dimension,
+      using either a number of sections or a list of split indices.
+    for:
+      - tensor_split
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: threshold
     description: Apply a threshold to each element of the input Tensor.
     for:
@@ -6588,6 +6767,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: upsample_trilinear3d
+    description: Upsamples the input (NCDHW) using trilinear interpolation.
+    for:
+      - upsample_trilinear3d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: var
     description: Calculates the variance over all dimensions.
     for:
@@ -6666,6 +6856,19 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: view_copy
+    description: |
+      Returns a copy of the tensor with the specified shape.
+      Unlike view(), this always returns a new tensor rather than an alias.
+    for:
+      - view_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: w8a8_block_fp8_matmul
     description: Performs matrix multiplication with block-wise quantization.
     for:
