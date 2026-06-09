@@ -38,10 +38,11 @@ def test_adaptive_max_pool3d_backward(shape, output_size, dtype):
     )
 
     # Compute backward with gradient of ones
-    grad_output = torch.ones_like(ref_output)
+    ref_grad_output = torch.ones_like(ref_output)
+    grad_output = torch.ones_like(res_output)
 
     ref_out = torch.ops.aten.adaptive_max_pool3d_backward(
-        grad_output, ref_inp, ref_indices
+        ref_grad_output, ref_inp, ref_indices
     )
     with flag_gems.use_gems():
         res_out = torch.ops.aten.adaptive_max_pool3d_backward(
