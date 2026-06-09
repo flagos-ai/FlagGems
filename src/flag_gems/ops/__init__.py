@@ -1,4 +1,7 @@
 from flag_gems.ops._euclidean_dist import _euclidean_dist
+from flag_gems.ops._functional_sym_constrain_range import (
+    _functional_sym_constrain_range,
+)
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -419,6 +422,7 @@ __all__ = [
     "_assert_async",
     "_conv_depthwise2d",
     "_euclidean_dist",
+    "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
     "_is_all_true",
