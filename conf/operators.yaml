@@ -701,6 +701,7 @@ ops:
       - native_batch_norm
     labels:
       - aten
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -1303,6 +1304,7 @@ ops:
       - aten
       - Convolution
       - NoCPU
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -1424,6 +1426,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Math
     stages:
@@ -1972,6 +1975,7 @@ ops:
       - embedding_dense_backward
     labels:
       - aten
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -2328,6 +2332,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -2846,6 +2851,7 @@ ops:
     labels:
       - aten
       - Reduction
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -3200,6 +3206,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -3322,6 +3329,7 @@ ops:
       - native_layer_norm
     labels:
       - aten
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -4135,6 +4143,7 @@ ops:
       - aten
       - pointwise
       - nn.functional
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -4264,6 +4273,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -4325,6 +4335,7 @@ ops:
       - nll_loss_nd_backward
     labels:
       - aten
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -4338,6 +4349,7 @@ ops:
       - nll_loss_nd_forward
     labels:
       - aten
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -4547,6 +4559,7 @@ ops:
     labels:
       - aten
       - nn.functional
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -4939,6 +4952,7 @@ ops:
       - remainder.Scalar
     labels:
       - aten
+      - KernelGen
     kind:
       - Math
     stages:
@@ -4949,6 +4963,7 @@ ops:
       - remainder_.Scalar
     labels:
       - aten
+      - KernelGen
     kind:
       - Math
     stages:
@@ -4961,6 +4976,7 @@ ops:
       - remainder.Scalar_Tensor
     labels:
       - aten
+      - KernelGen
     kind:
       - Math
     stages:
@@ -4973,6 +4989,7 @@ ops:
       - remainder.Tensor
     labels:
       - aten
+      - KernelGen
     kind:
       - Math
     stages:
@@ -4983,6 +5000,7 @@ ops:
       - remainder_.Tensor
     labels:
       - aten
+      - KernelGen
     kind:
       - Math
     stages:
@@ -5155,6 +5173,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Math
     stages:
@@ -6522,6 +6541,7 @@ ops:
     labels:
       - aten
       - Reduction
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -6697,6 +6717,7 @@ ops:
       - zero_.Tensor
     labels:
       - aten
+      - KernelGen
     kind:
       - Tensor
     stages:
