@@ -79,9 +79,6 @@ jobs:
             h20)
               VENDOR="nvidia"
               ;;
-            moore)
-              VENDOR="mthreads"
-              ;;
             *)
               VENDOR="${RUNNER_LABEL}"
               ;;
@@ -101,7 +98,7 @@ jobs:
         shell: bash
         run: |
           source .venv/bin/activate
-          source tools/set-env.sh ${VENDOR}
+          source tools/env.sh ${VENDOR}
           tools/run_tests.py --ops ${{ inputs.operators }} --gpus ${{ inputs.gpus }}
 
       - name: Upload results
