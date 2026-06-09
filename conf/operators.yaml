@@ -6832,6 +6832,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.0'
+  - id: upsample_linear1d_backward
+    description: A backward case for `upsample_linear1d()`.
+    for:
+      - upsample_linear1d_backward
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: upsample_nearest1d
     description: |
       Upsamples the `input`, using nearest neighbours' pixel values.
