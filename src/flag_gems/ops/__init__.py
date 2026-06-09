@@ -873,7 +873,6 @@ __all__ = [
     "sort",
     "sort_stable",
     "special_expit",
-    "special_expit",
     "special_i0e",
     "special_i0e_out",
     "special_i1",
