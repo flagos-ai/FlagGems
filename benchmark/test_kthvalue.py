@@ -27,6 +27,7 @@ def test_kthvalue():
     bench = KthvalueBenchmark(
         op_name="kthvalue",
         torch_op=torch.kthvalue,
+        # kthvalue implementation relies on topk gemm path which requires float32 precision
         dtypes=[torch.float32],
         input_fn=kthvalue_input_fn,
     )
