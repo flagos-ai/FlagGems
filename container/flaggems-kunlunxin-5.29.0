@@ -6,10 +6,10 @@
 # - 20260602 - Initial version, to be verified
 
 # ── Build arguments ────────────────────────────────────────────
-ARG BASE_IMAGE=mthreads-musa:4.3.6
+ARG BASE_IMAGE=kunlunxin-xre:5.29.0
 ARG PYTHON_VERSION=3.10
-ARG FLAGOS_PYPI=https://resource.flagos.net/repository/flagos-pypi-mthreads/simple
-ARG EXTRA_PYPI=http://mirrors.aliyun.com/pypi/simple
+ARG FLAGOS_PYPI=https://resource.flagos.net/repository/flagos-pypi-kunlunxin/simple
+ARG EXTRA_PYPI=https://mirrors.aliyun.com/pypi/simple
 ARG INCLUDE_TESTS=true
 
 # ════════════════════════════════════════════════════════════════
@@ -21,20 +21,18 @@ ARG PYTHON_VERSION
 ARG FLAGOS_PYPI
 ARG EXTRA_PYPI
 ARG INCLUDE_TESTS
-
 ARG DEBIAN_FRONTEND=noninteractive
 
 # ── System packages ────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        software-properties-common \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Python build dependencies ──────────────────────────────────
+# ── Prepare uv and virtual environment ─────────────────────────
 # Install 'uv' to /usr/local/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 RUN uv python install ${PYTHON_VERSION} && \
-    uv venv /venv --python ${PYTHON_VERSION} --relocatable --python-preference only-managed
+  uv venv /venv --python ${PYTHON_VERSION} --relocatable --python-preference only-managed
 ENV VIRTUAL_ENV=/venv \
     PATH="/venv/bin:${PATH}"
 
@@ -43,7 +41,7 @@ WORKDIR /build
 COPY . /build/FlagGems
 WORKDIR /build/FlagGems
 
-RUN uv pip install \
+RUN uv pip install --no-cache-dir \
         "setuptools>=64.0,<80.0" \
         "scikit-build-core==0.12.2" \
         "pybind11==3.0.3" \
@@ -51,13 +49,15 @@ RUN uv pip install \
         "ninja==1.13.0" \
         "pip"
 
-# ── Build FlagGems ─────────────────────────────────────────────
-RUN uv pip install .
-RUN uv pip install ".[mthreads]" \
-    --index ${FLAGOS_PYPI} \
-    --trusted-host resource.flagos.net
-
-RUN uv pip install ".[test]"
+# ── PyTorch + torch_xpu + Triton ─────────────────────────────
+# The first command installs the default Triton, the seconds replaces it
+RUN uv pip install ".[kunlunxin]" \
+      --index ${FLAGOS_PYPI} \
+      --trusted-host resource.flagos.net \
+  && uv pip install triton==3.0.0+a48aedef --index ${FLAGOS_PYPI}
+RUN uv pip install ".[test]" \
+      --index ${EXTRA_PYPI} \
+      --trusted-host mirrors.aliyun.com
 
 RUN mkdir /app
 RUN if [ "$INCLUDE_TESTS" = "true" ]; then \
@@ -71,17 +71,13 @@ RUN if [ "$INCLUDE_TESTS" = "true" ]; then \
 # ════════════════════════════════════════════════════════════════
 FROM ${BASE_IMAGE} AS runtime
 
-ARG PYTHON_VERSION
-ARG INCLUDE_TESTS
-
 ARG DEBIAN_FRONTEND=noninteractive
+ARG INCLUDE_TESTS
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libelf1 \
-        libnuma-dev \
-        libgfortran5 \
+        libz3-4 \
         libpython3-dev \
-        libopenmpi-dev openmpi-bin \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Copy uv and Python from builder ────────────────────────────
@@ -95,16 +91,6 @@ WORKDIR /app
 
 # Note: VIRTUAL_ENV and PATH are not sharable between stages
 ENV VIRTUAL_ENV=/venv \
-  PATH="/venv/bin:${PATH}"
-
-# ── Mthreads runtime environment ──────────────────────────────
-ENV MUSA_HOME="/usr/local/musa" \
-    MTHREADS_VISIBLE_DEVICES=all \
-    LD_LIBRARY_PATH="${VIRTUAL_ENV}/lib:/usr/local/musa/lib:${LD_LIBRARY_PATH}" \
-    PATH="/venv/bin:/usr/local/musa/bin:${PATH}" \
-    GEMS_VENDOR=mthreads
-
-# ── Runtime defaults ───────────────────────────────────────────
-WORKDIR /workspace
+   PATH="/venv/bin:${PATH}"
 
 ENTRYPOINT ["bash"]
