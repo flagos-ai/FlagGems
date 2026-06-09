@@ -7070,7 +7070,7 @@ ops:
     stages:
       - alpha: '5.1'
   - id: empty
-    description: Tensor factory returning uninitialized memory, used for deferred init or output buffers.
+    description: Tensor factory operation (empty).
     for:
       - empty
     labels:

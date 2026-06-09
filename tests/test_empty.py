@@ -24,6 +24,8 @@ def test_empty(shape, dtype):
 
 @pytest.mark.empty
 def test_empty_default_dtype():
+    # Tests empty() with default dtype (not explicitly specified) to verify
+    # proper dtype inference when only shape and device are given.
     expected_dev = "cpu" if cfg.TO_CPU else device
     with flag_gems.use_gems():
         res_out = torch.empty(10, 20, device=flag_gems.device)
