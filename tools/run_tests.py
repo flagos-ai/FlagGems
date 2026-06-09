@@ -232,6 +232,19 @@ def _probe_torch():
         pinfo(f"PyTorch device count ... {dev_count}")
     except Exception:
         ENV_INFO["torch"]["device_count"] = 0
+        dev_count = 0
+
+    if dev_count == 0:
+        try:
+            # Is this a TsingMicro chip?
+            import torch_txda
+
+            dev_count = torch_txda.device_count()
+
+            ENV_INFO["torch"]["device_count"] = dev_count
+            pinfo(f"TorchTXDA device count ... {dev_count}")
+        except Exception:
+            pass
 
 
 def _probe_triton():
