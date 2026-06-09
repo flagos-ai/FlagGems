@@ -17,10 +17,10 @@ def erf_func(x):
 
 
 def erf(x):
-    logger.debug("GEMS ERF")
+    logger.debug("GEMS_KUNLUNXIN ERF")
     return erf_func(x)
 
 
 def erf_(x):
-    logger.debug("GEMS ERF_")
+    logger.debug("GEMS_KUNLUNXIN ERF_")
     return erf_func(x, out0=x)

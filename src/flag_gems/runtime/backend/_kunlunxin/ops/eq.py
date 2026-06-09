@@ -55,5 +55,5 @@ def eq_func_scalar(x, y):
 
 
 def eq_scalar(A, B):
-    logger.debug("GEMS_KUNLUNXIN EQ SCALAR")
+    logger.debug("GEMS_KUNLUNXIN EQ_SCALAR")
     return eq_func_scalar(A, B)

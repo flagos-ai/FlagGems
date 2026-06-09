@@ -21,7 +21,7 @@ def copy_func(x):
 def stack(
     tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
-    logger.debug("GEMS STACK")
+    logger.debug("GEMS_KUNLUNXIN STACK")
 
     if len(tensors) == 0:
         raise RuntimeError("stack expected a non-empty TensorList")

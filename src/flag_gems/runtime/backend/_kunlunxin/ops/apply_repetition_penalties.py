@@ -45,7 +45,7 @@ def _repetition_penalty_kernel(
 
 
 def apply_repetition_penalties(logits, prompt_mask, output_mask, repetition_penalties):
-    logger.debug("GEMS APPLY REPETITION PENALTIES")
+    logger.debug("GEMS_KUNLUNXIN APPLY_REPETITION_PENALTIES")
     assert logits.is_contiguous(), "logits must be contiguous"
     assert (
         prompt_mask.is_contiguous() and prompt_mask.dtype == torch.bool

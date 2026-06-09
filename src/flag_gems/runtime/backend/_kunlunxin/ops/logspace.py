@@ -49,7 +49,7 @@ def logspace(
     device=None,
     pin_memory=None,
 ) -> torch.Tensor:
-    logger.debug("GEMS LOGSPACE")
+    logger.debug("GEMS_KUNLUNXIN LOGSPACE")
     assert steps >= 0, "number of steps must be non-negative"
     out_dtype = dtype if dtype is not None else torch.get_default_dtype()
     out = torch.empty(

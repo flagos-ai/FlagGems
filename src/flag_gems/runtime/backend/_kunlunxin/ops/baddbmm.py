@@ -137,7 +137,7 @@ def baddbmm_kernel(
 class BaddbmmFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, A, B, beta, alpha):
-        logger.debug("GEMS BADDBMM FORWARD")
+        logger.debug("GEMS_KUNLUNXIN BADDBMM_FORWARD")
 
         ctx.save_for_backward(A, B, bias)
         ctx.alpha = alpha
@@ -178,7 +178,7 @@ class BaddbmmFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        logger.debug("GEMS BADDBMM BACKWARD")
+        logger.debug("GEMS_KUNLUNXIN BADDBMM_BACKWARD")
         A, B, bias = ctx.saved_tensors
 
         grad_A = None

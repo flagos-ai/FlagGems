@@ -96,7 +96,7 @@ def all_kernel_dim(
 
 
 def all(inp):
-    logger.debug("GEMS ALL")
+    logger.debug("GEMS_KUNLUNXIN ALL")
     n_elements = inp.numel()
     # BLOCK_SIZE must fit in XPU per-core local buffer so the Triton fallback
     # kernel always compiles.  The C++ handler (api::all<T,bool>) ignores this
@@ -111,7 +111,7 @@ def all(inp):
 
 
 def all_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ALL DIM")
+    logger.debug("GEMS_KUNLUNXIN ALL_DIM")
     shape = list(inp.shape)
     orig_ndim = inp.ndim
 
@@ -142,7 +142,7 @@ def all_dim(inp, dim=None, keepdim=False):
 
 
 def all_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ALL DIMS")
+    logger.debug("GEMS_KUNLUNXIN ALL_DIMS")
 
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)

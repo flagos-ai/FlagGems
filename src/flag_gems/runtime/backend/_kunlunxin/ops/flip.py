@@ -17,7 +17,7 @@ def copy_func(x):
 
 
 def flip(A: torch.Tensor, dims) -> torch.Tensor:
-    logger.debug("GEMS FLIP")
+    logger.debug("GEMS_KUNLUNXIN FLIP")
     strides = list(A.stride())
     flip_dims_b = [False for _ in A.stride()]
     for dim in dims:

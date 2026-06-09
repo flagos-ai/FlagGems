@@ -145,7 +145,7 @@ def bmm_kernel(
 
 
 def bmm(A, B):
-    logger.debug("GEMS BMM")
+    logger.debug("GEMS_KUNLUNXIN BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()
@@ -163,7 +163,7 @@ def bmm(A, B):
 
 
 def bmm_out(A, B, out):
-    logger.debug("GEMS BMM_OUT")
+    logger.debug("GEMS_KUNLUNXIN BMM_OUT")
     assert A.shape[0] == B.shape[0] == out.shape[0], "Batch dim mismatch"
     assert A.shape[2] == B.shape[1], "K dim mismatch"
     batch, M, K = A.shape

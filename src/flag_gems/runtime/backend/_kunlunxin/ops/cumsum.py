@@ -239,12 +239,12 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
 
 
 def cumsum(inp, dim=1, *, dtype=None):
-    logger.debug("GEMS CUMSUM")
+    logger.debug("GEMS_KUNLUNXIN CUMSUM")
     return cumsum_wrapper(inp, dim, dtype)
 
 
 def cumsum_out(inp, dim=1, *, dtype=None, out):
-    logger.debug("GEMS CUMSUM_OUT")
+    logger.debug("GEMS_KUNLUNXIN CUMSUM_OUT")
     return cumsum_wrapper(inp, dim, dtype, out)
 
 
@@ -392,7 +392,7 @@ GRID_Y_LIMIT = 65535
 
 
 def normed_cumsum(inp, dim=-1):
-    logger.debug("GEMS NORMED_CUMSUM")
+    logger.debug("GEMS_KUNLUNXIN NORMED_CUMSUM")
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
     dim = dim % inp.ndim
     N = inp.numel()

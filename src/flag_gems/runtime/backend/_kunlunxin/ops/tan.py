@@ -29,11 +29,11 @@ def tan_func(x):
 
 
 def tan(A):
-    logger.debug("GEMS TAN")
+    logger.debug("GEMS_KUNLUNXIN TAN")
     return tan_func(A)
 
 
 def tan_(A):
-    logger.debug("GEMS TAN_")
+    logger.debug("GEMS_KUNLUNXIN TAN_")
     tan_func(A, out0=A)
     return A

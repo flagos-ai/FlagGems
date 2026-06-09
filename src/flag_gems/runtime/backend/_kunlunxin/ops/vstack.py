@@ -75,7 +75,7 @@ def vstack_kernel(
 
 
 def vstack(tensors: list):
-    logger.debug("GEMS VSTACK")
+    logger.debug("GEMS_KUNLUNXIN VSTACK")
 
     tensors = torch.atleast_2d(tensors)
     num_tensors = len(tensors)

@@ -27,11 +27,11 @@ def sqrt_func(x):
 
 
 def sqrt(A):
-    logger.debug("GEMS SQRT")
+    logger.debug("GEMS_KUNLUNXIN SQRT")
     return sqrt_func(A)
 
 
 def sqrt_(A):
-    logger.debug("GEMS SQRT_")
+    logger.debug("GEMS_KUNLUNXIN SQRT_")
     sqrt_func(A, out0=A)
     return A

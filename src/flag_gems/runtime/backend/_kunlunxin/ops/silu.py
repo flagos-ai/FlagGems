@@ -42,18 +42,18 @@ def silu_backward_kernel(x, dy):
 
 
 def silu(self):
-    logger.debug("GEMS SILU FORWARD")
+    logger.debug("GEMS_KUNLUNXIN SILU")
     output = silu_forward(self)
     return output
 
 
 def silu_backward(grad_output, self):
-    logger.debug("GEMS SILU BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN SILU_BACKWARD")
     grad_input = silu_backward_kernel(self, grad_output)
     return grad_input
 
 
 def silu_(A):
-    logger.debug("GEMS SILU_ FORWARD")
+    logger.debug("GEMS_KUNLUNXIN SILU_")
     out = silu_forward(A, out0=A)
     return out

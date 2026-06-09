@@ -53,7 +53,7 @@ def trace_kernel(
 
 
 def trace(self):
-    logger.debug("GEMS TRACE")
+    logger.debug("GEMS_KUNLUNXIN TRACE")
 
     if self.ndim != 2:
         raise RuntimeError(

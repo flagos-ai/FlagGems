@@ -141,7 +141,7 @@ def to_copy(
             memory_format=target_memory_format,
         )
 
-    logger.debug("GEMS _TO_COPY")
+    logger.debug("GEMS_KUNLUNXIN _TO_COPY")
     empty_kwargs = {"dtype": target_dtype, "device": target_device}
 
     if target_memory_format is torch.preserve_format:
