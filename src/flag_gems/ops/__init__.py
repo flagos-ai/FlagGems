@@ -340,6 +340,12 @@ from flag_gems.ops.searchsorted import (
     searchsorted_scalar,
     searchsorted_scalar_out,
 )
+from flag_gems.ops.segment_reduce import (
+    _segment_reduce_backward,
+    _segment_reduce_backward_out,
+    segment_reduce,
+    segment_reduce_out,
+)
 from flag_gems.ops.select_backward import select_backward
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.selu import selu
@@ -429,6 +435,8 @@ __all__ = [
     "_index_put_impl_",
     "_is_all_true",
     "_safe_softmax",
+    "_segment_reduce_backward",
+    "_segment_reduce_backward_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
@@ -849,6 +857,8 @@ __all__ = [
     "searchsorted_out",
     "searchsorted_scalar",
     "searchsorted_scalar_out",
+    "segment_reduce",
+    "segment_reduce_out",
     "select_backward",
     "select_scatter",
     "selu",

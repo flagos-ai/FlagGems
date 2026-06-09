@@ -44,6 +44,24 @@ svd:
     - [256, 256]
   shape_desc: "(*B), M, N"
 
+segment_reduce: &segment_reduce_shapes
+  shapes:
+    - [1048576]
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 1024, 1024]
+  shape_desc: "data shape"
+
+segment_reduce_out:
+  <<: *segment_reduce_shapes
+
+segment_reduce_backward:
+  <<: *segment_reduce_shapes
+
+segment_reduce_backward_out:
+  <<: *segment_reduce_shapes
+
 gelu_backward:
   shapes:
     - [1048576] # 1024 * 1024
