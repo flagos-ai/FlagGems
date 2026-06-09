@@ -1271,7 +1271,7 @@ def flash_attn_varlen_func(
     if num_splits > 0:
         raise RuntimeError("num_splits > 0 is not implemented in GEMS.")
     if use_c_extension:
-        logger.debug("GEMS_TSINGMICRO FLASH_ATTN_VARLEN_FUNC_C_EXTENSION")
+        logger.debug("GEMS_TSINGMICRO FLASH_ATTN_VARLEN_FUNC (C Extension)")
         with torch_device_fn.device(q.device):
             out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
                 q,
