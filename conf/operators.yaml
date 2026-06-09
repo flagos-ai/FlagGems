@@ -3532,6 +3532,28 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: lgamma
+    description: Computes the logarithm of the absolute value of the Gamma function.
+    for:
+      - lgamma
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: lgamma_
+    description: The in-place version of `lgamma()`.
+    for:
+      - lgamma_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: lift_fresh_copy
     description: |
       Creates a new, independent copy of a tensor within a compiled graph.
