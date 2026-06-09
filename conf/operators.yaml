@@ -2044,6 +2044,7 @@ ops:
       - embedding_dense_backward
     labels:
       - aten
+      - NoCPU
     kind:
       - NeuralNetwork
     stages:
@@ -6057,6 +6058,7 @@ ops:
       - None
     labels:
       - fused
+      - NoCPU
     kind:
       - NeuralNetwork
     stages:
