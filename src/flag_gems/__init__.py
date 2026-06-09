@@ -97,6 +97,7 @@ _FULL_CONFIG = (
     ("all.dim", all_dim),
     ("all.dims", all_dims),
     ("allclose", allclose),
+    ("alpha_dropout", alpha_dropout),
     ("amax", amax),
     ("aminmax", aminmax),
     ("angle", angle),
