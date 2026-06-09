@@ -241,6 +241,8 @@ _FULL_CONFIG = (
     ("cumsum", cumsum),
     ("cumsum.out", cumsum_out),
     ("deg2rad", deg2rad),
+    ("dequantize", dequantize),
+    ("dequantize.self", dequantize),
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
