@@ -6371,6 +6371,17 @@ ops:
       - Math
     stages:
       - alpha: '5.1'
+  - id: thnn_fused_lstm_cell
+    description: Fused LSTM cell computation with optional input and hidden biases.
+    for:
+      - _thnn_fused_lstm_cell
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: threshold
     description: Apply a threshold to each element of the input Tensor.
     for:
