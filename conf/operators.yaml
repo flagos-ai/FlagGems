@@ -536,6 +536,28 @@ ops:
       - LinearAlg
     stages:
       - stable: '2.2'
+  - id: asin
+    description: Returns a new tensor with the arcsine of the elements of input.
+    for:
+      - asin
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: asin_
+    description: The in-place version of `asin()`.
+    for:
+      - asin_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: asinh
     description: Returns a new tensor with the inverse hyperbolic sine of the elements of input.
     for:
