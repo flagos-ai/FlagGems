@@ -39,7 +39,7 @@ def masked_select_kernel(
 
 
 def masked_select(inp, mask):
-    logger.debug("GEMS_TSINGMICRO MASKED SELECT")
+    logger.debug("GEMS_TSINGMICRO MASKED_SELECT")
 
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)

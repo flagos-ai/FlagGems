@@ -769,7 +769,7 @@ def scaled_dot_product_attention_forward(
     scale=None,
     enable_gqa=False,
 ):
-    logger.debug("GEMS SCALED DOT PRODUCT ATTENTION FORWARD")
+    logger.debug("GEMS_TSINGMICRO SCALED_DOT_PRODUCT_ATTENTION")
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
@@ -876,7 +876,7 @@ def scaled_dot_product_attention_backward(
     scale=None,
     enable_gqa=False,
 ):
-    logger.debug("GEMS SCALED DOT PRODUCT ATTENTION BACKWARD")
+    logger.debug("GEMS_TSINGMICRO SCALED_DOT_PRODUCT_ATTENTION_BACKWARD")
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
@@ -1094,7 +1094,7 @@ def flash_attention_forward(
     alibi_slopes=None,
     disable_splitkv=False,
 ):
-    logger.debug("GEMS FLASH_ATTENTION_FORWARD")
+    logger.debug("GEMS_TSINGMICRO FLASH_ATTENTION_FORWARD")
     assert (
         cumulative_sequence_length_q is None and cumulative_sequence_length_k is None
     ), "varlen is not supported yet."
@@ -1271,7 +1271,7 @@ def flash_attn_varlen_func(
     if num_splits > 0:
         raise RuntimeError("num_splits > 0 is not implemented in GEMS.")
     if use_c_extension:
-        logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC(C EXTENSION)")
+        logger.debug("GEMS_TSINGMICRO FLASH_ATTN_VARLEN_FUNC (C Extension)")
         with torch_device_fn.device(q.device):
             out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
                 q,
@@ -1307,7 +1307,7 @@ def flash_attn_varlen_func(
             )
         return (out_cpp, softmax_lse) if return_softmax_lse else out_cpp
     else:
-        logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC")
+        logger.debug("GEMS_TSINGMICRO FLASH_ATTN_VARLEN_FUNC")
         assert (
             cu_seqlens_k is not None or seqused_k is not None
         ), "cu_seqlens_k or seqused_k must be provided"

@@ -15,10 +15,10 @@ def rsqrt_func(x):
 
 
 def rsqrt(A):
-    logger.debug("GEMS RSQRT")
+    logger.debug("GEMS_TSINGMICRO RSQRT")
     return rsqrt_func(A)
 
 
 def rsqrt_(A):
-    logger.debug("GEMS RSQRT_")
+    logger.debug("GEMS_TSINGMICRO RSQRT_")
     return rsqrt_func(A, out0=A)
