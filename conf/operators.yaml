@@ -2070,6 +2070,28 @@ ops:
       - Math
     stages:
       - stable: '5.0'
+  - id: erfinv
+    description: Computes the inverse error function of `input`.
+    for:
+      - erfinv
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
+  - id: erfinv_
+    description: The in-place version of `erfinv()`.
+    for:
+      - erfinv_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: euclidean_dist
     description: |
       Computes pairwise Euclidean distances between rows of two 2D tensors.

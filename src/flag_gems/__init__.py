@@ -234,6 +234,8 @@ _FULL_CONFIG = (
     ("equal", equal),
     ("erf", erf),
     ("erf_", erf_),
+    ("erfinv", erfinv),
+    ("erfinv_", erfinv_),
     ("exp", exp),
     ("exp_", exp_),
     ("exp.out", exp_out),
