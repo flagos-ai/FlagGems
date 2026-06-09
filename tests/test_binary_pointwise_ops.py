@@ -1225,10 +1225,7 @@ def test_accuracy_pow(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.pow(inp1, inp2)
 
-    if flag_gems.vendor_name == "sophgo" and dtype == torch.float32:
-        gems_assert_close(res_out, ref_out, dtype, equal_nan=True, rtol=1e-4)
-    else:
-        gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.inplace
@@ -1250,10 +1247,7 @@ def test_accuracy_pow_(shape, dtype):
     with flag_gems.use_gems():
         res_out = inp1.pow_(inp2)
 
-    if flag_gems.vendor_name == "sophgo" and dtype == torch.float32:
-        gems_assert_close(res_out, ref_out, dtype, equal_nan=True, rtol=1e-4)
-    else:
-        gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.maximum
@@ -1305,10 +1299,7 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.pow(inp1, inp2)
 
-    if flag_gems.vendor_name == "sophgo" and dtype == torch.float32:
-        gems_assert_close(res_out, ref_out, dtype, equal_nan=True, rtol=1e-4)
-    else:
-        gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.pow
@@ -1340,10 +1331,7 @@ def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.pow(inp1, inp2)
 
-    if flag_gems.vendor_name == "sophgo" and dtype == torch.float32:
-        gems_assert_close(res_out, ref_out, dtype, equal_nan=True, rtol=1e-4)
-    else:
-        gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.inplace
@@ -1373,10 +1361,7 @@ def test_accuracy_pow_tensor_scalar_(scalar, shape, dtype):
     with flag_gems.use_gems():
         res_out = inp1.pow_(inp2)
 
-    if flag_gems.vendor_name == "sophgo" and dtype == torch.float32:
-        gems_assert_close(res_out, ref_out, dtype, equal_nan=True, rtol=1e-4)
-    else:
-        gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.rsub
@@ -1687,7 +1672,10 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
             inp2.view(-1)[0] = -nan_num if gen_nan >= 3 else nan_num
         atol = (
             torch.finfo(dtype).tiny
-            * torch.randint(0, 4, (1,),
+            * torch.randint(
+                0,
+                4,
+                (1,),
                 device=flag_gems.device,
                 dtype=torch.int32 if flag_gems.vendor_name == "sophgo" else None,
             ).item()
@@ -1723,9 +1711,14 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
             atol = (
                 (
                     torch.finfo(torch.float16).eps
-                    * torch.randint(0, 10, (1,),
+                    * torch.randint(
+                        0,
+                        10,
+                        (1,),
                         device=flag_gems.device,
-                        dtype=torch.int32 if flag_gems.vendor_name == "sophgo" else None,
+                        dtype=torch.int32
+                        if flag_gems.vendor_name == "sophgo"
+                        else None,
                     ).item()
                 )
                 if not zero_tol
