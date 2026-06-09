@@ -165,6 +165,7 @@ _FULL_CONFIG = (
     ("clamp_min_", clamp_min_),
     ("clip", clip),
     ("clip_", clip_),
+    ("clone", clone),
     ("col2im", col2im),
     ("concatenate", concatenate),
     ("conj_physical", conj_physical),

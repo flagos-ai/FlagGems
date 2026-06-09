@@ -7067,6 +7067,8 @@ ops:
     for:
       - clone
     labels:
+      - KernelGen
+      - aten
       - skip_precision_check
     kind:
       - Tensor
