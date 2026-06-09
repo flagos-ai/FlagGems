@@ -59,8 +59,8 @@ def rrelu_with_noise_functional_(
         # When training=False (eval mode), use deterministic slope
         slope = (lower + upper) * 0.5
         noise_tmp = torch.full_like(self, slope)
-        output = rrelu_with_noise_forward(self, noise_tmp, lower, upper)
+        output = rrelu_with_noise_forward(self, noise_tmp, lower, upper, out0=self)
         return output[0], noise
     else:
-        output = rrelu_with_noise_forward(self, noise, lower, upper)
+        output = rrelu_with_noise_forward(self, noise, lower, upper, out0=self)
         return output
