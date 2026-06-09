@@ -42,6 +42,7 @@ _FULL_CONFIG = (
     ("__or__.Tensor", bitwise_or_tensor),
     ("_assert_async", _assert_async),
     ("_conv_depthwise2d", _conv_depthwise2d),
+    ("_embedding_bag_dense_backward", _embedding_bag_dense_backward),
     ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_forward", flash_attention_forward),
     (
