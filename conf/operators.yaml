@@ -6495,7 +6495,7 @@ ops:
   #   stages:
   #     - alpha: '5.0'
   - id: unsafe_masked_index
-    description: Triton kernel implementation for _unsafe_masked_index.
+    description: Gathers elements from self at given indices where mask is True, filling unmasked positions with a scalar value.
     for:
       - _unsafe_masked_index
     labels:
