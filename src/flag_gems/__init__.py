@@ -315,6 +315,7 @@ _FULL_CONFIG = (
     ("isnan", isnan),
     ("isneginf", isneginf),
     ("isneginf.out", isneginf_out),
+    ("isposinf", isposinf),
     ("kron", kron),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),

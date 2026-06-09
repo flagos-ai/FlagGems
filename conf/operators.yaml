@@ -3393,6 +3393,17 @@ ops:
       - Math
     stages:
       - stable: '5.1'
+  - id: isposinf
+    description: Tests if each element of input is positive infinity or not.
+    for:
+      - isposinf
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: kron
     description: Computes the Kronecker product of `input` and `other`.
     for:
