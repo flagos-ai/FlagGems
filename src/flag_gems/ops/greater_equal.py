@@ -32,14 +32,21 @@ def greater_equal_func(x, y):
 
 
 def greater_equal(A, B):
+    logger.debug("GEMS GREATER_EQUAL")
     if A.device != B.device:
         device = flag_gems.runtime.device.name
         if A.device.type == device:
             B = B.to(A.device)
         else:
             A = A.to(B.device)
-    logger.debug("GEMS GREATER_EQUAL")
     return greater_equal_func(A, B)
+
+
+def greater_equal_(A, B):
+    logger.debug("GEMS GREATER_EQUAL_")
+    if A.device != B.device:
+        B = B.to(A.device)
+    return greater_equal_func(A, B, out0=A)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
@@ -49,5 +56,5 @@ def greater_equal_func_scalar(x, y):
 
 
 def greater_equal_scalar(A, B):
-    logger.debug("GEMS GREATER_EQUAL SCALAR")
+    logger.debug("GEMS GREATER_EQUAL_SCALAR")
     return greater_equal_func_scalar(A, B)

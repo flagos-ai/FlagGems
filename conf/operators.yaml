@@ -2868,6 +2868,18 @@ ops:
       - Math
     stages:
       - stable: '5.1'
+  - id: greater_equal_
+    description: The in-place version of `greater_equal()`.
+    for:
+      - greater_equal_.Tensor
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: greater_equal
     description: Computes `input >= other` element-wise.
     for:
@@ -2887,17 +2899,6 @@ ops:
     labels:
       - aten
       - pointwise
-    kind:
-      - Math
-    stages:
-      - alpha: '5.1'
-  - id: greater_equal_
-    description: The in-place version of `greater_equal()`.
-    for:
-      - greater_equal_.Tensor
-    labels:
-      - aten
-      - KernelGen
     kind:
       - Math
     stages:
