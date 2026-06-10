@@ -1,7 +1,7 @@
 import torch  # noqa: F401
 import torch_mlu  # noqa: F401
 
-from flag_gems.runtime.backend.backend_utils import VendorInfoBase  # noqa: E402
+from flag_gems.runtime.backend.backend_utils import VendorDescriptor  # noqa: E402
 
 from .utils import DEVICE_COUNT  # noqa: F401
 from .utils import MAX_GRID_SIZE_X  # noqa: F401
@@ -17,11 +17,12 @@ try:
 except ImportError:
     pass
 
-vendor_info = VendorInfoBase(
+vendor_info = VendorDescriptor(
     vendor_name="cambricon",
     device_name="mlu",
     device_query_cmd="cnmon",
     dispatch_key="PrivateUse1",
+    fp64_enabled=False,
 )
 
 CUSTOMIZED_UNUSED_OPS = (

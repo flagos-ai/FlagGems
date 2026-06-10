@@ -1,6 +1,6 @@
-from backend_utils import VendorInfoBase  # noqa: E402
+from backend_utils import VendorDescriptor  # noqa: E402
 
-vendor_info = VendorInfoBase(
+vendor_info = VendorDescriptor(
     vendor_name="hygon",
     device_name="cuda",
     device_query_cmd="hy-smi",

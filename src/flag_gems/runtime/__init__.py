@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 
 from . import backend, common, error
-from .backend.device import DeviceDetector
+from .backend.device_finder import DeviceDetector
 from .configs_loader import TunedConfigLoader
 from .flagtune import flagtune, flagtune_enabled
 

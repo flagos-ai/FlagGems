@@ -6,13 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import torch  # noqa: F401
 
 from .. import backend, error
-from ..common import (
-    _VENDOR_TORCH_ATTR,
-    UNSUPPORT_BF16,
-    UNSUPPORT_FP64,
-    UNSUPPORT_INT64,
-    vendors,
-)
+from ..common import _VENDOR_TORCH_ATTR, vendors
 
 
 # A singleton class to manage device context.
@@ -46,9 +40,9 @@ class DeviceDetector:
             self.device_count = backend.gen_torch_device_object(
                 self.vendor_name
             ).device_count()
-            self.support_fp64 = self.vendor not in UNSUPPORT_FP64
-            self.support_bf16 = self.vendor not in UNSUPPORT_BF16
-            self.support_int64 = self.vendor not in UNSUPPORT_INT64
+            self.support_fp64 = self.info.fp64_enabled
+            self.support_bf16 = self.info.bf16_enabled
+            self.support_int64 = self.info.int64_enabled
 
     def get_vendor(self, vendor_name=None) -> tuple:
         # Try to get the vendor name from a quick special command like 'torch.mlu'.

@@ -5,7 +5,7 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch_txda  # noqa: F401
-from backend_utils import VendorInfoBase  # noqa: E402
+from backend_utils import VendorDescriptor  # noqa: E402
 
 SPM_SIZE = 3 * 1024 * 1024
 SYS_SPM_RESERVED_SIZE = 64 * 1024
@@ -57,11 +57,13 @@ if not hasattr(torch.txda, "get_device_properties"):
 if not hasattr(torch.txda, "get_device_capability"):
     setattr(torch.txda, "get_device_capability", get_device_capability)
 
-vendor_info = VendorInfoBase(
+vendor_info = VendorDescriptor(
     vendor_name="tsingmicro",
     device_name="txda",
     device_query_cmd="tsm_smi",
     dispatch_key="PrivateUse1",
+    fp64_enabled=False,
+    int64_enabled=False,
 )
 
 CUSTOMIZED_UNUSED_OPS = ()

@@ -40,17 +40,17 @@ The expected directory layout is shown in the following example:
 An easy way to to create this file is to copy one from existing vendors
 (say `src/flag_gems/runtime/backend/_nvidia/__init__.py`).
 After having created your `__init__.py` file, the **only change** you need to make is
-to configure the properties for the `VendorInfoBase` class:
+to configure the properties for the `VendorDescriptor` class:
 
 ```python
-vendor_info = VendorInfoBase(
+vendor_info = VendorDescriptor(
     vendor_name="<your vendor name>",
     device_name="<the device name>",
     device_query_cmd="<command for querying hardware info>"
 )
 ```
 
-The important properties for `VendorInfoBase` are:
+The important properties for `VendorDescriptor` are:
 
 - `vendor_name`: the vendor name at your choice, e.g. `nvidia`;
 - `device_name`: the name for your acclerator device, e.g. `cuda`;
