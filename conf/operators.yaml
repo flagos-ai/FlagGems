@@ -5945,6 +5945,30 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: special_sinc
+    description: >
+      Computes the normalized sinc function x ↦ sin(πx) / (πx) for each element
+      of the input tensor, with sinc(0) = 1.
+    for:
+      - special.sinc
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
+  - id: special_sinc_
+    description: The in-place version of `special_sinc()`.
+    for:
+      - special.sinc_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: sinh_
     description: |
       Computes the hyperbolic sine `(e^x-e^{-x})/2` of each element in a tensor.
