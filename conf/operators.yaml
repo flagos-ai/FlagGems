@@ -6682,6 +6682,28 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: trunc
+    description: Rounds each element of the input tensor to the nearest integer towards zero.
+    for:
+      - trunc
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
+  - id: trunc_
+    description: The in-place version of `trunc()`.
+    for:
+      - trunc_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: trunc_divide
     description: The `div` function with rounding_mode set to `trunc`.
     for:
