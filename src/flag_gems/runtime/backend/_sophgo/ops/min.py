@@ -1,5 +1,6 @@
 import logging
-import math
+
+# import math
 from collections import namedtuple
 
 import torch
@@ -11,6 +12,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max
+
+from ..utils.shape_utils import dim_compress
 
 
 @libentry()
@@ -140,7 +143,7 @@ def min(inp):
     logging.debug("GEMS MIN")
     inp = inp.contiguous().flatten()
     M = inp.numel()
-    BLOCK_SIZE = 4096
+    BLOCK_SIZE = 8192
     mid_size = triton.cdiv(M, BLOCK_SIZE)
     mid = torch.empty((mid_size,), dtype=inp.dtype, device=inp.device)
 
@@ -157,11 +160,13 @@ def min_dim(inp, dim=None, keepdim=False):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
-    N = shape[dim]
-    M = math.prod(shape[:dim])
-    K = inp.numel() // M // N
 
-    inp = inp.contiguous()
+    inp_original = inp.contiguous()
+    inp = dim_compress(inp_original, dim)
+
+    N = shape[dim]
+    M = inp.numel() // N
+    K = 1
 
     shape_list = list(shape)
     shape_list[dim] = 1
@@ -177,7 +182,7 @@ def min_dim(inp, dim=None, keepdim=False):
 
     # Compute indices on CPU to avoid TPU memory issues with expand().contiguous()
     # Move tensors to CPU for index computation
-    inp_cpu = inp.cpu()
+    inp_cpu = inp_original.cpu()
     out_value_cpu = out_value.cpu()
     expanded_values_cpu = out_value_cpu.expand_as(inp_cpu)
     mask_cpu = inp_cpu == expanded_values_cpu
