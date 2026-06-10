@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -31,12 +32,26 @@ def heur_divisible_k(args):
     return args["K"] % args["TILE_K"] == 0
 
 
-@libentry()
-@triton.autotune(
+autotune_decorator = triton.autotune(
     configs=[],
     generate_configs="bmm",
     key=["M", "N", "K"],
 )
+
+
+KLX_USE_AUTOTUNE = os.environ.get("KLX_USE_AUTOTUNE", "1") == "1"
+
+if not KLX_USE_AUTOTUNE:
+    autotune_decorator = triton.autotune(
+        configs=[
+            triton.Config({"TILE_M": 256, "TILE_N": 256, "TILE_K": 256}),
+        ],
+        key=["M", "N", "K"],
+    )
+
+
+@libentry()
+@autotune_decorator
 @triton.heuristics(
     {
         "GROUP_M": heur_group_m,
