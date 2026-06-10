@@ -328,6 +328,8 @@ _FULL_CONFIG = (
     ("lerp_.Scalar", lerp_scalar_),
     ("lerp_.Tensor", lerp_tensor_),
     ("lift_fresh_copy", lift_fresh_copy),
+    ("linalg_inv", linalg_inv),
+    ("linalg_inv_ex", linalg_inv),
     ("linalg_vector_norm", vector_norm),
     ("linspace", linspace),
     ("log", log),
