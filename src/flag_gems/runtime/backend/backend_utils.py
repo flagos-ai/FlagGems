@@ -7,7 +7,11 @@ import yaml
 
 # Metadata template,  Each vendor needs to specialize instances of this template
 @dataclass
-class VendorInfoBase:
+class VendorDescriptor:
+    """
+    A dataclass to describe the vendor-specific information for a hardware backend.
+    """
+
     vendor_name: str
     device_name: str
     device_query_cmd: str

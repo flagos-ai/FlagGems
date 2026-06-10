@@ -1,6 +1,6 @@
-from backend_utils import VendorInfoBase
+from backend_utils import VendorDescriptor
 
-vendor_info = VendorInfoBase(
+vendor_info = VendorDescriptor(
     vendor_name="mthreads",
     device_name="musa",
     device_query_cmd="mthreads-gmi",
