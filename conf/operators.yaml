@@ -6400,7 +6400,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: trunc_
     description: The in-place version of `trunc()`.
     for:
@@ -6411,7 +6411,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: trunc_divide
     description: The `div` function with rounding_mode set to `trunc`.
     for:
