@@ -8,6 +8,7 @@ from .addmv import addmv, addmv_out
 from .addr import addr
 from .all import all, all_dim, all_dims
 from .amax import amax
+from .aminmax import aminmax
 from .angle import angle
 from .any import any, any_dim, any_dims
 from .apply_repetition_penalties import apply_repetition_penalties
@@ -257,6 +258,7 @@ __all__ = [
     "all_dims",
     "allclose",
     "amax",
+    "aminmax",
     "angle",
     "any",
     "any_dim",
