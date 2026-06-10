@@ -6,7 +6,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def _conv_depthwise2d(input, weight, kernel_size, bias, stride, padding, dilation):
-    logger.debug("GEMS DEPTHWISE")
+    logger.debug("GEMS_KUNLUNXIN CONV_DEPTHWISE2D")
     assert (
         input.ndim == 4
     ), "Invalid input tensor must be 4D, recevied shape {input.shape}"
