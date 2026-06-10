@@ -3547,6 +3547,19 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: lift
+    description: |
+      Returns self tensor. Used within compiled graphs to lift
+      tensors out of the graph or modify autograd metadata.
+    for:
+      - lift
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.3'
   - id: lift_fresh_copy
     description: |
       Creates a new, independent copy of a tensor within a compiled graph.
