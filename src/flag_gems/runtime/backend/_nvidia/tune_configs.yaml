@@ -2144,3 +2144,21 @@ im2col:
       BLOCK_N: 32
     num_stages: 2
     num_warps: 4
+
+rot90:
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 2
+    num_stages: 1
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_SIZE: 4096
+    num_warps: 16
+    num_stages: 1
