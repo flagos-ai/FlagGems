@@ -446,7 +446,7 @@ def cummax(
     *,
     out: Union[Tensor, Tuple[Tensor, ...], List[Tensor], None] = None,
 ) -> torch.return_types.cummax:
-    logger.debug("GEMS cummax")
+    logger.debug("GEMS_KUNLUNXIN CUMMAX")
     assert dim >= -input.ndim and dim < input.ndim, "Invalid dim"
     shape = input.shape
     dim = dim % input.ndim
