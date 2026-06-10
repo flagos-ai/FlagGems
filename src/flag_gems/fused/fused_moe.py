@@ -1184,6 +1184,16 @@ def fused_moe_kernel(
             offs_k[:, None] * stride_bk + offs_bn_up[None, :] * stride_bn
         )
 
+        if use_int8_w8a16:
+            # Per-channel weight scales for the gate and up halves; applied once
+            # on the fp32 accumulators after each K-loop.
+            b_scale_gate = tl.load(
+                b_scale_ptr + off_experts * stride_bse + offs_bn_gate[None, :] * stride_bsn
+            )
+            b_scale_up = tl.load(
+                b_scale_ptr + off_experts * stride_bse + offs_bn_up[None, :] * stride_bsn
+            )
+
         if use_fp8_w8a8 or use_int8_w8a8:
             if group_k > 0 and group_n > 0:  # block-wise
                 a_scale_ptrs = a_scale_ptr + (offs_token // top_k) * stride_asm
@@ -1266,13 +1276,17 @@ def fused_moe_kernel(
                         acc_gate = tl.dot(a, b_gate, acc=acc_gate)
                     else:
                         acc_gate += tl.dot(a, b_gate)
+            elif use_int8_w8a16:
+                acc_gate = tl.dot(a, b_gate.to(compute_type), acc=acc_gate)
             else:
                 acc_gate += tl.dot(a, b_gate)
 
             a_ptrs += BLOCK_SIZE_K * stride_ak
             b_ptrs_gate += BLOCK_SIZE_K * stride_bk
 
-        if use_fp8_w8a8 or use_int8_w8a8:
+        if use_int8_w8a16:
+            acc_gate = acc_gate * b_scale_gate
+        elif use_fp8_w8a8 or use_int8_w8a8:
             if group_k > 0 and group_n > 0:
                 pass
             elif per_channel_quant:
@@ -1318,13 +1332,17 @@ def fused_moe_kernel(
                         acc_up = tl.dot(a, b_up, acc=acc_up)
                     else:
                         acc_up += tl.dot(a, b_up)
+            elif use_int8_w8a16:
+                acc_up = tl.dot(a, b_up.to(compute_type), acc=acc_up)
             else:
                 acc_up += tl.dot(a, b_up)
 
             a_ptrs += BLOCK_SIZE_K * stride_ak
             b_ptrs_up += BLOCK_SIZE_K * stride_bk
 
-        if use_fp8_w8a8 or use_int8_w8a8:
+        if use_int8_w8a16:
+            acc_up = acc_up * b_scale_up
+        elif use_fp8_w8a8 or use_int8_w8a8:
             if group_k > 0 and group_n > 0:
                 pass
             elif per_channel_quant:
@@ -1663,6 +1681,10 @@ def invoke_fused_moe_triton_kernel(
     # Force disable SWAP_AB in fusion mode
     if FUSE_SILU:
         swap_AB = False
+    # The paired gate/up dot has no int8 conversion or scale handling; use the
+    # two-pass fused path for W8A16.
+    if use_int8_w8a16:
+        pair_gate_up_dot = False
 
     fused_moe_kernel[grid](
         A,
@@ -1962,8 +1984,19 @@ def fused_experts_impl(
         else:
             raise NotImplementedError(f"Unsupported ocp_mx_scheme={ocp_mx_scheme}")
 
-    # Dequant INT8/INT4 weights (Triton can't do mixed-dtype dot)
-    if use_int8_w8a16 or use_int4_w4a16:
+    # Per-channel INT8 W8A16 is handled in-kernel: fused_moe_kernel loads the
+    # int8 tile, converts with b.to(compute_type) inside the K-loop (mixed-dtype
+    # dot is NOT a Triton limitation), and applies the per-N scale once on the
+    # fp32 accumulator. Host-side dequant of the full expert tensors moved
+    # ~10 GB per call on Mixtral-8x7B shapes (a flat ~8.5 ms on H100,
+    # 6-22x slower than the bf16 path at every token count).
+    #
+    # INT4 (and grouped-scale INT8) still fall back to host dequant here:
+    # the WNA16/GPTQ kernel path expects offset-binary packed layouts that
+    # this entry point does not prepare.
+    if use_int4_w4a16 or (
+        use_int8_w8a16 and block_shape is not None and block_shape[1] > 0
+    ):
         w1 = w1.to(hidden_states.dtype) * w1_scale.unsqueeze(-1).to(hidden_states.dtype)
         w1_scale = None
         w2 = w2.to(hidden_states.dtype) * w2_scale.unsqueeze(-1).to(hidden_states.dtype)
