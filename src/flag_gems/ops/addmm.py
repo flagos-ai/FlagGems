@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -7,19 +8,22 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("addmm"),
+    configs=runtime.ops_get_configs("addmm", pre_hook=None)
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else runtime.get_tuned_config("addmm"),
     key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
+    strategy=runtime.get_expand_config("addmm")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32", "align32"],
     warmup=5,
     rep=10,
-    flagtune_op_name="addmm",
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_kernel(
@@ -45,8 +49,8 @@ def addmm_kernel(
     BLOCK_SIZE_K: tl.constexpr,
     IS_FP64: tl.constexpr = False,
 ):
-    pid_m = ext.program_id(0)
-    pid_n = ext.program_id(1)
+    pid_m = tle.program_id(0)
+    pid_n = tle.program_id(1)
 
     offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)

@@ -4,6 +4,7 @@
 #include <iostream>
 #include "flag_gems/backend_utils.h"
 #include "triton_jit/triton_jit_function.h"
+#include "utils/autotune_helper.h"
 
 namespace flag_gems {
 using namespace triton_jit;
@@ -80,56 +81,81 @@ at::Tensor bmm(const at::Tensor& A_in, const at::Tensor& B_in) {
       /* BLOCK_M = */ BLOCK_M,
       /* BLOCK_N = */ BLOCK_N,
       /* BLOCK_K = */ BLOCK_K,
-      /* GROUP_M = */ GROUP_M,
-      /* IS_FP64 = */ a_slice.dtype() == at::kDouble);
+      /* GROUP_M = */ GROUP_M);
   }
 #else
   const TritonJITFunction& f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "bmm.py"),
                                       "bmm_kernel");
 
+  // bmm_kernel @libtuner(key=["M", "N", "K", "stride_am", "stride_bk"])
+  // -- IS_FP64 (constexpr, default False) is not in V0 user-kwargs path:
+  // test_bmm.py covers fp16/fp32/bf16 only, so the JITFunction default
+  // wins via autotune_bridge defaults fallback. fp64 reserved for V1 (Q13).
+  static AutotunedCall ac(std::string(utils::get_flag_gems_src_path() / "ops" / "bmm.py"),
+                          "bmm_kernel",
+                          {"M", "N", "K", "stride_am", "stride_bk"});
+
+  // Grid lambda for the SQL-miss bench path (Q12). `batch` is captured by
+  // value: it is not a kernel arg (only M/N/TILE_M/TILE_N come through the
+  // Triton meta dict), so grid_fn synthesizes the z dim from C++ state.
+  auto grid_fn = [batch](const triton_jit::Config& c) -> std::tuple<unsigned, unsigned, unsigned> {
+    int64_t Mv = get_int_kwarg(c, "M");
+    int64_t Nv = get_int_kwarg(c, "N");
+    int64_t tm = get_int_kwarg(c, "TILE_M");
+    int64_t tn = get_int_kwarg(c, "TILE_N");
+    return {static_cast<unsigned>((Mv + tm - 1) / tm),
+            static_cast<unsigned>((Nv + tn - 1) / tn),
+            static_cast<unsigned>(batch)};
+  };
+
+  const triton_jit::Config& cfg = ac.lookup(TuneKey {M, N, K, A.stride(1), B.stride(1)},
+                                            grid_fn,
+                                            A,
+                                            B,
+                                            out,
+                                            (int)M,
+                                            (int)N,
+                                            (int)K,
+                                            A.stride(0),
+                                            A.stride(1),
+                                            A.stride(2),
+                                            B.stride(0),
+                                            B.stride(1),
+                                            B.stride(2),
+                                            out.stride(0),
+                                            out.stride(1),
+                                            out.stride(2));
+
+  const int64_t tile_m = get_int_kwarg(cfg, "TILE_M");
+  const int64_t tile_n = get_int_kwarg(cfg, "TILE_N");
+  unsigned int grid_x = static_cast<unsigned int>((M + tile_m - 1) / tile_m);
+  unsigned int grid_y = static_cast<unsigned int>((N + tile_n - 1) / tile_n);
+
   c10::DeviceGuard guard(out.device());
   backend::StreamType stream = backend::getCurrentStream();
   backend::RawStreamType raw_stream = backend::getRawStream(stream);
-  const int GROUP_M = 8;
-  const int TILE_M = 128;
-  const int TILE_N = 128;
-  const int TILE_K = 32;
-  unsigned int grid_x = static_cast<unsigned int>(cdiv(M, TILE_M));
-  unsigned int grid_y = static_cast<unsigned int>(cdiv(N, TILE_N));
-  bool DIVISIBLE_M = (M % TILE_M == 0);
-  bool DIVISIBLE_N = (N % TILE_N == 0);
-  bool DIVISIBLE_K = (K % TILE_K == 0);
 
-  f(/* CUstream = */ raw_stream,
-    /* grid_x = */ grid_x,
-    /* grid_y = */ grid_y,
-    /* grid_z = */ (unsigned int)batch,
-    /* num_warps = */ 4,
-    /* num_stages = */ 1,
-    A,
-    B,
-    out,
-    (int)M,
-    (int)N,
-    (int)K,
-    A.stride(0),
-    A.stride(1),
-    A.stride(2),
-    B.stride(0),
-    B.stride(1),
-    B.stride(2),
-    out.stride(0),
-    out.stride(1),
-    out.stride(2),
-    TILE_M,
-    TILE_N,
-    TILE_K,
-    GROUP_M,
-    DIVISIBLE_M,
-    DIVISIBLE_N,
-    DIVISIBLE_K,
-    /* IS_FP64 = */ A.dtype() == at::kDouble);
+  f.autotuned_call(raw_stream,
+                   grid_x,
+                   grid_y,
+                   (unsigned int)batch,
+                   cfg,
+                   A,
+                   B,
+                   out,
+                   (int)M,
+                   (int)N,
+                   (int)K,
+                   A.stride(0),
+                   A.stride(1),
+                   A.stride(2),
+                   B.stride(0),
+                   B.stride(1),
+                   B.stride(2),
+                   out.stride(0),
+                   out.stride(1),
+                   out.stride(2));
 #endif
   return out;
 }

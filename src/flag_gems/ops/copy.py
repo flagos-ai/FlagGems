@@ -12,8 +12,6 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
 
-_FLOAT8_E8M0FNU = getattr(torch, "float8_e8m0fnu", None)
-
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
@@ -31,11 +29,6 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
     if src.is_complex() or dst.is_complex():
         # Preserve PyTorch's behaviour of warning when casting complex to real
         # by forcing the redispatch path, which issues the warning internally.
-        return False
-    if _FLOAT8_E8M0FNU is not None and (
-        src.dtype == _FLOAT8_E8M0FNU or dst.dtype == _FLOAT8_E8M0FNU
-    ):
-        # Triton does not support float8 yet, so defer to PyTorch which has a reference implementation.
         return False
     return True
 
@@ -82,13 +75,6 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         ):
             return dst
         # Otherwise defer to PyTorch for well-defined semantics on overlapping writes.
-        return torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, non_blocking
-        )
-
-    if _FLOAT8_E8M0FNU is not None and (
-        src.dtype == _FLOAT8_E8M0FNU or dst.dtype == _FLOAT8_E8M0FNU
-    ):
         return torch.ops.aten.copy_.default.redispatch(
             _FALLBACK_KEYSET, dst, src, non_blocking
         )

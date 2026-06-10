@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import broadcastable_to, libentry
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -25,7 +25,7 @@ def masked_fill_kernel_heur_block_size(args):
 def masked_fill_kernel(
     inp, expand_mask, value, out, N: tl.constexpr, BLOCK_SIZE: tl.constexpr
 ):
-    pid = ext.program_id(axis=0)
+    pid = tle.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < N
 
@@ -50,7 +50,7 @@ def masked_fill_kernel_self_heur_block_size(args):
 # )
 @triton.jit
 def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr):
-    pid = ext.program_id(axis=0)
+    pid = tle.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < N
 

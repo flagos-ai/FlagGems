@@ -23,9 +23,7 @@ def pow_tensor_tensor(A, exponent):
 
 def pow_tensor_tensor_(A, exponent):
     logger.debug("GEMS_ASCEND POW_TENSOR_TENSOR_")
-    out = pow_func(A, exponent)
-    A.copy_(out)
-    return A
+    return pow_func(A, exponent, out0=A)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
@@ -41,9 +39,7 @@ def pow_tensor_scalar(A, exponent):
 
 def pow_tensor_scalar_(A, exponent):
     logger.debug("GEMS_ASCEND POW_TENSOR_SCALAR_")
-    out = pow_func_tensor_scalar(A, exponent)
-    A.copy_(out)
-    return A
+    return pow_func_tensor_scalar(A, exponent, out0=A)
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "BOOL_TO_LONG")])

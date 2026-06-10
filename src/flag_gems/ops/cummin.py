@@ -8,7 +8,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max
 
 Tensor = torch.Tensor
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def tl_cummin(input, index, axis=0):
     return tl.associative_scan(
-        (input, index), axis, ext.minimum_with_index_tie_break_right
+        (input, index), axis, tle.minimum_with_index_tie_break_right
     )
 
 
@@ -28,7 +28,7 @@ def tl_min_tie_break_right(input, index, axis=None, keep_dims=False):
     return tl.reduce(
         (input, index),
         axis,
-        ext.minimum_with_index_tie_break_right,
+        tle.minimum_with_index_tie_break_right,
         keep_dims=keep_dims,
     )
 
@@ -43,7 +43,7 @@ def add_base_min_kernel(
     n_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = ext.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -80,7 +80,7 @@ def scan_part_min_kernel(
     NEED_PARTIAL: tl.constexpr,
     USE_OUT_INDICES: tl.constexpr,
 ):
-    pid = ext.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -185,9 +185,9 @@ def scan_part_min_abc_kernel(
     NEED_PARTIAL: tl.constexpr,
     USE_OUT_INDICES: tl.constexpr,
 ):
-    pid_a = ext.program_id(0)
-    pid_b = ext.program_id(1)
-    pid_c = ext.program_id(2)
+    pid_a = tle.program_id(0)
+    pid_b = tle.program_id(1)
+    pid_c = tle.program_id(2)
 
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -249,9 +249,9 @@ def add_base_min_abc_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = ext.program_id(0)
-    pid_b = ext.program_id(1)
-    pid_c = ext.program_id(2)
+    pid_a = tle.program_id(0)
+    pid_b = tle.program_id(1)
+    pid_c = tle.program_id(2)
 
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -350,8 +350,8 @@ def scan_part_min_abc_loop_kernel(
     loop_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = ext.program_id(0)
-    pid_c = ext.program_id(1)
+    pid_a = tle.program_id(0)
+    pid_c = tle.program_id(1)
 
     a_idx = pid_a
     c_idx = pid_c

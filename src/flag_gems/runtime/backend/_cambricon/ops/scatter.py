@@ -18,7 +18,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.newline()
     code.writeline("from flag_gems.utils import libentry, libtuner")
     code.writeline("from flag_gems import runtime")
-    code.writeline("from flag_gems.utils import triton_lang_extension as ext")
+    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
     code.newline()
     code.newline()
     return code

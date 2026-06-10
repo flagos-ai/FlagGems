@@ -11,7 +11,7 @@ device = flag_gems.device
 
 
 @pytest.mark.new_full
-@pytest.mark.skip(reason="Issue #2624: This test fails on line 50.")
+@pytest.mark.skip(reason="This test fails on line 50.")
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype", utils.BOOL_TYPES + utils.ALL_INT_DTYPES + utils.ALL_FLOAT_DTYPES
@@ -31,8 +31,7 @@ def test_new_full(shape, dtype, xdtype, fill_value):
         math.isinf(fill_value) or math.isnan(fill_value)
     ):
         if dtype not in utils.ALL_FLOAT_DTYPES:
-            # Skipping inf/nan test for non-float dtypes
-            return
+            pytest.skip("Skipping inf/nan test for non-float dtypes")
 
     ref_out = ref_inp.new_full(shape, fill_value)
     with flag_gems.use_gems():
@@ -45,8 +44,7 @@ def test_new_full(shape, dtype, xdtype, fill_value):
         math.isinf(fill_value) or math.isnan(fill_value)
     ):
         if xdtype not in utils.ALL_FLOAT_DTYPES:
-            # Skipping inf/nan test for non-float dtypes
-            return
+            pytest.skip("Skipping inf/nan test for non-float dtypes")
 
     ref_out = ref_inp.new_full(shape, fill_value, dtype=xdtype)
     with flag_gems.use_gems():

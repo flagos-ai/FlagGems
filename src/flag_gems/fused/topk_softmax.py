@@ -8,6 +8,76 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
+def _topk256_k4_kernel(
+    input_ptr,
+    output_ptr,
+    indices_ptr,
+    source_rows_ptr,
+    num_rows: tl.constexpr,
+    INDEX_TY: tl.constexpr,
+    BLOCK_SIZE_EXPERTS: tl.constexpr,
+):
+    row = tl.program_id(0)
+    cols = tl.arange(0, BLOCK_SIZE_EXPERTS)
+    log2e: tl.constexpr = 1.4426950408889634
+
+    logits = tl.load(input_ptr + row * BLOCK_SIZE_EXPERTS + cols).to(tl.float32)
+    row_max = tl.max(logits, axis=0)
+    exp_vals = tl.exp2((logits - row_max) * log2e)
+    sum_exp = tl.sum(exp_vals, axis=0) + 1e-8
+    work = logits
+
+    for ki in tl.static_range(4):
+        selected_logit, selected_idx = tl.max(
+            work,
+            axis=0,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
+        prob = tl.exp2((selected_logit - row_max) * log2e) / sum_exp
+        out_offset = row * 4 + ki
+        tl.store(output_ptr + out_offset, prob)
+        tl.store(indices_ptr + out_offset, selected_idx.to(INDEX_TY))
+        tl.store(source_rows_ptr + out_offset, (ki * num_rows + row).to(tl.int32))
+        work = tl.where(cols == selected_idx, -float("inf"), work)
+
+
+@triton.jit
+def _topk256_k8_kernel(
+    input_ptr,
+    output_ptr,
+    indices_ptr,
+    source_rows_ptr,
+    num_rows: tl.constexpr,
+    INDEX_TY: tl.constexpr,
+    BLOCK_SIZE_EXPERTS: tl.constexpr,
+):
+    row = tl.program_id(0)
+    cols = tl.arange(0, BLOCK_SIZE_EXPERTS)
+    log2e: tl.constexpr = 1.4426950408889634
+
+    logits = tl.load(input_ptr + row * BLOCK_SIZE_EXPERTS + cols).to(tl.float32)
+    row_max = tl.max(logits, axis=0)
+    exp_vals = tl.exp2((logits - row_max) * log2e)
+    sum_exp = tl.sum(exp_vals, axis=0) + 1e-8
+    work = logits
+
+    for ki in tl.static_range(8):
+        selected_logit, selected_idx = tl.max(
+            work,
+            axis=0,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
+        prob = tl.exp2((selected_logit - row_max) * log2e) / sum_exp
+        out_offset = row * 8 + ki
+        tl.store(output_ptr + out_offset, prob)
+        tl.store(indices_ptr + out_offset, selected_idx.to(INDEX_TY))
+        tl.store(source_rows_ptr + out_offset, (ki * num_rows + row).to(tl.int32))
+        work = tl.where(cols == selected_idx, -float("inf"), work)
+
+
+@triton.jit
 def topk_gating_softmax_kernel(
     input_ptr,
     finished_ptr,  # interface reserved, not yet used
@@ -87,6 +157,32 @@ def topk_softmax(
         index_ty = tl.int64
     else:
         raise TypeError("topk_indices must be int32/int64/uint32")
+
+    if not renormalize and num_experts == 256 and topk == 4:
+        _topk256_k4_kernel[(num_tokens,)](
+            input_ptr=gating_output,
+            output_ptr=topk_weights,
+            indices_ptr=topk_indices,
+            source_rows_ptr=token_expert_indices,
+            num_rows=num_tokens,
+            INDEX_TY=index_ty,
+            BLOCK_SIZE_EXPERTS=256,
+            num_warps=1,
+        )
+        return
+
+    if not renormalize and num_experts == 256 and topk == 8:
+        _topk256_k8_kernel[(num_tokens,)](
+            input_ptr=gating_output,
+            output_ptr=topk_weights,
+            indices_ptr=topk_indices,
+            source_rows_ptr=token_expert_indices,
+            num_rows=num_tokens,
+            INDEX_TY=index_ty,
+            BLOCK_SIZE_EXPERTS=256,
+            num_warps=1,
+        )
+        return
 
     max_total_threads = 1024
     BLOCK_SIZE_EXPERTS = ((triton.next_power_of_2(num_experts) + 31) // 32) * 32

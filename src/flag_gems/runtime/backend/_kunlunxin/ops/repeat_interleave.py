@@ -4,7 +4,7 @@ import torch
 import triton
 from triton import language as tl
 
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.shape_utils import c_contiguous_stride
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
@@ -67,7 +67,7 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
 def repeat_interleave_tensor_kernel(
     repeats_ptr, cumsum_ptr, out_ptr, size, BLOCK_SIZE: tl.constexpr
 ):
-    pid = ext.program_id(0)
+    pid = tle.program_id(0)
     mask = pid < size
     cumsum = tl.load(cumsum_ptr + pid, mask, other=0)
     repeats = tl.load(repeats_ptr + pid, mask, other=0)

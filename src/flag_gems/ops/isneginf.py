@@ -1,9 +1,8 @@
 import logging
 
 import triton
-import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -11,8 +10,7 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
 @triton.jit
 def isneginf_func(x):
-    x_fp32 = x.to(tl.float32)
-    return tl_extra_shim.isinf(x_fp32) & (x_fp32 < 0)
+    return x == float("-inf")
 
 
 def isneginf(A):

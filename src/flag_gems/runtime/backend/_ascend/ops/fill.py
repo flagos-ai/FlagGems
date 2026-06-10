@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -20,7 +20,7 @@ def fill_scalar_kernel(
     BLOCK_SIZE: tl.constexpr,
     SUBBLOCK_SIZE: tl.constexpr,
 ):
-    pid = ext.program_id(0)
+    pid = tle.program_id(0)
     pid_offset = pid * BLOCK_SIZE
     cols = tl.arange(0, SUBBLOCK_SIZE)
     num_loop = triton.cdiv(BLOCK_SIZE, SUBBLOCK_SIZE)
@@ -38,7 +38,7 @@ def fill_tensor_kernel(
     BLOCK_SIZE: tl.constexpr,
     SUBBLOCK_SIZE: tl.constexpr,
 ):
-    pid = ext.program_id(0)
+    pid = tle.program_id(0)
     pid_offset = pid * BLOCK_SIZE
     cols = tl.arange(0, SUBBLOCK_SIZE)
     num_loop = triton.cdiv(BLOCK_SIZE, SUBBLOCK_SIZE)

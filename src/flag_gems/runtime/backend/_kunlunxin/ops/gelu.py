@@ -25,8 +25,11 @@ def gelu_none(x):
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def gelu_tanh(x):
-    x_fp32 = x.to(tl.float32)
-    output = 0.5 * x * (1 + tanh(x * 0.79788456 * (1 + 0.044715 * x_fp32 * x_fp32)))
+    output = (
+        0.5
+        * x
+        * (1 + tanh(x * 0.79788456 * (1 + 0.044715 * pow(x.to(tl.float32), 2.0))))
+    )
     return output
 
 
@@ -36,8 +39,11 @@ def gelu_backward_none(x, dy):
     scale1: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
     scale2: tl.constexpr = 0.3989422803  # 1 / math.sqrt(2 * math.pi)
     x_fp32 = x.to(tl.float32)
-    scaled_x = scale1 * x_fp32
-    dydx = scale2 * x_fp32 * tl.exp(-scaled_x * scaled_x) + 0.5 * erf(scaled_x) + 0.5
+    dydx = (
+        scale2 * x_fp32 * tl.exp(-pow(scale1 * x_fp32, 2.0))
+        + 0.5 * erf(scale1 * x_fp32)
+        + 0.5
+    )
     dx = dydx * dy
     return dx
 
@@ -46,18 +52,17 @@ def gelu_backward_none(x, dy):
 @triton.jit
 def gelu_backward_tanh(x, dy):
     x_fp32 = x.to(tl.float32)
-    x_sq = x_fp32 * x_fp32
     # 0.79788456 = math.sqrt(2 / math.pi)
-    tanh_out = tanh(0.79788456 * x * (1 + 0.044715 * x_sq))
+    tanh_out = tanh(0.79788456 * x * (1 + 0.044715 * pow(x_fp32, 2.0)))
     dydx = 0.5 * x * (
-        (1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x_sq)
+        (1 - pow(tanh_out, 2.0)) * (0.79788456 + 0.1070322243 * pow(x_fp32, 2.0))
     ) + 0.5 * (1 + tanh_out)
     dx = dydx * dy
     return dx
 
 
 def gelu(self, *, approximate="none"):
-    logger.debug("GEMS_KUNLUNXIN GELU FORWARD")
+    logger.debug("GEMS GELU FORWARD")
     if approximate == "tanh":
         out = gelu_tanh(self)
     else:
@@ -66,7 +71,7 @@ def gelu(self, *, approximate="none"):
 
 
 def gelu_backward(grad_output, self, *, approximate="none"):
-    logger.debug("GEMS_KUNLUNXIN GELU BACKWARD")
+    logger.debug("GEMS GELU BACKWARD")
     if approximate == "tanh":
         in_grad = gelu_backward_tanh(self, grad_output)
     else:
@@ -75,7 +80,7 @@ def gelu_backward(grad_output, self, *, approximate="none"):
 
 
 def gelu_(A, *, approximate="none"):
-    logger.debug("GEMS_KUNLUNXIN GELU_ FORWARD")
+    logger.debug("GEMS GELU_ FORWARD")
     if approximate == "tanh":
         out = gelu_tanh(A, out0=A)
     else:

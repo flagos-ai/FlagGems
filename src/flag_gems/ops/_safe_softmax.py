@@ -5,8 +5,6 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
-
 logger = logging.getLogger(__name__)
 
 
@@ -37,9 +35,7 @@ def _safe_softmax_kernel(
 
 def _safe_softmax(x: torch.Tensor, dim: int = -1, dtype: torch.dtype = None):
     logger.debug("GEMS _SAFE_SOFTMAX")
-    assert (
-        x.device.type == flag_gems.device
-    ), f"Input tensor must be on {flag_gems.device} device"
+    assert x.is_cuda, "Input tensor must be on CUDA device"
     assert x.ndim >= 1, "Input tensor must have at least 1 dimension"
 
     dim = dim if dim >= 0 else x.ndim + dim

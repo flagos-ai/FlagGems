@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base
 
 
 class ConvDepthwise2DBenchmark(base.GenericBenchmark):
@@ -53,7 +53,7 @@ def test_conv_depthwise2d():
         input_fn=_input_fn,
         torch_op=torch.ops.aten._conv_depthwise2d,
         gems_op=flag_gems._conv_depthwise2d,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
     )
 
     bench.run()

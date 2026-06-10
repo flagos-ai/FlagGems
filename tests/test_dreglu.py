@@ -32,11 +32,10 @@ DREGLU_SHAPES = [
 @pytest.mark.dreglu
 @pytest.mark.parametrize("shape", DREGLU_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine is required")
+@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
 def test_dreglu(shape, dtype):
     if len(shape) == 0:
-        # dreglu does not support 0-dim scalar tensors.
-        return
+        pytest.skip("dreglu does not support 0-dim scalar tensors.")
 
     if shape[-1] % 2 != 0:
         shape = list(shape)

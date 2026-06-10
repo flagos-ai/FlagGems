@@ -4,25 +4,32 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils import libentry
+
 logger = logging.getLogger(__name__)
 
 
-@triton.jit(do_not_specialize=["steps"])
+@libentry()
+@triton.jit
 def linspace_kernel(
     out_ptr,
+    out_stride0,
     start,
-    end_val,
+    mid,
+    end,
     step_size,
     steps,
-    BLOCK: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    idx = pid * BLOCK + tl.arange(0, BLOCK)
+    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = idx < steps
-    out_val = start + step_size * idx
-    last_mask = idx == (steps - 1)
-    out_val = tl.where(last_mask, end_val, out_val)
-    tl.store(out_ptr + idx, out_val, mask=mask)
+    fw_mask = idx < mid
+    fw_values = start + (step_size * idx)
+    bd_values = end - step_size * (steps - idx - 1)
+
+    out_val = tl.where(fw_mask, fw_values, bd_values)
+    tl.store(out_ptr + idx * out_stride0, out_val, mask=mask)
 
 
 def linspace(
@@ -40,30 +47,19 @@ def linspace(
     )
     if steps == 1:
         return torch.fill(out, start)
-
-    if isinstance(start, torch.Tensor):
-        start = start.item()
-    if isinstance(end, torch.Tensor):
-        end = end.item()
-    step_size = (float(end) - float(start)) / (steps - 1)
-
-    if steps <= 65536:
-        BLOCK = 8192
-        nw = 4
     else:
-        BLOCK = 65536
-        nw = 1
-    while triton.cdiv(steps, BLOCK) > 65535:
-        BLOCK *= 2
+        if isinstance(start, torch.Tensor):
+            start = start.item()
+        if isinstance(end, torch.Tensor):
+            end = end.item()
+        mid = steps // 2
+        step_size = (float(end) - float(start)) / (steps - 1)
+        BLOCK_SIZE = 128
+        if steps // BLOCK_SIZE > 65535:
+            BLOCK_SIZE = 16384
 
-    grid = (triton.cdiv(steps, BLOCK),)
-    linspace_kernel[grid](
-        out,
-        start,
-        float(end),
-        step_size,
-        steps,
-        BLOCK=BLOCK,
-        num_warps=nw,
-    )
-    return out
+        grid = (triton.cdiv(steps, BLOCK_SIZE),)
+        linspace_kernel[grid](
+            out, out.stride(0), start, mid, end, step_size, steps, BLOCK_SIZE=BLOCK_SIZE
+        )
+        return out

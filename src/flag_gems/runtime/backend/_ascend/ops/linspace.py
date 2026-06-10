@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -22,8 +22,8 @@ def linspace_kernel(
     steps,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = ext.program_id(0)
-    pnum = ext.num_programs(0)
+    pid = tle.program_id(0)
+    pnum = tle.num_programs(0)
     work_loads = tl.cdiv(steps, BLOCK_SIZE)
     loop_counts = tl.cdiv(work_loads, pnum)
     for loop in range(0, loop_counts):

@@ -126,10 +126,6 @@ def log_softmax(self, dim, half_to_float=False):
         dtype = torch.float32
     else:
         dtype = self.dtype
-
-    if N == 1:
-        return torch.zeros_like(inp, dtype=dtype)
-
     out = torch.empty_like(inp, dtype=dtype)
     K = inp.numel() // M // N
 

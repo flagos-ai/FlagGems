@@ -25,8 +25,6 @@
 #include <utility>
 #include <vector>
 
-#include <ATen/native/TypeProperties.h>
-
 #include "c10/cuda/CUDAStream.h"
 #include "pointwise_manifest.h"
 #include "torch/torch.h"
@@ -234,28 +232,30 @@ inline std::pair<at::ScalarType, at::ScalarType> compute_promoted_dtype(
     const std::vector<double>& scalar_args,
     const std::vector<bool>& is_tensor_mask,
     const PromotionRule& rule) {
-  // Use PyTorch's native ResultTypeState accumulator so 0-dim tensors and
-  // Python scalars are weakened by category, matching torch.result_type and
-  // _prims_common.elementwise_dtypes (which the Python pointwise_dynamic uses).
-  // Raw at::promote_types(fp32, fp64) gives fp64, but result_type(fp32_4d,
-  // fp64_0d) gives fp32 — that divergence is the bug this replaces.
-  at::native::ResultTypeState state {};
+  // Collect ScalarTypes directly — no tensor allocation needed
+  at::ScalarType common_dtype = at::ScalarType::Undefined;
+  bool first = true;
+
   for (int idx : rule.arg_indices) {
+    at::ScalarType this_dtype;
     if (is_tensor_mask[idx]) {
       int tensor_idx = 0;
       for (int k = 0; k < idx; ++k) {
         if (is_tensor_mask[k]) tensor_idx++;
       }
-      state = at::native::update_result_type_state(inputs[tensor_idx], state);
+      this_dtype = inputs[tensor_idx].scalar_type();
     } else {
-      int scalar_idx = 0;
-      for (int k = 0; k < idx; ++k) {
-        if (!is_tensor_mask[k]) scalar_idx++;
-      }
-      state = at::native::update_result_type_state(at::Scalar(scalar_args[scalar_idx]), state);
+      // Python scalars default to float64 (double)
+      this_dtype = at::kDouble;
+    }
+
+    if (first) {
+      common_dtype = this_dtype;
+      first = false;
+    } else {
+      common_dtype = at::promote_types(common_dtype, this_dtype);
     }
   }
-  at::ScalarType common_dtype = at::native::result_type(state);
 
   at::ScalarType computation_dtype = common_dtype;
   at::ScalarType result_dtype = common_dtype;
@@ -355,14 +355,7 @@ inline at::Tensor dispatch_pointwise_impl(const std::unordered_map<int, KernelIn
   inputs.reserve(inputs_orig.size());
   for (const auto& t : inputs_orig) {
     if (t.device() == c10::kCPU && t.dim() == 0 && target_device != c10::kCPU) {
-      auto moved = t.to(target_device);
-      // Tensor::to() drops the is_wrapped_number marker; restore it so type
-      // promotion below treats Python-scalar-wrapped tensors as wrapped (e.g.
-      // torch.add(int32_tensor, 1.5) must follow default_dtype reduction).
-      if (t.unsafeGetTensorImpl()->is_wrapped_number()) {
-        moved.unsafeGetTensorImpl()->set_wrapped_number(true);
-      }
-      inputs.push_back(std::move(moved));
+      inputs.push_back(t.to(target_device));
     } else {
       inputs.push_back(t);
     }

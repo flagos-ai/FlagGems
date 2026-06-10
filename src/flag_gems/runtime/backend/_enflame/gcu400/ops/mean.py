@@ -210,6 +210,9 @@ def mean_kernel_dim_mid(
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
+    return_dtype = x.dtype
+    if x.dtype == torch.int64:
+        x.dtype = torch.int32
     if dtype is None:
         dtype = x.dtype
     if dim is None:
@@ -217,7 +220,12 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         if not keepdim:
             out = out.reshape([1] * x.ndim)
         return out
-
+    # if x.shape[dim] == 1:
+    #     return x
+    # print_x = x
+    # print("print_x", print_x)
+    # print("inp.shape:", x.shape)
+    # print("dim:", dim)
     if len(dim) == 1:
         inp = x
         mean_dim = dim[0]
@@ -225,7 +233,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         if shape[mean_dim] == 1:
             if not keepdim:
                 inp = inp.squeeze(dim)
-            return inp
+            return inp.to(return_dtype)
         shape[mean_dim] = 1
         out = torch.empty(shape, dtype=dtype, device=x.device)
         if mean_dim == 0:
@@ -263,7 +271,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
                     mean_kernel_dim_high[grid](inp_new, out, M, N)
         if not keepdim:
             out = out.squeeze(dim)
-        return out
+        return out.to(return_dtype)
     else:
         shape = list(x.shape)
         dim = [d % x.ndim for d in dim]
@@ -279,7 +287,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
                 out = out.unsqueeze(0)
             if not keepdim:
                 out = out.squeeze(dim)
-            return out
+            return out.to(return_dtype)
         else:
             out = torch.empty(shape, dtype=dtype, device=x.device)
             grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), 24),)
@@ -287,4 +295,4 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
                 mean_kernel_dim_low[grid](x, out, M, N)
             if not keepdim:
                 out = out.squeeze(dim)
-            return out
+            return out.to(return_dtype)

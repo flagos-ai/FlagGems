@@ -5,8 +5,6 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
-
 logger = logging.getLogger(__name__)
 
 
@@ -50,8 +48,8 @@ def prelu(*args, **kwargs):
     if x is None or weight is None:
         raise ValueError("prelu expects (input, weight) as arguments.")
 
-    if x.device.type != flag_gems.device or weight.device.type != flag_gems.device:
-        raise AssertionError(f"Tensors must be {flag_gems.device} tensors.")
+    if not (x.is_cuda and weight.is_cuda):
+        raise AssertionError("Tensors must be CUDA tensors.")
 
     # Ensure dtype match
     if weight.dtype != x.dtype:

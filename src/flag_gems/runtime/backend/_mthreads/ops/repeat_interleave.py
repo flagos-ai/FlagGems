@@ -6,13 +6,21 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.shape_utils import c_contiguous_stride
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 logger = logging.getLogger(
     f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
+)
+
+# repeat_interleave.self_{int,Tensor} are CompositeImplicitAutograd;
+# Direct coverage will cause the gradient to break;
+# Redispatch to this keyset to run the decomposed forward (and backward)
+# when gradients may be needed.
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeImplicitAutograd
 )
 
 
@@ -24,6 +32,10 @@ def copy_func(x):
 
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
     logger.debug("GEMS_MTHREADS REPEAT_INTERLEAVE_SELF_INT")
+    if torch.is_grad_enabled():
+        return torch.ops.aten.repeat_interleave.self_int.redispatch(
+            _FALLBACK_KEYSET, inp, repeats, dim, output_size=output_size
+        )
     if dim is None:
         inp = inp.flatten()
         dim = 0
@@ -70,7 +82,7 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
 def repeat_interleave_tensor_kernel(
     repeats_ptr, cumsum_ptr, out_ptr, size, BLOCK_SIZE: tl.constexpr
 ):
-    pid = ext.program_id(0)
+    pid = tle.program_id(0)
     mask = pid < size
     cumsum = tl.load(cumsum_ptr + pid, mask, other=0)
     repeats = tl.load(repeats_ptr + pid, mask, other=0)
@@ -125,7 +137,7 @@ def fused_repeat_interleave_dim0_kernel(
     """Fused kernel for repeat_interleave with dim=0.
     Each program handles one input row and copies to all its repeated output positions.
     """
-    pid = ext.program_id(0)
+    pid = tle.program_id(0)
 
     if pid >= num_input_rows:
         return
@@ -174,8 +186,8 @@ def fused_repeat_interleave_output_centric_kernel(
     Uses 2D grid: (num_output_rows, num_col_chunks).
     Uses binary search to find input row.
     """
-    out_row_idx = ext.program_id(0)
-    col_chunk_idx = ext.program_id(1)
+    out_row_idx = tle.program_id(0)
+    col_chunk_idx = tle.program_id(1)
 
     if out_row_idx >= num_output_rows:
         return
@@ -223,7 +235,7 @@ def fused_repeat_interleave_1d_bsearch_kernel(
     Each program handles one complete output row.
     Better for large row sizes.
     """
-    out_row_idx = ext.program_id(0)
+    out_row_idx = tle.program_id(0)
 
     if out_row_idx >= num_output_rows:
         return
@@ -269,8 +281,8 @@ def fused_repeat_interleave_with_indices_kernel(
     """Output-centric kernel using precomputed index mapping.
     Uses 2D grid: (num_output_rows, num_col_chunks).
     """
-    out_row_idx = ext.program_id(0)
-    col_chunk_idx = ext.program_id(1)
+    out_row_idx = tle.program_id(0)
+    col_chunk_idx = tle.program_id(1)
 
     if out_row_idx >= num_output_rows:
         return
@@ -305,7 +317,7 @@ def fused_repeat_interleave_large_row_kernel(
     """Optimized kernel for large row sizes.
     Each program handles one output row and processes all columns.
     """
-    out_row_idx = ext.program_id(0)
+    out_row_idx = tle.program_id(0)
 
     if out_row_idx >= num_output_rows:
         return
@@ -436,6 +448,10 @@ def fused_repeat_interleave_dim0(inp, repeats, dim):
 
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
     logger.debug("GEMS_MTHREADS REPEAT_INTERLEAVE_SELF_TENSOR")
+    if torch.is_grad_enabled():
+        return torch.ops.aten.repeat_interleave.self_Tensor.redispatch(
+            _FALLBACK_KEYSET, inp, repeats, dim, output_size=output_size
+        )
 
     if repeats.numel() == 0:
         return inp.clone()

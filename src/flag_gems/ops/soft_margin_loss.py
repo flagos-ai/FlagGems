@@ -5,8 +5,6 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
-
 logger = logging.getLogger(__name__)
 
 
@@ -73,9 +71,9 @@ def _normalize_reduction(reduction):
 
 
 def _check_tensors(input: torch.Tensor, target: torch.Tensor):
-    if input.device.type != flag_gems.device or target.device.type != flag_gems.device:
+    if not (input.is_cuda and target.is_cuda):
         raise AssertionError(
-            f"soft_margin_loss: input and target must be {flag_gems.device} tensors for Triton kernel."
+            "soft_margin_loss: input and target must be CUDA tensors for Triton kernel."
         )
     if input.device != target.device:
         raise AssertionError(
@@ -152,10 +150,8 @@ def soft_margin_loss_out(
         else:
             out = torch.empty((), device=input.device, dtype=input.dtype)
     else:
-        if out.device.type != flag_gems.device:
-            raise AssertionError(
-                f"soft_margin_loss_out: out must be a {flag_gems.device} tensor."
-            )
+        if not out.is_cuda:
+            raise AssertionError("soft_margin_loss_out: out must be a CUDA tensor.")
         if red == 0:
             if out.numel() != n_elements:
                 raise AssertionError(

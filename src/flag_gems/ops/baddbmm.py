@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -7,7 +8,7 @@ import triton.language as tl
 from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import libentry, libtuner
-from ..utils import triton_lang_extension as ext
+from ..utils import triton_lang_extension as tle
 from .bmm import bmm
 from .mul import mul
 
@@ -16,12 +17,15 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("baddbmm"),
+    configs=runtime.ops_get_configs("baddbmm", pre_hook=None)
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else runtime.get_tuned_config("baddbmm"),
     key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
+    strategy=runtime.get_expand_config("baddbmm")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32", "align32"],
     warmup=5,
     rep=10,
-    flagtune_op_name="baddbmm",
 )
 @triton.heuristics(runtime.get_heuristic_config("baddbmm"))
 @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -48,20 +52,20 @@ def baddbmm_kernel(
     IS_FP64: tl.constexpr = False,
 ):
     # batch offsets
-    pid_b = ext.program_id(2)
+    pid_b = tle.program_id(2)
     A += pid_b * M * K
     B += pid_b * K * N
     O += pid_b * M * N
     bias += pid_b * bias_batch_stride
 
-    pidx = ext.program_id(0)
-    pidy = ext.program_id(1)
+    pidx = tle.program_id(0)
+    pidy = tle.program_id(1)
 
     if GROUP_M == 1:
         pid_m, pid_n = pidx, pidy
     else:
-        gridx = ext.num_programs(0)
-        gridy = ext.num_programs(1)
+        gridx = tle.num_programs(0)
+        gridy = tle.num_programs(1)
         pid = pidx + pidy * gridx
         num_CTA_per_group = gridy * GROUP_M
         group_id = pid // num_CTA_per_group

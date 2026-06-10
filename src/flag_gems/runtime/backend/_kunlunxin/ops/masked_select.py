@@ -1,18 +1,27 @@
 import logging
-import os
 
 import torch
 import triton
 import triton.language as tl
 
+# from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable, libentry
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
+def heur_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["n_elements"], 12))  # cluster_num
+
+
 @libentry()
+@triton.heuristics(
+    values={
+        "BLOCK_SIZE": heur_block_size,
+    },
+)
 @triton.jit
 def masked_select_kernel(
     inp_ptr,
@@ -22,7 +31,7 @@ def masked_select_kernel(
     n_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = ext.program_id(axis=0)
+    pid = tle.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
 
@@ -36,7 +45,7 @@ def masked_select_kernel(
 
 
 def masked_select(inp, mask):
-    logger.debug("GEMS_KUNLUNXIN MASKED SELECT")
+    logger.debug("GEMS MASKED SELECT")
 
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)
@@ -55,23 +64,18 @@ def masked_select(inp, mask):
     out = torch.empty(prefix_sum[-1].item(), dtype=inp.dtype, device=inp.device)
 
     n_elements = inp.numel()
-
-    # Use larger block size for better memory throughput on kunlunxin
-    BLOCK_SIZE = 2048
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
+    import os
 
     os.environ["TRITONXPU_OTHER_SIM"] = "1"
     os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+    with torch_device_fn.device(inp.device):
+        masked_select_kernel[grid](inp, mask_flattened, prefix_sum, out, n_elements)
 
-    try:
-        with torch_device_fn.device(inp.device):
-            masked_select_kernel[grid](
-                inp, mask_flattened, prefix_sum, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
-            )
-    finally:
-        if "TRITONXPU_OTHER_SIM" in os.environ:
-            del os.environ["TRITONXPU_OTHER_SIM"]
-        if "TRITONXPU_STORE_MASK_SIM" in os.environ:
-            del os.environ["TRITONXPU_STORE_MASK_SIM"]
+    if "TRITONXPU_OTHER_SIM" in os.environ:
+        del os.environ["TRITONXPU_OTHER_SIM"]
+    if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+        del os.environ["TRITONXPU_STORE_MASK_SIM"]
 
     return out

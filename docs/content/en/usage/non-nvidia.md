@@ -9,7 +9,7 @@ weight: 50
 
 FlagGems supports a range of AI chips/platforms beyond NVIDIA.
 For an up-to-date list of validated platforms, please refer to
-[Supported Platforms](/FlagGems/overview/platforms/)
+[Supported Platforms](/FlagGems/overview//features/#platforms-supported)
 
 ## 2. Unified usage interface
 
@@ -63,7 +63,7 @@ export GEMS_VENDOR=<vendor_name>
 ```
 
 For the list of valid `vendor_name`s, please check the
-[supported platforms](/FlagGems/overview/platforms/) documentation
+[supported platforms](/FlagGems/overview/features/#platforms-supported) documentation
 for details.
 
 > [!WARNING]

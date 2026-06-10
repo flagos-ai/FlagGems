@@ -16,8 +16,6 @@ def pow_func(x, exponent):
         return _pow(x.to(tl.float32), exponent)
     elif x.type.element_ty == tl.float16:
         return _pow(x.to(tl.float32), exponent)
-    elif x.type.element_ty == tl.float32:
-        return _pow(x.to(tl.float32), exponent)
     else:
         return _pow(x.to(tl.float64), exponent)
 
@@ -39,8 +37,6 @@ def pow_func_tensor_scalar(x, exponent):
         return _pow(x.to(tl.float32), exponent)
     elif x.type.element_ty == tl.float16:
         return _pow(x.to(tl.float32), exponent)
-    elif x.type.element_ty == tl.float32:
-        return _pow(x.to(tl.float32), exponent)
     else:
         return _pow(x.to(tl.float64), exponent)
 
@@ -61,8 +57,6 @@ def pow_func_scalar_tensor(x, exponent):
     if exponent.type.element_ty == tl.bfloat16:
         return _pow(x.to(tl.float32), exponent)
     elif exponent.type.element_ty == tl.float16:
-        return _pow(x.to(tl.float32), exponent)
-    elif exponent.type.element_ty == tl.float32:
         return _pow(x.to(tl.float32), exponent)
     else:
         return _pow(x.to(tl.float64), exponent)

@@ -5,8 +5,6 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
-
 logger = logging.getLogger(__name__)
 
 
@@ -36,10 +34,8 @@ def lift_fresh_copy(*args, **kwargs):
     if x is None:
         raise ValueError("lift_fresh_copy expects a Tensor argument")
 
-    if x.device.type != flag_gems.device:
-        raise ValueError(
-            f"lift_fresh_copy Triton kernel requires a {flag_gems.device} tensor"
-        )
+    if not x.is_cuda:
+        raise ValueError("lift_fresh_copy Triton kernel requires a CUDA tensor")
 
     x_contig = x.contiguous()
     out = torch.empty_like(x_contig, memory_format=torch.contiguous_format)
@@ -55,18 +51,16 @@ def lift_fresh_copy_out(x: torch.Tensor, out: torch.Tensor = None):
     logger.debug("GEMS LIFT_FRESH_COPY_OUT")
     if x is None or not isinstance(x, torch.Tensor):
         raise ValueError("lift_fresh_copy_out expects 'x' to be a Tensor")
-    if x.device.type != flag_gems.device:
-        raise ValueError(
-            f"lift_fresh_copy_out Triton kernel requires {flag_gems.device} tensors"
-        )
+    if not x.is_cuda:
+        raise ValueError("lift_fresh_copy_out Triton kernel requires CUDA tensors")
 
     x_contig = x.contiguous()
 
     if out is None:
         out = torch.empty_like(x_contig, memory_format=torch.contiguous_format)
     else:
-        if out.device.type != flag_gems.device:
-            raise ValueError(f"Output tensor 'out' must be on {flag_gems.device}")
+        if not out.is_cuda:
+            raise ValueError("Output tensor 'out' must be on CUDA")
         if out.dtype != x_contig.dtype:
             raise ValueError("Output tensor 'out' must have the same dtype as input")
         # Resize to match input shape and ensure contiguous layout

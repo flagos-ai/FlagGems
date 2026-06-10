@@ -45,26 +45,13 @@ def nll_loss_nd_input_fn(shape, cur_dtype, device):
                 }
 
 
-@pytest.mark.nll_loss_nd_forward
+@pytest.mark.nll_loss_nd_foward
 def test_nll_loss_nd_forward():
     bench = NLLLossNDBenchmark(
         input_fn=nll_loss_nd_input_fn,
-        op_name="nll_loss_nd_forward",
+        op_name="nll_loss_nd",
         torch_op=torch.nn.functional.nll_loss,
         dtypes=consts.FLOAT_DTYPES,
-    )
-
-    bench.run()
-
-
-@pytest.mark.nll_loss_nd_backward
-def test_nll_loss_nd_backward():
-    bench = NLLLossNDBenchmark(
-        input_fn=nll_loss_nd_input_fn,
-        op_name="nll_loss_nd_backward",
-        torch_op=torch.nn.functional.nll_loss,
-        dtypes=consts.FLOAT_DTYPES,
-        is_backward=True,
     )
 
     bench.run()

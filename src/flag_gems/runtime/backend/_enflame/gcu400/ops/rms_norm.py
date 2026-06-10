@@ -12,8 +12,6 @@ from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
 
-MAX_BLOCK_SIZE = 32768
-
 
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
@@ -36,22 +34,16 @@ def rms_norm_kernel(
         Y_cur = pid * y_stride_r + Y
         X_cur = pid * x_stride_r + X
 
-        _var = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-        for off in range(0, N, BLOCK_SIZE):
-            cols = off + tl.arange(0, BLOCK_SIZE)
-            mask = cols < N
-            x = tl.load(X_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-            _var += x * x
-        var = tl.sum(_var, axis=0) / N
+        mask = tl.arange(0, BLOCK_SIZE) < N
+        cols = tl.arange(0, BLOCK_SIZE)
+        x = tl.load(X_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+
+        var = tl.sum(x * x, axis=0) / N
         rrms = 1 / tl.sqrt(var + eps)
 
-        for off in range(0, N, BLOCK_SIZE):
-            cols = off + tl.arange(0, BLOCK_SIZE)
-            mask = cols < N
-            x = tl.load(X_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-            w = tl.load(W + cols, mask=mask, other=0.0)
-            y = (x * rrms).to(Y_cur.dtype.element_ty) * w
-            tl.store(Y_cur + cols * y_stride_c, y, mask=mask)
+        w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
+        y = (x * rrms).to(Y_cur.dtype.element_ty) * w
+        tl.store(Y_cur + cols * y_stride_c, y, mask=mask)
         tl.store(INV_RMS + pid, rrms)
 
 
@@ -79,31 +71,22 @@ def rms_norm_grad_dx_kernel(
         DY_cur = pid * x_stride_r + DY
         INV_RMS_cur = pid + INV_RMS
 
+        mask = tl.arange(0, BLOCK_SIZE) < N
+        cols = tl.arange(0, BLOCK_SIZE)
+        x = tl.load(X_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
         inv_rms = tl.load(INV_RMS_cur).to(tl.float32)
+        dy = tl.load(DY_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+        w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
 
-        _row_sum = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-        for off in range(0, N, BLOCK_SIZE):
-            cols = off + tl.arange(0, BLOCK_SIZE)
-            mask = cols < N
-            x = tl.load(X_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-            dy = tl.load(DY_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-            w = tl.load(W + cols, mask=mask, other=0.0)
-            dy_w = dy * w
-            normalized_buf = x * inv_rms
-            _row_sum += normalized_buf * dy_w
-        row_sum_stats = tl.sum(_row_sum, axis=0)
+        dy = dy * w
 
-        for off in range(0, N, BLOCK_SIZE):
-            cols = off + tl.arange(0, BLOCK_SIZE)
-            mask = cols < N
-            x = tl.load(X_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-            dy = tl.load(DY_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-            w = tl.load(W + cols, mask=mask, other=0.0)
-            dy_w = dy * w
-            normalized_buf = x * inv_rms
-            norm_val = normalized_buf / N
-            dx = (dy_w - norm_val * row_sum_stats) * inv_rms
-            tl.store(DX_cur + cols * dx_stride_c, dx, mask=mask)
+        normalized_buf = x * inv_rms
+        row_sum_stats = tl.sum(normalized_buf * dy, axis=0)
+
+        norm_val = normalized_buf / N
+        dx = (dy - norm_val * row_sum_stats) * inv_rms
+
+        tl.store(DX_cur + cols * dx_stride_c, dx, mask=mask)
 
 
 @libentry()
@@ -169,7 +152,7 @@ class RmsNorm(torch.autograd.Function):
         M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
 
-        BLOCK_SIZE = min(triton.next_power_of_2(N), MAX_BLOCK_SIZE)
+        BLOCK_SIZE = triton.next_power_of_2(N)
         x = x.contiguous()
         weight = weight.contiguous()
         y = torch.empty_like(x)
@@ -202,7 +185,7 @@ class RmsNorm(torch.autograd.Function):
         M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
 
-        BLOCK_SIZE = min(triton.next_power_of_2(N), MAX_BLOCK_SIZE)
+        BLOCK_SIZE = triton.next_power_of_2(N)
         x = x.contiguous()
         weight = weight.contiguous()
         dx = torch.empty_like(x)

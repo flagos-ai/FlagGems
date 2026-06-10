@@ -1,3 +1,4 @@
+#include <torch/version.h>
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 
@@ -25,10 +26,14 @@ at::Tensor fp8_matmul(const at::Tensor& a,
   auto a_s_new = a_s;
   auto b_s_new = b_s;
 
+#if (TORCH_VERSION_MAJOR > 2) || (TORCH_VERSION_MAJOR == 2 && TORCH_VERSION_MINOR >= 8)
   if (scale_dtype == at::kFloat8_e8m0fnu) {
     a_s_new = a_s.to(at::kFloat);
     b_s_new = b_s.to(at::kFloat);
   }
+#else
+  (void)scale_dtype;
+#endif
   auto out_shape = a.sizes().vec();
   out_shape.back() = N;
 

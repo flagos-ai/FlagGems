@@ -1,8 +1,7 @@
 [build-system]
-# The cmake and ninja packages are not supposed to be listed in build-system.requires.
-# The version expectation is "cmake>=3.20,<4.0", "ninja==1.13.0".
-# They must be installed separately for `--no-build-isolation` to work.
-requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3"]
+# cmake locks to '>=3.20,<4.0' to sync with FlagTree
+
+requires = ["setuptools>=64.0", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
 
 build-backend = "scikit_build_core.build"
 
@@ -58,14 +57,6 @@ ascend = [
     "flagtree==0.5.0+ascend3.2",
 ]
 
-enflame = [
-    "torch==2.9.1+cpu",
-    "torch-gcu==2.9.1+3.7.1",
-    "triton==3.3.0",
-    "triton-gcu==3.3.1+1.0.20260323",
-    "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323",
-]
-
 hygon = [
     "torch==2.9.0+das.opt1.dtk2604",
     "flagtree==0.5.0+hcu3.0",
@@ -80,7 +71,6 @@ iluvatar = [
 
 kunlunxin = [
     "benchflow==1.0.0",
-    "colorama==0.4.6",
     "hyperparameter==0.5.6",
     "torch==2.5.1+cu118",
     "torchaudio==2.5.1+cu118",
@@ -102,33 +92,20 @@ metax = [
 ]
 
 mthreads = [
-    "torch==2.9.0",
-    "torch_musa==2.9.0",
+    "torch==2.7.1+musa.4.0.0",
+    "torch_musa==2.7.1",
+    "flagtree==0.5.0+mthreads3.1",
+    # "triton==3.1.0+musa1.4.6",
     "numpy==1.26.4",
-    "triton==3.6.0+git89458660",
     "mkl==2024.0.0",
-    # "flagtree==0.5.1+mthreads3.6",
 ]
 
 nvidia = [
-    "torch==2.12.0+cu132",
-    "torchvision==0.27.0+cu132",
-    "triton==3.6.0",
-    # "flagtree==0.5.1+3.6",
-]
-
-spacemit = [
-    "torch==2.8.0+spacemit.0",
-    "triton==3.6.0+spacemit.a4",
-]
-
-sunrise = [
-    "torch==2.11.0+cpu",
-    "torchaudio==2.11.0+cpu",
-    "torchvision==0.26.0+cpu",
-    "torch-ptpu==0.2.1+gaf2c267.torch2.11",
-    "triton==3.4.0.5+git27a132da",
-    # "flagtree-0.4.0+sunrise3.4"
+    "torch==2.9.0+cu128",
+    "torchvision==0.24.0+cu128",
+    "torchaudio==2.9.0+cu128",
+    "flagtree==0.5.0+3.5",
+    # "triton==3.5",
 ]
 
 tsingmicro = [
@@ -148,7 +125,6 @@ test = [
     "gitpython==3.1.50",
     "openpyxl==3.1.5",
     "pytest==9.0.3",
-    "pytest-md-report==0.8.0",
     "scipy>=1.15.3",
 ]
 
@@ -188,16 +164,12 @@ index-strategy = "unsafe-best-match"
 conflicts = [
     [
         { extra = "ascend" },
-        { extra = "enflame" },
         { extra = "hygon" },
         { extra = "iluvatar" },
         { extra = "kunlunxin" },
         { extra = "metax" },
         { extra = "mthreads" },
         { extra = "nvidia" },
-        { extra = "spacemit" },
-        { extra = "sunrise" },
-        { extra = "thead" },
         { extra = "tsingmicro" },
     ],
 ]
@@ -206,12 +178,6 @@ conflicts = [
 [[tool.uv.index]]
 name = "ascend-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-ascend/simple"
-explicit = true
-
-# Source for Enflame packages
-[[tool.uv.index]]
-name = "enflame-pypi"
-url = "https://resource.flagos.net/repository/flagos-pypi-enflame/simple"
 explicit = true
 
 # Source for Hygon packages
@@ -251,22 +217,23 @@ name = "nvidia-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-nvidia/simple"
 explicit = true
 
-# Source for SpaceMIT packages
-[[tool.uv.index]]
-name = "spacemit-pypi"
-url = "https://resource.flagos.net/repository/flagos-pypi-spacemit/simple"
-explicit = true
-
-# Source for Sunrise packages
-[[tool.uv.index]]
-name = "sunrise-pypi"
-url = "https://resource.flagos.net/repository/flagos-pypi-sunrise/simple"
-explicit = true
-
 # Source for TsingMicro packages
 [[tool.uv.index]]
 name = "tsingmicro-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-tsingmicro/simple"
+explicit = true
+
+# TODO(Qiming): double check the following two index URLs
+# Source for Pytorch CU12.8
+[[tool.uv.index]]
+name = "torch-pypi-128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+# Source for Pytorch CU11.8
+[[tool.uv.index]]
+name = "torch-pypi-118"
+url = "https://download.pytorch.org/whl/cu118"
 explicit = true
 
 # Source for common packages

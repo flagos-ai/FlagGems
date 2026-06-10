@@ -27,8 +27,6 @@ from benchmark.consts import (
     model_shapes,
 )
 
-from . import consts
-
 try:
     from vllm.model_executor.layers.quantization.utils.fp8_utils import (
         w8a8_triton_block_scaled_mm as vllm_w8a8_triton_block_scaled_mm,
@@ -61,7 +59,6 @@ except Exception:
     fp8_gemm_nt = None
     transform_sf_into_required_layout = None
     DEEPGEMM_AVAILABLE = False
-
 
 PARALLEL_WORKER_ENV = "FLAGGEMS_BENCH_PARALLEL_WORKER"
 PARALLEL_RESULT_FILE_ENV = "FLAGGEMS_BENCH_RESULT_FILE"
@@ -238,40 +235,6 @@ class AddrBenchmark(BlasBenchmark):
             yield from self.input_fn(m, n, cur_dtype, self.device)
 
 
-ROUTER_GEMM_SHAPES = [
-    (1, 1, 256, 7168),
-    (1, 8, 256, 7168),
-    (1, 16, 256, 7168),
-    (1, 32, 256, 7168),
-    (1, 64, 256, 7168),
-    (1, 128, 256, 7168),
-    (1, 256, 256, 7168),
-    (1, 512, 256, 7168),
-    (1, 1024, 256, 7168),
-]
-
-
-class RouterGemmBenchmark(BlasBenchmark):
-    """
-    benchmark for router_gemm (bf16 -> fp32)
-    """
-
-    DEFAULT_SHAPES = ROUTER_GEMM_SHAPES[:]
-
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for b, m, n, k in self.shapes:
-            yield from self.input_fn(b, m, n, k, cur_dtype, self.device, False)
-
-    def set_more_shapes(self):
-        return None
-
-    def get_tflops(self, op, *args, **kwargs):
-        x, weight = args[0], args[1]
-        M, K = x.shape
-        N = weight.shape[0]
-        return 2 * M * N * K
-
-
 # ============================================================================
 # Input functions (from test_blas_perf.py)
 # ============================================================================
@@ -376,12 +339,6 @@ def addmv_input_fn(m, n, cur_dtype, device):
     yield bias, mat, vec
 
 
-def router_gemm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
-    x = torch.randn([m, k], dtype=torch.bfloat16, device=device)
-    weight = torch.randn([n, k], dtype=torch.bfloat16, device=device)
-    yield x, weight
-
-
 # ============================================================================
 # FP8 utilities (from test_blas_perf.py)
 # ============================================================================
@@ -396,6 +353,18 @@ W8A8_BLOCK_FP8_MNK_SHAPES = [
     (84, 7168, 3884),
 ]
 W8A8_BLOCK_FP8_BLOCK_SIZE = [128, 128]
+
+
+def get_w8a8_block_fp8_dtype():
+    if flag_gems.device != "cuda" or not torch.cuda.is_available():
+        return None
+
+    major, _ = torch.cuda.get_device_capability()
+    if major > 8 and hasattr(torch, "float8_e4m3fn"):
+        return torch.float8_e4m3fn
+    if major == 8 and hasattr(torch, "float8_e5m2"):
+        return torch.float8_e5m2
+    return None
 
 
 def rand_fp8_tensor(shape, device, dtype):
@@ -426,13 +395,19 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
         self.shape_desc = "M, N, K"
 
     def get_input_iter(self, cur_dtype) -> Generator:
+        fp8_dtype = get_w8a8_block_fp8_dtype()
+        if fp8_dtype is None:
+            raise RuntimeError(
+                "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
+            )
+
         block_n, block_k = self.block_size
         for m, n, k in self.shapes:
             num_k_groups = (k + block_k - 1) // block_k
             num_n_groups = (n + block_n - 1) // block_n
 
-            A = rand_fp8_tensor((m, k), self.device, cur_dtype).contiguous()
-            B = rand_fp8_tensor((n, k), self.device, cur_dtype).contiguous()
+            A = rand_fp8_tensor((m, k), self.device, fp8_dtype).contiguous()
+            B = rand_fp8_tensor((n, k), self.device, fp8_dtype).contiguous()
             As = (
                 0.01
                 * torch.rand((m, num_k_groups), dtype=torch.float32, device=self.device)
@@ -626,31 +601,21 @@ class ParallelBenchmarkMixin:
         }
         return preferred_key
 
-    def _get_tuning_fixed_overhead(self):
-        """Fixed cost per shape representing compilation + autotuning overhead.
-
-        When shapes have extreme variance in compute cost, pure-FLOPS balancing
-        piles all small shapes onto one GPU.  Adding a fixed term ensures each
-        shape carries a minimum weight so the scheduler spreads them out.
-        Override in subclasses to adjust.
-        """
-        return 0
-
     def _split_shapes_evenly(self, num_buckets):
         indexed_shapes = list(enumerate(self.shapes))
         if not indexed_shapes:
             return []
 
-        fixed_overhead = self._get_tuning_fixed_overhead()
-
         def estimate_shape_cost(shape):
             if self.op_name == "sparse_attention":
                 if len(shape) != 6:
-                    return 1 + fixed_overhead
+                    return 1
                 batch, seq_len, _, topk, heads, dim = shape
                 block = 64
                 topk_aligned = ((max(1, int(topk)) + block - 1) // block) * block
                 heads_padded = max(16, 1 << (max(1, int(heads)) - 1).bit_length())
+                # The sparse attention kernel processes top-k indices in BLOCK=64
+                # chunks and pads H to at least 16 / next power of two.
                 return (
                     max(1, int(batch))
                     * max(1, int(seq_len))
@@ -658,7 +623,7 @@ class ParallelBenchmarkMixin:
                     * heads_padded
                     * max(1, int(dim))
                     * 4
-                ) + fixed_overhead
+                )
 
             if self.op_name in {
                 "mm",
@@ -667,7 +632,6 @@ class ParallelBenchmarkMixin:
                 "baddbmm",
                 "w8a8_block_fp8_matmul",
                 "w8a8_block_fp8_matmul_deepgemm",
-                "router_gemm",
             }:
                 normalized_shape = shape
                 if len(shape) == 3:
@@ -678,16 +642,15 @@ class ParallelBenchmarkMixin:
                     normalized_shape = None
 
                 if normalized_shape is None:
-                    return 1 + fixed_overhead
+                    return 1
 
                 if self.op_name in {
                     "mm",
                     "bmm",
                     "w8a8_block_fp8_matmul",
-                    "router_gemm",
                 }:
-                    return m * n * k * 2 + fixed_overhead
-                return m * n * (2 * k + 1) + fixed_overhead
+                    return m * n * k * 2
+                return m * n * (2 * k + 1)
 
             cost = 1
             for dim in shape:
@@ -695,7 +658,7 @@ class ParallelBenchmarkMixin:
                     continue
                 if isinstance(dim, (int, float)):
                     cost *= max(1, int(dim))
-            return cost + fixed_overhead
+            return cost
 
         sorted_items = sorted(
             indexed_shapes,
@@ -953,45 +916,6 @@ class ParallelAddrBenchmark(ParallelBenchmarkMixin, AddrBenchmark):
     pass
 
 
-class ParallelRouterGemmBenchmark(ParallelBenchmarkMixin, RouterGemmBenchmark):
-    SHAPE_CONFIG_KEYS = ("router_gemm",)
-
-    def _get_tuning_fixed_overhead(self):
-        return 30_000_000_000
-
-    def set_shapes(self, shape_file_path=None):
-        if not os.path.isfile(shape_file_path):
-            raise FileNotFoundError(f"Shape file '{shape_file_path}' does not exist.")
-
-        with open(shape_file_path, "r") as shape_file:
-            yaml_config = yaml.safe_load(shape_file) or {}
-
-        for shape_key in self._get_shape_config_keys():
-            if shape_key in yaml_config:
-                self.shapes = yaml_config[shape_key].get("shapes", ROUTER_GEMM_SHAPES)
-                break
-        else:
-            self.shapes = ROUTER_GEMM_SHAPES[:]
-
-        self.shapes = [tuple(shape) for shape in self.shapes]
-
-        normalized_shapes = []
-        for shape in self.shapes:
-            if len(shape) == 4:
-                normalized_shapes.append(shape)
-            elif len(shape) == 3:
-                m, n, k = shape
-                normalized_shapes.append((1, m, n, k))
-            else:
-                raise ValueError(
-                    "router_gemm benchmark expects shapes in (M, N, K) "
-                    "or (B, M, N, K) format."
-                )
-
-        self.shapes = normalized_shapes
-        self.shape_desc = "M, N, K"
-
-
 class ParallelW8A8BlockFP8MatmulBenchmark(
     ParallelBenchmarkMixin, W8A8BlockFP8MatmulBenchmark
 ):
@@ -1003,7 +927,7 @@ class ParallelW8A8BlockFP8MatmulBenchmark(
         return BlasBenchmark.set_more_shapes(self)
 
     def should_forward_parallel_dtype(self, dtype_name):
-        if Config.user_desired_dtypes is None and dtype_name.startswith("fp8"):
+        if Config.user_desired_dtypes is None and dtype_name == "fp8":
             return False
         return True
 
@@ -1069,6 +993,12 @@ class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark)
         ]
 
     def get_input_iter(self, cur_dtype):
+        fp8_dtype = get_w8a8_block_fp8_dtype()
+        if fp8_dtype is None:
+            raise RuntimeError(
+                "DeepGEMM benchmark requires CUDA device with FP8 support"
+            )
+
         block_n, block_k = self.block_size
         recipe = (1, 128, 128)
 
@@ -1076,8 +1006,8 @@ class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark)
             num_k_groups = (k + block_k - 1) // block_k
             num_n_groups = (n + block_n - 1) // block_n
 
-            A = rand_fp8_tensor((m, k), self.device, cur_dtype).contiguous()
-            B = rand_fp8_tensor((n, k), self.device, cur_dtype).contiguous()
+            A = rand_fp8_tensor((m, k), self.device, fp8_dtype).contiguous()
+            B = rand_fp8_tensor((n, k), self.device, fp8_dtype).contiguous()
             As = (
                 0.01
                 * torch.rand((m, num_k_groups), dtype=torch.float32, device=self.device)
@@ -1314,7 +1244,7 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
 def test_perf_w8a8_block_fp8_matmul():
     if not VLLM_W8A8_BLOCK_FP8_AVAILABLE:
         pytest.skip("w8a8_block_fp8_matmul benchmark requires vLLM baseline operator")
-    if len(consts.FP8_DTYPES) == 0:
+    if get_w8a8_block_fp8_dtype() is None:
         pytest.skip(
             "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
         )
@@ -1322,7 +1252,7 @@ def test_perf_w8a8_block_fp8_matmul():
     bench = ParallelW8A8BlockFP8MatmulBenchmark(
         op_name="w8a8_block_fp8_matmul",
         torch_op=vllm_w8a8_triton_block_scaled_mm,
-        dtypes=consts.FP8_DTYPES,
+        dtypes=["fp8"],
     )
     bench.set_gems(flag_gems.w8a8_block_fp8_matmul)
     bench.run()
@@ -1332,7 +1262,7 @@ def test_perf_w8a8_block_fp8_matmul():
 def test_perf_w8a8_block_fp8_matmul_deepgemm():
     if not DEEPGEMM_AVAILABLE:
         pytest.skip("DeepGEMM is not available on this platform")
-    if len(consts.FP8_DTYPES) == 0:
+    if get_w8a8_block_fp8_dtype() is None:
         pytest.skip(
             "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
         )
@@ -1340,7 +1270,7 @@ def test_perf_w8a8_block_fp8_matmul_deepgemm():
     bench = ParallelW8A8BlockFP8DeepGemmBenchmark(
         op_name="w8a8_block_fp8_matmul_deepgemm",
         torch_op=_deepgemm_block_scaled_mm,
-        dtypes=consts.FP8_DTYPES,
+        dtypes=["fp8"],
         output_dtype=torch.bfloat16,
     )
     bench.set_gems(flag_gems.w8a8_block_fp8_matmul)
@@ -1440,19 +1370,4 @@ def test_addr_benchmark():
         torch_op=torch.Tensor.addr,
         dtypes=FLOAT_DTYPES,
     )
-    bench.run()
-
-
-@pytest.mark.router_gemm
-def test_perf_router_gemm():
-    def torch_router_gemm(x, weight):
-        return torch.mm(x, weight.t()).to(torch.float32)
-
-    bench = ParallelRouterGemmBenchmark(
-        input_fn=router_gemm_input_fn,
-        op_name="router_gemm",
-        torch_op=torch_router_gemm,
-        dtypes=[torch.bfloat16],
-    )
-    bench.set_gems(flag_gems.router_gemm)
     bench.run()

@@ -1,3 +1,4 @@
+import os
 from enum import Enum
 
 
@@ -15,8 +16,6 @@ class vendors(Enum):
     TSINGMICRO = 10
     SUNRISE = 11
     ENFLAME = 12
-    SPACEMIT = 13
-    THEAD = 14
 
     @classmethod
     def get_all_vendors(cls) -> dict:
@@ -28,16 +27,15 @@ class vendors(Enum):
 
 UNSUPPORT_FP64 = frozenset(
     {
-        vendors.AIPU,
-        vendors.ASCEND,
         vendors.CAMBRICON,
-        vendors.ENFLAME,
         vendors.ILUVATAR,
         vendors.KUNLUNXIN,
         vendors.MTHREADS,
-        vendors.SUNRISE,
-        vendors.SPACEMIT,
+        vendors.AIPU,
+        vendors.ASCEND,
         vendors.TSINGMICRO,
+        vendors.SUNRISE,
+        vendors.ENFLAME,
     }
 )
 
@@ -45,38 +43,34 @@ UNSUPPORT_BF16 = frozenset(
     {
         vendors.AIPU,
         vendors.SUNRISE,
-        vendors.SPACEMIT,
     }
 )
 
 UNSUPPORT_INT64 = frozenset(
     {
         vendors.AIPU,
-        vendors.ENFLAME,
-        vendors.SPACEMIT,
-        vendors.SUNRISE,
         vendors.TSINGMICRO,
+        vendors.SUNRISE,
+        vendors.ENFLAME,
     }
 )
 
+DEFAULT_EXPAND_CONFIG_PATH = os.path.normpath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "utils",
+        "configs",
+        "general_ops_expand_configs.yaml",
+    )
+)
+
+
 DEFAULT_STRATEGIES = {
-    "addmm": ["align32", "align32", "align32"],
-    "addmm_sqmma": ["align32", "align32", "align32"],
-    "baddbmm": ["align32", "align32", "align32"],
     "bmm": ["align32", "align32", "align32", "align32", "align32"],
-    "bmm_sqmma": ["align32", "align32", "align32"],
-    "gemv": ["align32", "align32", "align32", "default"],
-    "mm": ["align32", "align32", "align32", "align32", "align32"],
-    "mm_general_tma": [
-        "align32",
-        "align32",
-        "align32",
-        "align32",
-        "align32",
-        "default",
-    ],
+    "addmm": ["align32", "align32", "align32"],
+    "baddbmm": ["align32", "align32", "align32"],
     "mv": ["align32", "align32"],
-    "sparse_attention": ["align32", "align32", "align32"],
     "w8a8_block_fp8_general": [
         "align32",
         "align32",
@@ -99,36 +93,46 @@ DEFAULT_STRATEGIES = {
         "align32",
         "default",
     ],
-    "mm_splitk": ["align32", "align32", "align32", "align32", "align32"],
+    "mm_general_tma": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "default",
+    ],
+    "gemv": ["align32", "align32", "align32", "default"],
+    "sparse_attention": ["align32", "align32", "align32"],
+    "mm": ["align32", "align32", "align32", "align32", "align32"],
+    "bmm_sqmma": ["align32", "align32", "align32"],
+    "addmm_sqmma": ["align32", "align32", "align32"],
 }
 
 OP_KEY_ORDERS = {
-    "addmm": ["M", "N", "K"],
-    "addmm_sqmma": ["M", "N", "K"],
     "bmm": ["M", "N", "K", "stride_am", "stride_bk"],
-    "bmm_sqmma": ["M", "N", "K"],
+    "addmm": ["M", "N", "K"],
     "baddbmm": ["M", "N", "K"],
-    "gemv": ["M", "K", "stride_am", "stride_bk"],
-    "mm": ["M", "N", "K", "stride_am", "stride_bk"],
-    "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mv": ["M", "N"],
-    "sparse_attention": ["topk", "H_ACTUAL", "D"],
     "w8a8_block_fp8_general": ["M", "N", "K", "stride_am", "stride_bk"],
     "w8a8_block_fp8_general_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
     "w8a8_block_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    "mm_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
+    "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    "gemv": ["M", "K", "stride_am", "stride_bk"],
+    "sparse_attention": ["topk", "H_ACTUAL", "D"],
+    "mm": ["M", "N", "K", "stride_am", "stride_bk"],
+    "bmm_sqmma": ["M", "N", "K"],
+    "addmm_sqmma": ["M", "N", "K"],
 }
 
 
 # Mapping from vendor name to torch attribute for quick detection
 _VENDOR_TORCH_ATTR = {
-    "ascend": "npu",
     "cambricon": "mlu",
-    "enflame": "gcu",
-    "hygon": "__hcu_version__",
-    "iluvatar": "corex",
     "mthreads": "musa",
+    "iluvatar": "corex",
+    "ascend": "npu",
     "sunrise": "ptpu",
+    "enflame": "gcu",
 }
 
 __all__ = [

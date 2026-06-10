@@ -19,8 +19,6 @@ config_ = CodeGenConfig(
     True,
     prefer_1d_tile=True,
     isCloseMemoryAsync=False,
-    kunlunAutoGrid=True,
-    unroll_num=8,
 )
 
 
@@ -39,7 +37,7 @@ def eq(A, B):
             B = B.to(A.device)
         else:
             A = A.to(B.device)
-    logger.debug("GEMS_KUNLUNXIN EQ")
+    logger.debug("GEMS EQ")
     os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = eq_func(A, B)
@@ -55,5 +53,5 @@ def eq_func_scalar(x, y):
 
 
 def eq_scalar(A, B):
-    logger.debug("GEMS_KUNLUNXIN EQ SCALAR")
+    logger.debug("GEMS EQ SCALAR")
     return eq_func_scalar(A, B)

@@ -60,11 +60,13 @@ class Register:
                 for config_item in self.full_config_by_func.get(name, []):
                     op_name, func = config_item[0], config_item[1]
                     # respect optional condition functions
-                    if not self._config_enabled(config_item):
-                        continue
+                    if len(config_item) > 2:
+                        condition_func = config_item[2]
+                        if not condition_func():
+                            continue
                     if op_name in self.cpp_patched_ops:
                         continue
-                    self.include_config.append(self._normalized_config(config_item))
+                    self.include_config.append((op_name, func))
         else:
             # fallback: scan provided config and match by func name or op name
             for config_item in self.config:
@@ -75,11 +77,13 @@ class Register:
                     and op_name not in self.include_ops
                 ):
                     continue
-                if not self._config_enabled(config_item):
-                    continue
+                if len(config_item) > 2:
+                    condition_func = config_item[2]
+                    if not condition_func():
+                        continue
                 if op_name in self.cpp_patched_ops:
                     continue
-                self.include_config.append(self._normalized_config(config_item))
+                self.include_config.append((op_name, func))
 
         if not self.include_config:
             warnings.warn(
@@ -87,23 +91,14 @@ class Register:
             )
             return
 
-    @staticmethod
-    def _config_enabled(item):
-        condition_func = item[2] if len(item) > 2 else None
-        return condition_func is None or bool(condition_func())
-
-    @staticmethod
-    def _extra_dispatch_keys(item):
-        return tuple(item[3]) if len(item) > 3 else ()
-
-    def _normalized_config(self, item):
-        return item[0], item[1], self._extra_dispatch_keys(item)
-
     def config_filter(self):
+        def enabled(item):
+            return len(item) < 3 or bool(item[2]())
+
         self.config = [
-            self._normalized_config(item)
+            (item[0], item[1])
             for item in self.config
-            if self._config_enabled(item)
+            if enabled(item)
             and item[1].__name__ not in self.exclude_ops
             and item[0] not in self.cpp_patched_ops
         ]
@@ -113,7 +108,7 @@ class Register:
             return backend.get_unused_ops(self.device.vendor_name)
         return []
 
-    def register_impl(self, key, fn, extra_dispatch_keys=()):
+    def register_impl(self, key, fn):
         if self.lib is None:
             raise ValueError("Library instance is not provided.")
         device_key = self.reg_key
@@ -136,13 +131,10 @@ class Register:
         else:
             self.lib.impl(key, fn, device_key)
 
-        for dispatch_key in extra_dispatch_keys:
-            self.lib.impl(key, fn, dispatch_key)
-
     def for_each(self):
-        for key, func, extra_dispatch_keys in self.config:
+        for key, func in self.config:
             try:
-                self.register_impl(key, func, extra_dispatch_keys)
+                self.register_impl(key, func)
             except Exception as e:
                 error.register_error(e)
 

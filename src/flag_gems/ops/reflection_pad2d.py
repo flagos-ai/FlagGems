@@ -5,8 +5,6 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
-
 logger = logging.getLogger(__name__)
 
 
@@ -89,8 +87,8 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
     # Validate input
     if input.dim() < 3:
         raise ValueError("input must have at least 3 dimensions")
-    if input.device.type != flag_gems.device:
-        raise ValueError(f"input must be a {flag_gems.device} tensor")
+    if not input.is_cuda:
+        raise ValueError("input must be a CUDA tensor")
 
     x = input.contiguous()
     H_in = int(x.shape[-2])
@@ -119,8 +117,8 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
             (*leading_shape, H_out, W_out), device=x.device, dtype=x.dtype
         )
     else:
-        if out.device.type != flag_gems.device:
-            raise ValueError(f"out must be a {flag_gems.device} tensor")
+        if not out.is_cuda:
+            raise ValueError("out must be a CUDA tensor")
         expected_shape = (*leading_shape, H_out, W_out)
         if tuple(out.shape) != expected_shape:
             raise ValueError(

@@ -5,7 +5,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-vendor_name = flag_gems.vendor_name
 SHAPE_CONV2D = [
     ((1, 2, 5, 5), (1, 2, 3, 3), 1),
     ((2, 3, 9, 9), (1, 3, 3, 3), 1),
@@ -35,8 +34,11 @@ SHAPE_CONV2D = [
 def test_conv2d(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
+
     # Issue 2801: The environment variable is not enforced in operator logic.
-    if vendor_name == "hygon":
+    if flag_gems.vendor_name == "hygon":
         monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
@@ -105,9 +107,11 @@ def test_conv2d(
 
 
 @pytest.mark.conv2d_padding
-@pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2802: operator doesn't work")
 @pytest.mark.skipif(
-    vendor_name == "kunlunxin", reason="Issue #2803: operator doesn't work"
+    flag_gems.vendor_name == "hygon", reason="#2802: operator doesn't work"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin", reason="#2803: operator doesn't work"
 )
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1])
@@ -118,6 +122,9 @@ def test_conv2d(
 def test_conv2d_padding(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False

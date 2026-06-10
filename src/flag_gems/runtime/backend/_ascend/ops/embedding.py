@@ -7,7 +7,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -21,7 +21,7 @@ def embedding_kernel(
     N: tl.constexpr,  # number of columns in X
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = ext.program_id(0)
+    pid = tle.program_id(0)
     out_ptr += pid * N
     in_ptr += pid
 
@@ -42,7 +42,7 @@ def indice_freq_kernel(
     elem_cnt: tl.constexpr,  # number of columns in X
     INDICE_BLOCK_SIZE: tl.constexpr,
 ):
-    pid = ext.program_id(0)
+    pid = tle.program_id(0)
     block_start = pid * INDICE_BLOCK_SIZE
 
     for i in range(INDICE_BLOCK_SIZE):
@@ -63,7 +63,7 @@ def embedding_backward_kernel(
     N: tl.constexpr,  # number of columns in X
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = ext.program_id(0)
+    pid = tle.program_id(0)
     grad_out += pid * N
     indices += pid
 
@@ -95,8 +95,8 @@ def embedding_grad_scale_kernel(
     N,
     BLOCK_SIZE: tl.constexpr,
 ):
-    row_start = ext.program_id(0)
-    row_step = ext.num_programs(0)
+    row_start = tle.program_id(0)
+    row_step = tle.num_programs(0)
 
     for row_idx in range(row_start, n_rows, row_step):
         embedding_scale = 1.0

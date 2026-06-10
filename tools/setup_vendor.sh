@@ -1,6 +1,5 @@
 VENDOR=$1
-
-export FLAGOS_PYPI="https://resource.flagos.net/repository/flagos-pypi-${VENDOR}/simple"
+echo "Install vendor extension for $VENDOR"
 
 case $VENDOR in
   ascend)
@@ -18,28 +17,6 @@ case $VENDOR in
       uv pip install --index ${FLAGOS_PYPI} \
         triton_ascend==3.2.0
     fi
-    ;;
-
-  enflame)
-    uv pip install -e .
-    # uv pip install ".[enflame]"
-
-    uv pip install --index ${FLAGOS_PYPI} \
-      "torch==2.9.1+cpu" \
-      "torch-gcu==2.9.1+3.7.1" \
-      "triton==3.3.0" \
-      "triton-gcu==3.3.1+1.0.20260323" \
-      "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323"
-
-    uv pip install ".[test]"
-
-    # Replace triton with flagtree if requested
-    # Currenly not working because it requires GLIBCXX_3.4.32
-    # if [ -n "${USE_TRITON}" ]; then
-    #   uv pip uninstall flagtree
-    #   uv pip install --index ${FLAGOS_PYPI} \
-    #     flagtree==0.5.0+enflame3.6
-    # fi
     ;;
 
   hygon)
@@ -97,7 +74,6 @@ case $VENDOR in
 
     uv pip install --index ${FLAGOS_PYPI} \
         "benchflow==1.0.0" \
-        "colorama==0.4.6" \
         "hyperparameter==0.5.6" \
         "torch==2.5.1+cu118" \
         "torchaudio==2.5.1+cu118" \
@@ -112,14 +88,13 @@ case $VENDOR in
     if [ -n ${USE_TRITON} ]; then
       uv pip uninstall flagtree
       uv pip install --index ${FLAGOS_PYPI} \
-        "triton==3.0.0+0762702f"
+        "triton=3.0.0+0762702f"
     fi
     ;;
 
   metax)
     uv pip install -e  .
-    uv pip install ".[metax]"
-    uv pip install ".[test]"
+    uv pip install ".[metax,test]"
 
     uv pip install --index ${FLAGOS_PYPI} \
         "torch==2.8.0+metax3.5.3.9" \
@@ -136,75 +111,37 @@ case $VENDOR in
 
   mthreads)
     uv pip install -e .
-    uv pip install ".[test]"
+    uv pip install ".[mthreads,test]"
 
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.9.0" \
-        "torch_musa==2.9.0" \
+        "torch==2.7.1+musa.4.0.0" \
+        "torch_musa==2.7.1" \
         "numpy==1.26.4" \
-        "mkl==2024.0.0" \
-        "triton==3.6.0+git89458660"
+        "flagtree==0.5.0+mthreads3.1" \
+        "mkl==2024.0.0"
 
     # Replace flagtree with Triton if requested
-    # if [ -n "${USE_TRITON}" ]; then
-    #   uv pip uninstall flagtree
-    #   uv pip uninstall triton
-    #   uv pip install --index $FLAGOS_PYPI \
-    #     "triton==3.6.0+git89458660"
-    # else
-    #   uv pip uninstall triton
-    #   uv pip install --index $FLAGOS_PYPI \
-    #     "flagtree==0.5.1+mthreads3.6"
-    # fi
+    if [ -n "${USE_TRITON}" ]; then
+      uv pip uninstall flagtree
+      uv pip install --index $FLAGOS_PYPI \
+        "triton==3.1.0+musa1.4.6"
+    fi
     ;;
 
   nvidia)
-    # We need pytorch first for building C++ wrapped operators
-    uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.12.0+cu132" \
-        "torchvision==0.27.0+cu132" \
-        "triton==3.7.0"
-
-    # The follow environments are for C++ wrapped operators
-    # export CMAKE_PREFIX_PATH=$(python -c 'import torch; print(torch.utils.cmake_prefix_path)')
-    # export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=CUDA"
-    uv pip install -e . --no-build-isolation
-    uv pip install ".[test]"
-
-    # We don't have flagtree for triton 3.6 yet
-    # if [ -n "${USE_TRITON}" ]; then
-    #   uv pip uninstall triton
-    #   uv pip install --index ${FLAGOS_PYPI} \
-    #     "flagtree==0.5.1+3.6"
-    # fi
-    ;;
-
-  spacemit)
     uv pip install -e .
-    uv pip install ".[spacemit]"
+    uv pip install ".[nvidia,test]"
+
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.8.0+spacemit.0" \
-        "triton==3.6.0+spacemit.a4"
-    uv pip install ".[test]"
-    ;;
+        "torch==2.9.0+cu128" \
+        "torchvision==0.24.0+cu128" \
+        "torchaudio==2.9.0+cu128"
 
-  sunrise)
-    uv pip install -e .
-    uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.11.0+cpu" \
-        "torchaudio==2.11.0+cpu" \
-        "torchvision==0.26.0+cpu" \
-        "torch-ptpu==0.2.1+gaf2c267.torch2.11" \
-        "triton==3.4.0.5+git27a132da"
-    uv pip install ".[test]"
-
-    # We try triton first at this stage
-    # if [ -z "${USE_TRITON}" ]; then
-    #   uv pip uninstall triton
-    #   uv pip install --index ${FLAGOS_PYPI} \
-    #     "flagtree-0.4.0+sunrise3.4"
-    # fi
-
+    if [ -n "${USE_TRITON}" ]; then
+      uv pip uninstall flagtree
+      uv pip install --index ${FLAGOS_PYPI} \
+        "triton==3.5"
+    fi
     ;;
 
   thead)
@@ -230,7 +167,7 @@ case $VENDOR in
     if [ -n "${USE_TRITON}" ]; then
       uv pip uninstall flagtree
       uv pip install --index ${FLAGOS_PYPI} \
-        "triton==3.3.0+gitfe2a28fa"
+        "triton==3.3.0++gitfe2a28fa"
     fi
     ;;
 

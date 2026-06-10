@@ -1,5 +1,4 @@
 from .cross_entropy_loss import cross_entropy_loss
-from .flash_mla import flash_mla
 from .fused_add_rms_norm import fused_add_rms_norm
 from .fused_moe import (
     dispatch_fused_moe_kernel,
@@ -17,7 +16,6 @@ from .sparse_attention import sparse_attn_triton
 __all__ = [
     "cross_entropy_loss",
     "apply_rotary_pos_emb",
-    "flash_mla",
     "fused_add_rms_norm",
     "skip_layer_norm",
     "sparse_attn_triton",

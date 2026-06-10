@@ -8,6 +8,7 @@ add_library(operators
             max.cpp
             mm.cpp
             rms_norm.cpp
+            gemma_rms_norm.cpp
             fused_add_rms_norm.cpp
             rotary_embedding.cpp
             topk.cpp
@@ -55,13 +56,18 @@ elseif(FLAGGEMS_BACKEND STREQUAL "MUSA")
     target_link_libraries(operators
       PUBLIC Torch::Torch
       PRIVATE TritonJIT::triton_jit)
-elseif(FLAGGEMS_BACKEND STREQUAL "GCU")
-    target_link_gcu_libraries(operators)
-    target_link_libraries(operators
-      PUBLIC Torch::Torch
-      PRIVATE TritonJIT::triton_jit)
 endif()
 target_compile_definitions(operators PRIVATE BACKEND_${FLAGGEMS_BACKEND})
+
+# AutotunedCall (lib/utils/autotune_helper.h) embeds pybind11 to call the
+# Python bridge for autotune lookup -- needs Python.h, so pybind11::embed
+# (which brings in Python::Module / Python::Python). It also uses
+# torch/csrc/utils/pybind.h for the at::Tensor caster, whose
+# `TORCH_PYTHON_API` symbol lives in libtorch_python.so.
+target_link_libraries(operators PRIVATE pybind11::embed)
+find_library(TORCH_PYTHON_LIBRARY NAMES torch_python
+             HINTS "${TORCH_INSTALL_PREFIX}/lib" REQUIRED)
+target_link_libraries(operators PRIVATE ${TORCH_PYTHON_LIBRARY})
 
 add_library(FlagGems::operators ALIAS operators)
 

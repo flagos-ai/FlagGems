@@ -5,6 +5,7 @@
 #include "flag_gems/backend_utils.h"
 #include "torch/torch.h"
 #include "triton_jit/triton_jit_function.h"
+#include "utils/autotune_helper.h"
 
 #include <filesystem>
 #include "ATen/WrapDimUtils.h"
@@ -23,11 +24,6 @@ using namespace triton_jit;
   const TritonJITFunction &f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
                                       "max_kernel");
-  int64_t tile_m = 4;
-  int64_t tile_n = 512;
-  const int num_warps = 8;
-  const int num_stages = 2;
-  const unsigned int num_blocks = (non_reduction_size + tile_m - 1) / tile_m;
   /*
   def max_kernel(
       inp,
@@ -39,23 +35,43 @@ using namespace triton_jit;
       BLOCK_N: tl.constexpr,
   ):
   */
+  static AutotunedCall ac(
+      std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
+      "max_kernel",
+      {"M", "N"});
+  // Grid lambda for the SQL-miss bench path (Q12). For SQL-cached shapes
+  // (the common case) this is never invoked.
+  auto grid_fn = [](const triton_jit::Config& c)
+      -> std::tuple<unsigned, unsigned, unsigned> {
+    int64_t M = get_int_kwarg(c, "M");
+    int64_t bm = get_int_kwarg(c, "BLOCK_M");
+    return {static_cast<unsigned>((M + bm - 1) / bm), 1u, 1u};
+  };
+  const triton_jit::Config &cfg = ac.lookup(
+      TuneKey{non_reduction_size, reduction_size},
+      grid_fn,
+      permuted_self,
+      out_value,
+      out_index,
+      non_reduction_size,
+      reduction_size);
+  const int64_t tile_m = get_int_kwarg(cfg, "BLOCK_M");
+  const unsigned int num_blocks = (non_reduction_size + tile_m - 1) / tile_m;
+
   c10::DeviceGuard guard(out_value.device());
   backend::StreamType stream = backend::getCurrentStream();
   backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
-  f(raw_stream,
-    num_blocks,
-    1,
-    1,
-    num_warps,
-    num_stages,
-    permuted_self,
-    out_value,
-    out_index,
-    non_reduction_size,
-    reduction_size,
-    tile_m,
-    tile_n);
+  f.autotuned_call(raw_stream,
+                   num_blocks,
+                   1,
+                   1,
+                   cfg,
+                   permuted_self,
+                   out_value,
+                   out_index,
+                   non_reduction_size,
+                   reduction_size);
 
   return std::forward_as_tuple(out_value, out_index);
 }
@@ -70,11 +86,6 @@ using namespace triton_jit;
   const TritonJITFunction &f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
                                       "max_kernel");
-  int64_t tile_m = 4;
-  int64_t tile_n = 512;
-  const int num_warps = 8;
-  const int num_stages = 2;
-  const unsigned int num_blocks = (non_reduction_size + tile_m - 1) / tile_m;
   /*
   def max_kernel(
       inp,
@@ -86,23 +97,43 @@ using namespace triton_jit;
       BLOCK_N: tl.constexpr,
   ):
   */
+  static AutotunedCall ac(
+      std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
+      "max_kernel",
+      {"M", "N"});
+  // Grid lambda for the SQL-miss bench path (Q12). For SQL-cached shapes
+  // (the common case) this is never invoked.
+  auto grid_fn = [](const triton_jit::Config& c)
+      -> std::tuple<unsigned, unsigned, unsigned> {
+    int64_t M = get_int_kwarg(c, "M");
+    int64_t bm = get_int_kwarg(c, "BLOCK_M");
+    return {static_cast<unsigned>((M + bm - 1) / bm), 1u, 1u};
+  };
+  const triton_jit::Config &cfg = ac.lookup(
+      TuneKey{non_reduction_size, reduction_size},
+      grid_fn,
+      permuted_self,
+      out_value,
+      out_index,
+      non_reduction_size,
+      reduction_size);
+  const int64_t tile_m = get_int_kwarg(cfg, "BLOCK_M");
+  const unsigned int num_blocks = (non_reduction_size + tile_m - 1) / tile_m;
+
   c10::DeviceGuard guard(out_value.device());
   backend::StreamType stream = backend::getCurrentStream();
   backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
-  f(raw_stream,
-    num_blocks,
-    1,
-    1,
-    num_warps,
-    num_stages,
-    permuted_self,
-    out_value,
-    out_index,
-    non_reduction_size,
-    reduction_size,
-    tile_m,
-    tile_n);
+  f.autotuned_call(raw_stream,
+                   num_blocks,
+                   1,
+                   1,
+                   cfg,
+                   permuted_self,
+                   out_value,
+                   out_index,
+                   non_reduction_size,
+                   reduction_size);
 
   return std::make_tuple(out_value, out_index);
 }
