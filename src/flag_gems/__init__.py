@@ -403,6 +403,7 @@ _FULL_CONFIG = (
     ("neg", neg),
     ("neg_", neg_),
     ("new_full.Tensor", new_full),
+    ("new_ones", new_ones),
     ("nll_loss2d_backward", nll_loss2d_backward),
     ("nll_loss2d_forward", nll_loss2d_forward),
     ("nll_loss_backward", nll_loss_backward),
