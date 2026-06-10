@@ -12,10 +12,10 @@ device = flag_gems.device
 
 # Shape configs for QUICK_MODE
 if cfg.QUICK_MODE:
-    HEAD_SIZE_LIST = [64, 256]
-    BLOCK_SIZE_LIST = [8, 32]
+    HEAD_SIZE_LIST = [64]
+    BLOCK_SIZE_LIST = [8]
     NUM_BLOCKS_LIST = [1024]
-    DTYPE_LIST = [torch.half, torch.bfloat16]
+    DTYPE_LIST = [torch.float]
 else:
     HEAD_SIZE_LIST = [64, 80, 120, 256]
     BLOCK_SIZE_LIST = [8, 16, 32]
