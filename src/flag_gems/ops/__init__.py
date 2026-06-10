@@ -373,6 +373,7 @@ from flag_gems.ops.softmax import (
 from flag_gems.ops.softplus import softplus
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
+from flag_gems.ops.special_chebyshev_polynomial_w import chebyshev_polynomial_w
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
@@ -428,6 +429,8 @@ from flag_gems.ops.where import (
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
+
+special_chebyshev_polynomial_w = chebyshev_polynomial_w
 
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
@@ -894,6 +897,8 @@ __all__ = [
     "softshrink_out",
     "sort",
     "sort_stable",
+    "special_chebyshev_polynomial_w",
+    "chebyshev_polynomial_w",
     "special_i0e",
     "special_i0e_out",
     "special_i1",
