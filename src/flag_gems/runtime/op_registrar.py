@@ -1,10 +1,10 @@
 import warnings
 
 from . import backend, common, error
-from .backend.device import DeviceDetector
+from .backend.device_finder import DeviceDetector
 
 
-class Register:
+class GeneralOpRegistrar:
     def __init__(
         self,
         config,
