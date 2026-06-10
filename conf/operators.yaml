@@ -6165,6 +6165,19 @@ ops:
       - DSA
     stages:
       - beta: '5.0'
+  - id: special_erfcx
+    description: |
+      Computes the scaled complementary error function for each element of input.
+    for:
+      - special.erfcx
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
