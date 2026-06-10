@@ -6165,6 +6165,17 @@ ops:
       - DSA
     stages:
       - beta: '5.0'
+  - id: special_gammaln
+    description: Computes the logarithm of the absolute value of the Gamma function on input.
+    for:
+      - special.gammaln
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
