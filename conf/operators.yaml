@@ -2038,7 +2038,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: embedding_dense_backward
     description: Calculates the gradient of the weight matrix for a dense embedding layer during backpropagation.
     for:
