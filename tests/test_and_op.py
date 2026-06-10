@@ -37,6 +37,41 @@ def test_and_op(shape, dtype):
 
 
 @pytest.mark.and_op
+def test_and_op_bool_broadcast():
+    inp1 = torch.tensor(
+        [[True, False, True]], dtype=torch.bool, device=flag_gems.device
+    )
+    inp2 = torch.tensor(
+        [[False], [False], [True]], dtype=torch.bool, device=flag_gems.device
+    )
+    ref_inp1 = utils.to_reference(inp1)
+    ref_inp2 = utils.to_reference(inp2)
+
+    ref_out = ref_inp1.__and__(ref_inp2)
+    with flag_gems.use_gems():
+        res_out = inp1.__and__(inp2)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.and_op
+@pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES)
+def test_and_op_integer_edge_cases(dtype):
+    inp1 = torch.tensor([-1, -1, 0, 123, -123], dtype=dtype, device=flag_gems.device)
+    inp2 = torch.tensor(
+        [0x00FF, -1, 123, 0, -123], dtype=dtype, device=flag_gems.device
+    )
+    ref_inp1 = utils.to_reference(inp1)
+    ref_inp2 = utils.to_reference(inp2)
+
+    ref_out = ref_inp1.__and__(ref_inp2)
+    with flag_gems.use_gems():
+        res_out = inp1.__and__(inp2)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.and_op
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)
 def test_and_op_i(shape, dtype):
