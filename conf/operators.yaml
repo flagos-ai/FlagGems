@@ -4203,7 +4203,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: per_token_group_quant_fp8
     description: |
       Function to perform per-token-group quantization on an input tensor `x`.
