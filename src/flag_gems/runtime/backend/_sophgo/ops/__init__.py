@@ -27,6 +27,7 @@ from .index_put import index_put, index_put_
 from .index_select import index_select
 from .isclose import isclose
 from .isfinite import isfinite
+from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
 from .kron import kron
@@ -37,7 +38,6 @@ from .logical_not import logical_not
 from .logical_or import logical_or
 from .logical_xor import logical_xor
 from .masked_select import masked_select
-from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
@@ -73,8 +73,8 @@ from .uniform import uniform_
 from .unique import _unique2
 from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
-from .vector_norm import vector_norm
 from .vdot import vdot
+from .vector_norm import vector_norm
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 
 __all__ = [
@@ -117,6 +117,7 @@ __all__ = [
     "index_select",
     "isclose",
     "isfinite",
+    "isin",
     "isinf",
     "isnan",
     "kron",
@@ -127,8 +128,6 @@ __all__ = [
     "logical_or",
     "logical_xor",
     "masked_select",
-    "max",
-    "max_dim",
     "mean",
     "mean_dim",
     "min",
