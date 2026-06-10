@@ -203,7 +203,7 @@ from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tens
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
-from flag_gems.ops.log1p import log1p
+from flag_gems.ops.log1p import log1p, log1p_out
 from flag_gems.ops.log1p_ import log1p_
 from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log_sigmoid import log_sigmoid
@@ -247,6 +247,12 @@ from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.mv import mv
 from flag_gems.ops.nan_to_num import nan_to_num
+from flag_gems.ops.nanmedian import (
+    nanmedian,
+    nanmedian_dim,
+    nanmedian_dim_values,
+    nanmedian_out,
+)
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.new_full import new_full
@@ -335,6 +341,12 @@ from flag_gems.ops.searchsorted import (
     searchsorted_scalar,
     searchsorted_scalar_out,
 )
+from flag_gems.ops.segment_reduce import (
+    _segment_reduce_backward,
+    _segment_reduce_backward_out,
+    segment_reduce,
+    segment_reduce_out,
+)
 from flag_gems.ops.select_backward import select_backward
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.selu import selu
@@ -387,10 +399,12 @@ from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
+from flag_gems.ops.unique_dim import unique_dim
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from flag_gems.ops.upsample_linear1d import upsample_linear1d
+from flag_gems.ops.upsample_linear1d_backward import upsample_linear1d_backward
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
@@ -417,6 +431,8 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "SUPPORTED_FP8_DTYPE",
+    "ScaleDotProductAttention",
     "_assert_async",
     "_conv_depthwise2d",
     "_euclidean_dist",
@@ -425,6 +441,8 @@ __all__ = [
     "_is_all_true",
     "_resize_output",
     "_safe_softmax",
+    "_segment_reduce_backward",
+    "_segment_reduce_backward_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
@@ -600,9 +618,9 @@ __all__ = [
     "flip",
     "floor",
     "floor_",
-    "floor_out",
     "floor_divide",
     "floor_divide_",
+    "floor_out",
     "fmin",
     "fmin_out",
     "fmod_",
@@ -687,14 +705,14 @@ __all__ = [
     "log10",
     "log10_",
     "log10_out",
+    "log1p",
     "log1p_",
+    "log1p_out",
     "log_sigmoid",
     "log_softmax",
     "log_softmax_backward",
     "log_softmax_backward_out",
     "log_softmax_out",
-    "log1p",
-    "log1p_",
     "logaddexp",
     "logaddexp_out",
     "logical_and",
@@ -740,6 +758,10 @@ __all__ = [
     "multinomial",
     "mv",
     "nan_to_num",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "ne",
     "ne_scalar",
     "neg",
@@ -830,7 +852,6 @@ __all__ = [
     "scaled_mm_out",
     "scaled_softmax_backward",
     "scaled_softmax_forward",
-    "ScaleDotProductAttention",
     "scatter",
     "scatter_",
     "scatter_add_",
@@ -841,6 +862,8 @@ __all__ = [
     "searchsorted_out",
     "searchsorted_scalar",
     "searchsorted_scalar_out",
+    "segment_reduce",
+    "segment_reduce_out",
     "select_backward",
     "select_scatter",
     "selu",
@@ -891,7 +914,6 @@ __all__ = [
     "sum_dim",
     "sum_dim_out",
     "sum_out",
-    "SUPPORTED_FP8_DTYPE",
     "svd",
     "t_copy",
     "t_copy_out",
@@ -918,8 +940,10 @@ __all__ = [
     "unfold_backward",
     "uniform_",
     "unique_consecutive",
+    "unique_dim",
     "upsample_bicubic2d",
     "upsample_linear1d",
+    "upsample_linear1d_backward",
     "upsample_nearest1d",
     "upsample_nearest2d",
     "upsample_nearest3d",
