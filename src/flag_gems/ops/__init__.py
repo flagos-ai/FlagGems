@@ -240,6 +240,7 @@ from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
+from flag_gems.ops.mish import mish, mish_backward
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mul import mul, mul_
@@ -304,6 +305,9 @@ from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
+from flag_gems.ops.reflection_pad2d_backward import reflection_pad2d_backward
+from flag_gems.ops.reflection_pad3d import reflection_pad3d, reflection_pad3d_out
+from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
 from flag_gems.ops.remainder import remainder, remainder_
@@ -748,6 +752,8 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
+    "mish",
+    "mish_backward",
     "mm",
     "mm_out",
     "mse_loss",
@@ -812,7 +818,11 @@ __all__ = [
     "reflection_pad1d_backward",
     "reflection_pad1d_out",
     "reflection_pad2d",
+    "reflection_pad2d_backward",
     "reflection_pad2d_out",
+    "reflection_pad3d",
+    "reflection_pad3d_backward",
+    "reflection_pad3d_out",
     "relu",
     "relu6",
     "relu_",
