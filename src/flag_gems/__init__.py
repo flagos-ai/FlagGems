@@ -528,6 +528,8 @@ _FULL_CONFIG = (
     ("special_i0e.out", special_i0e_out),
     ("special_i1", special_i1),
     ("special_i1.out", special_i1_out),
+    ("special.scaled_modified_bessel_k1", special_scaled_modified_bessel_k1),
+    ("special.scaled_modified_bessel_k1.out", special_scaled_modified_bessel_k1_out),
     ("split_with_sizes_copy", split_with_sizes_copy),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
