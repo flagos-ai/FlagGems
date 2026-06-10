@@ -626,8 +626,7 @@ def test_flash_attention_foward_swa(
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not supported")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
-    ["batch", "num_head", "q_seq_len", "kv_seq_len"],
-    DROPOUT_CONFIGS
+    ["batch", "num_head", "q_seq_len", "kv_seq_len"], DROPOUT_CONFIGS
 )
 @pytest.mark.parametrize("head_size", [128])
 @pytest.mark.parametrize("is_causal", [False, True])
