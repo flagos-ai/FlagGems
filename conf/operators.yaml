@@ -5964,7 +5964,7 @@ ops:
     kind:
       - Reduction
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
