@@ -14,36 +14,142 @@ logger = logging.getLogger(
 )
 device = device.name
 
-ASCEND_910B_UB_BYTES = 192 * 1024
-UB_RESERVED_BYTES = 16 * 1024
-TEMP_BYTES_PER_LANE = 288
-MAX_ROWS_PER_BLOCK = 16
-MIN_BLOCK_W = 64
-DOT_COEFF_MAX_ELEMENTS = 4 * 1024 * 1024
-DOT_DOWNSAMPLE_COEFF_MAX_ELEMENTS = 8 * 1024 * 1024
-DOT_MIN_ROWS = 16
-DOT_ALIGN_FALSE_MIN_ROWS = 1024
-DOT_BLOCK_M = 128
-DOT_BLOCK_N = 256
-DOT_BLOCK_K = 64
-WINDOW_DOT_MIN_IN_W = 2048
-WINDOW_DOT_MAX_ROWS = 256
-WINDOW_DOT_BLOCK_M = 64
-WINDOW_DOT_BLOCK_N = 32
-WINDOW_DOT_BLOCK_K = 128
-ALIGN_TRUE_WINDOW_DOT_BLOCK_M = 32
-ALIGN_TRUE_WINDOW_DOT_BLOCK_N = 32
-ALIGN_TRUE_WINDOW_DOT_BLOCK_K = 128
-SCALE2_CONTIG_MIN_IN_W = 2048
-SCALE2_CONTIG_BLOCK_W = 1024
-SCALE2_CONTIG_BLOCK_2W = SCALE2_CONTIG_BLOCK_W * 2
-SCALE2_BOUNDARY_BLOCK_M = 128
-GENERIC_SCAN_BLOCK_K = 16
-TORCH_COMPOSE_MIN_IN_W = 4096
-TORCH_COMPOSE_MIN_ROWS = 1024
-_TORCH_COMPOSE_CACHE = {}
+
+class _TileConfig:
+    # Fixed 910B UB budget used by the generic Triton tile selector.
+    UB_BYTES = 192 * 1024
+    UB_RESERVED_BYTES = 16 * 1024
+    TEMP_BYTES_PER_LANE = 288
+    MAX_ROWS_PER_BLOCK = 16
+    MIN_BLOCK_W = 64
 
 
+class _DotConfig:
+    # Dense coefficient dot is efficient only when the coefficient matrix is bounded.
+    COEFF_MAX_ELEMENTS = 4 * 1024 * 1024
+    DOWNSAMPLE_COEFF_MAX_ELEMENTS = 8 * 1024 * 1024
+    MIN_ROWS = 16
+    ALIGN_FALSE_MIN_ROWS = 1024
+    BLOCK_M = 128
+    BLOCK_N = 256
+    BLOCK_K = 64
+    DOWNSAMPLE_BLOCK_K = 128
+    COEFF_BLOCK = 1024
+
+
+class _WindowDotConfig:
+    # Scale-2 window kernels keep only the local interpolation window in flight.
+    MIN_IN_W = 2048
+    MAX_ROWS = 256
+    BLOCK_M = 64
+    BLOCK_N = 32
+    BLOCK_K = 128
+    ALIGN_TRUE_BLOCK_M = 32
+    ALIGN_TRUE_BLOCK_N = 32
+    ALIGN_TRUE_BLOCK_K = 128
+
+
+class _Scale2Config:
+    CONTIG_MIN_IN_W = 2048
+    CONTIG_BLOCK_W = 1024
+    CONTIG_BLOCK_2W = CONTIG_BLOCK_W * 2
+    BOUNDARY_BLOCK_M = 128
+
+
+class _GenericConfig:
+    SCAN_BLOCK_K = 16
+
+
+class _TorchComposeConfig:
+    # Large exact scale-2 cases can be faster through torch_npu composed ops.
+    MIN_IN_W = 4096
+    MIN_ROWS = 1024
+    CACHE = {}
+
+
+class _TilingKey:
+    # Each dispatch dimension owns one 4-bit field, so new categories can be
+    # added without changing the selector shape.
+    FIELD_MASK = 0xF
+    DTYPE_SHIFT = 0
+    SCALE_SHIFT = 4
+    ALIGN_SHIFT = 8
+    WIDTH_SHIFT = 12
+    ROWS_SHIFT = 16
+
+    DTYPE_OTHER = 0
+    DTYPE_FP16 = 1
+    DTYPE_BF16 = 2
+    DTYPE_FP32 = 3
+
+    SCALE_OTHER = 0
+    SCALE_DOWN2 = 1
+    SCALE_UP2 = 2
+    SCALE_UP_GT2 = 3
+
+    ALIGN_FALSE = 0
+    ALIGN_TRUE = 1
+
+    WIDTH_WINDOW = 0x1
+    WIDTH_COMPOSE = 0x2
+
+    ROWS_DOT = 0x1
+    ROWS_WINDOW = 0x2
+    ROWS_COMPOSE = 0x4
+
+    @classmethod
+    def pack(cls, dtype_bits, scale_bits, align_bits, width_bits, row_bits):
+        return (
+            ((dtype_bits & cls.FIELD_MASK) << cls.DTYPE_SHIFT)
+            | ((scale_bits & cls.FIELD_MASK) << cls.SCALE_SHIFT)
+            | ((align_bits & cls.FIELD_MASK) << cls.ALIGN_SHIFT)
+            | ((width_bits & cls.FIELD_MASK) << cls.WIDTH_SHIFT)
+            | ((row_bits & cls.FIELD_MASK) << cls.ROWS_SHIFT)
+        )
+
+    @classmethod
+    def field(cls, tiling_key, shift):
+        return (tiling_key >> shift) & cls.FIELD_MASK
+
+
+class _FeatureMask:
+    # Derived feature bits cache repeated dtype/shape comparisons for path gates.
+    DTYPE_FLOAT = 1 << 0
+    DTYPE_HALFISH = 1 << 1
+    DTYPE_FP16 = 1 << 2
+    ALIGN_FALSE = 1 << 3
+    ALIGN_TRUE = 1 << 4
+    SCALE_DOWN2 = 1 << 5
+    SCALE_UP2 = 1 << 6
+    SCALE_UP_GT2 = 1 << 7
+    SCALE_EXACT2 = SCALE_DOWN2 | SCALE_UP2
+    WIDTH_WINDOW = 1 << 8
+    WIDTH_SCALE2_CONTIG = 1 << 9
+    WIDTH_COMPOSE = 1 << 10
+    ROWS_DOT = 1 << 11
+    ROWS_WINDOW = 1 << 12
+    ROWS_COMPOSE = 1 << 13
+    ROWS_ALIGN_FALSE_DOT = 1 << 14
+    DOT_COEFF_OK = 1 << 15
+
+
+class _DispatchPath:
+    # Final launcher ids. The selector owns priority; the entrypoint only launches.
+    DOWNSAMPLE_VIEW_COPY = 1
+    SCALE2_CONV = 2
+    ALIGN_TRUE_SCALE2_CONV = 3
+    DOT = 4
+    WINDOW_DOT = 5
+    ALIGN_TRUE_WINDOW_DOT = 6
+    SCALE2_CONTIG = 7
+    ALIGN_FALSE_DOWN2 = 8
+    ALIGN_FALSE_UP2 = 9
+    FULL_SCAN = 10
+    GENERIC = 11
+
+
+# Purpose: materialize interpolation coefficients for the dense dot path.
+# Applies to: fp16/bf16/fp32 exact 2x upsample or downsample within coefficient-size gates.
 @triton.jit
 def upsample_linear1d_backward_coeff_kernel(
     coeff_ptr,
@@ -80,6 +186,8 @@ def upsample_linear1d_backward_coeff_kernel(
     tl.store(coeff_ptr + offsets, weight, mask=mask)
 
 
+# Purpose: compute grad_input = grad_output @ coeff for exact scale-2 paths.
+# Applies to: fp16/bf16/fp32 exact 2x upsample/downsample after row and coeff-size gates.
 @triton.jit
 def upsample_linear1d_backward_dot_kernel(
     grad_out_ptr,
@@ -119,6 +227,8 @@ def upsample_linear1d_backward_dot_kernel(
     )
 
 
+# Purpose: dot over the local align_corners=True scale-2 interpolation window.
+# Applies to: fp16 exact 2x upsample, large width, after compose/dense-dot/contiguous gates.
 @triton.jit
 def upsample_linear1d_backward_scale2_align_true_window_dot_kernel(
     grad_out_ptr,
@@ -170,6 +280,8 @@ def upsample_linear1d_backward_scale2_align_true_window_dot_kernel(
     )
 
 
+# Purpose: dot over the local align_corners=False scale-2 interpolation window.
+# Applies to: fp16/bf16 exact 2x upsample with large width and small row count.
 @triton.jit
 def upsample_linear1d_backward_scale2_window_dot_kernel(
     grad_out_ptr,
@@ -221,6 +333,8 @@ def upsample_linear1d_backward_scale2_window_dot_kernel(
     )
 
 
+# Purpose: generic local-window backward for arbitrary non-high-scale linear resize.
+# Applies to: all supported dtypes/shapes not captured by faster exact-scale paths.
 @triton.jit
 def upsample_linear1d_backward_kernel(
     grad_out_ptr,
@@ -291,6 +405,8 @@ def upsample_linear1d_backward_kernel(
         row_start += row_step
 
 
+# Purpose: full output scan for high upsample ratios where local windowing is insufficient.
+# Applies to: arbitrary dtype/shape fallback when out_w > 2 * in_w.
 @triton.jit
 def upsample_linear1d_backward_full_scan_kernel(
     grad_out_ptr,
@@ -359,6 +475,8 @@ def upsample_linear1d_backward_full_scan_kernel(
         row_start += row_step
 
 
+# Purpose: closed-form align_corners=False exact 2x downsample or upsample backward.
+# Applies to: fallback exact scale 0.5/2.0 paths for all supported dtypes.
 @triton.jit
 def upsample_linear1d_backward_align_false_scale_kernel(
     grad_out_ptr,
@@ -420,6 +538,8 @@ def upsample_linear1d_backward_align_false_scale_kernel(
         row_start += row_step
 
 
+# Purpose: contiguous-load align_corners=False exact 2x upsample backward.
+# Applies to: large-width exact 2x upsample for any supported dtype after higher-priority gates.
 @triton.jit
 def upsample_linear1d_backward_align_false_scale2_contig_kernel(
     grad_out_ptr,
@@ -465,6 +585,8 @@ def upsample_linear1d_backward_align_false_scale2_contig_kernel(
         row_start += row_step
 
 
+# Purpose: contiguous-load align_corners=True exact 2x upsample backward.
+# Applies to: large-width exact 2x upsample except fp16 small-row window-dot cases.
 @triton.jit
 def upsample_linear1d_backward_align_true_scale2_contig_kernel(
     grad_out_ptr,
@@ -516,6 +638,8 @@ def upsample_linear1d_backward_align_true_scale2_contig_kernel(
         row_start += row_step
 
 
+# Purpose: add boundary corrections after the torch_npu conv2d scale-2 compose path.
+# Applies to: large exact 2x align_corners=False compose path for fp16/bf16/fp32.
 @triton.jit
 def upsample_linear1d_backward_scale2_boundary_kernel(
     grad_out_ptr,
@@ -571,107 +695,277 @@ def _prev_power_of_2(value):
 
 
 def _select_tiles(in_w, element_size):
-    bytes_per_lane = TEMP_BYTES_PER_LANE + element_size * 8
-    usable_ub = ASCEND_910B_UB_BYTES - UB_RESERVED_BYTES
+    bytes_per_lane = _TileConfig.TEMP_BYTES_PER_LANE + element_size * 8
+    usable_ub = _TileConfig.UB_BYTES - _TileConfig.UB_RESERVED_BYTES
     max_tile_elements = _prev_power_of_2(max(1, usable_ub // bytes_per_lane))
-    block_w = min(max(MIN_BLOCK_W, triton.next_power_of_2(in_w)), max_tile_elements)
-    rows_per_block = max(1, min(MAX_ROWS_PER_BLOCK, max_tile_elements // block_w))
-    return block_w, rows_per_block
-
-
-def _can_use_dot_path(grad_output, rows, in_w, out_w, align_corners):
-    if grad_output.dtype not in (torch.float16, torch.bfloat16, torch.float32):
-        return False
-
-    exact_downsample = out_w * 2 == in_w
-    exact_upsample = out_w == in_w * 2
-    if not (exact_downsample or exact_upsample):
-        return False
-
-    if rows < DOT_MIN_ROWS and not (align_corners and exact_downsample):
-        return False
-
-    if not align_corners and rows < DOT_ALIGN_FALSE_MIN_ROWS:
-        return False
-
-    max_coeff_elements = (
-        DOT_DOWNSAMPLE_COEFF_MAX_ELEMENTS
-        if exact_downsample
-        else DOT_COEFF_MAX_ELEMENTS
+    block_w = min(
+        max(_TileConfig.MIN_BLOCK_W, triton.next_power_of_2(in_w)),
+        max_tile_elements,
     )
-    return in_w * out_w <= max_coeff_elements
+    rows_per_block = max(
+        1, min(_TileConfig.MAX_ROWS_PER_BLOCK, max_tile_elements // block_w)
+    )
+    return block_w, rows_per_block
 
 
 def _dot_block_k(grad_output, in_w, out_w):
     if (
         out_w * 2 == in_w
-        and in_w >= 4096
+        and in_w >= _TorchComposeConfig.MIN_IN_W
         and grad_output.dtype
         in (
             torch.float16,
             torch.bfloat16,
         )
     ):
-        return 128
-    return DOT_BLOCK_K
+        return _DotConfig.DOWNSAMPLE_BLOCK_K
+    return _DotConfig.BLOCK_K
 
 
-def _can_use_window_dot_path(grad_output, rows, in_w, out_w, align_corners):
-    return (
-        not align_corners
-        and out_w == in_w * 2
-        and in_w >= WINDOW_DOT_MIN_IN_W
-        and rows <= WINDOW_DOT_MAX_ROWS
-        and grad_output.dtype in (torch.float16, torch.bfloat16)
+def _dtype_tiling_bits(dtype):
+    if dtype == torch.float16:
+        return _TilingKey.DTYPE_FP16
+    if dtype == torch.bfloat16:
+        return _TilingKey.DTYPE_BF16
+    if dtype == torch.float32:
+        return _TilingKey.DTYPE_FP32
+    return _TilingKey.DTYPE_OTHER
+
+
+def _upsample_linear1d_backward_tiling_key(
+    grad_output, rows, in_w, out_w, align_corners
+):
+    dtype_bits = _dtype_tiling_bits(grad_output.dtype)
+
+    if out_w * 2 == in_w:
+        scale_bits = _TilingKey.SCALE_DOWN2
+    elif out_w == in_w * 2:
+        scale_bits = _TilingKey.SCALE_UP2
+    elif out_w > in_w * 2:
+        scale_bits = _TilingKey.SCALE_UP_GT2
+    else:
+        scale_bits = _TilingKey.SCALE_OTHER
+
+    align_bits = _TilingKey.ALIGN_TRUE if align_corners else _TilingKey.ALIGN_FALSE
+
+    width_bits = 0
+    if in_w >= _WindowDotConfig.MIN_IN_W:
+        width_bits |= _TilingKey.WIDTH_WINDOW
+    if in_w >= _TorchComposeConfig.MIN_IN_W:
+        width_bits |= _TilingKey.WIDTH_COMPOSE
+
+    row_bits = 0
+    if rows >= _DotConfig.MIN_ROWS:
+        row_bits |= _TilingKey.ROWS_DOT
+    if rows <= _WindowDotConfig.MAX_ROWS:
+        row_bits |= _TilingKey.ROWS_WINDOW
+    if rows >= _TorchComposeConfig.MIN_ROWS:
+        row_bits |= _TilingKey.ROWS_COMPOSE
+
+    return _TilingKey.pack(dtype_bits, scale_bits, align_bits, width_bits, row_bits)
+
+
+def _upsample_linear1d_backward_feature_mask(tiling_key, rows, in_w, out_w):
+    # The compact key stores coarse buckets; this mask expands overlapping
+    # capabilities so path predicates can share the same comparisons.
+    dtype_bits = _TilingKey.field(tiling_key, _TilingKey.DTYPE_SHIFT)
+    scale_bits = _TilingKey.field(tiling_key, _TilingKey.SCALE_SHIFT)
+    align_bits = _TilingKey.field(tiling_key, _TilingKey.ALIGN_SHIFT)
+    width_bits = _TilingKey.field(tiling_key, _TilingKey.WIDTH_SHIFT)
+    row_bits = _TilingKey.field(tiling_key, _TilingKey.ROWS_SHIFT)
+
+    feature_mask = 0
+
+    if dtype_bits in (
+        _TilingKey.DTYPE_FP16,
+        _TilingKey.DTYPE_BF16,
+        _TilingKey.DTYPE_FP32,
+    ):
+        feature_mask |= _FeatureMask.DTYPE_FLOAT
+    if dtype_bits in (_TilingKey.DTYPE_FP16, _TilingKey.DTYPE_BF16):
+        feature_mask |= _FeatureMask.DTYPE_HALFISH
+    if dtype_bits == _TilingKey.DTYPE_FP16:
+        feature_mask |= _FeatureMask.DTYPE_FP16
+
+    if align_bits == _TilingKey.ALIGN_TRUE:
+        feature_mask |= _FeatureMask.ALIGN_TRUE
+    else:
+        feature_mask |= _FeatureMask.ALIGN_FALSE
+
+    if scale_bits == _TilingKey.SCALE_DOWN2:
+        feature_mask |= _FeatureMask.SCALE_DOWN2
+    elif scale_bits == _TilingKey.SCALE_UP2:
+        feature_mask |= _FeatureMask.SCALE_UP2
+    elif scale_bits == _TilingKey.SCALE_UP_GT2:
+        feature_mask |= _FeatureMask.SCALE_UP_GT2
+
+    if width_bits & _TilingKey.WIDTH_WINDOW:
+        feature_mask |= _FeatureMask.WIDTH_WINDOW
+    if in_w >= _Scale2Config.CONTIG_MIN_IN_W:
+        feature_mask |= _FeatureMask.WIDTH_SCALE2_CONTIG
+    if width_bits & _TilingKey.WIDTH_COMPOSE:
+        feature_mask |= _FeatureMask.WIDTH_COMPOSE
+
+    if row_bits & _TilingKey.ROWS_DOT:
+        feature_mask |= _FeatureMask.ROWS_DOT
+    if row_bits & _TilingKey.ROWS_WINDOW:
+        feature_mask |= _FeatureMask.ROWS_WINDOW
+    if row_bits & _TilingKey.ROWS_COMPOSE:
+        feature_mask |= _FeatureMask.ROWS_COMPOSE
+    if rows >= _DotConfig.ALIGN_FALSE_MIN_ROWS:
+        feature_mask |= _FeatureMask.ROWS_ALIGN_FALSE_DOT
+
+    if scale_bits == _TilingKey.SCALE_DOWN2:
+        max_coeff_elements = _DotConfig.DOWNSAMPLE_COEFF_MAX_ELEMENTS
+    else:
+        max_coeff_elements = _DotConfig.COEFF_MAX_ELEMENTS
+    if (
+        feature_mask & _FeatureMask.SCALE_EXACT2
+    ) and in_w * out_w <= max_coeff_elements:
+        feature_mask |= _FeatureMask.DOT_COEFF_OK
+
+    return feature_mask
+
+
+def _select_upsample_linear1d_backward_path(
+    grad_output, rows, in_w, out_w, align_corners
+):
+    # Keep path priority in one place. The entrypoint consumes only the final id.
+    tiling_key = _upsample_linear1d_backward_tiling_key(
+        grad_output, rows, in_w, out_w, align_corners
     )
-
-
-def _can_use_align_true_window_dot_path(grad_output, in_w, out_w, align_corners):
-    return (
-        align_corners
-        and out_w == in_w * 2
-        and in_w >= WINDOW_DOT_MIN_IN_W
-        and grad_output.dtype == torch.float16
+    feature_mask = _upsample_linear1d_backward_feature_mask(
+        tiling_key, rows, in_w, out_w
     )
+    scale_bits = _TilingKey.field(tiling_key, _TilingKey.SCALE_SHIFT)
+    align_bits = _TilingKey.field(tiling_key, _TilingKey.ALIGN_SHIFT)
 
+    dot_required = _FeatureMask.DTYPE_FLOAT | _FeatureMask.DOT_COEFF_OK
+    dot_align_true_down2_required = _FeatureMask.ALIGN_TRUE | _FeatureMask.SCALE_DOWN2
+    scale2_contig_required = _FeatureMask.SCALE_UP2 | _FeatureMask.WIDTH_SCALE2_CONTIG
+    align_true_fp16_required = _FeatureMask.ALIGN_TRUE | _FeatureMask.DTYPE_FP16
 
-def _can_use_scale2_contig_path(grad_output, rows, in_w, out_w, align_corners):
-    if out_w != in_w * 2 or in_w < SCALE2_CONTIG_MIN_IN_W:
-        return False
+    if scale_bits == _TilingKey.SCALE_DOWN2:
+        required = (
+            _FeatureMask.ALIGN_FALSE
+            | _FeatureMask.SCALE_DOWN2
+            | _FeatureMask.WIDTH_COMPOSE
+            | _FeatureMask.ROWS_COMPOSE
+            | _FeatureMask.DTYPE_FLOAT
+        )
+        if (feature_mask & required) == required:
+            return _DispatchPath.DOWNSAMPLE_VIEW_COPY
 
-    if align_corners:
-        return grad_output.dtype != torch.float16 or rows > WINDOW_DOT_MAX_ROWS
-    return True
+        if (
+            (feature_mask & dot_required) == dot_required
+            and (feature_mask & _FeatureMask.SCALE_EXACT2) != 0
+            and (
+                (feature_mask & _FeatureMask.ROWS_DOT) != 0
+                or (feature_mask & dot_align_true_down2_required)
+                == dot_align_true_down2_required
+            )
+            and (
+                (feature_mask & _FeatureMask.ALIGN_FALSE) == 0
+                or (feature_mask & _FeatureMask.ROWS_ALIGN_FALSE_DOT) != 0
+            )
+        ):
+            return _DispatchPath.DOT
 
+        if align_bits == _TilingKey.ALIGN_FALSE:
+            return _DispatchPath.ALIGN_FALSE_DOWN2
+        return _DispatchPath.GENERIC
 
-def _can_use_downsample_view_copy_path(grad_output, rows, in_w, out_w, align_corners):
-    return (
-        not align_corners
-        and out_w * 2 == in_w
-        and in_w >= TORCH_COMPOSE_MIN_IN_W
-        and rows >= TORCH_COMPOSE_MIN_ROWS
-        and grad_output.dtype in (torch.float16, torch.bfloat16, torch.float32)
-    )
+    if scale_bits == _TilingKey.SCALE_UP2:
+        if align_bits == _TilingKey.ALIGN_TRUE:
+            required = (
+                _FeatureMask.ALIGN_TRUE
+                | _FeatureMask.SCALE_UP2
+                | _FeatureMask.WIDTH_COMPOSE
+                | _FeatureMask.ROWS_COMPOSE
+                | _FeatureMask.DTYPE_FLOAT
+            )
+            if (feature_mask & required) == required:
+                return _DispatchPath.ALIGN_TRUE_SCALE2_CONV
 
+            if (
+                (feature_mask & dot_required) == dot_required
+                and (feature_mask & _FeatureMask.SCALE_EXACT2) != 0
+                and (
+                    (feature_mask & _FeatureMask.ROWS_DOT) != 0
+                    or (feature_mask & dot_align_true_down2_required)
+                    == dot_align_true_down2_required
+                )
+                and (
+                    (feature_mask & _FeatureMask.ALIGN_FALSE) == 0
+                    or (feature_mask & _FeatureMask.ROWS_ALIGN_FALSE_DOT) != 0
+                )
+            ):
+                return _DispatchPath.DOT
 
-def _can_use_scale2_conv_path(grad_output, rows, in_w, out_w, align_corners):
-    return (
-        not align_corners
-        and out_w == in_w * 2
-        and in_w >= TORCH_COMPOSE_MIN_IN_W
-        and rows >= TORCH_COMPOSE_MIN_ROWS
-        and grad_output.dtype in (torch.float16, torch.bfloat16, torch.float32)
-    )
+            if (feature_mask & scale2_contig_required) == scale2_contig_required and (
+                (feature_mask & align_true_fp16_required) != align_true_fp16_required
+                or (feature_mask & _FeatureMask.ROWS_WINDOW) == 0
+            ):
+                return _DispatchPath.SCALE2_CONTIG
 
+            required = (
+                _FeatureMask.ALIGN_TRUE
+                | _FeatureMask.SCALE_UP2
+                | _FeatureMask.WIDTH_WINDOW
+                | _FeatureMask.DTYPE_FP16
+            )
+            if (feature_mask & required) == required:
+                return _DispatchPath.ALIGN_TRUE_WINDOW_DOT
 
-def _can_use_align_true_scale2_conv_path(grad_output, rows, in_w, out_w, align_corners):
-    return (
-        align_corners
-        and out_w == in_w * 2
-        and in_w >= TORCH_COMPOSE_MIN_IN_W
-        and rows >= TORCH_COMPOSE_MIN_ROWS
-        and grad_output.dtype in (torch.float16, torch.bfloat16, torch.float32)
-    )
+            return _DispatchPath.GENERIC
+
+        required = (
+            _FeatureMask.ALIGN_FALSE
+            | _FeatureMask.SCALE_UP2
+            | _FeatureMask.WIDTH_COMPOSE
+            | _FeatureMask.ROWS_COMPOSE
+            | _FeatureMask.DTYPE_FLOAT
+        )
+        if (feature_mask & required) == required:
+            return _DispatchPath.SCALE2_CONV
+
+        if (
+            (feature_mask & dot_required) == dot_required
+            and (feature_mask & _FeatureMask.SCALE_EXACT2) != 0
+            and (
+                (feature_mask & _FeatureMask.ROWS_DOT) != 0
+                or (feature_mask & dot_align_true_down2_required)
+                == dot_align_true_down2_required
+            )
+            and (
+                (feature_mask & _FeatureMask.ALIGN_FALSE) == 0
+                or (feature_mask & _FeatureMask.ROWS_ALIGN_FALSE_DOT) != 0
+            )
+        ):
+            return _DispatchPath.DOT
+
+        required = (
+            _FeatureMask.ALIGN_FALSE
+            | _FeatureMask.SCALE_UP2
+            | _FeatureMask.WIDTH_WINDOW
+            | _FeatureMask.ROWS_WINDOW
+            | _FeatureMask.DTYPE_HALFISH
+        )
+        if (feature_mask & required) == required:
+            return _DispatchPath.WINDOW_DOT
+
+        if (feature_mask & scale2_contig_required) == scale2_contig_required and (
+            (feature_mask & align_true_fp16_required) != align_true_fp16_required
+            or (feature_mask & _FeatureMask.ROWS_WINDOW) == 0
+        ):
+            return _DispatchPath.SCALE2_CONTIG
+
+        return _DispatchPath.ALIGN_FALSE_UP2
+
+    if scale_bits == _TilingKey.SCALE_UP_GT2:
+        return _DispatchPath.FULL_SCAN
+
+    return _DispatchPath.GENERIC
 
 
 def _upsample_linear1d_backward_downsample_view_copy(grad_out_3d, n, c, in_w, out_w):
@@ -681,17 +975,6 @@ def _upsample_linear1d_backward_downsample_view_copy(grad_out_3d, n, c, in_w, ou
     half_grad = (grad_out_3d * 0.5).unsqueeze(-1).expand(n, c, out_w, 2)
     grad_in.view(n, c, out_w, 2).copy_(half_grad)
     return grad_in
-
-
-def _cache_key(name, tensor, channels, in_w):
-    return (
-        name,
-        tensor.device.type,
-        tensor.device.index,
-        tensor.dtype,
-        channels,
-        in_w,
-    )
 
 
 def _get_scale2_conv_weight(grad_out_3d, channels, in_w):
@@ -704,7 +987,7 @@ def _get_scale2_conv_weight(grad_out_3d, channels, in_w):
         channels,
         in_w,
     )
-    weight = _TORCH_COMPOSE_CACHE.get(key)
+    weight = _TorchComposeConfig.CACHE.get(key)
     if weight is None:
         weight = torch.tensor(
             [0.25, 0.75, 0.75, 0.25],
@@ -712,7 +995,7 @@ def _get_scale2_conv_weight(grad_out_3d, channels, in_w):
             dtype=dtype,
         )
         weight = weight.view(1, 1, 1, 4).expand(channels, 1, 1, 4).contiguous()
-        _TORCH_COMPOSE_CACHE[key] = weight
+        _TorchComposeConfig.CACHE[key] = weight
     return weight
 
 
@@ -726,7 +1009,7 @@ def _get_align_true_affine_conv_params(grad_out_3d, channels, in_w, out_w):
         channels,
         in_w,
     )
-    params = _TORCH_COMPOSE_CACHE.get(key)
+    params = _TorchComposeConfig.CACHE.get(key)
     if params is None:
         denom = float(out_w - 1)
         base = torch.tensor(
@@ -750,7 +1033,7 @@ def _get_align_true_affine_conv_params(grad_out_3d, channels, in_w, out_w):
             1, 1, in_w
         )
         params = weight, offsets
-        _TORCH_COMPOSE_CACHE[key] = params
+        _TorchComposeConfig.CACHE[key] = params
     return params
 
 
@@ -771,14 +1054,14 @@ def _upsample_linear1d_backward_scale2_conv(grad_out_3d, n, c, in_w, out_w):
         c,
     ).view(n, c, in_w)
     upsample_linear1d_backward_scale2_boundary_kernel[
-        (triton.cdiv(n * c, SCALE2_BOUNDARY_BLOCK_M),)
+        (triton.cdiv(n * c, _Scale2Config.BOUNDARY_BLOCK_M),)
     ](
         compute_grad,
         grad_in,
         n * c,
         IN_W=in_w,
         OUT_W=out_w,
-        BLOCK_M=SCALE2_BOUNDARY_BLOCK_M,
+        BLOCK_M=_Scale2Config.BOUNDARY_BLOCK_M,
     )
     if grad_out_3d.dtype == torch.float16:
         grad_in = torch.ops.npu.npu_dtype_cast(grad_in, torch.float16)
@@ -819,17 +1102,19 @@ def _upsample_linear1d_backward_dot(
         (out_w, in_w), device=grad_out_3d.device, dtype=grad_out_3d.dtype
     )
 
-    upsample_linear1d_backward_coeff_kernel[(triton.cdiv(out_w * in_w, 1024),)](
+    upsample_linear1d_backward_coeff_kernel[
+        (triton.cdiv(out_w * in_w, _DotConfig.COEFF_BLOCK),)
+    ](
         coeff,
         IN_W=in_w,
         OUT_W=out_w,
         ALIGN_CORNERS=align_corners,
-        BLOCK=1024,
+        BLOCK=_DotConfig.COEFF_BLOCK,
     )
 
     grid = (
-        triton.cdiv(rows, DOT_BLOCK_M),
-        triton.cdiv(in_w, DOT_BLOCK_N),
+        triton.cdiv(rows, _DotConfig.BLOCK_M),
+        triton.cdiv(in_w, _DotConfig.BLOCK_N),
     )
     upsample_linear1d_backward_dot_kernel[grid](
         grad_out_2d,
@@ -838,8 +1123,8 @@ def _upsample_linear1d_backward_dot(
         rows,
         IN_W=in_w,
         OUT_W=out_w,
-        BLOCK_M=DOT_BLOCK_M,
-        BLOCK_N=DOT_BLOCK_N,
+        BLOCK_M=_DotConfig.BLOCK_M,
+        BLOCK_N=_DotConfig.BLOCK_N,
         BLOCK_K=_dot_block_k(grad_out_3d, in_w, out_w),
     )
     return grad_in_2d.view(n, c, in_w)
@@ -851,8 +1136,8 @@ def _upsample_linear1d_backward_window_dot(grad_out_3d, n, c, rows, in_w, out_w)
         (rows, in_w), device=grad_out_3d.device, dtype=grad_out_3d.dtype
     )
     grid = (
-        triton.cdiv(rows, WINDOW_DOT_BLOCK_M),
-        triton.cdiv(in_w, WINDOW_DOT_BLOCK_N),
+        triton.cdiv(rows, _WindowDotConfig.BLOCK_M),
+        triton.cdiv(in_w, _WindowDotConfig.BLOCK_N),
     )
     upsample_linear1d_backward_scale2_window_dot_kernel[grid](
         grad_out_2d,
@@ -860,9 +1145,9 @@ def _upsample_linear1d_backward_window_dot(grad_out_3d, n, c, rows, in_w, out_w)
         rows,
         IN_W=in_w,
         OUT_W=out_w,
-        BLOCK_M=WINDOW_DOT_BLOCK_M,
-        BLOCK_N=WINDOW_DOT_BLOCK_N,
-        BLOCK_K=WINDOW_DOT_BLOCK_K,
+        BLOCK_M=_WindowDotConfig.BLOCK_M,
+        BLOCK_N=_WindowDotConfig.BLOCK_N,
+        BLOCK_K=_WindowDotConfig.BLOCK_K,
         COEFF_DTYPE=1 if grad_out_3d.dtype == torch.bfloat16 else 0,
     )
     return grad_in_2d.view(n, c, in_w)
@@ -876,8 +1161,8 @@ def _upsample_linear1d_backward_align_true_window_dot(
         (rows, in_w), device=grad_out_3d.device, dtype=grad_out_3d.dtype
     )
     grid = (
-        triton.cdiv(rows, ALIGN_TRUE_WINDOW_DOT_BLOCK_M),
-        triton.cdiv(in_w, ALIGN_TRUE_WINDOW_DOT_BLOCK_N),
+        triton.cdiv(rows, _WindowDotConfig.ALIGN_TRUE_BLOCK_M),
+        triton.cdiv(in_w, _WindowDotConfig.ALIGN_TRUE_BLOCK_N),
     )
     upsample_linear1d_backward_scale2_align_true_window_dot_kernel[grid](
         grad_out_2d,
@@ -885,9 +1170,9 @@ def _upsample_linear1d_backward_align_true_window_dot(
         rows,
         IN_W=in_w,
         OUT_W=out_w,
-        BLOCK_M=ALIGN_TRUE_WINDOW_DOT_BLOCK_M,
-        BLOCK_N=ALIGN_TRUE_WINDOW_DOT_BLOCK_N,
-        BLOCK_K=ALIGN_TRUE_WINDOW_DOT_BLOCK_K,
+        BLOCK_M=_WindowDotConfig.ALIGN_TRUE_BLOCK_M,
+        BLOCK_N=_WindowDotConfig.ALIGN_TRUE_BLOCK_N,
+        BLOCK_K=_WindowDotConfig.ALIGN_TRUE_BLOCK_K,
     )
     return grad_in_2d.view(n, c, in_w)
 
@@ -900,7 +1185,7 @@ def _upsample_linear1d_backward_scale2_contig(
         (rows, in_w), device=grad_out_3d.device, dtype=grad_out_3d.dtype
     )
     grid = (
-        triton.cdiv(in_w, SCALE2_CONTIG_BLOCK_W),
+        triton.cdiv(in_w, _Scale2Config.CONTIG_BLOCK_W),
         min(rows, CORE_NUM),
     )
     if align_corners:
@@ -910,8 +1195,8 @@ def _upsample_linear1d_backward_scale2_contig(
             rows,
             IN_W=in_w,
             OUT_W=out_w,
-            BLOCK_W=SCALE2_CONTIG_BLOCK_W,
-            BLOCK_2W=SCALE2_CONTIG_BLOCK_2W,
+            BLOCK_W=_Scale2Config.CONTIG_BLOCK_W,
+            BLOCK_2W=_Scale2Config.CONTIG_BLOCK_2W,
         )
     else:
         upsample_linear1d_backward_align_false_scale2_contig_kernel[grid](
@@ -920,8 +1205,8 @@ def _upsample_linear1d_backward_scale2_contig(
             rows,
             IN_W=in_w,
             OUT_W=out_w,
-            BLOCK_W=SCALE2_CONTIG_BLOCK_W,
-            BLOCK_2W=SCALE2_CONTIG_BLOCK_2W,
+            BLOCK_W=_Scale2Config.CONTIG_BLOCK_W,
+            BLOCK_2W=_Scale2Config.CONTIG_BLOCK_2W,
         )
     return grad_in_2d.view(n, c, in_w)
 
@@ -947,11 +1232,12 @@ def upsample_linear1d_backward(
 
     grad_out_3d = grad_output.contiguous().view(n, c, out_w)
     rows = n * c
+    dispatch_path = _select_upsample_linear1d_backward_path(
+        grad_output, rows, in_w, out_w, align_corners
+    )
 
     with _device_guard(grad_output):
-        if _can_use_downsample_view_copy_path(
-            grad_output, rows, in_w, out_w, align_corners
-        ):
+        if dispatch_path == _DispatchPath.DOWNSAMPLE_VIEW_COPY:
             grad_in = _upsample_linear1d_backward_downsample_view_copy(
                 grad_out_3d,
                 n,
@@ -959,7 +1245,7 @@ def upsample_linear1d_backward(
                 in_w,
                 out_w,
             )
-        elif _can_use_scale2_conv_path(grad_output, rows, in_w, out_w, align_corners):
+        elif dispatch_path == _DispatchPath.SCALE2_CONV:
             grad_in = _upsample_linear1d_backward_scale2_conv(
                 grad_out_3d,
                 n,
@@ -967,9 +1253,7 @@ def upsample_linear1d_backward(
                 in_w,
                 out_w,
             )
-        elif _can_use_align_true_scale2_conv_path(
-            grad_output, rows, in_w, out_w, align_corners
-        ):
+        elif dispatch_path == _DispatchPath.ALIGN_TRUE_SCALE2_CONV:
             grad_in = _upsample_linear1d_backward_align_true_scale2_conv(
                 grad_out_3d,
                 n,
@@ -977,9 +1261,7 @@ def upsample_linear1d_backward(
                 in_w,
                 out_w,
             )
-        elif (out_w * 2 == in_w or out_w == in_w * 2) and _can_use_dot_path(
-            grad_output, rows, in_w, out_w, align_corners
-        ):
+        elif dispatch_path == _DispatchPath.DOT:
             grad_in = _upsample_linear1d_backward_dot(
                 grad_out_3d,
                 n,
@@ -989,7 +1271,7 @@ def upsample_linear1d_backward(
                 out_w,
                 align_corners,
             )
-        elif _can_use_window_dot_path(grad_output, rows, in_w, out_w, align_corners):
+        elif dispatch_path == _DispatchPath.WINDOW_DOT:
             grad_in = _upsample_linear1d_backward_window_dot(
                 grad_out_3d,
                 n,
@@ -998,7 +1280,16 @@ def upsample_linear1d_backward(
                 in_w,
                 out_w,
             )
-        elif _can_use_scale2_contig_path(grad_output, rows, in_w, out_w, align_corners):
+        elif dispatch_path == _DispatchPath.ALIGN_TRUE_WINDOW_DOT:
+            grad_in = _upsample_linear1d_backward_align_true_window_dot(
+                grad_out_3d,
+                n,
+                c,
+                rows,
+                in_w,
+                out_w,
+            )
+        elif dispatch_path == _DispatchPath.SCALE2_CONTIG:
             grad_in = _upsample_linear1d_backward_scale2_contig(
                 grad_out_3d,
                 n,
@@ -1008,18 +1299,7 @@ def upsample_linear1d_backward(
                 out_w,
                 align_corners,
             )
-        elif _can_use_align_true_window_dot_path(
-            grad_output, in_w, out_w, align_corners
-        ):
-            grad_in = _upsample_linear1d_backward_align_true_window_dot(
-                grad_out_3d,
-                n,
-                c,
-                rows,
-                in_w,
-                out_w,
-            )
-        elif not align_corners and out_w * 2 == in_w:
+        elif dispatch_path == _DispatchPath.ALIGN_FALSE_DOWN2:
             grad_in = torch.empty(
                 (n, c, in_w), device=grad_output.device, dtype=grad_output.dtype
             )
@@ -1037,12 +1317,12 @@ def upsample_linear1d_backward(
                 BLOCK_W=block_w,
                 ROWS_PER_BLOCK=rows_per_block,
             )
-        elif not align_corners and out_w == in_w * 2:
+        elif dispatch_path == _DispatchPath.ALIGN_FALSE_UP2:
             grad_in = torch.empty(
                 (n, c, in_w), device=grad_output.device, dtype=grad_output.dtype
             )
             block_w, rows_per_block = _select_tiles(in_w, grad_output.element_size())
-            if in_w <= MIN_BLOCK_W and rows <= MIN_BLOCK_W:
+            if in_w <= _TileConfig.MIN_BLOCK_W and rows <= _TileConfig.MIN_BLOCK_W:
                 rows_per_block = min(2, rows)
             row_blocks = triton.cdiv(rows, rows_per_block)
             grid = (triton.cdiv(in_w, block_w), min(row_blocks, CORE_NUM))
@@ -1057,6 +1337,25 @@ def upsample_linear1d_backward(
                 BLOCK_W=block_w,
                 ROWS_PER_BLOCK=rows_per_block,
             )
+        elif dispatch_path == _DispatchPath.FULL_SCAN:
+            grad_in = torch.empty(
+                (n, c, in_w), device=grad_output.device, dtype=grad_output.dtype
+            )
+            block_w, rows_per_block = _select_tiles(in_w, grad_output.element_size())
+            row_blocks = triton.cdiv(rows, rows_per_block)
+            grid = (triton.cdiv(in_w, block_w), min(row_blocks, CORE_NUM))
+
+            upsample_linear1d_backward_full_scan_kernel[grid](
+                grad_out_3d,
+                grad_in,
+                rows,
+                in_w,
+                out_w,
+                align_corners,
+                BLOCK_W=block_w,
+                ROWS_PER_BLOCK=rows_per_block,
+                SCAN_BLOCK_K=_GenericConfig.SCAN_BLOCK_K,
+            )
         else:
             grad_in = torch.empty(
                 (n, c, in_w), device=grad_output.device, dtype=grad_output.dtype
@@ -1065,28 +1364,15 @@ def upsample_linear1d_backward(
             row_blocks = triton.cdiv(rows, rows_per_block)
             grid = (triton.cdiv(in_w, block_w), min(row_blocks, CORE_NUM))
 
-            if out_w > in_w * 2:
-                upsample_linear1d_backward_full_scan_kernel[grid](
-                    grad_out_3d,
-                    grad_in,
-                    rows,
-                    in_w,
-                    out_w,
-                    align_corners,
-                    BLOCK_W=block_w,
-                    ROWS_PER_BLOCK=rows_per_block,
-                    SCAN_BLOCK_K=GENERIC_SCAN_BLOCK_K,
-                )
-            else:
-                upsample_linear1d_backward_kernel[grid](
-                    grad_out_3d,
-                    grad_in,
-                    rows,
-                    in_w,
-                    out_w,
-                    align_corners,
-                    BLOCK_W=block_w,
-                    ROWS_PER_BLOCK=rows_per_block,
-                )
+            upsample_linear1d_backward_kernel[grid](
+                grad_out_3d,
+                grad_in,
+                rows,
+                in_w,
+                out_w,
+                align_corners,
+                BLOCK_W=block_w,
+                ROWS_PER_BLOCK=rows_per_block,
+            )
 
     return grad_in
