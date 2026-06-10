@@ -3683,6 +3683,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_eigh
+    description: |
+      Computes the eigenvalue decomposition of a symmetric (or Hermitian) matrix or a batch of matrices.
+    for:
+      - linalg_eigh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: linear
     description: |
       Applies a linear transformation to the incoming data: y = x @ W^T + b.
