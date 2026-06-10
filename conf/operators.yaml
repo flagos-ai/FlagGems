@@ -1713,7 +1713,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: diff
     description: |
       Computes the n-th forward difference along the given dimension.
