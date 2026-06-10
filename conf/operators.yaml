@@ -938,7 +938,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: cast_
     description: The in-place version of `cast()`.
     for:
@@ -949,7 +949,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: bmm
     description: Performs a batch matrix-matrix product of matrices stored in `input` and `mat2`.
     for:
