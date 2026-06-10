@@ -5945,6 +5945,29 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: sinc
+    description: |
+      Computes the normalized sinc function `sin(π·x) / (π·x)` for each element of the input.
+    for:
+      - sinc
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
+  - id: sinc_
+    description: The in-place version of `sinc()`.
+    for:
+      - sinc_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: sinh_
     description: |
       Computes the hyperbolic sine `(e^x-e^{-x})/2` of each element in a tensor.
