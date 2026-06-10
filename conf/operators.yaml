@@ -4183,7 +4183,7 @@ ops:
     kind:
       - LinearAlg
     stages:
-      - beta: '1.0'
+      - beta: '5.3'
   - id: moe_align_block_size_triton
     description: |
       Aligns the token distribution across experts to be compatible with block size
