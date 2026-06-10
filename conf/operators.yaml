@@ -1076,7 +1076,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: chunk_gated_delta_rule_fwd
     description: |
       The forward case for `ChunkGatedDeltaRuleFunction` with Flash Linear Attention (FLA).
