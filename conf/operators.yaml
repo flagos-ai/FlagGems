@@ -5619,7 +5619,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: resize_
     description: The in-place version of `resize()`.
     for:
@@ -5630,7 +5630,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: resize_output
     description: |
       Resizes tensor output storage and copies overlapping elements.
