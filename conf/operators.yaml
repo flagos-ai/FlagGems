@@ -4369,7 +4369,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: moe_sum
     description: |
       An implementation of Mixture of Experts (MoE) with sum-based aggregation
