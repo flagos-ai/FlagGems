@@ -33,6 +33,7 @@ import flag_gems
 
 # FlagGems wrapper under test
 from flag_gems.fused.fused_marlin_moe import (
+    QUANT_TYPE_FLOAT8_E4M3FN,
     QUANT_TYPE_FP4_E2M1,
     QUANT_TYPE_UINT4B8,
     QUANT_TYPE_UINT8B128,
@@ -110,6 +111,33 @@ def _wna16_quantize_per_expert_int8(w_fp):
         w_q[e] = q_e
         scales[e] = sc_e
     return w_q, scales
+
+
+
+def _wna16_quantize_per_expert_fp8(w_fp):
+    """
+    Per-expert FP8 E4M3 weight quantization for FlagGems W(fp8)A16.
+
+    Input  w_fp: (E, out_dim, in_dim), bf16/fp16
+    Output w_q:   (E, out_dim, in_dim), float8_e4m3fn
+           scales: (E, out_dim, in_dim // GROUP_SIZE), same dtype as w_fp
+    """
+    E, out_dim, in_dim = w_fp.shape
+    assert in_dim % GROUP_SIZE == 0
+    fp8_dtype = torch.float8_e4m3fn
+    fp8_info = torch.finfo(fp8_dtype)
+    ng = in_dim // GROUP_SIZE
+    w_q = torch.empty(E, out_dim, in_dim, device=w_fp.device, dtype=fp8_dtype)
+    scales = torch.empty(E, out_dim, ng, device=w_fp.device, dtype=w_fp.dtype)
+    for e in range(E):
+        w_grouped = w_fp[e].reshape(out_dim, ng, GROUP_SIZE).float()
+        scales_fp = (w_grouped.abs().amax(dim=-1, keepdim=True) / fp8_info.max).clamp(
+            min=1e-8
+        )
+        q_e = (w_grouped / scales_fp).clamp(fp8_info.min, fp8_info.max).to(fp8_dtype)
+        w_q[e] = q_e.reshape(out_dim, in_dim)
+        scales[e] = scales_fp.squeeze(-1).to(w_fp.dtype)
+    return w_q, scales.contiguous()
 
 
 def _marlin_quantize_per_expert(w_fp):
@@ -781,3 +809,181 @@ def test_fused_marlin_moe_int8_mxq():
 def test_fused_marlin_moe_bf16_mxq():
     pass
 
+class FusedMarlinMoEBenchmarkFp8WeightMXQ(base.Benchmark):
+    """MXQ/Qwen W(fp8)A16 benchmark against vLLM Marlin W8A16."""
+
+    def __init__(self, op_name, torch_op, dtypes):
+        super().__init__(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
+        self._weight_cache = {}
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = _filter_shapes_by_tokens(
+            [
+                (1, 512, 4096, 1024, 10),
+                (4, 512, 4096, 1024, 10),
+                (16, 512, 4096, 1024, 10),
+                (64, 512, 4096, 1024, 10),
+                (128, 512, 4096, 1024, 10),
+                (256, 512, 4096, 1024, 10),
+                (512, 512, 4096, 1024, 10),
+                (1024, 512, 4096, 1024, 10),
+                (4096, 512, 4096, 1024, 10),
+                (16384, 512, 4096, 1024, 10),
+                (32768, 512, 4096, 1024, 10),
+            ]
+        )
+
+    def get_input_iter(self, cur_dtype):
+        for config in self.shapes:
+            yield from self._gen(config, cur_dtype)
+
+    def _get_quantized_weights(
+        self, dtype, device, num_experts, hidden_size, intermediate_size
+    ):
+        cache_key = (dtype, str(device), num_experts, hidden_size, intermediate_size)
+        cached = self._weight_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        w1_fp = (
+            torch.randn(
+                num_experts,
+                intermediate_size * 2,
+                hidden_size,
+                device=device,
+                dtype=dtype,
+            )
+            / 10.0
+        )
+        w2_fp = (
+            torch.randn(
+                num_experts,
+                hidden_size,
+                intermediate_size,
+                device=device,
+                dtype=dtype,
+            )
+            / 10.0
+        )
+
+        cached = (
+            *_marlin_quantize_per_expert_int8(w1_fp),
+            *_marlin_quantize_per_expert_int8(w2_fp),
+            *_wna16_quantize_per_expert_fp8(w1_fp),
+            *_wna16_quantize_per_expert_fp8(w2_fp),
+        )
+        self._weight_cache[cache_key] = cached
+        del w1_fp, w2_fp
+        torch.cuda.empty_cache()
+        return cached
+
+    def _gen(self, config, dtype):
+        num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+        device = flag_gems.device
+
+        hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+        (
+            w1_q_marlin,
+            w1_scale_marlin,
+            w2_q_marlin,
+            w2_scale_marlin,
+            w1_q_fp8,
+            w1_scale_fp8,
+            w2_q_fp8,
+            w2_scale_fp8,
+        ) = self._get_quantized_weights(
+            dtype, device, num_experts, hidden_size, intermediate_size
+        )
+
+        gating = torch.randn(
+            num_tokens, num_experts, device=device, dtype=torch.float32
+        )
+        topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+        topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+
+        yield (
+            hidden_states,
+            w1_q_marlin,
+            w2_q_marlin,
+            w1_scale_marlin,
+            w2_scale_marlin,
+            w1_q_fp8,
+            w2_q_fp8,
+            w1_scale_fp8,
+            w2_scale_fp8,
+            topk_weights,
+            topk_ids,
+        )
+
+
+def _vllm_baseline_int8_for_fp8_bench(
+    hidden_states,
+    w1_q_marlin,
+    w2_q_marlin,
+    w1_scale_marlin,
+    w2_scale_marlin,
+    w1_q_fp8,
+    w2_q_fp8,
+    w1_scale_fp8,
+    w2_scale_fp8,
+    topk_weights,
+    topk_ids,
+):
+    """Baseline: vLLM CUDA Marlin fused_marlin_moe W8A16."""
+    return vllm_fused_marlin_moe(
+        hidden_states=hidden_states,
+        w1=w1_q_marlin,
+        w2=w2_q_marlin,
+        bias1=None,
+        bias2=None,
+        w1_scale=w1_scale_marlin,
+        w2_scale=w2_scale_marlin,
+        topk_weights=topk_weights,
+        topk_ids=topk_ids,
+        quant_type_id=VLLM_QUANT_TYPE_INT8.id,
+    )
+
+
+def _gems_call_fp8_weight(
+    hidden_states,
+    w1_q_marlin,
+    w2_q_marlin,
+    w1_scale_marlin,
+    w2_scale_marlin,
+    w1_q_fp8,
+    w2_q_fp8,
+    w1_scale_fp8,
+    w2_scale_fp8,
+    topk_weights,
+    topk_ids,
+):
+    return gems_fused_marlin_moe(
+        hidden_states=hidden_states,
+        w1=w1_q_fp8,
+        w2=w2_q_fp8,
+        bias1=None,
+        bias2=None,
+        w1_scale=w1_scale_fp8,
+        w2_scale=w2_scale_fp8,
+        topk_weights=topk_weights,
+        topk_ids=topk_ids,
+        quant_type_id=QUANT_TYPE_FLOAT8_E4M3FN,
+    )
+
+@pytest.mark.fused_marlin_moe
+@pytest.mark.skipif(
+    not HAS_VLLM_FUSED_MARLIN_MOE, reason="vllm not installed; baseline unavailable"
+)
+@pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires NVIDIA Hopper architecture")
+def test_fused_marlin_moe_fp8_weight_mxq():
+    """
+    MXQ/Qwen 512-expert W(fp8)A16 fused_marlin_moe.
+    Baseline is vLLM CUDA Marlin W8A16 on the same FP source weights.
+    """
+    bench = FusedMarlinMoEBenchmarkFp8WeightMXQ(
+        op_name="fused_marlin_moe_fp8_weight_mxq",
+        torch_op=_vllm_baseline_int8_for_fp8_bench,
+        dtypes=[torch.bfloat16],
+    )
+    bench.set_gems(_gems_call_fp8_weight)
+    bench.run()

@@ -58,13 +58,17 @@ QUANT_TYPE_UINT4B8 = 0
 QUANT_TYPE_UINT8B128 = 1
 # MXFP4 (FP4 E2M1 weight + per-32 E8M0 scale). Mirrors vLLM scalar_types.float4_e2m1f.id.
 QUANT_TYPE_FP4_E2M1 = 6
+# FP8 E4M3 weight, FP16/BF16 activation (WFP8A16)
+QUANT_TYPE_FLOAT8_E4M3FN = 2
 # MXFP4 block size (E8M0 scale shared by every 32 weights).
 MXFP4_GROUP_SIZE = 32
 
 _QUANT_TYPE_INT4 = {QUANT_TYPE_UINT4B8}
 _QUANT_TYPE_INT8 = {QUANT_TYPE_UINT8B128}
 _QUANT_TYPE_FP4 = {QUANT_TYPE_FP4_E2M1}
-_SUPPORTED_QUANT_TYPES = _QUANT_TYPE_INT4 | _QUANT_TYPE_INT8 | _QUANT_TYPE_FP4
+_QUANT_TYPE_FP8 = {QUANT_TYPE_FLOAT8_E4M3FN}
+_SUPPORTED_QUANT_TYPES = _QUANT_TYPE_INT4 | _QUANT_TYPE_INT8 | _QUANT_TYPE_FP4 | _QUANT_TYPE_FP8
+
 
 
 @functools.lru_cache(maxsize=1)
@@ -1264,6 +1268,10 @@ class QuantConfig:
     def use_int8(self) -> bool:
         return self.mode in (QuantMode.W8A16, QuantMode.INT8)
 
+    @property
+    def use_fp8(self) -> bool:
+        return self.mode == QuantMode.FP8
+
 
 @dataclass(frozen=True)
 class W8A16CutlassPackedWeights:
@@ -2026,6 +2034,7 @@ def fused_moe_kernel_w8a16_gateup_silu(
     BLOCK_SIZE_K: tl.constexpr,
     has_zp: tl.constexpr,
     use_int8_w8a16: tl.constexpr,
+    use_fp8_w8a16: tl.constexpr,
     even_Ks: tl.constexpr,
     APPLY_ROUTED_WEIGHT: tl.constexpr,
     compute_type: tl.constexpr,
@@ -2065,24 +2074,44 @@ def fused_moe_kernel_w8a16_gateup_silu(
                 other=0.0,
                 eviction_policy="evict_last",
             )
-            b_int_gate = tl.load(
-                W1_q
-                + expert_id * stride_w1_e
-                + offs_n[:, None] * stride_w1_n
-                + k_indices[None, :] * stride_w1_k,
-                mask=n_mask[:, None],
-                other=128,
-                eviction_policy="evict_first",
-            ).to(tl.float32)
-            b_int_up = tl.load(
-                W1_q
-                + expert_id * stride_w1_e
-                + up_offs_n[:, None] * stride_w1_n
-                + k_indices[None, :] * stride_w1_k,
-                mask=n_mask[:, None],
-                other=128,
-                eviction_policy="evict_first",
-            ).to(tl.float32)
+            if use_fp8_w8a16:
+                b_int_gate = tl.load(
+                    W1_q
+                    + expert_id * stride_w1_e
+                    + offs_n[:, None] * stride_w1_n
+                    + k_indices[None, :] * stride_w1_k,
+                    mask=n_mask[:, None],
+                    other=0.0,
+                    eviction_policy="evict_first",
+                ).to(tl.float32)
+                b_int_up = tl.load(
+                    W1_q
+                    + expert_id * stride_w1_e
+                    + up_offs_n[:, None] * stride_w1_n
+                    + k_indices[None, :] * stride_w1_k,
+                    mask=n_mask[:, None],
+                    other=0.0,
+                    eviction_policy="evict_first",
+                ).to(tl.float32)
+            else:
+                b_int_gate = tl.load(
+                    W1_q
+                    + expert_id * stride_w1_e
+                    + offs_n[:, None] * stride_w1_n
+                    + k_indices[None, :] * stride_w1_k,
+                    mask=n_mask[:, None],
+                    other=128,
+                    eviction_policy="evict_first",
+                ).to(tl.float32)
+                b_int_up = tl.load(
+                    W1_q
+                    + expert_id * stride_w1_e
+                    + up_offs_n[:, None] * stride_w1_n
+                    + k_indices[None, :] * stride_w1_k,
+                    mask=n_mask[:, None],
+                    other=128,
+                    eviction_policy="evict_first",
+                ).to(tl.float32)
         else:
             a = tl.load(
                 A + token_ids[:, None] * stride_a_t + k_indices[None, :] * stride_a_k,
@@ -2090,24 +2119,44 @@ def fused_moe_kernel_w8a16_gateup_silu(
                 other=0.0,
                 eviction_policy="evict_last",
             )
-            b_int_gate = tl.load(
-                W1_q
-                + expert_id * stride_w1_e
-                + offs_n[:, None] * stride_w1_n
-                + k_indices[None, :] * stride_w1_k,
-                mask=n_mask[:, None] & k_mask[None, :],
-                other=128,
-                eviction_policy="evict_first",
-            ).to(tl.float32)
-            b_int_up = tl.load(
-                W1_q
-                + expert_id * stride_w1_e
-                + up_offs_n[:, None] * stride_w1_n
-                + k_indices[None, :] * stride_w1_k,
-                mask=n_mask[:, None] & k_mask[None, :],
-                other=128,
-                eviction_policy="evict_first",
-            ).to(tl.float32)
+            if use_fp8_w8a16:
+                b_int_gate = tl.load(
+                    W1_q
+                    + expert_id * stride_w1_e
+                    + offs_n[:, None] * stride_w1_n
+                    + k_indices[None, :] * stride_w1_k,
+                    mask=n_mask[:, None] & k_mask[None, :],
+                    other=0.0,
+                    eviction_policy="evict_first",
+                ).to(tl.float32)
+                b_int_up = tl.load(
+                    W1_q
+                    + expert_id * stride_w1_e
+                    + up_offs_n[:, None] * stride_w1_n
+                    + k_indices[None, :] * stride_w1_k,
+                    mask=n_mask[:, None] & k_mask[None, :],
+                    other=0.0,
+                    eviction_policy="evict_first",
+                ).to(tl.float32)
+            else:
+                b_int_gate = tl.load(
+                    W1_q
+                    + expert_id * stride_w1_e
+                    + offs_n[:, None] * stride_w1_n
+                    + k_indices[None, :] * stride_w1_k,
+                    mask=n_mask[:, None] & k_mask[None, :],
+                    other=128,
+                    eviction_policy="evict_first",
+                ).to(tl.float32)
+                b_int_up = tl.load(
+                    W1_q
+                    + expert_id * stride_w1_e
+                    + up_offs_n[:, None] * stride_w1_n
+                    + k_indices[None, :] * stride_w1_k,
+                    mask=n_mask[:, None] & k_mask[None, :],
+                    other=128,
+                    eviction_policy="evict_first",
+                ).to(tl.float32)
 
         if group_size >= BLOCK_SIZE_K and (group_size % BLOCK_SIZE_K) == 0:
             group_idx = k_start // group_size
@@ -2151,6 +2200,9 @@ def fused_moe_kernel_w8a16_gateup_silu(
                 ).to(tl.float32)
                 b_deq_gate = (b_int_gate - zp_gate[:, None]) * s_gate[:, None]
                 b_deq_up = (b_int_up - zp_up[:, None]) * s_up[:, None]
+            elif use_fp8_w8a16:
+                b_deq_gate = b_int_gate * s_gate[:, None]
+                b_deq_up = b_int_up * s_up[:, None]
             else:
                 b_deq_gate = (b_int_gate - 128.0) * s_gate[:, None]
                 b_deq_up = (b_int_up - 128.0) * s_up[:, None]
@@ -2200,6 +2252,9 @@ def fused_moe_kernel_w8a16_gateup_silu(
                 ).to(tl.float32)
                 b_deq_gate = (b_int_gate - zp_gate) * s_gate
                 b_deq_up = (b_int_up - zp_up) * s_up
+            elif use_fp8_w8a16:
+                b_deq_gate = b_int_gate * s_gate
+                b_deq_up = b_int_up * s_up
             else:
                 b_deq_gate = (b_int_gate - 128.0) * s_gate
                 b_deq_up = (b_int_up - 128.0) * s_up
@@ -2378,6 +2433,7 @@ def fused_moe_kernel_w8a16_down(
     BLOCK_SIZE_K: tl.constexpr,
     has_zp: tl.constexpr,
     use_int8_w8a16: tl.constexpr,
+    use_fp8_w8a16: tl.constexpr,
     even_Ks: tl.constexpr,
     DOWN_GRID_N_FIRST: tl.constexpr,
     INTER_PREWEIGHTED: tl.constexpr,
@@ -2426,7 +2482,7 @@ def fused_moe_kernel_w8a16_down(
                     + offs_n[:, None] * stride_w2_n
                     + k_indices[None, :] * stride_w2_k,
                     mask=n_mask[:, None],
-                    other=128,
+                    other=0.0 if use_fp8_w8a16 else 128,
                     eviction_policy="evict_first",
                 ).to(tl.float32)
             else:
@@ -2444,7 +2500,7 @@ def fused_moe_kernel_w8a16_down(
                     + offs_n[:, None] * stride_w2_n
                     + k_indices[None, :] * stride_w2_k,
                     mask=n_mask[:, None],
-                    other=128,
+                    other=0.0 if use_fp8_w8a16 else 128,
                     eviction_policy="evict_last",
                 ).to(tl.float32)
         else:
@@ -2463,7 +2519,7 @@ def fused_moe_kernel_w8a16_down(
                     + offs_n[:, None] * stride_w2_n
                     + k_indices[None, :] * stride_w2_k,
                     mask=n_mask[:, None] & k_mask[None, :],
-                    other=128,
+                    other=0.0 if use_fp8_w8a16 else 128,
                     eviction_policy="evict_first",
                 ).to(tl.float32)
             else:
@@ -2481,7 +2537,7 @@ def fused_moe_kernel_w8a16_down(
                     + offs_n[:, None] * stride_w2_n
                     + k_indices[None, :] * stride_w2_k,
                     mask=n_mask[:, None] & k_mask[None, :],
-                    other=128,
+                    other=0.0 if use_fp8_w8a16 else 128,
                     eviction_policy="evict_last",
                 ).to(tl.float32)
 
@@ -2530,6 +2586,8 @@ def fused_moe_kernel_w8a16_down(
                         eviction_policy="evict_last",
                     ).to(tl.float32)
                 b_deq = (b_int - zp[:, None]) * s[:, None]
+            elif use_fp8_w8a16:
+                b_deq = b_int * s[:, None]
             else:
                 b_deq = (b_int - 128.0) * s[:, None]
 
@@ -2580,6 +2638,8 @@ def fused_moe_kernel_w8a16_down(
                         eviction_policy="evict_last",
                     ).to(tl.float32)
                 b_deq = (b_int - zp) * s
+            elif use_fp8_w8a16:
+                b_deq = b_int * s
             else:
                 b_deq = (b_int - 128.0) * s
 
@@ -4499,6 +4559,7 @@ def _launch_w8a16_gateup_silu(
             BLOCK_SIZE_K=pin["BLOCK_SIZE_K"],
             has_zp=has_zp_w1,
             use_int8_w8a16=quant_config.use_int8,
+            use_fp8_w8a16=quant_config.use_fp8,
             even_Ks=even_Ks_gateup,
             APPLY_ROUTED_WEIGHT=preweight_intermediate,
             compute_type=compute_type,
@@ -4540,6 +4601,7 @@ def _launch_w8a16_gateup_silu(
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         has_zp=has_zp_w1,
         use_int8_w8a16=quant_config.use_int8,
+        use_fp8_w8a16=quant_config.use_fp8,
         even_Ks=even_Ks_gateup,
         APPLY_ROUTED_WEIGHT=preweight_intermediate,
         compute_type=compute_type,
@@ -4779,6 +4841,7 @@ def _launch_w8a16_down(
             BLOCK_SIZE_K=bsk,
             has_zp=has_zp_w2,
             use_int8_w8a16=quant_config.use_int8,
+            use_fp8_w8a16=quant_config.use_fp8,
             even_Ks=even_Ks_down,
             DOWN_GRID_N_FIRST=down_grid_n_first,
             INTER_PREWEIGHTED=preweight_intermediate,
@@ -4870,6 +4933,7 @@ def _launch_w8a16_down(
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         has_zp=has_zp_w2,
         use_int8_w8a16=quant_config.use_int8,
+        use_fp8_w8a16=quant_config.use_fp8,
         even_Ks=even_Ks_down,
         DOWN_GRID_N_FIRST=down_grid_n_first,
         INTER_PREWEIGHTED=preweight_intermediate,
@@ -6022,6 +6086,8 @@ def invoke_fused_moe_full_swiglu(
         and three_kernel_min_tokens <= num_valid_tokens <= three_kernel_max_tokens
     ):
         use_fused_gateup_silu = False
+    if quant_config.use_fp8:
+        use_fused_gateup_silu = True
 
     # Conservative even_Ks: True iff every BSK candidate in the relevant
     # autotune list divides the contraction dim.  Computed per-kernel because
@@ -6087,6 +6153,7 @@ def invoke_fused_moe_full_swiglu(
     use_unified_moe_path = (
         _use_unified_moe_kernel()
         and quant_config.use_int8
+        and not quant_config.use_fp8
         and not quant_config.use_int4
         and even_Ks_unified_h
         and even_Ks_unified_i
@@ -6466,6 +6533,7 @@ def _fused_marlin_moe_w8a16_mxq_impl(
     w2_scale: torch.Tensor,
     w1_zeros: Optional[torch.Tensor] = None,
     w2_zeros: Optional[torch.Tensor] = None,
+    weight_is_fp8: bool = False,
     group_size: int = 128,
     inplace: bool = False,
 ) -> torch.Tensor:
@@ -6477,7 +6545,11 @@ def _fused_marlin_moe_w8a16_mxq_impl(
     """
     assert hidden_states.dtype in (torch.float16, torch.bfloat16)
     assert hidden_states.is_contiguous()
-    assert w1.dtype == torch.uint8 and w2.dtype == torch.uint8
+    if weight_is_fp8:
+        assert w1.dtype == torch.float8_e4m3fn and w2.dtype == torch.float8_e4m3fn
+        assert w1_zeros is None and w2_zeros is None
+    else:
+        assert w1.dtype == torch.uint8 and w2.dtype == torch.uint8
     assert w1.stride(-1) == 1 and w2.stride(-1) == 1
     assert topk_weights.shape == topk_ids.shape
 
@@ -6492,7 +6564,7 @@ def _fused_marlin_moe_w8a16_mxq_impl(
         output = torch.zeros_like(hidden_states)
 
     quant_config = QuantConfig(
-        mode=QuantMode.W8A16,
+        mode=QuantMode.FP8 if weight_is_fp8 else QuantMode.W8A16,
         group_size=group_size,
         has_zero_point=w1_zeros is not None or w2_zeros is not None,
         per_channel_quant=False,
@@ -6839,6 +6911,7 @@ def fused_marlin_moe(
     use_int4_w4a16 = quant_type_id in _QUANT_TYPE_INT4
     use_int8_w8a16 = quant_type_id in _QUANT_TYPE_INT8
     use_fp4_w4a16 = quant_type_id in _QUANT_TYPE_FP4
+    use_fp8_w8a16 = quant_type_id in _QUANT_TYPE_FP8
 
     activation_str = "silu"
     if activation is not None:
@@ -6858,11 +6931,11 @@ def fused_marlin_moe(
         raise ValueError("Cannot pass both inplace=True and output")
 
     if (
-        use_int8_w8a16
+        (use_int8_w8a16 or use_fp8_w8a16)
         and hidden_states.dtype in (torch.float16, torch.bfloat16)
         and hidden_states.is_contiguous()
-        and w1.dtype == torch.uint8
-        and w2.dtype == torch.uint8
+        and ((use_int8_w8a16 and w1.dtype == torch.uint8 and w2.dtype == torch.uint8)
+             or (use_fp8_w8a16 and w1.dtype == torch.float8_e4m3fn and w2.dtype == torch.float8_e4m3fn))
         and bias1 is None
         and bias2 is None
         and expert_map is None
@@ -6882,6 +6955,7 @@ def fused_marlin_moe(
             w2_scale=w2_scale,
             w1_zeros=w1_zeros,
             w2_zeros=w2_zeros,
+            weight_is_fp8=use_fp8_w8a16,
             group_size=group_size,
             inplace=inplace,
         )
@@ -6993,8 +7067,9 @@ def fused_marlin_moe(
 
 
 __all__ = [
-    "fused_marlin_moe",
-    "QUANT_TYPE_UINT4B8",
-    "QUANT_TYPE_UINT8B128",
-    "QUANT_TYPE_FP4_E2M1",
+    fused_marlin_moe,
+    QUANT_TYPE_UINT4B8,
+    QUANT_TYPE_UINT8B128,
+    QUANT_TYPE_FP4_E2M1,
+    QUANT_TYPE_FLOAT8_E4M3FN,
 ]
