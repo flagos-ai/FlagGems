@@ -22,5 +22,5 @@ def less_scalar(A: torch.Tensor, B) -> torch.Tensor:
 
     This is an alias for torch.lt with scalar operand.
     """
-    logger.debug("GEMS LESS SCALAR")
+    logger.debug("GEMS LESS_SCALAR")
     return lt_scalar(A, B)

@@ -22,7 +22,7 @@ def test_less(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.less
+@pytest.mark.less_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_less_scalar(shape, dtype):
