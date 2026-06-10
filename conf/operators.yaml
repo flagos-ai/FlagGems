@@ -2890,7 +2890,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: greater_equal
     description: Computes `input >= other` element-wise.
     for:
@@ -2902,7 +2902,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: greater_equal_scalar
     description: The scalar version of `greater_equal()`.
     for:
@@ -2913,7 +2913,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: greater_out
     description: A variant of `greater` that saves the output to the specified `out`.
     for:
