@@ -59,7 +59,7 @@ def check_dtype(fill_value, dtype, device):
 
 
 def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS FULL")
+    logger.debug("GEMS_KUNLUNXIN FULL")
     if size == [0]:
         out = torch.empty(size, device=device, dtype=dtype)
         return out
