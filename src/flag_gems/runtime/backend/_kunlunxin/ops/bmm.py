@@ -45,6 +45,7 @@ if not KLX_USE_AUTOTUNE:
     autotune_decorator = triton.autotune(
         configs=[
             triton.Config({"TILE_M": 256, "TILE_N": 256, "TILE_K": 256}),
+            triton.Config({"TILE_M": 16, "TILE_N": 16, "TILE_K": 16}),  # 适配小矩阵
         ],
         key=["M", "N", "K"],
     )
