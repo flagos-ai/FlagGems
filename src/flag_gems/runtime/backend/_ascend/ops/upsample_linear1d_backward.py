@@ -38,6 +38,7 @@ SCALE2_CONTIG_MIN_IN_W = 2048
 SCALE2_CONTIG_BLOCK_W = 1024
 SCALE2_CONTIG_BLOCK_2W = SCALE2_CONTIG_BLOCK_W * 2
 SCALE2_BOUNDARY_BLOCK_M = 128
+GENERIC_SCAN_BLOCK_K = 16
 TORCH_COMPOSE_MIN_IN_W = 4096
 TORCH_COMPOSE_MIN_ROWS = 1024
 _TORCH_COMPOSE_CACHE = {}
@@ -291,6 +292,74 @@ def upsample_linear1d_backward_kernel(
 
 
 @triton.jit
+def upsample_linear1d_backward_full_scan_kernel(
+    grad_out_ptr,
+    grad_in_ptr,
+    rows,
+    in_w,
+    out_w,
+    align_corners: tl.constexpr,
+    BLOCK_W: tl.constexpr,
+    ROWS_PER_BLOCK: tl.constexpr,
+    SCAN_BLOCK_K: tl.constexpr,
+):
+    row_start = ext.program_id(axis=1) * ROWS_PER_BLOCK
+    row_step = tl.num_programs(axis=1) * ROWS_PER_BLOCK
+    x_in = ext.program_id(axis=0) * BLOCK_W + tl.arange(0, BLOCK_W)[None, :]
+    width_mask = x_in < in_w
+
+    in_w_f = tl.cast(in_w, tl.float32)
+    out_w_f = tl.cast(out_w, tl.float32)
+
+    while row_start < rows:
+        row_offsets = row_start + tl.arange(0, ROWS_PER_BLOCK)[:, None]
+        row_mask = row_offsets < rows
+        mask = row_mask & width_mask
+        go_base = grad_out_ptr + row_offsets * out_w
+        acc = tl.zeros((ROWS_PER_BLOCK, BLOCK_W), dtype=tl.float32)
+
+        x_out_base = 0
+        while x_out_base < out_w:
+            for offset in tl.static_range(0, SCAN_BLOCK_K):
+                x_out = x_out_base + offset
+                valid = x_out < out_w
+                safe_x_out = tl.minimum(tl.maximum(x_out, 0), out_w - 1)
+                x_out_f = x_out.to(tl.float32)
+
+                if align_corners:
+                    if out_w > 1:
+                        x_real = x_out_f * (in_w_f - 1.0) / (out_w_f - 1.0)
+                    else:
+                        x_real = 0.0
+                else:
+                    x_real = (x_out_f + 0.5) * in_w_f / out_w_f - 0.5
+
+                x0_f = tl.floor(x_real)
+                w1 = x_real - x0_f
+                w0 = 1.0 - w1
+
+                x0_i = tl.maximum(x0_f, 0.0).to(tl.int32)
+                x1_i = tl.minimum(x0_f + 1.0, in_w_f - 1.0).to(tl.int32)
+
+                g = tl.load(go_base + safe_x_out, mask=row_mask & valid, other=0.0).to(
+                    tl.float32
+                )
+
+                same = x0_i == x1_i
+                is_x0 = x_in.to(tl.int32) == x0_i
+                is_x1 = x_in.to(tl.int32) == x1_i
+
+                acc += tl.where(same & is_x0, g * (w0 + w1), 0.0)
+                acc += tl.where(~same & is_x0, g * w0, 0.0)
+                acc += tl.where(~same & is_x1, g * w1, 0.0)
+
+            x_out_base += SCAN_BLOCK_K
+
+        tl.store(grad_in_ptr + row_offsets * in_w + x_in, acc, mask=mask)
+        row_start += row_step
+
+
+@triton.jit
 def upsample_linear1d_backward_align_false_scale_kernel(
     grad_out_ptr,
     grad_in_ptr,
@@ -519,7 +588,7 @@ def _can_use_dot_path(grad_output, rows, in_w, out_w, align_corners):
     if not (exact_downsample or exact_upsample):
         return False
 
-    if rows < DOT_MIN_ROWS:
+    if rows < DOT_MIN_ROWS and not (align_corners and exact_downsample):
         return False
 
     if not align_corners and rows < DOT_ALIGN_FALSE_MIN_ROWS:
@@ -996,15 +1065,28 @@ def upsample_linear1d_backward(
             row_blocks = triton.cdiv(rows, rows_per_block)
             grid = (triton.cdiv(in_w, block_w), min(row_blocks, CORE_NUM))
 
-            upsample_linear1d_backward_kernel[grid](
-                grad_out_3d,
-                grad_in,
-                rows,
-                in_w,
-                out_w,
-                align_corners,
-                BLOCK_W=block_w,
-                ROWS_PER_BLOCK=rows_per_block,
-            )
+            if out_w > in_w * 2:
+                upsample_linear1d_backward_full_scan_kernel[grid](
+                    grad_out_3d,
+                    grad_in,
+                    rows,
+                    in_w,
+                    out_w,
+                    align_corners,
+                    BLOCK_W=block_w,
+                    ROWS_PER_BLOCK=rows_per_block,
+                    SCAN_BLOCK_K=GENERIC_SCAN_BLOCK_K,
+                )
+            else:
+                upsample_linear1d_backward_kernel[grid](
+                    grad_out_3d,
+                    grad_in,
+                    rows,
+                    in_w,
+                    out_w,
+                    align_corners,
+                    BLOCK_W=block_w,
+                    ROWS_PER_BLOCK=rows_per_block,
+                )
 
     return grad_in
