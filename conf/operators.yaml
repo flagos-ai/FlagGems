@@ -363,7 +363,7 @@ ops:
     kind:
       - Reduction
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: amin_
     description: The in-place version of amin, returns the minimum value of each row in the given dimension.
     for:
@@ -374,7 +374,7 @@ ops:
     kind:
       - Reduction
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: aminmax
     description: |
       Computes the minimum and maximum values of the `input` tensor.
