@@ -6683,7 +6683,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: unsqueeze_
     description: In-place version of `unsqueeze()`.
     for:
@@ -6694,7 +6694,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: upsample_bicubic2d
     description: A variant of `upsample()` that has `mode` set to `bicubic`.
     for:
