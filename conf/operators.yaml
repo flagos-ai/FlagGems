@@ -3252,7 +3252,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: indexer_k_quant_and_cache
     description: This is a fused operator that quantizes K tensors and writes them into the FP8 KV cache.
     for:
