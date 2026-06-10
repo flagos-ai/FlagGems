@@ -78,7 +78,6 @@ def test_upsample_linear1d_boundaries(dtype, case):
 
 
 @pytest.mark.upsample_linear1d
-@pytest.mark.skip(reason="Issue #2498: Result not close.")
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("scale", [2, 2.5, 0.3, 0.7])
 @pytest.mark.parametrize("shape", UPSAMPLE_SHAPES_1D)
