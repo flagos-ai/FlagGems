@@ -95,7 +95,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: add
     description: |
       Add a scalar or tensor to `self` tensor. If both `alpha` and `other` are specified,
