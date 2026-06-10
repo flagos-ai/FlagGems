@@ -6,7 +6,7 @@ import warnings
 import triton
 
 from . import backend, common
-from .backend.device import DeviceDetector
+from .backend.device_finder import DeviceDetector
 
 
 class TunedConfigLoader(object):
