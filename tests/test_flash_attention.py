@@ -29,7 +29,6 @@ if cfg.QUICK_MODE:
     SWA_CONFIGS = [(1, 1, 128, 2048)]
     SWA_HEAD_SIZES = [128]
     SWA_WINDOW_SIZES = [(256, 0)]
-    DROPOUT_CONFIGS = [(1, 1, 1024, 1024)]
 else:
     SPARSE_ATTN_CONFIGS = [
         (64, 1, 128, 128, 16, 512, 2025),
@@ -55,7 +54,7 @@ else:
     ]
     SWA_HEAD_SIZES = [128, 192]
     SWA_WINDOW_SIZES = [(256, 0), (128, 128)]
-    DROPOUT_CONFIGS = [(1, 1, 1024, 1024)]
+DROPOUT_CONFIGS = [(1, 1, 1024, 1024)]
 
 
 def make_input(
@@ -628,9 +627,7 @@ def test_flash_attention_foward_swa(
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
-    [
-        (1, 1, 1024, 1024),
-    ],
+    DROPOUT_CONFIGS
 )
 @pytest.mark.parametrize("head_size", [128])
 @pytest.mark.parametrize("is_causal", [False, True])
