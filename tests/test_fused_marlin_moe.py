@@ -19,6 +19,7 @@ from flag_gems.fused.fused_marlin_moe import (
     QUANT_TYPE_UINT8B128,
     fused_marlin_moe,
 )
+
 from . import conftest as cfg
 
 

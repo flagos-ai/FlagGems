@@ -15,6 +15,7 @@ import torch
 
 import flag_gems
 from flag_gems.fused import top_k_per_row_prefill
+
 from . import conftest as cfg
 
 device = flag_gems.device

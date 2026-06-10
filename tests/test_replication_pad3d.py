@@ -9,13 +9,16 @@ from . import conftest as cfg
 if cfg.QUICK_MODE:
     REPL3D_SHAPES = [(2, 16, 2, 3, 5)]
 else:
-    REPL3D_SHAPES = [(1, 3, 4, 8, 8), (2, 16, 2, 3, 5), (4, 8, 3, 4, 4), (2, 1, 1, 2, 2)]
+    REPL3D_SHAPES = [
+        (1, 3, 4, 8, 8),
+        (2, 16, 2, 3, 5),
+        (4, 8, 3, 4, 4),
+        (2, 1, 1, 2, 2),
+    ]
 
 
 @pytest.mark.replication_pad3d
-@pytest.mark.parametrize(
-    "shape", REPL3D_SHAPES
-)
+@pytest.mark.parametrize("shape", REPL3D_SHAPES)
 @pytest.mark.parametrize("padding", [1, (1, 2, 0, 1, 2, 0), 2, (0, 0, 1, 2, 3, 0)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_replication_pad3d(shape, padding, dtype):

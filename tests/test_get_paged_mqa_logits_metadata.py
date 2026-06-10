@@ -4,6 +4,7 @@ import pytest
 import torch
 
 import flag_gems
+
 from . import conftest as cfg
 
 random.seed(42)

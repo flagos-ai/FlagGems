@@ -3,8 +3,8 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import gems_assert_close, to_reference
 from . import conftest as cfg
+from .accuracy_utils import gems_assert_close, to_reference
 
 if cfg.QUICK_MODE:
     HISTC_SHAPES = [(64,), (100, 100)]

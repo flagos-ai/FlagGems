@@ -27,7 +27,12 @@ else:
     ]
     PAD2D_LIST_PADDINGS = [[1, 1, 1, 1], [2, 3, 4, 5]]
     PAD2D_3D_PADDINGS = [(1, 1, 1, 1), (2, 3, 4, 5)]
-    PAD2D_OUT_SHAPES = [(3, 33, 33), (2, 4, 32, 64), (8, 16, 64, 64), (32, 64, 128, 256)]
+    PAD2D_OUT_SHAPES = [
+        (3, 33, 33),
+        (2, 4, 32, 64),
+        (8, 16, 64, 64),
+        (32, 64, 128, 256),
+    ]
     PAD2D_OUT_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
     PAD2D_OUT_PADDINGS = [
         (1, 1, 1, 1),
@@ -39,9 +44,7 @@ else:
 
 
 @pytest.mark.reflection_pad2d
-@pytest.mark.parametrize(
-    "shape", PAD2D_SHAPES
-)
+@pytest.mark.parametrize("shape", PAD2D_SHAPES)
 @pytest.mark.parametrize("dtype", PAD2D_DTYPES)
 @pytest.mark.parametrize(
     "padding",
@@ -110,9 +113,7 @@ def test_reflection_pad2d_3d_input(padding):
 
 
 @pytest.mark.reflection_pad2d_out
-@pytest.mark.parametrize(
-    "shape", PAD2D_OUT_SHAPES
-)
+@pytest.mark.parametrize("shape", PAD2D_OUT_SHAPES)
 @pytest.mark.parametrize("dtype", PAD2D_OUT_DTYPES)
 @pytest.mark.parametrize(
     "padding",

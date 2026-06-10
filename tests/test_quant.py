@@ -6,8 +6,8 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import gems_assert_close, to_reference
 from . import conftest as cfg
+from .accuracy_utils import gems_assert_close, to_reference
 
 device = flag_gems.device
 

@@ -9,7 +9,14 @@ from . import conftest as cfg
 if cfg.QUICK_MODE:
     ASINH_VARIOUS_SIZES = [(1, 1), (64, 64)]
 else:
-    ASINH_VARIOUS_SIZES = [(1, 1), (8, 8), (64, 64), (256, 256), (1024, 1024), (4096, 4096)]
+    ASINH_VARIOUS_SIZES = [
+        (1, 1),
+        (8, 8),
+        (64, 64),
+        (256, 256),
+        (1024, 1024),
+        (4096, 4096),
+    ]
 
 
 @pytest.mark.asinh

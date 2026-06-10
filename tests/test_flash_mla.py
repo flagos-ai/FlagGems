@@ -6,8 +6,8 @@ import triton
 
 import flag_gems
 
-from . import conftest as cfg
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name

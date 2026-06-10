@@ -3,8 +3,8 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import FLOAT_DTYPES, INT_DTYPES, gems_assert_equal, to_reference
 from . import conftest as cfg
+from .accuracy_utils import FLOAT_DTYPES, INT_DTYPES, gems_assert_equal, to_reference
 
 if cfg.QUICK_MODE:
     CAT_SHAPES = [

@@ -47,7 +47,12 @@ else:
     GQA_ALIBI_SOFTCAP_HEAD_SIZES = [128, 192]
     SPLITKV_CONFIGS = [(1, 4, 1, 1, 1024), (4, 4, 4, 1, 519)]
     SPLITKV_HEAD_SIZES = [128, 192]
-    SWA_CONFIGS = [(1, 1, 128, 2048), (8, 32, 1024, 1024), (8, 32, 1024, 128), (8, 32, 17, 1030)]
+    SWA_CONFIGS = [
+        (1, 1, 128, 2048),
+        (8, 32, 1024, 1024),
+        (8, 32, 1024, 128),
+        (8, 32, 17, 1030),
+    ]
     SWA_HEAD_SIZES = [128, 192]
     SWA_WINDOW_SIZES = [(256, 0), (128, 128)]
     DROPOUT_CONFIGS = [(1, 1, 1024, 1024)]
@@ -562,9 +567,7 @@ def test_flash_attention_foward_splitkv(
     SWA_CONFIGS,
 )
 @pytest.mark.parametrize("head_size", SWA_HEAD_SIZES)
-@pytest.mark.parametrize(
-    ["window_size_left", "window_size_right"], SWA_WINDOW_SIZES
-)
+@pytest.mark.parametrize(["window_size_left", "window_size_right"], SWA_WINDOW_SIZES)
 @pytest.mark.parametrize("is_causal", [False])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_flash_attention_foward_swa(
