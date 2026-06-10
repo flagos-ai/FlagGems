@@ -228,7 +228,7 @@ KRON_SHAPES = [
 # Add some test cases with zeor-dimensional tensor and zero-sized tensors.
 PRIMARY_FLOAT_DTYPES = [torch.float16, torch.float32]
 FLOAT_DTYPES = (
-    [torch.float32]
+    ([torch.bfloat16] if bf16_is_supported else [torch.float32])
     if QUICK_MODE
     else (
         PRIMARY_FLOAT_DTYPES + [torch.bfloat16]
