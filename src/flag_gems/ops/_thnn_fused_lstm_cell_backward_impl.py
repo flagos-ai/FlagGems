@@ -117,7 +117,9 @@ def _thnn_fused_lstm_cell_backward_impl_kernel(
     # because forward computes: gate = input_gates + hidden_gates + bias
     tl.store(grad_hidden_gates_ptr + base_offset + hidden_idx, grad_i, mask=mask)
     tl.store(
-        grad_hidden_gates_ptr + base_offset + hidden_size + hidden_idx, grad_f, mask=mask
+        grad_hidden_gates_ptr + base_offset + hidden_size + hidden_idx,
+        grad_f,
+        mask=mask,
     )
     tl.store(
         grad_hidden_gates_ptr + base_offset + hidden_size * 2 + hidden_idx,
