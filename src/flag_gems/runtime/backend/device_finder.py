@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import torch  # noqa: F401
 
 from .. import backend, error
-from ..common import (vendors, _VENDOR_TORCH_ATTR)
+from ..common import _VENDOR_TORCH_ATTR, vendors
 
 
 # A singleton class to manage device context.

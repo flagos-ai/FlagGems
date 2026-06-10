@@ -1,15 +1,17 @@
 import functools
 import os
-from dataclasses import dataclass, field
-from enum import Enum, auto
+from dataclasses import dataclass
+
 import yaml
+
 
 # Metadata template,  Each vendor needs to specialize instances of this template
 @dataclass
 class VendorDescriptor:
-    '''
-        A dataclass to describe the vendor-specific information for a hardware backend.
-    '''
+    """
+    A dataclass to describe the vendor-specific information for a hardware backend.
+    """
+
     vendor_name: str
     device_name: str
     device_query_cmd: str

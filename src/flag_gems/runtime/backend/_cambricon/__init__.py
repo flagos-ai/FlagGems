@@ -22,7 +22,7 @@ vendor_info = VendorDescriptor(
     device_name="mlu",
     device_query_cmd="cnmon",
     dispatch_key="PrivateUse1",
-    fp64_enabled=False
+    fp64_enabled=False,
 )
 
 CUSTOMIZED_UNUSED_OPS = (

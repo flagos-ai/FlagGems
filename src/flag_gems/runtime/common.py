@@ -26,6 +26,7 @@ class vendors(Enum):
             vendorDict[member.name.lower()] = member
         return vendorDict
 
+
 DEFAULT_STRATEGIES = {
     "addmm": ["align32", "align32", "align32"],
     "addmm_sqmma": ["align32", "align32", "align32"],
