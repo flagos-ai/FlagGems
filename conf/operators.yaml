@@ -690,7 +690,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: bernoulli_
     description: Draws binary random numbers (0 or 1) from a Bernoulli distribution.
     for:
