@@ -6643,7 +6643,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: special_shifted_chebyshev_polynomial_u_
     description: |
       The in-place version of `special_shifted_chebyshev_polynomial_u()`.
@@ -6655,7 +6655,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,
