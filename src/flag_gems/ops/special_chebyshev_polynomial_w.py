@@ -55,11 +55,11 @@ def chebyshev_polynomial_w_func(x, n):
     return result
 
 
-def chebyshev_polynomial_w(x, n):
-    logger.debug("GEMS CHEBYSHEV_POLYNOMIAL_W")
+def special_chebyshev_polynomial_w(x, n):
+    logger.debug("GEMS SPECIAL_CHEBYSHEV_POLYNOMIAL_W")
     if x.dtype not in (torch.float32, torch.float64):
         raise ValueError(
-            f"chebyshev_polynomial_w only supports float32/float64, got {x.dtype}"
+            f"special_chebyshev_polynomial_w only supports float32/float64, got {x.dtype}"
         )
     # Convert scalar n to tensor if needed
     if not isinstance(n, torch.Tensor):
