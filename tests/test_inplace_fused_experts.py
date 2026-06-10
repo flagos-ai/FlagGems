@@ -5,7 +5,10 @@ import torch
 
 import flag_gems
 
-from .conftest import QUICK_MODE
+if flag_gems.vendor_name == "sunrise":
+    QUICK_MODE = True  # "--ref cpu" too slow for big shape.
+else:
+    from .conftest import QUICK_MODE
 
 random.seed(42)
 
@@ -97,6 +100,8 @@ def test_inplace_fused_experts_accuracy(config, dtype):
 
     if flag_gems.vendor_name == "ascend":
         torch.npu.synchronize()
+    elif flag_gems.vendor_name == "sunrise":
+        torch.ptpu.synchronize()
     else:
         torch.cuda.synchronize()
 
@@ -149,6 +154,8 @@ def test_inplace_fused_experts_matches_outplace(config, dtype):
 
     if flag_gems.vendor_name == "ascend":
         torch.npu.synchronize()
+    elif flag_gems.vendor_name == "sunrise":
+        torch.ptpu.synchronize()
     else:
         torch.cuda.synchronize()
 
