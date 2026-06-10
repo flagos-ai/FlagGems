@@ -3413,7 +3413,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: layer_norm
     description: An internal IR for applying Layer Normalization for last certain number of dimensions.
     for:
