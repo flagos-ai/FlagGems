@@ -477,7 +477,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: arcsin_
     description: The in-place version of `arcsin()`.
     for:
@@ -488,7 +488,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: arcsin_out
     description: A variant of `arcsin` that allows the output to be assigned to the `out` tensor.
     for:
@@ -499,7 +499,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.3'
   - id: arcsinh
     description: Performs an element-wise inverse hyperbolic sine computation on the given tensor.
     for:
