@@ -475,13 +475,34 @@ def post_commit_format_check(worktree_path: str, python_path: str) -> dict | Non
 
         if flake8_errors:
             logger.warning(f"[FORMAT] flake8 errors remain:\n{flake8_errors}")
-        else:
+
+        # Check pytest marks consistency for test/benchmark files
+        mark_errors = None
+        test_bench_files = [f for f in py_files if f.startswith(("tests/", "benchmark/"))]
+        if test_bench_files:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            mark_script = os.path.join(script_dir, "check_pytest_marks.py")
+            mark_result = subprocess.run(
+                [python_path, mark_script] + test_bench_files + ["--all-files"] + py_files,
+                cwd=worktree_path,
+                capture_output=True,
+                text=True,
+            )
+            if mark_result.returncode != 0:
+                mark_errors = mark_result.stdout.strip()
+                logger.warning(f"[FORMAT] pytest mark issues:\n{mark_errors}")
+
+        all_passed = flake8_passed and (mark_errors is None)
+        if all_passed:
             logger.info(f"[FORMAT] All checks passed (auto_fixed={auto_fixed})")
 
+        # Combine all errors
+        all_errors = "\n".join(filter(None, [flake8_errors, mark_errors]))
+
         return {
-            "passed": flake8_passed,
+            "passed": all_passed,
             "auto_fixed": auto_fixed,
-            "flake8_errors": flake8_errors,
+            "flake8_errors": all_errors or None,
         }
 
     except Exception as e:
