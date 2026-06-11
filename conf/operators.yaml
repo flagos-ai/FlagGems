@@ -6495,7 +6495,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: threshold
     description: Apply a threshold to each element of the input Tensor.
     for:
