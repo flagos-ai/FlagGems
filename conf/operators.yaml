@@ -6298,7 +6298,6 @@ ops:
       - Math
     stages:
       - beta: '5.0'
-      - beta: '5.0'
       - stable: '5.3'
   - id: special_modified_bessel_k1
     description: Triton kernel implementation for special_modified_bessel_k1.
