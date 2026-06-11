@@ -1256,7 +1256,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: concatenate
     description: An alias of `cat()`.
     for:
