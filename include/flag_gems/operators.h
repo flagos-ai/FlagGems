@@ -57,6 +57,7 @@ std::tuple<at::Tensor &, at::Tensor &> max_dim_max(
     const at::Tensor &self, int64_t dim, bool keepdim, at::Tensor &out_value, at::Tensor &out_index);
 at::Tensor max(const at::Tensor &self);
 at::Tensor rms_norm(const at::Tensor &input, const at::Tensor &weight, double epsilon = 1e-5);
+at::Tensor gemma_rms_norm(const at::Tensor &input, const at::Tensor &weight, double epsilon = 1e-5);
 void fused_add_rms_norm(at::Tensor &input,
                         at::Tensor &residual,
                         const at::Tensor &weight,

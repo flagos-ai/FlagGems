@@ -92,6 +92,7 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("max", &flag_gems::max);
   m.def("max_dim_max", &flag_gems::max_dim_max);
   m.def("rms_norm", &flag_gems::rms_norm);
+  m.def("gemma_rms_norm", &flag_gems::gemma_rms_norm);
   m.def("fused_add_rms_norm", &flag_gems::fused_add_rms_norm);
   m.def("nonzero", &flag_gems::nonzero);
   m.def("rotary_embedding", &flag_gems::rotary_embedding);
@@ -188,6 +189,7 @@ TORCH_LIBRARY(flag_gems, m) {
   // m.def("add_tensor(Tensor self, Tensor other) -> Tensor", {at::Tag::pt2_compliant_tag});
   // Norm
   m.def("rms_norm(Tensor input, Tensor weight, float epsilon) -> Tensor");
+  m.def("gemma_rms_norm(Tensor input, Tensor weight, float epsilon) -> Tensor");
   m.def("fused_add_rms_norm(Tensor! input, Tensor! residual, Tensor weight, float epsilon) -> ()");
   m.def("nonzero(Tensor self) -> Tensor");
   // rotary_embedding
@@ -325,6 +327,7 @@ TORCH_LIBRARY_IMPL(flag_gems, FLAGGEMS_DISPATCH_KEY, m) {
   m.impl("max.dim", TORCH_FN(max_dim));
   m.impl("max", TORCH_FN(max));
   m.impl("rms_norm", TORCH_FN(rms_norm));
+  m.impl("gemma_rms_norm", TORCH_FN(gemma_rms_norm));
   m.impl("fused_add_rms_norm", TORCH_FN(fused_add_rms_norm));
   m.impl("nonzero", TORCH_FN(nonzero));
   m.impl("rotary_embedding", TORCH_FN(rotary_embedding));

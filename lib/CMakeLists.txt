@@ -8,6 +8,7 @@ add_library(operators
             max.cpp
             mm.cpp
             rms_norm.cpp
+            gemma_rms_norm.cpp
             fused_add_rms_norm.cpp
             rotary_embedding.cpp
             topk.cpp
