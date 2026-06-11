@@ -101,7 +101,12 @@ def load_issues(path: str) -> list[dict]:
         issue.setdefault("scope", "operator")
         # For repo-scope issues, derive operator name from title for branch naming
         if is_repo_scope and "operator" not in issue:
-            issue["operator"] = issue.get("title", f"repo-issue-{issue['id']}").lower().replace(" ", "-")[:50]
+            import re
+            slug = issue.get("title", f"repo-issue-{issue['id']}")
+            slug = slug.lower().replace(" ", "-")
+            slug = re.sub(r"[^a-z0-9\-]", "", slug)
+            slug = re.sub(r"-+", "-", slug).strip("-")[:50]
+            issue["operator"] = slug
         validated.append(issue)
 
     return validated
@@ -196,6 +201,11 @@ def launch_cc(
         "PYTHON_PATH": config.get("python_path", "python"),
         "TEST_CMD": issue["test_cmd"],
         "BENCHMARK_CMD": issue.get("benchmark_cmd", ""),
+        "SCOPE": issue.get("scope", "operator"),
+        "TITLE": issue.get("title", ""),
+        "GITHUB_ISSUE": str(issue.get("github_issue", "")),
+        "OPERATORS": ", ".join(issue.get("operators", [])),
+        "FILES": ", ".join(issue.get("files", [])),
     }
     prompt = render_template(template_path, variables)
 
