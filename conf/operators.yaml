@@ -4167,7 +4167,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - stable: '2.2'
+      - alpha: '5.4'
   - id: reflection_pad3d_backward
     description: Triton kernel implementation for reflection_pad3d_backward.
     for:
@@ -4178,7 +4178,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.4'
   - id: smooth_l1_loss
     description: Compute the smooth L1 loss between input and target tensors.
     for:
