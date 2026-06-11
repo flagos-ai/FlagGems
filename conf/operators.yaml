@@ -2092,7 +2092,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: erfinv_
     description: The in-place version of `erfinv()`.
     for:
@@ -2103,7 +2103,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: erf
     description: Computes the error function of `input`.
     for:
