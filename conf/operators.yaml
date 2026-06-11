@@ -1,15 +1,4 @@
 ops:
-  - id: adaptive_attention_span
-    description: Computes adaptive attention span using sigmoid activation, mapping input values to (0, 1) range.
-    for:
-      - adaptive_attention_span
-    labels:
-      - fused
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.3'
   - id: abs
     description: |
       Computes the absolute value of each element in `input`.
@@ -59,6 +48,17 @@ ops:
       - Math
     stages:
       - stable: '5.0'
+  - id: adaptive_attention_span
+    description: Computes adaptive attention span using sigmoid activation, mapping input values to (0, 1) range.
+    for:
+      - adaptive_attention_span
+    labels:
+      - fused
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: act_quant_triton
     description: This is a fused operator.
     for:
