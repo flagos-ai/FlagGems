@@ -30,37 +30,27 @@ def rrelu_with_noise_functional(
     self, noise, lower=0.125, upper=0.33333333333333331, training=False, generator=None
 ):
     logger.debug("GEMS RRELU_WITH_NOISE_FUNCTIONAL")
-    assert noise.shape == self.shape, "noise tensor must have the same shape as self"
-    assert generator is None, "generator is not supported in FlagGems"
-
-    if not training:
-        # When training=False (eval mode), use deterministic slope for computation
-        # but still return the original noise tensor as noise_out
-        slope = (lower + upper) * 0.5
-        # Create a temporary tensor for computation (filled with slope)
-        noise_tmp = torch.full_like(self, slope)
-        output = rrelu_with_noise_forward(self, noise_tmp, lower, upper)
-        # output[0] is the result, output[1] is the noise (which is slope-filled temp)
-        # We need to return original noise as noise_out
-        return output[0], noise
-    else:
-        output = rrelu_with_noise_forward(self, noise, lower, upper)
-        return output
+    return _rrelu_with_noise_impl(self, noise, lower, upper, training, generator, inplace=False)
 
 
 def rrelu_with_noise_functional_(
     self, noise, lower=0.125, upper=0.33333333333333331, training=False, generator=None
 ):
     logger.debug("GEMS RRELU_WITH_NOISE_FUNCTIONAL_")
+    return _rrelu_with_noise_impl(self, noise, lower, upper, training, generator, inplace=True)
+
+
+def _rrelu_with_noise_impl(self, noise, lower, upper, training, generator, inplace):
     assert noise.shape == self.shape, "noise tensor must have the same shape as self"
     assert generator is None, "generator is not supported in FlagGems"
 
     if not training:
-        # When training=False (eval mode), use deterministic slope
         slope = (lower + upper) * 0.5
         noise_tmp = torch.full_like(self, slope)
-        output = rrelu_with_noise_forward(self, noise_tmp, lower, upper, out0=self)
+        kwargs = {"out0": self} if inplace else {}
+        output = rrelu_with_noise_forward(self, noise_tmp, lower, upper, **kwargs)
         return output[0], noise
     else:
-        output = rrelu_with_noise_forward(self, noise, lower, upper, out0=self)
+        kwargs = {"out0": self} if inplace else {}
+        output = rrelu_with_noise_forward(self, noise, lower, upper, **kwargs)
         return output
