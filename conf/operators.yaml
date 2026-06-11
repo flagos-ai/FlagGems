@@ -3655,7 +3655,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: logical_or
     description: Computes the element-wise logical OR of the given input tensors.
     for:
