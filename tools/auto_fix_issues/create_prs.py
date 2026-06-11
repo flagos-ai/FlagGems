@@ -59,6 +59,14 @@ def build_pr_body(issue: dict) -> str:
     # "441-internal" -> "441", plain "441" stays as is
     numeric_id = issue_id_raw.split("-")[0]
 
+    # Build issue tracking section
+    issue_lines = [f"- WEEKTEST-{numeric_id}"]
+    github_issue = issue.get("github_issue") or cc.get("github_issue")
+    if github_issue:
+        issue_lines.append(f"- Fixes #{github_issue}")
+
+    issue_section = "\n".join(issue_lines)
+
     return f"""## Summary
 - **Operator:** {issue['operator']}
 - **Error type:** {issue['error_type']}
@@ -77,7 +85,7 @@ def build_pr_body(issue: dict) -> str:
 - [ ] `{bench.get('benchmark_command', 'N/A')}`
 
 ## Issue
-- WEEKTEST-{numeric_id}
+{issue_section}
 """
 
 
