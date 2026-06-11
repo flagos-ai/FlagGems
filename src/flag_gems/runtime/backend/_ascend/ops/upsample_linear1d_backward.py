@@ -735,6 +735,11 @@ def _dtype_tiling_bits(dtype):
 def _upsample_linear1d_backward_tiling_key(
     grad_output, rows, in_w, out_w, align_corners
 ):
+    # Pack coarse dtype/scale/layout buckets used by the Ascend path selector.
+
+    # The key intentionally stores only cheap shape features. Precise path
+    # eligibility, such as coefficient buffer limits and row thresholds, is
+    # expanded into a feature mask before selecting the final kernel path.
     dtype_bits = _dtype_tiling_bits(grad_output.dtype)
 
     if out_w * 2 == in_w:
