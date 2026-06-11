@@ -6,6 +6,7 @@ from packaging.version import InvalidVersion, Version
 from flag_gems.runtime import backend
 from flag_gems.runtime.backend.device_finder import DeviceDetector
 
+
 def _coerce_triton_version(version: str) -> Version:
     try:
         return Version(version)
