@@ -6,6 +6,8 @@ from packaging.version import InvalidVersion, Version
 
 from flag_gems.fused import indexer_k_quant_and_cache
 
+from . import accuracy_utils as utils
+
 _TARGET_VLLM_VERSION = Version("0.20.2")
 _NEXT_VLLM_VERSION = Version("0.21.0")
 
@@ -166,6 +168,8 @@ def _make_slot_mapping(num_tokens, num_blocks, block_size, device):
     [
         (torch.bfloat16, 19, 4, 16, 128, 128, "ue8m0"),
         (torch.float16, 23, 5, 16, 512, 128, "ue8m0"),
+        (torch.float16, 29, 6, 16, 384, 128, "ue8m0"),
+        (torch.float16, 31, 7, 16, 640, 128, "ue8m0"),
         (torch.bfloat16, 17, 4, 64, 512, 128, "ue8m0"),
     ],
 )
@@ -208,4 +212,4 @@ def test_indexer_k_quant_and_cache_matches_reference(
     )
     torch.cuda.synchronize()
 
-    torch.testing.assert_close(gems_cache, reference_cache, rtol=0, atol=0)
+    utils.gems_assert_equal(gems_cache, utils.to_reference(reference_cache))
