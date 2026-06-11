@@ -54,6 +54,11 @@ def build_pr_body(issue: dict) -> str:
 
     files_str = "\n".join(f"  - `{f}`" for f in files) if files else "  - (none)"
 
+    # Extract numeric issue ID for internal tracking
+    issue_id_raw = str(issue["issue_id"])
+    # "441-internal" -> "441", plain "441" stays as is
+    numeric_id = issue_id_raw.split("-")[0]
+
     return f"""## Summary
 - **Operator:** {issue['operator']}
 - **Error type:** {issue['error_type']}
@@ -70,6 +75,9 @@ def build_pr_body(issue: dict) -> str:
 ## Test Plan
 - [ ] `{test.get('test_command', 'N/A')}`
 - [ ] `{bench.get('benchmark_command', 'N/A')}`
+
+## Issue
+- WEEKTEST-{numeric_id}
 """
 
 
