@@ -35,13 +35,26 @@ def kthvalue(inp, k, dim=-1, keepdim=False):
     if inp.dtype not in (torch.float32,):
         inp = inp.to(torch.float32)
 
+    # Get dimensions
+    ndim = inp.ndim
+
+    # Validate dim before normalization (match PyTorch error semantics)
+    if dim < -ndim or dim >= ndim:
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of [{-ndim}, {ndim - 1}], but got {dim})"
+        )
+
     # Handle negative dim
     if dim < 0:
         dim = dim + inp.ndim
 
-    # Get dimensions
-    ndim = inp.ndim
     dim_size = inp.shape[dim]
+
+    # Check empty reduction dim before k validation (match PyTorch)
+    if dim_size == 0:
+        raise IndexError(
+            f"kthvalue(): Expected reduction dim {dim} to have non-zero size."
+        )
 
     if k < 1 or k > dim_size:
         raise RuntimeError(
