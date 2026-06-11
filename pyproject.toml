@@ -65,7 +65,7 @@ enflame = [
     "torchvision==0.25.0+cpu",
     "torch-gcu==2.10.0+3.7.20260408",
     "triton-gcu==3.6.0+1.0.20260521.cc.1.9.10",
-    "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323",
+    "flash-attn==2.6.3",
     #"flagtree==0.5.0+enflame.gitadb592d5",
 ]
 
@@ -86,7 +86,7 @@ kunlunxin = [
     "apex==0.1",
     "benchflow==1.0.0",
     "colorama==0.4.6",
-    "flash_attn==2.4.2+7e2dd4d",
+    "flash_attn==2.6.3",
     "hydrax==0.1.0",
     "hyperparameter==0.5.6",
     "psutil==6.1.0",
@@ -108,7 +108,7 @@ metax = [
     "torchaudio==2.4.1+metax3.7.2.0",
     "torchvision==0.15.1+metax3.7.2.0",
     "flagtree==3.1.0+metax3.7.2.0",
-    "flash_attn==2.6.3+metax3.7.2.0torch2.8",
+    "flash_attn==2.6.3",
     # "triton==3.0.0+metax3.7.2.0",
 ]
 
