@@ -3403,7 +3403,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: kron
     description: Computes the Kronecker product of `input` and `other`.
     for:
