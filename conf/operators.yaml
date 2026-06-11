@@ -628,7 +628,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: atan2
     description: |
       Computes the element-wise arc tangent of `input/other(y/x)`,
