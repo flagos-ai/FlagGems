@@ -376,7 +376,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - beta: '5.1'
+      - alpha: '5.4'
   - id: angle
     description: Computes the element-wise angle (in radians) of the given `input` tensor.
     for:
