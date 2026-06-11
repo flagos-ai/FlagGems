@@ -52,7 +52,7 @@ def isclose(
     atol=1e-08,
     equal_nan: bool = False,
 ) -> torch.Tensor:
-    logger.debug("GEMS ISCLOSE")
+    logger.debug("GEMS_HYGON ISCLOSE")
     # note: Int8 is not supported in isclose_func, because the result of int8 == int8 is wrong
     # in triton jit function, and needs to be fixed in triton. The same is true for bool.
     if A.dtype == torch.bool:
@@ -80,5 +80,5 @@ def allclose(
     atol=1e-08,
     equal_nan: bool = False,
 ) -> bool:
-    logger.debug("GEMS ALLCLOSE")
+    logger.debug("GEMS_HYGON ALLCLOSE")
     return all(isclose(A, B, rtol, atol, equal_nan)).item()
