@@ -700,6 +700,8 @@ class Summary:
             "operator": issue["operator"],
             "error_type": issue["type"],
             "severity": issue.get("severity", "unknown"),
+            "scope": issue.get("scope", "operator"),
+            "github_issue": issue.get("github_issue"),
             "status": "in_progress",
             "gpu_id": gpu_id,
             "attempt": attempt,
