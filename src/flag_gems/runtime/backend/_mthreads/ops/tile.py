@@ -346,7 +346,7 @@ def tile_kernel_nd_flat(
 
 
 def tile(inp: torch.Tensor, dims) -> torch.Tensor:
-    logger.debug("GEMS TILE")
+    logger.debug("GEMS_MTHREADS TILE")
     in0_rank = inp.dim()
     dims_rank = len(dims)
     in0_shape = list(inp.shape)
