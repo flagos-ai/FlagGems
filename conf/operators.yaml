@@ -4492,7 +4492,7 @@ ops:
     kind:
       - Logic
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: not_equal_scalar
     description: |
       Computes the element-wise logical NOT EQUAL comparing a tensor to a scalar.
@@ -4505,7 +4505,7 @@ ops:
     kind:
       - Logic
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: one_hot
     description: |
       Takes LongTensor with index values of shape `(*)` and returns a tensor of shape `(*, num_classes)`
