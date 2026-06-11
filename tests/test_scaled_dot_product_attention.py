@@ -161,7 +161,7 @@ def test_scaled_dot_product_attention_legacy(
         ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa
     )
 
-    if flag_gems.vendor_name == "cambricon":
+    if flag_gems.vendor_name in ["cambricon", "sunrise"]:
         gems_result = flag_gems.scaled_dot_product_attention(
             q,
             k,
@@ -192,6 +192,7 @@ def test_scaled_dot_product_attention_legacy(
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin", reason="Issue #2849: Not working"
 )
+@pytest.mark.skipif(flag_gems.vendor_name == "sunrise", reason="Compiler Error")
 @pytest.mark.skipif(
     torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
 )
@@ -235,7 +236,7 @@ def test_scaled_dot_product_attention_legacy_backward(
         ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa
     )
 
-    if flag_gems.vendor_name == "cambricon":
+    if flag_gems.vendor_name in ["cambricon", "sunrise"]:
         gems_result = flag_gems.scaled_dot_product_attention(
             q,
             k,

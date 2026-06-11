@@ -19,6 +19,6 @@ def softplus_forward(x, beta, threshold):
 
 
 def softplus(self, beta=1.0, threshold=20.0):
-    logger.debug("GEMS SOFTPLUS FORWARD")
+    logger.debug("GEMS_KUNLUNXIN SOFTPLUS_FORWARD")
     output = softplus_forward(self, beta, threshold)
     return output

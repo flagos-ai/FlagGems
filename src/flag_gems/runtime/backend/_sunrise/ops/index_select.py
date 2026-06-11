@@ -8,7 +8,7 @@ from flag_gems import runtime
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -23,7 +23,7 @@ def index_select_kernel(
     rows_mask = rows_offsets < M
     cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    out_mask = rows_mask and (cols_offsets < index_len)
+    out_mask = rows_mask & (cols_offsets < index_len)
 
     indices = tl.load(index + cols_offsets, mask=(cols_offsets < index_len), other=0)
     valid_lower_bound = indices >= 0
