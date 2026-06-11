@@ -31,8 +31,9 @@ def kthvalue(inp, k, dim=-1, keepdim=False):
     """
     logger.debug("GEMS KTHVALUE")
 
+    original_dtype = inp.dtype
     if inp.dtype not in (torch.float32,):
-        assert False, f"Unsupported dtype {inp.dtype}, expected float32"
+        inp = inp.to(torch.float32)
 
     # Handle negative dim
     if dim < 0:
@@ -123,4 +124,4 @@ def kthvalue(inp, k, dim=-1, keepdim=False):
             values = values_kth
             indices = indices_kth
 
-    return values, indices
+    return values.to(original_dtype), indices
