@@ -6298,6 +6298,7 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+      - beta: '5.0'
       - stable: '5.3'
   - id: special_modified_bessel_k1
     description: Triton kernel implementation for special_modified_bessel_k1.
@@ -6309,7 +6310,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.4'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,
