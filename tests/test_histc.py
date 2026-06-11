@@ -11,7 +11,13 @@ HISTC_DTYPES = [torch.float32]
 
 
 def make_histc_input(
-    shape, dtype, device, min_val, max_val, include_endpoints=False, include_outliers=False
+    shape,
+    dtype,
+    device,
+    min_val,
+    max_val,
+    include_endpoints=False,
+    include_outliers=False,
 ):
     numel = 1
     for dim in shape:
