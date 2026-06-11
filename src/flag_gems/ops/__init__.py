@@ -254,6 +254,7 @@ from flag_gems.ops.nanmedian import (
     nanmedian_dim_values,
     nanmedian_out,
 )
+from flag_gems.ops.narrow_copy import narrow_copy
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.new_full import new_full
@@ -765,6 +766,7 @@ __all__ = [
     "nanmedian_dim",
     "nanmedian_dim_values",
     "nanmedian_out",
+    "narrow_copy",
     "ne",
     "ne_scalar",
     "neg",

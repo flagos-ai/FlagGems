@@ -4386,6 +4386,17 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.4'
+  - id: narrow_copy
+    description: Triton kernel implementation for narrow_copy.
+    for:
+      - narrow_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: ne
     description: Computes that `input` is not equal to `other` element-wise.
     for:
