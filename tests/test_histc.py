@@ -35,7 +35,6 @@ def make_histc_input(
     return inp
 
 
-# @pytest.mark.skip(reason="Issue #3585: Tensor-lies are not close.")
 @pytest.mark.histc
 @pytest.mark.parametrize("shape", HISTC_SHAPES)
 @pytest.mark.parametrize("bins", HISTC_BINS)
