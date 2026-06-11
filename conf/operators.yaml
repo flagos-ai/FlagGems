@@ -3559,7 +3559,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: lift_out
     description: |
       Out-of-place variant of lift that copies self to the out tensor.
@@ -3571,7 +3571,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: lift_fresh_copy
     description: |
       Creates a new, independent copy of a tensor within a compiled graph.
