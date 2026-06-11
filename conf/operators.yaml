@@ -3218,7 +3218,7 @@ ops:
     kind:
       - Reduction
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: index_reduce_
     description: The in-place version of `index_reduce()`.
     for:
@@ -3229,7 +3229,7 @@ ops:
     kind:
       - Reduction
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: index_select
     description: |
       Returns a new tensor which indexes the `input` tensor along dimension `dim`
