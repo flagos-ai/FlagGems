@@ -6231,7 +6231,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: special_scaled_modified_bessel_k1_out
     description: A variant of `special_scaled_modified_bessel_k1` that allows the output
       to be assigned to another tensor.
@@ -6244,7 +6244,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,
