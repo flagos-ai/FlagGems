@@ -4189,7 +4189,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: renorm
     description: >
       Returns a tensor where each sub-tensor along the given dimension
