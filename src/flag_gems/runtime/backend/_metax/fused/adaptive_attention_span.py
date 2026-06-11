@@ -41,7 +41,7 @@ def adaptive_attention_span_backward(y, dy):
 class AdaptiveAttentionSpan(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logger.debug("GEMS_METAX ADAPTIVE_ATTENTION_SPAN FORWARD")
+        logger.debug("GEMS_METAX ADAPTIVE_ATTENTION_SPAN_FORWARD")
         if A.requires_grad is True:
             out = adaptive_attention_span_forward(A.to(torch.float32))
             ctx.save_for_backward(out)
@@ -52,7 +52,7 @@ class AdaptiveAttentionSpan(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_METAX ADAPTIVE_ATTENTION_SPAN BACKWARD")
+        logger.debug("GEMS_METAX ADAPTIVE_ATTENTION_SPAN_BACKWARD")
         (out,) = ctx.saved_tensors
         in_grad = adaptive_attention_span_backward(out, out_grad)
         return in_grad
