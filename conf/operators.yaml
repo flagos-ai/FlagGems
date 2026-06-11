@@ -509,6 +509,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.4'
+  - id: arctan2
+    description: Computes the element-wise arctangent of `input` / `other`. Alias for `atan2`.
+    for:
+      - arctan2
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: arctanh_
     description: |
       Computes the element-wise inverse hyperbolic tangent of a given input tensor.
