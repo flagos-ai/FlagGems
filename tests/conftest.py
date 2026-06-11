@@ -2,9 +2,27 @@ import fcntl
 import json
 import logging
 import os
+import sys
 from datetime import datetime
 
 import pytest
+
+# Ensure the correct worktree's src/ is first in sys.path.
+# _flag_gems_editable.pth may add a stale worktree path which would shadow
+# the local flag_gems module. Also purge ScikitBuildRedirectingFinder that
+# redirects imports to a stale build directory.
+_src_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
+if _src_dir in sys.path:
+    sys.path.remove(_src_dir)
+sys.path.insert(0, _src_dir)
+# Purge any cached flag_gems modules that were loaded from the stale path.
+for _mod in list(sys.modules.keys()):
+    if _mod.startswith("flag_gems"):
+        del sys.modules[_mod]
+# Remove scikit-build redirecting finders that point to stale build dirs.
+for _finder in list(sys.meta_path):
+    if "ScikitBuild" in type(_finder).__name__:
+        sys.meta_path.remove(_finder)
 
 # TODO(Qiming): Try remove this line
 # import torch  # noqa: F401
