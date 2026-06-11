@@ -916,6 +916,7 @@ class FusedMarlinMoEBenchmarkFp8WeightMXQ(base.Benchmark):
         )
 
 
+
 def _vllm_baseline_int8_for_fp8_bench(
     hidden_states,
     w1_q_marlin,
@@ -982,6 +983,7 @@ def test_fused_marlin_moe_fp8_weight_mxq():
     """
     bench = FusedMarlinMoEBenchmarkFp8WeightMXQ(
         op_name="fused_marlin_moe_fp8_weight_mxq",
+
         torch_op=_vllm_baseline_int8_for_fp8_bench,
         dtypes=[torch.bfloat16],
     )
