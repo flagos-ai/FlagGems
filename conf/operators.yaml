@@ -2171,7 +2171,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: expand_
     description: Pure layout operation (expand, in-place).
     for:
@@ -2181,7 +2181,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: expm1
     description: Computes the exponential of the elements minus 1 of `input`.
     for:
