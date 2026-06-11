@@ -426,12 +426,18 @@ def parse_cc_result(proc: subprocess.Popen, issue: dict, worktree_path: str = No
     }
 
 
-def post_commit_format_check(worktree_path: str, python_path: str) -> dict | None:
+def post_commit_format_check(worktree_path: str, python_path: str, log_path: str = None) -> dict | None:
     """Auto-fix code style (black + isort) and verify with flake8 after agent commits.
 
     This is a deterministic, safe post-processing step that does not change code logic.
     Returns {"passed": bool, "auto_fixed": bool, "flake8_errors": str | None}, or None on error.
     """
+    log_lines = []
+
+    def log(msg):
+        log_lines.append(msg)
+        logger.info(f"[FORMAT] {msg}")
+
     try:
         # Get .py files changed in the HEAD commit only (not upstream diffs)
         diff_result = subprocess.run(
@@ -443,24 +449,30 @@ def post_commit_format_check(worktree_path: str, python_path: str) -> dict | Non
         )
         py_files = [f for f in diff_result.stdout.strip().split("\n") if f.endswith(".py")]
         if not py_files:
-            logger.debug(f"[FORMAT] No .py files changed in {worktree_path}")
+            log("No .py files changed — skipping")
+            _write_format_log(log_path, log_lines)
             return {"passed": True, "auto_fixed": False, "flake8_errors": None}
 
-        logger.info(f"[FORMAT] Checking {len(py_files)} file(s): {py_files}")
+        log(f"Files to check: {py_files}")
 
         # Auto-fix with black + isort (deterministic, safe)
-        subprocess.run(
+        black_result = subprocess.run(
             [python_path, "-m", "black"] + py_files,
             cwd=worktree_path,
             capture_output=True,
             text=True,
         )
-        subprocess.run(
+        log(f"black: exit={black_result.returncode}")
+        if black_result.stderr.strip():
+            log(f"  {black_result.stderr.strip()}")
+
+        isort_result = subprocess.run(
             [python_path, "-m", "isort", "--profile", "black"] + py_files,
             cwd=worktree_path,
             capture_output=True,
             text=True,
         )
+        log(f"isort: exit={isort_result.returncode}")
 
         # Check if black/isort made any changes
         status_result = subprocess.run(
@@ -472,7 +484,7 @@ def post_commit_format_check(worktree_path: str, python_path: str) -> dict | Non
         auto_fixed = bool(status_result.stdout.strip())
 
         if auto_fixed:
-            logger.info(f"[FORMAT] Auto-fixed style issues, amending commit")
+            log(f"Auto-fixed files: {status_result.stdout.strip()}")
             subprocess.run(["git", "add"] + py_files, cwd=worktree_path, capture_output=True)
             subprocess.run(
                 ["git", "commit", "--amend", "--no-edit"],
@@ -480,6 +492,9 @@ def post_commit_format_check(worktree_path: str, python_path: str) -> dict | Non
                 capture_output=True,
                 text=True,
             )
+            log("Amended commit with style fixes")
+        else:
+            log("No style fixes needed")
 
         # Final check with flake8
         flake8_result = subprocess.run(
@@ -491,9 +506,9 @@ def post_commit_format_check(worktree_path: str, python_path: str) -> dict | Non
         )
         flake8_passed = flake8_result.returncode == 0
         flake8_errors = flake8_result.stdout.strip() if not flake8_passed else None
-
+        log(f"flake8: {'PASS' if flake8_passed else 'FAIL'}")
         if flake8_errors:
-            logger.warning(f"[FORMAT] flake8 errors remain:\n{flake8_errors}")
+            log(f"  {flake8_errors}")
 
         # Check pytest marks consistency for test/benchmark files
         mark_errors = None
@@ -507,17 +522,21 @@ def post_commit_format_check(worktree_path: str, python_path: str) -> dict | Non
                 capture_output=True,
                 text=True,
             )
-            if mark_result.returncode != 0:
+            mark_passed = mark_result.returncode == 0
+            log(f"pytest-mark-check: {'PASS' if mark_passed else 'FAIL'}")
+            if not mark_passed:
                 mark_errors = mark_result.stdout.strip()
-                logger.warning(f"[FORMAT] pytest mark issues:\n{mark_errors}")
+                log(f"  {mark_errors}")
+        else:
+            log("pytest-mark-check: SKIP (no test/benchmark files)")
 
         all_passed = flake8_passed and (mark_errors is None)
-        if all_passed:
-            logger.info(f"[FORMAT] All checks passed (auto_fixed={auto_fixed})")
+        log(f"Result: {'PASS' if all_passed else 'FAIL'} (auto_fixed={auto_fixed})")
 
         # Combine all errors
         all_errors = "\n".join(filter(None, [flake8_errors, mark_errors]))
 
+        _write_format_log(log_path, log_lines)
         return {
             "passed": all_passed,
             "auto_fixed": auto_fixed,
@@ -525,8 +544,20 @@ def post_commit_format_check(worktree_path: str, python_path: str) -> dict | Non
         }
 
     except Exception as e:
-        logger.warning(f"[FORMAT] Format check failed: {e}")
+        log(f"Format check failed: {e}")
+        _write_format_log(log_path, log_lines)
         return None
+
+
+def _write_format_log(log_path: str | None, lines: list[str]):
+    """Write format check log to file."""
+    if not log_path:
+        return
+    try:
+        with open(log_path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+    except Exception:
+        pass
 
 
 def generate_timeline(jsonl_path: str, task_name: str) -> str | None:
@@ -862,9 +893,11 @@ def run(args):
 
                 # Post-commit format check: auto-fix black/isort, verify flake8
                 if proc.returncode == 0:
+                    format_log = proc._stdout_path.replace(".jsonl", ".format-check.log")
                     format_result = post_commit_format_check(
                         worktree_path,
                         config.get("python_path", "python"),
+                        log_path=format_log,
                     )
                     if format_result is not None:
                         result["format_check_passed"] = format_result["passed"]
