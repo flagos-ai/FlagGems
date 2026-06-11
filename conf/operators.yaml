@@ -6686,7 +6686,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.0'
+      - alpha: '5.4'
   - id: upsample_bicubic2d
     description: A variant of `upsample()` that has `mode` set to `bicubic`.
     for:
