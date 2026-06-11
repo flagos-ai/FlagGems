@@ -96,9 +96,11 @@ kunlunxin = [
     "torchvision==0.24.0+cu129",
     "torch_plugin==0.1.0",
     "torch_xray==2.0.4",
-    "triton==3.0.0+a48aedef",
-    "xformers==0.0.29+137a8ec.d20260114",
-    "xmlir==1.0.0.1"
+    "xformers==0.0.29+1e7a8ec.d20260114",
+    "xmlir==1.0.0.1",
+    # Triton cannot be installed with torch
+    # because torch requires triton==3.5.0
+    # "triton==3.0.0+a48aedef",
 ]
 
 metax = [
@@ -111,9 +113,8 @@ metax = [
 ]
 
 mthreads = [
-    "torch==2.9.0",
+    "torch==2.9.0+musa.4.3.6",
     "torch_musa==2.9.0",
-    "numpy==1.26.4",
     "triton==3.6.0+git89458660",
     "mkl==2024.0.0",
     # "flagtree==0.5.1+mthreads3.6",
