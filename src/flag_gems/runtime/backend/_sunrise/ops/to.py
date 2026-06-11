@@ -6,7 +6,7 @@ import triton
 
 from flag_gems.utils import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
@@ -47,8 +47,10 @@ def _normalize_memory_format(
 
 
 def _allocate_preserve_format(x: torch.Tensor, empty_kwargs: dict) -> torch.Tensor:
+    """Recreate tensor storage while honoring preserve_format semantics."""
     if torch.ops.aten.is_non_overlapping_and_dense(x):
         return torch.empty_strided(x.size(), x.stride(), **empty_kwargs)
+    # Fall back to PyTorch's best-effort layout suggestion when stride replication is unsafe.
     return torch.empty_like(x, memory_format=torch.preserve_format, **empty_kwargs)
 
 
@@ -86,6 +88,7 @@ def to_copy(
     non_blocking=False,
     memory_format=None,
 ):
+    # We only implement the dense strided kernel today; all other layouts fall back to PyTorch.
     if (layout is not None and layout != torch.strided) or x.layout != torch.strided:
         raise NotImplementedError(
             "FlagGems to_copy currently supports strided tensors only."
@@ -143,6 +146,7 @@ def to_copy(
     if target_device != x.device or (
         x.device.type == "cpu" and target_device.type == "cpu"
     ):
+        # Device transfer (d2h/h2d etc.) relies on PyTorch's implementation.
         return _fallback_to_copy(
             x,
             dtype=target_dtype,
