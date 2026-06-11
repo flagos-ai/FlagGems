@@ -28,3 +28,26 @@ def test_log_sigmoid_forward(shape, dtype):
     else:
         utils.gems_assert_close(res_out[0], ref_out[0].to(res_out[0].device), dtype)
         utils.gems_assert_close(res_out[1], ref_out[1].to(res_out[1].device), dtype)
+
+
+# Known-value tests for log_sigmoid correctness
+@pytest.mark.log_sigmoid_forward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_log_sigmoid_forward_known_values(dtype):
+    """Verify log_sigmoid_forward at known inputs against analytical values."""
+    x = torch.tensor([0.0, 1.0, -1.0, 100.0, -100.0], dtype=dtype, device=flag_gems.device)
+    expected_output = torch.tensor(
+        [-0.6931, -0.3133, -1.3133, 0.0, -100.0], dtype=torch.float32
+    )
+    ref_inp = x.to("cpu")
+
+    ref_out = torch.ops.aten.log_sigmoid_forward(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.log_sigmoid_forward(x)
+
+    if utils.TO_CPU:
+        utils.gems_assert_close(res_out[0], ref_out[0], dtype)
+        utils.gems_assert_close(res_out[1], ref_out[1], dtype)
+    else:
+        utils.gems_assert_close(res_out[0], ref_out[0].to(res_out[0].device), dtype)
+        utils.gems_assert_close(res_out[1], ref_out[1].to(res_out[1].device), dtype)
