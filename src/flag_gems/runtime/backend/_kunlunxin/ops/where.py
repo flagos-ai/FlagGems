@@ -19,7 +19,7 @@ def where_inner(condition, self, other):
 
 
 def where_self_out(condition, self, other, out=None):
-    logger.debug("GEMS WHERE_SELF_OUT")
+    logger.debug("GEMS_KUNLUNXIN WHERE_SELF_OUT")
     result_type = torch.result_type(self, other)
     if out is not None:
         assert (
@@ -69,15 +69,15 @@ def where_self_out(condition, self, other, out=None):
 
 
 def where_self(condition, self, other):
-    logger.debug("GEMS WHERE_SELF")
+    logger.debug("GEMS_KUNLUNXIN WHERE_SELF")
     return where_self_out(condition, self, other)
 
 
 def where_scalar_self(condition, self, other):
-    logger.debug("GEMS WHERE_SCALAR_SELF")
+    logger.debug("GEMS_KUNLUNXIN WHERE_SCALAR_SELF")
     return where_self_out(condition, self, other)
 
 
 def where_scalar_other(condition, self, other):
-    logger.debug("GEMS WHERE_SCALAR_OTHER")
+    logger.debug("GEMS_KUNLUNXIN WHERE_SCALAR_OTHER")
     return where_self_out(condition, self, other)
