@@ -24,6 +24,7 @@ from flag_gems.ops.aminmax import aminmax
 from flag_gems.ops.angle import angle
 from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
+from flag_gems.ops.arccosh_ import arccosh_
 from flag_gems.ops.arcsinh import arcsinh, arcsinh_out
 from flag_gems.ops.arcsinh_ import arcsinh_
 from flag_gems.ops.arctanh_ import arctanh_
@@ -484,6 +485,7 @@ __all__ = [
     "any_dims",
     "arange",
     "arange_start",
+    "arccosh_",
     "arcsinh",
     "arcsinh_",
     "arcsinh_out",

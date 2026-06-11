@@ -473,6 +473,19 @@ ops:
       - tensor
     stages:
       - stable: '2.1'
+  - id: arccosh_
+    description: |
+      Computes the element-wise inverse hyperbolic cosine of a given input tensor.
+      This is an in-place version.
+    for:
+      - arccosh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: arcsinh
     description: Performs an element-wise inverse hyperbolic sine computation on the given tensor.
     for:
