@@ -6957,7 +6957,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: special_xlogy_
     description: The in-place version of `special_xlogy()`.
     for:
@@ -6968,7 +6968,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: zero
     description: Fills tensor with zeros.
     for:
