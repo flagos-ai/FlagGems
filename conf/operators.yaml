@@ -4178,7 +4178,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: smooth_l1_loss
     description: Compute the smooth L1 loss between input and target tensors.
     for:
