@@ -557,7 +557,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: asin_
     description: The in-place version of `asin()`.
     for:
@@ -568,7 +568,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: as_strided_copy
     description: |
       Creates a contiguous copy of an `as_strided` view of the input tensor.
