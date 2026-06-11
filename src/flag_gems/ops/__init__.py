@@ -241,6 +241,7 @@ from flag_gems.ops.median import median, median_dim, median_dim_values, median_o
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.mm import mm, mm_out, router_gemm
+from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
@@ -394,6 +395,7 @@ from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
 from flag_gems.ops.tril import tril, tril_, tril_out
 from flag_gems.ops.triu import triu, triu_
+from flag_gems.ops.trunc_ import trunc, trunc_
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
@@ -750,6 +752,7 @@ __all__ = [
     "minimum",
     "mm",
     "mm_out",
+    "mode",
     "mse_loss",
     "mul",
     "mul_",
@@ -935,6 +938,8 @@ __all__ = [
     "true_divide",
     "true_divide_",
     "true_divide_out",
+    "trunc",
+    "trunc_",
     "unfold_backward",
     "uniform_",
     "unique_consecutive",
