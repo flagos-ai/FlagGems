@@ -6510,7 +6510,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      - stable: '4.1'
+      - alpha: '5.4'
   - id: tanh
     description: Returns a new tensor with the hyperbolic tangent of the elements of `input`.
     for:
