@@ -3730,7 +3730,7 @@ ops:
     kind:
       - Math
     stages:
-      - stable: '5.0'
+      - alpha: '5.4'
   - id: logit
     description: |
       Returns a new tensor with the logit of the elements of `input`.
