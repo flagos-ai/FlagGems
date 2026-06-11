@@ -6712,6 +6712,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_log1p
+    description: Computes log(1 + x) for each element of the input tensor.
+    for:
+      - special.log1p
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,
