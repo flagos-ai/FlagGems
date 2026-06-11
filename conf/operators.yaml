@@ -201,7 +201,7 @@ ops:
     kind:
       - BLAS
     stages:
-      - stable: '2.2'
+      - alpha: '5.4'
   - id: addmm_dtype
     description: |
       A variant of `addmm` that allows the dtype of the output tensor to be specified.
