@@ -1618,7 +1618,7 @@ ops:
     kind:
       - Math
     stages:
-      - stable: '5.0'
+      - alpha: '5.4'
   - id: dequantize_and_gather_k_cache
     description: |
       Dequantizes FP8 K-cache entries and gathers them into a BF16 tensor for DeepSeekV4 attention.
@@ -2320,7 +2320,7 @@ ops:
     kind:
       - Math
     stages:
-      - stable: '5.0'
+      - alpha: '5.4'
   - id: flash_attention_forward
     for:
       - _flash_attention_forward
@@ -4327,7 +4327,7 @@ ops:
     kind:
       - Math
     stages:
-      - stable: '5.0'
+      - alpha: '5.4'
   - id: new_full
     description: |
       Returns a Tensor of size `size` filled with `fill_value`.
