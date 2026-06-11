@@ -66,11 +66,14 @@ def test_kthvalue_default_dim(shape, k, dtype):
 
 
 @pytest.mark.kthvalue
-@pytest.mark.parametrize("shape, dim", [
-    ((3, 5), 2),
-    ((3, 5), -3),
-    ((4,), 1),
-])
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        ((3, 5), 2),
+        ((3, 5), -3),
+        ((4,), 1),
+    ],
+)
 def test_kthvalue_invalid_dim(shape, dim):
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
