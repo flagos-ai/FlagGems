@@ -3659,7 +3659,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.0'
+      - alpha: '5.4'
   - id: logaddexp
     description: Computes the element-wise logarithm of the sum of the exponentials of two input tensors.
     for:
