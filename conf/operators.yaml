@@ -6110,6 +6110,8 @@ ops:
       Computes the shifted Chebyshev polynomial of the second kind W_n(x).
     for:
       - special.shifted_chebyshev_polynomial_w
+    stages:
+      - alpha: '5.4'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,
