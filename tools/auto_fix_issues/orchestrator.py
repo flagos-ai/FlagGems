@@ -185,6 +185,7 @@ def launch_cc(
     config: dict,
     template_path: str,
     log_dir: str,
+    attempt: int = 0,
 ) -> subprocess.Popen:
     """Launch a Claude Code process for an issue fix."""
     issue_id = issue["id"]
@@ -209,7 +210,7 @@ def launch_cc(
     }
     prompt = render_template(template_path, variables)
 
-    log_path = os.path.join(log_dir, f"{task_name}.log")
+    log_path = os.path.join(log_dir, f"{task_name}.attempt-{attempt + 1}.log")
 
     env = os.environ.copy()
     env.pop("CLAUDECODE", None)
@@ -240,7 +241,7 @@ def launch_cc(
     if budget:
         cmd.extend(["--max-budget-usd", str(budget)])
 
-    stdout_path = os.path.join(log_dir, f"{task_name}.jsonl")
+    stdout_path = os.path.join(log_dir, f"{task_name}.attempt-{attempt + 1}.jsonl")
     stdout_file = open(stdout_path, "w")
     stderr_file = open(log_path, "w")
     try:
@@ -802,7 +803,7 @@ def run(args):
 
             try:
                 worktree_path, branch = create_worktree(flaggems_dir, issue, base_branch)
-                proc = launch_cc(issue, worktree_path, gpu_id, config, template_path, log_dir)
+                proc = launch_cc(issue, worktree_path, gpu_id, config, template_path, log_dir, attempt)
 
                 running[issue_key] = (proc, gpu_id, attempt, issue, worktree_path, time.time())
 
