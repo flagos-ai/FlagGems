@@ -153,7 +153,7 @@ def upsample_linear1d_backward_call(grad, input_size, align_corners):
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("scale_factor", [0.5, 1.5, 2.0])
+@pytest.mark.parametrize("scale_factor", [0.5, 1.5, 2.0, 2.5, 4.0])
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("layout", ["contiguous", "non_contiguous"])
 @pytest.mark.parametrize("edge_case", [False, True])
