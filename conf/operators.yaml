@@ -3360,6 +3360,18 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: masked_scale
+    description: The low-level implementation for computing input multiplied by scale with masking.
+    for:
+      - _masked_scale
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.3'
   - id: isclose
     description: |
       Returns a new tensor with boolean elements representing if each element of `input`

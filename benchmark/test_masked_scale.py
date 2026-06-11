@@ -1,0 +1,36 @@
+from typing import Generator
+
+import pytest
+import torch
+
+from . import base, consts, utils
+
+
+class MaskedScaleBenchmark(base.Benchmark):
+    def set_more_shapes(self):
+        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        shapes_3d = [(64, 64, 2**i) for i in range(0, 20, 4)]
+        return special_shapes_2d + shapes_3d
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
+            mask = torch.randint(0, 2, shape, dtype=torch.uint8, device=self.device)
+            scale = 2.0
+            yield inp, mask, scale
+
+    def get_tflops(self, op, *args, **kwargs):
+        shape = list(args[0].shape)
+        return torch.tensor(shape).prod().item()
+
+
+@pytest.mark.masked_scale
+@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
+def test_masked_scale(dtype):
+    torch_op = lambda inp, mask, scale: torch.ops.aten._masked_scale(inp, mask, scale)
+    bench = MaskedScaleBenchmark(
+        op_name="masked_scale",
+        torch_op=torch_op,
+        dtypes=[dtype],
+    )
+    bench.run()
