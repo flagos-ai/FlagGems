@@ -1,0 +1,112 @@
+issues:
+  - id: 441
+    operator: tile
+    type: 性能失败
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'tile' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'tile' benchmark/ --level core --record log"
+
+  - id: 440
+    operator: baddbmm
+    type: accuracy_fail
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'baddbmm' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'baddbmm' benchmark/ --level core --record log"
+
+  - id: 433
+    operator: std
+    type: accuracy_fail
+    severity: major
+    hardware: BI-V150
+    test_cmd: "pytest -m 'std' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'std' benchmark/ --level core --record log"
+
+  - id: 432
+    operator: any_dim
+    type: accuracy_fail
+    severity: major
+    hardware: BI-V150
+    test_cmd: "pytest -m 'any_dim' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'any_dim' benchmark/ --level core --record log"
+
+  - id: 431
+    operator: all_dim
+    type: accuracy_fail
+    severity: major
+    hardware: BI-V150
+    test_cmd: "pytest -m 'all_dim' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'all_dim' benchmark/ --level core --record log"
+
+  - id: 430
+    operator: var
+    type: accuracy_fail
+    severity: major
+    hardware: BI-V150
+    test_cmd: "pytest -m 'var' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'var' benchmark/ --level core --record log"
+
+  - id: 429
+    operator: flash_attn_varlen_func
+    type: 性能报错
+    severity: major
+    hardware: C550
+    test_cmd: "pytest -m 'flash_attn_varlen_func' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'flash_attn_varlen_func' benchmark/ --level core --record log"
+
+  - id: 428
+    operator: conv_transpose2d
+    type: accuracy_fail
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'conv_transpose2d' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'conv_transpose2d' benchmark/ --level core --record log"
+
+  - id: 427
+    operator: normed_cumsum
+    type: 无测例
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'normed_cumsum' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'normed_cumsum' benchmark/ --level core --record log"
+
+  - id: 426
+    operator: baddbmm.out
+    type: 无测例
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'baddbmm' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'baddbmm' benchmark/ --level core --record log"
+
+  - id: 425
+    operator: alias_copy_out
+    type: 无测例
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'alias_copy' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'alias_copy' benchmark/ --level core --record log"
+
+  - id: 424
+    operator: adaptive_avg_pool3d
+    type: 无测例
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'adaptive_avg_pool3d' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'adaptive_avg_pool3d' benchmark/ --level core --record log"
+
+  - id: 423
+    operator: max_pool3d_with_indices
+    type: accuracy_fail
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'max_pool3d_with_indices' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'max_pool3d_with_indices' benchmark/ --level core --record log"
+
+  - id: 422
+    operator: new_full
+    type: accuracy_fail
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'new_full' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'new_full' benchmark/ --level core --record log"

@@ -1,0 +1,46 @@
+# auto_fix_issues configuration
+
+# FlagGems project root (the git repo)
+flaggems_dir: /path/to/FlagGems
+
+# Python interpreter with FlagGems environment
+python_path: /path/to/python
+
+# Claude Code executable
+claude_bin: claude
+
+# Maximum retry attempts per issue (on failure)
+max_retries: 2
+
+# Maximum budget (USD) per issue per attempt
+budget_per_op: 10000000.0
+
+# Prompt template path (relative to this config file)
+template: templates/fix_issue.md
+
+# Results directory (relative to this config file)
+results_dir: results
+
+# Device management
+device:
+  # Lock file directory for GPU allocation
+  lock_dir: /tmp/auto_fix_gpu_locks
+  # Set to null to auto-detect all GPUs
+  # Or specify a list of GPU IDs to use, e.g. [0, 1, 2, 3]
+  gpu_ids: null
+
+# Timeout (seconds) per issue task; 0 or null to disable
+timeout_per_op: 3600
+
+# Polling interval (seconds) for checking process status
+poll_interval: 10
+
+# FlagGems vendor override (for container environments where nvidia-smi
+# is broken). Set to "nvidia" / "ascend" / etc. or null to skip.
+gems_vendor: nvidia
+
+# Base branch for worktrees
+base_branch: master
+
+# Whether to auto-create PRs after successful fixes (requires gh CLI auth)
+auto_create_pr: false

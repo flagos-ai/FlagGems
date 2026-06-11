@@ -1,0 +1,72 @@
+issues:
+  - id: 441-internal
+    operator: tile
+    type: benchmark_fail
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'tile' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'tile' benchmark/ --level core --record log"
+
+  - id: 440-internal
+    operator: baddbmm
+    type: accuracy_fail
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'baddbmm' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'baddbmm' benchmark/ --level core --record log"
+
+  - id: 428-internal
+    operator: conv_transpose2d
+    type: accuracy_fail
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'conv_transpose2d' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'conv_transpose2d' benchmark/ --level core --record log"
+
+  - id: 427-internal
+    operator: normed_cumsum
+    type: missing_test
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'normed_cumsum' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'normed_cumsum' benchmark/ --level core --record log"
+
+  - id: 426-internal
+    operator: baddbmm.out
+    type: missing_test
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'baddbmm' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'baddbmm' benchmark/ --level core --record log"
+
+  - id: 425-internal
+    operator: alias_copy_out
+    type: missing_test
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'alias_copy' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'alias_copy' benchmark/ --level core --record log"
+
+  - id: 424-internal
+    operator: adaptive_avg_pool3d
+    type: missing_test
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'adaptive_avg_pool3d' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'adaptive_avg_pool3d' benchmark/ --level core --record log"
+
+  - id: 423-internal
+    operator: max_pool3d_with_indices
+    type: accuracy_fail
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'max_pool3d_with_indices' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'max_pool3d_with_indices' benchmark/ --level core --record log"
+
+  - id: 422-internal
+    operator: new_full
+    type: accuracy_fail
+    severity: major
+    hardware: H800
+    test_cmd: "pytest -m 'new_full' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'new_full' benchmark/ --level core --record log"
