@@ -23,15 +23,20 @@ def test_kthvalue(shape, k, dim, keepdim, dtype):
         if dim >= rank or dim < -rank:
             return
 
-    dim_size = shape[dim]
-    if k > dim_size:
-        return
-
     if any(d == 0 for d in shape):
         return
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
+
+    dim_size = shape[dim]
+    if k < 1 or k > dim_size:
+        with pytest.raises(RuntimeError, match="selected number k out of range"):
+            torch.kthvalue(ref_inp, k, dim=dim, keepdim=keepdim)
+        with pytest.raises(RuntimeError, match="selected number k out of range"):
+            with flag_gems.use_gems():
+                torch.kthvalue(inp, k, dim=dim, keepdim=keepdim)
+        return
 
     ref_values, ref_indices = torch.kthvalue(ref_inp, k, dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():
@@ -51,12 +56,17 @@ def test_kthvalue_default_dim(shape, k, dtype):
     if any(d == 0 for d in shape):
         return
 
-    dim_size = shape[-1]
-    if k > dim_size:
-        return
-
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
+
+    dim_size = shape[-1]
+    if k < 1 or k > dim_size:
+        with pytest.raises(RuntimeError, match="selected number k out of range"):
+            torch.kthvalue(ref_inp, k)
+        with pytest.raises(RuntimeError, match="selected number k out of range"):
+            with flag_gems.use_gems():
+                torch.kthvalue(inp, k)
+        return
 
     ref_values, ref_indices = torch.kthvalue(ref_inp, k)
     with flag_gems.use_gems():

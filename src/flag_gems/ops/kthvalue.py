@@ -43,11 +43,10 @@ def kthvalue(inp, k, dim=-1, keepdim=False):
     ndim = inp.ndim
     dim_size = inp.shape[dim]
 
-    # Clamp k to valid range [1, dim_size]
-    if k < 1:
-        k = 1
-    if k > dim_size:
-        k = dim_size
+    if k < 1 or k > dim_size:
+        raise RuntimeError(
+            f"kthvalue(): selected number k out of range for dimension {dim}"
+        )
 
     # Handle empty tensor
     if inp.numel() == 0:
