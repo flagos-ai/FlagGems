@@ -87,7 +87,7 @@ kunlunxin = [
     "benchflow==1.0.0",
     "colorama==0.4.6",
     "flash_attn==2.4.2+7e2dd4d",
-    "hydrax==0.1.0",
+    "hydrax==0.2.2",
     "hyperparameter==0.5.6",
     "psutil==6.1.0",
     "regex==2026.4.4",
