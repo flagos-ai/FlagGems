@@ -3907,7 +3907,7 @@ ops:
     kind:
       - BLAS
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: max
     description: Returns the maximum value of all elements in the `input` tensor.
     for:
