@@ -57,7 +57,8 @@ class _Scale2Config:
 
 
 class _GenericConfig:
-    SCAN_BLOCK_K = 16
+    # High-scale fallback widens the inverse local window with the upsample ratio.
+    WINDOW_EXTRA = 2
 
 
 class _TorchComposeConfig:
@@ -144,7 +145,7 @@ class _DispatchPath:
     SCALE2_CONTIG = 7
     ALIGN_FALSE_DOWN2 = 8
     ALIGN_FALSE_UP2 = 9
-    FULL_SCAN = 10
+    HIGH_SCALE_WINDOW = 10
     GENERIC = 11
 
 
@@ -405,71 +406,74 @@ def upsample_linear1d_backward_kernel(
         row_start += row_step
 
 
-# Purpose: full output scan for high upsample ratios where local windowing is insufficient.
+# Purpose: widened local-window backward for high upsample ratios.
 # Applies to: arbitrary dtype/shape fallback when out_w > 2 * in_w.
 @triton.jit
-def upsample_linear1d_backward_full_scan_kernel(
+def upsample_linear1d_backward_high_scale_kernel(
     grad_out_ptr,
     grad_in_ptr,
     rows,
     in_w,
     out_w,
     align_corners: tl.constexpr,
+    WINDOW: tl.constexpr,
     BLOCK_W: tl.constexpr,
     ROWS_PER_BLOCK: tl.constexpr,
-    SCAN_BLOCK_K: tl.constexpr,
 ):
     row_start = ext.program_id(axis=1) * ROWS_PER_BLOCK
     row_step = tl.num_programs(axis=1) * ROWS_PER_BLOCK
     x_in = ext.program_id(axis=0) * BLOCK_W + tl.arange(0, BLOCK_W)[None, :]
     width_mask = x_in < in_w
 
+    x_in_f = x_in.to(tl.float32)
     in_w_f = tl.cast(in_w, tl.float32)
     out_w_f = tl.cast(out_w, tl.float32)
 
+    if align_corners:
+        if in_w > 1:
+            center = x_in_f * (out_w_f - 1.0) / (in_w_f - 1.0)
+        else:
+            center = tl.zeros((1, BLOCK_W), dtype=tl.float32)
+    else:
+        center = (x_in_f + 0.5) * out_w_f / in_w_f - 0.5
+
+    base = tl.floor(center).to(tl.int32)
+
     while row_start < rows:
         row_offsets = row_start + tl.arange(0, ROWS_PER_BLOCK)[:, None]
-        row_mask = row_offsets < rows
-        mask = row_mask & width_mask
+        mask = (row_offsets < rows) & width_mask
         go_base = grad_out_ptr + row_offsets * out_w
         acc = tl.zeros((ROWS_PER_BLOCK, BLOCK_W), dtype=tl.float32)
 
-        x_out_base = 0
-        while x_out_base < out_w:
-            for offset in tl.static_range(0, SCAN_BLOCK_K):
-                x_out = x_out_base + offset
-                valid = x_out < out_w
-                safe_x_out = tl.minimum(tl.maximum(x_out, 0), out_w - 1)
-                x_out_f = x_out.to(tl.float32)
+        for i in tl.static_range(-WINDOW, WINDOW + 1):
+            x_out = base + i
+            valid = (x_out >= 0) & (x_out < out_w)
+            x_out_f = x_out.to(tl.float32)
 
-                if align_corners:
-                    if out_w > 1:
-                        x_real = x_out_f * (in_w_f - 1.0) / (out_w_f - 1.0)
-                    else:
-                        x_real = 0.0
+            if align_corners:
+                if out_w > 1:
+                    x_real = x_out_f * (in_w_f - 1.0) / (out_w_f - 1.0)
                 else:
-                    x_real = (x_out_f + 0.5) * in_w_f / out_w_f - 0.5
+                    x_real = tl.zeros((1, BLOCK_W), dtype=tl.float32)
+            else:
+                x_real = (x_out_f + 0.5) * in_w_f / out_w_f - 0.5
 
-                x0_f = tl.floor(x_real)
-                w1 = x_real - x0_f
-                w0 = 1.0 - w1
+            x0_f = tl.floor(x_real)
+            w1 = x_real - x0_f
+            w0 = 1.0 - w1
 
-                x0_i = tl.maximum(x0_f, 0.0).to(tl.int32)
-                x1_i = tl.minimum(x0_f + 1.0, in_w_f - 1.0).to(tl.int32)
+            x0_i = tl.maximum(x0_f, 0.0).to(tl.int32)
+            x1_i = tl.minimum(x0_f + 1.0, in_w_f - 1.0).to(tl.int32)
 
-                g = tl.load(go_base + safe_x_out, mask=row_mask & valid, other=0.0).to(
-                    tl.float32
-                )
+            g = tl.load(go_base + x_out, mask=mask & valid, other=0.0).to(tl.float32)
 
-                same = x0_i == x1_i
-                is_x0 = x_in.to(tl.int32) == x0_i
-                is_x1 = x_in.to(tl.int32) == x1_i
+            same = x0_i == x1_i
+            is_x0 = x_in.to(tl.int32) == x0_i
+            is_x1 = x_in.to(tl.int32) == x1_i
 
-                acc += tl.where(same & is_x0, g * (w0 + w1), 0.0)
-                acc += tl.where(~same & is_x0, g * w0, 0.0)
-                acc += tl.where(~same & is_x1, g * w1, 0.0)
-
-            x_out_base += SCAN_BLOCK_K
+            acc += tl.where(same & is_x0, g * (w0 + w1), 0.0)
+            acc += tl.where(~same & is_x0, g * w0, 0.0)
+            acc += tl.where(~same & is_x1, g * w1, 0.0)
 
         tl.store(grad_in_ptr + row_offsets * in_w + x_in, acc, mask=mask)
         row_start += row_step
@@ -968,7 +972,7 @@ def _select_upsample_linear1d_backward_path(
         return _DispatchPath.ALIGN_FALSE_UP2
 
     if scale_bits == _TilingKey.SCALE_UP_GT2:
-        return _DispatchPath.FULL_SCAN
+        return _DispatchPath.HIGH_SCALE_WINDOW
 
     return _DispatchPath.GENERIC
 
@@ -1342,7 +1346,7 @@ def upsample_linear1d_backward(
                 BLOCK_W=block_w,
                 ROWS_PER_BLOCK=rows_per_block,
             )
-        elif dispatch_path == _DispatchPath.FULL_SCAN:
+        elif dispatch_path == _DispatchPath.HIGH_SCALE_WINDOW:
             grad_in = torch.empty(
                 (n, c, in_w), device=grad_output.device, dtype=grad_output.dtype
             )
@@ -1350,16 +1354,16 @@ def upsample_linear1d_backward(
             row_blocks = triton.cdiv(rows, rows_per_block)
             grid = (triton.cdiv(in_w, block_w), min(row_blocks, CORE_NUM))
 
-            upsample_linear1d_backward_full_scan_kernel[grid](
+            upsample_linear1d_backward_high_scale_kernel[grid](
                 grad_out_3d,
                 grad_in,
                 rows,
                 in_w,
                 out_w,
                 align_corners,
+                WINDOW=max(2, triton.cdiv(out_w, in_w) + _GenericConfig.WINDOW_EXTRA),
                 BLOCK_W=block_w,
                 ROWS_PER_BLOCK=rows_per_block,
-                SCAN_BLOCK_K=_GenericConfig.SCAN_BLOCK_K,
             )
         else:
             grad_in = torch.empty(
