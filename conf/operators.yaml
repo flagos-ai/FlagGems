@@ -6064,7 +6064,7 @@ ops:
     kind:
       - BLAS
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
