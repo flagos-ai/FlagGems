@@ -6697,7 +6697,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: upsample_trilinear3d
     description: Upsamples the input (NCDHW) using trilinear interpolation.
     for:
