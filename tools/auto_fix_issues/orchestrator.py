@@ -85,15 +85,23 @@ def load_issues(path: str) -> list[dict]:
     if not issues:
         return []
 
-    required_fields = {"id", "operator", "type", "test_cmd"}
+    required_fields = {"id", "type", "test_cmd"}
     validated = []
     for issue in issues:
         missing = required_fields - set(issue.keys())
+        # scope: repo issues use title+operators instead of operator
+        is_repo_scope = issue.get("scope") == "repo"
+        if not is_repo_scope and "operator" not in issue:
+            missing.add("operator")
         if missing:
             logger.warning(f"Issue entry missing fields {missing}, skipping: {issue}")
             continue
         issue.setdefault("severity", "unknown")
         issue.setdefault("benchmark_cmd", "")
+        issue.setdefault("scope", "operator")
+        # For repo-scope issues, derive operator name from title for branch naming
+        if is_repo_scope and "operator" not in issue:
+            issue["operator"] = issue.get("title", f"repo-issue-{issue['id']}").lower().replace(" ", "-")[:50]
         validated.append(issue)
 
     return validated

@@ -1,7 +1,7 @@
 issues:
   - id: 441
     operator: tile
-    type: 性能失败
+    type: benchmark_fail
     severity: major
     hardware: H800
     test_cmd: "pytest -m 'tile' tests/ --ref cpu -vs"
@@ -49,7 +49,7 @@ issues:
 
   - id: 429
     operator: flash_attn_varlen_func
-    type: 性能报错
+    type: benchmark_fail
     severity: major
     hardware: C550
     test_cmd: "pytest -m 'flash_attn_varlen_func' tests/ --ref cpu -vs"
@@ -65,7 +65,7 @@ issues:
 
   - id: 427
     operator: normed_cumsum
-    type: 无测例
+    type: missing_test
     severity: major
     hardware: H800
     test_cmd: "pytest -m 'normed_cumsum' tests/ --ref cpu -vs"
@@ -73,7 +73,7 @@ issues:
 
   - id: 426
     operator: baddbmm.out
-    type: 无测例
+    type: missing_test
     severity: major
     hardware: H800
     test_cmd: "pytest -m 'baddbmm' tests/ --ref cpu -vs"
@@ -81,7 +81,7 @@ issues:
 
   - id: 425
     operator: alias_copy_out
-    type: 无测例
+    type: missing_test
     severity: major
     hardware: H800
     test_cmd: "pytest -m 'alias_copy' tests/ --ref cpu -vs"
@@ -89,7 +89,7 @@ issues:
 
   - id: 424
     operator: adaptive_avg_pool3d
-    type: 无测例
+    type: missing_test
     severity: major
     hardware: H800
     test_cmd: "pytest -m 'adaptive_avg_pool3d' tests/ --ref cpu -vs"
@@ -110,3 +110,20 @@ issues:
     hardware: H800
     test_cmd: "pytest -m 'new_full' tests/ --ref cpu -vs"
     benchmark_cmd: "pytest -m 'new_full' benchmark/ --level core --record log"
+
+  - id: 421
+    github_issue: 3716
+    scope: repo
+    title: "Fix tl.load without other= in masked reductions"
+    type: code_pattern
+    severity: major
+    hardware: H800
+    operators:
+      - log_softmax
+      - cumsum
+    files:
+      - src/flag_gems/ops/log_softmax.py
+      - src/flag_gems/ops/cumsum.py
+    test_cmd: "pytest -m 'log_softmax or cumsum' tests/ --ref cpu -vs"
+    benchmark_cmd: "pytest -m 'log_softmax or cumsum' benchmark/ --level core --record log"
+
