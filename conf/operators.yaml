@@ -174,7 +174,7 @@ ops:
     kind:
       - LinearAlg
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: addcmul_out
     description: |
       A variant of `addcmul` that allows the output to be assigned to `out`.
