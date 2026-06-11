@@ -3555,7 +3555,7 @@ ops:
     kind:
       - BLAS
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: log
     description: Returns a new tensor with the natural logarithm of the elements of `input`.
     for:
