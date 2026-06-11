@@ -7073,7 +7073,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.1'
+      - alpha: '5.4'
   - id: to
     description: Device/dtype cast operation (to).
     for:
