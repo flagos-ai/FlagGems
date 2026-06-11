@@ -3650,7 +3650,7 @@ ops:
     kind:
       - Distribution
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: log_sigmoid
     description: Applies the Logsigmoid function element-wise.
     for:
