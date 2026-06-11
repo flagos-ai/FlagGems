@@ -184,7 +184,7 @@ case $VENDOR in
         "torchaudio==2.11.0+cpu" \
         "torchvision==0.26.0+cpu" \
         "torch-ptpu==0.2.1+gaf2c267.torch2.11" \
-        "triton==3.4.0.5+git27a132da"
+        "triton==3.4.0.6+gite4f6d6e4"
 
     # We try triton first at this stage
     # if [ -z "${USE_TRITON}" ]; then
