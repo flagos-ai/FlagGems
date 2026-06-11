@@ -82,7 +82,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: adaptive_avg_pool3d_out
     description: |
       A variant of `_adaptive_avg_pool3d` that assigns the output to the `out` tensor.
