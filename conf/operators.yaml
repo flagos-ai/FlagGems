@@ -4052,7 +4052,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: maximum
     description: Computes the element-wise maximum of `input` and `other`.
     for:
