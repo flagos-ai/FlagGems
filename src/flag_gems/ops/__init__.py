@@ -1,3 +1,4 @@
+from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -441,6 +442,7 @@ __all__ = [
     "_assert_async",
     "_cdist_backward",
     "_conv_depthwise2d",
+    "_convert_weight_to_int4pack",
     "_euclidean_dist",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",

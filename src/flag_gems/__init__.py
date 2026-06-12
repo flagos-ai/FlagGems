@@ -44,6 +44,7 @@ _FULL_CONFIG = (
     ("_assert_async", _assert_async),
     ("_cdist_backward", _cdist_backward),
     ("_conv_depthwise2d", _conv_depthwise2d),
+    ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),
     ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_forward", flash_attention_forward),
     (
