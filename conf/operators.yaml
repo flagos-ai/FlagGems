@@ -6252,7 +6252,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: special_gammaln_out
     description: Out-of-place variant of special_gammaln that writes the result to the out tensor.
     for:
@@ -6263,7 +6263,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
