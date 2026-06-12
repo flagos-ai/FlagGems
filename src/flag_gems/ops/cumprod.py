@@ -404,8 +404,8 @@ def cumprod_(inp, dim, *, dtype=None):
             "Bad in-place call: input tensor dtype and output tensor dtype should match"
         )
     if is_boolean_dtype(inp.dtype):
-        return torch.ops.aten.cumprod_.default.redispatch(
-            _FALLBACK_KEYSET, inp, dim, dtype=dtype
+        raise NotImplementedError(
+            "In-place cumprod is not supported for boolean tensors"
         )
     if _should_redispatch_on_ascend(inp.dtype):
         return torch.ops.aten.cumprod_.default.redispatch(
