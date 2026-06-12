@@ -18,7 +18,7 @@ from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
-__version__ = "5.0.2"
+__version__ = "5.4.0dev"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 backend_info = runtime.device
