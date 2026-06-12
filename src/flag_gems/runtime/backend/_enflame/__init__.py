@@ -27,6 +27,7 @@ vendor_info = VendorDescriptor(
     dispatch_key="PrivateUse1",
     fp64_enabled=False,
     int64_enabled=False,
+    tle_enabled=True,
 )
 
 os.environ["ARCH"] = str(arch_version)
