@@ -3997,6 +3997,17 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: lshift__
+    description: Triton kernel implementation for __lshift__.
+    for:
+      - __lshift__
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: lt
     description: Computes that `input` is less than `other` element-wise.
     for:
