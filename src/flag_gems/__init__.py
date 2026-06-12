@@ -16,7 +16,7 @@ from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime import flagtune
 from flag_gems.runtime.register import Register
 
-__version__ = "5.0.2"
+__version__ = "5.3.0rc2"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 aten_lib = torch.library.Library("aten", "IMPL")
