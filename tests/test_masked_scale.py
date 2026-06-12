@@ -21,7 +21,9 @@ def test_masked_scale(shape, dtype):
     ref_inp = utils.to_reference(inp)
     ref_mask = utils.to_reference(mask)
     # aten._masked_scale has no CPU backend; compute reference manually.
-    ref_out = torch.where(ref_mask.to(torch.bool), ref_inp * scale, torch.zeros_like(ref_inp))
+    ref_out = torch.where(
+        ref_mask.to(torch.bool), ref_inp * scale, torch.zeros_like(ref_inp)
+    )
 
     with flag_gems.use_gems():
         res_out = torch.ops.aten._masked_scale(inp, mask, scale)
