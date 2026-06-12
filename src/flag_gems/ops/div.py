@@ -208,13 +208,18 @@ def _int_floordiv(x, y):
 # https://github.com/pytorch/pytorch/blob/d6d9183456cd07ca0b361a194b98c2fb196e7c36/c10/util/generic_math.h#L23
 @triton.jit
 def _float_floordiv(x, y):
+    # Cast to float32 for fmod/div_rn which only support fp32/fp64 on CUDA
+    orig_dtype = x.dtype
+    x_fp32 = x.to(tl.float32)
+    y_fp32 = y.to(tl.float32)
+
     # NOTE: fmod's sign is the same as the dividend
-    remainder = fmod(x, y)
+    remainder = fmod(x_fp32, y_fp32)
     imperfect = remainder != 0.0
-    different_sign = (x < 0) ^ (y < 0)
+    different_sign = (x_fp32 < 0) ^ (y_fp32 < 0)
 
     # NOTE: we have to use div_rn explicitly here
-    q = div_rn(x - remainder, y)
+    q = div_rn(x_fp32 - remainder, y_fp32)
     q = tl.where(imperfect & different_sign, q - 1, q)
 
     floor_q = tl.math.floor(q)
@@ -224,10 +229,10 @@ def _float_floordiv(x, y):
     q_is_zeros = q == 0.0
     floor_q = tl.where(q_is_zeros, tl.where(different_sign, -0.0, 0.0), floor_q)
 
-    is_div_by_zero = y == 0.0
-    float_division = x / y
+    is_div_by_zero = y_fp32 == 0.0
+    float_division = x_fp32 / y_fp32
     out = tl.where(is_div_by_zero, float_division, floor_q)
-    return out
+    return out.to(orig_dtype)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
