@@ -30,10 +30,14 @@ def nextafter_kernel(x, y):
     # nextafter(x, y) returns y if x == y
     # Otherwise, returns the next representable value from x toward y
 
-    # For float32 (most common): use int32 bitcast
+    # IEEE 754 float32 int32 bit representation:
+    # For x >= 0: int32 order matches float order (+1 -> next larger float)
+    # For x < 0:  int32 order is reversed (-1 -> next toward +inf)
     x_i32 = x.to(tl.int32, bitcast=True)
-    direction = tl.where(y > x, tl.int32(1), tl.int32(-1))
-    result_i32 = x_i32 + direction
+    toward_pos_inf = y > x
+    is_neg = x_i32 < 0
+    step = tl.where(is_neg ^ toward_pos_inf, tl.int32(1), tl.int32(-1))
+    result_i32 = x_i32 + step
     result = result_i32.to(tl.float32, bitcast=True)
 
     # Special case: if x == y, return y
