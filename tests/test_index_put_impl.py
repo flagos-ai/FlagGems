@@ -10,6 +10,11 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise", reason="Issues #3836: To Fix (Runtime Or LLVM)"
+)
+
+
 if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
     ATTN_HEADS = [2]

@@ -27,10 +27,10 @@ def reciprocal_func(x):
 
 
 def reciprocal(A):
-    logger.debug("GEMS RECIPROCAL")
+    logger.debug("GEMS_KUNLUNXIN RECIPROCAL")
     return reciprocal_func(A)
 
 
 def reciprocal_(A):
-    logger.debug("GEMS RECIPROCAL_")
+    logger.debug("GEMS_KUNLUNXIN RECIPROCAL_")
     return reciprocal_func(A, out0=A)
