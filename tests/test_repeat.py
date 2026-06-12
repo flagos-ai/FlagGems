@@ -8,7 +8,7 @@ from . import accuracy_utils as utils
 REPEAT_SIZES = [(2, 3, 4, 5), (5, 0, 4)]
 
 
-@pytest.mark.repeat
+@pytest.mark.repeat_op
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("sizes", REPEAT_SIZES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
