@@ -35,9 +35,8 @@ def test_log_sigmoid_forward(shape, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_log_sigmoid_forward_known_values(dtype):
     """Verify log_sigmoid_forward at known inputs against analytical values."""
-    x = torch.tensor([0.0, 1.0, -1.0, 100.0, -100.0], dtype=dtype, device=flag_gems.device)
-    expected_output = torch.tensor(
-        [-0.6931, -0.3133, -1.3133, 0.0, -100.0], dtype=torch.float32
+    x = torch.tensor(
+        [0.0, 1.0, -1.0, 100.0, -100.0], dtype=dtype, device=flag_gems.device
     )
     ref_inp = x.to("cpu")
 
