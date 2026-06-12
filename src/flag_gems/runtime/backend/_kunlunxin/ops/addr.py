@@ -63,7 +63,7 @@ def addr_kernel(
 
 
 def addr(input, vec1, vec2, *, beta=1, alpha=1):
-    logger.debug("GEMS ADDR")
+    logger.debug("GEMS_KUNLUNXIN ADDR")
     if vec1.dim() != 1 or vec2.dim() != 1:
         raise ValueError("addr: expected 1-D vectors")
 
