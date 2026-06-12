@@ -27,6 +27,7 @@ def _import_metax_cdist_forward():
     spec.loader.exec_module(module)
     return module._cdist_forward
 
+
 # Shapes for cdist benchmark: (P, M), (R, M) -> (P, R)
 # torch.cdist doesn't support float16 on CUDA
 CDIST_FORWARD_SHAPES = [
