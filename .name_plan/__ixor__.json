@@ -1,0 +1,13 @@
+{
+  "input_name": "__ixor__",
+  "source_name": "__ixor__",
+  "impl_name": "__ixor__",
+  "canonical_name": "__ixor__",
+  "source_op_id": "ixor__",
+  "impl_op_id": "ixor__",
+  "canonical_op_id": "ixor__",
+  "worktree_dir": "/tmp/flaggems_agent_worktrees/agent___ixor___179605-1781248958/.worktrees/gen-bitwise_xor",
+  "registry_row": 107,
+  "registry_pr_url": "(\u672a\u63d0\u4ea4)",
+  "registry_speedup": "0.9591"
+}

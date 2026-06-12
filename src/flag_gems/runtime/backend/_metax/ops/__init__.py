@@ -1,3 +1,4 @@
+from .__ixor__ import __ixor__, __ixor___scalar
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
@@ -38,6 +39,8 @@ __all__ = [
     "amax",
     "arange",
     "arange_start",
+    "__ixor__",
+    "__ixor___scalar",
     "bmm",
     "exponential_",
     "full",

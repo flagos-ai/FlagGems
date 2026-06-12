@@ -950,6 +950,30 @@ ops:
       - Math
     stages:
       - stable: '4.0'
+  - id: ixor__
+    description: Computes the bitwise XOR of `input` and `other`, in place.
+    for:
+      - __ixor__.Tensor
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: ixor___scalar
+    description: Computes the bitwise XOR of `input` and a scalar `other`, in place.
+    for:
+      - __ixor__.Scalar
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: bmm
     description: Performs a batch matrix-matrix product of matrices stored in `input` and `mat2`.
     for:
