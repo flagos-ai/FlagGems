@@ -351,6 +351,7 @@ _FULL_CONFIG = (
     ("logical_or", logical_or),
     ("logical_or_", logical_or_),
     ("logical_xor", logical_xor),
+    ("logical_xor_", logical_xor_),
     ("logit", logit),
     ("logit.out", logit_out),
     ("logit_", logit_),
