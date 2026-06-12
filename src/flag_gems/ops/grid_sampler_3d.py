@@ -104,27 +104,38 @@ def grid_sampler_3d_kernel(
         x_pad = tl.maximum(tl.minimum(x, tl.cast(in_w - 1, tl.float32)), 0.0)
         y_pad = tl.maximum(tl.minimum(y, tl.cast(in_h - 1, tl.float32)), 0.0)
         z_pad = tl.maximum(tl.minimum(z, tl.cast(in_d - 1, tl.float32)), 0.0)
-    else:  # REFLECTION - reflect at boundaries
+    else:  # REFLECTION - triangle wave reflection in grid space
+        # Reflect grid coordinates using a triangle wave with period 4.
+        # The valid range in grid space is [-1, 1]; coordinates outside this
+        # range are reflected back by mirroring at the boundaries.  Because a
+        # single pair of tl.where clauses only handles one reflection, coordinates
+        # far outside (e.g. grid = randn * 1.5) need periodic / repeated
+        # reflection.  This implementation follows the same triangle-wave pattern
+        # used by the kernel generator in grid_sample.py.
+        x_shifted = gx + 1.0
+        x_mod = x_shifted % 4.0
+        x_mod = tl.where(x_mod < 0, x_mod + 4.0, x_mod)
+        gx_refl = tl.where(x_mod <= 2.0, x_mod, 4.0 - x_mod) - 1.0
+
+        y_shifted = gy + 1.0
+        y_mod = y_shifted % 4.0
+        y_mod = tl.where(y_mod < 0, y_mod + 4.0, y_mod)
+        gy_refl = tl.where(y_mod <= 2.0, y_mod, 4.0 - y_mod) - 1.0
+
+        z_shifted = gz + 1.0
+        z_mod = z_shifted % 4.0
+        z_mod = tl.where(z_mod < 0, z_mod + 4.0, z_mod)
+        gz_refl = tl.where(z_mod <= 2.0, z_mod, 4.0 - z_mod) - 1.0
+
+        # Denormalize reflected grid coordinates to pixel space
         if align_corners:
-            w_m1 = tl.cast(in_w - 1, tl.float32)
-            h_m1 = tl.cast(in_h - 1, tl.float32)
-            d_m1 = tl.cast(in_d - 1, tl.float32)
-            x_pad = tl.where(x < 0, -x, x)
-            x_pad = tl.where(x_pad > w_m1, 2 * w_m1 - x_pad, x_pad)
-            y_pad = tl.where(y < 0, -y, y)
-            y_pad = tl.where(y_pad > h_m1, 2 * h_m1 - y_pad, y_pad)
-            z_pad = tl.where(z < 0, -z, z)
-            z_pad = tl.where(z_pad > d_m1, 2 * d_m1 - z_pad, z_pad)
+            x_pad = (gx_refl + 1.0) * tl.cast(in_w - 1, tl.float32) * 0.5
+            y_pad = (gy_refl + 1.0) * tl.cast(in_h - 1, tl.float32) * 0.5
+            z_pad = (gz_refl + 1.0) * tl.cast(in_d - 1, tl.float32) * 0.5
         else:
-            w_f = tl.cast(in_w, tl.float32)
-            h_f = tl.cast(in_h, tl.float32)
-            d_f = tl.cast(in_d, tl.float32)
-            x_pad = tl.where(x < -0.5, -1 - x, x)
-            x_pad = tl.where(x_pad > w_f - 0.5, 2 * w_f - 1 - x_pad, x_pad)
-            y_pad = tl.where(y < -0.5, -1 - y, y)
-            y_pad = tl.where(y_pad > h_f - 0.5, 2 * h_f - 1 - y_pad, y_pad)
-            z_pad = tl.where(z < -0.5, -1 - z, z)
-            z_pad = tl.where(z_pad > d_f - 0.5, 2 * d_f - 1 - z_pad, z_pad)
+            x_pad = (gx_refl + 1.0) * tl.cast(in_w, tl.float32) * 0.5 - 0.5
+            y_pad = (gy_refl + 1.0) * tl.cast(in_h, tl.float32) * 0.5 - 0.5
+            z_pad = (gz_refl + 1.0) * tl.cast(in_d, tl.float32) * 0.5 - 0.5
 
     # Compute indices based on interpolation mode.
     # For ZEROS padding: use original coordinates so out-of-bounds
