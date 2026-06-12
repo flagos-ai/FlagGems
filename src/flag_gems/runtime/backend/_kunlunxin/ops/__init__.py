@@ -54,6 +54,7 @@ from .conv2d import conv2d
 from .conv3d import conv3d
 from .conv_depthwise2d import _conv_depthwise2d
 from .copy import copy, copy_
+from .copysign import copysign, copysign_out
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .cummax import cummax
@@ -194,6 +195,7 @@ from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
+from .signbit import signbit, signbit_out
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .slice_scatter import slice_scatter
@@ -214,6 +216,7 @@ from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
+from .tril import tril, tril_, tril_out
 from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2
@@ -306,6 +309,8 @@ __all__ = [
     "conv3d",
     "copy",
     "copy_",
+    "copysign",
+    "copysign_out",
     "cos",
     "cos_",
     "count_nonzero",
@@ -496,6 +501,8 @@ __all__ = [
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
+    "signbit",
+    "signbit_out",
     "silu",
     "silu_",
     "silu_backward",
@@ -530,6 +537,9 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "tril",
+    "tril_",
+    "tril_out",
     "triu",
     "true_divide",
     "true_divide_out",
