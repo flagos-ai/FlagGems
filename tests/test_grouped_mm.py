@@ -51,7 +51,10 @@ def test_grouped_mm(groups, N, K, dtype):
         device=flag_gems.device,
     )
 
-    ref_out = torch._grouped_mm(mat_a, mat_b, offs)
+    if utils.TO_CPU:
+        ref_out = torch._grouped_mm(mat_a.cpu(), mat_b.cpu(), offs.cpu())
+    else:
+        ref_out = torch._grouped_mm(mat_a, mat_b, offs)
     with flag_gems.use_gems():
         res_out = torch._grouped_mm(mat_a, mat_b, offs)
 
