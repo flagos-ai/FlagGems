@@ -51,7 +51,7 @@
       // Mount the host home directory into the container at /home/host
       // localEnv:HOME maps to the $HOME variable on Linux/Mac
       "source=${localEnv:HOME},target=/home/host,type=bind",
-      // 使用命名数据卷持久化 .claude 文件夹
+      // Use a named data volume to persist the .claude folder
       "source=claude-code-data,target=/home/vscode/.claude,type=volume"
   ],
   "containerEnv": {
