@@ -1,3 +1,4 @@
+from ._make_dep_token import _make_dep_token
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
@@ -33,6 +34,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_make_dep_token",
     "_unique2",
     "addmm",
     "amax",
