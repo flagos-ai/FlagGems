@@ -5,6 +5,9 @@ from flag_gems.ops._functional_sym_constrain_range_for_size import (
 from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
+from flag_gems.ops._scaled_dot_product_efficient_attention import (
+    _scaled_dot_product_efficient_attention,
+)
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops.abs import abs, abs_
@@ -450,6 +453,7 @@ __all__ = [
     "_is_all_true",
     "_resize_output",
     "_safe_softmax",
+    "_scaled_dot_product_efficient_attention",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",
