@@ -36,7 +36,7 @@ def nextafter_kernel(x, y):
     x_i32 = x.to(tl.int32, bitcast=True)
     toward_pos_inf = y > x
     is_neg = x_i32 < 0
-    step = tl.where(is_neg ^ toward_pos_inf, tl.int32(1), tl.int32(-1))
+    step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
     result_i32 = x_i32 + step
     result = result_i32.to(tl.float32, bitcast=True)
 
@@ -50,8 +50,10 @@ def nextafter_kernel(x, y):
 @triton.jit
 def nextafter_kernel_tensor_scalar(x, y):
     x_i32 = x.to(tl.int32, bitcast=True)
-    direction = tl.where(y > x, tl.int32(1), tl.int32(-1))
-    result_i32 = x_i32 + direction
+    toward_pos_inf = y > x
+    is_neg = x_i32 < 0
+    step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
+    result_i32 = x_i32 + step
     result = result_i32.to(tl.float32, bitcast=True)
     result = tl.where(x == y, y, result)
     return result
@@ -61,8 +63,10 @@ def nextafter_kernel_tensor_scalar(x, y):
 @triton.jit
 def nextafter_kernel_scalar_tensor(x, y):
     x_i32 = x.to(tl.int32, bitcast=True)
-    direction = tl.where(y > x, tl.int32(1), tl.int32(-1))
-    result_i32 = x_i32 + direction
+    toward_pos_inf = y > x
+    is_neg = x_i32 < 0
+    step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
+    result_i32 = x_i32 + step
     result = result_i32.to(tl.float32, bitcast=True)
     result = tl.where(x == y, y, result)
     return result
