@@ -157,6 +157,12 @@ def grid_sampler_3d_kernel(
         ix1 = ix0 + 1
         iy1 = iy0 + 1
         iz1 = iz0 + 1
+        # Clamp upper bound for border/reflection modes:
+        # reflection can produce x_pad exactly at size-1, making ix1 = size (OOB).
+        if padding_mode != 0:
+            ix1 = tl.minimum(ix1, in_w - 1)
+            iy1 = tl.minimum(iy1, in_h - 1)
+            iz1 = tl.minimum(iz1, in_d - 1)
 
     # Compute output offset for this (n, od, oh, ow) location
     out_offset_base = (
