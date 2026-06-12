@@ -107,6 +107,7 @@ from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
+from flag_gems.ops.deg2rad import deg2rad
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
@@ -144,6 +145,7 @@ from flag_gems.ops.fill import (
     fill_tensor_,
     fill_tensor_out,
 )
+from flag_gems.ops.fix import fix
 from flag_gems.ops.flip import flip
 from flag_gems.ops.floor import floor, floor_out
 from flag_gems.ops.floor_ import floor_
@@ -259,6 +261,7 @@ from flag_gems.ops.nanmedian import (
 )
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
+from flag_gems.ops.negative import negative
 from flag_gems.ops.new_full import new_full
 from flag_gems.ops.nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward
 from flag_gems.ops.nllloss import (
@@ -578,6 +581,7 @@ __all__ = [
     "cumprod_",
     "cumsum",
     "cumsum_out",
+    "deg2rad",
     "diag",
     "diag_embed",
     "diagonal_backward",
@@ -613,6 +617,7 @@ __all__ = [
     "feature_dropout",
     "feature_dropout_",
     "fft",
+    "fix",
     "fill_scalar",
     "fill_scalar_",
     "fill_scalar_out",
@@ -775,6 +780,7 @@ __all__ = [
     "ne_scalar",
     "neg",
     "neg_",
+    "negative",
     "new_full",
     "nll_loss2d_backward",
     "nll_loss2d_forward",

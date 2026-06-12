@@ -1668,6 +1668,17 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.0'
+  - id: deg2rad
+    description: "deg2rad operator"
+    for:
+      - deg2rad
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dequantize_and_gather_k_cache
     description: |
       Dequantizes FP8 K-cache entries and gathers them into a BF16 tensor for DeepSeekV4 attention.
@@ -2364,6 +2375,17 @@ ops:
       - Tensor
     stages:
       - stable: '5.0'
+  - id: fix
+    description: "fix operator"
+    for:
+      - fix
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: flash_attention_forward
     for:
       - _flash_attention_forward
@@ -4534,6 +4556,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: negative
+    description: "negative operator"
+    for:
+      - negative
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: new_full
     description: |
       Returns a Tensor of size `size` filled with `fill_value`.
