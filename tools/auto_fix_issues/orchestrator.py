@@ -525,7 +525,7 @@ def post_commit_format_check(worktree_path: str, python_path: str, log_path: str
             mark_passed = mark_result.returncode == 0
             log(f"pytest-mark-check: {'PASS' if mark_passed else 'FAIL'}")
             if not mark_passed:
-                mark_errors = mark_result.stdout.strip()
+                mark_errors = mark_result.stdout.strip() or mark_result.stderr.strip()
                 log(f"  {mark_errors}")
         else:
             log("pytest-mark-check: SKIP (no test/benchmark files)")

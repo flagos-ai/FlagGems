@@ -131,8 +131,9 @@ def check_files(files: list[str], operator_ids: set[str]) -> list[str]:
                 )
                 continue
 
-            # Check 2: for test_<op>.py files, mark must start with <op>
-            if file_op and not m["mark"].startswith(file_op):
+            # Check 2: for test_<op>.py files where <op> is a known operator,
+            # mark must start with <op>
+            if file_op and file_op in operator_ids and not m["mark"].startswith(file_op):
                 errors.append(
                     f"{filepath}:{m['line']}: mark '{m['mark']}' on {m['func']} "
                     f"does not match file operator '{file_op}'"

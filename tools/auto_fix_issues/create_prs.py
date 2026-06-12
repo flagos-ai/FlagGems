@@ -67,8 +67,18 @@ def build_pr_body(issue: dict) -> str:
 
     issue_section = "\n".join(issue_lines)
 
+    # For repo-scope issues, show title and operators list instead of slug
+    scope = issue.get("scope", "operator")
+    if scope == "repo":
+        operators = issue.get("operators") or cc.get("operators") or []
+        op_display = ", ".join(operators) if operators else issue["operator"]
+        title_display = issue.get("title") or cc.get("title") or issue["operator"]
+        operator_line = f"- **Title:** {title_display}\n- **Operators:** {op_display}"
+    else:
+        operator_line = f"- **Operator:** {issue['operator']}"
+
     return f"""## Summary
-- **Operator:** {issue['operator']}
+{operator_line}
 - **Error type:** {issue['error_type']}
 - **Root cause:** {cc.get('root_cause', 'N/A')}
 - **Fix:** {cc.get('fix_description', 'N/A')}
@@ -180,6 +190,19 @@ def run(args):
         if push_result.returncode != 0:
             logger.error(f"[PUSH FAILED] {label}: {push_result.stderr}")
             skipped.append((label, "push failed"))
+            continue
+
+        # Check if PR already exists for this branch
+        existing_pr = subprocess.run(
+            ["gh", "pr", "list", "--repo", target_repo,
+             "--head", f"{fork_owner}:{branch}", "--json", "url", "--jq", ".[0].url"],
+            cwd=flaggems_dir,
+            capture_output=True,
+            text=True,
+        )
+        if existing_pr.stdout.strip():
+            logger.info(f"[EXISTS] {label}: {existing_pr.stdout.strip()}")
+            skipped.append((label, f"PR already exists: {existing_pr.stdout.strip()}"))
             continue
 
         # Create PR
