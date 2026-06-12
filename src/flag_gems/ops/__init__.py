@@ -433,6 +433,7 @@ from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
+from flag_gems.ops._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
@@ -448,6 +449,7 @@ __all__ = [
     "_segment_reduce_backward_out",
     "_unique2",
     "_unsafe_masked_index",
+    "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact1d",
