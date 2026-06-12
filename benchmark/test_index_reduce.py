@@ -1,64 +1,72 @@
 import pytest
 import torch
 
-from . import base, consts
-
-# index_reduce benchmark
-INDEX_REDUCE_SHAPES = [
-    (8, 16),
-    (16, 32),
-    (32, 64),
-    (64, 128),
-    (128, 256),
-]
+from . import base, consts, utils
 
 
 class IndexReduceBenchmark(base.Benchmark):
-    def set_shapes(self, shape_file_path=None):
-        self.shapes = INDEX_REDUCE_SHAPES
+    DEFAULT_SHAPES = [(1024, 1024), (4096, 256), (64, 512, 256)]
+    DEFAULT_SHAPE_DESC = "(B), M, N"
 
-    def get_input_iter(self, cur_dtype):
+    def __init__(self, *args, reduce, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.reduce = reduce
+
+    def set_more_metrics(self):
+        return ["gbps"]
+
+    def set_more_shapes(self):
+        return [(2048, 2048), (128, 1024, 512)]
+
+    def get_gbps(self, args, latency):
+        inp = args[0]
+        index = args[2]
+        source = args[3]
+        io_amount = sum(utils.size_in_bytes(item) for item in [inp, index, source, inp])
+        return io_amount * 1e-9 / (latency * 1e-3)
+
+    def get_input_iter(self, dtype):
         for shape in self.shapes:
-            yield from index_reduce_input_fn(shape, cur_dtype, self.device)
+            inp = torch.randn(shape, dtype=dtype, device=self.device)
+            dim = 0 if len(shape) == 1 else 1
+            source_shape = list(shape)
+            index_len = max(1, source_shape[dim] // 2)
+            source_shape[dim] = index_len
+            index = torch.randperm(shape[dim], device=self.device)[:index_len]
+
+            if self.reduce == "prod":
+                source = torch.ones(source_shape, dtype=dtype, device=self.device)
+            else:
+                source = torch.randn(source_shape, dtype=dtype, device=self.device)
+
+            yield inp, dim, index, source, {"reduce": self.reduce}
 
 
-def index_reduce_input_fn(shape, dtype, device):
-    # Generate input tensors for index_reduce
-    # shape: (M, N) - M is the size along reduction dimension
-    # We'll reduce along dim=0
-    inp = torch.full(shape, 2.0, dtype=dtype, device=device)
-    source = torch.randn(shape[0], shape[1], dtype=dtype, device=device)
-    index = torch.randint(0, shape[0], (shape[0],), dtype=torch.long, device=device)
-    # Only pass tensor arguments, other params are fixed
-    yield (inp, index, source)
-
-
-def index_reduce_torch_op(inp, index, source):
-    # Wrapper to call torch.index_reduce with fixed params
-    return torch.index_reduce(inp, 0, index, source, "prod")
-
-
-def index_reduce__torch_op(inp, index, source):
-    # Wrapper to call in-place torch.index_reduce_ with fixed params
-    return inp.clone().index_reduce_(0, index, source, "prod")
-
-
-@pytest.mark.index_reduce
-def test_index_reduce():
+def _run_index_reduce_benchmark(reduce):
     bench = IndexReduceBenchmark(
-        op_name="index_reduce",
-        torch_op=index_reduce_torch_op,
+        op_name=f"index_reduce_.{reduce}",
+        torch_op=torch.Tensor.index_reduce_,
         dtypes=consts.FLOAT_DTYPES,
+        reduce=reduce,
     )
     bench.run()
 
 
 @pytest.mark.index_reduce_
-def test_index_reduce_():
-    bench = IndexReduceBenchmark(
-        op_name="index_reduce_",
-        torch_op=index_reduce__torch_op,
-        dtypes=consts.FLOAT_DTYPES,
-        is_inplace=True,
-    )
-    bench.run()
+def test_index_reduce_prod():
+    _run_index_reduce_benchmark("prod")
+
+
+@pytest.mark.index_reduce_
+def test_index_reduce_mean():
+    _run_index_reduce_benchmark("mean")
+
+
+@pytest.mark.index_reduce_
+def test_index_reduce_amax():
+    _run_index_reduce_benchmark("amax")
+
+
+@pytest.mark.index_reduce_
+def test_index_reduce_amin():
+    _run_index_reduce_benchmark("amin")

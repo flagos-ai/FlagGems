@@ -420,7 +420,6 @@ def test_fused_marlin_moe_vs_ref(config, dtype):
     assert max_diff < 0.04, f"max_diff={max_diff:.4f}"
 
 
-@pytest.mark.skip(reason="Issue #3733: assertion failure.")
 @pytest.mark.parametrize("config", QUICK_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 def test_fused_marlin_moe_vs_ref_int8(config, dtype):
@@ -461,7 +460,7 @@ def test_fused_marlin_moe_vs_ref_int8(config, dtype):
 # -----------------------------------------------------------------------------
 
 
-def _minimal_args(device="cuda", dtype=torch.bfloat16):
+def _minimal_args(device=flag_gems.device, dtype=torch.bfloat16):
     """Smallest valid arg bundle, used to probe rejection paths."""
     M, K, N, E, topk = 4, 128, 256, 4, 2
     return _make_inputs(M, E, K, N, topk, dtype, device)
