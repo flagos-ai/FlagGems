@@ -6379,6 +6379,33 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_bessel_j0
+    description: |
+      Computes the Bessel function of the first kind of order 0 for each element
+      of `input`.
+    for:
+      - special.bessel_j0
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_bessel_j0_
+    description: |
+      Inplace version of `special_bessel_j0`.
+    for:
+      - special.bessel_j0_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
