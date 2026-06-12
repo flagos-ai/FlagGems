@@ -91,9 +91,10 @@ def grid_sampler_3d_kernel(
         y = (gy + 1.0) * tl.cast(in_h - 1, tl.float32) * 0.5
         z = (gz + 1.0) * tl.cast(in_d - 1, tl.float32) * 0.5
     else:
-        x = (gx + 1.0) * tl.cast(in_w, tl.float32) * 0.5
-        y = (gy + 1.0) * tl.cast(in_h, tl.float32) * 0.5
-        z = (gz + 1.0) * tl.cast(in_d, tl.float32) * 0.5
+        # align_corners=False: grid [-1,1] maps to pixel [-0.5, size-0.5]
+        x = (gx + 1.0) * tl.cast(in_w, tl.float32) * 0.5 - 0.5
+        y = (gy + 1.0) * tl.cast(in_h, tl.float32) * 0.5 - 0.5
+        z = (gz + 1.0) * tl.cast(in_d, tl.float32) * 0.5 - 0.5
 
     # Apply padding mode (0=zeros, 1=border, 2=reflection)
     if padding_mode == 0:  # ZEROS - keep original coords, mask handles OOB
