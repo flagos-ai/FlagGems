@@ -81,9 +81,9 @@ def grid_sampler_3d_kernel(
         + oh_idx * grid_strides_oh
         + ow_idx * grid_strides_ow
     )
-    gx = tl.load(grid_ptr + grid_offset + 0 * grid_stride_xyz)
-    gy = tl.load(grid_ptr + grid_offset + 1 * grid_stride_xyz)
-    gz = tl.load(grid_ptr + grid_offset + 2 * grid_stride_xyz)
+    gx = tl.load(grid_ptr + grid_offset + 0 * grid_stride_xyz).to(tl.float32)
+    gy = tl.load(grid_ptr + grid_offset + 1 * grid_stride_xyz).to(tl.float32)
+    gz = tl.load(grid_ptr + grid_offset + 2 * grid_stride_xyz).to(tl.float32)
 
     # Convert grid coordinates from [-1, 1] to input space
     if align_corners:

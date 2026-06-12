@@ -49,6 +49,6 @@ def test_grid_sampler_3d(
     if dtype == torch.float32:
         utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-5)
     elif dtype == torch.float16:
-        utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-2)
+        utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-3)
     else:  # bfloat16
         utils.gems_assert_close(res_out, ref_out, dtype, atol=2e-2)
