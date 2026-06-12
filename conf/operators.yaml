@@ -4634,6 +4634,19 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: new_ones
+    description: |
+      Returns a Tensor of size `size` filled with 1, with the
+      same `torch.dtype` and `torch.device` as the input tensor.
+    for:
+      - new_ones
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: nll_loss2d_backward
     description: |
       An internal IR for supporting `torch.nn.NLLLoss2d`, which has been deprecated
