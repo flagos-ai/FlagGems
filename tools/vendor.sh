@@ -22,10 +22,12 @@ case $VENDOR in
 
   enflame)
     uv pip install --index ${FLAGOS_PYPI} \
-      "torch==2.9.1+cpu" \
-      "torch-gcu==2.9.1+3.7.1" \
-      "triton==3.3.0" \
-      "triton-gcu==3.3.1+1.0.20260323" \
+      "pyefml==1.9.10" \
+      "torch==2.10.0+cpu" \
+      "torchaudio==2.10.0+cpu" \
+      "torchvision==0.25.0+cpu" \
+      "torch-gcu==2.10.0+3.7.20260408" \
+      "triton-gcu==3.6.0+1.0.20260521.cc.1.9.10" \
       "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323"
 
     # Replace triton with flagtree if requested
@@ -33,7 +35,7 @@ case $VENDOR in
     # if [ -n "${USE_TRITON}" ]; then
     #   uv pip uninstall flagtree
     #   uv pip install --index ${FLAGOS_PYPI} \
-    #     flagtree==0.5.0+enflame3.6
+    #     flagtree==0.5.0+enflame.gitadb592d5
     # fi
     uv pip install -e .
     uv pip install ".[test]"
@@ -107,16 +109,17 @@ case $VENDOR in
 
   metax)
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.8.0+metax3.5.3.9" \
-        "torchaudio==2.4.1+metax3.5.3.9" \
-        "torchvision==0.15.1+metax3.5.3.9" \
-        "flagtree==3.1.0+metax3.5.3.9"
+        "torch==2.8.0+metax3.7.2.0" \
+        "torchaudio==2.4.1+metax3.7.2.0" \
+        "torchvision==0.15.1+metax3.7.2.0" \
+        "flagtree==3.1.0+metax3.7.2.0" \
+        "flash_attn==2.6.3+metax3.7.2.0torch2.8"
 
-    if [ -n "${USE_TRITON}" ]; then
-      uv pip uninstall flagtree
-      uv pip install --index ${FLAGOS_PYPI} \
-        "triton==3.0.0+metax3.5.3.9"
-    fi
+    # if [ -n "${USE_TRITON}" ]; then
+    #   uv pip uninstall flagtree
+    #   uv pip install --index ${FLAGOS_PYPI} \
+    #     "triton==3.0.0+metax3.7.2.0"
+    # fi
 
     uv pip install -e  .
     uv pip install ".[test]"
@@ -124,9 +127,8 @@ case $VENDOR in
 
   mthreads)
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.9.0" \
+        "torch==2.9.0+musa.4.3.6" \
         "torch_musa==2.9.0" \
-        "numpy==1.26.4" \
         "mkl==2024.0.0" \
         "triton==3.6.0+git89458660"
 
@@ -149,8 +151,8 @@ case $VENDOR in
   nvidia)
     # We need pytorch first for building C++ wrapped operators
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.12.0+cu132" \
-        "torchvision==0.27.0+cu132" \
+        "torch==2.11.0+cu130" \
+        "torchvision==0.26.0+cu130" \
         "triton==3.6.0"
 
     # The follow environments are for C++ wrapped operators
@@ -170,7 +172,7 @@ case $VENDOR in
   spacemit)
     uv pip install --index ${FLAGOS_PYPI} \
         "torch==2.8.0+spacemit.0" \
-        "triton==3.6.0+spacemit.a4"
+        "triton==3.6.0+spacemit.a5"
 
     uv pip install -e .
     uv pip install ".[test]"
@@ -203,17 +205,17 @@ case $VENDOR in
   tsingmicro)
     uv pip install --index ${FLAGOS_PYPI} \
         "torch==2.7.0+cpu" \
-        "torchvision==0.22.0" \
-        "torchaudio==2.7.0" \
-        "torch_txda==0.1.0+20260310.294fc4a6" \
-        "txops==0.1.0+20260225.5cc33e4e" \
+        "torchvision==0.22.0+cpu" \
+        "torchaudio==2.7.0+cpu" \
+        "torch_txda==0.1.0+20260610.3968e515" \
+        "txops==0.1.0+20260508.60287151" \
         "flagtree==0.5.0+tsingmicro3.3"
 
     # Replace flagtree with Triton if requested
     if [ -n "${USE_TRITON}" ]; then
       uv pip uninstall flagtree
       uv pip install --index ${FLAGOS_PYPI} \
-        "triton==3.3.0+gitfe2a28fa"
+        "triton==3.3.0+git2e9c1195"
     fi
 
     uv pip install -e .
