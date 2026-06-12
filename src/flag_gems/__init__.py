@@ -37,6 +37,7 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    "replication_pad1d_backward": OpsConfigFile(os.path.join(cur_dir, "ops", "replication_pad1d_backward.py")),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__or__.Scalar", bitwise_or_scalar),
