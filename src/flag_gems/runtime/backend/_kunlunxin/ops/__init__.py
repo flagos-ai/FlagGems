@@ -122,6 +122,7 @@ from .logical_not import logical_not
 from .logical_or import logical_or
 from .logical_xor import logical_xor
 from .logspace import logspace
+from .logsumexp import logsumexp
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
@@ -399,6 +400,7 @@ __all__ = [
     "log_sigmoid",
     "log_softmax",
     "log_softmax_backward",
+    "logsumexp",
     "logical_and",
     "logical_not",
     "logical_or",
