@@ -8,12 +8,10 @@ bmm_sqmma:
       num_stages: stages
       num_warps: warps
     block_m:
-      - 16
       - 32
       - 64
       - 128
     block_n:
-      - 16
       - 32
       - 64
       - 128
