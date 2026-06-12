@@ -11,7 +11,9 @@ import yaml
 # _flag_gems_editable.pth may add a stale worktree path which would shadow
 # the local flag_gems module. Also purge ScikitBuildRedirectingFinder that
 # redirects imports to a stale build directory.
-_src_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
+_src_dir = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"
+)
 if _src_dir in sys.path:
     sys.path.remove(_src_dir)
 sys.path.insert(0, _src_dir)
@@ -22,10 +24,10 @@ for _finder in list(sys.meta_path):
     if "ScikitBuild" in type(_finder).__name__:
         sys.meta_path.remove(_finder)
 
-import flag_gems
-from flag_gems.runtime import torch_device_fn
+import flag_gems  # noqa: E402
+from flag_gems.runtime import torch_device_fn  # noqa: E402
 
-from . import consts
+from . import consts  # noqa: E402
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
