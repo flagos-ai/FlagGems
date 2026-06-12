@@ -47,10 +47,10 @@ class CdistForwardBenchmark(base.Benchmark):
         for shape1, shape2 in self.shapes:
             x1 = torch.randn(*shape1, dtype=cur_dtype, device=self.device)
             x2 = torch.randn(*shape2, dtype=cur_dtype, device=self.device)
-            yield x1, x2, 2.0, None
+            yield x1, x2, 2.0
 
     def get_tflops(self, op, *args, **kwargs):
-        x1, x2, _, _ = args
+        x1, x2, _ = args
         # FLOPs = 2 * P * R * M (for L2 distance computation)
         return 2 * x1.shape[-2] * x2.shape[-2] * x1.shape[-1]
 
