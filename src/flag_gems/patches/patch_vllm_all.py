@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 
 import flag_gems
+import flag_gems.runtime as runtime
 from flag_gems.fused import top_k_per_row_prefill
 from flag_gems.patches.patch_util import (
     init_vllm_libraries,
@@ -598,6 +599,33 @@ def custom_rms_norm_out(result, input, weight, epsilon):
     rms_norm_out(result, input, list(weight.size()), weight, epsilon)
 
 
+# vLLM ops implementations registry: {lib_name: {op_name: impl_func}}
+_VLLM_OPS_IMPLS = {
+    "_C": {
+        "rms_norm": custom_rms_norm_out,
+        "silu_and_mul": custom_silu_and_mul,
+        "silu_and_mul_with_clamp": custom_silu_and_mul_with_clamp,
+        "hc_head_fused_kernel": custom_hc_head_fused_kernel,
+        "cutlass_scaled_mm": custom_cutlass_scaled_mm,
+        "per_token_group_fp8_quant": custom_per_token_group_fp8_quant,
+        "apply_repetition_penalties_": custom_apply_repetition_penalties,
+        "top_k_per_row_prefill": custom_top_k_per_row_prefill,
+    },
+    "_moe_C": {
+        "topk_softmax": custom_topk_softmax,
+        "moe_align_block_size": custom_moe_align_block_size,
+        "grouped_topk": custom_moe_grouped_topk,
+        "moe_sum": custom_moe_sum,
+    },
+    "_vllm_fa3_C": {
+        "get_scheduler_metadata": custom_get_scheduler_metadata,
+    },
+    "_C_cache_ops": {
+        "concat_and_cache_mla": custom_concat_and_cache_mla,
+    },
+}
+
+
 def apply_gems_patches_to_vllm(verbose=True):
     import vllm  # noqa: F401
     import vllm._custom_ops as ops  # noqa: F401
@@ -615,7 +643,6 @@ def apply_gems_patches_to_vllm(verbose=True):
     from vllm.v1.attention.backends.mla.triton_mla import TritonMLAImpl
 
     dispatch_key = flag_gems.runtime.device.dispatch_key
-    init_vllm_libraries()
 
     module_patches = [
         (RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda),
@@ -629,24 +656,48 @@ def apply_gems_patches_to_vllm(verbose=True):
     for cls, method_name, new_method in module_patches:
         patch_module_method(cls, method_name, new_method, verbose)
 
-    lib_patches = [
-        ("_C", "rms_norm", custom_rms_norm_out),
-        ("_C", "silu_and_mul", custom_silu_and_mul),
-        ("_C", "silu_and_mul_with_clamp", custom_silu_and_mul_with_clamp),
-        ("_C", "hc_head_fused_kernel", custom_hc_head_fused_kernel),
-        ("_C", "cutlass_scaled_mm", custom_cutlass_scaled_mm),
-        ("_moe_C", "moe_align_block_size", custom_moe_align_block_size),
-        ("_moe_C", "topk_softmax", custom_topk_softmax),
-        ("_moe_C", "moe_sum", custom_moe_sum),
-        ("_vllm_fa3_C", "get_scheduler_metadata", custom_get_scheduler_metadata),
-        ("_moe_C", "grouped_topk", custom_moe_grouped_topk),
-        ("_C", "per_token_group_fp8_quant", custom_per_token_group_fp8_quant),
-        ("_C", "apply_repetition_penalties_", custom_apply_repetition_penalties),
-        ("_C", "top_k_per_row_prefill", custom_top_k_per_row_prefill),
-        ("_C_cache_ops", "concat_and_cache_mla", custom_concat_and_cache_mla),
-    ]
-    for lib_name, fn_name, fn in lib_patches:
-        patch_vllm_lib(lib_name, fn_name, fn, dispatch_key, verbose)
+    init_vllm_libraries()
+    # Patch library ops using function objects directly
+    for lib_name, ops_dict in _VLLM_OPS_IMPLS.items():
+        for op_name, impl_func in ops_dict.items():
+            patch_vllm_lib(lib_name, op_name, impl_func, dispatch_key, verbose)
 
     if vitw is not None:
         patch_vllm_vit_to_attn(vitw)
+
+
+_flag_ops_registered = False
+
+
+def patch_empty_vllm() -> None:
+    """
+    Register all FlagGems operators to their corresponding torch.ops namespaces.
+
+    This function is idempotent - calling it multiple times will only register once.
+
+    Registers all operators from _VLLM_OPS_IMPLS to their respective libraries:
+    - _C: rms_norm, silu_and_mul, cutlass_scaled_mm, etc.
+    - _moe_C: topk_softmax, moe_align_block_size, grouped_topk, moe_sum
+    - _vllm_fa3_C: get_scheduler_metadata
+    - _C_cache_ops: concat_and_cache_mla
+
+    Usage:
+        import flag_gems
+        flag_gems.patch_empty_vllm()
+        torch.ops._C.rms_norm(...)
+        torch.ops._moe_C.topk_softmax(...)
+    """
+    global _flag_ops_registered
+    if _flag_ops_registered:
+        return
+    _flag_ops_registered = True
+
+    dispatch_key = runtime.device.dispatch_key
+
+    # Initialize libraries and register operators
+    init_vllm_libraries()
+
+    # Register implementations for all operators
+    for lib_name, ops_dict in _VLLM_OPS_IMPLS.items():
+        for op_name, impl_func in ops_dict.items():
+            patch_vllm_lib(lib_name, op_name, impl_func, dispatch_key, verbose=True)
