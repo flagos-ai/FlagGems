@@ -232,6 +232,19 @@ def _probe_torch():
         pinfo(f"PyTorch device count ... {dev_count}")
     except Exception:
         ENV_INFO["torch"]["device_count"] = 0
+        dev_count = 0
+
+    if dev_count == 0:
+        try:
+            # Is this a TsingMicro chip?
+            import torch_txda
+
+            dev_count = torch_txda.device_count()
+
+            ENV_INFO["torch"]["device_count"] = dev_count
+            pinfo(f"TorchTXDA device count ... {dev_count}")
+        except Exception:
+            pass
 
 
 def _probe_triton():
@@ -941,12 +954,18 @@ def main():
     ensure_dir(output_dir)
     CFG.output_dir = output_dir
 
-    gpu_list = OPTS.gpus.strip().split(",")
-    if len(gpu_list) == 0:
-        pwarn("Empty GPU list specified.")
-        sys.exit(1)
-
-    gpu_ids = [int(x) for x in gpu_list if x.strip()]
+    if OPTS.gpus.strip().lower() == "all":
+        dev_count = ENV_INFO.get("torch", {}).get("device_count", 0)
+        if dev_count == 0:
+            perror("--gpus all specified but no devices detected.")
+            sys.exit(1)
+        gpu_ids = list(range(dev_count))
+    else:
+        gpu_list = OPTS.gpus.strip().split(",")
+        if len(gpu_list) == 0:
+            pwarn("Empty GPU list specified.")
+            sys.exit(1)
+        gpu_ids = [int(x) for x in gpu_list if x.strip()]
     gpu_count = len(gpu_ids)
 
     op_width = min(max(len(op) for op in ops), 40) if ops else 20
