@@ -433,6 +433,7 @@ from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
+from flag_gems.ops.special_xlog1py import special_xlog1py
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
@@ -905,6 +906,7 @@ __all__ = [
     "special_i0e_out",
     "special_i1",
     "special_i1_out",
+    "special_xlog1py",
     "split_with_sizes_copy",
     "sqrt",
     "sqrt_",
