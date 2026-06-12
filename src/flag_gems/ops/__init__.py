@@ -383,6 +383,7 @@ from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
+from flag_gems.ops.special_legendre_polynomial_p import special_legendre_polynomial_p
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
@@ -915,6 +916,7 @@ __all__ = [
     "special_i0e_out",
     "special_i1",
     "special_i1_out",
+    "special_legendre_polynomial_p",
     "split_with_sizes_copy",
     "sqrt",
     "sqrt_",

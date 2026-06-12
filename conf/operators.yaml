@@ -6529,6 +6529,20 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_legendre_polynomial_p
+    description: |
+      Computes the Legendre polynomial P_n(x) of degree n for each element in the input tensor,
+      designed for special mathematical functions.
+    for:
+      - special.legendre_polynomial_p
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,
