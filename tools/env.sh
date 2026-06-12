@@ -46,8 +46,14 @@ case $VENDOR in
     fi
     ;;
   tsingmicro)
-    SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
-    export LD_LIBRARY_PATH=${SITE_PACKAGES}/txops/lib:/usr/local/kuiper/lib:$LD_LIBRARY_PATH
+    export TX8_DEPS_ROOT=/opt/tx8_deps
+    export LLVM_SYSPATH=/opt/llvm
+    export LLVM_BINARY_DIR=${LLVM_SYSPATH}/bin
+    export PYTHONPATH=${LLVM_SYSPATH}/python_packages/mlir_core
+    export LD_LIBRARY_PATH=/usr/local/kuiper/lib:$LD_LIBRARY_PATH
+    export LD_LIBRARY_PATH=/usr/local/kuiper/tsm8-profiler/lib:$LD_LIBRARY_PATH
+    export LD_LIBRARY_PATH=${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}
+
     # if [ -n "${USE_TRITON}" ]; then
     #   export PYTHONPATH=$SITE_PACKAGES/triton/backends/tsingmicro/llvm/python_packages/mlir_core
     # fi
