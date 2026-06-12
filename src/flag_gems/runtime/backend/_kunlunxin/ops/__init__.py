@@ -150,6 +150,7 @@ from .nllloss import (
     nll_loss_forward,
 )
 from .nonzero import nonzero
+from .nonzero_numpy import nonzero_numpy
 from .normal import (
     normal_,
     normal_float_tensor,
@@ -443,6 +444,7 @@ __all__ = [
     "nll_loss2d_backward",
     "nll_loss2d_forward",
     "nonzero",
+    "nonzero_numpy",
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
