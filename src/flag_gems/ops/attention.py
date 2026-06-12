@@ -225,14 +225,12 @@ def _attn_fwd(
     # initialize offsets
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
     q_load_mask = offs_m < Q_CTX
-    # Clamp indices for pointer arithmetic to prevent OOB address computation.
-    offs_m_safe = tl.where(q_load_mask, offs_m, 0)
     offs_n = tl.arange(0, BLOCK_N)
 
     Q_block_ptr = (
         Q
         + q_offset
-        + offs_m_safe[:, None] * stride_q_seqlen
+        + offs_m[:, None] * stride_q_seqlen
         + offs_headsize[None, :] * stride_q_headsize
     )
     K_block_ptr = (
@@ -256,7 +254,7 @@ def _attn_fwd(
         mask_block_ptr = (
             attn_mask
             + attn_mask_offset
-            + offs_m_safe[:, None] * stride_attn_mask_q_seqlen
+            + offs_m[:, None] * stride_attn_mask_q_seqlen
             + offs_n[None, :] * stride_attn_mask_kv_seqlen
         )
     else:
@@ -265,7 +263,7 @@ def _attn_fwd(
     O_block_ptr = (
         Out
         + o_offset
-        + offs_m_safe[:, None] * stride_o_seqlen
+        + offs_m[:, None] * stride_o_seqlen
         + offs_headsize[None, :] * stride_o_headsize
     )
 
@@ -339,7 +337,7 @@ def _attn_fwd(
     # epilogue
     m_i += tl.math.log2(l_i)
     acc = acc / l_i[:, None]
-    m_ptrs = M + off_hz * Q_CTX + offs_m_safe
+    m_ptrs = M + off_hz * Q_CTX + offs_m
     tl.store(m_ptrs, m_i, mask=q_load_mask)
     tl.store(O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None])
 
@@ -350,25 +348,23 @@ def _attn_bwd_preprocess(
 ):
     off_m = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
     mask = off_m < Q_CTX
-    # Clamp indices for pointer arithmetic to prevent OOB address computation.
-    off_m_safe = tl.where(mask, off_m, 0)
 
     off_hz = tl.program_id(1)
     off_n = tl.arange(0, D_HEAD)
     # load
     o = tl.load(
-        O + off_hz * D_HEAD * Q_CTX + off_m_safe[:, None] * D_HEAD + off_n[None, :],
+        O + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
         mask=mask[:, None],
         other=0.0,
     )
     do = tl.load(
-        DO + off_hz * D_HEAD * Q_CTX + off_m_safe[:, None] * D_HEAD + off_n[None, :],
+        DO + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
         mask=mask[:, None],
         other=0.0,
     ).to(tl.float32)
     delta = tl.sum(o * do, axis=1)
     # write-back
-    tl.store(Delta + off_hz * Q_CTX + off_m_safe, delta, mask=mask)
+    tl.store(Delta + off_hz * Q_CTX + off_m, delta, mask=mask)
 
 
 # The main inner-loop logic for computing dK and dV.
@@ -412,15 +408,12 @@ def _attn_bwd_dkdv(
     for blk_idx in range(num_steps):
         offs_m = curr_m + tl.arange(0, BLOCK_M1)  # (BLOCK_M1, )
         offs_m_mask = offs_m < Q_CTX  # (BLOCK_M1, )
-        # Clamp indices for pointer arithmetic to prevent OOB address computation.
-        # Use tl.where to ensure OOB lanes point to index 0 (always valid).
-        offs_m_safe = tl.where(offs_m_mask, offs_m, 0)
 
         qT_ptrs = (
-            Q + offs_m_safe[None, :] * stride_tok + offs_k[:, None] * stride_d
+            Q + offs_m[None, :] * stride_tok + offs_k[:, None] * stride_d
         )  # (BLOCK_DMODEL, BLOCK_M1)
         do_ptrs = (
-            DO + offs_m_safe[:, None] * stride_tok + offs_k[None, :] * stride_d
+            DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
         )  # (BLOCK_M1, BLOCK_DMODEL)
 
         qT = tl.load(
@@ -428,9 +421,7 @@ def _attn_bwd_dkdv(
         )  # (BLOCK_DMODEL, BLOCK_M1)
 
         # Load m before computing qk to reduce pipeline stall.
-        m = tl.load(
-            M + offs_m_safe, mask=offs_m_mask, other=float("inf")
-        )  # (BLOCK_M1, )
+        m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))  # (BLOCK_M1, )
 
         # key: (BLOCK_N1, BLOCK_DMODEL)
         qkT = tl.dot(key, qT)  # (BLOCK_N1, BLOCK_M1)
@@ -454,7 +445,7 @@ def _attn_bwd_dkdv(
         # Compute dV.
         dv += tl.dot(pT, do.to(tl.float32))  # (BLOCK_N1, BLOCK_DMODEL)
         # D (= delta) is pre-divided by ds_scale.
-        Di = tl.load(D + offs_m_safe, mask=offs_m_mask, other=0.0)  # (BLOCK_M1, )
+        Di = tl.load(D + offs_m, mask=offs_m_mask, other=0.0)  # (BLOCK_M1, )
 
         # Compute dP and dS.
         dpT = tl.dot(value, tl.trans(do)).to(
@@ -501,13 +492,10 @@ def _attn_bwd_dq(
 ):
     offs_m = start_m + tl.arange(0, BLOCK_M2)
     offs_m_mask = offs_m < Q_CTX
-    # Clamp indices for pointer arithmetic to prevent OOB address computation.
-    # Use tl.where to ensure OOB lanes point to index 0 (always valid).
-    offs_m_safe = tl.where(offs_m_mask, offs_m, 0)
 
     offs_k = tl.arange(0, BLOCK_DMODEL)
     # D (= delta) is pre-divided by ds_scale.
-    Di = tl.load(D + offs_m_safe, mask=offs_m_mask, other=0.0)
+    Di = tl.load(D + offs_m, mask=offs_m_mask, other=0.0)
     # BLOCK_M2 must be a multiple of BLOCK_N2, otherwise the code wouldn't work.
     tl.static_assert(BLOCK_M2 % BLOCK_N2 == 0)
     curr_n = start_n
@@ -515,11 +503,9 @@ def _attn_bwd_dq(
     for blk_idx in range(num_steps):
         offs_n = curr_n + tl.arange(0, BLOCK_N2)
         offs_n_mask = offs_n < KV_CTX
-        # Clamp KV indices for pointer arithmetic.
-        offs_n_safe = tl.where(offs_n_mask, offs_n, 0)
 
-        kT_ptrs = K + offs_n_safe[None, :] * stride_tok + offs_k[:, None] * stride_d
-        vT_ptrs = V + offs_n_safe[None, :] * stride_tok + offs_k[:, None] * stride_d
+        kT_ptrs = K + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
+        vT_ptrs = V + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
 
         kT = tl.load(kT_ptrs, mask=offs_n_mask[None, :], other=0.0)
         vT = tl.load(vT_ptrs, mask=offs_n_mask[None, :], other=0.0)
@@ -660,7 +646,7 @@ def _attn_bwd(
     # Grid dim 0 = NUM_KV_BLOCKS + NUM_Q_BLOCKS.
     # pid in [0, NUM_KV_BLOCKS) handles dK/dV.
     # pid in [NUM_KV_BLOCKS, grid_dim_0) handles dQ.
-    NUM_KV_BLOCKS = (KV_CTX + BLOCK_N1 - 1) // BLOCK_N1
+    NUM_KV_BLOCKS = tl.cdiv(KV_CTX, BLOCK_N1)
     if pid < NUM_KV_BLOCKS:
         # ============ dK/dV section ============
         start_n = pid * BLOCK_N1
@@ -670,15 +656,13 @@ def _attn_bwd(
         # load K and V: they stay in SRAM throughout the inner loop.
         offs_n = start_n + tl.arange(0, BLOCK_N1)
         offs_n_mask = offs_n < KV_CTX
-        # Clamp indices for pointer arithmetic to prevent OOB address computation.
-        offs_n_safe = tl.where(offs_n_mask, offs_n, 0)
         key = tl.load(
-            K + offs_n_safe[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
             mask=offs_n_mask[:, None],
             other=0.0,
         )
         value = tl.load(
-            V + offs_n_safe[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
             mask=offs_n_mask[:, None],
             other=0.0,
         )
@@ -723,9 +707,6 @@ def _attn_bwd(
         else:
             start_m = 0
 
-        # Clamp start_m to Q_CTX to ensure remaining_m is non-negative.
-        # This prevents potential issues with negative integer division on GPU.
-        start_m = min(start_m, Q_CTX)
         # Unmasked phase (shared): traverse remaining Q rows.
         remaining_m = Q_CTX - start_m
         num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
@@ -754,36 +735,31 @@ def _attn_bwd(
                 MASK=False,  #
             )
 
-        dv_ptrs = DV + offs_n_safe[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
+        dv_ptrs = DV + offs_n[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
         tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
 
         # Write back dK.
         dk *= sm_scale
-        dk_ptrs = DK + offs_n_safe[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
+        dk_ptrs = DK + offs_n[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
         tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
 
     else:
         # ============ dQ section ============
-        # Note: In the dead branch case (pid < NUM_KV_BLOCKS), start_m would be
-        # negative. Clamp to 0 to ensure all pointer arithmetic stays in-bounds
-        # even if the compiler speculatively prefetches from dead branches.
-        start_m = max((pid - NUM_KV_BLOCKS) * BLOCK_M2, 0)
+        start_m = (pid - NUM_KV_BLOCKS) * BLOCK_M2
         offs_m = start_m + tl.arange(0, BLOCK_M2)
         offs_m_mask = offs_m < Q_CTX
-        # Clamp indices for pointer arithmetic to prevent OOB address computation.
-        offs_m_safe = tl.where(offs_m_mask, offs_m, 0)
         query = tl.load(
-            Q + offs_m_safe[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
             mask=offs_m_mask[:, None],
             other=0.0,
         )
         dq = tl.zeros([BLOCK_M2, BLOCK_DMODEL], dtype=tl.float32)
         do = tl.load(
-            DO + offs_m_safe[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
             mask=offs_m_mask[:, None],
             other=0.0,
         )
-        m = tl.load(M + offs_m_safe, mask=offs_m_mask, other=float("inf"))
+        m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
         m = m[:, None]
 
         MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
@@ -849,7 +825,7 @@ def _attn_bwd(
             )
 
         # Write back dQ.
-        dq_ptrs = DQ + offs_m_safe[:, None] * stride_tok + offs_k[None, :] * stride_d
+        dq_ptrs = DQ + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
         dq *= LN2
         tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None])
 
