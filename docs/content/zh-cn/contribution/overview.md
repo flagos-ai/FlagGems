@@ -21,13 +21,26 @@ Currently, continuous integration checks include three jobs.
 此外，这类拉取请求也必须通过持续集成（Continuous Integration，CI）测试。
 
 <!--
-## 1. Operator inventory
+## 1. Dev Container (Recommended)
+If you use VS Code and your code runs inside a container, the recommended way to set up
+your development environment is through the provided Dev Container configurations.
+See the dedicated [Dev Container](/FlagGems/contribution/devcontainer/) page for setup
+instructions, including local and SSH remote workflows.
+-->
+## 1. 开发容器（推荐）
+
+如果您使用 VS Code 进行开发，且程序运行在容器中，推荐参考项目提供的 Dev Container 配置来搭建开发环境。
+详细的环境搭建步骤（包括本地和 SSH 远端两种使用场景）请参阅独立页面
+[开发容器](/FlagGems/zh-cn/contribution/devcontainer/)。
+
+<!--
+## 2. Operator inventory
 
 Starting from v4.2, the FlagGems project introduced an operator inventory which can be found
 as the `conf/operators.yaml` file. Each operator has a unique ID denoted as the `id` field.
 Other fields for an operator include:
 -->
-## 1. 算子目录
+## 2. 算子目录
 
 从 v4.2 版本开始，FlagGems 项目开始引入算子目录，即 `conf/operators.yaml` 文件。
 其中每个算子都有一个用 `id` 字段来表述的唯一标识符（ID）。其他字段还包括：
@@ -111,12 +124,12 @@ tracking. When deciding the identifier for an operator, please follow the follow
   `conf/operators.yaml` 中注册独立条目。
 
 <!--
-## 2. Code Format Check
+## 3. Code Format Check
 
 Using `pre-commit` git hooks with FlagGems, you can format source Python code
 and perform basic code pre-checks when calling the `git commit` command.
 -->
-## 2. 代码格式检查
+## 3. 代码格式检查
 
 在 FlagGems 项目中使用 `pre-commit` GIT 回调机制，你可以较容易地完成对 Python
 源代码的格式化，并且在执行 `git commit` 命令时自动执行一些基本的代码预检工作。
@@ -128,13 +141,13 @@ pre-commit
 ```
 
 <!--
-## 3. Operator unit tests
+## 4. Operator unit tests
 
 The unit tests check the correctness of operators.
 When adding new operators, you need to add unit test cases in the corresponding file
 under the `tests` directory.
 -->
-## 3. 算子单元测试 {#operator-unit-tests}
+## 4. 算子单元测试 {#operator-unit-tests}
 
 单元测试的目的是检查算子实现的正确性。
 在添加新的算子实现时，你需要在 `tests` 目录下对应的文件中为其添加单元测试。
@@ -186,14 +199,14 @@ Python 测试覆盖率检测某个算子的单元测试覆盖率。
 汇总后的单元测试率数据会通过 FlagGems 的项目网站公布。
 
 <!--
-## 4. Operator Performance Benchmarking
+## 5. Operator Performance Benchmarking
 
 An *operator benchmark* is used to evaluate the performance of operators.
 If you are adding a new operator or optimizing an existing operator,
 you need to add performance test cases in the corresponding file
 under the `benchmark` directory.
 -->
-## 4. 算子的性能基准测试 {#operator-performance-benchmarking}
+## 5. 算子的性能基准测试 {#operator-performance-benchmarking}
 
 **算子基准测试（Operator Benchmark）** 用来评估算子实现的性能状况。
 在添加新的算子实现或者优化现有算子时，你需要在 `benchmark/` 目录下
@@ -215,7 +228,7 @@ For detailed instructions on writing performance test case, please refer to
 [Python 性能测试](/FlagGems/zh-cn/performance/benchmark/)一节。
 
 <!--
-## 5. About test case marking
+## 6. About test case marking
 
 The `pytest` tool we used for driving accuracy tests (unit tests) and performance
 tests (benchmarks) provides a mechanism to annotate a test case with *custom marks*.
@@ -223,7 +236,7 @@ The FlagGems project makes uses of this facility for testing/benchmarking operat
 selectively. In the example below, test case is annotated with `@pytest.mark.abs`
 to indicate that this test case is for the `abs` operator.
 -->
-## 5. 关于测例的标记（marks）
+## 6. 关于测例的标记（marks）
 
 我们用来驱动精度测试（单元测试）和性能测试（基准测试）的 `pytest` 工具提供一种机制，
 允许我们为测试用例添加注解，为之打上**定制标记（Custom Marks）**。
