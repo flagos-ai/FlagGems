@@ -5701,6 +5701,22 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: scaled_dot_product_fused_attention_overrideable
+    description: >
+      Computes scaled dot product attention on query, key and value tensors,
+      using an optional attention mask if passed. Returns extra values including
+      logsumexp, cumulative sequence lengths, max sequence lengths, philox RNG
+      state, and debug attention mask.
+    for:
+      - _scaled_dot_product_fused_attention_overrideable
+    labels:
+      - aten
+      - Attention
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: scaled_mm
     description: |
       Performs a scaled matrix multiplication. The result of `self @ mat2` is

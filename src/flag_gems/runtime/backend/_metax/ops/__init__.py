@@ -1,3 +1,6 @@
+from ._scaled_dot_product_fused_attention_overrideable import (
+    _scaled_dot_product_fused_attention_overrideable,
+)
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
@@ -33,6 +36,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_scaled_dot_product_fused_attention_overrideable",
     "_unique2",
     "addmm",
     "amax",
