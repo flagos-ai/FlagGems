@@ -2,7 +2,7 @@ from .bincount import bincount
 from .flash_mla import flash_mla
 from .fused_add_rms_norm import fused_add_rms_norm
 from .fused_moe import fused_experts_impl, inplace_fused_experts, outplace_fused_experts
-from .fused_recurrent_gated_delta_rule import fused_recurrent_gated_delta_rule_fwd
+from .fused_recurrent import fused_recurrent_gated_delta_rule_fwd
 from .hc_head_fused_kernel import hc_head_fused_kernel, hc_head_fused_kernel_ref
 from .reshape_and_cache_flash import reshape_and_cache_flash
 from .skip_layernorm import skip_layer_norm

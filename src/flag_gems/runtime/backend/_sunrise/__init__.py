@@ -1,16 +1,19 @@
 import os
 
 import torch_ptpu  # noqa: F401
-from backend_utils import VendorInfoBase
+from backend_utils import VendorDescriptor
 
 from .monkey_patch import apply_sunrise_monkey_patches
 
-vendor_info = VendorInfoBase(
+vendor_info = VendorDescriptor(
     vendor_name="sunrise",
     device_name="ptpu",
     device_query_cmd="pt_smi",
     triton_extra_name="tang",
     dispatch_key="PrivateUse1",
+    fp64_enabled=False,
+    bf16_enabled=False,
+    int64_enabled=False,
 )
 
 CUSTOMIZED_UNUSED_OPS = ()
@@ -130,12 +133,14 @@ def _sunrise_extra_config_entries():  # 有些公共库也没有注册的op，�
 def _install_autograd_dispatch_patch():
     import torch
 
-    from flag_gems.runtime.register import Register
+    from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
-    if getattr(Register, "_sunrise_autograd_dispatch_patched", False):
+    register_cls = GeneralOpRegistrar
+
+    if getattr(register_cls, "_sunrise_autograd_dispatch_patched", False):
         return
 
-    original_register_impl = Register.register_impl
+    original_register_impl = register_cls.register_impl
     autograd_key = torch._C.DispatchKey.Autograd.name
     autograd_ops = frozenset(CUSTOMIZED_AUTOGRAD_OPS)
 
@@ -148,18 +153,20 @@ def _install_autograd_dispatch_patch():
 
         return original_register_impl(self, key, fn, extra_dispatch_keys)
 
-    Register.register_impl = register_impl
-    Register._sunrise_autograd_dispatch_patched = True
-    Register._sunrise_original_register_impl = original_register_impl
+    register_cls.register_impl = register_impl
+    register_cls._sunrise_autograd_dispatch_patched = True
+    register_cls._sunrise_original_register_impl = original_register_impl
 
 
 def _install_register_config_patch():
-    from flag_gems.runtime.register import Register
+    from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
-    if getattr(Register, "_sunrise_config_patched", False):
+    register_cls = GeneralOpRegistrar
+
+    if getattr(register_cls, "_sunrise_config_patched", False):
         return
 
-    original_init = Register.__init__
+    original_init = register_cls.__init__
 
     def _extend_config(config, full_config_by_func):
         extra_entries = _sunrise_extra_config_entries()
@@ -200,9 +207,9 @@ def _install_register_config_patch():
             full_config_by_func=full_config_by_func,
         )
 
-    Register.__init__ = __init__
-    Register._sunrise_config_patched = True
-    Register._sunrise_original_init = original_init
+    register_cls.__init__ = __init__
+    register_cls._sunrise_config_patched = True
+    register_cls._sunrise_original_init = original_init
 
 
 def _install_typed_ptr_device_patch():
