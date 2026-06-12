@@ -433,6 +433,7 @@ from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
+from flag_gems.ops.linalg_slogdet import linalg_slogdet
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
@@ -704,6 +705,7 @@ __all__ = [
     "lerp_tensor_",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
+    "linalg_slogdet",
     "linspace",
     "log",
     "log10",
