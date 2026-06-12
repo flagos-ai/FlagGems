@@ -13,6 +13,7 @@ from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_lo
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
+from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
@@ -41,6 +42,7 @@ _FULL_CONFIG = (
     ("__or__.Scalar", bitwise_or_scalar),
     ("__or__.Tensor", bitwise_or_tensor),
     ("_assert_async", _assert_async),
+    ("_cdist_backward", _cdist_backward),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_forward", flash_attention_forward),
@@ -70,6 +72,7 @@ _FULL_CONFIG = (
         lambda: version.parse(torch.__version__) >= version.parse("2.4"),
     ),
     ("_unique2", _unique2),
+    ("_unsafe_masked_index", _unsafe_masked_index),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
     ("_upsample_nearest_exact1d", _upsample_nearest_exact1d),
@@ -338,7 +341,6 @@ _FULL_CONFIG = (
     ("log10_", log10_),
     ("log1p", log1p),
     ("log1p_", log1p_),
-    ("log_normal_", log_normal_),
     ("log_sigmoid", log_sigmoid),
     ("logaddexp", logaddexp),
     ("logaddexp.out", logaddexp_out),
@@ -381,6 +383,7 @@ _FULL_CONFIG = (
     ("minimum", minimum),
     ("mm", mm),
     ("mm.out", mm_out),
+    ("mode", mode),
     ("mse_loss", mse_loss),
     ("mul.Tensor", mul),
     ("mul_.Tensor", mul_),
@@ -566,6 +569,8 @@ _FULL_CONFIG = (
     ("true_divide.Tensor", true_divide),
     ("true_divide_.Scalar", true_divide_),
     ("true_divide_.Tensor", true_divide_),
+    ("trunc", trunc),
+    ("trunc_", trunc_),
     ("unfold_backward", unfold_backward),
     ("uniform_", uniform_),
     ("unique_consecutive", unique_consecutive),
