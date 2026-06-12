@@ -30,10 +30,25 @@ def nextafter_func(x, y):
     # nextafter(x, y) returns y if x == y
     # Otherwise, returns the next representable value from x toward y
 
-    # For float32 (most common): use int32 bitcast
+    # IEEE 754 float32 int32 bit representation:
+    # For x >= 0: int32 order matches float order (+1 -> next larger float)
+    # For x < 0:  int32 order is reversed (-1 -> next toward +inf)
     x_i32 = x.to(tl.int32, bitcast=True)
-    direction = tl.where(y > x, tl.int32(1), tl.int32(-1))
-    result_i32 = x_i32 + direction
+    toward_pos_inf = y > x
+    is_neg = x_i32 < 0
+    step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
+    result_i32 = x_i32 + step
+
+    # Handle zero boundary: +0.0 and -0.0 cross the NaN gap in int32 space
+    # +0.0 (int32 0) toward -inf => -0.0 (int32 0x80000000 = -2147483648)
+    # -0.0 (int32 -2147483648) toward +inf => min pos subnormal (int32 1)
+    result_i32 = tl.where(
+        (x_i32 == 0) & ~toward_pos_inf, -2147483648, result_i32
+    )
+    result_i32 = tl.where(
+        (x_i32 == -2147483648) & toward_pos_inf, 1, result_i32
+    )
+
     result = result_i32.to(tl.float32, bitcast=True)
 
     # Special case: if x == y, return y
@@ -46,8 +61,19 @@ def nextafter_func(x, y):
 @triton.jit
 def nextafter_func_tensor_scalar(x, y):
     x_i32 = x.to(tl.int32, bitcast=True)
-    direction = tl.where(y > x, tl.int32(1), tl.int32(-1))
-    result_i32 = x_i32 + direction
+    toward_pos_inf = y > x
+    is_neg = x_i32 < 0
+    step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
+    result_i32 = x_i32 + step
+
+    # Handle zero boundary
+    result_i32 = tl.where(
+        (x_i32 == 0) & ~toward_pos_inf, -2147483648, result_i32
+    )
+    result_i32 = tl.where(
+        (x_i32 == -2147483648) & toward_pos_inf, 1, result_i32
+    )
+
     result = result_i32.to(tl.float32, bitcast=True)
     result = tl.where(x == y, y, result)
     return result
@@ -57,8 +83,19 @@ def nextafter_func_tensor_scalar(x, y):
 @triton.jit
 def nextafter_func_scalar_tensor(x, y):
     x_i32 = x.to(tl.int32, bitcast=True)
-    direction = tl.where(y > x, tl.int32(1), tl.int32(-1))
-    result_i32 = x_i32 + direction
+    toward_pos_inf = y > x
+    is_neg = x_i32 < 0
+    step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
+    result_i32 = x_i32 + step
+
+    # Handle zero boundary
+    result_i32 = tl.where(
+        (x_i32 == 0) & ~toward_pos_inf, -2147483648, result_i32
+    )
+    result_i32 = tl.where(
+        (x_i32 == -2147483648) & toward_pos_inf, 1, result_i32
+    )
+
     result = result_i32.to(tl.float32, bitcast=True)
     result = tl.where(x == y, y, result)
     return result
