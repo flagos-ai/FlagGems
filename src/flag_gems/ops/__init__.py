@@ -220,6 +220,7 @@ from flag_gems.ops.logical_and import logical_and, logical_and_
 from flag_gems.ops.logical_not import logical_not
 from flag_gems.ops.logical_or import logical_or, logical_or_
 from flag_gems.ops.logical_xor import logical_xor
+from flag_gems.ops.logical_xor_ import logical_xor_
 from flag_gems.ops.logit import logit, logit_out
 from flag_gems.ops.logit_ import logit_
 from flag_gems.ops.logspace import logspace
@@ -727,6 +728,7 @@ __all__ = [
     "logical_or",
     "logical_or_",
     "logical_xor",
+    "logical_xor_",
     "logit",
     "logit_",
     "logit_out",
