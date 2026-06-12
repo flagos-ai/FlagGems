@@ -170,7 +170,7 @@ def _baddbmm_launch(bias, A, B, beta, alpha, out):
 class BaddbmmFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, A, B, beta, alpha):
-        logger.debug("GEMS_TSINGMICRO BADDBMM FORWARD")
+        logger.debug("GEMS_TSINGMICRO BADDBMM")
 
         ctx.save_for_backward(A, B, bias)
         ctx.alpha = alpha
