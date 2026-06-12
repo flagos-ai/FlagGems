@@ -95,29 +95,65 @@ def grid_sampler_3d_kernel(
         y = (gy + 1.0) * tl.cast(in_h, tl.float32) * 0.5
         z = (gz + 1.0) * tl.cast(in_d, tl.float32) * 0.5
 
-    # Apply padding mode (padding_mode: 0=zeros, 1=border, 2=reflection)
-    x_clamped = tl.maximum(
-        tl.minimum(x, tl.cast(in_w - 1, tl.float32)), tl.cast(0, tl.float32)
-    )
-    y_clamped = tl.maximum(
-        tl.minimum(y, tl.cast(in_h - 1, tl.float32)), tl.cast(0, tl.float32)
-    )
-    z_clamped = tl.maximum(
-        tl.minimum(z, tl.cast(in_d - 1, tl.float32)), tl.cast(0, tl.float32)
-    )
+    # Apply padding mode (0=zeros, 1=border, 2=reflection)
+    if padding_mode == 0:  # ZEROS - keep original coords, mask handles OOB
+        x_pad = x
+        y_pad = y
+        z_pad = z
+    elif padding_mode == 1:  # BORDER - clamp to nearest edge
+        x_pad = tl.maximum(tl.minimum(x, tl.cast(in_w - 1, tl.float32)), 0.0)
+        y_pad = tl.maximum(tl.minimum(y, tl.cast(in_h - 1, tl.float32)), 0.0)
+        z_pad = tl.maximum(tl.minimum(z, tl.cast(in_d - 1, tl.float32)), 0.0)
+    else:  # REFLECTION - reflect at boundaries
+        if align_corners:
+            w_m1 = tl.cast(in_w - 1, tl.float32)
+            h_m1 = tl.cast(in_h - 1, tl.float32)
+            d_m1 = tl.cast(in_d - 1, tl.float32)
+            x_pad = tl.where(x < 0, -x, x)
+            x_pad = tl.where(x_pad > w_m1, 2 * w_m1 - x_pad, x_pad)
+            y_pad = tl.where(y < 0, -y, y)
+            y_pad = tl.where(y_pad > h_m1, 2 * h_m1 - y_pad, y_pad)
+            z_pad = tl.where(z < 0, -z, z)
+            z_pad = tl.where(z_pad > d_m1, 2 * d_m1 - z_pad, z_pad)
+        else:
+            w_f = tl.cast(in_w, tl.float32)
+            h_f = tl.cast(in_h, tl.float32)
+            d_f = tl.cast(in_d, tl.float32)
+            x_pad = tl.where(x < -0.5, -1 - x, x)
+            x_pad = tl.where(x_pad > w_f - 0.5, 2 * w_f - 1 - x_pad, x_pad)
+            y_pad = tl.where(y < -0.5, -1 - y, y)
+            y_pad = tl.where(y_pad > h_f - 0.5, 2 * h_f - 1 - y_pad, y_pad)
+            z_pad = tl.where(z < -0.5, -1 - z, z)
+            z_pad = tl.where(z_pad > d_f - 0.5, 2 * d_f - 1 - z_pad, z_pad)
 
-    # Compute indices based on interpolation mode
+    # Compute indices based on interpolation mode.
+    # For ZEROS padding: use original coordinates so out-of-bounds
+    # positions are caught by the mask and set to zero.
+    # For BORDER/REFLECTION: use padded coordinates.
     if interpolation_mode == 1:  # NEAREST
-        ix = tl.cast(tl.floor(x_clamped + 0.5), tl.int32)
-        iy = tl.cast(tl.floor(y_clamped + 0.5), tl.int32)
-        iz = tl.cast(tl.floor(z_clamped + 0.5), tl.int32)
+        if padding_mode == 0:
+            ix = tl.cast(tl.floor(x + 0.5), tl.int32)
+            iy = tl.cast(tl.floor(y + 0.5), tl.int32)
+            iz = tl.cast(tl.floor(z + 0.5), tl.int32)
+        else:
+            ix = tl.cast(tl.floor(x_pad + 0.5), tl.int32)
+            iy = tl.cast(tl.floor(y_pad + 0.5), tl.int32)
+            iz = tl.cast(tl.floor(z_pad + 0.5), tl.int32)
     else:  # BILINEAR
-        ix0 = tl.cast(tl.floor(x_clamped), tl.int32)
-        iy0 = tl.cast(tl.floor(y_clamped), tl.int32)
-        iz0 = tl.cast(tl.floor(z_clamped), tl.int32)
-        fx = x_clamped - tl.floor(x_clamped)
-        fy = y_clamped - tl.floor(y_clamped)
-        fz = z_clamped - tl.floor(z_clamped)
+        if padding_mode == 0:
+            ix0 = tl.cast(tl.floor(x), tl.int32)
+            iy0 = tl.cast(tl.floor(y), tl.int32)
+            iz0 = tl.cast(tl.floor(z), tl.int32)
+            fx = x - tl.floor(x)
+            fy = y - tl.floor(y)
+            fz = z - tl.floor(z)
+        else:
+            ix0 = tl.cast(tl.floor(x_pad), tl.int32)
+            iy0 = tl.cast(tl.floor(y_pad), tl.int32)
+            iz0 = tl.cast(tl.floor(z_pad), tl.int32)
+            fx = x_pad - tl.floor(x_pad)
+            fy = y_pad - tl.floor(y_pad)
+            fz = z_pad - tl.floor(z_pad)
         ix1 = ix0 + 1
         iy1 = iy0 + 1
         iz1 = iz0 + 1
