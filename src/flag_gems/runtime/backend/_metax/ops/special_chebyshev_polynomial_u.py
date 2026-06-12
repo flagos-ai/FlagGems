@@ -69,6 +69,7 @@ def special_chebyshev_polynomial_u(x, n):
         The Chebyshev polynomial U_n(x) evaluated at x.
     """
     logger.debug("GEMS_METAX SPECIAL_CHEBYSHEV_POLYNOMIAL_U")
+    assert x.dtype.is_floating_point, f"unsupported dtype {x.dtype}"
 
     # Convert n to tensor if it's a scalar
     if not isinstance(n, torch.Tensor):
