@@ -6930,6 +6930,20 @@ ops:
     kind:
       - BLAS
     stages:
+      - beta: '5.0'
+      - stable: '5.3'
+  - id: sparse_semi_structured_linear
+    description: |
+      Performs a semi-structured (2:4) sparse linear transformation
+      with optional bias and activation.
+    for:
+      - _sparse_semi_structured_linear
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
       - alpha: '5.4'
   - id: special_chebyshev_polynomial_v
     description: |

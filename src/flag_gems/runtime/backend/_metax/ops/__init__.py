@@ -1,3 +1,4 @@
+from ._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
@@ -72,6 +73,7 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "resolve_conj",
     "sigmoid",
+    "_sparse_semi_structured_linear",
     "tanh",
     "upsample_nearest2d",
     "zeros",
