@@ -1,3 +1,4 @@
+from flag_gems.ops._cdist_forward import _cdist_forward
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -440,6 +441,7 @@ __all__ = [
     "ScaleDotProductAttention",
     "_assert_async",
     "_cdist_backward",
+    "_cdist_forward",
     "_conv_depthwise2d",
     "_euclidean_dist",
     "_functional_sym_constrain_range_for_size",

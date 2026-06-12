@@ -1027,6 +1027,20 @@ ops:
       - Distribution
     stages:
       - beta: '5.3'
+  - id: cdist_forward
+    description: |
+      Computes the batched pairwise distance (cdist) between two collections of row vectors,
+      supporting p=2.0 (L2 norm) with a Metax backend specialization.
+    for:
+      - _cdist_forward
+    labels:
+      - aten
+      - KernelGen
+      - Metax
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cdist_backward
     description: |
       Computes the backward pass for the batched pairwise distance (cdist) computation,
