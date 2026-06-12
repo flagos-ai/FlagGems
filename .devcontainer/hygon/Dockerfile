@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir \
     --trusted-host resource.flagos.net \
     --trusted-host pypi.tuna.tsinghua.edu.cn \
     "torch==2.9.0+das.opt1.dtk2604" \
+    "flash-attn==2.8.3+das.opt1.dtk2604.torch290" \
     "flagtree==0.5.1+hcu3.1" \
     "scikit-build-core==0.11" \
     "pybind11==3.0.3" \
