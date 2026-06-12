@@ -3,6 +3,9 @@ import re
 import triton
 from packaging.version import InvalidVersion, Version
 
+from flag_gems.runtime import backend
+from flag_gems.runtime.backend.device_finder import DeviceDetector
+
 
 def _coerce_triton_version(version: str) -> Version:
     try:
@@ -22,13 +25,19 @@ def _triton_version_at_least(major: int, minor: int, patch: int = 0) -> bool:
     return _coerce_triton_version(version) >= Version(f"{major}.{minor}.{patch}")
 
 
+def is_support_vendor():
+    device = DeviceDetector()
+    vendor_info = backend.get_vendor_info(device.vendor_name)
+    return vendor_info.tle_enabled
+
+
 def has_triton_tle(major: int = 0, minor: int = 0, patch: int = 0) -> bool:
     if not _triton_version_at_least(major, minor, patch):
         return False
     try:
         import triton.experimental.tle.language as _tle  # noqa: F401
 
-        return True
+        return is_support_vendor()
     except ImportError:
         return False
 
