@@ -149,7 +149,7 @@ def dot_kernel(
 
 
 def vdot(input: Tensor, other: Tensor):
-    logger.debug("GEMS VDOT")
+    logger.debug("GEMS_KUNLUNXIN VDOT")
 
     assert (
         input.dtype == other.dtype

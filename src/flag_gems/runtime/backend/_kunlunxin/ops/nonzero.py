@@ -57,7 +57,7 @@ def nonzero_kernel(
 
 
 def nonzero(inp, *, as_tuple=False):
-    logger.debug("GEMS NONZERO")
+    logger.debug("GEMS_KUNLUNXIN NONZERO")
 
     inp_ndim = inp.ndim
 

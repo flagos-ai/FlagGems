@@ -23,11 +23,7 @@ random.seed(time.time() // 100)
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mse_loss(shape, dtype, reduction):
-    if flag_gems.vendor_name == "metax":
-        torch.manual_seed(0)
-        torch.cuda.manual_seed_all(0)
-
-    if flag_gems.vendor_name == "kunlunxin":
+    if flag_gems.vendor_name == ["metax", "kunlunxin", "sunrise"]:
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 

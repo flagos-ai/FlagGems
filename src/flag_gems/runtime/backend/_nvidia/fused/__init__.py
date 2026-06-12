@@ -1,5 +1,9 @@
-from .fused_add_rms_norm import fused_add_rms_norm
+"""
+Example for multi-backend ops.
+
+from .sparse_attention import sparse_attn_triton
 
 __all__ = [
-    "fused_add_rms_norm",
+    "sparse_attn_triton",
 ]
+"""

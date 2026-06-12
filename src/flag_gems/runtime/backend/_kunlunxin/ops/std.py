@@ -122,7 +122,7 @@ def std(x, dim=None, *, correction=None, keepdim=False):
     input_ndim = x.ndim
 
     if dim is None:
-        logger.debug("GEMS STD (Global Simple Map-Reduce Path)")
+        logger.debug("GEMS_KUNLUNXIN STD (Global Simple Map-Reduce Path)")
         N = x.numel()
         if N == 0 or N - effective_correction <= 0:
             return torch.full([], float("nan"), device=x.device, dtype=x.dtype)

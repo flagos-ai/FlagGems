@@ -292,7 +292,7 @@ _index_func = IndexFunction()
 
 
 def index(inp, indices):
-    logger.debug("GEMS INDEX")
+    logger.debug("GEMS_KUNLUNXIN INDEX")
     original_indices = list(indices)  # Save original indices for later checks
     indices = list(indices)
 

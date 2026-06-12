@@ -38,7 +38,6 @@ def test_weight_norm_interface(shape, dtype, dim):
 
 
 @pytest.mark.weight_norm_interface_backward
-@pytest.mark.skip(reason="Issue #3007: assertion fails")
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -50,17 +49,17 @@ def test_weight_norm_interface_backward(shape, dtype, dim):
         if shape == (4096, 256):
             res_v = res_v.uniform_(-0.01, 0.01)
     res_g = torch.randn(shape[dim], dtype=dtype, device=flag_gems.device)
-    res_norm = torch.randn_like(res_g)
 
     ref_w_grad = utils.to_reference(res_w_grad, True)
     ref_v = utils.to_reference(res_v, True)
     ref_g = utils.to_reference(res_g, True)
-    ref_norm = utils.to_reference(res_norm, True)
+    _, ref_norm = torch._weight_norm_interface(ref_v, ref_g, dim)
 
     ref_v_grad, ref_g_grad = torch.ops.aten._weight_norm_interface_backward(
         ref_w_grad, ref_v, ref_g, ref_norm, dim
     )
     with flag_gems.use_gems():
+        _, res_norm = torch._weight_norm_interface(res_v, res_g, dim)
         res_v_grad, res_g_grad = torch.ops.aten._weight_norm_interface_backward(
             res_w_grad, res_v, res_g, res_norm, dim
         )

@@ -289,7 +289,7 @@ def test_fused_moe_w8a16_mxq():
     Benchmark flag_gems.fused_moe_mxq.fused_moe with W8A16 mixed precision.
     """
     bench = FusedMoEMXQW8A16Benchmark(
-        op_name="fused_moe_w8a16_mxq_gems_vs_bf16_deq",
+        op_name="fused_moe",
         torch_op=_baseline_w8a16_mxq_wrapper,
         dtypes=[torch.bfloat16],
     )
@@ -305,7 +305,7 @@ def test_fused_moe_w8a16_mxq_gems_vs_vllm():
     Benchmark flag_gems.fused_moe_mxq.fused_moe with W8A16 mixed precision.
     """
     bench = FusedMoEMXQW8A16Benchmark(
-        op_name="fused_moe_w8a16_mxq_gems_vs_vllm",
+        op_name="fused_moe",
         torch_op=_baseline_w8a16_mxq_wrapper_vllm,
         dtypes=[torch.bfloat16],
     )

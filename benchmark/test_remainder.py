@@ -4,6 +4,16 @@ import torch
 from . import base, consts
 
 
+@pytest.mark.remainder
+def test_remainder():
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="remainder",
+        torch_op=torch.remainder,
+        dtypes=consts.INT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.remainder_tensor
 def test_remainder_tensor():
     bench = base.BinaryPointwiseBenchmark(

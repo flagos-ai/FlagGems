@@ -22,6 +22,6 @@ def maximum_kernel(X, Y):
 
 
 def maximum(X, Y):
-    logger.debug("GEMS MAXIMUM")
+    logger.debug("GEMS_KUNLUNXIN MAXIMUM")
     assert X.device.type == device and Y.device.type == device
     return maximum_kernel(X, Y)

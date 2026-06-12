@@ -233,7 +233,7 @@ def weight_bias_backward_kernel_loop(
 
 
 def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
-    logger.debug("GEMS GROUPNORM FORWARD")
+    logger.debug("GEMS_KUNLUNXIN GROUP_NORM")
 
     group_size = triton.cdiv(C, group)
     input = input.contiguous()
@@ -275,7 +275,7 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
 def group_norm_backward(
     grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask
 ):
-    logger.debug("GEMS GROUPNORM BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN GROUP_NORM_BACKWARD")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()

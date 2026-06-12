@@ -32,7 +32,7 @@ def gt_func(x, y):
 
 
 def gt(A, B):
-    logger.debug("GEMS GT")
+    logger.debug("GEMS_KUNLUNXIN GT")
     os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = gt_func(A, B)
@@ -52,6 +52,6 @@ def gt_func_scalar(x, y):
 
 
 def gt_scalar(A, B):
-    logger.debug("GEMS GT SCALAR")
+    logger.debug("GEMS_KUNLUNXIN GT_SCALAR")
     res = gt_func_scalar(A, B)
     return res

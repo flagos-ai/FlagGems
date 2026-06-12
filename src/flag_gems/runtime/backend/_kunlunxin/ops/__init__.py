@@ -308,6 +308,7 @@ __all__ = [
     "count_nonzero",
     "cummax",
     "cummin",
+    "cumprod_",
     "cumsum",
     "cumsum_out",
     "diag",

@@ -31,7 +31,7 @@ def sub_func_scalar_tensor(x, y, alpha):
 
 
 def sub(A, B, *, alpha=1.0):
-    logger.debug("GEMS SUB")
+    logger.debug("GEMS_KUNLUNXIN SUB")
     A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
         A, complex
     )
@@ -88,7 +88,7 @@ def sub(A, B, *, alpha=1.0):
 
 
 def sub_(A, B, *, alpha=1):
-    logger.debug("GEMS SUB_")
+    logger.debug("GEMS_KUNLUNXIN SUB_")
     if isinstance(B, torch.Tensor):
         return sub_func(A, B, alpha, out0=A)
     else:

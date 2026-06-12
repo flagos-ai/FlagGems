@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 import torch
 
+import flag_gems
 from flag_gems.fused.DSA.sparse_mla import triton_sparse_mla_fwd_interface
 
 from .torch_src.sparse_mla_fwd import (
@@ -59,7 +60,7 @@ except ImportError:
         return result
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = flag_gems.device
 
 
 def make_sparse_mla_input(

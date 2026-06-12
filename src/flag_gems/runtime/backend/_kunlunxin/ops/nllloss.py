@@ -213,7 +213,7 @@ def nll_loss2d_backward_kernel(
 
 # 1d & 2d tensor
 def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
-    logger.debug("GEMS NLL Loss FWD")
+    logger.debug("GEMS_KUNLUNXIN NLL_LOSS_FWD")
     assert self.ndim <= 2, "Invalid input ndim"
     shape = list(target.shape)
     N = 1 if self.ndim == 1 else self.shape[0]
@@ -271,7 +271,7 @@ def nll_loss_backward(
     ignore_index=-100,
     total_weight=None,
 ):
-    logger.debug("GEMS NLL Loss BWD")
+    logger.debug("GEMS_KUNLUNXIN NLL_LOSS_BWD")
     N = 1 if self.ndim == 1 else self.shape[0]
     C = self.shape[-1]
 
@@ -300,7 +300,7 @@ def nll_loss_backward(
 
 # 3d+ tensor
 def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100):
-    logger.debug("GEMS NLL Loss2d FWD")
+    logger.debug("GEMS_KUNLUNXIN NLL_LOSS2D_FWD")
     assert self.ndim >= 3, "Invalid input ndim"
 
     N, C = self.shape[0], self.shape[1]
@@ -358,7 +358,7 @@ def nll_loss2d_backward(
     ignore_index=-100,
     total_weight=None,
 ):
-    logger.debug("GEMS NLL Loss2d BWD")
+    logger.debug("GEMS_KUNLUNXIN NLL_LOSS2D_BWD")
     N, C = self.shape[0], self.shape[1]
     D = self.numel() // (N * C)
 

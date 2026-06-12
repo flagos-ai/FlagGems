@@ -17,3 +17,8 @@ def log1p_func(x):
 def log1p(A):
     logger.debug("GEMS LOG1P")
     return log1p_func(A)
+
+
+def log1p_out(A, out):
+    logger.debug("GEMS LOG1P_OUT")
+    return log1p_func(A, out0=out)

@@ -72,7 +72,7 @@ def mv_kernel(
 
 
 def mv(inp, vec):
-    logger.debug("GEMS MV")
+    logger.debug("GEMS_KUNLUNXIN MV")
     assert inp.shape[1] == vec.shape[0], "incompatible dimensions"
     N, M = inp.shape
     # TODO: fix autotune config has no item
@@ -105,7 +105,7 @@ def mv(inp, vec):
 
 
 def mv_cluster(inp, vec):
-    logger.debug("GEMS MV")
+    logger.debug("GEMS_KUNLUNXIN MV")
     assert inp.shape[1] == vec.shape[0], "incompatible dimensions"
     N, M = inp.shape
     out = torch.empty((N,), device=inp.device, dtype=inp.dtype)

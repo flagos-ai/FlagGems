@@ -29,6 +29,7 @@ def test_fft(shape):
     ref_x = utils.to_reference(x)
     ref_out = torch.fft.fft(ref_x)
 
-    res_out = flag_gems.ops.fft(x)
+    with flag_gems.use_gems():
+        res_out = torch.fft.fft(ref_x)
 
     utils.gems_assert_close(res_out, ref_out, torch.complex64, reduce_dim=n)

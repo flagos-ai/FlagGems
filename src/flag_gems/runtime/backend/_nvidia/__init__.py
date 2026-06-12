@@ -1,9 +1,10 @@
-from backend_utils import VendorInfoBase
+from backend_utils import VendorDescriptor
 
-vendor_info = VendorInfoBase(
+vendor_info = VendorDescriptor(
     vendor_name="nvidia",
     device_name="cuda",
     device_query_cmd="",
+    tle_enabled=True,
 )
 
 ARCH_MAP = {

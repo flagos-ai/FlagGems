@@ -161,7 +161,7 @@ def test_scaled_dot_product_attention_legacy(
         ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa
     )
 
-    if flag_gems.vendor_name == "cambricon":
+    if flag_gems.vendor_name in ["cambricon", "sunrise"]:
         gems_result = flag_gems.scaled_dot_product_attention(
             q,
             k,
@@ -185,7 +185,6 @@ def test_scaled_dot_product_attention_legacy(
     utils.gems_assert_close(gems_result, torch_result, dtype)
 
 
-@pytest.mark.skip(reason="Issue #2848: Not working")
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="Issue #2849: Not working")
 @pytest.mark.skipif(
     flag_gems.vendor_name == "hygon", reason="Issue #2849: RuntimeError"
@@ -193,6 +192,7 @@ def test_scaled_dot_product_attention_legacy(
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin", reason="Issue #2849: Not working"
 )
+@pytest.mark.skipif(flag_gems.vendor_name == "sunrise", reason="Compiler Error")
 @pytest.mark.skipif(
     torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
 )
@@ -226,9 +226,9 @@ def test_scaled_dot_product_attention_legacy_backward(
         device,
         requires_grad=True,
     )
-    ref_q = utils.to_reference(q, False)
-    ref_k = utils.to_reference(k, False)
-    ref_v = utils.to_reference(v, False)
+    ref_q = utils.to_reference(q, False).detach().requires_grad_(True)
+    ref_k = utils.to_reference(k, False).detach().requires_grad_(True)
+    ref_v = utils.to_reference(v, False).detach().requires_grad_(True)
     scale = float(1.0 / np.sqrt(head_size))
 
     # forward
@@ -236,7 +236,7 @@ def test_scaled_dot_product_attention_legacy_backward(
         ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa
     )
 
-    if flag_gems.vendor_name == "cambricon":
+    if flag_gems.vendor_name in ["cambricon", "sunrise"]:
         gems_result = flag_gems.scaled_dot_product_attention(
             q,
             k,
@@ -260,9 +260,9 @@ def test_scaled_dot_product_attention_legacy_backward(
     utils.gems_assert_close(gems_result, torch_result, dtype)
 
     # backward
-    dout = torch.randn_like(ref_q)
-    torch_result.backward(dout)
-    gems_result.backward(dout)
+    ref_dout = torch.randn_like(ref_q)
+    torch_result.backward(ref_dout)
+    gems_result.backward(ref_dout.to(gems_result.device))
     torch_q_grad = ref_q.grad.clone() if ref_q.grad is not None else None
     torch_k_grad = ref_k.grad.clone() if ref_k.grad is not None else None
     torch_v_grad = ref_v.grad.clone() if ref_v.grad is not None else None
@@ -273,7 +273,30 @@ def test_scaled_dot_product_attention_legacy_backward(
     # NOTE: NaN may arise in the gradients, this behavior aligns with PyTorch's SDPA
     utils.gems_assert_close(gems_q_grad, torch_q_grad, dtype, equal_nan=True)
     utils.gems_assert_close(gems_k_grad, torch_k_grad, dtype, equal_nan=True)
-    utils.gems_assert_close(gems_v_grad, torch_v_grad, dtype, equal_nan=True)
+
+    # dV is more sensitive to softmax recomputation errors in flash attention backward
+    # because it lacks the centering term (dP - D) that suppresses errors in dK/dQ.
+    # GQA: different float accumulation order across Q heads vs PyTorch kernel
+    # bf16: only 8 mantissa bits → largest recomputation error
+    # fp16: 11 mantissa bits → moderate error
+    is_gqa = enable_gqa and num_q_head != num_kv_head
+    if is_gqa:
+        if dtype == torch.bfloat16:
+            v_atol = 2e-2
+        elif dtype == torch.float16:
+            v_atol = 4e-3
+        else:
+            v_atol = 5e-4
+    else:
+        if dtype == torch.bfloat16:
+            v_atol = 5e-3
+        elif dtype == torch.float16:
+            v_atol = 2e-3
+        else:
+            v_atol = 3e-4
+    utils.gems_assert_close(
+        gems_v_grad, torch_v_grad, dtype, equal_nan=True, atol=v_atol
+    )
 
 
 @pytest.mark.scaled_dot_product_attention

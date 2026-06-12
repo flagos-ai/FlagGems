@@ -8,8 +8,7 @@ import triton.language as tl
 from flag_gems.runtime import device
 
 device = device.name
-
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def configs():

@@ -434,7 +434,7 @@ def weight_bias_backward_kernel(
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
-    logger.debug("GEMS LAYERNORM FORWARD")
+    logger.debug("GEMS_KUNLUNXIN LAYER_NORM")
 
     N = math.prod(normalized_shape)
     M = input.numel() // N
@@ -497,7 +497,7 @@ def layer_norm_backward(
     bias=None,
     output_mask=None,
 ):
-    logger.debug("GEMS LAYERNORM BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN LAYER_NORM_BACKWARD")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()

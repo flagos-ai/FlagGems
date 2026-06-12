@@ -39,7 +39,7 @@ def eye_m(n, m, *, dtype=None, layout=torch.strided, device=None, pin_memory=Non
     """
     Triton-based implementation of torch.eye_m(n, m), using 2D tiles to split the matrix into blocks.
     """
-    logger.debug("GEMS EYE_M")
+    logger.debug("GEMS_KUNLUNXIN EYE_M")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
