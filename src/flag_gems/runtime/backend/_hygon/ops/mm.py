@@ -151,7 +151,7 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
-    logger.debug("GEMS MM")
+    logger.debug("GEMS_HYGON MM")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -189,7 +189,7 @@ def mm(a, b):
 
 
 def mm_out(a, b, *, out):
-    logger.debug("GEMS MM_OUT")
+    logger.debug("GEMS_HYGON MM_OUT")
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
