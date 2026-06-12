@@ -443,6 +443,7 @@ from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
+from flag_gems.ops.permute_copy import permute_copy
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
@@ -809,6 +810,7 @@ __all__ = [
     "ones_like",
     "pad",
     "per_token_group_quant_fp8",
+    "permute_copy",
     "pixel_shuffle",
     "pixel_unshuffle",
     "pixel_unshuffle_out",
