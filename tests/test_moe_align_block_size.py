@@ -216,6 +216,10 @@ def test_accuracy_moe_align_block_size(num_experts, block_size, topk_ids_shape):
 
     if flag_gems.vendor_name == "ascend":
         torch.npu.synchronize()
+    elif flag_gems.vendor_name == "sunrise":
+        from flag_gems.runtime import torch_device_fn
+
+        torch_device_fn.synchronize()
     else:
         torch.cuda.synchronize()
 
