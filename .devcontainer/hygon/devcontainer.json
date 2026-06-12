@@ -1,5 +1,5 @@
 {
-  "name": "FlagGems - NVIDIA",
+  "name": "FlagGems - HYGON",
   "build": {
     "context": "./",
     "dockerfile": "./Dockerfile",
@@ -9,10 +9,20 @@
     }
   },
   "runArgs": [
-        "--gpus=all",
+	"--device=/dev/kfd",
+        "--device=/dev/mkfd",
+        "--device=/dev/dri",
+        "--group-add=video",
         "--net=host",
         "--ipc=host",
         "--privileged"
+  ],
+  // Corresponds to --cap-add=SYS_PTRACE and --security-opt seccomp=unconfined
+  "containerCapabilities": [
+      "SYS_PTRACE"
+  ],
+  "securityOpt": [
+      "seccomp=unconfined"
   ],
   // Maps --ulimit memlock=-1 and stack=67108864
   "hostRequirements": {
@@ -34,9 +44,10 @@
   // Note: VS Code mounts the current project directory by default.
   // If you need to explicitly mount the home directory or other directories, configure as follows:
   "mounts": [
+      "source=/opt/hyhal,target=/opt/hyhal,type=bind",
       // Mount a large-capacity storage volume
-      "source=/data,target=/data,type=bind",
-      "source=/tmp,target=/host_tmp,type=bind",
+      //"source=/data,target=/data,type=bind",
+      //"source=/tmp,target=/host_tmp,type=bind",
       // Mount the host home directory into the container at /home/host
       // localEnv:HOME maps to the $HOME variable on Linux/Mac
       "source=${localEnv:HOME},target=/home/host,type=bind",
@@ -48,14 +59,14 @@
   },
 
   // Ensure /data exists before mounting to avoid silent directory creation
-  "initializeCommand": "mkdir -p /data",
+  //"initializeCommand": "mkdir -p /data",
 
 // Use 'forwardPorts' to make a list of ports inside the container available locally.
   // "forwardPorts": [],
 
   // Use 'postCreateCommand' to run commands after the container is created.
-  "postCreateCommand": "bash .devcontainer/nvidia/scripts/install-dev-tools.sh",
-  // install-dev-tools.sh sources .devcontainer/nvidia/flaggems.env then calls
+  "postCreateCommand": "bash .devcontainer/hygon/scripts/install-dev-tools.sh",
+  // install-dev-tools.sh sources .devcontainer/hygon/flaggems.env then calls
   // .devcontainer/common/scripts/install-flaggems.sh for the shared build logic
   // Configure tool-specific properties.
   // "customizations": {},
