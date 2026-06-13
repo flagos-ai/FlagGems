@@ -26,6 +26,13 @@ ctc_loss_backward:
     - [1024, 32, 128, 96]
   shape_desc: "T, N, C, S"
 
+cdist_backward:
+  shapes:
+    - [2, 16, 32]
+    - [4, 32, 64]
+    - [8, 64, 128]
+  shape_desc: "batch, n1, dim"
+
 randperm:
   <<: *single_dim_shapes
 
@@ -227,7 +234,7 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
-groupmm:
+grouped_mm:
   shapes:
     - [16, 512, 2048]
     - [16, 2560, 2048]

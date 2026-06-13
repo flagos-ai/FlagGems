@@ -18,7 +18,7 @@ from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
-__version__ = "5.0.2"
+__version__ = "5.4.0dev"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 backend_info = runtime.device
@@ -42,6 +42,7 @@ _FULL_CONFIG = (
     ("__or__.Scalar", bitwise_or_scalar),
     ("__or__.Tensor", bitwise_or_tensor),
     ("_assert_async", _assert_async),
+    ("_cdist_backward", _cdist_backward),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_forward", flash_attention_forward),
@@ -56,6 +57,7 @@ _FULL_CONFIG = (
     ("_log_softmax.out", log_softmax_out),
     ("_log_softmax_backward_data", log_softmax_backward),
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
+    ("_resize_output", _resize_output),
     ("_safe_softmax", _safe_softmax),
     ("_scaled_grouped_mm", scaled_grouped_mm, lambda: torch_ge("2.8")),
     ("_scaled_mm", scaled_mm, lambda: torch_ge("2.5")),
@@ -72,6 +74,7 @@ _FULL_CONFIG = (
         lambda: version.parse(torch.__version__) >= version.parse("2.4"),
     ),
     ("_unique2", _unique2),
+    ("_unsafe_masked_index", _unsafe_masked_index),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
     ("_upsample_nearest_exact1d", _upsample_nearest_exact1d),
@@ -204,6 +207,7 @@ _FULL_CONFIG = (
     ("cumprod_", cumprod_),
     ("cumsum", cumsum),
     ("cumsum.out", cumsum_out),
+    ("deg2rad", deg2rad),
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
@@ -257,6 +261,7 @@ _FULL_CONFIG = (
     ("fill.Tensor_out", fill_tensor_out),
     ("fill_.Scalar", fill_scalar_),
     ("fill_.Tensor", fill_tensor_),
+    ("fix", fix),
     ("flip", flip),
     ("floor", floor),
     ("floor.out", floor_out),
@@ -331,6 +336,7 @@ _FULL_CONFIG = (
     ("lerp_.Tensor", lerp_tensor_),
     ("lift_fresh_copy", lift_fresh_copy),
     ("linalg_vector_norm", vector_norm),
+    ("linear", linear),
     ("linspace", linspace),
     ("log", log),
     ("log1p", log1p),
@@ -349,6 +355,7 @@ _FULL_CONFIG = (
     ("logical_or", logical_or),
     ("logical_or_", logical_or_),
     ("logical_xor", logical_xor),
+    ("logical_xor_", logical_xor_),
     ("logit", logit),
     ("logit.out", logit_out),
     ("logit_", logit_),
@@ -405,7 +412,8 @@ _FULL_CONFIG = (
     ("ne.Tensor", ne),
     ("neg", neg),
     ("neg_", neg_),
-    ("new_full.Tensor", new_full),
+    ("negative", negative),
+    ("new_full", new_full),
     ("nll_loss2d_backward", nll_loss2d_backward),
     ("nll_loss2d_forward", nll_loss2d_forward),
     ("nll_loss_backward", nll_loss_backward),
@@ -571,6 +579,7 @@ _FULL_CONFIG = (
     ("trunc", trunc),
     ("trunc_", trunc_),
     ("unfold_backward", unfold_backward),
+    ("unfold_copy", unfold_copy),
     ("uniform_", uniform_),
     ("unique_consecutive", unique_consecutive),
     ("unique_dim", unique_dim),

@@ -21,6 +21,7 @@ class VendorDescriptor:
     fp64_enabled: bool = True
     bf16_enabled: bool = True
     int64_enabled: bool = True
+    tle_enabled: bool = False
 
 
 def get_tune_config(vendor_name=None, file_mode="r", file_path=None):
