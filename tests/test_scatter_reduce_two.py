@@ -9,7 +9,6 @@ from .accuracy_utils import gems_assert_close, to_reference
 from .conftest import QUICK_MODE
 
 
-@pytest.mark.skip(reason="Issue #3435: result not close")
 @pytest.mark.scatter_reduce_two_
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]

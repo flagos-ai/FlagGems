@@ -149,7 +149,7 @@ def rms_norm_grad_dw_kernel(
 
 
 def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
-    logger.debug("GEMS_TSINGMICRO RMS_NORM FORWARD")
+    logger.debug("GEMS_TSINGMICRO RMS_NORM_FORWARD")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
@@ -167,7 +167,7 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
 
 
 def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
-    logger.debug("GEMS_TSINGMICRO RMS_NORM BACKWARD")
+    logger.debug("GEMS_TSINGMICRO RMS_NORM_BACKWARD")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
