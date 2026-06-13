@@ -35,7 +35,7 @@ SEEDS = [0]
 CUDA_DEVICES = [f"cuda:{i}" for i in range(1 if torch.cuda.device_count() == 1 else 2)]
 
 # We assume fp8 is always enabled for testing.
-if flag_gems.vendor_name in ["kunlunxin", "cambricon"]:
+if flag_gems.vendor_name in ["kunlunxin", "cambricon", "sunrise"]:
     KV_CACHE_DTYPE = ["auto"]
 else:
     KV_CACHE_DTYPE = ["auto", "fp8"]
@@ -82,7 +82,9 @@ def convert_fp8(
 @pytest.mark.parametrize("seed", SEEDS)
 @pytest.mark.parametrize(
     "device",
-    [flag_gems.device] if flag_gems.vendor_name == "mthreads" else CUDA_DEVICES,
+    [flag_gems.device]
+    if flag_gems.vendor_name in ["mthreads", "sunrise"]
+    else CUDA_DEVICES,
 )
 @pytest.mark.parametrize("kv_cache_dtype", KV_CACHE_DTYPE)
 @torch.inference_mode()
