@@ -31,7 +31,7 @@ def rsub_func_scalar_tensor(x, y, alpha):
 
 
 def rsub(A, B, *, alpha=1):
-    logger.debug("GEMS SUB")
+    logger.debug("GEMS_KUNLUNXIN SUB")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return rsub_func(A, B, alpha)
     elif isinstance(A, torch.Tensor):
