@@ -2167,6 +2167,41 @@ conv_transpose1d:
       BLOCK_IC: 32
     num_warps: 4
     num_stages: 3
+diff_1d:
+- gen: true
+  param_map:
+    META:
+      BLOCK_DIFF: block_diff
+    num_warps: warps
+  warps:
+  - 4
+  - 8
+  - 16
+  block_diff:
+  - 16
+  - 256
+  - 1024
+diff:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_DIFF: block_diff
+    num_warps: warps
+  warps:
+  - 4
+  - 8
+  - 16
+  block_m:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 32
+  block_diff:
+  - 16
+  - 256
+  - 1024
 
 rot90:
   - META:

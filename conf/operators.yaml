@@ -1790,7 +1790,6 @@ ops:
       - diff
     labels:
       - aten
-      - KernelGen
     kind:
       - Math
     stages:
