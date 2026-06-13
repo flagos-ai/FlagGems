@@ -5806,6 +5806,12 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: scaled_grouped_mm
+    description: |
+      Performs grouped matrix multiplication with row-wise and column-wise scaling,
+      commonly used by quantized Mixture-of-Experts (MoE) workloads.
+    for:
+      - _scaled_grouped_mm
   - id: scaled_mm
     description: |
       Performs a scaled matrix multiplication. The result of `self @ mat2` is
