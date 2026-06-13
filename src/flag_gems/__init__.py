@@ -577,6 +577,7 @@ _FULL_CONFIG = (
     ("trunc", trunc),
     ("trunc_", trunc_),
     ("unfold_backward", unfold_backward),
+    ("unfold_copy", unfold_copy),
     ("uniform_", uniform_),
     ("unique_consecutive", unique_consecutive),
     ("unique_dim", unique_dim),
