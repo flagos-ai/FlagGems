@@ -7073,6 +7073,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: unfold_copy
+    description: >
+      Returns a view of the original tensor which contains all slices of size from self tensor
+      in the specified dimension with given step between two slices.
+    for:
+      - unfold_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: uniform_
     description: Fills `self` tensor with numbers sampled from the continuous uniform distribution.
     for:
