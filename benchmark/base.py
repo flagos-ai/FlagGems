@@ -326,7 +326,7 @@ class Benchmark:
         for item in input_tuple:
             if (
                 isinstance(item, torch.Tensor)
-                or isinstance(item, (int, float))
+                or isinstance(item, (int, float, str))
                 or item is None
                 or isinstance(item, (list, tuple))
                 or isinstance(item, torch.dtype)
