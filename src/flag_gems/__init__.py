@@ -18,7 +18,7 @@ from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
-__version__ = "5.0.2"
+__version__ = "5.4.0dev"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 backend_info = runtime.device
@@ -57,6 +57,7 @@ _FULL_CONFIG = (
     ("_log_softmax.out", log_softmax_out),
     ("_log_softmax_backward_data", log_softmax_backward),
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
+    ("_resize_output", _resize_output),
     ("_safe_softmax", _safe_softmax),
     ("_scaled_mm", scaled_mm, lambda: torch_ge("2.5")),
     ("_scaled_mm.out", scaled_mm_out, lambda: torch_ge("2.5")),
@@ -205,6 +206,7 @@ _FULL_CONFIG = (
     ("cumprod_", cumprod_),
     ("cumsum", cumsum),
     ("cumsum.out", cumsum_out),
+    ("deg2rad", deg2rad),
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
@@ -258,6 +260,7 @@ _FULL_CONFIG = (
     ("fill.Tensor_out", fill_tensor_out),
     ("fill_.Scalar", fill_scalar_),
     ("fill_.Tensor", fill_tensor_),
+    ("fix", fix),
     ("flip", flip),
     ("floor", floor),
     ("floor.out", floor_out),
@@ -350,6 +353,7 @@ _FULL_CONFIG = (
     ("logical_or", logical_or),
     ("logical_or_", logical_or_),
     ("logical_xor", logical_xor),
+    ("logical_xor_", logical_xor_),
     ("logit", logit),
     ("logit.out", logit_out),
     ("logit_", logit_),
@@ -406,7 +410,8 @@ _FULL_CONFIG = (
     ("ne.Tensor", ne),
     ("neg", neg),
     ("neg_", neg_),
-    ("new_full.Tensor", new_full),
+    ("negative", negative),
+    ("new_full", new_full),
     ("nll_loss2d_backward", nll_loss2d_backward),
     ("nll_loss2d_forward", nll_loss2d_forward),
     ("nll_loss_backward", nll_loss_backward),
