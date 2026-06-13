@@ -3691,6 +3691,18 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: linear
+    description: |
+      Applies a linear transformation to the incoming data: y = x @ W^T + b.
+    for:
+      - linear
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: log
     description: Returns a new tensor with the natural logarithm of the elements of `input`.
     for:
