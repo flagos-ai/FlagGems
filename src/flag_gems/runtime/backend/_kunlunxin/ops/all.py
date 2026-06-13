@@ -22,11 +22,17 @@ vector_size = 16
 
 
 def heur_m_block_size(args):
-    return triton.next_power_of_2(min(triton.cdiv(args["M"], cluster_num), core_num))
+    M = args["M"]
+    # For very small M, use minimum BLOCK_M of 1
+    block_m = min(triton.cdiv(M, cluster_num), core_num)
+    return triton.next_power_of_2(max(block_m, 1))
 
 
 def heur_n_block_size(args):
-    return triton.next_power_of_2(min(args["N"], 512))
+    N = args["N"]
+    # For very small N, use minimum BLOCK_N of 1
+    block_n = min(N, 512)
+    return triton.next_power_of_2(max(block_n, 1))
 
 
 @triton.jit
@@ -90,7 +96,7 @@ def all_kernel_dim(
 
 
 def all(inp):
-    logger.debug("GEMS ALL")
+    logger.debug("GEMS_KUNLUNXIN ALL")
     n_elements = inp.numel()
     # BLOCK_SIZE must fit in XPU per-core local buffer so the Triton fallback
     # kernel always compiles.  The C++ handler (api::all<T,bool>) ignores this
@@ -105,44 +111,46 @@ def all(inp):
 
 
 def all_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ALL DIM")
+    logger.debug("GEMS_KUNLUNXIN ALL_DIM")
     shape = list(inp.shape)
+    orig_ndim = inp.ndim
+
     if dim is None:
         out = all(inp)
         if keepdim:
-            out = torch.reshape(out, [1] * inp.ndim)
-    else:
-        assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-        dim = dim % inp.ndim
-        inp = dim_compress(inp, dim)
-        N = shape[dim]
-        shape[dim] = 1
-        M = inp.numel() // N
+            out = torch.reshape(out, [1] * orig_ndim)
+        return out
 
-        if N == 1:
-            # N==1: each row has a single element; avoid kernel dispatch for
-            # trivial case that some hardware configs cannot handle.
-            out = (inp.reshape(M) != 0).reshape(shape)
-        else:
-            out = torch.empty(shape, dtype=torch.bool, device=inp.device)
-            grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-            with torch_device_fn.device(inp.device):
-                all_kernel_dim[grid](inp, out, M, N, buffer_size_limit=2048)
+    assert dim >= -orig_ndim and dim < orig_ndim, "Invalid dim"
+    dim = dim % orig_ndim
+    N = shape[dim]
+    inp = dim_compress(inp, dim)
+    shape[dim] = 1
+    M = inp.numel() // N
 
-        if not keepdim:
-            out = out.squeeze(dim=dim)
+    if inp.dtype != torch.bool and M * N <= 64:
+        inp = inp != 0
+
+    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+    grid = lambda meta: (max(triton.cdiv(M, meta["BLOCK_M"]), 1),)
+    with torch_device_fn.device(inp.device):
+        all_kernel_dim[grid](inp, out, M, N, buffer_size_limit=2048)
+
+    if not keepdim and out.ndim > 0:
+        out = out.squeeze(dim) if dim < out.ndim else out
     return out
 
 
 def all_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ALL DIMS")
+    logger.debug("GEMS_KUNLUNXIN ALL_DIMS")
 
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)
-    assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
+    orig_ndim = inp.ndim
+    assert ((i >= -orig_ndim and i < orig_ndim) for i in dim), "Invalid dim"
 
     shape = list(inp.shape)
-    dim = [d % inp.ndim for d in dim]
+    dim = [d % orig_ndim for d in dim]
     inp = dim_compress(inp, dim)
     N = 1
     for i in dim:
@@ -150,14 +158,16 @@ def all_dims(inp, dim=None, keepdim=False):
         shape[i] = 1
     M = inp.numel() // N
 
-    if N == 1:
-        out = (inp.reshape(M) != 0).reshape(shape)
-    else:
-        out = torch.empty(shape, dtype=torch.bool, device=inp.device)
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        with torch_device_fn.device(inp.device):
-            all_kernel_dim[grid](inp, out, M, N, buffer_size_limit=2048)
+    if inp.dtype != torch.bool and M * N <= 64:
+        inp = inp != 0
+
+    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+    grid = lambda meta: (max(triton.cdiv(M, meta["BLOCK_M"]), 1),)
+    with torch_device_fn.device(inp.device):
+        all_kernel_dim[grid](inp, out, M, N, buffer_size_limit=2048)
 
     if not keepdim:
-        out = out.squeeze(dim=dim)
+        for d in sorted(dim):
+            if out.ndim > 0:
+                out = out.squeeze(dim=d)
     return out
