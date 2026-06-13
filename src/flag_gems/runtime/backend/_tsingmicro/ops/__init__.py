@@ -64,6 +64,7 @@ from .stack import stack
 from .sub import sub, sub_
 from .tile import tile
 from .unique import _unique2
+from .upsample_bicubic2d import upsample_bicubic2d
 from .vdot import vdot
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
@@ -148,4 +149,5 @@ __all__ = [
     "zero_",
     "zeros",
     "zeros_like",
+    "upsample_bicubic2d",
 ]

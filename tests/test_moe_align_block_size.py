@@ -221,7 +221,9 @@ def test_accuracy_moe_align_block_size(num_experts, block_size, topk_ids_shape):
 
         torch_device_fn.synchronize()
     else:
-        torch.cuda.synchronize()
+        from flag_gems.runtime import torch_device_fn
+
+        torch_device_fn.synchronize()
 
     _verify_expert_level_sorting(
         sorted_ids,
