@@ -27,17 +27,25 @@ def _sparse_semi_structured_linear(
     K_w = weight.shape[1]
 
     assert K == K_w, f"Incompatible dimensions: input K={K}, weight K={K_w}"
+    assert input.dtype in (
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+    ), f"Unsupported dtype: {input.dtype}"
+
+    # Determine output dtype
+    if out_dtype is not None:
+        output_dtype = out_dtype
+    else:
+        output_dtype = input.dtype
 
     # Compute: output = input @ weight.T (like nn.Linear)
-    output = torch.matmul(input, weight.t())
+    # Use float32 accumulation for consistency with the triton kernel.
+    output = torch.matmul(input.float(), weight.t().float())
 
-    # Apply output dtype if specified
-    if out_dtype is not None:
-        output = output.to(out_dtype)
-
-    # Add bias if provided
+    # Add bias if provided (converted to float32 for consistency)
     if bias is not None:
-        output = output + bias
+        output = output + bias.float()
 
     logger.debug(
         "GEMS_METAX SPARSE SEMI STRUCTURED LINEAR, [shape info]: [-, %s, %s, %s](batch, M, N, K)",
@@ -45,6 +53,10 @@ def _sparse_semi_structured_linear(
         N,
         K,
     )
+
+    # Convert to output dtype
+    if output_dtype != torch.float32:
+        output = output.to(output_dtype)
 
     # Apply activation if specified
     if activation is not None:
