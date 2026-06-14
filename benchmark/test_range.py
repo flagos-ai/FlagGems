@@ -15,12 +15,12 @@ def _input_fn(shape, dtype, device):
     },
 
 
-@pytest.mark.Range
-def test_Range():
+@pytest.mark.range
+def test_range():
     # torch.range does not support bfloat16 on CUDA
     dtypes = [torch.float16, torch.float32]
     bench = base.GenericBenchmark(
-        op_name="Range",
+        op_name="range",
         input_fn=_input_fn,
         torch_op=torch.range,
         dtypes=dtypes,

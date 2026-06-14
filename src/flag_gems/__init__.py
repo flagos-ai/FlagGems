@@ -443,7 +443,7 @@ _FULL_CONFIG = (
     ("randn", randn),
     ("randn_like", randn_like),
     ("randperm", randperm),
-    ("range", Range),
+    ("range", range),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
     ("reflection_pad1d", reflection_pad1d),

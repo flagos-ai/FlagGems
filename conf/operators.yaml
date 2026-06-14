@@ -4937,7 +4937,7 @@ ops:
       - Distribution
     stages:
       - stable: '2.2'
-  - id: Range
+  - id: range
     description: |
       Returns a 1-D tensor of size `floor(end - start) + 1` with values from `start` to
       `end` with step `1`.

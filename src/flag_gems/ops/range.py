@@ -40,7 +40,7 @@ def range_func(y_ptr, start, end, size, BLOCK_SIZE: tl.constexpr):
     tl.store(y_ptr + cols, range_val, mask=mask < size)
 
 
-def Range(start, end, *, dtype=None, layout=None, device=None, pin_memory=None):
+def range(start, end, *, dtype=None, layout=None, device=None, pin_memory=None):
     logger.debug("GEMS RANGE")
     if dtype == torch.bfloat16:
         raise RuntimeError("torch.range does not support bfloat16 on CUDA")

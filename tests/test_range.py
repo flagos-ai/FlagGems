@@ -9,7 +9,7 @@ from . import conftest as cfg
 device = flag_gems.device
 
 
-@pytest.mark.Range
+@pytest.mark.range
 @pytest.mark.parametrize("start", utils.ARANGE_START)
 @pytest.mark.parametrize("end", [8, 16, 32])
 # torch.range does not support bfloat16 on CUDA
