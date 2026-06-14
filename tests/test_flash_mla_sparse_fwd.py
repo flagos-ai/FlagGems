@@ -311,6 +311,10 @@ class FlashmlaSparseTestKit:
         return q, kv, indices, attn_sink, topk_length
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3833: Precision & Compile Error.",
+)
 @pytest.mark.flash_mla_sparse_fwd
 @pytest.mark.parametrize("param", FlashmlaSparseTestKit.get_correctness_test_params())
 def test_flashmla_sparse(param):

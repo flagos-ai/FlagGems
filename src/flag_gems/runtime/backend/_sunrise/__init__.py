@@ -1,19 +1,51 @@
 import os
 
 import torch_ptpu  # noqa: F401
-from backend_utils import VendorInfoBase
+from backend_utils import VendorDescriptor
 
 from .monkey_patch import apply_sunrise_monkey_patches
 
-vendor_info = VendorInfoBase(
+vendor_info = VendorDescriptor(
     vendor_name="sunrise",
     device_name="ptpu",
     device_query_cmd="pt_smi",
     triton_extra_name="tang",
     dispatch_key="PrivateUse1",
+    fp64_enabled=False,
+    bf16_enabled=False,
+    int64_enabled=False,
 )
 
 CUSTOMIZED_UNUSED_OPS = ()
+
+
+def _sunrise_rebuild_ptpu_tensor_from_cpu(
+    tensor_cls, cpu_tensor, device, requires_grad
+):
+    import torch
+    from torch.nn.parameter import Parameter
+
+    tensor = cpu_tensor.to(device=device)
+    if tensor_cls == Parameter:
+        return Parameter(tensor, requires_grad=requires_grad)
+    if tensor_cls not in (torch.Tensor, type(tensor)):
+        try:
+            tensor = tensor.as_subclass(tensor_cls)
+        except Exception:
+            pass
+    tensor.requires_grad = requires_grad
+    return tensor
+
+
+def _should_stage_ptpu_tensor_for_multiprocessing(tensor):
+    import torch
+
+    return (
+        isinstance(tensor, torch.Tensor)
+        and tensor.device.type == "ptpu"
+        and tensor.layout == torch.strided
+        and not tensor.is_nested
+    )
 
 
 def _sunrise_monkey_patch_enabled():
@@ -75,13 +107,25 @@ CUSTOMIZED_AUTOGRAD_OPS = (
 
 
 def _sunrise_extra_config_entries():  # 有些公共库也没有注册的op，只能先放在这里了。使得tests能过
-    from .ops import amax_out, amin, amin_out, aminmax_out, hypot_out
+    from .ops import (
+        amax_out,
+        amin,
+        amin_out,
+        aminmax_out,
+        clamp_min,
+        clamp_min_,
+        clamp_min_out,
+        hypot_out,
+    )
 
     return (
         ("amax.out", amax_out),
         ("amin", amin),
         ("amin.out", amin_out),
         ("aminmax.out", aminmax_out),
+        ("clamp_min.Tensor", clamp_min),
+        ("clamp_min.Tensor_out", clamp_min_out),
+        ("clamp_min_.Tensor", clamp_min_),
         ("hypot.out", hypot_out),
     )
 
@@ -89,12 +133,14 @@ def _sunrise_extra_config_entries():  # 有些公共库也没有注册的op，�
 def _install_autograd_dispatch_patch():
     import torch
 
-    from flag_gems.runtime.register import Register
+    from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
-    if getattr(Register, "_sunrise_autograd_dispatch_patched", False):
+    register_cls = GeneralOpRegistrar
+
+    if getattr(register_cls, "_sunrise_autograd_dispatch_patched", False):
         return
 
-    original_register_impl = Register.register_impl
+    original_register_impl = register_cls.register_impl
     autograd_key = torch._C.DispatchKey.Autograd.name
     autograd_ops = frozenset(CUSTOMIZED_AUTOGRAD_OPS)
 
@@ -107,18 +153,20 @@ def _install_autograd_dispatch_patch():
 
         return original_register_impl(self, key, fn, extra_dispatch_keys)
 
-    Register.register_impl = register_impl
-    Register._sunrise_autograd_dispatch_patched = True
-    Register._sunrise_original_register_impl = original_register_impl
+    register_cls.register_impl = register_impl
+    register_cls._sunrise_autograd_dispatch_patched = True
+    register_cls._sunrise_original_register_impl = original_register_impl
 
 
 def _install_register_config_patch():
-    from flag_gems.runtime.register import Register
+    from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
-    if getattr(Register, "_sunrise_config_patched", False):
+    register_cls = GeneralOpRegistrar
+
+    if getattr(register_cls, "_sunrise_config_patched", False):
         return
 
-    original_init = Register.__init__
+    original_init = register_cls.__init__
 
     def _extend_config(config, full_config_by_func):
         extra_entries = _sunrise_extra_config_entries()
@@ -159,9 +207,9 @@ def _install_register_config_patch():
             full_config_by_func=full_config_by_func,
         )
 
-    Register.__init__ = __init__
-    Register._sunrise_config_patched = True
-    Register._sunrise_original_init = original_init
+    register_cls.__init__ = __init__
+    register_cls._sunrise_config_patched = True
+    register_cls._sunrise_original_init = original_init
 
 
 def _install_typed_ptr_device_patch():
@@ -538,6 +586,138 @@ def _install_ptpu_manual_seed_patch():
     ptpu_mod._sunrise_manual_seed_patched = True
 
 
+def _install_ptpu_default_generators_patch():
+    import torch
+
+    ptpu_mod = getattr(torch, "ptpu", None)
+    if (
+        ptpu_mod is None
+        or hasattr(ptpu_mod, "default_generators")
+        or getattr(ptpu_mod, "_sunrise_default_generators_patched", False)
+    ):
+        return
+
+    class _SunrisePtpuGenerator:
+        def __init__(self, device_idx):
+            self.device_idx = int(device_idx)
+            self.device = torch.device("ptpu", self.device_idx)
+
+        def get_state(self):
+            return ptpu_mod.get_rng_state(self.device_idx).detach().cpu().clone()
+
+        def set_state(self, state):
+            if not isinstance(state, torch.Tensor):
+                raise TypeError("PTPU RNG state must be a torch.Tensor")
+            if state.dtype != torch.uint8:
+                raise TypeError("PTPU RNG state must be a torch.uint8 tensor")
+            ptpu_mod.set_rng_state(state.detach().cpu().contiguous(), self.device_idx)
+
+        def manual_seed(self, seed):
+            seed = int(seed) & 0xFFFFFFFFFFFFFFFF
+            state = torch.zeros(16, dtype=torch.uint8, device="cpu")
+            for i in range(8):
+                state[i] = (seed >> (8 * i)) & 0xFF
+            self.set_state(state)
+            return self
+
+    class _SunrisePtpuDefaultGenerators:
+        def __init__(self):
+            self._generators = {}
+
+        def _normalize_device(self, device):
+            if device is None:
+                return int(ptpu_mod.current_device())
+            if isinstance(device, torch.device):
+                if device.type != "ptpu":
+                    raise RuntimeError(f"Expected a ptpu device, got {device}")
+                return (
+                    int(ptpu_mod.current_device())
+                    if device.index is None
+                    else int(device.index)
+                )
+            if isinstance(device, str):
+                return self._normalize_device(torch.device(device))
+            return int(device)
+
+        def __getitem__(self, device):
+            device_idx = self._normalize_device(device)
+            device_count = int(ptpu_mod.device_count())
+            if device_idx < 0:
+                device_idx += device_count
+            if device_idx < 0 or device_idx >= device_count:
+                raise IndexError(
+                    f"PTPU device index {device_idx} is out of range "
+                    f"for {device_count} devices"
+                )
+            if device_idx not in self._generators:
+                self._generators[device_idx] = _SunrisePtpuGenerator(device_idx)
+            return self._generators[device_idx]
+
+        def __iter__(self):
+            for device_idx in range(len(self)):
+                yield self[device_idx]
+
+        def __len__(self):
+            return int(ptpu_mod.device_count())
+
+    ptpu_mod.default_generators = _SunrisePtpuDefaultGenerators()
+    ptpu_mod._sunrise_default_generators_patched = True
+
+
+def _install_ptpu_multiprocessing_reduction_patch():
+    import multiprocessing.reduction as mp_reduction
+
+    import torch
+    import torch.multiprocessing.reductions as reductions
+    from torch.nn.parameter import Parameter
+
+    if getattr(reductions, "_sunrise_ptpu_reduce_tensor_patched", False):
+        return
+
+    original_reduce_tensor = reductions.reduce_tensor
+
+    # Keep this in `_sunrise/__init__.py` instead of `monkey_patch.py` because
+    # multiprocessing reducers are registered eagerly in Python's global
+    # pickling table. This is import-time runtime wiring, not a call-site-level
+    # torch API fallback that can be caught and retried after a NotImplemented.
+    def reduce_tensor_with_ptpu_cpu_staging(tensor):
+        if not _should_stage_ptpu_tensor_for_multiprocessing(tensor):
+            return original_reduce_tensor(tensor)
+
+        if tensor.requires_grad and not tensor.is_leaf:
+            raise RuntimeError(
+                "Cowardly refusing to serialize non-leaf tensor which requires_grad, "
+                "since autograd does not support crossing process boundaries.  "
+                "If you just want to transfer the data, call detach() on the tensor "
+                "before serializing (e.g., putting it on the queue)."
+            )
+
+        reductions.check_serializing_named_tensor(tensor)
+        torch.utils.hooks.warn_if_has_hooks(tensor)
+
+        return (
+            reductions._sunrise_rebuild_ptpu_tensor_from_cpu,
+            (
+                type(tensor),
+                tensor.detach().cpu(),
+                tensor.device,
+                tensor.requires_grad,
+            ),
+        )
+
+    reductions._sunrise_rebuild_ptpu_tensor_from_cpu = (
+        _sunrise_rebuild_ptpu_tensor_from_cpu
+    )
+    reductions._sunrise_original_reduce_tensor = original_reduce_tensor
+    reductions.reduce_tensor = reduce_tensor_with_ptpu_cpu_staging
+    for tensor_cls in torch._tensor_classes:
+        mp_reduction.register(tensor_cls, reduce_tensor_with_ptpu_cpu_staging)
+    mp_reduction.register(torch.Tensor, reduce_tensor_with_ptpu_cpu_staging)
+    mp_reduction.register(Parameter, reduce_tensor_with_ptpu_cpu_staging)
+    reductions._sunrise_ptpu_reduce_tensor_patched = True
+
+
+_install_ptpu_default_generators_patch()
 _install_ptpu_manual_seed_patch()
 _install_autograd_dispatch_patch()
 _install_register_config_patch()  # 有些公共库也没有注册的op，只能先放在这里了。使得tests能过
