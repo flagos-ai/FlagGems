@@ -70,6 +70,7 @@ def test_nested_view_from_buffer_copy(dtype):
     assert len(res_unbind) == len(ref_unbind)
     for i, (res_t, ref_t) in enumerate(zip(res_unbind, ref_unbind)):
         assert res_t.shape == ref_t.shape
-        # Move ref to CUDA for comparison
-        ref_t_cuda = ref_t.to(res_t.device)
-        utils.gems_assert_close(res_t, ref_t_cuda, dtype)
+        # In quick-cpu mode, gems_assert_close handles CPU conversion internally
+        # and requires ref on CPU. In GPU mode, ref must be on the same device.
+        ref_t_matched = ref_t if utils.TO_CPU else ref_t.to(res_t.device)
+        utils.gems_assert_close(res_t, ref_t_matched, dtype)
