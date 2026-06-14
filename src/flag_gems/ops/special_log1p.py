@@ -35,4 +35,4 @@ def special_log1p(A):
     if isinstance(A, torch.Tensor):
         return special_log1p_func(A)
     else:
-        return torch.tensor(torch.log(A + 1.0))
+        return torch.log(torch.tensor(A + 1.0))

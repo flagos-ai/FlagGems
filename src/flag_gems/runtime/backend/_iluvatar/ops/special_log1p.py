@@ -21,4 +21,4 @@ def special_log1p(A):
         return special_log1p_func(A)
     else:
         # Scalar
-        return torch.tensor(torch.log(A + 1.0))
+        return torch.log(torch.tensor(A + 1.0))
