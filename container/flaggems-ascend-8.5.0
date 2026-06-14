@@ -20,11 +20,6 @@ ARG EXTRA_PYPI
 ARG INCLUDE_TESTS
 ARG DEBIAN_FRONTEND=noninteractive
 
-# ── System packages ────────────────────────────────────────────
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl \
-    && rm -rf /var/lib/apt/lists/*
-
 # ── Prepare uv and virtual environment ─────────────────────────
 # Install 'uv' to /usr/local/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
@@ -70,12 +65,6 @@ RUN if [ "$INCLUDE_TESTS" = "true" ]; then \
 FROM ${BASE_IMAGE} AS runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG INCLUDE_TESTS
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libelf1 \
-        libpython3-dev \
-    && rm -rf /var/lib/apt/lists/*
 
 # ── Copy uv and Python from builder ────────────────────────────
 COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv

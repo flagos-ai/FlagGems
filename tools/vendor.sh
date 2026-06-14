@@ -209,8 +209,9 @@ case $VENDOR in
         "torchaudio==2.7.0+cpu" \
         "torch_txda==0.1.0+20260610.3968e515" \
         "txops==0.1.0+20260508.60287151" \
-        "flagtree==0.5.0+tsingmicro3.3"
+        "flagtree==0.5.0.post20260612+git705a4064"
 
+    # "flagtree==0.5.0+tsingmicro3.3"
     # Replace flagtree with Triton if requested
     if [ -n "${USE_TRITON}" ]; then
       uv pip uninstall flagtree
