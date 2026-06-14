@@ -141,7 +141,7 @@ if [ "$VENDOR" = "ascend-cann9" ]; then
     uv pip install triton-ascend==3.2.1 --index ${FLAGOS_PYPI}
 fi
 
-uv pip install ".[${VENDOR}]" --default-index ${FLAGOS_PYPI}
+uv pip install ".[${VENDOR}]" --default-index ${FLAGOS_PYPI} \
     --index https://mirrors.aliyun.com/pypi/simple \
 
 uv pip install ".[test]"
