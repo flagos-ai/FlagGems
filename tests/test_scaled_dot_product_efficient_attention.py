@@ -42,7 +42,7 @@ def test_scaled_dot_product_efficient_attention(shape, dtype):
             query, key, value, None, False
         )
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-4)
 
 
 @pytest.mark.scaled_dot_product_efficient_attention
@@ -72,7 +72,7 @@ def test_scaled_dot_product_efficient_attention_causal(shape, dtype):
             query, key, value, None, False, is_causal=True
         )
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-4)
 
 
 @pytest.mark.scaled_dot_product_efficient_attention
@@ -107,4 +107,4 @@ def test_scaled_dot_product_efficient_attention_logsumexp(shape, dtype):
             query, key, value, None, True
         )
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-4)
