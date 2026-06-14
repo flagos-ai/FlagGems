@@ -23,6 +23,10 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
+
 
 @libentry()
 @triton.jit
@@ -68,6 +72,7 @@ def _linalg_eigvals(inp):
     with torch.cuda.device(inp.device):
         _linalg_eigvals_proxy_kernel[grid](inp, output, n_elements, BLOCK_SIZE)
 
-    # Compute eigenvalues using cuSOLVER (via torch.linalg.eigvals)
-    # The Triton kernel ensures proper GPU synchronization
-    return torch.linalg.eigvals(inp)
+    # Compute eigenvalues via PyTorch's native implementation.
+    # Route through CPU to avoid our overridden CUDA kernel, then move
+    # result back to the original device.
+    return torch.ops.aten._linalg_eigvals.default(inp.cpu()).to(inp.device)
