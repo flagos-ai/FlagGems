@@ -155,30 +155,48 @@ def grid_sampler_2d_kernel(
             )
 
     elif interpolation_mode == 1:  # Nearest
-        # Round to nearest integer using floor(x + 0.5)
-        x_nearest = tl.floor(x + 0.5).to(tl.int32)
-        y_nearest = tl.floor(y + 0.5).to(tl.int32)
+        if padding_mode == 2:  # Reflection: reflect fractional coords first
+            px = 2 * IW - 2
+            py = 2 * IH - 2
+            x_ref = x - tl.floor(x / px) * px
+            x_ref = tl.where(x_ref >= IW, px - x_ref, x_ref)
+            y_ref = y - tl.floor(y / py) * py
+            y_ref = tl.where(y_ref >= IH, py - y_ref, y_ref)
+            x = x_ref
+            y = y_ref
+        # Round to nearest even (matching PyTorch's nearbyint)
+        x_floor = tl.floor(x)
+        y_floor = tl.floor(y)
+        x_frac = x - x_floor
+        y_frac = y - y_floor
+        x_is_half = tl.abs(x_frac - 0.5) < 1e-6
+        y_is_half = tl.abs(y_frac - 0.5) < 1e-6
+        x_floor_int = x_floor.to(tl.int32)
+        y_floor_int = y_floor.to(tl.int32)
+        x_nearest = tl.where(
+            x_is_half, x_floor_int + (x_floor_int & 1), tl.floor(x + 0.5).to(tl.int32)
+        )
+        y_nearest = tl.where(
+            y_is_half, y_floor_int + (y_floor_int & 1), tl.floor(y + 0.5).to(tl.int32)
+        )
 
-        if padding_mode == 0:  # Zeros — must zero out-of-bounds, not clamp
-            x_valid = (x_nearest >= 0) & (x_nearest < IW)
-            y_valid = (y_nearest >= 0) & (y_nearest < IH)
+        if padding_mode == 0:  # Zeros
+            x_in = (x_nearest >= 0) & (x_nearest < IW)
+            y_in = (y_nearest >= 0) & (y_nearest < IH)
             x_nearest = tl.minimum(tl.maximum(x_nearest, 0), IW - 1)
             y_nearest = tl.minimum(tl.maximum(y_nearest, 0), IH - 1)
+            pixel_mask = mask & x_in & y_in
         elif padding_mode == 1:  # Border
             x_nearest = tl.minimum(tl.maximum(x_nearest, 0), IW - 1)
             y_nearest = tl.minimum(tl.maximum(y_nearest, 0), IH - 1)
+            pixel_mask = mask
         else:  # Reflection
-            x_ref = tl.minimum(x_nearest, 2 * IW - 2 - x_nearest)
-            x_ref = tl.maximum(x_ref, -x_ref)
-            y_ref = tl.minimum(y_nearest, 2 * IH - 2 - y_nearest)
-            y_ref = tl.maximum(y_ref, -y_ref)
-            x_nearest = tl.minimum(tl.maximum(x_ref, 0), IW - 1)
-            y_nearest = tl.minimum(tl.maximum(y_ref, 0), IH - 1)
+            x_nearest = tl.minimum(tl.maximum(x_nearest, 0), IW - 1)
+            y_nearest = tl.minimum(tl.maximum(y_nearest, 0), IH - 1)
+            pixel_mask = mask
 
         offset = ((n * C + c) * IH + y_nearest) * IW + x_nearest
-        result = tl.load(input_ptr + offset, mask=mask)
-        if padding_mode == 0:
-            result = tl.where(x_valid & y_valid, result, 0.0)
+        result = tl.load(input_ptr + offset, mask=pixel_mask, other=0.0)
 
     else:  # Bicubic - fallback to bilinear for now
         # Compute floor and frac

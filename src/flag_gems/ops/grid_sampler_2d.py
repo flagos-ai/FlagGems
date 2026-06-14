@@ -174,11 +174,23 @@ def grid_sampler_2d_kernel(
             x_ref = tl.where(x_ref >= IW, px - x_ref, x_ref)
             y_ref = y - tl.floor(y / py) * py
             y_ref = tl.where(y_ref >= IH, py - y_ref, y_ref)
-            x_nearest = tl.floor(x_ref + 0.5).to(tl.int32)
-            y_nearest = tl.floor(y_ref + 0.5).to(tl.int32)
-        else:
-            x_nearest = tl.floor(x + 0.5).to(tl.int32)
-            y_nearest = tl.floor(y + 0.5).to(tl.int32)
+            x = x_ref
+            y = y_ref
+        # Round to nearest even (matching PyTorch's nearbyint)
+        x_floor = tl.floor(x)
+        y_floor = tl.floor(y)
+        x_frac = x - x_floor
+        y_frac = y - y_floor
+        x_is_half = tl.abs(x_frac - 0.5) < 1e-6
+        y_is_half = tl.abs(y_frac - 0.5) < 1e-6
+        x_floor_int = x_floor.to(tl.int32)
+        y_floor_int = y_floor.to(tl.int32)
+        x_nearest = tl.where(
+            x_is_half, x_floor_int + (x_floor_int & 1), tl.floor(x + 0.5).to(tl.int32)
+        )
+        y_nearest = tl.where(
+            y_is_half, y_floor_int + (y_floor_int & 1), tl.floor(y + 0.5).to(tl.int32)
+        )
 
         if padding_mode == 0:  # Zeros
             x_in = (x_nearest >= 0) & (x_nearest < IW)
