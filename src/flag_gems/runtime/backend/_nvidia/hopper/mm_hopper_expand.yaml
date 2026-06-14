@@ -5,7 +5,6 @@ mm_general_tma:
         BLOCK_M: block_m
         BLOCK_N: block_n
         BLOCK_K: block_k
-        GROUP_M: group_m
       num_stages: stages
       num_warps: warps
     block_m:
@@ -26,14 +25,6 @@ mm_general_tma:
       - 64
       - 128
       - 256
-    group_m:
-      - 1
-      - 2
-      - 4
-      - 8
-      - 16
-      - 32
-      - 64
     stages:
       - 2
       - 3
