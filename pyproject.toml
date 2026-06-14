@@ -58,6 +58,13 @@ ascend = [
     "flagtree==0.5.0+ascend3.2",
 ]
 
+ascend-cann9 = [
+    "torch==2.10.0+cpu",
+    "torch-npu==2.10.0",
+    "triton==3.5.0",
+    "triton-ascend==3.2.1",
+]
+
 enflame = [
     "pyefml==1.9.10",
     "torch==2.10.0+cpu",
