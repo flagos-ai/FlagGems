@@ -2,12 +2,9 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.runtime import torch_device_fn
 
 from . import accuracy_utils as utils
 from .accuracy_utils import gems_assert_close
-
-device = flag_gems.device
 
 
 @pytest.mark.scaled_dot_product_fused_attention_overrideable
@@ -21,29 +18,20 @@ def test_scaled_dot_product_fused_attention_overrideable(
     batch, num_head, seq_len, head_dim, dtype, is_causal
 ):
     """Test accuracy of _scaled_dot_product_fused_attention_overrideable."""
-    device = torch_device_fn.current_device()
-    q = utils.to_reference(
-        torch.randn(
-            batch, num_head, seq_len, head_dim, dtype=dtype, device=device
-        ).uniform_(-0.1, 0.1),
-        False,
-    )
-    k = utils.to_reference(
-        torch.randn(
-            batch, num_head, seq_len, head_dim, dtype=dtype, device=device
-        ).uniform_(-0.1, 0.1),
-        False,
-    )
-    v = utils.to_reference(
-        torch.randn(
-            batch, num_head, seq_len, head_dim, dtype=dtype, device=device
-        ).uniform_(-0.1, 0.1),
-        False,
-    )
+    device = flag_gems.device
+    q = torch.randn(
+        batch, num_head, seq_len, head_dim, dtype=dtype, device=device
+    ).uniform_(-0.1, 0.1)
+    k = torch.randn(
+        batch, num_head, seq_len, head_dim, dtype=dtype, device=device
+    ).uniform_(-0.1, 0.1)
+    v = torch.randn(
+        batch, num_head, seq_len, head_dim, dtype=dtype, device=device
+    ).uniform_(-0.1, 0.1)
 
     # Reference from torch scaled_dot_product_attention
-    ref_output = torch.nn.functional.scaled_dot_product_attention(
-        q, k, v, is_causal=is_causal
+    ref_output = utils.to_reference(
+        torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=is_causal)
     )
 
     # Get result from our implementation
