@@ -1,8 +1,6 @@
 import logging
 
-import torch
-
-from flag_gems.runtime import torch_device_fn
+from flag_gems.ops.fft_irfftn import fft_irfftn as _generic_fft_irfftn
 
 logger = logging.getLogger("flag_gems." + __name__)
 
@@ -25,10 +23,4 @@ def fft_irfftn(input, s=None, dim=None, norm=None, out=None):
         Real-valued tensor after inverse FFT
     """
     logger.debug("GEMS_METAX FFT_IRFFTN")
-
-    # Delegate to torch's irfftn - this uses optimized cuFFT/cuFFT-like implementations
-    # The Metax GPU can leverage similar FFT libraries through the torch backend
-    with torch_device_fn.device(input.device):
-        result = torch.fft.irfftn(input, s=s, dim=dim, norm=norm, out=out)
-
-    return result
+    return _generic_fft_irfftn(input, s=s, dim=dim, norm=norm)

@@ -29,7 +29,7 @@ def test_fft_irfftn(shape, dtype):
     inp_complex = torch.fft.rfftn(inp_real)
 
     # Reference output from PyTorch
-    ref_out = torch.fft.irfftn(inp_complex, s=shape)
+    ref_out = utils.to_reference(torch.fft.irfftn(inp_complex, s=shape))
 
     # Our implementation
     with flag_gems.use_gems():
