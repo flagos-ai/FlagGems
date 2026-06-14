@@ -1,6 +1,3 @@
-# Copyright 2026 Yuanzhu Li, Beijing Academy of Artificial Intelligence (BAAI)
-# and KernelGen (https://github.com/flagos-ai/KernelGen). All rights reserved.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
