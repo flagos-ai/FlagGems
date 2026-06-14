@@ -23,4 +23,6 @@ def fft_irfftn(input, s=None, dim=None, norm=None, out=None):
         Real-valued tensor after inverse FFT
     """
     logger.debug("GEMS_METAX FFT_IRFFTN")
+    if norm is None:
+        norm = "backward"
     return _generic_fft_irfftn(input, s=s, dim=dim, norm=norm)
