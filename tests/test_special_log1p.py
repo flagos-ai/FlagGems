@@ -2,10 +2,9 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.special_log1p import special_log1p
 
 from . import accuracy_utils as utils
-
-from flag_gems.ops.special_log1p import special_log1p
 
 
 @pytest.mark.special_log1p

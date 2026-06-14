@@ -1,9 +1,9 @@
 import pytest
 import torch
 
-from . import base, consts
-
 from flag_gems.ops.special_log1p import special_log1p
+
+from . import base, consts
 
 
 @pytest.mark.special_log1p
