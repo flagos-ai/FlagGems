@@ -159,7 +159,9 @@ def grid_sampler_2d_kernel(
         x_nearest = tl.floor(x + 0.5).to(tl.int32)
         y_nearest = tl.floor(y + 0.5).to(tl.int32)
 
-        if padding_mode == 0:  # Zeros
+        if padding_mode == 0:  # Zeros — must zero out-of-bounds, not clamp
+            x_valid = (x_nearest >= 0) & (x_nearest < IW)
+            y_valid = (y_nearest >= 0) & (y_nearest < IH)
             x_nearest = tl.minimum(tl.maximum(x_nearest, 0), IW - 1)
             y_nearest = tl.minimum(tl.maximum(y_nearest, 0), IH - 1)
         elif padding_mode == 1:  # Border
@@ -175,6 +177,8 @@ def grid_sampler_2d_kernel(
 
         offset = ((n * C + c) * IH + y_nearest) * IW + x_nearest
         result = tl.load(input_ptr + offset, mask=mask)
+        if padding_mode == 0:
+            result = tl.where(x_valid & y_valid, result, 0.0)
 
     else:  # Bicubic - fallback to bilinear for now
         # Compute floor and frac
