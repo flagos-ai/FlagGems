@@ -56,13 +56,12 @@ _MM_PREQUANTIZE_A = os.environ.get("FLAGGEMS_MM_PREQUANTIZE_FP8", "0") != "0"
 _MM_FP8_OUTPUT_DTYPE = os.environ.get(
     "FLAGGEMS_MM_FP8_OUTPUT_DTYPE", "bf16"
 ).lower()
-_MM_TORCH_FALLBACK = os.environ.get('FLAGGEMS_MM_TORCH_FALLBACK', '1') != '0'
-_MM_TORCH_FALLBACK_GENERALIZE = (
-    os.environ.get('FLAGGEMS_MM_TORCH_FALLBACK_GENERALIZE', '1') != '0'
+_MM_BF16_TRITON_FALLBACK = (
+    os.environ.get('FLAGGEMS_MM_BF16_TRITON_FALLBACK', '1') != '0'
 )
-_CUDA_DISPATCH_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)
-_TORCH_CUDA_MM_KERNEL = torch.library.get_kernel('aten::mm', 'CUDA')
-_TORCH_CUDA_MM_OUT_KERNEL = torch.library.get_kernel('aten::mm.out', 'CUDA')
+_MM_BF16_TRITON_FALLBACK_GENERALIZE = (
+    os.environ.get('FLAGGEMS_MM_BF16_TRITON_FALLBACK_GENERALIZE', '1') != '0'
+)
 
 # Optional inference-only pocket prune; never force during USE_FLAGTUNE expand search.
 _MM_PREFER_SHAPE_CONFIG = os.environ.get("FLAGGEMS_MM_PREFER_SHAPE_CONFIG", "0") != "0"
@@ -922,6 +921,11 @@ def _pick_mm_host_tma_kernel(
     if os.environ.get("USE_FLAGTUNE") != "1":
         return mm_kernel_general_host_tma
 
+    # The lm_head shape (e.g. N=248320) makes the full expand space very
+    # expensive to autotune and has historically favored the default space.
+    if N >= 65536:
+        return mm_kernel_general_host_tma_default_tune
+
     if (
         not _MM_EXPAND_PICK_DEFAULT_N256_N1024
         or N not in _MM_EXPAND_NARROW_N
@@ -1049,24 +1053,51 @@ def general_mm(a, b, c, M, N, K):
         dtype_str = str(input_dtype).split(".")[-1]
 
         def _run_host_tma(tma_kernel):
-            tma_kernel[grid](
-                a_desc,
-                b_desc,
-                c_desc,
-                M,
-                N,
-                K,
-                a.stride(0),
-                a.stride(1),
-                b.stride(0),
-                b.stride(1),
-                c.stride(0),
-                c.stride(1),
-                GROUP_M=8,
-                A_ROW_MAJOR=a_row_major,
-                B_ROW_MAJOR=b_row_major,
-                dtype=dtype_str,
-            )
+            meta = {
+                "A_ROW_MAJOR": a_row_major,
+                "B_ROW_MAJOR": b_row_major,
+                "dtype": dtype_str,
+            }
+            if not (
+                os.environ.get("USE_FLAGTUNE") == "1"
+                and tma_kernel is mm_kernel_general_host_tma
+            ):
+                meta["GROUP_M"] = 8
+            try:
+                tma_kernel[grid](
+                    a_desc,
+                    b_desc,
+                    c_desc,
+                    M,
+                    N,
+                    K,
+                    a.stride(0),
+                    a.stride(1),
+                    b.stride(0),
+                    b.stride(1),
+                    c.stride(0),
+                    c.stride(1),
+                    **meta,
+                )
+            except TypeError as exc:
+                if "GROUP_M" not in str(exc) or "GROUP_M" in meta:
+                    raise
+                meta_with_group = {**meta, "GROUP_M": 8}
+                tma_kernel[grid](
+                    a_desc,
+                    b_desc,
+                    c_desc,
+                    M,
+                    N,
+                    K,
+                    a.stride(0),
+                    a.stride(1),
+                    b.stride(0),
+                    b.stride(1),
+                    c.stride(0),
+                    c.stride(1),
+                    **meta_with_group,
+                )
 
         tma_kernel = _pick_mm_host_tma_kernel(
             M,
@@ -1315,6 +1346,10 @@ def skinny_scenario(a, b, M, N, K):
     if not _MM_SKINNY_GEMM_ENABLED:
         return False
     if N == 1 or M <= 0 or M > _MM_SKINNY_MAX_M or N < _MM_SKINNY_MIN_N:
+        return False
+    # NCU/probe results on H20 showed these small-M wide-N pockets run faster
+    # through the TMA general kernel than the load-based skinny kernel.
+    if K == 2048 and N in (9216, 12288) and M <= 32:
         return False
     capability = get_device_capability()
     if capability[0] < 9:
@@ -1955,7 +1990,7 @@ def _quantize_mm_inputs(
 
 
 
-_MM_TORCH_FALLBACK_SHAPES = frozenset(
+_MM_BF16_TRITON_FALLBACK_SHAPES = frozenset(
     {
         (1, 256, 2048),
         (1, 1024, 2048),
@@ -2110,8 +2145,76 @@ _MM_TORCH_FALLBACK_SHAPES = frozenset(
 )
 
 
-def _should_fallback_torch_mm_by_rule(M: int, N: int, K: int) -> bool:
-    if not _MM_TORCH_FALLBACK_GENERALIZE:
+_MM_BF16_TRITON_FALLBACK_EXCLUDE_SHAPES = frozenset(
+    {
+        (1, 12288, 2048),
+        (2, 64, 2048),
+        (2, 1024, 2048),
+        (2, 2048, 4096),
+        (4, 256, 2048),
+        (4, 12288, 2048),
+        (4, 2048, 4096),
+        (8, 64, 2048),
+        (16, 64, 2048),
+        (16, 1024, 2048),
+        (24, 64, 2048),
+        (32, 64, 2048),
+        (32, 256, 2048),
+        (32, 2048, 4096),
+        (40, 64, 2048),
+        (40, 12288, 2048),
+        (40, 2048, 4096),
+        (48, 1024, 2048),
+        (48, 9216, 2048),
+        (56, 64, 2048),
+        (56, 9216, 2048),
+        (64, 256, 2048),
+        (64, 9216, 2048),
+        (72, 1024, 2048),
+        (72, 9216, 2048),
+        (80, 1024, 2048),
+        (88, 64, 2048),
+        (88, 1024, 2048),
+        (96, 64, 2048),
+        (96, 1024, 2048),
+        (96, 2048, 512),
+        (104, 2048, 4096),
+        (112, 2048, 4096),
+        (120, 2048, 4096),
+        (128, 2048, 512),
+        (128, 2048, 4096),
+        (136, 64, 2048),
+        (136, 1024, 2048),
+        (136, 2048, 4096),
+        (144, 64, 2048),
+        (144, 1024, 2048),
+        (152, 64, 2048),
+        (160, 64, 2048),
+        (160, 1024, 2048),
+        (168, 64, 2048),
+        (168, 1024, 2048),
+        (176, 64, 2048),
+        (176, 1024, 2048),
+        (184, 64, 2048),
+        (192, 64, 2048),
+        (192, 1024, 2048),
+        (200, 1024, 2048),
+        (224, 1024, 2048),
+        (232, 64, 2048),
+        (240, 64, 2048),
+        (248, 64, 2048),
+        (256, 64, 2048),
+        (304, 64, 2048),
+        (320, 256, 2048),
+        (352, 64, 2048),
+        (368, 64, 2048),
+        (368, 256, 2048),
+    }
+)
+
+
+def _should_fallback_bf16_mm_by_rule(M: int, N: int, K: int) -> bool:
+    if not _MM_BF16_TRITON_FALLBACK_GENERALIZE:
         return False
 
     # Generalize only the measured slow pockets. Keep bounds conservative so
@@ -2151,30 +2254,35 @@ def _should_fallback_torch_mm_by_rule(M: int, N: int, K: int) -> bool:
     return False
 
 
-def _should_fallback_torch_mm(
+def _should_fallback_bf16_mm(
     a: torch.Tensor, b: torch.Tensor, M: int, N: int, K: int
 ) -> bool:
-    if not _MM_TORCH_FALLBACK:
+    if not _MM_BF16_TRITON_FALLBACK:
         return False
     if not a.is_cuda or not b.is_cuda:
         return False
     if a.dtype is not torch.bfloat16 or b.dtype is not torch.bfloat16:
         return False
-    return (M, N, K) in _MM_TORCH_FALLBACK_SHAPES or _should_fallback_torch_mm_by_rule(
+    if (M, N, K) in _MM_BF16_TRITON_FALLBACK_EXCLUDE_SHAPES:
+        return False
+    return (M, N, K) in _MM_BF16_TRITON_FALLBACK_SHAPES or _should_fallback_bf16_mm_by_rule(
         M, N, K
     )
 
 
-def _torch_cuda_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    return _TORCH_CUDA_MM_KERNEL.call_boxed(_CUDA_DISPATCH_KEYSET, a, b)
+def _bf16_triton_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    M, K = a.shape
+    _, N = b.shape
+    c = _mm_allocate_output(M, N, K, a.device, get_higher_dtype(a.dtype, b.dtype))
+    return _dispatch_mm(a, b, c, M, N, K)
 
 
-def _torch_cuda_mm_out(
+def _bf16_triton_mm_out(
     a: torch.Tensor, b: torch.Tensor, out: torch.Tensor
 ) -> torch.Tensor:
-    return _TORCH_CUDA_MM_OUT_KERNEL.call_boxed(
-        _CUDA_DISPATCH_KEYSET, a, b, out=out
-    )
+    M, K = a.shape
+    _, N = b.shape
+    return _dispatch_mm(a, b, out, M, N, K)
 
 
 def _mm_reuse_output_enabled() -> bool:
@@ -2234,8 +2342,8 @@ def mm(a, b):
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
-    if _should_fallback_torch_mm(a, b, M, N, K):
-        return _torch_cuda_mm(a, b)
+    if _should_fallback_bf16_mm(a, b, M, N, K):
+        return _bf16_triton_mm(a, b)
     a, b = _quantize_mm_inputs(a, b)
 
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
@@ -2253,8 +2361,8 @@ def mm_out(a, b, *, out):
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
-    if _should_fallback_torch_mm(a, b, M, N, K):
-        return _torch_cuda_mm_out(a, b, out)
+    if _should_fallback_bf16_mm(a, b, M, N, K):
+        return _bf16_triton_mm_out(a, b, out)
     a, b = _quantize_mm_inputs(a, b)
 
     return _dispatch_mm(a, b, out, M, N, K)
