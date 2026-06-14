@@ -33,20 +33,8 @@ def special_bessel_j0_func(x):
 
 def special_bessel_j0(A):
     logger.debug("GEMS SPECIAL_BESSEL_J0")
-    # torch.special.bessel_j0 only supports float32
     if A.dtype not in (torch.float32, torch.float64):
         raise TypeError(
             f"special_bessel_j0: unsupported dtype {A.dtype}, only float32 and float64 are supported"
         )
     return special_bessel_j0_func(A)
-
-
-def special_bessel_j0_(A):
-    logger.debug("GEMS SPECIAL_BESSEL_J0_")
-    # torch.special.bessel_j0 only supports float32
-    if A.dtype not in (torch.float32, torch.float64):
-        raise TypeError(
-            f"special_bessel_j0_: unsupported dtype {A.dtype}, only float32 and float64 are supported"
-        )
-    special_bessel_j0_func(A, out0=A)
-    return A

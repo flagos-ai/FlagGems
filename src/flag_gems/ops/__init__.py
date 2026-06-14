@@ -381,7 +381,7 @@ from flag_gems.ops.softmax import (
 from flag_gems.ops.softplus import softplus
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
-from flag_gems.ops.special_bessel_j0 import special_bessel_j0, special_bessel_j0_
+from flag_gems.ops.special_bessel_j0 import special_bessel_j0
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
@@ -913,7 +913,6 @@ __all__ = [
     "sort",
     "sort_stable",
     "special_bessel_j0",
-    "special_bessel_j0_",
     "special_i0e",
     "special_i0e_out",
     "special_i1",

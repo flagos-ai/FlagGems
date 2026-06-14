@@ -6393,19 +6393,6 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: special_bessel_j0_
-    description: |
-      Inplace version of `special_bessel_j0`.
-    for:
-      - special.bessel_j0_
-    labels:
-      - aten
-      - pointwise
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
