@@ -170,7 +170,7 @@ def _upsample_bilinear2d_aa(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ):
-    logger.debug("GEMS UPSAMPLE BILINEAR2D AA")
+    logger.debug("GEMS UPSAMPLE_BILINEAR2D_AA")
     assert input.device.type == device.name
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"
