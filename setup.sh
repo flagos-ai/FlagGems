@@ -147,6 +147,8 @@ uv pip install ".[${VENDOR}]" --default-index ${FLAGOS_PYPI} \
 # Kunlunxin needs an override of the default Triton installed (3.5.0)
 if [ "$VENDOR" = "kunlunxin" ]; then
   uv pip install "triton==3.0.0+a48aedef" --index ${FLAGOS_PYPI}
+  # Kunlunxin triton drags in a buggy pytest plugin which has to be uninstalled
+  uv pip uninstall pytest-repeat
 fi
 
 uv pip install ".[test]"
