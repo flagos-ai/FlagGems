@@ -7,7 +7,7 @@ sleep_time=120             # Wait time (seconds), default is 2 minutes
 # Get the number of NPU chips from npu-smi info output
 # Chip lines look like: "| 0     0                   | 0000:9D:00.0  | 0           0    / 0          2894 / 65536         |"
 # Count lines that contain HBM usage pattern "xxxx / xxxxx" at the end (the HBM-Usage column)
-npu_smi_output=$(npu-smi info 2>/dev/null)
+npu_smi_output=$(npu-smi info)
 
 if [ $? -ne 0 ]; then
     echo "Failed to run npu-smi. Please check if npu-smi is installed and working correctly."
