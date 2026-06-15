@@ -2727,6 +2727,21 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: fused_indexer_q_rope_quant
+    description: |
+      Applies RoPE to sparse indexer Q, quantizes it to FP8 or MXFP4, and folds
+      indexer weights for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.fused_indexer_q_rope_quant
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
   - id: fused_moe
     description: The generic interface for fused MoE.
     for:
@@ -2753,21 +2768,6 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
-  - id: fused_indexer_q_rope_quant
-    description: |
-      Applies RoPE to sparse indexer Q, quantizes it to FP8 or MXFP4, and folds
-      indexer weights for DeepSeekV4 attention.
-    for:
-      - vllm.v1.attention.ops.deepseek_v4_ops.fused_indexer_q_rope_quant
-    labels:
-      - fused
-      - Attention
-      - vLLM
-      - DeepSeekV4
-    kind:
-      - NeuralNetwork
-    stages:
-      - beta: '5.4'
   - id: fused_recurrent_gated_delta_rule_fwd
     description: |
       The forward case for `fused_recurrent_gated_delta_rule` used in Flash Linear Attention (FLA).
