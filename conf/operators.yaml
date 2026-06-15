@@ -2910,6 +2910,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Math
     stages:
