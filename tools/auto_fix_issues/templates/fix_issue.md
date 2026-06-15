@@ -25,10 +25,10 @@
 
 - **禁止**运行 `pip install -e .` 或任何形式的安装命令
 - **所有命令**必须在工作目录 `{{WORK_DIR}}` 下执行
-- **GPU 与环境变量**：所有命令必须加上 `CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR=nvidia` 前缀
+- **GPU 与环境变量**：所有命令必须加上 `CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR={{GEMS_VENDOR}}` 前缀
 - 完整命令前缀示例：
   ```
-  cd {{WORK_DIR}} && CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR=nvidia {{PYTHON_PATH}} -m pytest ...
+  cd {{WORK_DIR}} && CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR={{GEMS_VENDOR}} {{PYTHON_PATH}} -m pytest ...
   ```
 
 ## FlagGems 项目结构
@@ -99,7 +99,7 @@ conf/
 
 ```bash
 cd {{WORK_DIR}}
-CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR=nvidia {{PYTHON_PATH}} -m {{TEST_CMD}} 2>&1 | tail -100
+CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR={{GEMS_VENDOR}} {{PYTHON_PATH}} -m {{TEST_CMD}} 2>&1 | tail -100
 ```
 
 记录：
@@ -182,7 +182,7 @@ grep -rn "{{OPERATOR}}" src/flag_gems/__init__.py src/flag_gems/ops/__init__.py 
 
 ```bash
 cd {{WORK_DIR}}
-CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR=nvidia {{PYTHON_PATH}} -m {{TEST_CMD}} 2>&1 | tail -30
+CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR={{GEMS_VENDOR}} {{PYTHON_PATH}} -m {{TEST_CMD}} 2>&1 | tail -30
 ```
 
 **所有测试必须通过**。如果失败，回到 Step 4 迭代。
@@ -193,7 +193,7 @@ CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR=nvidia {{PYTHON_PATH}} -m {{TEST_CMD
 
 ```bash
 cd {{WORK_DIR}}
-CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR=nvidia {{PYTHON_PATH}} -m {{BENCHMARK_CMD}} 2>&1 | tail -30
+CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR={{GEMS_VENDOR}} {{PYTHON_PATH}} -m {{BENCHMARK_CMD}} 2>&1 | tail -30
 ```
 
 可接受的结果：
@@ -275,6 +275,6 @@ git -c user.name="taooo" -c user.email="gumptao2997@gmail.com" commit -m "Fix {{
 5. **代码格式** — 修改的 Python 文件必须通过 black + isort + flake8
 6. **禁止 pip install** — 不运行任何安装命令
 7. **工作目录** — 所有命令在 `{{WORK_DIR}}` 下执行
-8. **环境前缀** — 所有命令加 `CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR=nvidia`
+8. **环境前缀** — 所有命令加 `CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR={{GEMS_VENDOR}}`
 9. **JSON 必须输出** — 即使失败也要输出 JSON
 10. **禁止写临时文件** — 不要将代码写到 `/tmp`

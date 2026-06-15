@@ -205,6 +205,7 @@ def launch_cc(
         "SCOPE": issue.get("scope", "operator"),
         "TITLE": issue.get("title", ""),
         "GITHUB_ISSUE": str(issue.get("github_issue", "")),
+        "GEMS_VENDOR": config.get("gems_vendor", "nvidia"),
         "OPERATORS": ", ".join(issue.get("operators", [])),
         "FILES": ", ".join(issue.get("files", [])),
     }
