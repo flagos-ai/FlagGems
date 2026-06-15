@@ -46,12 +46,12 @@ def special_xlogy_func(x, y):
 
 
 def special_xlogy(A, B):
-    logger.debug("GEMS XLOGY")
+    logger.debug("GEMS SPECIAL_XLOGY")
     return special_xlogy_func(A, B)
 
 
 def special_xlogy_(A, B):
-    logger.debug("GEMS XLOGY_")
+    logger.debug("GEMS SPECIAL_XLOGY_")
     return special_xlogy_func(A, B, out0=A)
 
 
@@ -68,7 +68,7 @@ def special_xlogy_func_tensor_scalar(x, y):
 
 
 def special_xlogy_tensor_scalar(A, scalar):
-    logger.debug("GEMS XLOGY_TENSOR_SCALAR")
+    logger.debug("GEMS SPECIAL_XLOGY_TENSOR_SCALAR")
     return special_xlogy_func_tensor_scalar(A, scalar)
 
 
@@ -85,5 +85,5 @@ def special_xlogy_func_scalar_tensor(x, y):
 
 
 def special_xlogy_scalar_tensor(scalar, B):
-    logger.debug("GEMS XLOGY_SCALAR_TENSOR")
+    logger.debug("GEMS SPECIAL_XLOGY_SCALAR_TENSOR")
     return special_xlogy_func_scalar_tensor(scalar, B)
