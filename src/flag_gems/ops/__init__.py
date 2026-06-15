@@ -4,8 +4,8 @@ from flag_gems.ops._functional_sym_constrain_range_for_size import (
 )
 from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._safe_softmax import _safe_softmax
-from flag_gems.ops._unsafe_view import _unsafe_view
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
+from flag_gems.ops._unsafe_view import _unsafe_view
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
@@ -448,8 +448,8 @@ __all__ = [
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",
-    "_unsafe_view",
     "_unsafe_masked_index",
+    "_unsafe_view",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact1d",
