@@ -59,6 +59,19 @@ ops:
       - Quantization
     stages:
       - beta: '5.3'
+  - id: adaptive_avg_pool2d
+    description: |
+      Apply a 2D adaptive average pooling over an input signal composed of several input planes.
+    for:
+      - _adaptive_avg_pool2d
+    labels:
+      - aten
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.3'
   - id: adaptive_avg_pool3d
     description: |
       Apply a 3D adaptive average pooling over an input signal composed of several input planes.
