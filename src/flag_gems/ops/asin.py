@@ -20,18 +20,17 @@ import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
-_ASIN = tl_extra_shim.asin
 logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit()
 def asin_kernel(x):
-    return _ASIN(x.to(tl.float32))
+    return tl_extra_shim.asin(x.to(tl.float32))
 
 
 def asin(x):
-    logger.debug("GEMS ASIN FORWARD")
+    logger.debug("GEMS ASIN")
     y = asin_kernel(x)
     return y
 
