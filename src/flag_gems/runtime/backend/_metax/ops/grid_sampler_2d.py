@@ -56,24 +56,40 @@ def grid_sampler_2d_kernel(
         x = (gx + 1) * (IW - 1) / 2
         y = (gy + 1) * (IH - 1) / 2
     else:
-        # Scale to [0, IH) and [0, IW)
-        x = (gx + 1) * IW / 2
-        y = (gy + 1) * IH / 2
+        x = gx * (IW / 2) + (IW - 1) / 2
+        y = gy * (IH / 2) + (IH - 1) / 2
 
     if interpolation_mode == 0:  # Bilinear
-        # Compute floor and frac
-        x0 = tl.floor(x).to(tl.int32)
-        y0 = tl.floor(y).to(tl.int32)
-        x1 = x0 + 1
-        y1 = y0 + 1
+        if padding_mode == 2:  # Reflection: reflect fractional coords first
+            px = 2 * IW - 2
+            py = 2 * IH - 2
+            x_ref = x - tl.floor(x / px) * px
+            x_ref = tl.where(x_ref >= IW, px - x_ref, x_ref)
+            y_ref = y - tl.floor(y / py) * py
+            y_ref = tl.where(y_ref >= IH, py - y_ref, y_ref)
+            x0 = tl.floor(x_ref).to(tl.int32)
+            y0 = tl.floor(y_ref).to(tl.int32)
+            x1 = x0 + 1
+            y1 = y0 + 1
 
-        # Compute weights
-        x0_f = x0.to(tl.float32)
-        y0_f = y0.to(tl.float32)
-        wx1 = x - x0_f
-        wy1 = y - y0_f
-        wx0 = 1.0 - wx1
-        wy0 = 1.0 - wy1
+            x0_f = x0.to(tl.float32)
+            y0_f = y0.to(tl.float32)
+            wx1 = x_ref - x0_f
+            wy1 = y_ref - y0_f
+            wx0 = 1.0 - wx1
+            wy0 = 1.0 - wy1
+        else:
+            x0 = tl.floor(x).to(tl.int32)
+            y0 = tl.floor(y).to(tl.int32)
+            x1 = x0 + 1
+            y1 = y0 + 1
+
+            x0_f = x0.to(tl.float32)
+            y0_f = y0.to(tl.float32)
+            wx1 = x - x0_f
+            wy1 = y - y0_f
+            wx0 = 1.0 - wx1
+            wy0 = 1.0 - wy1
 
         # Clamp coordinates based on padding_mode
         if padding_mode == 0:  # Zeros
@@ -96,19 +112,10 @@ def grid_sampler_2d_kernel(
             x1_valid = True
             y1_valid = True
         else:  # Reflection
-            x0_ref = tl.minimum(x0, 2 * IW - 2 - x0)
-            x0_ref = tl.maximum(x0_ref, -x0_ref)
-            y0_ref = tl.minimum(y0, 2 * IH - 2 - y0)
-            y0_ref = tl.maximum(y0_ref, -y0_ref)
-            x1_ref = tl.minimum(x1, 2 * IW - 2 - x1)
-            x1_ref = tl.maximum(x1_ref, -x1_ref)
-            y1_ref = tl.minimum(y1, 2 * IH - 2 - y1)
-            y1_ref = tl.maximum(y1_ref, -y1_ref)
-
-            x0_clamped = tl.minimum(tl.maximum(x0_ref, 0), IW - 1)
-            y0_clamped = tl.minimum(tl.maximum(y0_ref, 0), IH - 1)
-            x1_clamped = tl.minimum(tl.maximum(x1_ref, 0), IW - 1)
-            y1_clamped = tl.minimum(tl.maximum(y1_ref, 0), IH - 1)
+            x0_clamped = tl.minimum(tl.maximum(x0, 0), IW - 1)
+            y0_clamped = tl.minimum(tl.maximum(y0, 0), IH - 1)
+            x1_clamped = tl.minimum(tl.maximum(x1, 0), IW - 1)
+            y1_clamped = tl.minimum(tl.maximum(y1, 0), IH - 1)
             x0_valid = True
             y0_valid = True
             x1_valid = True
@@ -198,40 +205,93 @@ def grid_sampler_2d_kernel(
         offset = ((n * C + c) * IH + y_nearest) * IW + x_nearest
         result = tl.load(input_ptr + offset, mask=pixel_mask, other=0.0)
 
-    else:  # Bicubic - fallback to bilinear for now
-        # Compute floor and frac
-        x0 = tl.floor(x).to(tl.int32)
-        y0 = tl.floor(y).to(tl.int32)
-        x1 = x0 + 1
-        y1 = y0 + 1
+    else:  # Bicubic - fallback to bilinear
+        if padding_mode == 2:  # Reflection: reflect fractional coords first
+            px = 2 * IW - 2
+            py = 2 * IH - 2
+            x_ref = x - tl.floor(x / px) * px
+            x_ref = tl.where(x_ref >= IW, px - x_ref, x_ref)
+            y_ref = y - tl.floor(y / py) * py
+            y_ref = tl.where(y_ref >= IH, py - y_ref, y_ref)
+            x0 = tl.floor(x_ref).to(tl.int32)
+            y0 = tl.floor(y_ref).to(tl.int32)
+            x1 = x0 + 1
+            y1 = y0 + 1
 
-        # Compute weights
-        x0_f = x0.to(tl.float32)
-        y0_f = y0.to(tl.float32)
-        wx1 = x - x0_f
-        wy1 = y - y0_f
-        wx0 = 1.0 - wx1
-        wy0 = 1.0 - wy1
+            x0_f = x0.to(tl.float32)
+            y0_f = y0.to(tl.float32)
+            wx1 = x_ref - x0_f
+            wy1 = y_ref - y0_f
+            wx0 = 1.0 - wx1
+            wy0 = 1.0 - wy1
+        else:
+            x0 = tl.floor(x).to(tl.int32)
+            y0 = tl.floor(y).to(tl.int32)
+            x1 = x0 + 1
+            y1 = y0 + 1
 
-        # Clamp
-        x0_clamped = tl.minimum(tl.maximum(x0, 0), IW - 1)
-        y0_clamped = tl.minimum(tl.maximum(y0, 0), IH - 1)
-        x1_clamped = tl.minimum(tl.maximum(x1, 0), IW - 1)
-        y1_clamped = tl.minimum(tl.maximum(y1, 0), IH - 1)
+            x0_f = x0.to(tl.float32)
+            y0_f = y0.to(tl.float32)
+            wx1 = x - x0_f
+            wy1 = y - y0_f
+            wx0 = 1.0 - wx1
+            wy0 = 1.0 - wy1
 
-        # Load and interpolate
+        if padding_mode == 0:  # Zeros
+            x0_clamped = x0
+            y0_clamped = y0
+            x1_clamped = x1
+            y1_clamped = y1
+            x0_valid = (x0 >= 0) & (x0 < IW)
+            y0_valid = (y0 >= 0) & (y0 < IH)
+            x1_valid = (x1 >= 0) & (x1 < IW)
+            y1_valid = (y1 >= 0) & (y1 < IH)
+        elif padding_mode == 1:  # Border
+            x0_clamped = tl.minimum(tl.maximum(x0, 0), IW - 1)
+            y0_clamped = tl.minimum(tl.maximum(y0, 0), IH - 1)
+            x1_clamped = tl.minimum(tl.maximum(x1, 0), IW - 1)
+            y1_clamped = tl.minimum(tl.maximum(y1, 0), IH - 1)
+            x0_valid = True
+            y0_valid = True
+            x1_valid = True
+            y1_valid = True
+        else:  # Reflection
+            x0_clamped = tl.minimum(tl.maximum(x0, 0), IW - 1)
+            y0_clamped = tl.minimum(tl.maximum(y0, 0), IH - 1)
+            x1_clamped = tl.minimum(tl.maximum(x1, 0), IW - 1)
+            y1_clamped = tl.minimum(tl.maximum(y1, 0), IH - 1)
+            x0_valid = True
+            y0_valid = True
+            x1_valid = True
+            y1_valid = True
+
+        # Inline pixel loads
         v00 = tl.load(
-            input_ptr + ((n * C + c) * IH + y0_clamped) * IW + x0_clamped, mask=mask
+            input_ptr + ((n * C + c) * IH + y0_clamped) * IW + x0_clamped,
+            mask=mask & x0_valid & y0_valid,
+            other=0.0,
         )
         v01 = tl.load(
-            input_ptr + ((n * C + c) * IH + y0_clamped) * IW + x1_clamped, mask=mask
+            input_ptr + ((n * C + c) * IH + y0_clamped) * IW + x1_clamped,
+            mask=mask & x1_valid & y0_valid,
+            other=0.0,
         )
         v10 = tl.load(
-            input_ptr + ((n * C + c) * IH + y1_clamped) * IW + x0_clamped, mask=mask
+            input_ptr + ((n * C + c) * IH + y1_clamped) * IW + x0_clamped,
+            mask=mask & x0_valid & y1_valid,
+            other=0.0,
         )
         v11 = tl.load(
-            input_ptr + ((n * C + c) * IH + y1_clamped) * IW + x1_clamped, mask=mask
+            input_ptr + ((n * C + c) * IH + y1_clamped) * IW + x1_clamped,
+            mask=mask & x1_valid & y1_valid,
+            other=0.0,
         )
+
+        if padding_mode == 0:  # Zeros
+            v00 = tl.where(x0_valid & y0_valid, v00, 0.0)
+            v01 = tl.where(x1_valid & y0_valid, v01, 0.0)
+            v10 = tl.where(x0_valid & y1_valid, v10, 0.0)
+            v11 = tl.where(x1_valid & y1_valid, v11, 0.0)
 
         result = v00 * wx0 * wy0 + v01 * wx1 * wy0 + v10 * wx0 * wy1 + v11 * wx1 * wy1
 
