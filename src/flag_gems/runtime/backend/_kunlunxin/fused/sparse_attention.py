@@ -5,15 +5,25 @@ import triton.language as tl
 
 @triton.jit
 def sparse_attn_triton_kernel(
-    Q,          # (b, m, h, d)  bf16
-    KV,         # (b, n, d)     bf16
-    O,          # (b, m, h, d)  bf16
+    Q,  # (b, m, h, d)  bf16
+    KV,  # (b, n, d)     bf16
+    Out,  # (b, m, h, d)  bf16
     attn_sink,  # (h,)          fp32
     topk_idxs,  # (b, m, topk)  int32
-    stride_qb, stride_qm, stride_qh, stride_qd,
-    stride_kvb, stride_kvn, stride_kvd,
-    stride_ob, stride_om, stride_oh, stride_od,
-    stride_idxb, stride_idxm, stride_idxk,
+    stride_qb,
+    stride_qm,
+    stride_qh,
+    stride_qd,
+    stride_kvb,
+    stride_kvn,
+    stride_kvd,
+    stride_ob,
+    stride_om,
+    stride_oh,
+    stride_od,
+    stride_idxb,
+    stride_idxm,
+    stride_idxk,
     scale,
     topk,
     kv_len,
@@ -72,7 +82,7 @@ def sparse_attn_triton_kernel(
     acc_o = acc_o / sum_exp
 
     # ---- store output ----
-    o_base = O + pid_b * stride_ob + pid_m * stride_om + pid_h * stride_oh
+    o_base = Out + pid_b * stride_ob + pid_m * stride_om + pid_h * stride_oh
     o_ptrs = o_base + offs_d * stride_od
     tl.store(o_ptrs, acc_o.to(tl.bfloat16))
 
@@ -91,11 +101,25 @@ def sparse_attn_triton(
 
     grid = (m, b, h)
     sparse_attn_triton_kernel[grid](
-        q, kv, o, attn_sink, topk_idxs,
-        q.stride(0), q.stride(1), q.stride(2), q.stride(3),
-        kv.stride(0), kv.stride(1), kv.stride(2),
-        o.stride(0), o.stride(1), o.stride(2), o.stride(3),
-        topk_idxs.stride(0), topk_idxs.stride(1), topk_idxs.stride(2),
+        q,
+        kv,
+        o,
+        attn_sink,
+        topk_idxs,
+        q.stride(0),
+        q.stride(1),
+        q.stride(2),
+        q.stride(3),
+        kv.stride(0),
+        kv.stride(1),
+        kv.stride(2),
+        o.stride(0),
+        o.stride(1),
+        o.stride(2),
+        o.stride(3),
+        topk_idxs.stride(0),
+        topk_idxs.stride(1),
+        topk_idxs.stride(2),
         softmax_scale,
         topk,
         kv_len,

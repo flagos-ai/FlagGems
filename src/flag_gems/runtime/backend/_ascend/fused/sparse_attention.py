@@ -1,20 +1,34 @@
-import os
-os.environ['TRITON_ALL_BLOCKS_PARALLEL'] = '1'
-
-import torch
-import torch_npu
-import triton
-import triton.language as tl
 import math
+import os
+
+os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
+
+import torch  # noqa: E402
+import triton  # noqa: E402
+import triton.language as tl  # noqa: E402
 
 
 @triton.jit
 def sparse_attn_triton_kernel(
-    Q, KV, O, ATTN_SINK, TOPK_IDXS,
-    stride_qb, stride_qm, stride_qh, stride_qd,
-    stride_kvb, stride_kvn, stride_kvd,
-    stride_ob, stride_om, stride_oh, stride_od,
-    stride_ib, stride_im, stride_ik,
+    Q,
+    KV,
+    Out,
+    ATTN_SINK,
+    TOPK_IDXS,
+    stride_qb,
+    stride_qm,
+    stride_qh,
+    stride_qd,
+    stride_kvb,
+    stride_kvn,
+    stride_kvd,
+    stride_ob,
+    stride_om,
+    stride_oh,
+    stride_od,
+    stride_ib,
+    stride_im,
+    stride_ik,
     scale,
     topk,
     num_blocks: tl.constexpr,
@@ -31,28 +45,41 @@ def sparse_attn_triton_kernel(
     offs_d = tl.arange(0, D)
     offs_block = tl.arange(0, BLOCK)
 
-    q_ptrs = Q + pid_b * stride_qb + pid_m * stride_qm + offs_h[:, None] * stride_qh + offs_d[None, :] * stride_qd
+    q_ptrs = (
+        Q
+        + pid_b * stride_qb
+        + pid_m * stride_qm
+        + offs_h[:, None] * stride_qh
+        + offs_d[None, :] * stride_qd
+    )
     q = tl.load(q_ptrs).to(tl.bfloat16)
 
     acc_o = tl.zeros((H_TILE, D), dtype=tl.float32)
     sum_exp = tl.zeros((H_TILE,), dtype=tl.float32)
-    scores_max = tl.full((H_TILE,), value=float('-inf'), dtype=tl.float32)
+    scores_max = tl.full((H_TILE,), value=float("-inf"), dtype=tl.float32)
 
     for t in range(num_blocks):
         idx_offs = t * BLOCK + offs_block
-        idx_ptrs = TOPK_IDXS + pid_b * stride_ib + pid_m * stride_im + idx_offs * stride_ik
+        idx_ptrs = (
+            TOPK_IDXS + pid_b * stride_ib + pid_m * stride_im + idx_offs * stride_ik
+        )
         mask_valid_load = idx_offs < topk
         idxs = tl.load(idx_ptrs, mask=mask_valid_load, other=-1)
 
         valid = idxs != -1
         safe_idxs = tl.where(valid, idxs, 0)
 
-        kv_ptrs = KV + pid_b * stride_kvb + safe_idxs[:, None] * stride_kvn + offs_d[None, :] * stride_kvd
+        kv_ptrs = (
+            KV
+            + pid_b * stride_kvb
+            + safe_idxs[:, None] * stride_kvn
+            + offs_d[None, :] * stride_kvd
+        )
         kv = tl.load(kv_ptrs).to(tl.bfloat16)
         kv = tl.where(valid[:, None], kv, 0.0)
 
         acc_s = tl.dot(q, tl.trans(kv), out_dtype=tl.float32)
-        acc_s = tl.where(valid[None, :], acc_s, float('-inf'))
+        acc_s = tl.where(valid[None, :], acc_s, float("-inf"))
         acc_s *= scale
 
         scores_max_prev = scores_max
@@ -74,7 +101,13 @@ def sparse_attn_triton_kernel(
 
     acc_o = acc_o / sum_exp[:, None]
     o = acc_o.to(tl.bfloat16)
-    o_ptrs = O + pid_b * stride_ob + pid_m * stride_om + offs_h[:, None] * stride_oh + offs_d[None, :] * stride_od
+    o_ptrs = (
+        Out
+        + pid_b * stride_ob
+        + pid_m * stride_om
+        + offs_h[:, None] * stride_oh
+        + offs_d[None, :] * stride_od
+    )
     tl.store(o_ptrs, o)
 
 
@@ -104,11 +137,25 @@ def sparse_attn_triton(
 
     grid = (s, b, n_h_tiles)
     sparse_attn_triton_kernel[grid](
-        q, kv, o, attn_sink, topk_idxs,
-        q.stride(0), q.stride(1), q.stride(2), q.stride(3),
-        kv.stride(0), kv.stride(1), kv.stride(2),
-        o.stride(0), o.stride(1), o.stride(2), o.stride(3),
-        topk_idxs.stride(0), topk_idxs.stride(1), topk_idxs.stride(2),
+        q,
+        kv,
+        o,
+        attn_sink,
+        topk_idxs,
+        q.stride(0),
+        q.stride(1),
+        q.stride(2),
+        q.stride(3),
+        kv.stride(0),
+        kv.stride(1),
+        kv.stride(2),
+        o.stride(0),
+        o.stride(1),
+        o.stride(2),
+        o.stride(3),
+        topk_idxs.stride(0),
+        topk_idxs.stride(1),
+        topk_idxs.stride(2),
         softmax_scale,
         topk,
         num_blocks=num_blocks,
