@@ -36,11 +36,11 @@ def special_sinc_func(x):
 
 
 def special_sinc(A):
-    logger.debug("GEMS SINC")
+    logger.debug("GEMS SPECIAL_SINC")
     return special_sinc_func(A)
 
 
 def special_sinc_(A):
-    logger.debug("GEMS SINC_")
+    logger.debug("GEMS SPECIAL_SINC_")
     special_sinc_func(A, out0=A)
     return A
