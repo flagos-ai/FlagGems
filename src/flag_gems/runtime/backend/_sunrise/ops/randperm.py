@@ -10,7 +10,7 @@ from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 device_ = device
 
 _MIN_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).min)
@@ -340,9 +340,7 @@ def sort_by_key(key, value, valid_bits, generator=None):
         # step2
         digit_hist_slice = torch.sum(digit_hist_slice, dim=2, keepdim=False)
         # digit_hist_slice = digit_hist_slice.cumsum(dim=1)  # shape of [passes, bins + 1]
-        digit_hist_slice = (
-            digit_hist_slice.cpu().cumsum(dim=1).cuda()
-        )  # [Tag][DIPU] .cumsum(dim=1)会报错，并且导致前面生成矩阵报错
+        digit_hist_slice = digit_hist_slice.cpu().cumsum(dim=1).to(key.device)
         digit_hist.copy_(digit_hist_slice)
 
         bit_offset = 0
