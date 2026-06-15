@@ -283,6 +283,15 @@ def topk_stage2_kernel(
 
 def topk(x, k, dim=-1, largest=True, sorted=True):
     logger.debug("GEMS TOPK")
+    # k can be 0 and should return empty tensors
+    if k == 0:
+        if dim < 0:
+            dim = dim + x.ndim
+        assert dim == x.ndim - 1, "Currently only support topk in last dimension"
+        out_shape = x.shape[:-1] + (0,)
+        values = torch.empty(out_shape, device=x.device, dtype=x.dtype)
+        indices = torch.empty(out_shape, device=x.device, dtype=torch.int64)
+        return (values, indices)
     # If dim equals to last dim, we set it to -1.
     if dim < 0:
         dim = dim + x.ndim

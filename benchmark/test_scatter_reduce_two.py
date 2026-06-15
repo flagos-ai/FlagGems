@@ -19,7 +19,7 @@ def _input_fn_factory(reduce):
 @pytest.mark.scatter_reduce_two_
 def test_scatter_reduce_two_inplace_sum():
     bench = base.GenericBenchmark2DOnly(
-        op_name="scatter_reduce_.sum",
+        op_name="scatter_reduce_",
         torch_op=torch.Tensor.scatter_reduce_,
         input_fn=_input_fn_factory("sum"),
         dtypes=consts.FLOAT_DTYPES,
@@ -31,7 +31,7 @@ def test_scatter_reduce_two_inplace_sum():
 @pytest.mark.scatter_reduce_two_
 def test_scatter_reduce_two_inplace_amax():
     bench = base.GenericBenchmark2DOnly(
-        op_name="scatter_reduce_.amax",
+        op_name="scatter_reduce_",
         torch_op=torch.Tensor.scatter_reduce_,
         input_fn=_input_fn_factory("amax"),
         dtypes=consts.FLOAT_DTYPES,
@@ -43,7 +43,7 @@ def test_scatter_reduce_two_inplace_amax():
 @pytest.mark.scatter_reduce_two_
 def test_scatter_reduce_two_inplace_amin():
     bench = base.GenericBenchmark2DOnly(
-        op_name="scatter_reduce_.amin",
+        op_name="scatter_reduce_",
         torch_op=torch.Tensor.scatter_reduce_,
         input_fn=_input_fn_factory("amin"),
         dtypes=consts.FLOAT_DTYPES,
@@ -55,7 +55,7 @@ def test_scatter_reduce_two_inplace_amin():
 @pytest.mark.scatter_reduce_two_
 def test_scatter_reduce_two_inplace_mean():
     bench = base.GenericBenchmark2DOnly(
-        op_name="scatter_reduce_.mean",
+        op_name="scatter_reduce_",
         torch_op=torch.Tensor.scatter_reduce_,
         input_fn=_input_fn_factory("mean"),
         dtypes=consts.FLOAT_DTYPES,

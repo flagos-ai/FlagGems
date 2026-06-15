@@ -1,3 +1,4 @@
+from flag_gems.fused.act_quant import act_quant_triton
 from flag_gems.fused.add_rms_norm import add_rms_norm
 from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
 from flag_gems.fused.bincount import bincount
@@ -57,6 +58,7 @@ from flag_gems.fused.moe_align_block_size import (
     moe_align_block_size_triton,
 )
 from flag_gems.fused.moe_sum import moe_sum
+from flag_gems.fused.mrope import mrope
 from flag_gems.fused.outer import outer
 from flag_gems.fused.pack_seq import pack_seq_triton
 from flag_gems.fused.reglu import dreglu, reglu
@@ -82,6 +84,7 @@ from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
     "add_rms_norm",
+    "act_quant_triton",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
     "bincount",
@@ -124,6 +127,7 @@ __all__ = [
     "moe_align_block_size",
     "moe_align_block_size_triton",
     "moe_sum",
+    "mrope",
     "outer",
     "outplace_fused_experts",
     "pack_seq_triton",

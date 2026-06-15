@@ -43,6 +43,9 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils.shape_utils import volume")
     code.writeline("from flag_gems.utils import triton_lang_extension as ext")
+    code.newline()
+    code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
+    code.writeline("_has_strided_buffer = True")
 
     code.newline()
     code.newline()
@@ -162,11 +165,10 @@ def generate_index_wrapper(
                 f"if indices[{i}] is not None and indices[{i}].dtype == torch.int64:"
             )
             code.writeline(f"   indices[{i}] = indices[{i}].to(torch.int32)")
+        code.writeline("out_int64 = None")
         code.writeline("if out.dtype == torch.int64:")
-        code.writeline("  if _has_strided_buffer and isinstance(out, StridedBuffer):")
-        code.writeline("    out.convert_to_int32()")
-        code.writeline("  else:")
-        code.writeline("    out = out.to(torch.int32)")
+        code.writeline("  out_int64 = out")
+        code.writeline("  out = out.to(torch.int32)")
         code.newline()
         code.writeline("input_shape = input.shape")
         code.writeline("input_stride = input.stride()")
@@ -201,6 +203,8 @@ def generate_index_wrapper(
             args += ["M,", "N,"]
             code.writelines(args)
         code.writeline(")")
+        code.writeline("if out_int64 is not None:")
+        code.writeline("  out_int64.copy_(out.to(torch.int64))")
         code.writeline("return input")
     code.newline()
     code.newline()

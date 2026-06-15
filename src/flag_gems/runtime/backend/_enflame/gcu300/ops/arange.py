@@ -15,10 +15,9 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def arange_func(
+def arange_int_func(
     y_ptr,
     start: tl.int32,
-    end: tl.int32,
     step: tl.int32,
     size: tl.int32,
     BLOCK_SIZE: tl.constexpr,
@@ -29,8 +28,27 @@ def arange_func(
 
     cols = tl.arange(0, BLOCK_SIZE)
     arange_val = cols * step + step_offset + start
-    mask = cols + pid * BLOCK_SIZE
-    tl.store(y_ptr + cols, arange_val, mask=mask < size)
+    offs = cols + pid * BLOCK_SIZE
+    tl.store(y_ptr + cols, arange_val, mask=offs < size)
+
+
+@libentry()
+@triton.jit
+def arange_float_func(
+    y_ptr,
+    start: tl.float32,
+    step: tl.float32,
+    size: tl.int32,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    y_ptr += pid * BLOCK_SIZE
+    step_offset = pid * BLOCK_SIZE * step
+
+    cols = tl.arange(0, BLOCK_SIZE).to(tl.float32)
+    arange_val = cols * step + step_offset + start
+    offs = tl.arange(0, BLOCK_SIZE) + pid * BLOCK_SIZE
+    tl.store(y_ptr + tl.arange(0, BLOCK_SIZE), arange_val, mask=offs < size)
 
 
 def arange_start(
@@ -42,6 +60,7 @@ def arange_start(
         dtype = torch.int32
 
     size = math.ceil((end - start) / step)
+    size = max(int(size), 0)
 
     BLOCK_SIZE = 128
     if size // BLOCK_SIZE > 65535:
@@ -61,7 +80,21 @@ def arange_start(
         )  # Note(Zhengzekang): Torch default value is CPU, but triton is target to GPU.
 
     result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
-    arange_func[grid,](result, start, end, step, size, BLOCK_SIZE)
+    if size == 0:
+        return result.to(dtype_return)
+
+    if dtype in (
+        torch.int8,
+        torch.uint8,
+        torch.int16,
+        torch.uint16,
+        torch.int32,
+        torch.uint32,
+        torch.bool,
+    ):
+        arange_int_func[grid,](result, int(start), int(step), size, BLOCK_SIZE)
+    else:
+        arange_float_func[grid,](result, float(start), float(step), size, BLOCK_SIZE)
     return result.to(dtype_return)
 
 

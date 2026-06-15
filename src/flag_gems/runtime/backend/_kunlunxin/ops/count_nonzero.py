@@ -104,7 +104,7 @@ def reduce_partial_counts(
 
 
 def count_nonzero(x, dim=None):
-    logger.debug("GEMS_KUNLUNXIN COUNT NONZERO")
+    logger.debug("GEMS_KUNLUNXIN COUNT_NONZERO")
 
     if dim is not None:
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"

@@ -15,5 +15,5 @@ def logical_not_func(x):
 
 
 def logical_not(A):
-    logger.debug("GEMS LOGICAL_NOT")
+    logger.debug("GEMS_KUNLUNXIN LOGICAL_NOT")
     return logical_not_func(A)

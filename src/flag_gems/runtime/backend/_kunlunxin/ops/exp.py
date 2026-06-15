@@ -28,16 +28,16 @@ def exp_func(x):
 
 
 def exp(A):
-    logger.debug("GEMS EXP")
+    logger.debug("GEMS_KUNLUNXIN EXP")
     return exp_func(A)
 
 
 def exp_(A):
-    logger.debug("GEMS EXP_")
+    logger.debug("GEMS_KUNLUNXIN EXP_")
     return exp_func(A, out0=A)
 
 
 # exp.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
 def exp_out(A, out):
-    logger.debug("GEMS EXP_OUT")
+    logger.debug("GEMS_KUNLUNXIN EXP_OUT")
     return exp_func(A, out0=out)

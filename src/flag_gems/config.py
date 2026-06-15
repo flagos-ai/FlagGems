@@ -131,6 +131,7 @@ def resolve_user_setting(user_setting_info, user_setting_type="include"):
         # Lazily infer vendor/arch if not provided.
         vendor_name = _runtime.device.vendor_name
         arch_event = _runtime.backend.BackendArchEvent()
+        arch_name = None
         if arch_event.has_arch:
             arch_name = getattr(arch_event, "arch", None)
         yaml_candidates = get_default_enable_config(vendor_name, arch_name)

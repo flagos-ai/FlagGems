@@ -181,7 +181,7 @@ _nonzero_func = NonzeroFunction()
 
 
 def nonzero(inp, *, as_tuple=False):
-    logger.debug("METAX GEMS NONZERO")
+    logger.debug("GEMS_METAX NONZERO")
 
     assert len(inp.shape) > 0, "Invalid input shape, input dimension must > 0"
     inp_ndim = inp.ndim

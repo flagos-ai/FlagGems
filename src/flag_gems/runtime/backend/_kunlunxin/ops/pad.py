@@ -460,7 +460,7 @@ _pad_func = PadFunction()
 
 
 def pad(self, pad, mode="constant", value=None):
-    logger.debug("GEMS CONSTANT PAD ND")
+    logger.debug("GEMS_KUNLUNXIN CONSTANT_PAD_ND")
 
     ndim = self.ndim
 

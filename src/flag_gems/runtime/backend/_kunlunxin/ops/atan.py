@@ -18,12 +18,12 @@ def atan_kernel(x):
 
 
 def atan(A):
-    logger.debug("GEMS ATAN")
+    logger.debug("GEMS_KUNLUNXIN ATAN")
     out = atan_kernel(A)
     return out
 
 
 def atan_(A):
-    logger.debug("GEMS ATAN_")
+    logger.debug("GEMS_KUNLUNXIN ATAN_")
     atan_kernel(A, out0=A)
     return A

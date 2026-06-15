@@ -15,5 +15,5 @@ def logical_xor_func(x, y):
 
 
 def logical_xor(A, B):
-    logger.debug("GEMS LOGICAL_XOR")
+    logger.debug("GEMS_KUNLUNXIN LOGICAL_XOR")
     return logical_xor_func(A, B)

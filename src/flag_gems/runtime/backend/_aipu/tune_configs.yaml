@@ -1067,3 +1067,7 @@ batch_norm:
   - 8
   - 16
   - 32
+
+pad:
+- META:
+    BLOCK_SIZE: 65536

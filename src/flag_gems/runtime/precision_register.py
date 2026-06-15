@@ -16,7 +16,7 @@ from ..logging_utils import (
     precision_config,
     write_precision_result,
 )
-from .register import Register
+from .op_registrar import GeneralOpRegistrar
 
 # Maximum tensor element count allowed for precision check
 # (skip if exceeded to avoid large tensor copy overhead)
@@ -177,7 +177,7 @@ def _wrap_op_with_precision_check(op_key, fn):
     return wrapper
 
 
-class PrecisionCheckRegister(Register):
+class PrecisionCheckRegister(GeneralOpRegistrar):
     """Register subclass that wraps every operator with precision checking.
 
     This class is only instantiated when the user has explicitly called

@@ -39,7 +39,7 @@ std::vector<at::Tensor> act_quant_triton(const at::Tensor& x,
   // 16-byte aligned for efficient vectorized store");
 
   const TritonJITFunction& kernel =
-      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "act_quant.py"),
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "fused" / "act_quant.py"),
                                       "act_quant_triton_kernel");
   c10::DeviceGuard guard(y.device());
   backend::StreamType stream = backend::getCurrentStream();

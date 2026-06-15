@@ -11,7 +11,6 @@ device = flag_gems.device
 
 
 @pytest.mark.new_full
-@pytest.mark.skip(reason="Issue #2624: This test fails on line 50.")
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype", utils.BOOL_TYPES + utils.ALL_INT_DTYPES + utils.ALL_FLOAT_DTYPES

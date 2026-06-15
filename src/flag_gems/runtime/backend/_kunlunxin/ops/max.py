@@ -130,7 +130,7 @@ def max_kernel(
 
 
 def max(inp):
-    logger.debug("GEMS MAX")
+    logger.debug("GEMS_KUNLUNXIN MAX")
     os.environ["TRITONXPU_IS_SCATTER_SLICE"] = "1"
     inp = inp.contiguous()
     M = inp.numel()
@@ -165,7 +165,7 @@ def max(inp):
 
 
 def max_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS MAX DIM")
+    logger.debug("GEMS_KUNLUNXIN MAX_DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

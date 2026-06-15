@@ -59,7 +59,7 @@ def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr
 
 
 def masked_fill(inp, mask, value):
-    logger.debug("GEMS MASKED FILL")
+    logger.debug("GEMS_KUNLUNXIN MASKED_FILL")
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
@@ -114,7 +114,7 @@ def masked_fill(inp, mask, value):
 
 
 def masked_fill_(inp, mask, value):
-    logger.debug("GEMS MASKED FILL")
+    logger.debug("GEMS_KUNLUNXIN MASKED_FILL_")
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)

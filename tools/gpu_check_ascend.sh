@@ -7,7 +7,7 @@ sleep_time=120             # Wait time (seconds), default is 2 minutes
 # Get the number of NPU chips from npu-smi info output
 # Chip lines look like: "| 0     0                   | 0000:9D:00.0  | 0           0    / 0          2894 / 65536         |"
 # Count lines that contain HBM usage pattern "xxxx / xxxxx" at the end (the HBM-Usage column)
-npu_smi_output=$(npu-smi info 2>/dev/null)
+npu_smi_output=$(npu-smi info)
 
 if [ $? -ne 0 ]; then
     echo "Failed to run npu-smi. Please check if npu-smi is installed and working correctly."
@@ -15,9 +15,9 @@ if [ $? -ne 0 ]; then
 fi
 
 # Count chip lines (lines with Chip/Phy-ID and HBM usage info)
-chip_count=$(echo "$npu_smi_output" | grep -cP '\d+\s*/\s*\d+\s*\|\s*$')
+npu_count=$(echo "$npu_smi_output" | grep -cP '\d+\s*/\s*\d+\s*\|\s*$')
 # Each NPU card has 2 chips, but we check per-chip
-npu_count=$(echo "$npu_smi_output" | grep -c "Ascend")
+npu_count=$(echo "$npu_smi_output" | grep -c "OK")
 
 if [ "$npu_count" -eq 0 ]; then
     echo "No Ascend NPUs detected. Please ensure you have Ascend NPUs installed and properly configured."

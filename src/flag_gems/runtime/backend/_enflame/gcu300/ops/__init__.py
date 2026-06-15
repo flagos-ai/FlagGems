@@ -145,6 +145,7 @@ from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
+from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward
 from .sort import sort, sort_stable
@@ -156,6 +157,7 @@ from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
+from .tril import tril, tril_, tril_out
 from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2, simple_unique_flat, sorted_indices_unique_flat
@@ -351,6 +353,7 @@ __all__ = [
     "count_nonzero",
     "linspace",
     "var_mean",
+    "slice_backward",
     "slice_scatter",
     "select_scatter",
     "ones_like",
@@ -392,6 +395,9 @@ __all__ = [
     "nll_loss_forward",
     "nll_loss_backward",
     "vector_norm",
+    "tril",
+    "tril_",
+    "tril_out",
     "triu",
     "_upsample_bicubic2d_aa",
     "softmax",

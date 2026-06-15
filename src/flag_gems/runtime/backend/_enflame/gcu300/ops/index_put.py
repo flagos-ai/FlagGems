@@ -286,12 +286,26 @@ def index_put(inp, indices, values, accumulate=False):
 
     target_shape = get_max_rank_shape(indices)
     broadcast_indices(indices, target_shape)
-    target_shape += inp.shape[len(indices) :]
+
+    # Preserve dimensions corresponding to `None` (basic indexing) in the provided indices.
+    # Example: inp[Tensor, None] keeps the `None` dim size from `inp`.
+    for dim, idx in enumerate(indices):
+        if idx is None:
+            target_shape.append(inp.shape[dim])
+
+    # If user provided fewer indices than inp.ndim, remaining dimensions are kept.
+    if len(indices) < inp.ndim:
+        target_shape += list(inp.shape[len(indices) :])
     # Filter out None values for kernel call (only tensor indices)
     # Must be done AFTER broadcast_indices, as broadcast may create new tensors
     tensor_indices = [idx for idx in indices if idx is not None]
     if not tensor_indices:
         raise ValueError("At least one non-None index tensor is required")
+
+    tensor_indices = [
+        idx.to(torch.int32) if idx.dtype == torch.int64 else idx
+        for idx in tensor_indices
+    ]
 
     if values.device != inp.device:
         values = values.to(inp.device)
@@ -333,12 +347,21 @@ def index_put_(inp, indices, values, accumulate=False):
 
     target_shape = get_max_rank_shape(indices)
     broadcast_indices(indices, target_shape)
-    target_shape += inp.shape[len(indices) :]
+    for dim, idx in enumerate(indices):
+        if idx is None:
+            target_shape.append(inp.shape[dim])
+    if len(indices) < inp.ndim:
+        target_shape += list(inp.shape[len(indices) :])
     # Filter out None values for kernel call (only tensor indices)
     # Must be done AFTER broadcast_indices, as broadcast may create new tensors
     tensor_indices = [idx for idx in indices if idx is not None]
     if not tensor_indices:
         raise ValueError("At least one non-None index tensor is required")
+
+    tensor_indices = [
+        idx.to(torch.int32) if idx.dtype == torch.int64 else idx
+        for idx in tensor_indices
+    ]
 
     if values.device != inp.device:
         values = values.to(inp.device)

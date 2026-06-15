@@ -122,7 +122,7 @@ def sparse_attn_triton(
     o = torch.empty_like(q)
     BLOCK = 64
 
-    grid = (m, b)
+    grid = (m, b)  # each program handles ALL h heads
     if h < 8:
         q_new = torch.zeros((b, m, 8, d), dtype=q.dtype, device=q.device)
         q_new[:, :, :h] = q

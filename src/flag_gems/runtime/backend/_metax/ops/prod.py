@@ -48,7 +48,7 @@ def prod_kernel_result(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
 
 def prod(inp, *, dtype=None):
-    logger.debug("METAX GEMS PROD")
+    logger.debug("GEMS_METAX PROD")
     if dtype is None:
         dtype = inp.dtype
 
@@ -117,7 +117,7 @@ def prod_kernel(
 
 
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("METAX GEMS PROD DIM")
+    logger.debug("GEMS_METAX PROD DIM")
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape

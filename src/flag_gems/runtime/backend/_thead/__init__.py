@@ -28,9 +28,9 @@ Reference:
 - Official Documentation: https://help.aliyun.com/zh/document_detail/3011255.html
 """
 
-from backend_utils import VendorInfoBase
+from backend_utils import VendorDescriptor
 
-vendor_info = VendorInfoBase(
+vendor_info = VendorDescriptor(
     vendor_name="thead",
     # PPU uses CUDA-compatible API, accessed via torch.cuda
     device_name="cuda",

@@ -4,7 +4,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import backend
-from flag_gems.runtime.backend.device import DeviceDetector
+from flag_gems.runtime.backend.device_finder import DeviceDetector
 
 """
     To be compatible with different versions of math libraries

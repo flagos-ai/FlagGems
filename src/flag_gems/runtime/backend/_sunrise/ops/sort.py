@@ -9,7 +9,7 @@ from flag_gems.ops.topk import _get_finfo_val, _get_iinfo_val, argsort
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def next_power_of_2(n: int) -> int:
@@ -215,6 +215,8 @@ def sweep(
     arr = tl.load(arr_ptr + pid_m * N + n_offsets, mask=mask)
     arr_u = convert_to_uint_preverse_order(arr, descending)
     key = (arr_u >> bit_offset) & bfe_mask  # (TILE_N, )
+    if associate_arr_ptr is not None:
+        associate_arr = tl.load(associate_arr_ptr + pid_m * N + n_offsets, mask=mask)
 
     dt = tl.uint32
     if tl.constexpr(USE_UINT16):
@@ -260,9 +262,6 @@ def sweep(
         # scatter
         tl.store(out_ptr + pid_m * N + pos, arr, mask=matches)
         if associate_arr_ptr is not None:
-            associate_arr = tl.load(
-                associate_arr_ptr + pid_m * N + n_offsets, mask=mask
-            )
             tl.store(associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches)
 
 
@@ -291,7 +290,7 @@ def radix_sort(arr, k_bits=8, descending=False):
 
     with torch_device_fn.device(arr.device):
         global_hist = torch.zeros(
-            (m, n_passes, num_bins), dtype=torch.int32, device=arr.device
+            (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
         )
         compute_global_hist_kernel[grid_for_global_hist](
             arr,
@@ -309,9 +308,7 @@ def radix_sort(arr, k_bits=8, descending=False):
         ex_cumsum_bins = flag_gems.sub(
             flag_gems.cumsum(global_hist, -1), global_hist
         )  # [DIPU] cumsum结果错误
-        ex_cumsum_bins = ex_cumsum_bins.to(
-            torch.int32
-        )  # .to(torch.uint32) -> [DIPU] torch2.2.2不支持uint32
+        ex_cumsum_bins = ex_cumsum_bins.to(torch.uint32)
 
         # sort
         # arr_in = torch.clone(arr)
@@ -342,8 +339,8 @@ def radix_sort(arr, k_bits=8, descending=False):
         USE_UINT16 = n <= 4096
 
         status = torch.empty(
-            (m, num_bins, grid_n), device=arr.device, dtype=torch.int32
-        )  # .to(torch.uint32) -> [DIPU] torch2.2.2不支持uint32
+            (m, num_bins, grid_n), device=arr.device, dtype=torch.uint32
+        )
 
         for i in range(0, n_passes):
             bit_offset = i * k_bits
@@ -437,6 +434,5 @@ def sort_stable(inp, *, stable, dim=-1, descending=False):
     if dim != inp.ndim - 1:
         out = torch.movedim(out, -1, dim)
         out_index = torch.movedim(out_index, -1, dim)
-
     # [sunrise fix] 殷文达反馈 -> “返回 return out, out_index.to(torch.int64) 应该是返回了内部mem，返回之后，内部的mem被冲掉了，数据没了”
     return out.clone(), out_index.to(torch.int64).clone()

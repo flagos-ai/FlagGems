@@ -14,5 +14,5 @@ def bitwise_left_shift_kernel(a, b):
 
 
 def bitwise_left_shift(self, other, *, out=None):
-    logger.debug("GEMS BITWISE_LEFT_SHIFT")
+    logger.debug("GEMS_KUNLUNXIN BITWISE_LEFT_SHIFT")
     return bitwise_left_shift_kernel(self, other, out=out)

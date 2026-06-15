@@ -8,7 +8,7 @@ from flag_gems.utils.pointwise_dynamic import CodeGenConfig
 
 _isnan = tl_extra_shim.isnan
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 MAX_GRID_SIZES = (65535, 65535, 65535)
 config = CodeGenConfig(

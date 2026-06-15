@@ -111,7 +111,7 @@ def embedding_grad_scale_kernel(
 
 
 def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
-    logger.debug("GEMS EMBEDDING FORWARD")
+    logger.debug("GEMS_KUNLUNXIN EMBEDDING_FORWARD")
     assert not sparse, "Currently do not support sparse format"
 
     M = indices.numel()
@@ -137,7 +137,7 @@ def embedding_backward(
     scale_grad_by_freq=False,
     sparse=False,
 ):
-    logger.debug("GEMS EMBEDDING BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN EMBEDDING_BACKWARD")
     assert not sparse, "Currently do not support sparse format"
 
     M = indices.numel()
