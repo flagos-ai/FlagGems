@@ -6634,28 +6634,29 @@ ops:
       - stable: '5.3'
   - id: special_shifted_chebyshev_polynomial_u
     description: |
-      Computes the shifted Chebyshev polynomial of the second kind.
+      Computes the shifted Chebyshev polynomial of the second kind U_n^*(x)
+      for each pair of elements in `x` and `n`.
     for:
-      - special.shifted_chebyshev_polynomial_u
+      - special_shifted_chebyshev_polynomial_u
     labels:
       - aten
       - KernelGen
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: special_shifted_chebyshev_polynomial_u_
     description: |
-      The in-place version of `special_shifted_chebyshev_polynomial_u()`.
+      Inplace variant of `special_shifted_chebyshev_polynomial_u`.
     for:
-      - special.shifted_chebyshev_polynomial_u_
+      - special_shifted_chebyshev_polynomial_u_
     labels:
       - aten
       - KernelGen
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,
