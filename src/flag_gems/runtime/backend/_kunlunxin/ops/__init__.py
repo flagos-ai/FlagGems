@@ -64,6 +64,7 @@ from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .diff import diff
 from .digamma_ import digamma_
 from .div import (
     div_mode,
@@ -209,6 +210,7 @@ from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .sqrt import sqrt, sqrt_
+from .square import square, square_
 from .stack import stack
 from .std import std
 from .sub import sub, sub_
@@ -327,6 +329,7 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diff",
     "div_mode",
     "div_mode_",
     "dot",
@@ -525,6 +528,8 @@ __all__ = [
     "softplus",
     "sort",
     "sort_stable",
+    "square",
+    "square_",
     "sqrt",
     "sqrt_",
     "stack",
