@@ -6299,6 +6299,20 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_xlog1py
+    description: |
+      Computes `x * log1p(y)` for each element pair in the input tensors `x` and `y`.
+    for:
+      - special.xlog1py
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+      - stable: '5.3'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,

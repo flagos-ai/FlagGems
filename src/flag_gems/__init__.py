@@ -37,7 +37,7 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
-    "special_xlog1py": OpsConfigFile(os.path.join(cur_dir, "ops", "special_xlog1py.py")),
+    ("special.xlog1py", special_xlog1py),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__or__.Scalar", bitwise_or_scalar),
