@@ -30,11 +30,6 @@ def asin_kernel(x):
     return tl_extra_shim.asin(x.to(tl.float32))
 
 
-def asin(A):
-    logger.debug("GEMS ASIN FORWARD")
-    return asin_kernel(A)
-
-
 def asin_(A):
     logger.debug("GEMS ASIN_")
     asin_kernel(A, out0=A)

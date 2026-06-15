@@ -31,7 +31,7 @@ from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.argsort import argsort
 from flag_gems.ops.as_strided_copy import as_strided_copy, as_strided_copy_out
-from flag_gems.ops.asin_ import asin, asin_
+from flag_gems.ops.asin_ import asin_
 from flag_gems.ops.asinh import asinh, asinh_out
 from flag_gems.ops.asinh_ import asinh_
 from flag_gems.ops.assert_async import _assert_async
@@ -494,7 +494,6 @@ __all__ = [
     "argsort",
     "as_strided_copy",
     "as_strided_copy_out",
-    "asin",
     "asin_",
     "asinh",
     "asinh_",
