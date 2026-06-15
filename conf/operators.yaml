@@ -3761,6 +3761,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: log_normal_
+    description: "Fills the tensor with log-normal samples parameterized by mean and standard deviation, in-place."
+    for:
+      - log_normal_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Distribution
+    stages:
+      - alpha: '5.1'
   - id: log_sigmoid
     description: Applies the Logsigmoid function element-wise.
     for:
