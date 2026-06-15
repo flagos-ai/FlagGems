@@ -6478,6 +6478,7 @@ ops:
       of the input tensor.
     for:
       - special.chebyshev_polynomial_u
+      - special.chebyshev_polynomial_u.n_scalar
     labels:
       - aten
       - pointwise
