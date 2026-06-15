@@ -12,6 +12,11 @@ claude_bin: claude
 # Maximum retry attempts per issue (on failure)
 max_retries: 2
 
+# Maximum resume attempts per API stream error (per attempt).
+# When the API connection drops mid-session, the orchestrator resumes the
+# existing CC session instead of starting fresh, preserving all context.
+max_stream_retries: 3
+
 # Maximum budget (USD) per issue per attempt
 budget_per_op: 10000000.0
 

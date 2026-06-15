@@ -269,6 +269,81 @@ def launch_cc(
     return proc
 
 
+def resume_cc(
+    session_id: str,
+    issue: dict,
+    worktree_path: str,
+    gpu_id: int,
+    config: dict,
+    log_dir: str,
+    resume_count: int,
+) -> subprocess.Popen:
+    """Resume a CC session after an API stream error.
+
+    Uses --resume <session_id> to continue from where the previous session
+    left off, preserving all conversation context (code read, bugs diagnosed,
+    partial fixes).
+    """
+    issue_id = issue["id"]
+    operator = issue["operator"]
+    task_name = f"issue-{issue_id}-{operator}"
+
+    env = os.environ.copy()
+    env.pop("CLAUDECODE", None)
+    env["IS_SANDBOX"] = "1"
+
+    gems_vendor = config.get("gems_vendor")
+    if gems_vendor:
+        env["GEMS_VENDOR"] = gems_vendor
+
+    claude_bin = config.get("claude_bin", "claude")
+    resume_prompt = (
+        "上一次因 API 连接中断了，请继续完成任务并输出 JSON 结果"
+    )
+    cmd = [
+        claude_bin,
+        "-p", resume_prompt,
+        "--resume", session_id,
+        "--dangerously-skip-permissions",
+        "--output-format", "stream-json",
+        "--verbose",
+    ]
+
+    budget = config.get("budget_per_op")
+    if budget:
+        cmd.extend(["--max-budget-usd", str(budget)])
+
+    stdout_path = os.path.join(log_dir, "%s.resume-%d.jsonl" % (task_name, resume_count))
+    log_path = os.path.join(log_dir, "%s.resume-%d.log" % (task_name, resume_count))
+    stdout_file = open(stdout_path, "w")
+    stderr_file = open(log_path, "w")
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=worktree_path,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            start_new_session=True,
+        )
+    except Exception:
+        stdout_file.close()
+        stderr_file.close()
+        raise
+
+    proc._stdout_path = stdout_path
+    proc._stderr_path = log_path
+    proc._stdout_file = stdout_file
+    proc._stderr_file = stderr_file
+
+    logger.info(
+        "Resumed CC for %s (PID=%d, GPU=%d, session=%s, resume=%d)",
+        task_name, proc.pid, gpu_id, session_id, resume_count,
+    )
+    return proc
+
+
 def _kill_cc_process(proc: subprocess.Popen):
     """Kill a CC process and its entire process group, then close file handles."""
     try:
@@ -329,6 +404,67 @@ def _extract_json_object(text: str, start: int) -> str | None:
             if depth == 0:
                 return text[start:i + 1]
     return None
+
+
+def extract_session_id(jsonl_path: str) -> str | None:
+    """Extract session_id from the init event in a CC stream-json log."""
+    try:
+        with open(jsonl_path, "r", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("type") == "system" and event.get("subtype") == "init":
+                    return event.get("session_id")
+    except Exception:
+        pass
+    return None
+
+
+def _get_result_text(jsonl_path: str) -> str:
+    """Extract the result text from the last result event in a CC stream-json log."""
+    try:
+        with open(jsonl_path, "r", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("type") == "result":
+                    return event.get("result", "")
+    except Exception:
+        pass
+    return ""
+
+
+_API_ERROR_PATTERNS = [
+    "API Error",
+    "Unexpected EOF",
+    "connection reset",
+    "ECONNRESET",
+]
+
+
+def is_api_stream_error(cc_result: dict, jsonl_path: str) -> bool:
+    """Check if a CC failure was caused by an API streaming error (resumable).
+
+    Returns True when the CC output was not parseable AND the result event
+    contains an API error pattern AND a valid session ID exists in the log.
+    """
+    error_msg = cc_result.get("error_message", "")
+    if error_msg != "Failed to parse CC output":
+        return False
+    result_text = _get_result_text(jsonl_path)
+    if not any(pat in result_text for pat in _API_ERROR_PATTERNS):
+        return False
+    return extract_session_id(jsonl_path) is not None
 
 
 def parse_cc_result(proc: subprocess.Popen, issue: dict, worktree_path: str = None) -> dict:
@@ -747,7 +883,7 @@ class Summary:
             1 for v in issues.values() if v["status"] == "needs_review"
         )
         self.data["summary"]["in_progress"] = sum(
-            1 for v in issues.values() if v["status"] in ("in_progress", "retrying")
+            1 for v in issues.values() if v["status"] in ("in_progress", "retrying", "resuming")
         )
 
     def _save(self):
@@ -774,6 +910,7 @@ def run(args):
     log_dir = os.path.join(results_dir, "logs")
     summary_path = os.path.join(results_dir, "summary.json")
     max_retries = config.get("max_retries", 2)
+    max_stream_retries = config.get("max_stream_retries", 3)
     timeout_per_op = config.get("timeout_per_op", 3600) or 0
     poll_interval = config.get("poll_interval", 10)
     base_branch = config.get("base_branch", "master")
@@ -802,7 +939,7 @@ def run(args):
 
     # Task queue: (issue_dict, attempt_number)
     queue = deque((issue, 0) for issue in issues)
-    # Running tasks: {issue_key: (process, gpu_id, attempt, issue, worktree_path, start_time)}
+    # Running tasks: {issue_key: (proc, gpu_id, attempt, issue, wt_path, start_time, resume_count)}
     running: dict[str, tuple] = {}
 
     # Graceful shutdown
@@ -840,7 +977,7 @@ def run(args):
                 worktree_path, branch = create_worktree(flaggems_dir, issue, base_branch)
                 proc = launch_cc(issue, worktree_path, gpu_id, config, template_path, log_dir, attempt)
 
-                running[issue_key] = (proc, gpu_id, attempt, issue, worktree_path, time.time())
+                running[issue_key] = (proc, gpu_id, attempt, issue, worktree_path, time.time(), 0)
 
                 summary.add_issue(issue, gpu_id, attempt + 1)
                 summary.update_issue(issue_id, worktree_path=worktree_path, branch=branch)
@@ -861,7 +998,7 @@ def run(args):
 
         # Check running tasks
         for issue_key in list(running.keys()):
-            proc, gpu_id, attempt, issue, worktree_path, start_time = running[issue_key]
+            proc, gpu_id, attempt, issue, worktree_path, start_time, resume_count = running[issue_key]
             issue_id = issue["id"]
 
             # Check for timeout
@@ -887,13 +1024,48 @@ def run(args):
 
             if proc.poll() is not None:
                 duration = time.time() - start_time
-                device_mgr.release(gpu_id)
-                del running[issue_key]
 
                 # Parse result and generate timeline
                 result = parse_cc_result(proc, issue, worktree_path)
                 task_name = f"issue-{issue_id}-{issue['operator']}"
                 generate_timeline(proc._stdout_path, task_name)
+
+                # Check for API stream error — resume instead of full retry.
+                # Do this BEFORE releasing the GPU so we can keep using it.
+                if (
+                    is_api_stream_error(result, proc._stdout_path)
+                    and resume_count < max_stream_retries
+                ):
+                    sid = extract_session_id(proc._stdout_path)
+                    logger.warning(
+                        "[RESUME] %s API stream error, resuming session "
+                        "%s (%d/%d)", issue_key, sid,
+                        resume_count + 1, max_stream_retries,
+                    )
+                    try:
+                        new_proc = resume_cc(
+                            sid, issue, worktree_path, gpu_id,
+                            config, log_dir, resume_count + 1,
+                        )
+                        running[issue_key] = (
+                            new_proc, gpu_id, attempt, issue,
+                            worktree_path, time.time(), resume_count + 1,
+                        )
+                        summary.update_issue(
+                            issue_id,
+                            status="resuming",
+                            error_message="API stream error, resuming session",
+                        )
+                        continue
+                    except Exception as e:
+                        logger.error(
+                            "[RESUME] Failed to resume %s: %s", issue_key, e,
+                        )
+                        # Fall through to normal release + retry/fail logic
+
+                # Release GPU and remove from running (not resuming)
+                device_mgr.release(gpu_id)
+                del running[issue_key]
 
                 # Post-commit format check: auto-fix black/isort, verify flake8
                 if proc.returncode == 0:
@@ -973,7 +1145,7 @@ def run(args):
 
     # Handle shutdown: kill running tasks
     if shutdown_requested:
-        for issue_key, (proc, gpu_id, attempt, issue, wt, st) in running.items():
+        for issue_key, (proc, gpu_id, attempt, issue, wt, st, _rc) in running.items():
             _kill_cc_process(proc)
             device_mgr.release(gpu_id)
             summary.update_issue(
