@@ -177,25 +177,7 @@ def sparse_semi_structured_mm_kernel(
         # When meta is 1: accumulate a0*b0 + a1*b1
         # When meta is 0: accumulate a2*b2 + a3*b3
 
-        # Compute all 4 products using tl.dot (matrix multiplication)
-        # a0: (BM, BK), b0: (BK, BN) -> dot: (BM, BN)
-        tl.dot(a0, b0, allow_tf32=False)
-        tl.dot(a1, b1, allow_tf32=False)
-        tl.dot(a2, b2, allow_tf32=False)
-        tl.dot(a3, b3, allow_tf32=False)
-
-        # Use meta to select which products to add
-        # meta is (BM, BK), we need to broadcast to (BM, BN)
-        # For each row m, all K positions share the same meta value
-        # So we need to create a mask based on meta that can be applied to the result
-
-        # Instead of masking at the K level, we handle it differently:
-        # For each K position, we know whether to use (a0,b0) or (a2,b2)
-        # Since we're using tl.dot, we can't easily mask inside
-        # So we'll do a loop over K positions for the selection
-
-        # But wait - meta is per-K-position, so we need to compute per-K contributions
-        # and then select based on meta
+        # Compute all 4 products using element-wise broadcasting
 
         # Let's do this more carefully:
         # For each (m, n), the result is sum over k of:
