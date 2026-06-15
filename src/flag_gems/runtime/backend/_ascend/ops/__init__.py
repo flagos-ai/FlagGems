@@ -78,6 +78,7 @@ from .threshold import threshold, threshold_backward
 from .triu import triu
 from .unique import _unique2
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
 from .vector_norm import vector_norm
@@ -189,6 +190,7 @@ __all__ = [
     "threshold",
     "threshold_backward",
     "triu",
+    "upsample_linear1d_backward",
     "upsample_nearest2d",
     "var_mean",
     "vector_norm",

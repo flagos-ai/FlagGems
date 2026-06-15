@@ -153,7 +153,7 @@ def upsample_linear1d_backward_call(grad, input_size, align_corners):
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("scale_factor", [0.5, 1.5, 2.0])
+@pytest.mark.parametrize("scale_factor", [0.5, 1.5, 2.0, 2.5, 4.0])
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("layout", ["contiguous", "non_contiguous"])
 @pytest.mark.parametrize("edge_case", [False, True])
@@ -207,4 +207,9 @@ def test_upsample_linear1d_backward(
     else:
         atol = 2e-2
 
-    gems_assert_close(res_out, ref_out, dtype, atol=atol)
+    reduce_dim = 1
+    input_w = shape[-1]
+    if out_w > 2 * input_w:
+        reduce_dim = (out_w + input_w - 1) // input_w
+
+    gems_assert_close(res_out, ref_out, dtype, atol=atol, reduce_dim=reduce_dim)
