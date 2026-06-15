@@ -787,7 +787,8 @@ def run(args):
         logger.error("No issues to process. Check your issues_to_fix.yaml.")
         return
 
-    logger.info(f"Loaded {len(issues)} issues: {[f'#{i['id']}/{i['operator']}' for i in issues]}")
+    issue_tags = ["#%s/%s" % (i["id"], i["operator"]) for i in issues]
+    logger.info(f"Loaded {len(issues)} issues: {issue_tags}")
 
     # Initialize device manager
     device_cfg = config.get("device", {}) or {}
