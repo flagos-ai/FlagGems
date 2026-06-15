@@ -20,25 +20,16 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
 
-# Simple fixed configs for sparse semi-structured addmm
-SPARSE_ADDMM_CONFIGS = [
-    triton.Config(
-        {"BLOCK_SIZE_M": 32, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 32},
-        num_stages=3,
-        num_warps=4,
-    ),
-]
-
-
 @libentry()
 @libtuner(
-    configs=SPARSE_ADDMM_CONFIGS,
+    configs=runtime.get_tuned_config("sparse_semi_structured_addmm"),
     key=["M", "N", "K4"],
 )
 @triton.jit

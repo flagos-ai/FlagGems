@@ -2339,3 +2339,11 @@ rot90:
       BLOCK_SIZE: 4096
     num_warps: 16
     num_stages: 1
+
+sparse_semi_structured_addmm:
+  - META:
+      BLOCK_SIZE_M: 32
+      BLOCK_SIZE_N: 32
+      BLOCK_SIZE_K: 32
+    num_warps: 4
+    num_stages: 3
