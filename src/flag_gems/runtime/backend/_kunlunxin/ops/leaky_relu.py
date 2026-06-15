@@ -46,7 +46,10 @@ def _leaky_relu_autotune_configs():
 
 @libentry()
 # @triton.autotune(configs=_leaky_relu_autotune_configs(), key=["n_elements"])
-@triton.autotune(configs=[triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=2)], key=["n_elements"])
+@triton.autotune(
+    configs=[triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=2)],
+    key=["n_elements"],
+)
 @triton.jit(do_not_specialize=["negative_slope"])
 def _leaky_relu_kernel(
     input_ptr,

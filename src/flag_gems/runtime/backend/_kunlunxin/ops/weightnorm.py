@@ -265,7 +265,7 @@ def weight_norm_interface(v, g, dim=0):
     logger.debug("GEMS_KUNLUNXIN WEIGHT_NORM_INTERFACE_FORWARD")
     v = v.contiguous()
     g = g.contiguous()
-    output = torch.empty_like(v) 
+    output = torch.empty_like(v)
     norm = torch.empty_like(g, dtype=torch.float32)
     if dim == 0:
         M = v.shape[0]
