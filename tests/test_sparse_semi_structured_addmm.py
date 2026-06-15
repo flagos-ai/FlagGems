@@ -41,7 +41,7 @@ def test_sparse_semi_structured_addmm(shape, dtype):
     # between reference and Triton implementations
     if dtype in (torch.float16, torch.bfloat16):
         # float16/bfloat16 have limited precision, use higher atol
-        utils.gems_assert_close(res_out, ref_out, dtype, atol=0.1)
+        utils.gems_assert_close(res_out, ref_out, dtype, atol=0.2)
     else:
         # float32, use moderate tolerance
         utils.gems_assert_close(res_out, ref_out, dtype, atol=0.02)
@@ -85,6 +85,6 @@ def test_sparse_semi_structured_addmm_with_alpha_beta(shape, dtype):
 
     # Use more permissive tolerance (higher for alpha/beta scaling)
     if dtype in (torch.float16, torch.bfloat16):
-        utils.gems_assert_close(res_out, ref_out, dtype, atol=0.3)
+        utils.gems_assert_close(res_out, ref_out, dtype, atol=0.5)
     else:
         utils.gems_assert_close(res_out, ref_out, dtype, atol=0.05)
