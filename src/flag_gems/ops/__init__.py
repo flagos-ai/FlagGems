@@ -1,3 +1,4 @@
+from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -446,6 +447,7 @@ from flag_gems.ops.zeros_like import zeros_like
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
+    "__ilshift__",
     "_assert_async",
     "_cdist_backward",
     "_conv_depthwise2d",
