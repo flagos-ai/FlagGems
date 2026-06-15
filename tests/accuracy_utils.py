@@ -74,7 +74,18 @@ FP8_QUANT_SHAPES = {
     "GROUP_SIZE": [512] if QUICK_MODE else [64, 128, 256, 512],
     "SEEDS": [0],
 }
-
+FUSED_INV_ROPE_FP8_QUANT_SHAPES = {
+    "NUM_TOKENS": [7] if QUICK_MODE else [1, 7, 32, 128],
+    "NUM_HEADS_AND_GROUPS": ([(64, 8)] if QUICK_MODE else [(32, 4), (64, 8), (128, 8)]),
+    "OUTPUT_LAYOUT_NUM_TOKENS": [7] if QUICK_MODE else [1, 7, 32, 128],
+    "OUTPUT_LAYOUT_NUM_HEADS_AND_GROUPS": (
+        [(64, 8)] if QUICK_MODE else [(64, 8), (128, 8)]
+    ),
+    "PER_GROUP_CONTIGUITY_NUM_TOKENS": [7] if QUICK_MODE else [1, 7, 32, 128],
+    "REAL_ROPE_NUM_TOKENS": [32] if QUICK_MODE else [1, 32, 256],
+    "TMA_ALIGNED_SCALES": [False, True],
+    "SEEDS": [0, 42],
+}
 DISTRIBUTION_SHAPES = [(20, 320, 15)]
 REDUCTION_SHAPES = [(2, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 40999, 3)]
 REDUCTION_SMALL_SHAPES = (
@@ -90,6 +101,18 @@ SVD_TINY_RANK_DEGENERATE_CASES = [
     "zero_column_8x2",
     "zero_row_2x8",
 ]
+SEGMENT_REDUCE_LENGTH_CASES = (
+    ((5,), 0, [2, 0, 3]),
+    ((2, 3), 1, [[1, 1, 1], [1, 1, 1]]),
+    ((2, 3, 4), 1, [[1, 2], [2, 1]]),
+    ((2, 3, 5), 2, [[[2, 3], [1, 4], [3, 2]], [[5, 0], [2, 3], [4, 1]]]),
+)
+SEGMENT_REDUCE_OFFSET_CASES = (
+    ((5,), 0, [0, 2, 5]),
+    ((2, 3, 4), 1, [[0, 1, 3], [0, 2, 3]]),
+)
+SEGMENT_REDUCE_LENGTH_OUT_CASE = SEGMENT_REDUCE_LENGTH_CASES[2]
+SEGMENT_REDUCE_OFFSET_OUT_CASE = SEGMENT_REDUCE_OFFSET_CASES[1]
 STACK_SHAPES = [
     [(16,), (16,)],
     [(16, 256), (16, 256)],
