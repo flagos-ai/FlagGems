@@ -44,3 +44,20 @@ def test_bernoulli_various_p(shape, dtype, p):
         # Check that the mean is approximately p
         mean = x.float().mean().item()
         assert abs(mean - p) < 0.15
+
+
+@pytest.mark.bernoulli
+@pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_bernoulli(shape, dtype):
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_out = torch.bernoulli(inp)
+
+    # Check that all values are 0 or 1
+    assert ((res_out == 0) | (res_out == 1)).all()
+
+    # Statistical check: mean of output should approximate mean of input probabilities
+    expected_mean = inp.float().mean().item()
+    actual_mean = res_out.float().mean().item()
+    assert abs(actual_mean - expected_mean) < 0.1
