@@ -562,7 +562,10 @@ def _prune_bwd_configs(configs, named_args, **kwargs):
       available shared memory budget.
     - Configs with BLOCK_M1 > 32 cause illegal memory access because the
       intermediate dot product tile (BLOCK_N1 x BLOCK_M1) becomes too large,
-      leading to register spills or out-of-bounds accesses in Triton >= 3.6.0.
+      leading to register spills or out-of-bounds accesses.
+
+    NOTE: This function is intended solely to workaround an issue in Triton versions
+          3.6.0 and above, but prior to 3.8.0. See: triton/issues/10573.
     """
     BLOCK_DMODEL = kwargs.get("BLOCK_DMODEL", named_args.get("BLOCK_DMODEL", 128))
     if BLOCK_DMODEL <= 32:
