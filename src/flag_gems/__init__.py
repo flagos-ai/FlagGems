@@ -12,6 +12,7 @@ from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
+from flag_gems.ops import range as range_op
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
@@ -443,7 +444,7 @@ _FULL_CONFIG = (
     ("randn", randn),
     ("randn_like", randn_like),
     ("randperm", randperm),
-    ("range", range),
+    ("range", range_op),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
     ("reflection_pad1d", reflection_pad1d),

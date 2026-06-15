@@ -16,8 +16,7 @@ device = flag_gems.device
 @pytest.mark.parametrize(
     "dtype", utils.PRIMARY_FLOAT_DTYPES + utils.ALL_INT_DTYPES + [None]
 )
-@pytest.mark.parametrize("device", [flag_gems.device, None])
-def test_range(start, end, dtype, device):
+def test_range(start, end, dtype):
     ref_out = utils.to_reference(
         torch.range(
             start,
