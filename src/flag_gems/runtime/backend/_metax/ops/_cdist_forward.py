@@ -129,28 +129,33 @@ def _cdist_forward(
         logger.debug("GEMS_METAX CDIST_FORWARD falling back to torch (p != 2.0)")
         return torch.cdist(x1, x2, p=p, compute_mode=compute_mode)
 
-    # Handle broadcasting - get leading dimensions
+    # Handle broadcasting - get shapes
     x1_shape = x1.shape
     x2_shape = x2.shape
-
-    # Get the batch dimensions (everything except last two)
-    batch_dims_x1 = x1_shape[:-2]
-    batch_dims_x2 = x2_shape[:-2]
-
-    # Calculate batch size
-    batch_size = 1
-    for dim in range(max(len(batch_dims_x1), len(batch_dims_x2))):
-        d1 = batch_dims_x1[dim] if dim < len(batch_dims_x1) else 1
-        d2 = batch_dims_x2[dim] if dim < len(batch_dims_x2) else 1
-        batch_size *= max(d1, d2)
 
     P = x1_shape[-2]
     R = x2_shape[-2]
     M = x1_shape[-1]
 
-    # Flatten batch dimensions
-    x1_flat = x1.reshape(-1, P, M)
-    x2_flat = x2.reshape(-1, R, M)
+    # Compute broadcast batch shape using PyTorch right-aligned semantics
+    batch_dims_x1 = x1_shape[:-2]
+    batch_dims_x2 = x2_shape[:-2]
+    batch_out = torch.broadcast_shapes(batch_dims_x1, batch_dims_x2)
+    batch_size = 1
+    for d in batch_out:
+        batch_size *= d
+
+    # Broadcast and flatten batch dimensions
+    # Right-pad shorter batch dims with leading 1s, then expand to common shape
+    x1_expanded = x1.view(
+        *([1] * (len(batch_out) - len(batch_dims_x1))), *batch_dims_x1, P, M
+    ).expand(*batch_out, P, M)
+    x2_expanded = x2.view(
+        *([1] * (len(batch_out) - len(batch_dims_x2))), *batch_dims_x2, R, M
+    ).expand(*batch_out, R, M)
+
+    x1_flat = x1_expanded.reshape(-1, P, M)
+    x2_flat = x2_expanded.reshape(-1, R, M)
 
     # Create output tensor
     output = torch.empty((batch_size, P, R), dtype=x1.dtype, device=x1.device)
@@ -182,14 +187,7 @@ def _cdist_forward(
             BLOCK_M=BLOCK_M,
         )
 
-    # Reshape output to match expected shape
-    # Calculate output batch shape
-    output_batch_shape = []
-    for dim in range(max(len(batch_dims_x1), len(batch_dims_x2))):
-        d1 = batch_dims_x1[dim] if dim < len(batch_dims_x1) else 1
-        d2 = batch_dims_x2[dim] if dim < len(batch_dims_x2) else 1
-        output_batch_shape.append(max(d1, d2))
-
-    output = output.view(*output_batch_shape, P, R)
+    # Reshape output to broadcast batch shape
+    output = output.view(*batch_out, P, R)
 
     return output

@@ -17,6 +17,7 @@ CDIST_FORWARD_SHAPES = [
     ((32, 64), (32, 64)),
     ((1, 8), (1, 8)),
     ((2, 3, 8), (2, 4, 8)),  # batch dimension
+    ((5, 3, 4), (3, 5, 2, 4)),  # unequal batch dims broadcast (5,) vs (3,5) -> (3,5)
 ]
 
 
@@ -49,10 +50,6 @@ def test_cdist_forward(shapes, dtype):
     shape1, shape2 = shapes
     x1 = torch.randn(*shape1, dtype=dtype, device=flag_gems.device)
     x2 = torch.randn(*shape2, dtype=dtype, device=flag_gems.device)
-
-    # Skip if feature dimensions don't match
-    if shape1[-1] != shape2[-1]:
-        pytest.skip("Feature dimensions must match")
 
     ref_x1 = utils.to_reference(x1)
     ref_x2 = utils.to_reference(x2)

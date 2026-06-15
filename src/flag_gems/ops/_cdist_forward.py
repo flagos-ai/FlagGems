@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 def _cdist_forward(x1, x2, p=2.0, compute_mode=None):
     """Compute the p-norm distance between each pair of the two collections of row vectors."""
+    logger.debug("GEMS CDIST_FORWARD")
+
     assert x1.dtype in (
         torch.float32,
     ), f"Unsupported dtype '{x1.dtype}'. Only float32 is supported for cdist."
@@ -29,8 +31,6 @@ def _cdist_forward(x1, x2, p=2.0, compute_mode=None):
     from flag_gems.runtime.backend._metax.ops._cdist_forward import (
         _cdist_forward as _metax_cdist_forward,
     )
-
-    logger.debug("GEMS CDIST_FORWARD")
     return _metax_cdist_forward(x1, x2, p, compute_mode)
 
 
