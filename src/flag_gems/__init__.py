@@ -139,6 +139,7 @@ _FULL_CONFIG = (
     ("baddbmm", baddbmm),
     ("bernoulli_.float", bernoulli_),
     ("bincount", bincount),
+    ("binary_cross_entropy", binary_cross_entropy),
     ("bitwise_and.Scalar", bitwise_and_scalar),
     ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor),
     ("bitwise_and.Tensor", bitwise_and_tensor),
