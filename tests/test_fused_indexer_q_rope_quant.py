@@ -14,6 +14,13 @@ HAS_NATIVE_FP8 = hasattr(torch, "float8_e4m3fn") and (
 )
 
 
+def _supports_mxfp4_ptx():
+    if flag_gems.device != "cuda" or not torch.cuda.is_available():
+        return False
+    major, _ = torch.cuda.get_device_capability()
+    return major >= 10
+
+
 def _make_cos_sin_cache(max_pos, rope_dim, device, dtype):
     half = rope_dim // 2
     inv_freq = 1.0 / (
@@ -95,6 +102,9 @@ def _reference_mxfp4(q_rot, weights, softmax_scale, head_scale):
 @pytest.mark.parametrize("use_fp4", [False, True])
 @torch.inference_mode()
 def test_fused_indexer_q_rope_quant(num_tokens, cache_dtype, use_fp4):
+    if use_fp4 and not _supports_mxfp4_ptx():
+        pytest.skip("MXFP4 E2M1 PTX conversion requires sm100 or newer")
+
     device = flag_gems.device
     torch.manual_seed(0)
 
