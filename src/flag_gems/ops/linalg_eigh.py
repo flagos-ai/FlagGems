@@ -59,225 +59,16 @@ def _eig_2x2_kernel(A, eigenvalues, N, stride_a, stride_e, BLOCK_SIZE: tl.conste
     tl.store(eigenvalues + pid * stride_e + 1, ev_max)
 
 
-@libentry()
-@triton.jit
-def _eig_3x3_kernel(A, eigenvalues, N, stride_a, stride_e, BLOCK_SIZE: tl.constexpr):
-    """Compute eigenvalues of 3x3 symmetric matrices using Cardano's formula."""
-    pid = tl.program_id(0)
-    if pid >= N:
-        return
-
-    # Load 3x3 matrix elements (row-major)
-    a = tl.load(A + pid * stride_a + 0)
-    d = tl.load(A + pid * stride_a + 1)
-    e = tl.load(A + pid * stride_a + 2)
-    d2 = tl.load(A + pid * stride_a + 3)
-    f = tl.load(A + pid * stride_a + 4)
-    f2 = tl.load(A + pid * stride_a + 5)
-    b = tl.load(A + pid * stride_a + 8)
-
-    # Compute characteristic polynomial coefficients for symmetric 3x3 matrix
-    # p(λ) = λ³ - tr(A)λ² + (adj(A))λ - det(A)
-
-    trace = a + b + b
-
-    # Sum of principal minors
-    # m1 = a*b + a*c + b*c - d² - e² - f² (for 3x3: a11*a22 + a11*a33 + a22*a33 - a12² - a13² - a23²)
-    m1 = a * d2 + a * b + d2 * b - d * d - e * e - f * f
-
-    # Determinant
-    det = a * (d2 * b - f * f) - d * (d * b - f * f2) + e * (d * f - d2 * f2)
-
-    # Use Cardano's formula to solve cubic
-    # Convert to depressed cubic: x³ + px + q = 0
-    p = m1 - trace * trace / 3.0
-    q = 2.0 * trace * trace * trace / 27.0 - trace * m1 / 3.0 + det
-
-    # Discriminant
-    disc = (q * q / 4.0) + (p * p * p / 27.0)
-
-    zero = 0.0
-    one = 1.0
-    two = 2.0
-    three = 3.0
-
-    # Three real roots case
-    sqrt_disc = tl.sqrt(disc)
-    t1 = -q / two + sqrt_disc
-    t2 = -q / two - sqrt_disc
-
-    # Cube roots
-    abs_t1 = tl.abs(t1)
-    abs_t2 = tl.abs(t2)
-    sign_t1 = tl.where(t1 >= zero, one, -one)
-    sign_t2 = tl.where(t2 >= zero, one, -one)
-
-    # Compute cube root using exp(log/3)
-    cbrt_t1 = sign_t1 * tl.exp(tl.log(abs_t1 + 1e-10) / three)
-    cbrt_t2 = sign_t2 * tl.exp(tl.log(abs_t2 + 1e-10) / three)
-
-    u1 = cbrt_t1 + cbrt_t2
-    v1 = cbrt_t1 - cbrt_t2
-
-    ev1 = u1 - trace / three
-    ev2 = -u1 / two - trace / three + v1 * tl.sqrt(three) / two
-    ev3 = -u1 / two - trace / three - v1 * tl.sqrt(three) / two
-
-    # Sort eigenvalues
-    # Simple sort using min/max
-    ev_min = tl.minimum(tl.minimum(ev1, ev2), ev3)
-    ev_max = tl.maximum(tl.maximum(ev1, ev2), ev3)
-    ev_mid = ev1 + ev2 + ev3 - ev_min - ev_max
-
-    tl.store(eigenvalues + pid * stride_e + 0, ev_min)
-    tl.store(eigenvalues + pid * stride_e + 1, ev_mid)
-    tl.store(eigenvalues + pid * stride_e + 2, ev_max)
-
-
-@libentry()
-@triton.jit
-def _jacobi_eig_kernel(
-    A,
-    V,
-    eigenvalues,
-    N,
-    M,
-    max_iter,
-    tolerance,
-    stride_a,
-    stride_v,
-    stride_e,
-    BLOCK_SIZE: tl.constexpr,
-):
-    """Jacobi eigenvalue algorithm for symmetric matrices."""
-    pid = tl.program_id(0)
-    if pid >= N:
-        return
-
-    # Initialize V as identity matrix
-    for i in range(0, M, BLOCK_SIZE):
-        off = i + tl.arange(0, BLOCK_SIZE)
-        mask = off < M
-        for j in range(0, M, BLOCK_SIZE):
-            off2 = j + tl.arange(0, BLOCK_SIZE)
-            mask2 = off2 < M
-            idx_i = pid * stride_v + off[:, None] * M + off2[None, :]
-            val = tl.where(
-                off == off2, tl.cast(1.0, tl.float32), tl.cast(0.0, tl.float32)
-            )
-            tl.store(V + idx_i, val, mask=mask[:, None] & mask2[None, :])
-
-    # Initialize A_copy as a copy of input A
-    A_ptr = A + pid * stride_a
-
-    # Jacobi iteration
-    for iter in range(max_iter):
-        # Find max off-diagonal element
-        max_val = 0.0
-
-        for i in range(M):
-            for j in range(i + 1, M):
-                a_ij = tl.load(A_ptr + i * M + j)
-                abs_val = tl.abs(a_ij)
-                # Simple max (not perfect but works for small matrices)
-                max_val = tl.where(abs_val > max_val, abs_val, max_val)
-
-        # Check convergence
-        if max_val < tolerance:
-            break
-
-        # Another iteration pass to find actual max and apply rotations
-        for i in range(M):
-            for j in range(i + 1, M):
-                a_ij = tl.load(A_ptr + i * M + j)
-                abs_val = tl.abs(a_ij)
-
-                # Only process max element (approximation)
-                should_process = tl.abs(abs_val - max_val) < 1e-6
-
-                if should_process:
-                    a_ii = tl.load(A_ptr + i * M + i)
-                    a_jj = tl.load(A_ptr + j * M + j)
-
-                    # Compute rotation angle
-                    diff = a_jj - a_ii
-                    denom_val = tl.abs(diff) + tl.sqrt(a_ij * a_ij + diff * diff)
-                    t = tl.where(
-                        a_ij != 0.0,
-                        tl.where(diff >= 0, 1.0 / denom_val, -1.0 / denom_val),
-                        0.0,
-                    )
-
-                    c = 1.0 / tl.sqrt(t * t + 1.0)
-                    s = t * c
-
-                    # Apply rotation to A
-                    for k in range(M):
-                        if k != i and k != j:
-                            a_ik = tl.load(A_ptr + i * M + k)
-                            a_jk = tl.load(A_ptr + j * M + k)
-                            a_ik_new = c * a_ik - s * a_jk
-                            a_jk_new = s * a_ik + c * a_jk
-                            tl.store(A_ptr + i * M + k, a_ik_new)
-                            tl.store(A_ptr + j * M + k, a_jk_new)
-                            tl.store(A_ptr + k * M + i, a_ik_new)
-                            tl.store(A_ptr + k * M + j, a_jk_new)
-
-                    # Update diagonal elements
-                    a_ii_new = c * c * a_ii - 2.0 * s * c * a_ij + s * s * a_jj
-                    a_jj_new = s * s * a_ii + 2.0 * s * c * a_ij + c * c * a_jj
-                    tl.store(A_ptr + i * M + i, a_ii_new)
-                    tl.store(A_ptr + j * M + j, a_jj_new)
-                    tl.store(A_ptr + i * M + j, 0.0)
-                    tl.store(A_ptr + j * M + i, 0.0)
-
-                    # Update eigenvectors
-                    for k in range(M):
-                        v_ki = tl.load(V + pid * stride_v + k * M + i)
-                        v_kj = tl.load(V + pid * stride_v + k * M + j)
-                        v_ki_new = c * v_ki - s * v_kj
-                        v_kj_new = s * v_ki + c * v_kj
-                        tl.store(V + pid * stride_v + k * M + i, v_ki_new)
-                        tl.store(V + pid * stride_v + k * M + j, v_kj_new)
-
-    # Extract eigenvalues from diagonal
-    for i in range(M):
-        ev = tl.load(A_ptr + i * M + i)
-        tl.store(eigenvalues + pid * stride_e + i, ev)
-
-    # Sort eigenvalues and eigenvectors (simple bubble sort)
-    for i in range(M):
-        for j in range(i + 1, M):
-            ev_i = tl.load(eigenvalues + pid * stride_e + i)
-            ev_j = tl.load(eigenvalues + pid * stride_e + j)
-            should_swap = ev_i > ev_j
-
-            # Swap eigenvalues
-            tl.store(
-                eigenvalues + pid * stride_e + i, tl.where(should_swap, ev_j, ev_i)
-            )
-            tl.store(
-                eigenvalues + pid * stride_e + j, tl.where(should_swap, ev_i, ev_j)
-            )
-
-            # Swap eigenvectors columns
-            for k in range(M):
-                v_ki = tl.load(V + pid * stride_v + k * M + i)
-                v_kj = tl.load(V + pid * stride_v + k * M + j)
-                tl.store(
-                    V + pid * stride_v + k * M + i, tl.where(should_swap, v_kj, v_ki)
-                )
-                tl.store(
-                    V + pid * stride_v + k * M + j, tl.where(should_swap, v_ki, v_kj)
-                )
+# NOTE: 3x3 analytical kernel and Jacobi iteration kernel were removed as dead code.
+# For n>2, this op falls back to torch.linalg.eigh on CPU (see below).
 
 
 def linalg_eigh(A, UPLO="L"):
     """
     Compute eigenvalue decomposition of symmetric/Hermitian matrices.
 
-    For small matrices (2x2, 3x3), uses analytical formulas.
-    For larger matrices, falls back to torch.linalg.eigh.
+    For 2x2 matrices, uses an analytical formula via Triton kernel.
+    For larger matrices, falls back to torch.linalg.eigh on CPU.
     """
     logger.debug("GEMS LINALG_EIGH")
 
@@ -316,49 +107,46 @@ def linalg_eigh(A, UPLO="L"):
             BLOCK_SIZE=1,
         )
 
-        # For eigenvectors, we need a simple 2x2 rotation matrix
-        # For 2x2 symmetric matrix [a d; d b] with eigenvalues ev1, ev2:
-        # eigenvectors are [d; ev1-a] and [d; ev2-a] normalized
+        # Vectorized eigenvector computation for 2x2 symmetric matrices.
+        # For [a d; d b] with eigenvalues ev1, ev2:
+        # eigenvectors are [d; ev1-a] and [d; ev2-a] normalized.
+        a_elem = A_flat[:, 0, 0]  # (batch,)
+        d_vec = A_flat[:, 0, 1]  # (batch,)
+        ev1 = eigenvalues[:, 0]  # (batch,)
+        ev2 = eigenvalues[:, 1]  # (batch,)
+
+        # Build un-normalized eigenvectors: shape (batch, 2)
+        v1 = torch.stack([d_vec, ev1 - a_elem], dim=1)
+        v2 = torch.stack([d_vec, ev2 - a_elem], dim=1)
+
+        # When d is near zero, eigenvectors are the standard basis vectors
+        small_d = torch.abs(d_vec) < 1e-10
+        v1[small_d, 0] = 1.0
+        v1[small_d, 1] = 0.0
+        v2[small_d, 0] = 0.0
+        v2[small_d, 1] = 1.0
+
+        # Normalize each eigenvector
+        v1 = v1 / v1.norm(dim=1, keepdim=True)
+        v2 = v2 / v2.norm(dim=1, keepdim=True)
+
+        # Fill eigenvectors tensor: eigenvectors[b, :, k] is k'th eigenvector
         eigenvectors = torch.zeros_like(A_flat)
-        for i in range(A_flat.shape[0]):
-            a = A_flat[i, 0, 0].item()
-            d = A_flat[i, 0, 1].item()
-
-            ev1, ev2 = eigenvalues[i, 0].item(), eigenvalues[i, 1].item()
-
-            # First eigenvector
-            if abs(d) > 1e-10:
-                v1 = torch.tensor(
-                    [d, ev1 - a], dtype=eigenvectors.dtype, device=eigenvectors.device
-                )
-                v2 = torch.tensor(
-                    [d, ev2 - a], dtype=eigenvectors.dtype, device=eigenvectors.device
-                )
-            else:
-                v1 = torch.tensor(
-                    [1.0, 0.0], dtype=eigenvectors.dtype, device=eigenvectors.device
-                )
-                v2 = torch.tensor(
-                    [0.0, 1.0], dtype=eigenvectors.dtype, device=eigenvectors.device
-                )
-
-            v1 = v1 / v1.norm()
-            v2 = v2 / v2.norm()
-
-            eigenvectors[i, 0, 0] = v1[0]
-            eigenvectors[i, 0, 1] = v2[0]
-            eigenvectors[i, 1, 0] = v1[1]
-            eigenvectors[i, 1, 1] = v2[1]
+        eigenvectors[:, 0, 0] = v1[:, 0]
+        eigenvectors[:, 0, 1] = v2[:, 0]
+        eigenvectors[:, 1, 0] = v1[:, 1]
+        eigenvectors[:, 1, 1] = v2[:, 1]
 
         # Reshape back
         eigenvalues = eigenvalues.reshape(*batch_shape, 2)
         eigenvectors = eigenvectors.reshape(*batch_shape, 2, 2)
 
     else:
-        # For 3x3 and larger matrices, directly call torch's CPU implementation to avoid recursion
+        # NOTE: n>2 falls back to CPU, breaking CUDA graph compatibility.
+        # This is a design limitation pending future n>2 kernel implementation.
         # Convert to CPU, compute, then convert back
         A_cpu = A.cpu()
-        eigenvalues_cpu, eigenvectors_cpu = torch.linalg.eigh(A_cpu)
+        eigenvalues_cpu, eigenvectors_cpu = torch.linalg.eigh(A_cpu, UPLO=UPLO)
         eigenvalues = eigenvalues_cpu.to(A.device)
         eigenvectors = eigenvectors_cpu.to(A.device)
 
