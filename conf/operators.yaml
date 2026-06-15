@@ -5338,6 +5338,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: reflection_pad3d_backward
+    description: Computes the gradient of reflection_pad3d with respect to the input tensor.
+    for:
+      - reflection_pad3d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: reglu
     description: |
       Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead of the sigmoid function for gating.
