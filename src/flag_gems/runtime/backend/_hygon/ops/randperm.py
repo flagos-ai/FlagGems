@@ -420,7 +420,7 @@ def randperm(
     requires_grad=False,
     pin_memory=False,
 ):
-    logger.debug("GEMS_MTHREADS RANDPERM")
+    logger.debug("GEMS_HYGON RANDPERM")
     # import pdb
     # pdb.set_trace()
     assert dtype == torch.int16 or dtype == torch.int32 or dtype == torch.int64

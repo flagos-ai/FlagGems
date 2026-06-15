@@ -820,6 +820,55 @@ addmm:
       BLOCK_SIZE_K: 32
     num_stages: 5
     num_warps: 2
+linear:
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 256
+      BLOCK_SIZE_K: 64
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 256
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 128
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 128
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 32
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 32
+      BLOCK_SIZE_K: 32
+    num_stages: 5
+    num_warps: 2
+  - META:
+      BLOCK_SIZE_M: 32
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 32
+    num_stages: 5
+    num_warps: 2
 cross_entropy_loss:
   - META:
       BLOCK_C: 256
@@ -2118,6 +2167,41 @@ conv_transpose1d:
       BLOCK_IC: 32
     num_warps: 4
     num_stages: 3
+diff_1d:
+- gen: true
+  param_map:
+    META:
+      BLOCK_DIFF: block_diff
+    num_warps: warps
+  warps:
+  - 4
+  - 8
+  - 16
+  block_diff:
+  - 16
+  - 256
+  - 1024
+diff:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_DIFF: block_diff
+    num_warps: warps
+  warps:
+  - 4
+  - 8
+  - 16
+  block_m:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 32
+  block_diff:
+  - 16
+  - 256
+  - 1024
 
 rot90:
   - META:
