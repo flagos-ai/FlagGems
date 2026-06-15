@@ -59,6 +59,19 @@ ops:
       - Quantization
     stages:
       - beta: '5.3'
+  - id: adaptive_avg_pool2d
+    description: |
+      Apply a 2D adaptive average pooling over an input signal composed of several input planes.
+    for:
+      - _adaptive_avg_pool2d
+    labels:
+      - aten
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.3'
   - id: adaptive_avg_pool3d
     description: |
       Apply a 3D adaptive average pooling over an input signal composed of several input planes.
@@ -165,6 +178,19 @@ ops:
       - LinearAlg
     stages:
       - stable: '4.0'
+  - id: addcmul_
+    description: |
+      The in-place version of `addcmul()`.
+    for:
+      - addcmul_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: addcmul_out
     description: |
       A variant of `addcmul` that allows the output to be assigned to `out`.
@@ -851,6 +877,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: ilshift__
+    description: Computes the in-place bitwise left shift of `self` by `other` bits.
+    for:
+      - __ilshift__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: bitwise_left_shift
     description: Computes the left arithmetic shift of `input` by `other` bits.
     for:
@@ -1039,7 +1076,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: ceil
     description: |
       Returns a new tensor with the ceil of the elements of `input`, the smallest integer greater than
@@ -1668,6 +1705,17 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.0'
+  - id: deg2rad
+    description: "deg2rad operator"
+    for:
+      - deg2rad
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dequantize_and_gather_k_cache
     description: |
       Dequantizes FP8 K-cache entries and gathers them into a BF16 tensor for DeepSeekV4 attention.
@@ -1746,7 +1794,6 @@ ops:
       - diff
     labels:
       - aten
-      - KernelGen
     kind:
       - Math
     stages:
@@ -2364,6 +2411,17 @@ ops:
       - Tensor
     stages:
       - stable: '5.0'
+  - id: fix
+    description: "fix operator"
+    for:
+      - fix
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: flash_attention_forward
     for:
       - _flash_attention_forward
@@ -2859,6 +2917,26 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: geometric
+    description: Draws random numbers from a geometric distribution.
+    for:
+      - geometric.float
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
+  - id: geometric_
+    description: Fills self tensor with elements drawn from the geometric distribution.
+    for:
+      - geometric_.float
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
   - id: get_paged_mqa_logits_metadata
     description: Build scheduling metadata for paged MQA logits.
     for:
@@ -3616,6 +3694,18 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: linear
+    description: |
+      Applies a linear transformation to the incoming data: y = x @ W^T + b.
+    for:
+      - linear
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: log
     description: Returns a new tensor with the natural logarithm of the elements of `input`.
     for:
@@ -3843,6 +3933,18 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: logical_xor_
+    description: The in-place version of `logical_xor()`.
+    for:
+      - logical_xor_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: logit
     description: |
       Returns a new tensor with the logit of the elements of `input`.
@@ -4280,6 +4382,98 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: normal_
+    description: Random sampling operator (normal_).
+    for:
+      - normal_
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.3'
+  - id: renorm
+    description: >
+      Returns a tensor where each sub-tensor along the given dimension
+      is normalized such that the p-norm is lower than a max norm value.
+    for:
+      - renorm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
+  - id: renorm_
+    description: The in-place version of `renorm()`.
+    for:
+      - renorm_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
+  - id: reflection_pad1d_backward
+    description: Computes the gradient of reflection_pad1d with respect to the input tensor.
+    for:
+      - reflection_pad1d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
+  - id: resize_output
+    description: |
+      Resizes tensor output storage and copies overlapping elements.
+    for:
+      - _resize_output
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
+  - id: rot90
+    description: Triton kernel implementation for rot90.
+    for:
+      - rot90
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
+  - id: smooth_l1_loss
+    description: Compute the smooth L1 loss between input and target tensors.
+    for:
+      - smooth_l1_loss
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.3'
+  - id: smooth_l1_loss_backward
+    description: Compute the gradient of smooth L1 loss with respect to the input tensor.
+    for:
+      - smooth_l1_loss_backward
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.3'
   - id: mul
     description: Multiplies `input` by `other`.
     for:
@@ -4430,6 +4624,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: negative
+    description: "negative operator"
+    for:
+      - negative
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: new_full
     description: |
       Returns a Tensor of size `size` filled with `fill_value`.
@@ -4545,6 +4750,16 @@ ops:
       - Tensor
     stages:
       - alpha: '5.3'
+  - id: normal_
+    description: Random sampling operator (normal_).
+    for:
+      - normal_
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: normal_float_float_
     description: |
       Returns a tensor of random numbers drawn from separate normal distributions
@@ -4987,6 +5202,16 @@ ops:
       - Distribution
     stages:
       - stable: '2.1'
+  - id: random_
+    description: Random sampling operator (random_).
+    for:
+      - random_
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: randperm
     description: Returns a random permutation of integers from `0` to `n - 1`.
     for:
@@ -5564,6 +5789,12 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: scaled_grouped_mm
+    description: |
+      Performs grouped matrix multiplication with row-wise and column-wise scaling,
+      commonly used by quantized Mixture-of-Experts (MoE) workloads.
+    for:
+      - _scaled_grouped_mm
   - id: scaled_mm
     description: |
       Performs a scaled matrix multiplication. The result of `self @ mat2` is
@@ -6823,6 +7054,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: unfold_copy
+    description: >
+      Returns a view of the original tensor which contains all slices of size from self tensor
+      in the specified dimension with given step between two slices.
+    for:
+      - unfold_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: uniform_
     description: Fills `self` tensor with numbers sampled from the continuous uniform distribution.
     for:
@@ -6887,7 +7131,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: upsample_bicubic2d
     description: A variant of `upsample()` that has `mode` set to `bicubic`.
     for:
