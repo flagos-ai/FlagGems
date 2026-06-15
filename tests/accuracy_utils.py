@@ -101,6 +101,18 @@ SVD_TINY_RANK_DEGENERATE_CASES = [
     "zero_column_8x2",
     "zero_row_2x8",
 ]
+SEGMENT_REDUCE_LENGTH_CASES = (
+    ((5,), 0, [2, 0, 3]),
+    ((2, 3), 1, [[1, 1, 1], [1, 1, 1]]),
+    ((2, 3, 4), 1, [[1, 2], [2, 1]]),
+    ((2, 3, 5), 2, [[[2, 3], [1, 4], [3, 2]], [[5, 0], [2, 3], [4, 1]]]),
+)
+SEGMENT_REDUCE_OFFSET_CASES = (
+    ((5,), 0, [0, 2, 5]),
+    ((2, 3, 4), 1, [[0, 1, 3], [0, 2, 3]]),
+)
+SEGMENT_REDUCE_LENGTH_OUT_CASE = SEGMENT_REDUCE_LENGTH_CASES[2]
+SEGMENT_REDUCE_OFFSET_OUT_CASE = SEGMENT_REDUCE_OFFSET_CASES[1]
 STACK_SHAPES = [
     [(16,), (16,)],
     [(16, 256), (16, 256)],

@@ -1,234 +1,140 @@
 import logging
-from functools import reduce
-from typing import Optional
 
 import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
-Tensor = torch.Tensor
+
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("diff_1d"),
+    key=["N"],
+)
+@triton.jit
+def diff_kernel_1d(in_ptr, out_ptr, N, BLOCK_DIFF: tl.constexpr):
+    pid = tle.program_id(0)
+
+    in_offsets = pid * BLOCK_DIFF + tl.arange(0, BLOCK_DIFF)
+    mask_in = in_offsets < N - 1
+    in_block = tl.load(in_ptr + in_offsets, mask_in)
+    next_block = tl.load(in_ptr + in_offsets + 1, mask_in)
+    tl.store(out_ptr + in_offsets, next_block - in_block, mask_in)
 
 
 @libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("diff"),
+    key=["M", "N"],
+)
 @triton.jit
-def diff_kernel_inner(
-    output_ptr,
-    input_ptr,
+def diff_kernel_2d(
+    in_ptr,
+    out_ptr,
     M,
     N,
+    M_STRIDE_IN,
+    M_STRIDE_OUT,
     BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    BLOCK_DIFF: tl.constexpr,
 ):
-    """Compute diff along the inner (last) dimension.
+    pid_M = tle.program_id(0)
+    pid_diff = tle.program_id(1)
 
-    For each row m and output position n, computes:
-    output[m, n] = input[m, n + 1] - input[m, n]
+    M_offsets = pid_M * BLOCK_M + tl.arange(0, BLOCK_M)
+    mask_M = M_offsets < M
 
-    Input shape: (M, N), Output shape: (M, N-1)
-    """
-    pid_m = tle.program_id(0)
+    in_offsets_diff = pid_diff * BLOCK_DIFF + tl.arange(0, BLOCK_DIFF)
+    mask_in_diff = in_offsets_diff < N - 1
 
-    # Row indices this block handles
-    row_start = pid_m * BLOCK_M
-    row_offsets = row_start + tl.arange(0, BLOCK_M)
-    row_mask = row_offsets < M
+    in_offsets = M_offsets[:, None] * M_STRIDE_IN + in_offsets_diff
+    out_offsets = M_offsets[:, None] * M_STRIDE_OUT + in_offsets_diff
+    mask_in = mask_M[:, None] & mask_in_diff
 
-    # Output has N-1 elements per row
-    output_N = N - 1
-
-    # Process output elements in tiles
-    for n_start in range(0, output_N, BLOCK_N):
-        col_offsets = n_start + tl.arange(0, BLOCK_N)
-        col_mask = col_offsets < output_N
-
-        # Combined mask
-        mask = row_mask[:, None] & col_mask[None, :]
-
-        # Load input[m, n+1] and input[m, n]
-        input_offsets_next = row_offsets[:, None] * N + (col_offsets[None, :] + 1)
-        input_offsets_curr = row_offsets[:, None] * N + col_offsets[None, :]
-
-        inp_next = tl.load(input_ptr + input_offsets_next, mask=mask, other=0.0)
-        inp_curr = tl.load(input_ptr + input_offsets_curr, mask=mask, other=0.0)
-
-        # Compute diff
-        diff_val = inp_next - inp_curr
-
-        # Store output
-        output_offsets = row_offsets[:, None] * output_N + col_offsets[None, :]
-        tl.store(output_ptr + output_offsets, diff_val, mask=mask)
+    in_block = tl.load(in_ptr + in_offsets, mask_in)
+    next_block = tl.load(in_ptr + in_offsets + 1, mask_in)
+    tl.store(out_ptr + out_offsets, next_block - in_block, mask_in)
 
 
-@libentry()
-@triton.jit
-def diff_kernel_non_inner(
-    output_ptr,
-    input_ptr,
-    M,
-    N,
-    K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-):
-    """Compute diff along a non-inner dimension.
-
-    Input is viewed as (M, N, K) where we compute diff along dim 1 (size N).
-    For each position (m, n, k), computes:
-    output[m, n, k] = input[m, n + 1, k] - input[m, n, k]
-
-    Input shape: (M, N, K), Output shape: (M, N-1, K)
-    """
-    pid_m = tle.program_id(0)
-    pid_k = tle.program_id(1)
-
-    # K indices this block handles
-    k_start = pid_k * BLOCK_K
-    k_offsets = k_start + tl.arange(0, BLOCK_K)
-    k_mask = k_offsets < K
-
-    # Output has N-1 elements along dim 1
-    output_N = N - 1
-
-    # Process all n positions for this (m, k) block
-    for n in range(output_N):
-        # Load input[m, n+1, k] and input[m, n, k]
-        input_offset_next = pid_m * N * K + (n + 1) * K + k_offsets
-        input_offset_curr = pid_m * N * K + n * K + k_offsets
-
-        inp_next = tl.load(input_ptr + input_offset_next, mask=k_mask, other=0.0)
-        inp_curr = tl.load(input_ptr + input_offset_curr, mask=k_mask, other=0.0)
-
-        # Compute diff
-        diff_val = inp_next - inp_curr
-
-        # Store output
-        output_offset = pid_m * output_N * K + n * K + k_offsets
-        tl.store(output_ptr + output_offset, diff_val, mask=k_mask)
-
-
-def _diff_once(inp: Tensor, dim: int) -> Tensor:
-    """Compute single forward difference along specified dimension.
-
-    Args:
-        inp: Input tensor (must be contiguous)
-        dim: Dimension to compute difference along
-
-    Returns:
-        Tensor with shape reduced by 1 along dim
-    """
-    shape = list(inp.shape)
-    ndim = inp.ndim
-    dim = dim % ndim
-
-    N = shape[dim]  # Size along diff dimension
-    if N < 2:
-        raise RuntimeError(
-            f"diff requires at least 2 elements along dim {dim}, got {N}"
-        )
-
-    # Compute M (product of dims before dim) and K (product of dims after dim)
-    M = reduce(lambda x, y: x * y, shape[:dim], 1)
-    K = reduce(lambda x, y: x * y, shape[dim + 1 :], 1)
-
-    # Output shape has dim reduced by 1
-    out_shape = list(shape)
-    out_shape[dim] = N - 1
-    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
-
-    with torch_device_fn.device(inp.device):
-        if K == 1:
-            # Inner dimension case
-            # Block sizes must be powers of 2 for triton
-            BLOCK_M = triton.next_power_of_2(min(32, M))
-            BLOCK_N = triton.next_power_of_2(min(256, N - 1))
-            grid = (triton.cdiv(M, BLOCK_M),)
-            diff_kernel_inner[grid](
-                out,
-                inp,
-                M,
-                N,
-                BLOCK_M=BLOCK_M,
-                BLOCK_N=BLOCK_N,
-            )
-        else:
-            # Non-inner dimension case
-            BLOCK_K = triton.next_power_of_2(min(256, K))
-            grid = (M, triton.cdiv(K, BLOCK_K))
-            diff_kernel_non_inner[grid](
-                out,
-                inp,
-                M,
-                N,
-                K,
-                BLOCK_M=1,
-                BLOCK_K=BLOCK_K,
-            )
-
-    return out
-
-
-def diff(
-    inp: Tensor,
-    n: int = 1,
-    dim: int = -1,
-    prepend: Optional[Tensor] = None,
-    append: Optional[Tensor] = None,
-) -> Tensor:
-    """Compute the n-th forward difference along the given dimension.
-
-    The first-order differences are given by out[i] = input[i + 1] - input[i].
-    Higher-order differences are calculated by using diff recursively.
-
-    Args:
-        inp: Input tensor
-        n: Number of times to recursively compute the difference
-        dim: Dimension to compute the difference along (default: -1)
-        prepend: Values to prepend to input along dim before computing diff
-        append: Values to append to input along dim before computing diff
-
-    Returns:
-        Tensor containing the n-th order differences
-    """
+def diff(input, n=1, dim=-1, prepend=None, append=None) -> torch.Tensor:
     logger.debug("GEMS DIFF")
 
-    if n == 0:
-        return inp.clone()
-
-    if n < 0:
-        raise RuntimeError(f"diff expects n >= 0, got {n}")
-
-    ndim = inp.ndim
-    if ndim == 0:
-        raise RuntimeError("diff requires input to be at least one-dimensional")
-
-    dim = dim % ndim
-
-    # Handle prepend and append by concatenating
-    tensors_to_cat = []
     if prepend is not None:
-        tensors_to_cat.append(prepend)
-    tensors_to_cat.append(inp)
+        input = torch.cat([prepend, input], dim=dim)
     if append is not None:
-        tensors_to_cat.append(append)
+        input = torch.cat([input, append], dim=dim)
 
-    if len(tensors_to_cat) > 1:
-        inp = torch.cat(tensors_to_cat, dim=dim)
+    if n <= 0:
+        return input
 
-    inp = inp.contiguous()
+    shape = list(input.shape)
+    dim = dim % input.ndim
+    reduce_len = shape[dim]
 
-    # Apply diff n times
-    result = inp
-    for _ in range(n):
-        if result.shape[dim] < 2:
-            raise RuntimeError(
-                f"diff requires at least 2 elements along dim {dim} for each iteration"
+    if n >= reduce_len:
+        empty_tensor = torch.tensor([], dtype=input.dtype, device=input.device)
+        return torch.reshape(empty_tensor, shape[:dim] + [0] + shape[(dim + 1) :])
+
+    input = dim_compress(input, dim)
+    N = reduce_len
+    M = input.numel() // N
+
+    is_1d = len(shape) == 1
+
+    def _launch(src, dst, in_stride_m, out_stride_m, n_bound):
+        if is_1d:
+            grid = lambda meta: (triton.cdiv(n_bound - 1, meta["BLOCK_DIFF"]),)
+            with torch_device_fn.device(src.device):
+                diff_kernel_1d[grid](src, dst, n_bound)
+        else:
+            grid = lambda meta: (
+                triton.cdiv(M, meta["BLOCK_M"]),
+                triton.cdiv(n_bound - 1, meta["BLOCK_DIFF"]),
             )
-        result = _diff_once(result, dim)
+            with torch_device_fn.device(src.device):
+                diff_kernel_2d[grid](src, dst, M, n_bound, in_stride_m, out_stride_m)
 
-    return result
+    # Allocate the final output at its exact post-diff size [..., N-n] so
+    # that the last kernel writes directly into it. This eliminates the
+    # tail `output[..., :N-n].contiguous()` copy.
+    out_shape = list(input.shape)
+    out_shape[-1] = N - n
+    output = torch.empty(out_shape, device=input.device, dtype=input.dtype)
+
+    if n == 1:
+        _launch(input, output, N, N - 1, N)
+        return torch.moveaxis(output, -1, dim)
+
+    # n >= 2: ping-pong between two scratch buffers (sized N-1 and N-2 for the diff dim),
+    # writing the last iteration directly into `output` (size N-n).
+    # Avoid _copy().
+    scratch_a_shape = list(input.shape)
+    scratch_a_shape[-1] = N - 1
+    scratch_a = torch.empty(scratch_a_shape, device=input.device, dtype=input.dtype)
+    if n >= 3:
+        scratch_b_shape = list(input.shape)
+        scratch_b_shape[-1] = N - 2
+        scratch_b = torch.empty(scratch_b_shape, device=input.device, dtype=input.dtype)
+
+    # iter 0: input -> scratch_a
+    _launch(input, scratch_a, N, N - 1, N)
+    src, src_stride = scratch_a, N - 1
+
+    # iter 1 to (n - 1)
+    for k in range(1, n):
+        if k == n - 1:
+            dst, dst_stride = output, N - n
+        elif k % 2 == 1:
+            dst, dst_stride = scratch_b, N - 2
+        else:
+            dst, dst_stride = scratch_a, N - 1
+        _launch(src, dst, src_stride, dst_stride, N - k)
+        src, src_stride = dst, dst_stride
+
+    return torch.moveaxis(output, -1, dim)
