@@ -129,6 +129,7 @@ def special_logit(input, eps=None, out=None):
 
 
 def special_logit_out(input, eps=None, out=None):
+    logger.debug("GEMS SPECIAL_LOGIT_OUT")
     if out is None:
         raise TypeError("special_logit_out requires an 'out' tensor.")
     return _special_logit_impl(input, eps=eps, out=out)
