@@ -2,6 +2,7 @@
 
 SUPPORTED_VENDORS=(
   "ascend"
+  "ascend-cann9"
   "enflame"
   "hygon"
   "iluvatar"
@@ -18,6 +19,7 @@ SUPPORTED_VENDORS=(
 # TODO: Add thead PPU
 declare -A PYTHON_SUPPORTED=(
   ["ascend"]="3.11"
+  ["ascend-cann9"]="3.11"
   ["enflame"]="3.12"
   ["hygon"]="3.10"
   ["iluvatar"]="3.10"
@@ -109,7 +111,11 @@ else
 fi
 
 # Install FlagGems
-export FLAGOS_PYPI="https://resource.flagos.net/repository/flagos-pypi-${VENDOR}/simple"
+PYPI_VENDOR=${VENDOR}
+if [ "$VENDOR" = "ascend-cann9" ]; then
+  PYPI_VENDOR="ascend"
+fi
+export FLAGOS_PYPI="https://resource.flagos.net/repository/flagos-pypi-${PYPI_VENDOR}/simple"
 printf "Install build tools ... "
 uv pip install \
   "setuptools>=64.0" \
@@ -130,8 +136,14 @@ fi
 ## Vendor-specific installation steps
 source tools/env.sh ${VENDOR}
 # source tools/vendor.sh ${VENDOR}
+if [ "$VENDOR" = "ascend-cann9" ]; then
+    uv pip install triton==3.5.0
+    uv pip install triton-ascend==3.2.1 --index ${FLAGOS_PYPI}
+fi
+
 uv pip install ".[${VENDOR}]" --default-index ${FLAGOS_PYPI} \
-  --index https://mirrors.aliyun.com/pypi/simple
+    --index https://mirrors.aliyun.com/pypi/simple \
+
 uv pip install ".[test]"
 
 [ "$?" == 0 ] || { echo "Failed to setup FlagGems" ; exit 1; }
