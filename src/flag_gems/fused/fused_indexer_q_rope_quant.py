@@ -329,6 +329,14 @@ def fused_indexer_q_rope_quant(
     index_weights_out = torch.empty_like(index_weights, dtype=torch.float32)
 
     if use_fp4:
+        if not index_q.is_cuda:
+            raise RuntimeError("MXFP4 fused_indexer_q_rope_quant requires CUDA")
+        major, _ = torch.cuda.get_device_capability(index_q.device)
+        if major < 10:
+            raise RuntimeError(
+                "MXFP4 fused_indexer_q_rope_quant requires sm100 or newer; "
+                f"got sm{major}x"
+            )
         assert index_q_head_dim % MXFP4_BLOCK_SIZE == 0, (
             f"head_dim={index_q_head_dim} must be a multiple of MXFP4 block "
             f"size {MXFP4_BLOCK_SIZE}"

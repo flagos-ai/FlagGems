@@ -16,6 +16,13 @@ HAS_NATIVE_FP8 = hasattr(torch, "float8_e4m3fn") and (
 )
 
 
+def _supports_mxfp4_ptx():
+    if flag_gems.device != "cuda" or not torch.cuda.is_available():
+        return False
+    major, _ = torch.cuda.get_device_capability()
+    return major >= 10
+
+
 def _make_cos_sin_cache(max_pos, rope_dim, device, dtype):
     half = rope_dim // 2
     inv_freq = 1.0 / (
@@ -126,6 +133,10 @@ class FusedIndexerQRopeQuantBenchmark(base.GenericBenchmark):
         super().init_user_config()
         if any(len(shape) != 3 for shape in self.shapes):
             self.shapes = self.DEFAULT_SHAPES
+        if not _supports_mxfp4_ptx():
+            self.shapes = [shape for shape in self.shapes if not shape[2]]
+        if not self.shapes:
+            self.shapes = [(1, NUM_HEADS, False)]
 
 
 @pytest.mark.fused_indexer_q_rope_quant
