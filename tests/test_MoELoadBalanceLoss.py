@@ -26,6 +26,7 @@ MOE_LOAD_BALANCE_LOSS_SHAPES = [
 
 
 @pytest.mark.MoELoadBalanceLoss
+# TODO: Reference GitHub issue for Metax CI stability once created
 @pytest.mark.skipif(
     flag_gems.vendor_name == "metax",
     reason="MetaX backend path for MoELoadBalanceLoss is not stable in CI.",
