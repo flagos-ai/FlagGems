@@ -21,7 +21,7 @@ except ImportError:
     SM90_AVAILABLE = False
 
 import flag_gems
-from flag_gems.ops.fp8_paged_mqa_logits import fp8_paged_mqa_logits
+from flag_gems.fp8_paged_mqa_logits import fp8_paged_mqa_logits
 
 from .accuracy_utils import gems_assert_close, to_reference
 

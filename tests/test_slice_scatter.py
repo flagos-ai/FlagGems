@@ -66,7 +66,7 @@ def test_slice_scatter(shape, stride, dim, dtype, start, end, step):
             inp, dim=dim, src=src, start=start, end=end, step=step
         )
     else:
-        res_out = flag_gems.ops.slice_scatter(
+        res_out = flag_gems.slice_scatter(
             inp, dim=dim, src=src, start=start, end=end, step=step
         )
 
@@ -94,7 +94,7 @@ def testslice_scatter_with_self_overlapping_input():
             inp, dim=dim, src=src, start=start, end=end, step=step
         )
     else:
-        res_out = flag_gems.ops.slice_scatter(
+        res_out = flag_gems.slice_scatter(
             inp, dim=dim, src=src, start=start, end=end, step=step
         )
 
