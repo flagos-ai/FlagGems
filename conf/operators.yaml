@@ -4545,16 +4545,6 @@ ops:
       - Tensor
     stages:
       - alpha: '5.3'
-  - id: normal_
-    description: Random sampling operator (normal_).
-    for:
-      - normal_
-    labels:
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.1'
   - id: normal_float_float_
     description: |
       Returns a tensor of random numbers drawn from separate normal distributions
@@ -4997,16 +4987,6 @@ ops:
       - Distribution
     stages:
       - stable: '2.1'
-  - id: random_
-    description: Random sampling operator (random_).
-    for:
-      - random_
-    labels:
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.1'
   - id: randperm
     description: Returns a random permutation of integers from `0` to `n - 1`.
     for:
