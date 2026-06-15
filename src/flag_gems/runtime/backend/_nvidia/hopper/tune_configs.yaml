@@ -131,3 +131,52 @@ mm:
       BLOCK_K: 32
     num_stages: 4
     num_warps: 8
+mm_splitk:
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 64
+      BLOCK_K: 64
+      SPLIT_K: 4
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 128
+      BLOCK_K: 64
+      SPLIT_K: 4
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 64
+      BLOCK_K: 128
+      SPLIT_K: 8
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 256
+      BLOCK_K: 64
+      SPLIT_K: 4
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 64
+      BLOCK_K: 256
+      SPLIT_K: 8
+    num_stages: 3
+    num_warps: 4
+sqrt:
+  - META:
+      BLOCK_SIZE: 512
+    num_stages: 4
+    num_warps: 1
+  - META:
+      BLOCK_SIZE: 1024
+    num_stages: 4
+    num_warps: 1
+  - META:
+      BLOCK_SIZE: 2048
+    num_stages: 4
+    num_warps: 1

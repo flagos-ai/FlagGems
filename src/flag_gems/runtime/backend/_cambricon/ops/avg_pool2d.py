@@ -8,7 +8,7 @@ from flag_gems.utils import libentry
 
 from ..utils import MAX_GRID_SIZE_X, MAX_GRID_SIZE_Y
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def pool2d_output_size(

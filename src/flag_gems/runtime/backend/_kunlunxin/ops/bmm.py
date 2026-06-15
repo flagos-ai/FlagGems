@@ -7,7 +7,7 @@ import triton.language as tl
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -62,20 +62,20 @@ def bmm_kernel(
     DIVISIBLE_K: tl.constexpr,
 ):
     # batch offsets
-    pid_b = tle.program_id(2)
+    pid_b = ext.program_id(2)
     A += pid_b * M * K
     B += pid_b * K * N
     O += pid_b * M * N
 
-    pidx = tle.program_id(0)
-    pidy = tle.program_id(1)
+    pidx = ext.program_id(0)
+    pidy = ext.program_id(1)
 
     if GROUP_M == 1:
         pid_m, pid_n = pidx, pidy
     else:
         # reorder CTAs
-        gridx = tle.num_programs(0)
-        gridy = tle.num_programs(1)
+        gridx = ext.num_programs(0)
+        gridy = ext.num_programs(1)
         pid = pidx + pidy * gridx
 
         num_CTA_per_group = gridy * GROUP_M
@@ -145,7 +145,7 @@ def bmm_kernel(
 
 
 def bmm(A, B):
-    logger.debug("GEMS BMM")
+    logger.debug("GEMS_KUNLUNXIN BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()
@@ -163,7 +163,7 @@ def bmm(A, B):
 
 
 def bmm_out(A, B, out):
-    logger.debug("GEMS BMM_OUT")
+    logger.debug("GEMS_KUNLUNXIN BMM_OUT")
     assert A.shape[0] == B.shape[0] == out.shape[0], "Batch dim mismatch"
     assert A.shape[2] == B.shape[1], "K dim mismatch"
     batch, M, K = A.shape

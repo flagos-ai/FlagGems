@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 rsqrt = tl_extra_shim.rsqrt
 
@@ -30,7 +30,7 @@ def group_norm_kernel(
     BLOCK_GROUP_SIZE: tl.constexpr,
     BLOCK_HW_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     group = pid % num_groups
     num_elements = group_size * HW
     group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
@@ -87,7 +87,7 @@ def group_norm_backward_kernel(
     BLOCK_GROUP_SIZE: tl.constexpr,
     BLOCK_HW_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     group = pid % num_groups
     num_elements = group_size * BLOCK_HW_SIZE
 
@@ -146,7 +146,7 @@ def weight_bias_backward_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_HW: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     group = pid // group_size
     n_offset = tl.arange(0, BLOCK_N)
     hw_offset = tl.arange(0, BLOCK_HW)
@@ -178,7 +178,7 @@ def weight_bias_backward_kernel(
 class GroupNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, N, C, HW, num_groups, weight=None, bias=None, eps=1e-05):
-        logger.debug("METAX GEMS GROUPNORM FORWARD")
+        logger.debug("GEMS_METAX GROUPNORM FORWARD")
         group_size = C // num_groups
         x = x.contiguous()
         if weight is not None:
@@ -217,7 +217,7 @@ class GroupNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, y_grad, mean_grad, rstd_grad):
-        logger.debug("METAX GEMS GROUPNORM BACKWARD")
+        logger.debug("GEMS_METAX GROUPNORM BACKWARD")
         y_grad = y_grad.contiguous()
         (x, weight, bias, mean, rstd) = ctx.saved_tensors
         num_groups = ctx.num_groups

@@ -8,7 +8,7 @@ import triton.language as tl
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -48,7 +48,7 @@ def weight_norm_kernel_last(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     tx = tl.arange(0, BLOCK_COL_SIZE)[:, None]
-    bx = tle.program_id(axis=0) * BLOCK_COL_SIZE
+    bx = ext.program_id(axis=0) * BLOCK_COL_SIZE
     col_offset = bx + tx
     col_mask = col_offset < N
 
@@ -104,7 +104,7 @@ def weight_norm_kernel_first(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     ty = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-    by = tle.program_id(axis=0) * BLOCK_ROW_SIZE
+    by = ext.program_id(axis=0) * BLOCK_ROW_SIZE
     row_offset = by + ty
     row_mask = row_offset < M
 
@@ -162,7 +162,7 @@ def weight_norm_bwd_kernel_last(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     tx = tl.arange(0, BLOCK_COL_SIZE)[:, None]
-    bx = tle.program_id(axis=0) * BLOCK_COL_SIZE
+    bx = ext.program_id(axis=0) * BLOCK_COL_SIZE
     col_offset = tx + bx
     col_mask = col_offset < N
 
@@ -228,7 +228,7 @@ def weight_norm_bwd_kernel_first(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     ty = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-    by = tle.program_id(axis=0) * BLOCK_ROW_SIZE
+    by = ext.program_id(axis=0) * BLOCK_ROW_SIZE
     row_offset = by + ty
     row_mask = row_offset < M
 
@@ -262,7 +262,7 @@ def weight_norm_bwd_kernel_first(
 
 
 def weight_norm_interface(v, g, dim=0):
-    logger.debug("GEMS WEIGHT NORM INTERFACE FORWARD")
+    logger.debug("GEMS_KUNLUNXIN WEIGHT_NORM_INTERFACE_FORWARD")
     v = v.contiguous()
     g = g.contiguous()
     output = torch.empty_like(v)
@@ -287,7 +287,7 @@ def weight_norm_interface(v, g, dim=0):
 
 
 def weight_norm_interface_backward(w_grad, saved_v, saved_g, saved_norms, dim):
-    logger.debug("GEMS WEIGHT NORM INTERFACE BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN WEIGHT_NORM_INTERFACE_BACKWARD")
     w_grad = w_grad.contiguous()
     saved_v = saved_v.contiguous()
     saved_g = saved_g.contiguous()

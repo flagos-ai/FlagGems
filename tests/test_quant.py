@@ -35,7 +35,7 @@ SEEDS = [0]
 CUDA_DEVICES = [f"cuda:{i}" for i in range(1 if torch.cuda.device_count() == 1 else 2)]
 
 # We assume fp8 is always enabled for testing.
-if flag_gems.vendor_name in ["kunlunxin", "cambricon"]:
+if flag_gems.vendor_name in ["kunlunxin", "cambricon", "sunrise"]:
     KV_CACHE_DTYPE = ["auto"]
 else:
     KV_CACHE_DTYPE = ["auto", "fp8"]
@@ -66,9 +66,13 @@ def convert_fp8(
         dst.copy_(src)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.concat_and_cache_mla
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "metax", reason="Issue #2843: RuntimeError"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "hygon", reason="Issue #2844: RuntimeError"
+)
 @pytest.mark.parametrize("kv_lora_rank", KV_LORA_RANKS)
 @pytest.mark.parametrize("qk_rope_head_dim", QK_ROPE_HEAD_DIMS)
 @pytest.mark.parametrize("num_tokens", NUM_TOKENS_MLA)
@@ -78,7 +82,9 @@ def convert_fp8(
 @pytest.mark.parametrize("seed", SEEDS)
 @pytest.mark.parametrize(
     "device",
-    [flag_gems.device] if flag_gems.vendor_name == "mthreads" else CUDA_DEVICES,
+    [flag_gems.device]
+    if flag_gems.vendor_name in ["mthreads", "sunrise"]
+    else CUDA_DEVICES,
 )
 @pytest.mark.parametrize("kv_cache_dtype", KV_CACHE_DTYPE)
 @torch.inference_mode()

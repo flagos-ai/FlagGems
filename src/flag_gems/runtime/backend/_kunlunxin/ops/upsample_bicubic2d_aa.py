@@ -7,7 +7,7 @@ import triton.language as tl
 
 # from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 device = device.name
@@ -65,8 +65,8 @@ def upsample_bicubic2d_aa_kernel(
     BLOCK_X: tl.constexpr,
     BLOCK_Y: tl.constexpr,
 ):
-    pid_x = tle.program_id(axis=0)
-    pid_y = tle.program_id(axis=1)
+    pid_x = ext.program_id(axis=0)
+    pid_y = ext.program_id(axis=1)
     ow = (pid_x * BLOCK_X + tl.arange(0, BLOCK_X)) % OW
     oh = (pid_y * BLOCK_Y + tl.arange(0, BLOCK_Y)) % OH
 
@@ -425,8 +425,8 @@ def general_interpolate_bicubic2d_aa_kernel(
     BLOCK_X: tl.constexpr,
     BLOCK_Y: tl.constexpr,
 ):
-    pid_x = tle.program_id(axis=0)
-    pid_y = tle.program_id(axis=1)
+    pid_x = ext.program_id(axis=0)
+    pid_y = ext.program_id(axis=1)
     ow = (pid_x * BLOCK_X + tl.arange(0, BLOCK_X)) % OW
     oh = (pid_y * BLOCK_Y + tl.arange(0, BLOCK_Y)) % OH
 
@@ -533,7 +533,7 @@ def _upsample_bicubic2d_aa(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ):
-    logger.debug("GEMS UPSAMPLE BICUBIC2D AA")
+    logger.debug("GEMS_KUNLUNXIN UPSAMPLE_BICUBIC2D_AA")
     assert input.device.type == device
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"

@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems.ops.max import max_kernel_1, max_kernel_2
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 # torch.any: Tests if any elements in input evaluate to True. If the dtype of input
@@ -60,7 +60,7 @@ def any_kernel_dim(
     BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of inp it should compute.
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + rows * N
     out = out + rows
@@ -120,7 +120,7 @@ def any_kernel_1(
     n_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < n_elements
@@ -142,7 +142,7 @@ def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def any(inp):
-    logger.debug("GEMS ANY")
+    logger.debug("GEMS_KUNLUNXIN ANY")
     n_elements = inp.numel()
     block_size = max(
         triton.cdiv(get_block(n_elements), cluster_num),
@@ -183,7 +183,7 @@ def any(inp):
 
 
 def any_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ANY DIM")
+    logger.debug("GEMS_KUNLUNXIN ANY_DIM")
     shape = list(inp.shape)
     if dim is None:
         out = any(inp)
@@ -218,7 +218,7 @@ def any_dim(inp, dim=None, keepdim=False):
 
 
 def any_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ANY DIMS")
+    logger.debug("GEMS_KUNLUNXIN ANY_DIMS")
 
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)

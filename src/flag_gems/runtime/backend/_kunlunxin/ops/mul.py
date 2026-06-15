@@ -33,7 +33,7 @@ def mul_complex_kernel(ar, ai, br, bi):
 
 
 def mul(A, B):
-    logger.debug("GEMS MUL")
+    logger.debug("GEMS_KUNLUNXIN MUL")
     A_is_complex = isinstance(A, torch.Tensor) and A.is_complex()
     B_is_complex = isinstance(B, torch.Tensor) and B.is_complex()
 
@@ -43,7 +43,16 @@ def mul(A, B):
             Br = torch.view_as_real(B.resolve_conj())
             ar, ai = Ar[..., 0].contiguous(), Ar[..., 1].contiguous()
             br, bi = Br[..., 0].contiguous(), Br[..., 1].contiguous()
+            # Upcast float16 to float32 to avoid precision loss in
+            # complex multiplication (ac-bd, ad+bc)
+            orig_dtype = ar.dtype
+            if orig_dtype == torch.float16:
+                ar, ai = ar.to(torch.float32), ai.to(torch.float32)
+                br, bi = br.to(torch.float32), bi.to(torch.float32)
             real_out, imag_out = mul_complex_kernel(ar, ai, br, bi)
+            if orig_dtype == torch.float16:
+                real_out = real_out.to(orig_dtype)
+                imag_out = imag_out.to(orig_dtype)
             out = torch.view_as_complex(torch.stack((real_out, imag_out), dim=-1))
             return out.to(torch.result_type(A, B))
         elif A_is_complex and not B_is_complex:
@@ -75,7 +84,7 @@ def mul(A, B):
 
 
 def mul_(A, B):
-    logger.debug("GEMS MUL_")
+    logger.debug("GEMS_KUNLUNXIN MUL_")
     if isinstance(B, torch.Tensor):
         return mul_func(A, B, out0=A)
     else:

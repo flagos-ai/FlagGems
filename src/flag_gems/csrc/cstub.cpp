@@ -11,10 +11,38 @@ namespace py = pybind11;
 PYBIND11_MODULE(c_operators, m) {
 #ifdef FLAGGEMS_POINTWISE_DYNAMIC
   // add
-  m.def("add_tensor", &flag_gems::add_tensor);
-  m.def("add_scalar", &flag_gems::add_scalar);
-  m.def("add_tensor_inplace", &flag_gems::add_tensor_inplace);
-  m.def("add_scalar_inplace", &flag_gems::add_scalar_inplace);
+  m.def(
+      "add_tensor",
+      [](const at::Tensor &self, const at::Tensor &other, double alpha) {
+        return flag_gems::add_tensor(self, other, alpha);
+      },
+      py::arg("self"),
+      py::arg("other"),
+      py::arg("alpha") = 1.0);
+  m.def(
+      "add_scalar",
+      [](const at::Tensor &self, const at::Scalar &other, double alpha) {
+        return flag_gems::add_scalar(self, other, alpha);
+      },
+      py::arg("self"),
+      py::arg("other"),
+      py::arg("alpha") = 1.0);
+  m.def(
+      "add_tensor_inplace",
+      [](at::Tensor &self, const at::Tensor &other, double alpha) {
+        return flag_gems::add_tensor_inplace(self, other, alpha);
+      },
+      py::arg("self"),
+      py::arg("other"),
+      py::arg("alpha") = 1.0);
+  m.def(
+      "add_scalar_inplace",
+      [](at::Tensor &self, const at::Scalar &other, double alpha) {
+        return flag_gems::add_scalar_inplace(self, other, alpha);
+      },
+      py::arg("self"),
+      py::arg("other"),
+      py::arg("alpha") = 1.0);
   // div
   m.def("div.Tensor", &flag_gems::true_div);
   m.def("div_.Tensor", &flag_gems::true_div_);
@@ -36,6 +64,11 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("fill_.Scalar", &flag_gems::fill_scalar_);
   m.def("fill_.Tensor", &flag_gems::fill_tensor_);
 #endif
+  m.def("act_quant",
+        &flag_gems::act_quant_triton,
+        py::arg("x"),
+        py::arg("block_size") = 128,
+        py::arg("scale_fmt") = py::none());
   m.def("exponential_", &flag_gems::exponential_);
   m.def("addmm", &flag_gems::addmm);
   m.def("mm", &flag_gems::mm_tensor);
@@ -59,6 +92,7 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("max", &flag_gems::max);
   m.def("max_dim_max", &flag_gems::max_dim_max);
   m.def("rms_norm", &flag_gems::rms_norm);
+  m.def("gemma_rms_norm", &flag_gems::gemma_rms_norm);
   m.def("fused_add_rms_norm", &flag_gems::fused_add_rms_norm);
   m.def("nonzero", &flag_gems::nonzero);
   m.def("rotary_embedding", &flag_gems::rotary_embedding);
@@ -91,6 +125,20 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
   m.def("copy_", &flag_gems::copy_);
   m.def("to_copy", &flag_gems::to_copy);
+  m.def("fp8_matmul",
+        &flag_gems::fp8_matmul,
+        py::arg("a"),
+        py::arg("a_s"),
+        py::arg("b"),
+        py::arg("b_s"),
+        py::arg("scale_dtype") = at::kFloat);
+  m.def("fp8_matmul_direct",
+        &flag_gems::fp8_matmul_direct,
+        py::arg("a"),
+        py::arg("a_s"),
+        py::arg("b"),
+        py::arg("b_s"),
+        py::arg("scale_dtype") = at::kFloat);
 }
 namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {
@@ -141,6 +189,7 @@ TORCH_LIBRARY(flag_gems, m) {
   // m.def("add_tensor(Tensor self, Tensor other) -> Tensor", {at::Tag::pt2_compliant_tag});
   // Norm
   m.def("rms_norm(Tensor input, Tensor weight, float epsilon) -> Tensor");
+  m.def("gemma_rms_norm(Tensor input, Tensor weight, float epsilon) -> Tensor");
   m.def("fused_add_rms_norm(Tensor! input, Tensor! residual, Tensor weight, float epsilon) -> ()");
   m.def("nonzero(Tensor self) -> Tensor");
   // rotary_embedding
@@ -218,11 +267,11 @@ TORCH_LIBRARY(flag_gems, m) {
 // NPU and MUSA use PrivateUse1 dispatch key
 #if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
 #define FLAGGEMS_DISPATCH_KEY CUDA
-#elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA)
+#elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_GCU)
 #define FLAGGEMS_DISPATCH_KEY PrivateUse1
 #else
 #error \
-    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA"
+    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, FLAGGEMS_USE_GCU"
 #endif
 
 TORCH_LIBRARY_IMPL(flag_gems, FLAGGEMS_DISPATCH_KEY, m) {
@@ -278,6 +327,7 @@ TORCH_LIBRARY_IMPL(flag_gems, FLAGGEMS_DISPATCH_KEY, m) {
   m.impl("max.dim", TORCH_FN(max_dim));
   m.impl("max", TORCH_FN(max));
   m.impl("rms_norm", TORCH_FN(rms_norm));
+  m.impl("gemma_rms_norm", TORCH_FN(gemma_rms_norm));
   m.impl("fused_add_rms_norm", TORCH_FN(fused_add_rms_norm));
   m.impl("nonzero", TORCH_FN(nonzero));
   m.impl("rotary_embedding", TORCH_FN(rotary_embedding));

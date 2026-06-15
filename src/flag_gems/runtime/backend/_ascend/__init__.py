@@ -1,4 +1,4 @@
-from backend_utils import VendorInfoBase
+from backend_utils import VendorDescriptor  # noqa: F402
 
 from .utils import CORE_NUM  # noqa: F401
 
@@ -8,7 +8,7 @@ def get_triton_extra_name():
         import triton
         from packaging import version
 
-        if version.parse(triton.__version__) <= version.parse("3.2.0"):
+        if version.parse(triton.__version__) < version.parse("3.2.0"):
             return "ascend"
         else:
             return "cann"
@@ -16,20 +16,23 @@ def get_triton_extra_name():
         return "ascend"
 
 
-vendor_info = VendorInfoBase(
+vendor_info = VendorDescriptor(
     vendor_name="ascend",
     device_name="npu",
     device_query_cmd="npu-smi info",
     dispatch_key="PrivateUse1",
     triton_extra_name=get_triton_extra_name(),
+    fp64_enabled=False,
 )
 
 CUSTOMIZED_UNUSED_OPS = (
-    "_to_copy",
+    "to_copy",
     "contiguous",
     "copy_",
+    "_to_copy",
     "sort",
     "sort_stable",
+    "topk",
 )
 
 

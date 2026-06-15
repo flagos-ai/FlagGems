@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
 
@@ -30,7 +30,7 @@ def sum_kernel_1(
     else:
         cdtype = inp.dtype.element_ty
 
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -93,7 +93,7 @@ def sum_kernel(
         cdtype = inp.dtype.element_ty
 
     # Map the program id to the row of inp it should compute.
-    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + pid * N
     out = out + pid
     row_mask = pid < M
@@ -111,7 +111,7 @@ def sum_kernel(
 
 
 def sum(inp, *, dtype=None):
-    logger.debug("GEMS SUM")
+    logger.debug("GEMS_KUNLUNXIN SUM")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -134,7 +134,7 @@ def sum(inp, *, dtype=None):
 
 
 def sum_out(inp, *, dtype=None, out):
-    logger.debug("GEMS SUM_OUT")
+    logger.debug("GEMS_KUNLUNXIN SUM_OUT")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -155,7 +155,7 @@ def sum_out(inp, *, dtype=None, out):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS SUM DIM")
+    logger.debug("GEMS_KUNLUNXIN SUM_DIM")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
@@ -163,7 +163,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
     if inp.numel() == 0:
         out_shape = list(inp.shape)
-        if dim is None:
+        if dim is None or dim == []:
             out_shape = [1] * len(out_shape) if keepdim else []
         else:
             dims = dim if isinstance(dim, (list, tuple)) else [dim]
@@ -204,7 +204,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
 
 def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
-    logger.debug("GEMS SUM_DIM_OUT")
+    logger.debug("GEMS_KUNLUNXIN SUM_DIM_OUT")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
@@ -238,9 +238,12 @@ def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
         shape[i] = 1
     M = inp.numel() // N
 
+    out.resize_(shape)
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):
         sum_kernel[grid](inp, out, M, N, buffer_size_limit=2048)
     if not keepdim:
-        out.squeeze_(dim=dim)
+        # Compute squeezed shape and resize in-place
+        out_shape = [s for i, s in enumerate(shape) if i not in dim]
+        out.resize_(out_shape)
     return out
