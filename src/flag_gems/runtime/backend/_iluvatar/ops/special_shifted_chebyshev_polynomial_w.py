@@ -13,15 +13,14 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def shifted_chebyshev_polynomial_w_kernel(x, n):
     """
-    Compute shifted Chebyshev polynomial of the fourth kind W*_n(x).
+    Compute shifted Chebyshev polynomial of the second kind W_n(x).
 
-    The shifted Chebyshev polynomial of the fourth kind is defined as:
-    W*_n(x) = U_n(2x - 1) where U_n is the Chebyshev polynomial of the second kind.
-
-    Using recurrence relation:
-    W*_0(x) = 1
-    W*_1(x) = 2x - 1
-    W*_{n+1}(x) = 2(2x - 1) * W*_n(x) - W*_{n-1}(x)
+    The shifted Chebyshev polynomial of the second kind is defined as:
+    W_n(x) = U_n(2x - 1) where U_n is the Chebyshev polynomial of the second kind.
+    Using y = 2x - 1:
+    W_0 = 1
+    W_1 = 2y + 1 = 4x - 1
+    W_n = 2y * W_{n-1} - W_{n-2}
     """
     n_int = n.to(tl.int32)
 
@@ -29,13 +28,13 @@ def shifted_chebyshev_polynomial_w_kernel(x, n):
     if n_int == 0:
         return tl.constexpr(1.0)
     elif n_int == 1:
-        return 2.0 * x - 1.0
+        return 4.0 * x - 1.0
 
     # Compute using recurrence relation
-    # W*_0(x) = 1
+    # W_0 = 1
     w_prev2 = tl.constexpr(1.0)
-    # W*_1(x) = 2x - 1
-    w_prev1 = 2.0 * x - 1.0
+    # W_1 = 4x - 1
+    w_prev1 = 4.0 * x - 1.0
 
     # Iterate from 2 to n
     # Using a loop unrolling approach for efficiency
@@ -49,13 +48,6 @@ def shifted_chebyshev_polynomial_w_kernel(x, n):
     return w_prev1
 
 
-def shifted_chebyshev_polynomial_w(x: torch.Tensor, n: torch.Tensor):
-    logger.debug("ILUVATAR GEMS SHIFTED_CHEBYSHEV_POLYNOMIAL_W")
+def special_shifted_chebyshev_polynomial_w(x: torch.Tensor, n: torch.Tensor):
+    logger.debug("ILUVATAR GEMS SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_W")
     return shifted_chebyshev_polynomial_w_kernel(x, n)
-
-
-def shifted_chebyshev_polynomial_w_out(
-    x: torch.Tensor, n: torch.Tensor, out: torch.Tensor
-):
-    logger.debug("ILUVATAR GEMS SHIFTED_CHEBYSHEV_POLYNOMIAL_W_OUT")
-    return shifted_chebyshev_polynomial_w_kernel(x, n, out)

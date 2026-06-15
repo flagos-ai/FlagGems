@@ -6,6 +6,7 @@ import flag_gems
 from . import base
 
 
+# TODO: Reference GitHub issue for multi-backend support
 @pytest.mark.skipif(
     flag_gems.vendor_name != "nvidia",
     reason="NVIDIA-only CUDA JIT kernel; not supported on other backends",

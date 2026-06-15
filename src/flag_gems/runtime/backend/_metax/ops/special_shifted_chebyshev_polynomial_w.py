@@ -15,15 +15,14 @@ logger = logging.getLogger("flag_gems." + __name__)
 )
 @triton.jit
 def shifted_chebyshev_polynomial_w(x, n):
-    """Compute shifted Chebyshev polynomial of the fourth kind W*_n(x).
+    """Compute shifted Chebyshev polynomial of the second kind W_n(x).
 
-    The shifted Chebyshev polynomial of the fourth kind is defined as:
-    W*_n(x) = U_n(2x - 1) where U_n is the Chebyshev polynomial of the second kind.
-
-    Recurrence relation:
-    W*_0(x) = 1
-    W*_1(x) = 2x + 1
-    W*_n(x) = 2(2x - 1) * W*_(n-1)(x) - W*_(n-2)(x)
+    The shifted Chebyshev polynomial of the second kind is defined as:
+    W_n(x) = U_n(2x - 1) where U_n is the Chebyshev polynomial of the second kind.
+    Using y = 2x - 1:
+    W_0 = 1
+    W_1 = 2y + 1 = 4x - 1
+    W_n = 2y * W_{n-1} - W_{n-2}
     """
     # Convert to float for computation
     x_f = x.to(tl.float32)
@@ -31,15 +30,15 @@ def shifted_chebyshev_polynomial_w(x, n):
 
     two_x_minus_1 = 2.0 * x_f - 1.0
 
-    # W*_0(x) = 1
+    # W_0 = 1
     w0 = tl.zeros_like(x_f) + 1.0
 
-    # W*_1(x) = 2x + 1
-    w1 = 2.0 * x_f + 1.0
+    # W_1 = 4x - 1
+    w1 = 4.0 * x_f - 1.0
 
-    # W*_2(x) = 2(2x-1) * W*_1(x) - W*_0(x)
-    #         = 2(2x-1)(2x+1) - 1 = 8x^2 - 3
-    w2 = 8.0 * x_f * x_f - 3.0
+    # W_2 = 2(2x-1) * W_1 - W_0
+    #     = 2(2x-1)(4x-1) - 1 = 16x^2 - 12x + 1
+    w2 = 16.0 * x_f * x_f - 12.0 * x_f + 1.0
 
     # W*_3(x) = 2(2x-1) * W*_2(x) - W*_1(x)
     w3 = 2.0 * two_x_minus_1 * w2 - w1
@@ -190,9 +189,9 @@ def shifted_chebyshev_polynomial_w(x, n):
 
 
 def special_shifted_chebyshev_polynomial_w(x: torch.Tensor, n: torch.Tensor):
-    """Shifted Chebyshev polynomial of the fourth kind.
+    """Shifted Chebyshev polynomial of the second kind.
 
-    Computes the shifted Chebyshev polynomial of the fourth kind W*_n(x).
+    Computes the shifted Chebyshev polynomial of the second kind W_n(x).
 
     Args:
         x: Input tensor
@@ -201,5 +200,5 @@ def special_shifted_chebyshev_polynomial_w(x: torch.Tensor, n: torch.Tensor):
     Returns:
         Tensor with the computed polynomial values
     """
-    logger.debug("METAX GEMS SHIFTED_CHEBYSHEV_POLYNOMIAL_W")
+    logger.debug("METAX GEMS SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_W")
     return shifted_chebyshev_polynomial_w(x, n)
