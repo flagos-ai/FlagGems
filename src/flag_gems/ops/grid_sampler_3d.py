@@ -432,6 +432,7 @@ def grid_sampler_3d(
     padding_mode=0,
     align_corners=False,
 ):
+    """Grid sampler 3D with trilinear or nearest interpolation."""
     logger.debug("GEMS GRID_SAMPLER_3D")
 
     N, C, in_d, in_h, in_w = input.shape
