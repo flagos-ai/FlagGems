@@ -2,19 +2,20 @@
 import pytest
 import torch
 
-from . import base
+import flag_gems
+
+from . import base, consts
 
 
 # torch.special.bessel_j1 on CUDA dispatches to bessel_j1_cuda which only supports
-# float32/double. The Triton kernel handles all float dtypes (tested in test), but
-# we benchmark fp32 only because the CUDA reference can't run Half/BFloat16 on GPU.
-# On non-NVIDIA backends the reference may support more dtypes — this restriction
-# is NVIDIA-specific and should be relaxed per-backend when the framework allows.
+# float32/double, so we benchmark fp32 only on CUDA. On non-NVIDIA backends the
+# reference may support more dtypes, so we use FLOAT_DTYPES.
 @pytest.mark.special_bessel_j1
 def test_special_bessel_j1():
+    dtypes = consts.FLOAT_DTYPES if flag_gems.device != "cuda" else [torch.float32]
     bench = base.UnaryPointwiseBenchmark(
         op_name="special_bessel_j1",
         torch_op=torch.special.bessel_j1,
-        dtypes=[torch.float32],
+        dtypes=dtypes,
     )
     bench.run()
