@@ -1,3 +1,4 @@
+from flag_gems.ops.__ixor__ import __ixor__, __ixor___scalar
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -443,6 +444,8 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "__ixor__",
+    "__ixor___scalar",
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "_assert_async",
