@@ -59,6 +59,19 @@ ops:
       - Quantization
     stages:
       - beta: '5.3'
+  - id: adaptive_avg_pool2d
+    description: |
+      Apply a 2D adaptive average pooling over an input signal composed of several input planes.
+    for:
+      - _adaptive_avg_pool2d
+    labels:
+      - aten
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.3'
   - id: adaptive_avg_pool3d
     description: |
       Apply a 3D adaptive average pooling over an input signal composed of several input planes.
@@ -864,6 +877,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: ilshift__
+    description: Computes the in-place bitwise left shift of `self` by `other` bits.
+    for:
+      - __ilshift__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: bitwise_left_shift
     description: Computes the left arithmetic shift of `input` by `other` bits.
     for:
