@@ -1,30 +1,28 @@
-import pytest
 import torch
 
 from . import base, consts
 
 
-# Helper function for broadcast_to benchmark
-def _broadcast_to_op(x):
-    # Broadcast to a larger but reasonable shape
-    # For small 2D shapes (both dims <= 16), do 2x expansion
-    # Otherwise, return as-is (no-op)
-    if x.ndim == 2 and x.shape[0] <= 16 and x.shape[1] <= 16:
-        shape = (x.shape[0] * 2, x.shape[1] * 2)
-        return torch.broadcast_to(x, shape)
-    elif x.ndim == 1 and x.shape[0] <= 64:
-        # Broadcast 1D small shape to 2D
-        return torch.broadcast_to(x, (2, x.shape[0]))
-    else:
-        # No-op for large shapes
-        return x
+class BroadcastToBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            ((1024,), (1, 1024)),          # 1D -> 2D broadcast (add leading dim)
+            ((64, 1), (64, 4096)),         # 2D -> 2D broadcast (expand dim 1)
+            ((1, 64), (4096, 64)),         # 2D -> 2D broadcast (expand dim 0)
+            ((1, 1, 1), (64, 512, 512)),   # 3D -> 3D broadcast (expand all dims)
+        ]
+        self.shape_desc = "src_shape -> target_shape"
+
+    def get_input_iter(self, dtype):
+        for src_shape, target_shape in self.shapes:
+            x = base.generate_tensor_input(src_shape, dtype, self.device)
+            yield (x, target_shape)
 
 
-@pytest.mark.broadcast_to
 def test_broadcast_to():
-    bench = base.UnaryPointwiseBenchmark(
+    benchmark = BroadcastToBenchmark(
         op_name="broadcast_to",
-        torch_op=_broadcast_to_op,
+        torch_op=torch.broadcast_to,
         dtypes=consts.FLOAT_DTYPES,
     )
-    bench.run()
+    benchmark.run()
