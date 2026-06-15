@@ -1136,6 +1136,15 @@ conj_physical:
       BLOCK_SIZE: 2048
     num_warps: 8
 
+unbind_copy:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: block_size
+      num_warps: warps
+    block_size: [1024, 2048, 4096]
+    warps: [4, 8]
+
 upsample_nearest1d:
   - gen: true
     param_map:

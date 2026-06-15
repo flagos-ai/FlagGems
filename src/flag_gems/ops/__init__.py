@@ -407,6 +407,7 @@ from flag_gems.ops.trace import trace
 from flag_gems.ops.tril import tril, tril_, tril_out
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.trunc_ import trunc, trunc_
+from flag_gems.ops.unbind_copy import unbind_copy
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.unfold_copy import unfold_copy
 from flag_gems.ops.uniform import uniform_
@@ -964,6 +965,7 @@ __all__ = [
     "true_divide_out",
     "trunc",
     "trunc_",
+    "unbind_copy",
     "unfold_backward",
     "unfold_copy",
     "uniform_",
