@@ -1,7 +1,7 @@
 import importlib.util
 from typing import Any
 
-from backend_utils import VendorInfoBase  # noqa: E402
+from backend_utils import VendorDescriptor  # noqa: E402
 
 if importlib.util.find_spec("triton.backends.spine_triton") is not None:
     from .utils.config_pre_hook import setup_triton_config
@@ -13,9 +13,14 @@ if importlib.util.find_spec("triton.backends.spine_triton") is not None:
 
     triton.runtime.driver.set_active(CPUDriver())  # noqa: E402
 
-# TODO: Fix import error on other devices
-vendor_info = VendorInfoBase(
-    vendor_name="spacemit", device_name="cpu", device_query_cmd=""
+
+vendor_info = VendorDescriptor(
+    vendor_name="spacemit",
+    device_name="cpu",
+    device_query_cmd="spacemit-tcm-smi",
+    fp64_enabled=False,
+    bf16_enabled=False,
+    int64_enabled=False,
 )
 
 
