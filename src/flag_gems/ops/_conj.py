@@ -51,9 +51,8 @@ def _conj_kernel(in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 def _conj(input: torch.Tensor) -> torch.Tensor:
     logger.debug("GEMS _CONJ")
-    # For non-complex tensors, _conj returns the tensor as-is
     if not input.is_complex():
-        return input
+        raise RuntimeError("_conj only supports complex tensors")
 
     n_elements = input.numel()
     # Ensure contiguous memory layout for efficient loading
