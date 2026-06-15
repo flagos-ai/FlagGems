@@ -6656,6 +6656,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_bessel_y1
+    description: |
+      Computes the Bessel function of the second kind of order 1 (Y_1(x)) for each element
+      in the input tensor.
+    for:
+      - special.bessel_y1
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - UnaryPointwise
+    stages:
+      - alpha: '5.4'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,

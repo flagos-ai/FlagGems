@@ -8,6 +8,7 @@ from . import accuracy_utils as utils
 
 @pytest.mark.special_bessel_y1
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+# special.bessel_y1 only supports float32/float64; float16/bf16 raise RuntimeError
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_special_bessel_y1(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
