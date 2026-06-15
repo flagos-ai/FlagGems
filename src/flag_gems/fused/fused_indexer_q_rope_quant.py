@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import torch
-
 import triton
 import triton.language as tl
 
@@ -290,10 +289,7 @@ def fused_indexer_q_rope_quant(
     index_weights_softmax_scale: float,
     index_weights_head_scale: float,
     use_fp4: bool = False,
-) -> tuple[
-    torch.Tensor | tuple[torch.Tensor, torch.Tensor],
-    torch.Tensor,
-]:
+) -> tuple[torch.Tensor | tuple[torch.Tensor, torch.Tensor], torch.Tensor,]:
     """Fused RoPE + quantize Q for the sparse indexer.
 
     Weight-fold semantics (important — the two paths differ):
