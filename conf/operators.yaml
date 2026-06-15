@@ -2879,10 +2879,10 @@ ops:
       - Math
     stages:
       - stable: '5.3'
-  - id: greater_equal_
-    description: The in-place version of `greater_equal()`.
+  - id: greater_equal
+    description: Computes `input >= other` element-wise.
     for:
-      - greater_equal_.Tensor
+      - greater_equal.Tensor
     labels:
       - aten
       - pointwise
@@ -2891,10 +2891,10 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: greater_equal
-    description: Computes `input >= other` element-wise.
+  - id: greater_equal_
+    description: The in-place version of `greater_equal()`.
     for:
-      - greater_equal.Tensor
+      - greater_equal_.Tensor
     labels:
       - aten
       - pointwise
