@@ -11,6 +11,7 @@ from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
+from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
 from flag_gems.ops.addcmul import addcmul, addcmul_out
@@ -466,6 +467,7 @@ __all__ = [
     "abs_",
     "absolute",
     "acos",
+    "adaptive_avg_pool2d",
     "add",
     "add_",
     "addcdiv",
