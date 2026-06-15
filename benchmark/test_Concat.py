@@ -52,7 +52,7 @@ class ConcatBenchmark(base.Benchmark):
 def test_Concat():
     bench = ConcatBenchmark(
         input_fn=_input_fn,
-        op_name="Concat",
+        op_name="concat",
         torch_op=torch.cat,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
     )

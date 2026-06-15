@@ -1270,10 +1270,10 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
-  - id: Concat
+  - id: concat
     description: An alias of `cat()`.
     for:
-      - Concat
+      - concat
     labels:
       - aten
       - KernelGen

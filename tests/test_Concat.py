@@ -41,7 +41,7 @@ def gen_cat_shapes_dim(shapes):
     return results
 
 
-@pytest.mark.Concat
+@pytest.mark.concat
 @pytest.mark.parametrize("shape, dim", gen_cat_shapes_dim(CAT_SHAPES))
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES)
 def test_Concat(shape, dim, dtype):
