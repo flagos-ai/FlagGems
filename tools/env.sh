@@ -6,9 +6,13 @@ case $VENDOR in
     # This script is provided by the Huawei Ascend CANN toolkit installation.
     if [ -f /usr/local/Ascend/ascend-toolkit/set_env.sh ]; then
       source /usr/local/Ascend/ascend-toolkit/set_env.sh
-      # TODO: Check if this is necessary
-      # export TRITON_ALL_BLOCKS_PARALLEL=1
     fi
+    if [ -f /usr/local/Ascend/toolbox/set_env.sh ]; then
+      source /usr/local/Ascend/toolbox/set_env.sh
+    fi
+
+    # TODO: Check if this is necessary
+    # export TRITON_ALL_BLOCKS_PARALLEL=1
     ;;
   hygon)
     source /opt/dtk-26.04/env.sh
