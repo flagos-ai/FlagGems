@@ -4933,6 +4933,17 @@ ops:
     stages:
       - alpha: '4.2'
       - beta: '5.3'
+  - id: permute_copy
+    description: Creates and returns a copy of x with permuted dimensions.
+    for:
+      - permute_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: pixel_shuffle
     description: Rearranges elements in a tensor to a new tensor of different shape.
     for:
