@@ -1,27 +1,28 @@
-import math
-
 import pytest
 import torch
 
 from . import base
 
+# Range is a non-pointwise op -- we override set_shapes instead of using
+# GenericBenchmark which assumes pointwise tensor inputs.
+RANGE_SIZES = [4096, 16777216, 1073741824]
 
-def _input_fn(shape, dtype, device):
-    yield {
-        "start": 0,
-        "end": math.prod(shape),
-        "dtype": dtype,
-        "device": device,
-    },
+
+class RangeBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = RANGE_SIZES
+
+    def get_input_iter(self, cur_dtype):
+        for end in self.shapes:
+            yield {"start": 0, "end": end, "dtype": cur_dtype},
 
 
 @pytest.mark.range
 def test_range():
     # torch.range does not support bfloat16 on CUDA
     dtypes = [torch.float16, torch.float32]
-    bench = base.GenericBenchmark(
+    bench = RangeBenchmark(
         op_name="range",
-        input_fn=_input_fn,
         torch_op=torch.range,
         dtypes=dtypes,
     )
