@@ -239,16 +239,74 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     else:
         stride_depth = stride_height = stride_width = stride
 
-    if isinstance(padding, (list, tuple)):
-        padding_depth, padding_height, padding_width = padding
-    else:
-        padding_depth = padding_height = padding_width = padding
-
     if isinstance(dilation, (list, tuple)):
         dilation_depth, dilation_height, dilation_width = dilation
     else:
         dilation_depth = dilation_height = dilation_width = dilation
+    if isinstance(padding, str):
+        if padding.lower() == "valid":
+            padding_depth = 0
+            padding_height = 0
+            padding_width = 0
 
+        elif padding.lower() == "same":
+            _, _, weight_depth, weight_height, weight_width = weight.shape
+
+            def calc_same_pad(kernel_size, dilation):
+                effective_kernel = (kernel_size - 1) * dilation + 1
+
+                total_padding = effective_kernel - 1
+
+                pad_before = total_padding // 2
+                pad_after = total_padding - pad_before
+
+                return pad_before, pad_after
+
+            pd0, pd1 = calc_same_pad(
+                weight_depth,
+                dilation_depth,
+            )
+
+            ph0, ph1 = calc_same_pad(
+                weight_height,
+                dilation_height,
+            )
+
+            pw0, pw1 = calc_same_pad(
+                weight_width,
+                dilation_width,
+            )
+
+            print(
+                "[DEBUG][same padding]",
+                f"depth=({pd0},{pd1})",
+                f"height=({ph0},{ph1})",
+                f"width=({pw0},{pw1})",
+            )
+
+            input = torch.nn.functional.pad(
+                input,
+                (
+                    pw0,
+                    pw1,
+                    ph0,
+                    ph1,
+                    pd0,
+                    pd1,
+                ),
+            )
+
+            padding_depth = 0
+            padding_height = 0
+            padding_width = 0
+        else:
+            raise ValueError(f"Unsupported padding mode: {padding}")
+
+    elif isinstance(padding, (list, tuple)):
+        padding_depth, padding_height, padding_width = padding
+
+    else:
+        padding_depth = padding_height = padding_width = padding
     in_n, _, input_depth, input_height, input_width = input.shape
     out_c, weight_c, weight_depth, weight_height, weight_width = weight.shape
     out_depth = conv3d_output_size(
