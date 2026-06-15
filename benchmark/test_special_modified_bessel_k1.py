@@ -8,7 +8,7 @@ from . import base
 
 @pytest.mark.skipif(
     flag_gems.vendor_name != "nvidia",
-    reason="IXRTC cannot compile PyTorch native CUDA reference on non-NVIDIA backends",
+    reason="IXRTC cannot compile PyTorch native CUDA reference on non-NVIDIA backends (#4077)",
 )
 @pytest.mark.special_modified_bessel_k1
 def test_special_modified_bessel_k1():
