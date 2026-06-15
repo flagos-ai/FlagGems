@@ -6300,7 +6300,7 @@ ops:
       - beta: '5.0'
       - stable: '5.3'
   - id: special_modified_bessel_k1
-    description: Triton kernel implementation for special_modified_bessel_k1.
+    description: Modified Bessel function of the second kind of order 1.
     for:
       - special.modified_bessel_k1
     labels:
