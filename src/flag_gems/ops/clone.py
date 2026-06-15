@@ -44,10 +44,10 @@ def clone(inp: torch.Tensor, memory_format: Optional[torch.memory_format] = None
         memory_format: The desired memory format of the returned tensor.
             Default is torch.preserve_format.
     """
+    logger.debug("GEMS CLONE")
+
     if memory_format is None:
         memory_format = torch.preserve_format
-
-    logger.debug("GEMS CLONE")
 
     n_elements = inp.numel()
     if n_elements == 0:
