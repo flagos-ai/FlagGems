@@ -281,6 +281,7 @@ from flag_gems.ops.normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from flag_gems.ops.not_equal import not_equal, not_equal_scalar
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
@@ -315,6 +316,7 @@ from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
+from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
 from flag_gems.ops.remainder import remainder, remainder_
@@ -800,6 +802,8 @@ __all__ = [
     "nonzero",
     "nonzero_numpy",
     "normal_",
+    "not_equal",
+    "not_equal_scalar",
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
@@ -839,6 +843,7 @@ __all__ = [
     "reflection_pad1d_out",
     "reflection_pad2d",
     "reflection_pad2d_out",
+    "reflection_pad3d_backward",
     "relu",
     "relu6",
     "relu_",

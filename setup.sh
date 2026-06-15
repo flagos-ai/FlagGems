@@ -133,16 +133,23 @@ fi
 
 # export USE_TRITON=0
 
-## Vendor-specific installation steps
+#---- Vendor-specific installation steps -------------
 source tools/env.sh ${VENDOR}
-# source tools/vendor.sh ${VENDOR}
+
 if [ "$VENDOR" = "ascend-cann9" ]; then
-    uv pip install triton==3.5.0
-    uv pip install triton-ascend==3.2.1 --index ${FLAGOS_PYPI}
+  uv pip install triton==3.5.0
+  uv pip install "triton-ascend==3.2.1" --index ${FLAGOS_PYPI}
 fi
 
 uv pip install ".[${VENDOR}]" --default-index ${FLAGOS_PYPI} \
     --index https://mirrors.aliyun.com/pypi/simple \
+
+# Kunlunxin needs an override of the default Triton installed (3.5.0)
+if [ "$VENDOR" = "kunlunxin" ]; then
+  uv pip install "triton==3.0.0+a48aedef" --index ${FLAGOS_PYPI}
+  # Kunlunxin triton drags in a buggy pytest plugin which has to be uninstalled
+  uv pip uninstall pytest-repeat
+fi
 
 uv pip install ".[test]"
 
