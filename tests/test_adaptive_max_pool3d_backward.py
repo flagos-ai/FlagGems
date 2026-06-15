@@ -7,6 +7,7 @@ from . import accuracy_utils as utils
 
 ADAPTIVE_MAX_POOL3D_OUTPUT_SIZES = [
     (1, 1, 1),
+    (3, 3, 3),
     (4, 4, 4),
     (8, 8, 8),
 ]
@@ -18,6 +19,9 @@ ADAPTIVE_MAX_POOL3D_SHAPES = [
     (2, 3, 16, 16, 16),
     (1, 1, 32, 32, 32),
     (2, 8, 8, 8, 8),
+    # Non-evenly-divisible shapes to catch race conditions in backward pass.
+    (1, 1, 7, 7, 7),
+    (1, 1, 10, 10, 10),
 ]
 
 
@@ -26,6 +30,11 @@ ADAPTIVE_MAX_POOL3D_SHAPES = [
 @pytest.mark.parametrize("output_size", ADAPTIVE_MAX_POOL3D_OUTPUT_SIZES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_adaptive_max_pool3d_backward(shape, output_size, dtype):
+    # Skip invalid combinations where output_size exceeds input spatial dims.
+    input_spatial = shape[2:]
+    if any(out > inp for out, inp in zip(output_size, input_spatial)):
+        pytest.skip("output size larger than input spatial dims")
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 

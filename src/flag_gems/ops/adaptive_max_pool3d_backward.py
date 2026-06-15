@@ -107,8 +107,11 @@ def adaptive_max_pool3d_backward_kernel(
         + w_in
     )
 
-    # Store gradient at the corresponding input position
-    tl.store(grad_input_ptr + in_offset, grad_val, mask=mask)
+    # Atomically accumulate gradient at the corresponding input position.
+    # Atomic add is required because multiple output positions within the
+    # adaptive pooling window can map to the same input position when input
+    # spatial dims are not evenly divisible by the output size.
+    tl.atomic_add(grad_input_ptr + in_offset, grad_val, mask=mask)
 
 
 def adaptive_max_pool3d_backward(
