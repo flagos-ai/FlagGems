@@ -75,6 +75,7 @@ from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.cdist_backward import _cdist_backward
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
+from flag_gems.ops.channel_shuffle import channel_shuffle
 from flag_gems.ops.clamp import (
     clamp,
     clamp_,
@@ -537,6 +538,7 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "channel_shuffle",
     "clamp",
     "clamp_",
     "clamp_max",
