@@ -100,6 +100,12 @@ def test_act_quant_triton(
         x, block_size=block_size, scale_fmt=scale_fmt
     )
 
+    if utils.TO_CPU:
+        ref_y = ref_y.to("cpu")
+        ref_s = ref_s.to("cpu")
+        res_y = res_y.to("cpu")
+        res_s = res_s.to("cpu")
+
     utils.gems_assert_close(
         ref_y.float(), res_y.float(), dtype=torch.float32, atol=1e-2
     )
