@@ -37,7 +37,7 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
-    "_unsafe_masked_index_put_accumulate": OpsConfigFile(os.path.join(cur_dir, "ops", "_unsafe_masked_index_put_accumulate.py")),
+    ("_unsafe_masked_index_put_accumulate", _unsafe_masked_index_put_accumulate),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__or__.Scalar", bitwise_or_scalar),
