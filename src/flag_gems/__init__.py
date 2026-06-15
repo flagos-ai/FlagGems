@@ -93,6 +93,7 @@ _FULL_CONFIG = (
     ("addmm.dtype", addmm_dtype),
     ("addmm.dtype_out", addmm_dtype_out),
     ("addmm.out", addmm_out),
+    ("addmm_", addmm_),
     ("addmv", addmv),
     ("addmv.out", addmv_out),
     ("addr", addr),
