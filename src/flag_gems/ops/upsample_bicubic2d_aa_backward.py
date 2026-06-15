@@ -439,7 +439,9 @@ def _gemm_backward_path(
     return out.reshape(N, C, H_in, W_in).to(grad_output.dtype)
 
 
-def _should_use_gemm_path(device_type, NC, H_in, W_in, H_out, W_out):
+def _should_use_gemm_path(device_type, NC, H_in, W_in, H_out, W_out, align_corners):
+    if align_corners and (H_out == 1 or W_out == 1):
+        return False
     if device_type == "npu":
         return True
     if device_type == "cuda":
@@ -499,7 +501,9 @@ def _upsample_bicubic2d_aa_backward(
     if NC == 0 or H_in == 0 or W_in == 0 or H_out == 0 or W_out == 0:
         return grad_output.new_zeros(input_size)
 
-    if _should_use_gemm_path(grad_output.device.type, NC, H_in, W_in, H_out, W_out):
+    if _should_use_gemm_path(
+        grad_output.device.type, NC, H_in, W_in, H_out, W_out, align_corners
+    ):
         return _gemm_backward_path(
             grad_output,
             output_size,
