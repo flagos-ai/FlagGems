@@ -118,6 +118,40 @@ See `config.yaml.example` for all available options.
 | `device.lock_dir` | /tmp/auto_fix_gpu_locks | Lock file directory for GPU allocation |
 | `device.gpu_ids` | null (auto-detect) | GPUs to use, e.g. `[0, 1, 2, 3]` |
 
+## Fetch Issues
+
+Query the internal issue tracking system to fetch assigned issues and test results.
+
+```bash
+# Show open issues assigned to you
+bash fetch_issues.sh
+
+# Show statistics summary
+bash fetch_issues.sh --stats
+
+# Show all open issues (no assignee filter)
+bash fetch_issues.sh --all
+
+# Show in_progress issues
+bash fetch_issues.sh --status in_progress
+
+# JSON output
+bash fetch_issues.sh --format json
+```
+
+### fetch_test_results.sh
+
+```bash
+# Fetch test context for a specific issue
+bash fetch_test_results.sh --issue-id 418
+
+# Fetch all results for a test run
+bash fetch_test_results.sh --test-run-id 40
+
+# Show only failed operators
+bash fetch_test_results.sh --test-run-id 40 --failed-only
+```
+
 ## Dependencies
 
 - Python 3.10+
