@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 def lgamma(x):
     pass
 
+
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def igammac_func(a, x):
