@@ -15,6 +15,7 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .baddbmm import baddbmm
+from .bernoulli import bernoulli, bernoulli_p
 from .bmm import bmm
 from .cat import cat, cat_out
 from .count_nonzero import count_nonzero
@@ -103,6 +104,8 @@ __all__ = [
     "argmax",
     "argmin",
     "baddbmm",
+    "bernoulli",
+    "bernoulli_p",
     "bmm",
     "cat",
     "cat_out",
