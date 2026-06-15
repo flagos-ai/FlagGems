@@ -9,6 +9,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+device = flag_gems.device
+
 
 def replace_zeros(inp):
     return torch.where(inp == 0, 1, inp)
@@ -25,14 +27,14 @@ def replace_zeros(inp):
 )
 def test_floor_divide_mixed(dtype1, dtype2):
     if dtype1.is_floating_point:
-        x = torch.randn(128, device="cuda", dtype=dtype1)
+        x = torch.randn(128, device=device, dtype=dtype1)
     else:
-        x = torch.randint(-10, 10, (128,), device="cuda", dtype=dtype1)
+        x = torch.randint(-10, 10, (128,), device=device, dtype=dtype1)
 
     if dtype2.is_floating_point:
-        y = torch.randn(128, device="cuda", dtype=dtype2) + 0.1
+        y = torch.randn(128, device=device, dtype=dtype2) + 0.1
     else:
-        y = torch.randint(1, 10, (128,), device="cuda", dtype=dtype2)
+        y = torch.randint(1, 10, (128,), device=device, dtype=dtype2)
 
     # reference
     ref = torch.div(x, y, rounding_mode="floor")
@@ -55,16 +57,16 @@ def test_floor_divide_mixed(dtype1, dtype2):
 def test_floor_divide_scalar_tensor(x_dtype, y_dtype):
     def make_tensor(shape, dtype):
         if dtype.is_floating_point:
-            return torch.randn(shape, device="cuda", dtype=dtype)
+            return torch.randn(shape, device=device, dtype=dtype)
         else:
-            return torch.randint(1, 10, (shape,), device="cuda", dtype=dtype)
+            return torch.randint(1, 10, (shape,), device=device, dtype=dtype)
 
     y = make_tensor(128, y_dtype)
 
     if x_dtype.is_floating_point:
-        x = torch.randn(1, device="cuda", dtype=x_dtype).squeeze(0)
+        x = torch.randn(1, device=device, dtype=x_dtype).squeeze(0)
     else:
-        x = torch.randint(1, 10, (), device="cuda", dtype=x_dtype).item()
+        x = torch.randint(1, 10, (), device=device, dtype=x_dtype).item()
 
     ref = torch.div(x, y, rounding_mode="floor")
 
@@ -142,13 +144,13 @@ def test_floor_divide_int(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
     for d in inp2.flatten()[:2]:
-        ref_d = utils.to_reference(d, False)
-        ref_out = ref_inp1 // ref_d
+        d = d.item()
+        ref_out = ref_inp1 // d
         with flag_gems.use_gems():
             res_out = inp1 // d
         utils.gems_assert_equal(res_out, ref_out)
 
-        ref_out = ref_d // ref_inp1
+        ref_out = d // ref_inp1
         with flag_gems.use_gems():
             res_out = d // inp1
         utils.gems_assert_equal(res_out, ref_out)
@@ -188,8 +190,8 @@ def test_floor_divide_int_(shape, dtype):
 
     ref_inp1 = utils.to_reference(inp1.clone(), False)
     for d in inp2.flatten()[:2]:
-        ref_d = utils.to_reference(d, False)
-        ref_out = ref_inp1.floor_divide_(ref_d)
+        d = d.item()
+        ref_out = ref_inp1.floor_divide_(d)
         with flag_gems.use_gems():
             res_out = inp1.floor_divide_(d)
         utils.gems_assert_equal(res_out, ref_out)
@@ -213,3 +215,35 @@ def test_floor_divide_scalar_scalar(dtype):
         utils.gems_assert_equal(res_out, ref_out)
     else:
         utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.floor_divide_scalar_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_floor_divide_scalar_inplace_float(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    scalar = 2.5
+    ref_inp = utils.to_reference(inp.clone(), False)
+
+    ref_out = ref_inp.floor_divide_(scalar)
+    with flag_gems.use_gems():
+        res_out = inp.floor_divide_(scalar)
+
+    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+
+@pytest.mark.floor_divide_scalar_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_floor_divide_scalar_inplace_int(shape, dtype):
+    inp = torch.randint(
+        torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
+    ).to(flag_gems.device)
+    scalar = 3
+    ref_inp = utils.to_reference(inp.clone(), False)
+
+    ref_out = ref_inp.floor_divide_(scalar)
+    with flag_gems.use_gems():
+        res_out = inp.floor_divide_(scalar)
+
+    utils.gems_assert_equal(res_out, ref_out)

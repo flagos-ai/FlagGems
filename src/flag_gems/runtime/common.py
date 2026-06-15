@@ -1,4 +1,3 @@
-import os
 from enum import Enum
 
 
@@ -16,7 +15,9 @@ class vendors(Enum):
     TSINGMICRO = 10
     SUNRISE = 11
     ENFLAME = 12
-    THEAD = 13
+    SPACEMIT = 13
+    THEAD = 14
+    ARM = 15
 
     @classmethod
     def get_all_vendors(cls) -> dict:
@@ -24,47 +25,6 @@ class vendors(Enum):
         for member in cls:
             vendorDict[member.name.lower()] = member
         return vendorDict
-
-
-UNSUPPORT_FP64 = frozenset(
-    {
-        vendors.AIPU,
-        vendors.ASCEND,
-        vendors.CAMBRICON,
-        vendors.ENFLAME,
-        vendors.ILUVATAR,
-        vendors.KUNLUNXIN,
-        vendors.MTHREADS,
-        vendors.SUNRISE,
-        vendors.TSINGMICRO,
-    }
-)
-
-UNSUPPORT_BF16 = frozenset(
-    {
-        vendors.AIPU,
-        vendors.SUNRISE,
-    }
-)
-
-UNSUPPORT_INT64 = frozenset(
-    {
-        vendors.AIPU,
-        vendors.ENFLAME,
-        vendors.SUNRISE,
-        vendors.TSINGMICRO,
-    }
-)
-
-DEFAULT_EXPAND_CONFIG_PATH = os.path.normpath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "utils",
-        "configs",
-        "general_ops_expand_configs.yaml",
-    )
-)
 
 
 DEFAULT_STRATEGIES = {
@@ -107,6 +67,7 @@ DEFAULT_STRATEGIES = {
         "align32",
         "default",
     ],
+    "mm_splitk": ["align32", "align32", "align32", "align32", "align32"],
 }
 
 OP_KEY_ORDERS = {
@@ -123,6 +84,7 @@ OP_KEY_ORDERS = {
     "w8a8_block_fp8_general": ["M", "N", "K", "stride_am", "stride_bk"],
     "w8a8_block_fp8_general_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
     "w8a8_block_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    "mm_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
 }
 
 
@@ -139,9 +101,6 @@ _VENDOR_TORCH_ATTR = {
 
 __all__ = [
     "vendors",
-    "UNSUPPORT_FP64",
-    "UNSUPPORT_BF16",
-    "UNSUPPORT_INT64",
     "DEFAULT_STRATEGIES",
     "OP_KEY_ORDERS",
     "_VENDOR_TORCH_ATTR",

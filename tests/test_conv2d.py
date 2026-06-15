@@ -4,40 +4,56 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
 
 vendor_name = flag_gems.vendor_name
-SHAPE_CONV2D = [
-    ((1, 2, 5, 5), (1, 2, 3, 3), 1),
-    ((2, 3, 9, 9), (1, 3, 3, 3), 1),
-    ((32, 8, 8, 8), (32, 8, 2, 2), 1),
-    # ((2, 2, 3, 3), (1, 2, 2, 2), 1),
-    # ((18, 16, 4, 4), (16, 16, 2, 2), 1),
-    # ((9, 16, 4, 4), (128, 4, 2, 2), 4),
-    # ((32, 16, 8, 8), (32, 4, 4, 4), 4),
-    # ((18, 16, 4, 4), (16, 8, 2, 2), 2),
-    # ((9, 16, 4, 4), (128, 8, 2, 2), 2),
-    # ((32, 8, 8, 8), (32, 8, 3, 3), 1),
-    # ((18, 16, 5, 5), (16, 16, 3, 3), 1),
-    # ((9, 16, 7, 7), (128, 4, 3, 3), 4),
-    # ((32, 16, 9, 9), (32, 4, 5, 5), 4),
-    # ((18, 16, 11, 11), (16, 8, 3, 3), 2),
-    # ((9, 16, 6, 6), (128, 8, 3, 3), 2),
-]
+
+if QUICK_MODE:
+    SHAPE_CONV2D = [
+        ((1, 2, 5, 5), (1, 2, 3, 3), 1),
+    ]
+    FLOAT_DTYPES = [torch.float32]
+    STRIDES = [1]
+    PADDINGS = [1]
+    DILATIONS = [1]
+    BIASES = [True]
+    STR_PADDINGS = ["same"]
+else:
+    SHAPE_CONV2D = [
+        ((1, 2, 5, 5), (1, 2, 3, 3), 1),
+        ((2, 3, 9, 9), (1, 3, 3, 3), 1),
+        ((32, 8, 8, 8), (32, 8, 2, 2), 1),
+        # ((2, 2, 3, 3), (1, 2, 2, 2), 1),
+        # ((18, 16, 4, 4), (16, 16, 2, 2), 1),
+        # ((9, 16, 4, 4), (128, 4, 2, 2), 4),
+        # ((32, 16, 8, 8), (32, 4, 4, 4), 4),
+        # ((18, 16, 4, 4), (16, 8, 2, 2), 2),
+        # ((9, 16, 4, 4), (128, 8, 2, 2), 2),
+        # ((32, 8, 8, 8), (32, 8, 3, 3), 1),
+        # ((18, 16, 5, 5), (16, 16, 3, 3), 1),
+        # ((9, 16, 7, 7), (128, 4, 3, 3), 4),
+        # ((32, 16, 9, 9), (32, 4, 5, 5), 4),
+        # ((18, 16, 11, 11), (16, 8, 3, 3), 2),
+        # ((9, 16, 6, 6), (128, 8, 3, 3), 2),
+    ]
+    FLOAT_DTYPES = [torch.float16, torch.float32]
+    STRIDES = [1, 2]
+    PADDINGS = [0, 1]
+    DILATIONS = [1, 2]
+    BIASES = [True, False]
+    STR_PADDINGS = ["valid", "same"]
 
 
 @pytest.mark.conv2d
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
-@pytest.mark.parametrize("stride", [1, 2])
-@pytest.mark.parametrize("padding", [0, 1])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-@pytest.mark.parametrize("dilation", [1, 2])
-@pytest.mark.parametrize("bias", [True, False])
+@pytest.mark.parametrize("stride", STRIDES)
+@pytest.mark.parametrize("padding", PADDINGS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dilation", DILATIONS)
+@pytest.mark.parametrize("bias", BIASES)
 def test_conv2d(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
-    if vendor_name == "mthreads" and dtype == torch.float16:
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     # Issue 2801: The environment variable is not enforced in operator logic.
     if vendor_name == "hygon":
         monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
@@ -114,16 +130,13 @@ def test_conv2d(
 )
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1])
-@pytest.mark.parametrize("padding", ["valid", "same"])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-@pytest.mark.parametrize("dilation", [1, 2])
-@pytest.mark.parametrize("bias", [True, False])
+@pytest.mark.parametrize("padding", STR_PADDINGS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dilation", DILATIONS)
+@pytest.mark.parametrize("bias", BIASES)
 def test_conv2d_padding(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False

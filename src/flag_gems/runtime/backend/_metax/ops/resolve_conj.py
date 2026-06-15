@@ -8,5 +8,5 @@ logger = logging.getLogger("flag_gems." + __name__)
 
 
 def resolve_conj(A: torch.Tensor):
-    logger.debug("METAX GEMS RESOLVE_CONJ")
+    logger.debug("GEMS_METAX RESOLVE_CONJ")
     return torch.complex(A.real, neg_func(A.imag)) if A.is_conj() else A

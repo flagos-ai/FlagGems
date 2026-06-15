@@ -2,12 +2,16 @@
 
 SUPPORTED_VENDORS=(
   "ascend"
+  "ascend-cann9"
+  "enflame"
   "hygon"
   "iluvatar"
   "kunlunxin"
   "metax"
   "mthreads"
   "nvidia"
+  "spacemit"
+  "sunrise"
   "thead"
   "tsingmicro"
 )
@@ -15,12 +19,17 @@ SUPPORTED_VENDORS=(
 # TODO: Add thead PPU
 declare -A PYTHON_SUPPORTED=(
   ["ascend"]="3.11"
+  ["ascend-cann9"]="3.11"
+  ["enflame"]="3.12"
   ["hygon"]="3.10"
   ["iluvatar"]="3.10"
   ["kunlunxin"]="3.10"
   ["metax"]="3.12"
   ["mthreads"]="3.10"
   ["nvidia"]="3.12"
+  ["spacemit"]="3.12"
+  ["sunrise"]="3.10"
+  ["thead"]="3.12"
   ["tsingmicro"]="3.10"
 )
 
@@ -57,10 +66,12 @@ if [ "$?" != 0 ]; then
 else
   printf "${pyenv_version} $GREEN[OK]$NC\n"
 
-  # Initialize pyenv virtual environment
-  export PYENV_ROOT="$HOME/.pyenv"
-  export PATH="$PYENV_ROOT/bin:$PATH"
-  eval "$(pyenv init - bash)"
+  if [ x"$PYENV_ROOT" == x ]; then
+    # Initialize pyenv virtual environment
+    export PYENV_ROOT="$HOME/.pyenv"
+    export PATH="$PYENV_ROOT/bin:$PATH"
+    eval "$(pyenv init - bash)"
+  fi
 fi
 
 # Validate Python version
@@ -76,34 +87,35 @@ fi
 
 # Validate uv install
 printf "Checking uv ... "
-uv_version=$(uv --version 2>/dev/null | awk '{print $NF}')
-if [ "$?" == 0 ];  then
-  printf "${uv_version} ${GREEN}[OK]${NC}\n"
+uv_version=$(uv --version 2>/dev/null | cut -d ' ' -f 2)
+if [ -n "$uv_version" ];  then
+  printf "uv ${uv_version} ${GREEN}[OK]${NC}\n"
 else
   printf "${RED}NOT FOUND${NC}\n"
   # Install uv and upgrade pip if necessary
   printf "Installing/upgrading pip and uv ... "
-  pip install -U pip uv || exit 1;
+  pip install uv || exit 1;
 fi
 
 # Start installation
 printf "Installing FlagGems for ${VENDOR}\n"
 
 printf "Creating virtual environment ... "
-uv venv -q
+uv venv -q -c
 if [ "$?" != 0 ]; then
   printf "$RED{FAILED]$NC\n"
   exit 1
 else
-  printf "$RED[OK]$NC\n"
+  printf "$GREEN[OK]$NC\n"
   source .venv/bin/activate
 fi
 
-printf "HTTPS_PROXY=${HTTPS_PROXY}\n"
-printf "HTTP_PROXY=${HTTP_PROXY}\n"
-
 # Install FlagGems
-export FLAGOS_PYPI="https://resource.flagos.net/repository/flagos-pypi-${VENDOR}/simple"
+PYPI_VENDOR=${VENDOR}
+if [ "$VENDOR" = "ascend-cann9" ]; then
+  PYPI_VENDOR="ascend"
+fi
+export FLAGOS_PYPI="https://resource.flagos.net/repository/flagos-pypi-${PYPI_VENDOR}/simple"
 printf "Install build tools ... "
 uv pip install \
   "setuptools>=64.0" \
@@ -122,7 +134,16 @@ fi
 # export USE_TRITON=0
 
 ## Vendor-specific installation steps
-source tools/set-env.sh ${VENDOR}
-source tools/setup_vendor.sh ${VENDOR}
+source tools/env.sh ${VENDOR}
+# source tools/vendor.sh ${VENDOR}
+if [ "$VENDOR" = "ascend-cann9" ]; then
+    uv pip install triton==3.5.0
+    uv pip install triton-ascend==3.2.1 --index ${FLAGOS_PYPI}
+fi
+
+uv pip install ".[${VENDOR}]" --default-index ${FLAGOS_PYPI} \
+    --index https://mirrors.aliyun.com/pypi/simple \
+
+uv pip install ".[test]"
 
 [ "$?" == 0 ] || { echo "Failed to setup FlagGems" ; exit 1; }
