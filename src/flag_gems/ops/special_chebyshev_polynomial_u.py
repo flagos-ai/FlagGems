@@ -26,18 +26,24 @@ logger = logging.getLogger(__name__)
 
 
 # Chebyshev polynomial of the second kind U_n(x)
-# Using polynomial formulas:
+# Using explicit polynomial formulas for n = 0..5:
 # U_0(x) = 1
 # U_1(x) = 2x
 # U_2(x) = 4x^2 - 1
 # U_3(x) = 8x^3 - 4x
-# And so on...
+# U_4(x) = 16x^4 - 12x^2 + 1
+# U_5(x) = 32x^5 - 32x^3 + 6x
+# Limitation: only n ∈ [0, 5] is supported. The wrapper raises ValueError for
+# values outside this range. For higher orders a general recurrence is needed.
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def special_chebyshev_polynomial_u_kernel(x, n):
     """Compute Chebyshev polynomial U_n(x) where both x and n are tensors.
 
     Note: The argument order is (x, n) to match torch.special.chebyshev_polynomial_u
+
+    Limitation: only n ∈ [0, 5] is supported. n values outside this range are
+    rejected by a guard in the wrapper before the kernel is invoked.
     """
     x_f32 = x.to(tl.float32)
     n_int = n.to(tl.int32)
@@ -94,5 +100,14 @@ def special_chebyshev_polynomial_u(x, n):
     # Ensure n has the same shape as x for broadcasting
     if n.shape != x.shape:
         n = n.expand(x.shape)
+
+    # Guard: only n ∈ [0, 5] is supported by the explicit polynomial formulas
+    n_max = n.max().item()
+    n_min = n.min().item()
+    if n_max > 5 or n_min < 0:
+        raise ValueError(
+            f"Chebyshev polynomial order n must be in [0, 5], "
+            f"got values in [{n_min}, {n_max}]"
+        )
 
     return special_chebyshev_polynomial_u_kernel(x, n)
