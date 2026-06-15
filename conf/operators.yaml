@@ -1,14 +1,4 @@
 ops:
-  - id: _to_copy
-    description: Layout/memory operation (to_copy).
-    for:
-      - _to_copy
-    labels:
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.1'
   - id: abs
     description: |
       Computes the absolute value of each element in `input`.
@@ -1238,16 +1228,6 @@ ops:
       - Math
     stages:
       - beta: '5.3'
-  - id: clone
-    description: Pure layout/memory operation (clone).
-    for:
-      - clone
-    labels:
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.1'
   - id: col2im
     description: |
       Rearranges column blocks back into a multidimensional tensor (inverse of im2col).
@@ -2100,16 +2080,6 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
-  - id: empty
-    description: Tensor factory operation (empty).
-    for:
-      - empty
-    labels:
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.1'
   - id: eq
     description: Computes element-wise equality.
     for:
@@ -2250,6 +2220,8 @@ ops:
     for:
       - expand_
     labels:
+      - aten
+      - KernelGen
       - skip_precision_check
     kind:
       - Tensor
@@ -4597,16 +4569,6 @@ ops:
       - Tensor
     stages:
       - alpha: '5.3'
-  - id: normal_
-    description: Random sampling operator (normal_).
-    for:
-      - normal_
-    labels:
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.1'
   - id: normal_float_float_
     description: |
       Returns a tensor of random numbers drawn from separate normal distributions
@@ -4780,16 +4742,6 @@ ops:
     stages:
       - alpha: '4.2'
       - beta: '5.3'
-  - id: permute
-    description: Pure layout operation (permute).
-    for:
-      - permute
-    labels:
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.1'
   - id: pixel_shuffle
     description: Rearranges elements in a tensor to a new tensor of different shape.
     for:
@@ -5059,16 +5011,6 @@ ops:
       - Distribution
     stages:
       - stable: '2.1'
-  - id: random_
-    description: Random sampling operator (random_).
-    for:
-      - random_
-    labels:
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.1'
   - id: randperm
     description: Returns a random permutation of integers from `0` to `n - 1`.
     for:
@@ -5397,16 +5339,6 @@ ops:
     stages:
       - alpha: '5.0'
       - beta: '5.3'
-  - id: reshape
-    description: Pure layout operation (reshape).
-    for:
-      - reshape
-    labels:
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.1'
   - id: reshape_and_cache
     description: Store the key/value token states into the pre-allcated kv_cache buffers of paged attention.
     for:
@@ -6695,16 +6627,6 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
-  - id: to
-    description: Device/dtype cast operation (to).
-    for:
-      - to
-    labels:
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.1'
   - id: to_copy
     for:
       - _to_copy
@@ -6800,16 +6722,6 @@ ops:
       - Reduction
     stages:
       - stable: '4.0'
-  - id: transpose
-    description: Pure layout operation (transpose).
-    for:
-      - transpose
-    labels:
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.1'
   - id: tril
     description: |
       Returns the lower triangular part of an input matrix (or a batch of matrices) and
@@ -7187,16 +7099,6 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.0'
-  - id: view
-    description: Pure layout operation (view).
-    for:
-      - view
-    labels:
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.1'
   - id: view_copy
     description: |
       Returns a copy of the tensor with the specified shape.
