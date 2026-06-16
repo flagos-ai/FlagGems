@@ -2103,6 +2103,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.0'
+  - id: efficient_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _efficient_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
   - id: embedding
     description: |
       Generate a simple lookup table that looks up embeddings in a fixed dictionary and size.
@@ -2434,6 +2446,18 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: flash_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _flash_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
   - id: flash_attention_forward
     for:
       - _flash_attention_forward
@@ -5838,6 +5862,42 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: scaled_dot_product_cudnn_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _scaled_dot_product_cudnn_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
+  - id: scaled_dot_product_efficient_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _scaled_dot_product_efficient_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
+  - id: scaled_dot_product_flash_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _scaled_dot_product_flash_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
   - id: scaled_grouped_mm
     description: |
       Performs grouped matrix multiplication with row-wise and column-wise scaling,
