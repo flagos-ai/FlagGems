@@ -2082,17 +2082,6 @@ ops:
       - Math
     stages:
       - stable: '5.0'
-  - id: erfinv
-    description: Computes the inverse error function of `input`.
-    for:
-      - erfinv
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: erf
     description: Computes the error function of `input`.
     for:
@@ -2115,6 +2104,17 @@ ops:
       - Science
     stages:
       - stable: '2.2'
+  - id: erfinv
+    description: Computes the inverse error function of `input`.
+    for:
+      - erfinv
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: erfinv_
     description: The in-place version of `erfinv()`.
     for:
