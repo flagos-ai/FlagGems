@@ -4,10 +4,16 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    UPSAMPLE_NEAREST1D_SHAPES = [(4, 8, 64)]
+else:
+    UPSAMPLE_NEAREST1D_SHAPES = [(2, 3, 16), (4, 8, 64), (8, 16, 256)]
 
 
 @pytest.mark.upsample_nearest_exact1d
-@pytest.mark.parametrize("shape", [(2, 3, 16), (4, 8, 64), (8, 16, 256)])
+@pytest.mark.parametrize("shape", UPSAMPLE_NEAREST1D_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("factor", [2, 3])
 def test_accuracy__upsample_nearest_exact1d(shape, dtype, factor):

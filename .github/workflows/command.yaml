@@ -106,7 +106,9 @@ jobs:
       - name: Check GPU availability
         shell: bash
         run: |
-          bash "tools/gpu_check_${VENDOR}.sh"
+          echo ${{ env.VENDOR }}
+          source tools/env.sh ${{ env.VENDOR }}
+          tools/gpu_check_${{ env.VENDOR }}.sh
 
       - name: Run tests
         shell: bash
@@ -114,7 +116,7 @@ jobs:
           EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
         run: |
           source .venv/bin/activate
-          source tools/set-env.sh ${VENDOR}
+          source tools/env.sh ${VENDOR}
           tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
             --dump-output \
             --output-dir results_new
