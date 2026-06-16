@@ -4,14 +4,9 @@ import torch
 # vLLM imports (baseline). Optional: when vllm is not installed (e.g. in CI),
 # the entire benchmark is skipped via the skipif marker below.
 try:
+    import vllm._custom_ops as vllm_ops
     from vllm.model_executor.layers.fused_moe.fused_marlin_moe import (
         fused_marlin_moe as vllm_fused_marlin_moe,
-    )
-    from vllm.model_executor.layers.quantization.utils.marlin_utils_test import (
-        marlin_quantize,
-    )
-    from vllm.model_executor.layers.quantization.utils.quant_utils import (
-        quantize_weights,
     )
     from vllm.model_executor.layers.quantization.utils.marlin_utils import (
         marlin_permute_scales,
@@ -19,7 +14,12 @@ try:
     from vllm.model_executor.layers.quantization.utils.marlin_utils_fp4 import (
         mxfp4_marlin_process_scales,
     )
-    import vllm._custom_ops as vllm_ops
+    from vllm.model_executor.layers.quantization.utils.marlin_utils_test import (
+        marlin_quantize,
+    )
+    from vllm.model_executor.layers.quantization.utils.quant_utils import (
+        quantize_weights,
+    )
     from vllm.scalar_type import scalar_types
 
     VLLM_QUANT_TYPE = scalar_types.uint4b8
@@ -535,8 +535,11 @@ def _mxfp4_quantize_per_expert(w_fp):
     E, out_dim, in_dim = w_fp.shape
     w_q = torch.empty(E, out_dim, in_dim // 2, device=w_fp.device, dtype=torch.uint8)
     scales = torch.empty(
-        E, out_dim, in_dim // MXFP4_GROUP_SIZE,
-        device=w_fp.device, dtype=torch.float8_e8m0fnu,
+        E,
+        out_dim,
+        in_dim // MXFP4_GROUP_SIZE,
+        device=w_fp.device,
+        dtype=torch.float8_e8m0fnu,
     )
     for e in range(E):
         nib, sc = _quantize_mxfp4_2d(w_fp[e], MXFP4_GROUP_SIZE)
@@ -606,8 +609,11 @@ class FusedMarlinMoEBenchmarkMxfp4(base.Benchmark):
         hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
         w1_fp = (
             torch.randn(
-                num_experts, intermediate_size * 2, hidden_size,
-                device=device, dtype=dtype,
+                num_experts,
+                intermediate_size * 2,
+                hidden_size,
+                device=device,
+                dtype=dtype,
             )
             / 10.0
         )
@@ -626,23 +632,39 @@ class FusedMarlinMoEBenchmarkMxfp4(base.Benchmark):
         del w1_fp, w2_fp
         torch.cuda.empty_cache()
 
-        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+        gating = torch.randn(
+            num_tokens, num_experts, device=device, dtype=torch.float32
+        )
         topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
 
         yield (
             hidden_states,
-            w1_q_fg, w2_q_fg, w1_scale_fg, w2_scale_fg,
-            w1_q_marlin, w2_q_marlin, w1_scale_marlin, w2_scale_marlin,
-            topk_weights, topk_ids,
+            w1_q_fg,
+            w2_q_fg,
+            w1_scale_fg,
+            w2_scale_fg,
+            w1_q_marlin,
+            w2_q_marlin,
+            w1_scale_marlin,
+            w2_scale_marlin,
+            topk_weights,
+            topk_ids,
         )
 
 
 def _vllm_baseline_mxfp4(
     hidden_states,
-    w1_q_fg, w2_q_fg, w1_scale_fg, w2_scale_fg,
-    w1_q_marlin, w2_q_marlin, w1_scale_marlin, w2_scale_marlin,
-    topk_weights, topk_ids,
+    w1_q_fg,
+    w2_q_fg,
+    w1_scale_fg,
+    w2_scale_fg,
+    w1_q_marlin,
+    w2_q_marlin,
+    w1_scale_marlin,
+    w2_scale_marlin,
+    topk_weights,
+    topk_ids,
 ):
     """Baseline: vLLM's CUDA Marlin fused_marlin_moe (MXFP4)."""
     return vllm_fused_marlin_moe(
@@ -661,9 +683,16 @@ def _vllm_baseline_mxfp4(
 
 def _gems_call_mxfp4(
     hidden_states,
-    w1_q_fg, w2_q_fg, w1_scale_fg, w2_scale_fg,
-    w1_q_marlin, w2_q_marlin, w1_scale_marlin, w2_scale_marlin,
-    topk_weights, topk_ids,
+    w1_q_fg,
+    w2_q_fg,
+    w1_scale_fg,
+    w2_scale_fg,
+    w1_q_marlin,
+    w2_q_marlin,
+    w1_scale_marlin,
+    w2_scale_marlin,
+    topk_weights,
+    topk_ids,
 ):
     """FlagGems' Triton MXFP4 fused_marlin_moe."""
     return gems_fused_marlin_moe(

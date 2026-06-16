@@ -178,7 +178,9 @@ def _cached_pack_scale_e8m0(s, compute_dtype, cached: bool) -> torch.Tensor:
     return packed
 
 
-def mxfp4_pack(w1, w2, w1_scale, w2_scale, compute_dtype, *, cached=True, block_size_k=128):
+def mxfp4_pack(
+    w1, w2, w1_scale, w2_scale, compute_dtype, *, cached=True, block_size_k=128
+):
     return (
         _cached_pack_w(w1, block_size_k, cached=cached),
         _cached_pack_w(w2, block_size_k, cached=cached),
@@ -310,10 +312,30 @@ def _dequant_fp4_bf16(b, s0, s1, s2, s3):
         shr.u32 r1, r0, 4;
         shr.u32 r2, r0, 8;
         shr.u32 r3, r0, 12;
-        and.b32 q0, r0, 983055;  shl.b32 q0, q0, 12;  and.b32 t, q0, 2147516416;  and.b32 q0, q0, 1879076864;  shr.b32 q0, q0, 6;  or.b32 q0, q0, t;
-        and.b32 q1, r1, 983055;  shl.b32 q1, q1, 12;  and.b32 t, q1, 2147516416;  and.b32 q1, q1, 1879076864;  shr.b32 q1, q1, 6;  or.b32 q1, q1, t;
-        and.b32 q2, r2, 983055;  shl.b32 q2, q2, 12;  and.b32 t, q2, 2147516416;  and.b32 q2, q2, 1879076864;  shr.b32 q2, q2, 6;  or.b32 q2, q2, t;
-        and.b32 q3, r3, 983055;  shl.b32 q3, q3, 12;  and.b32 t, q3, 2147516416;  and.b32 q3, q3, 1879076864;  shr.b32 q3, q3, 6;  or.b32 q3, q3, t;
+        and.b32 q0, r0, 983055;
+        shl.b32 q0, q0, 12;
+        and.b32 t, q0, 2147516416;
+        and.b32 q0, q0, 1879076864;
+        shr.b32 q0, q0, 6;
+        or.b32 q0, q0, t;
+        and.b32 q1, r1, 983055;
+        shl.b32 q1, q1, 12;
+        and.b32 t, q1, 2147516416;
+        and.b32 q1, q1, 1879076864;
+        shr.b32 q1, q1, 6;
+        or.b32 q1, q1, t;
+        and.b32 q2, r2, 983055;
+        shl.b32 q2, q2, 12;
+        and.b32 t, q2, 2147516416;
+        and.b32 q2, q2, 1879076864;
+        shr.b32 q2, q2, 6;
+        or.b32 q2, q2, t;
+        and.b32 q3, r3, 983055;
+        shl.b32 q3, q3, 12;
+        and.b32 t, q3, 2147516416;
+        and.b32 q3, q3, 1879076864;
+        shr.b32 q3, q3, 6;
+        or.b32 q3, q3, t;
         mov.u32 bias, 2122350208;        // 0x7E807E80 = bf16x2 (2^126, 2^126)
         mul.rn.bf16x2 q0, q0, bias;
         mul.rn.bf16x2 q1, q1, bias;
@@ -365,10 +387,30 @@ def _dequant_fp4_fp16(b, s0, s1, s2, s3):
         shr.u32 r1, r0, 4;
         shr.u32 r2, r0, 8;
         shr.u32 r3, r0, 12;
-        and.b32 q0, r0, 983055;  shl.b32 q0, q0, 12;  and.b32 t, q0, 2147516416;  and.b32 q0, q0, 1879076864;  shr.b32 q0, q0, 3;  or.b32 q0, q0, t;
-        and.b32 q1, r1, 983055;  shl.b32 q1, q1, 12;  and.b32 t, q1, 2147516416;  and.b32 q1, q1, 1879076864;  shr.b32 q1, q1, 3;  or.b32 q1, q1, t;
-        and.b32 q2, r2, 983055;  shl.b32 q2, q2, 12;  and.b32 t, q2, 2147516416;  and.b32 q2, q2, 1879076864;  shr.b32 q2, q2, 3;  or.b32 q2, q2, t;
-        and.b32 q3, r3, 983055;  shl.b32 q3, q3, 12;  and.b32 t, q3, 2147516416;  and.b32 q3, q3, 1879076864;  shr.b32 q3, q3, 3;  or.b32 q3, q3, t;
+        and.b32 q0, r0, 983055;
+        shl.b32 q0, q0, 12;
+        and.b32 t, q0, 2147516416;
+        and.b32 q0, q0, 1879076864;
+        shr.b32 q0, q0, 3;
+        or.b32 q0, q0, t;
+        and.b32 q1, r1, 983055;
+        shl.b32 q1, q1, 12;
+        and.b32 t, q1, 2147516416;
+        and.b32 q1, q1, 1879076864;
+        shr.b32 q1, q1, 3;
+        or.b32 q1, q1, t;
+        and.b32 q2, r2, 983055;
+        shl.b32 q2, q2, 12;
+        and.b32 t, q2, 2147516416;
+        and.b32 q2, q2, 1879076864;
+        shr.b32 q2, q2, 3;
+        or.b32 q2, q2, t;
+        and.b32 q3, r3, 983055;
+        shl.b32 q3, q3, 12;
+        and.b32 t, q3, 2147516416;
+        and.b32 q3, q3, 1879076864;
+        shr.b32 q3, q3, 3;
+        or.b32 q3, q3, t;
         mov.u32 bias, 1946186752;        // 0x74007400 = f16x2 (2^14, 2^14)
         mul.rn.f16x2 q0, q0, bias;
         mul.rn.f16x2 q1, q1, bias;
@@ -805,7 +847,9 @@ def _mxfp4_autotune_configs():
             for s in (4, 5, 6):
                 cfgs.append(
                     triton.Config(
-                        {"BLOCK_SIZE_N": bn, "GROUP_SIZE_M": 1}, num_warps=w, num_stages=s
+                        {"BLOCK_SIZE_N": bn, "GROUP_SIZE_M": 1},
+                        num_warps=w,
+                        num_stages=s,
                     )
                 )
     for bn in (128, 256):
@@ -1095,8 +1139,13 @@ def fused_moe_mxfp4(
     compute_type = tl.float16 if hidden_states.dtype == torch.float16 else tl.bfloat16
 
     w1_packed, w2_packed, w1_scale_packed, w2_scale_packed = mxfp4_pack(
-        w1, w2, w1_scale, w2_scale, hidden_states.dtype,
-        block_size_k=block_size_k, cached=True,
+        w1,
+        w2,
+        w1_scale,
+        w2_scale,
+        hidden_states.dtype,
+        block_size_k=block_size_k,
+        cached=True,
     )
 
     cache13_size = M * top_k_num * max(2 * intermediate_size, K)
@@ -1117,7 +1166,10 @@ def fused_moe_mxfp4(
     cutoff = 8 if swap_ab else 16
     block_m = 16 if avg_tokens <= cutoff else (32 if avg_tokens <= 64 else 64)
     sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
-        topk_ids=topk_ids, block_size=block_m, num_experts=E, expert_map=None,
+        topk_ids=topk_ids,
+        block_size=block_m,
+        num_experts=E,
+        expert_map=None,
     )
 
     _invoke_mxfp4_moe_gemm(

@@ -395,8 +395,11 @@ def _quantize_moe_weight_mxfp4(w_fp, group_size):
     w_q = torch.empty(E, out_dim, in_dim // 2, device=w_fp.device, dtype=torch.uint8)
     w_ref = torch.empty_like(w_fp)
     scales = torch.empty(
-        E, out_dim, in_dim // group_size,
-        device=w_fp.device, dtype=torch.float8_e8m0fnu,
+        E,
+        out_dim,
+        in_dim // group_size,
+        device=w_fp.device,
+        dtype=torch.float8_e8m0fnu,
     )
     for e in range(E):
         ref_e, nib_e, sc_e = _quantize_mxfp4(w_fp[e], group_size)
@@ -431,8 +434,17 @@ def _make_inputs_mxfp4(
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
     topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
     topk_weights = (topk_weights / topk_weights.sum(dim=-1, keepdim=True)).to(dtype)
-    return (hidden_states, w1_q, w2_q, w1_ref, w2_ref, topk_weights, topk_ids,
-            w1_scale, w2_scale)
+    return (
+        hidden_states,
+        w1_q,
+        w2_q,
+        w1_ref,
+        w2_ref,
+        topk_weights,
+        topk_ids,
+        w1_scale,
+        w2_scale,
+    )
 
 
 def compute_max_diff(output, output_ref):
