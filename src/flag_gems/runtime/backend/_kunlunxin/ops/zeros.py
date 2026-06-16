@@ -28,7 +28,7 @@ def zeros_kernel(
 
 
 def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS ZEROS")
+    logger.debug("GEMS_KUNLUNXIN ZEROS")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
