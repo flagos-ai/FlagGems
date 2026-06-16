@@ -4,6 +4,7 @@ from flag_gems.ops._and_ import (
     __and___scalar,
     __and___scalar_i,
     __and__scalar_tensor,
+    _and_,
 )
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
@@ -444,6 +445,7 @@ __all__ = [
     "__and___scalar",
     "__and___scalar_i",
     "__and__scalar_tensor",
+    "_and_",
     "_assert_async",
     "_conv_depthwise2d",
     "_euclidean_dist",

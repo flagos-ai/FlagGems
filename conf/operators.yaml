@@ -364,10 +364,11 @@ ops:
       - Tensor
     stages:
       - beta: '5.1'
-  - id: and_op
+  - id: and_
     description: |
       Computes the bitwise AND operation through the tensor dunder method.
     for:
+      - _and_
       - __and__.Scalar
       - __and__.Tensor
     labels:

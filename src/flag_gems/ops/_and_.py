@@ -19,6 +19,10 @@ def __and__(A, B):
     return __and__func(A, B)
 
 
+def _and_(A, B):
+    return __and__(A, B)
+
+
 def __and___i(A, B):
     logger.debug("GEMS __AND__I")
     return __and__func(A, B, out0=A)

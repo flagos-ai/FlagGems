@@ -42,6 +42,7 @@ _FULL_CONFIG = (
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__or__.Scalar", bitwise_or_scalar),
     ("__or__.Tensor", bitwise_or_tensor),
+    ("_and_", _and_, lambda: "_and_" in dir(torch.ops.aten)),
     ("_assert_async", _assert_async),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_euclidean_dist", _euclidean_dist),
