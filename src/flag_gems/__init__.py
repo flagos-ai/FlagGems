@@ -44,14 +44,8 @@ _FULL_CONFIG = (
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_forward", flash_attention_forward),
-    (
-        "_functional_sym_constrain_range",
-        _functional_sym_constrain_range,
-    ),
-    (
-        "_functional_sym_constrain_range_for_size",
-        _functional_sym_constrain_range_for_size,
-    ),
+    ("_functional_sym_constrain_range", _functional_sym_constrain_range),
+    ("_functional_sym_constrain_range_for_size", _functional_sym_constrain_range_for_size),
     ("_grouped_mm", group_mm),
     ("_index_put_impl_", _index_put_impl_),
     ("_is_all_true", _is_all_true),
