@@ -6305,18 +6305,6 @@ ops:
       of order 1 (scaled K_1(x) = exp(x)*K_1(x)) for each element in the input tensor.
     for:
       - special.scaled_modified_bessel_k1
-    labels:
-      - aten
-      - pointwise
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: special_scaled_modified_bessel_k1_out
-    description: A variant of `special_scaled_modified_bessel_k1` that allows the output
-      to be assigned to another tensor.
-    for:
       - special.scaled_modified_bessel_k1.out
     labels:
       - aten
