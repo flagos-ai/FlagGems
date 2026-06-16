@@ -30,10 +30,12 @@ def arcsin_kernel(x):
     return _ASIN(x.to(tl.float32))
 
 
-def arcsin(x):
+def arcsin(x, *, out=None):
     logger.debug("GEMS ARCSIN FORWARD")
-    y = arcsin_kernel(x)
-    return y
+    if out is None:
+        return arcsin_kernel(x)
+    arcsin_kernel(x, out0=out)
+    return out
 
 
 def arcsin_(x):
@@ -44,7 +46,4 @@ def arcsin_(x):
 
 def arcsin_out(x, *, out=None):
     logger.debug("GEMS ARCSIN OUT")
-    if out is None:
-        return arcsin_kernel(x)
-    arcsin_kernel(x, out0=out)
-    return out
+    return arcsin(x, out=out)
