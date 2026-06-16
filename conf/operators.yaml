@@ -5945,28 +5945,6 @@ ops:
       - Math
     stages:
       - stable: '2.2'
-  - id: special_sinc
-    description: Computes sin(pi * x) / (pi * x) for each element of `input`.
-    for:
-      - special.sinc
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: special_sinc_
-    description: In-place version of special_sinc().
-    for:
-      - special.sinc_
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: sinh_
     description: |
       Computes the hyperbolic sine `(e^x-e^{-x})/2` of each element in a tensor.
@@ -6240,6 +6218,28 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+  - id: special_sinc
+    description: Computes sin(pi * x) / (pi * x) for each element of `input`.
+    for:
+      - special.sinc
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_sinc_
+    description: In-place version of special_sinc().
+    for:
+      - special.sinc_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,
