@@ -33,10 +33,9 @@ def rms_norm_kernel(
     Y += pid * y_stride_r
     X += pid * x_stride_r
 
-    colMask = tl.arange(0, BLOCK_SIZE) < M
     mask = tl.arange(0, BLOCK_SIZE) < N
     cols = tl.arange(0, BLOCK_SIZE)
-    x = tl.load(X + cols * x_stride_c, mask & colMask, other=0.0).to(tl.float32)
+    x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
 
     var = tl.sum(x * x, axis=0) / N
     rrms = 1 / tl.sqrt(var + eps)
@@ -74,13 +73,11 @@ def rms_norm_kerne_tile(
     # var = tl.sum(x * x, axis=0) / N
     # rrms = 1 / tl.sqrt(var + eps)
 
-    colMask = tl.arange(0, BLOCK_SIZE) < M
-
     _var_base = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
     for off in range(0, N, BLOCK_SIZE):
         cols = off + tl.arange(0, BLOCK_SIZE)
         mask = cols < N
-        x = tl.load(X + cols, mask & colMask, other=0.0).to(tl.float32)
+        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _var_base += x * x / N
     var = tl.sum(_var_base)
     rrms = 1 / tl.sqrt(var + eps)
@@ -456,8 +453,7 @@ class RmsNorm(torch.autograd.Function):
         normalized_shape = ctx.normalized_shape
         eps = ctx.eps
 
-        # dx, dw = rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps)
-        dx, dw = rms_norm_backward_fusion(dy, x, inv_rms, normalized_shape, weight, eps)
+        dx, dw = rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps)
         return dx, None, dw, None
 
 
