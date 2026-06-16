@@ -91,6 +91,8 @@ def fill_tensor_(self, value):
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
         )
     N = self.numel()
+    if N == 0:
+        return self
     # FIXME: 910B3&910B4 have 40 AIV cores while 910B1 has 50, 910B2 has 48.
     grid = min(40, N)
     BLOCK_SIZE = (N + grid - 1) // grid
@@ -104,6 +106,8 @@ def fill_tensor_(self, value):
 def fill_scalar_(self, value):
     logger.debug("GEMS_ASCEND FILL_SCALAR_")
     N = self.numel()
+    if N == 0:
+        return self
     # FIXME: 910B3&910B4 have 40 AIV cores while 910B1 has 50, 910B2 has 48.
     grid = min(40, N)
     BLOCK_SIZE = (N + grid - 1) // grid
