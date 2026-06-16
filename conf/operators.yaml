@@ -953,6 +953,7 @@ ops:
   - id: ixor__
     description: Computes the bitwise XOR of `input` and `other`, in place.
     for:
+      - __ixor__.Scalar
       - __ixor__.Tensor
     labels:
       - aten
