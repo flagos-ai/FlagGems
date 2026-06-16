@@ -50,7 +50,7 @@
       //"source=/tmp,target=/host_tmp,type=bind",
       // Mount the host home directory into the container at /home/host
       // localEnv:HOME maps to the $HOME variable on Linux/Mac
-      "source=${localEnv:HOME},target=/home/host,type=bind",
+      //"source=${localEnv:HOME},target=/home/host,type=bind",
       // Use a named data volume to persist the .claude folder
       "source=claude-code-data,target=/home/vscode/.claude,type=volume"
   ],
