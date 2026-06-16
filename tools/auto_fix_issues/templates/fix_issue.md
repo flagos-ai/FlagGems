@@ -11,6 +11,7 @@
 - **错误类型**: {{ERROR_TYPE}}
 - **严重程度**: {{SEVERITY}}
 - **GPU ID**: {{GPU_ID}}
+- **硬件后端**: {{GEMS_VENDOR}}
 - **工作目录**: {{WORK_DIR}} (这是一个 git worktree，从 master 分支创建)
 - **Python 路径**: {{PYTHON_PATH}}
 
@@ -36,11 +37,20 @@
 ```
 src/flag_gems/
 ├── __init__.py              # 算子注册（_FULL_CONFIG 字典）
-├── ops/                     # 正式算子实现（stable/beta）
+├── ops/                     # 默认算子实现（所有后端共享）
 ├── experimental_ops/        # 实验性算子（alpha，未注册到 _FULL_CONFIG）
 ├── fused/                   # 融合算子（如 DSA/）
 ├── utils/
 └── runtime/
+    └── backend/
+        ├── _nvidia/         # NVIDIA 后端
+        │   ├── ops/         # NVIDIA 专属算子 override
+        │   └── hopper/ops/  # Hopper 架构专属 override
+        ├── _iluvatar/       # 天数（Iluvatar）后端
+        │   ├── ops/         # 天数专属算子 override
+        │   └── fused/       # 天数专属融合算子
+        ├── _ascend/         # 昇腾后端
+        └── ...              # 其他后端
 tests/
 ├── test_*.py                # 单算子测试文件
 ├── test_DSA/                # DSA 相关测试
@@ -51,6 +61,14 @@ benchmark/
 conf/
 └── operators.yaml           # 全量算子定义（包含 alpha/beta/stable）
 ```
+
+**多后端架构与算子 Override 机制：**
+
+FlagGems 支持多硬件后端（NVIDIA、天数/Iluvatar、昇腾/Ascend 等）。`src/flag_gems/ops/` 下的算子是**所有后端共享的默认实现**。每个后端可以在 `src/flag_gems/runtime/backend/_<vendor>/ops/` 下提供**同名函数**来覆盖默认实现，系统通过 `SpecOpRegistrar` 在启动时自动完成替换。
+
+例如，天数后端已有的 override：`_iluvatar/ops/div.py` 提供了 `div_mode`、`div_mode_` 等函数，自动覆盖 `ops/div.py` 中的默认实现。要添加新的 override，只需：
+1. 在 `src/flag_gems/runtime/backend/_<vendor>/ops/` 下创建 `.py` 文件，定义同名函数
+2. 在该目录的 `__init__.py` 中 export 函数名
 
 **算子分类与组织规则：**
 
@@ -166,9 +184,21 @@ grep -rn "{{OPERATOR}}" src/flag_gems/__init__.py src/flag_gems/ops/__init__.py 
 
 ### Step 5: 实施修复
 
-**修复优先级**：
-1. **优先修改算子源码**（`src/flag_gems/ops/` 或 `src/flag_gems/fused/`）
-2. 仅在确认测试本身有 bug 时才修改测试文件（如未走 `to_reference()` 路径）
+**关键：修复位置取决于当前后端（{{GEMS_VENDOR}}）**
+
+**如果当前后端不是 nvidia**（当前后端为 {{GEMS_VENDOR}}）：
+- **禁止修改** `src/flag_gems/ops/` 或 `src/flag_gems/fused/` 下的共享代码
+- **必须在后端专属目录创建 override**：`src/flag_gems/runtime/backend/_{{GEMS_VENDOR}}/ops/`
+- 具体做法：
+  1. 将共享实现复制到 `src/flag_gems/runtime/backend/_{{GEMS_VENDOR}}/ops/<算子文件>.py`
+  2. 在副本上进行修改
+  3. 在 `src/flag_gems/runtime/backend/_{{GEMS_VENDOR}}/ops/__init__.py` 中 export 同名函数
+  4. 参考已有的 override 示例：`_iluvatar/ops/div.py`
+- **原因**：`ops/` 是所有后端共享的默认实现，当前环境只能验证 {{GEMS_VENDOR}} 后端的正确性，无法确保修改不影响其他后端（如 NVIDIA）。后端专属 override 通过 `SpecOpRegistrar` 自动生效，仅影响当前后端。
+
+**如果当前后端是 nvidia**：
+- 可以直接修改 `src/flag_gems/ops/` 下的共享代码（NVIDIA 是参考平台，共享代码以 NVIDIA 为基准开发和测试）
+- 仅在确认测试本身有 bug 时才修改测试文件
 
 **代码风格要求**：
 - 遵循已有代码风格（black + isort + flake8 max-line-length=120）
@@ -269,12 +299,13 @@ git -c user.name="taooo" -c user.email="gumptao2997@gmail.com" commit -m "Fix {{
 ## 重要约束
 
 1. **最小修改原则** — 只改必要代码，不重构无关部分
-2. **测试优先修算子** — 除非确认测试本身有 bug，否则只改算子源码
-3. **必须通过 test** — accuracy test 全部通过是成功的必要条件
-4. **必须通过 benchmark** — 如果有 benchmark_cmd，也需运行成功（环境性失败可豁免）
-5. **代码格式** — 修改的 Python 文件必须通过 black + isort + flake8
-6. **禁止 pip install** — 不运行任何安装命令
-7. **工作目录** — 所有命令在 `{{WORK_DIR}}` 下执行
-8. **环境前缀** — 所有命令加 `CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR={{GEMS_VENDOR}}`
-9. **JSON 必须输出** — 即使失败也要输出 JSON
-10. **禁止写临时文件** — 不要将代码写到 `/tmp`
+2. **后端隔离** — 非 NVIDIA 后端**禁止修改**共享代码（`src/flag_gems/ops/`、`src/flag_gems/fused/`），必须在 `src/flag_gems/runtime/backend/_{{GEMS_VENDOR}}/ops/` 下创建 override
+3. **测试优先修算子** — 除非确认测试本身有 bug，否则只改算子源码
+4. **必须通过 test** — accuracy test 全部通过是成功的必要条件
+5. **必须通过 benchmark** — 如果有 benchmark_cmd，也需运行成功（环境性失败可豁免）
+6. **代码格式** — 修改的 Python 文件必须通过 black + isort + flake8
+7. **禁止 pip install** — 不运行任何安装命令
+8. **工作目录** — 所有命令在 `{{WORK_DIR}}` 下执行
+9. **环境前缀** — 所有命令加 `CUDA_VISIBLE_DEVICES={{GPU_ID}} GEMS_VENDOR={{GEMS_VENDOR}}`
+10. **JSON 必须输出** — 即使失败也要输出 JSON
+11. **禁止写临时文件** — 不要将代码写到 `/tmp`
