@@ -5827,6 +5827,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: scaled_dot_product_attention_forward
+    description: The forward case for `scaled_dot_product_attention`.
+    for:
+      - scaled_dot_product_attention_forward
+    labels:
+      - nn.functional
+      - Attention
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
   - id: scaled_dot_product_efficient_attention
     description: |
       Computes the efficient memory attention for `scaled_dot_product_attention`.
@@ -5843,17 +5854,6 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
-  - id: scaled_dot_product_attention_forward
-    description: The forward case for `scaled_dot_product_attention`.
-    for:
-      - scaled_dot_product_attention_forward
-    labels:
-      - nn.functional
-      - Attention
-    kind:
-      - NeuralNetwork
-    stages:
-      - stable: '2.2'
   - id: scaled_grouped_mm
     description: |
       Performs grouped matrix multiplication with row-wise and column-wise scaling,

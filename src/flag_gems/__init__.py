@@ -66,6 +66,7 @@ _FULL_CONFIG = (
         _scaled_dot_product_efficient_attention,
     ),
     ("_scaled_grouped_mm", scaled_grouped_mm, lambda: torch_ge("2.8")),
+    ("_scaled_mm", scaled_mm, lambda: torch_ge("2.5")),
     ("_scaled_mm.out", scaled_mm_out, lambda: torch_ge("2.5")),
     ("_segment_reduce_backward", _segment_reduce_backward),
     ("_segment_reduce_backward.out", _segment_reduce_backward_out),
