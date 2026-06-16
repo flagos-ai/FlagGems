@@ -1741,6 +1741,35 @@ fp8_mqa_logits:
     stages:
       - 2
       - 3
+fp8_fp4_mqa_logits:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        HEAD_BLOCK: head_block
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 1
+      - 2
+      - 4
+      - 8
+    block_n:
+      - 64
+      - 128
+    head_block:
+      - 16
+      - 32
+      - 64
+    warps:
+      - 4
+      - 8
+    stages:
+      - 1
+      - 2
+      - 3
+
 # Shared memory tiling kernel for large tensors
 # Optimized for memory bandwidth by caching input tiles# Grid sample operator configurations
 grid_sample_2d_nearest:

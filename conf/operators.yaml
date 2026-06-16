@@ -2698,6 +2698,21 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: fp8_fp4_mqa_logits
+    description: |
+      Compute weighted MQA logits with FP8 quantized Q and K tensors.
+      Uses head-batched tiled dot products with K reuse for high throughput
+      on DeepSeek V4 sparse attention indexer workloads.
+    for:
+      - vllm.utils.deep_gemm.fp8_fp4_mqa_logits
+    labels:
+      - fused
+      - vLLM
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: fp8_mqa_logits
     description: |
       For each token in the given E4M3 tensor, iterate all tokens from two other given tensors,
