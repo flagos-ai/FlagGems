@@ -3524,18 +3524,8 @@ ops:
   - id: less_equal
     description: Computes element-wise :math:`\text{input} \leq \text{other}`, returning a boolean tensor.
     for:
-      - less_equal.Tensor
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: less_equal_scalar
-    description: A variant of `less_equal` for scalar variables.
-    for:
       - less_equal.Scalar
+      - less_equal.Tensor
     labels:
       - aten
       - KernelGen
