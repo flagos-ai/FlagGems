@@ -501,6 +501,7 @@ __all__ = [
     "_segment_reduce_backward_out",
     "_sparse_semi_structured_addmm",
     "_thnn_fused_lstm_cell_backward_impl",
+    "_unique2",
     "_unsafe_masked_index",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
