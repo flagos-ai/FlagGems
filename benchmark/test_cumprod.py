@@ -16,16 +16,6 @@ CUMPROD_INPLACE_DTYPES = (
     consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.EXTRA_INT_DTYPES
 )
 
-CUMPROD_DTYPES = (
-    consts.FLOAT_DTYPES
-    + consts.BOOL_DTYPES
-    + consts.INT_DTYPES
-    + consts.EXTRA_INT_DTYPES
-)
-CUMPROD_INPLACE_DTYPES = (
-    consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.EXTRA_INT_DTYPES
-)
-
 
 def _make_input(shape, dtype, device):
     if dtype in consts.FLOAT_DTYPES:

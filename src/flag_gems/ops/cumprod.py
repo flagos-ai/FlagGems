@@ -38,8 +38,10 @@ def _get_device_index(torch_device):
 def get_prod_accum_type(out_dtype: tl.dtype) -> tl.dtype:
     if out_dtype.is_bf16() or out_dtype.is_fp16():
         return tl.float32
-    if out_dtype.is_int():
+    if out_dtype.is_int64() or out_dtype.is_uint64():
         return tl.int64
+    if out_dtype.is_int():
+        return tl.int32
     return out_dtype
 
 
@@ -67,7 +69,7 @@ def scan_part_product_kernel(
     result = tl.cumprod(inp_vals, axis=0)
     part_product = tl.reduce(inp_vals, axis=0, combine_fn=reduce_mul)
 
-    tl.store(out + offset, result, mask=mask)
+    tl.store(out + offset, result.to(out.type.element_ty), mask=mask)
     tl.store(partial_product + pid, part_product)
 
 
@@ -90,7 +92,7 @@ def multiply_base_product_kernel(
         acc_dtype: tl.constexpr = get_prod_accum_type(out.type.element_ty)
         base_product = tl.load(partial_product + pid - 1).to(acc_dtype)
         final_vals = out_vals.to(acc_dtype) * base_product
-        tl.store(out + offset, final_vals, mask=mask)
+        tl.store(out + offset, final_vals.to(out.type.element_ty), mask=mask)
 
 
 @libentry()
@@ -122,7 +124,7 @@ def scan_part_product_abc_kernel(
     result = tl.cumprod(inp_vals, axis=0)
     part_product = tl.reduce(inp_vals, axis=0, combine_fn=reduce_mul)
 
-    tl.store(out + offset, result, mask=mask)
+    tl.store(out + offset, result.to(out.type.element_ty), mask=mask)
     tl.store(partial_product + part_offset, part_product)
 
 
@@ -155,18 +157,21 @@ def multiply_base_product_abc_kernel(
         acc_dtype: tl.constexpr = get_prod_accum_type(out.type.element_ty)
         base_product = tl.load(partial_product + last_part_offset).to(acc_dtype)
         final_vals = out_vals.to(acc_dtype) * base_product
-        tl.store(out + offset, final_vals, mask=mask)
+        tl.store(out + offset, final_vals.to(out.type.element_ty), mask=mask)
 
 
 def scan_then_fan_col(inp, out, n_ele, dtype):
     BLOCK_SIZE = _scan_block_size(n_ele)
     part_num = math.ceil(n_ele / BLOCK_SIZE)
     partial_product = torch.empty(part_num, dtype=dtype, device=inp.device)
+    scan_out = out
+    if part_num >= 2 and out.dtype != dtype:
+        scan_out = torch.empty_like(out, dtype=dtype)
 
     grid = (part_num,)
     with torch_device_fn.device(inp.device):
         scan_part_product_kernel[grid](
-            inp, out, partial_product, n_ele, part_num, BLOCK_SIZE
+            inp, scan_out, partial_product, n_ele, part_num, BLOCK_SIZE
         )
 
     if part_num >= 2:
@@ -174,19 +179,24 @@ def scan_then_fan_col(inp, out, n_ele, dtype):
         scan_then_fan_col(partial_product, partial_prefix, part_num, dtype)
         with torch_device_fn.device(inp.device):
             multiply_base_product_kernel[grid](
-                out, partial_prefix, n_ele, part_num, BLOCK_SIZE
+                scan_out, partial_prefix, n_ele, part_num, BLOCK_SIZE
             )
+        if scan_out is not out:
+            out.copy_(scan_out)
 
 
 def scan_then_fan(inp, out, A, B, C, dtype):
     BLOCK_SIZE = _scan_block_size(B)
     part_num = math.ceil(B / BLOCK_SIZE)
     partial_product = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
+    scan_out = out
+    if part_num >= 2 and out.dtype != dtype:
+        scan_out = torch.empty_like(out, dtype=dtype)
 
     grid = (A, part_num, C)
     with torch_device_fn.device(inp.device):
         scan_part_product_abc_kernel[grid](
-            inp, out, partial_product, B, C, part_num, BLOCK_SIZE
+            inp, scan_out, partial_product, B, C, part_num, BLOCK_SIZE
         )
 
     if part_num >= 2:
@@ -194,8 +204,10 @@ def scan_then_fan(inp, out, A, B, C, dtype):
         scan_then_fan(partial_product, partial_prefix, A, part_num, C, dtype)
         with torch_device_fn.device(inp.device):
             multiply_base_product_abc_kernel[grid](
-                out, partial_prefix, B, C, part_num, BLOCK_SIZE
+                scan_out, partial_prefix, B, C, part_num, BLOCK_SIZE
             )
+        if scan_out is not out:
+            out.copy_(scan_out)
 
 
 def _get_output_dtype(inp, dtype):
@@ -209,8 +221,10 @@ def _get_output_dtype(inp, dtype):
 def _get_compute_dtype(dtype):
     if dtype in (torch.float16, torch.bfloat16):
         return torch.float32
-    if is_integer_dtype(dtype) or is_boolean_dtype(dtype):
+    if dtype is torch.int64:
         return torch.int64
+    if is_integer_dtype(dtype) or is_boolean_dtype(dtype):
+        return torch.int32
     return dtype
 
 
@@ -341,7 +355,7 @@ def reduce_then_scan_root_scan_kernel_row(in_ptr, out_ptr, N, TILE_SIZE: tl.cons
     acc_dtype: tl.constexpr = get_prod_accum_type(out_ptr.type.element_ty)
     x = tl.load(in_ptr + pid * N + offsets, mask=mask, other=1).to(acc_dtype)
     out = tl.cumprod(x, 0)
-    tl.store(out_ptr + pid * N + offsets, out, mask=mask)
+    tl.store(out_ptr + pid * N + offsets, out.to(out_ptr.type.element_ty), mask=mask)
 
 
 @triton.jit
@@ -372,7 +386,10 @@ def reduce_then_scan_block_scan_kernel_row(
         tile_scan = prefix * tl.cumprod(x, 0)
         prefix *= tl.reduce(x, axis=0, combine_fn=reduce_mul)
         tl.store(
-            out_ptr + pid_m * N + offsets, tile_scan, mask=mask, cache_modifier=".cg"
+            out_ptr + pid_m * N + offsets,
+            tile_scan.to(out_ptr.type.element_ty),
+            mask=mask,
+            cache_modifier=".cg",
         )
 
 
