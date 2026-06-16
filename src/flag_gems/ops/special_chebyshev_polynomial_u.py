@@ -93,17 +93,18 @@ def special_chebyshev_polynomial_u(x, n):
     logger.debug("GEMS SPECIAL_CHEBYSHEV_POLYNOMIAL_U")
     assert x.dtype == torch.float32, f"unsupported dtype {x.dtype}"
 
-    # Convert n to tensor if it's a scalar
-    if not isinstance(n, torch.Tensor):
-        n = torch.tensor(n, dtype=torch.int32, device=x.device)
+    if isinstance(n, torch.Tensor):
+        # Run the range guard on a CPU copy to avoid dispatching back into the
+        # gems reduction kernels while use_gems() is active.
+        n_ref = n.detach().to("cpu", dtype=torch.int32)
+        n_min = int(n_ref.amin().item())
+        n_max = int(n_ref.amax().item())
+        n = n.to(device=x.device, dtype=torch.int32)
+    else:
+        n_min = n_max = int(n)
+        n = torch.tensor(n_min, dtype=torch.int32, device=x.device)
 
-    # Ensure n has the same shape as x for broadcasting
-    if n.shape != x.shape:
-        n = n.expand(x.shape)
-
-    # Guard: only n ∈ [0, 5] is supported by the explicit polynomial formulas
-    n_max = n.max().item()
-    n_min = n.min().item()
+    # Guard: only n ∈ [0, 5] is supported by the explicit polynomial formulas.
     if n_max > 5 or n_min < 0:
         raise ValueError(
             f"Chebyshev polynomial order n must be in [0, 5], "
