@@ -4,10 +4,18 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    REPL1D_SHAPES = [(4, 16, 64)]
+    REPL1D_OUT_SHAPES = [(4, 16, 64)]
+else:
+    REPL1D_SHAPES = [(2, 3, 7), (4, 16, 64), (8, 32, 256), (32, 256)]
+    REPL1D_OUT_SHAPES = [(2, 3, 7), (4, 16, 64), (8, 32, 256), (32, 256)]
 
 
 @pytest.mark.replication_pad1d
-@pytest.mark.parametrize("shape", [(2, 3, 7), (4, 16, 64), (8, 32, 256), (32, 256)])
+@pytest.mark.parametrize("shape", REPL1D_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("padding", [(0, 0), (1, 2), (3, 1)])
 def test_replication_pad1d(shape, dtype, padding):
@@ -23,7 +31,7 @@ def test_replication_pad1d(shape, dtype, padding):
 
 
 @pytest.mark.replication_pad1d_out
-@pytest.mark.parametrize("shape", [(2, 3, 7), (4, 16, 64), (8, 32, 256), (32, 256)])
+@pytest.mark.parametrize("shape", REPL1D_OUT_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("padding", [(0, 0), (1, 2), (3, 1)])
 def test_replication_pad1d_out(shape, dtype, padding):

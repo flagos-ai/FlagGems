@@ -4,10 +4,16 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    T_COPY_SHAPES = [(2, 3)]
+else:
+    T_COPY_SHAPES = [(2, 3), (128, 256), (512, 512)]
 
 
 @pytest.mark.t_copy
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("shape", T_COPY_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_accuracy_t_copy(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -21,7 +27,7 @@ def test_accuracy_t_copy(shape, dtype):
 
 
 @pytest.mark.t_copy_out
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("shape", T_COPY_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_accuracy_t_copy_out(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)

@@ -6,10 +6,16 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
-M_VALUES = [1, 33, 64, 222]
-TOP_KS = [2, 6]
-K_VALUES = [128, 511, 1024]
+if cfg.QUICK_MODE:
+    M_VALUES = [1, 64]
+    TOP_KS = [2]
+    K_VALUES = [128]
+else:
+    M_VALUES = [1, 33, 64, 222]
+    TOP_KS = [2, 6]
+    K_VALUES = [128, 511, 1024]
 MOE_SHAPES = list(itertools.product(M_VALUES, TOP_KS, K_VALUES))
 
 

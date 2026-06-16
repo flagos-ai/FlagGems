@@ -4,19 +4,29 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    UPSAMPLE_BICUBIC2D_PARAMS = [
+        (1, 1, 8, 8, 16, 16, False, False),
+    ]
+    UPSAMPLE_BICUBIC2D_DTYPES = [torch.float32]
+else:
+    UPSAMPLE_BICUBIC2D_PARAMS = [
+        (1, 1, 8, 8, 16, 16, False, False),
+        (2, 3, 15, 20, 30, 35, True, False),
+        (4, 3, 7, 5, 14, 10, False, True),
+        (1, 16, 32, 24, 48, 36, True, True),
+    ]
+    UPSAMPLE_BICUBIC2D_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 
 
 @pytest.mark.upsample_bicubic2d
 @pytest.mark.parametrize(
     "N, C, H, W, outH, outW, align_corners, use_scale",
-    [
-        (1, 1, 8, 8, 16, 16, False, False),
-        (2, 3, 15, 20, 30, 35, True, False),
-        (4, 3, 7, 5, 14, 10, False, True),
-        (1, 16, 32, 24, 48, 36, True, True),
-    ],
+    UPSAMPLE_BICUBIC2D_PARAMS,
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("dtype", UPSAMPLE_BICUBIC2D_DTYPES)
 def test_upsample_bicubic2d(N, C, H, W, outH, outW, align_corners, use_scale, dtype):
     x = torch.randn((N, C, H, W), dtype=dtype, device=flag_gems.device)
 

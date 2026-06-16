@@ -228,19 +228,23 @@ KRON_SHAPES = [
 # Add some test cases with zeor-dimensional tensor and zero-sized tensors.
 PRIMARY_FLOAT_DTYPES = [torch.float16, torch.float32]
 FLOAT_DTYPES = (
-    PRIMARY_FLOAT_DTYPES + [torch.bfloat16]
-    if bf16_is_supported
-    else PRIMARY_FLOAT_DTYPES
+    ([torch.bfloat16] if bf16_is_supported else [torch.float32])
+    if QUICK_MODE
+    else (
+        PRIMARY_FLOAT_DTYPES + [torch.bfloat16]
+        if bf16_is_supported
+        else PRIMARY_FLOAT_DTYPES
+    )
 )
 
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOAT_DTYPES
-INT_DTYPES = [torch.int16, torch.int32]
+INT_DTYPES = [torch.int32] if QUICK_MODE else [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPES
 BOOL_TYPES = [torch.bool]
-COMPLEX_DTYPES = [torch.complex32, torch.complex64]
+COMPLEX_DTYPES = [torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64]
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
-STACK_DIM_LIST = [-2, -1, 0, 1]
+STACK_DIM_LIST = [-1, 0] if QUICK_MODE else [-2, -1, 0, 1]
 
 ARANGE_START = [0] if TO_CPU else [0, 1, 3]
 

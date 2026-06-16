@@ -7,9 +7,16 @@ import triton
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
+
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    SEQLEN_LIST = [1024]
+else:
+    SEQLEN_LIST = [1024, 2048, 4096, 8192]
 
 
 def cal_diff(x: torch.Tensor, y: torch.Tensor, name: str) -> None:
@@ -83,7 +90,7 @@ def ref_mla(
 
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2817: RuntimeError")
 @pytest.mark.flash_mla
-@pytest.mark.parametrize("seqlen", [1024, 2048, 4096, 8192])
+@pytest.mark.parametrize("seqlen", SEQLEN_LIST)
 @pytest.mark.parametrize("dtype", [torch.bfloat16])
 def test_flash_mla(monkeypatch, seqlen, dtype):
     b = 128

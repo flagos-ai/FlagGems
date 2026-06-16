@@ -6,8 +6,21 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 device = flag_gems.device
+
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    HEAD_SIZE_LIST = [64]
+    BLOCK_SIZE_LIST = [8]
+    NUM_BLOCKS_LIST = [1024]
+    DTYPE_LIST = [torch.float]
+else:
+    HEAD_SIZE_LIST = [64, 80, 120, 256]
+    BLOCK_SIZE_LIST = [8, 16, 32]
+    NUM_BLOCKS_LIST = [1024, 10000]
+    DTYPE_LIST = [torch.half, torch.bfloat16, torch.float]
 
 
 def create_kv_caches_with_random(
@@ -54,10 +67,10 @@ def create_kv_caches_with_random(
 @pytest.mark.reshape_and_cache
 @pytest.mark.parametrize("num_tokens", [42])
 @pytest.mark.parametrize("num_heads", [8])
-@pytest.mark.parametrize("head_size", [64, 80, 120, 256])
-@pytest.mark.parametrize("block_size", [8, 16, 32])
-@pytest.mark.parametrize("num_blocks", [1024, 10000])
-@pytest.mark.parametrize("dtype", [torch.half, torch.bfloat16, torch.float])
+@pytest.mark.parametrize("head_size", HEAD_SIZE_LIST)
+@pytest.mark.parametrize("block_size", BLOCK_SIZE_LIST)
+@pytest.mark.parametrize("num_blocks", NUM_BLOCKS_LIST)
+@pytest.mark.parametrize("dtype", DTYPE_LIST)
 @pytest.mark.parametrize("kv_cache_dtype", ["auto"])
 @pytest.mark.parametrize("seed", [2025])
 def test_reshape_and_cache(

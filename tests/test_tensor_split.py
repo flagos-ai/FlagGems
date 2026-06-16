@@ -4,14 +4,21 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 # Define shapes for tensor_split tests
-TENSOR_SPLIT_SHAPES = [
-    (64,),
-    (64, 128),
-    (8, 16, 32),
-    (4, 8, 16, 32),
-]
+if cfg.QUICK_MODE:
+    TENSOR_SPLIT_SHAPES = [
+        (64,),
+        (64, 128),
+    ]
+else:
+    TENSOR_SPLIT_SHAPES = [
+        (64,),
+        (64, 128),
+        (8, 16, 32),
+        (4, 8, 16, 32),
+    ]
 
 
 @pytest.mark.tensor_split

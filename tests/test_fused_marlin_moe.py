@@ -20,6 +20,8 @@ from flag_gems.fused.fused_marlin_moe import (
     fused_marlin_moe,
 )
 
+from . import conftest as cfg
+
 
 def _is_hopper():
     # The W4A16 fast-path kernel's bf16 dequant uses sm_90-only PTX
@@ -132,26 +134,29 @@ QUICK_CONFIGS = [
     (32, 8, 128, 256, 4),
 ]
 
-FULL_CONFIGS = QUICK_CONFIGS + [
-    (64, 8, 256, 512, 2),
-    (128, 16, 128, 256, 4),
-    # Mixtral-8x7B-like
-    (1, 8, 4096, 14336, 2),
-    (16, 8, 4096, 14336, 2),
-    (64, 8, 4096, 14336, 2),
-    # DeepSeek-V3-like (TP=8 shard)
-    (1, 256, 7168, 2048, 8),
-    (16, 256, 7168, 2048, 8),
-    (64, 256, 7168, 2048, 8),
-    # Qwen3-5-397B-A17B
-    (1, 512, 4096, 1024, 10),
-    (16, 512, 4096, 1024, 10),
-    (64, 512, 4096, 1024, 10),
-    # DeepSeek-V4-Flash
-    (1, 256, 4096, 2048, 6),
-    (16, 256, 4096, 2048, 6),
-    (64, 256, 4096, 2048, 6),
-]
+if cfg.QUICK_MODE:
+    FULL_CONFIGS = QUICK_CONFIGS[:2]
+else:
+    FULL_CONFIGS = QUICK_CONFIGS + [
+        (64, 8, 256, 512, 2),
+        (128, 16, 128, 256, 4),
+        # Mixtral-8x7B-like
+        (1, 8, 4096, 14336, 2),
+        (16, 8, 4096, 14336, 2),
+        (64, 8, 4096, 14336, 2),
+        # DeepSeek-V3-like (TP=8 shard)
+        (1, 256, 7168, 2048, 8),
+        (16, 256, 7168, 2048, 8),
+        (64, 256, 7168, 2048, 8),
+        # Qwen3-5-397B-A17B
+        (1, 512, 4096, 1024, 10),
+        (16, 512, 4096, 1024, 10),
+        (64, 512, 4096, 1024, 10),
+        # DeepSeek-V4-Flash
+        (1, 256, 4096, 2048, 6),
+        (16, 256, 4096, 2048, 6),
+        (64, 256, 4096, 2048, 6),
+    ]
 
 GROUP_SIZE = 128
 

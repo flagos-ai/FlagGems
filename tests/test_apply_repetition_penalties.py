@@ -4,6 +4,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 
 def _init_vllm():
@@ -31,19 +32,28 @@ def _init_vllm():
 
 _vllm_fn, _VLLM_OK = _init_vllm()
 
-_REP_PENALTY_CFG = {
-    "shapes": [
-        (1, 1024),
-        (1, 4096),
-        (1, 8192),
-        (8, 4096),
-        (16, 4096),
-        (32, 1024),
-        (8, 8192),
-    ],
-    "penalties": [1.0, 1.2, 1.5],
-    "device": torch.device("cuda:0"),
-}
+if cfg.QUICK_MODE:
+    _REP_PENALTY_CFG = {
+        "shapes": [
+            (1, 1024),
+        ],
+        "penalties": [1.0, 1.2],
+        "device": torch.device("cuda:0"),
+    }
+else:
+    _REP_PENALTY_CFG = {
+        "shapes": [
+            (1, 1024),
+            (1, 4096),
+            (1, 8192),
+            (8, 4096),
+            (16, 4096),
+            (32, 1024),
+            (8, 8192),
+        ],
+        "penalties": [1.0, 1.2, 1.5],
+        "device": torch.device("cuda:0"),
+    }
 
 
 @pytest.mark.apply_repetition_penalties

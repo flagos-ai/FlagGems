@@ -4,6 +4,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
@@ -13,20 +14,26 @@ except ImportError:
     TE_AVAILABLE = False
 
 
-DREGLU_SHAPES = [
-    (),
-    (1,),
-    (512, 512),
-    (1, 2048),
-    (2048, 1),
-    (1024, 1024),
-    (20, 320, 15),
-    (4096, 1024),
-    (2048, 2048),
-    (1024, 4096),
-    (512, 512, 512),
-    (512, 256, 512),
-]
+if cfg.QUICK_MODE:
+    DREGLU_SHAPES = [
+        (512, 512),
+        (20, 320, 15),
+    ]
+else:
+    DREGLU_SHAPES = [
+        (),
+        (1,),
+        (512, 512),
+        (1, 2048),
+        (2048, 1),
+        (1024, 1024),
+        (20, 320, 15),
+        (4096, 1024),
+        (2048, 2048),
+        (1024, 4096),
+        (512, 512, 512),
+        (512, 256, 512),
+    ]
 
 
 @pytest.mark.dreglu

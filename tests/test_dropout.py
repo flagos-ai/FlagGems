@@ -18,7 +18,7 @@ device = flag_gems.device
 
 @pytest.mark.dropout
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
-@pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
+@pytest.mark.parametrize("p", [0.3] if cfg.QUICK_MODE else [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_dropout(shape, p, dtype):
     if flag_gems.vendor_name == "kunlunxin":
@@ -64,7 +64,7 @@ def test_dropout(shape, p, dtype):
 
 @pytest.mark.dropout_backward
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
-@pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
+@pytest.mark.parametrize("p", [0.3] if cfg.QUICK_MODE else [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_dropout_backward(shape, p, dtype):
     if flag_gems.vendor_name == "kunlunxin":

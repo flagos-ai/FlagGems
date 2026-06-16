@@ -4,6 +4,19 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    ASINH_VARIOUS_SIZES = [(1, 1), (64, 64)]
+else:
+    ASINH_VARIOUS_SIZES = [
+        (1, 1),
+        (8, 8),
+        (64, 64),
+        (256, 256),
+        (1024, 1024),
+        (4096, 4096),
+    ]
 
 
 @pytest.mark.asinh
@@ -19,10 +32,7 @@ def test_asinh(shape, dtype):
 
 
 @pytest.mark.asinh
-@pytest.mark.parametrize(
-    "shape",
-    [(1, 1), (8, 8), (64, 64), (256, 256), (1024, 1024), (4096, 4096)],
-)
+@pytest.mark.parametrize("shape", ASINH_VARIOUS_SIZES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_asinh_various_sizes(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)

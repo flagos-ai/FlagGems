@@ -4,6 +4,16 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    SVD_RANK2_BOUNDARY_SHAPES = [(1025, 2)]
+    SVD_COMPLEX64_SHAPES = [(3, 3)]
+    SVD_SOME_FALSE_SHAPES = [(3, 5)]
+else:
+    SVD_RANK2_BOUNDARY_SHAPES = [(1025, 2), (2, 1025)]
+    SVD_COMPLEX64_SHAPES = [(3, 3), (2, 3, 3)]
+    SVD_SOME_FALSE_SHAPES = [(3, 5), (5, 3), (4, 4)]
 
 
 def _make_spectrum_input(shape, singular_values, seed=0):
@@ -203,7 +213,7 @@ def test_accuracy_svd_tiny_rank_degenerate_inputs(case):
 
 
 @pytest.mark.svd
-@pytest.mark.parametrize("shape", [(1025, 2), (2, 1025)])
+@pytest.mark.parametrize("shape", SVD_RANK2_BOUNDARY_SHAPES)
 @pytest.mark.parametrize("case", ["zero", "rankdef", "scaled"])
 def test_accuracy_svd_rank2_boundary_degenerate_inputs(shape, case):
     if case == "zero":
@@ -285,7 +295,7 @@ def test_accuracy_svd_non_contiguous_empty_and_complex():
     reason="Issue #3856:sunrise does not support complex dtype",
 )
 @pytest.mark.svd
-@pytest.mark.parametrize("shape", [(3, 3), (2, 3, 3)])
+@pytest.mark.parametrize("shape", SVD_COMPLEX64_SHAPES)
 def test_accuracy_svd_complex64_reconstruction(shape):
     inp = _make_input(shape, torch.complex64)
     ref_inp = utils.to_reference(inp, False)
@@ -331,7 +341,7 @@ def test_accuracy_svd_low_precision_float32_route(dtype):
 
 
 @pytest.mark.svd
-@pytest.mark.parametrize("shape", [(3, 5), (5, 3), (4, 4)])
+@pytest.mark.parametrize("shape", SVD_SOME_FALSE_SHAPES)
 def test_accuracy_svd_some_false_reconstruction(shape):
     inp = _make_input(shape, torch.float32)
     ref_inp = utils.to_reference(inp, False)

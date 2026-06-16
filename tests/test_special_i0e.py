@@ -4,10 +4,16 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    SPECIAL_I0E_SHAPES = [(2, 3)]
+else:
+    SPECIAL_I0E_SHAPES = [(2, 3), (128, 256), (512, 512)]
 
 
 @pytest.mark.special_i0e
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("shape", SPECIAL_I0E_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_special_i0e(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -22,7 +28,7 @@ def test_special_i0e(shape, dtype):
 
 
 @pytest.mark.special_i0e_out
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("shape", SPECIAL_I0E_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_special_i0e_out(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
