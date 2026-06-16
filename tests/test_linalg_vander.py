@@ -54,8 +54,11 @@ def test_linalg_vander(shape, dtype):
 @pytest.mark.parametrize("dtype", VANDER_DTYPES)
 def test_linalg_vander_with_N(shape, N, dtype):
     # Test with explicit N parameter
-    if N > shape[-1]:
-        pytest.skip("N should be <= input size")
+    # N is the number of columns in the Vandermonde matrix (shape (*, n, N)).
+    # torch.linalg.vander supports any N >= 1, independent of input dimension n,
+    # and the Triton kernel also handles N > n correctly via flat indexing.
+    # N values that exceed shape[-1] produce rectangular matrices with more
+    # columns than input elements, which is valid and tested here.
 
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
