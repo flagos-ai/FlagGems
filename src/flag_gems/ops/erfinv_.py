@@ -23,13 +23,13 @@ from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 logger = logging.getLogger(__name__)
 
 
-_erfinv = tl_extra_shim.erfinv
+_ERFINV = tl_extra_shim.erfinv
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def erfinv_func(x):
-    return _erfinv(x.to(tl.float32))
+    return _ERFINV(x.to(tl.float32))
 
 
 def erfinv(x):
