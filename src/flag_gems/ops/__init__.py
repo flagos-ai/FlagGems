@@ -432,8 +432,6 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
-    "special_sinc",
-    "special_sinc_",
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "_assert_async",
@@ -902,6 +900,8 @@ __all__ = [
     "special_i0e_out",
     "special_i1",
     "special_i1_out",
+    "special_sinc",
+    "special_sinc_",
     "split_with_sizes_copy",
     "sqrt",
     "sqrt_",
