@@ -25,14 +25,14 @@ def test_asin(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_asin_(shape, dtype):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(res_inp.clone(), True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = torch.asin_(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.asin_(res_inp)
+        res_out = torch.asin_(inp)
 
     ref_out = ref_out.to(res_out.dtype)
-    ref_inp = ref_inp.to(res_inp.dtype)
+    ref_inp = ref_inp.to(inp.dtype)
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
-    utils.gems_assert_close(res_inp, ref_inp, dtype, equal_nan=True)
+    utils.gems_assert_close(inp, ref_inp, dtype, equal_nan=True)
