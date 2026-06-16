@@ -543,6 +543,8 @@ _FULL_CONFIG = (
     ("softshrink.out", softshrink_out),
     ("sort", sort),
     ("sort.stable", sort_stable),
+    ("special_chebyshev_polynomial_u", special_chebyshev_polynomial_u),
+    ("special_chebyshev_polynomial_u.n_scalar", special_chebyshev_polynomial_u),
     ("special_i0e", special_i0e),
     ("special_i0e.out", special_i0e_out),
     ("special_i1", special_i1),
