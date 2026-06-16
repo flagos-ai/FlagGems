@@ -6877,6 +6877,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: unsafe_masked_index
+    description: Gathers elements from self at given indices where mask is True, filling unmasked positions with a scalar value.
+    for:
+      - _unsafe_masked_index
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: unsafe_view
     description: |
       Creates a new view of an existing tensor with a different shape without
@@ -6889,17 +6900,6 @@ ops:
       - KernelGen
     kind:
       - Tensor
-    stages:
-      - alpha: '5.4'
-  - id: unsafe_masked_index
-    description: Gathers elements from self at given indices where mask is True, filling unmasked positions with a scalar value.
-    for:
-      - _unsafe_masked_index
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
     stages:
       - alpha: '5.4'
   - id: upsample_bicubic2d
