@@ -2882,6 +2882,7 @@ ops:
   - id: greater_equal
     description: Computes `input >= other` element-wise.
     for:
+      - greater_equal.Scalar
       - greater_equal.Tensor
     labels:
       - aten
