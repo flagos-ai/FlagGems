@@ -1,5 +1,6 @@
 .env
 config.yaml
+issues_to_fix.yaml
 __pycache__/
 results/
 test_*.txt
