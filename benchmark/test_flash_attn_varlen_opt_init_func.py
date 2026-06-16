@@ -313,5 +313,5 @@ def test_flash_attn_varlen_opt_func(monkeypatch):
         torch_op=flash_attn_varlen_func_ref,
         dtypes=[torch.float16, torch.bfloat16],
     )
-    bench.set_gems(flag_gems.ops.flash_attn_varlen_opt_func)
+    bench.set_gems(flag_gems.flash_attn_varlen_opt_func)
     bench.run()

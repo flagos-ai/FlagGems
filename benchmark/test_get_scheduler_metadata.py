@@ -89,7 +89,7 @@ def test_get_scheduler_metadata(monkeypatch):
         pack_gqa=None,
         sm_margin=0,
     ):
-        return flag_gems.ops.get_scheduler_metadata(
+        return flag_gems.get_scheduler_metadata(
             batch_size=batch_size,
             max_seqlen_q=max_seqlen_q,
             max_seqlen_k=max_seqlen_k,

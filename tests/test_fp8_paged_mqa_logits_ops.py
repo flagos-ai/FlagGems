@@ -21,7 +21,6 @@ except ImportError:
     SM90_AVAILABLE = False
 
 import flag_gems
-from flag_gems.ops.fp8_paged_mqa_logits import fp8_paged_mqa_logits
 
 from .accuracy_utils import gems_assert_close, to_reference
 
@@ -153,7 +152,7 @@ def test_accuracy_fp8_paged_mqa_logits(clean_logits: bool):
     ref_out = to_reference(ref_out)
 
     with flag_gems.use_gems():
-        res_out = fp8_paged_mqa_logits(
+        res_out = flag_gems.fp8_paged_mqa_logits(
             q_fp8,
             kv_cache_fp8_triton,
             weights,
@@ -246,7 +245,7 @@ def test_accuracy_fp8_paged_mqa_logits_param(batch_size, next_n, heads, index_di
     ref_out = to_reference(ref_out)
 
     with flag_gems.use_gems():
-        res_out = fp8_paged_mqa_logits(
+        res_out = flag_gems.fp8_paged_mqa_logits(
             q_fp8,
             kv_cache_fp8_triton,
             weights,

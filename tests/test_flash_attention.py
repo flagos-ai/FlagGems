@@ -85,7 +85,7 @@ def gems_flash_fwd(
         seed,
         offset,
         debug_softmax,
-    ) = flag_gems.ops.flash_attention_forward(
+    ) = flag_gems.flash_attention_forward(
         q,
         k,
         v,

@@ -63,7 +63,7 @@ def test_perf_fft():
         return torch.fft.fft(x)
 
     def gems_fft(x):
-        return flag_gems.ops.fft(x)
+        return flag_gems.fft(x)
 
     bench = FFTBenchmark(
         op_name="fft",

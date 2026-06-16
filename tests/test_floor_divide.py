@@ -39,7 +39,7 @@ def test_floor_divide_mixed(dtype1, dtype2):
     # reference
     ref = torch.div(x, y, rounding_mode="floor")
 
-    out = flag_gems.ops.floor_divide(x, y)
+    out = flag_gems.floor_divide(x, y)
 
     torch.testing.assert_close(out, ref)
 
@@ -71,7 +71,7 @@ def test_floor_divide_scalar_tensor(x_dtype, y_dtype):
     ref = torch.div(x, y, rounding_mode="floor")
 
     # flaggems
-    out = flag_gems.ops.floor_divide(x, y)
+    out = flag_gems.floor_divide(x, y)
 
     torch.testing.assert_close(out, ref)
 
