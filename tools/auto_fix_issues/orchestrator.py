@@ -425,8 +425,8 @@ def extract_session_id(jsonl_path: str) -> str | None:
     return None
 
 
-def _get_result_text(jsonl_path: str) -> str:
-    """Extract the result text from the last result event in a CC stream-json log."""
+def _get_result_event(jsonl_path: str) -> dict:
+    """Extract the full result event dict from a CC stream-json log."""
     try:
         with open(jsonl_path, "r", errors="replace") as f:
             for line in f:
@@ -438,10 +438,15 @@ def _get_result_text(jsonl_path: str) -> str:
                 except json.JSONDecodeError:
                     continue
                 if event.get("type") == "result":
-                    return event.get("result", "")
+                    return event
     except Exception:
         pass
-    return ""
+    return {}
+
+
+def _get_result_text(jsonl_path: str) -> str:
+    """Extract the result text from the last result event in a CC stream-json log."""
+    return _get_result_event(jsonl_path).get("result", "")
 
 
 _API_ERROR_PATTERNS = [
@@ -457,11 +462,19 @@ def is_api_stream_error(cc_result: dict, jsonl_path: str) -> bool:
 
     Returns True when the CC output was not parseable AND the result event
     contains an API error pattern AND a valid session ID exists in the log.
+
+    Non-resumable errors (e.g. 403 auth failures) are excluded even though
+    their result text also contains "API Error".
     """
     error_msg = cc_result.get("error_message", "")
     if error_msg != "Failed to parse CC output":
         return False
-    result_text = _get_result_text(jsonl_path)
+    result_event = _get_result_event(jsonl_path)
+    # 403/401 etc. are auth or endpoint errors — not resumable.
+    api_status = result_event.get("api_error_status")
+    if api_status is not None:
+        return False
+    result_text = result_event.get("result", "")
     if not any(pat in result_text for pat in _API_ERROR_PATTERNS):
         return False
     return extract_session_id(jsonl_path) is not None
