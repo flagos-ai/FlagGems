@@ -18,7 +18,7 @@ from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
-__version__ = "5.0.2"
+__version__ = "5.4.0dev"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 backend_info = runtime.device
@@ -37,10 +37,12 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    ("__ilshift__.Tensor", __ilshift__),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__or__.Scalar", bitwise_or_scalar),
     ("__or__.Tensor", bitwise_or_tensor),
+    ("_adaptive_avg_pool2d", adaptive_avg_pool2d),
     ("_assert_async", _assert_async),
     ("_cdist_backward", _cdist_backward),
     ("_conv_depthwise2d", _conv_depthwise2d),
@@ -63,7 +65,7 @@ _FULL_CONFIG = (
         "_scaled_dot_product_efficient_attention",
         _scaled_dot_product_efficient_attention,
     ),
-    ("_scaled_mm", scaled_mm, lambda: torch_ge("2.5")),
+    ("_scaled_grouped_mm", scaled_grouped_mm, lambda: torch_ge("2.8")),
     ("_scaled_mm.out", scaled_mm_out, lambda: torch_ge("2.5")),
     ("_segment_reduce_backward", _segment_reduce_backward),
     ("_segment_reduce_backward.out", _segment_reduce_backward_out),
@@ -138,6 +140,7 @@ _FULL_CONFIG = (
     ("avg_pool3d", avg_pool3d),
     ("avg_pool3d_backward", avg_pool3d_backward),
     ("baddbmm", baddbmm),
+    ("bernoulli", bernoulli),
     ("bernoulli_.float", bernoulli_),
     ("bincount", bincount),
     ("bitwise_and.Scalar", bitwise_and_scalar),
@@ -291,6 +294,8 @@ _FULL_CONFIG = (
     ("gelu", gelu),
     ("gelu_", gelu_),
     ("gelu_backward", gelu_backward),
+    ("geometric.float", geometric),
+    ("geometric_.float", geometric_),
     ("glu", glu),
     ("glu_backward", glu_backward),
     ("greater.Scalar", greater_scalar),
@@ -339,6 +344,7 @@ _FULL_CONFIG = (
     ("lerp_.Tensor", lerp_tensor_),
     ("lift_fresh_copy", lift_fresh_copy),
     ("linalg_vector_norm", vector_norm),
+    ("linear", linear),
     ("linspace", linspace),
     ("log", log),
     ("log1p", log1p),
@@ -415,7 +421,7 @@ _FULL_CONFIG = (
     ("neg", neg),
     ("neg_", neg_),
     ("negative", negative),
-    ("new_full.Tensor", new_full),
+    ("new_full", new_full),
     ("nll_loss2d_backward", nll_loss2d_backward),
     ("nll_loss2d_forward", nll_loss2d_forward),
     ("nll_loss_backward", nll_loss_backward),
@@ -429,6 +435,8 @@ _FULL_CONFIG = (
     ("normal.float_Tensor", normal_float_tensor),
     ("normal_", normal_),
     ("normed_cumsum", normed_cumsum),
+    ("not_equal.Scalar", not_equal_scalar),
+    ("not_equal.Tensor", not_equal),
     ("one_hot", one_hot),
     ("ones", ones),
     ("ones_like", ones_like),
@@ -463,6 +471,7 @@ _FULL_CONFIG = (
     ("reflection_pad1d_backward", reflection_pad1d_backward),
     ("reflection_pad2d", reflection_pad2d),
     ("reflection_pad2d.out", reflection_pad2d_out),
+    ("reflection_pad3d_backward", reflection_pad3d_backward),
     ("relu", relu),
     ("relu6", relu6),
     ("relu_", relu_),
@@ -581,6 +590,7 @@ _FULL_CONFIG = (
     ("trunc", trunc),
     ("trunc_", trunc_),
     ("unfold_backward", unfold_backward),
+    ("unfold_copy", unfold_copy),
     ("uniform_", uniform_),
     ("unique_consecutive", unique_consecutive),
     ("unique_dim", unique_dim),

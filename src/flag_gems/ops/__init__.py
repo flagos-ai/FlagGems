@@ -1,3 +1,4 @@
+from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -13,7 +14,7 @@ from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
-from flag_gems.ops.act_quant import act_quant_triton
+from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
 from flag_gems.ops.addcmul import addcmul, addcmul_out
@@ -54,6 +55,7 @@ from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.avg_pool3d import avg_pool3d, avg_pool3d_backward
 from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
+from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
 from flag_gems.ops.bincount import bincount
 from flag_gems.ops.bitwise_and import (
@@ -157,12 +159,14 @@ from flag_gems.ops.fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tens
 from flag_gems.ops.fmod_ import fmod_
 from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.fp8_mqa_logits import fp8_mqa_logits
+from flag_gems.ops.fp8_paged_mqa_logits import fp8_paged_mqa_logits
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
 from flag_gems.ops.gcd import gcd, gcd_out
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
+from flag_gems.ops.geometric import geometric, geometric_
 from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
@@ -208,6 +212,7 @@ from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
+from flag_gems.ops.linear import linear
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
 from flag_gems.ops.log1p import log1p, log1p_out
@@ -281,6 +286,7 @@ from flag_gems.ops.normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from flag_gems.ops.not_equal import not_equal, not_equal_scalar
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
@@ -315,6 +321,7 @@ from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
+from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
 from flag_gems.ops.remainder import remainder, remainder_
@@ -336,6 +343,7 @@ from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.rsub import rsub_scalar, rsub_tensor
+from flag_gems.ops.scaled_grouped_mm import scaled_grouped_mm
 from flag_gems.ops.scaled_mm import scaled_mm, scaled_mm_out
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
@@ -407,6 +415,7 @@ from flag_gems.ops.tril import tril, tril_, tril_out
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.trunc_ import trunc, trunc_
 from flag_gems.ops.unfold_backward import unfold_backward
+from flag_gems.ops.unfold_copy import unfold_copy
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
@@ -444,6 +453,7 @@ from flag_gems.ops.zeros_like import zeros_like
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
+    "__ilshift__",
     "_assert_async",
     "_cdist_backward",
     "_conv_depthwise2d",
@@ -465,7 +475,7 @@ __all__ = [
     "abs_",
     "absolute",
     "acos",
-    "act_quant_triton",
+    "adaptive_avg_pool2d",
     "add",
     "add_",
     "addcdiv",
@@ -520,6 +530,7 @@ __all__ = [
     "baddbmm_out",
     "batch_norm",
     "batch_norm_backward",
+    "bernoulli",
     "bernoulli_",
     "bincount",
     "bitwise_and_scalar",
@@ -646,6 +657,7 @@ __all__ = [
     "fmod_tensor_",
     "fp8_matmul",
     "fp8_mqa_logits",
+    "fp8_paged_mqa_logits",
     "full",
     "full_like",
     "gather",
@@ -657,6 +669,8 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "geometric",
+    "geometric_",
     "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
@@ -716,6 +730,7 @@ __all__ = [
     "lerp_tensor_",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
+    "linear",
     "linspace",
     "log",
     "log10",
@@ -795,6 +810,8 @@ __all__ = [
     "nonzero",
     "nonzero_numpy",
     "normal_",
+    "not_equal",
+    "not_equal_scalar",
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
@@ -834,6 +851,7 @@ __all__ = [
     "reflection_pad1d_out",
     "reflection_pad2d",
     "reflection_pad2d_out",
+    "reflection_pad3d_backward",
     "relu",
     "relu6",
     "relu_",
@@ -867,6 +885,7 @@ __all__ = [
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "scaled_grouped_mm",
     "scaled_mm",
     "scaled_mm_out",
     "scaled_softmax_backward",
@@ -959,6 +978,7 @@ __all__ = [
     "trunc",
     "trunc_",
     "unfold_backward",
+    "unfold_copy",
     "uniform_",
     "unique_consecutive",
     "unique_dim",
