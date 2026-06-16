@@ -38,11 +38,11 @@ def _generate_index_fill_kernel(
         code.writeline("dim_size,")
         code.writeline("dim_stride,")
         code.writeline("value,")
-        code.writeline("HAS_VALUE_TENSOR: tl.constexpr,")
         stride_args = ", ".join(f"out_stride_{i}: int" for i in range(rank))
         code.writeline(f"{stride_args},")
         shape_args = ", ".join(f"out_shape_{i}: int" for i in range(rank))
         code.writeline(f"{shape_args},")
+        code.writeline("HAS_VALUE_TENSOR: tl.constexpr,")
         code.writeline("BLOCK_SIZE: tl.constexpr,")
     code.writeline("):")
 
