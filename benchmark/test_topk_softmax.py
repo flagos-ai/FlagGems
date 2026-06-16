@@ -35,7 +35,10 @@ class TopKSoftmaxBenchmark(base.Benchmark):
         """
         num_tokens, num_experts, k = config
 
-        gating_output = torch.randn(num_tokens, num_experts, device=device, dtype=dtype)
+        # gating_output must always be float32 as required by both vLLM and FlagGems
+        gating_output = torch.randn(
+            num_tokens, num_experts, device=device, dtype=torch.float32
+        )
 
         for renormalize in (False, True):
             topk_weights = torch.empty(
@@ -76,11 +79,22 @@ def test_topk_softmax(monkeypatch):
     except (ImportError, AttributeError) as e:
         pytest.skip(f"Skipped due to missing vLLM topk_softmax: {e}")
 
+    def vllm_topk_softmax_wrapper(
+        topk_weights,
+        topk_indices,
+        token_expert_indices,
+        gating_output,
+        renormalize=False,
+    ):
+        vllm_topk_softmax(
+            topk_weights, topk_indices, token_expert_indices, gating_output
+        )
+
     bench = TopKSoftmaxBenchmark(
         op_name="topk_softmax",
-        torch_op=vllm_topk_softmax,
+        torch_op=vllm_topk_softmax_wrapper,
         gems_op=fused.topk_softmax,
-        dtypes=[torch.float32, torch.float16, torch.bfloat16],
+        dtypes=[torch.float32],
     )
 
     bench.run()
