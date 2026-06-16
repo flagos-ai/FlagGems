@@ -24,6 +24,8 @@ class MaskedScaleBenchmark(base.Benchmark):
         return torch.tensor(shape).prod().item()
 
 
+# _masked_scale only supports float32 on most backends.
+# CUDA reference does not support float16/bf16 for this private op.
 @pytest.mark.masked_scale
 @pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
 def test_masked_scale(dtype):
