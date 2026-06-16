@@ -3951,6 +3951,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: logical_not_
+    description: In-place version of logical_not. Computes the element-wise logical NOT.
+    for:
+      - logical_not_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: logical_or
     description: Computes the element-wise logical OR of the given input tensors.
     for:
