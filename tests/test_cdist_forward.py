@@ -1,10 +1,8 @@
-import importlib.util
-import os
-
 import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops._cdist_forward import _cdist_forward
 
 from . import accuracy_utils as utils
 
@@ -21,27 +19,6 @@ CDIST_FORWARD_SHAPES = [
 ]
 
 
-def _import_metax_cdist_forward():
-    """Import _cdist_forward from the Metax backend ops, bypassing editable install hooks."""
-    metax_ops_dir = os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "src",
-        "flag_gems",
-        "runtime",
-        "backend",
-        "_metax",
-        "ops",
-    )
-    spec = importlib.util.spec_from_file_location(
-        "metax_cdist_forward",
-        os.path.join(metax_ops_dir, "_cdist_forward.py"),
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module._cdist_forward
-
-
 @pytest.mark.cdist_forward
 @pytest.mark.parametrize("shapes", CDIST_FORWARD_SHAPES)
 # torch.cdist doesn't support float16 on CUDA; only float32 is numerically stable
@@ -55,8 +32,6 @@ def test_cdist_forward(shapes, dtype):
     ref_x2 = utils.to_reference(x2)
 
     ref_out = torch.cdist(ref_x1, ref_x2, p=2.0)
-
-    _cdist_forward = _import_metax_cdist_forward()
 
     with flag_gems.use_gems():
         res_out = _cdist_forward(x1, x2, p=2.0)

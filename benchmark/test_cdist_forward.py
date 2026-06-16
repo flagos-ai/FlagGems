@@ -1,31 +1,9 @@
-import importlib.util
-import os
-
 import pytest
 import torch
 
+from flag_gems.ops._cdist_forward import _cdist_forward
+
 from . import base
-
-
-def _import_metax_cdist_forward():
-    """Import _cdist_forward from the Metax backend ops, bypassing editable install hooks."""
-    metax_ops_dir = os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "src",
-        "flag_gems",
-        "runtime",
-        "backend",
-        "_metax",
-        "ops",
-    )
-    spec = importlib.util.spec_from_file_location(
-        "metax_cdist_forward",
-        os.path.join(metax_ops_dir, "_cdist_forward.py"),
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module._cdist_forward
 
 
 # Shapes for cdist benchmark: (P, M), (R, M) -> (P, R)
@@ -57,8 +35,6 @@ class CdistForwardBenchmark(base.Benchmark):
 
 @pytest.mark.cdist_forward
 def test_cdist_forward():
-    _cdist_forward = _import_metax_cdist_forward()
-
     bench = CdistForwardBenchmark(
         op_name="cdist_forward",
         torch_op=torch.cdist,

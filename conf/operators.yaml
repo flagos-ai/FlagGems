@@ -1027,6 +1027,19 @@ ops:
       - Distribution
     stages:
       - beta: '5.3'
+  - id: cdist_backward
+    description: |
+      Computes the backward pass for the batched pairwise distance (cdist) computation,
+      computing the gradient with respect to the input tensors.
+    for:
+      - _cdist_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cdist_forward
     description: |
       Computes the batched pairwise distance (cdist) between two collections of row vectors,
@@ -1037,19 +1050,6 @@ ops:
       - aten
       - KernelGen
       - Metax
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: cdist_backward
-    description: |
-      Computes the backward pass for the batched pairwise distance (cdist) computation,
-      computing the gradient with respect to the input tensors.
-    for:
-      - _cdist_backward
-    labels:
-      - aten
-      - KernelGen
     kind:
       - Math
     stages:
