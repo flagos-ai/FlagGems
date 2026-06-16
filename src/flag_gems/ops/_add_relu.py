@@ -18,7 +18,7 @@ def add_relu_func(x, y):
     return tl.where(result > 0, result, 0)
 
 
-def add_relu(A, B):
+def _add_relu(A, B):
     logger.debug("GEMS ADD_RELU")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         if B.device != A.device:
@@ -30,3 +30,6 @@ def add_relu(A, B):
         return add_relu_func(A, B)
     else:
         return torch.tensor(max(0, A + B))
+
+
+add_relu = _add_relu
