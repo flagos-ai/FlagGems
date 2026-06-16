@@ -798,6 +798,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: bernoulli
+    description: |
+      Draws binary random numbers (0 or 1) from a Bernoulli distribution with per-element probabilities.
+    for:
+      - bernoulli
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: bernoulli_
     description: Draws binary random numbers (0 or 1) from a Bernoulli distribution.
     for:
@@ -3683,17 +3695,6 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
-  - id: linspace
-    description: |
-      Creates a one-dimensional tensor of size `steps` whose values are evenly spaced from `start` to `end`, inclusive.
-    for:
-      - linspace
-    labels:
-      - aten
-    kind:
-      - Tensor
-    stages:
-      - stable: '2.2'
   - id: linear
     description: |
       Applies a linear transformation to the incoming data: y = x @ W^T + b.
@@ -3706,6 +3707,17 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: linspace
+    description: |
+      Creates a one-dimensional tensor of size `steps` whose values are evenly spaced from `start` to `end`, inclusive.
+    for:
+      - linspace
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
   - id: log
     description: Returns a new tensor with the natural logarithm of the elements of `input`.
     for:
@@ -4830,6 +4842,32 @@ ops:
       - Reduction
     stages:
       - stable: '2.1'
+  - id: not_equal
+    description: |
+      Computes the element-wise logical NOT EQUAL of the given input tensors.
+    for:
+      - not_equal.Tensor
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Logic
+    stages:
+      - alpha: '5.4'
+  - id: not_equal_scalar
+    description: |
+      Computes the element-wise logical NOT EQUAL comparing a tensor to a scalar.
+    for:
+      - not_equal.Scalar
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Logic
+    stages:
+      - alpha: '5.4'
   - id: one_hot
     description: |
       Takes LongTensor with index values of shape `(*)` and returns a tensor of shape `(*, num_classes)`
@@ -5312,6 +5350,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: reflection_pad3d_backward
+    description: Computes the gradient of reflection_pad3d with respect to the input tensor.
+    for:
+      - reflection_pad3d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: reglu
     description: |
       Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead of the sigmoid function for gating.
@@ -5795,6 +5844,12 @@ ops:
       commonly used by quantized Mixture-of-Experts (MoE) workloads.
     for:
       - _scaled_grouped_mm
+    labels:
+      - MoE
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
   - id: scaled_mm
     description: |
       Performs a scaled matrix multiplication. The result of `self @ mat2` is
