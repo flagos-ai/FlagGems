@@ -167,7 +167,9 @@ def run(args):
             continue
 
         cc = issue.get("cc_result") or {}
-        title = f"[KernelGen] Fix {operator}: {issue['error_type']}"
+        vendor = config.get("gems_vendor", "")
+        vendor_tag = "[%s]" % vendor.capitalize() if vendor and vendor != "nvidia" else ""
+        title = "[KernelGen]%s Fix %s: %s" % (vendor_tag, operator, issue["error_type"])
         body = build_pr_body(issue)
 
         if args.dry_run:
