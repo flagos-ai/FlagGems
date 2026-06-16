@@ -248,8 +248,8 @@ git -c user.name="taooo" -c user.email="gumptao2997@gmail.com" commit -m "Fix {{
   "files_modified": [
     "src/flag_gems/ops/example.py"
   ],
-  "root_cause": "简述根因（1-2句）",
-  "fix_description": "简述修复内容（1-2句）",
+  "root_cause": "Brief root cause description (1-2 sentences, in English)",
+  "fix_description": "Brief fix description (1-2 sentences, in English)",
   "test_results": {
     "total": 12,
     "passed": 12,
@@ -262,7 +262,7 @@ git -c user.name="taooo" -c user.email="gumptao2997@gmail.com" commit -m "Fix {{
     "notes": "..."
   },
   "error_message": null,
-  "notes": "其他说明（可选）"
+  "notes": "Additional notes (optional, in English)"
 }
 ```
 
