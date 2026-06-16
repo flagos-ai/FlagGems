@@ -4,10 +4,16 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    I0_SHAPES = [(1024, 1024)]
+else:
+    I0_SHAPES = [(1024, 1024), (20, 320, 15), (16, 128, 64, 60)]
 
 
 @pytest.mark.i0
-@pytest.mark.parametrize("shape", [(1024, 1024), (20, 320, 15), (16, 128, 64, 60)])
+@pytest.mark.parametrize("shape", I0_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_i0(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
