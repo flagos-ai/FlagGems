@@ -3342,6 +3342,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: igamma_
+    description: Triton kernel implementation for igamma_.
+    for:
+      - igamma_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: ilshift
     description: Computes the in-place bitwise left shift of `self` by `other` bits.
     for:
