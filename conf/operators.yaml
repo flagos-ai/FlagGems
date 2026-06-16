@@ -470,7 +470,8 @@ ops:
   - id: arcsin
     description: Returns a new tensor with the arcsine of the elements of input.
     for:
-      - asin
+      - arcsin
+      - arcsin.out
     labels:
       - aten
       - KernelGen
@@ -481,7 +482,7 @@ ops:
   - id: arcsin_
     description: The in-place version of `arcsin()`.
     for:
-      - asin_
+      - arcsin_
     labels:
       - aten
       - KernelGen
@@ -492,7 +493,7 @@ ops:
   - id: arcsin_out
     description: A variant of `arcsin` that allows the output to be assigned to the `out` tensor.
     for:
-      - asin.out
+      - arcsin.out
     labels:
       - aten
       - KernelGen
