@@ -99,7 +99,13 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
 
     with torch_device_fn.device(x.device):
         fused_add_rms_norm_kernel[(grid_size,)](
-            x, residual, weight, M, N, eps, inv_N,
+            x,
+            residual,
+            weight,
+            M,
+            N,
+            eps,
+            inv_N,
             BLOCK_N=BLOCK_N,
             num_warps=1,
         )

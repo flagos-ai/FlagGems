@@ -1,7 +1,7 @@
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
-from ._safe_softmax import _safe_softmax
+from ._safe_softmax import _safe_softmax  # noqa: F401
 from ._upsample_nearest_exact1d import (
     _upsample_nearest_exact1d,
     _upsample_nearest_exact1d_out,
@@ -222,7 +222,7 @@ from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
-from .var import var, var_dim, var_correction
+from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack

@@ -203,7 +203,7 @@ def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
         N *= shape[i]
         shape[i] = 1
     M = inp.numel() // N
-    
+
     out.resize_(shape)
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)

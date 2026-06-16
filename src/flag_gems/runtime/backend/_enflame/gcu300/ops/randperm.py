@@ -182,9 +182,7 @@ def radix_sortbykey_scatter_kernel(
 
     pid0 = tl.program_id(0)
     key_offset = (
-        portion_id * portion_size
-        + pid0 * BLOCK_SIZE
-        + tl.arange(0, BLOCK_SIZE)
+        portion_id * portion_size + pid0 * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     )
 
     key_mask = key_offset < n_elements
@@ -244,9 +242,7 @@ def radix_sortbykey_scatter_kernel(
                 digit_hist + bin_offset + (portion_id + 1) * passes * (bins + 1),
                 inc_bucket_offset,
             )
-        global_offsets = (
-            inc_bucket_offset - bin_of_bucket + key_block_rank
-        )
+        global_offsets = inc_bucket_offset - bin_of_bucket + key_block_rank
         tl.store(key_out + global_offsets, key_data, mask=key_digit_mask)
         tl.store(value_out + global_offsets, value_data, mask=key_digit_mask)
 

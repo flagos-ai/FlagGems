@@ -34,7 +34,9 @@ def _safe_softmax_kernel(
         sum_exp = tl.sum(exp_x, axis=0)
         softmax = exp_x / sum_exp
 
-        softmax = tl.where(all_neginf, tl.zeros([BLOCK_SIZE], dtype=tl.float32), softmax)
+        softmax = tl.where(
+            all_neginf, tl.zeros([BLOCK_SIZE], dtype=tl.float32), softmax
+        )
 
         tl.store(output_ptr + row_offset + cols, softmax, mask=mask)
 

@@ -52,7 +52,9 @@ def _per_token_group_quant_fp8(
         y_s = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s), 1e-10))))
         y_q = tl.clamp(y / y_s, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     else:
-        y_q = tl.clamp((y / _absmax) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
+        y_q = tl.clamp((y / _absmax) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
 
     tl.store(y_q_ptr + cols, y_q, mask=mask)
     tl.store(y_s_ptr, y_s)
@@ -94,7 +96,9 @@ def _per_token_group_quant_fp8_colmajor(
         y_s = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s), 1e-10))))
         y_q = tl.clamp(y / y_s, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     else:
-        y_q = tl.clamp((y / _absmax) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
+        y_q = tl.clamp((y / _absmax) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
 
     tl.store(y_q_ptr + cols, y_q, mask=mask)
     tl.store(y_s_ptr, y_s)
@@ -160,8 +164,12 @@ def _per_token_group_quant_fp8_m2(
         y_q0 = tl.clamp(y0 / y_s0, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
         y_q1 = tl.clamp(y1 / y_s1, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     else:
-        y_q0 = tl.clamp((y0 / _absmax0) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q1 = tl.clamp((y1 / _absmax1) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
+        y_q0 = tl.clamp((y0 / _absmax0) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q1 = tl.clamp((y1 / _absmax1) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
 
     tl.store(y_q_ptr0 + cols, y_q0, mask=mask)
     tl.store(y_s_ptr0, y_s0)
@@ -230,8 +238,12 @@ def _per_token_group_quant_fp8_colmajor_m2(
         y_q0 = tl.clamp(y0 / y_s0, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
         y_q1 = tl.clamp(y1 / y_s1, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     else:
-        y_q0 = tl.clamp((y0 / _absmax0) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q1 = tl.clamp((y1 / _absmax1) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
+        y_q0 = tl.clamp((y0 / _absmax0) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q1 = tl.clamp((y1 / _absmax1) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
 
     tl.store(y_q_ptr0 + cols, y_q0, mask=mask)
     tl.store(y_s_ptr0, y_s0)
@@ -323,10 +335,18 @@ def _per_token_group_quant_fp8_m4(
         y_q2 = tl.clamp(y2 / y_s2, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
         y_q3 = tl.clamp(y3 / y_s3, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     else:
-        y_q0 = tl.clamp((y0 / _absmax0) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q1 = tl.clamp((y1 / _absmax1) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q2 = tl.clamp((y2 / _absmax2) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q3 = tl.clamp((y3 / _absmax3) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
+        y_q0 = tl.clamp((y0 / _absmax0) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q1 = tl.clamp((y1 / _absmax1) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q2 = tl.clamp((y2 / _absmax2) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q3 = tl.clamp((y3 / _absmax3) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
 
     tl.store(y_q_ptr0 + cols, y_q0, mask=mask)
     tl.store(y_s_ptr0, y_s0)
@@ -423,10 +443,18 @@ def _per_token_group_quant_fp8_colmajor_m4(
         y_q2 = tl.clamp(y2 / y_s2, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
         y_q3 = tl.clamp(y3 / y_s3, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     else:
-        y_q0 = tl.clamp((y0 / _absmax0) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q1 = tl.clamp((y1 / _absmax1) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q2 = tl.clamp((y2 / _absmax2) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q3 = tl.clamp((y3 / _absmax3) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
+        y_q0 = tl.clamp((y0 / _absmax0) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q1 = tl.clamp((y1 / _absmax1) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q2 = tl.clamp((y2 / _absmax2) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q3 = tl.clamp((y3 / _absmax3) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
 
     tl.store(y_q_ptr0 + cols, y_q0, mask=mask)
     tl.store(y_s_ptr0, y_s0)
@@ -569,14 +597,30 @@ def _per_token_group_quant_fp8_m8(
         y_q6 = tl.clamp(y6 / y_s6, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
         y_q7 = tl.clamp(y7 / y_s7, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     else:
-        y_q0 = tl.clamp((y0 / _absmax0) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q1 = tl.clamp((y1 / _absmax1) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q2 = tl.clamp((y2 / _absmax2) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q3 = tl.clamp((y3 / _absmax3) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q4 = tl.clamp((y4 / _absmax4) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q5 = tl.clamp((y5 / _absmax5) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q6 = tl.clamp((y6 / _absmax6) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q7 = tl.clamp((y7 / _absmax7) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
+        y_q0 = tl.clamp((y0 / _absmax0) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q1 = tl.clamp((y1 / _absmax1) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q2 = tl.clamp((y2 / _absmax2) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q3 = tl.clamp((y3 / _absmax3) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q4 = tl.clamp((y4 / _absmax4) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q5 = tl.clamp((y5 / _absmax5) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q6 = tl.clamp((y6 / _absmax6) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q7 = tl.clamp((y7 / _absmax7) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
 
     tl.store(y_q_ptr0 + cols, y_q0, mask=mask)
     tl.store(y_s_ptr0, y_s0)
@@ -729,14 +773,30 @@ def _per_token_group_quant_fp8_colmajor_m8(
         y_q6 = tl.clamp(y6 / y_s6, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
         y_q7 = tl.clamp(y7 / y_s7, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
     else:
-        y_q0 = tl.clamp((y0 / _absmax0) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q1 = tl.clamp((y1 / _absmax1) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q2 = tl.clamp((y2 / _absmax2) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q3 = tl.clamp((y3 / _absmax3) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q4 = tl.clamp((y4 / _absmax4) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q5 = tl.clamp((y5 / _absmax5) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q6 = tl.clamp((y6 / _absmax6) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
-        y_q7 = tl.clamp((y7 / _absmax7) * fp8_max, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
+        y_q0 = tl.clamp((y0 / _absmax0) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q1 = tl.clamp((y1 / _absmax1) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q2 = tl.clamp((y2 / _absmax2) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q3 = tl.clamp((y3 / _absmax3) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q4 = tl.clamp((y4 / _absmax4) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q5 = tl.clamp((y5 / _absmax5) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q6 = tl.clamp((y6 / _absmax6) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
+        y_q7 = tl.clamp((y7 / _absmax7) * fp8_max, fp8_min, fp8_max).to(
+            y_q_ptr.dtype.element_ty
+        )
 
     tl.store(y_q_ptr0 + cols, y_q0, mask=mask)
     tl.store(y_s_ptr0, y_s0)
