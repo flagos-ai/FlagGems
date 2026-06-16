@@ -6552,18 +6552,6 @@ ops:
       Input is clamped to [eps, 1 - eps] when eps is not None.
     for:
       - special.logit
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: special_logit_out
-    description: |
-      Returns a new tensor with the logit of the elements of input.
-      Input is clamped to [eps, 1 - eps] when eps is not None.
-    for:
       - special.logit.out
     labels:
       - aten
@@ -6576,7 +6564,7 @@ ops:
     description: |
       The in-place version of `special_logit()`.
     for:
-      - special_logit_
+      - special.logit_
     labels:
       - aten
       - KernelGen

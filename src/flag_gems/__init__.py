@@ -537,7 +537,7 @@ _FULL_CONFIG = (
     ("sort.stable", sort_stable),
     ("special.logit", special_logit),
     ("special.logit.out", special_logit_out),
-    ("special_logit_", special_logit_),
+    ("special.logit_", special_logit_),
     ("special_i0e", special_i0e),
     ("special_i0e.out", special_i0e_out),
     ("special_i1", special_i1),
