@@ -197,7 +197,10 @@ case $VENDOR in
     ;;
 
   thead)
-    # TODO(Qiming): Investigate environment settings
+    uv pip install --index ${FLAGOS_PYPI} \
+      "torch==2.9.0+ppu2.0.0.oe" \
+      "triton==3.5.0+ppu2.0.0.oe"
+
     uv pip install -e .
     uv pip install ".[test]"
     ;;
