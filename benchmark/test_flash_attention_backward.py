@@ -99,9 +99,8 @@ def sdp_flash_attn_forward_native(
         False,
         scale=scale,
     )
-    rng_state_i64 = rng_state.view(torch.int64)
-    philox_seed = rng_state_i64[0]
-    philox_offset = rng_state_i64[1]
+    philox_seed = rng_state[0]
+    philox_offset = rng_state[1]
 
     out = output.transpose(1, 2).contiguous()
     return out, lse.float(), philox_seed, philox_offset
@@ -212,13 +211,6 @@ def efficient_attn_sdp_forward_native(
     actual_seq_len = Q.shape[2]
     lse_clipped = lse[:, :, :actual_seq_len].float().contiguous()
     return out, lse_clipped, philox_seed, philox_offset
-
-
-def _make_philox(device="cuda"):
-    return (
-        torch.tensor(0, dtype=torch.int64, device=device),
-        torch.tensor(0, dtype=torch.int64, device=device),
-    )
 
 
 class FlashAttentionBackwardBenchmark(base.GenericBenchmark):

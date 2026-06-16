@@ -25,13 +25,6 @@ def make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
     return Q, K, V
 
 
-def make_philox(device):
-    return (
-        torch.tensor(0, dtype=torch.int64, device=device),
-        torch.tensor(0, dtype=torch.int64, device=device),
-    )
-
-
 def flash_attn_forward_native(
     Q,
     K,
