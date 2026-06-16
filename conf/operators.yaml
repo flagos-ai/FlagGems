@@ -3553,6 +3553,7 @@ ops:
       tensors out of the graph or modify autograd metadata.
     for:
       - lift
+      - lift.out
     labels:
       - aten
       - KernelGen
