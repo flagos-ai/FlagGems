@@ -154,6 +154,38 @@ def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
     return out
 
 
+def addmm_sqmma_descriptor_pre_hook(nargs):
+    nargs["a_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_K"]]
+    nargs["b_desc"].block_shape = [nargs["BLOCK_SIZE_K"], nargs["BLOCK_SIZE_N"]]
+    nargs["bias_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_N"]]
+    nargs["c_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_N"]]
+
+
+@libentry()
+@libtuner(
+    configs=runtime.ops_get_configs(
+        "addmm_sqmma",
+        pre_hook=addmm_sqmma_descriptor_pre_hook,
+        yaml_path=EXPAND_CONFIG_FILENAME,
+    )
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else [
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
+            num_stages=1,
+            num_warps=4,
+            pre_hook=addmm_sqmma_descriptor_pre_hook,
+        )
+    ],
+    key=["M", "N", "K"],
+    strategy=runtime.get_expand_config("addmm_sqmma", yaml_path=EXPAND_CONFIG_FILENAME)[
+        "strategy"
+    ]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["default", "default", "default"],
+    warmup=5,
+    rep=5,
+)
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_sqmma_kernel(
     a_desc,
@@ -165,6 +197,7 @@ def addmm_sqmma_kernel(
     K,
     alpha,
     beta,
+    DTYPE: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -188,15 +221,6 @@ def addmm_sqmma_kernel(
     tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], result)
 
 
-def get_triton_type(elem_type):
-    type_map = {
-        torch.float16: tl.float16,
-        torch.bfloat16: tl.bfloat16,
-        torch.float8_e4m3fn: tl.float8e4nv,
-    }
-    return type_map.get(elem_type, None)
-
-
 def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
     logger.debug("GEMS_MTHREADS ADDMM(SQMMA)")
     device = mat1.device
@@ -213,15 +237,12 @@ def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
     c_type = a_type
     C = torch.empty((M, N), dtype=c_type, device=device)
     bias = bias.broadcast_to(C.shape).contiguous()
-    BLOCK_SIZE_M = 128
-    BLOCK_SIZE_N = 128
-    BLOCK_SIZE_K = 64
-    desc_a = TensorDescriptor.from_tensor(mat1, [BLOCK_SIZE_M, BLOCK_SIZE_K])
-    desc_b = TensorDescriptor.from_tensor(mat2, [BLOCK_SIZE_K, BLOCK_SIZE_N])
-    desc_bias = TensorDescriptor.from_tensor(bias, [BLOCK_SIZE_M, BLOCK_SIZE_N])
-    desc_c = TensorDescriptor.from_tensor(C, [BLOCK_SIZE_M, BLOCK_SIZE_N])
+    desc_a = TensorDescriptor.from_tensor(mat1, [1, 1])
+    desc_b = TensorDescriptor.from_tensor(mat2, [1, 1])
+    desc_bias = TensorDescriptor.from_tensor(bias, [1, 1])
+    desc_c = TensorDescriptor.from_tensor(C, [1, 1])
     grid = lambda META: (
-        triton.cdiv(M, BLOCK_SIZE_M) * triton.cdiv(N, BLOCK_SIZE_N),
+        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
         1,
         1,
     )
@@ -235,47 +256,30 @@ def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
         K,
         alpha,
         beta,
-        BLOCK_SIZE_M,
-        BLOCK_SIZE_N,
-        BLOCK_SIZE_K,
-        num_warps=4,
-        num_stages=1,
+        str(a_type).split(".")[-1],
     )
     return C
 
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     a_dtype = mat1.dtype
-    b_dtype = mat2.dtype
     M, K = mat1.shape
     _, N = mat2.shape
 
-    need_sqmma = a_dtype != torch.float32 and b_dtype != torch.float32
-    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
-    if need_sqmma:
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+    if is_sqmma_compatible(mat1, mat2, N, K):
+        return addmm_sqmma(
+            mat1,
+            mat2,
+            bias,
+            a_dtype,
+            alpha,
+            beta,
+            M,
+            N,
+            K,
+        )
     else:
-        os.environ.pop("MUSA_ENABLE_SQMMA", None)
-    try:
-        if is_sqmma_compatible(mat1, mat2, N, K):
-            return addmm_sqmma(
-                mat1,
-                mat2,
-                bias,
-                a_dtype,
-                alpha,
-                beta,
-                M,
-                N,
-                K,
-            )
-        else:
-            return addmm_fma(bias, mat1, mat2, alpha=alpha, beta=beta)
-    finally:
-        if prev_sqmma is None:
-            os.environ.pop("MUSA_ENABLE_SQMMA", None)
-        else:
-            os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+        return addmm_fma(bias, mat1, mat2, alpha=alpha, beta=beta)
 
 
 def addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1):
@@ -314,33 +318,20 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
     M, K = mat1.shape
     _, N = mat2.shape
     a_dtype = mat1.dtype
-    b_dtype = mat2.dtype
 
-    need_sqmma = a_dtype != torch.float32 and b_dtype != torch.float32
-    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
-    if need_sqmma:
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+    if is_sqmma_compatible(mat1, mat2, N, K):
+        result = addmm_sqmma(
+            mat1,
+            mat2,
+            bias_c,
+            a_dtype,
+            alpha,
+            beta,
+            M,
+            N,
+            K,
+        )
     else:
-        os.environ.pop("MUSA_ENABLE_SQMMA", None)
-    try:
-        if is_sqmma_compatible(mat1, mat2, N, K):
-            result = addmm_sqmma(
-                mat1,
-                mat2,
-                bias_c,
-                a_dtype,
-                alpha,
-                beta,
-                M,
-                N,
-                K,
-            )
-        else:
-            result = addmm_fma(bias_c, mat1, mat2, alpha=alpha, beta=beta)
-        out.copy_(result)
-        return out
-    finally:
-        if prev_sqmma is None:
-            os.environ.pop("MUSA_ENABLE_SQMMA", None)
-        else:
-            os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+        result = addmm_fma(bias_c, mat1, mat2, alpha=alpha, beta=beta)
+    out.copy_(result)
+    return out

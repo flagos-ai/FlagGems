@@ -30,7 +30,7 @@ def ne_func(x, y):
 
 
 def ne(A, B):
-    logger.debug("GEMS NE")
+    logger.debug("GEMS_KUNLUNXIN NE")
     os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = ne_func(A, B)
@@ -50,6 +50,6 @@ def ne_func_scalar(x, y):
 
 
 def ne_scalar(A, B):
-    logger.debug("GEMS NE SCALAR")
+    logger.debug("GEMS_KUNLUNXIN NE_SCALAR")
     res = ne_func_scalar(A, B)
     return res
