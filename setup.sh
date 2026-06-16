@@ -94,7 +94,8 @@ else
   printf "${RED}NOT FOUND${NC}\n"
   # Install uv and upgrade pip if necessary
   printf "Installing/upgrading pip and uv ... "
-  pip install uv || exit 1;
+  pip install uv --index-url https://mirrors.aliyun.com/pypi/simple \
+  || exit 1;
 fi
 
 # Start installation
