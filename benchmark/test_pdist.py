@@ -3,6 +3,7 @@ import torch
 
 from . import base
 
+# PDIST requires the input dim to be reasonably small; these shapes follow the upstream test suite.
 PDIST_SHAPES = [
     (4, 8),
     (8, 16),
