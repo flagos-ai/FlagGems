@@ -34,7 +34,7 @@ ENV VIRTUAL_ENV=/venv \
     PATH="/venv/bin:${PATH}"
 
 # ── Build FlagGems ─────────────────────────────────────────────
-ORKDIR /build
+WORKDIR /build
 COPY . /build/FlagGems
 WORKDIR /build/FlagGems
 
