@@ -5,6 +5,7 @@ Only supports sm90 (Hopper) architecture.
 """
 
 import dataclasses
+import math
 import os
 from typing import Optional, Tuple
 
@@ -32,6 +33,26 @@ TLE_DECODE_BK = 64
 TLE_DECODE_BH = 64
 TLE_DECODE_PAIR_BLOCKS = 2
 TLE_DECODE_WORKER_NUM_WARPS = 4
+
+# The raw V32 path avoids Python-side cache slicing/copies. Benchmark data shows
+# it wins for small topk, while the old copied layout is faster once K is long
+# enough that the mixed 656-byte token layout dominates memory efficiency.
+SPARSE_V32_RAW_THRESHOLD = int(
+    os.environ.get("FLAGGEMS_FLASHMLA_SPARSE_V32_RAW_THRESHOLD", "256")
+)
+
+# Split-KV kernels are kept as opt-in experiments. On the current benchmark set,
+# the extra partial buffers and combine launch outweigh the added K parallelism.
+SPARSE_V32_SPLIT_THRESHOLD = int(
+    os.environ.get("FLAGGEMS_FLASHMLA_SPARSE_V32_SPLIT_THRESHOLD", "0")
+)
+SPARSE_MODEL1_SPLIT_THRESHOLD = int(
+    os.environ.get("FLAGGEMS_FLASHMLA_SPARSE_MODEL1_SPLIT_THRESHOLD", "0")
+)
+DENSE_SPLIT_PAGE_THRESHOLD = int(
+    os.environ.get("FLAGGEMS_FLASHMLA_DENSE_SPLIT_PAGE_THRESHOLD", "0")
+)
+MAX_SPLIT_KV = int(os.environ.get("FLAGGEMS_FLASHMLA_MAX_SPLIT_KV", "8"))
 
 
 # ============================================================================
@@ -284,6 +305,485 @@ def _sparse_decode_kernel(
     o_ptr = o_base + offs_h[:, None] * stride_oh + offs_d[None, :]
     tl.store(o_ptr, out_vals0.to(tl.bfloat16))
     tl.store(o_ptr + BDP, out_vals1.to(tl.bfloat16))
+
+
+@triton.autotune(
+    configs=[
+        triton.Config({"BK": 64, "BH": 64}, num_warps=8, num_stages=2),
+        triton.Config({"BK": 64, "BH": 64}, num_warps=8, num_stages=4),
+    ],
+    key=["HQ", "TOPK", "HAVE_ATTN_SINK"],
+)
+@triton.jit
+def _sparse_decode_v32_raw_kernel(
+    q,
+    kv_u8,
+    indices,
+    attn_sink,
+    sm_scale: tl.constexpr,
+    output,
+    lse,
+    stride_qb,
+    stride_qsq,
+    stride_qh,
+    stride_kv_block,
+    stride_kv_page,
+    stride_ib,
+    stride_isq,
+    stride_ob,
+    stride_osq,
+    stride_oh,
+    stride_lseb,
+    stride_lseh,
+    SQ,
+    HQ: tl.constexpr,
+    PAGE_SIZE: tl.constexpr,
+    NUM_BLOCKS,
+    TOPK: tl.constexpr,
+    HAVE_ATTN_SINK: tl.constexpr,
+    BK: tl.constexpr,
+    BH: tl.constexpr,
+):
+    """V32 sparse decode over the original 656-byte token layout."""
+    num_head_blocks: tl.constexpr = (HQ + BH - 1) // BH
+    pid = tl.program_id(0)
+    i_b = pid // (SQ * num_head_blocks)
+    remainder = pid % (SQ * num_head_blocks)
+    i_sq = remainder // num_head_blocks
+    i_sq = i_sq.to(tl.int64)
+    i_gbh = remainder % num_head_blocks
+    gbh_base = i_gbh * BH
+
+    DP: tl.constexpr = 512
+    BDP: tl.constexpr = 256
+    ROPE: tl.constexpr = 64
+    SCALE_OFFSET: tl.constexpr = 512
+    ROPE_OFFSET: tl.constexpr = 528
+
+    q_base = q + i_b * stride_qb + i_sq * stride_qsq + gbh_base * stride_qh
+    t_base = indices + i_b * stride_ib + i_sq * stride_isq
+    attn_sink_ptr = attn_sink + gbh_base if HAVE_ATTN_SINK else 0
+    o_base = output + i_b * stride_ob + i_sq * stride_osq + gbh_base * stride_oh
+    l_base = lse + i_b * stride_lseb + gbh_base * stride_lseh + i_sq
+
+    offs_h = tl.arange(0, BH)
+    offs_d = tl.arange(0, BDP)
+    offs_td = tl.arange(0, ROPE)
+    offs_t = tl.arange(0, BK)
+
+    q_ptr = q_base + offs_h[:, None] * stride_qh + offs_d[None, :]
+    q_blk0 = tl.load(q_ptr, eviction_policy="evict_first")
+    q_blk1 = tl.load(q_ptr + BDP, eviction_policy="evict_first")
+    tq_blk = tl.load(
+        q_base + DP + offs_h[:, None] * stride_qh + offs_td[None, :],
+        eviction_policy="evict_first",
+    )
+
+    max_log = tl.full([BH], float("-inf"), dtype=tl.float32)
+    sum_exp = tl.full([BH], 0.0, dtype=tl.float32)
+    acc0 = tl.zeros([BH, BDP], dtype=tl.float32)
+    acc1 = tl.zeros([BH, BDP], dtype=tl.float32)
+
+    NK: tl.constexpr = (TOPK + BK - 1) // BK
+    for ck in tl.static_range(0, NK):
+        t_offs = ck * BK + offs_t
+        kv_ids = tl.load(t_base + t_offs, mask=t_offs < TOPK, other=-1)
+        block_ids = kv_ids // PAGE_SIZE
+        rel_ids = kv_ids - block_ids * PAGE_SIZE
+        valid_ids = (
+            (kv_ids >= 0) & (block_ids < NUM_BLOCKS) & (t_offs < TOPK)
+        )
+        kv_ids = tl.where(valid_ids, kv_ids, 0)
+        block_ids = tl.where(valid_ids, block_ids, 0)
+        rel_ids = tl.where(valid_ids, rel_ids, 0)
+
+        token_base = (
+            kv_u8
+            + block_ids.to(tl.int64) * stride_kv_block
+            + rel_ids * stride_kv_page
+        )
+        kv_fp8_0_u8 = tl.load(
+            token_base[None, :] + offs_d[:, None],
+            mask=valid_ids[None, :],
+            other=0,
+            cache_modifier=".cg",
+        )
+        kv_fp8_1_u8 = tl.load(
+            token_base[None, :] + BDP + offs_d[:, None],
+            mask=valid_ids[None, :],
+            other=0,
+            cache_modifier=".cg",
+        )
+
+        scale_ptr = (token_base + SCALE_OFFSET).to(tl.pointer_type(tl.float32))
+        scale0 = tl.load(scale_ptr + 0, mask=valid_ids, other=1.0)
+        scale1 = tl.load(scale_ptr + 1, mask=valid_ids, other=1.0)
+        scale2 = tl.load(scale_ptr + 2, mask=valid_ids, other=1.0)
+        scale3 = tl.load(scale_ptr + 3, mask=valid_ids, other=1.0)
+
+        mask_lo = offs_d[:, None] < 128
+        kv_fp8_0 = kv_fp8_0_u8.to(tl.float8e4nv, bitcast=True).to(tl.float32)
+        kv_fp8_1 = kv_fp8_1_u8.to(tl.float8e4nv, bitcast=True).to(tl.float32)
+        kv_blk0 = tl.where(
+            mask_lo,
+            kv_fp8_0 * scale0[None, :],
+            kv_fp8_0 * scale1[None, :],
+        ).to(tl.bfloat16)
+        kv_blk1 = tl.where(
+            mask_lo,
+            kv_fp8_1 * scale2[None, :],
+            kv_fp8_1 * scale3[None, :],
+        ).to(tl.bfloat16)
+
+        rope_ptr = (token_base + ROPE_OFFSET).to(tl.pointer_type(tl.bfloat16))
+        rope_blk = tl.load(
+            rope_ptr[None, :] + offs_td[:, None],
+            mask=valid_ids[None, :],
+            other=0.0,
+            cache_modifier=".cg",
+        )
+
+        qk = tl.dot(q_blk0, kv_blk0, out_dtype=tl.float32)
+        qk = tl.dot(q_blk1, kv_blk1, qk, out_dtype=tl.float32)
+        qk = tl.dot(tq_blk, rope_blk, qk, out_dtype=tl.float32)
+        qk *= sm_scale
+        qk = tl.where(valid_ids[None, :], qk, float("-inf"))
+
+        new_max = tl.maximum(max_log, tl.max(qk, axis=1))
+        exp_qk = tl.math.exp(qk - new_max[:, None])
+        sum_qk = tl.sum(exp_qk, axis=1)
+        alpha = tl.math.exp(max_log - new_max)
+        sum_exp = sum_exp * alpha + sum_qk
+        acc0 = tl.dot(
+            exp_qk.to(tl.bfloat16),
+            kv_blk0.trans(),
+            acc0 * alpha[:, None],
+            out_dtype=tl.float32,
+        )
+        acc1 = tl.dot(
+            exp_qk.to(tl.bfloat16),
+            kv_blk1.trans(),
+            acc1 * alpha[:, None],
+            out_dtype=tl.float32,
+        )
+        max_log = new_max
+
+    valid_mask = max_log != float("-inf")
+    orig_lse = max_log + tl.math.log(sum_exp)
+    lse_out = tl.where(valid_mask, orig_lse, float("inf"))
+    tl.store(l_base + offs_h * stride_lseh, lse_out)
+
+    if HAVE_ATTN_SINK:
+        sink = tl.load(attn_sink_ptr + offs_h)
+        denom_lse = tl.math.log(tl.math.exp(orig_lse) + tl.math.exp(sink))
+        factor = tl.where(valid_mask, tl.math.exp(max_log - denom_lse), 0.0)
+    else:
+        safe_sum = tl.where(valid_mask, sum_exp, 1.0)
+        factor = 1.0 / safe_sum
+
+    out_vals0 = tl.where(valid_mask[:, None], acc0 * factor[:, None], 0.0)
+    out_vals1 = tl.where(valid_mask[:, None], acc1 * factor[:, None], 0.0)
+    o_ptr = o_base + offs_h[:, None] * stride_oh + offs_d[None, :]
+    tl.store(o_ptr, out_vals0.to(tl.bfloat16))
+    tl.store(o_ptr + BDP, out_vals1.to(tl.bfloat16))
+
+
+@triton.jit
+def _splitkv_combine_kernel(
+    partial_out,
+    partial_lse,
+    attn_sink,
+    output,
+    lse,
+    stride_po_split,
+    stride_po_b,
+    stride_po_sq,
+    stride_po_h,
+    stride_pl_split,
+    stride_pl_b,
+    stride_pl_h,
+    stride_out_b,
+    stride_out_sq,
+    stride_out_h,
+    stride_lse_b,
+    stride_lse_h,
+    SQ,
+    HQ: tl.constexpr,
+    NUM_SPLITS: tl.constexpr,
+    HAVE_ATTN_SINK: tl.constexpr,
+    BH: tl.constexpr,
+    BD: tl.constexpr,
+):
+    """Combine normalized split outputs with split LSE values."""
+    num_head_blocks: tl.constexpr = (HQ + BH - 1) // BH
+    pid = tl.program_id(0)
+    pid_d = tl.program_id(1)
+    i_b = pid // (SQ * num_head_blocks)
+    rem = pid % (SQ * num_head_blocks)
+    i_sq = rem // num_head_blocks
+    i_gbh = rem % num_head_blocks
+    h_base = i_gbh * BH
+    d_base = pid_d * BD
+
+    offs_h = tl.arange(0, BH)
+    offs_d = tl.arange(0, BD)
+    mask_h = h_base + offs_h < HQ
+
+    max_lse = tl.full([BH], float("-inf"), dtype=tl.float32)
+    for split_idx in tl.static_range(0, NUM_SPLITS):
+        cur_lse = tl.load(
+            partial_lse
+            + split_idx * stride_pl_split
+            + i_b * stride_pl_b
+            + (h_base + offs_h) * stride_pl_h
+            + i_sq,
+            mask=mask_h,
+            other=float("-inf"),
+        )
+        max_lse = tl.maximum(max_lse, cur_lse)
+
+    has_tokens = max_lse != float("-inf")
+    safe_max_lse = tl.where(has_tokens, max_lse, 0.0)
+    sum_lse = tl.full([BH], 0.0, dtype=tl.float32)
+    for split_idx in tl.static_range(0, NUM_SPLITS):
+        cur_lse = tl.load(
+            partial_lse
+            + split_idx * stride_pl_split
+            + i_b * stride_pl_b
+            + (h_base + offs_h) * stride_pl_h
+            + i_sq,
+            mask=mask_h,
+            other=float("-inf"),
+        )
+        sum_lse += tl.where(has_tokens, tl.math.exp(cur_lse - safe_max_lse), 0.0)
+
+    global_lse = safe_max_lse + tl.math.log(sum_lse)
+    lse_out = tl.where(has_tokens, global_lse, float("inf"))
+    tl.store(
+        lse + i_b * stride_lse_b + (h_base + offs_h) * stride_lse_h + i_sq,
+        lse_out,
+        mask=mask_h,
+    )
+
+    safe_global_lse = tl.where(has_tokens, global_lse, 0.0)
+    denom_lse = safe_global_lse
+    if HAVE_ATTN_SINK:
+        sink = tl.load(attn_sink + h_base + offs_h, mask=mask_h, other=float("-inf"))
+        denom_lse = tl.math.log(tl.math.exp(safe_global_lse) + tl.math.exp(sink))
+
+    acc = tl.zeros([BH, BD], dtype=tl.float32)
+    for split_idx in tl.static_range(0, NUM_SPLITS):
+        cur_lse = tl.load(
+            partial_lse
+            + split_idx * stride_pl_split
+            + i_b * stride_pl_b
+            + (h_base + offs_h) * stride_pl_h
+            + i_sq,
+            mask=mask_h,
+            other=float("-inf"),
+        )
+        weight = tl.where(has_tokens, tl.math.exp(cur_lse - denom_lse), 0.0)
+        vals = tl.load(
+            partial_out
+            + split_idx * stride_po_split
+            + i_b * stride_po_b
+            + i_sq * stride_po_sq
+            + (h_base + offs_h[:, None]) * stride_po_h
+            + (d_base + offs_d[None, :]),
+            mask=mask_h[:, None],
+            other=0.0,
+        )
+        acc += vals * weight[:, None]
+
+    out_ptr = (
+        output
+        + i_b * stride_out_b
+        + i_sq * stride_out_sq
+        + (h_base + offs_h[:, None]) * stride_out_h
+        + (d_base + offs_d[None, :])
+    )
+    tl.store(out_ptr, acc.to(output.dtype.element_ty), mask=mask_h[:, None])
+
+
+@triton.jit
+def _sparse_decode_v32_raw_split_kernel(
+    q,
+    kv_u8,
+    indices,
+    sm_scale: tl.constexpr,
+    partial_out,
+    partial_lse,
+    stride_qb,
+    stride_qsq,
+    stride_qh,
+    stride_kv_block,
+    stride_kv_page,
+    stride_ib,
+    stride_isq,
+    stride_po_split,
+    stride_po_b,
+    stride_po_sq,
+    stride_po_h,
+    stride_pl_split,
+    stride_pl_b,
+    stride_pl_h,
+    SQ,
+    HQ: tl.constexpr,
+    PAGE_SIZE: tl.constexpr,
+    NUM_BLOCKS,
+    TOPK: tl.constexpr,
+    SPLIT_SIZE: tl.constexpr,
+    BK: tl.constexpr,
+    BH: tl.constexpr,
+):
+    """V32 split-KV partial kernel over the original 656-byte token layout."""
+    num_head_blocks: tl.constexpr = (HQ + BH - 1) // BH
+    pid = tl.program_id(0)
+    split_idx = tl.program_id(1)
+    i_b = pid // (SQ * num_head_blocks)
+    remainder = pid % (SQ * num_head_blocks)
+    i_sq = remainder // num_head_blocks
+    i_sq = i_sq.to(tl.int64)
+    i_gbh = remainder % num_head_blocks
+    gbh_base = i_gbh * BH
+
+    DP: tl.constexpr = 512
+    BDP: tl.constexpr = 256
+    ROPE: tl.constexpr = 64
+    SCALE_OFFSET: tl.constexpr = 512
+    ROPE_OFFSET: tl.constexpr = 528
+
+    q_base = q + i_b * stride_qb + i_sq * stride_qsq + gbh_base * stride_qh
+    t_base = indices + i_b * stride_ib + i_sq * stride_isq
+    po_base = (
+        partial_out
+        + split_idx * stride_po_split
+        + i_b * stride_po_b
+        + i_sq * stride_po_sq
+        + gbh_base * stride_po_h
+    )
+    pl_base = (
+        partial_lse
+        + split_idx * stride_pl_split
+        + i_b * stride_pl_b
+        + gbh_base * stride_pl_h
+        + i_sq
+    )
+
+    offs_h = tl.arange(0, BH)
+    offs_d = tl.arange(0, BDP)
+    offs_td = tl.arange(0, ROPE)
+    offs_t = tl.arange(0, BK)
+
+    q_ptr = q_base + offs_h[:, None] * stride_qh + offs_d[None, :]
+    q_blk0 = tl.load(q_ptr, eviction_policy="evict_first")
+    q_blk1 = tl.load(q_ptr + BDP, eviction_policy="evict_first")
+    tq_blk = tl.load(
+        q_base + DP + offs_h[:, None] * stride_qh + offs_td[None, :],
+        eviction_policy="evict_first",
+    )
+
+    max_log = tl.full([BH], float("-inf"), dtype=tl.float32)
+    sum_exp = tl.full([BH], 0.0, dtype=tl.float32)
+    acc0 = tl.zeros([BH, BDP], dtype=tl.float32)
+    acc1 = tl.zeros([BH, BDP], dtype=tl.float32)
+
+    split_start = split_idx * SPLIT_SIZE
+    split_end = tl.minimum(split_start + SPLIT_SIZE, TOPK)
+    NK: tl.constexpr = (SPLIT_SIZE + BK - 1) // BK
+    for ck in tl.static_range(0, NK):
+        t_offs = split_start + ck * BK + offs_t
+        in_split = t_offs < split_end
+        kv_ids = tl.load(t_base + t_offs, mask=in_split, other=-1)
+        block_ids = kv_ids // PAGE_SIZE
+        rel_ids = kv_ids - block_ids * PAGE_SIZE
+        valid_ids = in_split & (kv_ids >= 0) & (block_ids < NUM_BLOCKS)
+        kv_ids = tl.where(valid_ids, kv_ids, 0)
+        block_ids = tl.where(valid_ids, block_ids, 0)
+        rel_ids = tl.where(valid_ids, rel_ids, 0)
+
+        token_base = (
+            kv_u8
+            + block_ids.to(tl.int64) * stride_kv_block
+            + rel_ids * stride_kv_page
+        )
+        kv_fp8_0_u8 = tl.load(
+            token_base[None, :] + offs_d[:, None],
+            mask=valid_ids[None, :],
+            other=0,
+            cache_modifier=".cg",
+        )
+        kv_fp8_1_u8 = tl.load(
+            token_base[None, :] + BDP + offs_d[:, None],
+            mask=valid_ids[None, :],
+            other=0,
+            cache_modifier=".cg",
+        )
+        scale_ptr = (token_base + SCALE_OFFSET).to(tl.pointer_type(tl.float32))
+        scale0 = tl.load(scale_ptr + 0, mask=valid_ids, other=1.0)
+        scale1 = tl.load(scale_ptr + 1, mask=valid_ids, other=1.0)
+        scale2 = tl.load(scale_ptr + 2, mask=valid_ids, other=1.0)
+        scale3 = tl.load(scale_ptr + 3, mask=valid_ids, other=1.0)
+
+        mask_lo = offs_d[:, None] < 128
+        kv_fp8_0 = kv_fp8_0_u8.to(tl.float8e4nv, bitcast=True).to(tl.float32)
+        kv_fp8_1 = kv_fp8_1_u8.to(tl.float8e4nv, bitcast=True).to(tl.float32)
+        kv_blk0 = tl.where(
+            mask_lo,
+            kv_fp8_0 * scale0[None, :],
+            kv_fp8_0 * scale1[None, :],
+        ).to(tl.bfloat16)
+        kv_blk1 = tl.where(
+            mask_lo,
+            kv_fp8_1 * scale2[None, :],
+            kv_fp8_1 * scale3[None, :],
+        ).to(tl.bfloat16)
+        rope_ptr = (token_base + ROPE_OFFSET).to(tl.pointer_type(tl.bfloat16))
+        rope_blk = tl.load(
+            rope_ptr[None, :] + offs_td[:, None],
+            mask=valid_ids[None, :],
+            other=0.0,
+            cache_modifier=".cg",
+        )
+
+        qk = tl.dot(q_blk0, kv_blk0, out_dtype=tl.float32)
+        qk = tl.dot(q_blk1, kv_blk1, qk, out_dtype=tl.float32)
+        qk = tl.dot(tq_blk, rope_blk, qk, out_dtype=tl.float32)
+        qk *= sm_scale
+        qk = tl.where(valid_ids[None, :], qk, float("-inf"))
+
+        new_max = tl.maximum(max_log, tl.max(qk, axis=1))
+        exp_qk = tl.math.exp(qk - new_max[:, None])
+        sum_qk = tl.sum(exp_qk, axis=1)
+        alpha = tl.math.exp(max_log - new_max)
+        sum_exp = sum_exp * alpha + sum_qk
+        acc0 = tl.dot(
+            exp_qk.to(tl.bfloat16),
+            kv_blk0.trans(),
+            acc0 * alpha[:, None],
+            out_dtype=tl.float32,
+        )
+        acc1 = tl.dot(
+            exp_qk.to(tl.bfloat16),
+            kv_blk1.trans(),
+            acc1 * alpha[:, None],
+            out_dtype=tl.float32,
+        )
+        max_log = new_max
+
+    valid_mask = max_log != float("-inf")
+    local_lse = max_log + tl.math.log(sum_exp)
+    tl.store(
+        pl_base + offs_h * stride_pl_h,
+        tl.where(valid_mask, local_lse, float("-inf")),
+    )
+    safe_sum = tl.where(valid_mask, sum_exp, 1.0)
+    inv_sum = 1.0 / safe_sum
+    vals0 = tl.where(valid_mask[:, None], acc0 * inv_sum[:, None], 0.0)
+    vals1 = tl.where(valid_mask[:, None], acc1 * inv_sum[:, None], 0.0)
+    o_ptr = po_base + offs_h[:, None] * stride_po_h + offs_d[None, :]
+    tl.store(o_ptr, vals0.to(partial_out.dtype.element_ty))
+    tl.store(o_ptr + BDP, vals1.to(partial_out.dtype.element_ty))
 
 
 # ============================================================================
@@ -659,6 +1159,290 @@ def _sparse_decode_model1_kernel(
     tl.store(o_ptr + BDP, out_vals1.to(tl.bfloat16))
 
 
+@triton.jit
+def _sparse_decode_model1_split_kernel(
+    q,
+    kv,
+    indices,
+    extra_kv,
+    extra_indices,
+    topk_length,
+    extra_topk_length,
+    sm_scale: tl.constexpr,
+    partial_out,
+    partial_lse,
+    stride_qb,
+    stride_qsq,
+    stride_qh,
+    stride_kv_block,
+    stride_ib,
+    stride_isq,
+    stride_extra_kv_block,
+    stride_eib,
+    stride_eisq,
+    stride_po_split,
+    stride_po_b,
+    stride_po_sq,
+    stride_po_h,
+    stride_pl_split,
+    stride_pl_b,
+    stride_pl_h,
+    SQ,
+    HQ: tl.constexpr,
+    PAGE_SIZE: tl.constexpr,
+    EXTRA_PAGE_SIZE: tl.constexpr,
+    NUM_BLOCKS,
+    EXTRA_NUM_BLOCKS,
+    TOPK: tl.constexpr,
+    EXTRA_TOPK: tl.constexpr,
+    HAVE_TOPK_LENGTH: tl.constexpr,
+    HAVE_EXTRA: tl.constexpr,
+    HAVE_EXTRA_TOPK_LENGTH: tl.constexpr,
+    SPLIT_SIZE: tl.constexpr,
+    BK: tl.constexpr,
+    BH: tl.constexpr,
+):
+    num_head_blocks: tl.constexpr = (HQ + BH - 1) // BH
+    pid = tl.program_id(0)
+    split_idx = tl.program_id(1)
+    i_b = pid // (SQ * num_head_blocks)
+    remainder = pid % (SQ * num_head_blocks)
+    i_sq = remainder // num_head_blocks
+    i_sq = i_sq.to(tl.int64)
+    i_gbh = remainder % num_head_blocks
+    gbh_base = i_gbh * BH
+
+    NOPE: tl.constexpr = 448
+    ROPE: tl.constexpr = 64
+    BDP: tl.constexpr = 256
+    TOKEN_DATA_BYTES: tl.constexpr = 576
+    SCALE_BYTES: tl.constexpr = 8
+
+    q_base = q + i_b * stride_qb + i_sq * stride_qsq + gbh_base * stride_qh
+    t_base = indices + i_b * stride_ib + i_sq * stride_isq
+    et_base = extra_indices + i_b * stride_eib + i_sq * stride_eisq
+    topk_length_ptr = topk_length + i_b if HAVE_TOPK_LENGTH else 0
+    extra_topk_length_ptr = extra_topk_length + i_b if HAVE_EXTRA_TOPK_LENGTH else 0
+    po_base = (
+        partial_out
+        + split_idx * stride_po_split
+        + i_b * stride_po_b
+        + i_sq * stride_po_sq
+        + gbh_base * stride_po_h
+    )
+    pl_base = (
+        partial_lse
+        + split_idx * stride_pl_split
+        + i_b * stride_pl_b
+        + gbh_base * stride_pl_h
+        + i_sq
+    )
+
+    offs_h = tl.arange(0, BH)
+    offs_d = tl.arange(0, BDP)
+    offs_t = tl.arange(0, BK)
+    offs_rope = tl.arange(0, ROPE)
+
+    q_ptr = q_base + offs_h[:, None] * stride_qh + offs_d[None, :]
+    q_blk0 = tl.load(q_ptr, eviction_policy="evict_first")
+    q_blk1_nope = tl.load(
+        q_ptr + BDP,
+        mask=offs_d[None, :] < (NOPE - BDP),
+        other=0.0,
+        eviction_policy="evict_first",
+    )
+    q_rope = tl.load(
+        q_base + offs_h[:, None] * stride_qh + (NOPE + offs_rope[None, :]),
+        eviction_policy="evict_first",
+    )
+
+    max_log = tl.full([BH], float("-inf"), dtype=tl.float32)
+    sum_exp = tl.full([BH], 0.0, dtype=tl.float32)
+    acc0 = tl.zeros([BH, BDP], dtype=tl.float32)
+    acc1 = tl.zeros([BH, BDP], dtype=tl.float32)
+
+    topk_len = tl.load(topk_length_ptr) if HAVE_TOPK_LENGTH else TOPK
+    extra_len = (
+        tl.load(extra_topk_length_ptr)
+        if HAVE_EXTRA_TOPK_LENGTH
+        else (EXTRA_TOPK if HAVE_EXTRA else 0)
+    )
+    total_len = topk_len + extra_len
+    split_start = split_idx * SPLIT_SIZE
+    split_end = tl.minimum(split_start + SPLIT_SIZE, total_len)
+    NK: tl.constexpr = (SPLIT_SIZE + BK - 1) // BK
+
+    for ck in tl.static_range(0, NK):
+        global_pos = split_start + ck * BK + offs_t
+        pos_valid = global_pos < split_end
+        if HAVE_EXTRA:
+            use_extra = global_pos >= topk_len
+            local_pos = tl.where(use_extra, global_pos - topk_len, global_pos)
+            idx_ptr = tl.where(use_extra, et_base + local_pos, t_base + local_pos)
+        else:
+            use_extra = global_pos < 0
+            local_pos = global_pos
+            idx_ptr = t_base + local_pos
+
+        kv_ids = tl.load(idx_ptr, mask=pos_valid, other=-1)
+
+        block_ids_main = kv_ids // PAGE_SIZE
+        rel_ids_main = kv_ids - block_ids_main * PAGE_SIZE
+        valid_main = pos_valid & (kv_ids >= 0) & (block_ids_main < NUM_BLOCKS)
+
+        if HAVE_EXTRA:
+            block_ids_extra = kv_ids // EXTRA_PAGE_SIZE
+            rel_ids_extra = kv_ids - block_ids_extra * EXTRA_PAGE_SIZE
+            valid_extra = pos_valid & (kv_ids >= 0) & (block_ids_extra < EXTRA_NUM_BLOCKS)
+            token_base_main = (
+                kv
+                + block_ids_main.to(tl.int64) * stride_kv_block
+                + rel_ids_main * TOKEN_DATA_BYTES
+            )
+            scale_base_main = (
+                kv
+                + block_ids_main.to(tl.int64) * stride_kv_block
+                + PAGE_SIZE * TOKEN_DATA_BYTES
+                + rel_ids_main * SCALE_BYTES
+            )
+            token_base_extra = (
+                extra_kv
+                + block_ids_extra.to(tl.int64) * stride_extra_kv_block
+                + rel_ids_extra * TOKEN_DATA_BYTES
+            )
+            scale_base_extra = (
+                extra_kv
+                + block_ids_extra.to(tl.int64) * stride_extra_kv_block
+                + EXTRA_PAGE_SIZE * TOKEN_DATA_BYTES
+                + rel_ids_extra * SCALE_BYTES
+            )
+            token_base = tl.where(use_extra, token_base_extra, token_base_main)
+            scale_base = tl.where(use_extra, scale_base_extra, scale_base_main)
+            valid_ids = tl.where(use_extra, valid_extra, valid_main)
+        else:
+            token_base = (
+                kv
+                + block_ids_main.to(tl.int64) * stride_kv_block
+                + rel_ids_main * TOKEN_DATA_BYTES
+            )
+            scale_base = (
+                kv
+                + block_ids_main.to(tl.int64) * stride_kv_block
+                + PAGE_SIZE * TOKEN_DATA_BYTES
+                + rel_ids_main * SCALE_BYTES
+            )
+            valid_ids = valid_main
+
+        token_base = tl.where(valid_ids, token_base, kv)
+        scale_base = tl.where(valid_ids, scale_base, kv + PAGE_SIZE * TOKEN_DATA_BYTES)
+
+        kv_fp8_0_u8 = tl.load(
+            token_base[None, :] + offs_d[:, None],
+            mask=valid_ids[None, :],
+            other=0,
+            cache_modifier=".cg",
+        )
+        kv_fp8_1_u8 = tl.load(
+            token_base[None, :] + (BDP + offs_d[:, None]),
+            mask=valid_ids[None, :] & (offs_d[:, None] < (NOPE - BDP)),
+            other=0,
+            cache_modifier=".cg",
+        )
+
+        scale0_u8 = tl.load(scale_base + 0, mask=valid_ids, other=127)
+        scale1_u8 = tl.load(scale_base + 1, mask=valid_ids, other=127)
+        scale2_u8 = tl.load(scale_base + 2, mask=valid_ids, other=127)
+        scale3_u8 = tl.load(scale_base + 3, mask=valid_ids, other=127)
+        scale4_u8 = tl.load(scale_base + 4, mask=valid_ids, other=127)
+        scale5_u8 = tl.load(scale_base + 5, mask=valid_ids, other=127)
+        scale6_u8 = tl.load(scale_base + 6, mask=valid_ids, other=127)
+
+        scale0 = (scale0_u8.to(tl.int32) << 23).to(tl.float32, bitcast=True)
+        scale1 = (scale1_u8.to(tl.int32) << 23).to(tl.float32, bitcast=True)
+        scale2 = (scale2_u8.to(tl.int32) << 23).to(tl.float32, bitcast=True)
+        scale3 = (scale3_u8.to(tl.int32) << 23).to(tl.float32, bitcast=True)
+        scale4 = (scale4_u8.to(tl.int32) << 23).to(tl.float32, bitcast=True)
+        scale5 = (scale5_u8.to(tl.int32) << 23).to(tl.float32, bitcast=True)
+        scale6 = (scale6_u8.to(tl.int32) << 23).to(tl.float32, bitcast=True)
+
+        kv_fp8_0 = kv_fp8_0_u8.to(tl.float8e4nv, bitcast=True).to(tl.float32)
+        scale_0 = tl.where(
+            offs_d[:, None] < 64,
+            scale0[None, :],
+            tl.where(
+                offs_d[:, None] < 128,
+                scale1[None, :],
+                tl.where(offs_d[:, None] < 192, scale2[None, :], scale3[None, :]),
+            ),
+        )
+        kv_blk0 = (kv_fp8_0 * scale_0).to(tl.bfloat16)
+
+        kv_fp8_1 = kv_fp8_1_u8.to(tl.float8e4nv, bitcast=True).to(tl.float32)
+        scale_1 = tl.where(
+            offs_d[:, None] < 64,
+            scale4[None, :],
+            tl.where(offs_d[:, None] < 128, scale5[None, :], scale6[None, :]),
+        )
+        nope_tail = (kv_fp8_1 * scale_1).to(tl.bfloat16)
+
+        rope_ptr = (token_base + NOPE).to(tl.pointer_type(tl.bfloat16))
+        rope_blk = tl.load(
+            rope_ptr[None, :] + offs_rope[:, None],
+            mask=valid_ids[None, :],
+            other=0.0,
+            cache_modifier=".cg",
+        )
+        kv_blk1 = tl.where(
+            offs_d[:, None] < (NOPE - BDP),
+            nope_tail,
+            tl.load(
+                rope_ptr[None, :] + (offs_d[:, None] - (NOPE - BDP)),
+                mask=valid_ids[None, :] & (offs_d[:, None] >= (NOPE - BDP)),
+                other=0.0,
+                cache_modifier=".cg",
+            ),
+        )
+
+        qk = tl.dot(q_blk0, kv_blk0, out_dtype=tl.float32)
+        qk = tl.dot(q_blk1_nope, nope_tail, qk, out_dtype=tl.float32)
+        qk = tl.dot(q_rope, rope_blk, qk, out_dtype=tl.float32)
+        qk *= sm_scale
+        qk = tl.where(valid_ids[None, :], qk, float("-inf"))
+
+        new_max = tl.maximum(max_log, tl.max(qk, axis=1))
+        exp_qk = tl.math.exp(qk - new_max[:, None])
+        sum_qk = tl.sum(exp_qk, axis=1)
+        alpha = tl.math.exp(max_log - new_max)
+        sum_exp = sum_exp * alpha + sum_qk
+        acc0 = tl.dot(
+            exp_qk.to(tl.bfloat16),
+            kv_blk0.trans(),
+            acc0 * alpha[:, None],
+            out_dtype=tl.float32,
+        )
+        acc1 = tl.dot(
+            exp_qk.to(tl.bfloat16),
+            kv_blk1.trans(),
+            acc1 * alpha[:, None],
+            out_dtype=tl.float32,
+        )
+        max_log = new_max
+
+    valid_mask = max_log != float("-inf")
+    local_lse = max_log + tl.math.log(sum_exp)
+    tl.store(
+        pl_base + offs_h * stride_pl_h,
+        tl.where(valid_mask, local_lse, float("-inf")),
+    )
+    safe_sum = tl.where(valid_mask, sum_exp, 1.0)
+    inv_sum = 1.0 / safe_sum
+    vals0 = tl.where(valid_mask[:, None], acc0 * inv_sum[:, None], 0.0)
+    vals1 = tl.where(valid_mask[:, None], acc1 * inv_sum[:, None], 0.0)
+    o_ptr = po_base + offs_h[:, None] * stride_po_h + offs_d[None, :]
+    tl.store(o_ptr, vals0.to(partial_out.dtype.element_ty))
+    tl.store(o_ptr + BDP, vals1.to(partial_out.dtype.element_ty))
+
+
 # ============================================================================
 # Dense decode kernel (paged attention with block_table)
 # ============================================================================
@@ -815,6 +1599,139 @@ def _dense_decode_kernel(
     lse_val = e_max + tl.math.log(e_sum)
     lse_offset = i_b * stride_lse_b + cur_head * stride_lse_h + i_sq
     tl.store(LSE + lse_offset, lse_val, mask=mask_head)
+
+
+@triton.jit
+def _dense_decode_split_kernel(
+    Q_ptr,
+    stride_q_b,
+    stride_q_sq,
+    stride_q_h,
+    KV_cache,
+    stride_kv_bs,
+    Block_table,
+    stride_bt_b,
+    Seq_lens,
+    partial_out,
+    partial_lse,
+    stride_po_split,
+    stride_po_b,
+    stride_po_sq,
+    stride_po_h,
+    stride_pl_split,
+    stride_pl_b,
+    stride_pl_h,
+    sm_scale,
+    SQ,
+    HQ: tl.constexpr,
+    DQK: tl.constexpr,
+    HEAD_DIM_V: tl.constexpr,
+    PAGE_SIZE: tl.constexpr,
+    SPLIT_PAGES: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+):
+    """Dense paged attention partial kernel, split across page ranges."""
+    pid_h_block = tl.program_id(0)
+    pid_b_sq = tl.program_id(1)
+    split_idx = tl.program_id(2)
+    i_b = pid_b_sq // SQ
+    i_sq = pid_b_sq % SQ
+
+    cur_head = pid_h_block * BLOCK_H + tl.arange(0, BLOCK_H)
+    mask_head = cur_head < HQ
+
+    offs_d_nope = tl.arange(0, HEAD_DIM_V)
+    q_nope = tl.load(
+        Q_ptr
+        + i_b * stride_q_b
+        + i_sq * stride_q_sq
+        + cur_head[:, None] * stride_q_h
+        + offs_d_nope[None, :],
+        mask=mask_head[:, None],
+        other=0.0,
+    )
+
+    offs_d_pe = tl.arange(HEAD_DIM_V, DQK)
+    q_pe = tl.load(
+        Q_ptr
+        + i_b * stride_q_b
+        + i_sq * stride_q_sq
+        + cur_head[:, None] * stride_q_h
+        + offs_d_pe[None, :],
+        mask=mask_head[:, None],
+        other=0.0,
+    )
+
+    e_max = tl.full([BLOCK_H], value=float("-inf"), dtype=tl.float32)
+    e_sum = tl.zeros([BLOCK_H], dtype=tl.float32)
+    acc = tl.zeros([BLOCK_H, HEAD_DIM_V], dtype=tl.float32)
+
+    cur_batch_seq_len = tl.load(Seq_lens + i_b)
+    block_table = Block_table + i_b * stride_bt_b
+    start_page = split_idx * SPLIT_PAGES
+    end_page = start_page + SPLIT_PAGES
+    num_pages = tl.cdiv(cur_batch_seq_len, PAGE_SIZE)
+    end_page = tl.minimum(end_page, num_pages)
+    offs_n = tl.arange(0, PAGE_SIZE)
+
+    for page_offset in tl.static_range(0, SPLIT_PAGES):
+        page_idx = start_page + page_offset
+        valid_page = page_idx < end_page
+        kv_page_number = tl.load(
+            block_table + page_idx,
+            mask=valid_page & (page_idx < num_pages),
+            other=0,
+        )
+        token_idx = page_idx * PAGE_SIZE + offs_n
+        mask_kv = valid_page & (token_idx < cur_batch_seq_len)
+        kv_loc = kv_page_number * PAGE_SIZE + offs_n
+
+        v_c = tl.load(
+            KV_cache + kv_loc[:, None] * stride_kv_bs + offs_d_nope[None, :],
+            mask=mask_kv[:, None],
+            other=0.0,
+        )
+        qk = tl.dot(q_nope, tl.trans(v_c))
+        k_pe = tl.load(
+            KV_cache + kv_loc[None, :] * stride_kv_bs + offs_d_pe[:, None],
+            mask=mask_kv[None, :],
+            other=0.0,
+        )
+        qk = tl.dot(q_pe, k_pe, acc=qk)
+        qk *= sm_scale
+        qk = tl.where(mask_kv[None, :], qk, float("-inf"))
+
+        n_e_max = tl.maximum(tl.max(qk, 1), e_max)
+        re_scale = tl.exp(e_max - n_e_max)
+        p = tl.exp(qk - n_e_max[:, None])
+        acc *= re_scale[:, None]
+        acc = tl.dot(p.to(v_c.dtype), v_c, acc=acc)
+        e_sum = e_sum * re_scale + tl.sum(p, 1)
+        e_max = n_e_max
+
+    valid_mask = e_max != float("-inf")
+    local_lse = e_max + tl.math.log(e_sum)
+    tl.store(
+        partial_lse
+        + split_idx * stride_pl_split
+        + i_b * stride_pl_b
+        + cur_head * stride_pl_h
+        + i_sq,
+        tl.where(valid_mask, local_lse, float("-inf")),
+        mask=mask_head,
+    )
+    safe_e_sum = tl.where(valid_mask, e_sum, 1.0)
+    vals = tl.where(valid_mask[:, None], acc / safe_e_sum[:, None], 0.0)
+    tl.store(
+        partial_out
+        + split_idx * stride_po_split
+        + i_b * stride_po_b
+        + i_sq * stride_po_sq
+        + cur_head[:, None] * stride_po_h
+        + offs_d_nope[None, :],
+        vals.to(partial_out.dtype.element_ty),
+        mask=mask_head[:, None],
+    )
 
 
 # ============================================================================
@@ -1096,6 +2013,59 @@ def flash_mla_with_kvcache(
 # ============================================================================
 
 
+def _ceil_to_multiple(value: int, multiple: int) -> int:
+    return ((value + multiple - 1) // multiple) * multiple
+
+
+def _choose_split_count(length: int, threshold: int) -> int:
+    if threshold <= 0 or length <= threshold:
+        return 1
+    return max(2, min(MAX_SPLIT_KV, math.ceil(length / threshold)))
+
+
+def _combine_splitkv(
+    partial_out: torch.Tensor,
+    partial_lse: torch.Tensor,
+    attn_sink: Optional[torch.Tensor],
+    out: torch.Tensor,
+    lse: torch.Tensor,
+    batch_size: int,
+    seq_q: int,
+    num_heads_q: int,
+):
+    BH = 64
+    BD = 256
+    num_head_blocks = (num_heads_q + BH - 1) // BH
+    grid = (batch_size * seq_q * num_head_blocks, 2)
+    _splitkv_combine_kernel[grid](
+        partial_out,
+        partial_lse,
+        attn_sink if attn_sink is not None else None,
+        out,
+        lse,
+        partial_out.stride(0),
+        partial_out.stride(1),
+        partial_out.stride(2),
+        partial_out.stride(3),
+        partial_lse.stride(0),
+        partial_lse.stride(1),
+        partial_lse.stride(2),
+        out.stride(0),
+        out.stride(1),
+        out.stride(2),
+        lse.stride(0),
+        lse.stride(1),
+        seq_q,
+        num_heads_q,
+        partial_out.shape[0],
+        attn_sink is not None,
+        BH,
+        BD,
+        num_warps=8,
+        num_stages=1,
+    )
+
+
 def _sparse_decode_dispatch(
     q,
     kv,
@@ -1125,6 +2095,83 @@ def _sparse_decode_dispatch(
     skv = kv.shape[0] * page_block_size
 
     if head_dim_k == 512:
+        total_sparse_k = topk + (extra_indices.shape[-1] if extra_indices is not None else 0)
+        num_splits = _choose_split_count(
+            total_sparse_k, SPARSE_MODEL1_SPLIT_THRESHOLD
+        )
+        if num_splits > 1:
+            BK = 32
+            split_size = _ceil_to_multiple(math.ceil(total_sparse_k / num_splits), BK)
+            partial_out = torch.empty(
+                (num_splits, batch_size, seq_q, num_heads_q, head_dim_v),
+                dtype=out.dtype,
+                device=q.device,
+            )
+            partial_lse = torch.empty(
+                (num_splits, batch_size, num_heads_q, seq_q),
+                dtype=torch.float32,
+                device=q.device,
+            )
+            _sparse_decode_model1_split_kernel[(grid[0], num_splits)](
+                q,
+                kv,
+                indices,
+                extra_kv if extra_kv is not None else kv,
+                extra_indices if extra_indices is not None else indices,
+                topk_length if topk_length is not None else None,
+                extra_topk_length if extra_topk_length is not None else None,
+                softmax_scale,
+                partial_out,
+                partial_lse,
+                q.stride(0),
+                q.stride(1),
+                q.stride(2),
+                kv.stride(0),
+                indices.stride(0),
+                indices.stride(1),
+                extra_kv.stride(0) if extra_kv is not None else kv.stride(0),
+                extra_indices.stride(0)
+                if extra_indices is not None
+                else indices.stride(0),
+                extra_indices.stride(1)
+                if extra_indices is not None
+                else indices.stride(1),
+                partial_out.stride(0),
+                partial_out.stride(1),
+                partial_out.stride(2),
+                partial_out.stride(3),
+                partial_lse.stride(0),
+                partial_lse.stride(1),
+                partial_lse.stride(2),
+                seq_q,
+                num_heads_q,
+                page_block_size,
+                extra_kv.shape[1] if extra_kv is not None else 1,
+                kv.shape[0],
+                extra_kv.shape[0] if extra_kv is not None else 0,
+                topk,
+                extra_indices.shape[-1] if extra_indices is not None else 0,
+                topk_length is not None,
+                extra_kv is not None,
+                extra_topk_length is not None,
+                split_size,
+                BK,
+                BH,
+                num_warps=8,
+                num_stages=1,
+            )
+            _combine_splitkv(
+                partial_out,
+                partial_lse,
+                attn_sink,
+                out,
+                lse,
+                batch_size,
+                seq_q,
+                num_heads_q,
+            )
+            return
+
         _sparse_decode_model1_kernel[grid](
             q,
             kv,
@@ -1172,6 +2219,95 @@ def _sparse_decode_dispatch(
         return
 
     if is_fp8_kvcache:
+        kv_u8 = kv.view(torch.uint8)
+        if SPARSE_V32_RAW_THRESHOLD > 0 and topk <= SPARSE_V32_RAW_THRESHOLD:
+            _sparse_decode_v32_raw_kernel[grid](
+                q,
+                kv_u8,
+                indices,
+                attn_sink if attn_sink is not None else None,
+                softmax_scale,
+                out,
+                lse,
+                q.stride(0),
+                q.stride(1),
+                q.stride(2),
+                kv_u8.stride(0),
+                kv_u8.stride(1),
+                indices.stride(0),
+                indices.stride(1),
+                out.stride(0),
+                out.stride(1),
+                out.stride(2),
+                lse.stride(0),
+                lse.stride(1),
+                seq_q,
+                num_heads_q,
+                page_block_size,
+                kv.shape[0],
+                topk,
+                attn_sink is not None,
+            )
+            return
+
+        num_splits = _choose_split_count(topk, SPARSE_V32_SPLIT_THRESHOLD)
+        if num_splits > 1:
+            BK = 64
+            split_size = _ceil_to_multiple(math.ceil(topk / num_splits), BK)
+            partial_out = torch.empty(
+                (num_splits, batch_size, seq_q, num_heads_q, head_dim_v),
+                dtype=out.dtype,
+                device=q.device,
+            )
+            partial_lse = torch.empty(
+                (num_splits, batch_size, num_heads_q, seq_q),
+                dtype=torch.float32,
+                device=q.device,
+            )
+            _sparse_decode_v32_raw_split_kernel[(grid[0], num_splits)](
+                q,
+                kv_u8,
+                indices,
+                softmax_scale,
+                partial_out,
+                partial_lse,
+                q.stride(0),
+                q.stride(1),
+                q.stride(2),
+                kv_u8.stride(0),
+                kv_u8.stride(1),
+                indices.stride(0),
+                indices.stride(1),
+                partial_out.stride(0),
+                partial_out.stride(1),
+                partial_out.stride(2),
+                partial_out.stride(3),
+                partial_lse.stride(0),
+                partial_lse.stride(1),
+                partial_lse.stride(2),
+                seq_q,
+                num_heads_q,
+                page_block_size,
+                kv.shape[0],
+                topk,
+                split_size,
+                BK,
+                BH,
+                num_warps=8,
+                num_stages=2,
+            )
+            _combine_splitkv(
+                partial_out,
+                partial_lse,
+                attn_sink,
+                out,
+                lse,
+                batch_size,
+                seq_q,
+                num_heads_q,
+            )
+            return
+
         # FP8 mode: kv has shape [num_blocks, page_block_size, 1, 656]
         # Layout per token (656 bytes):
         #   [0:512]   - 512 float8_e4m3fn values (NoPE)
@@ -1282,6 +2418,62 @@ def _dense_decode_dispatch(
     # Flatten to [num_tokens_total, head_dim_k] for paged access
     kv_flat = kv_cache.view(-1, head_dim_k).contiguous()
     block_table = block_table.contiguous()
+
+    max_pages_per_seq = block_table.shape[1]
+    num_splits = _choose_split_count(max_pages_per_seq, DENSE_SPLIT_PAGE_THRESHOLD)
+    if num_splits > 1:
+        split_pages = math.ceil(max_pages_per_seq / num_splits)
+        partial_out = torch.empty(
+            (num_splits, batch_size, seq_q, num_heads_q, head_dim_v),
+            dtype=out.dtype,
+            device=q.device,
+        )
+        partial_lse = torch.empty(
+            (num_splits, batch_size, num_heads_q, seq_q),
+            dtype=torch.float32,
+            device=q.device,
+        )
+        _dense_decode_split_kernel[(num_head_blocks, batch_size * seq_q, num_splits)](
+            q,
+            q.stride(0),
+            q.stride(1),
+            q.stride(2),
+            kv_flat,
+            kv_flat.stride(0),
+            block_table,
+            block_table.stride(0),
+            cache_seqlens,
+            partial_out,
+            partial_lse,
+            partial_out.stride(0),
+            partial_out.stride(1),
+            partial_out.stride(2),
+            partial_out.stride(3),
+            partial_lse.stride(0),
+            partial_lse.stride(1),
+            partial_lse.stride(2),
+            softmax_scale,
+            seq_q,
+            num_heads_q,
+            head_dim_k,
+            head_dim_v,
+            page_block_size,
+            split_pages,
+            BLOCK_H,
+            num_warps=8,
+            num_stages=2,
+        )
+        _combine_splitkv(
+            partial_out,
+            partial_lse,
+            None,
+            out,
+            lse,
+            batch_size,
+            seq_q,
+            num_heads_q,
+        )
+        return
 
     # TLE warp specialization path
     if _can_use_tle_dense_decode(q, kv_cache, block_table, head_dim_v, page_block_size):
