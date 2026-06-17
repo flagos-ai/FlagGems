@@ -12,7 +12,11 @@ from . import base, consts
 # reference may support more dtypes, so we use FLOAT_DTYPES.
 @pytest.mark.special_bessel_j1
 def test_special_bessel_j1():
-    dtypes = consts.FLOAT_DTYPES if flag_gems.device != "cuda" else [torch.float32]
+    if flag_gems.device == "cuda":
+        # CUDA bessel_j1_cuda only supports float32/float64; benchmark fp32.
+        dtypes = [torch.float32]
+    else:
+        dtypes = consts.FLOAT_DTYPES
     bench = base.UnaryPointwiseBenchmark(
         op_name="special_bessel_j1",
         torch_op=torch.special.bessel_j1,
