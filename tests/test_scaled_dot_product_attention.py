@@ -176,7 +176,7 @@ def test_scaled_dot_product_attention_legacy(
             enable_gqa=enable_gqa,
         )
     else:
-        gems_result = flag_gems.ops.scaled_dot_product_attention(
+        gems_result = flag_gems.scaled_dot_product_attention(
             q,
             k,
             v,
@@ -255,7 +255,7 @@ def test_scaled_dot_product_attention_legacy_backward(
             enable_gqa=enable_gqa,
         )
     else:
-        gems_result = flag_gems.ops.scaled_dot_product_attention(
+        gems_result = flag_gems.scaled_dot_product_attention(
             q,
             k,
             v,

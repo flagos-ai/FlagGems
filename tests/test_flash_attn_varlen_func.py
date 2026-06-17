@@ -133,6 +133,9 @@ def ref_paged_attn(
 @pytest.mark.parametrize("soft_cap", SOFT_CAPS)
 @pytest.mark.parametrize("num_blocks", NUM_BLOCKS)
 @pytest.mark.parametrize("optimize_init", OPTIMIZE_INIT)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 @torch.inference_mode()
 def test_flash_attn_varlen_func(
     monkeypatch,
@@ -226,7 +229,7 @@ def test_flash_attn_varlen_func(
             )
         else:
             if optimize_init:
-                output = flag_gems.ops.flash_attn_varlen_opt_func(
+                output = flag_gems.flash_attn_varlen_opt_func(
                     q=query,
                     k=key_cache,
                     v=value_cache,
@@ -243,7 +246,7 @@ def test_flash_attn_varlen_func(
                     fa_version=2,
                 )
             else:
-                output = flag_gems.ops.flash_attn_varlen_func(
+                output = flag_gems.flash_attn_varlen_func(
                     q=query,
                     k=key_cache,
                     v=value_cache,
@@ -295,6 +298,9 @@ def test_flash_attn_varlen_func(
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("soft_cap", SWAP_SOFT_CAPS)
 @pytest.mark.parametrize("num_blocks", [2048])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 @torch.inference_mode()
 def test_flash_attn_varlen_func_swap_qg(
     monkeypatch,
@@ -359,7 +365,7 @@ def test_flash_attn_varlen_func_swap_qg(
                 fa_version=2,
             )
         else:
-            output = flag_gems.ops.flash_attn_varlen_func(
+            output = flag_gems.flash_attn_varlen_func(
                 q=query,
                 k=key_cache,
                 v=value_cache,

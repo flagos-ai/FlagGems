@@ -68,8 +68,8 @@ vendor_info = VendorDescriptor(
 
 CUSTOMIZED_UNUSED_OPS = (
     "arange_start",
-    "copy",
-    "copy_",
+    # "copy",
+    # "copy_",
     "gcd",
     "gcd_out",
     "gelu",
@@ -78,7 +78,7 @@ CUSTOMIZED_UNUSED_OPS = (
     "sort",
     "sort_stable",
     "topk",
-    "to_copy",
+    # "to_copy",
     "tril",
     "tril_",
     "tril_out",
