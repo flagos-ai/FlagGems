@@ -457,16 +457,13 @@ from flag_gems.ops.zeros_like import zeros_like
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
-<<<<<<< pr/__and__
     "__and__",
     "__and___i",
     "__and___scalar",
     "__and___scalar_i",
     "__and__scalar_tensor",
-    "_and_",
-=======
     "__ilshift__",
->>>>>>> master
+    "_and_",
     "_assert_async",
     "_cdist_backward",
     "_conv_depthwise2d",
