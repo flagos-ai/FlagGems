@@ -379,7 +379,7 @@ from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.special_shifted_chebyshev_polynomial_w import (
-    shifted_chebyshev_polynomial_w as special_shifted_chebyshev_polynomial_w,
+    special_shifted_chebyshev_polynomial_w,
 )
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
@@ -437,6 +437,7 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "special_shifted_chebyshev_polynomial_w",
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "_assert_async",
@@ -880,7 +881,6 @@ __all__ = [
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
-    "special_shifted_chebyshev_polynomial_w",
     "signbit",
     "signbit_out",
     "silu",
