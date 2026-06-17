@@ -455,7 +455,7 @@ _FULL_CONFIG = (
     ("reflection_pad2d", reflection_pad2d),
     ("reflection_pad2d.out", reflection_pad2d_out),
     ("reflection_pad3d", reflection_pad3d),
-    ("reflection_pad3d.out", reflection_pad3d_out),
+    ("reflection_pad3d.out", reflection_pad3d),
     ("relu", relu),
     ("relu6", relu6),
     ("relu_", relu_),

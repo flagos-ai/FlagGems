@@ -5093,17 +5093,6 @@ ops:
       along the last three spatial dimensions (depth, height, width).
     for:
       - reflection_pad3d
-    labels:
-      - aten
-      - pointwise
-      - KernelGen
-    kind:
-      - NeuralNetwork
-    stages:
-      - alpha: '5.4'
-  - id: reflection_pad3d_out
-    description: A variant of `reflection_pad3d` that assigns the output to `out` tensor.
-    for:
       - reflection_pad3d.out
     labels:
       - aten
