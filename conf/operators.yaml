@@ -370,6 +370,20 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: amp_foreach_non_finite_check_and_unscale_
+    description: |
+      Checks gradient tensors for non-finite values (inf or nan) and
+      unscales each tensor in-place by `inv_scale`. If any non-finite
+      value is detected, `found_inf` is set to 1.0.
+    for:
+      - _amp_foreach_non_finite_check_and_unscale_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: angle
     description: Computes the element-wise angle (in radians) of the given `input` tensor.
     for:
