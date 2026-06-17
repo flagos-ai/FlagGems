@@ -22,7 +22,7 @@ def test_special_hermite_polynomial_he(shape, dtype):
     ref_inp1 = utils.to_reference(inp1, True)
     ref_inp2 = utils.to_reference(inp2, True)
 
-    ref_out = torch.special.hermite_polynomial_he(ref_inp1.cpu(), ref_inp2.cpu())
+    ref_out = torch.special.hermite_polynomial_he(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.special.hermite_polynomial_he(inp1, inp2)
 
@@ -30,7 +30,7 @@ def test_special_hermite_polynomial_he(shape, dtype):
 
     # Also test scalar n path
     for n in [0, 1, 2, 3, 4, 5]:
-        ref_out = torch.special.hermite_polynomial_he(ref_inp1.cpu(), n)
+        ref_out = torch.special.hermite_polynomial_he(ref_inp1, n)
         with flag_gems.use_gems():
             res_out = torch.special.hermite_polynomial_he(inp1, n)
 
