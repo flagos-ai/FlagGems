@@ -106,8 +106,9 @@ jobs:
       - name: Check GPU availability
         shell: bash
         run: |
-          source tools/env.sh ${VENDOR}
-          tools/gpu_check_${VENDOR}.sh
+          echo ${{ env.VENDOR }}
+          source tools/env.sh ${{ env.VENDOR }}
+          tools/gpu_check_${{ env.VENDOR }}.sh
 
       - name: Run tests
         shell: bash
