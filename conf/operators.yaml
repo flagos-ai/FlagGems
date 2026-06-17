@@ -151,6 +151,20 @@ ops:
       - LinearAlg
     stages:
       - stable: '4.0'
+  - id: addcdiv_
+    description: |
+      The in-place version of `addcdiv()`. Performs the element-wise division of
+      `tensor1` by `tensor2`, multiplies the result by the scalar `value` and adds
+      it to `input`, storing the result in `input`.
+    for:
+      - addcdiv_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: addcdiv_out
     description: |
       A variant of `addcdiv()` that assigns the output to the given `out` parameter..
