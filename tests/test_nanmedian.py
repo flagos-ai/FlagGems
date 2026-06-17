@@ -39,7 +39,7 @@ def _make_input(shape, dtype, with_nan=True):
         inp = torch.randint(0, 101, shape, dtype=dtype, device="cpu").to(
             flag_gems.device
         )
-    elif dtype in utils.ALL_INT_DTYPES or dtype is torch.int8:
+    elif not dtype.is_floating_point:
         inp = torch.randint(-100, 101, shape, dtype=dtype, device="cpu").to(
             flag_gems.device
         )
