@@ -6,7 +6,6 @@ Only supports sm90 (Hopper) architecture.
 
 import dataclasses
 import math
-import os
 from typing import Optional, Tuple
 
 import torch
@@ -37,28 +36,16 @@ TLE_DECODE_WORKER_NUM_WARPS = 4
 # The raw V32 path avoids Python-side cache slicing/copies. Benchmark data shows
 # it wins for small topk, while the old copied layout is faster once K is long
 # enough that the mixed 656-byte token layout dominates memory efficiency.
-SPARSE_V32_RAW_THRESHOLD = int(
-    os.environ.get("FLAGGEMS_FLASHMLA_SPARSE_V32_RAW_THRESHOLD", "256")
-)
-SPARSE_V32_TLE_THRESHOLD = int(
-    os.environ.get("FLAGGEMS_FLASHMLA_SPARSE_V32_TLE_THRESHOLD", "0")
-)
-SPARSE_V32_TRITON_UNPACK = int(
-    os.environ.get("FLAGGEMS_FLASHMLA_SPARSE_V32_TRITON_UNPACK", "1")
-)
+SPARSE_V32_RAW_THRESHOLD = 256
+SPARSE_V32_TLE_THRESHOLD = 0
+SPARSE_V32_TRITON_UNPACK = 1
 
 # Split-KV kernels are kept as opt-in experiments. On the current benchmark set,
 # the extra partial buffers and combine launch outweigh the added K parallelism.
-SPARSE_V32_SPLIT_THRESHOLD = int(
-    os.environ.get("FLAGGEMS_FLASHMLA_SPARSE_V32_SPLIT_THRESHOLD", "0")
-)
-SPARSE_MODEL1_SPLIT_THRESHOLD = int(
-    os.environ.get("FLAGGEMS_FLASHMLA_SPARSE_MODEL1_SPLIT_THRESHOLD", "0")
-)
-DENSE_SPLIT_PAGE_THRESHOLD = int(
-    os.environ.get("FLAGGEMS_FLASHMLA_DENSE_SPLIT_PAGE_THRESHOLD", "0")
-)
-MAX_SPLIT_KV = int(os.environ.get("FLAGGEMS_FLASHMLA_MAX_SPLIT_KV", "8"))
+SPARSE_V32_SPLIT_THRESHOLD = 0
+SPARSE_MODEL1_SPLIT_THRESHOLD = 0
+DENSE_SPLIT_PAGE_THRESHOLD = 0
+MAX_SPLIT_KV = 8
 
 
 # ============================================================================
@@ -2610,11 +2597,6 @@ def _dense_decode_dispatch(
 # ============================================================================
 
 
-def _tle_decode_enabled() -> bool:
-    value = os.environ.get("FLAGGEMS_FLASHMLA_DECODE_TLE", "1").lower()
-    return value not in {"0", "false", "off", "no"}
-
-
 def _can_use_tle_sparse_decode(
     q: torch.Tensor,
     indices: torch.Tensor,
@@ -2622,7 +2604,7 @@ def _can_use_tle_sparse_decode(
     head_dim_k: int,
     is_fp8: bool,
 ) -> bool:
-    if not (HAS_TLE and _tle_decode_enabled()):
+    if not HAS_TLE:
         return False
     if q.device.type != "cuda":
         return False
@@ -2647,7 +2629,7 @@ def _can_use_tle_dense_decode(
     head_dim_v: int,
     page_block_size: int,
 ) -> bool:
-    if not (HAS_TLE and _tle_decode_enabled()):
+    if not HAS_TLE:
         return False
     if q.device.type != "cuda":
         return False
