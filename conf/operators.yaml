@@ -3734,6 +3734,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_ldl_factor
+    description: |
+      Computes the compact LDL factorization of a Hermitian or symmetric matrix.
+    for:
+      - linalg_ldl_factor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.1'
   - id: linear
     description: |
       Applies a linear transformation to the incoming data: y = x @ W^T + b.
