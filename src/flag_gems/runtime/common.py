@@ -1,4 +1,3 @@
-import os
 from enum import Enum
 
 
@@ -18,6 +17,7 @@ class vendors(Enum):
     ENFLAME = 12
     SPACEMIT = 13
     THEAD = 14
+    ARM = 15
 
     @classmethod
     def get_all_vendors(cls) -> dict:
@@ -25,50 +25,6 @@ class vendors(Enum):
         for member in cls:
             vendorDict[member.name.lower()] = member
         return vendorDict
-
-
-UNSUPPORT_FP64 = frozenset(
-    {
-        vendors.AIPU,
-        vendors.ASCEND,
-        vendors.CAMBRICON,
-        vendors.ENFLAME,
-        vendors.ILUVATAR,
-        vendors.KUNLUNXIN,
-        vendors.MTHREADS,
-        vendors.SUNRISE,
-        vendors.SPACEMIT,
-        vendors.TSINGMICRO,
-    }
-)
-
-UNSUPPORT_BF16 = frozenset(
-    {
-        vendors.AIPU,
-        vendors.SUNRISE,
-        vendors.SPACEMIT,
-    }
-)
-
-UNSUPPORT_INT64 = frozenset(
-    {
-        vendors.AIPU,
-        vendors.ENFLAME,
-        vendors.SPACEMIT,
-        vendors.SUNRISE,
-        vendors.TSINGMICRO,
-    }
-)
-
-DEFAULT_EXPAND_CONFIG_PATH = os.path.normpath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "utils",
-        "configs",
-        "general_ops_expand_configs.yaml",
-    )
-)
 
 
 DEFAULT_STRATEGIES = {
@@ -145,9 +101,6 @@ _VENDOR_TORCH_ATTR = {
 
 __all__ = [
     "vendors",
-    "UNSUPPORT_FP64",
-    "UNSUPPORT_BF16",
-    "UNSUPPORT_INT64",
     "DEFAULT_STRATEGIES",
     "OP_KEY_ORDERS",
     "_VENDOR_TORCH_ATTR",
