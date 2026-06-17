@@ -266,8 +266,8 @@ def pytest_sessionfinish(session, exitstatus):
         "results": Benchmark_Results,
     }
     repo_root = os.path.dirname(os.path.dirname(__file__))
-    json_path = os.path.join(repo_root, "benchmark_results.json")
-    yaml_path = os.path.join(repo_root, "benchmark_results.yaml")
+    json_path = os.path.join(repo_root, "benchmark_v22_results.json")
+    yaml_path = os.path.join(repo_root, "benchmark_v22_results.yaml")
     with open(json_path, "w", encoding="utf-8") as json_file:
         json.dump(payload, json_file, indent=2)
     with open(yaml_path, "w", encoding="utf-8") as yaml_file:
