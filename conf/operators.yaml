@@ -91,6 +91,7 @@ ops:
       Computes the gradient of 3D adaptive average pooling.
     for:
       - _adaptive_avg_pool3d_backward
+      - adaptive_avg_pool3d_backward
     labels:
       - aten
       - nn.functional
