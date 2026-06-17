@@ -4,6 +4,16 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    ROUND_DECIMALS_SHAPES = [(2, 3)]
+    ROUND_HALF_SHAPES = [(2, 3)]
+    ROUND_DECIMALS = [0]
+else:
+    ROUND_DECIMALS_SHAPES = [(2, 3), (128, 256), (4, 8, 16)]
+    ROUND_HALF_SHAPES = [(2, 3), (4, 8)]
+    ROUND_DECIMALS = [-2, -1, 0, 1, 2]
 
 
 @pytest.mark.round
@@ -51,9 +61,9 @@ def test_round_out(shape, dtype):
 
 
 @pytest.mark.round
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (4, 8, 16)])
+@pytest.mark.parametrize("shape", ROUND_DECIMALS_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.parametrize("decimals", [-2, -1, 0, 1, 2])
+@pytest.mark.parametrize("decimals", ROUND_DECIMALS)
 def test_round_decimals(shape, dtype, decimals):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device) * 100
 
@@ -71,7 +81,7 @@ def test_round_decimals(shape, dtype, decimals):
 
 
 @pytest.mark.round
-@pytest.mark.parametrize("shape", [(2, 3), (4, 8)])
+@pytest.mark.parametrize("shape", ROUND_HALF_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_round_half_to_even(shape, dtype):
     # Test round half to even: 2.5->2, 3.5->4, -2.5->-2, -3.5->-4
