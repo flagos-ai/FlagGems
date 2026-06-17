@@ -72,7 +72,8 @@ def _linalg_eigvals(inp):
     with torch.cuda.device(inp.device):
         _linalg_eigvals_proxy_kernel[grid](inp, output, n_elements, BLOCK_SIZE)
 
-    # Compute eigenvalues via PyTorch's native implementation.
+    # Compute eigenvalues via PyTorch's public linalg API, which dispatches
+    # to cuSOLVER for real/complex eigenvalue computation.
     # Route through CPU to avoid our overridden CUDA kernel, then move
     # result back to the original device.
-    return torch.ops.aten._linalg_eigvals.default(inp.cpu()).to(inp.device)
+    return torch.linalg.eigvals(inp.cpu()).to(inp.device)
