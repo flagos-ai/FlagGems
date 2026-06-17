@@ -72,7 +72,7 @@ from flag_gems.ops.bitwise_or import (
     bitwise_or_tensor,
     bitwise_or_tensor_,
 )
-from flag_gems.ops.bitwise_right_shift import bitwise_right_shift
+from flag_gems.ops.bitwise_right_shift import bitwise_right_shift, bitwise_right_shift_
 from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
@@ -553,6 +553,7 @@ __all__ = [
     "bitwise_or_tensor",
     "bitwise_or_tensor_",
     "bitwise_right_shift",
+    "bitwise_right_shift_",
     "bmm",
     "bmm_out",
     "cat",

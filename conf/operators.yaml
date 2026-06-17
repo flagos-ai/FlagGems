@@ -1013,6 +1013,18 @@ ops:
       - Math
     stages:
       - stable: '4.0'
+  - id: bitwise_right_shift_
+    description: The in-place version of `bitwise_right_shift()`.
+    for:
+      - bitwise_right_shift_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '5.4'
   - id: bmm
     description: Performs a batch matrix-matrix product of matrices stored in `input` and `mat2`.
     for:
