@@ -29,13 +29,39 @@ class ComputeGlobalTopkIndicesAndLensBenchmark(base.Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         _ = shape_file_path
+        # (num_tokens, topk, num_reqs, blocks_per_req, block_size)
         self.shapes = [
+            # --- tiny: single/few tokens ---
+            (1, 4, 1, 16, 64),
             (5, 4, 2, 4, 64),
-            (128, 32, 1, 64, 64),
+            (16, 8, 4, 32, 64),
+            # --- small batch decode ---
+            (32, 32, 1, 64, 64),
+            (128, 32, 4, 64, 64),
+            (128, 64, 1, 128, 64),
+            # --- medium: varying topk ---
+            (512, 4, 2, 128, 64),
+            (512, 16, 2, 128, 64),
             (512, 64, 2, 128, 64),
+            (512, 256, 2, 128, 64),
+            # --- medium prefill: varying num_reqs ---
+            (2048, 128, 1, 320, 64),
+            (2048, 128, 4, 320, 64),
+            (2048, 128, 16, 320, 64),
             (4096, 128, 1, 640, 64),
             (4096, 128, 4, 640, 64),
+            (4096, 128, 8, 640, 64),
+            # --- large prefill ---
+            (8192, 128, 4, 1280, 64),
             (8192, 128, 8, 1280, 64),
+            (8192, 256, 16, 1280, 64),
+            (16384, 128, 8, 2560, 64),
+            (16384, 256, 4, 2560, 64),
+            (32768, 256, 8, 2560, 64),
+            # --- edge: large topk ---
+            (4096, 512, 4, 2048, 64),
+            # --- edge: many requests ---
+            (8192, 128, 32, 640, 64),
         ]
 
     def get_input_iter(self, dtype):
