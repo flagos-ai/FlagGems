@@ -105,6 +105,7 @@ _FULL_CONFIG = (
     ("add_rms_norm", add_rms_norm),
     ("addcdiv", addcdiv),
     ("addcdiv.out", addcdiv_out),
+    ("addcdiv_", addcdiv_),
     ("addcmul", addcmul),
     ("addcmul.out", addcmul_out),
     ("addmm", addmm),
