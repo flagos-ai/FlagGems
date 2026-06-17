@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -31,12 +32,27 @@ def heur_divisible_k(args):
     return args["K"] % args["TILE_K"] == 0
 
 
-@libentry()
-@triton.autotune(
+autotune_decorator = triton.autotune(
     configs=[],
     generate_configs="bmm",
     key=["M", "N", "K"],
 )
+
+
+KLX_USE_AUTOTUNE = os.environ.get("KLX_USE_AUTOTUNE", "1") == "1"
+
+if not KLX_USE_AUTOTUNE:
+    autotune_decorator = triton.autotune(
+        configs=[
+            triton.Config({"TILE_M": 256, "TILE_N": 256, "TILE_K": 256}),
+            triton.Config({"TILE_M": 16, "TILE_N": 16, "TILE_K": 16}),  # 适配小矩阵
+        ],
+        key=["M", "N", "K"],
+    )
+
+
+@libentry()
+@autotune_decorator
 @triton.heuristics(
     {
         "GROUP_M": heur_group_m,
@@ -145,7 +161,7 @@ def bmm_kernel(
 
 
 def bmm(A, B):
-    logger.debug("GEMS BMM")
+    logger.debug("GEMS_KUNLUNXIN BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()
@@ -163,7 +179,7 @@ def bmm(A, B):
 
 
 def bmm_out(A, B, out):
-    logger.debug("GEMS BMM_OUT")
+    logger.debug("GEMS_KUNLUNXIN BMM_OUT")
     assert A.shape[0] == B.shape[0] == out.shape[0], "Batch dim mismatch"
     assert A.shape[2] == B.shape[1], "K dim mismatch"
     batch, M, K = A.shape

@@ -116,6 +116,7 @@ from .ones import ones  # noqa: F401
 from .ones_like import ones_like
 from .outer import outer
 from .pad import pad
+from .per_token_group_quant_fp8 import per_token_group_quant_fp8
 from .polar import polar
 from .pow import (
     pow_scalar,
@@ -145,6 +146,7 @@ from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
+from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward
 from .sort import sort, sort_stable
@@ -156,10 +158,12 @@ from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
+from .tril import tril, tril_, tril_out
 from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2, simple_unique_flat, sorted_indices_unique_flat
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
 from .vector_norm import vector_norm
@@ -298,6 +302,7 @@ __all__ = [
     "normal_tensor_tensor",
     "normal_tensor_float",
     "normal_float_tensor",
+    "per_token_group_quant_fp8",
     "polar",
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
@@ -328,6 +333,7 @@ __all__ = [
     "threshold",
     "trace",
     "tile",
+    "upsample_nearest1d",
     "upsample_nearest2d",
     "where_self_out",
     "where_self",
@@ -351,6 +357,7 @@ __all__ = [
     "count_nonzero",
     "linspace",
     "var_mean",
+    "slice_backward",
     "slice_scatter",
     "select_scatter",
     "ones_like",
@@ -392,6 +399,9 @@ __all__ = [
     "nll_loss_forward",
     "nll_loss_backward",
     "vector_norm",
+    "tril",
+    "tril_",
+    "tril_out",
     "triu",
     "_upsample_bicubic2d_aa",
     "softmax",
