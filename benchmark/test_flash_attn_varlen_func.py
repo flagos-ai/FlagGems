@@ -222,7 +222,7 @@ class FlashAttnVarlenBenchmark(base.Benchmark):
 
 def flash_attn_varlen_legacy(*args, **kwargs):
     """
-    Compatibility wrapper for running old flash_attn_varlen_func.
+    Compatibility wrapper for running old flash_attn_varlen_func (iluvatar).
     """
     (
         query,
@@ -285,6 +285,69 @@ def flash_attn_varlen_legacy(*args, **kwargs):
     return result
 
 
+def flash_attn_varlen_metax(*args, **kwargs):
+    """
+    Compatibility wrapper for running flash_attn_varlen_func on metax backend.
+    Metax flash_attn does not support iluvatar-specific params (out, bias,
+    use_alibi, alibi_mode, imp_mode) and expects 4D paged k/v when block_table
+    is provided.
+    """
+    (
+        query,
+        key_cache,
+        value_cache,
+        max_query_len,
+        cu_query_lens,
+        max_kv_len,
+        _,
+        seqused_k,
+        _,
+        dropout_p,
+        scale,
+        causal,
+        window_size,
+        soft_cap,
+        alibi_slopes,
+        deterministic,
+        return_attn_probs,
+        block_tables,
+        _,
+        out,
+        *_,
+    ) = args
+
+    cu_seqlens_k = torch.cat(
+        [
+            torch.zeros(1, dtype=torch.int32, device=seqused_k.device),
+            torch.cumsum(seqused_k, dim=0),
+        ]
+    ).to(torch.int32)
+
+    from flash_attn import flash_attn_varlen_func
+
+    # When block_table is provided, flash_attn expects k/v in 4D paged format
+    # (num_blocks, page_block_size, nheads_k, headdim), not flattened 3D.
+    result = flash_attn_varlen_func(
+        query,
+        key_cache,
+        value_cache,
+        cu_query_lens,
+        cu_seqlens_k,
+        max_query_len,
+        max_kv_len,
+        dropout_p=dropout_p,
+        softmax_scale=scale,
+        causal=causal,
+        window_size=tuple(window_size),
+        alibi_slopes=alibi_slopes,
+        deterministic=deterministic,
+        return_attn_probs=return_attn_probs,
+        softcap=float(soft_cap),
+        block_table=block_tables,
+    )
+    return result
+
+
 @pytest.mark.skipif(
     utils.SkipVersion("vllm", "<0.9"),
     reason="vLLM version prior to 0.9 does not include the flash_attn_varlen_func API.",
@@ -302,6 +365,9 @@ def test_flash_attn_varlen_func(monkeypatch):
     if vendor_name == "iluvatar":
         # iluvatar does not have updated vllm_flash_attn, use conversion wrapper
         flash_attn_varlen_func = flash_attn_varlen_legacy
+    elif vendor_name == "metax":
+        # metax does not have vllm_fa2_C.varlen_fwd, use metax-specific wrapper
+        flash_attn_varlen_func = flash_attn_varlen_metax
     else:
         from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
 
