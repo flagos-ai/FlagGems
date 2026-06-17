@@ -1,6 +1,12 @@
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from ._safe_softmax import _safe_softmax  # noqa: F401
+from ._upsample_nearest_exact1d import (
+    _upsample_nearest_exact1d,
+    _upsample_nearest_exact1d_out,
+    _upsample_nearest_exact1d_vec,
+)
 from .abs import abs, abs_
 from .absolute import absolute
 from .add import add, add_
@@ -144,6 +150,7 @@ from .normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
 from .pad import pad
@@ -155,6 +162,7 @@ from .pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
+from .quantile import quantile
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
@@ -214,6 +222,7 @@ from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
+from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
@@ -223,6 +232,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "one_hot",
     "argmin",
     "avg_pool2d",
     "avg_pool2d_backward",
@@ -474,6 +484,9 @@ __all__ = [
     "max_pool2d_with_indices",
     "max_pool2d_backward",
     "upsample_linear1d",
+    "var",
+    "var_dim",
+    "var_correction",
     "var_mean",
     "flash_attention_forward",
     "flash_attn_varlen_func",
@@ -531,4 +544,9 @@ __all__ = [
     "logit_out",
     "randperm",
     "slice_backward",
+    "quantile",
+    "_upsample_nearest_exact1d",
+    "_upsample_nearest_exact1d_out",
+    "_upsample_nearest_exact1d_vec",
+    "_saft_softmax",
 ]

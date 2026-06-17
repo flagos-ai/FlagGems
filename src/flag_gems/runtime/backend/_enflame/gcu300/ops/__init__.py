@@ -116,6 +116,7 @@ from .ones import ones  # noqa: F401
 from .ones_like import ones_like
 from .outer import outer
 from .pad import pad
+from .per_token_group_quant_fp8 import per_token_group_quant_fp8
 from .polar import polar
 from .pow import (
     pow_scalar,
@@ -162,6 +163,7 @@ from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2, simple_unique_flat, sorted_indices_unique_flat
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
 from .vector_norm import vector_norm
@@ -300,6 +302,7 @@ __all__ = [
     "normal_tensor_tensor",
     "normal_tensor_float",
     "normal_float_tensor",
+    "per_token_group_quant_fp8",
     "polar",
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
@@ -330,6 +333,7 @@ __all__ = [
     "threshold",
     "trace",
     "tile",
+    "upsample_nearest1d",
     "upsample_nearest2d",
     "where_self_out",
     "where_self",

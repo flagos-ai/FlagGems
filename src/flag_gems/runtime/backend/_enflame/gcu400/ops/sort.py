@@ -322,7 +322,7 @@ def radix_sort(arr, k_bits=8, descending=False):
         TILE_R = 8
         grid_r = triton.cdiv(num_bins, TILE_R)
         MAX_GRID_DIM_0 = 65535
-        TILE_N = 2048
+        TILE_N = 1024
         grid_n = triton.cdiv(n, TILE_N)
         while grid_n > MAX_GRID_DIM_0:
             TILE_N *= 2
