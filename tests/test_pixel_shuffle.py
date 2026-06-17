@@ -5,7 +5,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 PIXEL_SHUFFLE_CASES = [
     ((4, 4, 5), 2),
     ((1, 12, 4, 4), 2),
