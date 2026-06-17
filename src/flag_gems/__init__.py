@@ -37,7 +37,6 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
-    ("_unsafe_masked_index_put_accumulate", _unsafe_masked_index_put_accumulate),
     ("__ilshift__.Tensor", __ilshift__),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
@@ -92,6 +91,7 @@ _FULL_CONFIG = (
     ),
     ("_unique2", _unique2),
     ("_unsafe_masked_index", _unsafe_masked_index),
+    ("_unsafe_masked_index_put_accumulate", _unsafe_masked_index_put_accumulate),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
     ("_upsample_nearest_exact1d", _upsample_nearest_exact1d),

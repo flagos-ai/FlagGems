@@ -217,11 +217,9 @@ class UnsafeMaskedIndexPutAccumulateFunction:
         return f"rank_{input_tensor.ndim}"
 
 
-_unsafe_masked_index_put_accumulate_func = UnsafeMaskedIndexPutAccumulateFunction()
-
-
 def _unsafe_masked_index_put_accumulate(inp, mask, indices, values):
     logger.debug("GEMS UNSAFE_MASKED_INDEX_PUT_ACCUMULATE")
+    unsafe_masked_index_put_accumulate_func = UnsafeMaskedIndexPutAccumulateFunction()
 
     # indices is Tensor?[] - a list of optional tensors
     # For this operator, we expect a single index tensor (the common case)
@@ -252,4 +250,4 @@ def _unsafe_masked_index_put_accumulate(inp, mask, indices, values):
     )
     values = values.to(inp.device) if values.device != inp.device else values
 
-    return _unsafe_masked_index_put_accumulate_func(inp, mask, indices_tensor, values)
+    return unsafe_masked_index_put_accumulate_func(inp, mask, indices_tensor, values)
