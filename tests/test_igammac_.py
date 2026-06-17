@@ -24,3 +24,5 @@ def test_igammac_(shape, dtype):
         res_out = inp1.igammac_(inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+    # igammac_ is in-place: also verify the mutated input tensor matches reference
+    utils.gems_assert_close(inp1, ref_inp1, dtype)
