@@ -77,13 +77,13 @@ ARG DEBIAN_FRONTEND=noninteractive
 ENV FILESTORE=https://resource.flagos.net/repository/flagos-filestore/tsingmicro
 # ── Install tx8_deps for FlagTree ──────────────────────────────
 RUN if [ "$USE_FLAGTREE" = "true" ]; then \
-    curl -o tx8.tar.gz ${FILESTORE}/tx8_depends_dev_20260309_173649_v0.5.0.tar.gz \
+    curl -o tx8.tar.gz ${FILESTORE}/tx8_depends_dev_20260507_104051.tar.gz \
     && tar xvf tx8.tar.gz -C /usr/local \
     && rm tx8.tar.gz; \
   fi
 
 RUN if [ "$USE_FLAGTREE" = "true" ]; then \
-    curl -o llvm.tar.gz ${FILESTORE}/tsingmicro-llvm21-glibc2.30-glibcxx3.4.28-python3.10-x64_v0.4.0.tar.gz \
+    curl -o llvm.tar.gz ${FILESTORE}/llvm-a66376b0-ubuntu-x64.tgz \
     && tar xvf llvm.tar.gz -C /usr/local \
     && rm llvm.tar.gz; \
   fi
@@ -100,9 +100,9 @@ WORKDIR /app
 # The following environment variables are for flagtree.
 # Hopefully harmless to Triton
 ENV TX8_DEPS_ROOT=/usr/local/tx8_deps \
-    LLVM_ROOT=/usr/local/llvm21
-ENV  LLVM_BINARY_DIR=${LLVM_ROOT}/bin \
-    PYTHONPATH=${LLVM_ROOT}/python_packages/mlir_core:${PYTHONPATH} \
+    LLVM_SYSPATH=/usr/local/llvm
+ENV  LLVM_BINARY_DIR=${LLVM_SYSPATH}/bin \
+    PYTHONPATH=${LLVM_SYSPATH}/python_packages/mlir_core \
     LD_LIBRARY_PATH=${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}
 
 # Note: VIRTUAL_ENV and PATH are not sharable between stages
