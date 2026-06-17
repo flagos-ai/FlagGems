@@ -5084,6 +5084,19 @@ ops:
       - Math
     stages:
       - stable: '3.0'
+  - id: positive
+    description: |
+      Returns a direct reference to the input tensor (no-op / validation step).
+      This operator is an identity function that simply passes through the input.
+    for:
+      - positive
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
   - id: pow_scalar
     description: |
       Takes the power of each element in `input` with `exponent` and returns a tensor with the result.

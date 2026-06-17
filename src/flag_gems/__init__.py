@@ -458,6 +458,7 @@ _FULL_CONFIG = (
     ("pixel_unshuffle.out", pixel_unshuffle_out),
     ("poisson", poisson),
     ("polar", polar),
+    ("positive", positive),
     ("pow.Scalar", pow_scalar),
     ("pow.Tensor_Scalar", pow_tensor_scalar),
     ("pow.Tensor_Tensor", pow_tensor_tensor),
