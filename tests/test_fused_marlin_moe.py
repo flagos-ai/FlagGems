@@ -15,6 +15,7 @@ import torch
 
 import flag_gems
 from flag_gems.fused.fused_marlin_moe import (
+    QUANT_TYPE_FP4_E2M1,
     QUANT_TYPE_UINT4B8,
     QUANT_TYPE_UINT8B128,
     fused_marlin_moe,
@@ -355,6 +356,97 @@ def _make_inputs_int8(
     )
 
 
+# -----------------------------------------------------------------------------
+# MXFP4 (E2M1 weight + per-32 E8M0 scale) round-to-nearest quantization.
+# -----------------------------------------------------------------------------
+MXFP4_GROUP_SIZE = 32
+_E2M1_POS = [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0]
+_E2M1_MID = [0.25, 0.75, 1.25, 1.75, 2.5, 3.5, 5.0]
+_E2M1_MAX = 6.0
+
+
+def _quantize_mxfp4(w_2d, group_size):
+    """Round-to-nearest MXFP4. Returns w_ref (dequant), nibbles (uint8 [0,15]),
+    scale_e8m0 (out, in // group_size)."""
+    out_dim, in_dim = w_2d.shape
+    ng = in_dim // group_size
+    device = w_2d.device
+    wg = w_2d.reshape(out_dim, ng, group_size).to(torch.float32)
+    amax = wg.abs().amax(dim=-1, keepdim=True)
+    # E8M0 scale = 2^ceil(log2(amax / 6)) so amax / scale <= 6 (FP4 max).
+    exp = torch.ceil(torch.log2((amax / _E2M1_MAX).clamp(min=1e-30))).clamp(-127, 127)
+    scale = torch.exp2(exp)
+    e8m0_byte = (exp + 127.0).to(torch.uint8)
+    wn = wg / scale
+    sign = wn < 0
+    a = wn.abs().clamp(max=_E2M1_MAX)
+    mag = torch.bucketize(a, torch.tensor(_E2M1_MID, device=device))  # 0..7
+    q = torch.tensor(_E2M1_POS, device=device)[mag]
+    ref = torch.where(sign, -q, q) * scale
+    nibbles = (sign.to(torch.uint8) * 8 + mag.to(torch.uint8)).reshape(out_dim, in_dim)
+    w_ref = ref.reshape(out_dim, in_dim).to(w_2d.dtype)
+    scale_e8m0 = e8m0_byte.squeeze(-1).view(torch.float8_e8m0fnu)
+    return w_ref, nibbles, scale_e8m0
+
+
+def _quantize_moe_weight_mxfp4(w_fp, group_size):
+    """Per-expert MXFP4 in FlagGems layout (packed two nibbles/byte + E8M0 scale)."""
+    E, out_dim, in_dim = w_fp.shape
+    w_q = torch.empty(E, out_dim, in_dim // 2, device=w_fp.device, dtype=torch.uint8)
+    w_ref = torch.empty_like(w_fp)
+    scales = torch.empty(
+        E,
+        out_dim,
+        in_dim // group_size,
+        device=w_fp.device,
+        dtype=torch.float8_e8m0fnu,
+    )
+    for e in range(E):
+        ref_e, nib_e, sc_e = _quantize_mxfp4(w_fp[e], group_size)
+        w_q[e] = nib_e[:, 1::2] * 16 + nib_e[:, ::2]
+        w_ref[e] = ref_e
+        scales[e] = sc_e
+    return w_q, w_ref, scales
+
+
+def _make_inputs_mxfp4(
+    num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
+):
+    torch.manual_seed(0)
+    hidden_states = (
+        torch.randn(num_tokens, hidden_size, device=device, dtype=dtype) / 10.0
+    )
+    w1_fp = (
+        torch.randn(
+            num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
+        )
+        / 10.0
+    )
+    w2_fp = (
+        torch.randn(
+            num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
+        )
+        / 10.0
+    )
+    w1_q, w1_ref, w1_scale = _quantize_moe_weight_mxfp4(w1_fp, MXFP4_GROUP_SIZE)
+    w2_q, w2_ref, w2_scale = _quantize_moe_weight_mxfp4(w2_fp, MXFP4_GROUP_SIZE)
+
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = (topk_weights / topk_weights.sum(dim=-1, keepdim=True)).to(dtype)
+    return (
+        hidden_states,
+        w1_q,
+        w2_q,
+        w1_ref,
+        w2_ref,
+        topk_weights,
+        topk_ids,
+        w1_scale,
+        w2_scale,
+    )
+
+
 def compute_max_diff(output, output_ref):
     """vLLM's Marlin accuracy metric (mean relative error), from
     vllm/tests/kernels/utils.py; test_marlin_gemm.py asserts it < 0.04."""
@@ -456,6 +548,46 @@ def test_fused_marlin_moe_vs_ref_int8(config, dtype):
     ref = _reference_swiglu_moe(hs, w1_ref, w2_ref, tw, ti)
     torch.cuda.synchronize()
     # INT8 should be tighter than INT4; same vLLM Marlin metric.
+    max_diff = compute_max_diff(result.float(), ref)
+    assert max_diff < 0.04, f"max_diff={max_diff:.4f}"
+
+
+@pytest.mark.skipif(
+    not _is_hopper(),
+    reason="MXFP4 fast path uses Hopper-only bf16/fp16 SIMD PTX (sm_90+)",
+)
+@pytest.mark.parametrize("config", FULL_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_fused_marlin_moe_mxfp4_vs_ref(config, dtype):
+    """Compare fused_marlin_moe (MXFP4) against PyTorch reference (dequant)."""
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+
+    (hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s) = _make_inputs_mxfp4(
+        num_tokens,
+        num_experts,
+        hidden_size,
+        intermediate_size,
+        topk,
+        dtype,
+        device,
+    )
+    result = fused_marlin_moe(
+        hidden_states=hs,
+        w1=w1_q,
+        w2=w2_q,
+        bias1=None,
+        bias2=None,
+        w1_scale=w1s,
+        w2_scale=w2s,
+        topk_weights=tw,
+        topk_ids=ti,
+        quant_type_id=QUANT_TYPE_FP4_E2M1,
+        group_size=MXFP4_GROUP_SIZE,
+    )
+    ref = _reference_swiglu_moe(hs, w1_ref, w2_ref, tw, ti)
+    torch.cuda.synchronize()
+
     max_diff = compute_max_diff(result.float(), ref)
     assert max_diff < 0.04, f"max_diff={max_diff:.4f}"
 
