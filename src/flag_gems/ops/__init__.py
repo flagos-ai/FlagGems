@@ -10,6 +10,7 @@ from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
 from flag_gems.ops.act_quant import act_quant_triton
+from flag_gems.ops.adaptive_attention_span import adaptive_attention_span
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
 from flag_gems.ops.addcmul import addcmul, addcmul_out
@@ -456,6 +457,7 @@ __all__ = [
     "absolute",
     "acos",
     "act_quant_triton",
+    "adaptive_attention_span",
     "add",
     "add_",
     "addcdiv",
