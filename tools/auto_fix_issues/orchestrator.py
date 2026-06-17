@@ -576,6 +576,28 @@ def parse_cc_result(proc: subprocess.Popen, issue: dict, worktree_path: str = No
     }
 
 
+def strip_co_author(worktree_path: str):
+    """Remove Co-Authored-By lines from the HEAD commit message."""
+    result = subprocess.run(
+        ["git", "log", "-1", "--format=%B"],
+        cwd=worktree_path,
+        capture_output=True,
+        text=True,
+    )
+    msg = result.stdout
+    cleaned = "\n".join(
+        line for line in msg.splitlines()
+        if not line.startswith("Co-Authored-By:")
+    ).strip()
+    if cleaned != msg.strip():
+        subprocess.run(
+            ["git", "commit", "--amend", "-m", cleaned],
+            cwd=worktree_path,
+            capture_output=True,
+        )
+        logger.info("[FORMAT] Stripped Co-Authored-By from commit message")
+
+
 def post_commit_format_check(worktree_path: str, python_path: str, log_path: str = None) -> dict | None:
     """Auto-fix code style (black + isort) and verify with flake8 after agent commits.
 
@@ -1095,6 +1117,7 @@ def run(args):
                             if result["notes"]:
                                 result["notes"] += "; "
                             result["notes"] += "auto-fixed code style (black/isort)"
+                    strip_co_author(worktree_path)
 
                 success = (
                     result.get("status") == "success"
