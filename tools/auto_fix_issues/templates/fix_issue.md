@@ -202,7 +202,7 @@ grep -rn "{{OPERATOR}}" src/flag_gems/__init__.py src/flag_gems/ops/__init__.py 
 
 **代码风格要求**：
 - 遵循已有代码风格（black + isort + flake8 max-line-length=120）
-- **logger 命名规范**：共享代码使用 `logger.debug("GEMS OP_NAME")`，后端专属 override 使用 `logger.debug("GEMS VENDOR OP_NAME")`（如 `"GEMS ILUVATAR STD"`、`"GEMS NVIDIA MM"`）
+- **logger 命名规范**：共享代码使用 `logger.debug("GEMS OP_NAME")`，后端专属 override 使用 `logger.debug("GEMS VENDOR OP_NAME")`。OP_NAME 中多个单词用下划线连接（如 `"GEMS ILUVATAR PER_TOKEN_GROUP_QUANT_FP8"`、`"GEMS NVIDIA FLASH_ATTN_FWD"`），不要用空格。
 - 不引入新依赖
 - **最小化修改**，只改必要的代码
 
