@@ -4427,6 +4427,17 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: replication_pad1d_backward
+    description: Computes the gradient of replication_pad1d.
+    for:
+      - replication_pad1d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: resize_output
     description: |
       Resizes tensor output storage and copies overlapping elements.
@@ -5529,17 +5540,6 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.4'
-  - id: replication_pad1d_backward
-    description: Computes the gradient of replication_pad1d.
-    for:
-      - replication_pad1d_backward
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.4'
   - id: replication_pad3d
     description: Pads the edge of a 3D input tensor by repeating the boundary values.
     for:
