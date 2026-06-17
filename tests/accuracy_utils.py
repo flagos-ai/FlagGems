@@ -101,6 +101,18 @@ SVD_TINY_RANK_DEGENERATE_CASES = [
     "zero_column_8x2",
     "zero_row_2x8",
 ]
+SEGMENT_REDUCE_LENGTH_CASES = (
+    ((5,), 0, [2, 0, 3]),
+    ((2, 3), 1, [[1, 1, 1], [1, 1, 1]]),
+    ((2, 3, 4), 1, [[1, 2], [2, 1]]),
+    ((2, 3, 5), 2, [[[2, 3], [1, 4], [3, 2]], [[5, 0], [2, 3], [4, 1]]]),
+)
+SEGMENT_REDUCE_OFFSET_CASES = (
+    ((5,), 0, [0, 2, 5]),
+    ((2, 3, 4), 1, [[0, 1, 3], [0, 2, 3]]),
+)
+SEGMENT_REDUCE_LENGTH_OUT_CASE = SEGMENT_REDUCE_LENGTH_CASES[2]
+SEGMENT_REDUCE_OFFSET_OUT_CASE = SEGMENT_REDUCE_OFFSET_CASES[1]
 STACK_SHAPES = [
     [(16,), (16,)],
     [(16, 256), (16, 256)],
@@ -216,19 +228,23 @@ KRON_SHAPES = [
 # Add some test cases with zeor-dimensional tensor and zero-sized tensors.
 PRIMARY_FLOAT_DTYPES = [torch.float16, torch.float32]
 FLOAT_DTYPES = (
-    PRIMARY_FLOAT_DTYPES + [torch.bfloat16]
-    if bf16_is_supported
-    else PRIMARY_FLOAT_DTYPES
+    ([torch.bfloat16] if bf16_is_supported else [torch.float32])
+    if QUICK_MODE
+    else (
+        PRIMARY_FLOAT_DTYPES + [torch.bfloat16]
+        if bf16_is_supported
+        else PRIMARY_FLOAT_DTYPES
+    )
 )
 
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOAT_DTYPES
-INT_DTYPES = [torch.int16, torch.int32]
+INT_DTYPES = [torch.int32] if QUICK_MODE else [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPES
 BOOL_TYPES = [torch.bool]
-COMPLEX_DTYPES = [torch.complex32, torch.complex64]
+COMPLEX_DTYPES = [torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64]
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
-STACK_DIM_LIST = [-2, -1, 0, 1]
+STACK_DIM_LIST = [-1, 0] if QUICK_MODE else [-2, -1, 0, 1]
 
 ARANGE_START = [0] if TO_CPU else [0, 1, 3]
 
