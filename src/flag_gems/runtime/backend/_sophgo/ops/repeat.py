@@ -1,139 +1,266 @@
-import math
 import logging
 
 import torch
 import triton
 from triton import language as tl
 
-from flag_gems.utils.codegen_config_utils import CodeGenConfig
-from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
-from flag_gems.utils.tensor_wrapper import StridedBuffer
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils.libentry import libentry
 
-log = logging.getLogger(__name__)
+# repeat kernel: copy the whole input as one period along each dimension,
+# out_shape[i] = in_shape[i] * count[i].
+#
+# Grid is split into (num_rows, copies_last, cdiv(in_last, BLOCK)):
+#   row_id : index over the flattened outer dims (first rank-1 dims)
+#   k      : index over the copies of the last dim (0 .. copies_last-1)
+#   blk    : index over BLOCK-sized chunks within one copy of the last dim
+#
+# Outer dims (rank-1) are decoded by i32 scalar divmod into in_outer_base.
+# The last dim uses scalar + arange(BLOCK) offsets, which are purely affine,
+# so load/store lower to contiguous copies rather than gather/scatter.
+#
+# Only the last dim is read contiguously from input and written contiguously to
+# output (in_stride_last == 1). The outer index wraps modulo the input shape
+# because the input is repeated along every dim.
+#
+# repeat requires len(sizes) >= inp.ndim (matches PyTorch), and left-pads the
+# input shape with 1s when sizes has more dims.
 
-# PPL hardware limit: 4 cores × 65536 CTAs/core × 1024 elements/CTA = 2^28
-_MAX_ELEMENTS_PER_LAUNCH = 268435456  # 256 MiElements (1 GiB for f32)
-
-_REPEAT_CODEGEN_CONFIG = CodeGenConfig(
-    max_tile_size=1024,
-    max_grid_size=(2147483647, 1, 1),
-    max_num_warps_per_cta=32,
-    prefer_block_pointer=False,
-    prefer_1d_tile=True,
-)
+MAX_RANK = 8
+MAX_OUTER_RANK = MAX_RANK - 1  # = 7
 
 
-@pointwise_dynamic(
-    num_inputs=1,
-    promotion_methods=[(0, "DEFAULT")],
-    config=_REPEAT_CODEGEN_CONFIG,
-)
+@libentry()
 @triton.jit
-def _repeat_copy(x):
-    return x
+def repeat_kernel(
+    in_ptr,
+    out_ptr,
+    # outer (rank-1) dims of the output shape, padded with 1 when unused
+    s0,
+    s1,
+    s2,
+    s3,
+    s4,
+    s5,
+    s6,
+    # input shape of the outer dims, padded with 1 when unused
+    in_s0,
+    in_s1,
+    in_s2,
+    in_s3,
+    in_s4,
+    in_s5,
+    in_s6,
+    # input stride of the outer dims, padded with 0 when unused
+    in_stride0,
+    in_stride1,
+    in_stride2,
+    in_stride3,
+    in_stride4,
+    in_stride5,
+    in_stride6,
+    # last dim
+    in_last,  # = in_shape[-1]
+    out_last,  # = in_last * copies_last
+    OUTER_RANK: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    row_id = tle.program_id(0)
+    k = tle.program_id(1)
+    blk = tle.program_id(2)
+
+    # scalar decode of outer dims: row_id -> in_outer_base, all i32 scalars.
+    # peel from the innermost outer dim (index OUTER_RANK-1) outward.
+    in_outer_base = 0
+    t = row_id
+    if OUTER_RANK == 0:
+        in_outer_base = 0
+    elif OUTER_RANK == 1:
+        i0 = t
+        in_outer_base = (i0 % in_s0) * in_stride0
+    elif OUTER_RANK == 2:
+        i1 = t % s1
+        t = t // s1
+        i0 = t
+        in_outer_base = (i0 % in_s0) * in_stride0 + (i1 % in_s1) * in_stride1
+    elif OUTER_RANK == 3:
+        i2 = t % s2
+        t = t // s2
+        i1 = t % s1
+        t = t // s1
+        i0 = t
+        in_outer_base = (
+            (i0 % in_s0) * in_stride0
+            + (i1 % in_s1) * in_stride1
+            + (i2 % in_s2) * in_stride2
+        )
+    elif OUTER_RANK == 4:
+        i3 = t % s3
+        t = t // s3
+        i2 = t % s2
+        t = t // s2
+        i1 = t % s1
+        t = t // s1
+        i0 = t
+        in_outer_base = (
+            (i0 % in_s0) * in_stride0
+            + (i1 % in_s1) * in_stride1
+            + (i2 % in_s2) * in_stride2
+            + (i3 % in_s3) * in_stride3
+        )
+    elif OUTER_RANK == 5:
+        i4 = t % s4
+        t = t // s4
+        i3 = t % s3
+        t = t // s3
+        i2 = t % s2
+        t = t // s2
+        i1 = t % s1
+        t = t // s1
+        i0 = t
+        in_outer_base = (
+            (i0 % in_s0) * in_stride0
+            + (i1 % in_s1) * in_stride1
+            + (i2 % in_s2) * in_stride2
+            + (i3 % in_s3) * in_stride3
+            + (i4 % in_s4) * in_stride4
+        )
+    elif OUTER_RANK == 6:
+        i5 = t % s5
+        t = t // s5
+        i4 = t % s4
+        t = t // s4
+        i3 = t % s3
+        t = t // s3
+        i2 = t % s2
+        t = t // s2
+        i1 = t % s1
+        t = t // s1
+        i0 = t
+        in_outer_base = (
+            (i0 % in_s0) * in_stride0
+            + (i1 % in_s1) * in_stride1
+            + (i2 % in_s2) * in_stride2
+            + (i3 % in_s3) * in_stride3
+            + (i4 % in_s4) * in_stride4
+            + (i5 % in_s5) * in_stride5
+        )
+    else:  # OUTER_RANK == 7
+        i6 = t % s6
+        t = t // s6
+        i5 = t % s5
+        t = t // s5
+        i4 = t % s4
+        t = t // s4
+        i3 = t % s3
+        t = t // s3
+        i2 = t % s2
+        t = t // s2
+        i1 = t % s1
+        t = t // s1
+        i0 = t
+        in_outer_base = (
+            (i0 % in_s0) * in_stride0
+            + (i1 % in_s1) * in_stride1
+            + (i2 % in_s2) * in_stride2
+            + (i3 % in_s3) * in_stride3
+            + (i4 % in_s4) * in_stride4
+            + (i5 % in_s5) * in_stride5
+            + (i6 % in_s6) * in_stride6
+        )
+
+    # contiguous copy of the last dim.
+    j = blk * BLOCK + tl.arange(0, BLOCK)
+    mask = j < in_last
+
+    # input is contiguous (wrapper calls .contiguous().reshape(...)), so
+    # in_stride_last == 1 and in_outer_base + j is purely affine.
+    in_off = in_outer_base + j
+    x = tl.load(in_ptr + in_off, mask=mask)
+
+    # out_off = (row_id * out_last + k * in_last) + j, also scalar + arange.
+    out_row_base = row_id * out_last + k * in_last
+    out_off = out_row_base + j
+    tl.store(out_ptr + out_off, x, mask=mask)
 
 
-def _launch_chunked(inp, out, shape, in_strides, out_strides,
-                    in_offset, out_offset, max_elem, kernel):
-    """Recursively split the interleaved task-space so each launch fits
-    within the PPL per-launch element limit.
-
-    * Round 1: split repeat dimensions (even indices).  Their input strides
-      are 0 so only the output offset changes — the kernel sees identical
-      memory-access patterns across chunks.
-
-    * Round 2: split data dimensions (odd indices) as a last resort.  Both
-      input and output offsets change.
-
-    Chunks that share the same shape reuse the same compiled kernel.  At
-    most two distinct shapes appear per split dimension (full-sized chunks
-    + one ragged tail).
-    """
-    total = math.prod(shape)
-    ndim = len(shape)
-
-    if total <= max_elem:
-        in_view = StridedBuffer(inp, shape, in_strides, offset=in_offset)
-        out_view = StridedBuffer(out, shape, out_strides, offset=out_offset)
-        kernel(in_view, out0=out_view)
-        return
-
-    # Prefer repeat dimensions (even indices, 0 input stride) —
-    # only the output offset advances, keeping the kernel's memory-access
-    # pattern identical across chunks.  Fall back to data dims (odd indices).
-    for i in list(range(0, ndim, 2)) + list(range(1, ndim, 2)):
-        ri = shape[i]
-        if ri <= 1:
-            continue
-        per_unit = total // ri
-        if per_unit == 0:
-            continue
-        chunk_ri = min(max(1, max_elem // per_unit), ri)
-
-        for start in range(0, ri, chunk_ri):
-            size = min(chunk_ri, ri - start)
-            chunk_shape = list(shape)
-            chunk_shape[i] = size
-            chunk_in_offset = in_offset + start * in_strides[i]
-            chunk_out_offset = out_offset + start * out_strides[i]
-            _launch_chunked(inp, out, chunk_shape, in_strides, out_strides,
-                            chunk_in_offset, chunk_out_offset, max_elem, kernel)
-        return
-
-    raise RuntimeError(
-        f"repeat: cannot split shape {shape} to fit max_elem={max_elem}"
-    )
+def _choose_block(in_last: int) -> int:
+    # 128..512 tiles are the sweet spot for the TPU
+    return min(512, max(1, triton.next_power_of_2(in_last)))
 
 
 def repeat(inp: torch.Tensor, sizes) -> torch.Tensor:
-    """repeat via StridedBuffer + pointwise copy.
+    logging.debug("SOPHGO GEMS REPEAT")
 
-    Uses a 0-stride interleaved view so the kernel is a plain copy — no %
-    or // arithmetic, avoiding PPL arithmetic conversion issues on sophgo.
+    in0_shape = list(inp.shape)
+    sizes_shape = list(sizes)
+    in_rank = len(in0_shape)
+    sizes_rank = len(sizes_shape)
 
-    The oversized max_grid forces monolithic kernel mode (one_tile_per_cta=1),
-    sidestepping PPL's grid-stride-loop truncation at 8 iterations.
-    Tensors exceeding the PPL per-launch limit (~256M elements) are
-    automatically split into multiple launches.
-    """
-    log.debug("SOPHGO GEMS REPEAT")
+    # repeat requires len(sizes) >= inp.ndim (matches PyTorch behavior)
+    if sizes_rank < in_rank:
+        raise RuntimeError(
+            "Number of dimensions of repeat dims can not be smaller than"
+            " number of dimensions of tensor"
+        )
+    # left-pad the input shape with 1s when sizes has more dims
+    if sizes_rank > in_rank:
+        in0_shape = [1] * (sizes_rank - in_rank) + in0_shape
+    rank = max(in_rank, sizes_rank, 1)  # at least 1 dim, also handles 0-dim
 
-    in_shape = list(inp.shape)
-    sizes = list(sizes)
+    if rank > MAX_RANK:
+        raise NotImplementedError(
+            f"repeat only supports rank up to {MAX_RANK}, got {rank}"
+        )
 
-    # Align ranks: pad with 1s on the left for the shorter one
-    if len(sizes) > len(in_shape):
-        in_shape = [1] * (len(sizes) - len(in_shape)) + in_shape
-    elif len(in_shape) > len(sizes):
-        sizes = [1] * (len(in_shape) - len(sizes)) + sizes
-
-    rank = len(in_shape)
-    inp = inp.reshape(in_shape)
-    inp_stride = list(inp.stride())
-    out_shape = [in_shape[i] * sizes[i] for i in range(rank)]
-
-    # Empty output
-    if any(s == 0 for s in sizes):
-        return torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
-
-    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
-
-    # Build interleaved task space: [s0, a0, s1, a1, ..., sn, an]
-    interleaved_shape = []
-    in_view_strides = []
-    out_view_strides = []
+    # build out_shape and short-circuit on empty
+    is_empty = False
+    out_shape = []
     for i in range(rank):
-        interleaved_shape.append(sizes[i])
-        interleaved_shape.append(in_shape[i])
-        in_view_strides.append(0)                      # repeat dim: 0-stride
-        in_view_strides.append(inp_stride[i])           # data dim: input stride
-        out_view_strides.append(in_shape[i] * out.stride(i))  # repeat dim
-        out_view_strides.append(out.stride(i))                # data dim
+        d = sizes_shape[i]
+        assert d >= 0, f"repeat sizes must be >= 0, got {d}"
+        if d == 0:
+            is_empty = True
+        out_shape.append(in0_shape[i] * d)
 
-    # Pre-instantiate the kernel once so all chunks share the same compiled
-    # binary (same ndim → same kernel; uniform chunk shapes → same grid).
-    ndim = len(interleaved_shape)
-    kernel = _repeat_copy.instantiate(ndim)
-    _launch_chunked(inp, out, interleaved_shape, in_view_strides,
-                    out_view_strides, 0, 0, _MAX_ELEMENTS_PER_LAUNCH, kernel)
-    return out
+    out0 = torch.empty(out_shape, device=inp.device, dtype=inp.dtype)
+    if is_empty:
+        return out0
+
+    # make input contiguous so reshape is zero-copy and stride_last == 1
+    in0 = inp.contiguous().reshape(in0_shape)
+
+    # split into outer dims (first rank-1) and the last dim
+    outer_rank = rank - 1
+    in_last = in0_shape[-1]
+    out_last = out_shape[-1]
+    num_rows = 1
+    for i in range(outer_rank):
+        num_rows *= out_shape[i]
+    copies_last = sizes_shape[-1]
+
+    block = _choose_block(in_last)
+    grid = (num_rows, copies_last, triton.cdiv(in_last, block))
+
+    # pad to MAX_OUTER_RANK
+    in0_strides = list(in0.stride())
+    pad = MAX_OUTER_RANK - outer_rank
+    s_args = out_shape[:outer_rank] + [1] * pad
+    in_s_args = in0_shape[:outer_rank] + [1] * pad
+    in_stride_args = in0_strides[:outer_rank] + [0] * pad
+
+    with torch_device_fn.device(inp.device.index):
+        repeat_kernel[grid](
+            in0,
+            out0,
+            *s_args,
+            *in_s_args,
+            *in_stride_args,
+            in_last,
+            out_last,
+            OUTER_RANK=outer_rank,
+            BLOCK=block,
+            num_warps=4,
+        )
+    return out0
