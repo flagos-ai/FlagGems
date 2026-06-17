@@ -1,3 +1,4 @@
+from flag_gems.fused.act_quant import act_quant_triton
 from flag_gems.fused.adaptive_attention_span import adaptive_attention_span
 from flag_gems.fused.add_rms_norm import add_rms_norm
 from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
@@ -27,6 +28,7 @@ from flag_gems.fused.FLA import (
 from flag_gems.fused.flash_mla import flash_mla
 from flag_gems.fused.flash_mla_with_kvcache import flash_mla_with_kvcache
 from flag_gems.fused.flashmla_sparse import flash_mla_sparse_fwd
+from flag_gems.fused.fp8_fp4_mqa_logits import fp8_fp4_mqa_logits
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
 from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import (
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
@@ -85,6 +87,7 @@ from flag_gems.fused.weight_norm import weight_norm
 __all__ = [
     "adaptive_attention_span",
     "add_rms_norm",
+    "act_quant_triton",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
     "bincount",
@@ -105,6 +108,7 @@ __all__ = [
     "flash_mla",
     "flash_mla_sparse_fwd",
     "flash_mla_with_kvcache",
+    "fp8_fp4_mqa_logits",
     "fused_add_rms_norm",
     "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     "fused_experts_impl",
