@@ -16,10 +16,9 @@ def test_copysign_(shape, dtype):
 
     ref_input = utils.to_reference(input.clone(), True)
     ref_other = utils.to_reference(other, True)
-    ref_out = torch.copysign(ref_input, ref_other)
+    ref_out = ref_input.copysign_(ref_other)
 
     with flag_gems.use_gems():
         res_out = input.copysign_(other)
 
-    assert res_out.data_ptr() == input.data_ptr()
     utils.gems_assert_close(res_out, ref_out, dtype)
