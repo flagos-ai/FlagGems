@@ -3,11 +3,13 @@ import torch
 
 from . import base, consts, utils
 
+SCALAR_VALUES = (0, 1.0, -1.0, 0.5)
+
 
 def _input_fn_scalar(shape, cur_dtype, device):
     inp1 = utils.generate_tensor_input(shape, cur_dtype, device)
-    inp2 = 0
-    yield inp1, inp2
+    for scalar in SCALAR_VALUES:
+        yield inp1, scalar
 
 
 @pytest.mark.less
