@@ -40,6 +40,12 @@ TLE_DECODE_WORKER_NUM_WARPS = 4
 SPARSE_V32_RAW_THRESHOLD = int(
     os.environ.get("FLAGGEMS_FLASHMLA_SPARSE_V32_RAW_THRESHOLD", "256")
 )
+SPARSE_V32_TLE_THRESHOLD = int(
+    os.environ.get("FLAGGEMS_FLASHMLA_SPARSE_V32_TLE_THRESHOLD", "0")
+)
+SPARSE_V32_TRITON_UNPACK = int(
+    os.environ.get("FLAGGEMS_FLASHMLA_SPARSE_V32_TRITON_UNPACK", "1")
+)
 
 # Split-KV kernels are kept as opt-in experiments. On the current benchmark set,
 # the extra partial buffers and combine launch outweigh the added K parallelism.
@@ -482,6 +488,42 @@ def _sparse_decode_v32_raw_kernel(
     o_ptr = o_base + offs_h[:, None] * stride_oh + offs_d[None, :]
     tl.store(o_ptr, out_vals0.to(tl.bfloat16))
     tl.store(o_ptr + BDP, out_vals1.to(tl.bfloat16))
+
+
+@triton.jit
+def _v32_unpack_kernel(
+    kv_u8,
+    kv_nope_u8,
+    kv_scales_u8,
+    kv_rope_u8,
+    NUM_TOKENS: tl.constexpr,
+    stride_kv_n,
+    BLOCK_T: tl.constexpr,
+    BLOCK_B: tl.constexpr,
+):
+    pid_t = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    offs_t = pid_t * BLOCK_T + tl.arange(0, BLOCK_T)
+    offs_b = pid_b * BLOCK_B + tl.arange(0, BLOCK_B)
+    mask = (offs_t[:, None] < NUM_TOKENS) & (offs_b[None, :] < 656)
+
+    vals = tl.load(
+        kv_u8 + offs_t[:, None] * stride_kv_n + offs_b[None, :],
+        mask=mask,
+        other=0,
+    )
+
+    scale_b = tl.maximum(offs_b - 512, 0)
+    rope_b = tl.maximum(offs_b - 528, 0)
+    nope_ptr = kv_nope_u8 + offs_t[:, None] * 512 + offs_b[None, :]
+    scale_ptr = kv_scales_u8 + offs_t[:, None] * 16 + scale_b[None, :]
+    rope_ptr = kv_rope_u8 + offs_t[:, None] * 128 + rope_b[None, :]
+    dst_ptr = tl.where(
+        offs_b[None, :] < 512,
+        nope_ptr,
+        tl.where(offs_b[None, :] < 528, scale_ptr, rope_ptr),
+    )
+    tl.store(dst_ptr, vals, mask=mask)
 
 
 @triton.jit
@@ -2019,6 +2061,41 @@ def _choose_split_count(length: int, threshold: int) -> int:
     return max(2, min(MAX_SPLIT_KV, math.ceil(length / threshold)))
 
 
+def _unpack_v32_cache_triton(kv: torch.Tensor):
+    num_tokens = kv.shape[0] * kv.shape[1]
+    kv_nope = torch.empty(
+        (num_tokens, 512), dtype=torch.float8_e4m3fn, device=kv.device
+    )
+    kv_scales = torch.empty((num_tokens, 4), dtype=torch.float32, device=kv.device)
+    kv_rope = torch.empty((num_tokens, 64), dtype=torch.bfloat16, device=kv.device)
+
+    kv_u8 = kv.view(torch.uint8).reshape(-1, 656)
+    block_t = 16
+    block_b = 128
+    grid = (triton.cdiv(num_tokens, block_t), triton.cdiv(656, block_b))
+    _v32_unpack_kernel[grid](
+        kv_u8,
+        kv_nope.view(torch.uint8),
+        kv_scales.view(torch.uint8),
+        kv_rope.view(torch.uint8),
+        num_tokens,
+        kv_u8.stride(0),
+        block_t,
+        block_b,
+        num_warps=4,
+        num_stages=3,
+    )
+    return kv_nope, kv_scales, kv_rope
+
+
+def _unpack_v32_cache_torch(kv: torch.Tensor):
+    kv_bytes = kv.reshape(-1, 656).contiguous()  # [num_tokens, 656] uint8
+    kv_nope = kv_bytes[:, :512].contiguous().view(torch.float8_e4m3fn)
+    kv_scales = kv_bytes[:, 512:528].contiguous().view(torch.float32)
+    kv_rope = kv_bytes[:, 528:656].contiguous().view(torch.bfloat16)
+    return kv_nope, kv_scales, kv_rope
+
+
 def _combine_splitkv(
     partial_out: torch.Tensor,
     partial_lse: torch.Tensor,
@@ -2309,24 +2386,12 @@ def _sparse_decode_dispatch(
         #   [0:512]   - 512 float8_e4m3fn values (NoPE)
         #   [512:528] - 4 float32 scales (16 bytes)
         #   [528:656] - 64 bfloat16 values (RoPE, 128 bytes)
-        kv_bytes = kv.reshape(-1, 656).contiguous()  # [num_tokens, 656] uint8
-
-        # NoPE FP8 part: first 512 bytes as float8_e4m3fn
-        kv_nope = (
-            kv_bytes[:, :512].contiguous().view(torch.float8_e4m3fn)
-        )  # [num_tokens, 512]
+        if SPARSE_V32_TRITON_UNPACK and q.device.type == "cuda":
+            kv_nope, kv_scales, kv_rope = _unpack_v32_cache_triton(kv)
+        else:
+            kv_nope, kv_scales, kv_rope = _unpack_v32_cache_torch(kv)
         stride_kvn = kv_nope.stride(0)
-
-        # Scales: bytes [512:528] as 4 float32 values
-        kv_scales = (
-            kv_bytes[:, 512:528].contiguous().view(torch.float32)
-        )  # [num_tokens, 4]
         stride_scales_n = kv_scales.stride(0)
-
-        # RoPE BF16 part: bytes [528:656] as 64 bfloat16 values
-        kv_rope = (
-            kv_bytes[:, 528:656].contiguous().view(torch.bfloat16)
-        )  # [num_tokens, 64]
         stride_rope_n = kv_rope.stride(0)
     else:
         # BF16 mode: kv has shape [num_blocks, page_block_size, 1, head_dim_k]
@@ -2337,17 +2402,37 @@ def _sparse_decode_dispatch(
         kv_rope = kv_nope  # unused, pass same tensor
         stride_rope_n = 0
 
-    # # TLE warp specialization path TODO
-    # if _can_use_tle_sparse_decode(q, indices, head_dim_v, head_dim_k, is_fp8_kvcache):
-    #     _tle_sparse_decode_launch(
-    #         q, kv_nope, kv_scales, kv_rope, indices, out, lse,
-    #         attn_sink, topk_length,
-    #         batch_size, seq_q, num_heads_q,
-    #         head_dim_k, head_dim_v, topk, skv,
-    #         softmax_scale, is_fp8_kvcache,
-    #         stride_kvn, stride_scales_n, stride_rope_n,
-    #     )
-    #     return
+    if (
+        SPARSE_V32_TLE_THRESHOLD > 0
+        and topk >= SPARSE_V32_TLE_THRESHOLD
+        and _can_use_tle_sparse_decode(
+            q, indices, head_dim_v, head_dim_k, is_fp8_kvcache
+        )
+    ):
+        _tle_sparse_decode_launch(
+            q,
+            kv_nope,
+            kv_scales,
+            kv_rope,
+            indices,
+            out,
+            lse,
+            attn_sink,
+            topk_length,
+            batch_size,
+            seq_q,
+            num_heads_q,
+            head_dim_k,
+            head_dim_v,
+            topk,
+            skv,
+            softmax_scale,
+            is_fp8_kvcache,
+            stride_kvn,
+            stride_scales_n,
+            stride_rope_n,
+        )
+        return
 
     _sparse_decode_kernel[grid](
         q,
@@ -2541,11 +2626,14 @@ def _can_use_tle_sparse_decode(
         return False
     if q.device.type != "cuda":
         return False
-    batch_size, seq_q, num_heads_q, d_qk = q.shape
+    _, seq_q, num_heads_q, d_qk = q.shape
     TOPK = indices.shape[-1]
     return (
-        head_dim_v == 512
-        and d_qk in (512, 576)
+        is_fp8
+        and seq_q == 1
+        and head_dim_v == 512
+        and head_dim_k == 576
+        and d_qk == 576
         and num_heads_q % TLE_DECODE_BH == 0
         and TOPK > 0
         and TOPK % (TLE_DECODE_BK * TLE_DECODE_PAIR_BLOCKS) == 0
