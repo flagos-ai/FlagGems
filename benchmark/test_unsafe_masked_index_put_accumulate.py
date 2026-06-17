@@ -2,8 +2,10 @@
 import pytest
 import torch
 
-from . import base
+from . import base, consts
 
+# Shape tuples must keep input, mask, indices, and values aligned for this
+# custom Benchmark subclass.
 _UNSAFE_MASKED_INDEX_PUT_SHAPES = [
     ((64,), (64,), (64,), (64,)),
     ((4096,), (4096,), (4096,), (4096,)),
@@ -34,6 +36,7 @@ def test_unsafe_masked_index_put_accumulate():
     bench = UnsafeMaskedIndexPutAccumulateBenchmark(
         op_name="unsafe_masked_index_put_accumulate",
         torch_op=torch._unsafe_masked_index_put_accumulate,
-        dtypes=[torch.float32],
+        # This op is covered across the project float dtype set.
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
