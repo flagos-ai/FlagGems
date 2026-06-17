@@ -141,6 +141,7 @@ from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv, mv_cluster
 from .nan_to_num import nan_to_num
+from .nanmedian import nanmedian_dim, nanmedian_dim_values
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .nllloss import (
@@ -435,6 +436,8 @@ __all__ = [
     "mv",
     "mv_cluster",
     "nan_to_num",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
     "ne",
     "ne_scalar",
     "neg",

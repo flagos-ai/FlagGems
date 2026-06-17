@@ -66,7 +66,12 @@ def _assert_nanmedian_indices_valid(inp, values, indices, dim, keepdim, dtype):
     assert torch.all(indices < inp.shape[dim])
 
     gather_indices = indices if keepdim else indices.unsqueeze(dim)
-    gathered = torch.gather(inp, dim, gather_indices)
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (torch.uint8, torch.int16):
+        # Kunlunxin native gather does not support this validation dtype/index pair.
+        with flag_gems.use_gems(include=["gather"]):
+            gathered = torch.gather(inp, dim, gather_indices)
+    else:
+        gathered = torch.gather(inp, dim, gather_indices)
     if not keepdim:
         gathered = gathered.squeeze(dim)
 
