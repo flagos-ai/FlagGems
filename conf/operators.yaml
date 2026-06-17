@@ -5381,7 +5381,6 @@ ops:
       Triton kernel implementation for rrelu_with_noise_functional.
     for:
       - rrelu_with_noise_functional
-      - rrelu_with_noise_functional_
     labels:
       - aten
       - KernelGen
