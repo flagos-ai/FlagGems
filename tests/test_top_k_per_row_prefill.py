@@ -24,11 +24,11 @@ device = flag_gems.device
 # Shape configs for QUICK_MODE
 if cfg.QUICK_MODE:
     NUM_ROWS_FULL_VOCAB = [1, 64]
-    NUM_ROWS_VARIABLE = [1, 32]
+    NUM_ROWS_VARIABLE = [4, 16383]
     NUM_ROWS_NONZERO = [1]
 else:
     NUM_ROWS_FULL_VOCAB = [1, 32, 64, 2048]
-    NUM_ROWS_VARIABLE = [1, 32]
+    NUM_ROWS_VARIABLE = [4, 16383]
     NUM_ROWS_NONZERO = [1, 16]
 
 pytestmark = pytest.mark.skipif(
@@ -137,12 +137,8 @@ def test_top_k_per_row_prefill_full_vocab(num_rows, vocab_size, top_k):
 
 @pytest.mark.top_k_per_row_prefill
 @pytest.mark.parametrize("num_rows", NUM_ROWS_VARIABLE)
-@pytest.mark.parametrize(
-    "vocab_size", [20000, 129280]  # 20000: smaller vocab for edge case coverage
-)
-@pytest.mark.parametrize(
-    "top_k", [1024, 2048]  # 2048: tests larger top_k (used in some configs)
-)
+@pytest.mark.parametrize("vocab_size", [4095, 8193])
+@pytest.mark.parametrize("top_k", [512])
 def test_top_k_per_row_prefill_variable_lengths(num_rows, vocab_size, top_k):
     """Test with variable row lengths (partial vocab per row).
 
@@ -245,3 +241,28 @@ def test_top_k_per_row_prefill_vs_vllm(num_rows):
     assert check_topk_values_match(
         logits, indices_test, indices_vllm, row_starts, top_k
     ), f"FAIL vs vLLM: num_rows={num_rows}"
+
+
+@pytest.mark.top_k_per_row_prefill
+def test_topk_greater_than_row_len():
+    torch.manual_seed(456)
+    num_rows = 4
+    vocab_size = 257
+    top_k = 512
+
+    logits = torch.randn(num_rows, vocab_size, device=device, dtype=torch.float32)
+    row_starts = torch.randint(
+        0, vocab_size // 2, (num_rows,), dtype=torch.int32, device=device
+    )
+    row_ends = torch.full((num_rows,), vocab_size, dtype=torch.int32, device=device)
+    stride0 = logits.stride(0)
+    stride1 = logits.stride(1)
+
+    indices_ref = reference_top_k_per_row(logits.clone(), row_starts, row_ends, top_k)
+
+    indices_test = torch.empty((num_rows, top_k), dtype=torch.int32, device=device)
+    top_k_per_row_prefill(
+        logits, row_starts, row_ends, indices_test, num_rows, stride0, stride1, top_k
+    )
+
+    assert check_topk_values_match(logits, indices_test, indices_ref, row_starts, top_k)
