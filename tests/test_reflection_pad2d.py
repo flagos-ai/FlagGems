@@ -4,22 +4,51 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
-
-@pytest.mark.reflection_pad2d
-@pytest.mark.parametrize(
-    "shape", [(3, 33, 33), (2, 4, 32, 64), (8, 16, 64, 64), (32, 64, 128, 256)]
-)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize(
-    "padding",
-    [
+if cfg.QUICK_MODE:
+    PAD2D_SHAPES = [(2, 4, 32, 64)]
+    PAD2D_DTYPES = [torch.float32]
+    PAD2D_PADDINGS = [(1, 1, 1, 1)]
+    PAD2D_LIST_PADDINGS = [[1, 1, 1, 1]]
+    PAD2D_3D_PADDINGS = [(1, 1, 1, 1)]
+    PAD2D_OUT_SHAPES = [(2, 4, 32, 64)]
+    PAD2D_OUT_DTYPES = [torch.float32]
+    PAD2D_OUT_PADDINGS = [(1, 1, 1, 1)]
+else:
+    PAD2D_SHAPES = [(3, 33, 33), (2, 4, 32, 64), (8, 16, 64, 64), (32, 64, 128, 256)]
+    PAD2D_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
+    PAD2D_PADDINGS = [
         (1, 1, 1, 1),
         (2, 3, 2, 3),
         (3, 5, 3, 5),
         (0, 4, 0, 4),
         (4, 0, 4, 0),
-    ],
+    ]
+    PAD2D_LIST_PADDINGS = [[1, 1, 1, 1], [2, 3, 4, 5]]
+    PAD2D_3D_PADDINGS = [(1, 1, 1, 1), (2, 3, 4, 5)]
+    PAD2D_OUT_SHAPES = [
+        (3, 33, 33),
+        (2, 4, 32, 64),
+        (8, 16, 64, 64),
+        (32, 64, 128, 256),
+    ]
+    PAD2D_OUT_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
+    PAD2D_OUT_PADDINGS = [
+        (1, 1, 1, 1),
+        (2, 3, 2, 3),
+        (3, 5, 3, 5),
+        (0, 4, 0, 4),
+        (4, 0, 4, 0),
+    ]
+
+
+@pytest.mark.reflection_pad2d
+@pytest.mark.parametrize("shape", PAD2D_SHAPES)
+@pytest.mark.parametrize("dtype", PAD2D_DTYPES)
+@pytest.mark.parametrize(
+    "padding",
+    PAD2D_PADDINGS,
 )
 def test_reflection_pad2d(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -34,7 +63,7 @@ def test_reflection_pad2d(shape, dtype, padding):
 
 
 @pytest.mark.reflection_pad2d
-@pytest.mark.parametrize("padding", [[1, 1, 1, 1], [2, 3, 4, 5]])
+@pytest.mark.parametrize("padding", PAD2D_LIST_PADDINGS)
 def test_reflection_pad2d_list_padding(padding):
     # Test with list format: [pad_left, pad_right, pad_top, pad_bottom]
     shape = (2, 4, 32, 64)
@@ -67,7 +96,7 @@ def test_reflection_pad2d_empty_padding():
 
 
 @pytest.mark.reflection_pad2d
-@pytest.mark.parametrize("padding", [(1, 1, 1, 1), (2, 3, 4, 5)])
+@pytest.mark.parametrize("padding", PAD2D_3D_PADDINGS)
 def test_reflection_pad2d_3d_input(padding):
     # Test with 3D input (C, H, W) - no batch dimension
     shape = (3, 32, 64)
@@ -84,19 +113,11 @@ def test_reflection_pad2d_3d_input(padding):
 
 
 @pytest.mark.reflection_pad2d_out
-@pytest.mark.parametrize(
-    "shape", [(3, 33, 33), (2, 4, 32, 64), (8, 16, 64, 64), (32, 64, 128, 256)]
-)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("shape", PAD2D_OUT_SHAPES)
+@pytest.mark.parametrize("dtype", PAD2D_OUT_DTYPES)
 @pytest.mark.parametrize(
     "padding",
-    [
-        (1, 1, 1, 1),
-        (2, 3, 2, 3),
-        (3, 5, 3, 5),
-        (0, 4, 0, 4),
-        (4, 0, 4, 0),
-    ],
+    PAD2D_OUT_PADDINGS,
 )
 def test_reflection_pad2d_out(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -116,7 +137,7 @@ def test_reflection_pad2d_out(shape, dtype, padding):
 
 
 @pytest.mark.reflection_pad2d_out
-@pytest.mark.parametrize("padding", [(1, 1, 1, 1), (2, 3, 4, 5)])
+@pytest.mark.parametrize("padding", PAD2D_3D_PADDINGS)
 def test_reflection_pad2d_out_3d_input(padding):
     shape = (3, 32, 64)
     dtype = torch.float32
