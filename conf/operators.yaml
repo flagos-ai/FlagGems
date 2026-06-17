@@ -3734,6 +3734,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_ldl_factor_ex
+    description: |
+      Computes the LDL factorization with pivot information for a symmetric or Hermitian matrix.
+    for:
+      - linalg_ldl_factor_ex
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: linear
     description: |
       Applies a linear transformation to the incoming data: y = x @ W^T + b.
