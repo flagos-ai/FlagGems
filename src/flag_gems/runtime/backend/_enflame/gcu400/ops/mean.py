@@ -10,6 +10,9 @@ from flag_gems.utils import dim_compress, libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
+# DTE hardware register bitwidth limit: each tile dimension must fit in 24 bits.
+DTE_DIM_MAX = (1 << 24) - 1
+
 
 @libentry()
 @triton.jit
@@ -209,6 +212,170 @@ def mean_kernel_dim_mid(
         tl.store(out_value_ptrs, mean, n_mask)
 
 
+def _launch_kernel_dim_low(inp, out, M, N):
+    """Reduce along rows (last-dim reduction): each row has N elements, M rows."""
+    grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), 24),)
+    with torch_device_fn.device(inp.device):
+        mean_kernel_dim_low[grid](inp, out, M, N)
+
+
+def _launch_kernel_dim_high(inp, out, M, N):
+    """Reduce along columns (first-dim reduction): M rows reduced to 1, N columns."""
+    grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK_N"]), 24),)
+    with torch_device_fn.device(inp.device):
+        mean_kernel_dim_high[grid](inp, out, M, N)
+
+
+def _launch_kernel_dim_mid(inp, out, B, M, N):
+    """Reduce middle dim: B batches, M reduction length, N columns per batch."""
+    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]), min(B, 24), 1)
+    with torch_device_fn.device(inp.device):
+        mean_kernel_dim_mid[grid](inp, out, B, M, N)
+
+
+def _safe_launch_dim_low(inp, out, M, N, device):
+    """Launch mean_kernel_dim_low ensuring N <= DTE_DIM_MAX.
+
+    When N exceeds the DTE limit, split N = N_outer * N_inner (both <= DTE_DIM_MAX)
+    and do a two-pass mean reduction.  This works because:
+        mean(x_flat) = mean_j( mean_i( x[j, i] ) )
+    when all inner chunks have equal size (guaranteed since N_inner divides N).
+
+    Pass 1: reshape (M, N) -> (M * N_outer, N_inner), reduce last dim -> (M * N_outer,)
+    Pass 2: reshape to (M, N_outer), reduce last dim -> (M,)
+    """
+    if N <= DTE_DIM_MAX:
+        _launch_kernel_dim_low(inp, out, M, N)
+        return
+
+    N_inner = _largest_divisor_le(N, DTE_DIM_MAX)
+    N_outer = N // N_inner
+
+    # Pass 1: reduce N_inner (innermost chunk)
+    mid = torch.empty(M * N_outer, dtype=inp.dtype, device=device)
+    _launch_kernel_dim_low(inp, mid, M * N_outer, N_inner)
+
+    # Pass 2: reduce N_outer — recurse in case N_outer > DTE_DIM_MAX
+    _safe_launch_dim_low(mid, out, M, N_outer, device)
+
+
+def _safe_launch_dim_high(inp, out, M, N, device):
+    """Launch mean_kernel_dim_high ensuring N <= DTE_DIM_MAX.
+
+    The kernel accesses memory as m_offset * N + n_offset, so N is the inner
+    stride dimension seen by DTE and must not exceed DTE_DIM_MAX.
+
+    When N > DTE_DIM_MAX, transpose to (N, M), reduce the last dim M using
+    mean_kernel_dim_low (which has better performance for row reductions),
+    then the result is already the column means.  If M also exceeds the limit,
+    fall back to chunking along N.
+    """
+    if N <= DTE_DIM_MAX:
+        _launch_kernel_dim_high(inp, out, M, N)
+        return
+
+    if M <= DTE_DIM_MAX:
+        # Transpose (M, N) -> (N, M): now reduce last dim M (which is small).
+        inp_t = inp.reshape(M, N).t().contiguous()
+        out_flat = out.reshape(N)
+        _safe_launch_dim_low(inp_t, out_flat, N, M, device)
+    else:
+        # Both M and N exceed the limit — chunk along N
+        inp_2d = inp.reshape(M, N)
+        out_flat = out.reshape(N)
+        N_inner = _largest_divisor_le(N, DTE_DIM_MAX)
+        for start in range(0, N, N_inner):
+            end = min(start + N_inner, N)
+            _launch_kernel_dim_high(
+                inp_2d[:, start:end].contiguous(),
+                out_flat[start:end],
+                M,
+                end - start,
+            )
+
+
+def _safe_launch_dim_mid(inp, out, B, M, N, device):
+    """Launch mean_kernel_dim_mid ensuring N <= DTE_DIM_MAX.
+
+    The kernel accesses inp as (B, M, N) with offset = b*M*N + m*N + n.
+    DTE sees N as the inner stride and it must fit in 24 bits.
+
+    When N > DTE_DIM_MAX, we split N = N_outer * N_inner where N_inner <=
+    DTE_DIM_MAX.  Then reshape+permute the input so the kernel sees
+    (B * N_outer) batches of (M, N_inner).
+
+    Special case: when inp.numel() != B*M*N (e.g. the caller passed N as the
+    total element count instead of the true column count), we detect and
+    reroute to _safe_launch_dim_low which works on the actual flat layout.
+    """
+    if N <= DTE_DIM_MAX:
+        _launch_kernel_dim_mid(inp, out, B, M, N)
+        return
+
+    total = inp.numel()
+    expected = B * M * N
+
+    if total != expected:
+        # The caller's (B, M, N) doesn't match the physical element count.
+        # Compute the real per-row column count from the physical layout and
+        # reroute to dim_low: (num_rows, cols_per_row) -> reduce last dim.
+        num_rows = total // M if M > 0 else total
+        cols_per_row = M
+        _safe_launch_dim_low(inp, out, num_rows, cols_per_row, device)
+        return
+
+    # Normal case: inp has B*M*N elements, truly (B, M, N) layout.
+    N_inner = _largest_divisor_le(N, DTE_DIM_MAX)
+    N_outer = N // N_inner
+
+    # (B, M, N) -> (B, M, N_outer, N_inner)
+    # -> permute to (B, N_outer, M, N_inner) -> contiguous
+    # -> view as (B*N_outer, M, N_inner)
+    inp_4d = inp.reshape(B, M, N_outer, N_inner)
+    inp_perm = inp_4d.permute(0, 2, 1, 3).contiguous()
+
+    B_new = B * N_outer
+    out_new = torch.empty((B_new, N_inner), dtype=out.dtype, device=device)
+    _launch_kernel_dim_mid(inp_perm, out_new, B_new, M, N_inner)
+
+    out.copy_(out_new.reshape(out.shape))
+
+
+def _largest_divisor_le(n, limit):
+    """Find a large divisor of n that is <= limit.
+
+    Uses a two-pronged strategy:
+    1. Try descending powers of 2 (fast for typical tensor sizes).
+    2. Try limit // k for small k to find divisors close to the limit itself.
+    Returns the largest candidate found.
+    """
+    if n <= limit:
+        return n
+
+    best = 1
+
+    # Strategy 1: descending powers of 2 — O(log(limit))
+    p2 = 1 << (limit.bit_length() - 1) if limit > 0 else 1
+    while p2 >= 1:
+        if n % p2 == 0 and p2 <= limit:
+            best = max(best, p2)
+            break
+        p2 >>= 1
+
+    # Strategy 2: try n // k for small k — finds large divisors near limit
+    # e.g. if n = 33554433 (odd), n//2 won't work but n//3 might
+    k = max(1, n // limit)
+    for k in range(k, k + 64):
+        d = n // k
+        if d <= 0:
+            break
+        if d <= limit and n % d == 0:
+            best = max(best, d)
+            break
+
+    return best
+
+
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
     if dtype is None:
         dtype = x.dtype
@@ -220,47 +387,42 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
 
     if len(dim) == 1:
         inp = x
-        mean_dim = dim[0]
+        mean_dim_idx = dim[0]
         shape = list(x.shape)
-        if shape[mean_dim] == 1:
+        if shape[mean_dim_idx] == 1:
             if not keepdim:
                 inp = inp.squeeze(dim)
             return inp
-        shape[mean_dim] = 1
+        shape[mean_dim_idx] = 1
         out = torch.empty(shape, dtype=dtype, device=x.device)
-        if mean_dim == 0:
+        if mean_dim_idx == 0:
             M = inp.shape[0]
             N = inp.numel() // M
-            grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK_N"]), 24),)
             with torch_device_fn.device(inp.device):
-                mean_kernel_dim_high[grid](inp, out, M, N)
-        elif mean_dim == inp.ndim - 1:
+                _safe_launch_dim_high(inp, out, M, N, inp.device)
+        elif mean_dim_idx == inp.ndim - 1:
             N = inp.shape[inp.ndim - 1]
             M = inp.numel() // N
-            grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), 24),)
-            # grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
             with torch_device_fn.device(inp.device):
-                mean_kernel_dim_low[grid](inp, out, M, N)
+                _safe_launch_dim_low(inp, out, M, N, inp.device)
         else:
             B = 1
-            for i in range(0, mean_dim):
+            for i in range(0, mean_dim_idx):
                 B *= inp.shape[i]
-            M = inp.shape[mean_dim]
+            M = inp.shape[mean_dim_idx]
             N = 1
-            for i in range(mean_dim + 1, inp.ndim):
+            for i in range(mean_dim_idx + 1, inp.ndim):
                 N *= inp.shape[i]
             if B <= N * 128:
-                grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]), min(B, 24), 1)
                 with torch_device_fn.device(inp.device):
-                    mean_kernel_dim_mid[grid](inp, out, B, M, N)
+                    _safe_launch_dim_mid(inp, out, B, M, N, inp.device)
             else:
                 in_reshape = inp.reshape((B, M, N))
                 inp_new = dim_compress(in_reshape, {0, 2})
-                M = inp_new.shape[0]
-                N = inp_new.numel() // M
-                grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]),)
+                M_new = inp_new.shape[0]
+                N_new = inp_new.numel() // M_new
                 with torch_device_fn.device(inp.device):
-                    mean_kernel_dim_high[grid](inp_new, out, M, N)
+                    _safe_launch_dim_high(inp_new, out, M_new, N_new, inp.device)
         if not keepdim:
             out = out.squeeze(dim)
         return out
@@ -282,9 +444,8 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
             return out
         else:
             out = torch.empty(shape, dtype=dtype, device=x.device)
-            grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), 24),)
             with torch_device_fn.device(x.device):
-                mean_kernel_dim_low[grid](x, out, M, N)
+                _safe_launch_dim_low(x, out, M, N, x.device)
             if not keepdim:
                 out = out.squeeze(dim)
             return out

@@ -4,12 +4,24 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    PAD1D_SHAPES = [(3, 33)]
+    PAD1D_PADDINGS = [(1, 1)]
+    PAD1D_OUT_SHAPES = [(3, 33)]
+    PAD1D_OUT_PADDINGS = [(1, 1)]
+else:
+    PAD1D_SHAPES = [(3, 33), (2, 4, 64), (8, 16, 256), (32, 64, 2048)]
+    PAD1D_PADDINGS = [(1, 1), (3, 5), (8, 8)]
+    PAD1D_OUT_SHAPES = [(3, 33), (2, 4, 64), (32, 64, 2048)]
+    PAD1D_OUT_PADDINGS = [(1, 1), (3, 5), (8, 8)]
 
 
 @pytest.mark.reflection_pad1d
-@pytest.mark.parametrize("shape", [(3, 33), (2, 4, 64), (8, 16, 256), (32, 64, 2048)])
+@pytest.mark.parametrize("shape", PAD1D_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.parametrize("padding", [(1, 1), (3, 5), (8, 8)])
+@pytest.mark.parametrize("padding", PAD1D_PADDINGS)
 def test_reflection_pad1d(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x, True)
@@ -23,9 +35,9 @@ def test_reflection_pad1d(shape, dtype, padding):
 
 
 @pytest.mark.reflection_pad1d_out
-@pytest.mark.parametrize("shape", [(3, 33), (2, 4, 64), (32, 64, 2048)])
+@pytest.mark.parametrize("shape", PAD1D_OUT_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.parametrize("padding", [(1, 1), (3, 5), (8, 8)])
+@pytest.mark.parametrize("padding", PAD1D_OUT_PADDINGS)
 def test_reflection_pad1d_out(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x, True)
