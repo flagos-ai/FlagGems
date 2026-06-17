@@ -37,7 +37,6 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
-    "linalg_slogdet": OpsConfigFile(os.path.join(cur_dir, "ops", "linalg_slogdet.py")),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__or__.Scalar", bitwise_or_scalar),
@@ -332,6 +331,7 @@ _FULL_CONFIG = (
     ("lerp_.Scalar", lerp_scalar_),
     ("lerp_.Tensor", lerp_tensor_),
     ("lift_fresh_copy", lift_fresh_copy),
+    ("linalg_slogdet", linalg_slogdet),
     ("linalg_vector_norm", vector_norm),
     ("linspace", linspace),
     ("log", log),

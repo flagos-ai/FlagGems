@@ -3605,6 +3605,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_slogdet
+    description: Computes the sign and natural logarithm of the absolute value of the determinant of square matrices.
+    for:
+      - linalg_slogdet
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linspace
     description: |
       Creates a one-dimensional tensor of size `steps` whose values are evenly spaced from `start` to `end`, inclusive.
