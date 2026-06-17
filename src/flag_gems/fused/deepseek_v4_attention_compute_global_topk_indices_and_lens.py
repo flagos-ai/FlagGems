@@ -85,9 +85,7 @@ def _compute_global_topk_indices_and_lens_kernel(
     token_mask = token_offs < num_tokens
 
     is_valid = tl.load(is_valid_token_ptr + token_offs, mask=token_mask, other=0)
-    req_idx = tl.load(
-        token_to_req_indices_ptr + token_offs, mask=token_mask, other=0
-    )
+    req_idx = tl.load(token_to_req_indices_ptr + token_offs, mask=token_mask, other=0)
 
     local_base = token_offs[:, None] * local_stride
     global_base = token_offs[:, None] * global_stride
