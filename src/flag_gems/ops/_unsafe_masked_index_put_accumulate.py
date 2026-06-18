@@ -140,9 +140,7 @@ def generate_wrapper(rank, wrapper_name: str, kernel_name: str, code: IndentedBu
         for i in range(rank):
             code.writeline(f"input_stride{i} = input.stride()[{i}]")
         code.newline()
-        code.writeline(
-            "BLOCK_SIZE = 2048  # Power-of-2 block size for GPU occupancy"
-        )
+        code.writeline("BLOCK_SIZE = 2048  # Power-of-2 block size for GPU occupancy")
         code.writeline("grid = (triton.cdiv(mask_numel, BLOCK_SIZE),)")
         code.newline()
         code.writeline(f"{kernel_name}[grid](")

@@ -6,6 +6,20 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _flat_to_per_dim_indices(flat_indices, inp_shape):
+    """Convert flat linear indices to per-dimension index tensors for the aten op."""
+    strides = []
+    prod = 1
+    for s in reversed(inp_shape):
+        strides.append(prod)
+        prod *= s
+    strides = tuple(reversed(strides))
+    result = []
+    for i in range(len(inp_shape)):
+        result.append((flat_indices // strides[i]) % inp_shape[i])
+    return tuple(result)
+
+
 @pytest.mark.unsafe_masked_index_put_accumulate
 @pytest.mark.parametrize("shape", utils._UNSAFE_MASKED_INDEX_PUT_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -17,19 +31,23 @@ def test_unsafe_masked_index_put_accumulate(shape, dtype):
 
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     mask = torch.randint(0, 2, mask_shape, dtype=torch.int32, device=flag_gems.device)
-    indices = torch.randint(
+    flat_indices = torch.randint(
         0, max(inp.numel(), 1), indices_shape, device=flag_gems.device
     )
     values = torch.randn(values_shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = utils.to_reference(inp.clone())
     ref_mask = utils.to_reference(mask.clone())
-    ref_indices = utils.to_reference(indices.clone())
+    ref_flat_indices = utils.to_reference(flat_indices.clone())
     ref_values = utils.to_reference(values.clone())
 
+    # Convert flat indices to per-dimension indices for the aten op
+    ref_idx_tuple = _flat_to_per_dim_indices(ref_flat_indices.clone(), inp_shape)
+    idx_tuple = _flat_to_per_dim_indices(flat_indices, inp_shape)
+
     op = torch._unsafe_masked_index_put_accumulate
-    ref_out = op(ref_inp, ref_mask.clone(), (ref_indices.clone(),), ref_values)
+    ref_out = op(ref_inp, ref_mask.clone(), ref_idx_tuple, ref_values)
     with flag_gems.use_gems():
-        res_out = op(inp.clone(), mask, (indices,), values)
+        res_out = op(inp.clone(), mask, idx_tuple, values)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

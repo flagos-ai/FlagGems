@@ -28,7 +28,7 @@ class UnsafeMaskedIndexPutAccumulateBenchmark(base.Benchmark):
                 0, max(inp.numel(), 1), indices_shape, device=self.device
             )
             values = torch.randn(values_shape, dtype=cur_dtype, device=self.device)
-            yield inp, mask, (indices,), values
+            yield inp, mask, indices, values
 
 
 @pytest.mark.unsafe_masked_index_put_accumulate
