@@ -127,9 +127,8 @@ case $VENDOR in
 
   mthreads)
     uv pip install --index ${FLAGOS_PYPI} \
-        "torch==2.9.0" \
+        "torch==2.9.0+musa.4.3.6" \
         "torch_musa==2.9.0" \
-        "numpy==1.26.4" \
         "mkl==2024.0.0" \
         "triton==3.6.0+git89458660"
 
@@ -185,7 +184,7 @@ case $VENDOR in
         "torchaudio==2.11.0+cpu" \
         "torchvision==0.26.0+cpu" \
         "torch-ptpu==0.2.1+gaf2c267.torch2.11" \
-        "triton==3.4.0.5+git27a132da"
+        "triton==3.4.0.6+gite4f6d6e4"
 
     # We try triton first at this stage
     # if [ -z "${USE_TRITON}" ]; then
@@ -198,7 +197,10 @@ case $VENDOR in
     ;;
 
   thead)
-    # TODO(Qiming): Investigate environment settings
+    uv pip install --index ${FLAGOS_PYPI} \
+      "torch==2.9.0+ppu2.0.0.oe" \
+      "triton==3.5.0+ppu2.0.0.oe"
+
     uv pip install -e .
     uv pip install ".[test]"
     ;;
@@ -208,10 +210,11 @@ case $VENDOR in
         "torch==2.7.0+cpu" \
         "torchvision==0.22.0+cpu" \
         "torchaudio==2.7.0+cpu" \
-        "torch_txda==0.1.0+20260416.b8f53e8a" \
+        "torch_txda==0.1.0+20260610.3968e515" \
         "txops==0.1.0+20260508.60287151" \
-        "flagtree==0.5.0+tsingmicro3.3"
+        "flagtree==0.5.0.post20260612+git705a4064"
 
+    # "flagtree==0.5.0+tsingmicro3.3"
     # Replace flagtree with Triton if requested
     if [ -n "${USE_TRITON}" ]; then
       uv pip uninstall flagtree
