@@ -49,6 +49,10 @@ case $VENDOR in
       export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH
     fi
     ;;
+  thead)
+    # The envsetup.sh is provided by the PPU SDK
+    source /usr/local/PPU_SDK/envsetup.sh
+    ;;
   tsingmicro)
     export TX8_DEPS_ROOT=/opt/tx8_deps
     export LLVM_SYSPATH=/opt/llvm
