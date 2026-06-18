@@ -88,7 +88,7 @@ def bucketize(input, boundaries, *, out_int32=False, right=False):
 
     n_elements = input.numel()
     n_boundaries = boundaries.numel()
-    search_iterations = max(1, math.ceil(math.log2(n_boundaries)))
+    search_iterations = math.ceil(math.log2(n_boundaries + 1))
 
     # Keep one fixed tile size to avoid compiling shape-specific variants.
     BLOCK_SIZE = 1024
