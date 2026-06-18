@@ -558,7 +558,7 @@ _FULL_CONFIG = (
     ("softshrink.out", softshrink_out),
     ("sort", sort),
     ("sort.stable", sort_stable),
-    ("special.bessel_j1", special_bessel_j1),
+    ("special_bessel_j1", special_bessel_j1),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special_i0e", special_i0e),
     ("special_i0e.out", special_i0e_out),
