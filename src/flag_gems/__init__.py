@@ -75,7 +75,10 @@ _FULL_CONFIG = (
         "_scaled_dot_product_flash_attention_backward",
         scaled_dot_product_flash_attention_backward,
     ),
-    ("_scaled_dot_product_fused_attention_overrideable", _scaled_dot_product_fused_attention_overrideable),
+    (
+        "_scaled_dot_product_fused_attention_overrideable",
+        _scaled_dot_product_fused_attention_overrideable,
+    ),
     ("_scaled_grouped_mm", scaled_grouped_mm, lambda: torch_ge("2.8")),
     ("_scaled_mm", scaled_mm, lambda: torch_ge("2.5")),
     ("_scaled_mm.out", scaled_mm_out, lambda: torch_ge("2.5")),
