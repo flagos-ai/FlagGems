@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def zeros_kernel(
     output_ptr,
-    n_elements: tl.int32,
+    n_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)  # We use a 1D launch grid so axis is 0.
@@ -33,8 +33,6 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
         dtype = torch.get_default_dtype()
     if device is None:
         device = torch.device(device_.name)
-    if dtype == torch.int64:
-        dtype = torch.int32
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
