@@ -454,7 +454,7 @@ _FULL_CONFIG = (
     ("ones", ones),
     ("ones_like", ones_like),
     ("pad", pad),
-    ("permute_copy", OpsConfigFile(os.path.join(cur_dir, "ops", "permute_copy.py"))),
+    ("permute_copy", permute_copy),
     ("pixel_shuffle", pixel_shuffle),
     ("pixel_unshuffle", pixel_unshuffle),
     ("pixel_unshuffle.out", pixel_unshuffle_out),

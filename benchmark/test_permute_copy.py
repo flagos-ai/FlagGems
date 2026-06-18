@@ -2,8 +2,7 @@
 import pytest
 import torch
 
-from . import base
-from . import consts
+from . import base, consts
 
 # Shapes for permute_copy benchmark: (original_shape, dims)
 PERMUTE_COPY_SHAPES = [
