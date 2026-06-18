@@ -38,7 +38,6 @@ def torch_ge(v):
 
 _FULL_CONFIG = (
     ("__ilshift__.Tensor", __ilshift__),
-    ("special.xlog1py", special_xlog1py),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__or__.Scalar", bitwise_or_scalar),
@@ -544,6 +543,7 @@ _FULL_CONFIG = (
     ("special_i0e.out", special_i0e_out),
     ("special_i1", special_i1),
     ("special_i1.out", special_i1_out),
+    ("special.xlog1py", special_xlog1py),
     ("split_with_sizes_copy", split_with_sizes_copy),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
