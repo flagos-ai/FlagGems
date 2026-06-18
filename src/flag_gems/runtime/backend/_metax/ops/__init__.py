@@ -1,3 +1,4 @@
+from ._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
@@ -27,7 +28,6 @@ from .prod import prod, prod_dim
 from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
 from .sigmoid import sigmoid
-from ._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from .tanh import tanh
 from .unique import _unique2
 from .upsample_nearest2d import upsample_nearest2d
