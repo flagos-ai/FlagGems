@@ -253,3 +253,31 @@ def test_index_error_too_many_indices(dtype):
 
     with pytest.raises(IndexError, match="too many indices"):
         flag_gems.index(inp, indices)
+
+
+@pytest.mark.index
+def test_index_large_tensor_int32_offset():
+    # Regression for #4153. For a tensor with more than 2**31 elements the
+    # kernel computed offset = index * stride in int32, which overflowed to a
+    # negative offset -> CUDA illegal memory access. The bug is dtype-agnostic
+    # (the offset is in element units), so int8 keeps the >2**31-element
+    # allocation near 2 GiB. int32 indices are the trigger (int64 would dodge it).
+    stride0 = 2**17  # = 8 * 128 * 128, mirrors the ssm_state row size
+    crit = 2**31 // stride0  # 16384: crit * stride0 == 2**31 > INT32_MAX
+    n_rows = crit + 1
+
+    try:
+        inp = torch.zeros((n_rows, stride0), dtype=torch.int8, device=flag_gems.device)
+    except RuntimeError as e:
+        if "out of memory" in str(e).lower():
+            pytest.skip("needs >2 GiB device memory for a >2**31-element tensor")
+        raise
+
+    inp[crit] = 7  # mark the row so a correct gather is distinguishable
+    idx = torch.tensor([crit], dtype=torch.int32, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.ops.aten.index(ref_inp, [utils.to_reference(idx)])
+    out = flag_gems.index(inp, [idx])
+
+    utils.gems_assert_equal(out, ref_out)
