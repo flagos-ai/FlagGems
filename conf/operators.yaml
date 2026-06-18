@@ -903,6 +903,28 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: cholesky
+    description: Triton kernel implementation for cholesky.
+    for:
+      - cholesky
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: cholesky_
+    description: The in-place version of `cholesky()`.
+    for:
+      - cholesky_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: ilshift__
     description: Computes the in-place bitwise left shift of `self` by `other` bits.
     for:
