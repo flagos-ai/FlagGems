@@ -16,121 +16,8 @@
 import logging
 
 import torch
-import triton
-import triton.language as tl
-
-from flag_gems.utils import libentry, tl_extra_shim
 
 logger = logging.getLogger(__name__)
-
-
-@libentry()
-@triton.jit
-def _thnn_fused_lstm_cell_backward_impl_kernel(
-    grad_hy_ptr,
-    grad_cy_ptr,
-    cx_ptr,
-    cy_ptr,
-    workspace_ptr,
-    grad_input_gates_ptr,
-    grad_hidden_gates_ptr,
-    grad_bias_ptr,
-    batch_size,
-    hidden_size,
-    has_bias: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-):
-    """Triton kernel for LSTM cell backward pass.
-
-    This kernel computes approximate gradients for the fused LSTM cell backward operation.
-    """
-    pid = tl.program_id(0)
-    num_pid = tl.cdiv(batch_size * hidden_size, BLOCK_SIZE)
-
-    if pid >= num_pid:
-        return
-
-    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = idx < batch_size * hidden_size
-
-    # Compute batch and hidden indices
-    batch_idx = idx // hidden_size
-    hidden_idx = idx % hidden_size
-
-    # Load inputs
-    grad_hy = tl.load(grad_hy_ptr + idx, mask=mask, other=0.0).to(tl.float32)
-    grad_cy = tl.load(grad_cy_ptr + idx, mask=mask, other=0.0).to(tl.float32)
-    cx = tl.load(cx_ptr + idx, mask=mask, other=0.0).to(tl.float32)
-    cy = tl.load(cy_ptr + idx, mask=mask, other=0.0).to(tl.float32)
-
-    # Load gates from workspace (approximate - use sigmoid/tanh derivatives)
-    base_offset = batch_idx * hidden_size * 4
-    i_val = tl.load(workspace_ptr + base_offset + hidden_idx, mask=mask, other=0.5).to(
-        tl.float32
-    )
-    f_val = tl.load(
-        workspace_ptr + base_offset + hidden_size + hidden_idx, mask=mask, other=0.5
-    ).to(tl.float32)
-    g_val = tl.load(
-        workspace_ptr + base_offset + hidden_size * 2 + hidden_idx, mask=mask, other=0.0
-    ).to(tl.float32)
-    o_val = tl.load(
-        workspace_ptr + base_offset + hidden_size * 3 + hidden_idx, mask=mask, other=0.5
-    ).to(tl.float32)
-
-    # Compute tanh(cy)
-    tanh_cy = tl_extra_shim.tanh(cy)
-
-    # Approximate gradient computation using chain rule
-    # dL/d(output_gate) = dL/dh * tanh(cy) * o * (1 - o)
-    grad_o = grad_hy * tanh_cy * o_val * (1.0 - o_val)
-
-    # dL/dcy = dL/dh * o * (1 - tanh^2(cy)) + dL/dcy_next
-    d_cy = grad_hy * o_val * (1.0 - tanh_cy * tanh_cy) + grad_cy
-
-    # dL/d(input_gate) = dL/dcy * g * i * (1 - i)
-    grad_i = d_cy * g_val * i_val * (1.0 - i_val)
-
-    # dL/d(forget_gate) = dL/dcy * cx * f * (1 - f)
-    grad_f = d_cy * cx * f_val * (1.0 - f_val)
-
-    # dL/d(cell_gate) = dL/dcy * i * (1 - g^2)
-    grad_g = d_cy * i_val * (1.0 - g_val * g_val)
-
-    # Store input gate gradients
-    tl.store(grad_input_gates_ptr + base_offset + hidden_idx, grad_i, mask=mask)
-    tl.store(
-        grad_input_gates_ptr + base_offset + hidden_size + hidden_idx, grad_f, mask=mask
-    )
-    tl.store(
-        grad_input_gates_ptr + base_offset + hidden_size * 2 + hidden_idx,
-        grad_g,
-        mask=mask,
-    )
-    tl.store(
-        grad_input_gates_ptr + base_offset + hidden_size * 3 + hidden_idx,
-        grad_o,
-        mask=mask,
-    )
-
-    # Hidden gate gradients are identical to input gate gradients
-    # because forward computes: gate = input_gates + hidden_gates + bias
-    tl.store(grad_hidden_gates_ptr + base_offset + hidden_idx, grad_i, mask=mask)
-    tl.store(
-        grad_hidden_gates_ptr + base_offset + hidden_size + hidden_idx,
-        grad_f,
-        mask=mask,
-    )
-    tl.store(
-        grad_hidden_gates_ptr + base_offset + hidden_size * 2 + hidden_idx,
-        grad_g,
-        mask=mask,
-    )
-    tl.store(
-        grad_hidden_gates_ptr + base_offset + hidden_size * 3 + hidden_idx,
-        grad_o,
-        mask=mask,
-    )
 
 
 def _thnn_fused_lstm_cell_backward_impl(
@@ -143,7 +30,8 @@ def _thnn_fused_lstm_cell_backward_impl(
 ):
     """Compute gradients for fused LSTM cell.
 
-    This FlagGems implementation uses a Triton kernel for approximate gradient computation.
+    This FlagGems implementation uses pure PyTorch tensor operations for
+    numerically correct gradient computation.
 
     Args:
         grad_hy: Gradient of hidden output (batch, hidden_size)
@@ -151,15 +39,15 @@ def _thnn_fused_lstm_cell_backward_impl(
         cx: Cell state input (batch, hidden_size)
         cy: Cell state output after tanh (batch, hidden_size)
         workspace: Workspace tensor from forward pass (batch, 4*hidden_size)
+                   containing sigmoid/tanh gate activations for i, f, g, o.
         has_bias: Whether bias is used
 
     Returns:
-        Tuple of (grad_input_gates, grad_hidden_gates, grad_biases)
+        Tuple of (grad_input_gates, grad_hidden_gates, grad_cx, grad_biases)
     """
     logger.debug("GEMS _THNN_FUSED_LSTM_CELL_BACKWARD_IMPL")
 
-    batch_size = cx.shape[0]
-    hidden_size = cx.shape[1]
+    batch_size, hidden_size = cx.shape
 
     # Ensure contiguous
     grad_hy = grad_hy.contiguous()
@@ -168,41 +56,32 @@ def _thnn_fused_lstm_cell_backward_impl(
     cy = cy.contiguous()
     workspace = workspace.contiguous()
 
-    # Allocate output tensors
-    grad_input_gates = torch.empty(
-        (batch_size, 4 * hidden_size), dtype=cx.dtype, device=cx.device
-    )
-    grad_hidden_gates = torch.empty(
-        (batch_size, 4 * hidden_size), dtype=cx.dtype, device=cx.device
-    )
+    # Extract gate activations from workspace
+    # worksapce layout: [i_gate, f_gate, g_gate, o_gate] along dim=1
+    i_gate = workspace[:, :hidden_size]
+    f_gate = workspace[:, hidden_size : 2 * hidden_size]
+    g_gate = workspace[:, 2 * hidden_size : 3 * hidden_size]
+    o_gate = workspace[:, 3 * hidden_size : 4 * hidden_size]
 
-    # dummy zeros tensor for kernel (bias computed in wrapper after launch)
-    dummy_bias = torch.empty(0, dtype=cx.dtype, device=cx.device)
+    # Compute gradients via chain rule
+    # d(cy)/d(inputs) = dL/dhy * o * (1 - tanh^2(cy)) + dL/dcy
+    tanh_cy = torch.tanh(cy)
+    d_cy = grad_hy * o_gate * (1.0 - tanh_cy * tanh_cy) + grad_cy
 
-    # Launch Triton kernel
-    BLOCK_SIZE = 128
-    grid = (triton.cdiv(batch_size * hidden_size, BLOCK_SIZE),)
+    # Gate gradients
+    grad_i = d_cy * g_gate * i_gate * (1.0 - i_gate)
+    grad_f = d_cy * cx * f_gate * (1.0 - f_gate)
+    grad_g = d_cy * i_gate * (1.0 - g_gate * g_gate)
+    grad_o = grad_hy * tanh_cy * o_gate * (1.0 - o_gate)
 
-    _thnn_fused_lstm_cell_backward_impl_kernel[grid](
-        grad_hy,
-        grad_cy,
-        cx,
-        cy,
-        workspace,
-        grad_input_gates,
-        grad_hidden_gates,
-        dummy_bias,
-        batch_size,
-        hidden_size,
-        has_bias,
-        BLOCK_SIZE,
-    )
+    # Pack input and hidden gate gradients
+    grad_input_gates = torch.cat([grad_i, grad_f, grad_g, grad_o], dim=1)
+    grad_hidden_gates = torch.cat([grad_i, grad_f, grad_g, grad_o], dim=1)
 
-    # grad_cx (gradient w.r.t. cell state) is not computed by this kernel.
-    # Provide a placeholder zero tensor to match ATen's 4-output signature.
-    grad_cx = torch.zeros_like(cx)
+    # grad_cx
+    grad_cx = d_cy * f_gate
 
-    # Bias gradient is the sum over batch dimension of input gate gradients
+    # Bias gradient
     if has_bias:
         grad_biases = grad_input_gates.sum(dim=0)
     else:
