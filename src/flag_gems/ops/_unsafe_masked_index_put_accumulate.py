@@ -66,40 +66,12 @@ def generate_kernel(rank, kernel_name: str, code: IndentedBuffer):
             "mask_val = tl.load(mask_ptr + offsets, mask=mask_mask, other=0)"
         )
         code.newline()
-        code.writeline("# Compute position in the flattened mask/indices/values")
-        code.writeline("pos = offsets")
-        code.newline()
-        # Convert flattened position to multi-dimensional indices
-        for i in range(rank - 1, -1, -1):
-            if i == rank - 1:
-                code.writeline(f"idx{i} = pos % input_shape{i}")
-            else:
-                code.writeline(f"idx{i} = (pos // input_shape{i + 1}) % input_shape{i}")
-        code.newline()
-        # Compute offset in mask/indices/values tensors
-        code.writeline("# Compute offset in mask tensor")
-        comp = [f"idx{i} * 1" for i in range(rank)]  # mask has trivial strides for now
-        code.writeline(f"mask_offset = {' + '.join(comp) if comp else '0'}")
-        code.newline()
-        # Reload mask at the correct offset
         code.writeline(
-            "mask_val = tl.load(mask_ptr + mask_offset, mask=mask_mask, other=0)"
+            "indices_val = tl.load(indices_ptr + offsets, mask=mask_mask, other=0).to(tl.int64)"
         )
         code.newline()
-        # Compute offset in indices tensor
-        code.writeline("# Compute offset in indices tensor")
-        comp = [f"idx{i} * 1" for i in range(rank)]
-        code.writeline(f"indices_offset = {' + '.join(comp) if comp else '0'}")
         code.writeline(
-            "indices_val = tl.load(indices_ptr + indices_offset, mask=mask_mask, other=0).to(tl.int64)"
-        )
-        code.newline()
-        # Compute offset in values tensor
-        code.writeline("# Compute offset in values tensor")
-        comp = [f"idx{i} * 1" for i in range(rank)]
-        code.writeline(f"values_offset = {' + '.join(comp) if comp else '0'}")
-        code.writeline(
-            "values_val = tl.load(values_ptr + values_offset, mask=mask_mask, other=0)"
+            "values_val = tl.load(values_ptr + offsets, mask=mask_mask, other=0)"
         )
         code.newline()
         # Convert linear index from indices tensor to multi-dimensional index in input
@@ -231,11 +203,16 @@ def _unsafe_masked_index_put_accumulate(inp, mask, indices, values):
             indices_tensor = indices[0]
         else:
             # Per-dimension -> flat linear: idx0*stride0 + idx1*stride1 + ...
+            # Row-major: stride[i] = product of shapes[i+1 .. rank-1]
             rank = inp.ndim
             indices_tensor = indices[0].to(torch.int64).clone()
+            stride = 1
+            for j in range(1, rank):
+                stride *= inp.shape[j]
+            indices_tensor *= stride
             for dim in range(1, rank):
                 stride = 1
-                for j in range(dim, rank):
+                for j in range(dim + 1, rank):
                     stride *= inp.shape[j]
                 indices_tensor += indices[dim].to(torch.int64) * stride
     else:
@@ -260,20 +237,4 @@ def _unsafe_masked_index_put_accumulate(inp, mask, indices, values):
     )
     values = values.to(inp.device) if values.device != inp.device else values
 
-    # Upcast fp16/bf16 to fp32 for intermediate accumulation.
-    # float16 atomic_add truncates every accumulation, causing compound
-    # error when multiple values scatter to the same index.  Accumulating
-    # in float32 matches PyTorch's internal reference precision.
-    orig_dtype = inp.dtype
-    upcast = orig_dtype in (torch.float16, torch.bfloat16)
-    if upcast:
-        inp = inp.float()
-        values = values.float()
-        mask = mask.float()
-
-    result = unsafe_masked_index_put_accumulate_func(inp, mask, indices_tensor, values)
-
-    if upcast:
-        result = result.to(orig_dtype)
-
-    return result
+    return unsafe_masked_index_put_accumulate_func(inp, mask, indices_tensor, values)
