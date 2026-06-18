@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from . import base
+from . import base, consts
 
 # Representative square matrix shapes for slogdet benchmarking
 SLOGDET_SHAPES = [
@@ -29,6 +29,6 @@ def test_linalg_slogdet():
     bench = LinalgSlogdetBenchmark(
         op_name="linalg_slogdet",
         torch_op=torch.linalg.slogdet,
-        dtypes=[torch.float32, torch.float64],
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
