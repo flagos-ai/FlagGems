@@ -21,8 +21,8 @@ def test_special_log1p(shape, dtype):
 
 
 @pytest.mark.special_log1p
-def test_special_log1p_non_tensor():
-    inp = 1.0
-    ref_out = torch.special.log1p(torch.tensor(inp))
+@pytest.mark.parametrize("inp", [1.0, 5, -0.5])
+def test_special_log1p_non_tensor(inp):
+    ref_out = torch.special.log1p(torch.tensor(inp, dtype=torch.float32))
     res_out = special_log1p(inp)
     utils.gems_assert_close(ref_out, res_out, torch.float32)
