@@ -30,7 +30,7 @@ def torch_flash_attention_forward(
 def gems_flash_attention_forward(
     q, k, v, scale, is_causal, dropout_p=0.0, return_debug_mask=False, **extra_kwargs
 ):
-    return flag_gems.ops.flash_attention_forward(
+    return flag_gems.flash_attention_forward(
         q,
         k,
         v,
