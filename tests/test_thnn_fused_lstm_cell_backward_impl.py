@@ -24,12 +24,8 @@ def test_thnn_fused_lstm_cell_backward_impl(shape, dtype):
     dev = flag_gems.device
 
     # Create input tensors on CUDA (forward op is CUDA-only)
-    input_gates = torch.randn(
-        batch_size, 4 * hidden_size, dtype=dtype, device=dev
-    )
-    hidden_gates = torch.randn(
-        batch_size, 4 * hidden_size, dtype=dtype, device=dev
-    )
+    input_gates = torch.randn(batch_size, 4 * hidden_size, dtype=dtype, device=dev)
+    hidden_gates = torch.randn(batch_size, 4 * hidden_size, dtype=dtype, device=dev)
     cx = torch.randn(batch_size, hidden_size, dtype=dtype, device=dev)
     input_bias = torch.zeros(4 * hidden_size, dtype=dtype, device=dev)
     hidden_bias = torch.randn(4 * hidden_size, dtype=dtype, device=dev)
@@ -60,4 +56,4 @@ def test_thnn_fused_lstm_cell_backward_impl(shape, dtype):
         assert (
             res.dtype == ref.dtype
         ), f"Dtype mismatch at output[{i}]: {res.dtype} vs {ref.dtype}"
-        utils.gems_assert_close(res, ref, dtype, atol=5e-2)
+        utils.gems_assert_close(res.cpu(), ref.cpu(), dtype, atol=5e-2)
