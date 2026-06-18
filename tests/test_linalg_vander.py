@@ -33,14 +33,10 @@ def test_linalg_vander(shape, dtype):
     # if N is not specified, N = n
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    # For float16/bfloat16, use CPU reference to avoid device limitations
-    # For float32, use the same device for fair comparison
-    if dtype in [torch.float16, torch.bfloat16]:
-        ref_x = utils.to_reference(x, True)
-        ref_out = torch.linalg.vander(ref_x).to(x.device)
-    else:
-        ref_x = utils.to_reference(x, False)
-        ref_out = torch.linalg.vander(ref_x)
+    # torch.linalg.vander does not support float16/bfloat16 (CPU nor GPU),
+    # so upcast the reference input via to_reference(..., True).
+    ref_x = utils.to_reference(x, True) if dtype in [torch.float16, torch.bfloat16] else utils.to_reference(x, False)
+    ref_out = torch.linalg.vander(ref_x)
 
     with flag_gems.use_gems():
         res_out = torch.linalg.vander(x)
@@ -62,13 +58,10 @@ def test_linalg_vander_with_N(shape, N, dtype):
 
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    # For float16/bfloat16, use CPU reference to avoid device limitations
-    if dtype in [torch.float16, torch.bfloat16]:
-        ref_x = utils.to_reference(x, True)
-        ref_out = torch.linalg.vander(ref_x, N=N).to(x.device)
-    else:
-        ref_x = utils.to_reference(x, False)
-        ref_out = torch.linalg.vander(ref_x, N=N)
+    # torch.linalg.vander does not support float16/bfloat16 (CPU nor GPU),
+    # so upcast the reference input via to_reference(..., True).
+    ref_x = utils.to_reference(x, True) if dtype in [torch.float16, torch.bfloat16] else utils.to_reference(x, False)
+    ref_out = torch.linalg.vander(ref_x, N=N)
 
     with flag_gems.use_gems():
         res_out = torch.linalg.vander(x, N=N)
