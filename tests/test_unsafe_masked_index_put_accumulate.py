@@ -22,7 +22,9 @@ def _flat_to_per_dim_indices(flat_indices, inp_shape):
 
 @pytest.mark.unsafe_masked_index_put_accumulate
 @pytest.mark.parametrize("shape", utils._UNSAFE_MASKED_INDEX_PUT_SHAPES)
-@pytest.mark.parametrize("dtype", [d for d in utils.FLOAT_DTYPES if d != torch.bfloat16])
+@pytest.mark.parametrize(
+    "dtype", [d for d in utils.FLOAT_DTYPES if d != torch.bfloat16]
+)
 def test_unsafe_masked_index_put_accumulate(shape, dtype):
     inp_shape, mask_shape, indices_shape, values_shape = shape
     assert (
