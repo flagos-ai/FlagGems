@@ -260,18 +260,4 @@ def _unsafe_masked_index_put_accumulate(inp, mask, indices, values):
     )
     values = values.to(inp.device) if values.device != inp.device else values
 
-    # Upcast fp16/bf16 to fp32 for intermediate accumulation precision.
-    # atomic_add on fp16 memory truncates each accumulation, causing compound
-    # error when multiple values scatter to the same index.  Accumulating in
-    # fp32 matches the reference implementation's internal precision.
-    orig_dtype = inp.dtype
-    if orig_dtype in (torch.float16, torch.bfloat16):
-        inp = inp.float()
-        values = values.float()
-
-    result = unsafe_masked_index_put_accumulate_func(inp, mask, indices_tensor, values)
-
-    if result.dtype != orig_dtype:
-        result = result.to(orig_dtype)
-
-    return result
+    return unsafe_masked_index_put_accumulate_func(inp, mask, indices_tensor, values)

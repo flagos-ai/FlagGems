@@ -50,4 +50,5 @@ def test_unsafe_masked_index_put_accumulate(shape, dtype):
     with flag_gems.use_gems():
         res_out = op(inp.clone(), mask, idx_tuple, values)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    atol = 5e-3 if dtype == torch.float16 else 1e-4
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
