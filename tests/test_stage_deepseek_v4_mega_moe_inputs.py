@@ -70,12 +70,8 @@ def _make_inputs(num_tokens, hidden_size, top_k):
 
 @pytest.mark.parametrize("num_tokens, hidden_size, top_k", [(1, 128, 1), (7, 256, 8)])
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires cuda")
-def test_stage_deepseek_v4_mega_moe_inputs_accuracy(
-    num_tokens, hidden_size, top_k
-):
-    hidden_states, topk_weights, topk_ids = _make_inputs(
-        num_tokens, hidden_size, top_k
-    )
+def test_stage_deepseek_v4_mega_moe_inputs_accuracy(num_tokens, hidden_size, top_k):
+    hidden_states, topk_weights, topk_ids = _make_inputs(num_tokens, hidden_size, top_k)
     ref_x, ref_x_sf, ref_topk_idx, ref_topk_weights = _reference_stage_inputs(
         hidden_states, topk_weights, topk_ids
     )
