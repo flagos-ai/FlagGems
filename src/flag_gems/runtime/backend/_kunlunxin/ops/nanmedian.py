@@ -17,6 +17,21 @@ NanMedian = namedtuple("nanmedian", ["values", "indices"])
 MAX_BLOCK_N = 128
 RADIX_BLOCK_N = 1024
 RADIX_BITS = 2
+MAX_NDIM = 8
+
+
+def _unwrap_if_constexpr(value):
+    return value.value if isinstance(value, tl.constexpr) else value
+
+
+@tl.constexpr
+def _uint_dtype(num_bits: tl.constexpr) -> tl.dtype:
+    return tl.core.get_int_dtype(_unwrap_if_constexpr(num_bits), False)
+
+
+@tl.constexpr
+def _sign_bit_mask(num_bits: tl.constexpr) -> int:
+    return 1 << (_unwrap_if_constexpr(num_bits) - 1)
 
 
 @triton.jit
@@ -29,39 +44,20 @@ def _is_not_nan(vals):
 def _to_order_key(vals, valid):
     dtype = vals.dtype
     nbits: tl.constexpr = dtype.primitive_bitwidth
-    utype = tl.dtype(f"uint{nbits}")
-    top_mask: tl.constexpr = 1 << (nbits - 1)
-    full_mask: tl.constexpr = (1 << nbits) - 1
-    full = tl.full(vals.shape, full_mask, dtype=utype)
+    utype = _uint_dtype(nbits)
+    top = tl.full(vals.shape, _sign_bit_mask(nbits), dtype=utype)
+    full = ~tl.full(vals.shape, 0, dtype=utype)
 
     if dtype.is_floating():
         bits = vals.to(utype, bitcast=True)
-        sign_mask = tl.where((bits & top_mask) != 0, full_mask, top_mask)
+        sign_mask = tl.where((bits & top) != 0, full, top)
         key = bits ^ sign_mask
     elif dtype.is_int_signed():
         bits = vals.to(utype, bitcast=True)
-        key = bits ^ top_mask
+        key = bits ^ top
     else:
         key = vals.to(utype)
     return tl.where(valid, key, full)
-
-
-@triton.jit
-def _base_offset(
-    out_id,
-    SHAPE: tl.constexpr,
-    STRIDES: tl.constexpr,
-    DIM: tl.constexpr,
-    NDIM: tl.constexpr,
-):
-    idx = out_id
-    base = tl.full((), 0, dtype=tl.int64)
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        if dim != DIM:
-            coord = idx % SHAPE[dim]
-            idx = idx // SHAPE[dim]
-            base += coord * STRIDES[dim]
-    return base
 
 
 @libentry()
@@ -72,8 +68,22 @@ def nanmedian_direct_select_kernel(
     out_indices,
     N: tl.constexpr,
     STRIDE_DIM: tl.constexpr,
-    SHAPE: tl.constexpr,
-    STRIDES: tl.constexpr,
+    S0: tl.constexpr,
+    S1: tl.constexpr,
+    S2: tl.constexpr,
+    S3: tl.constexpr,
+    S4: tl.constexpr,
+    S5: tl.constexpr,
+    S6: tl.constexpr,
+    S7: tl.constexpr,
+    T0: tl.constexpr,
+    T1: tl.constexpr,
+    T2: tl.constexpr,
+    T3: tl.constexpr,
+    T4: tl.constexpr,
+    T5: tl.constexpr,
+    T6: tl.constexpr,
+    T7: tl.constexpr,
     DIM: tl.constexpr,
     NDIM: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -85,7 +95,47 @@ def nanmedian_direct_select_kernel(
     max_value = get_dtype_max(dtype)
     fallback_value = get_dtype_min(dtype)
 
-    base = _base_offset(pid, SHAPE, STRIDES, DIM, NDIM)
+    idx = pid
+    base = tl.full((), 0, dtype=tl.int64)
+    if NDIM >= 8:
+        if DIM != 7:
+            coord = idx % S7
+            idx = idx // S7
+            base += coord * T7
+    if NDIM >= 7:
+        if DIM != 6:
+            coord = idx % S6
+            idx = idx // S6
+            base += coord * T6
+    if NDIM >= 6:
+        if DIM != 5:
+            coord = idx % S5
+            idx = idx // S5
+            base += coord * T5
+    if NDIM >= 5:
+        if DIM != 4:
+            coord = idx % S4
+            idx = idx // S4
+            base += coord * T4
+    if NDIM >= 4:
+        if DIM != 3:
+            coord = idx % S3
+            idx = idx // S3
+            base += coord * T3
+    if NDIM >= 3:
+        if DIM != 2:
+            coord = idx % S2
+            idx = idx // S2
+            base += coord * T2
+    if NDIM >= 2:
+        if DIM != 1:
+            coord = idx % S1
+            idx = idx // S1
+            base += coord * T1
+    if NDIM >= 1:
+        if DIM != 0:
+            coord = idx % S0
+            base += coord * T0
     vals = tl.load(inp + base + offsets * STRIDE_DIM, mask=mask, other=max_value)
 
     if dtype.is_floating():
@@ -124,8 +174,22 @@ def nanmedian_direct_radix_kernel(
     out_indices,
     N: tl.constexpr,
     STRIDE_DIM: tl.constexpr,
-    SHAPE: tl.constexpr,
-    STRIDES: tl.constexpr,
+    S0: tl.constexpr,
+    S1: tl.constexpr,
+    S2: tl.constexpr,
+    S3: tl.constexpr,
+    S4: tl.constexpr,
+    S5: tl.constexpr,
+    S6: tl.constexpr,
+    S7: tl.constexpr,
+    T0: tl.constexpr,
+    T1: tl.constexpr,
+    T2: tl.constexpr,
+    T3: tl.constexpr,
+    T4: tl.constexpr,
+    T5: tl.constexpr,
+    T6: tl.constexpr,
+    T7: tl.constexpr,
     DIM: tl.constexpr,
     NDIM: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -135,12 +199,52 @@ def nanmedian_direct_radix_kernel(
     offsets = tl.arange(0, BLOCK_N)
     dtype = inp.dtype.element_ty
     nbits: tl.constexpr = dtype.primitive_bitwidth
-    utype = tl.dtype(f"uint{nbits}")
+    utype = _uint_dtype(nbits)
     radix_size: tl.constexpr = 1 << RADIX_BITS_
     radix_mask: tl.constexpr = radix_size - 1
     radix_bins = tl.arange(0, radix_size)
     radix_mask_val = tl.full((), radix_mask, dtype=utype)
-    base = _base_offset(pid, SHAPE, STRIDES, DIM, NDIM)
+    idx = pid
+    base = tl.full((), 0, dtype=tl.int64)
+    if NDIM >= 8:
+        if DIM != 7:
+            coord = idx % S7
+            idx = idx // S7
+            base += coord * T7
+    if NDIM >= 7:
+        if DIM != 6:
+            coord = idx % S6
+            idx = idx // S6
+            base += coord * T6
+    if NDIM >= 6:
+        if DIM != 5:
+            coord = idx % S5
+            idx = idx // S5
+            base += coord * T5
+    if NDIM >= 5:
+        if DIM != 4:
+            coord = idx % S4
+            idx = idx // S4
+            base += coord * T4
+    if NDIM >= 4:
+        if DIM != 3:
+            coord = idx % S3
+            idx = idx // S3
+            base += coord * T3
+    if NDIM >= 3:
+        if DIM != 2:
+            coord = idx % S2
+            idx = idx // S2
+            base += coord * T2
+    if NDIM >= 2:
+        if DIM != 1:
+            coord = idx % S1
+            idx = idx // S1
+            base += coord * T1
+    if NDIM >= 1:
+        if DIM != 0:
+            coord = idx % S0
+            base += coord * T0
 
     valid_count = tl.full((), 0, dtype=tl.int32)
     for start in tl.range(0, N, BLOCK_N):
@@ -231,6 +335,23 @@ def _normalize_dim(dim, ndim):
     )
 
 
+def _pad_meta(values, fill):
+    if len(values) > MAX_NDIM:
+        raise NotImplementedError(
+            f"nanmedian supports input rank <= {MAX_NDIM} on Kunlunxin"
+        )
+    return tuple(values) + (fill,) * (MAX_NDIM - len(values))
+
+
+def _empty_flat_value(inp):
+    result = torch.empty((), dtype=inp.dtype, device=inp.device)
+    if inp.dtype.is_floating_point:
+        result.fill_(float("nan"))
+    else:
+        result.fill_(torch.iinfo(inp.dtype).min)
+    return result
+
+
 def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
     dim = _normalize_dim(dim, inp.ndim)
 
@@ -283,9 +404,10 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
 
     flat_values = values.reshape(M)
     flat_indices = indices.reshape(M)
-    shape_tuple = tuple(shape)
     stride_tuple = tuple(inp.stride())
     stride_dim = stride_tuple[dim]
+    shape_meta = _pad_meta(shape, 1)
+    stride_meta = _pad_meta(stride_tuple, 0)
 
     if N <= MAX_BLOCK_N:
         block_n = triton.next_power_of_2(N)
@@ -297,8 +419,8 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
                 flat_indices,
                 N,
                 stride_dim,
-                shape_tuple,
-                stride_tuple,
+                *shape_meta,
+                *stride_meta,
                 dim,
                 inp.ndim,
                 block_n,
@@ -316,8 +438,8 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
                 flat_indices,
                 N,
                 stride_dim,
-                shape_tuple,
-                stride_tuple,
+                *shape_meta,
+                *stride_meta,
                 dim,
                 inp.ndim,
                 block_n,
@@ -332,6 +454,35 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
         indices = torch.squeeze(indices, dim)
 
     return NanMedian(values=values, indices=indices)
+
+
+def _nanmedian_flat_impl(inp, out=None):
+    if inp.numel() == 0:
+        result = _empty_flat_value(inp)
+        if out is not None:
+            out.copy_(result)
+            return out
+        return result
+
+    flat = inp.reshape(-1)
+    if out is None:
+        return _nanmedian_dim_impl(flat, 0, False).values
+
+    indices = torch.empty((), dtype=torch.long, device=inp.device)
+    _nanmedian_dim_impl(flat, 0, False, out=(out, indices))
+    return out
+
+
+def nanmedian(inp):
+    logger.debug("GEMS_KUNLUNXIN NANMEDIAN")
+    _check_supported_dtype(inp)
+    return _nanmedian_flat_impl(inp)
+
+
+def nanmedian_out(inp, *, out):
+    logger.debug("GEMS_KUNLUNXIN NANMEDIAN OUT")
+    _check_supported_dtype(inp)
+    return _nanmedian_flat_impl(inp, out=out)
 
 
 def nanmedian_dim(inp, dim=-1, keepdim=False):
