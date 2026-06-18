@@ -10,10 +10,10 @@ class BroadcastToBenchmark(base.Benchmark):
         # patterns: leading-dim insertion, mid/leading axis expansion, and full-rank
         # expansion, so the kernel covers each broadcast code path.
         self.shapes = [
-            ((1024,), (1, 1024)),          # 1D -> 2D broadcast (add leading dim)
-            ((64, 1), (64, 4096)),         # 2D -> 2D broadcast (expand dim 1)
-            ((1, 64), (4096, 64)),         # 2D -> 2D broadcast (expand dim 0)
-            ((1, 1, 1), (64, 512, 512)),   # 3D -> 3D broadcast (expand all dims)
+            ((1024,), (1, 1024)),  # 1D -> 2D broadcast (add leading dim)
+            ((64, 1), (64, 4096)),  # 2D -> 2D broadcast (expand dim 1)
+            ((1, 64), (4096, 64)),  # 2D -> 2D broadcast (expand dim 0)
+            ((1, 1, 1), (64, 512, 512)),  # 3D -> 3D broadcast (expand all dims)
         ]
         self.shape_desc = "src_shape -> target_shape"
 
