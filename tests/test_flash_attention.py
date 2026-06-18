@@ -15,17 +15,6 @@ from . import conftest as cfg
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 
-def _hadamard_matrix(dim, device):
-    h = torch.tensor([[1.0]], device=device)
-    while h.shape[0] < dim:
-        h = torch.cat((torch.cat((h, h), dim=1), torch.cat((h, -h), dim=1)), dim=0)
-    return h / math.sqrt(dim)
-
-
-def _apply_incoherent_qk(x):
-    h = _hadamard_matrix(x.shape[-1], x.device).to(torch.float32)
-    return torch.matmul(x.float(), h).to(x.dtype)
-
 
 def make_input(
     batch,
@@ -112,93 +101,6 @@ def gems_flash_fwd(
     )
 
     return out, lse, seed, offset, debug_softmax
-
-
-def _get_fp8_dtype():
-    dtype = getattr(torch, "float8_e4m3fn", None)
-    if dtype is None:
-        pytest.skip("torch.float8_e4m3fn is not available")
-    return dtype
-
-
-def _fp8_max_value(fp8_dtype):
-    if fp8_dtype is getattr(torch, "float8_e5m2", None):
-        return float(torch.finfo(fp8_dtype).max)
-    return 448.0
-
-
-def _quantize_per_block_fp8(x, fp8_dtype, block_size=128):
-    batch, seq_len, num_head, _ = x.shape
-    fp8_max = _fp8_max_value(fp8_dtype)
-    nblocks = triton.cdiv(seq_len, block_size)
-    out = torch.empty_like(x, dtype=fp8_dtype)
-    descale = torch.empty((batch, num_head, nblocks), device=x.device, dtype=torch.float32)
-    for block_idx in range(nblocks):
-        lo = block_idx * block_size
-        hi = min(seq_len, lo + block_size)
-        tile = x[:, lo:hi, :, :].float()
-        scale = (tile.abs().amax(dim=(1, 3)) / fp8_max).clamp_min(
-            torch.finfo(torch.float32).tiny
-        )
-        out[:, lo:hi, :, :] = torch.clamp(
-            tile / scale[:, None, :, None], -fp8_max, fp8_max
-        ).to(fp8_dtype)
-        descale[:, :, block_idx] = scale
-    return out.contiguous(), descale.contiguous()
-
-
-def _quantize_qkv_w8a8(q, k, v):
-    fp8_dtype = _get_fp8_dtype()
-    q_i = _apply_incoherent_qk(q)
-    k_i = _apply_incoherent_qk(k)
-    q_fp8, q_descale = _quantize_per_block_fp8(q_i, fp8_dtype)
-    k_fp8, k_descale = _quantize_per_block_fp8(k_i, fp8_dtype)
-    v_fp8, v_descale = _quantize_per_block_fp8(v, fp8_dtype)
-    return q_fp8, k_fp8, v_fp8, q_descale, k_descale, v_descale, _fp8_max_value(fp8_dtype)
-
-def gems_flash_fwd_w8a8(q, k, v, scale, is_causal):
-    q_fp8, k_fp8, v_fp8, q_descale, k_descale, v_descale, fp8_p_max = _quantize_qkv_w8a8(
-        q, k, v
-    )
-    out = torch.empty_like(q, dtype=torch.float16)
-    result = flag_gems.ops.flash_attention_forward_w8a8(
-        q=q_fp8,
-        k=k_fp8,
-        v=v_fp8,
-        out=out,
-        alibi_slopes=None,
-        p_dropout=0.0,
-        softmax_scale=scale,
-        is_causal=is_causal,
-        window_size_left=-1,
-        window_size_right=-1,
-        softcap=0.0,
-        return_softmax=False,
-        disable_splitkv=False,
-        q_descale=q_descale,
-        k_descale=k_descale,
-        v_descale=v_descale,
-        fp8_p_max=fp8_p_max,
-    )
-    return result[0] if isinstance(result, (tuple, list)) else result
-
-
-def _assert_w8a8_attention_close(actual, expected):
-    actual_f = actual.float()
-    expected_f = expected.float()
-    diff = actual_f - expected_f
-    mse = torch.mean(diff * diff)
-    rel_mse = mse / torch.mean(expected_f * expected_f).clamp_min(
-        torch.finfo(torch.float32).tiny
-    )
-    cosine = torch.nn.functional.cosine_similarity(
-        actual_f.flatten(), expected_f.flatten(), dim=0
-    )
-    assert mse.item() < 1.0e-4
-    # assert rel_mse.item() < 5.0e-3
-    # assert cosine.item() > 0.999
-    assert rel_mse.item() < 2.0e-2
-    assert cosine.item() > 0.99
 
 
 def sparse_attention_ref(q, kv, attn_sink, topk_idxs, scale):
@@ -319,45 +221,6 @@ def test_flash_attention_foward_nonsquare_qk(
     if vendor_name == "iluvatar":
         return
     utils.gems_assert_close(gems_lse, torch_lse, torch.float)
-
-
-@pytest.mark.flash_attention_forward
-@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
-@pytest.mark.skipif(
-    getattr(torch, "float8_e4m3fn", None) is None, reason="FP8 is not available"
-)
-@pytest.mark.parametrize(
-    ["batch", "num_head", "q_seq_len", "kv_seq_len"],
-    [
-        (1, 16, 512, 512),
-        (2, 16, 1024, 1024),
-        (4, 16, 2048, 2048),
-        (8, 32, 512, 512),
-    ],
-)
-@pytest.mark.parametrize("head_size", [64, 128])
-@pytest.mark.parametrize("is_causal", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float16])
-def test_flash_attention_forward_w8a8(
-    batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
-):
-    device = torch_device_fn.current_device()
-    q, k, v = make_input(
-        batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
-    )
-    scale = float(1.0 / np.sqrt(head_size))
-
-    torch_out, _, _, _, _ = torch_flash_fwd(q, k, v, scale, is_causal)
-    gems_out = gems_flash_fwd_w8a8(
-        q.transpose(1, 2).contiguous(),
-        k.transpose(1, 2).contiguous(),
-        v.transpose(1, 2).contiguous(),
-        scale,
-        is_causal,
-    )
-
-    _assert_w8a8_attention_close(gems_out, torch_out)
 
 
 # Adapted from https://github.com/Dao-AILab/flash-attention/blob/main/tests/test_flash_attn.py

@@ -6,7 +6,7 @@ import triton
 
 import flag_gems
 from flag_gems import runtime
-from flash_kernel_w8a8 import (
+from flag_gems.ops.flash_kernel_w8a8 import (
     block_m_splitkv_heuristic,
     block_n_splitkv_heuristic,
     flash_fwd_kernel,

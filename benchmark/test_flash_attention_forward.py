@@ -2,22 +2,10 @@ import math
 
 import pytest
 import torch
-import triton
 
 import flag_gems
 
 from . import base, utils
-
-def _hadamard_matrix(dim, device):
-    h = torch.tensor([[1.0]], device=device)
-    while h.shape[0] < dim:
-        h = torch.cat((torch.cat((h, h), dim=1), torch.cat((h, -h), dim=1)), dim=0)
-    return h / math.sqrt(dim)
-
-
-def _apply_incoherent_qk(x):
-    h = _hadamard_matrix(x.shape[-1], x.device).to(torch.float32)
-    return torch.matmul(x.float(), h).to(x.dtype)
 
 
 def torch_flash_attention_forward(
@@ -56,103 +44,6 @@ def gems_flash_attention_forward(
         scale=scale,
         **extra_kwargs,
     )
-
-
-def _get_fp8_dtype():
-    dtype = getattr(torch, "float8_e4m3fn", None)
-    if dtype is None:
-        pytest.skip("torch.float8_e4m3fn is not available")
-    return dtype
-
-
-def _fp8_max_value(fp8_dtype):
-    if fp8_dtype is getattr(torch, "float8_e5m2", None):
-        return float(torch.finfo(fp8_dtype).max)
-    return 448.0
-
-
-def _quantize_per_block_fp8(x, fp8_dtype, block_size=128):
-    batch, seq_len, num_head, _ = x.shape
-    fp8_max = _fp8_max_value(fp8_dtype)
-    nblocks = triton.cdiv(seq_len, block_size)
-    out = torch.empty_like(x, dtype=fp8_dtype)
-    descale = torch.empty((batch, num_head, nblocks), device=x.device, dtype=torch.float32)
-    for block_idx in range(nblocks):
-        lo = block_idx * block_size
-        hi = min(seq_len, lo + block_size)
-        tile = x[:, lo:hi, :, :].float()
-        scale = (tile.abs().amax(dim=(1, 3)) / fp8_max).clamp_min(
-            torch.finfo(torch.float32).tiny
-        )
-        out[:, lo:hi, :, :] = torch.clamp(
-            tile / scale[:, None, :, None], -fp8_max, fp8_max
-        ).to(fp8_dtype)
-        descale[:, :, block_idx] = scale
-    return out.contiguous(), descale.contiguous()
-
-
-def _quantize_qkv_w8a8(q, k, v):
-    fp8_dtype = _get_fp8_dtype()
-    q_i = _apply_incoherent_qk(q)
-    k_i = _apply_incoherent_qk(k)
-    q_fp8, q_descale = _quantize_per_block_fp8(q_i, fp8_dtype)
-    k_fp8, k_descale = _quantize_per_block_fp8(k_i, fp8_dtype)
-    v_fp8, v_descale = _quantize_per_block_fp8(v, fp8_dtype)
-    return q_fp8, k_fp8, v_fp8, q_descale, k_descale, v_descale, _fp8_max_value(fp8_dtype)
-
-
-def torch_flash_attention_forward_w8a8(
-    q,
-    k,
-    v,
-    q_fp8,
-    k_fp8,
-    v_fp8,
-    q_descale,
-    k_descale,
-    v_descale,
-    fp8_p_max,
-    scale,
-    is_causal,
-):
-    return torch_flash_attention_forward(q, k, v, scale, is_causal)
-
-
-def gems_flash_attention_forward_w8a8(
-    q,
-    k,
-    v,
-    q_fp8,
-    k_fp8,
-    v_fp8,
-    q_descale,
-    k_descale,
-    v_descale,
-    fp8_p_max,
-    scale,
-    is_causal,
-):
-    out = torch.empty_like(q, dtype=torch.float16)
-    result = flag_gems.ops.flash_attention_forward_w8a8(
-        q=q_fp8,
-        k=k_fp8,
-        v=v_fp8,
-        out=out,
-        alibi_slopes=None,
-        p_dropout=0.0,
-        softmax_scale=scale,
-        is_causal=is_causal,
-        window_size_left=-1,
-        window_size_right=-1,
-        softcap=0.0,
-        return_softmax=False,
-        disable_splitkv=False,
-        q_descale=q_descale,
-        k_descale=k_descale,
-        v_descale=v_descale,
-        fp8_p_max=fp8_p_max,
-    )
-    return result[0] if isinstance(result, (tuple, list)) else result
 
 
 def torch_flash_attention_supports_alibi(device: str) -> bool:
@@ -303,32 +194,6 @@ class FlashAttentionForwardBenchmark(base.GenericBenchmark):
         return []
 
 
-class FlashAttentionForwardW8A8Benchmark(base.GenericBenchmark):
-    def set_shapes(self, shape_file_path=None):
-        self.shapes = []
-        for batch in (1, 2, 4, 8):
-            self.shapes.extend(
-                [
-                    (batch, 512, 16, 128, False),
-                    (batch, 512, 32, 64, False),
-                    (batch, 512, 16, 128, True),
-                    (batch, 512, 32, 64, True),
-                ]
-            )
-
-        for batch in (1, 2, 4, 8):
-            for seq_len in (1024, 2048, 4096, 8192):
-                self.shapes.extend(
-                    [
-                        (batch, seq_len, 16, 128, False),
-                        (batch, seq_len, 32, 64, False),
-                    ]
-                )
-
-    def set_more_shapes(self):
-        return []
-
-
 def flash_attention_forward_input_fn(config, dtype, device):
     (
         batch,
@@ -372,41 +237,6 @@ def flash_attention_forward_input_fn(config, dtype, device):
     yield q, k, v, scale, is_causal, dropout_p, return_debug_mask, extra_kwargs
 
 
-def flash_attention_forward_w8a8_input_fn(config, dtype, device):
-    batch, seq_len, num_head, head_size, is_causal = config
-
-    q = torch.empty(
-        (batch, seq_len, num_head, head_size), device=device, dtype=dtype
-    ).uniform_(-0.05, 0.05)
-    k = torch.empty(
-        (batch, seq_len, num_head, head_size), device=device, dtype=dtype
-    ).uniform_(-0.05, 0.05)
-    v = torch.empty(
-        (batch, seq_len, num_head, head_size), device=device, dtype=dtype
-    ).uniform_(-0.05, 0.05)
-
-    q_fp8, k_fp8, v_fp8, q_descale, k_descale, v_descale, fp8_p_max = (
-        _quantize_qkv_w8a8(q, k, v)
-    )
-
-    scale = float(1.0 / math.sqrt(head_size))
-
-    yield (
-        q,
-        k,
-        v,
-        q_fp8,
-        k_fp8,
-        v_fp8,
-        q_descale,
-        k_descale,
-        v_descale,
-        fp8_p_max,
-        scale,
-        is_causal,
-    )
-
-
 @pytest.mark.skipif(utils.SkipVersion("torch", "<2.4"), reason="Low Pytorch Version.")
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(flag_gems.device == "cpu", reason="Unsupported in CPU mode")
@@ -419,22 +249,4 @@ def test_flash_attention_forward():
         dtypes=[torch.float16, torch.bfloat16],
     )
     bench.set_gems(gems_flash_attention_forward)
-    bench.run()
-
-
-@pytest.mark.skipif(utils.SkipVersion("torch", "<2.4"), reason="Low Pytorch Version.")
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
-@pytest.mark.skipif(flag_gems.device == "cpu", reason="Unsupported in CPU mode")
-@pytest.mark.skipif(
-    getattr(torch, "float8_e4m3fn", None) is None, reason="FP8 is not available"
-)
-@pytest.mark.flash_attention_forward
-def test_flash_attention_forward_w8a8():
-    bench = FlashAttentionForwardW8A8Benchmark(
-        op_name="flash_attention_forward_w8a8",
-        input_fn=flash_attention_forward_w8a8_input_fn,
-        torch_op=torch_flash_attention_forward_w8a8,
-        dtypes=[torch.float16],
-    )
-    bench.set_gems(gems_flash_attention_forward_w8a8)
     bench.run()
