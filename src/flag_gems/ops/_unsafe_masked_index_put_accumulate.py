@@ -79,8 +79,11 @@ def generate_kernel(rank, kernel_name: str, code: IndentedBuffer):
         # First compute the multi-dimensional index in input
         code.writeline("temp_idx = indices_val")
         for i in range(rank - 1, -1, -1):
-            code.writeline(f"input_idx{i} = temp_idx % input_shape{i}")
-            code.writeline(f"temp_idx = temp_idx // input_shape{i}")
+            if i == 0:
+                code.writeline(f"input_idx{i} = temp_idx")
+            else:
+                code.writeline(f"input_idx{i} = temp_idx % input_shape{i}")
+                code.writeline(f"temp_idx = temp_idx // input_shape{i}")
         code.newline()
         # Then compute the memory offset
         code.writeline("# Compute memory offset in input tensor")
