@@ -73,7 +73,7 @@ def arange_start(
 
     BLOCK_SIZE = 1024
     if size > 65536:
-        BLOCK_SIZE = 65536
+        BLOCK_SIZE = 16384
     elif size > 1024:
         BLOCK_SIZE = min(triton.next_power_of_2(size), 8192)
 

@@ -7,7 +7,8 @@ ARG BASE_IMAGE=tsingmicro-tsm:260604
 ARG PYTHON_VERSION=3.10
 ARG FLAGOS_PYPI=https://resource.flagos.net/repository/flagos-pypi-tsingmicro/simple
 ARG EXTRA_PYPI=https://mirrors.aliyun.com/pypi/simple
-ARG INCLUDE_TESTS=false
+ARG INCLUDE_TESTS=true
+ARG USE_FLAGTREE=true
 
 # ════════════════════════════════════════════════════════════════
 #  Stage 1 — builder
@@ -21,11 +22,7 @@ ARG INCLUDE_TESTS
 ARG DEBIAN_FRONTEND=noninteractive
 
 # ── System packages ────────────────────────────────────────────
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        software-properties-common ca-certificates \
-        curl \
-        build-essential gcc g++ \
-    && rm -rf /var/lib/apt/lists/*
+# All required packages are installed in the base image
 
 # ── Prepare uv and virtual environment ─────────────────────────
 # Install 'uv' to /usr/local/bin
@@ -41,6 +38,7 @@ COPY . /build/FlagGems
 WORKDIR /build/FlagGems
 
 RUN uv pip install --no-cache-dir \
+  --index ${EXTRA_PYPI} --trusted-host mirrors.aliyun.com \
   "setuptools>=64.0,<80.0" \
   "scikit-build-core==0.12.2" \
   "pybind11==3.0.3" \
@@ -49,7 +47,7 @@ RUN uv pip install --no-cache-dir \
   "pip"
 
 # TODO: Add support to C++ wrapper operators
-# ENV CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=METAX"
+# ENV CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=?"
 # ENV CMAKE_PREFIX_PATH="$(python -c 'import torch; print(torch.utils.cmake_prefix_path)')"
 RUN uv pip install --no-cache-dir ".[tsingmicro]" \
       --default-index ${FLAGOS_PYPI} \
@@ -74,17 +72,21 @@ RUN if [ "$INCLUDE_TESTS" = "true" ]; then \
 # ════════════════════════════════════════════════════════════════
 FROM ${BASE_IMAGE} AS runtime
 
+ARG USE_FLAGTREE
 ARG DEBIAN_FRONTEND=noninteractive
-ARG INCLUDE_TESTS
+ENV FILESTORE=https://resource.flagos.net/repository/flagos-filestore/tsingmicro
+# ── Install tx8_deps for FlagTree ──────────────────────────────
+RUN if [ "$USE_FLAGTREE" = "true" ]; then \
+    curl -o tx8.tar.gz ${FILESTORE}/tx8_depends_dev_20260507_104051.tar.gz \
+    && tar xvf tx8.tar.gz -C /usr/local \
+    && rm tx8.tar.gz; \
+  fi
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-        ca-certificates \
-        gcc \
-        g++ \
-        clang \
-        libpython3-dev \
-    && rm -rf /var/lib/apt/lists/*
+RUN if [ "$USE_FLAGTREE" = "true" ]; then \
+    curl -o llvm.tar.gz ${FILESTORE}/llvm-a66376b0-ubuntu-x64.tgz \
+    && tar xvf llvm.tar.gz -C /usr/local \
+    && rm llvm.tar.gz; \
+  fi
 
 # ── Copy uv and Python from builder ────────────────────────────
 COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
@@ -94,6 +96,14 @@ COPY --from=builder /venv /venv
 # ── Copy tests and benchmarks into container if required ───────
 COPY --from=builder /app /app
 WORKDIR /app
+
+# The following environment variables are for flagtree.
+# Hopefully harmless to Triton
+ENV TX8_DEPS_ROOT=/usr/local/tx8_deps \
+    LLVM_SYSPATH=/usr/local/llvm
+ENV  LLVM_BINARY_DIR=${LLVM_SYSPATH}/bin \
+    PYTHONPATH=${LLVM_SYSPATH}/python_packages/mlir_core \
+    LD_LIBRARY_PATH=${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}
 
 # Note: VIRTUAL_ENV and PATH are not sharable between stages
 ENV VIRTUAL_ENV=/venv \
