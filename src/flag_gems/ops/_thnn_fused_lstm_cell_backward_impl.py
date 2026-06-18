@@ -43,7 +43,7 @@ def _thnn_fused_lstm_cell_backward_impl(
         has_bias: Whether bias is used
 
     Returns:
-        Tuple of (grad_input_gates, grad_hidden_gates, grad_cx, grad_biases)
+        Tuple of (grad_input_gates, grad_cx, grad_biases)
     """
     logger.debug("GEMS _THNN_FUSED_LSTM_CELL_BACKWARD_IMPL")
 
@@ -74,9 +74,7 @@ def _thnn_fused_lstm_cell_backward_impl(
     grad_g = d_cy * i_gate * (1.0 - g_gate * g_gate)
     grad_o = grad_hy * tanh_cy * o_gate * (1.0 - o_gate)
 
-    # Pack input and hidden gate gradients
     grad_input_gates = torch.cat([grad_i, grad_f, grad_g, grad_o], dim=1)
-    grad_hidden_gates = torch.cat([grad_i, grad_f, grad_g, grad_o], dim=1)
 
     # grad_cx
     grad_cx = d_cy * f_gate
@@ -87,4 +85,4 @@ def _thnn_fused_lstm_cell_backward_impl(
     else:
         grad_biases = torch.zeros(0, dtype=cx.dtype, device=cx.device)
 
-    return grad_input_gates, grad_hidden_gates, grad_cx, grad_biases
+    return grad_input_gates, grad_cx, grad_biases

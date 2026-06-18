@@ -65,9 +65,7 @@ def test_thnn_fused_lstm_cell_backward_impl(shape, dtype):
         )
 
     # Compare outputs
-    # ref_out order: (grad_input_gates, grad_hidden_gates, grad_cx, grad_biases)
-    # res_out order: (grad_input_gates, grad_hidden_gates, grad_cx_dummy, grad_biases)
-    # The kernel does not compute grad_cx; a zero placeholder is returned for API compatibility.
+    # ref_out order: (grad_input_gates, grad_cx, grad_biases)
     for i, (ref, res) in enumerate(zip(ref_out, res_out)):
         assert (
             res.shape == ref.shape
@@ -75,6 +73,4 @@ def test_thnn_fused_lstm_cell_backward_impl(shape, dtype):
         assert (
             res.dtype == ref.dtype
         ), f"Dtype mismatch at output[{i}]: {res.dtype} vs {ref.dtype}"
-        if i == 2:  # grad_cx is a placeholder; skip accuracy comparison
-            continue
         utils.gems_assert_close(res, ref, dtype, atol=1e-2)
