@@ -18,3 +18,19 @@ def test_hardsigmoid(shape, dtype):
         res_out = torch.nn.functional.hardsigmoid(res_inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.hardsigmoid_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_hardsigmoid_out(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(res_inp, True)
+
+    ref_out = torch.empty_like(ref_inp)
+    torch.ops.aten.hardsigmoid.out(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        res_out = torch.empty_like(res_inp)
+        torch.ops.aten.hardsigmoid.out(res_inp, out=res_out)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
