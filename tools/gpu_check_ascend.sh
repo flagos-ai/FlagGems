@@ -15,9 +15,9 @@ if [ $? -ne 0 ]; then
 fi
 
 # Count chip lines (lines with Chip/Phy-ID and HBM usage info)
-chip_count=$(echo "$npu_smi_output" | grep -cP '\d+\s*/\s*\d+\s*\|\s*$')
+npu_count=$(echo "$npu_smi_output" | grep -cP '\d+\s*/\s*\d+\s*\|\s*$')
 # Each NPU card has 2 chips, but we check per-chip
-npu_count=$(echo "$npu_smi_output" | grep -c "Ascend")
+npu_count=$(echo "$npu_smi_output" | grep -c "OK")
 
 if [ "$npu_count" -eq 0 ]; then
     echo "No Ascend NPUs detected. Please ensure you have Ascend NPUs installed and properly configured."

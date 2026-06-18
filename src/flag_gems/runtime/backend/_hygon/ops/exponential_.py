@@ -122,7 +122,7 @@ def transform_exponential(u, inv_lambd, eps_minus):
 
 
 def exponential_(x, lambd: float = 1.0, *, generator=None):
-    logger.debug("GEMS EXPONENTIAL_")
+    logger.debug("GEMS_HYGON EXPONENTIAL_")
     dtype = x.dtype
     device = x.device
     inplace = x.is_contiguous()
