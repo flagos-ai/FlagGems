@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 @triton.autotune(
     configs=runtime.get_tuned_config("adaptive_max_pool3d_backward"),
     key=["n_elements"],
+    reset_to_zero=["grad_input_ptr"],
 )
 @triton.jit
 def adaptive_max_pool3d_backward_kernel(
