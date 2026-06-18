@@ -201,6 +201,12 @@ _gather_func = GatherFunction()
 def gather(inp, dim, index, out=None, sparse_grad=False):
     logger.debug("GEMS GATHER")
 
+    # index must have same number of dimensions as input
+    if index.ndim != inp.ndim:
+        raise IndexError(
+            "Index tensor must have the same number of dimensions as input tensor"
+        )
+
     return_dtype = inp.dtype
     if inp.dtype == torch.int64:
         inp = inp.to(torch.int32)
