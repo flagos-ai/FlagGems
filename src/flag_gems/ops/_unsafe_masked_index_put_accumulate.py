@@ -61,7 +61,7 @@ def generate_kernel(rank, kernel_name: str, code: IndentedBuffer):
         code.writeline("offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)")
         code.writeline("mask_mask = offsets < mask_numel")
         code.newline()
-        code.writeline("# Load mask value")
+        code.writeline("# Load mask, indices, values at flat offset")
         code.writeline(
             "mask_val = tl.load(mask_ptr + offsets, mask=mask_mask, other=0)"
         )
