@@ -45,7 +45,7 @@ classifiers = [
 
 dependencies = [
     "packaging==26.0",
-    "PyYAML==6.0.3",
+    "PyYAML==6.0.1",
     "sqlalchemy==2.0.48",
     "numpy==1.26.4",
 ]
@@ -147,6 +147,12 @@ sunrise = [
     "triton==3.4.0.6+gite4f6d6e4",
     # "flagtree-0.4.0+sunrise3.4"
 ]
+
+thead = [
+    "torch==2.9.0+ppu2.0.0.oe",
+    "triton==3.5.0+ppu2.0.0.oe",
+]
+
 
 tsingmicro = [
     "torch==2.7.0+cpu",

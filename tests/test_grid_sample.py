@@ -17,12 +17,17 @@ import torch
 
 from flag_gems.ops import grid_sample
 
+from . import conftest as cfg
+
 # Data type coverage (competition requirement: at least support float32/float16)
-FLOAT_DTYPES = [
-    torch.float16,
-    torch.float32,
-    torch.bfloat16,
-]
+if cfg.QUICK_MODE:
+    FLOAT_DTYPES = [torch.float32]
+else:
+    FLOAT_DTYPES = [
+        torch.float16,
+        torch.float32,
+        torch.bfloat16,
+    ]
 
 # Precision standards (competition requirement standards)
 # rtol = 1e-4 (all floating point types)
