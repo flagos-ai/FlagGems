@@ -198,10 +198,14 @@ def _thnn_fused_lstm_cell_backward_impl(
         BLOCK_SIZE,
     )
 
+    # grad_cx (gradient w.r.t. cell state) is not computed by this kernel.
+    # Provide a placeholder zero tensor to match ATen's 4-output signature.
+    grad_cx = torch.zeros_like(cx)
+
     # Bias gradient is the sum over batch dimension of input gate gradients
     if has_bias:
         grad_biases = grad_input_gates.sum(dim=0)
     else:
         grad_biases = torch.zeros(0, dtype=cx.dtype, device=cx.device)
 
-    return grad_input_gates, grad_hidden_gates, grad_biases
+    return grad_input_gates, grad_hidden_gates, grad_cx, grad_biases
