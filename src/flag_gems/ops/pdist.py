@@ -292,7 +292,9 @@ def pdist(x, p=2.0):
 
     assert x.ndim == 2, "pdist only supports 2D input"
     if x.dtype != torch.float32:
-        raise RuntimeError(f"pdist Triton kernel supports torch.float32, but got {x.dtype}")
+        raise RuntimeError(
+            f"pdist Triton kernel supports torch.float32, but got {x.dtype}"
+        )
     N = x.shape[0]
     M = x.shape[1]
 
