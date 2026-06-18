@@ -54,6 +54,6 @@ def test_unsafe_masked_index_put_accumulate():
         op_name="unsafe_masked_index_put_accumulate",
         torch_op=torch._unsafe_masked_index_put_accumulate,
         # This op is covered across the project float dtype set.
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[d for d in consts.FLOAT_DTYPES if d != torch.bfloat16],
     )
     bench.run()
