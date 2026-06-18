@@ -35,12 +35,12 @@ def bucketize_kernel(
 
     # Binary search for each value
     # boundaries is a 1-D tensor of length n_boundaries
-    n_boundaries_i32 = n_boundaries.to(tl.int32)
+    n_boundaries_i32 = tl.full([BLOCK_SIZE], n_boundaries, dtype=tl.int32)
 
     # Create scalar tensors for binary search loop
     zero = tl.zeros([BLOCK_SIZE], dtype=tl.int32)
     lo = zero
-    hi = tl.full([BLOCK_SIZE], n_boundaries_i32, dtype=tl.int32)
+    hi = n_boundaries_i32
 
     # Special cases handled in wrapper, but we still handle them in kernel for completeness
     # For values below first boundary, return 0
