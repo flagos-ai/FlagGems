@@ -35,7 +35,11 @@ def test_linalg_vander(shape, dtype):
 
     # torch.linalg.vander does not support float16/bfloat16 (CPU nor GPU),
     # so upcast the reference input via to_reference(..., True).
-    ref_x = utils.to_reference(x, True) if dtype in [torch.float16, torch.bfloat16] else utils.to_reference(x, False)
+    ref_x = (
+        utils.to_reference(x, True)
+        if dtype in [torch.float16, torch.bfloat16]
+        else utils.to_reference(x, False)
+    )
     ref_out = torch.linalg.vander(ref_x)
 
     with flag_gems.use_gems():
@@ -60,7 +64,11 @@ def test_linalg_vander_with_N(shape, N, dtype):
 
     # torch.linalg.vander does not support float16/bfloat16 (CPU nor GPU),
     # so upcast the reference input via to_reference(..., True).
-    ref_x = utils.to_reference(x, True) if dtype in [torch.float16, torch.bfloat16] else utils.to_reference(x, False)
+    ref_x = (
+        utils.to_reference(x, True)
+        if dtype in [torch.float16, torch.bfloat16]
+        else utils.to_reference(x, False)
+    )
     ref_out = torch.linalg.vander(ref_x, N=N)
 
     with flag_gems.use_gems():
