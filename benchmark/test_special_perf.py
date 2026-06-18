@@ -182,6 +182,10 @@ def test_perf_embedding():
     def embedding_input_fn(shape, dtype, device):
         num_embeddings, embedding_dim = shape
         indices = torch.randint(0, num_embeddings, (num_embeddings,), device=device)
+        if vendor_name == "sophgo":
+            indices = torch.randint(
+                0, num_embeddings, (num_embeddings,), dtype=torch.int32, device=device
+            )
         weight = torch.randn(
             (num_embeddings, embedding_dim), device=device, dtype=dtype
         )

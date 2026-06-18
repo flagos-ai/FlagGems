@@ -25,7 +25,7 @@ from .hstack import hstack
 from .index_add import index_add
 from .index_put import index_put, index_put_
 from .index_select import index_select
-from .isclose import isclose
+from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
 from .isinf import isinf
@@ -56,16 +56,16 @@ from .pow import (
     pow_tensor_tensor_,
 )
 from .rand import rand
-from .repeat import repeat
 from .rand_like import rand_like
+from .randn import randn
+from .randn_like import randn_like
+from .randperm import randperm
+from .repeat import repeat
 from .repeat_interleave import (
     repeat_interleave_self_int,
     repeat_interleave_self_tensor,
     repeat_interleave_tensor,
 )
-from .randn import randn
-from .randn_like import randn_like
-from .randperm import randperm
 from .rms_norm import rms_norm
 from .scatter import scatter, scatter_
 from .select_scatter import select_scatter
@@ -89,6 +89,7 @@ __all__ = [
     "all",
     "all_dim",
     "all_dims",
+    "allclose",
     "any",
     "any_dim",
     "any_dims",
