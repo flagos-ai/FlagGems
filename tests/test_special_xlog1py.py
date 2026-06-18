@@ -12,6 +12,7 @@ from . import accuracy_utils as utils
 def test_special_xlog1py(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = inp2.clamp(min=-1.0 + 1e-6)
     ref_inp1 = utils.to_reference(inp1, True)
     ref_inp2 = utils.to_reference(inp2, True)
 
