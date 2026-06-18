@@ -10,7 +10,7 @@ build-backend = "scikit_build_core.build"
 
 name = "flag_gems"
 
-version = "5.0.2"
+version = "5.4.0dev"
 
 description = "FlagGems is a function library written in Triton language."
 
@@ -45,7 +45,7 @@ classifiers = [
 
 dependencies = [
     "packaging==26.0",
-    "PyYAML==6.0.3",
+    "PyYAML==6.0.1",
     "sqlalchemy==2.0.48",
     "numpy==1.26.4",
 ]
@@ -56,6 +56,13 @@ ascend = [
     "torch==2.9.0+cpu",
     "torch-npu==2.9.0",
     "flagtree==0.5.0+ascend3.2",
+]
+
+ascend-cann9 = [
+    "torch==2.10.0+cpu",
+    "torch-npu==2.10.0",
+    "triton==3.5.0",
+    "triton-ascend==3.2.1",
 ]
 
 enflame = [
@@ -137,9 +144,15 @@ sunrise = [
     "torchaudio==2.11.0+cpu",
     "torchvision==0.26.0+cpu",
     "torch-ptpu==0.2.1+gaf2c267.torch2.11",
-    "triton==3.4.0.5+git27a132da",
+    "triton==3.4.0.6+gite4f6d6e4",
     # "flagtree-0.4.0+sunrise3.4"
 ]
+
+thead = [
+    "torch==2.9.0+ppu2.0.0.oe",
+    "triton==3.5.0+ppu2.0.0.oe",
+]
+
 
 tsingmicro = [
     "torch==2.7.0+cpu",
@@ -147,7 +160,8 @@ tsingmicro = [
     "torchaudio==2.7.0+cpu",
     "torch_txda==0.1.0+20260610.3968e515",
     "txops==0.1.0+20260508.60287151",
-    "flagtree==0.5.0+tsingmicro3.3",
+    "flagtree==0.5.0.post20260612+git705a4064",
+    # "flagtree==0.5.0+tsingmicro3.3",
     # "triton==3.3.0+git2e9c1195",
 ]
 
