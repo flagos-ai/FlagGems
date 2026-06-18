@@ -1,0 +1,41 @@
+{
+  "metadata": {
+    "created_at": "2026-06-18T09:19:21",
+    "warmup": 1,
+    "iter": 1,
+    "no_torch": true,
+    "level": "core",
+    "mode": "cuda",
+    "shape_file": "/tmp/flaggems_v22_tiny_shapes.yaml"
+  },
+  "results": [
+    {
+      "op_name": "add",
+      "dtype": "torch.float32",
+      "mode": "cuda",
+      "level": "core",
+      "result": [
+        {
+          "legacy_shape": null,
+          "shape_detail": [
+            [
+              16
+            ],
+            [
+              16
+            ]
+          ],
+          "latency_base": null,
+          "latency": 0.05180799961090088,
+          "gbps_base": null,
+          "gbps": null,
+          "speedup": null,
+          "accuracy": null,
+          "tflops": null,
+          "utilization": null,
+          "error_msg": null
+        }
+      ]
+    }
+  ]
+}
