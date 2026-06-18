@@ -234,17 +234,30 @@ def _probe_torch():
         ENV_INFO["torch"]["device_count"] = 0
         dev_count = 0
 
-    if dev_count == 0:
-        try:
-            # Is this a TsingMicro chip?
-            import torch_txda
+    if dev_count > 0:
+        return
 
-            dev_count = torch_txda.device_count()
+    try:
+        # Is this a TsingMicro chip?
+        import torch_txda
 
-            ENV_INFO["torch"]["device_count"] = dev_count
-            pinfo(f"TorchTXDA device count ... {dev_count}")
-        except Exception:
-            pass
+        dev_count = torch_txda.device_count()
+
+        ENV_INFO["torch"]["device_count"] = dev_count
+        pinfo(f"TorchTXDA device count ... {dev_count}")
+    except Exception:
+        pass
+
+    try:
+        # Is this a Ascend chip?
+        import torch.npu
+
+        dev_count = torch.npu.device_count()
+
+        ENV_INFO["torch"]["device_count"] = dev_count
+        pinfo(f"Torch NPU device count ... {dev_count}")
+    except Exception:
+        pass
 
 
 def _probe_triton():
