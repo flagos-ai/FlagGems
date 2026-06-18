@@ -94,7 +94,8 @@ else
   printf "${RED}NOT FOUND${NC}\n"
   # Install uv and upgrade pip if necessary
   printf "Installing/upgrading pip and uv ... "
-  pip install uv || exit 1;
+  pip install uv --index-url https://mirrors.aliyun.com/pypi/simple \
+  || exit 1;
 fi
 
 # Start installation
@@ -147,6 +148,8 @@ uv pip install ".[${VENDOR}]" --default-index ${FLAGOS_PYPI} \
 # Kunlunxin needs an override of the default Triton installed (3.5.0)
 if [ "$VENDOR" = "kunlunxin" ]; then
   uv pip install "triton==3.0.0+a48aedef" --index ${FLAGOS_PYPI}
+  # Kunlunxin triton drags in a buggy pytest plugin which has to be uninstalled
+  uv pip uninstall pytest-repeat
 fi
 
 uv pip install ".[test]"
