@@ -11,9 +11,9 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_unsafe_masked_index_put_accumulate(shape, dtype):
     inp_shape, mask_shape, indices_shape, values_shape = shape
-    assert mask_shape == indices_shape == values_shape, (
-        "mask, indices, and values must have same shape"
-    )
+    assert (
+        mask_shape == indices_shape == values_shape
+    ), "mask, indices, and values must have same shape"
 
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     mask = torch.randint(0, 2, mask_shape, dtype=torch.int32, device=flag_gems.device)
@@ -28,8 +28,8 @@ def test_unsafe_masked_index_put_accumulate(shape, dtype):
     ref_values = utils.to_reference(values.clone())
 
     op = torch._unsafe_masked_index_put_accumulate
-    ref_out = op(ref_inp, ref_mask.clone(), ref_indices.clone(), ref_values)
+    ref_out = op(ref_inp, ref_mask.clone(), (ref_indices.clone(),), ref_values)
     with flag_gems.use_gems():
-        res_out = op(inp.clone(), mask, indices, values)
+        res_out = op(inp.clone(), mask, (indices,), values)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
