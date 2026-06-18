@@ -18,6 +18,8 @@ import logging
 import os
 from typing import Any, Callable, Mapping, Tuple
 
+import torch
+
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
@@ -219,13 +221,23 @@ def _unsafe_masked_index_put_accumulate(inp, mask, indices, values):
     logger.debug("GEMS UNSAFE_MASKED_INDEX_PUT_ACCUMULATE")
     unsafe_masked_index_put_accumulate_func = UnsafeMaskedIndexPutAccumulateFunction()
 
-    # indices is Tensor?[] - a list of optional tensors
-    # For this operator, we expect a single index tensor (the common case)
-    # Handle both list and tuple cases
+    # indices is Tensor?[] - a list/tuple of optional tensors (torch convention).
+    # Each element indexes one dimension. The kernel expects a single flat
+    # (linear) index tensor, so convert per-dimension indices when needed.
     if isinstance(indices, (list, tuple)):
-        indices_tensor = indices[0] if len(indices) > 0 else None
-        if indices_tensor is None:
+        if len(indices) == 0 or indices[0] is None:
             raise ValueError("Empty indices list")
+        if len(indices) == 1:
+            indices_tensor = indices[0]
+        else:
+            # Per-dimension -> flat linear: idx0*stride0 + idx1*stride1 + ...
+            rank = inp.ndim
+            indices_tensor = indices[0].to(torch.int64).clone()
+            for dim in range(1, rank):
+                stride = 1
+                for j in range(dim, rank):
+                    stride *= inp.shape[j]
+                indices_tensor += indices[dim].to(torch.int64) * stride
     else:
         indices_tensor = indices
 

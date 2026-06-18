@@ -4,6 +4,21 @@ import torch
 
 from . import base, consts
 
+
+def _flat_to_per_dim_indices(flat_indices, inp_shape):
+    """Convert flat linear indices to per-dimension index tensors for the aten op."""
+    strides = []
+    prod = 1
+    for s in reversed(inp_shape):
+        strides.append(prod)
+        prod *= s
+    strides = tuple(reversed(strides))
+    result = []
+    for i in range(len(inp_shape)):
+        result.append((flat_indices // strides[i]) % inp_shape[i])
+    return tuple(result)
+
+
 # Shape tuples must keep input, mask, indices, and values aligned for this
 # custom Benchmark subclass.
 _UNSAFE_MASKED_INDEX_PUT_SHAPES = [
@@ -24,11 +39,13 @@ class UnsafeMaskedIndexPutAccumulateBenchmark(base.Benchmark):
             mask = torch.randint(
                 0, 2, mask_shape, dtype=torch.int32, device=self.device
             )
-            indices = torch.randint(
+            flat_indices = torch.randint(
                 0, max(inp.numel(), 1), indices_shape, device=self.device
             )
             values = torch.randn(values_shape, dtype=cur_dtype, device=self.device)
-            yield inp, mask, indices, values
+            # Convert flat indices to per-dimension indices for the aten op
+            idx_tuple = _flat_to_per_dim_indices(flat_indices, inp_shape)
+            yield inp, mask, idx_tuple, values
 
 
 @pytest.mark.unsafe_masked_index_put_accumulate
