@@ -62,7 +62,7 @@ ascend-cann9 = [
     "torch==2.10.0+cpu",
     "torch-npu==2.10.0",
     "triton==3.5.0",
-    "triton-ascend==3.2.1",
+    # "triton-ascend==3.2.1",
 ]
 
 enflame = [
