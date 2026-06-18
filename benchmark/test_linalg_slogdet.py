@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from . import base, consts
+from . import base
 
 # Representative square matrix shapes for slogdet benchmarking
 SLOGDET_SHAPES = [
