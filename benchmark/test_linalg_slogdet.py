@@ -29,6 +29,6 @@ def test_linalg_slogdet():
     bench = LinalgSlogdetBenchmark(
         op_name="linalg_slogdet",
         torch_op=torch.linalg.slogdet,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float32, torch.float64],
     )
     bench.run()
