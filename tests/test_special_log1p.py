@@ -31,7 +31,9 @@ def test_special_log1p_non_tensor(inp):
 @pytest.mark.special_log1p
 def test_special_log1p_negative():
     """Test special_log1p with negative inputs, including x <= -1."""
-    inp = torch.tensor([-0.5, -0.99, -1.0, -2.0], dtype=torch.float32, device=flag_gems.device)
+    inp = torch.tensor(
+        [-0.5, -0.99, -1.0, -2.0], dtype=torch.float32, device=flag_gems.device
+    )
     ref_inp = utils.to_reference(inp.clone())
     ref_out = torch.special.log1p(ref_inp)
     with flag_gems.use_gems():
