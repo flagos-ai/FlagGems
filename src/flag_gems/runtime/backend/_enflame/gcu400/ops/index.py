@@ -52,8 +52,8 @@ def generate_index_kernel(
     code.writeline("):")
 
     with code.indent():
-        code.writeline("pid0 = tle.program_id(axis=0)")
-        code.writeline("pid1 = tle.program_id(axis=1)")
+        code.writeline("pid0 = tl.program_id(axis=0)")
+        code.writeline("pid1 = tl.program_id(axis=1)")
         code.writeline(
             "offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
         )
@@ -78,7 +78,7 @@ def generate_index_kernel(
         for i in range(indices_len):
             comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
             code.writeline(
-                f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0).to(tl.int32)"
+                f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
             )
         code.newline()
         index_mask = [
@@ -129,15 +129,12 @@ def generate_index_wrapper(
         code.writeline("M = indices[0].numel()")
         code.writeline(f"N = volume(input_shape[{indices_len}: ])")
         code.newline()
+        code.writeline("BLOCK_SIZE0 = min(_next_pow2(M), 4)")
         if inp_rank == indices_len:
-            code.writeline("BLOCK_SIZE0 = min(_next_pow2(M), 128)")
             code.writeline("BLOCK_SIZE1 = 1")
         else:
-            code.writeline("BLOCK_SIZE0 = min(_next_pow2(M), 4)")
-            code.writeline(
-                "BLOCK_SIZE1 = max(_next_pow2(max(triton.cdiv(N, 255), 1)), min(_next_pow2(N), 256))"
-            )
-            code.writeline("BLOCK_SIZE1 = min(BLOCK_SIZE1, 2048)")
+            code.writeline("BLOCK_SIZE1 = min(_next_pow2(N), 4096)")
+            code.writeline("BLOCK_SIZE1 = max(BLOCK_SIZE1, 2048)")
         code.newline()
         code.writeline("grid = (")
         with code.indent():
@@ -366,28 +363,25 @@ def index(inp, indices):
                 replacement_shape = list(idx_item.shape)
 
     out_shape = before_shape + replacement_shape + after_shape
-
-    # GCU fix: handle int64 by computing in int32
     original_dtype = inp.dtype
-    need_int64_cast = original_dtype == torch.int64
-    if need_int64_cast:
+
+    if inp.dtype == torch.int64:
         inp = inp.to(torch.int32)
 
     out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
 
     if inp.numel() == 0:
-        if need_int64_cast:
-            return out.to(torch.int64)
-        return out
+        if original_dtype == torch.int64:
+            out = out.to(torch.int64)
+        return out.contiguous()
 
     tensor_indices = [idx for idx in indices if idx is not None]
     if not tensor_indices:
         result = inp.view(*out_shape)
-        if need_int64_cast:
+        if original_dtype == torch.int64:
             result = result.to(torch.int64)
-        return result
+        return result.contiguous()
 
-    # GCU fix: convert int64 indices to int32
     tensor_indices = [
         idx.to(torch.int32) if idx.dtype == torch.int64 else idx
         for idx in tensor_indices
@@ -403,7 +397,6 @@ def index(inp, indices):
         new_order = pre_dims + broadcast_dims + post_dims
         out = out.permute(new_order)
 
-    if need_int64_cast:
+    if original_dtype == torch.int64:
         out = out.to(torch.int64)
-
-    return out
+    return out.contiguous()
