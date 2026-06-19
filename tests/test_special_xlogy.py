@@ -39,6 +39,7 @@ def test_special_xlogy_(shape, dtype):
     utils.gems_assert_close(inp1, ref_inp1, dtype, equal_nan=True)
 
 
+@pytest.mark.special_xlogy
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_special_xlogy_tensor_scalar(shape, dtype):
@@ -53,6 +54,7 @@ def test_special_xlogy_tensor_scalar(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.special_xlogy
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_special_xlogy_scalar_tensor(shape, dtype):
