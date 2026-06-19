@@ -31,19 +31,39 @@ def expand(inp: torch.Tensor, size: Sequence[int]) -> torch.Tensor:
 
     # Normalize sizes to be a list
     input_shape = list(inp.shape)
-    input_ndim = len(input_shape)
+    original_input_ndim = len(input_shape)
     size = list(size)
 
+    if len(size) < original_input_ndim:
+        raise RuntimeError(
+            "expand: the number of sizes provided must be greater or equal "
+            f"to the number of dimensions in the tensor ({original_input_ndim})"
+        )
+
     # Prepend 1s if size has more dimensions than input
-    if len(size) > input_ndim:
-        input_shape = [1] * (len(size) - input_ndim) + input_shape
-        inp = inp.reshape(input_shape)
-        input_ndim = len(size)
+    if len(size) > original_input_ndim:
+        input_shape = [1] * (len(size) - original_input_ndim) + input_shape
+        inp = inp.view(input_shape)
+
+    leading_dims = len(size) - original_input_ndim
 
     # Replace -1 with actual size from input
     for i in range(len(size)):
         if size[i] == -1:
+            if i < leading_dims:
+                raise RuntimeError(
+                    f"The expanded size of the tensor ({size[i]}) isn't allowed "
+                    f"in a leading, non-existing dimension {i}"
+                )
             size[i] = input_shape[i]
+        elif size[i] < 0:
+            raise RuntimeError(f"The expanded size of the tensor ({size[i]}) is invalid")
+        elif size[i] != input_shape[i] and input_shape[i] != 1:
+            raise RuntimeError(
+                "The expanded size of the tensor "
+                f"({size[i]}) must match the existing size ({input_shape[i]}) "
+                f"at non-singleton dimension {i}"
+            )
 
     # Compute target strides:
     # - If target size > source size (broadcasting), stride = 0
@@ -51,7 +71,7 @@ def expand(inp: torch.Tensor, size: Sequence[int]) -> torch.Tensor:
     input_strides = list(inp.stride())
     strides = []
     for i in range(len(size)):
-        if size[i] > input_shape[i]:
+        if input_shape[i] == 1 and size[i] != 1:
             # Broadcasting dimension, stride = 0
             strides.append(0)
         else:
