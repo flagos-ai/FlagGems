@@ -3342,7 +3342,7 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
-  - id: ilshift__
+  - id: ilshift
     description: Computes the in-place bitwise left shift of `self` by `other` bits.
     for:
       - __ilshift__.Tensor
