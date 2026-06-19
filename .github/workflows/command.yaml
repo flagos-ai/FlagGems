@@ -93,6 +93,12 @@ jobs:
             h20)
               VENDOR="nvidia"
               ;;
+            cann850)
+              VENDOR="ascend-cann850"
+              ;;
+            cann9)
+              VENDOR="ascend-cann900"
+              ;;
             *)
               VENDOR="${RUNNER_LABEL}"
               ;;
