@@ -53,10 +53,6 @@ jobs:
   test-operator:
     needs: preprocess
     if: needs.preprocess.outputs.continue == 'true'
-    permissions:
-      pull-requests: write
-      issues: write
-      contents: write
     runs-on: ${{ needs.preprocess.outputs.runner }}
     steps:
       - id: checkout-attempt-1
@@ -154,11 +150,16 @@ jobs:
               results
           fi
 
-      #- name: Upload results
-      #  uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-      #  with:
-      #    name: ondemand-test
-      #    path: results/
+      - id: upload-results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ondemand-test
+          path: results/
+
+      - name: Merge Message and File Contents
+        run: |
+          echo -e "\n---\n" >> report.md
+          echo -e "📎 Download the full log [here](${{ steps.upload-results.outputs.artifact-url }})" >> report.md
 
       - name: comment
         uses: mshick/add-pr-comment@8e4927817251f1ff60c001f04568532b38e0b4a0  # 3.11.0
@@ -166,7 +167,3 @@ jobs:
           message-path: report.md
           message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           allow-repeats: True
-          truncate: simple
-          attach-path: results/*
-          attach-name: report-${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
-          attach-text: '📎 [Download %ATTACH_NAME%](%ARTIFACT_URL%)'
