@@ -150,11 +150,11 @@ jobs:
               results
           fi
 
-      - name: Upload results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-        with:
-          name: ondemand-test
-          path: results/
+      #- name: Upload results
+      #  uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      #  with:
+      #    name: ondemand-test
+      #    path: results/
 
       - name: comment
         uses: mshick/add-pr-comment@8e4927817251f1ff60c001f04568532b38e0b4a0  # 3.11.0
