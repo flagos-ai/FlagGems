@@ -38,12 +38,35 @@ class ChebyshevPolynomialWBenchmark(base.Benchmark):
         return torch.tensor(shape).prod().item()
 
 
+class ChebyshevPolynomialWOutBenchmark(ChebyshevPolynomialWBenchmark):
+    """Benchmark for special_chebyshev_polynomial_w_out."""
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        n_val = 3
+        for shape in self.shapes:
+            x = base.generate_tensor_input(shape, cur_dtype, self.device)
+            x = x * 2 - 1
+            n = torch.tensor(n_val, dtype=torch.int64, device=self.device)
+            out = torch.empty_like(x)
+            yield x, n, {"out": out}
+
+
 @pytest.mark.special_chebyshev_polynomial_w
 def test_special_chebyshev_polynomial_w():
     bench = ChebyshevPolynomialWBenchmark(
         op_name="special_chebyshev_polynomial_w",
         torch_op=torch.special.chebyshev_polynomial_w,
         # special.* operators only support float32
+        dtypes=[torch.float32],
+    )
+    bench.run()
+
+
+@pytest.mark.special_chebyshev_polynomial_w_out
+def test_special_chebyshev_polynomial_w_out():
+    bench = ChebyshevPolynomialWOutBenchmark(
+        op_name="special_chebyshev_polynomial_w_out",
+        torch_op=torch.special.chebyshev_polynomial_w,
         dtypes=[torch.float32],
     )
     bench.run()
