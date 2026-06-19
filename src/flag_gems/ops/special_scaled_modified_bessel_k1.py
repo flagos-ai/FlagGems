@@ -37,55 +37,135 @@ def special_scaled_modified_bessel_k1_kernel(
     x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
     x_f32 = x.to(tl.float32)
 
-    # Handle x <= 0: return inf for x=0, handle negative values
-    # K_1 is not defined for x <= 0, but we'll handle the singularity at x=0
+    # Handle non-positive values
     zero = 0.0
     ax = tl.abs(x_f32)
-    is_zero = ax < 1e-30  # close to zero
+    is_zero = ax < 1e-30
     is_negative = x_f32 < zero
 
-    # For scaled K1: scaled_K1(x) = exp(x) * x * K_1(x)
-    # Using polynomial approximation from Cephes/scipy
+    # Pre-compute shared values
+    x_sq = x_f32 * x_f32
 
+    # ================================================================
     # Small region: 0 < x <= 2.0
-    # Use series expansion for small x
-    t_small = x_f32 * x_f32
-    p_small = -0.5 + t_small * (
-        -0.625
-        + t_small
-        * (
-            0.2916666666666667
-            + t_small
-            * (
-                -0.06875
-                + t_small * (0.008680555555555555 + t_small * -0.0003854166666666667)
+    # Use Cephes Chebyshev approximation for K1(x), then multiply by exp(x).
+    # scaled_K1(x) = exp(x) * K1(x)
+    # K1(x) = log(x/2) * I1(x) + chbevl(x^2 - 2, A, 11) / x
+    # ================================================================
+
+    # --- Step 1: Compute I1(x) via Cephes polynomial (valid for x <= 3.75) ---
+    y_i1 = x_f32 / 3.75
+    y2_i1 = y_i1 * y_i1
+    p_i1 = 0.00032411
+    p_i1 = 0.00301532 + y2_i1 * p_i1
+    p_i1 = 0.02658733 + y2_i1 * p_i1
+    p_i1 = 0.15084934 + y2_i1 * p_i1
+    p_i1 = 0.51498869 + y2_i1 * p_i1
+    p_i1 = 0.87890594 + y2_i1 * p_i1
+    p_i1 = 0.5 + y2_i1 * p_i1
+    i1_val = x_f32 * p_i1
+
+    # --- Step 2: Chebyshev series evaluation for k1_A at y = x^2 - 2 ---
+    # Coefficients from Cephes k1_A (11 terms, indexed 0..10)
+    # Clenshaw recurrence: b_k = a_k + 2*y*b_{k+1} - b_{k+2}
+    y_cheb = x_sq - 2.0
+    b_prev2 = 0.0  # b_{k+2}
+    b_prev1 = 0.0  # b_{k+1}
+
+    # k=10: b_10 = a_10
+    b_curr = 1.52530022733894777053
+    b_prev2 = b_prev1
+    b_prev1 = b_curr
+
+    # k=9: b_9 = a_9 + 2*y*b_10 - b_11
+    b_curr = -0.353155960776544875667 + 2.0 * y_cheb * b_prev1 - b_prev2
+    b_prev2 = b_prev1
+    b_prev1 = b_curr
+
+    # k=8
+    b_curr = -0.122611180822657148235 + 2.0 * y_cheb * b_prev1 - b_prev2
+    b_prev2 = b_prev1
+    b_prev1 = b_curr
+
+    # k=7
+    b_curr = -0.00697572385963986435018 + 2.0 * y_cheb * b_prev1 - b_prev2
+    b_prev2 = b_prev1
+    b_prev1 = b_curr
+
+    # k=6
+    b_curr = -0.000173028895751305206302 + 2.0 * y_cheb * b_prev1 - b_prev2
+    b_prev2 = b_prev1
+    b_prev1 = b_curr
+
+    # k=5
+    b_curr = -0.00000243340614156596823496 + 2.0 * y_cheb * b_prev1 - b_prev2
+    b_prev2 = b_prev1
+    b_prev1 = b_curr
+
+    # k=4
+    b_curr = -0.0000000221338763073472585583 + 2.0 * y_cheb * b_prev1 - b_prev2
+    b_prev2 = b_prev1
+    b_prev1 = b_curr
+
+    # k=3
+    b_curr = -0.000000000141148839263352776110 + 2.0 * y_cheb * b_prev1 - b_prev2
+    b_prev2 = b_prev1
+    b_prev1 = b_curr
+
+    # k=2
+    b_curr = -0.000000000000666690169419932900609 + 2.0 * y_cheb * b_prev1 - b_prev2
+    b_prev2 = b_prev1
+    b_prev1 = b_curr
+
+    # k=1
+    b_curr = -0.00000000000000242744985051936593393 + 2.0 * y_cheb * b_prev1 - b_prev2
+    b_prev2 = b_prev1
+    b_prev1 = b_curr
+
+    # k=0
+    b_curr = -0.00000000000000000000702386347938628759343 + 2.0 * y_cheb * b_prev1 - b_prev2
+
+    # Final Chebyshev value: (b_0 - b_2) / 2
+    cheb_val = (b_curr - b_prev2) / 2.0
+
+    # --- Step 3: Compute K1(x) and scaled_K1(x) ---
+    # K1(x) = log(x/2) * I1(x) + cheb_val / x
+    # scaled_K1(x) = exp(x) * K1(x)
+    log_term = tl.log(tl.maximum(x_f32, 1e-30) / 2.0)
+    k1_small = log_term * i1_val + cheb_val / tl.maximum(x_f32, 1e-30)
+    small_result = tl.exp(x_f32) * k1_small
+
+    # ================================================================
+    # Large region: x > 2.0
+    # Use asymptotic expansion for scaled_K1 directly:
+    #   scaled_K1(x) = sqrt(pi/(2x)) * sum_{k=0}^5 (1,k) / (2x)^k
+    # where (1,k) are the Bessel asymptotic coefficients.
+    # ================================================================
+    t_large = 1.0 / ax
+    # Horner polynomial: 1 + 3t/8 - 15t^2/128 + 105t^3/1024 - 4725t^4/32768 + 72765t^5/262144
+    poly_large = 1.0 + t_large * (
+        0.375  # 3/8
+        + t_large * (
+            -0.1171875  # -15/128
+            + t_large * (
+                0.1025390625  # 105/1024
+                + t_large * (
+                    -0.144195556640625  # -4725/32768
+                    + t_large * 0.27757628202438354  # 72765/262144
+                )
             )
         )
     )
-    # Add the leading 1/x term that's part of K1(x) expansion
-    # The full expansion for small x: x*K1(x)*exp(x) = 1 + (-0.5)*x^2 + ...
-    small_result = 1.0 + p_small
-
-    # For large region: x > 2.0
-    # Use asymptotic expansion
-    y = 2.0 / ax
-    p_big = 1.2533141373155 + y * (
-        -0.0783232033301
-        + y
-        * (
-            0.0218950680508
-            + y * (-0.0030107026380 + y * (0.0003240681134 + y * -0.0001273162979))
-        )
-    )
-    big_result = p_big * tl.sqrt(ax)
+    # sqrt(pi/2) = 1.2533141373155001
+    big_result = 1.2533141373155001 * poly_large / tl.sqrt(ax)
 
     # Combine results
     use_small = ax <= 2.0
     result = tl.where(use_small, small_result, big_result)
 
     # Handle singularity at x=0 -> infinity
-    # Handle negative inputs: return inf (following scipy behavior)
     result = tl.where(is_zero, float("inf"), result)
+    # Handle negative inputs: return inf (matching scipy behavior)
     result = tl.where(is_negative, float("inf"), result)
 
     # Cast back to input dtype and store
@@ -120,7 +200,7 @@ def _launch_special_scaled_modified_bessel_k1(out: torch.Tensor, x: torch.Tensor
         return
 
     # Balance occupancy and register pressure for Bessel kernel
-    BLOCK_SIZE = 1024
+    BLOCK_SIZE = 256
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(x.device):
         special_scaled_modified_bessel_k1_kernel[grid](
