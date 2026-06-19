@@ -53,6 +53,10 @@ jobs:
   test-operator:
     needs: preprocess
     if: needs.preprocess.outputs.continue == 'true'
+    permissions:
+      pull-requests: write
+      issues: write
+      contents: write
     runs-on: ${{ needs.preprocess.outputs.runner }}
     steps:
       - id: checkout-attempt-1
