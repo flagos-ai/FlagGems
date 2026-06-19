@@ -100,5 +100,5 @@ def masked_fill_(inp, mask, value):
     if N == 0:
         return inp
     grid = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    masked_fill_kernel_self[grid](inp, expand_mask, value, N)
+    masked_fill_kernel[grid](inp, expand_mask, value, inp, N)
     return inp
