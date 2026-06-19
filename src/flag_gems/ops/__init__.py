@@ -458,11 +458,10 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
-    "_adaptive_avg_pool3d_backward",
-    "adaptive_avg_pool3d_backward",
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "__ilshift__",
+    "_adaptive_avg_pool3d_backward",
     "_assert_async",
     "_cdist_backward",
     "_conv_depthwise2d",
@@ -484,6 +483,7 @@ __all__ = [
     "absolute",
     "acos",
     "adaptive_avg_pool2d",
+    "adaptive_avg_pool3d_backward",
     "add",
     "add_",
     "addcdiv",
