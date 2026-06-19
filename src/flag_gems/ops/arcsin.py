@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit()
 def arcsin_kernel(x):
+    # Match torch.arcsin by evaluating in float32 before casting back.
     return _ASIN(x.to(tl.float32))
 
 

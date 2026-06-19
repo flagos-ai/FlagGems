@@ -40,7 +40,7 @@ def test_arcsin_(shape, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_arcsin_out(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = utils.to_reference(inp)
 
     ref_out = torch.empty_like(ref_inp)
     torch.arcsin(ref_inp, out=ref_out)
@@ -49,3 +49,38 @@ def test_arcsin_out(shape, dtype):
         torch.arcsin(inp, out=res_out)
 
     utils.gems_assert_close(res_out, ref_out, dtype, True)
+
+
+@pytest.mark.arcsin
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_arcsin_boundaries_and_out_of_domain(dtype):
+    values = torch.tensor(
+        [-1.0, -0.5, 0.0, 0.5, 1.0, -1.5, 1.5],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    ref_values = utils.to_reference(values)
+
+    ref_out = torch.arcsin(ref_values)
+    with flag_gems.use_gems():
+        res_out = torch.arcsin(values)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, True)
+    assert torch.isnan(res_out[-2:]).all()
+
+
+@pytest.mark.arcsin
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_arcsin_empty_and_scalar(dtype):
+    empty = torch.empty((0,), dtype=dtype, device=flag_gems.device)
+    scalar = torch.tensor(0.5, dtype=dtype, device=flag_gems.device)
+
+    ref_empty = utils.to_reference(empty)
+    ref_scalar = utils.to_reference(scalar)
+
+    with flag_gems.use_gems():
+        res_empty = torch.arcsin(empty)
+        res_scalar = torch.arcsin(scalar)
+
+    utils.gems_assert_close(res_empty, torch.arcsin(ref_empty), dtype, True)
+    utils.gems_assert_close(res_scalar, torch.arcsin(ref_scalar), dtype, True)
