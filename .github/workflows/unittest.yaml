@@ -79,9 +79,12 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - uses: ./.github/actions/setup-flaggems
-        with:
-          gpu_check_script: tools/gpu_check.sh
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
+
+      - shell: bash
+        run: tools/gpu_check_nvidia.sh
 
       - shell: bash
         env:
@@ -97,9 +100,12 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - uses: ./.github/actions/setup-flaggems
-        with:
-          gpu_check_script: tools/gpu_check.sh
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
+
+      - shell: bash
+        run: tools/gpu_check_nvidia.sh
 
       - shell: bash
         env:
@@ -209,7 +215,7 @@ jobs:
     with:
       vendor: nvidia
       runner_label: h20
-      gpu_check_script: tools/gpu_check.sh
+      gpu_check_script: tools/gpu_check_nvidia.sh
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
@@ -276,8 +282,8 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: nvidia
-      runner_label: hopper
-      gpu_check_script: tools/gpu_check.sh
+      runner_label: h20
+      gpu_check_script: tools/gpu_check_nvidia.sh
       test_script: tools/test-op-experimental.sh
       changed_files: ${{ needs.preprocess.outputs.changed_files }}
     secrets:
