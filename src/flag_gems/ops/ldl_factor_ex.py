@@ -5,7 +5,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -76,74 +75,6 @@ def ldl_init_info_kernel(info):
     tl.store(info, 0)
 
 
-def ldl_factor(A, hermitian=False, check_errors=False):
-    logger.debug("GEMS LDL FACTOR")
-    if A.dtype != torch.float32:
-        raise RuntimeError("linalg_ldl_factor_ex only supports torch.float32 on CUDA.")
-
-    # Handle batch dimensions
-    batch_dims = A.shape[:-2]
-    n = A.shape[-1]
-
-    # Calculate total number of matrices
-    if len(batch_dims) == 0:
-        batch_size = 1
-    else:
-        batch_size = 1
-        for dim in batch_dims:
-            batch_size *= dim
-
-    # Create output tensors - initialize with zeros to avoid garbage
-    LD = torch.zeros_like(A)
-    pivots = torch.empty(*batch_dims, n, dtype=torch.int32, device=A.device)
-    # Handle 0-dimensional case for info
-    if len(batch_dims) == 0:
-        info = torch.zeros((), dtype=torch.int32, device=A.device)
-    else:
-        info = torch.zeros(batch_dims, dtype=torch.int32, device=A.device)
-
-    # For the kernel, we need contiguous 3D tensors
-    # Reshape if needed
-    if len(batch_dims) == 0:
-        A_3d = A.unsqueeze(0)
-        LD_3d = LD.unsqueeze(0)
-    else:
-        # Flatten batch dims
-        A_3d = A.reshape(batch_size, n, n)
-        LD_3d = LD.reshape(batch_size, n, n)
-
-    batch_stride = A_3d.stride(0)
-    row_stride = A_3d.stride(1)
-    col_stride = A_3d.stride(2)
-
-    grid = (batch_size,)
-
-    with torch_device_fn.device(A.device):
-        ldl_factor_kernel[grid](
-            A_3d,
-            LD_3d,
-            n,
-            batch_stride,
-            row_stride,
-            col_stride,
-        )
-
-        # Initialize pivots (1-indexed) for each matrix in batch
-        pivots_grid = (batch_size * n,)
-        ldl_init_pivots_kernel[pivots_grid](
-            pivots, n, pivots.stride(0) if len(batch_dims) > 0 else pivots.stride(0)
-        )
-
-        # Initialize info to 0 (success)
-        info_grid = (batch_size,)
-        info_reshaped = (
-            info.reshape(batch_size) if len(batch_dims) > 0 else info.unsqueeze(0)
-        )
-        ldl_init_info_kernel[info_grid](info_reshaped)
-
-    return LD, pivots, info
-
-
 def ldl_factor_ex(A, hermitian=False, check_errors=False):
     """LDL factorization with extended info.
 
@@ -152,4 +83,16 @@ def ldl_factor_ex(A, hermitian=False, check_errors=False):
     - pivots: 1-indexed pivot indices
     - info: 0 if successful, positive integer if diagonal element of D is zero
     """
-    return ldl_factor(A, hermitian=hermitian, check_errors=check_errors)
+    logger.debug("GEMS LINALG LDL FACTOR EX")
+
+    LD = torch.empty_like(A)
+    pivots = torch.empty(*A.shape[:-1], dtype=torch.int32, device=A.device)
+    info = torch.empty(A.shape[:-2], dtype=torch.int32, device=A.device)
+    return torch.ops.aten.linalg_ldl_factor_ex.out(
+        A,
+        hermitian=hermitian,
+        check_errors=check_errors,
+        LD=LD,
+        pivots=pivots,
+        info=info,
+    )
