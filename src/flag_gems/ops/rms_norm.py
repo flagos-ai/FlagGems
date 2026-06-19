@@ -130,6 +130,34 @@ def rms_norm_loop_kernel(
         tl.store(out_ptr + pid * N + n_offsets, y)
 
 
+
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def rms_norm_fp8_w8a16_kernel(
+    out_ptr,
+    INV_RMS,
+    in_ptr,
+    w_ptr,
+    w_scale_ptr,
+    N,
+    eps,
+    BLOCK_SIZE: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    cols = tl.arange(0, BLOCK_SIZE)
+    mask = cols < N
+    x = tl.load(in_ptr + pid * N + cols, mask=mask, other=0.0).to(tl.float32)
+    var = tl.sum(x * x, axis=0) / N
+    rrms = 1 / tl.sqrt(var + eps)
+    group_ids = cols // GROUP_SIZE
+    w = tl.load(w_ptr + cols, mask=mask, other=0.0).to(tl.float32)
+    w_scale = tl.load(w_scale_ptr + group_ids, mask=mask, other=0.0).to(tl.float32)
+    y = x * rrms * w * w_scale
+    tl.store(out_ptr + pid * N + cols, y, mask=mask)
+    tl.store(INV_RMS + pid, rrms)
+
+
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
 def rms_norm_grad_dx_kernel(
@@ -321,6 +349,23 @@ class RmsNorm(torch.autograd.Function):
 
         dx, dw = rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps)
         return dx, None, dw, None
+
+
+def rms_norm_fp8_w8a16(
+    x, normalized_shape, weight_fp8, weight_scale, eps=1e-5, group_size=128
+):
+    logger.debug("GEMS RMS_NORM FP8 W8A16 FORWARD")
+    dim = x.ndim - len(normalized_shape)
+    M = math.prod(x.shape[:dim])
+    N = math.prod(normalized_shape)
+    y = torch.empty(x.shape, device=x.device, dtype=x.dtype)
+    inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
+    with torch_device_fn.device(x.device):
+        BLOCK_SIZE = triton.next_power_of_2(N)
+        rms_norm_fp8_w8a16_kernel[M,](
+            y, inv_rms, x, weight_fp8, weight_scale, N, eps, BLOCK_SIZE, group_size
+        )
+    return y
 
 
 def rms_norm(x, normalized_shape, weight, eps=1e-5):
