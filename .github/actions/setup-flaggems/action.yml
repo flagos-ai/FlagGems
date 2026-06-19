@@ -1,80 +1,19 @@
 name: "Setup FlagGems"
-description: "Checkout with retry, optionally setup FlagGems and check GPU availability"
+description: "Run setup.sh for a vendor and optionally check GPU availability"
 
 inputs:
   vendor:
     description: "FlagGems vendor name (e.g. nvidia, mthreads, ascend-cann900)"
-    required: false
-    default: ""
+    required: true
   gpu_check_script:
     description: "Path to GPU check script (leave empty to skip)"
     required: false
     default: ""
-  checkout_ref:
-    description: "Git ref to checkout (leave empty for default)"
-    required: false
-    default: ""
-  checkout_submodules:
-    description: "Whether to checkout submodules"
-    required: false
-    default: "false"
-  checkout_fetch_depth:
-    description: "Fetch depth for checkout"
-    required: false
-    default: "1"
-
-outputs:
-  vendor:
-    description: "Resolved vendor name"
-    value: ${{ steps.resolve-vendor.outputs.vendor }}
 
 runs:
   using: "composite"
   steps:
-    # ── Checkout with retry ──────────────────────────────
-    - id: checkout-attempt-1
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      with:
-        ref: ${{ inputs.checkout_ref || github.ref }}
-        submodules: ${{ inputs.checkout_submodules }}
-        fetch-depth: ${{ inputs.checkout_fetch_depth }}
-      continue-on-error: true
-
-    - id: sleep-1
-      if: steps.checkout-attempt-1.outcome == 'failure'
-      shell: bash
-      run: sleep 30s
-
-    - id: checkout-attempt-2
-      if: steps.checkout-attempt-1.outcome == 'failure'
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      with:
-        ref: ${{ inputs.checkout_ref || github.ref }}
-        submodules: ${{ inputs.checkout_submodules }}
-        fetch-depth: ${{ inputs.checkout_fetch_depth }}
-      continue-on-error: true
-
-    - id: sleep-2
-      if: steps.checkout-attempt-2.outcome == 'failure'
-      shell: bash
-      run: sleep 30s
-
-    - id: checkout-attempt-3
-      if: steps.checkout-attempt-2.outcome == 'failure'
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      with:
-        ref: ${{ inputs.checkout_ref || github.ref }}
-        submodules: ${{ inputs.checkout_submodules }}
-        fetch-depth: ${{ inputs.checkout_fetch_depth }}
-
-    # ── Setup FlagGems ───────────────────────────────────
-    - id: resolve-vendor
-      if: inputs.vendor != ''
-      shell: bash
-      run: echo "vendor=${{ inputs.vendor }}" >> $GITHUB_OUTPUT
-
     - name: Setup FlagGems
-      if: inputs.vendor != ''
       shell: bash
       run: ./setup.sh ${{ inputs.vendor }}
 
@@ -85,7 +24,6 @@ runs:
         source .venv/bin/activate
         uv pip install vllm==0.21.0 --torch-backend=cu130
 
-    # ── GPU check ────────────────────────────────────────
     - name: Check GPU availability
       if: inputs.gpu_check_script != ''
       shell: bash
