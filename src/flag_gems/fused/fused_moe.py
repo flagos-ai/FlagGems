@@ -1188,10 +1188,14 @@ def fused_moe_kernel(
             # Per-channel weight scales for the gate and up halves; applied once
             # on the fp32 accumulators after each K-loop.
             b_scale_gate = tl.load(
-                b_scale_ptr + off_experts * stride_bse + offs_bn_gate[None, :] * stride_bsn
+                b_scale_ptr
+                + off_experts * stride_bse
+                + offs_bn_gate[None, :] * stride_bsn
             )
             b_scale_up = tl.load(
-                b_scale_ptr + off_experts * stride_bse + offs_bn_up[None, :] * stride_bsn
+                b_scale_ptr
+                + off_experts * stride_bse
+                + offs_bn_up[None, :] * stride_bsn
             )
 
         if use_fp8_w8a8 or use_int8_w8a8:
