@@ -10,7 +10,13 @@ jobs:
   test:
     runs-on: h20
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
       - uses: ./.github/actions/setup-flaggems
+        with:
+          vendor: nvidia
+          gpu_check_script: tools/gpu_check_nvidia.sh
 
       - shell: bash
         run: |
