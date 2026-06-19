@@ -2533,6 +2533,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: float_power_
+    description: Triton kernel implementation for float_power_.
+    for:
+      - float_power_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: floor
     description: |
       Performs an element-wise floor operation, rounding each element of a tensor
