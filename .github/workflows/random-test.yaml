@@ -79,6 +79,12 @@ jobs:
             h20)
               VENDOR="nvidia"
               ;;
+            cann850)
+              VENDOR="ascend-cann850"
+              ;;
+            cann9)
+              VENDOR="ascend-cann900"
+              ;;
             *)
               VENDOR="${RUNNER_LABEL}"
               ;;
@@ -88,6 +94,12 @@ jobs:
           echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
 
           ./setup.sh ${VENDOR}
+
+          # Install vllm for testing
+          if [ "${VENDOR}" == "nvidia" ]; then
+             source .venv/bin/activate
+             uv pip install vllm==0.21.0 --torch-backend=cu130
+          fi
 
       - name: Check GPU availability
         shell: bash
