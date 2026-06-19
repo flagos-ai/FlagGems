@@ -94,96 +94,29 @@ def shifted_chebyshev_polynomial_w(x, n):
     # W*_20(x) = 2(2x-1) * W*_19(x) - W*_18(x)
     w20 = 2.0 * two_x_minus_1 * w19 - w18
 
-    # Combine results based on n value using nested tl.where
-    # This creates a chain of conditional selects
-    result = tl.where(
-        n_i == 0,
-        w0,
-        tl.where(
-            n_i == 1,
-            w1,
-            tl.where(
-                n_i == 2,
-                w2,
-                tl.where(
-                    n_i == 3,
-                    w3,
-                    tl.where(
-                        n_i == 4,
-                        w4,
-                        tl.where(
-                            n_i == 5,
-                            w5,
-                            tl.where(
-                                n_i == 6,
-                                w6,
-                                tl.where(
-                                    n_i == 7,
-                                    w7,
-                                    tl.where(
-                                        n_i == 8,
-                                        w8,
-                                        tl.where(
-                                            n_i == 9,
-                                            w9,
-                                            tl.where(
-                                                n_i == 10,
-                                                w10,
-                                                tl.where(
-                                                    n_i == 11,
-                                                    w11,
-                                                    tl.where(
-                                                        n_i == 12,
-                                                        w12,
-                                                        tl.where(
-                                                            n_i == 13,
-                                                            w13,
-                                                            tl.where(
-                                                                n_i == 14,
-                                                                w14,
-                                                                tl.where(
-                                                                    n_i == 15,
-                                                                    w15,
-                                                                    tl.where(
-                                                                        n_i == 16,
-                                                                        w16,
-                                                                        tl.where(
-                                                                            n_i == 17,
-                                                                            w17,
-                                                                            tl.where(
-                                                                                n_i
-                                                                                == 18,
-                                                                                w18,
-                                                                                tl.where(
-                                                                                    n_i
-                                                                                    == 19,
-                                                                                    w19,
-                                                                                    tl.where(
-                                                                                        n_i
-                                                                                        == 20,
-                                                                                        w20,
-                                                                                        w20,  # n>20: fallback
-                                                                                    ),
-                                                                                ),
-                                                                            ),
-                                                                        ),
-                                                                    ),
-                                                                ),
-                                                            ),
-                                                        ),
-                                                    ),
-                                                ),
-                                            ),
-                                        ),
-                                    ),
-                                ),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
+    # Combine results based on n value using sequential tl.where for clarity
+    result = w20
+    result = tl.where(n_i == 0, w0, result)
+    result = tl.where(n_i == 1, w1, result)
+    result = tl.where(n_i == 2, w2, result)
+    result = tl.where(n_i == 3, w3, result)
+    result = tl.where(n_i == 4, w4, result)
+    result = tl.where(n_i == 5, w5, result)
+    result = tl.where(n_i == 6, w6, result)
+    result = tl.where(n_i == 7, w7, result)
+    result = tl.where(n_i == 8, w8, result)
+    result = tl.where(n_i == 9, w9, result)
+    result = tl.where(n_i == 10, w10, result)
+    result = tl.where(n_i == 11, w11, result)
+    result = tl.where(n_i == 12, w12, result)
+    result = tl.where(n_i == 13, w13, result)
+    result = tl.where(n_i == 14, w14, result)
+    result = tl.where(n_i == 15, w15, result)
+    result = tl.where(n_i == 16, w16, result)
+    result = tl.where(n_i == 17, w17, result)
+    result = tl.where(n_i == 18, w18, result)
+    result = tl.where(n_i == 19, w19, result)
+    result = tl.where(n_i == 20, w20, result)
 
     return result
 

@@ -3,7 +3,8 @@ import re
 import triton
 from packaging.version import InvalidVersion, Version
 
-import flag_gems
+from flag_gems.runtime import backend
+from flag_gems.runtime.backend.device_finder import DeviceDetector
 
 
 def _coerce_triton_version(version: str) -> Version:
@@ -25,7 +26,9 @@ def _triton_version_at_least(major: int, minor: int, patch: int = 0) -> bool:
 
 
 def is_support_vendor():
-    return flag_gems.vendor_name in ["nvidia", "mthreads", "enflame"]
+    device = DeviceDetector()
+    vendor_info = backend.get_vendor_info(device.vendor_name)
+    return vendor_info.tle_enabled
 
 
 def has_triton_tle(major: int = 0, minor: int = 0, patch: int = 0) -> bool:

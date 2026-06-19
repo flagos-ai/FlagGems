@@ -76,39 +76,18 @@ def _compute_w(y, n):
     t9 = 2.0 * y * t8 - t7  # n=9
     t10 = 2.0 * y * t9 - t8  # n=10
 
-    return tl.where(
-        n == 2,
-        t2,
-        tl.where(
-            n == 3,
-            t3,
-            tl.where(
-                n == 4,
-                t4,
-                tl.where(
-                    n == 5,
-                    t5,
-                    tl.where(
-                        n == 6,
-                        t6,
-                        tl.where(
-                            n == 7,
-                            t7,
-                            tl.where(
-                                n == 8,
-                                t8,
-                                tl.where(
-                                    n == 9,
-                                    t9,
-                                    tl.where(n == 10, t10, t10),
-                                ),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
+    # Use sequential tl.where for clarity instead of deep nesting
+    result = t10
+    result = tl.where(n == 2, t2, result)
+    result = tl.where(n == 3, t3, result)
+    result = tl.where(n == 4, t4, result)
+    result = tl.where(n == 5, t5, result)
+    result = tl.where(n == 6, t6, result)
+    result = tl.where(n == 7, t7, result)
+    result = tl.where(n == 8, t8, result)
+    result = tl.where(n == 9, t9, result)
+    result = tl.where(n == 10, t10, result)
+    return result
 
 
 def special_shifted_chebyshev_polynomial_w(x, n):
