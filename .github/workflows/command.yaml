@@ -69,7 +69,9 @@ jobs:
           echo "VENDOR=${VENDOR}" >> $GITHUB_OUTPUT
           echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
 
-      - uses: ./.github/actions/setup-flaggems
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
 
       - id: checkout-pr
         env:
