@@ -1,8 +1,8 @@
 #!/bin/bash
 
 SUPPORTED_VENDORS=(
-  "ascend"
-  "ascend-cann9"
+  "ascend-cann850"
+  "ascend-cann900"
   "enflame"
   "hygon"
   "iluvatar"
@@ -18,8 +18,8 @@ SUPPORTED_VENDORS=(
 
 # TODO: Add thead PPU
 declare -A PYTHON_SUPPORTED=(
-  ["ascend"]="3.11"
-  ["ascend-cann9"]="3.11"
+  ["ascend-cann850"]="3.11"
+  ["ascend-cann900"]="3.11"
   ["enflame"]="3.12"
   ["hygon"]="3.10"
   ["iluvatar"]="3.10"
@@ -113,7 +113,7 @@ fi
 
 # Install FlagGems
 PYPI_VENDOR=${VENDOR}
-if [ "$VENDOR" = "ascend-cann9" ]; then
+if [[ "$VENDOR" == ascend-* ]]; then
   PYPI_VENDOR="ascend"
 fi
 export FLAGOS_PYPI="https://resource.flagos.net/repository/flagos-pypi-${PYPI_VENDOR}/simple"
@@ -137,7 +137,7 @@ fi
 #---- Vendor-specific installation steps -------------
 source tools/env.sh ${VENDOR}
 
-if [ "$VENDOR" = "ascend-cann9" ]; then
+if [ "$VENDOR" = "ascend-cann900" ]; then
   uv pip install triton==3.5.0
   uv pip install "triton-ascend==3.2.1" --index ${FLAGOS_PYPI}
 fi

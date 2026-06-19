@@ -146,14 +146,14 @@ jobs:
         run: |
           bash tools/test-examples.sh ${{ needs.preprocess.outputs.pr_id }}
 
-  backend-ascend:
+  backend-ascend-cann850:
     needs: preprocess
     # The ascend backend runners need to be reconfigured.
     if: false
     # if: contains(needs.preprocess.outputs.labels, 'vendor/Ascend')
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: ascend
+      vendor: ascend-cann850
       runner_label: ascend
       gpu_check_script: tools/gpu_check_ascend.sh
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
