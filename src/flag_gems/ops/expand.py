@@ -57,7 +57,9 @@ def expand(inp: torch.Tensor, size: Sequence[int]) -> torch.Tensor:
                 )
             size[i] = input_shape[i]
         elif size[i] < 0:
-            raise RuntimeError(f"The expanded size of the tensor ({size[i]}) is invalid")
+            raise RuntimeError(
+                f"The expanded size of the tensor ({size[i]}) is invalid"
+            )
         elif size[i] != input_shape[i] and input_shape[i] != 1:
             raise RuntimeError(
                 "The expanded size of the tensor "
