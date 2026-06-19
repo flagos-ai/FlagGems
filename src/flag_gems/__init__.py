@@ -37,12 +37,15 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    ("__and__.Scalar", __and___scalar),
+    ("__and__.Tensor", __and__),
     ("__ilshift__.Tensor", __ilshift__),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__or__.Scalar", bitwise_or_scalar),
     ("__or__.Tensor", bitwise_or_tensor),
     ("_adaptive_avg_pool2d", adaptive_avg_pool2d),
+    ("_and_", _and_, lambda: "_and_" in dir(torch.ops.aten)),
     ("_assert_async", _assert_async),
     ("_cdist_backward", _cdist_backward),
     ("_conv_depthwise2d", _conv_depthwise2d),

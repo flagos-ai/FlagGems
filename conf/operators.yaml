@@ -409,6 +409,20 @@ ops:
     kind:
       - Tensor
     stages:
+      - beta: '5.1'
+  - id: and_
+    description: |
+      Computes the bitwise AND operation through the tensor dunder method.
+    for:
+      - _and_
+      - __and__.Scalar
+      - __and__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
       - beta: '5.3'
   - id: angle
     description: Computes the element-wise angle (in radians) of the given `input` tensor.
