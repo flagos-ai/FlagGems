@@ -162,6 +162,7 @@ jobs:
           message-path: report.md
           message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           allow-repeats: True
+          truncate: simple
           attach-path: results/*
           attach-name: report-${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           attach-text: '📎 [Download %ATTACH_NAME%](%ARTIFACT_URL%)'
