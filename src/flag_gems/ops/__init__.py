@@ -15,6 +15,7 @@ from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
 from flag_gems.ops.adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
+from flag_gems.ops.addcdiv_ import addcdiv_
 from flag_gems.ops.addcmul import addcmul, addcmul_out
 from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from flag_gems.ops.addmv import addmv, addmv_out
@@ -486,6 +487,7 @@ __all__ = [
     "add",
     "add_",
     "addcdiv",
+    "addcdiv_",
     "addcdiv_out",
     "addcmul",
     "addcmul_out",

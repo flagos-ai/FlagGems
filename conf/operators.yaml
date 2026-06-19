@@ -165,6 +165,20 @@ ops:
       - LinearAlg
     stages:
       - stable: '4.0'
+  - id: addcdiv_
+    description: |
+      The in-place version of `addcdiv()`. Performs the element-wise division of
+      `tensor1` by `tensor2`, multiplies the result by the scalar `value` and adds
+      it to `input`, storing the result in `input`.
+    for:
+      - addcdiv_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: addcdiv_out
     description: |
       A variant of `addcdiv()` that assigns the output to the given `out` parameter..
@@ -2816,6 +2830,21 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: fused_indexer_q_rope_quant
+    description: |
+      Applies RoPE to sparse indexer Q, quantizes it to FP8 or MXFP4, and folds
+      indexer weights for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.fused_indexer_q_rope_quant
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
   - id: fused_moe
     description: The generic interface for fused MoE.
     for:

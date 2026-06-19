@@ -45,7 +45,7 @@ classifiers = [
 
 dependencies = [
     "packaging==26.0",
-    "PyYAML==6.0.3",
+    "PyYAML==6.0.1",
     "sqlalchemy==2.0.48",
     "numpy==1.26.4",
 ]
@@ -62,7 +62,7 @@ ascend-cann9 = [
     "torch==2.10.0+cpu",
     "torch-npu==2.10.0",
     "triton==3.5.0",
-    "triton-ascend==3.2.1",
+    # "triton-ascend==3.2.1",
 ]
 
 enflame = [
