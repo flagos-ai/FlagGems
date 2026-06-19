@@ -99,3 +99,18 @@ def special_modified_bessel_k1(A):
         torch.float64,
     ), "special_modified_bessel_k1 only supports float32 and float64"
     return special_modified_bessel_k1_func(A)
+
+
+def special_modified_bessel_k1_out(A, out):
+    logger.debug("GEMS SPECIAL_MODIFIED_BESSEL_K1_OUT")
+    assert A.dtype in (
+        torch.float32,
+        torch.float64,
+    ), "special_modified_bessel_k1_out only supports float32 and float64"
+    if out.dtype != A.dtype:
+        raise TypeError("out dtype must match input dtype")
+    if out.device != A.device:
+        raise TypeError("out device must match input device")
+    result = special_modified_bessel_k1_func(A)
+    out.copy_(result)
+    return out

@@ -560,6 +560,7 @@ _FULL_CONFIG = (
     ("sort", sort),
     ("sort.stable", sort_stable),
     ("special.modified_bessel_k1", special_modified_bessel_k1),
+    ("special.modified_bessel_k1.out", special_modified_bessel_k1_out),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special_i0e", special_i0e),
     ("special_i0e.out", special_i0e_out),
