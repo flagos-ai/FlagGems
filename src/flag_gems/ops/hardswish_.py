@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -62,3 +63,19 @@ def hardswish_(*args, **kwargs):
         orig.copy_(x_work)
 
     return orig
+
+
+@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def hardswish_backward_kernel(dy, x):
+    x_f32 = x.to(tl.float32)
+    dy_f32 = dy.to(tl.float32)
+    lt_neg3 = x_f32 < -3.0
+    gt_pos3 = x_f32 > 3.0
+    inner = dy_f32 * (x_f32 / 3.0 + 0.5)
+    return tl.where(lt_neg3, 0.0, tl.where(gt_pos3, dy_f32, inner))
+
+
+def hardswish_backward(grad_output: torch.Tensor, self: torch.Tensor):
+    logger.debug("GEMS HARDSWISH BACKWARD")
+    return hardswish_backward_kernel(grad_output, self)
