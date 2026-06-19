@@ -89,6 +89,12 @@ jobs:
 
           ./setup.sh ${VENDOR}
 
+          # Install vllm for testing
+          if [ "${VENDOR}" == "nvidia" ]; then
+             source .venv/bin/activate
+             uv pip install vllm==0.21.0 --torch-backend=cu130
+          fi
+
       - name: Check GPU availability
         shell: bash
         run: |
@@ -98,7 +104,7 @@ jobs:
         shell: bash
         run: |
           source .venv/bin/activate
-          source tools/set-env.sh ${VENDOR}
+          source tools/env.sh ${VENDOR}
           tools/run_tests.py --ops ${{ inputs.operators }} --gpus ${{ inputs.gpus }}
 
       - name: Upload results

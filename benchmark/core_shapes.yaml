@@ -26,6 +26,13 @@ ctc_loss_backward:
     - [1024, 32, 128, 96]
   shape_desc: "T, N, C, S"
 
+cdist_backward:
+  shapes:
+    - [2, 16, 32]
+    - [4, 32, 64]
+    - [8, 64, 128]
+  shape_desc: "batch, n1, dim"
+
 randperm:
   <<: *single_dim_shapes
 
@@ -43,6 +50,24 @@ svd:
     - [17, 17]
     - [256, 256]
   shape_desc: "(*B), M, N"
+
+segment_reduce: &segment_reduce_shapes
+  shapes:
+    - [1048576]
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 1024, 1024]
+  shape_desc: "data shape"
+
+segment_reduce_out:
+  <<: *segment_reduce_shapes
+
+segment_reduce_backward:
+  <<: *segment_reduce_shapes
+
+segment_reduce_backward_out:
+  <<: *segment_reduce_shapes
 
 gelu_backward:
   shapes:
@@ -142,6 +167,40 @@ quantile:
     - [64, 512, 128]
     - [20, 8, 10000]
 
+nanmedian:
+  shapes:
+    - [64]
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "N or M, N"
+
+nanmedian_out:
+  shapes:
+    - [64]
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "N or M, N"
+
+nanmedian_dim:
+  shapes:
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "M, N"
+
+nanmedian_dim_values:
+  shapes:
+    - [64, 64]
+    - [1024, 1024]
+    - [256, 4096]
+    - [16, 131072]
+  shape_desc: "M, N"
+
 median:
   shapes:
     - [2]
@@ -175,7 +234,7 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
-groupmm:
+grouped_mm:
   shapes:
     - [16, 512, 2048]
     - [16, 2560, 2048]
@@ -324,6 +383,14 @@ GenericBenchmark4DOnly:
     - [1024, 1024,4,8]
     - [4096, 4096,4,8]
     - [1024, 65536,4,8]
+
+IndexReduceBenchmark:
+  shapes:
+    - [1048576]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [64, 512, 512]
+  shape_desc: "(B), M, N"
 
 UnaryReductionBenchmark:
   shapes:
@@ -554,3 +621,21 @@ ReshapeAndCacheFlashBenchmark:
     - [21, 4, 80, 16, 10000]
     - [42, 8, 64, 8, 1024]
     - [42, 8, 80, 16, 10000]
+
+pixel_shuffle:
+  shapes:
+    - [1, 4, 2, 3, 2]
+    - [2, 9, 4, 4, 3]
+    - [4, 64, 32, 32, 2]
+    - [2, 128, 64, 64, 2]
+    - [1, 64, 16, 16, 4]
+    - [8, 36, 64, 64, 3]
+    - [1, 16, 128, 128, 2]
+  shape_desc: "N, C, H, W, upscale_factor"
+
+pixel_unshuffle:
+  shapes:
+    - [1, 3, 8, 8, 2]
+    - [2, 4, 12, 6, 3]
+    - [4, 16, 64, 48, 4]
+  shape_desc: "N, C, H, W, downscale_factor"

@@ -204,6 +204,8 @@ def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
         shape[i] = 1
     M = inp.numel() // N
 
+    out.resize_(shape)
+
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):
         sum_kernel[grid](inp, out, M, N)
