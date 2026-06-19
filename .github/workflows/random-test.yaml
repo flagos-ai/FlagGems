@@ -92,7 +92,7 @@ jobs:
           # Install vllm for testing
           if [ "${VENDOR}" == "nvidia" ]; then
              source .venv/bin/activate
-             uv pip install --no-cache-dir vllm==0.21.0 --torch-backend=cu130
+             uv pip install vllm==0.21.0 --torch-backend=cu130
           fi
 
       - name: Check GPU availability

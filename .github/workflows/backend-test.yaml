@@ -77,7 +77,7 @@ jobs:
           ./setup.sh ${{ inputs.vendor }}
           if [ "${RUNNER_LABEL}" == "h20" ]; then
              source .venv/bin/activate
-             uv pip install --no-cache-dir vllm==0.21.0 --torch-backend=cu130
+             uv pip install vllm==0.21.0 --torch-backend=cu130
           fi
       - id: check-gpu
         if: ${{ inputs.gpu_check_script != '' }}
