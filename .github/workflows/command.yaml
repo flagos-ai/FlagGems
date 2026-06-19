@@ -55,26 +55,21 @@ jobs:
     if: needs.preprocess.outputs.continue == 'true'
     runs-on: ${{ needs.preprocess.outputs.runner }}
     steps:
-      - id: checkout-attempt-1
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        continue-on-error: true
-      - id: sleep-1
-        if: steps.checkout-attempt-1.outcome == 'failure'
+      - id: resolve-vendor
         shell: bash
-        run: sleep 30s
+        env:
+          RUNNER_LABEL: ${{ needs.preprocess.outputs.runner }}
+        run: |
+          case "${RUNNER_LABEL}" in
+            h20)       VENDOR="nvidia" ;;
+            cann850)   VENDOR="ascend-cann850" ;;
+            cann9)     VENDOR="ascend-cann900" ;;
+            *)         VENDOR="${RUNNER_LABEL}" ;;
+          esac
+          echo "VENDOR=${VENDOR}" >> $GITHUB_OUTPUT
+          echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
 
-      - id: checkout-attempt-2
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        continue-on-error: true
-      - id: sleep-2
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        shell: bash
-        run: sleep 30s
-
-      - id: checkout-attempt-3
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: ./.github/actions/setup-flaggems
 
       - id: checkout-pr
         env:
@@ -83,45 +78,22 @@ jobs:
           echo "checking out ${{ needs.preprocess.outputs.pull }}"
           gh pr checkout ${{ needs.preprocess.outputs.pull }}
 
-      - name: Setup FlagGems
+      - id: setup-flaggems
         shell: bash
-        env:
-          RUNNER_LABEL: ${{ needs.preprocess.outputs.runner }}
         run: |
-          # Validate vendor names
-          case "${RUNNER_LABEL}" in
-            h20)
-              VENDOR="nvidia"
-              ;;
-            cann850)
-              VENDOR="ascend-cann850"
-              ;;
-            cann9)
-              VENDOR="ascend-cann900"
-              ;;
-            *)
-              VENDOR="${RUNNER_LABEL}"
-              ;;
-          esac
-
-          echo "VENDOR=${VENDOR}"
-          echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
-
           ./setup.sh ${VENDOR}
-          # Install vllm for testing
           if [ "${VENDOR}" == "nvidia" ]; then
-             source .venv/bin/activate
-             uv pip install vllm==0.21.0 --torch-backend=cu130
+            source .venv/bin/activate
+            uv pip install vllm==0.21.0 --torch-backend=cu130
           fi
 
-      - name: Check GPU availability
+      - id: check-gpu
         shell: bash
         run: |
-          echo ${{ env.VENDOR }}
-          source tools/env.sh ${{ env.VENDOR }}
-          tools/gpu_check_${{ env.VENDOR }}.sh
+          source tools/env.sh ${VENDOR}
+          bash tools/gpu_check_${VENDOR}.sh
 
-      - name: Run tests
+      - id: run-tests
         shell: bash
         env:
           EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
@@ -162,12 +134,12 @@ jobs:
           name: ondemand-test
           path: results/
 
-      - name: Merge Message and File Contents
+      - id: attach-result-link
         run: |
           echo -e "\n---\n" >> report.md
           echo -e "📎 Download the full log [here](${{ steps.upload-results.outputs.artifact-url }})" >> report.md
 
-      - name: comment
+      - id: comment
         uses: mshick/add-pr-comment@8e4927817251f1ff60c001f04568532b38e0b4a0  # 3.11.0
         with:
           message-path: report.md
