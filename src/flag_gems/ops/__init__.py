@@ -435,7 +435,6 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
-    "addmm_",
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "_assert_async",
@@ -468,6 +467,7 @@ __all__ = [
     "addmm_dtype",
     "addmm_dtype_out",
     "addmm_out",
+    "addmm_",
     "addmv",
     "addmv_out",
     "addr",
