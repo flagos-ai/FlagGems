@@ -36,3 +36,8 @@ def special_log1p(A):
         return special_log1p_func(A)
     else:
         return torch.log(torch.tensor(A + 1.0))
+
+
+def special_log1p_out(A, out):
+    logger.debug("GEMS SPECIAL_LOG1P_OUT")
+    return special_log1p_func(A, out0=out)
