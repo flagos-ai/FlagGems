@@ -4648,6 +4648,19 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: nextafter_
+    description: |
+      Returns the next representable floating-point value from `input` toward
+      `other`, elementwise. In-place version of `nextafter`.
+    for:
+      - nextafter_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.5'
   - id: nll_loss2d_backward
     description: |
       An internal IR for supporting `torch.nn.NLLLoss2d`, which has been deprecated
