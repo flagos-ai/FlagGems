@@ -1,15 +1,14 @@
 # ============================================================
-# FlagGems — Mthreads (Moore Threads) GPU container image
-# Two-stage build: devel (build extensions) → runtime
+# FlagGems development image for Ascend CANN 8.5.0
 # ============================================================
-# Status:
-# - 20260602 - Initial version, to be verified
+# History:
+# - 2026/06/18: Initial version
 
 # ── Build arguments ────────────────────────────────────────────
-ARG BASE_IMAGE=mthreads-musa:4.3.6
-ARG PYTHON_VERSION=3.10
-ARG FLAGOS_PYPI=https://resource.flagos.net/repository/flagos-pypi-mthreads/simple
-ARG EXTRA_PYPI=http://mirrors.aliyun.com/pypi/simple
+ARG BASE_IMAGE=ascend-cann:9.0.0
+ARG PYTHON_VERSION=3.11.15
+ARG FLAGOS_PYPI=https://resource.flagos.net/repository/flagos-pypi-ascend/simple
+ARG EXTRA_PYPI=https://mirrors.aliyun.com/pypi/simple
 ARG INCLUDE_TESTS=true
 
 # ════════════════════════════════════════════════════════════════
@@ -21,19 +20,12 @@ ARG PYTHON_VERSION
 ARG FLAGOS_PYPI
 ARG EXTRA_PYPI
 ARG INCLUDE_TESTS
-
 ARG DEBIAN_FRONTEND=noninteractive
 
-# ── System packages ────────────────────────────────────────────
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# ── Python build dependencies ──────────────────────────────────
+# ── Prepare uv and virtual environment ─────────────────────────
 # Install 'uv' to /usr/local/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
-RUN uv python install ${PYTHON_VERSION} && \
-    uv venv /flagos --python ${PYTHON_VERSION} --relocatable --python-preference only-managed
+RUN uv venv /flagos --python ${PYTHON_VERSION} --relocatable
 ENV VIRTUAL_ENV=/flagos \
     PATH="/flagos/bin:${PATH}"
 
@@ -42,21 +34,27 @@ WORKDIR /build
 COPY . /build/FlagGems
 WORKDIR /build/FlagGems
 
-RUN uv pip install \
-        "setuptools>=64.0,<80.0" \
-        "scikit-build-core==0.12.2" \
-        "pybind11==3.0.3" \
-        "cmake>=3.20,<4.0" \
-        "ninja==1.13.0" \
-        "pip"
+RUN uv pip install --no-cache-dir --index ${EXTRA_PYPI} \
+  "setuptools>=64.0,<80.0" \
+  "scikit-build-core==0.12.2" \
+  "pybind11==3.0.3" \
+  "cmake>=3.20,<4.0" \
+  "ninja==1.13.0" \
+  "pip"
 
-# ── Build FlagGems ─────────────────────────────────────────────
-RUN uv pip install .
-RUN uv pip install ".[mthreads]" \
-    --index ${FLAGOS_PYPI} \
-    --trusted-host resource.flagos.net
-
-RUN uv pip install ".[test]"
+# TODO: Add support to C++ wrapper operators
+# ENV CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=METAX"
+# ENV CMAKE_PREFIX_PATH="$(python -c 'import torch; print(torch.utils.cmake_prefix_path)')"
+RUN uv pip install --no-cache-dir ".[ascend-cann9]" \
+      --default-index ${FLAGOS_PYPI} \
+      --index ${EXTRA_PYPI} \
+      --trusted-host resource.flagos.net \
+      --trusted-host mirrors.aliyun.com \
+  && uv pip install --no-cache-dir --index ${FLAGOS_PYPI} \
+      "triton_ascend==3.2.1"
+RUN uv pip install --no-cache-dir ".[test]" \
+      --index ${EXTRA_PYPI} \
+      --trusted-host mirrors.aliyun.com
 
 RUN mkdir /app
 RUN if [ "$INCLUDE_TESTS" = "true" ]; then \
@@ -70,18 +68,7 @@ RUN if [ "$INCLUDE_TESTS" = "true" ]; then \
 # ════════════════════════════════════════════════════════════════
 FROM ${BASE_IMAGE} AS runtime
 
-ARG PYTHON_VERSION
-ARG INCLUDE_TESTS
-
 ARG DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libelf1 \
-        libnuma-dev \
-        libgfortran5 \
-        libpython3-dev \
-        libopenmpi-dev openmpi-bin \
-    && rm -rf /var/lib/apt/lists/*
 
 # ── Copy uv and Python from builder ────────────────────────────
 COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
@@ -90,19 +77,10 @@ COPY --from=builder /flagos /flagos
 
 # ── Copy tests and benchmarks into container if required ───────
 COPY --from=builder /app /app
+WORKDIR /app
 
 # Note: VIRTUAL_ENV and PATH are not sharable between stages
 ENV VIRTUAL_ENV=/flagos \
-  PATH="/flagos/bin:${PATH}"
-
-# ── Mthreads runtime environment ──────────────────────────────
-ENV MUSA_HOME="/usr/local/musa" \
-    MTHREADS_VISIBLE_DEVICES=all
-ENV LD_LIBRARY_PATH="${VIRTUAL_ENV}/lib:${MUSA_HOME}/lib:${LD_LIBRARY_PATH}" \
-    PATH="${MUSA_HOME}/bin:${PATH}" \
-    GEMS_VENDOR=mthreads
-
-# ── Runtime defaults ───────────────────────────────────────────
-WORKDIR /app
+   PATH="/flagos/bin:${PATH}"
 
 ENTRYPOINT ["bash"]
