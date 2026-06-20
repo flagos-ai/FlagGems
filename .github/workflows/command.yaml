@@ -61,7 +61,7 @@ jobs:
           RUNNER_LABEL: ${{ needs.preprocess.outputs.runner }}
         run: |
           case "${RUNNER_LABEL}" in
-            h20|a100)
+            h20|a100|h100)
               VENDOR="nvidia"
               BACKEND="nvidia"
               ;;
