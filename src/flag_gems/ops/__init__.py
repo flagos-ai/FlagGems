@@ -1,4 +1,5 @@
 from flag_gems.ops.__ilshift__ import __ilshift__
+from flag_gems.ops._add_relu import _add_relu, add_relu
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -460,6 +461,7 @@ __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "__ilshift__",
+    "_add_relu",
     "_assert_async",
     "_cdist_backward",
     "_conv_depthwise2d",
@@ -483,6 +485,7 @@ __all__ = [
     "adaptive_avg_pool2d",
     "add",
     "add_",
+    "add_relu",
     "addcdiv",
     "addcdiv_",
     "addcdiv_out",
