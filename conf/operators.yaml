@@ -2013,18 +2013,6 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.0'
-  - id: empty
-    description: Tensor factory operator — verifies dtype inference for newly allocated tensors.
-    for:
-      - empty
-    labels:
-      - aten
-      - KernelGen
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.4'
   - id: embedding
     description: |
       Generate a simple lookup table that looks up embeddings in a fixed dictionary and size.
@@ -2061,6 +2049,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: empty
+    description: Tensor factory operator — verifies dtype inference for newly allocated tensors.
+    for:
+      - empty
+    labels:
+      - aten
+      - KernelGen
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: eq
     description: Computes element-wise equality.
     for:
