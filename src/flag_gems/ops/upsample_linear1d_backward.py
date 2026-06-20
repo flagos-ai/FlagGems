@@ -22,6 +22,7 @@ def upsample_linear1d_backward_kernel(
     gi_stride_c,
     gi_stride_w,
     align_corners: tl.constexpr,
+    WINDOW: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -53,7 +54,7 @@ def upsample_linear1d_backward_kernel(
 
     acc = tl.zeros([BLOCK], dtype=tl.float32)
 
-    for i in range(-2, 3):
+    for i in tl.static_range(-WINDOW, WINDOW + 1):
         x_out = base + i
         valid = (x_out >= 0) & (x_out < out_w)
         x_out_f = x_out.to(tl.float32)
@@ -131,6 +132,9 @@ def upsample_linear1d_backward(
     gi_stride_n, gi_stride_c, gi_stride_w = grad_in.stride()
 
     BLOCK = 512
+    WINDOW = 2
+    if out_w > 2 * in_w:
+        WINDOW = triton.cdiv(out_w, in_w) + 2
     grid = (triton.cdiv(n * c * in_w, BLOCK),)
 
     upsample_linear1d_backward_kernel[grid](
@@ -147,6 +151,7 @@ def upsample_linear1d_backward(
         gi_stride_c,
         gi_stride_w,
         align_corners,
+        WINDOW=WINDOW,
         BLOCK=BLOCK,
     )
 
