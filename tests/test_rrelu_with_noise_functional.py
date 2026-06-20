@@ -7,9 +7,7 @@ from . import accuracy_utils as utils
 
 
 @pytest.mark.rrelu_with_noise_functional
-@pytest.mark.parametrize(
-    "shape", [(2, 19, 7), (1024, 1024), (16, 128, 64, 60)]
-)
+@pytest.mark.parametrize("shape", [(2, 19, 7), (1024, 1024), (16, 128, 64, 60)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_rrelu_with_noise_functional(shape, dtype):
     # Note: training=True case cannot be accurately tested in FlagGems because
@@ -23,8 +21,7 @@ def test_rrelu_with_noise_functional(shape, dtype):
     lower, upper = 0.125, 1.0 / 3.0
     # Generate noise uniformly in [lower, upper]
     noise = (
-        torch.rand(shape, dtype=dtype, device=flag_gems.device)
-        * (upper - lower)
+        torch.rand(shape, dtype=dtype, device=flag_gems.device) * (upper - lower)
         + lower
     )
 
