@@ -69,7 +69,7 @@ def mvlgamma__kernel(
     tl.store(x_ptr + offsets, result, mask=mask)
 
 
-def mvlgamma__(A, p=2):
+def mvlgamma_(A, p=2):
     """
     In-place multivariate log-gamma function.
 
@@ -85,7 +85,7 @@ def mvlgamma__(A, p=2):
     logger.debug("GEMS MVLGAMMA_")
 
     if not isinstance(A, torch.Tensor):
-        raise TypeError("mvlgamma__ expects a torch.Tensor as the first argument")
+        raise TypeError("mvlgamma_ expects a torch.Tensor as the first argument")
 
     if not A.is_contiguous():
         A = A.contiguous()
@@ -100,20 +100,3 @@ def mvlgamma__(A, p=2):
         mvlgamma__kernel[grid](A, p, n_elements, BLOCK_SIZE=1024)
 
     return A
-
-
-def mvlgamma_(A, p=2):
-    """
-    Multivariate log-gamma function (in-place).
-
-    Computes the multivariate log-gamma function with dimension p element-wise.
-
-    Args:
-        A: Input tensor, must be > (p-1)/2 for all elements
-        p: Dimension of the multivariate gamma function (default: 2)
-
-    Returns:
-        Tensor with multivariate log-gamma computed in-place
-    """
-    logger.debug("GEMS MVLGAMMA_")
-    return mvlgamma__(A, p)
