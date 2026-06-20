@@ -14,6 +14,7 @@ from flag_gems.ops.acos import acos
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
+from flag_gems.ops.addcdiv_ import addcdiv_
 from flag_gems.ops.addcmul import addcmul, addcmul_out
 from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from flag_gems.ops.addmv import addmv, addmv_out
@@ -52,6 +53,7 @@ from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.avg_pool3d import avg_pool3d, avg_pool3d_backward
 from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
+from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
 from flag_gems.ops.bincount import bincount
 from flag_gems.ops.bitwise_and import (
@@ -147,6 +149,13 @@ from flag_gems.ops.fill import (
     fill_tensor_out,
 )
 from flag_gems.ops.fix import fix
+from flag_gems.ops.flash_attention_backward import (
+    efficient_attention_backward,
+    flash_attention_backward,
+    scaled_dot_product_cudnn_attention_backward,
+    scaled_dot_product_efficient_attention_backward,
+    scaled_dot_product_flash_attention_backward,
+)
 from flag_gems.ops.flip import flip
 from flag_gems.ops.floor import floor, floor_out
 from flag_gems.ops.floor_ import floor_
@@ -155,6 +164,7 @@ from flag_gems.ops.fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tens
 from flag_gems.ops.fmod_ import fmod_
 from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.fp8_mqa_logits import fp8_mqa_logits
+from flag_gems.ops.fp8_paged_mqa_logits import fp8_paged_mqa_logits
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
@@ -222,7 +232,7 @@ from flag_gems.ops.log_softmax import (
 )
 from flag_gems.ops.logaddexp import logaddexp, logaddexp_out
 from flag_gems.ops.logical_and import logical_and, logical_and_
-from flag_gems.ops.logical_not import logical_not
+from flag_gems.ops.logical_not import logical_not, logical_not_
 from flag_gems.ops.logical_or import logical_or, logical_or_
 from flag_gems.ops.logical_xor import logical_xor
 from flag_gems.ops.logical_xor_ import logical_xor_
@@ -281,6 +291,7 @@ from flag_gems.ops.normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from flag_gems.ops.not_equal import not_equal, not_equal_scalar
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
@@ -315,6 +326,7 @@ from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
+from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
 from flag_gems.ops.remainder import remainder, remainder_
@@ -386,6 +398,7 @@ from flag_gems.ops.softmax import (
 from flag_gems.ops.softplus import softplus
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
+from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
@@ -472,6 +485,7 @@ __all__ = [
     "add",
     "add_",
     "addcdiv",
+    "addcdiv_",
     "addcdiv_out",
     "addcmul",
     "addcmul_out",
@@ -523,6 +537,7 @@ __all__ = [
     "baddbmm_out",
     "batch_norm",
     "batch_norm_backward",
+    "bernoulli",
     "bernoulli_",
     "bincount",
     "bitwise_and_scalar",
@@ -599,6 +614,7 @@ __all__ = [
     "dot",
     "dropout",
     "dropout_backward",
+    "efficient_attention_backward",
     "elu",
     "elu_",
     "elu_backward",
@@ -631,6 +647,7 @@ __all__ = [
     "fill_tensor",
     "fill_tensor_",
     "fill_tensor_out",
+    "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
@@ -649,6 +666,7 @@ __all__ = [
     "fmod_tensor_",
     "fp8_matmul",
     "fp8_mqa_logits",
+    "fp8_paged_mqa_logits",
     "full",
     "full_like",
     "gather",
@@ -740,6 +758,7 @@ __all__ = [
     "logical_and",
     "logical_and_",
     "logical_not",
+    "logical_not_",
     "logical_or",
     "logical_or_",
     "logical_xor",
@@ -801,6 +820,8 @@ __all__ = [
     "nonzero",
     "nonzero_numpy",
     "normal_",
+    "not_equal",
+    "not_equal_scalar",
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
@@ -840,6 +861,7 @@ __all__ = [
     "reflection_pad1d_out",
     "reflection_pad2d",
     "reflection_pad2d_out",
+    "reflection_pad3d_backward",
     "relu",
     "relu6",
     "relu_",
@@ -874,6 +896,9 @@ __all__ = [
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "scaled_dot_product_cudnn_attention_backward",
+    "scaled_dot_product_efficient_attention_backward",
+    "scaled_dot_product_flash_attention_backward",
     "scaled_grouped_mm",
     "scaled_mm",
     "scaled_mm_out",
@@ -923,6 +948,7 @@ __all__ = [
     "softshrink_out",
     "sort",
     "sort_stable",
+    "special_chebyshev_polynomial_v",
     "special_i0e",
     "special_i0e_out",
     "special_i1",
