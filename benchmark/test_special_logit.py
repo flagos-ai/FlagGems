@@ -14,6 +14,16 @@ def test_special_logit():
     bench.run()
 
 
+@pytest.mark.special_logit
+def test_special_logit_no_eps():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="special_logit",
+        torch_op=lambda a: torch.special.logit(a, eps=None),
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.special_logit_out
 def test_special_logit_out():
     bench = base.UnaryPointwiseOutBenchmark(
