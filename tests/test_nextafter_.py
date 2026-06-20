@@ -68,8 +68,12 @@ def test_nextafter_zero_boundary(dtype):
 def test_nextafter_nan(dtype):
     """Test nextafter_ with NaN inputs: IEEE 754 requires NaN propagation."""
     # nextafter(NaN, 1.0) => NaN
-    x_nan = torch.tensor([float("nan"), 1.0, 2.0, float("nan")], dtype=dtype, device=flag_gems.device)
-    y = torch.tensor([3.0, float("nan"), 4.0, 5.0], dtype=dtype, device=flag_gems.device)
+    x_nan = torch.tensor(
+        [float("nan"), 1.0, 2.0, float("nan")], dtype=dtype, device=flag_gems.device
+    )
+    y = torch.tensor(
+        [3.0, float("nan"), 4.0, 5.0], dtype=dtype, device=flag_gems.device
+    )
 
     ref_x = utils.to_reference(x_nan).clone()
     ref_y = utils.to_reference(y)
@@ -82,9 +86,9 @@ def test_nextafter_nan(dtype):
         imp_x.nextafter_(y)
         imp_nan_mask = torch.isnan(imp_x)
 
-    assert torch.equal(ref_nan_mask, imp_nan_mask), (
-        f"NaN mask mismatch: ref_nan at {ref_nan_mask}, imp_nan at {imp_nan_mask}"
-    )
+    assert torch.equal(
+        ref_nan_mask, imp_nan_mask
+    ), f"NaN mask mismatch: ref_nan at {ref_nan_mask}, imp_nan at {imp_nan_mask}"
     # Non-NaN values should match
     non_nan_mask = ~ref_nan_mask
     if non_nan_mask.any():
@@ -95,8 +99,14 @@ def test_nextafter_nan(dtype):
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_inf(dtype):
     """Test nextafter_ with Inf inputs."""
-    x = torch.tensor([1.0, float("inf"), float("-inf"), 0.0], dtype=dtype, device=flag_gems.device)
-    y = torch.tensor([2.0, float("inf"), float("-inf"), float("inf")], dtype=dtype, device=flag_gems.device)
+    x = torch.tensor(
+        [1.0, float("inf"), float("-inf"), 0.0], dtype=dtype, device=flag_gems.device
+    )
+    y = torch.tensor(
+        [2.0, float("inf"), float("-inf"), float("inf")],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
 
     ref_x = utils.to_reference(x).clone()
     ref_y = utils.to_reference(y)
