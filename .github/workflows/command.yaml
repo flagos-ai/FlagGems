@@ -61,13 +61,25 @@ jobs:
           RUNNER_LABEL: ${{ needs.preprocess.outputs.runner }}
         run: |
           case "${RUNNER_LABEL}" in
-            h20)       VENDOR="nvidia" ;;
-            cann850)   VENDOR="ascend-cann850" ;;
-            cann9)     VENDOR="ascend-cann900" ;;
-            *)         VENDOR="${RUNNER_LABEL}" ;;
+            h20|a100)
+              VENDOR="nvidia"
+              BACKEND="nvidia"
+              ;;
+            cann850)
+              VENDOR="ascend"
+              BACKEND="ascend-cann850"
+              ;;
+            cann9)
+              VENDOR="ascend"
+              BACKEND="ascend-cann900"
+              ;;
+            *)
+              VENDOR="${RUNNER_LABEL}"
+              BACKEND="${RUNNER_LABEL}"
+              ;;
           esac
-          echo "VENDOR=${VENDOR}" >> $GITHUB_OUTPUT
           echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
+          echo "BACKEND=${BACKEND}" >> $GITHUB_ENV
 
       - uses: ./.github/actions/setup-flaggems
 
@@ -81,8 +93,8 @@ jobs:
       - id: setup-flaggems
         shell: bash
         run: |
-          ./setup.sh ${VENDOR}
-          if [ "${VENDOR}" == "nvidia" ]; then
+          ./setup.sh ${BACKEND}
+          if [ "${BACKEND}" == "nvidia" ]; then
             source .venv/bin/activate
             uv pip install vllm==0.21.0 --torch-backend=cu130
           fi
@@ -90,7 +102,7 @@ jobs:
       - id: check-gpu
         shell: bash
         run: |
-          source tools/env.sh ${VENDOR}
+          source tools/env.sh ${BACKEND}
           bash tools/gpu_check_${VENDOR}.sh
 
       - id: run-tests
@@ -99,7 +111,7 @@ jobs:
           EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
         run: |
           source .venv/bin/activate
-          source tools/env.sh ${VENDOR}
+          source tools/env.sh ${BACKEND}
           tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
             --dump-output \
             --output-dir results_new
