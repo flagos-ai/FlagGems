@@ -6979,7 +6979,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.4'
   - id: thnn_fused_lstm_cell
     description: Fused LSTM cell computation with optional input and hidden biases.
     for:
