@@ -2543,7 +2543,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.4'
   - id: floor
     description: |
       Performs an element-wise floor operation, rounding each element of a tensor
