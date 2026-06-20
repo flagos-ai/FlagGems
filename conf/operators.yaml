@@ -2934,7 +2934,7 @@ ops:
       - KernelGen
       - fused
     kind:
-      - Math
+      - Attention
     stages:
       - alpha: '5.4'
   - id: gt
