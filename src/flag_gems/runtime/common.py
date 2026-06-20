@@ -27,39 +27,6 @@ class vendors(Enum):
         return vendorDict
 
 
-UNSUPPORT_FP64 = frozenset(
-    {
-        vendors.AIPU,
-        vendors.ASCEND,
-        vendors.CAMBRICON,
-        vendors.ENFLAME,
-        vendors.ILUVATAR,
-        vendors.KUNLUNXIN,
-        vendors.MTHREADS,
-        vendors.SUNRISE,
-        vendors.SPACEMIT,
-        vendors.TSINGMICRO,
-    }
-)
-
-UNSUPPORT_BF16 = frozenset(
-    {
-        vendors.AIPU,
-        vendors.SUNRISE,
-        vendors.SPACEMIT,
-    }
-)
-
-UNSUPPORT_INT64 = frozenset(
-    {
-        vendors.AIPU,
-        vendors.ENFLAME,
-        vendors.SPACEMIT,
-        vendors.SUNRISE,
-        vendors.TSINGMICRO,
-    }
-)
-
 DEFAULT_STRATEGIES = {
     "addmm": ["align32", "align32", "align32"],
     "addmm_sqmma": ["align32", "align32", "align32"],
@@ -134,9 +101,6 @@ _VENDOR_TORCH_ATTR = {
 
 __all__ = [
     "vendors",
-    "UNSUPPORT_FP64",
-    "UNSUPPORT_BF16",
-    "UNSUPPORT_INT64",
     "DEFAULT_STRATEGIES",
     "OP_KEY_ORDERS",
     "_VENDOR_TORCH_ATTR",
