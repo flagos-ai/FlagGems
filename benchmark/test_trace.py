@@ -11,7 +11,6 @@ def _input_fn(shape, dtype, device):
     yield inp,
 
 
-@pytest.mark.skip(reason="Test case failure: issue #2663")
 @pytest.mark.trace
 def test_trace():
     if flag_gems.vendor_name == "mthreads":
