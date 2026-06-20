@@ -1,6 +1,8 @@
 # ============================================================
 # FlagGems development image for TsingMicro TSM 260604
 # ============================================================
+# History:
+# - 20260610: Initial version
 
 # ── Build arguments ────────────────────────────────────────────
 ARG BASE_IMAGE=tsingmicro-tsm:260604
@@ -28,9 +30,9 @@ ARG DEBIAN_FRONTEND=noninteractive
 # Install 'uv' to /usr/local/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 RUN uv python install ${PYTHON_VERSION} && \
-  uv venv /venv --python ${PYTHON_VERSION} --relocatable --python-preference only-managed
-ENV VIRTUAL_ENV=/venv \
-    PATH="/venv/bin:${PATH}"
+  uv venv /flagos --python ${PYTHON_VERSION} --relocatable --python-preference only-managed
+ENV VIRTUAL_ENV=/flagos \
+    PATH="/flagos/bin:${PATH}"
 
 # ── Build FlagGems ─────────────────────────────────────────────
 WORKDIR /build
@@ -91,11 +93,10 @@ RUN if [ "$USE_FLAGTREE" = "true" ]; then \
 # ── Copy uv and Python from builder ────────────────────────────
 COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
 COPY --from=builder /root/.local/share/uv /root/.local/share/uv
-COPY --from=builder /venv /venv
+COPY --from=builder /flagos /flagos
 
 # ── Copy tests and benchmarks into container if required ───────
 COPY --from=builder /app /app
-WORKDIR /app
 
 # The following environment variables are for flagtree.
 # Hopefully harmless to Triton
@@ -106,7 +107,10 @@ ENV  LLVM_BINARY_DIR=${LLVM_SYSPATH}/bin \
     LD_LIBRARY_PATH=${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}
 
 # Note: VIRTUAL_ENV and PATH are not sharable between stages
-ENV VIRTUAL_ENV=/venv \
-   PATH="/venv/bin:${PATH}"
+ENV VIRTUAL_ENV=/flagos \
+   PATH="/flagos/bin:${PATH}"
+
+# Runtime environment
+WORKDIR /app
 
 ENTRYPOINT ["bash"]
