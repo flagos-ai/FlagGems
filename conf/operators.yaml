@@ -4660,7 +4660,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.5'
+      - alpha: '5.4'
   - id: nll_loss2d_backward
     description: |
       An internal IR for supporting `torch.nn.NLLLoss2d`, which has been deprecated
