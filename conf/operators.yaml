@@ -3352,7 +3352,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.4'
   - id: ilshift
     description: Computes the in-place bitwise left shift of `self` by `other` bits.
     for:
