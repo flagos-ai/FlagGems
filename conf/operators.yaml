@@ -4634,6 +4634,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: nested_view_from_buffer_copy
+    description: |
+      Creates a nested tensor from a flat buffer using component sizes, strides,
+      and offsets, with a Metax backend specialization.
+    for:
+      - _nested_view_from_buffer_copy
+    labels:
+      - aten
+      - KernelGen
+      - Metax
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: new_full
     description: |
       Returns a Tensor of size `size` filled with `fill_value`.
