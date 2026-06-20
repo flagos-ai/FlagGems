@@ -4125,6 +4125,20 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: make_dep_token
+    description: |
+      Creates a scalar tensor as a dependency token for TorchScript tracing
+      and class-based compiler frameworks. The value of the returned tensor
+      is uninitialized and should not be consumed.
+    for:
+      - _make_dep_token
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: margin_ranking_loss
     description: Compute the margin ranking loss.
     for:
