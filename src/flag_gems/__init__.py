@@ -558,7 +558,7 @@ _FULL_CONFIG = (
     ("softshrink.out", softshrink_out),
     ("sort", sort),
     ("sort.stable", sort_stable),
-    ("special.hermite_polynomial_h", special_hermite_polynomial_h),
+    ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special_i0e", special_i0e),
     ("special_i0e.out", special_i0e_out),

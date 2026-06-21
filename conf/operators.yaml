@@ -6630,7 +6630,7 @@ ops:
     description: |
       Computes the physicist's Hermite polynomial H_n(x) of degree n at input.
     for:
-      - special.hermite_polynomial_h
+      - special_hermite_polynomial_h
     kind:
       - Math
     labels:
