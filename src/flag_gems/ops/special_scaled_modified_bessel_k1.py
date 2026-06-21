@@ -109,7 +109,7 @@ def special_scaled_modified_bessel_k1_kernel(
     # k=0: T_0 coefficient (doubled for Clenshaw halving convention)
     b2 = b1
     b1 = b0
-    b0 = 1.658032209918573e+00 + 2.0 * y_cheb * b1 - b2
+    b0 = 1.658032209918573e00 + 2.0 * y_cheb * b1 - b2
 
     # Final Chebyshev value: (b_0 - b_2) / 2
     cheb_val = (b0 - b2) / 2.0
