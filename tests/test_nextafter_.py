@@ -87,12 +87,16 @@ def test_nextafter_nan(dtype):
         imp_nan_mask = torch.isnan(imp_x)
 
     assert torch.equal(
-        ref_nan_mask, imp_nan_mask
+        ref_nan_mask.cpu(), imp_nan_mask.cpu()
     ), f"NaN mask mismatch: ref_nan at {ref_nan_mask}, imp_nan at {imp_nan_mask}"
-    # Non-NaN values should match
-    non_nan_mask = ~ref_nan_mask
+    # Non-NaN values should match; use cpu mask for cross-device compatibility
+    non_nan_mask = ~(imp_nan_mask.cpu())
     if non_nan_mask.any():
-        utils.gems_assert_close(imp_x[non_nan_mask], ref_x[non_nan_mask], dtype)
+        utils.gems_assert_close(
+            imp_x[non_nan_mask.to(imp_x.device)],
+            ref_x[non_nan_mask.to(ref_x.device)],
+            dtype,
+        )
 
 
 @pytest.mark.nextafter_
@@ -176,15 +180,15 @@ def test_nextafter_scalar_x(dtype):
     # When x is a scalar Python float, nextafter_ falls back to numpy.nextafter
     # and returns a tensor (consistent with torch op signature)
     scalar_x = 0.5
-    y = torch.randn(16, dtype=dtype, device=flag_gems.device)
+    y = torch.full((16,), 1.0, dtype=dtype, device=flag_gems.device)
 
-    ref_x = torch.full_like(y, scalar_x)
-    ref_x.nextafter_(y)
+    ref_y = utils.to_reference(y)
+    ref_x = torch.full_like(ref_y, scalar_x)
+    ref_x.nextafter_(ref_y)
 
     # Our implementation: scalar x + tensor y -> kernel returns new tensor,
     # but nextafter_ should be in-place.  Test the kernel path.
     with flag_gems.use_gems():
-        # Use x as a zero-dimensional tensor to test scalar-tensor path
         imp_x = torch.tensor(scalar_x, dtype=dtype, device=flag_gems.device)
         imp_x = imp_x.expand_as(y).contiguous().clone()
         imp_x.nextafter_(y)
