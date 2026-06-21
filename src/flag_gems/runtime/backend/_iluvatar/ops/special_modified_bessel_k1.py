@@ -13,6 +13,15 @@ logger = logging.getLogger(__name__)
 def special_modified_bessel_k1_kernel(
     x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr
 ):
+    # Modified Bessel function of the second kind, order 1: K_1(x)
+    # Implementation using series + asymptotic with linear blend.
+    # Series: accurate for x < 0.5
+    # Asymptotic: accurate for x > 1.5
+    # Linear blend in between.
+
+    gamma = 0.577215664901532860606512090082402431042159335
+    sqrt_pi_over_2 = 1.2533141373155002512078826424055  # sqrt(pi/2)
+
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -20,52 +29,57 @@ def special_modified_bessel_k1_kernel(
 
     x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
     x_f32 = x.to(tl.float32)
-    ax = tl.abs(x_f32)
 
-    # For x = 0, K1 diverges, return 0 (or large value)
-    # Small region: |x| <= 3.75
-    # Polynomial approximation from Cephes
-    y = x_f32 / 3.75
-    y2 = y * y
+    # Handle non-positive values
+    is_non_positive = x_f32 <= 0.0
+    x_safe = tl.where(x_f32 <= 0.0, 0.1, x_f32)
 
-    # Polynomial for small |x|
-    p = 0.00032411
-    p = 0.00301532 + y2 * p
-    p = 0.02658733 + y2 * p
-    p = 0.15084934 + y2 * p
-    p = 0.51498869 + y2 * p
-    p = 0.87890594 + y2 * p
-    p = 0.5 + y2 * p
+    # Compute log(x/2) and related terms
+    log_half = tl.log(x_safe / 2.0)
+    ln_term = log_half + gamma
 
-    # Small x: K1(x) ~ 1/x for very small x
-    # Using the polynomial approximation
-    ans_small = x_f32 * p
+    # Series expansion for very small x (x < 0.5)
+    x2 = x_safe * x_safe
+    x4 = x2 * x2
+    x6 = x4 * x2
+    x8 = x4 * x4
+    x10 = x8 * x2
 
-    # Large region: |x| > 3.75
-    # Use asymptotic expansion: K1(x) ~ sqrt(pi/(2x)) * exp(-x) * poly(1/x)
-    t = 3.75 / tl.maximum(ax, 1e-20)
-    q = -0.00420059
-    q = 0.01787654 + t * q
-    q = -0.02895312 + t * q
-    q = 0.02282967 + t * q
-    q = -0.01031555 + t * q
-    q = 0.00163801 + t * q
-    q = -0.00362018 + t * q
-    q = -0.03988024 + t * q
-    q = 0.39894228 + t * q
+    term1 = 1.0 / x_safe
+    term2 = x_safe / 2.0 * (ln_term - 0.5)
+    term3 = x2 * x_safe / 16.0 * (ln_term - 5.0 / 6.0)
+    term4 = x4 * x_safe / 128.0 * (ln_term - 23.0 / 24.0)
+    term5 = x6 * x_safe / 2304.0 * (ln_term - 235.0 / 276.0)
+    term6 = x8 * x_safe / 41472.0 * (ln_term - 1469.0 / 1560.0)
+    term7 = x10 * x_safe / 74304.0 * (ln_term - 7519.0 / 7080.0)
 
-    # Prefactor: sqrt(pi/(2x)) * exp(-x)
-    pref = tl.exp(-ax) / tl.sqrt(tl.maximum(ax, 1e-20) * 1.5707963267948966)
-    ans_large = pref * q
+    series_result = term1 + term2 + term3 + term4 + term5 + term6 + term7
 
-    is_small = ax <= 3.75
-    ans = tl.where(is_small, ans_small, ans_large)
+    # Asymptotic expansion for larger x (x > 1.5)
+    x_inv = 1.0 / x_safe
+    x_inv2 = x_inv * x_inv
+    x_inv3 = x_inv2 * x_inv
 
-    # Handle x = 0: K1(0) = inf
-    ans = tl.where(ax < 1e-30, float("inf"), ans)
+    asymp_correction = (
+        1.0 + 3.0 / 8.0 * x_inv - 15.0 / 128.0 * x_inv2 + 105.0 / 1024.0 * x_inv3
+    )
+    asymp_result = sqrt_pi_over_2 / tl.sqrt(x_safe) * tl.exp(-x_safe) * asymp_correction
+
+    # Linear blend from series to asymptotic
+    # At x <= 0.5: blend = 1.0 (series only)
+    # At x >= 1.5: blend = 0.0 (asymptotic only)
+    # Between 0.5 and 1.5: linear interpolation
+    blend = tl.where(
+        x_safe <= 0.5, 1.0, tl.where(x_safe >= 1.5, 0.0, 1.0 - (x_safe - 0.5) / 1.0)
+    )
+
+    result = series_result * blend + asymp_result * (1.0 - blend)
+
+    # Handle non-positive values
+    result = tl.where(is_non_positive, float("nan"), result)
 
     # Cast back to input dtype and store
-    tl.store(out_ptr + offsets, ans.to(x.dtype), mask=mask)
+    tl.store(out_ptr + offsets, result.to(x.dtype), mask=mask)
 
 
 def _launch_special_modified_bessel_k1(x: torch.Tensor, out: torch.Tensor):
