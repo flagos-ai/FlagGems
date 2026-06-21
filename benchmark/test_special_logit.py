@@ -38,7 +38,7 @@ def test_special_logit_out():
 def test_special_logit_():
     bench = base.UnaryPointwiseBenchmark(
         op_name="special_logit_",
-        torch_op=lambda a: a.copy_(torch.special.logit(a, eps=1e-6)),
+        torch_op=lambda a: torch.special.logit(a, out=a, eps=1e-6),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
