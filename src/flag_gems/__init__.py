@@ -18,7 +18,7 @@ from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
-__version__ = "5.0.2"
+__version__ = "5.4.0dev"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 backend_info = runtime.device
@@ -37,14 +37,18 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    ("__ilshift__.Tensor", __ilshift__),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__or__.Scalar", bitwise_or_scalar),
     ("__or__.Tensor", bitwise_or_tensor),
+    ("_adaptive_avg_pool2d", adaptive_avg_pool2d),
     ("_assert_async", _assert_async),
     ("_cdist_backward", _cdist_backward),
     ("_conv_depthwise2d", _conv_depthwise2d),
+    ("_efficient_attention_backward", efficient_attention_backward),
     ("_euclidean_dist", _euclidean_dist),
+    ("_flash_attention_backward", flash_attention_backward),
     ("_flash_attention_forward", flash_attention_forward),
     (
         "_functional_sym_constrain_range_for_size",
@@ -59,6 +63,19 @@ _FULL_CONFIG = (
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
     ("_resize_output", _resize_output),
     ("_safe_softmax", _safe_softmax),
+    (
+        "_scaled_dot_product_cudnn_attention_backward",
+        scaled_dot_product_cudnn_attention_backward,
+    ),
+    (
+        "_scaled_dot_product_efficient_attention_backward",
+        scaled_dot_product_efficient_attention_backward,
+    ),
+    (
+        "_scaled_dot_product_flash_attention_backward",
+        scaled_dot_product_flash_attention_backward,
+    ),
+    ("_scaled_grouped_mm", scaled_grouped_mm, lambda: torch_ge("2.8")),
     ("_scaled_mm", scaled_mm, lambda: torch_ge("2.5")),
     ("_scaled_mm.out", scaled_mm_out, lambda: torch_ge("2.5")),
     ("_segment_reduce_backward", _segment_reduce_backward),
@@ -88,6 +105,7 @@ _FULL_CONFIG = (
     ("add_rms_norm", add_rms_norm),
     ("addcdiv", addcdiv),
     ("addcdiv.out", addcdiv_out),
+    ("addcdiv_", addcdiv_),
     ("addcmul", addcmul),
     ("addcmul.out", addcmul_out),
     ("addmm", addmm),
@@ -134,6 +152,7 @@ _FULL_CONFIG = (
     ("avg_pool3d", avg_pool3d),
     ("avg_pool3d_backward", avg_pool3d_backward),
     ("baddbmm", baddbmm),
+    ("bernoulli", bernoulli),
     ("bernoulli_.float", bernoulli_),
     ("bincount", bincount),
     ("bitwise_and.Scalar", bitwise_and_scalar),
@@ -206,6 +225,7 @@ _FULL_CONFIG = (
     ("cumprod_", cumprod_),
     ("cumsum", cumsum),
     ("cumsum.out", cumsum_out),
+    ("deg2rad", deg2rad),
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
@@ -259,6 +279,7 @@ _FULL_CONFIG = (
     ("fill.Tensor_out", fill_tensor_out),
     ("fill_.Scalar", fill_scalar_),
     ("fill_.Tensor", fill_tensor_),
+    ("fix", fix),
     ("flip", flip),
     ("floor", floor),
     ("floor.out", floor_out),
@@ -285,6 +306,8 @@ _FULL_CONFIG = (
     ("gelu", gelu),
     ("gelu_", gelu_),
     ("gelu_backward", gelu_backward),
+    ("geometric.float", geometric),
+    ("geometric_.float", geometric_),
     ("glu", glu),
     ("glu_backward", glu_backward),
     ("greater.Scalar", greater_scalar),
@@ -333,6 +356,7 @@ _FULL_CONFIG = (
     ("lerp_.Tensor", lerp_tensor_),
     ("lift_fresh_copy", lift_fresh_copy),
     ("linalg_vector_norm", vector_norm),
+    ("linear", linear),
     ("linspace", linspace),
     ("log", log),
     ("log1p", log1p),
@@ -348,6 +372,7 @@ _FULL_CONFIG = (
     ("logical_and", logical_and),
     ("logical_and_", logical_and_),
     ("logical_not", logical_not),
+    ("logical_not_", logical_not_),
     ("logical_or", logical_or),
     ("logical_or_", logical_or_),
     ("logical_xor", logical_xor),
@@ -408,7 +433,8 @@ _FULL_CONFIG = (
     ("ne.Tensor", ne),
     ("neg", neg),
     ("neg_", neg_),
-    ("new_full.Tensor", new_full),
+    ("negative", negative),
+    ("new_full", new_full),
     ("nll_loss2d_backward", nll_loss2d_backward),
     ("nll_loss2d_forward", nll_loss2d_forward),
     ("nll_loss_backward", nll_loss_backward),
@@ -422,6 +448,8 @@ _FULL_CONFIG = (
     ("normal.float_Tensor", normal_float_tensor),
     ("normal_", normal_),
     ("normed_cumsum", normed_cumsum),
+    ("not_equal.Scalar", not_equal_scalar),
+    ("not_equal.Tensor", not_equal),
     ("one_hot", one_hot),
     ("ones", ones),
     ("ones_like", ones_like),
@@ -456,6 +484,7 @@ _FULL_CONFIG = (
     ("reflection_pad1d_backward", reflection_pad1d_backward),
     ("reflection_pad2d", reflection_pad2d),
     ("reflection_pad2d.out", reflection_pad2d_out),
+    ("reflection_pad3d_backward", reflection_pad3d_backward),
     ("relu", relu),
     ("relu6", relu6),
     ("relu_", relu_),
@@ -530,6 +559,7 @@ _FULL_CONFIG = (
     ("softshrink.out", softshrink_out),
     ("sort", sort),
     ("sort.stable", sort_stable),
+    ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special_i0e", special_i0e),
     ("special_i0e.out", special_i0e_out),
     ("special_i1", special_i1),
@@ -574,6 +604,7 @@ _FULL_CONFIG = (
     ("trunc", trunc),
     ("trunc_", trunc_),
     ("unfold_backward", unfold_backward),
+    ("unfold_copy", unfold_copy),
     ("uniform_", uniform_),
     ("unique_consecutive", unique_consecutive),
     ("unique_dim", unique_dim),

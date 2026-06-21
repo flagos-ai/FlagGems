@@ -3,10 +3,15 @@ import torch
 
 import flag_gems
 
+from . import conftest as cfg
 from .accuracy_utils import gems_assert_close, to_reference
 
-HISTC_SHAPES = [(64,), (1024,), (4096,), (100, 100), (32, 64, 16)]
-HISTC_BINS = [10, 50, 100]
+if cfg.QUICK_MODE:
+    HISTC_SHAPES = [(64,), (100, 100)]
+    HISTC_BINS = [10]
+else:
+    HISTC_SHAPES = [(64,), (1024,), (4096,), (100, 100), (32, 64, 16)]
+    HISTC_BINS = [10, 50, 100]
 HISTC_DTYPES = [torch.float32]
 
 

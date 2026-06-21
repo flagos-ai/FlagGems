@@ -59,6 +59,19 @@ ops:
       - Quantization
     stages:
       - beta: '5.3'
+  - id: adaptive_avg_pool2d
+    description: |
+      Apply a 2D adaptive average pooling over an input signal composed of several input planes.
+    for:
+      - _adaptive_avg_pool2d
+    labels:
+      - aten
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.3'
   - id: adaptive_avg_pool3d
     description: |
       Apply a 3D adaptive average pooling over an input signal composed of several input planes.
@@ -138,6 +151,20 @@ ops:
       - LinearAlg
     stages:
       - stable: '4.0'
+  - id: addcdiv_
+    description: |
+      The in-place version of `addcdiv()`. Performs the element-wise division of
+      `tensor1` by `tensor2`, multiplies the result by the scalar `value` and adds
+      it to `input`, storing the result in `input`.
+    for:
+      - addcdiv_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: addcdiv_out
     description: |
       A variant of `addcdiv()` that assigns the output to the given `out` parameter..
@@ -165,6 +192,19 @@ ops:
       - LinearAlg
     stages:
       - stable: '4.0'
+  - id: addcmul_
+    description: |
+      The in-place version of `addcmul()`.
+    for:
+      - addcmul_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: addcmul_out
     description: |
       A variant of `addcmul` that allows the output to be assigned to `out`.
@@ -772,6 +812,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: bernoulli
+    description: |
+      Draws binary random numbers (0 or 1) from a Bernoulli distribution with per-element probabilities.
+    for:
+      - bernoulli
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: bernoulli_
     description: Draws binary random numbers (0 or 1) from a Bernoulli distribution.
     for:
@@ -1668,6 +1720,17 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.0'
+  - id: deg2rad
+    description: "deg2rad operator"
+    for:
+      - deg2rad
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dequantize_and_gather_k_cache
     description: |
       Dequantizes FP8 K-cache entries and gathers them into a BF16 tensor for DeepSeekV4 attention.
@@ -1746,7 +1809,6 @@ ops:
       - diff
     labels:
       - aten
-      - KernelGen
     kind:
       - Math
     stages:
@@ -1997,6 +2059,18 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: efficient_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _efficient_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
   - id: einsum
     description: |
       Sums the product of the elements of the input `operands` along dimensions specified using a notation
@@ -2364,6 +2438,29 @@ ops:
       - Tensor
     stages:
       - stable: '5.0'
+  - id: fix
+    description: "fix operator"
+    for:
+      - fix
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: flash_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _flash_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
   - id: flash_attention_forward
     for:
       - _flash_attention_forward
@@ -2604,6 +2701,21 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: fp8_fp4_mqa_logits
+    description: |
+      Compute weighted MQA logits with FP8 quantized Q and K tensors.
+      Uses head-batched tiled dot products with K reuse for high throughput
+      on DeepSeek V4 sparse attention indexer workloads.
+    for:
+      - vllm.utils.deep_gemm.fp8_fp4_mqa_logits
+    labels:
+      - fused
+      - vLLM
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: fp8_mqa_logits
     description: |
       For each token in the given E4M3 tensor, iterate all tokens from two other given tensors,
@@ -2693,6 +2805,21 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: fused_indexer_q_rope_quant
+    description: |
+      Applies RoPE to sparse indexer Q, quantizes it to FP8 or MXFP4, and folds
+      indexer weights for DeepSeekV4 attention.
+    for:
+      - vllm.v1.attention.ops.deepseek_v4_ops.fused_indexer_q_rope_quant
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
   - id: fused_moe
     description: The generic interface for fused MoE.
     for:
@@ -2859,6 +2986,26 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: geometric
+    description: Draws random numbers from a geometric distribution.
+    for:
+      - geometric.float
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
+  - id: geometric_
+    description: Fills self tensor with elements drawn from the geometric distribution.
+    for:
+      - geometric_.float
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
   - id: get_paged_mqa_logits_metadata
     description: Build scheduling metadata for paged MQA logits.
     for:
@@ -3195,6 +3342,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: ilshift
+    description: Computes the in-place bitwise left shift of `self` by `other` bits.
+    for:
+      - __ilshift__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: index
     description: |
       Extract, access or modify specific elements, slices, or subsets of data within a tensor.
@@ -3605,6 +3763,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linear
+    description: |
+      Applies a linear transformation to the incoming data: y = x @ W^T + b.
+    for:
+      - linear
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: linspace
     description: |
       Creates a one-dimensional tensor of size `steps` whose values are evenly spaced from `start` to `end`, inclusive.
@@ -3810,6 +3980,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: logical_not_
+    description: In-place version of logical_not. Computes the element-wise logical NOT.
+    for:
+      - logical_not_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: logical_or
     description: Computes the element-wise logical OR of the given input tensors.
     for:
@@ -4292,98 +4473,6 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
-  - id: normal_
-    description: Random sampling operator (normal_).
-    for:
-      - normal_
-    labels:
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.3'
-  - id: renorm
-    description: >
-      Returns a tensor where each sub-tensor along the given dimension
-      is normalized such that the p-norm is lower than a max norm value.
-    for:
-      - renorm
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.3'
-  - id: renorm_
-    description: The in-place version of `renorm()`.
-    for:
-      - renorm_
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.3'
-  - id: reflection_pad1d_backward
-    description: Computes the gradient of reflection_pad1d with respect to the input tensor.
-    for:
-      - reflection_pad1d_backward
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.3'
-  - id: resize_output
-    description: |
-      Resizes tensor output storage and copies overlapping elements.
-    for:
-      - _resize_output
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.3'
-  - id: rot90
-    description: Triton kernel implementation for rot90.
-    for:
-      - rot90
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.3'
-  - id: smooth_l1_loss
-    description: Compute the smooth L1 loss between input and target tensors.
-    for:
-      - smooth_l1_loss
-    labels:
-      - aten
-      - pointwise
-      - nn.functional
-    kind:
-      - NeuralNetwork
-    stages:
-      - alpha: '5.3'
-  - id: smooth_l1_loss_backward
-    description: Compute the gradient of smooth L1 loss with respect to the input tensor.
-    for:
-      - smooth_l1_loss_backward
-    labels:
-      - aten
-      - pointwise
-      - nn.functional
-    kind:
-      - NeuralNetwork
-    stages:
-      - alpha: '5.3'
   - id: mul
     description: Multiplies `input` by `other`.
     for:
@@ -4534,6 +4623,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: negative
+    description: "negative operator"
+    for:
+      - negative
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: new_full
     description: |
       Returns a Tensor of size `size` filled with `fill_value`.
@@ -4649,6 +4749,16 @@ ops:
       - Tensor
     stages:
       - alpha: '5.3'
+  - id: normal_
+    description: Random sampling operator (normal_).
+    for:
+      - normal_
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.3'
   - id: normal_float_float_
     description: |
       Returns a tensor of random numbers drawn from separate normal distributions
@@ -4719,6 +4829,32 @@ ops:
       - Reduction
     stages:
       - stable: '2.1'
+  - id: not_equal
+    description: |
+      Computes the element-wise logical NOT EQUAL of the given input tensors.
+    for:
+      - not_equal.Tensor
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Logic
+    stages:
+      - alpha: '5.4'
+  - id: not_equal_scalar
+    description: |
+      Computes the element-wise logical NOT EQUAL comparing a tensor to a scalar.
+    for:
+      - not_equal.Scalar
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Logic
+    stages:
+      - alpha: '5.4'
   - id: one_hot
     description: |
       Takes LongTensor with index values of shape `(*)` and returns a tensor of shape `(*, num_classes)`
@@ -5091,6 +5227,16 @@ ops:
       - Distribution
     stages:
       - stable: '2.1'
+  - id: random_
+    description: Random sampling operator (random_).
+    for:
+      - random_
+    labels:
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: randperm
     description: Returns a random permutation of integers from `0` to `n - 1`.
     for:
@@ -5191,6 +5337,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: reflection_pad3d_backward
+    description: Computes the gradient of reflection_pad3d with respect to the input tensor.
+    for:
+      - reflection_pad3d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: reglu
     description: |
       Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead of the sigmoid function for gating.
@@ -5441,6 +5598,18 @@ ops:
     stages:
       - stable: '3.0'
     cpp: '4.0'
+  - id: resize_output
+    description: |
+      Resizes tensor output storage and copies overlapping elements.
+    for:
+      - _resize_output
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: resolve_conj
     description: |
       Returns a new tensor with materialized conjugation if `input`'s conjugate bit is set to True,
@@ -5668,6 +5837,54 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: scaled_dot_product_cudnn_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _scaled_dot_product_cudnn_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
+  - id: scaled_dot_product_efficient_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _scaled_dot_product_efficient_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
+  - id: scaled_dot_product_flash_attention_backward
+    description: |
+      Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
+    for:
+      - _scaled_dot_product_flash_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
+  - id: scaled_grouped_mm
+    description: |
+      Performs grouped matrix multiplication with row-wise and column-wise scaling,
+      commonly used by quantized Mixture-of-Experts (MoE) workloads.
+    for:
+      - _scaled_grouped_mm
+    labels:
+      - MoE
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
   - id: scaled_mm
     description: |
       Performs a scaled matrix multiplication. The result of `self @ mat2` is
@@ -6346,6 +6563,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_chebyshev_polynomial_v
+    description: |
+      Triton kernel implementation for special_chebyshev_polynomial_v.
+    for:
+      - special_chebyshev_polynomial_v
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
@@ -6927,6 +7156,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: unfold_copy
+    description: >
+      Returns a view of the original tensor which contains all slices of size from self tensor in the specified dimension with given step between two slices.
+
+    for:
+      - unfold_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: uniform_
     description: Fills `self` tensor with numbers sampled from the continuous uniform distribution.
     for:
