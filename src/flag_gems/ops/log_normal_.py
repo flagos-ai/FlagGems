@@ -73,6 +73,3 @@ def log_normal_(self, mean=1.0, std=2.0, *, generator=None):
         shape, device, dtype, mean, std, generator=generator, out=self
     )
     return self
-
-
-__all__ = ["log_normal_"]
