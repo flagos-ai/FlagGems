@@ -23,8 +23,8 @@ def logit_kernel(x, eps):
     return log(x_clamped / (1.0 - x_clamped))
 
 
-def logit(input: torch.Tensor, eps=None):
-    logger.debug("GEMS_ILUVATAR LOGIT")
+def special_logit(input: torch.Tensor, eps=None):
+    logger.debug("GEMS_ILUVATAR SPECIAL_LOGIT")
     if eps is None:
         eps = 0.0
     else:
@@ -35,7 +35,7 @@ def logit(input: torch.Tensor, eps=None):
     if not isinstance(input, torch.Tensor):
         raise TypeError("input must be a torch.Tensor")
     if not input.is_floating_point():
-        raise TypeError("logit expected a floating point tensor as input")
+        raise TypeError("special_logit expected a floating point tensor as input")
 
     if eps > 0.0:
         return logit_kernel(input, eps)

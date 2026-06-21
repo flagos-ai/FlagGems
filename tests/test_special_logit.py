@@ -104,7 +104,7 @@ def test_special_logit_nan_input(dtype):
     ref_nan_mask = torch.isnan(ref_out)
     res_nan_mask = torch.isnan(res_out)
     assert torch.equal(
-        ref_nan_mask, res_nan_mask
+        ref_nan_mask.cpu(), res_nan_mask.cpu()
     ), f"NaN mask mismatch: ref_nan at {ref_nan_mask}, res_nan at {res_nan_mask}"
 
 
@@ -123,7 +123,7 @@ def test_special_logit_inf_input(dtype):
     ref_nan_mask = torch.isnan(ref_out)
     res_nan_mask = torch.isnan(res_out)
     assert torch.equal(
-        ref_nan_mask, res_nan_mask
+        ref_nan_mask.cpu(), res_nan_mask.cpu()
     ), f"NaN mask mismatch: ref_nan at {ref_nan_mask}, res_nan at {res_nan_mask}"
 
 
