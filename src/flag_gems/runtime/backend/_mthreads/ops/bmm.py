@@ -4,13 +4,12 @@ import os
 import torch
 import triton
 import triton.language as tl
+from triton.tools.tensor_descriptor import TensorDescriptor
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
-
-from .utils import create_tma_device_descriptor, get_cached_tma_device_descriptor
 
 logger = logging.getLogger(
     f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
@@ -167,31 +166,9 @@ def bmm_fma(A, B):
 
 
 def bmm_sqmma_descriptor_pre_hook(nargs):
-    a = nargs["A"]
-    b = nargs["B"]
-    c = nargs["C"]
-    batch = nargs["batch"]
-    M = nargs["M"]
-    N = nargs["N"]
-    K = nargs["K"]
-    block_m = nargs["BLOCK_SIZE_M"]
-    block_n = nargs["BLOCK_SIZE_N"]
-    block_k = nargs["BLOCK_SIZE_K"]
-    device = c.device
-
-    nargs["a_desc_ptr"].copy_(
-        get_cached_tma_device_descriptor(
-            a.reshape(batch * M, K), block_m, block_k, device
-        )
-    )
-    nargs["b_desc_ptr"].copy_(
-        get_cached_tma_device_descriptor(
-            b.reshape(batch * K, N), block_k, block_n, device
-        )
-    )
-    nargs["c_desc_ptr"].copy_(
-        create_tma_device_descriptor(c.reshape(batch * M, N), block_m, block_n, device)
-    )
+    nargs["a_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_K"]]
+    nargs["b_desc"].block_shape = [nargs["BLOCK_SIZE_K"], nargs["BLOCK_SIZE_N"]]
+    nargs["c_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_N"]]
 
 
 @libentry()
@@ -221,12 +198,9 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
 )
 @triton.jit
 def bmm_sqmma_kernel(
-    A,
-    B,
-    C,
-    a_desc_ptr,
-    b_desc_ptr,
-    c_desc_ptr,
+    a_desc,
+    b_desc,
+    c_desc,
     batch,
     M,
     N,
@@ -234,60 +208,40 @@ def bmm_sqmma_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
-    ab_type: tl.constexpr,
-    d_type: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     batch_index = tl.program_id(axis=1)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
     pid_m = pid % num_pid_m
     pid_n = pid // num_pid_m
-    offs_am = pid_m * BLOCK_SIZE_M + batch_index * M
-    offs_bn = pid_n * BLOCK_SIZE_N
+    offs_am = (pid_m * BLOCK_SIZE_M + batch_index * M).to(tl.int32)
+    offs_bn = (pid_n * BLOCK_SIZE_N).to(tl.int32)
     offs_ak = 0
-    offs_bk = batch_index * K
-    tme_load_type = ab_type
+    offs_ak = offs_ak.to(tl.int32)
+    offs_bk = (batch_index * K).to(tl.int32)
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl._experimental_descriptor_load(
-            a_desc_ptr, [offs_am, offs_ak], [BLOCK_SIZE_M, BLOCK_SIZE_K], tme_load_type
-        )
-        b = tl._experimental_descriptor_load(
-            b_desc_ptr, [offs_bk, offs_bn], [BLOCK_SIZE_K, BLOCK_SIZE_N], tme_load_type
-        )
+        a = tl.load_tensor_descriptor(a_desc, [offs_am, offs_ak])
+        b = tl.load_tensor_descriptor(b_desc, [offs_bk, offs_bn])
         accumulator = tl.dot(a, b, acc=accumulator)
         offs_ak += BLOCK_SIZE_K
         offs_bk += BLOCK_SIZE_K
-    accumulator = accumulator.to(d_type)
-    tl._experimental_descriptor_store(c_desc_ptr, accumulator, [offs_am, offs_bn])
-
-
-def get_triton_type(elem_type):
-    type_map = {
-        torch.float16: tl.float16,
-        torch.bfloat16: tl.bfloat16,
-        torch.float8_e4m3fn: tl.float8e4nv,
-    }
-    return type_map.get(elem_type, None)
+    tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], accumulator.to(c_desc.dtype))
 
 
 def bmm_sqmma(A, B, elem_type, batch, M, N, K):
     device = "musa"
-    ab_type = elem_type
     c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
     C = torch.empty((batch, M, N), dtype=torch.float16, device=device).to(c_type)
-    desc_a = torch.empty((64,), dtype=torch.int8, device=device)
-    desc_b = torch.empty((64,), dtype=torch.int8, device=device)
-    desc_c = torch.empty((64,), dtype=torch.int8, device=device)
+    desc_a = TensorDescriptor.from_tensor(A.reshape(batch * M, K), [1, 1])
+    desc_b = TensorDescriptor.from_tensor(B.reshape(batch * K, N), [1, 1])
+    desc_c = TensorDescriptor.from_tensor(C.reshape(batch * M, N), [1, 1])
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
         batch,
         1,
     )
     bmm_sqmma_kernel[grid](
-        A,
-        B,
-        C,
         desc_a,
         desc_b,
         desc_c,
@@ -295,30 +249,15 @@ def bmm_sqmma(A, B, elem_type, batch, M, N, K):
         M,
         N,
         K,
-        ab_type=get_triton_type(ab_type),
-        d_type=get_triton_type(c_type),
     )
     return C
 
 
 def bmm(a, b):
     a_dtype = a.dtype
-    b_dtype = b.dtype
     batch, M, K = a.shape
     _, _, N = b.shape
-    need_sqmma = a_dtype != torch.float32 and b_dtype != torch.float32
-    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
-    if need_sqmma:
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+    if is_sqmma_compatible(a, b, N, K) and M >= 128:
+        return bmm_sqmma(a, b, a_dtype, batch, M, N, K)
     else:
-        os.environ.pop("MUSA_ENABLE_SQMMA", None)
-    try:
-        if is_sqmma_compatible(a, b, N, K):
-            return bmm_sqmma(a, b, a_dtype, batch, M, N, K)
-        else:
-            return bmm_fma(a, b)
-    finally:
-        if prev_sqmma is None:
-            os.environ.pop("MUSA_ENABLE_SQMMA", None)
-        else:
-            os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+        return bmm_fma(a, b)

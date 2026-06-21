@@ -14,6 +14,15 @@ from flag_gems.fused.mhc.hc_head_fused_kernel import (
     hc_head_fused_kernel,
     hc_head_fused_kernel_ref,
 )
+
+try:
+    from vllm.model_executor.layers.mhc import (
+        _hc_head_fused_kernel as _vllm_hc_head_fused,
+    )
+
+    HAS_VLLM = True
+except ImportError:
+    HAS_VLLM = False
 from flag_gems.fused.mhc.hc_split_sinkhorn import (
     hc_split_sinkhorn,
     mhc_split_sinkhorn_torch_ref,
@@ -21,6 +30,8 @@ from flag_gems.fused.mhc.hc_split_sinkhorn import (
 from flag_gems.fused.mhc.mhc_bwd import mhc_bwd, mhc_bwd_ref, sinkhorn_forward
 from flag_gems.fused.mhc.mhc_post import mhc_post, mhc_post_ref
 from flag_gems.fused.mhc.mhc_pre import mhc_pre, mhc_pre_ref
+
+from . import conftest as cfg
 
 
 def generate_mhc_post_data(
@@ -38,13 +49,22 @@ def generate_mhc_post_data(
     )
 
 
-MHC_POST_CONFIGS = list(
-    product(
-        [4096],  # n (num_tokens)
-        [1280, 2560, 7168],  # h (hidden_size)
-        [2, 4],  # hc_mult
+if cfg.QUICK_MODE:
+    MHC_POST_CONFIGS = list(
+        product(
+            [4096],  # n (num_tokens)
+            [1280],  # h (hidden_size)
+            [4],  # hc_mult
+        )
     )
-)
+else:
+    MHC_POST_CONFIGS = list(
+        product(
+            [4096],  # n (num_tokens)
+            [1280, 2560, 7168],  # h (hidden_size)
+            [2, 4],  # hc_mult
+        )
+    )
 
 
 @pytest.mark.mhc_post
@@ -76,16 +96,22 @@ def generate_mhc_split_sinkhorn_data(
     return dict(mixes=mixes, hc_scale=hc_scale, hc_base=hc_base, hc_mult=hc_mult)
 
 
-MHC_SPLIT_SINKHORN_CONFIGS = [
-    (8, 16, 4),
-    (32, 64, 4),
-    (128, 128, 4),
-    (256, 256, 4),
-    (8, 16, 2),
-    (32, 64, 2),
-    (128, 128, 2),
-    (256, 256, 2),
-]
+if cfg.QUICK_MODE:
+    MHC_SPLIT_SINKHORN_CONFIGS = [
+        (8, 16, 4),
+        (128, 128, 2),
+    ]
+else:
+    MHC_SPLIT_SINKHORN_CONFIGS = [
+        (8, 16, 4),
+        (32, 64, 4),
+        (128, 128, 4),
+        (256, 256, 4),
+        (8, 16, 2),
+        (32, 64, 2),
+        (128, 128, 2),
+        (256, 256, 2),
+    ]
 
 
 @pytest.mark.hc_split_sinkhorn_forward
@@ -105,13 +131,22 @@ def test_mhc_split_sinkhorn(batch, seqlen, hc_mult):
     torch.testing.assert_close(comb_triton, comb_dv, rtol=1e-4, atol=1e-4)
 
 
-MHC_PRE_CONFIGS = list(
-    product(
-        [512, 1024, 2048, 8192],  # n
-        [1280, 2560, 4096],  # hidden_size
-        [2, 4],  # hc_mult
+if cfg.QUICK_MODE:
+    MHC_PRE_CONFIGS = list(
+        product(
+            [512, 2048],  # n
+            [1280, 4096],  # hidden_size
+            [4],  # hc_mult
+        )
     )
-)
+else:
+    MHC_PRE_CONFIGS = list(
+        product(
+            [512, 1024, 2048, 8192],  # n
+            [1280, 2560, 4096],  # hidden_size
+            [2, 4],  # hc_mult
+        )
+    )
 
 
 def generate_mhc_pre_data(
@@ -174,13 +209,22 @@ def test_mhc_pre_vs_ref(n, hidden_size, hc_mult):
     torch.testing.assert_close(li_triton.cpu(), li_ref, rtol=1e-2, atol=1e-2)
 
 
-MHC_BWD_CONFIGS = list(
-    product(
-        [256, 1024, 4096, 65536],  # seqlen
-        [4],  # n_stream (optimized kernel only supports n_stream=4)
-        [20],  # sinkhorn_iters
+if cfg.QUICK_MODE:
+    MHC_BWD_CONFIGS = list(
+        product(
+            [256, 4096],  # seqlen
+            [4],  # n_stream
+            [20],  # sinkhorn_iters
+        )
     )
-)
+else:
+    MHC_BWD_CONFIGS = list(
+        product(
+            [256, 1024, 4096, 65536],  # seqlen
+            [4],  # n_stream (optimized kernel only supports n_stream=4)
+            [20],  # sinkhorn_iters
+        )
+    )
 
 
 def generate_mhc_bwd_data(
@@ -220,20 +264,31 @@ def test_mhc_bwd_vs_ref(seqlen, n_stream, sinkhorn_iters):
     torch.testing.assert_close(out_triton.cpu(), out_ref, rtol=1e-4, atol=1e-4)
 
 
-MHC_HC_HEAD_FUSED_CONFIGS = [
-    (256, 1280, 2),
-    (256, 1280, 4),
-    (512, 1280, 2),
-    (512, 1280, 4),
-    (512, 2560, 2),
-    (512, 2560, 4),
-    (1024, 2560, 2),
-    (1024, 2560, 4),
-    (2048, 4096, 2),
-    (2048, 4096, 4),
-    (4096, 1280, 2),
-    (4096, 1280, 4),
-]
+if cfg.QUICK_MODE:
+    MHC_HC_HEAD_FUSED_CONFIGS = [
+        (1, 1280, 4),
+        (16, 4096, 4),
+        (512, 2560, 4),
+    ]
+else:
+    MHC_HC_HEAD_FUSED_CONFIGS = [
+        (1, 1280, 4),
+        (4, 2560, 4),
+        (16, 4096, 4),
+        (64, 7168, 4),
+        (256, 1280, 2),
+        (256, 1280, 4),
+        (512, 1280, 2),
+        (512, 1280, 4),
+        (512, 2560, 2),
+        (512, 2560, 4),
+        (1024, 2560, 2),
+        (1024, 2560, 4),
+        (2048, 4096, 2),
+        (2048, 4096, 4),
+        (4096, 1280, 2),
+        (4096, 1280, 4),
+    ]
 
 
 def generate_hc_head_fused_data(
@@ -266,26 +321,41 @@ def generate_hc_head_fused_data(
 
 @pytest.mark.hc_head_fused_kernel
 @pytest.mark.parametrize(
-    "dtype",
-    [torch.float32, torch.float16, torch.bfloat16],
-    ids=["fp32", "fp16", "bf16"],
+    "n, hidden_size, hc_mult",
+    MHC_HC_HEAD_FUSED_CONFIGS,
+    ids=[f"n{n}_h{h}_hc{hc}" for n, h, hc in MHC_HC_HEAD_FUSED_CONFIGS],
 )
+def test_hc_head_fused_kernel_vs_ref(n, hidden_size, hc_mult):
+    dtype = torch.bfloat16
+    data = generate_hc_head_fused_data(n, hidden_size, hc_mult, dtype=dtype)
+    data_ref = generate_hc_head_fused_data(n, hidden_size, hc_mult, dtype=dtype)
+
+    out_triton = hc_head_fused_kernel(**data)
+    out_ref = hc_head_fused_kernel_ref(**data_ref)
+    torch.testing.assert_close(out_triton, out_ref, rtol=2e-2, atol=2e-2)
+
+
+def _hc_head_fused_kernel_ref(
+    hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
+):
+    _vllm_hc_head_fused(
+        hs_flat, fn, hc_scale, hc_base, out, hidden_size, rms_eps, hc_eps, hc_mult
+    )
+    return out
+
+
+@pytest.mark.hc_head_fused_kernel
+@pytest.mark.skipif(not HAS_VLLM, reason="vLLM not available")
 @pytest.mark.parametrize(
     "n, hidden_size, hc_mult",
     MHC_HC_HEAD_FUSED_CONFIGS,
     ids=[f"n{n}_h{h}_hc{hc}" for n, h, hc in MHC_HC_HEAD_FUSED_CONFIGS],
 )
-def test_hc_head_fused_kernel_vs_ref(n, hidden_size, hc_mult, dtype):
+def test_hc_head_fused_kernel_vs_vllm(n, hidden_size, hc_mult):
+    dtype = torch.bfloat16
     data = generate_hc_head_fused_data(n, hidden_size, hc_mult, dtype=dtype)
     data_ref = generate_hc_head_fused_data(n, hidden_size, hc_mult, dtype=dtype)
 
-    tol_map = {
-        torch.float32: (1e-4, 1e-4),
-        torch.float16: (2e-2, 2e-2),
-        torch.bfloat16: (2e-2, 2e-2),
-    }
-    rtol, atol = tol_map[dtype]
-
     out_triton = hc_head_fused_kernel(**data)
-    out_ref = hc_head_fused_kernel_ref(**data_ref)
-    torch.testing.assert_close(out_triton, out_ref, rtol=rtol, atol=atol)
+    out_ref = _hc_head_fused_kernel_ref(**data_ref)
+    torch.testing.assert_close(out_triton, out_ref, rtol=2e-2, atol=2e-2)

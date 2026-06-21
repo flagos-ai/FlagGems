@@ -58,3 +58,27 @@ def test_mm_self_transpose_benchmark():
     )
 
     bench.run()
+
+
+def mm_out_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
+    inp1 = torch.randn([m, k], dtype=cur_dtype, device=device)
+    if b_column_major:
+        inp2 = torch.randn([n, k], dtype=cur_dtype, device=device)
+        out = torch.empty([m, n], dtype=cur_dtype, device=device)
+        yield inp1, inp2.t(), {"out": out}
+    else:
+        inp2 = torch.randn([k, n], dtype=cur_dtype, device=device)
+        out = torch.empty([m, n], dtype=cur_dtype, device=device)
+        yield inp1, inp2, {"out": out}
+
+
+@pytest.mark.mm_out
+def test_mm_out():
+    bench = base.BlasBenchmark(
+        op_name="mm_out",
+        input_fn=mm_out_input_fn,
+        torch_op=torch.mm,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+
+    bench.run()

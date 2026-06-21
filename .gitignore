@@ -9,6 +9,7 @@ bin-release/
 __pycache__/
 .vscode/
 .DS_Store
+.claude/
 
 # Python venv directory
 .venv
@@ -33,3 +34,6 @@ tests/*.json
 *.air
 *.ipa
 *.apk
+
+# Generated benchmark data (lives in gh-pages only)
+docs/benchmark/

@@ -167,7 +167,7 @@ def add_base_sum_abc_kernel(
 
 def scan_then_fan_col(inp, out, n_ele, dtype):
     # TODO(all): tune on target board
-    BLOCK_SIZE = 16384
+    BLOCK_SIZE = 8192
     if n_ele <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(n_ele)
     part_num = math.ceil(n_ele / BLOCK_SIZE)
@@ -208,10 +208,6 @@ def scan_then_fan(inp, out, A, B, C, dtype):
 
 def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
-    if dtype == torch.int64:
-        dtype = torch.int32
 
     shape = inp.shape
     dim = dim % inp.ndim

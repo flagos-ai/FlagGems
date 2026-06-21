@@ -9,7 +9,7 @@ from flag_gems.utils import tl_extra_shim
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 try:
-    _isfinited = tl_extra_shim.isfinited
+    # _isfinited = tl_extra_shim.isfinited
     _finitef = tl_extra_shim.finitef
 except Exception:
     pass
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "ALWAYS_BOOL")])
 @triton.jit
 def isfinite_func(x):
-    return _isfinited(x) if x.dtype.is_fp64() else _finitef(x.to(tl.float32))
+    return _finitef(x.to(tl.float32))
 
 
 def isfinite(
