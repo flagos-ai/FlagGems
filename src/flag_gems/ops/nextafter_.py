@@ -30,11 +30,9 @@ def _unwrap_if_constexpr(o):
 
 
 @tl.constexpr
-def _get_int_dtype(num_bits):
+def _needs_upcast(num_bits):
     num_bits = _unwrap_if_constexpr(num_bits)
-    # Triton CUDA does not support int16; floor to 32-bit for fp16/bf16.
-    num_bits = max(num_bits, 32)
-    return tl.core.get_int_dtype(num_bits, True)
+    return num_bits < 32
 
 
 @tl.constexpr
@@ -46,32 +44,42 @@ def _get_sign_bit_mask(num_bits):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def nextafter_kernel(x, y):
-    # IEEE 754: if either input is NaN, return NaN
     if (x != x) | (y != y):
         return float("nan")
 
-    # nextafter(x, y) returns y if x == y
-    # Otherwise, returns the next representable value from x toward y
     num_bits: tl.constexpr = x.dtype.primitive_bitwidth
-    int_dtype = _get_int_dtype(num_bits)
-    sign_bit_mask: tl.constexpr = _get_sign_bit_mask(num_bits)
-
-    x_int = x.to(int_dtype, bitcast=True)
-    toward_pos_inf = y > x
-    is_neg = x_int < 0
-    step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
-    result_int = x_int + step
-
-    # Handle zero boundary: +0.0 and -0.0 cross the gulf in int space
-    # +0.0 (int 0) toward -inf => -0.0 (int representation with only sign bit set)
-    # -0.0 toward +inf => min pos subnormal (int 1)
-    result_int = tl.where((x_int == 0) & ~toward_pos_inf, -sign_bit_mask, result_int)
-    result_int = tl.where((x_int == -sign_bit_mask) & toward_pos_inf, 1, result_int)
-
-    result = result_int.to(x.dtype, bitcast=True)
-
-    # Special case: if x == y, return y
-    result = tl.where(x == y, y, result)
+    if _needs_upcast(num_bits):
+        # For fp16/bf16: upcast to fp32 so int32 bitcast roundtrip works.
+        # Triton CUDA does not support int16, so float→int16→float bitcast fails.
+        x_f32 = x.to(tl.float32)
+        y_f32 = y.to(tl.float32)
+        x_int = x_f32.to(tl.int32, bitcast=True)
+        sign_bit_mask: tl.constexpr = _get_sign_bit_mask(32)
+        toward_pos_inf = y_f32 > x_f32
+        is_neg = x_int < 0
+        step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
+        result_int = x_int + step
+        result_int = tl.where(
+            (x_int == 0) & ~toward_pos_inf, -sign_bit_mask, result_int
+        )
+        result_int = tl.where((x_int == -sign_bit_mask) & toward_pos_inf, 1, result_int)
+        result_f32 = result_int.to(tl.float32, bitcast=True)
+        result = result_f32.to(x.dtype)
+        result = tl.where(x_f32 == y_f32, y_f32, result)
+    else:
+        int_dtype = tl.core.get_int_dtype(num_bits, True)
+        sign_bit_mask: tl.constexpr = _get_sign_bit_mask(num_bits)
+        x_int = x.to(int_dtype, bitcast=True)
+        toward_pos_inf = y > x
+        is_neg = x_int < 0
+        step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
+        result_int = x_int + step
+        result_int = tl.where(
+            (x_int == 0) & ~toward_pos_inf, -sign_bit_mask, result_int
+        )
+        result_int = tl.where((x_int == -sign_bit_mask) & toward_pos_inf, 1, result_int)
+        result = result_int.to(x.dtype, bitcast=True)
+        result = tl.where(x == y, y, result)
 
     return result
 
@@ -79,52 +87,82 @@ def nextafter_kernel(x, y):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def nextafter_kernel_tensor_scalar(x, y):
-    # IEEE 754: if either input is NaN, return NaN
     if (x != x) | (y != y):
         return float("nan")
 
     num_bits: tl.constexpr = x.dtype.primitive_bitwidth
-    int_dtype = _get_int_dtype(num_bits)
-    sign_bit_mask: tl.constexpr = _get_sign_bit_mask(num_bits)
+    if _needs_upcast(num_bits):
+        x_f32 = x.to(tl.float32)
+        y_f32 = y.to(tl.float32)
+        x_int = x_f32.to(tl.int32, bitcast=True)
+        sign_bit_mask: tl.constexpr = _get_sign_bit_mask(32)
+        toward_pos_inf = y_f32 > x_f32
+        is_neg = x_int < 0
+        step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
+        result_int = x_int + step
+        result_int = tl.where(
+            (x_int == 0) & ~toward_pos_inf, -sign_bit_mask, result_int
+        )
+        result_int = tl.where((x_int == -sign_bit_mask) & toward_pos_inf, 1, result_int)
+        result_f32 = result_int.to(tl.float32, bitcast=True)
+        result = result_f32.to(x.dtype)
+        result = tl.where(x_f32 == y_f32, y_f32, result)
+    else:
+        int_dtype = tl.core.get_int_dtype(num_bits, True)
+        sign_bit_mask: tl.constexpr = _get_sign_bit_mask(num_bits)
+        x_int = x.to(int_dtype, bitcast=True)
+        toward_pos_inf = y > x
+        is_neg = x_int < 0
+        step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
+        result_int = x_int + step
+        result_int = tl.where(
+            (x_int == 0) & ~toward_pos_inf, -sign_bit_mask, result_int
+        )
+        result_int = tl.where((x_int == -sign_bit_mask) & toward_pos_inf, 1, result_int)
+        result = result_int.to(x.dtype, bitcast=True)
+        result = tl.where(x == y, y, result)
 
-    x_int = x.to(int_dtype, bitcast=True)
-    toward_pos_inf = y > x
-    is_neg = x_int < 0
-    step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
-    result_int = x_int + step
-
-    # Handle zero boundary
-    result_int = tl.where((x_int == 0) & ~toward_pos_inf, -sign_bit_mask, result_int)
-    result_int = tl.where((x_int == -sign_bit_mask) & toward_pos_inf, 1, result_int)
-
-    result = result_int.to(x.dtype, bitcast=True)
-    result = tl.where(x == y, y, result)
     return result
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def nextafter_kernel_scalar_tensor(x, y):
-    # IEEE 754: if either input is NaN, return NaN
     if (x != x) | (y != y):
         return float("nan")
 
     num_bits: tl.constexpr = y.dtype.primitive_bitwidth
-    int_dtype = _get_int_dtype(num_bits)
-    sign_bit_mask: tl.constexpr = _get_sign_bit_mask(num_bits)
+    if _needs_upcast(num_bits):
+        x_f32 = x.to(tl.float32)
+        y_f32 = y.to(tl.float32)
+        x_int = x_f32.to(tl.int32, bitcast=True)
+        sign_bit_mask: tl.constexpr = _get_sign_bit_mask(32)
+        toward_pos_inf = y_f32 > x_f32
+        is_neg = x_int < 0
+        step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
+        result_int = x_int + step
+        result_int = tl.where(
+            (x_int == 0) & ~toward_pos_inf, -sign_bit_mask, result_int
+        )
+        result_int = tl.where((x_int == -sign_bit_mask) & toward_pos_inf, 1, result_int)
+        result_f32 = result_int.to(tl.float32, bitcast=True)
+        result = result_f32.to(y.dtype)
+        result = tl.where(x_f32 == y_f32, y_f32, result)
+    else:
+        int_dtype = tl.core.get_int_dtype(num_bits, True)
+        sign_bit_mask: tl.constexpr = _get_sign_bit_mask(num_bits)
+        x_int = x.to(int_dtype, bitcast=True)
+        toward_pos_inf = y > x
+        is_neg = x_int < 0
+        step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
+        result_int = x_int + step
+        result_int = tl.where(
+            (x_int == 0) & ~toward_pos_inf, -sign_bit_mask, result_int
+        )
+        result_int = tl.where((x_int == -sign_bit_mask) & toward_pos_inf, 1, result_int)
+        result = result_int.to(y.dtype, bitcast=True)
+        result = tl.where(x == y, y, result)
 
-    x_int = x.to(int_dtype, bitcast=True)
-    toward_pos_inf = y > x
-    is_neg = x_int < 0
-    step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
-    result_int = x_int + step
-
-    # Handle zero boundary
-    result_int = tl.where((x_int == 0) & ~toward_pos_inf, -sign_bit_mask, result_int)
-    result_int = tl.where((x_int == -sign_bit_mask) & toward_pos_inf, 1, result_int)
-
-    result = result_int.to(y.dtype, bitcast=True)
-    result = tl.where(x == y, y, result)
     return result
 
 
