@@ -53,6 +53,30 @@ def test_baddbmm(monkeypatch, M, N, K, scalar, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.baddbmm_out
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("scalar", SCALARS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_baddbmm_out(M, N, K, scalar, dtype):
+    batch = 4
+    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+    out = torch.empty((batch, M, N), dtype=dtype, device=flag_gems.device)
+    ref_mat1 = to_reference(mat1, True)
+    ref_mat2 = to_reference(mat2, True)
+    ref_bias = to_reference(bias, True)
+    ref_out = to_reference(out, True)
+
+    alpha = beta = scalar
+
+    torch.baddbmm(ref_bias, ref_mat1, ref_mat2, alpha=alpha, beta=beta, out=ref_out)
+    with flag_gems.use_gems():
+        torch.baddbmm(bias, mat1, mat2, alpha=alpha, beta=beta, out=out)
+
+    gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
 @pytest.mark.baddbmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
