@@ -1,4 +1,15 @@
 ops:
+  - id: If
+    description: Triton kernel implementation for If.
+    for:
+      - If
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: abs
     description: |
       Computes the absolute value of each element in `input`.
