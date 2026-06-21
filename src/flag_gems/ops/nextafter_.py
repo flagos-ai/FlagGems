@@ -44,15 +44,13 @@ def _get_sign_bit_mask(num_bits):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def nextafter_kernel(x, y):
-    if (x != x) | (y != y):
-        return float("nan")
-
     num_bits: tl.constexpr = x.dtype.primitive_bitwidth
     if _needs_upcast(num_bits):
         # For fp16/bf16: upcast to fp32 so int32 bitcast roundtrip works.
         # Triton CUDA does not support int16, so float→int16→float bitcast fails.
         x_f32 = x.to(tl.float32)
         y_f32 = y.to(tl.float32)
+        is_nan = (x_f32 != x_f32) | (y_f32 != y_f32)
         x_int = x_f32.to(tl.int32, bitcast=True)
         sign_bit_mask: tl.constexpr = _get_sign_bit_mask(32)
         toward_pos_inf = y_f32 > x_f32
@@ -66,7 +64,9 @@ def nextafter_kernel(x, y):
         result_f32 = result_int.to(tl.float32, bitcast=True)
         result = result_f32.to(x.dtype)
         result = tl.where(x_f32 == y_f32, y_f32, result)
+        result = tl.where(is_nan, float("nan"), result)
     else:
+        is_nan = (x != x) | (y != y)
         int_dtype = tl.core.get_int_dtype(num_bits, True)
         sign_bit_mask: tl.constexpr = _get_sign_bit_mask(num_bits)
         x_int = x.to(int_dtype, bitcast=True)
@@ -80,6 +80,7 @@ def nextafter_kernel(x, y):
         result_int = tl.where((x_int == -sign_bit_mask) & toward_pos_inf, 1, result_int)
         result = result_int.to(x.dtype, bitcast=True)
         result = tl.where(x == y, y, result)
+        result = tl.where(is_nan, float("nan"), result)
 
     return result
 
@@ -87,13 +88,11 @@ def nextafter_kernel(x, y):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def nextafter_kernel_tensor_scalar(x, y):
-    if (x != x) | (y != y):
-        return float("nan")
-
     num_bits: tl.constexpr = x.dtype.primitive_bitwidth
     if _needs_upcast(num_bits):
         x_f32 = x.to(tl.float32)
         y_f32 = y.to(tl.float32)
+        is_nan = (x_f32 != x_f32) | (y_f32 != y_f32)
         x_int = x_f32.to(tl.int32, bitcast=True)
         sign_bit_mask: tl.constexpr = _get_sign_bit_mask(32)
         toward_pos_inf = y_f32 > x_f32
@@ -107,7 +106,9 @@ def nextafter_kernel_tensor_scalar(x, y):
         result_f32 = result_int.to(tl.float32, bitcast=True)
         result = result_f32.to(x.dtype)
         result = tl.where(x_f32 == y_f32, y_f32, result)
+        result = tl.where(is_nan, float("nan"), result)
     else:
+        is_nan = (x != x) | (y != y)
         int_dtype = tl.core.get_int_dtype(num_bits, True)
         sign_bit_mask: tl.constexpr = _get_sign_bit_mask(num_bits)
         x_int = x.to(int_dtype, bitcast=True)
@@ -121,6 +122,7 @@ def nextafter_kernel_tensor_scalar(x, y):
         result_int = tl.where((x_int == -sign_bit_mask) & toward_pos_inf, 1, result_int)
         result = result_int.to(x.dtype, bitcast=True)
         result = tl.where(x == y, y, result)
+        result = tl.where(is_nan, float("nan"), result)
 
     return result
 
@@ -128,13 +130,11 @@ def nextafter_kernel_tensor_scalar(x, y):
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def nextafter_kernel_scalar_tensor(x, y):
-    if (x != x) | (y != y):
-        return float("nan")
-
     num_bits: tl.constexpr = y.dtype.primitive_bitwidth
     if _needs_upcast(num_bits):
         x_f32 = x.to(tl.float32)
         y_f32 = y.to(tl.float32)
+        is_nan = (x_f32 != x_f32) | (y_f32 != y_f32)
         x_int = x_f32.to(tl.int32, bitcast=True)
         sign_bit_mask: tl.constexpr = _get_sign_bit_mask(32)
         toward_pos_inf = y_f32 > x_f32
@@ -148,7 +148,9 @@ def nextafter_kernel_scalar_tensor(x, y):
         result_f32 = result_int.to(tl.float32, bitcast=True)
         result = result_f32.to(y.dtype)
         result = tl.where(x_f32 == y_f32, y_f32, result)
+        result = tl.where(is_nan, float("nan"), result)
     else:
+        is_nan = (x != x) | (y != y)
         int_dtype = tl.core.get_int_dtype(num_bits, True)
         sign_bit_mask: tl.constexpr = _get_sign_bit_mask(num_bits)
         x_int = x.to(int_dtype, bitcast=True)
@@ -162,6 +164,7 @@ def nextafter_kernel_scalar_tensor(x, y):
         result_int = tl.where((x_int == -sign_bit_mask) & toward_pos_inf, 1, result_int)
         result = result_int.to(y.dtype, bitcast=True)
         result = tl.where(x == y, y, result)
+        result = tl.where(is_nan, float("nan"), result)
 
     return result
 

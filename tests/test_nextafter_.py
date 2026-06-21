@@ -155,12 +155,13 @@ def test_nextafter_finfo_extremes():
 @pytest.mark.nextafter_
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_scalar_y(dtype):
-    """Test nextafter_ with tensor x and scalar y."""
+    """Test nextafter_ with tensor x and 0-dim tensor y (tests tensor-scalar kernel path)."""
     x = torch.randn(16, dtype=dtype, device=flag_gems.device)
-    scalar_y = 0.5
+    scalar_y = torch.tensor(0.5, dtype=dtype, device=flag_gems.device)
 
     ref_x = utils.to_reference(x).clone()
-    ref_x.nextafter_(scalar_y)
+    ref_y = utils.to_reference(scalar_y)
+    ref_x.nextafter_(ref_y)
 
     with flag_gems.use_gems():
         imp_x = x.clone()
@@ -194,12 +195,13 @@ def test_nextafter_scalar_x(dtype):
 @pytest.mark.nextafter_
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_scalar_nan_y(dtype):
-    """Test nextafter_ with tensor x and NaN scalar y."""
+    """Test nextafter_ with tensor x and NaN 0-dim tensor y."""
     x = torch.ones(8, dtype=dtype, device=flag_gems.device)
-    scalar_y = float("nan")
+    scalar_y = torch.tensor(float("nan"), dtype=dtype, device=flag_gems.device)
 
     ref_x = utils.to_reference(x).clone()
-    ref_x.nextafter_(scalar_y)
+    ref_y = utils.to_reference(scalar_y)
+    ref_x.nextafter_(ref_y)
     # PyTorch: nextafter(any, NaN) = NaN
     assert torch.isnan(ref_x).all(), "Reference should be all NaN"
 
@@ -212,12 +214,13 @@ def test_nextafter_scalar_nan_y(dtype):
 @pytest.mark.nextafter_
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_scalar_inf_y(dtype):
-    """Test nextafter_ with tensor x and Inf scalar y."""
+    """Test nextafter_ with tensor x and Inf 0-dim tensor y."""
     x = torch.ones(8, dtype=dtype, device=flag_gems.device)
-    scalar_y = float("inf")
+    scalar_y = torch.tensor(float("inf"), dtype=dtype, device=flag_gems.device)
 
     ref_x = utils.to_reference(x).clone()
-    ref_x.nextafter_(scalar_y)
+    ref_y = utils.to_reference(scalar_y)
+    ref_x.nextafter_(ref_y)
 
     with flag_gems.use_gems():
         imp_x = x.clone()
