@@ -86,8 +86,6 @@ jobs:
       - uses: ./.github/actions/checkout-retry
       - name: setup-gh
         uses: actions4gh/setup-gh@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
       - id: checkout-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
