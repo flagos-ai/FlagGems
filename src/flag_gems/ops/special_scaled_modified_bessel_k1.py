@@ -154,8 +154,8 @@ def special_scaled_modified_bessel_k1_kernel(
 
     # Handle singularity at x=0 -> infinity
     result = tl.where(is_zero, float("inf"), result)
-    # Handle negative inputs: return inf (matching scipy behavior)
-    result = tl.where(is_negative, float("inf"), result)
+    # Handle negative inputs: return nan (matching PyTorch behavior)
+    result = tl.where(is_negative, float("nan"), result)
 
     # Cast back to input dtype and store
     tl.store(out_ptr + offsets, result.to(x.dtype), mask=mask)

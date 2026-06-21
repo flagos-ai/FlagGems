@@ -53,8 +53,8 @@ def test_special_scaled_modified_bessel_k1_edge_cases(dtype):
         5.0,  # large
         10.0,  # larger
         100.0,  # very large
-        -0.1,  # negative -> inf
-        -1.0,  # negative -> inf
+        -0.1,  # negative -> nan
+        -1.0,  # negative -> nan
     ]
     inp = torch.tensor(edge_vals, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
