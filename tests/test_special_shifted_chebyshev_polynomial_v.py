@@ -1,0 +1,44 @@
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+
+
+@pytest.mark.special_shifted_chebyshev_polynomial_v
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+# special.* ops only support float32; fp16/bf16 not implemented in PyTorch
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_special_shifted_chebyshev_polynomial_v(shape, dtype):
+    # x: float tensor (input value)
+    # n: int tensor (degree of polynomial)
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    n = torch.randint(0, 10, shape, device="cpu").to(torch.int32)
+
+    ref_x = utils.to_reference(x, True)
+    ref_n = n.to(ref_x.device)
+
+    ref_out = torch.special.shifted_chebyshev_polynomial_v(ref_x, ref_n)
+    with flag_gems.use_gems():
+        res_out = torch.special.shifted_chebyshev_polynomial_v(x, n.to(x.device))
+
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
+
+
+@pytest.mark.special_shifted_chebyshev_polynomial_v
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+# special.* ops only support float32; fp16/bf16 not implemented in PyTorch
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_special_shifted_chebyshev_polynomial_v_scalar_n(shape, dtype):
+    # Test with scalar n
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    n = 3  # scalar degree
+
+    ref_x = utils.to_reference(x, True)
+
+    ref_out = torch.special.shifted_chebyshev_polynomial_v(ref_x, n)
+    with flag_gems.use_gems():
+        res_out = torch.special.shifted_chebyshev_polynomial_v(x, n)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)

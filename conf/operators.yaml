@@ -6575,6 +6575,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_shifted_chebyshev_polynomial_v
+    description: |
+      Computes the shifted Chebyshev polynomial of the third kind V_n^*(x).
+    for:
+      - special.shifted_chebyshev_polynomial_v
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
