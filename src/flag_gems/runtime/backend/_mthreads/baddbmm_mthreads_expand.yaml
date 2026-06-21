@@ -1,10 +1,9 @@
-addmm_sqmma:
-  - config:
-    param_map:
+baddbmm:
+  - param_map:
       META:
-        BLOCK_SIZE_M: block_m
-        BLOCK_SIZE_N: block_n
-        BLOCK_SIZE_K: block_k
+        TILE_M: block_m
+        TILE_N: block_n
+        TILE_K: block_k
       num_stages: stages
       num_warps: warps
     block_m:
@@ -18,10 +17,10 @@ addmm_sqmma:
       - 64
       - 128
     block_k:
+      - 16
       - 32
       - 64
       - 128
-      - 256
     stages:
       - 1
       - 2
@@ -31,6 +30,6 @@ addmm_sqmma:
       - 4
       - 8
   - strategy:
-     M: default
-     N: default
-     K: default
+      M: default
+      N: default
+      K: default
