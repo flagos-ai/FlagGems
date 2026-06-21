@@ -4461,6 +4461,15 @@ ops:
       - MoE
     stages:
       - stable: '4.2'
+  - id: max_unpool3d
+    description: >
+      Computes a partial inverse of max_pool3d. MaxPool3d stores the indices of the maximal
+      values. max_unpool3d takes these indices and scatters the input values to an output tensor
+      of a given size.
+    for:
+      - max_unpool3d
+    labels:
+      - aten
   - id: mse_loss
     description: Compute the element-wise mean squared error, with optional weighting.
     for:
