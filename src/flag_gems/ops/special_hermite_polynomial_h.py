@@ -147,6 +147,23 @@ def special_hermite_polynomial_h(x, n):
     logger.debug("GEMS SPECIAL_HERMITE_POLYNOMIAL_H")
     if x.dtype not in (torch.float32, torch.float64):
         raise ValueError(f"Unsupported dtype {x.dtype}")
+
+    # Validate n is in supported range [0, 9]
+    if isinstance(n, torch.Tensor):
+        n_int = n.to(torch.int32)
+        n_min = n_int.min().item()
+        n_max = n_int.max().item()
+        if n_min < 0 or n_max > 9:
+            raise ValueError(
+                f"special_hermite_polynomial_h only supports n in [0, 9], "
+                f"got n in [{n_min}, {n_max}]"
+            )
+    elif isinstance(n, (int, float)):
+        if int(n) < 0 or int(n) > 9:
+            raise ValueError(
+                f"special_hermite_polynomial_h only supports n in [0, 9], got n={n}"
+            )
+
     if isinstance(x, torch.Tensor) and isinstance(n, torch.Tensor):
         return hermite_polynomial_h_func(x, n)
     elif isinstance(x, torch.Tensor):
