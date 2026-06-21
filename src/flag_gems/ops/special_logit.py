@@ -43,7 +43,7 @@ def special_logit_kernel(
     if HAS_EPS:
         lo = eps
         hi = 1.0 - eps
-        x_f32 = tl.minimum(tl.maximum(x_f32, lo), hi)
+        x_f32 = tl.where(x_f32 != x_f32, x_f32, tl.minimum(tl.maximum(x_f32, lo), hi))
 
     y = tl.log(x_f32 / (1.0 - x_f32))
     tl.store(y_ptr + offsets, y.to(x.dtype), mask=mask)
@@ -67,7 +67,7 @@ def special_logit_inplace_kernel(
     if HAS_EPS:
         lo = eps
         hi = 1.0 - eps
-        x_f32 = tl.minimum(tl.maximum(x_f32, lo), hi)
+        x_f32 = tl.where(x_f32 != x_f32, x_f32, tl.minimum(tl.maximum(x_f32, lo), hi))
 
     y = tl.log(x_f32 / (1.0 - x_f32))
     tl.store(x_ptr + offsets, y.to(x.dtype), mask=mask)

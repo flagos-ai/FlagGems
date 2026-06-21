@@ -18,7 +18,7 @@ def logit_kernel(x, eps):
     # clamp x to [eps, 1-eps]
     lo = eps
     hi = 1.0 - eps
-    x_clamped = tl.minimum(tl.maximum(x, lo), hi)
+    x_clamped = tl.where(x != x, x, tl.minimum(tl.maximum(x, lo), hi))
     # logit = log(x / (1 - x))
     return log(x_clamped / (1.0 - x_clamped))
 

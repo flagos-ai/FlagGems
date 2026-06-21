@@ -26,7 +26,7 @@ def logit_kernel(
     if HAS_EPS:
         lo = eps
         hi = 1.0 - eps
-        x_f32 = tl.minimum(tl.maximum(x_f32, lo), hi)
+        x_f32 = tl.where(x_f32 != x_f32, x_f32, tl.minimum(tl.maximum(x_f32, lo), hi))
 
     y = tl.log(x_f32 / (1.0 - x_f32))
     tl.store(y_ptr + offsets, y.to(OUT_DTYPE), mask=mask)
