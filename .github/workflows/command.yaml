@@ -85,7 +85,9 @@ jobs:
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
       - name: setup-gh
-        uses: actions4gh/setup-gh@v1
+        uses: sersoft-gmbh/setup-gh-cli-action@v3
+        with:
+          version: stable
       - id: checkout-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
