@@ -85,9 +85,23 @@ jobs:
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
       - name: setup-gh
-        uses: sersoft-gmbh/setup-gh-cli-action@v3
-        with:
-          version: stable
+        shell: bash
+        env:
+          GH_VERSION: "2.95.0"
+        run: |
+          GH_DIR="${HOME}/.local/bin"
+          if command -v gh &>/dev/null; then
+            echo "gh already available: $(gh --version | head -1)"
+          elif [ -x "${GH_DIR}/gh" ]; then
+            echo "gh found at ${GH_DIR}: $("${GH_DIR}/gh" --version | head -1)"
+            echo "${GH_DIR}" >> $GITHUB_PATH
+          else
+            mkdir -p "${GH_DIR}"
+            curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
+              | tar -xz --strip-components=2 -C "${GH_DIR}" "gh_${GH_VERSION}_linux_amd64/bin/gh"
+            echo "Installed gh ${GH_VERSION} to ${GH_DIR}"
+            echo "${GH_DIR}" >> $GITHUB_PATH
+          fi
       - id: checkout-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
