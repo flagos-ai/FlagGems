@@ -29,14 +29,11 @@ def special_scaled_modified_bessel_k1_kernel(
     is_zero = ax < 1e-30
     is_negative = x_f32 < zero
 
-    # Pre-compute shared values
-    x_sq = x_f32 * x_f32
-
     # ================================================================
     # Small region: 0 < x <= 2.0
-    # Use Cephes Chebyshev approximation for K1(x), then multiply by exp(x).
     # scaled_K1(x) = exp(x) * K1(x)
-    # K1(x) = log(x/2) * I1(x) + chbevl(x^2 - 2, A, 11) / x
+    # K1(x) = log(x/2) * I1(x) + P(x) / x
+    # P(x) evaluated via Chebyshev series in w = x - 1 (degree 10, 11 terms).
     # ================================================================
 
     # --- Step 1: Compute I1(x) via Cephes polynomial (valid for x <= 3.75) ---
@@ -51,70 +48,71 @@ def special_scaled_modified_bessel_k1_kernel(
     p_i1 = 0.5 + y2_i1 * p_i1
     i1_val = x_f32 * p_i1
 
-    # --- Step 2: Chebyshev series evaluation for k1_A at y = x^2 - 2 ---
-    # Coefficients from Cephes k1_A (11 terms, indexed 0..10)
-    # Clenshaw recurrence: b_k = a_k + 2*y*b_{k+1} - b_{k+2}
-    y_cheb = x_sq - 2.0
-    b_prev2 = 0.0  # b_{k+2}
-    b_prev1 = 0.0  # b_{k+1}
+    # --- Step 2: Chebyshev series for P(x) at w = x - 1 ---
+    # Clenshaw recurrence (3-state, correct update order):
+    #   b_2 = b_1; b_1 = b_0; b_0 = c_k + 2*y*b_1 - b_2
+    # Result: (b_0 - b_2) / 2
+    y_cheb = x_f32 - 1.0
+    b0 = 0.0
+    b1 = 0.0
 
-    # k=10: b_10 = a_10
-    b_curr = 1.52530022733894777053
-    b_prev2 = b_prev1
-    b_prev1 = b_curr
+    # k=10: T_10 coefficient
+    b2 = b1
+    b1 = b0
+    b0 = -3.662620162661560e-09 + 2.0 * y_cheb * b1 - b2
 
-    # k=9: b_9 = a_9 + 2*y*b_10 - b_11
-    b_curr = -0.353155960776544875667 + 2.0 * y_cheb * b_prev1 - b_prev2
-    b_prev2 = b_prev1
-    b_prev1 = b_curr
+    # k=9: T_9 coefficient
+    b2 = b1
+    b1 = b0
+    b0 = -5.350617072358099e-08 + 2.0 * y_cheb * b1 - b2
 
-    # k=8
-    b_curr = -0.122611180822657148235 + 2.0 * y_cheb * b_prev1 - b_prev2
-    b_prev2 = b_prev1
-    b_prev1 = b_curr
+    # k=8: T_8 coefficient
+    b2 = b1
+    b1 = b0
+    b0 = -1.045185163440483e-06 + 2.0 * y_cheb * b1 - b2
 
-    # k=7
-    b_curr = -0.00697572385963986435018 + 2.0 * y_cheb * b_prev1 - b_prev2
-    b_prev2 = b_prev1
-    b_prev1 = b_curr
+    # k=7: T_7 coefficient
+    b2 = b1
+    b1 = b0
+    b0 = -1.201112421320492e-05 + 2.0 * y_cheb * b1 - b2
 
-    # k=6
-    b_curr = -0.000173028895751305206302 + 2.0 * y_cheb * b_prev1 - b_prev2
-    b_prev2 = b_prev1
-    b_prev1 = b_curr
+    # k=6: T_6 coefficient
+    b2 = b1
+    b1 = b0
+    b0 = -1.699042469646379e-04 + 2.0 * y_cheb * b1 - b2
 
-    # k=5
-    b_curr = -0.00000243340614156596823496 + 2.0 * y_cheb * b_prev1 - b_prev2
-    b_prev2 = b_prev1
-    b_prev1 = b_curr
+    # k=5: T_5 coefficient
+    b2 = b1
+    b1 = b0
+    b0 = -1.426485944971723e-03 + 2.0 * y_cheb * b1 - b2
 
-    # k=4
-    b_curr = -0.0000000221338763073472585583 + 2.0 * y_cheb * b_prev1 - b_prev2
-    b_prev2 = b_prev1
-    b_prev1 = b_curr
+    # k=4: T_4 coefficient
+    b2 = b1
+    b1 = b0
+    b0 = -1.225928401715418e-02 + 2.0 * y_cheb * b1 - b2
 
-    # k=3
-    b_curr = -0.000000000141148839263352776110 + 2.0 * y_cheb * b_prev1 - b_prev2
-    b_prev2 = b_prev1
-    b_prev1 = b_curr
+    # k=3: T_3 coefficient
+    b2 = b1
+    b1 = b0
+    b0 = -6.428271235627786e-02 + 2.0 * y_cheb * b1 - b2
 
-    # k=2
-    b_curr = -0.000000000000666690169419932900609 + 2.0 * y_cheb * b_prev1 - b_prev2
-    b_prev2 = b_prev1
-    b_prev1 = b_curr
+    # k=2: T_2 coefficient
+    b2 = b1
+    b1 = b0
+    b0 = -1.767199860308625e-01 + 2.0 * y_cheb * b1 - b2
 
-    # k=1
-    b_curr = -0.00000000000000242744985051936593393 + 2.0 * y_cheb * b_prev1 - b_prev2
-    b_prev2 = b_prev1
-    b_prev1 = b_curr
+    # k=1: T_1 coefficient
+    b2 = b1
+    b1 = b0
+    b0 = -2.944128552518444e-01 + 2.0 * y_cheb * b1 - b2
 
-    # k=0
-    b_curr = (
-        -0.00000000000000000000702386347938628759343 + 2.0 * y_cheb * b_prev1 - b_prev2
-    )
+    # k=0: T_0 coefficient (doubled for Clenshaw halving convention)
+    b2 = b1
+    b1 = b0
+    b0 = 1.658032209918573e+00 + 2.0 * y_cheb * b1 - b2
 
     # Final Chebyshev value: (b_0 - b_2) / 2
-    cheb_val = (b_curr - b_prev2) / 2.0
+    cheb_val = (b0 - b2) / 2.0
 
     # --- Step 3: Compute K1(x) and scaled_K1(x) ---
     # K1(x) = log(x/2) * I1(x) + cheb_val / x
@@ -142,7 +140,7 @@ def special_scaled_modified_bessel_k1_kernel(
                 + t_large
                 * (
                     -0.144195556640625  # -4725/32768
-                    + t_large * 0.27757628202438354  # 72765/262144
+                    + t_large * 0.277576446533203125  # 72765/262144
                 )
             )
         )
