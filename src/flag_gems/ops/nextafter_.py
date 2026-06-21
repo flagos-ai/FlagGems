@@ -32,6 +32,8 @@ def _unwrap_if_constexpr(o):
 @tl.constexpr
 def _get_int_dtype(num_bits):
     num_bits = _unwrap_if_constexpr(num_bits)
+    # Triton CUDA does not support int16; floor to 32-bit for fp16/bf16.
+    num_bits = max(num_bits, 32)
     return tl.core.get_int_dtype(num_bits, True)
 
 
