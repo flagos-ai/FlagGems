@@ -122,7 +122,26 @@ def special_scaled_modified_bessel_k1_kernel(
     small_result = tl.exp(x_f32) * k1_small
 
     # ================================================================
-    # Large region: x > 2.0
+    # Mid region: 2.0 < x <= 8.0
+    # Polynomial fit for sqrt(x) * scaled_K1(x) in t = 1/x
+    # scaled_K1(x) = poly(1/x) / sqrt(x)
+    # ================================================================
+    t_mid = 1.0 / ax
+    # Horner evaluation of degree-9 polynomial fitted on [2, 5]
+    poly_mid = 1.787118672412693
+    poly_mid = 8.623190654362435 + t_mid * poly_mid
+    poly_mid = -31.24007105377005 + t_mid * poly_mid
+    poly_mid = 39.94627099526494 + t_mid * poly_mid
+    poly_mid = -27.61325465617906 + t_mid * poly_mid
+    poly_mid = 11.54410129937854 + t_mid * poly_mid
+    poly_mid = -2.958011161687468 + t_mid * poly_mid
+    poly_mid = 0.352116615179864 + t_mid * poly_mid
+    poly_mid = 0.424654857840721 + t_mid * poly_mid
+    poly_mid = 1.255087565900909 + t_mid * poly_mid
+    mid_result = poly_mid / tl.sqrt(ax)
+
+    # ================================================================
+    # Large region: x > 8.0
     # Use asymptotic expansion for scaled_K1 directly:
     #   scaled_K1(x) = sqrt(pi/(2x)) * sum_{k=0}^5 (1,k) / (2x)^k
     # where (1,k) are the Bessel asymptotic coefficients.
@@ -148,9 +167,12 @@ def special_scaled_modified_bessel_k1_kernel(
     # sqrt(pi/2) = 1.2533141373155001
     big_result = 1.2533141373155001 * poly_large / tl.sqrt(ax)
 
-    # Combine results
+    # Combine results: three regions
     use_small = ax <= 2.0
-    result = tl.where(use_small, small_result, big_result)
+    use_mid = (ax > 2.0) & (ax <= 8.0)
+    result = tl.where(
+        use_small, small_result, tl.where(use_mid, mid_result, big_result)
+    )
 
     # Handle singularity at x=0 -> infinity
     result = tl.where(is_zero, float("inf"), result)
