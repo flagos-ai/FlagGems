@@ -73,10 +73,17 @@ def _get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device=flag_gems.devi
 
 
 @pytest.mark.apply_rotary_pos_emb
-@pytest.mark.parametrize("batch_size", [2] if cfg.TO_CPU else [4, 8])
-@pytest.mark.parametrize("max_seq_len", [16] if cfg.TO_CPU else [512, 2048])
-@pytest.mark.parametrize("q_heads,k_heads", [(8, 1), (6, 2), (1, 1), (8, 8)])
-@pytest.mark.parametrize("head_dim", [8] if cfg.TO_CPU else [64, 96, 128, 256])
+@pytest.mark.parametrize("batch_size", [2] if cfg.TO_CPU or cfg.QUICK_MODE else [4, 8])
+@pytest.mark.parametrize(
+    "max_seq_len", [16] if cfg.TO_CPU or cfg.QUICK_MODE else [512, 2048]
+)
+@pytest.mark.parametrize(
+    "q_heads,k_heads",
+    [(8, 1)] if cfg.QUICK_MODE else [(8, 1), (6, 2), (1, 1), (8, 8)],
+)
+@pytest.mark.parametrize(
+    "head_dim", [8] if cfg.TO_CPU or cfg.QUICK_MODE else [64, 96, 128, 256]
+)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("rotary_interleaved", [True, False])
 @pytest.mark.parametrize("has_pos_id", [True, False])

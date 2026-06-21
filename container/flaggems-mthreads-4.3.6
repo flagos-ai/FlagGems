@@ -26,17 +26,16 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 # ── System packages ────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        software-properties-common \
-        curl \
+        ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Python build dependencies ──────────────────────────────────
 # Install 'uv' to /usr/local/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 RUN uv python install ${PYTHON_VERSION} && \
-    uv venv /venv --python ${PYTHON_VERSION} --relocatable --python-preference only-managed
-ENV VIRTUAL_ENV=/venv \
-    PATH="/venv/bin:${PATH}"
+    uv venv /flagos --python ${PYTHON_VERSION} --relocatable --python-preference only-managed
+ENV VIRTUAL_ENV=/flagos \
+    PATH="/flagos/bin:${PATH}"
 
 # ── Build FlagGems ─────────────────────────────────────────────
 WORKDIR /build
@@ -87,24 +86,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── Copy uv and Python from builder ────────────────────────────
 COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
 COPY --from=builder /root/.local/share/uv /root/.local/share/uv
-COPY --from=builder /venv /venv
+COPY --from=builder /flagos /flagos
 
 # ── Copy tests and benchmarks into container if required ───────
 COPY --from=builder /app /app
-WORKDIR /app
 
 # Note: VIRTUAL_ENV and PATH are not sharable between stages
-ENV VIRTUAL_ENV=/venv \
-  PATH="/venv/bin:${PATH}"
+ENV VIRTUAL_ENV=/flagos \
+  PATH="/flagos/bin:${PATH}"
 
 # ── Mthreads runtime environment ──────────────────────────────
 ENV MUSA_HOME="/usr/local/musa" \
-    MTHREADS_VISIBLE_DEVICES=all \
-    LD_LIBRARY_PATH="${VIRTUAL_ENV}/lib:/usr/local/musa/lib:${LD_LIBRARY_PATH}" \
-    PATH="/venv/bin:/usr/local/musa/bin:${PATH}" \
+    MTHREADS_VISIBLE_DEVICES=all
+ENV LD_LIBRARY_PATH="${VIRTUAL_ENV}/lib:${MUSA_HOME}/lib:${LD_LIBRARY_PATH}" \
+    PATH="${MUSA_HOME}/bin:${PATH}" \
     GEMS_VENDOR=mthreads
 
 # ── Runtime defaults ───────────────────────────────────────────
-WORKDIR /workspace
+WORKDIR /app
 
 ENTRYPOINT ["bash"]

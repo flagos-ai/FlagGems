@@ -5,6 +5,8 @@ import torch
 
 import flag_gems
 
+from . import conftest as cfg
+
 random.seed(42)
 
 
@@ -16,10 +18,16 @@ try:
 except Exception:
     DEEPGEMM_AVAILABLE = False
 
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    BATCH_NEXTN_SHAPES = [(4, 1)]
+else:
+    BATCH_NEXTN_SHAPES = [(4, 1), (2, 2)]
+
 
 @pytest.mark.get_paged_mqa_logits_metadata
 @pytest.mark.skipif(not DEEPGEMM_AVAILABLE, reason="vllm with deep_gemm is required.")
-@pytest.mark.parametrize("batch_size, next_n", [(4, 1), (2, 2)])
+@pytest.mark.parametrize("batch_size, next_n", BATCH_NEXTN_SHAPES)
 @pytest.mark.parametrize("avg_ctx_len", [1024, 2048])
 def test_get_paged_mqa_logits_metadata(batch_size, next_n, avg_ctx_len):
     context_lens_2d = (

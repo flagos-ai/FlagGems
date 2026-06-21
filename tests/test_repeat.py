@@ -4,8 +4,12 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
-REPEAT_SIZES = [(2, 3, 4, 5), (5, 0, 4)]
+if cfg.QUICK_MODE:
+    REPEAT_SIZES = [(2, 3, 4, 5)]
+else:
+    REPEAT_SIZES = [(2, 3, 4, 5), (5, 0, 4)]
 
 
 @pytest.mark.repeat

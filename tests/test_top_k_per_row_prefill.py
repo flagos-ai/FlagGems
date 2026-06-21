@@ -16,7 +16,19 @@ import torch
 import flag_gems
 from flag_gems.fused import top_k_per_row_prefill
 
+from . import conftest as cfg
+
 device = flag_gems.device
+
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    NUM_ROWS_FULL_VOCAB = [1, 64]
+    NUM_ROWS_VARIABLE = [1, 32]
+    NUM_ROWS_NONZERO = [1]
+else:
+    NUM_ROWS_FULL_VOCAB = [1, 32, 64, 2048]
+    NUM_ROWS_VARIABLE = [1, 32]
+    NUM_ROWS_NONZERO = [1, 16]
 
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(),
@@ -80,7 +92,7 @@ def check_topk_values_match(logits, indices_test, indices_ref, row_starts, top_k
 
 
 @pytest.mark.top_k_per_row_prefill
-@pytest.mark.parametrize("num_rows", [1, 32, 64, 2048])
+@pytest.mark.parametrize("num_rows", NUM_ROWS_FULL_VOCAB)
 @pytest.mark.parametrize("vocab_size", [129280])  # DeepSeek V4 vocab size
 @pytest.mark.parametrize("top_k", [1024])  # DeepSeek V4 KV cache topk
 def test_top_k_per_row_prefill_full_vocab(num_rows, vocab_size, top_k):
@@ -111,7 +123,7 @@ def test_top_k_per_row_prefill_full_vocab(num_rows, vocab_size, top_k):
 
 
 @pytest.mark.top_k_per_row_prefill
-@pytest.mark.parametrize("num_rows", [1, 32])
+@pytest.mark.parametrize("num_rows", NUM_ROWS_VARIABLE)
 @pytest.mark.parametrize(
     "vocab_size", [20000, 129280]  # 20000: smaller vocab for edge case coverage
 )
@@ -149,7 +161,7 @@ def test_top_k_per_row_prefill_variable_lengths(num_rows, vocab_size, top_k):
 
 
 @pytest.mark.top_k_per_row_prefill
-@pytest.mark.parametrize("num_rows", [1, 16])
+@pytest.mark.parametrize("num_rows", NUM_ROWS_NONZERO)
 def test_top_k_per_row_prefill_nonzero_starts(num_rows):
     """Test with non-zero row_starts.
 

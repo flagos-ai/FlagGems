@@ -147,9 +147,9 @@ def mm(a, b):
     logger.debug("GEMS_KUNLUNXIN MM")
     device = a.device
     # handle non-contiguous inputs if necessary
-    if a.stride(0) > 1 and a.stride(1) > 1:
+    if not a.is_contiguous():
         a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
+    if not b.is_contiguous():
         b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
@@ -186,9 +186,9 @@ def mm(a, b):
 def mm_out(a, b, *, out):
     logger.debug("GEMS_KUNLUNXIN MM_OUT")
     # handle non-contiguous inputs if necessary
-    if a.stride(0) > 1 and a.stride(1) > 1:
+    if not a.is_contiguous():
         a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
+    if not b.is_contiguous():
         b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"

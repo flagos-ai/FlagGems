@@ -197,7 +197,10 @@ case $VENDOR in
     ;;
 
   thead)
-    # TODO(Qiming): Investigate environment settings
+    uv pip install --index ${FLAGOS_PYPI} \
+      "torch==2.9.0+ppu2.0.0.oe" \
+      "triton==3.5.0+ppu2.0.0.oe"
+
     uv pip install -e .
     uv pip install ".[test]"
     ;;
@@ -209,14 +212,15 @@ case $VENDOR in
         "torchaudio==2.7.0+cpu" \
         "torch_txda==0.1.0+20260610.3968e515" \
         "txops==0.1.0+20260508.60287151" \
-        "triton==3.3.0+git2e9c1195"
+        "flagtree==0.5.0.post20260612+git705a4064"
 
+    # "flagtree==0.5.0+tsingmicro3.3"
     # Replace flagtree with Triton if requested
-    # if [ -z "${USE_TRITON}" ]; then
-    #   uv pip uninstall flagtree
-    #   uv pip install --index ${FLAGOS_PYPI} \
-    #     "flagtree==0.5.0+tsingmicro3.3"
-    # fi
+    if [ -n "${USE_TRITON}" ]; then
+      uv pip uninstall flagtree
+      uv pip install --index ${FLAGOS_PYPI} \
+        "triton==3.3.0+git2e9c1195"
+    fi
 
     uv pip install -e .
     uv pip install ".[test]"

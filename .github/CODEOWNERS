@@ -3,14 +3,14 @@
 # @global-owner1 and @global-owner2 will be requested for
 # review when someone opens a pull request.
 
-/src/flag_gems/*      @0x45f   @huangyiqun @douxetpur @bin913 @w1120029931-bit
+/src/flag_gems/*      @0x45f   @huangyiqun @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann
 /src/flag_gems/runtime/backend/*
 
-/tests/*             @0x45f   @huangyiqun @douxetpur @bin913 @w1120029931-bit
-/modules_tests/*     @0x45f   @huangyiqun @douxetpur @bin913 @w1120029931-bit
-/benchmark/*         @0x45f   @huangyiqun @douxetpur @bin913 @w1120029931-bit
+/tests/*             @0x45f   @huangyiqun @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann
+/modules_tests/*     @0x45f   @huangyiqun @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann
+/benchmark/*         @0x45f   @huangyiqun @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann
 
 
-/lib/*                @0x45f   @huangyiqun @douxetpur @bin913 @w1120029931-bit
-/ctests/*             @0x45f   @huangyiqun @douxetpur @bin913 @w1120029931-bit
-/include/*            @0x45f   @huangyiqun @douxetpur @bin913 @w1120029931-bit
+/lib/*                @0x45f   @huangyiqun @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann
+/ctests/*             @0x45f   @huangyiqun @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann
+/include/*            @0x45f   @huangyiqun @douxetpur @bin913 @w1120029931-bit @hellojack163 @Caeruleann

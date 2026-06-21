@@ -5,6 +5,7 @@ import torch
 
 import flag_gems
 
+from . import conftest as cfg
 from .accuracy_utils import gems_assert_close
 
 try:
@@ -45,6 +46,14 @@ def has_deep_gemm() -> bool:
 DEEPGEMM_AVAILABLE = has_deep_gemm()
 
 device = flag_gems.device
+
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    MN_SHAPES = [(32, 2048)]
+    HD_SHAPES = [(32, 128)]
+else:
+    MN_SHAPES = [(32, 2048), (32, 4096), (32, 1024)]
+    HD_SHAPES = [(32, 128)]
 
 
 @pytest.mark.fp8_mqa_logits
@@ -108,8 +117,8 @@ def test_fp8_mqa_logits(clean_logits: bool):
     not (VLLM_AVAILABLE and DEEPGEMM_AVAILABLE),
     reason="requires vLLM with DeepGEMM support",
 )
-@pytest.mark.parametrize("M, N", [(32, 2048), (32, 4096), (32, 1024)])
-@pytest.mark.parametrize("H, D", [(32, 128)])
+@pytest.mark.parametrize("M, N", MN_SHAPES)
+@pytest.mark.parametrize("H, D", HD_SHAPES)
 def test_fp8_mqa_logits_param(M: int, N: int, H: int, D: int):
     torch.manual_seed(0)
     random.seed(0)

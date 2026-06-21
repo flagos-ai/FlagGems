@@ -15,6 +15,47 @@ from . import conftest as cfg
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    SPARSE_ATTN_CONFIGS = [
+        (64, 1, 128, 128, 16, 512, 2025),
+    ]
+    NONSQUARE_QK_CONFIGS = [(1, 1, 128, 2048)]
+    NONSQUARE_HEAD_SIZES = [128]
+    GQA_ALIBI_SOFTCAP_CONFIGS = [(4, 8, 2, 1024, 1024)]
+    GQA_ALIBI_SOFTCAP_HEAD_SIZES = [128]
+    SPLITKV_CONFIGS = [(1, 4, 1, 1, 1024)]
+    SPLITKV_HEAD_SIZES = [128]
+    SWA_CONFIGS = [(1, 1, 128, 2048)]
+    SWA_HEAD_SIZES = [128]
+    SWA_WINDOW_SIZES = [(256, 0)]
+else:
+    SPARSE_ATTN_CONFIGS = [
+        (64, 1, 128, 128, 16, 512, 2025),
+        (64, 1, 400, 392, 16, 512, 2026),
+        (16, 1, 168, 165, 16, 512, 2027),
+        (1, 240, 240, 128, 8, 512, 2028),
+        (64, 1, 144, 137, 16, 512, 2029),
+        (64, 1, 640, 598, 16, 512, 2030),
+        (1, 1, 264, 257, 16, 512, 2031),
+        (1, 240, 240, 128, 4, 512, 2032),
+    ]
+    NONSQUARE_QK_CONFIGS = [(1, 1, 128, 2048), (4, 8, 1024, 128), (4, 8, 17, 1030)]
+    NONSQUARE_HEAD_SIZES = [64, 128, 192, 256]
+    GQA_ALIBI_SOFTCAP_CONFIGS = [(4, 8, 2, 1024, 1024), (4, 4, 4, 1, 519)]
+    GQA_ALIBI_SOFTCAP_HEAD_SIZES = [128, 192]
+    SPLITKV_CONFIGS = [(1, 4, 1, 1, 1024), (4, 4, 4, 1, 519)]
+    SPLITKV_HEAD_SIZES = [128, 192]
+    SWA_CONFIGS = [
+        (1, 1, 128, 2048),
+        (8, 32, 1024, 1024),
+        (8, 32, 1024, 128),
+        (8, 32, 17, 1030),
+    ]
+    SWA_HEAD_SIZES = [128, 192]
+    SWA_WINDOW_SIZES = [(256, 0), (128, 128)]
+DROPOUT_CONFIGS = [(1, 1, 1024, 1024)]
+
 
 def make_input(
     batch,
@@ -85,7 +126,7 @@ def gems_flash_fwd(
         seed,
         offset,
         debug_softmax,
-    ) = flag_gems.ops.flash_attention_forward(
+    ) = flag_gems.flash_attention_forward(
         q,
         k,
         v,
@@ -126,16 +167,7 @@ def sparse_attention_ref(q, kv, attn_sink, topk_idxs, scale):
 @pytest.mark.sparse_attn_triton
 @pytest.mark.parametrize(
     "batch, seq_len, kv_len, topk, heads, dim, seed",
-    [
-        (64, 1, 128, 128, 16, 512, 2025),
-        (64, 1, 400, 392, 16, 512, 2026),
-        (16, 1, 168, 165, 16, 512, 2027),
-        (1, 240, 240, 128, 8, 512, 2028),
-        (64, 1, 144, 137, 16, 512, 2029),
-        (64, 1, 640, 598, 16, 512, 2030),
-        (1, 1, 264, 257, 16, 512, 2031),
-        (1, 240, 240, 128, 4, 512, 2032),
-    ],
+    SPARSE_ATTN_CONFIGS,
 )
 def test_sparse_attention(batch, seq_len, kv_len, topk, heads, dim, seed):
     device = torch_device_fn.current_device()
@@ -194,9 +226,9 @@ def attn_bias_from_alibi_slopes(slopes, seqlen_q, seqlen_k, causal=False):
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not working")
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
-    [(1, 1, 128, 2048), (4, 8, 1024, 128), (4, 8, 17, 1030)],
+    NONSQUARE_QK_CONFIGS,
 )
-@pytest.mark.parametrize("head_size", [64, 128, 192, 256])
+@pytest.mark.parametrize("head_size", NONSQUARE_HEAD_SIZES)
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_flash_attention_foward_nonsquare_qk(
@@ -380,9 +412,9 @@ def attention_ref(
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
-    [(4, 8, 2, 1024, 1024), (4, 4, 4, 1, 519)],
+    GQA_ALIBI_SOFTCAP_CONFIGS,
 )
-@pytest.mark.parametrize("head_size", [128, 192])
+@pytest.mark.parametrize("head_size", GQA_ALIBI_SOFTCAP_HEAD_SIZES)
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("alibi", [True])
@@ -456,9 +488,9 @@ def test_flash_attention_forward_gqa_alibi_softcap(
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
-    [(1, 4, 1, 1, 1024), (4, 4, 4, 1, 519)],
+    SPLITKV_CONFIGS,
 )
-@pytest.mark.parametrize("head_size", [128, 192])
+@pytest.mark.parametrize("head_size", SPLITKV_HEAD_SIZES)
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("alibi", [False, True])
@@ -531,12 +563,10 @@ def test_flash_attention_foward_splitkv(
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
-    [(1, 1, 128, 2048), (8, 32, 1024, 1024), (8, 32, 1024, 128), (8, 32, 17, 1030)],
+    SWA_CONFIGS,
 )
-@pytest.mark.parametrize("head_size", [128, 192])
-@pytest.mark.parametrize(
-    ["window_size_left", "window_size_right"], [(256, 0), (128, 128)]
-)
+@pytest.mark.parametrize("head_size", SWA_HEAD_SIZES)
+@pytest.mark.parametrize(["window_size_left", "window_size_right"], SWA_WINDOW_SIZES)
 @pytest.mark.parametrize("is_causal", [False])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_flash_attention_foward_swa(
@@ -596,10 +626,7 @@ def test_flash_attention_foward_swa(
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not supported")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
-    ["batch", "num_head", "q_seq_len", "kv_seq_len"],
-    [
-        (1, 1, 1024, 1024),
-    ],
+    ["batch", "num_head", "q_seq_len", "kv_seq_len"], DROPOUT_CONFIGS
 )
 @pytest.mark.parametrize("head_size", [128])
 @pytest.mark.parametrize("is_causal", [False, True])

@@ -308,7 +308,7 @@ def test_flash_attn_varlen_func(monkeypatch):
     bench = FlashAttnVarlenBenchmark(
         op_name="flash_attn_varlen_func",
         torch_op=flash_attn_varlen_func,
-        gems_op=flag_gems.ops.flash_attn_varlen_func,
+        gems_op=flag_gems.flash_attn_varlen_func,
         dtypes=[torch.float16, torch.bfloat16],
     )
     bench.run()

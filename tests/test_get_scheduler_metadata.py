@@ -17,12 +17,20 @@ from . import conftest as cfg
 
 device = flag_gems.device
 
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    BATCH_SIZE_LIST = [1, 8]
+    MAX_SEQLEN_K_LIST = [512]
+else:
+    BATCH_SIZE_LIST = [1, 8, 256, 512]
+    MAX_SEQLEN_K_LIST = [512, 2048]
+
 
 @pytest.mark.get_scheduler_metadata
 @pytest.mark.skipif(not HAS_VLLM, reason="vLLM not installed")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Skipping correctness test in CPU mode.")
-@pytest.mark.parametrize("batch_size", [1, 8, 256, 512])
-@pytest.mark.parametrize("max_seqlen_k", [512, 2048])
+@pytest.mark.parametrize("batch_size", BATCH_SIZE_LIST)
+@pytest.mark.parametrize("max_seqlen_k", MAX_SEQLEN_K_LIST)
 @pytest.mark.parametrize("headdim", [64, 128])
 @pytest.mark.parametrize("num_splits_static", [0, 4])
 @pytest.mark.parametrize("seed", [42])

@@ -4,10 +4,15 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 # rot90 test shapes - only 2D for now since the kernel only handles 2D case
-ROT90_SHAPES_2D = [(2, 3), (5, 7), (100, 128)]
-ROT90_K_VALUES = [0, 1, 2, 3, -1, -2]
+if cfg.QUICK_MODE:
+    ROT90_SHAPES_2D = [(2, 3), (100, 128)]
+    ROT90_K_VALUES = [0, 1, -1]
+else:
+    ROT90_SHAPES_2D = [(2, 3), (5, 7), (100, 128)]
+    ROT90_K_VALUES = [0, 1, 2, 3, -1, -2]
 
 
 @pytest.mark.rot90

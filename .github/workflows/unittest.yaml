@@ -20,6 +20,7 @@ jobs:
       changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
       pr_id: ${{ steps.get-pr-id.outputs.PR_ID }}
       labels: ${{ fromJSON(steps.get-labels.outputs.result) }}
+      backend_matrix: ${{ steps.build-backend-matrix.outputs.matrix }}
     steps:
       - id: changed-files
         uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96  # v47.0.6
@@ -60,6 +61,21 @@ jobs:
             console.log('Labels:', labels.map(label => label.name));
             return JSON.stringify(labels.map(label => label.name));
 
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          sparse-checkout: .github/backends.json
+          sparse-checkout-cone-mode: false
+
+      - id: build-backend-matrix
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const backends = JSON.parse(fs.readFileSync('.github/backends.json', 'utf8'));
+            const labels = JSON.parse(${{ steps.get-labels.outputs.result }} || '[]');
+            const matrix = backends.filter(b => b.enabled && labels.includes(b.label));
+            core.setOutput('matrix', JSON.stringify(matrix));
+
   build-doc:
     needs: preprocess
     if: (contains(needs.preprocess.outputs.labels, 'documentation') &&
@@ -79,29 +95,12 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - id: checkout-attempt-1
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         continue-on-error: true
-      - id: sleep-1
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        shell: bash
-        run: sleep 30s
-
-      - id: checkout-attempt-2
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        continue-on-error: true
-      - id: sleep-2
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        shell: bash
-        run: sleep 30s
-
-      - id: checkout-attempt-3
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: ./.github/actions/checkout-retry
 
       - shell: bash
-        run: tools/gpu_check.sh
+        run: tools/gpu_check_nvidia.sh
 
       - shell: bash
         env:
@@ -117,191 +116,31 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - id: checkout-attempt-1
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         continue-on-error: true
-      - id: sleep-1
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        shell: bash
-        run: sleep 30s
-
-      - id: checkout-attempt-2
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        continue-on-error: true
-      - id: sleep-2
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        shell: bash
-        run: sleep 30s
-
-      - id: checkout-attempt-3
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: ./.github/actions/checkout-retry
 
       - shell: bash
-        run: tools/gpu_check.sh
+        run: tools/gpu_check_nvidia.sh
+
       - shell: bash
         env:
           CHANGED_FILES: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
         run: |
           bash tools/test-examples.sh ${{ needs.preprocess.outputs.pr_id }}
 
-  backend-ascend:
+  backend-tests:
     needs: preprocess
-    # The ascend backend runners need to be reconfigured.
-    if: false
-    # if: contains(needs.preprocess.outputs.labels, 'vendor/Ascend')
+    if: fromJSON(needs.preprocess.outputs.backend_matrix)[0] != null
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: ${{ fromJSON(needs.preprocess.outputs.backend_matrix) }}
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: ascend
-      runner_label: ascend
-      gpu_check_script: tools/gpu_check_ascend.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-enflame:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Enflame')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: enflame
-      runner_label: enflame
-      # gpu_check_script: tools/gpu_check_hygon.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-hygon:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Hygon')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: hygon
-      runner_label: hygon
-      gpu_check_script: tools/gpu_check_hygon.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-iluvatar:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Iluvatar')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: iluvatar
-      runner_label: iluvatar
-      gpu_check_script: tools/gpu_check_iluvatar.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-kunlunxin:
-    needs: preprocess
-    # Skipping backend-kunlunxin because we the backend runner is not ready
-    if: false
-    # if: contains(needs.preprocess.outputs.labels, 'vendor/Kunlunxin')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: kunlunxin
-      runner_label: kunlunxin
-      gpu_check_script: tools/gpu_check_kunlunxin.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-metax:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/MetaX')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: metax
-      runner_label: metax
-      gpu_check_script: tools/gpu_check_metax.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-mthreads:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: mthreads
-      runner_label: mthreads
-      gpu_check_script: tools/gpu_check_mthreads.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-nvidia:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/NVIDIA')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: nvidia
-      runner_label: h20
-      gpu_check_script: tools/gpu_check.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-spacemit:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/SpaceMit')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: spacemit
-      runner_label: spacemit
-      # gpu_check_script: tools/gpu_check_thead.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-sunrise:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Sunrise')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: sunrise
-      runner_label: sunrise
-      # gpu_check_script: tools/gpu_check_thead.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-thead:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Thead')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: thead
-      runner_label: thead
-      gpu_check_script: tools/gpu_check_thead.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-
-  backend-tsingmicro:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/TsingMicro')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: tsingmicro
-      runner_label: tsingmicro
-      gpu_check_script: tools/gpu_check_tsingmicro.sh
+      vendor: ${{ matrix.backend.vendor }}
+      runner_label: ${{ matrix.backend.runner_label }}
+      gpu_check_script: ${{ matrix.backend.gpu_check }}
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
@@ -315,8 +154,8 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: nvidia
-      runner_label: hopper
-      gpu_check_script: tools/gpu_check.sh
+      runner_label: h20
+      gpu_check_script: tools/gpu_check_nvidia.sh
       test_script: tools/test-op-experimental.sh
       changed_files: ${{ needs.preprocess.outputs.changed_files }}
     secrets:

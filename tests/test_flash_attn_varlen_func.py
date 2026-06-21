@@ -226,7 +226,7 @@ def test_flash_attn_varlen_func(
             )
         else:
             if optimize_init:
-                output = flag_gems.ops.flash_attn_varlen_opt_func(
+                output = flag_gems.flash_attn_varlen_opt_func(
                     q=query,
                     k=key_cache,
                     v=value_cache,
@@ -243,7 +243,7 @@ def test_flash_attn_varlen_func(
                     fa_version=2,
                 )
             else:
-                output = flag_gems.ops.flash_attn_varlen_func(
+                output = flag_gems.flash_attn_varlen_func(
                     q=query,
                     k=key_cache,
                     v=value_cache,
@@ -359,7 +359,7 @@ def test_flash_attn_varlen_func_swap_qg(
                 fa_version=2,
             )
         else:
-            output = flag_gems.ops.flash_attn_varlen_func(
+            output = flag_gems.flash_attn_varlen_func(
                 q=query,
                 k=key_cache,
                 v=value_cache,

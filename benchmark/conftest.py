@@ -191,12 +191,10 @@ def pytest_addoption(parser):
     try:
         parser.addoption(
             "--collect-marks",
-            action="store_true",
-            help="Collect the tests with marker information without executing them",
+            default=None,
+            help="Collect the tests with marker information and write to the specified file",
         )
     except ValueError:
-        # Mixed test+benchmark pytest runs may already register this option in
-        # tests/conftest.py. Reuse the existing option in that case.
         pass
 
 
@@ -387,7 +385,8 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
 
 
 def pytest_collection_modifyitems(session, config, items):
-    if not config.getoption("--collect-marks"):
+    collect_marks_file = config.getoption("--collect-marks")
+    if not collect_marks_file:
         return
 
     report = []
@@ -412,7 +411,8 @@ def pytest_collection_modifyitems(session, config, items):
         data["marks"] = op_marks
         report.append(data)
 
-    print(yaml.dump(report, indent=2))
+    with open(collect_marks_file, "w") as f:
+        yaml.dump(report, f, indent=2)
 
     # Skip all tests
     items.clear()

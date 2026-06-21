@@ -4,10 +4,16 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    ZERO_SHAPES = [(2, 3)]
+else:
+    ZERO_SHAPES = [(2, 3), (128, 256), (512, 512)]
 
 
 @pytest.mark.zero
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("shape", ZERO_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_zero(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -38,7 +44,7 @@ def test_zero_(shape, dtype):
 
 
 @pytest.mark.zero_out
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("shape", ZERO_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_zero_out(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)

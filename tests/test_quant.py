@@ -6,18 +6,25 @@ import torch
 
 import flag_gems
 
+from . import conftest as cfg
 from .accuracy_utils import gems_assert_close, to_reference
 
 device = flag_gems.device
 
 COPYING_DIRECTION = [("cuda", "cpu"), ("cuda", "cuda"), ("cpu", "cuda")]
-DTYPES = [torch.half, torch.bfloat16, torch.float]
+if cfg.QUICK_MODE:
+    DTYPES = [torch.float]
+    HEAD_SIZES = [64]
+    BLOCK_SIZES = [16]
+    CACHE_LAYOUTS = ["NHD"]
+else:
+    DTYPES = [torch.half, torch.bfloat16, torch.float]
+    HEAD_SIZES = [64, 80, 120, 256]
+    BLOCK_SIZES = [8, 16, 32]
+    CACHE_LAYOUTS = ["NHD", "HND"]
 NUM_TOKENS = [42]  # Arbitrary values for testing
 NUM_LAYERS = [1]  # Arbitrary values for testing
 NUM_HEADS = [8]  # Arbitrary values for testing
-HEAD_SIZES = [64, 80, 120, 256]
-BLOCK_SIZES = [8, 16, 32]
-CACHE_LAYOUTS = ["NHD", "HND"]
 
 # Parameters for MLA tests.
 KV_LORA_RANKS = [512]
@@ -28,7 +35,7 @@ NUM_BLOCKS_MLA = [8]
 
 # Arbitrary values for testing
 # don't make it too large. e.g. [1024, 36000] will OOM
-NUM_BLOCKS = [1024, 10000]
+NUM_BLOCKS = [1024] if cfg.QUICK_MODE else [1024, 10000]
 
 NUM_MAPPINGS = [256]  # Arbitrary values for testing
 SEEDS = [0]

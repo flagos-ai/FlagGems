@@ -4,12 +4,20 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    CONJ_SHAPES = [(32, 64)]
+    CONJ_DTYPES = [torch.float32]
+else:
+    CONJ_SHAPES = [(256,), (32, 64), (2, 3, 4)]
+    CONJ_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 
 
 @pytest.mark.conj_physical
-@pytest.mark.parametrize("shape", [(256,), (32, 64), (2, 3, 4)])
+@pytest.mark.parametrize("shape", CONJ_SHAPES)
 @pytest.mark.parametrize("is_complex", [True, False])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("dtype", CONJ_DTYPES)
 def test_conj_physical(shape, is_complex, dtype):
     device = flag_gems.device
 

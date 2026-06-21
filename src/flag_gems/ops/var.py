@@ -24,45 +24,39 @@ def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("var_mean"), key=["M", "N"])
-@triton.jit(do_not_specialize=["correction"])
+@triton.jit(do_not_specialize=["correction", "M", "N"])
 def var_welford_kernel(
     X,
     Var,
     M,
     N,
     correction,
-    BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # Map the program id to the row of X it should compute.
-    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    # One row per program to avoid autotune correctness issues on some backends.
+    pid = ext.program_id(0)
     X = X + pid * N
     Var = Var + pid
-    row_mask = pid < M
 
-    _mean = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    _acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    _count = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    # Two-pass approach using tl.sum to avoid tl.reduce correctss issues.
+    _sum = tl.zeros([BLOCK_N], dtype=tl.float32)
     for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
-
+        cols = off + tl.arange(0, BLOCK_N)
+        mask = cols < N
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        _sum += x
+    mean = tl.sum(_sum) / N
 
-        count = _count + mask
-        cnt = tl.maximum(count, 1)
-        cur_mean = (_mean * _count + x) / cnt
-        _acc += (x - cur_mean) * (x - _mean) * mask
-        _mean = cur_mean
-        _count = count
-
-    mean, _, acc = tl.reduce((_mean, _count, _acc), axis=1, combine_fn=welford_func)
-    var = acc / (N - correction)
-    var = var[:, None]
+    _acc = tl.zeros([BLOCK_N], dtype=tl.float32)
+    for off in range(0, N, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)
+        mask = cols < N
+        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        diff = tl.where(mask, x - mean, 0.0)
+        _acc += diff * diff
+    var = tl.sum(_acc) / (N - correction)
     # Write var
-    tl.store(Var, var, row_mask)
+    tl.store(Var, var)
 
 
 @libentry()
@@ -154,9 +148,10 @@ def var(x, dim=None, *, correction=None, keepdim=False):
         M = x.numel() // N
         var = torch.empty(shape, dtype=x.dtype, device=x.device)
 
-        grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
+        BLOCK_N = 1024
+        grid = (M,)
         with torch_device_fn.device(x.device):
-            var_welford_kernel[grid](x, var, M, N, correction)
+            var_welford_kernel[grid](x, var, M, N, correction, BLOCK_N=BLOCK_N)
 
     if not keepdim:
         var = var.squeeze(dim=dim)

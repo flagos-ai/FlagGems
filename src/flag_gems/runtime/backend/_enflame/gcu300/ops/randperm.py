@@ -95,7 +95,8 @@ def bitonic_sortbykey_kernel(
 
 @triton.jit
 def radix_type_convert(k):
-    ik = k.to(tl.int64)
+    tl.static_assert(k.dtype != tl.int64, "int64 is not supported")
+    ik = k.to(tl.int32)
     if tl.constexpr(k.dtype == tl.int8):
         mask = (ik >> 7) & 0x1
         o = tl.where(mask, ik & 0x7F, ik | 0x80)
@@ -103,11 +104,9 @@ def radix_type_convert(k):
         mask = (ik >> 15) & 0x1
         o = tl.where(mask, ik & 0x7FFF, ik | 0x8000)
     elif tl.constexpr(k.dtype == tl.int32):
-        mask = (ik >> 31) & 0x1
-        o = tl.where(mask, ik & 0x7FFFFFFF, ik | 0x80000000)
-    elif tl.constexpr(k.dtype == tl.int64):
-        mask = (ik >> 63) & 0x1
-        o = tl.where(mask, ik & 0x7FFFFFFFFFFFFFFF, ik | 0x8000000000000000)
+        # XOR with sign bit flips it: clears if set, sets if not
+        # -0x80000000 == -2147483648 == INT32_MIN, same bit pattern as 0x80000000
+        o = ik ^ (-0x80000000)
     else:
         o = k
     return o
@@ -130,7 +129,7 @@ def digit_hist_kernel(
     pid0 = tl.program_id(0)
     grid0 = tl.num_programs(0)
 
-    key_offset = pid0.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    key_offset = pid0 * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     key_mask = key_offset < n_elements
     key_data = tl.load(key + key_offset, mask=key_mask)
     ikey_data = radix_type_convert(key_data)
@@ -182,12 +181,8 @@ def radix_sortbykey_scatter_kernel(
     LOOKBACK_VALUE_MASK = ~LOOKBACK_KIND_MASK
 
     pid0 = tl.program_id(0)
-    portion_id_i64 = portion_id
-    portion_id_i64 = portion_id_i64.to(tl.int64)
     key_offset = (
-        portion_id_i64 * portion_size
-        + pid0.to(tl.int64) * BLOCK_SIZE
-        + tl.arange(0, BLOCK_SIZE)
+        portion_id * portion_size + pid0 * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     )
 
     key_mask = key_offset < n_elements
@@ -241,15 +236,13 @@ def radix_sortbykey_scatter_kernel(
             global_counter,
             cache_modifier=".cg",
         )
-        inc_bucket_offset = prefix_offsets.to(tl.int64) + inc_sum.to(tl.int64)
+        inc_bucket_offset = prefix_offsets + inc_sum
         if last_block and portion_id < num_portions - 1:
             tl.store(
                 digit_hist + bin_offset + (portion_id + 1) * passes * (bins + 1),
                 inc_bucket_offset,
             )
-        global_offsets = (
-            inc_bucket_offset - bin_of_bucket.to(tl.int64) + key_block_rank.to(tl.int64)
-        )
+        global_offsets = inc_bucket_offset - bin_of_bucket + key_block_rank
         tl.store(key_out + global_offsets, key_data, mask=key_digit_mask)
         tl.store(value_out + global_offsets, value_data, mask=key_digit_mask)
 
@@ -262,16 +255,16 @@ def duplicate_keys_shuffle_kernel(
 ):
     pid0 = tl.program_id(0)
     offset_range = tl.arange(0, BLOCK_SIZE)
-    value_offset = pid0.to(tl.int64) * BLOCK_SIZE + offset_range
+    value_offset = pid0 * BLOCK_SIZE + offset_range
     value_mask = value_offset < n_elements
     value_data = tl.load(value_in + value_offset, mask=value_mask)
 
-    philox_seed = philox_seed.to(tl.int64)
-    philox_offset = philox_offset.to(tl.int64)
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    philox_seed = philox_seed.to(tl.uint32)
+    philox_offset = philox_offset.to(tl.uint32)
+    c0 = philox_offset
+    c1 = tl.zeros([], dtype=tl.uint32)
     i4 = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    c0 += i4
+    c0 = c0 + i4
     _O = c0 * 0
     r0, _, _, _ = tl.philox(philox_seed, c0, c1, _O, _O)
 
@@ -280,7 +273,7 @@ def duplicate_keys_shuffle_kernel(
     mask_val = _get_iinfo_val(tl.uint32, True)
     r1 = tl.where(value_offset < n_elements, r1, mask_val)
     _, sorted_chunk_index = argsort(r1, offset_range, 0, descending=False)
-    store_offset = pid0.to(tl.int64) * BLOCK_SIZE + sorted_chunk_index.to(tl.int64)
+    store_offset = pid0 * BLOCK_SIZE + sorted_chunk_index
     tl.store(value_in + store_offset, value_data, mask=store_offset < n_elements)
 
 
@@ -301,6 +294,7 @@ def sort_by_key(key, value, valid_bits, generator=None):
         max_portion_items = portion_size if num_portions > 1 else n_elements
         max_tiles_per_portion = triton.cdiv(max_portion_items, BLOCK_SIZE)
 
+        assert num_portions <= 1, "num_portions must be less than or equal to 1"
         hist_dtype = torch.int64 if num_portions > 1 else torch.int32
         grid_hist = (triton.cdiv(n_elements, BLOCK_SIZE), bins // bins_per_sgement)
 
@@ -385,8 +379,12 @@ def sort_by_key(key, value, valid_bits, generator=None):
             n_elements, generator=generator
         )
 
-        philox_seed = philox_seed % (2 ^ 32)
-        philox_offset = philox_offset % (2 ^ 32)
+        philox_seed = int(philox_seed & 0xFFFFFFFF)
+        philox_offset = int(philox_offset & 0xFFFFFFFF)
+        if philox_seed > 0x7FFFFFFF:
+            philox_seed -= 0x100000000
+        if philox_offset > 0x7FFFFFFF:
+            philox_offset -= 0x100000000
         with torch_device_fn.device(key.device):
             duplicate_keys_shuffle_kernel[grid_shuffle](
                 v_out,
@@ -415,15 +413,15 @@ def randperm(
     *,
     generator=None,
     out=None,
-    dtype=torch.int64,
+    dtype=torch.int32,
     layout=torch.strided,
     device=None,
     requires_grad=False,
     pin_memory=False,
 ):
     logger.debug("GEMS RANDPERM")
-    assert dtype == torch.int16 or dtype == torch.int32 or dtype == torch.int64
-    assert n <= _MAX_INT64_VAL, "n exceeds maximum int64"
+    assert dtype == torch.int16 or dtype == torch.int32
+    assert n <= _MAX_INT32_VAL, "n exceeds maximum int32"
 
     if device is None:
         device = torch.device(device_.name)

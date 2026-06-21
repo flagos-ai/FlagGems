@@ -4,18 +4,25 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
-FFT_SHAPES = [
-    (128, 64),
-    (128, 128),
-    (128, 256),
-    (128, 512),
-    (128, 1024),
-    (256, 256),
-    (512, 512),
-    (1024, 1024),
-    (4096, 256),
-]
+if cfg.QUICK_MODE:
+    FFT_SHAPES = [
+        (128, 64),
+        (512, 512),
+    ]
+else:
+    FFT_SHAPES = [
+        (128, 64),
+        (128, 128),
+        (128, 256),
+        (128, 512),
+        (128, 1024),
+        (256, 256),
+        (512, 512),
+        (1024, 1024),
+        (4096, 256),
+    ]
 
 
 @pytest.mark.fft

@@ -48,7 +48,7 @@ def test_resize_output():
     # This is because the operator is not available in PyTorch for CUDA backend
 
     # Create a wrapper that uses the same implementation as gems (for fair comparison)
-    from flag_gems.ops._resize_output import _resize_output as gems_resize_output
+    from flag_gems import _resize_output as gems_resize_output
 
     def dummy_torch_op(inp, size, device):
         # Use the same implementation as GEMS for baseline

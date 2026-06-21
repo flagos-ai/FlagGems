@@ -7,6 +7,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 
 def get_dim1_dim2(o_rank):
@@ -17,10 +18,13 @@ def get_dim1_dim2(o_rank):
 
 
 def get_diag_embed_shape_and_dims():
-    shapes = [
-        (1024,),
-        (1024, 1024),
-    ]
+    if cfg.QUICK_MODE:
+        shapes = [(1024,)]
+    else:
+        shapes = [
+            (1024,),
+            (1024, 1024),
+        ]
     # [(shape, dim1, dim2)]
     result = []
 

@@ -239,9 +239,8 @@ class KernelGenerator:
         self.fn_module = scalar_fn.__module__
 
     def gen_import_function(self, code: IndentedBuffer):
-        code.writeline(f'"""Quoted source of {self.fn_name}:')
+        code.writeline("@triton.jit")
         code.writemultiline(self.fn.src)
-        code.writeline('"""')
         code.newline()
 
     def gen_decorators(self, code):
@@ -300,7 +299,9 @@ class KernelGenerator:
             if ndim > 0:
                 # strides for inputs
                 for i in range(schema.num_input_tensors()):
-                    stride_args = _cs(f"in{i}_stride{j}" for j in range(ndim))
+                    stride_args = _cs(
+                        f"in{i}_stride{j}: tl.constexpr" for j in range(ndim)
+                    )
                     code.writeline(f"{stride_args}, # strides for in{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
@@ -310,7 +311,9 @@ class KernelGenerator:
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
-                    stride_args = _cs(f"out{i}_stride{j}" for j in range(ndim))
+                    stride_args = _cs(
+                        f"out{i}_stride{j}: tl.constexpr" for j in range(ndim)
+                    )
                     code.writeline(f"{stride_args}, # strides for out{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
@@ -333,7 +336,6 @@ class KernelGenerator:
                 tile_sizes = _cs(f"tile_size{i}: tl.constexpr" for i in range(ndim))
                 code.writeline(f"{tile_sizes},")
                 code.writeline("one_tile_per_cta: tl.constexpr,")
-            code.writeline("ENABLE_STRIDE_GATHER: tl.constexpr,")
         code.writeline("):")
 
     def gen_signature_1d_tile(self, code):
@@ -372,27 +374,30 @@ class KernelGenerator:
             if ndim > 0:
                 # strides for inputs
                 for i in range(schema.num_input_tensors()):
-                    stride_args = _cs(f"in{i}_stride{j}" for j in range(ndim))
+                    stride_args = _cs(
+                        f"in{i}_stride{j}: tl.constexpr" for j in range(ndim)
+                    )
                     code.writeline(f"{stride_args}, # strides for in{i}")
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
-                    stride_args = _cs(f"out{i}_stride{j}" for j in range(ndim))
+                    stride_args = _cs(
+                        f"out{i}_stride{j}: tl.constexpr" for j in range(ndim)
+                    )
                     code.writeline(f"{stride_args}, # strides for out{i}")
 
                 # task space, used to reconstruct multi index
-                task_space_args = _cs(f"s{i}: int" for i in range(ndim))
+                task_space_args = _cs(f"s{i}" for i in range(ndim))
                 code.writeline(f"{task_space_args}, # task_space")
 
                 # number of tasks, used to compute mask
-                code.writeline("num_tasks: int,")
+                code.writeline("num_tasks,")
 
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
                 code.writeline("tiles_per_cta: int,")
                 code.writeline("tile_size: tl.constexpr,")
                 code.writeline("one_tile_per_cta: tl.constexpr,")
-            code.writeline("ENABLE_STRIDE_GATHER: tl.constexpr,")
         code.writeline("):")
 
     def gen_num_tiles(self, code):
@@ -834,7 +839,7 @@ class WrapperGenerator:
             code.writeline("FlagOfNotUseDMA = False")
             for i in range(schema.num_input_tensors()):
                 code.writeline(f"in{i}_strides = in{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s <= 0 for s in in{i}_strides)")
+                code.writeline(f"FlagOfNotUseDMA |= any(s < 0 for s in in{i}_strides)")
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "
@@ -845,7 +850,6 @@ class WrapperGenerator:
                     f"FlagOfNotUseDMA |= len(in{i}_strides) >= 5 or "
                     f"(len(in{i}_strides) == 4 and all(s != 1 for s in in{i}_strides))"
                 )
-
                 if not with_block_pointer:
                     continue
                 if ndim >= 2:
@@ -854,18 +858,16 @@ class WrapperGenerator:
                     code.writeline(f"in{i}_stride_order = (0,)")
             for i in range(schema.num_output_tensors()):
                 code.writeline(f"out{i}_strides = out{i}.stride()")
-                code.writeline(
-                    f"FlagOfNotUseDMA |= any(s <= 0 for s in out{i}_strides)"
-                )
+                code.writeline(f"FlagOfNotUseDMA |= any(s < 0 for s in out{i}_strides)")
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "
                     f"for b in s[i+1:]))([x for x in out{i}_strides if x != 0])"
                 )
-                code.writeline(f"FlagOfNotUseDMA |= in{i}.dtype == torch.int64")
+                code.writeline(f"FlagOfNotUseDMA |= out{i}.dtype == torch.int64")
                 code.writeline(
-                    f"FlagOfNotUseDMA |= len(in{i}_strides) >= 5 or "
-                    f"(len(in{i}_strides) == 4 and all(s != 1 for s in in{i}_strides))"
+                    f"FlagOfNotUseDMA |= len(out{i}_strides) >= 5 or "
+                    f"(len(out{i}_strides) == 4 and all(s != 1 for s in out{i}_strides))"
                 )
                 if not with_block_pointer:
                     continue
@@ -923,7 +925,7 @@ class WrapperGenerator:
             code.writeline("FlagOfNotUseDMA = False")
             for i in range(schema.num_input_tensors()):
                 code.writeline(f"in{i}_strides = in{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s <= 0 for s in in{i}_strides)")
+                code.writeline(f"FlagOfNotUseDMA |= any(s < 0 for s in in{i}_strides)")
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "
@@ -936,9 +938,7 @@ class WrapperGenerator:
                 )
             for i in range(schema.num_output_tensors()):
                 code.writeline(f"out{i}_strides = out{i}.stride()")
-                code.writeline(
-                    f"FlagOfNotUseDMA |= any(s <= 0 for s in out{i}_strides)"
-                )
+                code.writeline(f"FlagOfNotUseDMA |= any(s < 0 for s in out{i}_strides)")
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "
@@ -962,7 +962,6 @@ class WrapperGenerator:
                     code.writeline(
                         f"tile_sizes = heuristics_for_tile_size({max_tile_size}, num_tasks)"
                     )
-
             code.writeline("tile_size = tile_sizes[0]")
             code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
             if self.name.find("fill_scalar") != -1 and major >= 9:
@@ -1029,7 +1028,6 @@ class WrapperGenerator:
                     for i in range(ndim):
                         code.writeline(f"tile_size{i}=tile_sizes[{i}],")
                     code.writeline("one_tile_per_cta=one_tile_per_cta,")
-                code.writeline("ENABLE_STRIDE_GATHER=FlagOfNotUseDMA,")
                 code.writeline("num_warps=num_warps,")
             code.writeline(")")
 
@@ -1071,7 +1069,6 @@ class WrapperGenerator:
                     code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
                     code.writeline("tile_size=tile_size,")
                     code.writeline("one_tile_per_cta=one_tile_per_cta,")
-                code.writeline("ENABLE_STRIDE_GATHER=FlagOfNotUseDMA,")
                 code.writeline("num_warps=num_warps,")
             code.writeline(")")
 
@@ -1115,6 +1112,7 @@ class ModuleGenerator:
         config: CodeGenConfig,
     ):
         self.config = config
+        self.scalar_fn = scalar_fn
         self.wrapper_gen = WrapperGenerator(
             function_schema, jit_fn_name, ndim, wrapper_name, config
         )
@@ -1123,7 +1121,86 @@ class ModuleGenerator:
         )
 
     @staticmethod
-    def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
+    def _collect_jit_deps(scalar_fn):
+        """Collect extra imports and local @triton.jit helper sources.
+
+        Parses the source module where scalar_fn is defined using AST.
+        Returns a tuple of:
+          - extra_imports: dict of module_path -> set of names
+          - local_sources: list of source strings for local @triton.jit
+            functions (those NOT decorated with @pointwise_dynamic)
+        """
+        import ast
+        import inspect
+
+        py_fn = getattr(scalar_fn, "fn", scalar_fn)
+        module_name = getattr(py_fn, "__module__", None)
+        if not module_name:
+            return {}, []
+        try:
+            mod = importlib.import_module(module_name)
+            source_file = inspect.getfile(mod)
+        except (ImportError, TypeError, OSError):
+            return {}, []
+        try:
+            with open(source_file) as f:
+                module_source = f.read()
+            source_lines = module_source.splitlines(keepends=True)
+            tree = ast.parse(module_source)
+        except (OSError, SyntaxError):
+            return {}, []
+
+        ALREADY_IMPORTED = {
+            "math",
+            "typing",
+            "torch",
+            "triton",
+            "triton.language",
+            "flag_gems.utils.shape_utils",
+            "flag_gems.utils.tensor_wrapper",
+            "flag_gems.utils.libentry",
+            "flag_gems.utils",
+            "flag_gems.runtime",
+            "flag_gems.utils.pointwise_dynamic",
+            "flag_gems.runtime.backend._enflame.gcu400.utils.pointwise_dynamic",
+        }
+        extra_imports = {}
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module in ALREADY_IMPORTED:
+                    continue
+                names = {alias.name for alias in node.names}
+                extra_imports.setdefault(node.module, set()).update(names)
+
+        def _has_decorator(func_node, name):
+            for dec in func_node.decorator_list:
+                src = "".join(source_lines[dec.lineno - 1 : dec.end_lineno])
+                if name in src:
+                    return True
+            return False
+
+        def _extract_source(func_node):
+            start = func_node.lineno - 1
+            if func_node.decorator_list:
+                start = func_node.decorator_list[0].lineno - 1
+            end = func_node.end_lineno
+            return "".join(source_lines[start:end])
+
+        local_sources = []
+        for node in ast.iter_child_nodes(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            if not _has_decorator(node, "triton.jit") and not _has_decorator(
+                node, "jit"
+            ):
+                continue
+            if _has_decorator(node, "pointwise_dynamic"):
+                continue
+            local_sources.append(_extract_source(node))
+
+        return extra_imports, local_sources
+
+    def generate_imports(self, code: IndentedBuffer) -> IndentedBuffer:
         code.writeline("import math")
         code.writeline("from typing import Union")
         code.writeline("import torch")
@@ -1143,12 +1220,23 @@ class ModuleGenerator:
         code.writeline("    heuristics_for_tile_size,")
         code.writeline("    heuristics_for_num_warps,")
         code.writeline(")")
+
+        jit_dep_imports, local_jit_sources = self._collect_jit_deps(self.scalar_fn)
+        for module_path, names in sorted(jit_dep_imports.items()):
+            sorted_names = ", ".join(sorted(names))
+            code.writeline(f"from {module_path} import {sorted_names}")
+
         code.newline()
         code.newline()
+
+        for source in local_jit_sources:
+            for line in source.splitlines():
+                code.writeline(line)
+            code.newline()
+
         return code
 
     def codegen(self, code: IndentedBuffer):
-        # the only runtime determined factor is the rank of the task space
         code = self.generate_imports(code)
         if self.config.prefer_1d_tile:
             code = self.wrapper_gen.codegen_1d_tile(code)

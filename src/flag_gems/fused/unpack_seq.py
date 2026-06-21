@@ -7,6 +7,17 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 
+def _select_unpack_seq_config(
+    B: int,
+    Lmax: int,
+    D: int,
+    element_size: int,
+) -> tuple[int, int, int, int]:
+    if element_size <= 4 and B >= 512 and Lmax <= 16 and D >= 512:
+        return 128, 256, 4, 2
+    return 64, 64, 4, 2
+
+
 @triton.jit
 def _unpack_seq_triton_kernel(
     packed_ptr,  # [B, Lmax, D]
@@ -15,6 +26,7 @@ def _unpack_seq_triton_kernel(
     B: tl.constexpr,
     Lmax: tl.constexpr,
     D: tl.constexpr,
+    BLOCK_B: tl.constexpr,
     BLOCK_T: tl.constexpr,  # timesteps per program
     BLOCK_D: tl.constexpr,  # features per program
 ):
@@ -25,9 +37,9 @@ def _unpack_seq_triton_kernel(
     off_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)  # [BLOCK_D]
 
     # bounds: compute start from cumulative lengths
-    in_start = 0
-    for i in range(pid_b):
-        in_start += tl.load(lengths_ptr + i)
+    off_b = tl.arange(0, BLOCK_B)
+    prev_lengths = tl.load(lengths_ptr + off_b, mask=off_b < pid_b, other=0)
+    in_start = tl.sum(prev_lengths, axis=0)
     seq_len = tl.load(lengths_ptr + pid_b)
 
     # valid time positions for this block
@@ -69,6 +81,12 @@ def unpack_seq_triton(
     N = int(lengths.sum().item())
 
     out = torch.empty((N, D), device=packed_tensor.device, dtype=packed_tensor.dtype)
+    num_warps = 4
+    num_stages = 2
+    if block_t == 64 and block_d == 64:
+        block_t, block_d, num_warps, num_stages = _select_unpack_seq_config(
+            B, Lmax, D, packed_reshaped.element_size()
+        )
 
     grid = (B, triton.cdiv(Lmax, block_t), triton.cdiv(D, block_d))
     _unpack_seq_triton_kernel[grid](
@@ -78,10 +96,11 @@ def unpack_seq_triton(
         B,
         Lmax,
         D,
+        BLOCK_B=triton.next_power_of_2(B),
         BLOCK_T=block_t,
         BLOCK_D=block_d,
-        num_warps=4,
-        num_stages=2,
+        num_warps=num_warps,
+        num_stages=num_stages,
     )
 
     if len(original_shape) > 3:

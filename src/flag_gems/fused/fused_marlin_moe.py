@@ -50,10 +50,15 @@ from flag_gems.fused.silu_and_mul import silu_and_mul_out
 QUANT_TYPE_UINT4B8 = 0
 # INT8 (weight stored as w + 128)
 QUANT_TYPE_UINT8B128 = 1
+# MXFP4 (FP4 E2M1 weight + per-32 E8M0 scale). Mirrors vLLM scalar_types.float4_e2m1f.id.
+QUANT_TYPE_FP4_E2M1 = 6
+# MXFP4 block size (E8M0 scale shared by every 32 weights).
+MXFP4_GROUP_SIZE = 32
 
 _QUANT_TYPE_INT4 = {QUANT_TYPE_UINT4B8}
 _QUANT_TYPE_INT8 = {QUANT_TYPE_UINT8B128}
-_SUPPORTED_QUANT_TYPES = _QUANT_TYPE_INT4 | _QUANT_TYPE_INT8
+_QUANT_TYPE_FP4 = {QUANT_TYPE_FP4_E2M1}
+_SUPPORTED_QUANT_TYPES = _QUANT_TYPE_INT4 | _QUANT_TYPE_INT8 | _QUANT_TYPE_FP4
 
 
 @functools.lru_cache(maxsize=1)
@@ -68,6 +73,7 @@ def _is_hopper() -> bool:
 # ============================================================================
 _W_PACK_CACHE: WeakTensorKeyDictionary = WeakTensorKeyDictionary()
 _SCALE_PACK_CACHE: WeakTensorKeyDictionary = WeakTensorKeyDictionary()
+_SCALE_PACK_CACHE_E8M0: WeakTensorKeyDictionary = WeakTensorKeyDictionary()
 
 
 def _pack_w_interleave(w: torch.Tensor, block_size_k: int) -> torch.Tensor:
@@ -153,6 +159,34 @@ def w4a16_pack(
         _cached_pack_scale(w2_scale, cached=cached) if w2_scale is not None else None
     )
     return w1_packed, w2_packed, w1_scale_packed, w2_scale_packed
+
+
+def _pack_scale_e8m0(s: torch.Tensor, compute_dtype: torch.dtype) -> torch.Tensor:
+    # E8M0 (value = 2^(byte-127)) -> compute_dtype, transposed to (E, K/gs, N).
+    s_u8 = s.view(torch.uint8) if s.dtype != torch.uint8 else s
+    scale = torch.exp2((s_u8.to(torch.int32) - 127).to(torch.float32)).to(compute_dtype)
+    return scale.transpose(-2, -1).contiguous()
+
+
+def _cached_pack_scale_e8m0(s, compute_dtype, cached: bool) -> torch.Tensor:
+    if not cached:
+        return _pack_scale_e8m0(s, compute_dtype)
+    packed = _SCALE_PACK_CACHE_E8M0.get(s)
+    if packed is None:
+        packed = _pack_scale_e8m0(s, compute_dtype)
+        _SCALE_PACK_CACHE_E8M0[s] = packed
+    return packed
+
+
+def mxfp4_pack(
+    w1, w2, w1_scale, w2_scale, compute_dtype, *, cached=True, block_size_k=128
+):
+    return (
+        _cached_pack_w(w1, block_size_k, cached=cached),
+        _cached_pack_w(w2, block_size_k, cached=cached),
+        _cached_pack_scale_e8m0(w1_scale, compute_dtype, cached=cached),
+        _cached_pack_scale_e8m0(w2_scale, compute_dtype, cached=cached),
+    )
 
 
 @triton.jit
@@ -256,6 +290,161 @@ def _dequant_int4_bf16(b, scales):
         constraints="=h,=h,=h,=h,=h,=h,=h,=h,r,h",
         args=[b, scales],
         dtype=(tl.bfloat16,) * 8,
+        is_pure=True,
+        pack=1,
+    )
+    return x1, x2, x3, x4, x5, x6, x7, x8
+
+
+# FP4 (E2M1) -> bf16/fp16 SIMD dequant. Marlin bit trick
+# bare = (shifted & 0x80008000) | ((shifted & 0x70007000) >> RIGHT_SHIFT), then x bias
+# (2^126 / 2^14) restores the true value (subnormal 0.5 works for free). The per-32
+# E8M0 scale is folded in: a BLOCK_SIZE_K=128 tile spans 4 groups, so outputs
+# h0,h1 use s0; h2,h3 use s1; h4,h5 use s2; h6,h7 use s3.
+@triton.jit
+def _dequant_fp4_bf16(b, s0, s1, s2, s3):
+    x1, x2, x3, x4, x5, x6, x7, x8 = tl.inline_asm_elementwise(
+        asm="""
+        {
+        .reg .b32  r0, r1, r2, r3, q0, q1, q2, q3, t, bias;
+        .reg .b16  h0, h1, h2, h3, h4, h5, h6, h7, s;
+        mov.u32 r0, $8;
+        shr.u32 r1, r0, 4;
+        shr.u32 r2, r0, 8;
+        shr.u32 r3, r0, 12;
+        and.b32 q0, r0, 983055;
+        shl.b32 q0, q0, 12;
+        and.b32 t, q0, 2147516416;
+        and.b32 q0, q0, 1879076864;
+        shr.b32 q0, q0, 6;
+        or.b32 q0, q0, t;
+        and.b32 q1, r1, 983055;
+        shl.b32 q1, q1, 12;
+        and.b32 t, q1, 2147516416;
+        and.b32 q1, q1, 1879076864;
+        shr.b32 q1, q1, 6;
+        or.b32 q1, q1, t;
+        and.b32 q2, r2, 983055;
+        shl.b32 q2, q2, 12;
+        and.b32 t, q2, 2147516416;
+        and.b32 q2, q2, 1879076864;
+        shr.b32 q2, q2, 6;
+        or.b32 q2, q2, t;
+        and.b32 q3, r3, 983055;
+        shl.b32 q3, q3, 12;
+        and.b32 t, q3, 2147516416;
+        and.b32 q3, q3, 1879076864;
+        shr.b32 q3, q3, 6;
+        or.b32 q3, q3, t;
+        mov.u32 bias, 2122350208;        // 0x7E807E80 = bf16x2 (2^126, 2^126)
+        mul.rn.bf16x2 q0, q0, bias;
+        mul.rn.bf16x2 q1, q1, bias;
+        mul.rn.bf16x2 q2, q2, bias;
+        mul.rn.bf16x2 q3, q3, bias;
+        mov.b32 {h0, h1}, q0;
+        mov.b32 {h2, h3}, q1;
+        mov.b32 {h4, h5}, q2;
+        mov.b32 {h6, h7}, q3;
+        mov.b16 s, $9;
+        mul.rn.bf16 h0, h0, s;
+        mul.rn.bf16 h1, h1, s;
+        mov.b16 s, $10;
+        mul.rn.bf16 h2, h2, s;
+        mul.rn.bf16 h3, h3, s;
+        mov.b16 s, $11;
+        mul.rn.bf16 h4, h4, s;
+        mul.rn.bf16 h5, h5, s;
+        mov.b16 s, $12;
+        mul.rn.bf16 h6, h6, s;
+        mul.rn.bf16 h7, h7, s;
+        mov.b16 $0, h0;
+        mov.b16 $1, h1;
+        mov.b16 $2, h2;
+        mov.b16 $3, h3;
+        mov.b16 $4, h4;
+        mov.b16 $5, h5;
+        mov.b16 $6, h6;
+        mov.b16 $7, h7;
+        }
+        """,
+        constraints="=h,=h,=h,=h,=h,=h,=h,=h,r,h,h,h,h",
+        args=[b, s0, s1, s2, s3],
+        dtype=(tl.bfloat16,) * 8,
+        is_pure=True,
+        pack=1,
+    )
+    return x1, x2, x3, x4, x5, x6, x7, x8
+
+
+@triton.jit
+def _dequant_fp4_fp16(b, s0, s1, s2, s3):
+    x1, x2, x3, x4, x5, x6, x7, x8 = tl.inline_asm_elementwise(
+        asm="""
+        {
+        .reg .b32  r0, r1, r2, r3, q0, q1, q2, q3, t, bias;
+        .reg .b16  h0, h1, h2, h3, h4, h5, h6, h7, s;
+        mov.u32 r0, $8;
+        shr.u32 r1, r0, 4;
+        shr.u32 r2, r0, 8;
+        shr.u32 r3, r0, 12;
+        and.b32 q0, r0, 983055;
+        shl.b32 q0, q0, 12;
+        and.b32 t, q0, 2147516416;
+        and.b32 q0, q0, 1879076864;
+        shr.b32 q0, q0, 3;
+        or.b32 q0, q0, t;
+        and.b32 q1, r1, 983055;
+        shl.b32 q1, q1, 12;
+        and.b32 t, q1, 2147516416;
+        and.b32 q1, q1, 1879076864;
+        shr.b32 q1, q1, 3;
+        or.b32 q1, q1, t;
+        and.b32 q2, r2, 983055;
+        shl.b32 q2, q2, 12;
+        and.b32 t, q2, 2147516416;
+        and.b32 q2, q2, 1879076864;
+        shr.b32 q2, q2, 3;
+        or.b32 q2, q2, t;
+        and.b32 q3, r3, 983055;
+        shl.b32 q3, q3, 12;
+        and.b32 t, q3, 2147516416;
+        and.b32 q3, q3, 1879076864;
+        shr.b32 q3, q3, 3;
+        or.b32 q3, q3, t;
+        mov.u32 bias, 1946186752;        // 0x74007400 = f16x2 (2^14, 2^14)
+        mul.rn.f16x2 q0, q0, bias;
+        mul.rn.f16x2 q1, q1, bias;
+        mul.rn.f16x2 q2, q2, bias;
+        mul.rn.f16x2 q3, q3, bias;
+        mov.b32 {h0, h1}, q0;
+        mov.b32 {h2, h3}, q1;
+        mov.b32 {h4, h5}, q2;
+        mov.b32 {h6, h7}, q3;
+        mov.b16 s, $9;
+        mul.f16 h0, h0, s;
+        mul.f16 h1, h1, s;
+        mov.b16 s, $10;
+        mul.f16 h2, h2, s;
+        mul.f16 h3, h3, s;
+        mov.b16 s, $11;
+        mul.f16 h4, h4, s;
+        mul.f16 h5, h5, s;
+        mov.b16 s, $12;
+        mul.f16 h6, h6, s;
+        mul.f16 h7, h7, s;
+        mov.b16 $0, h0;
+        mov.b16 $1, h1;
+        mov.b16 $2, h2;
+        mov.b16 $3, h3;
+        mov.b16 $4, h4;
+        mov.b16 $5, h5;
+        mov.b16 $6, h6;
+        mov.b16 $7, h7;
+        }
+        """,
+        constraints="=h,=h,=h,=h,=h,=h,=h,=h,r,h,h,h,h",
+        args=[b, s0, s1, s2, s3],
+        dtype=(tl.float16,) * 8,
         is_pure=True,
         pack=1,
     )
@@ -651,6 +840,383 @@ def fused_moe_w4a16_gptq(
     return out_hidden_states
 
 
+def _mxfp4_autotune_configs():
+    cfgs = []
+    for bn in (16, 32, 64):
+        for w in (2, 4):
+            for s in (4, 5, 6):
+                cfgs.append(
+                    triton.Config(
+                        {"BLOCK_SIZE_N": bn, "GROUP_SIZE_M": 1},
+                        num_warps=w,
+                        num_stages=s,
+                    )
+                )
+    for bn in (128, 256):
+        for gm in (1, 4):
+            for w in (4, 8):
+                for s in (2, 3, 4):
+                    cfgs.append(
+                        triton.Config(
+                            {"BLOCK_SIZE_N": bn, "GROUP_SIZE_M": gm},
+                            num_warps=w,
+                            num_stages=s,
+                        )
+                    )
+    return cfgs
+
+
+@triton.autotune(
+    configs=_mxfp4_autotune_configs(),
+    key=["N", "K", "BLOCK_SIZE_M", "SWAP_AB"],
+)
+@triton.jit
+def _mxfp4_moe_gemm_kernel(
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    b_scale_ptr,
+    topk_weights_ptr,
+    sorted_token_ids_ptr,
+    expert_ids_ptr,
+    num_tokens_post_padded_ptr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    EM,
+    num_valid_tokens,
+    stride_am,
+    stride_ak,
+    stride_be,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    stride_bse,
+    stride_bsg,
+    stride_bsn,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
+    GROUP_SIZE_K: tl.constexpr,
+    MUL_ROUTED_WEIGHT: tl.constexpr,
+    top_k: tl.constexpr,
+    compute_type: tl.constexpr,
+    SWAP_AB: tl.constexpr,
+):
+    BLOCK_SIZE_K_PACK: tl.constexpr = BLOCK_SIZE_K // 8
+
+    pid = tl.program_id(axis=0)
+    num_pid_m = tl.cdiv(EM, BLOCK_SIZE_M)
+    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    num_pid_in_group = GROUP_SIZE_M * num_pid_n
+    group_id = pid // num_pid_in_group
+    first_pid_m = group_id * GROUP_SIZE_M
+    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
+    pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
+    pid_n = (pid % num_pid_in_group) // group_size_m
+
+    num_tokens_post_padded = tl.load(num_tokens_post_padded_ptr)
+    if pid_m * BLOCK_SIZE_M >= num_tokens_post_padded:
+        return
+
+    offs_token_id = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
+    offs_token = tl.load(sorted_token_ids_ptr + offs_token_id).to(tl.int64)
+    token_mask = offs_token < num_valid_tokens
+
+    off_experts = tl.load(expert_ids_ptr + pid_m).to(tl.int64)
+    if off_experts == -1:
+        if SWAP_AB:
+            offs_cn0 = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+            c_ptrs0 = (
+                c_ptr + stride_cm * offs_token[None, :] + stride_cn * offs_cn0[:, None]
+            )
+            c_mask0 = token_mask[None, :] & (offs_cn0[:, None] < N)
+            tl.store(
+                c_ptrs0,
+                tl.zeros((BLOCK_SIZE_N, BLOCK_SIZE_M), dtype=compute_type),
+                mask=c_mask0,
+            )
+        else:
+            write_zeros_to_output(
+                c_ptr,
+                stride_cm,
+                stride_cn,
+                pid_n,
+                N,
+                offs_token,
+                token_mask,
+                BLOCK_SIZE_M,
+                BLOCK_SIZE_N,
+                compute_type,
+            )
+        return
+
+    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)) % N
+    offs_ak_pack = tl.arange(0, BLOCK_SIZE_K_PACK)
+    offs_bk = tl.arange(0, BLOCK_SIZE_K_PACK)
+
+    if SWAP_AB:
+        a_base = a_ptr + (offs_token[None, :] // top_k * stride_am)
+        b_ptrs = (
+            b_ptr
+            + off_experts * stride_be
+            + offs_bn[:, None] * stride_bn
+            + offs_bk[None, :] * stride_bk
+        )
+        accumulator = tl.zeros((BLOCK_SIZE_N, BLOCK_SIZE_M), dtype=tl.float32)
+    else:
+        a_base = a_ptr + (offs_token[:, None] // top_k * stride_am)
+        b_ptrs = (
+            b_ptr
+            + off_experts * stride_be
+            + offs_bk[:, None] * stride_bk
+            + offs_bn[None, :] * stride_bn
+        )
+        accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    scale_base = b_scale_ptr + off_experts * stride_bse + offs_bn * stride_bsn
+
+    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+        b_packed = tl.load(b_ptrs)
+
+        # One BLOCK_SIZE_K tile spans BLOCK_SIZE_K/GROUP_SIZE_K (=4) E8M0 groups.
+        g0 = k * BLOCK_SIZE_K // GROUP_SIZE_K
+        sc0 = tl.load(scale_base + (g0 + 0) * stride_bsg)
+        sc1 = tl.load(scale_base + (g0 + 1) * stride_bsg)
+        sc2 = tl.load(scale_base + (g0 + 2) * stride_bsg)
+        sc3 = tl.load(scale_base + (g0 + 3) * stride_bsg)
+        if SWAP_AB:
+            s0, s1, s2, s3 = sc0[:, None], sc1[:, None], sc2[:, None], sc3[:, None]
+        else:
+            s0, s1, s2, s3 = sc0[None, :], sc1[None, :], sc2[None, :], sc3[None, :]
+
+        if compute_type == tl.float16:
+            bs = _dequant_fp4_fp16(b_packed, s0, s1, s2, s3)
+        else:
+            bs = _dequant_fp4_bf16(b_packed, s0, s1, s2, s3)
+
+        k_logical_base = k * BLOCK_SIZE_K
+        for j in tl.static_range(8):
+            k_off = k_logical_base + j * BLOCK_SIZE_K_PACK
+            if SWAP_AB:
+                a_j_ptrs = a_base + (k_off + offs_ak_pack[:, None]) * stride_ak
+                a_j = tl.load(a_j_ptrs, mask=token_mask[None, :], other=0.0)
+                accumulator = tl.dot(bs[j], a_j, acc=accumulator)
+            else:
+                a_j_ptrs = a_base + (k_off + offs_ak_pack[None, :]) * stride_ak
+                a_j = tl.load(a_j_ptrs, mask=token_mask[:, None], other=0.0)
+                accumulator = tl.dot(a_j, bs[j], acc=accumulator)
+
+        b_ptrs += BLOCK_SIZE_K_PACK * stride_bk
+
+    if MUL_ROUTED_WEIGHT:
+        moe_weight = tl.load(topk_weights_ptr + offs_token, mask=token_mask, other=0.0)
+        accumulator = accumulator * (
+            moe_weight[None, :] if SWAP_AB else moe_weight[:, None]
+        )
+
+    accumulator = accumulator.to(compute_type)
+
+    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    if SWAP_AB:
+        c_ptrs = c_ptr + stride_cm * offs_token[None, :] + stride_cn * offs_cn[:, None]
+        c_mask = token_mask[None, :] & (offs_cn[:, None] < N)
+    else:
+        c_ptrs = c_ptr + stride_cm * offs_token[:, None] + stride_cn * offs_cn[None, :]
+        c_mask = token_mask[:, None] & (offs_cn[None, :] < N)
+    tl.store(c_ptrs, accumulator, mask=c_mask)
+
+
+def _invoke_mxfp4_moe_gemm(
+    A,
+    B,
+    C,
+    B_scale,
+    topk_weights,
+    sorted_token_ids,
+    expert_ids,
+    num_tokens_post_padded,
+    *,
+    mul_routed_weight: bool,
+    top_k: int,
+    block_m: int,
+    block_size_k: int,
+    group_size: int,
+    compute_type,
+    swap_ab: bool = False,
+):
+    M_a = A.size(0)
+    K = A.size(1)
+    N = B.size(2)
+    EM = sorted_token_ids.size(0)
+    if M_a < block_m:
+        EM = min(EM, M_a * top_k * block_m)
+
+    if C.ndim == 3:
+        stride_cm = C.stride(1)
+        stride_cn = C.stride(2)
+    else:
+        stride_cm = C.stride(0)
+        stride_cn = C.stride(1)
+
+    grid = lambda META: (  # noqa: E731
+        triton.cdiv(EM, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
+    )
+
+    _mxfp4_moe_gemm_kernel[grid](
+        A,
+        B,
+        C,
+        B_scale,
+        topk_weights,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        N,
+        K,
+        EM,
+        A.size(0) * top_k,
+        A.stride(0),
+        A.stride(1),
+        B.stride(0),
+        B.stride(1),
+        B.stride(2),
+        stride_cm,
+        stride_cn,
+        B_scale.stride(0),
+        B_scale.stride(1),
+        B_scale.stride(2),
+        BLOCK_SIZE_M=block_m,
+        BLOCK_SIZE_K=block_size_k,
+        GROUP_SIZE_K=group_size,
+        MUL_ROUTED_WEIGHT=mul_routed_weight,
+        top_k=top_k,
+        compute_type=compute_type,
+        SWAP_AB=swap_ab,
+    )
+
+
+def fused_moe_mxfp4(
+    hidden_states: torch.Tensor,
+    w1: torch.Tensor,
+    w2: torch.Tensor,
+    w1_scale: torch.Tensor,
+    w2_scale: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    *,
+    activation: str = "silu",
+    group_size: int = MXFP4_GROUP_SIZE,
+    apply_router_weight_on_input: bool = False,
+    inplace: bool = False,
+    swap_ab: bool = True,
+) -> torch.Tensor:
+    """MXFP4 (W4A16) fused MoE. Weights: w1 (E, 2N, K//2) / w2 (E, K, N//2) uint8,
+    two FP4 (E2M1) per byte; scales E8M0 (float8_e8m0fnu), per-32 group."""
+    assert activation == "silu"
+    assert hidden_states.dtype in (torch.float16, torch.bfloat16)
+    assert hidden_states.is_contiguous()
+    assert w1.dtype == torch.uint8 and w2.dtype == torch.uint8
+    assert w1.stride(-1) == 1 and w2.stride(-1) == 1
+
+    M = hidden_states.size(0)
+    K = hidden_states.size(1)
+    E = w1.size(0)
+    intermediate_size = w1.size(1) // 2
+    top_k_num = topk_ids.size(1)
+
+    # BLOCK_SIZE_K=128 keeps tl.dot's K>=16 (K_PACK=16); a tile spans 4 E8M0 groups.
+    block_size_k = 128
+    assert w1.shape == (E, 2 * intermediate_size, K // 2)
+    assert w2.shape == (E, K, intermediate_size // 2)
+    assert K % block_size_k == 0
+    assert intermediate_size % block_size_k == 0
+    assert block_size_k % group_size == 0
+    assert w1_scale.shape == (E, 2 * intermediate_size, K // group_size)
+    assert w2_scale.shape == (E, K, intermediate_size // group_size)
+    assert topk_weights.shape == topk_ids.shape
+
+    compute_type = tl.float16 if hidden_states.dtype == torch.float16 else tl.bfloat16
+
+    w1_packed, w2_packed, w1_scale_packed, w2_scale_packed = mxfp4_pack(
+        w1,
+        w2,
+        w1_scale,
+        w2_scale,
+        hidden_states.dtype,
+        block_size_k=block_size_k,
+        cached=True,
+    )
+
+    cache13_size = M * top_k_num * max(2 * intermediate_size, K)
+    cache13 = torch.empty(
+        cache13_size, device=hidden_states.device, dtype=hidden_states.dtype
+    )
+    intermediate_cache1 = cache13[: M * top_k_num * 2 * intermediate_size].view(
+        M * top_k_num, 2 * intermediate_size
+    )
+    intermediate_cache3 = cache13[: M * top_k_num * K].view(M, top_k_num, K)
+    intermediate_cache2 = torch.empty(
+        (M * top_k_num, intermediate_size),
+        device=hidden_states.device,
+        dtype=hidden_states.dtype,
+    )
+
+    avg_tokens = max(M * top_k_num // max(E, 1), 1)
+    cutoff = 8 if swap_ab else 16
+    block_m = 16 if avg_tokens <= cutoff else (32 if avg_tokens <= 64 else 64)
+    sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
+        topk_ids=topk_ids,
+        block_size=block_m,
+        num_experts=E,
+        expert_map=None,
+    )
+
+    _invoke_mxfp4_moe_gemm(
+        A=hidden_states,
+        B=w1_packed,
+        C=intermediate_cache1,
+        B_scale=w1_scale_packed,
+        topk_weights=topk_weights if apply_router_weight_on_input else None,
+        sorted_token_ids=sorted_token_ids,
+        expert_ids=expert_ids,
+        num_tokens_post_padded=num_tokens_post_padded,
+        mul_routed_weight=apply_router_weight_on_input,
+        top_k=top_k_num,
+        block_m=block_m,
+        block_size_k=block_size_k,
+        group_size=group_size,
+        compute_type=compute_type,
+        swap_ab=swap_ab,
+    )
+
+    gate = intermediate_cache1[:, :intermediate_size]
+    up = intermediate_cache1[:, intermediate_size:]
+    silu_and_mul_out(gate, up, intermediate_cache2)
+
+    _invoke_mxfp4_moe_gemm(
+        A=intermediate_cache2,
+        B=w2_packed,
+        C=intermediate_cache3,
+        B_scale=w2_scale_packed,
+        topk_weights=topk_weights if not apply_router_weight_on_input else None,
+        sorted_token_ids=sorted_token_ids,
+        expert_ids=expert_ids,
+        num_tokens_post_padded=num_tokens_post_padded,
+        mul_routed_weight=not apply_router_weight_on_input,
+        top_k=1,
+        block_m=block_m,
+        block_size_k=block_size_k,
+        group_size=group_size,
+        compute_type=compute_type,
+        swap_ab=swap_ab,
+    )
+
+    out_hidden_states = hidden_states if inplace else torch.empty_like(hidden_states)
+    moe_sum(intermediate_cache3, out_hidden_states)
+    return out_hidden_states
+
+
 # ----------------------------------------------------------------------------
 # Phase-2 impl: copy of fused_experts_impl but with the dequant shortcut
 # removed so the wna16 Triton kernel is actually invoked for W4A16/W8A16.
@@ -956,6 +1522,7 @@ def fused_marlin_moe(
 
     use_int4_w4a16 = quant_type_id in _QUANT_TYPE_INT4
     use_int8_w8a16 = quant_type_id in _QUANT_TYPE_INT8
+    use_fp4_w4a16 = quant_type_id in _QUANT_TYPE_FP4
 
     activation_str = "silu"
     if activation is not None:
@@ -1010,6 +1577,42 @@ def fused_marlin_moe(
             return output
         return result
 
+    # MXFP4 fast path: FP4 (E2M1) weights + per-32 E8M0 scale.
+    if use_fp4_w4a16:
+        if not (
+            _is_hopper()
+            and hidden_states.dtype in (torch.float16, torch.bfloat16)
+            and w1.dtype == torch.uint8
+            and w2.dtype == torch.uint8
+            and bias1 is None
+            and bias2 is None
+            and w1_zeros is None
+            and w2_zeros is None
+            and expert_map is None
+            and (global_num_experts == -1 or global_num_experts == w1.size(0))
+        ):
+            raise NotImplementedError(
+                "MXFP4 fast path requires Hopper, bf16/fp16 activations, uint8 "
+                "packed weights, no bias/zeros/expert_map."
+            )
+        result = fused_moe_mxfp4(
+            hidden_states=hidden_states,
+            w1=w1,
+            w2=w2,
+            w1_scale=w1_scale,
+            w2_scale=w2_scale,
+            topk_weights=topk_weights,
+            topk_ids=topk_ids,
+            activation=activation_str,
+            group_size=group_size,
+            apply_router_weight_on_input=apply_router_weight_on_input,
+            inplace=inplace,
+        )
+        if output is not None:
+            output.copy_(result)
+            return output
+        return result
+
     result = _fused_marlin_moe_impl(
         hidden_states=hidden_states,
         w1=w1,
@@ -1040,4 +1643,9 @@ def fused_marlin_moe(
     return result
 
 
-__all__ = ["fused_marlin_moe", "QUANT_TYPE_UINT4B8", "QUANT_TYPE_UINT8B128"]
+__all__ = [
+    "fused_marlin_moe",
+    "QUANT_TYPE_UINT4B8",
+    "QUANT_TYPE_UINT8B128",
+    "QUANT_TYPE_FP4_E2M1",
+]

@@ -33,6 +33,7 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.silu_and_mul import silu_and_mul
     from .gcu400.skip_layernorm import skip_layer_norm
     from .gcu400.sparse_attention import sparse_attn_triton
+    from .gcu400.sparse_mla import triton_sparse_mla_fwd_interface
 
     __all__ = [
         "apply_rotary_pos_emb",
@@ -47,4 +48,5 @@ elif arch_version == 400 or arch_version == 410:
         "rwkv_ka_fusion",
         "bincount",
         "sparse_attn_triton",
+        "triton_sparse_mla_fwd_interface",
     ]

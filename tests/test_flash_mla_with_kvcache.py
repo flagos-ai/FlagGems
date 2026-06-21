@@ -30,8 +30,18 @@ from flag_gems.fused.flash_mla_with_kvcache import (
     get_mla_metadata as triton_get_mla_metadata,
 )
 
+from . import conftest as cfg
+
 DEVICE = "cuda"
 CUDA_AVAILABLE = torch.cuda.is_available()
+
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    V32_FP8_CONFIGS = [(2, 64, 64, 50)]
+    EXTRA_KV_CONFIGS = [(64, 512, 12)]
+else:
+    V32_FP8_CONFIGS = [(2, 64, 64, 50), (2, 128, 128, 100)]
+    EXTRA_KV_CONFIGS = [(64, 512, 12), (2, 512, 260)]
 FP8_MAX = 448.0
 
 
@@ -162,10 +172,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.mark.parametrize(
     "batch,h_q,topk,num_pages",
-    [
-        (2, 64, 64, 50),
-        (2, 128, 128, 100),
-    ],
+    V32_FP8_CONFIGS,
 )
 def test_sparse_decode_v32_fp8(batch, h_q, topk, num_pages):
     """V32 sparse decode uses 656-byte FP8 cache and no dynamic topk."""
@@ -269,10 +276,7 @@ def test_sparse_decode_model1_topk_length_attn_sink_out():
 
 @pytest.mark.parametrize(
     "extra_page_block_size,extra_topk,extra_num_pages",
-    [
-        (64, 512, 12),
-        (2, 512, 260),
-    ],
+    EXTRA_KV_CONFIGS,
 )
 def test_sparse_decode_model1_extra_kv(
     extra_page_block_size, extra_topk, extra_num_pages

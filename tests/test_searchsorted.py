@@ -4,13 +4,17 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 SEARCHSORTED_DTYPES = list(
     dict.fromkeys(
         utils.ALL_FLOAT_DTYPES + utils.ALL_INT_DTYPES + [torch.int8, torch.uint8]
     )
 )
-SIDE_CASES = [(False, None), (True, None), (False, "left"), (False, "right")]
+if cfg.QUICK_MODE:
+    SIDE_CASES = [(False, None), (False, "right")]
+else:
+    SIDE_CASES = [(False, None), (True, None), (False, "left"), (False, "right")]
 
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name == "ascend" and not utils.TO_CPU,

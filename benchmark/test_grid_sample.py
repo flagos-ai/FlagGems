@@ -298,7 +298,7 @@ def test_grid_sample(dtype):
     bench = GridSampleBenchmark(
         op_name="grid_sample",
         torch_op=torch.nn.functional.grid_sample,
-        gems_op=flag_gems.ops.grid_sample,
+        gems_op=flag_gems.grid_sample,
         dtypes=[dtype],
     )
     bench.run()

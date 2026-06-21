@@ -9,6 +9,12 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    MULTINOMIAL_DTYPES = [torch.float32]
+else:
+    MULTINOMIAL_DTYPES = [torch.float16, torch.float32]
 
 random.seed(time.time() // 100)
 
@@ -17,7 +23,7 @@ device = flag_gems.device
 
 @pytest.mark.multinomial
 @pytest.mark.parametrize("shape", utils.UT_SHAPES_1D + utils.UT_SHAPES_2D)
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", MULTINOMIAL_DTYPES)
 @pytest.mark.parametrize("n_samples", [1000])
 def test_multinomial_with_replacement(shape, dtype, n_samples):
     if flag_gems.vendor_name == "cambricon":
@@ -47,7 +53,7 @@ def test_multinomial_with_replacement(shape, dtype, n_samples):
 
 @pytest.mark.multinomial
 @pytest.mark.parametrize("shape", [(1024, 10)])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", MULTINOMIAL_DTYPES)
 @pytest.mark.parametrize("n_samples", [2048])
 def test_multinomial_with_replacement_1(shape, dtype, n_samples):
     # First use multinomial to generate a series of indices, then

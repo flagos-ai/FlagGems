@@ -4,12 +4,6 @@
 set -eo pipefail
 
 CUDA_VISIBLE_DEVICES=6
-# http_proxy=${{ secrets.HTTP_PROXY }}
-# https_proxy=${{ secrets.HTTPS_PROXY }}
-
-# TODO(Qiming): Check if the conda environment limitation can be dropped.
-source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
-conda activate flag_gems
 
 source_dir="src/flag_gems/experimental_ops"
 unit_test_dir="experimental_tests/unit"

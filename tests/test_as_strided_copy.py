@@ -4,6 +4,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 _BASE_DTYPES = (
     utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + [torch.int8, torch.uint8, torch.bool]
@@ -15,14 +16,20 @@ FLOAT8_DTYPES = [
     if hasattr(torch, dtype_name)
 ]
 
-AS_STRIDED_COPY_CASES = [
-    ((4, 6), (2, 3), (6, 1), 0),
-    ((4, 6), (2, 3), (1, 6), 0),
-    ((4, 6), (2, 2), (2, 3), 1),
-    ((4, 6), (2, 2), (0, 1), 0),
-    ((6,), (), (), 2),
-    ((4, 6), (0, 3), (6, 1), 999),
-]
+if cfg.QUICK_MODE:
+    AS_STRIDED_COPY_CASES = [
+        ((4, 6), (2, 3), (6, 1), 0),
+        ((6,), (), (), 2),
+    ]
+else:
+    AS_STRIDED_COPY_CASES = [
+        ((4, 6), (2, 3), (6, 1), 0),
+        ((4, 6), (2, 3), (1, 6), 0),
+        ((4, 6), (2, 2), (2, 3), 1),
+        ((4, 6), (2, 2), (0, 1), 0),
+        ((6,), (), (), 2),
+        ((4, 6), (0, 3), (6, 1), 999),
+    ]
 
 
 def _make_input(shape, dtype, device):

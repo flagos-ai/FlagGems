@@ -7,6 +7,7 @@ from packaging.version import InvalidVersion, Version
 from flag_gems.fused import indexer_k_quant_and_cache
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 _TARGET_VLLM_VERSION = Version("0.20.2")
 _NEXT_VLLM_VERSION = Version("0.21.0")
@@ -18,6 +19,21 @@ def _is_fp8e4nv_supported():
     major, minor = torch.cuda.get_device_capability()
     return major + minor / 10 >= 8.9
 
+
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    INDEXER_K_QUANT_CONFIGS = [
+        (torch.bfloat16, 19, 4, 16, 128, 128, "ue8m0"),
+        (torch.float16, 23, 5, 16, 512, 128, "ue8m0"),
+    ]
+else:
+    INDEXER_K_QUANT_CONFIGS = [
+        (torch.bfloat16, 19, 4, 16, 128, 128, "ue8m0"),
+        (torch.float16, 23, 5, 16, 512, 128, "ue8m0"),
+        (torch.float16, 29, 6, 16, 384, 128, "ue8m0"),
+        (torch.float16, 31, 7, 16, 640, 128, "ue8m0"),
+        (torch.bfloat16, 17, 4, 64, 512, 128, "ue8m0"),
+    ]
 
 pytestmark = [
     pytest.mark.skipif(
@@ -165,13 +181,7 @@ def _make_slot_mapping(num_tokens, num_blocks, block_size, device):
 @pytest.mark.indexer_k_quant_and_cache
 @pytest.mark.parametrize(
     "dtype,num_tokens,num_blocks,block_size,head_dim,quant_block_size,scale_fmt",
-    [
-        (torch.bfloat16, 19, 4, 16, 128, 128, "ue8m0"),
-        (torch.float16, 23, 5, 16, 512, 128, "ue8m0"),
-        (torch.float16, 29, 6, 16, 384, 128, "ue8m0"),
-        (torch.float16, 31, 7, 16, 640, 128, "ue8m0"),
-        (torch.bfloat16, 17, 4, 64, 512, 128, "ue8m0"),
-    ],
+    INDEXER_K_QUANT_CONFIGS,
 )
 @torch.inference_mode()
 def test_indexer_k_quant_and_cache_matches_reference(
