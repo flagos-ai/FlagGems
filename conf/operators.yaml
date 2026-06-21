@@ -6724,7 +6724,7 @@ ops:
     stages:
       - alpha: '5.4'
   - id: special_log1p_out
-    description: A variant of `special_log1p` that allows the output to be assigned to another tensor.
+    description: A variant of `special.log1p` that allows the output to be assigned to another tensor.
     for:
       - special_log1p.out
     labels:
