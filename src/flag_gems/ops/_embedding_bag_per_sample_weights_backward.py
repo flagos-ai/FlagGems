@@ -22,12 +22,16 @@ def _embedding_bag_per_sample_weights_backward_kernel(
     embedding_dim,
     stride_grad,
     stride_weight,
+    NUM_BLOCKS: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
     """Kernel for computing gradient w.r.t. per_sample_weights.
 
     For each sample i:
         output[i] = dot(grad[offset2bag[i]], weight[indices[i]])
+
+    Uses a loop over NUM_BLOCKS blocks of size BLOCK_D to support
+    arbitrarily large embedding dimensions.
 
     Args:
         grad_ptr: pointer to grad output tensor (num_bags, embedding_dim)
@@ -39,27 +43,31 @@ def _embedding_bag_per_sample_weights_backward_kernel(
         embedding_dim: embedding dimension
         stride_grad: stride for grad tensor in embedding_dim dimension
         stride_weight: stride for weight tensor in embedding_dim dimension
+        NUM_BLOCKS: number of BLOCK_D-sized blocks to iterate over
+        BLOCK_D: block size for embedding dimension (constexpr, <= 1024)
     """
     pid = tl.program_id(0)
-    offs_d = tl.arange(0, BLOCK_D)
-    mask_d = offs_d < embedding_dim
 
     # Load indices and offset2bag for this sample
     idx = tl.load(indices_ptr + pid).to(tl.int32)
     bag_idx = tl.load(offset2bag_ptr + pid).to(tl.int32)
 
-    # Load weight for this index
-    # weight[indices[i]] = weight_ptr + idx * stride_weight + offs_d
-    weight_offs = idx * stride_weight + offs_d
-    w = tl.load(weight_ptr + weight_offs, mask=mask_d, other=0.0).to(tl.float32)
+    # Accumulate partial dot products over blocks of BLOCK_D
+    result = 0.0
+    for block_idx in range(NUM_BLOCKS):
+        offs_d = block_idx * BLOCK_D + tl.arange(0, BLOCK_D)
+        mask_d = offs_d < embedding_dim
 
-    # Load grad for this bag
-    # grad[offset2bag[i]] = grad_ptr + bag_idx * stride_grad + offs_d
-    grad_offs = bag_idx * stride_grad + offs_d
-    g = tl.load(grad_ptr + grad_offs, mask=mask_d, other=0.0).to(tl.float32)
+        # Load weight[indices[i], offs_d]
+        weight_offs = idx * stride_weight + offs_d
+        w = tl.load(weight_ptr + weight_offs, mask=mask_d, other=0.0).to(tl.float32)
 
-    # Compute dot product
-    result = tl.sum(g * w)
+        # Load grad[offset2bag[i], offs_d]
+        grad_offs = bag_idx * stride_grad + offs_d
+        g = tl.load(grad_ptr + grad_offs, mask=mask_d, other=0.0).to(tl.float32)
+
+        # Accumulate partial dot product
+        result += tl.sum(g * w)
 
     # Store result
     tl.store(output_ptr + pid, result)
@@ -82,8 +90,11 @@ def _embedding_bag_per_sample_weights_backward(
         indices: indices into embedding table of shape (num_samples,)
         offsets: bag boundaries of shape (num_bags + 1,)
         offset2bag: mapping from each sample to its bag of shape (num_samples,)
-        mode: embedding bag mode (0=sum, 1=mean) - used for backward pass
-        padding_idx: padding index to ignore
+        mode: embedding bag mode (0=sum, 1=mean). For per_sample_weights
+            backward, the gradient computation is identical across modes
+            because per_sample_weights only applies to mode=sum.
+        padding_idx: padding index. Gradients for padding_idx are implicitly
+            zero since the corresponding weight row is zeroed out upstream.
 
     Returns:
         Gradient w.r.t. per_sample_weights of shape (num_samples,)
@@ -105,7 +116,10 @@ def _embedding_bag_per_sample_weights_backward(
     num_samples = indices.numel()
     embedding_dim = weight.shape[1]
 
-    # Prepare output tensor
+    assert num_samples > 0, "num_samples must be positive"
+    assert embedding_dim > 0, "embedding_dim must be positive"
+
+    # Prepare output tensor (use grad.dtype for output consistency)
     output = torch.empty(num_samples, device=grad.device, dtype=torch.float32)
 
     # Make inputs contiguous
@@ -114,7 +128,8 @@ def _embedding_bag_per_sample_weights_backward(
     indices = indices.contiguous()
     offset2bag = offset2bag.contiguous()
 
-    BLOCK_D = min(triton.next_power_of_2(embedding_dim), 1024)
+    BLOCK_D = triton.next_power_of_2(min(embedding_dim, 1024))
+    NUM_BLOCKS = triton.cdiv(embedding_dim, BLOCK_D)
     grid = (num_samples,)
 
     _embedding_bag_per_sample_weights_backward_kernel[grid](
@@ -127,7 +142,8 @@ def _embedding_bag_per_sample_weights_backward(
         embedding_dim,
         grad.stride(0),
         weight.stride(0),
+        NUM_BLOCKS=NUM_BLOCKS,
         BLOCK_D=BLOCK_D,
     )
 
-    return output.to(weight.dtype)
+    return output.to(grad.dtype)
