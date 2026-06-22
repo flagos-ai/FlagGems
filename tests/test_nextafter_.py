@@ -178,8 +178,9 @@ def test_nextafter_scalar_x():
     scalar_x = 0.5
     y = torch.randn(16, dtype=torch.float32, device=flag_gems.device)
 
-    ref_x = torch.full_like(y, scalar_x)
-    ref_x.nextafter_(y)
+    ref_y = utils.to_reference(y)
+    ref_x = torch.full_like(ref_y, scalar_x)
+    ref_x.nextafter_(ref_y)
 
     # Our implementation: scalar x + tensor y -> kernel returns new tensor,
     # but nextafter_ should be in-place.  Test the kernel path.
