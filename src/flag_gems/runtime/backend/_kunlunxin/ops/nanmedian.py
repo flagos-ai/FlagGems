@@ -15,6 +15,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 NanMedian = namedtuple("nanmedian", ["values", "indices"])
 MAX_BLOCK_N = 128
+SORT_BLOCK_N = 1024
 MAX_NDIM = 8
 
 
@@ -132,6 +133,32 @@ def nanmedian_direct_select_kernel(
 
 @libentry()
 @triton.jit
+def nanmedian_float_clean_count_kernel(
+    inp,
+    cleaned,
+    valid_counts,
+    N: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    offsets = tl.arange(0, BLOCK_N)
+    dtype = inp.dtype.element_ty
+    max_value = get_dtype_max(dtype)
+    count = tl.full((), 0, dtype=tl.int32)
+
+    for start in tl.range(0, N, BLOCK_N):
+        cols = start + offsets
+        mask = cols < N
+        vals = tl.load(inp + pid * N + cols, mask=mask, other=max_value)
+        valid = mask & _is_not_nan(vals)
+        tl.store(cleaned + pid * N + cols, tl.where(valid, vals, max_value), mask=mask)
+        count += tl.sum(valid.to(tl.int32), axis=0)
+
+    tl.store(valid_counts + pid, count)
+
+
+@libentry()
+@triton.jit
 def nanmedian_sorted_gather_kernel(
     sorted_values,
     sorted_indices,
@@ -202,13 +229,20 @@ def _reduction_rows(inp, dim, M, N):
 def _nanmedian_sort_fallback(inp, dim, M, N, values, indices):
     rows = _reduction_rows(inp, dim, M, N)
     if torch.is_floating_point(rows):
-        valid = rows == rows
-        valid_counts = torch.sum(valid.to(torch.int32), dim=1)
-        cleaned = torch.where(
-            valid,
-            rows,
-            torch.full_like(rows, torch.finfo(rows.dtype).max),
-        )
+        cleaned = torch.empty_like(rows)
+        valid_counts = torch.empty((M,), dtype=torch.int32, device=rows.device)
+        block_n = min(triton.next_power_of_2(N), SORT_BLOCK_N)
+        with torch_device_fn.device(inp.device):
+            nanmedian_float_clean_count_kernel[(M,)](
+                rows,
+                cleaned,
+                valid_counts,
+                N,
+                block_n,
+                num_warps=4 if block_n <= 512 else 8,
+                num_stages=1,
+                buffer_size_limit=2048,
+            )
         sorted_values, sorted_indices = torch.sort(cleaned, dim=1)
         is_float = True
     else:
