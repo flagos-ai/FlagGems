@@ -144,9 +144,12 @@ def special_shifted_chebyshev_polynomial_v(x, n):
     """
     Compute the shifted Chebyshev polynomial of the third kind V_n^*(x).
 
+    The kernel uses pre-computed recurrence values for degrees n in [0, 15].
+    For n >= 16, the result is 0.0 (out of supported range).
+
     Args:
-        x: Input tensor
-        n: Degree of the polynomial (can be tensor or scalar)
+        x: Input tensor (float32 only)
+        n: Degree of the polynomial (can be tensor or scalar). Supported range: [0, 15].
 
     Returns:
         Tensor with the same shape as x broadcasted with n

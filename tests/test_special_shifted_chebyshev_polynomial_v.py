@@ -44,3 +44,18 @@ def test_special_shifted_chebyshev_polynomial_v_scalar_n(shape, dtype):
         res_out = torch.special.shifted_chebyshev_polynomial_v(x, n)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=5e-3)
+
+
+@pytest.mark.special_shifted_chebyshev_polynomial_v
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_special_shifted_chebyshev_polynomial_v_out_of_range(shape, dtype):
+    """Verify that n >= 16 returns 0.0 (documented limitation of the kernel)."""
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    n = torch.full(shape, 16, device="cpu").to(torch.int32)
+
+    with flag_gems.use_gems():
+        res_out = torch.special.shifted_chebyshev_polynomial_v(x, n.to(x.device))
+
+    expected = torch.zeros_like(res_out)
+    utils.gems_assert_close(res_out, expected, dtype, atol=0.0)
