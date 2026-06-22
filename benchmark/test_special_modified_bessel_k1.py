@@ -1,9 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "iluvatar",
+    reason="Iluvatar IXRTC cannot compile PyTorch Cephes reference kernel",
+)
 @pytest.mark.special_modified_bessel_k1
 def test_special_modified_bessel_k1():
     bench = base.UnaryPointwiseBenchmark(
@@ -15,6 +21,10 @@ def test_special_modified_bessel_k1():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "iluvatar",
+    reason="Iluvatar IXRTC cannot compile PyTorch Cephes reference kernel",
+)
 @pytest.mark.special_modified_bessel_k1_out
 def test_special_modified_bessel_k1_out():
     bench = base.UnaryPointwiseOutBenchmark(
