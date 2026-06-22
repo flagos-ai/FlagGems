@@ -64,7 +64,7 @@ def iluvatar_var_twopass_kernel(
 
 
 def var(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS ILUVATAR VAR")
+    logger.debug("GEMS_ILUVATAR VAR")
     if correction is None:
         correction = 1.0
 
