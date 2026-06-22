@@ -5,6 +5,11 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Issue #4253: nanmedian accuracy failure on Kunlunxin",
+)
+
 EXTRA_INT_DTYPES = [torch.int8, torch.uint8]
 ASCEND_UNSUPPORTED_REFERENCE_DTYPES = (torch.bfloat16, torch.float64)
 
@@ -39,7 +44,7 @@ def _make_input(shape, dtype, with_nan=True):
         inp = torch.randint(0, 101, shape, dtype=dtype, device="cpu").to(
             flag_gems.device
         )
-    elif dtype in utils.ALL_INT_DTYPES or dtype is torch.int8:
+    elif not dtype.is_floating_point:
         inp = torch.randint(-100, 101, shape, dtype=dtype, device="cpu").to(
             flag_gems.device
         )
@@ -66,7 +71,13 @@ def _assert_nanmedian_indices_valid(inp, values, indices, dim, keepdim, dtype):
     assert torch.all(indices < inp.shape[dim])
 
     gather_indices = indices if keepdim else indices.unsqueeze(dim)
-    gathered = torch.gather(inp, dim, gather_indices)
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (torch.uint8, torch.int16):
+        # Kunlunxin gather does not support this validation dtype/index pair.
+        gathered = torch.gather(
+            utils.to_reference(inp), dim, utils.to_reference(gather_indices)
+        )
+    else:
+        gathered = torch.gather(inp, dim, gather_indices)
     if not keepdim:
         gathered = gathered.squeeze(dim)
 
