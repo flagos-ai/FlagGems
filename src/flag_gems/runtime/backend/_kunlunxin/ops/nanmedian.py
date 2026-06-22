@@ -212,7 +212,9 @@ def _nanmedian_sort_fallback(inp, dim, M, N, values, indices):
         sorted_values, sorted_indices = torch.sort(cleaned, dim=1)
         is_float = True
     else:
-        sorted_values, sorted_indices = torch.sort(rows, dim=1)
+        # Kunlunxin native sort cannot return (uint8 values, int64 indices).
+        sort_rows = rows.to(torch.int32) if rows.dtype is torch.uint8 else rows
+        sorted_values, sorted_indices = torch.sort(sort_rows, dim=1)
         valid_counts = sorted_indices
         is_float = False
 
