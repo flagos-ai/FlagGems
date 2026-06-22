@@ -57,7 +57,7 @@ def test_special_shifted_chebyshev_polynomial_v_out_of_range_tensor(shape, dtype
     with flag_gems.use_gems():
         res_out = torch.special.shifted_chebyshev_polynomial_v(x, n.to(x.device))
 
-    expected = torch.zeros_like(res_out)
+    expected = torch.zeros(res_out.shape, dtype=res_out.dtype)
     utils.gems_assert_close(res_out, expected, dtype, atol=0.0)
 
 
@@ -65,12 +65,14 @@ def test_special_shifted_chebyshev_polynomial_v_out_of_range_tensor(shape, dtype
 @pytest.mark.parametrize("bad_n", [16, -1, 100])
 @pytest.mark.parametrize("shape", [(3,), (10, 5)])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_special_shifted_chebyshev_polynomial_v_out_of_range_scalar(bad_n, shape, dtype):
+def test_special_shifted_chebyshev_polynomial_v_out_of_range_scalar(
+    bad_n, shape, dtype
+):
     """Verify that scalar n outside [0, 15] returns 0.0 (kernel guards with arithmetic masking)."""
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     with flag_gems.use_gems():
         res_out = torch.special.shifted_chebyshev_polynomial_v(x, bad_n)
 
-    expected = torch.zeros_like(res_out)
+    expected = torch.zeros(res_out.shape, dtype=res_out.dtype)
     utils.gems_assert_close(res_out, expected, dtype, atol=0.0)
