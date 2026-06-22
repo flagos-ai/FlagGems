@@ -75,8 +75,10 @@ def special_modified_bessel_k1_kernel(
 
     result = series_result * blend + asymp_result * (1.0 - blend)
 
-    # Handle non-positive values
-    result = tl.where(is_non_positive, float("nan"), result)
+    # Handle non-positive values: compute fp32 NaN without fp64 constant
+    # to avoid IXRTC ERROR_UNSUPPORTED_CAST
+    zero = x_f32 - x_f32
+    result = tl.where(is_non_positive, zero / zero, result)
 
     # Cast back to input dtype and store
     tl.store(out_ptr + offsets, result.to(x.dtype), mask=mask)
