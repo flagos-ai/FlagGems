@@ -6711,6 +6711,7 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+      - stable: '5.3'
   - id: special_sinc
     description: Computes sin(pi * x) / (pi * x) for each element of `input`.
     for:
