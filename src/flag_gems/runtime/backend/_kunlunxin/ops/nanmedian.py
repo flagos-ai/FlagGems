@@ -15,7 +15,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 NanMedian = namedtuple("nanmedian", ["values", "indices"])
 MAX_BLOCK_N = 128
-SORT_BLOCK_N = 1024
+SORT_BLOCK_N = MAX_BLOCK_N
 MAX_NDIM = 8
 
 
@@ -243,7 +243,14 @@ def _nanmedian_sort_fallback(inp, dim, M, N, values, indices):
                 num_stages=1,
                 buffer_size_limit=2048,
             )
-        sorted_values, sorted_indices = torch.sort(cleaned, dim=1)
+        # Keep Kunlunxin's large-N fallback away from low-precision native sort
+        # and wide-vector reductions, both of which are fragile on this backend.
+        sort_values = (
+            cleaned.to(torch.float32)
+            if rows.dtype in (torch.float16, torch.bfloat16)
+            else cleaned
+        )
+        sorted_values, sorted_indices = torch.sort(sort_values, dim=1)
         is_float = True
     else:
         # Kunlunxin native sort cannot return (uint8 values, int64 indices).
