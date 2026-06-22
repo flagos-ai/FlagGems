@@ -4,7 +4,7 @@ import torch
 from . import base, consts
 
 
-@pytest.mark.trunc_
+@pytest.mark.trunc
 def test_trunc():
     bench = base.UnaryPointwiseBenchmark(
         op_name="trunc",
