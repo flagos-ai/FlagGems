@@ -187,7 +187,7 @@ def get_moe_configs(
     if configs is not None:
         logger.info("Using embedded MoE config for device=%s, key=%s", device_name, key)
         return configs
-    logger.warning(
+    logger.info(
         "No embedded MoE config for device=%s, key=%s. Will use default config.",
         device_name,
         key,
