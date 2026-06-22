@@ -113,7 +113,7 @@ def var(x, dim=None, *, correction=None, keepdim=False):
 
 
 def var_dim(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS ILUVATAR VAR_DIM")
+    logger.debug("GEMS_ILUVATAR VAR_DIM")
     return var(x, dim=dim, correction=correction, keepdim=keepdim)
 
 
