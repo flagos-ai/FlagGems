@@ -207,6 +207,7 @@ def slogdet(A):
             stride_logabsdet,
             stride_lu,
             stride_pivots,
+            num_warps=1,
         )
 
     return sign, logabsdet, LU, pivots
