@@ -148,9 +148,13 @@ def nanmedian_float_key_select_kernel(
     count = tl.full((), 0, dtype=tl.int32)
     if KEY_BITS == 64:
         zero_key = tl.full((), 0, dtype=tl.uint64)
+        one_key = tl.full((), 1, dtype=tl.uint64)
+        two_key = tl.full((), 2, dtype=tl.uint64)
         max_key = tl.full((), 0xFFFFFFFFFFFFFFFF, dtype=tl.uint64)
     else:
         zero_key = tl.full((), 0, dtype=tl.uint32)
+        one_key = tl.full((), 1, dtype=tl.uint32)
+        two_key = tl.full((), 2, dtype=tl.uint32)
         max_key = tl.full((), 0xFFFFFFFF, dtype=tl.uint32)
     min_key = max_key
     upper_key = zero_key
@@ -173,7 +177,7 @@ def nanmedian_float_key_select_kernel(
     lower_key = min_key
     for _ in tl.static_range(0, KEY_BITS):
         active = lower_key < upper_key
-        mid_key = lower_key + ((upper_key - lower_key) // 2)
+        mid_key = lower_key + ((upper_key - lower_key) // two_key)
         le_count = tl.full((), 0, dtype=tl.int32)
 
         for start in tl.range(0, N, BLOCK_N):
@@ -187,7 +191,7 @@ def nanmedian_float_key_select_kernel(
             le_count += tl.sum((valid & (keys <= mid_key)).to(tl.int32), axis=0)
 
         go_left = le_count > target
-        lower_key = tl.where(active & ~go_left, mid_key + 1, lower_key)
+        lower_key = tl.where(active & ~go_left, mid_key + one_key, lower_key)
         upper_key = tl.where(active & go_left, mid_key, upper_key)
 
     result_idx = tl.full((), 0, dtype=tl.int32)
