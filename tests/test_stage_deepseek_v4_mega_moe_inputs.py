@@ -7,6 +7,13 @@ from flag_gems.fused.stage_deepseek_v4_mega_moe_inputs import (
 )
 
 
+def _supports_fp8e4nv():
+    if not torch.cuda.is_available():
+        return False
+    major, _ = torch.cuda.get_device_capability()
+    return major >= 9
+
+
 def _ceil_to_ue8m0(x: torch.Tensor):
     bits = x.abs().float().view(torch.int32)
     exp = ((bits >> 23) & 0xFF) + (bits & 0x7FFFFF).bool().int()
@@ -69,7 +76,9 @@ def _make_inputs(num_tokens, hidden_size, top_k):
 
 
 @pytest.mark.parametrize("num_tokens, hidden_size, top_k", [(1, 128, 1), (7, 256, 8)])
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires cuda")
+@pytest.mark.skipif(
+    not _supports_fp8e4nv(), reason="requires cuda with fp8e4nv support"
+)
 def test_stage_deepseek_v4_mega_moe_inputs_accuracy(num_tokens, hidden_size, top_k):
     hidden_states, topk_weights, topk_ids = _make_inputs(num_tokens, hidden_size, top_k)
     ref_x, ref_x_sf, ref_topk_idx, ref_topk_weights = _reference_stage_inputs(
@@ -100,7 +109,9 @@ def test_stage_deepseek_v4_mega_moe_inputs_accuracy(num_tokens, hidden_size, top
     )
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires cuda")
+@pytest.mark.skipif(
+    not _supports_fp8e4nv(), reason="requires cuda with fp8e4nv support"
+)
 def test_stage_deepseek_v4_mega_moe_inputs_rejects_bad_hidden_size():
     hidden_states, topk_weights, topk_ids = _make_inputs(1, 256, 1)
     bad_hidden_states = hidden_states[:, :129]

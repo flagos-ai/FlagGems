@@ -8,6 +8,13 @@ from flag_gems.fused.stage_deepseek_v4_mega_moe_inputs import (
 from . import base
 
 
+def _supports_fp8e4nv():
+    if not torch.cuda.is_available():
+        return False
+    major, _ = torch.cuda.get_device_capability()
+    return major >= 9
+
+
 def _ceil_to_ue8m0(x: torch.Tensor):
     bits = x.abs().float().view(torch.int32)
     exp = ((bits >> 23) & 0xFF) + (bits & 0x7FFFFF).bool().int()
@@ -118,6 +125,8 @@ class StageDeepseekV4MegaMoeInputsBenchmark(base.Benchmark):
 
 
 @pytest.mark.stage_deepseek_v4_mega_moe_inputs
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires cuda")
+@pytest.mark.skipif(
+    not _supports_fp8e4nv(), reason="requires cuda with fp8e4nv support"
+)
 def test_stage_deepseek_v4_mega_moe_inputs_benchmark():
     StageDeepseekV4MegaMoeInputsBenchmark().run()
