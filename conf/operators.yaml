@@ -3622,6 +3622,18 @@ ops:
       - Math
     stages:
       - stable: '5.3'
+  - id: jagged_to_padded_dense_forward
+    description: |
+      Converts a jagged (variable-length) tensor to a padded dense tensor.
+    for:
+      - _jagged_to_padded_dense_forward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: kron
     description: Computes the Kronecker product of `input` and `other`.
     for:
