@@ -6852,6 +6852,9 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
+    kind:
+      - NeuralNetwork
     stages:
       - stable: '4.1'
   - id: tanh
