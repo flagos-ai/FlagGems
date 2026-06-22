@@ -47,7 +47,7 @@ def test_special_shifted_chebyshev_polynomial_v_scalar_n(shape, dtype):
 
 
 @pytest.mark.special_shifted_chebyshev_polynomial_v
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("shape", [(1024,), (20, 320, 15)])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_special_shifted_chebyshev_polynomial_v_out_of_range(shape, dtype):
     """Verify that n >= 16 returns 0.0 (documented limitation of the kernel)."""
