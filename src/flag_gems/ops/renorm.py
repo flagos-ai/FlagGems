@@ -113,7 +113,7 @@ def renorm(input, p, dim, maxnorm):
         N = input.numel() // M
 
         input = input.contiguous()
-        norms = torch.empty((M,), dtype=input.dtype, device=input.device)
+        norms = torch.empty((M,), dtype=torch.float32, device=input.device)
 
         BLOCK = min(triton.next_power_of_2(N), 128)
         grid = (M,)
@@ -167,7 +167,7 @@ def renorm_(input, p, dim, maxnorm):
         N = input.numel() // M
 
         input = input.contiguous()
-        norms = torch.empty((M,), dtype=input.dtype, device=input.device)
+        norms = torch.empty((M,), dtype=torch.float32, device=input.device)
 
         BLOCK = min(triton.next_power_of_2(N), 128)
         grid = (M,)
