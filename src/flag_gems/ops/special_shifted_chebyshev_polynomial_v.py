@@ -72,23 +72,27 @@ def shifted_chebyshev_polynomial_v_func(x, n):
     # V_15^*(x)
     v15 = four_x_minus_2 * v14 - v13
 
-    # Select the correct result based on n (flat sequential, avoids deep nesting)
-    result = tl.where(nf == 0, v0, 0.0)
-    result = tl.where(nf == 1, v1, result)
-    result = tl.where(nf == 2, v2, result)
-    result = tl.where(nf == 3, v3, result)
-    result = tl.where(nf == 4, v4, result)
-    result = tl.where(nf == 5, v5, result)
-    result = tl.where(nf == 6, v6, result)
-    result = tl.where(nf == 7, v7, result)
-    result = tl.where(nf == 8, v8, result)
-    result = tl.where(nf == 9, v9, result)
-    result = tl.where(nf == 10, v10, result)
-    result = tl.where(nf == 11, v11, result)
-    result = tl.where(nf == 12, v12, result)
-    result = tl.where(nf == 13, v13, result)
-    result = tl.where(nf == 14, v14, result)
-    result = tl.where(nf == 15, v15, result)
+    # Select the correct result based on n using arithmetic masking.
+    # Arithmetic selection (multiply by bool mask) avoids the tl.where chain
+    # issue where out-of-range n values receive indeterminate results.
+    result = (
+        (nf == 0).to(tl.float32) * v0
+        + (nf == 1).to(tl.float32) * v1
+        + (nf == 2).to(tl.float32) * v2
+        + (nf == 3).to(tl.float32) * v3
+        + (nf == 4).to(tl.float32) * v4
+        + (nf == 5).to(tl.float32) * v5
+        + (nf == 6).to(tl.float32) * v6
+        + (nf == 7).to(tl.float32) * v7
+        + (nf == 8).to(tl.float32) * v8
+        + (nf == 9).to(tl.float32) * v9
+        + (nf == 10).to(tl.float32) * v10
+        + (nf == 11).to(tl.float32) * v11
+        + (nf == 12).to(tl.float32) * v12
+        + (nf == 13).to(tl.float32) * v13
+        + (nf == 14).to(tl.float32) * v14
+        + (nf == 15).to(tl.float32) * v15
+    )
 
     return result.to(x.dtype)
 
@@ -119,23 +123,25 @@ def shifted_chebyshev_polynomial_v_func_scalar_n(x, n):
     v14 = four_x_minus_2 * v13 - v12
     v15 = four_x_minus_2 * v14 - v13
 
-    # Select the correct result based on n (flat sequential, avoids deep nesting)
-    result = tl.where(nf == 0, v0, 0.0)
-    result = tl.where(nf == 1, v1, result)
-    result = tl.where(nf == 2, v2, result)
-    result = tl.where(nf == 3, v3, result)
-    result = tl.where(nf == 4, v4, result)
-    result = tl.where(nf == 5, v5, result)
-    result = tl.where(nf == 6, v6, result)
-    result = tl.where(nf == 7, v7, result)
-    result = tl.where(nf == 8, v8, result)
-    result = tl.where(nf == 9, v9, result)
-    result = tl.where(nf == 10, v10, result)
-    result = tl.where(nf == 11, v11, result)
-    result = tl.where(nf == 12, v12, result)
-    result = tl.where(nf == 13, v13, result)
-    result = tl.where(nf == 14, v14, result)
-    result = tl.where(nf == 15, v15, result)
+    # Select the correct result based on n using arithmetic masking.
+    result = (
+        (nf == 0).to(tl.float32) * v0
+        + (nf == 1).to(tl.float32) * v1
+        + (nf == 2).to(tl.float32) * v2
+        + (nf == 3).to(tl.float32) * v3
+        + (nf == 4).to(tl.float32) * v4
+        + (nf == 5).to(tl.float32) * v5
+        + (nf == 6).to(tl.float32) * v6
+        + (nf == 7).to(tl.float32) * v7
+        + (nf == 8).to(tl.float32) * v8
+        + (nf == 9).to(tl.float32) * v9
+        + (nf == 10).to(tl.float32) * v10
+        + (nf == 11).to(tl.float32) * v11
+        + (nf == 12).to(tl.float32) * v12
+        + (nf == 13).to(tl.float32) * v13
+        + (nf == 14).to(tl.float32) * v14
+        + (nf == 15).to(tl.float32) * v15
+    )
 
     return result.to(x.dtype)
 
@@ -145,11 +151,11 @@ def special_shifted_chebyshev_polynomial_v(x, n):
     Compute the shifted Chebyshev polynomial of the third kind V_n^*(x).
 
     The kernel uses pre-computed recurrence values for degrees n in [0, 15].
-    For n >= 16, the result is 0.0 (out of supported range).
+    For n outside this range, the result is 0.0.
 
     Args:
         x: Input tensor (float32 only)
-        n: Degree of the polynomial (can be tensor or scalar). Supported range: [0, 15].
+        n: Degree of the polynomial (int or int tensor). Supported range: [0, 15].
 
     Returns:
         Tensor with the same shape as x broadcasted with n
