@@ -130,6 +130,36 @@ def nanmedian_direct_select_kernel(
     tl.store(out_indices + pid, median_idx)
 
 
+@libentry()
+@triton.jit
+def nanmedian_sorted_gather_kernel(
+    sorted_values,
+    sorted_indices,
+    valid_counts,
+    out_values,
+    out_indices,
+    N: tl.constexpr,
+    IS_FLOAT: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    if IS_FLOAT:
+        count = tl.load(valid_counts + pid)
+        rank = tl.where(count > 0, (count - 1) // 2, 0)
+        result_val = tl.load(
+            sorted_values + pid * N + rank, mask=count > 0, other=float("nan")
+        )
+        result_idx = tl.load(sorted_indices + pid * N + rank, mask=count > 0, other=0)
+        result_val = tl.where(count > 0, result_val, float("nan"))
+        result_idx = tl.where(count > 0, result_idx, 0)
+    else:
+        rank = (N - 1) // 2
+        result_val = tl.load(sorted_values + pid * N + rank)
+        result_idx = tl.load(sorted_indices + pid * N + rank)
+
+    tl.store(out_values + pid, result_val)
+    tl.store(out_indices + pid, result_idx)
+
+
 def _check_supported_dtype(inp):
     if inp.dtype is torch.bool:
         raise NotImplementedError("\"median_out_impl\" not implemented for 'Bool'")
@@ -163,46 +193,41 @@ def _empty_flat_value(inp):
     return result
 
 
-def _full_nan_result(shape, dtype, device):
-    values = torch.full(shape, float("nan"), dtype=dtype, device=device)
-    indices = torch.zeros(shape, dtype=torch.long, device=device)
-    return NanMedian(values=values, indices=indices)
-
-
 def _reduction_rows(inp, dim, M, N):
     if dim == inp.ndim - 1:
         return inp.reshape(M, N)
     return torch.movedim(inp, dim, -1).reshape(M, N)
 
 
-def _nanmedian_kthvalue_fallback(inp, dim, M, N):
+def _nanmedian_sort_fallback(inp, dim, M, N, values, indices):
     rows = _reduction_rows(inp, dim, M, N)
     if torch.is_floating_point(rows):
         valid = rows == rows
-        valid_count = torch.sum(valid.to(torch.long), dim=1)
+        valid_counts = torch.sum(valid.to(torch.int32), dim=1)
         cleaned = torch.where(
             valid,
             rows,
             torch.full_like(rows, torch.finfo(rows.dtype).max),
         )
-        result = _full_nan_result((M,), rows.dtype, rows.device)
-        for count in torch.unique(valid_count).tolist():
-            count = int(count)
-            if count == 0:
-                continue
-            row_indices = torch.nonzero(valid_count == count).flatten()
-            selected_rows = torch.index_select(cleaned, 0, row_indices)
-            values, _ = torch.kthvalue(selected_rows, (count + 1) // 2, dim=1)
-            original_rows = torch.index_select(rows, 0, row_indices)
-            original_valid = torch.index_select(valid, 0, row_indices)
-            matches = original_valid & (original_rows == values.unsqueeze(1))
-            indices = torch.max(matches.to(torch.long), dim=1).indices
-            result.values[row_indices] = values
-            result.indices[row_indices] = indices
-        return result
+        sorted_values, sorted_indices = torch.sort(cleaned, dim=1)
+        is_float = True
+    else:
+        sorted_values, sorted_indices = torch.sort(rows, dim=1)
+        valid_counts = sorted_indices
+        is_float = False
 
-    values, indices = torch.kthvalue(rows, (N + 1) // 2, dim=1)
-    return NanMedian(values=values, indices=indices)
+    with torch_device_fn.device(inp.device):
+        nanmedian_sorted_gather_kernel[(M,)](
+            sorted_values,
+            sorted_indices,
+            valid_counts,
+            values,
+            indices,
+            N,
+            is_float,
+            num_warps=1,
+            num_stages=1,
+        )
 
 
 def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
@@ -283,15 +308,7 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
             )
     else:
         # Avoid the Kunlunxin TritonXPU large-N radix lowering crash.
-        result = _nanmedian_kthvalue_fallback(inp, dim, M, N)
-        computed_values = result.values.reshape(compute_shape)
-        computed_indices = result.indices.reshape(compute_shape)
-        if out is None:
-            values = computed_values
-            indices = computed_indices
-        else:
-            flat_values.copy_(result.values)
-            flat_indices.copy_(result.indices)
+        _nanmedian_sort_fallback(inp, dim, M, N, flat_values, flat_indices)
 
     if out is None and not keepdim:
         values = torch.squeeze(values, dim)
