@@ -6632,6 +6632,29 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_xlogy
+    description: >
+      Computes x * log(y). Returns 0 if x == 0.
+    for:
+      - special.xlogy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_xlogy_
+    description: The in-place version of `special_xlogy()`.
+    for:
+      - special.xlogy_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,
