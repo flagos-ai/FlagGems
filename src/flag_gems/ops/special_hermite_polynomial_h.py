@@ -24,20 +24,13 @@ from flag_gems.utils import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+# Shared H_n(x) computation for degree n in [0, 9].
+# Physicist's Hermite polynomial: H_0(x)=1, H_1(x)=2x,
+# H_{n+1}(x) = 2*x*H_n(x) - H_{n-1}(x).
+# Evaluated in float32 for numerical stability.
 @triton.jit
-def hermite_polynomial_h_func(x, n):
-    # Physicist's Hermite polynomial H_n(x)
-    # H_0(x) = 1
-    # H_1(x) = 2*x
-    # H_2(x) = 4*x^2 - 2
-    # H_3(x) = 8*x^3 - 12*x
-    # H_{n+1}(x) = 2*x*H_n(x) - H_{n-1}(x)
-    #
-    # We compute H_0 through H_9 and select based on n
-
+def _hermite_Hn(x, n_int):
     xf = x.to(tl.float32)
-    n_int = n.to(tl.int32)
 
     # H_0(x) = 1
     h0: tl.float32 = 1.0
@@ -70,28 +63,26 @@ def hermite_polynomial_h_func(x, n):
         512.0 * x9 - 9216.0 * x7 + 48384.0 * x5 - 80640.0 * x3 + 30240.0 * xf
     )
 
-    # Select based on n
-    # Start with H_0
+    # Select H_n based on padded-n value (n_int in [0, 9])
     result: tl.float32 = h0
-    # Select H_1 if n == 1
     result = tl.where(n_int == 1, h1, result)
-    # Select H_2 if n == 2
     result = tl.where(n_int == 2, h2, result)
-    # Select H_3 if n == 3
     result = tl.where(n_int == 3, h3, result)
-    # Select H_4 if n == 4
     result = tl.where(n_int == 4, h4, result)
-    # Select H_5 if n == 5
     result = tl.where(n_int == 5, h5, result)
-    # Select H_6 if n == 6
     result = tl.where(n_int == 6, h6, result)
-    # Select H_7 if n == 7
     result = tl.where(n_int == 7, h7, result)
-    # Select H_8 if n == 8
     result = tl.where(n_int == 8, h8, result)
-    # Select H_9 if n == 9
     result = tl.where(n_int == 9, h9, result)
 
+    return result
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def hermite_polynomial_h_func(x, n):
+    n_int = n.to(tl.int32)
+    result = _hermite_Hn(x, n_int)
     return result.to(x.dtype)
 
 
@@ -103,43 +94,8 @@ def special_hermite_polynomial_h_tensor_tensor(x, n):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def hermite_polynomial_h_func_tensor_scalar(x, n):
-    # Same as above but n is a scalar
-    xf = x.to(tl.float32)
     n_int = n.to(tl.int32)
-
-    # H_0 through H_9
-    h0: tl.float32 = 1.0
-    h1: tl.float32 = 2.0 * xf
-    x2 = xf * xf
-    h2: tl.float32 = 4.0 * x2 - 2.0
-    x3 = x2 * xf
-    h3: tl.float32 = 8.0 * x3 - 12.0 * xf
-    x4 = x2 * x2
-    h4: tl.float32 = 16.0 * x4 - 48.0 * x2 + 12.0
-    x5 = x4 * xf
-    h5: tl.float32 = 32.0 * x5 - 160.0 * x3 + 120.0 * xf
-    x6 = x3 * x3
-    h6: tl.float32 = 64.0 * x6 - 480.0 * x4 + 720.0 * x2 - 120.0
-    x7 = x6 * xf
-    h7: tl.float32 = 128.0 * x7 - 1344.0 * x5 + 3360.0 * x3 - 1680.0 * xf
-    x8 = x4 * x4
-    h8: tl.float32 = 256.0 * x8 - 3584.0 * x6 + 13440.0 * x4 - 13440.0 * x2 + 1680.0
-    x9 = x8 * xf
-    h9: tl.float32 = (
-        512.0 * x9 - 9216.0 * x7 + 48384.0 * x5 - 80640.0 * x3 + 30240.0 * xf
-    )
-
-    result: tl.float32 = h0
-    result = tl.where(n_int == 1, h1, result)
-    result = tl.where(n_int == 2, h2, result)
-    result = tl.where(n_int == 3, h3, result)
-    result = tl.where(n_int == 4, h4, result)
-    result = tl.where(n_int == 5, h5, result)
-    result = tl.where(n_int == 6, h6, result)
-    result = tl.where(n_int == 7, h7, result)
-    result = tl.where(n_int == 8, h8, result)
-    result = tl.where(n_int == 9, h9, result)
-
+    result = _hermite_Hn(x, n_int)
     return result.to(x.dtype)
 
 
