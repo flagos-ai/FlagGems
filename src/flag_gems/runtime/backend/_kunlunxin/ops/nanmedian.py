@@ -11,11 +11,13 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_max, get_dtype_min
 
+from .sort import convert_to_uint_preverse_order
+
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 NanMedian = namedtuple("nanmedian", ["values", "indices"])
 MAX_BLOCK_N = 128
-SORT_BLOCK_N = MAX_BLOCK_N
+FLOAT_SELECT_BLOCK_N = 128
 MAX_NDIM = 8
 
 
@@ -133,28 +135,80 @@ def nanmedian_direct_select_kernel(
 
 @libentry()
 @triton.jit
-def nanmedian_float_clean_count_kernel(
+def nanmedian_float_key_select_kernel(
     inp,
-    cleaned,
-    valid_counts,
+    out_values,
+    out_indices,
     N: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    KEY_BITS: tl.constexpr,
 ):
     pid = ext.program_id(0)
     offsets = tl.arange(0, BLOCK_N)
-    dtype = inp.dtype.element_ty
-    max_value = get_dtype_max(dtype)
     count = tl.full((), 0, dtype=tl.int32)
+    if KEY_BITS == 64:
+        zero_key = tl.full((), 0, dtype=tl.uint64)
+        max_key = tl.full((), 0xFFFFFFFFFFFFFFFF, dtype=tl.uint64)
+    else:
+        zero_key = tl.full((), 0, dtype=tl.uint32)
+        max_key = tl.full((), 0xFFFFFFFF, dtype=tl.uint32)
+    min_key = max_key
+    upper_key = zero_key
 
     for start in tl.range(0, N, BLOCK_N):
         cols = start + offsets
         mask = cols < N
-        vals = tl.load(inp + pid * N + cols, mask=mask, other=max_value)
+        vals = tl.load(inp + pid * N + cols, mask=mask, other=0.0)
         valid = mask & _is_not_nan(vals)
-        tl.store(cleaned + pid * N + cols, tl.where(valid, vals, max_value), mask=mask)
         count += tl.sum(valid.to(tl.int32), axis=0)
+        key_vals = vals if KEY_BITS == 64 else vals.to(tl.float32)
+        keys = convert_to_uint_preverse_order(key_vals, False)
+        keys = keys.to(tl.uint64) if KEY_BITS == 64 else keys.to(tl.uint32)
+        min_key = tl.minimum(min_key, tl.min(tl.where(valid, keys, max_key), axis=0))
+        upper_key = tl.maximum(
+            upper_key, tl.max(tl.where(valid, keys, zero_key), axis=0)
+        )
 
-    tl.store(valid_counts + pid, count)
+    target = tl.maximum((count - 1) // 2, 0)
+    lower_key = min_key
+    for _ in tl.static_range(0, KEY_BITS):
+        active = lower_key < upper_key
+        mid_key = lower_key + ((upper_key - lower_key) // 2)
+        le_count = tl.full((), 0, dtype=tl.int32)
+
+        for start in tl.range(0, N, BLOCK_N):
+            cols = start + offsets
+            mask = cols < N
+            vals = tl.load(inp + pid * N + cols, mask=mask, other=0.0)
+            valid = mask & _is_not_nan(vals)
+            key_vals = vals if KEY_BITS == 64 else vals.to(tl.float32)
+            keys = convert_to_uint_preverse_order(key_vals, False)
+            keys = keys.to(tl.uint64) if KEY_BITS == 64 else keys.to(tl.uint32)
+            le_count += tl.sum((valid & (keys <= mid_key)).to(tl.int32), axis=0)
+
+        go_left = le_count > target
+        lower_key = tl.where(active & ~go_left, mid_key + 1, lower_key)
+        upper_key = tl.where(active & go_left, mid_key, upper_key)
+
+    result_idx = tl.full((), 0, dtype=tl.int32)
+    first_idx = tl.full((), N, dtype=tl.int32)
+    for start in tl.range(0, N, BLOCK_N):
+        cols = start + offsets
+        mask = cols < N
+        vals = tl.load(inp + pid * N + cols, mask=mask, other=0.0)
+        valid = mask & _is_not_nan(vals)
+        key_vals = vals if KEY_BITS == 64 else vals.to(tl.float32)
+        keys = convert_to_uint_preverse_order(key_vals, False)
+        keys = keys.to(tl.uint64) if KEY_BITS == 64 else keys.to(tl.uint32)
+        local_idx = tl.min(tl.where(valid & (keys == lower_key), cols, N), axis=0)
+        first_idx = tl.minimum(first_idx, local_idx)
+
+    result_idx = tl.where(count > 0, first_idx, result_idx)
+    result_val = tl.load(inp + pid * N + result_idx, mask=count > 0, other=float("nan"))
+    result_val = tl.where(count > 0, result_val, float("nan"))
+
+    tl.store(out_values + pid, result_val)
+    tl.store(out_indices + pid, result_idx)
 
 
 @libentry()
@@ -229,29 +283,20 @@ def _reduction_rows(inp, dim, M, N):
 def _nanmedian_sort_fallback(inp, dim, M, N, values, indices):
     rows = _reduction_rows(inp, dim, M, N)
     if torch.is_floating_point(rows):
-        cleaned = torch.empty_like(rows)
-        valid_counts = torch.empty((M,), dtype=torch.int32, device=rows.device)
-        block_n = min(triton.next_power_of_2(N), SORT_BLOCK_N)
+        key_bits = 64 if rows.dtype is torch.float64 else 32
         with torch_device_fn.device(inp.device):
-            nanmedian_float_clean_count_kernel[(M,)](
+            nanmedian_float_key_select_kernel[(M,)](
                 rows,
-                cleaned,
-                valid_counts,
+                values,
+                indices,
                 N,
-                block_n,
-                num_warps=4 if block_n <= 512 else 8,
+                FLOAT_SELECT_BLOCK_N,
+                key_bits,
+                num_warps=4,
                 num_stages=1,
                 buffer_size_limit=2048,
             )
-        # Keep Kunlunxin's large-N fallback away from low-precision native sort
-        # and wide-vector reductions, both of which are fragile on this backend.
-        sort_values = (
-            cleaned.to(torch.float32)
-            if rows.dtype in (torch.float16, torch.bfloat16)
-            else cleaned
-        )
-        sorted_values, sorted_indices = torch.sort(sort_values, dim=1)
-        is_float = True
+        return
     else:
         # Kunlunxin native sort cannot return (uint8 values, int64 indices).
         sort_rows = rows.to(torch.int32) if rows.dtype is torch.uint8 else rows
