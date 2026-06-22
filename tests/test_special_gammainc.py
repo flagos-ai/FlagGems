@@ -55,10 +55,15 @@ def test_special_gammainc_boundary_x_zero(dtype):
         [0.5, 1.0, 2.0, 5.0, 10.0], dtype=dtype, device=flag_gems.device
     )
     x_vals = torch.zeros_like(a_vals)
+
+    ref_a = utils.to_reference(a_vals, True)
+    ref_x = utils.to_reference(x_vals, True)
+    ref_out = torch.special.gammainc(ref_a, ref_x)
+
     with flag_gems.use_gems():
         res = torch.special.gammainc(a_vals, x_vals)
-    expected = torch.zeros_like(res)
-    utils.gems_assert_close(res, expected, dtype)
+
+    utils.gems_assert_close(res, ref_out, dtype)
 
 
 @pytest.mark.special_gammainc
@@ -67,10 +72,15 @@ def test_special_gammainc_boundary_a_one(dtype):
     """P(1, x) = 1 - exp(-x)."""
     x = torch.linspace(0.1, 20.0, 100, dtype=dtype, device=flag_gems.device)
     a = torch.ones_like(x)
+
+    ref_a = utils.to_reference(a, True)
+    ref_x = utils.to_reference(x, True)
+    ref_out = torch.special.gammainc(ref_a, ref_x)
+
     with flag_gems.use_gems():
         res = torch.special.gammainc(a, x)
-    expected = 1.0 - torch.exp(-x)
-    utils.gems_assert_close(res, expected, dtype, atol=1e-5)
+
+    utils.gems_assert_close(res, ref_out, dtype, atol=1e-5)
 
 
 @pytest.mark.special_gammainc
@@ -79,6 +89,12 @@ def test_special_gammainc_boundary_large_x(dtype):
     """P(a, x) -> 1 as x >> a."""
     a = torch.tensor([0.5, 1.0, 2.0], dtype=dtype, device=flag_gems.device)
     x = torch.full_like(a, 100.0)
+
+    ref_a = utils.to_reference(a, True)
+    ref_x = utils.to_reference(x, True)
+    ref_out = torch.special.gammainc(ref_a, ref_x)
+
     with flag_gems.use_gems():
         res = torch.special.gammainc(a, x)
-    assert torch.all(res >= 0.999), f"Large x should give near-1 result, got {res}"
+
+    utils.gems_assert_close(res, ref_out, dtype)
