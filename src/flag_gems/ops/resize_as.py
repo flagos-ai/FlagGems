@@ -59,10 +59,9 @@ def resize_as(
     )
 
     # Expand source to match destination shape for broadcast
-    if self.shape != the_template.shape:
-        expanded = self.expand(the_template.shape)
-    else:
-        expanded = self
+    # Shapes are guaranteed to differ here (early return at line 45 handles
+    # the equal-shape case), so expand is always needed.
+    expanded = self.expand(the_template.shape)
 
     # Handle empty tensors
     if expanded.numel() == 0:
