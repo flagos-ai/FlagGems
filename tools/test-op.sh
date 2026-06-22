@@ -34,6 +34,7 @@ NO_QUICK_CPU_TESTS=(
   "tests/test_quant.py"
   "tests/test_shape_utils.py"
   "tests/test_tensor_wrapper.py"
+  "tests/test_conv_depthwise2d.py"
 )
 
 # Extract test cases from CHANGED_FILES
