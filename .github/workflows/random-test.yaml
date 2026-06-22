@@ -48,57 +48,28 @@ jobs:
     if: needs.check-permission.outputs.authorized == 'true'
     runs-on: ${{ inputs.runner }}
     steps:
-      - id: checkout-attempt-1
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        continue-on-error: true
-      - id: sleep-1
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        shell: bash
-        run: sleep 30s
-
-      - id: checkout-attempt-2
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        continue-on-error: true
-      - id: sleep-2
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        shell: bash
-        run: sleep 30s
-
-      - id: checkout-attempt-3
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-
-      - name: Setup FlagGems
+      - name: Resolve vendor
+        id: resolve
         shell: bash
         env:
           RUNNER_LABEL: ${{ inputs.runner }}
         run: |
-          # Validate vendor names
           case "${RUNNER_LABEL}" in
-            h20)
-              VENDOR="nvidia"
-              ;;
-            *)
-              VENDOR="${RUNNER_LABEL}"
-              ;;
+            h20)       VENDOR="nvidia" ;;
+            cann850)   VENDOR="ascend-cann850" ;;
+            cann9)     VENDOR="ascend-cann900" ;;
+            *)         VENDOR="${RUNNER_LABEL}" ;;
           esac
-
-          echo "VENDOR=${VENDOR}"
+          echo "VENDOR=${VENDOR}" >> $GITHUB_OUTPUT
           echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
 
-          ./setup.sh ${VENDOR}
-
-          # Install vllm for testing
-          if [ "${VENDOR}" == "nvidia" ]; then
-             source .venv/bin/activate
-             uv pip install --no-cache-dir vllm==0.21.0 --torch-backend=cu130
-          fi
-
-      - name: Check GPU availability
-        shell: bash
-        run: |
-          bash "tools/gpu_check_${VENDOR}.sh"
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
+      - uses: ./.github/actions/setup-flaggems
+        with:
+          vendor: ${{ steps.resolve.outputs.VENDOR }}
+          gpu_check_script: tools/gpu_check_${{ steps.resolve.outputs.VENDOR }}.sh
 
       - name: Run tests
         shell: bash
