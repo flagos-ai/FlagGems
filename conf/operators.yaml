@@ -903,28 +903,6 @@ ops:
       - Math
     stages:
       - stable: '2.2'
-  - id: cudnn_batch_norm_backward
-    description: Triton kernel implementation for cudnn_batch_norm_backward.
-    for:
-      - cudnn_batch_norm_backward
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: ilshift__
-    description: Computes the in-place bitwise left shift of `self` by `other` bits.
-    for:
-      - __ilshift__.Tensor
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: bitwise_left_shift
     description: Computes the left arithmetic shift of `input` by `other` bits.
     for:
@@ -1648,6 +1626,17 @@ ops:
     stages:
       - stable: '2.0'
       - removed: '3.0'
+  - id: cudnn_batch_norm_backward
+    description: Triton kernel implementation for cudnn_batch_norm_backward.
+    for:
+      - cudnn_batch_norm_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cudnn_convolution
     description: |
       A wrapper for cuDNN convolution backend.
@@ -3364,6 +3353,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: ilshift__
+    description: Computes the in-place bitwise left shift of `self` by `other` bits.
+    for:
+      - __ilshift__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: index
     description: |
       Extract, access or modify specific elements, slices, or subsets of data within a tensor.
