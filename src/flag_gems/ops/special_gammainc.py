@@ -162,9 +162,13 @@ def _launch_gammainc(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
 def special_gammainc(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = None):
     logger.debug("GEMS SPECIAL_GAMMAINC")
     if a.device.type != flag_gems.device:
-        raise ValueError(f"gammainc: first input tensor must be on {flag_gems.device} device")
+        raise ValueError(
+            f"gammainc: first input tensor must be on {flag_gems.device} device"
+        )
     if x.device.type != flag_gems.device:
-        raise ValueError(f"gammainc: second input tensor must be on {flag_gems.device} device")
+        raise ValueError(
+            f"gammainc: second input tensor must be on {flag_gems.device} device"
+        )
 
     if out is None:
         if not a.is_floating_point():

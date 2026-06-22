@@ -51,7 +51,9 @@ def test_special_gammainc_out(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_special_gammainc_boundary_x_zero(dtype):
     """P(a, 0) = 0 for all a > 0."""
-    a_vals = torch.tensor([0.5, 1.0, 2.0, 5.0, 10.0], dtype=dtype, device=flag_gems.device)
+    a_vals = torch.tensor(
+        [0.5, 1.0, 2.0, 5.0, 10.0], dtype=dtype, device=flag_gems.device
+    )
     x_vals = torch.zeros_like(a_vals)
     with flag_gems.use_gems():
         res = torch.special.gammainc(a_vals, x_vals)
