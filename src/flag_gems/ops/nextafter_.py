@@ -28,10 +28,6 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def nextafter_kernel(x, y):
-    # IEEE 754: if either input is NaN, return NaN
-    if (x != x) | (y != y):
-        return float("nan")
-
     # nextafter(x, y) returns y if x == y
     # Otherwise, returns the next representable value from x toward y
 
@@ -55,16 +51,15 @@ def nextafter_kernel(x, y):
     # Special case: if x == y, return y
     result = tl.where(x == y, y, result)
 
+    # IEEE 754: if either input is NaN, return NaN
+    result = tl.where((x != x) | (y != y), float("nan"), result)
+
     return result
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def nextafter_kernel_tensor_scalar(x, y):
-    # IEEE 754: if either input is NaN, return NaN
-    if (x != x) | (y != y):
-        return float("nan")
-
     x_i32 = x.to(tl.int32, bitcast=True)
     toward_pos_inf = y > x
     is_neg = x_i32 < 0
@@ -77,16 +72,16 @@ def nextafter_kernel_tensor_scalar(x, y):
 
     result = result_i32.to(tl.float32, bitcast=True)
     result = tl.where(x == y, y, result)
+
+    # IEEE 754: if either input is NaN, return NaN
+    result = tl.where((x != x) | (y != y), float("nan"), result)
+
     return result
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def nextafter_kernel_scalar_tensor(x, y):
-    # IEEE 754: if either input is NaN, return NaN
-    if (x != x) | (y != y):
-        return float("nan")
-
     x_i32 = x.to(tl.int32, bitcast=True)
     toward_pos_inf = y > x
     is_neg = x_i32 < 0
@@ -99,6 +94,10 @@ def nextafter_kernel_scalar_tensor(x, y):
 
     result = result_i32.to(tl.float32, bitcast=True)
     result = tl.where(x == y, y, result)
+
+    # IEEE 754: if either input is NaN, return NaN
+    result = tl.where((x != x) | (y != y), float("nan"), result)
+
     return result
 
 

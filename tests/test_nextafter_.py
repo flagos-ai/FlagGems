@@ -65,8 +65,14 @@ def test_nextafter_zero_boundary():
 def test_nextafter_nan():
     """Test nextafter_ with NaN inputs: IEEE 754 requires NaN propagation."""
     # nextafter(NaN, 1.0) => NaN
-    x_nan = torch.tensor([float("nan"), 1.0, 2.0, float("nan")], dtype=torch.float32, device=flag_gems.device)
-    y = torch.tensor([3.0, float("nan"), 4.0, 5.0], dtype=torch.float32, device=flag_gems.device)
+    x_nan = torch.tensor(
+        [float("nan"), 1.0, 2.0, float("nan")],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+    y = torch.tensor(
+        [3.0, float("nan"), 4.0, 5.0], dtype=torch.float32, device=flag_gems.device
+    )
 
     ref_x = utils.to_reference(x_nan).clone()
     ref_y = utils.to_reference(y)
@@ -79,9 +85,9 @@ def test_nextafter_nan():
         imp_x.nextafter_(y)
         imp_nan_mask = torch.isnan(imp_x)
 
-    assert torch.equal(ref_nan_mask, imp_nan_mask), (
-        f"NaN mask mismatch: ref_nan at {ref_nan_mask}, imp_nan at {imp_nan_mask}"
-    )
+    assert torch.equal(
+        ref_nan_mask, imp_nan_mask
+    ), f"NaN mask mismatch: ref_nan at {ref_nan_mask}, imp_nan at {imp_nan_mask}"
     # Non-NaN values should match
     non_nan_mask = ~ref_nan_mask
     if non_nan_mask.any():
@@ -91,8 +97,16 @@ def test_nextafter_nan():
 @pytest.mark.nextafter_
 def test_nextafter_inf():
     """Test nextafter_ with Inf inputs."""
-    x = torch.tensor([1.0, float("inf"), float("-inf"), 0.0], dtype=torch.float32, device=flag_gems.device)
-    y = torch.tensor([2.0, float("inf"), float("-inf"), float("inf")], dtype=torch.float32, device=flag_gems.device)
+    x = torch.tensor(
+        [1.0, float("inf"), float("-inf"), 0.0],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+    y = torch.tensor(
+        [2.0, float("inf"), float("-inf"), float("inf")],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
 
     ref_x = utils.to_reference(x).clone()
     ref_y = utils.to_reference(y)
@@ -145,11 +159,13 @@ def test_nextafter_scalar_y():
     scalar_y = 0.5
 
     ref_x = utils.to_reference(x).clone()
-    ref_x.nextafter_(scalar_y)
+    ref_y = torch.full((), scalar_y, dtype=ref_x.dtype, device=ref_x.device)
+    ref_x.nextafter_(ref_y)
 
     with flag_gems.use_gems():
         imp_x = x.clone()
-        imp_x.nextafter_(scalar_y)
+        imp_y = torch.full((), scalar_y, dtype=imp_x.dtype, device=imp_x.device)
+        imp_x.nextafter_(imp_y)
         utils.gems_assert_close(imp_x, ref_x, torch.float32)
 
 
@@ -182,13 +198,15 @@ def test_nextafter_scalar_nan_y():
     scalar_y = float("nan")
 
     ref_x = utils.to_reference(x).clone()
-    ref_x.nextafter_(scalar_y)
+    ref_y = torch.full((), scalar_y, dtype=ref_x.dtype, device=ref_x.device)
+    ref_x.nextafter_(ref_y)
     # PyTorch: nextafter(any, NaN) = NaN
     assert torch.isnan(ref_x).all(), "Reference should be all NaN"
 
     with flag_gems.use_gems():
         imp_x = x.clone()
-        imp_x.nextafter_(scalar_y)
+        imp_y = torch.full((), scalar_y, dtype=imp_x.dtype, device=imp_x.device)
+        imp_x.nextafter_(imp_y)
         assert torch.isnan(imp_x).all(), f"Should be all NaN, got {imp_x}"
 
 
@@ -199,9 +217,11 @@ def test_nextafter_scalar_inf_y():
     scalar_y = float("inf")
 
     ref_x = utils.to_reference(x).clone()
-    ref_x.nextafter_(scalar_y)
+    ref_y = torch.full((), scalar_y, dtype=ref_x.dtype, device=ref_x.device)
+    ref_x.nextafter_(ref_y)
 
     with flag_gems.use_gems():
         imp_x = x.clone()
-        imp_x.nextafter_(scalar_y)
+        imp_y = torch.full((), scalar_y, dtype=imp_x.dtype, device=imp_x.device)
+        imp_x.nextafter_(imp_y)
         utils.gems_assert_close(imp_x, ref_x, torch.float32)
