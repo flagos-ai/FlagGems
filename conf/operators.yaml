@@ -3632,6 +3632,17 @@ ops:
       - LinearAlg
     stages:
       - stable: '2.2'
+  - id: kthvalue
+    description: Returns the kth smallest element of the given input tensor along a given dimension.
+    for:
+      - kthvalue
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: layer_norm
     description: An internal IR for applying Layer Normalization for last certain number of dimensions.
     for:
@@ -6888,6 +6899,9 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
+    kind:
+      - NeuralNetwork
     stages:
       - stable: '4.1'
   - id: tanh
@@ -7378,6 +7392,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: upsample_nearest_exact2d_backward
+    description: A backward case for `_upsample_nearest_exact2d()`.
+    for:
+      - _upsample_nearest_exact2d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: upsample_trilinear3d
     description: Upsamples the input (NCDHW) using trilinear interpolation.
     for:

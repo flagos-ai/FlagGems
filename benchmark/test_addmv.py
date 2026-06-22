@@ -33,3 +33,22 @@ def test_addmv():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+def _input_fn_out(m, n, cur_dtype, device):
+    mat = torch.randn([m, n], dtype=cur_dtype, device=device)
+    vec = torch.randn([n], dtype=cur_dtype, device=device)
+    bias = torch.randn([m], dtype=cur_dtype, device=device)
+    out = torch.empty([m], dtype=cur_dtype, device=device)
+    yield bias, mat, vec, {"out": out}
+
+
+@pytest.mark.addmv_out
+def test_addmv_out():
+    bench = AddmvBenchmark(
+        op_name="addmv_out",
+        input_fn=_input_fn_out,
+        torch_op=torch.addmv,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
