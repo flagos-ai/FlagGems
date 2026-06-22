@@ -15,49 +15,13 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 NanMedian = namedtuple("nanmedian", ["values", "indices"])
 MAX_BLOCK_N = 128
-RADIX_BLOCK_N = 1024
-RADIX_BITS = 2
 MAX_NDIM = 8
-
-
-def _unwrap_if_constexpr(value):
-    return value.value if isinstance(value, tl.constexpr) else value
-
-
-@tl.constexpr
-def _uint_dtype(num_bits: tl.constexpr) -> tl.dtype:
-    return tl.core.get_int_dtype(_unwrap_if_constexpr(num_bits), False)
-
-
-@tl.constexpr
-def _sign_bit_mask(num_bits: tl.constexpr) -> int:
-    return 1 << (_unwrap_if_constexpr(num_bits) - 1)
 
 
 @triton.jit
 def _is_not_nan(vals):
     vals_fp32 = vals.to(tl.float32)
     return vals_fp32 == vals_fp32
-
-
-@triton.jit
-def _to_order_key(vals, valid):
-    dtype = vals.dtype
-    nbits: tl.constexpr = dtype.primitive_bitwidth
-    utype = _uint_dtype(nbits)
-    top = tl.full(vals.shape, _sign_bit_mask(nbits), dtype=utype)
-    full = ~tl.full(vals.shape, 0, dtype=utype)
-
-    if dtype.is_floating():
-        bits = vals.to(utype, bitcast=True)
-        sign_mask = tl.where((bits & top) != 0, full, top)
-        key = bits ^ sign_mask
-    elif dtype.is_int_signed():
-        bits = vals.to(utype, bitcast=True)
-        key = bits ^ top
-    else:
-        key = vals.to(utype)
-    return tl.where(valid, key, full)
 
 
 @libentry()
@@ -166,159 +130,6 @@ def nanmedian_direct_select_kernel(
     tl.store(out_indices + pid, median_idx)
 
 
-@libentry()
-@triton.jit
-def nanmedian_direct_radix_kernel(
-    inp,
-    out_values,
-    out_indices,
-    N: tl.constexpr,
-    STRIDE_DIM: tl.constexpr,
-    S0: tl.constexpr,
-    S1: tl.constexpr,
-    S2: tl.constexpr,
-    S3: tl.constexpr,
-    S4: tl.constexpr,
-    S5: tl.constexpr,
-    S6: tl.constexpr,
-    S7: tl.constexpr,
-    T0: tl.constexpr,
-    T1: tl.constexpr,
-    T2: tl.constexpr,
-    T3: tl.constexpr,
-    T4: tl.constexpr,
-    T5: tl.constexpr,
-    T6: tl.constexpr,
-    T7: tl.constexpr,
-    DIM: tl.constexpr,
-    NDIM: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    RADIX_BITS_: tl.constexpr,
-):
-    pid = ext.program_id(0)
-    offsets = tl.arange(0, BLOCK_N)
-    dtype = inp.dtype.element_ty
-    nbits: tl.constexpr = dtype.primitive_bitwidth
-    utype = _uint_dtype(nbits)
-    radix_size: tl.constexpr = 1 << RADIX_BITS_
-    radix_mask: tl.constexpr = radix_size - 1
-    radix_bins = tl.arange(0, radix_size)
-    radix_mask_val = tl.full((), radix_mask, dtype=utype)
-    idx = pid
-    base = tl.full((), 0, dtype=tl.int64)
-    if NDIM >= 8:
-        if DIM != 7:
-            coord = idx % S7
-            idx = idx // S7
-            base += coord * T7
-    if NDIM >= 7:
-        if DIM != 6:
-            coord = idx % S6
-            idx = idx // S6
-            base += coord * T6
-    if NDIM >= 6:
-        if DIM != 5:
-            coord = idx % S5
-            idx = idx // S5
-            base += coord * T5
-    if NDIM >= 5:
-        if DIM != 4:
-            coord = idx % S4
-            idx = idx // S4
-            base += coord * T4
-    if NDIM >= 4:
-        if DIM != 3:
-            coord = idx % S3
-            idx = idx // S3
-            base += coord * T3
-    if NDIM >= 3:
-        if DIM != 2:
-            coord = idx % S2
-            idx = idx // S2
-            base += coord * T2
-    if NDIM >= 2:
-        if DIM != 1:
-            coord = idx % S1
-            idx = idx // S1
-            base += coord * T1
-    if NDIM >= 1:
-        if DIM != 0:
-            coord = idx % S0
-            base += coord * T0
-
-    valid_count = tl.full((), 0, dtype=tl.int32)
-    for start in tl.range(0, N, BLOCK_N):
-        cols = start + offsets
-        mask = cols < N
-        vals = tl.load(inp + base + cols * STRIDE_DIM, mask=mask, other=0.0)
-        if dtype.is_floating():
-            valid = mask & _is_not_nan(vals)
-        else:
-            valid = mask
-        valid_count += tl.sum(valid.to(tl.int32), axis=0)
-
-    k_to_find = (valid_count + 1) // 2
-    desired = tl.full((), 0, dtype=utype)
-    desired_mask = tl.full((), 0, dtype=utype)
-
-    for digit_pos in tl.static_range(nbits - RADIX_BITS_, -1, -RADIX_BITS_):
-        counts = tl.zeros((radix_size,), dtype=tl.int32)
-        for start in tl.range(0, N, BLOCK_N):
-            cols = start + offsets
-            mask = cols < N
-            vals = tl.load(inp + base + cols * STRIDE_DIM, mask=mask, other=0.0)
-            if dtype.is_floating():
-                valid = mask & _is_not_nan(vals)
-            else:
-                valid = mask
-            keys = _to_order_key(vals, valid)
-            matches = (keys & desired_mask) == desired
-            digit = ((keys >> digit_pos) & radix_mask_val).to(tl.int32)
-            active = valid & matches
-            for radix_bin in tl.static_range(0, radix_size):
-                bin_count = tl.sum((active & (digit == radix_bin)).to(tl.int32), axis=0)
-                counts += tl.where(radix_bins == radix_bin, bin_count, 0)
-
-        cumsum = tl.cumsum(counts, axis=0)
-        prev = cumsum - counts
-        take = (cumsum >= k_to_find) & (prev < k_to_find)
-        selected_bin = tl.min(tl.where(take, radix_bins, radix_size - 1), axis=0)
-        counts_before = tl.max(tl.where(take, prev, 0), axis=0)
-
-        selected_bin = selected_bin.to(utype)
-        desired = desired | (selected_bin << digit_pos)
-        desired_mask = desired_mask | (radix_mask_val << digit_pos)
-        k_to_find = k_to_find - counts_before
-
-    result_idx = tl.full((), N, dtype=tl.int32)
-    for start in tl.range(0, N, BLOCK_N):
-        cols = start + offsets
-        mask = cols < N
-        vals = tl.load(inp + base + cols * STRIDE_DIM, mask=mask, other=0.0)
-        if dtype.is_floating():
-            valid = mask & _is_not_nan(vals)
-        else:
-            valid = mask
-        keys = _to_order_key(vals, valid)
-        local_idx = tl.min(tl.where(valid & (keys == desired), cols, N), axis=0)
-        result_idx = tl.where(local_idx < result_idx, local_idx, result_idx)
-
-    fallback_value = get_dtype_min(dtype)
-    result_val = tl.load(
-        inp + base + result_idx * STRIDE_DIM,
-        mask=valid_count > 0,
-        other=fallback_value,
-    )
-
-    if dtype.is_floating():
-        all_nan = valid_count == 0
-        result_val = tl.where(all_nan, float("nan"), result_val)
-        result_idx = tl.where(all_nan, 0, result_idx)
-
-    tl.store(out_values + pid, result_val)
-    tl.store(out_indices + pid, result_idx)
-
-
 def _check_supported_dtype(inp):
     if inp.dtype is torch.bool:
         raise NotImplementedError("\"median_out_impl\" not implemented for 'Bool'")
@@ -350,6 +161,48 @@ def _empty_flat_value(inp):
     else:
         result.fill_(torch.iinfo(inp.dtype).min)
     return result
+
+
+def _full_nan_result(shape, dtype, device):
+    values = torch.full(shape, float("nan"), dtype=dtype, device=device)
+    indices = torch.zeros(shape, dtype=torch.long, device=device)
+    return NanMedian(values=values, indices=indices)
+
+
+def _reduction_rows(inp, dim, M, N):
+    if dim == inp.ndim - 1:
+        return inp.reshape(M, N)
+    return torch.movedim(inp, dim, -1).reshape(M, N)
+
+
+def _nanmedian_kthvalue_fallback(inp, dim, M, N):
+    rows = _reduction_rows(inp, dim, M, N)
+    if torch.is_floating_point(rows):
+        valid = rows == rows
+        valid_count = torch.sum(valid.to(torch.long), dim=1)
+        cleaned = torch.where(
+            valid,
+            rows,
+            torch.full_like(rows, torch.finfo(rows.dtype).max),
+        )
+        result = _full_nan_result((M,), rows.dtype, rows.device)
+        for count in torch.unique(valid_count).tolist():
+            count = int(count)
+            if count == 0:
+                continue
+            row_indices = torch.nonzero(valid_count == count).flatten()
+            selected_rows = torch.index_select(cleaned, 0, row_indices)
+            values, _ = torch.kthvalue(selected_rows, (count + 1) // 2, dim=1)
+            original_rows = torch.index_select(rows, 0, row_indices)
+            original_valid = torch.index_select(valid, 0, row_indices)
+            matches = original_valid & (original_rows == values.unsqueeze(1))
+            indices = torch.max(matches.to(torch.long), dim=1).indices
+            result.values[row_indices] = values
+            result.indices[row_indices] = indices
+        return result
+
+    values, indices = torch.kthvalue(rows, (N + 1) // 2, dim=1)
+    return NanMedian(values=values, indices=indices)
 
 
 def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
@@ -404,12 +257,12 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
 
     flat_values = values.reshape(M)
     flat_indices = indices.reshape(M)
-    stride_tuple = tuple(inp.stride())
-    stride_dim = stride_tuple[dim]
-    shape_meta = _pad_meta(shape, 1)
-    stride_meta = _pad_meta(stride_tuple, 0)
 
     if N <= MAX_BLOCK_N:
+        stride_tuple = tuple(inp.stride())
+        stride_dim = stride_tuple[dim]
+        shape_meta = _pad_meta(shape, 1)
+        stride_meta = _pad_meta(stride_tuple, 0)
         block_n = triton.next_power_of_2(N)
         num_warps = 4
         with torch_device_fn.device(inp.device):
@@ -429,25 +282,16 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
                 buffer_size_limit=2048,
             )
     else:
-        block_n = min(triton.next_power_of_2(N), RADIX_BLOCK_N)
-        num_warps = 4 if block_n <= 512 else 8
-        with torch_device_fn.device(inp.device):
-            nanmedian_direct_radix_kernel[(M,)](
-                inp,
-                flat_values,
-                flat_indices,
-                N,
-                stride_dim,
-                *shape_meta,
-                *stride_meta,
-                dim,
-                inp.ndim,
-                block_n,
-                RADIX_BITS,
-                num_warps=num_warps,
-                num_stages=1,
-                buffer_size_limit=2048,
-            )
+        # Avoid the Kunlunxin TritonXPU large-N radix lowering crash.
+        result = _nanmedian_kthvalue_fallback(inp, dim, M, N)
+        computed_values = result.values.reshape(compute_shape)
+        computed_indices = result.indices.reshape(compute_shape)
+        if out is None:
+            values = computed_values
+            indices = computed_indices
+        else:
+            flat_values.copy_(result.values)
+            flat_indices.copy_(result.indices)
 
     if out is None and not keepdim:
         values = torch.squeeze(values, dim)
