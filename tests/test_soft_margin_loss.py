@@ -4,10 +4,16 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    SOFT_MARGIN_LOSS_SHAPES = [(2, 3)]
+else:
+    SOFT_MARGIN_LOSS_SHAPES = [(2, 3), (128, 256), (512, 512)]
 
 
 @pytest.mark.soft_margin_loss
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("shape", SOFT_MARGIN_LOSS_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 def test_soft_margin_loss(shape, dtype, reduction):

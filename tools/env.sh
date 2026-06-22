@@ -2,13 +2,17 @@ VENDOR=$1
 echo "Setting up environment variable for vendor $VENDOR"
 
 case $VENDOR in
-  ascend)
+  ascend-cann850|ascend-cann900)
     # This script is provided by the Huawei Ascend CANN toolkit installation.
     if [ -f /usr/local/Ascend/ascend-toolkit/set_env.sh ]; then
       source /usr/local/Ascend/ascend-toolkit/set_env.sh
-      # TODO: Check if this is necessary
-      # export TRITON_ALL_BLOCKS_PARALLEL=1
     fi
+    if [ -f /usr/local/Ascend/toolbox/set_env.sh ]; then
+      source /usr/local/Ascend/toolbox/set_env.sh
+    fi
+
+    # TODO: Check if this is necessary
+    # export TRITON_ALL_BLOCKS_PARALLEL=1
     ;;
   hygon)
     source /opt/dtk-26.04/env.sh
@@ -45,9 +49,19 @@ case $VENDOR in
       export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH
     fi
     ;;
+  thead)
+    # The envsetup.sh is provided by the PPU SDK
+    source /usr/local/PPU_SDK/envsetup.sh
+    ;;
   tsingmicro)
-    SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
-    export LD_LIBRARY_PATH=${SITE_PACKAGES}/txops/lib:/usr/local/kuiper/lib:$LD_LIBRARY_PATH
+    export TX8_DEPS_ROOT=/opt/tx8_deps
+    export LLVM_SYSPATH=/opt/llvm
+    export LLVM_BINARY_DIR=${LLVM_SYSPATH}/bin
+    export PYTHONPATH=${LLVM_SYSPATH}/python_packages/mlir_core
+    export LD_LIBRARY_PATH=/usr/local/kuiper/lib:$LD_LIBRARY_PATH
+    export LD_LIBRARY_PATH=/usr/local/kuiper/tsm8-profiler/lib:$LD_LIBRARY_PATH
+    export LD_LIBRARY_PATH=${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}
+
     # if [ -n "${USE_TRITON}" ]; then
     #   export PYTHONPATH=$SITE_PACKAGES/triton/backends/tsingmicro/llvm/python_packages/mlir_core
     # fi

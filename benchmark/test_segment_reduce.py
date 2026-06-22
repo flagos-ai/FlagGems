@@ -5,6 +5,11 @@ import flag_gems
 
 from . import base, consts
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name in ["mthreads"],
+    reason="Issue #4114: Not supported on Moore Threads MUSA",
+)
+
 REDUCTIONS = ("sum", "mean", "max", "min", "prod")
 
 
