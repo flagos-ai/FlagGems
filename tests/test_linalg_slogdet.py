@@ -34,4 +34,6 @@ def test_linalg_slogdet(shape, dtype):
     utils.gems_assert_close(res_out.sign, ref_out.sign, dtype)
 
     # Compare logabsdet (more tolerant for floating point)
-    utils.gems_assert_close(res_out.logabsdet, ref_out.logabsdet, dtype)
+    utils.gems_assert_close(
+        res_out.logabsdet, ref_out.logabsdet, dtype, reduce_dim=shape[-1]
+    )

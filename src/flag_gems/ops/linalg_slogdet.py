@@ -45,39 +45,53 @@ def slogdet_kernel(
     logabsdet_out_mat = logabsdet_out + pid * stride_logabsdet
     LU_out_mat = LU_out + pid * stride_lu
 
-    # Gaussian elimination
-    for k in range(1, n):
-        # Get pivot element
-        pivot = tl.load(A_mat + (k - 1) * stride_a + (k - 1)).to(tl.float32)
-        pivot_abs = tl.abs(pivot)
+    # Gaussian elimination with partial pivoting.
+    is_singular = 0
+    for k in range(0, n):
+        max_row = tl.full((), k, tl.int32)
+        pivot = tl.load(A_mat + k * stride_a + k).to(tl.float32)
+        max_abs = tl.abs(pivot)
 
-        # Skip if pivot is zero (singular matrix)
-        if pivot_abs > 1e-10:
-            # Do elimination for rows below
-            for i in range(k, n):
-                # Compute multiplier
-                a_ik = tl.load(A_mat + i * stride_a + (k - 1)).to(tl.float32)
+        for i in range(k + 1, n):
+            cand = tl.load(A_mat + i * stride_a + k).to(tl.float32)
+            cand_abs = tl.abs(cand)
+            max_row = tl.where(cand_abs > max_abs, i, max_row)
+            max_abs = tl.maximum(max_abs, cand_abs)
+
+        is_singular = tl.where(max_abs <= 1e-10, 1, is_singular)
+
+        if max_abs > 1e-10:
+            needs_swap = max_row != k
+            for j in range(0, n):
+                row_k = tl.load(A_mat + k * stride_a + j)
+                row_p = tl.load(A_mat + max_row * stride_a + j)
+                tl.store(A_mat + k * stride_a + j, row_p)
+                tl.store(A_mat + max_row * stride_a + j, row_k)
+            sign = tl.where(needs_swap, -sign, sign)
+
+            pivot = tl.load(A_mat + k * stride_a + k).to(tl.float32)
+            for i in range(k + 1, n):
+                a_ik = tl.load(A_mat + i * stride_a + k).to(tl.float32)
                 factor = a_ik / pivot
+                tl.store(A_mat + i * stride_a + k, factor.to(A_mat.dtype.element_ty))
 
-                # Update remaining columns
-                for j in range(k, n):
+                for j in range(k + 1, n):
                     a_ij = tl.load(A_mat + i * stride_a + j).to(tl.float32)
-                    a_kj = tl.load(A_mat + (k - 1) * stride_a + j).to(tl.float32)
+                    a_kj = tl.load(A_mat + k * stride_a + j).to(tl.float32)
                     new_val = a_ij - factor * a_kj
                     tl.store(
                         A_mat + i * stride_a + j,
                         new_val.to(A_mat.dtype.element_ty),
                     )
-
     # Compute logabsdet from diagonal elements
     for i in range(n):
         diag = tl.load(A_mat + i * stride_a + i).to(tl.float32)
         diag_abs = tl.abs(diag)
 
         # Handle near-zero diagonal elements (singular matrix)
-        is_singular = diag_abs < 1e-10
-        diag_abs = tl.where(is_singular, 1.0, diag_abs)
-        sign = tl.where(is_singular, 0.0, sign)
+        diag_is_zero = diag_abs < 1e-10
+        is_singular = tl.where(diag_is_zero, 1, is_singular)
+        diag_abs = tl.where(diag_is_zero, 1.0, diag_abs)
 
         # Update sign based on diagonal element
         diag_sign = tl.where(diag > 0, 1.0, tl.where(diag < 0, -1.0, 0.0))
@@ -85,6 +99,9 @@ def slogdet_kernel(
 
         # Add to logabsdet
         logabsdet = logabsdet + tl.log(diag_abs)
+
+    sign = tl.where(is_singular != 0, 0.0, sign)
+    logabsdet = tl.where(is_singular != 0, -float("inf"), logabsdet)
 
     # Copy the LU decomposition to output
     for i in range(n):
@@ -182,6 +199,7 @@ def linalg_slogdet(A):
     Wrapper that matches torch.linalg.slogdet interface.
     Returns only (sign, logabsdet) named tuple.
     """
+    assert A.dtype == torch.float32
     sign, logabsdet, LU, pivots = slogdet(A)
 
     # Return as named tuple like torch.linalg.slogdet
