@@ -57,8 +57,8 @@ def test_special_shifted_chebyshev_polynomial_v_out_of_range_tensor(shape, dtype
     with flag_gems.use_gems():
         res_out = torch.special.shifted_chebyshev_polynomial_v(x, n.to(x.device))
 
-    expected = torch.zeros(res_out.shape, dtype=res_out.dtype, device=res_out.device)
-    utils.gems_assert_close(res_out, expected, dtype, atol=0.0)
+    expected = torch.zeros(res_out.shape, dtype=res_out.dtype)
+    utils.gems_assert_close(res_out.cpu(), expected, dtype, atol=0.0)
 
 
 @pytest.mark.special_shifted_chebyshev_polynomial_v
@@ -74,5 +74,5 @@ def test_special_shifted_chebyshev_polynomial_v_out_of_range_scalar(
     with flag_gems.use_gems():
         res_out = torch.special.shifted_chebyshev_polynomial_v(x, bad_n)
 
-    expected = torch.zeros(res_out.shape, dtype=res_out.dtype, device=res_out.device)
-    utils.gems_assert_close(res_out, expected, dtype, atol=0.0)
+    expected = torch.zeros(res_out.shape, dtype=res_out.dtype)
+    utils.gems_assert_close(res_out.cpu(), expected, dtype, atol=0.0)
