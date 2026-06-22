@@ -6635,7 +6635,7 @@ ops:
   - id: special_modified_bessel_k1
     description: Modified Bessel function of the second kind of order 1.
     for:
-      - special.modified_bessel_k1
+      - special_modified_bessel_k1
     labels:
       - aten
       - KernelGen
@@ -6646,7 +6646,7 @@ ops:
   - id: special_modified_bessel_k1_out
     description: A variant of `special_modified_bessel_k1` that allows the output to be assigned to another tensor.
     for:
-      - special.modified_bessel_k1.out
+      - special_modified_bessel_k1.out
     labels:
       - aten
       - KernelGen
