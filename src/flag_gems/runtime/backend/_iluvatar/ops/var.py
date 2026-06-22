@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.var import var_kernel_1, var_kernel_2
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -71,8 +72,6 @@ def var(x, dim=None, *, correction=None, keepdim=False):
     if dim is None or len(dim) == x.ndim:
         # Full reduce: use the shared kernel_1 + kernel_2 path from ops.var
         # (these use 1D tl.reduce which works correctly on Iluvatar)
-        from flag_gems.ops.var import var_kernel_1, var_kernel_2
-
         dim = list(range(x.ndim))
         shape = [1] * x.ndim
         N = x.numel()
