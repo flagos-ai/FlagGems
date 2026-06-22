@@ -3766,7 +3766,7 @@ ops:
   - id: linalg_matmul
     description: Triton kernel implementation for linalg_matmul.
     for:
-      - linalg_matmul
+      - linalg.matmul
     labels:
       - aten
       - KernelGen
