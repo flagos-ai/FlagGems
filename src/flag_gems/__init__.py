@@ -182,6 +182,7 @@ _FULL_CONFIG = (
     ("ceil_", ceil_),
     ("celu", celu),
     ("celu_", celu_),
+    ("cholesky", cholesky),
     ("clamp", clamp),
     ("clamp.Tensor", clamp_tensor),
     ("clamp_", clamp_),
