@@ -12,7 +12,7 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("assume_unique", [False, True])
 @pytest.mark.parametrize("invert", [False, True])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_accuracy_isin(shape, dtype, assume_unique, invert):
     if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
@@ -71,7 +71,7 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
 @pytest.mark.parametrize("assume_unique", [False, True])
 @pytest.mark.parametrize("invert", [False, True])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
     if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
@@ -102,7 +102,7 @@ def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
 @pytest.mark.parametrize("assume_unique", [False, True])
 @pytest.mark.parametrize("invert", [False, True])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_accuracy_isin_tensor_scalar(shape, dtype, assume_unique, invert):
     if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):

@@ -68,7 +68,7 @@ def torch_fused_moe_reference(
 @pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_inplace_fused_experts_accuracy(config, dtype):
     """Test inplace_fused_experts writes correct results into hidden_states."""
@@ -117,7 +117,7 @@ def test_inplace_fused_experts_accuracy(config, dtype):
 @pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_inplace_fused_experts_matches_outplace(config, dtype):
     """Test that inplace_fused_experts produces the same result as outplace_fused_experts."""

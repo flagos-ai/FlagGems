@@ -30,7 +30,7 @@ random.seed(time.time() // 100)
 @pytest.mark.parametrize("keepdim", KEEP_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_var_mean(shape, dim, correction, keepdim, dtype):
     if shape[0] == 1:  # TODO: res is inf, while ref is nan

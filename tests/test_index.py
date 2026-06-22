@@ -75,7 +75,7 @@ def gen_indices(input_shape, indices_shape, accumulate):
 @pytest.mark.parametrize("input_shape, indices_shape", INDEX_ACC_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_index(input_shape, indices_shape, dtype):
     inp = torch.randn(
@@ -108,7 +108,7 @@ def test_index(input_shape, indices_shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_index_with_none_basic_indexing(input_shape, index_pos, dtype):
     """Test basic indexing with None (ellipsis-like behavior)"""
@@ -158,7 +158,7 @@ def test_index_with_none_basic_indexing(input_shape, index_pos, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.int64])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_index_with_none_and_tensor(input_shape, indices_idx, dtype):
     inp = torch.randint(0, 10000, input_shape, dtype=dtype, device=flag_gems.device)
@@ -189,7 +189,7 @@ def test_index_with_none_and_tensor(input_shape, indices_idx, dtype):
 @pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_index_boolean_mask(dtype):
     """Test boolean mask indexing"""
@@ -209,7 +209,7 @@ def test_index_boolean_mask(dtype):
 @pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_index_empty_tensor(dtype):
     """Test index with empty tensor"""
@@ -229,7 +229,7 @@ def test_index_empty_tensor(dtype):
 @pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_index_1d_special_case(dtype):
     """Test 1D input special case (uses gather)"""
@@ -249,7 +249,7 @@ def test_index_1d_special_case(dtype):
 @pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_index_error_empty_indices(dtype):
     """Test error handling: empty indices"""
@@ -264,7 +264,7 @@ def test_index_error_empty_indices(dtype):
 @pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_index_error_too_many_indices(dtype):
     """Test error handling: too many indices"""

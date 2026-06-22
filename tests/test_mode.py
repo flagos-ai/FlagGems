@@ -22,7 +22,7 @@ else:
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.ALL_INT_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_mode(shape, dim, keepdim, dtype):
     if dtype in FLOAT_DTYPES:

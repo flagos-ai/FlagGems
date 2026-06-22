@@ -50,7 +50,7 @@ def _make_input(shape, dtype, device):
 )
 @pytest.mark.parametrize("dtype", AS_STRIDED_COPY_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_accuracy_as_strided_copy(input_shape, size, stride, storage_offset, dtype):
     inp = _make_input(input_shape, dtype, flag_gems.device)
@@ -67,7 +67,7 @@ def test_accuracy_as_strided_copy(input_shape, size, stride, storage_offset, dty
 @pytest.mark.as_strided_copy
 @pytest.mark.parametrize("dtype", AS_STRIDED_COPY_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_accuracy_as_strided_copy_default_storage_offset(dtype):
     base = _make_input((16,), dtype, flag_gems.device)
@@ -84,7 +84,7 @@ def test_accuracy_as_strided_copy_default_storage_offset(dtype):
 @pytest.mark.as_strided_copy_out
 @pytest.mark.parametrize("dtype", AS_STRIDED_COPY_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_accuracy_as_strided_copy_out_noncontiguous(dtype):
     inp = _make_input((4, 6), dtype, flag_gems.device)
@@ -112,7 +112,7 @@ def test_accuracy_as_strided_copy_out_noncontiguous(dtype):
 
 @pytest.mark.as_strided_copy_out
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_accuracy_as_strided_copy_out_resizes():
     dtype = torch.float32
@@ -135,7 +135,7 @@ def test_accuracy_as_strided_copy_out_resizes():
 
 @pytest.mark.as_strided_copy_out
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_accuracy_as_strided_copy_out_aliases_input():
     dtype = torch.float32
@@ -153,7 +153,7 @@ def test_accuracy_as_strided_copy_out_aliases_input():
 
 @pytest.mark.as_strided_copy_out
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_accuracy_as_strided_copy_out_dtype_mismatch_raises():
     inp = _make_input((8,), torch.int64, flag_gems.device)
@@ -170,7 +170,7 @@ def test_accuracy_as_strided_copy_out_dtype_mismatch_raises():
     reason="float8 accuracy coverage requires CUDA and PyTorch float8 support",
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 @pytest.mark.parametrize("dtype", FLOAT8_DTYPES)
 def test_accuracy_as_strided_copy_float8_byte_path(dtype):
@@ -191,7 +191,7 @@ def test_accuracy_as_strided_copy_float8_byte_path(dtype):
     reason="float8 accuracy coverage requires CUDA and PyTorch float8 support",
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 @pytest.mark.parametrize("dtype", FLOAT8_DTYPES)
 def test_accuracy_as_strided_copy_out_float8_byte_path(dtype):

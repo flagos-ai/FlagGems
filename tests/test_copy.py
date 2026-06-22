@@ -18,7 +18,7 @@ from . import accuracy_utils as utils
     ),
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_copy_inplace_same_dtype(shape, dtype):
     if flag_gems.vendor_name == "cambricon":
@@ -48,7 +48,7 @@ def test_copy_inplace_same_dtype(shape, dtype):
 
 @pytest.mark.copy_
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_copy_inplace_broadcast():
     dst_shape = (2, 3)
@@ -68,7 +68,7 @@ def test_copy_inplace_broadcast():
 
 @pytest.mark.copy_
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_copy_inplace_dtype_fallback():
     src = torch.arange(0, 8, dtype=torch.int32, device=flag_gems.device)
@@ -91,7 +91,7 @@ def test_copy_inplace_dtype_fallback():
     reason="PyTorch does not support float8_e8m0fnu",
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 @pytest.mark.parametrize("shape", [(8,), (4, 4), (2, 3, 4)])
 def test_copy_inplace_float8_e8m0fnu(shape):
@@ -125,7 +125,7 @@ def test_copy_inplace_float8_e8m0fnu(shape):
     reason="PyTorch does not support float8_e8m0fnu",
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_copy_inplace_float8_e8m0fnu_to_float32():
     """Test copy_ from float8_e8m0fnu to float32."""
@@ -156,7 +156,7 @@ def test_copy_inplace_float8_e8m0fnu_to_float32():
     ],
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_copy_inplace_mixed_dtype_triton(src_dtype, dst_dtype):
     device = flag_gems.device
@@ -197,7 +197,7 @@ def test_copy_inplace_mixed_dtype_triton(src_dtype, dst_dtype):
     ),
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_copy_functional_same_dtype(shape, dtype):
     if flag_gems.vendor_name == "cambricon":
@@ -228,7 +228,7 @@ def test_copy_functional_same_dtype(shape, dtype):
 
 @pytest.mark.copy
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_copy_functional_broadcast():
     src = torch.arange(0, 3, dtype=torch.float32, device=flag_gems.device)

@@ -318,7 +318,7 @@ class FlashmlaSparseTestKit:
 @pytest.mark.flash_mla_sparse_fwd
 @pytest.mark.parametrize("param", FlashmlaSparseTestKit.get_correctness_test_params())
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_flashmla_sparse(param):
     """Sparse MLA forward propagation test"""
@@ -388,7 +388,7 @@ def test_flashmla_sparse(param):
     "param", FlashmlaSparseTestKit.get_correctness_test_params_flashmla()
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_flash_mla_sparse_flashmla(param: Flashmla_Sparse_Test_Param):
     """Sparse MLA forward propagation test from FlashMLA"""

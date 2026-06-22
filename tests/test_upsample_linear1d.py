@@ -32,7 +32,7 @@ BOUNDARY_CASES = [
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("case", BOUNDARY_CASES, ids=lambda x: x[0])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_upsample_linear1d_boundaries(dtype, case):
     _, shape, output_size, align_corners, special_cfg = case
@@ -87,7 +87,7 @@ def test_upsample_linear1d_boundaries(dtype, case):
 @pytest.mark.parametrize("shape", UPSAMPLE_SHAPES_1D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_upsample_linear1d(dtype, shape, scale, align_corners):
     input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -164,7 +164,7 @@ def upsample_linear1d_backward_call(grad, input_size, align_corners):
 @pytest.mark.parametrize("layout", ["contiguous", "non_contiguous"])
 @pytest.mark.parametrize("edge_case", [False, True])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_upsample_linear1d_backward(
     shape, dtype, scale_factor, align_corners, layout, edge_case

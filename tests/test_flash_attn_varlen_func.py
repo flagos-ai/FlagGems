@@ -134,7 +134,7 @@ def ref_paged_attn(
 @pytest.mark.parametrize("num_blocks", NUM_BLOCKS)
 @pytest.mark.parametrize("optimize_init", OPTIMIZE_INIT)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 @torch.inference_mode()
 def test_flash_attn_varlen_func(
@@ -299,7 +299,7 @@ def test_flash_attn_varlen_func(
 @pytest.mark.parametrize("soft_cap", SWAP_SOFT_CAPS)
 @pytest.mark.parametrize("num_blocks", [2048])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 @torch.inference_mode()
 def test_flash_attn_varlen_func_swap_qg(

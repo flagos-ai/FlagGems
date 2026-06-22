@@ -70,6 +70,10 @@ class BenchConfig:
             self.warm_up = 1
             self.repetition = 1
 
+        if vendor_name == "tsingmicro":
+            self.warm_up = 1
+            self.repetition = 1
+
         self.record_log = False
         self.record_json = False
         self.user_desired_dtypes = None

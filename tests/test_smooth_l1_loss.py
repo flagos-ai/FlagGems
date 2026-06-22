@@ -23,7 +23,7 @@ from . import conftest as cfg
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 @pytest.mark.parametrize("beta", [0.0, 0.5, 1.0, 2.0])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_smooth_l1_loss(shape, dtype, reduction, beta):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -62,7 +62,7 @@ def test_smooth_l1_loss(shape, dtype, reduction, beta):
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 @pytest.mark.parametrize("beta", [0.0, 0.5, 1.0, 2.0])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_smooth_l1_loss_backward(shape, target_shape, dtype, reduction, beta):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -99,7 +99,7 @@ def test_smooth_l1_loss_backward(shape, target_shape, dtype, reduction, beta):
 
 @pytest.mark.smooth_l1_loss_backward
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_smooth_l1_loss_backward_scalar_grad_output():
     inp = torch.tensor([-1.0, -0.5, 1.0], device=flag_gems.device)
@@ -122,7 +122,7 @@ def test_smooth_l1_loss_backward_scalar_grad_output():
 
 @pytest.mark.smooth_l1_loss_backward
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_smooth_l1_loss_backward_beta_zero_equal_inputs_cuda_behavior():
     if cfg.TO_CPU:
@@ -145,7 +145,7 @@ def test_smooth_l1_loss_backward_beta_zero_equal_inputs_cuda_behavior():
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_smooth_l1_loss_broadcast(dtype, reduction):
     inp = torch.randn((2, 3, 4), dtype=dtype, device=flag_gems.device)
@@ -166,7 +166,7 @@ def test_smooth_l1_loss_broadcast(dtype, reduction):
 @pytest.mark.smooth_l1_loss
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_smooth_l1_loss_special_values(dtype):
     inp = torch.tensor(
@@ -194,7 +194,7 @@ def test_smooth_l1_loss_special_values(dtype):
 
 @pytest.mark.smooth_l1_loss
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_smooth_l1_loss_out():
     inp = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
@@ -214,7 +214,7 @@ def test_smooth_l1_loss_out():
 
 @pytest.mark.smooth_l1_loss
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_smooth_l1_loss_out_reduced():
     inp = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
@@ -234,7 +234,7 @@ def test_smooth_l1_loss_out_reduced():
 
 @pytest.mark.smooth_l1_loss
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_smooth_l1_loss_functional():
     inp = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
@@ -255,7 +255,7 @@ def test_smooth_l1_loss_functional():
 
 @pytest.mark.smooth_l1_loss
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_smooth_l1_loss_negative_beta():
     inp = torch.randn((8,), dtype=torch.float32, device=flag_gems.device)
@@ -267,7 +267,7 @@ def test_smooth_l1_loss_negative_beta():
 
 @pytest.mark.smooth_l1_loss_backward
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_smooth_l1_loss_backward_negative_beta():
     grad_output = torch.randn((), dtype=torch.float32, device=flag_gems.device)

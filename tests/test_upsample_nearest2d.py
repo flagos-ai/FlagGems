@@ -22,7 +22,7 @@ else:
 @pytest.mark.parametrize("shape", utils.UPSAMPLE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_upsample_nearest2d(dtype, shape, scale):
     if flag_gems.vendor_name == "sunrise" and shape[2] * shape[3] >= 1023 * 1025:

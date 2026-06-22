@@ -88,7 +88,7 @@ def _get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device=flag_gems.devi
 @pytest.mark.parametrize("rotary_interleaved", [True, False])
 @pytest.mark.parametrize("has_pos_id", [True, False])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_apply_rotary_pos_emb(
     batch_size,

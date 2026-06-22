@@ -1,4 +1,5 @@
 from .add import add, add_
+from .all import all, all_dim, all_dims
 from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
@@ -73,6 +74,9 @@ __all__ = [
     "_unique2",
     "add",
     "add_",
+    "all",
+    "all_dim",
+    "all_dims",
     "arange",
     "arange_start",
     "argmax",

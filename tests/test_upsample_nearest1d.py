@@ -16,7 +16,7 @@ random.seed(time.time() // 100)
 @pytest.mark.parametrize("shape", utils.UPSAMPLE_SHAPES_1D)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_upsample_nearest1d(dtype, shape, scale):
     input = torch.randn(shape, dtype=dtype, device=flag_gems.device)

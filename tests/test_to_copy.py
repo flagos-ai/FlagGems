@@ -93,7 +93,7 @@ def test_to_copy_float_to_float(shape, src_dtype, dst_dtype):
 @pytest.mark.parametrize("src_dtype", utils.ALL_FLOAT_DTYPES)
 @pytest.mark.parametrize("dst_dtype", [torch.int8, torch.int16, torch.int32])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_to_copy_float_to_int(shape, src_dtype, dst_dtype):
     if flag_gems.vendor_name == "ascend" and src_dtype == torch.bfloat16:
@@ -111,7 +111,7 @@ def test_to_copy_float_to_int(shape, src_dtype, dst_dtype):
 @pytest.mark.parametrize("src_dtype", [torch.int8, torch.int16, torch.int32])
 @pytest.mark.parametrize("dst_dtype", utils.ALL_FLOAT_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_to_copy_int_to_float(shape, src_dtype, dst_dtype):
     if flag_gems.vendor_name == "ascend" and dst_dtype == torch.bfloat16:
@@ -143,7 +143,7 @@ def test_to_copy_int_to_int(shape, src_dtype, dst_dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("src_dtype", utils.ALL_FLOAT_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_to_copy_float_to_uint8(shape, src_dtype):
     if flag_gems.vendor_name == "ascend" and src_dtype == torch.bfloat16:
@@ -160,7 +160,7 @@ def test_to_copy_float_to_uint8(shape, src_dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dst_dtype", utils.ALL_FLOAT_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_to_copy_uint8_to_float(shape, dst_dtype):
     if flag_gems.vendor_name == "ascend" and dst_dtype == torch.bfloat16:
@@ -177,7 +177,7 @@ def test_to_copy_uint8_to_float(shape, dst_dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dst_dtype", [torch.int8, torch.int16, torch.int32])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_to_copy_uint8_to_int(shape, dst_dtype):
     x = torch.randint(0, 255, shape, dtype=torch.uint8, device=flag_gems.device)

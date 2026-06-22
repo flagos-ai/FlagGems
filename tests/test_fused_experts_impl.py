@@ -138,7 +138,7 @@ def torch_fused_moe_reference(
 @pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_fused_moe_vs_ref(config, dtype):
     """Test FlagGems fused_moe against a pure PyTorch reference."""
@@ -199,7 +199,7 @@ except ImportError:
 @pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_fused_moe_vs_vllm(config, dtype):
     """Test FlagGems fused_moe against a pure PyTorch reference."""
@@ -253,7 +253,7 @@ def test_fused_moe_vs_vllm(config, dtype):
     reason="FP8 quantization requires NVIDIA Hopper architecture",
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_accuracy_fused_moe_fp8(config):
     """Test FlagGems fused_moe with FP8 W8A8 quantization."""
@@ -553,7 +553,7 @@ def torch_w8a8_block_fp8_moe(
     reason="FP8 blockwise quantization requires NVIDIA Hopper architecture",
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_fused_moe_fp8_blockwise(config, block_shape):
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
@@ -643,7 +643,7 @@ def test_fused_moe_fp8_blockwise(config, block_shape):
 @pytest.mark.fused_experts_impl
 @pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_fused_moe_int8(config):
     """Test FlagGems fused_moe with INT8 W8A8 per-channel quantization."""
@@ -758,7 +758,7 @@ def torch_fused_moe_weight_only_reference(
 @pytest.mark.fused_experts_impl
 @pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_fused_moe_int8_w8a16(config):
     """Test FlagGems fused_moe with INT8 W8A16 (weight-only) quantization."""
@@ -836,7 +836,7 @@ def test_fused_moe_int8_w8a16(config):
 @pytest.mark.fused_experts_impl
 @pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_fused_moe_int4_w4a16(config):
     """Test FlagGems fused_moe with INT4 W4A16 (weight-only) quantization."""
@@ -922,7 +922,7 @@ def test_fused_moe_int4_w4a16(config):
 )
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_fused_moe_inplace(config, dtype):
     """Test that inplace=True writes output into hidden_states."""
@@ -982,7 +982,7 @@ def test_fused_moe_inplace(config, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_fused_moe_apply_router_weight_on_input(config, dtype):
     """Test apply_router_weight_on_input vs default (weight on output)."""

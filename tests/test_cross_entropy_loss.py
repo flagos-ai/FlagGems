@@ -29,7 +29,7 @@ random.seed(time.time() // 100)
 @pytest.mark.parametrize("weight", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_cross_entropy_loss_indices(
     shape, dtype, weight, ignore_index, reduction, label_smoothing
@@ -84,7 +84,7 @@ def test_cross_entropy_loss_indices(
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_cross_entropy_loss_probabilities(shape, dtype, reduction, label_smoothing):
     dim = 1
