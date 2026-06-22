@@ -174,13 +174,8 @@ from flag_gems.ops.gather import gather, gather_backward
 from flag_gems.ops.gcd import gcd, gcd_out
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
-<<<<<<< HEAD
 from flag_gems.ops.geometric import geometric, geometric_
 from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
-=======
-from flag_gems.ops.get_paged_mqa_logits_metadata import \
-    get_paged_mqa_logits_metadata
->>>>>>> cc408fe99 ([KernelGen][Nvidia] Fix special_bessel_y1 audit findings)
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
 from flag_gems.ops.greater import (
@@ -294,7 +289,6 @@ from flag_gems.ops.nllloss import (
 )
 from flag_gems.ops.nonzero import nonzero
 from flag_gems.ops.nonzero_numpy import nonzero_numpy
-<<<<<<< HEAD
 from flag_gems.ops.normal import (
     normal_,
     normal_float_tensor,
@@ -302,10 +296,6 @@ from flag_gems.ops.normal import (
     normal_tensor_tensor,
 )
 from flag_gems.ops.not_equal import not_equal, not_equal_scalar
-=======
-from flag_gems.ops.normal import (normal_, normal_float_tensor,
-                                  normal_tensor_float, normal_tensor_tensor)
->>>>>>> cc408fe99 ([KernelGen][Nvidia] Fix special_bessel_y1 audit findings)
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
@@ -339,13 +329,8 @@ from flag_gems.ops.randperm import randperm
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
-<<<<<<< HEAD
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
-=======
-from flag_gems.ops.reflection_pad2d import (reflection_pad2d,
-                                            reflection_pad2d_out)
->>>>>>> cc408fe99 ([KernelGen][Nvidia] Fix special_bessel_y1 audit findings)
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
 from flag_gems.ops.remainder import remainder, remainder_
@@ -417,10 +402,7 @@ from flag_gems.ops.softplus import softplus
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_bessel_y1 import special_bessel_y1
-<<<<<<< HEAD
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
-=======
->>>>>>> cc408fe99 ([KernelGen][Nvidia] Fix special_bessel_y1 audit findings)
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
