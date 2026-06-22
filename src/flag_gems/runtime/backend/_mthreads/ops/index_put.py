@@ -43,6 +43,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems.utils import libentry, libtuner")
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils.shape_utils import volume")
+    code.writeline("from flag_gems.utils.shape_utils import can_use_int32_index")
     code.writeline("from flag_gems.utils import triton_lang_extension as ext")
 
     code.newline()
@@ -82,6 +83,7 @@ def generate_index_put_kernel(
             "M,",
             "N,",
             "IS_ACCUMULATE: tl.constexpr,",
+            "INT32_OFFSET: tl.constexpr,",
             "BLOCK_SIZE0: tl.constexpr,",
             "BLOCK_SIZE1: tl.constexpr,",
         ]
@@ -117,6 +119,18 @@ def generate_index_put_kernel(
             code.writeline(
                 f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
             )
+        code.newline()
+
+        # Promote to int64 when INT32_OFFSET is False to prevent overflow
+        code.writeline("if not INT32_OFFSET:")
+        with code.indent():
+            for i in range(indices_len):
+                code.writeline(f"cur_index{i} = cur_index{i}.to(tl.int64)")
+            for i in range(index_rank):
+                code.writeline(f"indices_idx{i} = indices_idx{i}.to(tl.int64)")
+            for i in range(indices_len, inp_rank):
+                code.writeline(f"input_idx{i} = input_idx{i}.to(tl.int64)")
+
         code.newline()
         index_mask = [
             f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
@@ -173,6 +187,15 @@ def generate_index_put_wrapper(
         code.writeline("M = indices[0].numel()")
         code.writeline(f"N = volume(input_shape[{indices_len}: ])")
         code.newline()
+        # Determine if int32 offsets are safe for all tensors
+        code.writeline(
+            "int32_offset = can_use_int32_index(input) and can_use_int32_index(values)"
+        )
+        for i in range(indices_len):
+            code.writeline(
+                f"int32_offset = int32_offset and can_use_int32_index(indices[{i}])"
+            )
+        code.newline()
         code.writeline("grid = lambda meta: (")
         with code.indent():
             code.writeline("triton.cdiv(M, meta['BLOCK_SIZE0']), ")
@@ -194,7 +217,7 @@ def generate_index_put_wrapper(
                 f"values_stride[{i}],"
                 for i in range(index_rank + inp_rank - indices_len)
             ]
-            args += ["M,", "N,", "accumulate==True,"]
+            args += ["M,", "N,", "accumulate==True,", "int32_offset,"]
             code.writelines(args)
         code.writeline(")")
         code.writeline("return input")

@@ -23,8 +23,8 @@ def index_kernel_func(
         offset = pid0 * BLOCK_SIZE + i
 
         if offset < index_len:
-            in_start_index = tl.load(index_ptr + offset) * stride
-            out_start_offset = offset * stride
+            in_start_index = tl.load(index_ptr + offset).to(tl.int64) * stride
+            out_start_offset = offset.to(tl.int64) * stride
             loop_num = (stride - 1) // MAX_DATA_SIZE + 1
 
             for loop_idx in range(0, loop_num):
