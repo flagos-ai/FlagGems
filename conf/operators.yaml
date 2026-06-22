@@ -4470,6 +4470,11 @@ ops:
       - max_unpool3d
     labels:
       - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: mse_loss
     description: Compute the element-wise mean squared error, with optional weighting.
     for:
