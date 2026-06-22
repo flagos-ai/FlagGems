@@ -3632,6 +3632,17 @@ ops:
       - LinearAlg
     stages:
       - stable: '2.2'
+  - id: kthvalue
+    description: Returns the kth smallest element of the given input tensor along a given dimension.
+    for:
+      - kthvalue
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: layer_norm
     description: An internal IR for applying Layer Normalization for last certain number of dimensions.
     for:
