@@ -26,13 +26,3 @@ def test_rrelu_with_noise_functional():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
-
-
-@pytest.mark.rrelu_with_noise_functional_
-def test_rrelu_with_noise_functional_():
-    bench = RreluWithNoiseFunctionalBenchmark(
-        op_name="rrelu_with_noise_functional_",
-        torch_op=torch.ops.aten.rrelu_with_noise_functional,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
