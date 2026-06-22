@@ -15,18 +15,9 @@ except ImportError:
 
 @pytest.mark.dgeglu
 @pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("shape", utils.GLU_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_dgeglu(shape, dtype):
-    if len(shape) == 0:
-        # dgeglu does not support 0-dim scalar tensors.
-        return
-
-    if shape[-1] % 2 != 0:
-        shape = list(shape)
-        shape[-1] += 1
-        shape = tuple(shape)
-
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     grad_output_shape = list(shape)
