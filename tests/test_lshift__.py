@@ -6,10 +6,10 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.lshift__
+@pytest.mark.lshift
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
-def test_lshift__(shape, dtype):
+def test_lshift(shape, dtype):
     inp1 = torch.randint(low=0, high=0x00FF, size=shape, dtype=dtype, device="cpu").to(
         flag_gems.device
     )
