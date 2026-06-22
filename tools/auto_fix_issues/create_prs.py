@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Create GitHub PRs for successfully fixed issues."""
+"""Create GitHub PRs for successfully fixed issues.
+
+Supports two modes:
+  1. Default: read results/summary.json (produced by orchestrator.py)
+  2. --from-worktrees <issues.yaml>: scan existing worktrees for commits
+     ahead of base branch, no summary.json required.
+"""
 
 import argparse
 import json
@@ -8,6 +14,8 @@ import os
 import subprocess
 import sys
 import time
+
+import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from orchestrator import load_config, load_dotenv
@@ -97,6 +105,210 @@ def build_pr_body(issue: dict) -> str:
 ## Issue
 {issue_section}
 """
+
+
+def build_pr_body_from_worktree(
+    issue: dict, flaggems_dir: str, worktree_path: str, branch: str, base_branch: str
+) -> str:
+    """Build a PR body from issue yaml fields and git log/diff."""
+    # Extract commit message
+    commit_msg = subprocess.run(
+        ["git", "log", f"{base_branch}..HEAD", "--format=%B"],
+        cwd=worktree_path,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    # Extract diff stat
+    diff_stat = subprocess.run(
+        ["git", "diff", "--stat", f"{base_branch}..HEAD"],
+        cwd=worktree_path,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    # Extract changed files
+    changed_files = subprocess.run(
+        ["git", "diff", "--name-only", f"{base_branch}..HEAD"],
+        cwd=worktree_path,
+        capture_output=True,
+        text=True,
+    ).stdout.strip().splitlines()
+
+    files_str = "\n".join(f"  - `{f}`" for f in changed_files) if changed_files else "  - (none)"
+
+    issue_id_raw = str(issue["id"])
+    numeric_id = issue_id_raw.split("-")[0]
+    issue_section = f"- WEEKTEST-{numeric_id}"
+    if issue.get("github_issue"):
+        issue_section += f"\n- Fixes #{issue['github_issue']}"
+
+    return f"""## Summary
+- **Operator:** {issue.get('operator', 'N/A')}
+- **Error type:** {issue.get('type', 'N/A')}
+- **Files modified:**
+{files_str}
+
+## Commit Message
+```
+{commit_msg}
+```
+
+## Verification
+- Test command: `{issue.get('test_cmd', 'N/A')}`
+- Benchmark command: `{issue.get('benchmark_cmd', 'N/A')}`
+
+## Test Plan
+- [ ] `{issue.get('test_cmd', 'N/A')}`
+- [ ] `{issue.get('benchmark_cmd', 'N/A')}`
+
+## Issue
+{issue_section}
+"""
+
+
+def run_from_worktrees(args):
+    """Create PRs by scanning existing worktrees for issues in a yaml file."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = args.config or os.path.join(script_dir, "config.yaml")
+    config = load_config(config_path)
+
+    flaggems_dir = config.get("flaggems_dir", os.path.dirname(os.path.dirname(script_dir)))
+    base_branch = config.get("base_branch", "master")
+    target_repo = args.target_repo
+
+    # Load issues yaml
+    yaml_path = args.from_worktrees
+    if not os.path.exists(yaml_path):
+        logger.error(f"Issues yaml not found: {yaml_path}")
+        return
+    with open(yaml_path) as f:
+        issues_data = yaml.safe_load(f)
+    issues = issues_data.get("issues", [])
+    if not issues:
+        logger.error("No issues found in yaml")
+        return
+
+    # Determine fork owner
+    origin_url = subprocess.run(
+        ["git", "remote", "get-url", "origin"],
+        cwd=flaggems_dir,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    fork_owner = origin_url.replace(".git", "").split("/")[-2].split(":")[-1]
+
+    if not args.dry_run:
+        result = subprocess.run(
+            ["gh", "auth", "status"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.error("gh auth failed. Run: gh auth login")
+            print(result.stderr)
+            return
+
+    vendor = config.get("gems_vendor", "")
+    filter_ids = set(args.issues.split(",")) if args.issues else None
+
+    created = []
+    skipped = []
+
+    for issue in issues:
+        issue_id = str(issue["id"])
+        operator = issue.get("operator") or f"repo-{issue_id}"
+        label = f"{issue_id}/{operator}"
+
+        if filter_ids and issue_id not in filter_ids:
+            continue
+
+        branch = f"fix/issue-{issue_id}-{operator}"
+        worktree_path = os.path.join(flaggems_dir, ".worktrees", f"fix-{issue_id}-{operator}")
+
+        if not os.path.isdir(worktree_path):
+            skipped.append((label, "worktree not found"))
+            logger.info(f"[SKIP] {label}: worktree not found at {worktree_path}")
+            continue
+
+        if not has_commits_ahead(flaggems_dir, branch, base_branch):
+            skipped.append((label, "no commits ahead"))
+            logger.info(f"[SKIP] {label}: no commits ahead of {base_branch}")
+            continue
+
+        vendor_tag = "[%s]" % vendor.capitalize() if vendor and vendor != "nvidia" else ""
+        title = "[KernelGen]%s Fix %s: %s" % (vendor_tag, operator, issue.get("type", "unknown"))
+        body = build_pr_body_from_worktree(issue, flaggems_dir, worktree_path, branch, base_branch)
+
+        if args.dry_run:
+            draft_str = "ready" if args.ready else "draft"
+            print(f"\n[DRY-RUN] Would create PR ({draft_str}):")
+            print(f"  Branch: {branch}")
+            print(f"  Title:  {title}")
+            print(f"  Target: {target_repo}:{base_branch}")
+            created.append(label)
+            continue
+
+        # Push branch
+        push_result = subprocess.run(
+            ["git", "push", "-u", "origin", branch],
+            cwd=flaggems_dir,
+            capture_output=True,
+            text=True,
+        )
+        if push_result.returncode != 0:
+            logger.error(f"[PUSH FAILED] {label}: {push_result.stderr}")
+            skipped.append((label, "push failed"))
+            continue
+
+        # Check if PR already exists
+        existing_pr = subprocess.run(
+            ["gh", "pr", "list", "--repo", target_repo,
+             "--head", f"{fork_owner}:{branch}", "--json", "url", "--jq", ".[0].url"],
+            cwd=flaggems_dir,
+            capture_output=True,
+            text=True,
+        )
+        if existing_pr.stdout.strip():
+            logger.info(f"[EXISTS] {label}: {existing_pr.stdout.strip()}")
+            skipped.append((label, f"PR already exists: {existing_pr.stdout.strip()}"))
+            continue
+
+        # Create PR
+        pr_cmd = [
+            "gh", "pr", "create",
+            "--repo", target_repo,
+            "--base", base_branch,
+            "--head", f"{fork_owner}:{branch}",
+            "--title", title,
+            "--body", body,
+        ]
+        if not args.ready:
+            pr_cmd.append("--draft")
+        pr_result = subprocess.run(
+            pr_cmd,
+            cwd=flaggems_dir,
+            capture_output=True,
+            text=True,
+        )
+        if pr_result.returncode != 0:
+            logger.error(f"[PR FAILED] {label}: {pr_result.stderr}")
+            skipped.append((label, "pr creation failed"))
+            continue
+
+        pr_url = pr_result.stdout.strip()
+        logger.info(f"[CREATED] {label}: {pr_url}")
+        created.append(label)
+
+        if args.interval > 0:
+            logger.debug(f"Waiting {args.interval}s before next PR...")
+            time.sleep(args.interval)
+
+    print(f"\n{'[DRY-RUN] ' if args.dry_run else ''}Summary: {len(created)} PRs created, {len(skipped)} skipped")
+    if skipped:
+        print("Skipped:")
+        for label, reason in skipped:
+            print(f"  - {label}: {reason}")
 
 
 def run(args):
@@ -252,6 +464,8 @@ def main():
     parser.add_argument("--target-repo", default=DEFAULT_TARGET_REPO, help=f"Target repo for PRs (default: {DEFAULT_TARGET_REPO})")
     parser.add_argument("--ready", action="store_true", help="Create PRs as ready for review (default: draft)")
     parser.add_argument("--interval", type=int, default=0, help="Seconds to wait between PR creations (default: 0)")
+    parser.add_argument("--from-worktrees", metavar="ISSUES_YAML",
+                        help="Create PRs from existing worktrees using the given issues yaml (bypasses summary.json)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
@@ -263,7 +477,11 @@ def main():
     )
 
     load_dotenv()
-    run(args)
+
+    if args.from_worktrees:
+        run_from_worktrees(args)
+    else:
+        run(args)
 
 
 if __name__ == "__main__":

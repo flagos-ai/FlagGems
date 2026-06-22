@@ -846,10 +846,26 @@ def generate_timeline(jsonl_path: str, task_name: str) -> str | None:
 
 
 class Summary:
-    """Manages the summary.json file with real-time updates."""
+    """Manages the summary.json file with real-time updates.
 
-    def __init__(self, path: str):
+    When ``current_issue_ids`` is provided, entries from a previous
+    summary.json whose IDs are **not** in the current batch are preserved.
+    This prevents a partial rerun (e.g. 2 retries) from erasing the results
+    of a previous larger run.
+    """
+
+    def __init__(self, path: str, current_issue_ids: set[str] | None = None):
         self.path = path
+
+        # Load existing summary if present
+        existing: dict = {}
+        if os.path.exists(path):
+            try:
+                with open(path) as f:
+                    existing = json.load(f)
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning(f"Failed to load existing summary, starting fresh: {e}")
+
         self.data = {
             "start_time": datetime.now(timezone.utc).isoformat(),
             "end_time": None,
@@ -862,6 +878,15 @@ class Summary:
             },
             "issues": {},
         }
+
+        # Preserve results from previous runs for issues not in current batch
+        if current_issue_ids is not None:
+            for key, issue in existing.get("issues", {}).items():
+                issue_id = str(issue.get("issue_id", ""))
+                if issue_id not in current_issue_ids:
+                    self.data["issues"][key] = issue
+
+        self._recount()
         self._save()
 
     def add_issue(self, issue: dict, gpu_id: int, attempt: int):
@@ -969,8 +994,9 @@ def run(args):
         gpu_ids=device_cfg.get("gpu_ids"),
     )
 
-    # Initialize summary
-    summary = Summary(summary_path)
+    # Initialize summary (preserve results from previous runs)
+    current_ids = {str(issue["id"]) for issue in issues}
+    summary = Summary(summary_path, current_issue_ids=current_ids)
 
     # Task queue: (issue_dict, attempt_number)
     queue = deque((issue, 0) for issue in issues)
