@@ -186,6 +186,7 @@ _FULL_CONFIG = (
     ("bitwise_right_shift", bitwise_right_shift),
     ("bmm", bmm),
     ("bmm.out", bmm_out),
+    ("bucketize.Tensor", bucketize),
     ("cat", cat),
     ("cat.out", cat_out),
     ("cauchy", cauchy),
