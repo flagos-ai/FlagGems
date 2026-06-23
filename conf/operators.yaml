@@ -3945,6 +3945,29 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: logcumsumexp
+    description: Triton kernel implementation for logcumsumexp.
+    for:
+      - logcumsumexp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: logcumsumexp_out
+    description: |
+      A variant of `logcumsumexp` that allows the output to be assigned to an `out` tensor.
+    for:
+      - logcumsumexp.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: logical_and
     description: |
       Computes the element-wise logical AND of the given `input` tensors.

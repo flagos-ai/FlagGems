@@ -231,6 +231,7 @@ from flag_gems.ops.log_softmax import (
     log_softmax_out,
 )
 from flag_gems.ops.logaddexp import logaddexp, logaddexp_out
+from flag_gems.ops.logcumsumexp import logcumsumexp, logcumsumexp_out
 from flag_gems.ops.logical_and import logical_and, logical_and_
 from flag_gems.ops.logical_not import logical_not, logical_not_
 from flag_gems.ops.logical_or import logical_or, logical_or_
@@ -754,6 +755,8 @@ __all__ = [
     "log_softmax_out",
     "logaddexp",
     "logaddexp_out",
+    "logcumsumexp",
+    "logcumsumexp_out",
     "logical_and",
     "logical_and_",
     "logical_not",
