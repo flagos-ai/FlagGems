@@ -61,18 +61,47 @@ jobs:
           RUNNER_LABEL: ${{ needs.preprocess.outputs.runner }}
         run: |
           case "${RUNNER_LABEL}" in
-            h20)       VENDOR="nvidia" ;;
-            cann850)   VENDOR="ascend-cann850" ;;
-            cann9)     VENDOR="ascend-cann900" ;;
-            *)         VENDOR="${RUNNER_LABEL}" ;;
+            h20|a100|h100)
+              VENDOR="nvidia"
+              BACKEND="nvidia"
+              ;;
+            cann850)
+              VENDOR="ascend"
+              BACKEND="ascend-cann850"
+              ;;
+            cann9)
+              VENDOR="ascend"
+              BACKEND="ascend-cann900"
+              ;;
+            *)
+              VENDOR="${RUNNER_LABEL}"
+              BACKEND="${RUNNER_LABEL}"
+              ;;
           esac
-          echo "VENDOR=${VENDOR}" >> $GITHUB_OUTPUT
           echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
+          echo "BACKEND=${BACKEND}" >> $GITHUB_ENV
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
-
+      - name: setup-gh
+        shell: bash
+        env:
+          GH_VERSION: "2.95.0"
+        run: |
+          GH_DIR="${HOME}/.local/bin"
+          if command -v gh &>/dev/null; then
+            echo "gh already available: $(gh --version | head -1)"
+          elif [ -x "${GH_DIR}/gh" ]; then
+            echo "gh found at ${GH_DIR}: $("${GH_DIR}/gh" --version | head -1)"
+            echo "${GH_DIR}" >> $GITHUB_PATH
+          else
+            mkdir -p "${GH_DIR}"
+            curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
+              | tar -xz --strip-components=2 -C "${GH_DIR}" "gh_${GH_VERSION}_linux_amd64/bin/gh"
+            echo "Installed gh ${GH_VERSION} to ${GH_DIR}"
+            echo "${GH_DIR}" >> $GITHUB_PATH
+          fi
       - id: checkout-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -83,8 +112,8 @@ jobs:
       - id: setup-flaggems
         shell: bash
         run: |
-          ./setup.sh ${VENDOR}
-          if [ "${VENDOR}" == "nvidia" ]; then
+          ./setup.sh ${BACKEND}
+          if [ "${BACKEND}" == "nvidia" ]; then
             source .venv/bin/activate
             uv pip install vllm==0.21.0 --torch-backend=cu130
           fi
@@ -92,7 +121,7 @@ jobs:
       - id: check-gpu
         shell: bash
         run: |
-          source tools/env.sh ${VENDOR}
+          source tools/env.sh ${BACKEND}
           bash tools/gpu_check_${VENDOR}.sh
 
       - id: run-tests
@@ -101,7 +130,7 @@ jobs:
           EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
         run: |
           source .venv/bin/activate
-          source tools/env.sh ${VENDOR}
+          source tools/env.sh ${BACKEND}
           tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
             --dump-output \
             --output-dir results_new
