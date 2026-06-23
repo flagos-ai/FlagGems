@@ -2139,14 +2139,14 @@ rot90:
 
 index_select_backward:
   - META:
-      BLOCK_FEAT: 128
+      BLOCK: 128
     num_warps: 4
     num_stages: 1
   - META:
-      BLOCK_FEAT: 256
+      BLOCK: 256
     num_warps: 8
     num_stages: 1
   - META:
-      BLOCK_FEAT: 512
+      BLOCK: 512
     num_warps: 8
     num_stages: 1

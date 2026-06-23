@@ -26,152 +26,94 @@ logger = logging.getLogger(__name__)
 
 
 @triton.autotune(
-    configs=runtime.get_tuned_config("index_select_backward"), key=["feat_size"]
+    configs=runtime.get_tuned_config("index_select_backward"), key=["index_len"]
 )
 @triton.jit
-def gather_reduce_kernel(
-    grad_ptr,
-    sort_perm_ptr,
-    boundaries_ptr,
+def index_select_backward_kernel(
     out_ptr,
+    grad_ptr,
+    index_ptr,
     feat_size,
     index_len,
     dim_size_out,
-    BLOCK_FEAT: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
-    # row_id: output row index in the reduced dimension
-    row_id = tl.program_id(0)
-    # pid_feat: feature block index
-    pid_feat = tl.program_id(1)
+    fid = tl.program_id(0)
+    pid = tl.program_id(1)
 
-    # Feature offsets for this block
-    feat_offs = pid_feat * BLOCK_FEAT + tl.arange(0, BLOCK_FEAT)
-    feat_mask = feat_offs < feat_size
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < index_len
 
-    # Load the range of indices that contribute to this output row
-    start = tl.load(boundaries_ptr + row_id)
-    end = tl.load(boundaries_ptr + row_id + 1)
+    idx = tl.load(index_ptr + offs, mask=mask, other=0)
+    grad_offs = fid * index_len + offs
+    g = tl.load(grad_ptr + grad_offs, mask=mask, other=0.0)
 
-    # Accumulator for this block
-    acc = tl.zeros([BLOCK_FEAT], dtype=tl.float32)
-
-    # Iterate over all grad elements that map to this output row
-    for k in range(start, end):
-        # Get the original position in grad (in the index dimension)
-        orig_j = tl.load(sort_perm_ptr + k)
-        # grad is stored as (feat_size, index_len), row-major
-        grad_offset = feat_offs * index_len + orig_j
-        g = tl.load(grad_ptr + grad_offset, mask=feat_mask, other=0.0).to(tl.float32)
-        acc = acc + g
-
-    # Store the result to out[feat_offs, row_id]
-    out_offset = feat_offs * dim_size_out + row_id
-    tl.store(out_ptr + out_offset, acc, mask=feat_mask)
+    out_offs = fid * dim_size_out + idx
+    tl.atomic_add(out_ptr + out_offs, g, mask=mask)
 
 
 def index_select_backward(grad, self_sizes, dim, index):
     """
     Backward pass for index_select.
 
-    This is equivalent to:
+    Equivalent to scatter_add:
         output = zeros(self_sizes)
         output.scatter_add_(dim, index, grad)
-
-    However, we implement it without atomic operations for better performance.
     """
     logger.debug("GEMS INDEX_SELECT_BACKWARD")
 
-    # Handle scalar index
     if index.ndim == 0:
         index = index.unsqueeze(0)
 
     index = index.to(torch.int64)
     index_len = index.numel()
 
-    # Handle dim
     dim = dim if dim >= 0 else dim + len(self_sizes)
     dim_size_out = self_sizes[dim]
 
-    # Handle different dtypes for computation
-    dtype_convert = False
     orig_dtype = grad.dtype
-    if grad.dtype == torch.float16 or grad.dtype == torch.bfloat16:
-        dtype_convert = True
+    if grad.dtype in (torch.float16, torch.bfloat16):
         grad = grad.to(torch.float32)
 
-    # Prepare the output tensor
     out = torch.zeros(self_sizes, dtype=grad.dtype, device=grad.device)
 
-    # Special case: 1D tensor
-    if grad.ndim == 1:
-        # For 1D, handle directly without dim_compress
-        # grad shape: (index_len,)
-        # Sort the index to group same indices together
-        sorted_index, sort_perm = torch.sort(index)
-
-        # Find boundaries for each output index
-        arange_out = torch.arange(dim_size_out + 1, device=index.device)
-        boundaries = torch.searchsorted(sorted_index, arange_out)
-
-        # Compute result directly
-        for row_id in range(dim_size_out):
-            start = boundaries[row_id].item()
-            end = boundaries[row_id + 1].item()
-            if start < end:
-                orig_js = sort_perm[start:end]
-                out[row_id] = grad[orig_js].sum()
-        if dtype_convert:
-            return out.to(orig_dtype)
-        return out
-
-    # After compression, the reduced dimension (dim) should become the last dimension
+    # Move the target dim to the last position via dim_compress
     grad_compressed = dim_compress(grad, dim)
     out_compressed = dim_compress(out, dim)
 
-    # Store original compressed shape for later permutation
     compressed_shape = list(out_compressed.shape)
-    ndim_compressed = out_compressed.ndim
 
-    # Flatten the batch and feature dimensions together
-    grad_compressed = grad_compressed.reshape(-1, index_len)
-    out_compressed = out_compressed.reshape(-1, dim_size_out)
+    # Flatten all non-last dimensions into feat_size
+    grad_flat = grad_compressed.reshape(-1, index_len)
+    out_flat = out_compressed.reshape(-1, dim_size_out)
 
-    feat_size = grad_compressed.shape[0]
+    feat_size = grad_flat.shape[0]
 
-    # Sort the index to group same indices together
-    sorted_index, sort_perm = torch.sort(index)
-
-    # Find boundaries for each output index
-    arange_out = torch.arange(dim_size_out + 1, device=index.device)
-    boundaries = torch.searchsorted(sorted_index, arange_out)
-
-    # Launch kernel
     grid = lambda meta: (
-        dim_size_out,
-        triton.cdiv(feat_size, meta["BLOCK_FEAT"]),
+        feat_size,
+        triton.cdiv(index_len, meta["BLOCK"]),
     )
 
-    gather_reduce_kernel[grid](
-        grad_compressed,
-        sort_perm,
-        boundaries,
-        out_compressed,
+    index_select_backward_kernel[grid](
+        out_flat,
+        grad_flat,
+        index,
         feat_size,
         index_len,
         dim_size_out,
     )
 
-    # Reshape back to compressed shape
-    out_compressed = out_compressed.reshape(compressed_shape)
+    # Reshape to compressed shape, then permute back to original dim order
+    out_flat = out_flat.reshape(compressed_shape)
 
-    # Permute back to original dimension order
     if dim != grad.ndim - 1:
+        ndim_compressed = out_flat.ndim
         order = [i for i in range(ndim_compressed - 1)]
         order.insert(dim, ndim_compressed - 1)
-        out = out_compressed.permute(order).contiguous()
+        out = out_flat.permute(order).contiguous()
     else:
-        out = out_compressed
+        out = out_flat
 
-    if dtype_convert:
+    if orig_dtype in (torch.float16, torch.bfloat16):
         return out.to(orig_dtype)
     return out
