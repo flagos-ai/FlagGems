@@ -84,6 +84,17 @@ def mvlgamma_(A, p=2):
     """
     logger.debug("GEMS MVLGAMMA_")
 
+    if not isinstance(p, int):
+        raise TypeError(
+            f"mvlgamma_(): argument 'p' must be int, not {type(p).__name__}"
+        )
+    if p < 1:
+        raise RuntimeError("p has to be greater than or equal to 1")
+    if p > 16:
+        raise RuntimeError(
+            f"mvlgamma_ currently supports p up to 16, got p={p}"
+        )
+
     if not isinstance(A, torch.Tensor):
         raise TypeError("mvlgamma_ expects a torch.Tensor as the first argument")
 
