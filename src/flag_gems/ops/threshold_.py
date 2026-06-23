@@ -16,8 +16,8 @@ def threshold_func(x, threshold, value):
     x_fp32 = x.to(tl.float32)
     threshold_fp32 = threshold.to(tl.float32)
     value_fp32 = value.to(tl.float32)
-    # If x < threshold, return value, otherwise return x
-    return tl.where(x_fp32 < threshold_fp32, value_fp32, x_fp32).to(x.dtype)
+    # If x <= threshold, return value, otherwise return x
+    return tl.where(x_fp32 <= threshold_fp32, value_fp32, x_fp32).to(x.dtype)
 
 
 def threshold_(A, threshold, value):
