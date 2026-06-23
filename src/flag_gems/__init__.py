@@ -584,6 +584,7 @@ _FULL_CONFIG = (
     ("special_i1", special_i1),
     ("special_i1.out", special_i1_out),
     ("special.log_softmax", special_log_softmax),
+    ("special.ndtr", special_ndtr),
     ("split_with_sizes_copy", split_with_sizes_copy),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
