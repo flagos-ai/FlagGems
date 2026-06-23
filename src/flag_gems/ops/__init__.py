@@ -15,6 +15,7 @@ from flag_gems.ops._upsample_nearest_exact2d_backward import (
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
+from flag_gems.ops.adaptive_attention_span import adaptive_attention_span
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
@@ -487,6 +488,7 @@ __all__ = [
     "abs_",
     "absolute",
     "acos",
+    "adaptive_attention_span",
     "adaptive_avg_pool2d",
     "add",
     "add_",

@@ -59,6 +59,18 @@ ops:
       - Quantization
     stages:
       - beta: '5.3'
+  - id: adaptive_attention_span
+    description: Computes adaptive attention span using sigmoid activation, mapping input values to (0, 1) range.
+    for:
+      - adaptive_attention_span
+    labels:
+      - aten
+      - fused
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: adaptive_avg_pool2d
     description: |
       Apply a 2D adaptive average pooling over an input signal composed of several input planes.
