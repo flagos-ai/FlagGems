@@ -7316,6 +7316,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: upsample_bilinear2d_aa
+    description: Upsamples the input, using bilinear mode with anti-aliasing.
+    for:
+      - _upsample_bilinear2d_aa
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: upsample_linear1d
     description: |
       Upsamples the `input`, using linear mode.

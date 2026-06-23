@@ -95,6 +95,7 @@ _FULL_CONFIG = (
     ("_unsafe_masked_index", _unsafe_masked_index),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
+    ("_upsample_bilinear2d_aa", _upsample_bilinear2d_aa),
     ("_upsample_nearest_exact1d", _upsample_nearest_exact1d),
     ("_upsample_nearest_exact2d_backward", _upsample_nearest_exact2d_backward),
     ("_weight_norm_interface", weight_norm_interface),
