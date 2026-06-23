@@ -75,7 +75,6 @@ def sparse_semi_structured_mm_kernel(
     - Meta[i, k] = False: use A[i, 4k+2] and A[i, 4k+3]
     """
     pid = tle.program_id(0)
-    _num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)  # noqa: F841
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
 
     # Combine pid_m and pid_n into a single pid
