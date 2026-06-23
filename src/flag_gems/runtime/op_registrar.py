@@ -109,9 +109,7 @@ class GeneralOpRegistrar:
         ]
 
     def get_vendor_unused_op(self):
-        if self.device.vendor != common.vendors.NVIDIA:
-            return backend.get_unused_ops(self.device.vendor_name)
-        return []
+        return backend.get_unused_ops(self.device.vendor_name)
 
     def register_impl(self, key, fn, extra_dispatch_keys=()):
         if self.lib is None:
