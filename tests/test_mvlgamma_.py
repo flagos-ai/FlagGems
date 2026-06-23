@@ -28,8 +28,7 @@ def test_mvlgamma_(shape, dtype, p):
 
 
 def test_mvlgamma_p_validation():
-    x = torch.rand(10, dtype=torch.float32,
-                   device=flag_gems.device) + 1.0
+    x = torch.rand(10, dtype=torch.float32, device=flag_gems.device) + 1.0
     with pytest.raises(RuntimeError, match="p has to be greater than or equal to 1"):
         x.mvlgamma_(p=0)
     with pytest.raises(RuntimeError, match="supports p up to 16"):
