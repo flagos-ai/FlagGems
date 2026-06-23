@@ -1,11 +1,15 @@
 import logging
 import math
+from collections import OrderedDict
 
 import torch
 import triton
 import triton.language as tl
 
 logger = logging.getLogger(__name__)
+
+_WEIGHT_CACHE_MAX_ENTRIES = 128
+_weight_matrix_cache = OrderedDict()
 
 
 @triton.jit
@@ -149,44 +153,51 @@ def _fused_backward_kernel(
 
 
 @triton.jit
-def _precompute_weight_sums_kernel(
-    total_w_ptr,
+def _precompute_weights_kernel(
+    weight_ptr,
+    start_ptr,
     output_size,
     input_size,
     scale,
     support,
     invscale,
     MAX_KSIZE: tl.constexpr,
+    BLOCK_KSIZE: tl.constexpr,
 ):
     oi = tl.program_id(0)
     if oi >= output_size:
         return
+
+    offs = tl.arange(0, BLOCK_KSIZE)
+    offs_mask = offs < MAX_KSIZE
     center = scale * (oi + 0.5)
     xmin = tl.maximum(_f2i(center - support + 0.5), 0)
     xsize = tl.minimum(_f2i(center + support + 0.5), input_size) - xmin
     xsize = tl.minimum(tl.maximum(xsize, 0), MAX_KSIZE)
     xmin_f = xmin.to(tl.float32)
-    total = 0.0
-    for j in tl.static_range(MAX_KSIZE):
-        arg = tl.abs((j + xmin_f - center + 0.5) * invscale)
-        w = _cubic_aa_filter(arg)
-        total += tl.where(j < xsize, w, 0.0)
-    tl.store(total_w_ptr + oi, total)
+
+    arg = tl.abs((offs.to(tl.float32) + xmin_f - center + 0.5) * invscale)
+    raw_w = tl.where((offs < xsize) & offs_mask, _cubic_aa_filter(arg), 0.0)
+    total = tl.sum(raw_w, axis=0)
+    weights = tl.where(total != 0.0, raw_w / total, 0.0)
+
+    tl.store(weight_ptr + oi.to(tl.int64) * MAX_KSIZE + offs, weights, mask=offs_mask)
+    tl.store(start_ptr + oi, xmin)
 
 
 @triton.jit
 def _pass1_w_gather_nchw_kernel(
     grad_out_ptr,  # [NC, H_out, W_out] flat
     buf_ptr,  # [NC, H_out, W_in]  flat (output)
-    total_wx_ptr,  # [W_out]
+    wx_ptr,  # [W_out, MAX_KSIZE_W]
+    wx_start_ptr,  # [W_out]
     W_in,
     W_out,
-    w_scale,
     support_w,
-    invscale_w,
     inv_w_scale,
     BLOCK_IW: tl.constexpr,
     MAX_OW: tl.constexpr,
+    MAX_KSIZE_W: tl.constexpr,
 ):
     pid_row = tl.program_id(0)
     pid_col = tl.program_id(1)
@@ -206,16 +217,16 @@ def _pass1_w_gather_nchw_kernel(
     for d_ow in tl.static_range(MAX_OW):
         ow = ow_starts + d_ow
         ow_valid = iw_mask & (ow >= 0) & (ow < W_out)
-
-        center_w = w_scale * (ow.to(tl.float32) + 0.5)
-        xmin = tl.maximum(_f2i(center_w - support_w + 0.5), 0)
-        xsize = tl.minimum(_f2i(center_w + support_w + 0.5), W_in) - xmin
-        in_range = ow_valid & (iws >= xmin) & (iws < xmin + tl.maximum(xsize, 0))
-
-        raw_wx = _cubic_aa_filter(tl.abs((iw_f - center_w + 0.5) * invscale_w))
         ow_safe = tl.maximum(tl.minimum(ow, W_out - 1), 0)
-        tw_x = tl.load(total_wx_ptr + ow_safe, mask=in_range, other=1.0)
-        wx = tl.where(in_range & (tw_x != 0.0), raw_wx / tw_x, 0.0)
+
+        xmin = tl.load(wx_start_ptr + ow_safe)
+        k = iws - xmin
+        in_range = ow_valid & (k >= 0) & (k < MAX_KSIZE_W)
+        k_safe = tl.minimum(tl.maximum(k, 0), MAX_KSIZE_W - 1)
+        wx_raw = tl.load(
+            wx_ptr + ow_safe.to(tl.int64) * MAX_KSIZE_W + k_safe.to(tl.int64)
+        )
+        wx = tl.where(in_range, wx_raw, 0.0)
 
         g = tl.load(
             grad_out_ptr + go_base + ow_safe.to(tl.int64), mask=in_range, other=0.0
@@ -229,17 +240,17 @@ def _pass1_w_gather_nchw_kernel(
 def _pass2_h_gather_nchw_kernel(
     buf_ptr,  # [NC, H_out, W_in] flat (input)
     grad_in_ptr,  # [NC, H_in,  W_in] flat (output)
-    total_wy_ptr,  # [H_out]
+    wy_ptr,  # [H_out, MAX_KSIZE_H]
+    wy_start_ptr,  # [H_out]
     H_in,
     W_in,
     H_out,
-    h_scale,
     support_h,
-    invscale_h,
     inv_h_scale,
     stride_buf_hw,  # = H_out * W_in
     BLOCK_IW: tl.constexpr,
     MAX_OH: tl.constexpr,
+    MAX_KSIZE_H: tl.constexpr,
 ):
     pid_row = tl.program_id(0)
     pid_col = tl.program_id(1)
@@ -261,16 +272,16 @@ def _pass2_h_gather_nchw_kernel(
     for d_oh in tl.static_range(MAX_OH):
         oh = oh_start + d_oh
         oh_valid = (oh >= 0) & (oh < H_out)
-
-        center_h = h_scale * (oh + 0.5)
-        ymin = tl.maximum(_f2i(center_h - support_h + 0.5), 0)
-        ysize = tl.minimum(_f2i(center_h + support_h + 0.5), H_in) - ymin
-        ih_in_range = oh_valid & (ih >= ymin) & (ih < ymin + tl.maximum(ysize, 0))
-
-        raw_wy = _cubic_aa_filter(tl.abs((ih_f - center_h + 0.5) * invscale_h))
         oh_safe = tl.maximum(tl.minimum(oh, H_out - 1), 0)
-        tw_y = tl.load(total_wy_ptr + oh_safe)
-        wy = tl.where(ih_in_range & (tw_y != 0.0), raw_wy / tw_y, 0.0)
+
+        ymin = tl.load(wy_start_ptr + oh_safe)
+        k = ih - ymin
+        ih_in_range = oh_valid & (k >= 0) & (k < MAX_KSIZE_H)
+        k_safe = tl.minimum(tl.maximum(k, 0), MAX_KSIZE_H - 1)
+        wy_raw = tl.load(
+            wy_ptr + oh_safe.to(tl.int64) * MAX_KSIZE_H + k_safe.to(tl.int64)
+        )
+        wy = tl.where(ih_in_range, wy_raw, 0.0)
 
         buf_off = buf_nc_base + oh_safe.to(tl.int64) * W_in + iws.to(tl.int64)
         b = tl.load(buf_ptr + buf_off, mask=iw_mask & ih_in_range, other=0.0)
@@ -296,10 +307,178 @@ def _compute_scale(input_size, output_size, align_corners, scale=None):
         )
 
 
-# Threshold: when total elements (across the larger of input / output spatial)
-# is below this, the fused single-kernel path is used (1 launch instead of 4).
-# Above this, the 2-pass separable path is more memory-bandwidth efficient.
+def _cubic_aa_filter_scalar(x):
+    x = abs(float(x))
+    if x < 1.0:
+        return (1.5 * x - 2.5) * x * x + 1.0
+    if x < 2.0:
+        return ((-0.5 * x + 2.5) * x - 4.0) * x + 2.0
+    return 0.0
+
+
+def _weight_matrix_cache_key(
+    input_size,
+    output_size,
+    align_corners,
+    scale,
+    dtype,
+    device,
+    transpose,
+):
+    return (
+        int(input_size),
+        int(output_size),
+        bool(align_corners),
+        None if scale is None else float(scale),
+        dtype,
+        str(device),
+        bool(transpose),
+    )
+
+
+def _get_weight_matrix(
+    input_size,
+    output_size,
+    align_corners,
+    scale_arg,
+    dtype,
+    device,
+    transpose=False,
+):
+    key = _weight_matrix_cache_key(
+        input_size,
+        output_size,
+        align_corners,
+        scale_arg,
+        dtype,
+        device,
+        transpose,
+    )
+    cached = _weight_matrix_cache.get(key)
+    if cached is not None:
+        _weight_matrix_cache.move_to_end(key)
+        return cached
+
+    scale = _compute_scale(input_size, output_size, align_corners, scale_arg)
+    support = 2.0 * scale if scale >= 1.0 else 2.0
+    invscale = 1.0 / scale if scale >= 1.0 else 1.0
+
+    weight_cpu = torch.zeros((output_size, input_size), dtype=torch.float32)
+    for oi in range(output_size):
+        center = scale * (oi + 0.5)
+        xmin = max(math.floor(center - support + 0.5), 0)
+        xmax = min(math.floor(center + support + 0.5), input_size)
+        values = [
+            _cubic_aa_filter_scalar((ii - center + 0.5) * invscale)
+            for ii in range(xmin, xmax)
+        ]
+        total = sum(values)
+        if total != 0.0:
+            for ii, value in zip(range(xmin, xmax), values):
+                weight_cpu[oi, ii] = value / total
+
+    if transpose:
+        weight_cpu = weight_cpu.t().contiguous()
+    weight = weight_cpu.to(device=device, dtype=dtype)
+    if len(_weight_matrix_cache) >= _WEIGHT_CACHE_MAX_ENTRIES:
+        _weight_matrix_cache.popitem(last=False)
+    _weight_matrix_cache[key] = weight
+    return weight
+
+
+def _gemm_backward_path(
+    grad_output,
+    output_size,
+    input_size,
+    align_corners,
+    scales_h,
+    scales_w,
+):
+    N, C, H_in, W_in = input_size
+    H_out, W_out = output_size
+    NC = N * C
+
+    compute_dtype = torch.float32
+    wx = _get_weight_matrix(
+        W_in,
+        W_out,
+        align_corners,
+        scales_w,
+        compute_dtype,
+        grad_output.device,
+    )
+    if NC == 1:
+        wy_t = _get_weight_matrix(
+            H_in,
+            H_out,
+            align_corners,
+            scales_h,
+            compute_dtype,
+            grad_output.device,
+            transpose=True,
+        )
+
+        grad_w = grad_output.contiguous().reshape(H_out, W_out).to(compute_dtype)
+        tmp = torch.mm(grad_w, wx)
+        out = torch.mm(wy_t, tmp)
+        return out.reshape(N, C, H_in, W_in).to(grad_output.dtype)
+
+    wy = _get_weight_matrix(
+        H_in,
+        H_out,
+        align_corners,
+        scales_h,
+        compute_dtype,
+        grad_output.device,
+    )
+
+    grad_w = grad_output.contiguous().reshape(NC * H_out, W_out).to(compute_dtype)
+    tmp = torch.mm(grad_w, wx).reshape(NC, H_out, W_in)
+    tmp_h = tmp.transpose(1, 2).contiguous().reshape(NC * W_in, H_out)
+    out = torch.mm(tmp_h, wy).reshape(NC, W_in, H_in).transpose(1, 2).contiguous()
+    return out.reshape(N, C, H_in, W_in).to(grad_output.dtype)
+
+
+def _should_use_gemm_path(device_type, NC, H_in, W_in, H_out, W_out, align_corners):
+    if align_corners and (H_out == 1 or W_out == 1):
+        return False
+    if device_type == "npu":
+        return True
+    if device_type == "cuda":
+        # On CUDA, the GEMM route only wins when a large NC batch amortizes the
+        # two mm launches. Small and low-NC shapes stay on the Triton paths.
+        return NC >= (1 << 17) and H_out >= H_in and W_out >= W_in
+    return False
+
+
+# CUDA keeps the previous total-element threshold until H20 benchmarks say the
+# extra 2-pass launches are profitable for small tensors.
 _FUSE_THRESHOLD = 1 << 20  # 1M elements
+
+# Ascend pays a high scalar cost in the fused nested output loop. Keep the
+# single-kernel path only for very small work items such as 4x4 -> 1x1.
+_ASCEND_FUSE_MAX_PROGRAM_ITERATIONS = 512
+_ASCEND_FUSE_ALWAYS_FILTER_AREA = 1
+
+
+def _should_use_fused_path(
+    device_type,
+    total_elems,
+    NC,
+    H_in,
+    W_in,
+    BLOCK_IW,
+    MAX_OH,
+    MAX_OW,
+):
+    filter_area = MAX_OH * MAX_OW
+    if device_type == "npu":
+        if filter_area <= _ASCEND_FUSE_ALWAYS_FILTER_AREA:
+            return True
+        w_tiles = triton.cdiv(W_in, BLOCK_IW)
+        fused_program_iterations = NC * H_in * w_tiles * filter_area
+        return fused_program_iterations <= _ASCEND_FUSE_MAX_PROGRAM_ITERATIONS
+    return total_elems <= _FUSE_THRESHOLD
 
 
 def _upsample_bicubic2d_aa_backward(
@@ -321,6 +500,18 @@ def _upsample_bicubic2d_aa_backward(
     NC = N * C
     if NC == 0 or H_in == 0 or W_in == 0 or H_out == 0 or W_out == 0:
         return grad_output.new_zeros(input_size)
+
+    if _should_use_gemm_path(
+        grad_output.device.type, NC, H_in, W_in, H_out, W_out, align_corners
+    ):
+        return _gemm_backward_path(
+            grad_output,
+            output_size,
+            input_size,
+            align_corners,
+            scales_h,
+            scales_w,
+        )
 
     # ---- Work in NCHW — zero-copy reshape to [NC, H, W] ----
     grad_out_flat = grad_output.contiguous().reshape(NC, H_out, W_out)
@@ -353,7 +544,16 @@ def _upsample_bicubic2d_aa_backward(
 
     # ---- Choose fused vs 2-pass ----
     total_elems = NC * max(H_in * W_in, H_out * W_out)
-    use_fused = total_elems <= _FUSE_THRESHOLD
+    use_fused = _should_use_fused_path(
+        grad_output.device.type,
+        total_elems,
+        NC,
+        H_in,
+        W_in,
+        BLOCK_IW,
+        MAX_OH,
+        MAX_OW,
+    )
 
     if use_fused:
         # ============================================================
@@ -393,32 +593,50 @@ def _upsample_bicubic2d_aa_backward(
         # 2-PASS PATH — separable, memory-bandwidth efficient for big tensors
         # ============================================================
 
-        # Phase 0: precompute weight sums
-        total_wy = torch.empty(
-            max(H_out, 1), dtype=torch.float32, device=grad_output.device
+        # Phase 0: precompute normalized weights and input starts.
+        wy = torch.empty(
+            max(H_out, 1),
+            MAX_KSIZE_H,
+            dtype=torch.float32,
+            device=grad_output.device,
         )
-        total_wx = torch.empty(
-            max(W_out, 1), dtype=torch.float32, device=grad_output.device
+        wx = torch.empty(
+            max(W_out, 1),
+            MAX_KSIZE_W,
+            dtype=torch.float32,
+            device=grad_output.device,
         )
+        wy_start = torch.empty(
+            max(H_out, 1), dtype=torch.int32, device=grad_output.device
+        )
+        wx_start = torch.empty(
+            max(W_out, 1), dtype=torch.int32, device=grad_output.device
+        )
+        BLOCK_KSIZE_H = triton.next_power_of_2(MAX_KSIZE_H)
+        BLOCK_KSIZE_W = triton.next_power_of_2(MAX_KSIZE_W)
         if H_out > 0:
-            _precompute_weight_sums_kernel[(H_out,)](
-                total_wy,
+            _precompute_weights_kernel[(H_out,)](
+                wy,
+                wy_start,
                 H_out,
                 H_in,
                 h_scale,
                 support_h,
                 invscale_h,
                 MAX_KSIZE=MAX_KSIZE_H,
+                BLOCK_KSIZE=BLOCK_KSIZE_H,
             )
         if W_out > 0:
-            _precompute_weight_sums_kernel[(W_out,)](
-                total_wx,
+            _precompute_weights_kernel[(W_out,)](
+                wx,
+                wx_start,
                 W_out,
                 W_in,
                 w_scale,
                 support_w,
                 invscale_w,
                 MAX_KSIZE=MAX_KSIZE_W,
+                BLOCK_KSIZE=BLOCK_KSIZE_W,
             )
 
         # Phase 1: W-gather -> buf [NC, H_out, W_in]
@@ -429,15 +647,15 @@ def _upsample_bicubic2d_aa_backward(
         _pass1_w_gather_nchw_kernel[grid1](
             grad_out_flat,
             buf,
-            total_wx,
+            wx,
+            wx_start,
             W_in,
             W_out,
-            w_scale,
             support_w,
-            invscale_w,
             inv_w_scale,
             BLOCK_IW=BLOCK_IW,
             MAX_OW=MAX_OW,
+            MAX_KSIZE_W=MAX_KSIZE_W,
             num_warps=nw,
         )
 
@@ -449,17 +667,17 @@ def _upsample_bicubic2d_aa_backward(
         _pass2_h_gather_nchw_kernel[grid2](
             buf,
             grad_in_flat,
-            total_wy,
+            wy,
+            wy_start,
             H_in,
             W_in,
             H_out,
-            h_scale,
             support_h,
-            invscale_h,
             inv_h_scale,
             H_out * W_in,  # stride_buf_hw
             BLOCK_IW=BLOCK_IW,
             MAX_OH=MAX_OH,
+            MAX_KSIZE_H=MAX_KSIZE_H,
             num_warps=nw,
         )
 

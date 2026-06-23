@@ -326,13 +326,7 @@ def sqmma_descriptor_pre_hook(nargs):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "mm_general_tma",
-        pre_hook=sqmma_descriptor_pre_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
+    configs=[
         triton.Config(
             {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64, "GROUP_M": 8},
             num_stages=1,
@@ -340,14 +334,14 @@ def sqmma_descriptor_pre_hook(nargs):
             pre_hook=sqmma_descriptor_pre_hook,
         )
     ],
-    key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=runtime.get_expand_config(
-        "mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    key=["M", "N", "K", "dtype"],
+    strategy=["align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
+    flagtune_op_name="mm",
+    flagtune_expand_op_name="mm_sqmma",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=sqmma_descriptor_pre_hook,
 )
 @triton.jit
 def mm_sqmma_kernel(
