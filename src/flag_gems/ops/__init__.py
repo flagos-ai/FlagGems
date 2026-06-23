@@ -7,6 +7,9 @@ from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
+from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
+    _thnn_fused_lstm_cell_backward_impl,
+)
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops._upsample_nearest_exact2d_backward import (
@@ -477,6 +480,7 @@ __all__ = [
     "_safe_softmax",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
     "_unsafe_masked_index",
     "_upsample_bicubic2d_aa",
