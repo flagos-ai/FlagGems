@@ -357,6 +357,7 @@ _FULL_CONFIG = (
     ("lift_fresh_copy", lift_fresh_copy),
     ("linalg_vector_norm", vector_norm),
     ("linear", linear),
+    ("linear_backward", linear_backward),
     ("linspace", linspace),
     ("log", log),
     ("log1p", log1p),
