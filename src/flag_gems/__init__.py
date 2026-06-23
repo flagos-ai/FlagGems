@@ -615,6 +615,7 @@ _FULL_CONFIG = (
     ("true_divide_.Tensor", true_divide_),
     ("trunc", trunc),
     ("trunc_", trunc_),
+    ("unbind_copy", unbind_copy),
     ("unfold_backward", unfold_backward),
     ("unfold_copy", unfold_copy),
     ("uniform_", uniform_),
