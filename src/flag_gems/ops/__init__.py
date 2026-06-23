@@ -26,6 +26,7 @@ from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
 from flag_gems.ops.addcdiv_ import addcdiv_
 from flag_gems.ops.addcmul import addcmul, addcmul_out
 from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
+from flag_gems.ops.addmm_ import addmm_
 from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addr import addr
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
@@ -514,6 +515,7 @@ __all__ = [
     "addcmul",
     "addcmul_out",
     "addmm",
+    "addmm_",
     "addmm_dtype",
     "addmm_dtype_out",
     "addmm_out",

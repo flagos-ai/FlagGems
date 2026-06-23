@@ -244,6 +244,20 @@ ops:
     stages:
       - stable: '1.0'
     cpp: '4.0'
+  - id: addmm_
+    description: |
+      The in-place version of `addmm`. Performs the matrix multiplication of `mat1`
+      and `mat2`, multiplied by `alpha`, then adds `beta` times `input` to the result
+      in-place.
+    for:
+      - addmm_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: addmm_dtype
     description: |
       A variant of `addmm` that allows the dtype of the output tensor to be specified.
