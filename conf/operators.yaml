@@ -100,6 +100,18 @@ ops:
     stages:
       - alpha: '5.0'
       - beta: '5.3'
+  - id: adaptive_max_pool3d_backward
+    description: |
+      Computes the gradient for adaptive max pooling 3D.
+    for:
+      - adaptive_max_pool3d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: add
     description: |
       Add a scalar or tensor to `self` tensor. If both `alpha` and `other` are specified,

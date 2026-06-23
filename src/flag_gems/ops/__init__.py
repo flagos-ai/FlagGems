@@ -19,6 +19,7 @@ from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
+from flag_gems.ops.adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
 from flag_gems.ops.addcdiv_ import addcdiv_
@@ -492,6 +493,7 @@ __all__ = [
     "absolute",
     "acos",
     "adaptive_avg_pool2d",
+    "adaptive_max_pool3d_backward",
     "add",
     "add_",
     "addcdiv",
