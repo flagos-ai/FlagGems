@@ -274,6 +274,8 @@ _FULL_CONFIG = (
     ("exp2", exp2),
     ("exp2_", exp2_),
     ("exp_", exp_),
+    ("expand", expand),
+    ("expand_", expand_),
     ("expm1", expm1),
     ("expm1.out", expm1_out),
     ("expm1_", expm1_),
