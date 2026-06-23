@@ -3856,6 +3856,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: log2_
+    description: |
+      Computes the base-2 logarithm of each input element in-place.
+    for:
+      - log2_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: log_sigmoid
     description: Applies the Logsigmoid function element-wise.
     for:
