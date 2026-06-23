@@ -8,6 +8,9 @@ from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
+from flag_gems.ops._upsample_nearest_exact2d_backward import (
+    _upsample_nearest_exact2d_backward,
+)
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
@@ -212,6 +215,7 @@ from flag_gems.ops.isinf import isinf
 from flag_gems.ops.isnan import isnan
 from flag_gems.ops.isneginf import isneginf, isneginf_out
 from flag_gems.ops.kron import kron
+from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
@@ -477,6 +481,7 @@ __all__ = [
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact1d",
+    "_upsample_nearest_exact2d_backward",
     "abs",
     "abs_",
     "absolute",
@@ -726,6 +731,7 @@ __all__ = [
     "isneginf",
     "isneginf_out",
     "kron",
+    "kthvalue",
     "layer_norm",
     "layer_norm_backward",
     "le",

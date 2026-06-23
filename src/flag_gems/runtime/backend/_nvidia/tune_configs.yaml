@@ -1881,6 +1881,32 @@ grid_sample_2d_nearest_tiled:
       BLOCK_W: 16
     num_warps: 4
     num_stages: 4
+
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 32
+    num_warps: 16
+    num_stages: 3
+  - META:
+      BLOCK_H: 64
+      BLOCK_W: 64
+    num_warps: 16
+    num_stages: 3
+  - META:
+      BLOCK_H: 128
+      BLOCK_W: 128
+    num_warps: 16
+    num_stages: 2
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 16
+    num_warps: 16
+    num_stages: 3
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 32
+    num_warps: 16
+    num_stages: 3
 grid_sample_2d_bilinear_tiled:
   - META:
       BLOCK_H: 4
