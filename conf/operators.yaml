@@ -6667,6 +6667,21 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_gammainc
+    description: |
+      Computes the regularized lower incomplete gamma function P(a, x) element-wise.
+      A variant with output saved to a provided `out` tensor is also registered
+      as `special.gammainc.out`.
+    for:
+      - special.gammainc
+      - special.gammainc.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
