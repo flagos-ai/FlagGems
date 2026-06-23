@@ -39,7 +39,7 @@ def shifted_chebyshev_polynomial_w_kernel(x, n):
     # Iterate from 2 to n
     # Using a loop unrolling approach for efficiency
     for i in range(2, 20):  # Max n=19 for reasonable performance
-        if n_int <= i:
+        if n_int < i:
             break
         w_current = 2.0 * (2.0 * x - 1.0) * w_prev1 - w_prev2
         w_prev2 = w_prev1
@@ -50,4 +50,9 @@ def shifted_chebyshev_polynomial_w_kernel(x, n):
 
 def special_shifted_chebyshev_polynomial_w(x: torch.Tensor, n: torch.Tensor):
     logger.debug("ILUVATAR GEMS SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_W")
+    if torch.any(n > 19):
+        raise ValueError(
+            "n must be <= 19, got values up to {}. "
+            "The iluvatar backend only supports n <= 19.".format(int(n.max().item()))
+        )
     return shifted_chebyshev_polynomial_w_kernel(x, n)

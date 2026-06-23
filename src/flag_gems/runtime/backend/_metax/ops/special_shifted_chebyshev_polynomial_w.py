@@ -134,4 +134,9 @@ def special_shifted_chebyshev_polynomial_w(x: torch.Tensor, n: torch.Tensor):
         Tensor with the computed polynomial values
     """
     logger.debug("METAX GEMS SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_W")
+    if torch.any(n > 20):
+        raise ValueError(
+            "n must be <= 20, got values up to {}. "
+            "The unrolled kernel only supports n <= 20.".format(int(n.max().item()))
+        )
     return shifted_chebyshev_polynomial_w(x, n)

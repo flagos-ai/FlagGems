@@ -96,4 +96,9 @@ def special_shifted_chebyshev_polynomial_w(x, n):
         torch.float32,
         torch.float64,
     ), "shifted_chebyshev_polynomial_w only supports float32 and float64"
+    if torch.any(n > 10):
+        raise ValueError(
+            "n must be <= 10, got values up to {}. "
+            "The unrolled kernel only supports n <= 10.".format(int(n.max().item()))
+        )
     return shifted_chebyshev_polynomial_w_func(x, n)
