@@ -5,16 +5,22 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 # Custom shapes: (N, H, W)
-AFFINE_GRID_SHAPES = [
-    (1, 2, 2),
-    (1, 4, 4),
-    (2, 8, 8),
-    (4, 16, 16),
-    (1, 32, 32),
-    (2, 64, 64),
-]
+if cfg.QUICK_MODE:
+    AFFINE_GRID_SHAPES = [
+        (1, 2, 2),
+    ]
+else:
+    AFFINE_GRID_SHAPES = [
+        (1, 2, 2),
+        (1, 4, 4),
+        (2, 8, 8),
+        (4, 16, 16),
+        (1, 32, 32),
+        (2, 64, 64),
+    ]
 
 
 @pytest.mark.affine_grid_generator
