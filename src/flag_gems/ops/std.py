@@ -5,9 +5,8 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import dim_compress, libentry
 from flag_gems.runtime import torch_device_fn
-
+from flag_gems.utils import dim_compress, libentry
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +99,7 @@ def _std_fused_dim_kernel(
     out_ptrs = Out + row_offsets
     tl.store(out_ptrs, std_dev.to(Out.dtype.element_ty), mask=row_mask)
 
+
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
 @triton.jit(do_not_specialize=["correction"])
@@ -126,9 +126,7 @@ def _std_dim_kernel_inner(
         for start_n in range(0, N, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)
             mask = n_offsets < N
-            x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(
-                tl.float32
-            )
+            x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
             sum_acc += x
             sum_sq_acc += x * x
         sum_val = tl.sum(sum_acc, axis=0)
@@ -183,6 +181,7 @@ def _std_dim_kernel_non_inner(
     std_dev = tl.sqrt(tl.maximum(var, 0.0))
     out_offsets = pid_m * K + k_offsets
     tl.store(Out + out_offsets, std_dev.to(Out.dtype.element_ty), mask=k_offsets < K)
+
 
 def std(x, dim=None, *, correction=None, keepdim=False):
     effective_correction = 1.0 if correction is None else float(correction)
@@ -250,7 +249,7 @@ def std(x, dim=None, *, correction=None, keepdim=False):
             if N == 1 and effective_correction == 0.0:
                 final_shape = shape if keepdim else shape[:dim0] + shape[dim0 + 1 :]
                 return torch.zeros(final_shape, device=x.device, dtype=x.dtype)
-            
+
             out = torch.empty(shape, device=x.device, dtype=x.dtype)
             if M * N * K == 0:
                 return out.squeeze(dim=dim0) if not keepdim else out
