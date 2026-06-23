@@ -46,6 +46,13 @@ def hermite_polynomial_he_tensor_tensor(x, n):
     # He_5 = x^5 - 10*x^3 + 15*x
     he_5 = x5 - 10.0 * x3 + 15.0 * x_f32
 
+    # He_6 through He_10: recurrence He_{n+1} = x*He_n - n*He_{n-1}
+    he_6 = x_f32 * he_5 - 5.0 * he_4
+    he_7 = x_f32 * he_6 - 6.0 * he_5
+    he_8 = x_f32 * he_7 - 7.0 * he_6
+    he_9 = x_f32 * he_8 - 8.0 * he_7
+    he_10 = x_f32 * he_9 - 9.0 * he_8
+
     # Combine all cases
     result = result_0
     result = tl.where(n_int == 1, result_1, result)
@@ -53,8 +60,13 @@ def hermite_polynomial_he_tensor_tensor(x, n):
     result = tl.where(n_int == 3, he_3, result)
     result = tl.where(n_int == 4, he_4, result)
     result = tl.where(n_int == 5, he_5, result)
-    # For n >= 6, return 0
-    result = tl.where(n_int >= 6, tl.zeros_like(x_f32), result)
+    result = tl.where(n_int == 6, he_6, result)
+    result = tl.where(n_int == 7, he_7, result)
+    result = tl.where(n_int == 8, he_8, result)
+    result = tl.where(n_int == 9, he_9, result)
+    result = tl.where(n_int == 10, he_10, result)
+    # For n > 10, approximate with He_{11}
+    result = tl.where(n_int >= 11, x_f32 * he_10 - 10.0 * he_9, result)
 
     return result
 
@@ -88,6 +100,13 @@ def hermite_polynomial_he_tensor_scalar(x, n):
     # He_5 = x^5 - 10*x^3 + 15*x
     he_5 = x5 - 10.0 * x3 + 15.0 * x_f32
 
+    # He_6 through He_10: recurrence He_{n+1} = x*He_n - n*He_{n-1}
+    he_6 = x_f32 * he_5 - 5.0 * he_4
+    he_7 = x_f32 * he_6 - 6.0 * he_5
+    he_8 = x_f32 * he_7 - 7.0 * he_6
+    he_9 = x_f32 * he_8 - 8.0 * he_7
+    he_10 = x_f32 * he_9 - 9.0 * he_8
+
     # Combine all cases
     result = result_0
     result = tl.where(n_int == 1, result_1, result)
@@ -95,8 +114,13 @@ def hermite_polynomial_he_tensor_scalar(x, n):
     result = tl.where(n_int == 3, he_3, result)
     result = tl.where(n_int == 4, he_4, result)
     result = tl.where(n_int == 5, he_5, result)
-    # For n >= 6, return 0
-    result = tl.where(n_int >= 6, tl.zeros_like(x_f32), result)
+    result = tl.where(n_int == 6, he_6, result)
+    result = tl.where(n_int == 7, he_7, result)
+    result = tl.where(n_int == 8, he_8, result)
+    result = tl.where(n_int == 9, he_9, result)
+    result = tl.where(n_int == 10, he_10, result)
+    # For n > 10, approximate with He_{11}
+    result = tl.where(n_int >= 11, x_f32 * he_10 - 10.0 * he_9, result)
 
     return result
 
