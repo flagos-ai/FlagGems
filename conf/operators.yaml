@@ -3932,6 +3932,32 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: logaddexp2
+    description: |
+      Computes the element-wise logarithm base 2 of the sum of exponentials of two input tensors.
+    for:
+      - logaddexp2
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: logaddexp2_out
+    description: |
+      A variant of `logaddexp2` that allows the output to be assigned to an `out` tensor.
+    for:
+      - logaddexp2.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: logaddexp_out
     description: A variant of `logaddexp` that allows the output to be assigned to an `out` tensor.
     for:
