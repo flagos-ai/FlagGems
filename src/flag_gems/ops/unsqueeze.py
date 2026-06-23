@@ -47,23 +47,11 @@ def unsqueeze(A: torch.Tensor, dim: int) -> torch.Tensor:
             f"but got {dim})"
         )
 
-    # Build new shape by inserting 1 at the specified dimension
     new_shape = list(A.shape)
     new_shape.insert(dim, 1)
 
-    # Build strides: insert a stride at position dim.
-    # For a dimension of size 1 the stride value does not affect
-    # correctness; we use the stride that would have occupied that
-    # position, or 1 when appending, keeping it consistent with
-    # PyTorch's convention.
-    strides = list(A.stride())
-    if dim < ndim:
-        strides.insert(dim, strides[dim])
-    else:
-        strides.insert(dim, 1)
-
-    # as_strided creates a view — no data is copied
-    return torch.as_strided(A, new_shape, strides)
+    # reshape delegates stride computation to PyTorch
+    return A.reshape(new_shape)
 
 
 def unsqueeze_(A: torch.Tensor, dim: int) -> torch.Tensor:
