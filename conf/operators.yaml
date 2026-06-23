@@ -7364,6 +7364,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: unsafe_masked_index_put_accumulate
+    description: |
+      Reads values and indices tensors, performs masked scatter accumulation on
+      input tensor at specified indices where mask is True. The accumulate
+      variant uses atomic_add instead of replacement.
+    for:
+      - _unsafe_masked_index_put_accumulate
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: upsample_bicubic2d
     description: A variant of `upsample()` that has `mode` set to `bicubic`.
     for:
