@@ -4065,6 +4065,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: logit_backward
+    description: Triton kernel implementation for logit_backward.
+    for:
+      - logit_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: logit_out
     description: |
       A variant of `logit` that allows the output to be assigned to another tensor.
