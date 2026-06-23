@@ -2741,6 +2741,7 @@ ops:
     description: Computes `input` is greater or equal to `other` element-wise.
     for:
       - ge.Tensor
+      - greater_equal.Tensor
     labels:
       - aten
       - pointwise
@@ -2752,6 +2753,7 @@ ops:
     description: The scalar version of `ge()`.
     for:
       - ge.Scalar
+      - greater_equal.Scalar
     labels:
       - aten
       - pointwise
@@ -2879,35 +2881,10 @@ ops:
       - Math
     stages:
       - stable: '5.3'
-  - id: greater_equal
-    description: Computes `input >= other` element-wise.
-    for:
-      - greater_equal.Scalar
-      - greater_equal.Tensor
-    labels:
-      - aten
-      - pointwise
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: greater_equal_
-    description: The in-place version of `greater_equal()`.
+    description: The in-place version of `greater_equal()`, which is an alias for `ge()`.
     for:
       - greater_equal_.Tensor
-    labels:
-      - aten
-      - pointwise
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: greater_equal_scalar
-    description: The scalar version of `greater_equal()`.
-    for:
-      - greater_equal.Scalar
     labels:
       - aten
       - pointwise
