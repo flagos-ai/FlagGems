@@ -518,6 +518,7 @@ _FULL_CONFIG = (
     ("resolve_conj", resolve_conj),
     ("resolve_neg", resolve_neg),
     ("rms_norm", rms_norm),
+    ("rnn_relu", rnn_relu),
     ("roll", roll),
     ("rot90", rot90),
     ("round", round),

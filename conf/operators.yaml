@@ -5740,6 +5740,18 @@ ops:
     stages:
       - stable: '2.0'
     cpp: '4.0'
+  - id: rnn_relu
+    description: Triton kernel implementation for rnn_relu.
+    for:
+      - rnn_relu
+    labels:
+      - aten
+      - KernelGen
+      - NoCPU
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: roll
     description: |
       Roll the tensor input along the given dimension(s). Elements that are shifted beyond the last position
