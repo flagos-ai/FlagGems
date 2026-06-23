@@ -48,7 +48,7 @@ class ConcatBenchmark(base.Benchmark):
         return parsed
 
 
-@pytest.mark.Concat
+@pytest.mark.concat
 def test_Concat():
     bench = ConcatBenchmark(
         input_fn=_input_fn,
