@@ -18,6 +18,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import types
 from decimal import getcontext
@@ -661,6 +662,16 @@ def worker_proc(gpu_id, work_queue, display_queue):
     sys.stdout = open(os.devnull, "w")
     sys.stderr = open(os.devnull, "w")
 
+    notfound_result = {
+        "status": "NotFound",
+        "exit_code": 0,
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "duration": 0,
+    }
+
     worker_result = {}
     while True:
         try:
@@ -674,31 +685,39 @@ def worker_proc(gpu_id, work_queue, display_queue):
         op_dir = CFG.output_dir.joinpath(op)
         ensure_dir(op_dir)
 
-        display_queue.put(("start", gpu_id, "accuracy", op))
-        acc = run_accuracy_q(gpu_id, op)
-        display_queue.put(
-            (
-                "done",
-                gpu_id,
-                "accuracy",
-                op,
-                acc.get("status", "Error"),
-                acc.get("duration", 0),
+        if op in CFG.accuracy_marks:
+            display_queue.put(("start", gpu_id, "accuracy", op))
+            acc = run_accuracy_q(gpu_id, op)
+            display_queue.put(
+                (
+                    "done",
+                    gpu_id,
+                    "accuracy",
+                    op,
+                    acc.get("status", "Error"),
+                    acc.get("duration", 0),
+                )
             )
-        )
+        else:
+            acc = notfound_result
+            display_queue.put(("done", gpu_id, "accuracy", op, "NotFound", 0))
 
-        display_queue.put(("start", gpu_id, "benchmark", op))
-        perf = run_benchmark_q(gpu_id, op)
-        display_queue.put(
-            (
-                "done",
-                gpu_id,
-                "benchmark",
-                op,
-                perf.get("status", "Error"),
-                perf.get("duration", 0),
+        if op in CFG.benchmark_marks:
+            display_queue.put(("start", gpu_id, "benchmark", op))
+            perf = run_benchmark_q(gpu_id, op)
+            display_queue.put(
+                (
+                    "done",
+                    gpu_id,
+                    "benchmark",
+                    op,
+                    perf.get("status", "Error"),
+                    perf.get("duration", 0),
+                )
             )
-        )
+        else:
+            perf = {"status": "NotFound", "exit_code": 0, "duration": 0, "data": {}}
+            display_queue.put(("done", gpu_id, "benchmark", op, "NotFound", 0))
 
         customized_ops = [o[0] for o in flag_gems.runtime.backend.get_customized_ops()]
         result = {
@@ -896,6 +915,57 @@ def get_ops_to_test():
     return ops
 
 
+def _parse_marks_file(marks_file):
+    marks = set()
+    try:
+        with open(marks_file, "r") as f:
+            data = yaml.safe_load(f)
+        if data:
+            for item in data:
+                for mark in item.get("marks", []):
+                    marks.add(mark)
+    except Exception as e:
+        pwarn(f"Failed to parse marks file {marks_file}: {e}")
+    return marks
+
+
+def collect_marks():
+    accuracy_marks = set()
+    benchmark_marks = set()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        acc_file = os.path.join(tmpdir, "accuracy_marks.yaml")
+        bench_file = os.path.join(tmpdir, "benchmark_marks.yaml")
+
+        pinfo("Collecting accuracy test marks ...")
+        code = subprocess.call(
+            ["pytest", f"--collect-marks={acc_file}", "tests/"],
+            cwd=str(ROOT),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if code in (0, 5) and os.path.exists(acc_file):
+            accuracy_marks = _parse_marks_file(acc_file)
+            pinfo(f"Found accuracy tests for {len(accuracy_marks)} operators")
+        else:
+            pwarn("Failed to collect accuracy marks, all ops will be tested")
+
+        pinfo("Collecting benchmark marks ...")
+        code = subprocess.call(
+            ["pytest", f"--collect-marks={bench_file}", "benchmark/"],
+            cwd=str(ROOT),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if code in (0, 5) and os.path.exists(bench_file):
+            benchmark_marks = _parse_marks_file(bench_file)
+            pinfo(f"Found benchmark tests for {len(benchmark_marks)} operators")
+        else:
+            pwarn("Failed to collect benchmark marks, all ops will be benchmarked")
+
+    return accuracy_marks, benchmark_marks
+
+
 def main():
     global OPTS
 
@@ -960,6 +1030,8 @@ def main():
         pwarn("No operators to test. Please specify at lease one operator.")
         sys.exit(1)
     pinfo(f"Testing {op_count} operators ...")
+
+    CFG.accuracy_marks, CFG.benchmark_marks = collect_marks()
 
     CFG.ops = ops
 

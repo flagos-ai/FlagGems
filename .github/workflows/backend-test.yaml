@@ -47,44 +47,14 @@ jobs:
         op-test-${{ inputs.vendor }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
-      - id: checkout-attempt-1
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         continue-on-error: true
-      - id: sleep-1
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        shell: bash
-        run: sleep 30s
+      - uses: ./.github/actions/checkout-retry
+      - uses: ./.github/actions/setup-flaggems
+        with:
+          vendor: ${{ inputs.vendor }}
+          gpu_check_script: ${{ inputs.gpu_check_script }}
 
-      - id: checkout-attempt-2
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        continue-on-error: true
-      - id: sleep-2
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        shell: bash
-        run: sleep 30s
-
-      - id: checkout-attempt-3
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Setup FlagGems
-        shell: bash
-        env:
-          RUNNER_LABEL: ${{ inputs.runner_label }}
-        run: |
-          source tools/env.sh ${{ inputs.vendor }}
-          ./setup.sh ${{ inputs.vendor }}
-          if [ "${RUNNER_LABEL}" == "h20" ]; then
-             source .venv/bin/activate
-             uv pip install --no-cache-dir vllm==0.21.0 --torch-backend=cu130
-          fi
-      - id: check-gpu
-        if: ${{ inputs.gpu_check_script != '' }}
-        shell: bash
-        run: |
-          source tools/env.sh ${{ inputs.vendor }}
-          bash ${{ inputs.gpu_check_script }}
       - name: Test alpha ops
         if: ${{ inputs.test_script != '' }}
         env:
