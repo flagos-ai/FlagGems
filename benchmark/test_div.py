@@ -38,6 +38,8 @@ def test_div_scalar_inplace():
         torch_op=lambda a, b: a.div_(b),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
+    )
+    bench.run()
 
 
 @pytest.mark.div_out
