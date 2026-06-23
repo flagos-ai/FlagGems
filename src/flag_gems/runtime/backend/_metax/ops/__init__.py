@@ -1,6 +1,3 @@
-from ._scaled_dot_product_efficient_attention import (
-    _scaled_dot_product_efficient_attention,
-)
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
@@ -36,7 +33,6 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
-    "_scaled_dot_product_efficient_attention",
     "_unique2",
     "addmm",
     "amax",
