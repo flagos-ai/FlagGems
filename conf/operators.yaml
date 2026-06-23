@@ -3767,7 +3767,7 @@ ops:
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
     for:
-      - linalg_slogdet
+      - linalg.slogdet
     labels:
       - aten
       - KernelGen

@@ -129,7 +129,7 @@ def slogdet(A):
         - LU is the LU decomposition
         - pivots is the pivot indices (not computed in this implementation)
     """
-    logger.debug("GEMS slogdet")
+    logger.debug("GEMS SLOGDET")
     assert A.dim() >= 2, "Input must be at least 2D"
     assert A.shape[-1] == A.shape[-2], "Input must be square"
     # The generated slogdet kernel uses float32 arithmetic; reject unsupported dtypes explicitly.
@@ -195,39 +195,7 @@ def slogdet(A):
 
 # Wrapper for use with torch.linalg.slogdet interface
 def linalg_slogdet(A):
-    """
-    Wrapper that matches torch.linalg.slogdet interface.
-    Returns only (sign, logabsdet) named tuple.
-    """
+    """Return the sign and log absolute determinant of a square matrix."""
     assert A.dtype == torch.float32
-    sign, logabsdet, LU, pivots = slogdet(A)
-
-    # Return as named tuple like torch.linalg.slogdet
-    # Create a simple named tuple-like object
-    class SlogdetResult:
-        def __init__(self, sign, logabsdet):
-            self.sign = sign
-            self.logabsdet = logabsdet
-
-        def __getitem__(self, idx):
-            if idx == 0:
-                return self.sign
-            elif idx == 1:
-                return self.logabsdet
-            raise IndexError("SlogdetResult index out of range")
-
-        def __iter__(self):
-            yield self.sign
-            yield self.logabsdet
-
-        def __len__(self):
-            return 2
-
-    return SlogdetResult(sign, logabsdet)
-
-
-def slogdet_(A):
-    """
-    In-place version of slogdet (not supported, raises error).
-    """
-    raise NotImplementedError("In-place slogdet is not supported")
+    sign, logabsdet, _lu, _pivots = slogdet(A)
+    return sign, logabsdet

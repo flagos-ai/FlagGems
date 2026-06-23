@@ -1,9 +1,13 @@
 import pytest
 import torch
 
+from flag_gems import linalg_slogdet
+
 from . import base
 
-# Custom non-pointwise shapes are required because shared pointwise benchmark shapes do not apply.
+# Use linalg-specific square-matrix shapes: one batched small case covers
+# the (*, n, n) interface, and 4x4 through 32x32 covers the small/medium
+# matrices targeted by this single-program LU implementation.
 SLOGDET_SHAPES = [
     (2, 3, 3),
     (4, 4),
@@ -25,8 +29,6 @@ class SlogdetBenchmark(base.Benchmark):
 
 @pytest.mark.linalg_slogdet
 def test_linalg_slogdet():
-    from flag_gems.ops.linalg_slogdet import linalg_slogdet
-
     bench = SlogdetBenchmark(
         op_name="linalg_slogdet",
         torch_op=torch.linalg.slogdet,
