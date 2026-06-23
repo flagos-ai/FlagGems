@@ -100,9 +100,9 @@ def _make_gather_backward_index(inp_shape, dim, duplicate_indices):
             for k in range(1 if dim == 2 else o):
                 ii = [i, j, k]
                 ii[dim] = slice(0, index_size_dim)
-                index[tuple(ii)] = torch.randperm(
-                    size_dim, device=flag_gems.device
-                )[:index_size_dim]
+                index[tuple(ii)] = torch.randperm(size_dim, device=flag_gems.device)[
+                    :index_size_dim
+                ]
     return index
 
 
