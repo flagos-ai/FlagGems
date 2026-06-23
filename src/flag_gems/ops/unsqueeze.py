@@ -16,119 +16,57 @@
 import logging
 
 import torch
-import triton
-import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
 
-@triton.jit
-def unsqueeze_copy_kernel(
-    input_ptr,
-    output_ptr,
-    numel: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-):
-    """Kernel to copy data from input to output for non-contiguous unsqueeze."""
-    pid = tl.program_id(0)
-    block_start = pid * BLOCK_SIZE
-    offsets = tl.arange(0, BLOCK_SIZE)
-    mask = block_start + offsets < numel
-
-    # Load from input and store to output at the same offset
-    data = tl.load(input_ptr + block_start + offsets, mask=mask)
-    tl.store(output_ptr + block_start + offsets, data, mask=mask)
-
-
 def unsqueeze(A: torch.Tensor, dim: int) -> torch.Tensor:
     """Insert a dimension of size 1 at the specified position.
+
+    This is a zero-copy view operation that adjusts shape and strides.
+    No data is copied.
 
     Args:
         A: Input tensor
         dim: Index at which to insert the singleton dimension
 
     Returns:
-        Tensor with a dimension of size 1 inserted at the specified position
+        View of the input tensor with a dimension of size 1 inserted
     """
     logger.debug("GEMS UNSQUEEZE")
 
-    # Validate and normalize dim
-    if dim < 0:
-        dim = A.dim() + dim + 1
-    assert (
-        dim >= 0 and dim <= A.dim()
-    ), f"Dimension out of range (expected to be in range of [0, {A.dim()}], but got {dim})"
-
-    # Build output shape by inserting 1 at the specified dimension
-    output_shape = list(A.shape)
-    output_shape.insert(dim, 1)
-
-    # Handle empty tensors
-    if A.numel() == 0:
-        return torch.empty(output_shape, dtype=A.dtype, device=A.device)
-
-    # For contiguous input, use view-based approach (fast path)
-    if A.is_contiguous():
-        # Use reshape to create the view with new shape
-        return A.reshape(output_shape)
-
-    # For non-contiguous input, use Triton kernel
-    out = torch.empty(output_shape, dtype=A.dtype, device=A.device)
-
-    # BLOCK_SIZE=1024 balances occupancy and register pressure for element-wise copy
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(A.numel(), BLOCK_SIZE),)
-
-    unsqueeze_copy_kernel[grid](
-        A,
-        out,
-        A.numel(),
-        BLOCK_SIZE=BLOCK_SIZE,
-    )
-
-    return out
-
-
-def unsqueeze_(A: torch.Tensor, dim: int) -> torch.Tensor:
-    """In-place version of unsqueeze.
-
-    Note: True in-place unsqueeze changes the number of dimensions.
-    This implementation resizes the tensor and copies data.
-    """
-    logger.debug("GEMS UNSQUEEZE_")
+    ndim = A.dim()
 
     # Validate and normalize dim
     if dim < 0:
-        dim = A.dim() + dim + 1
-    assert (
-        dim >= 0 and dim <= A.dim()
-    ), f"Dimension out of range (expected to be in range of [0, {A.dim()}], but got {dim})"
+        dim = ndim + dim + 1
 
-    # Get original data
-    original_data = A.clone()
+    if dim < 0 or dim > ndim:
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of [0, {ndim}], "
+            f"but got {dim})"
+        )
 
-    # Build new shape
+    # Build new shape by inserting 1 at the specified dimension
     new_shape = list(A.shape)
     new_shape.insert(dim, 1)
 
-    # Resize tensor
-    A.resize_(new_shape)
-
-    # Copy data - use reshape for contiguous, kernel for non-contiguous
-    if original_data.is_contiguous():
-        A.copy_(original_data.reshape(A.shape))
+    # Build strides: insert a stride at position dim.
+    # For a dimension of size 1 the stride value does not affect
+    # correctness; we use the stride that would have occupied that
+    # position, or 1 when appending, keeping it consistent with
+    # PyTorch's convention.
+    strides = list(A.stride())
+    if dim < ndim:
+        strides.insert(dim, strides[dim])
     else:
-        # BLOCK_SIZE=1024 balances occupancy and register pressure for element-wise copy
-        BLOCK_SIZE = 1024
-        grid = (triton.cdiv(original_data.numel(), BLOCK_SIZE),)
+        strides.insert(dim, 1)
 
-        out = torch.empty(new_shape, dtype=A.dtype, device=A.device)
-        unsqueeze_copy_kernel[grid](
-            original_data,
-            out,
-            original_data.numel(),
-            BLOCK_SIZE=BLOCK_SIZE,
-        )
-        A.copy_(out)
+    # as_strided creates a view — no data is copied
+    return torch.as_strided(A, new_shape, strides)
 
-    return A
+
+def unsqueeze_(A: torch.Tensor, dim: int) -> torch.Tensor:
+    """In-place version of unsqueeze (zero-copy view operation)."""
+    logger.debug("GEMS UNSQUEEZE_")
+    return unsqueeze(A, dim)
