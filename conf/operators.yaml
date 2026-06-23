@@ -5226,6 +5226,21 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: prelu_kernel
+    description: |
+      Applies the element-wise Parametric ReLU (PReLU) activation: f(x)=max(0,x)+weight*min(0,x),
+      where weight is a learnable parameter with the same shape as the input.
+    for:
+      - _prelu_kernel
+    labels:
+      - aten
+      - Activation
+      - pointwise
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: prod
     description: Returns the product of all elements in the `input` tensor.
     for:
