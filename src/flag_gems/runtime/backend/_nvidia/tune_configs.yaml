@@ -1,3 +1,16 @@
+_adaptive_avg_pool3d_backward:
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 8
+    num_stages: 3
 attention:
   - gen: true
     param_map:

@@ -16,6 +16,7 @@ from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
+from flag_gems.ops.adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
 from flag_gems.ops.addcdiv_ import addcdiv_
@@ -465,6 +466,7 @@ __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "__ilshift__",
+    "_adaptive_avg_pool3d_backward",
     "_assert_async",
     "_cdist_backward",
     "_conv_depthwise2d",
@@ -488,6 +490,7 @@ __all__ = [
     "absolute",
     "acos",
     "adaptive_avg_pool2d",
+    "adaptive_avg_pool3d_backward",
     "add",
     "add_",
     "addcdiv",
@@ -646,13 +649,13 @@ __all__ = [
     "feature_dropout",
     "feature_dropout_",
     "fft",
-    "fix",
     "fill_scalar",
     "fill_scalar_",
     "fill_scalar_out",
     "fill_tensor",
     "fill_tensor_",
     "fill_tensor_out",
+    "fix",
     "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
@@ -827,12 +830,12 @@ __all__ = [
     "nonzero",
     "nonzero_numpy",
     "normal_",
-    "not_equal",
-    "not_equal_scalar",
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
     "normed_cumsum",
+    "not_equal",
+    "not_equal_scalar",
     "one_hot",
     "ones",
     "ones_like",
