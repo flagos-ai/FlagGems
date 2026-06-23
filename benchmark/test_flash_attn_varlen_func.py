@@ -358,7 +358,6 @@ def get_flash_attn_varlen_baseline():
 @pytest.mark.flash_attn_varlen_func
 def test_flash_attn_varlen_func(monkeypatch):
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
-
     bench = FlashAttnVarlenBenchmark(
         op_name="flash_attn_varlen_func",
         torch_op=get_flash_attn_varlen_baseline(),
@@ -383,7 +382,6 @@ def test_flash_attn_varlen_func(monkeypatch):
 @pytest.mark.flash_attn_varlen_func_noncontig
 def test_flash_attn_varlen_func_noncontig(monkeypatch):
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
-
     bench = FlashAttnVarlenBenchmark(
         op_name="flash_attn_varlen_func_noncontig",
         torch_op=get_flash_attn_varlen_baseline(),

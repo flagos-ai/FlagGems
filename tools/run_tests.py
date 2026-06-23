@@ -18,6 +18,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import types
 from decimal import getcontext
@@ -53,8 +54,9 @@ WORKER_PROCESSES = []
 INTERRUPTED = False
 
 IS_TTY = sys.stdout.isatty()
+USE_COLORS = IS_TTY
 
-if not IS_TTY:
+if not USE_COLORS:
     RED = GREEN = YELLOW = CYAN = DIM = NC = ""
 
 
@@ -149,6 +151,9 @@ class LiveDisplay:
         if IS_TTY:
             self._erase_footer()
             self._draw_footer()
+        else:
+            sys.stdout.write(self.footer[0] + "\n")
+            sys.stdout.flush()
 
     def finish(self):
         """Clear the footer when done."""
@@ -228,6 +233,32 @@ def _probe_torch():
         pinfo(f"PyTorch device count ... {dev_count}")
     except Exception:
         ENV_INFO["torch"]["device_count"] = 0
+        dev_count = 0
+
+    if dev_count > 0:
+        return
+
+    try:
+        # Is this a TsingMicro chip?
+        import torch_txda
+
+        dev_count = torch_txda.device_count()
+
+        ENV_INFO["torch"]["device_count"] = dev_count
+        pinfo(f"TorchTXDA device count ... {dev_count}")
+    except Exception:
+        pass
+
+    try:
+        # Is this a Ascend chip?
+        import torch.npu
+
+        dev_count = torch.npu.device_count()
+
+        ENV_INFO["torch"]["device_count"] = dev_count
+        pinfo(f"Torch NPU device count ... {dev_count}")
+    except Exception:
+        pass
 
 
 def _probe_triton():
@@ -626,6 +657,21 @@ def run_benchmark_q(gpu_id, op):
 
 
 def worker_proc(gpu_id, work_queue, display_queue):
+    # Suppress direct stdout/stderr from worker processes to prevent
+    # corrupting the main process's terminal cursor positioning.
+    sys.stdout = open(os.devnull, "w")
+    sys.stderr = open(os.devnull, "w")
+
+    notfound_result = {
+        "status": "NotFound",
+        "exit_code": 0,
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "duration": 0,
+    }
+
     worker_result = {}
     while True:
         try:
@@ -639,31 +685,39 @@ def worker_proc(gpu_id, work_queue, display_queue):
         op_dir = CFG.output_dir.joinpath(op)
         ensure_dir(op_dir)
 
-        display_queue.put(("start", gpu_id, "accuracy", op))
-        acc = run_accuracy_q(gpu_id, op)
-        display_queue.put(
-            (
-                "done",
-                gpu_id,
-                "accuracy",
-                op,
-                acc.get("status", "Error"),
-                acc.get("duration", 0),
+        if op in CFG.accuracy_marks:
+            display_queue.put(("start", gpu_id, "accuracy", op))
+            acc = run_accuracy_q(gpu_id, op)
+            display_queue.put(
+                (
+                    "done",
+                    gpu_id,
+                    "accuracy",
+                    op,
+                    acc.get("status", "Error"),
+                    acc.get("duration", 0),
+                )
             )
-        )
+        else:
+            acc = notfound_result
+            display_queue.put(("done", gpu_id, "accuracy", op, "NotFound", 0))
 
-        display_queue.put(("start", gpu_id, "benchmark", op))
-        perf = run_benchmark_q(gpu_id, op)
-        display_queue.put(
-            (
-                "done",
-                gpu_id,
-                "benchmark",
-                op,
-                perf.get("status", "Error"),
-                perf.get("duration", 0),
+        if op in CFG.benchmark_marks:
+            display_queue.put(("start", gpu_id, "benchmark", op))
+            perf = run_benchmark_q(gpu_id, op)
+            display_queue.put(
+                (
+                    "done",
+                    gpu_id,
+                    "benchmark",
+                    op,
+                    perf.get("status", "Error"),
+                    perf.get("duration", 0),
+                )
             )
-        )
+        else:
+            perf = {"status": "NotFound", "exit_code": 0, "duration": 0, "data": {}}
+            display_queue.put(("done", gpu_id, "benchmark", op, "NotFound", 0))
 
         customized_ops = [o[0] for o in flag_gems.runtime.backend.get_customized_ops()]
         result = {
@@ -735,12 +789,22 @@ def display_loop(queue, display, n_workers):
                 f"{GREEN}[INFO]{NC} [{ts}][GPU {gpu_id:2d}]"
                 f" {label} {op_col} {status_str}"
             )
-            display.log(log_line)
 
             tests_done += 1
             if phase == "benchmark":
                 per_gpu_done[gpu_id] = per_gpu_done.get(gpu_id, 0) + 1
-            display.update_progress(tests_done)
+
+            ops_done = tests_done // 2
+            total_ops = display.op_count
+            pct = ops_done * 100 // total_ops
+            if not IS_TTY:
+                total_w = len(str(total_ops))
+                log_line += f"  ({pct:>3}% {ops_done:>{total_w}}/{total_ops} ops)"
+
+            # Update progress state BEFORE log so the footer is drawn once
+            # with the correct progress value.
+            display.footer[0] = display._fmt_progress(tests_done)
+            display.log(log_line)
 
 
 def cleanup_intermediate_files():
@@ -851,6 +915,57 @@ def get_ops_to_test():
     return ops
 
 
+def _parse_marks_file(marks_file):
+    marks = set()
+    try:
+        with open(marks_file, "r") as f:
+            data = yaml.safe_load(f)
+        if data:
+            for item in data:
+                for mark in item.get("marks", []):
+                    marks.add(mark)
+    except Exception as e:
+        pwarn(f"Failed to parse marks file {marks_file}: {e}")
+    return marks
+
+
+def collect_marks():
+    accuracy_marks = set()
+    benchmark_marks = set()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        acc_file = os.path.join(tmpdir, "accuracy_marks.yaml")
+        bench_file = os.path.join(tmpdir, "benchmark_marks.yaml")
+
+        pinfo("Collecting accuracy test marks ...")
+        code = subprocess.call(
+            ["pytest", f"--collect-marks={acc_file}", "tests/"],
+            cwd=str(ROOT),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if code in (0, 5) and os.path.exists(acc_file):
+            accuracy_marks = _parse_marks_file(acc_file)
+            pinfo(f"Found accuracy tests for {len(accuracy_marks)} operators")
+        else:
+            pwarn("Failed to collect accuracy marks, all ops will be tested")
+
+        pinfo("Collecting benchmark marks ...")
+        code = subprocess.call(
+            ["pytest", f"--collect-marks={bench_file}", "benchmark/"],
+            cwd=str(ROOT),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if code in (0, 5) and os.path.exists(bench_file):
+            benchmark_marks = _parse_marks_file(bench_file)
+            pinfo(f"Found benchmark tests for {len(benchmark_marks)} operators")
+        else:
+            pwarn("Failed to collect benchmark marks, all ops will be benchmarked")
+
+    return accuracy_marks, benchmark_marks
+
+
 def main():
     global OPTS
 
@@ -881,9 +996,31 @@ def main():
         default=False,
         help="Dump stdout/stderr of each test to log files",
     )
+    parser.add_argument(
+        "--color",
+        choices=["auto", "always", "never"],
+        default="auto",
+        help="Control ANSI color output: auto (TTY only), always, or never",
+    )
     OPTS = parser.parse_args()
     CFG.dump_output = OPTS.dump_output
     CFG.start = OPTS.start
+
+    # Apply color mode (IS_TTY controls cursor-based footer, USE_COLORS controls ANSI colors)
+    global USE_COLORS, RED, GREEN, YELLOW, CYAN, DIM, NC
+    if OPTS.color == "always":
+        USE_COLORS = True
+        RED, GREEN, YELLOW, CYAN, DIM, NC = (
+            "\033[31m",
+            "\033[32m",
+            "\033[93m",
+            "\033[36m",
+            "\033[2m",
+            "\033[0m",
+        )
+    elif OPTS.color == "never":
+        USE_COLORS = False
+        RED = GREEN = YELLOW = CYAN = DIM = NC = ""
 
     probe_env()
 
@@ -894,18 +1031,26 @@ def main():
         sys.exit(1)
     pinfo(f"Testing {op_count} operators ...")
 
+    CFG.accuracy_marks, CFG.benchmark_marks = collect_marks()
+
     CFG.ops = ops
 
     output_dir = Path(OPTS.output_dir)
     ensure_dir(output_dir)
     CFG.output_dir = output_dir
 
-    gpu_list = OPTS.gpus.strip().split(",")
-    if len(gpu_list) == 0:
-        pwarn("Empty GPU list specified.")
-        sys.exit(1)
-
-    gpu_ids = [int(x) for x in gpu_list if x.strip()]
+    if OPTS.gpus.strip().lower() == "all":
+        dev_count = ENV_INFO.get("torch", {}).get("device_count", 0)
+        if dev_count == 0:
+            perror("--gpus all specified but no devices detected.")
+            sys.exit(1)
+        gpu_ids = list(range(dev_count))
+    else:
+        gpu_list = OPTS.gpus.strip().split(",")
+        if len(gpu_list) == 0:
+            pwarn("Empty GPU list specified.")
+            sys.exit(1)
+        gpu_ids = [int(x) for x in gpu_list if x.strip()]
     gpu_count = len(gpu_ids)
 
     op_width = min(max(len(op) for op in ops), 40) if ops else 20
