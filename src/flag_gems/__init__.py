@@ -189,6 +189,7 @@ _FULL_CONFIG = (
     ("ceil_", ceil_),
     ("celu", celu),
     ("celu_", celu_),
+    ("channel_shuffle", channel_shuffle),
     ("clamp", clamp),
     ("clamp.Tensor", clamp_tensor),
     ("clamp_", clamp_),

@@ -1199,6 +1199,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.0'
+  - id: channel_shuffle
+    description: Divides the channels into groups and rearranges each group.
+    for:
+      - channel_shuffle
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: chunk_gated_delta_rule_fwd
     description: |
       The forward case for `ChunkGatedDeltaRuleFunction` with Flash Linear Attention (FLA).
