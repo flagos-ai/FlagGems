@@ -54,13 +54,9 @@ def mvlgamma__kernel(
     # = C + sum_{i=0}^{p-1} lgamma(x - i/2)
     result = tl.zeros_like(x_f32)
 
-    # Use a loop to sum over p terms
-    # We need to handle different p values at runtime, so we use a for loop
-    for i in range(16):  # Max p is typically small, but we handle up to 16
-        i_f32 = i.to(tl.float32)
-        cond = i < p_val
-        if cond:
-            arg = x_f32 - i_f32 / 2.0
+    for i in range(16):
+        if i < p_val:
+            arg = x_f32 - i / 2.0
             result = result + tl_extra_shim.lgamma(arg)
 
     result = result + C
@@ -96,7 +92,9 @@ def mvlgamma_(A, p=2):
         )
 
     if not isinstance(A, torch.Tensor):
-        raise TypeError("mvlgamma_ expects a torch.Tensor as the first argument")
+        raise TypeError(
+            "mvlgamma_ expects a torch.Tensor as first argument"
+        )
 
     if not A.is_contiguous():
         A = A.contiguous()
