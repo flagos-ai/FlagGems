@@ -7,7 +7,11 @@ from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
+from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
+    _thnn_fused_lstm_cell_backward_impl,
+)
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
+from flag_gems.ops._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops._upsample_nearest_exact2d_backward import (
     _upsample_nearest_exact2d_backward,
@@ -16,6 +20,7 @@ from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
+from flag_gems.ops.adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
 from flag_gems.ops.addcdiv_ import addcdiv_
@@ -31,6 +36,7 @@ from flag_gems.ops.aminmax import aminmax
 from flag_gems.ops.angle import angle
 from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
+from flag_gems.ops.arcsin import arcsin, arcsin_, arcsin_out
 from flag_gems.ops.arcsinh import arcsinh, arcsinh_out
 from flag_gems.ops.arcsinh_ import arcsinh_
 from flag_gems.ops.arctanh_ import arctanh_
@@ -138,6 +144,7 @@ from flag_gems.ops.eq import eq, eq_scalar, equal
 from flag_gems.ops.erf import erf, erf_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
+from flag_gems.ops.expand import expand, expand_
 from flag_gems.ops.expm1 import expm1, expm1_, expm1_out
 from flag_gems.ops.exponential_ import exponential_
 from flag_gems.ops.eye import eye
@@ -403,8 +410,10 @@ from flag_gems.ops.softplus import softplus
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
+from flag_gems.ops.special_gammainc import special_gammainc, special_gammainc_out
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
+from flag_gems.ops.special_log_softmax import special_log_softmax
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
@@ -425,6 +434,7 @@ from flag_gems.ops.trace import trace
 from flag_gems.ops.tril import tril, tril_, tril_out
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.trunc_ import trunc, trunc_
+from flag_gems.ops.unbind_copy import unbind_copy
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.unfold_copy import unfold_copy
 from flag_gems.ops.uniform import uniform_
@@ -477,10 +487,12 @@ __all__ = [
     "_safe_softmax",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
     "_unsafe_masked_index",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
+    "_upsample_bilinear2d_aa",
     "_upsample_nearest_exact1d",
     "_upsample_nearest_exact2d_backward",
     "abs",
@@ -488,6 +500,7 @@ __all__ = [
     "absolute",
     "acos",
     "adaptive_avg_pool2d",
+    "adaptive_max_pool3d_backward",
     "add",
     "add_",
     "addcdiv",
@@ -517,6 +530,9 @@ __all__ = [
     "any_dims",
     "arange",
     "arange_start",
+    "arcsin",
+    "arcsin_",
+    "arcsin_out",
     "arcsinh",
     "arcsinh_",
     "arcsinh_out",
@@ -637,6 +653,8 @@ __all__ = [
     "exp2_",
     "exp_",
     "exp_out",
+    "expand",
+    "expand_",
     "expm1",
     "expm1_",
     "expm1_out",
@@ -955,10 +973,13 @@ __all__ = [
     "sort",
     "sort_stable",
     "special_chebyshev_polynomial_v",
+    "special_gammainc",
+    "special_gammainc_out",
     "special_i0e",
     "special_i0e_out",
     "special_i1",
     "special_i1_out",
+    "special_log_softmax",
     "split_with_sizes_copy",
     "sqrt",
     "sqrt_",
@@ -998,6 +1019,7 @@ __all__ = [
     "true_divide_out",
     "trunc",
     "trunc_",
+    "unbind_copy",
     "unfold_backward",
     "unfold_copy",
     "uniform_",

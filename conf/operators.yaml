@@ -100,6 +100,18 @@ ops:
     stages:
       - alpha: '5.0'
       - beta: '5.3'
+  - id: adaptive_max_pool3d_backward
+    description: |
+      Computes the gradient for adaptive max pooling 3D.
+    for:
+      - adaptive_max_pool3d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: add
     description: |
       Add a scalar or tensor to `self` tensor. If both `alpha` and `other` are specified,
@@ -513,6 +525,40 @@ ops:
       - tensor
     stages:
       - stable: '2.1'
+  - id: arcsin
+    description: Returns a new tensor with the arcsine of the elements of input.
+    for:
+      - arcsin
+      - arcsin.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: arcsin_
+    description: The in-place version of `arcsin()`.
+    for:
+      - arcsin_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: arcsin_out
+    description: A variant of `arcsin` that allows the output to be assigned to the `out` tensor.
+    for:
+      - arcsin.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: arcsinh
     description: Performs an element-wise inverse hyperbolic sine computation on the given tensor.
     for:
@@ -2277,6 +2323,30 @@ ops:
       - Math
     stages:
       - stable: '4.1'
+  - id: expand
+    description: Pure layout operation (expand).
+    for:
+      - expand
+    labels:
+      - aten
+      - KernelGen
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: expand_
+    description: Pure layout operation (expand, in-place).
+    for:
+      - expand_
+    labels:
+      - aten
+      - KernelGen
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: expm1
     description: Computes the exponential of the elements minus 1 of `input`.
     for:
@@ -6597,6 +6667,21 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_gammainc
+    description: |
+      Computes the regularized lower incomplete gamma function P(a, x) element-wise.
+      A variant with output saved to a provided `out` tensor is also registered
+      as `special.gammainc.out`.
+    for:
+      - special.gammainc
+      - special.gammainc.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
@@ -6654,6 +6739,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_log_softmax
+    description: |
+      Applies the log of the softmax function along a given dimension.
+    for:
+      - special.log_softmax
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,
@@ -6924,6 +7021,18 @@ ops:
     kind:
       - Math
     stages:
+      - alpha: '5.3'
+  - id: thnn_fused_lstm_cell_backward_impl
+    description: |
+      Computes gradients for the fused LSTM cell operation (_thnn_fused_lstm_cell).
+    for:
+      - _thnn_fused_lstm_cell_backward_impl
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
       - alpha: '5.4'
   - id: threshold
     description: Apply a threshold to each element of the input Tensor.
@@ -7167,6 +7276,17 @@ ops:
       - Math
     stages:
       - stable: '2.1'
+  - id: unbind_copy
+    description: Removes a tensor dimension and returns a tuple of all slices along a given dimension as copies.
+    for:
+      - unbind_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: unfold_backward
     description: |
       An operator for calculating the gradient of the `unfold` operation during backpropagation.
@@ -7292,6 +7412,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: upsample_bilinear2d_aa
+    description: Upsamples the input, using bilinear mode with anti-aliasing.
+    for:
+      - _upsample_bilinear2d_aa
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: upsample_linear1d
     description: |
       Upsamples the `input`, using linear mode.
