@@ -129,7 +129,6 @@ def slogdet(A):
         - LU is the LU decomposition
         - pivots is the pivot indices (not computed in this implementation)
     """
-    logger.debug("GEMS SLOGDET")
     assert A.dim() >= 2, "Input must be at least 2D"
     assert A.shape[-1] == A.shape[-2], "Input must be square"
     # The generated slogdet kernel uses float32 arithmetic; reject unsupported dtypes explicitly.
@@ -196,6 +195,7 @@ def slogdet(A):
 # Wrapper for use with torch.linalg.slogdet interface
 def linalg_slogdet(A):
     """Return the sign and log absolute determinant of a square matrix."""
+    logger.debug("GEMS LINALG_SLOGDET")
     assert A.dtype == torch.float32
     sign, logabsdet, _lu, _pivots = slogdet(A)
     return sign, logabsdet
