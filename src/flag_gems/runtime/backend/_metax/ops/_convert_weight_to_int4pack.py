@@ -83,6 +83,17 @@ def convert_weight_to_int4pack_kernel(
 def _convert_weight_to_int4pack(inp: torch.Tensor, innerKTiles: int) -> torch.Tensor:
     logger.debug("GEMS_METAX CONVERT_WEIGHT_TO_INT4PACK")
 
+    # innerKTiles validation: PyTorch requires innerKTiles in {2, 4, 8}.
+    # NOTE: The current kernel implements simple byte-pair packing (adjacent
+    # int4 values packed into one uint8 byte), producing output shape (M, N//2).
+    # PyTorch's native CUDA kernel produces a Marlin-style tiled int32 output
+    # whose shape depends on innerKTiles: (M/8, N/(8*innerKTiles), 32, innerKTiles/2).
+    # For full compatibility with PyTorch's int4 quantization ecosystem,
+    # the Marlin tiled format should be implemented in a future update.
+    assert innerKTiles in (2, 4, 8), (
+        f"innerKTiles must be 2, 4, or 8, got {innerKTiles}"
+    )
+
     M, N = inp.shape
     # Ensure N is divisible by 2
     assert N % 2 == 0, f"N must be divisible by 2, got {N}"
