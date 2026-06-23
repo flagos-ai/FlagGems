@@ -1,6 +1,7 @@
 from flag_gems.fused.act_quant import act_quant_triton
 from flag_gems.fused.add_rms_norm import add_rms_norm
 from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
+from flag_gems.fused.BeamSearchScore import BeamSearchScore, BeamSearchScore_
 from flag_gems.fused.bincount import bincount
 from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
@@ -89,6 +90,8 @@ __all__ = [
     "act_quant_triton",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
+    "BeamSearchScore",
+    "BeamSearchScore_",
     "bincount",
     "bucket_sort_topk",
     "chunk_gated_delta_rule",
