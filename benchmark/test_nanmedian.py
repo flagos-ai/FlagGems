@@ -5,6 +5,11 @@ import flag_gems
 
 from . import base, consts
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Issue #4253: nanmedian accuracy failure on Kunlunxin",
+)
+
 ASCEND_UNSUPPORTED_REFERENCE_DTYPES = (torch.bfloat16, torch.float64)
 
 
