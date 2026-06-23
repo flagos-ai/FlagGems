@@ -5811,6 +5811,18 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: rrelu_with_noise_functional
+    description: |
+      Triton kernel implementation for rrelu_with_noise_functional.
+    for:
+      - rrelu_with_noise_functional
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: rsqrt
     description: Returns a new tensor with the reciprocal of the square-root of each of the elements of `input`.
     for:

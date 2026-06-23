@@ -524,6 +524,7 @@ _FULL_CONFIG = (
     ("round.out", round_out),
     ("round_", round_),
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
+    ("rrelu_with_noise_functional", rrelu_with_noise_functional),
     ("rsqrt", rsqrt),
     ("rsqrt_", rsqrt_),
     ("rsub.Scalar", rsub_scalar),

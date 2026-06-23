@@ -358,6 +358,7 @@ from flag_gems.ops.roll import roll
 from flag_gems.ops.rot90 import rot90
 from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
+from flag_gems.ops.rrelu_with_noise_functional import rrelu_with_noise_functional
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.rsub import rsub_scalar, rsub_tensor
 from flag_gems.ops.scaled_grouped_mm import scaled_grouped_mm
@@ -913,6 +914,7 @@ __all__ = [
     "round_out",
     "router_gemm",
     "rrelu_with_noise_backward",
+    "rrelu_with_noise_functional",
     "rsqrt",
     "rsqrt_",
     "rsub_scalar",
