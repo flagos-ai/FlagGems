@@ -2,7 +2,7 @@ import importlib.util
 import os
 import re
 
-from backend_utils import VendorInfoBase
+from backend_utils import VendorDescriptor
 
 # NOTE: transfer_to_gcu is not used anywhere
 # try:
@@ -20,11 +20,14 @@ driver = _GCUDriver()
 arch = driver.get_arch()
 arch_version = int(re.search(r"gcu(\d+)", arch).group(1))
 
-vendor_info = VendorInfoBase(
+vendor_info = VendorDescriptor(
     vendor_name="enflame",
     device_name="gcu",
     device_query_cmd="",
     dispatch_key="PrivateUse1",
+    fp64_enabled=False,
+    int64_enabled=False,
+    tle_enabled=True,
 )
 
 os.environ["ARCH"] = str(arch_version)
