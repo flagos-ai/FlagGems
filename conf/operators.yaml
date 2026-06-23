@@ -3766,7 +3766,7 @@ ops:
   - id: linalg_svdvals
     description: Triton kernel implementation for linalg_svdvals.
     for:
-      - linalg_svdvals
+      - linalg.svdvals
     labels:
       - aten
       - KernelGen
