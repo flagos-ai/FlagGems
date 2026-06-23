@@ -14,12 +14,11 @@ def test_hardsigmoid():
     bench.run()
 
 
-@pytest.mark.skip(reason="Hardsigmoid doesn't accept 'out': issue #2686")
 @pytest.mark.hardsigmoid_out
 def test_hardsigmoid_out():
     bench = base.UnaryPointwiseOutBenchmark(
         op_name="hardsigmoid_out",
-        torch_op=torch.nn.functional.hardsigmoid,
+        torch_op=torch.ops.aten.hardsigmoid.out,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
