@@ -62,18 +62,18 @@ def test_special_round_midpoints():
     test_cases = [
         (0.0, 0.0),
         (-0.0, 0.0),
-        (0.5, 0.0),       # tie to even (0)
-        (1.5, 2.0),       # tie to even (2)
-        (2.5, 2.0),       # tie to even (2)
-        (3.5, 4.0),       # tie to even (4)
-        (-0.5, 0.0),      # negative tie to even (0)
-        (-1.5, -2.0),     # negative tie to even (-2)
-        (-2.5, -2.0),     # negative tie to even (-2)
-        (-3.5, -4.0),     # negative tie to even (-4)
-        (1.0, 1.0),        # integer
-        (2.0, 2.0),        # integer
-        (-1.0, -1.0),      # negative integer
-        (-2.0, -2.0),      # negative integer
+        (0.5, 0.0),  # tie to even (0)
+        (1.5, 2.0),  # tie to even (2)
+        (2.5, 2.0),  # tie to even (2)
+        (3.5, 4.0),  # tie to even (4)
+        (-0.5, 0.0),  # negative tie to even (0)
+        (-1.5, -2.0),  # negative tie to even (-2)
+        (-2.5, -2.0),  # negative tie to even (-2)
+        (-3.5, -4.0),  # negative tie to even (-4)
+        (1.0, 1.0),  # integer
+        (2.0, 2.0),  # integer
+        (-1.0, -1.0),  # negative integer
+        (-2.0, -2.0),  # negative integer
         (0.3, 0.0),
         (0.7, 1.0),
         (-0.3, 0.0),
