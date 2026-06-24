@@ -6,9 +6,33 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
+
+if QUICK_MODE:
+    NUM_HEADS = [(8, 2)]
+    HEAD_SIZES = [128]
+    FLOAT_DTYPES = [torch.float16]
+    ALIBI = [False]
+    SOFT_CAPS = [None]
+    NUM_BLOCKS = [2048]
+    OPTIMIZE_INIT = [False]
+    SWAP_SOFT_CAPS = [None]
+    NONCONTIG_DTYPES = [torch.float16]
+    NONCONTIG_OPTIMIZE_INIT = [False]
+else:
+    NUM_HEADS = [(4, 4), (8, 2), (16, 2)]
+    HEAD_SIZES = [128, 192, 256]
+    FLOAT_DTYPES = [torch.float16, torch.bfloat16]
+    ALIBI = [False, True]
+    SOFT_CAPS = [None, 10.0, 50.0]
+    NUM_BLOCKS = [32768, 2048]
+    OPTIMIZE_INIT = [False, True]
+    SWAP_SOFT_CAPS = [None, 10.0]
+    NONCONTIG_DTYPES = [torch.float16, torch.bfloat16]
+    NONCONTIG_OPTIMIZE_INIT = [False, True]
 
 
 def make_paged_kv_cache(
@@ -126,15 +150,15 @@ def ref_paged_attn(
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2815: Not supported")
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2816: Not working")
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (5, 18), (129, 463)]])
-@pytest.mark.parametrize("num_heads", [(4, 4), (8, 2), (16, 2)])
-@pytest.mark.parametrize("head_size", [128, 192, 256])
+@pytest.mark.parametrize("num_heads", NUM_HEADS)
+@pytest.mark.parametrize("head_size", HEAD_SIZES)
 @pytest.mark.parametrize("block_size", [32])
 @pytest.mark.parametrize("sliding_window", [None])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("alibi", [False, True])
-@pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
-@pytest.mark.parametrize("num_blocks", [32768, 2048])
-@pytest.mark.parametrize("optimize_init", [False, True])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("alibi", ALIBI)
+@pytest.mark.parametrize("soft_cap", SOFT_CAPS)
+@pytest.mark.parametrize("num_blocks", NUM_BLOCKS)
+@pytest.mark.parametrize("optimize_init", OPTIMIZE_INIT)
 @torch.inference_mode()
 def test_flash_attn_varlen_func(
     monkeypatch,
@@ -295,8 +319,8 @@ def test_flash_attn_varlen_func(
 @pytest.mark.flash_attn_varlen_func_noncontig
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2815: Not supported")
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2816: Not working")
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("optimize_init", [False, True])
+@pytest.mark.parametrize("dtype", NONCONTIG_DTYPES)
+@pytest.mark.parametrize("optimize_init", NONCONTIG_OPTIMIZE_INIT)
 @torch.inference_mode()
 def test_flash_attn_varlen_func_noncontiguous_kv_cache(
     monkeypatch,
@@ -388,8 +412,8 @@ def test_flash_attn_varlen_func_noncontiguous_kv_cache(
 @pytest.mark.parametrize("head_size", [128])
 @pytest.mark.parametrize("block_size", [32])
 @pytest.mark.parametrize("sliding_window", [None])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("soft_cap", [None, 10.0])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("soft_cap", SWAP_SOFT_CAPS)
 @pytest.mark.parametrize("num_blocks", [2048])
 @torch.inference_mode()
 def test_flash_attn_varlen_func_swap_qg(
