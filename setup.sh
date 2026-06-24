@@ -4,6 +4,7 @@ set -euo pipefail
 SUPPORTED_VENDORS=(
   "ascend-cann850"
   "ascend-cann900"
+  "cambricon"
   "enflame"
   "hygon"
   "iluvatar"
@@ -20,6 +21,7 @@ SUPPORTED_VENDORS=(
 declare -A PYTHON_SUPPORTED=(
   ["ascend-cann850"]="3.11"
   ["ascend-cann900"]="3.11"
+  ["cambricon"]="3.10"
   ["enflame"]="3.12"
   ["hygon"]="3.10"
   ["iluvatar"]="3.10"
