@@ -591,6 +591,8 @@ _FULL_CONFIG = (
     ("special_i1", special_i1),
     ("special_i1.out", special_i1_out),
     ("special.log_softmax", special_log_softmax),
+    ("special.xlogy", special_xlogy),
+    ("special.xlogy_", special_xlogy_),
     ("split_with_sizes_copy", split_with_sizes_copy),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
