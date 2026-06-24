@@ -38,9 +38,15 @@ def test_special_shifted_chebyshev_polynomial_w(shape, dtype):
 )
 @pytest.mark.special_shifted_chebyshev_polynomial_w
 def test_special_shifted_chebyshev_polynomial_w_n_out_of_range():
-    # Verify that n > 10 raises an error
-    x = torch.randn(8, dtype=torch.float32, device=flag_gems.device)
+    # Verify that n > 10 raises an error.
+    # The validation lives in the Python wrapper function, not in the Triton kernel.
+    # On Nvidia with PyTorch 2.10, torch.special dispatch goes through PyTorch's
+    # native CUDA kernel and never reaches our wrapper, so we test the wrapper directly.
+    from flag_gems.ops.special_shifted_chebyshev_polynomial_w import (
+        special_shifted_chebyshev_polynomial_w,
+    )
+
+    x = torch.randn(3, dtype=torch.float32, device=flag_gems.device)
     n = torch.tensor([0, 5, 11], dtype=torch.int32, device=flag_gems.device)
     with pytest.raises(ValueError, match="n must be <= 10"):
-        with flag_gems.use_gems():
-            torch.special.shifted_chebyshev_polynomial_w(x, n)
+        special_shifted_chebyshev_polynomial_w(x, n)
