@@ -685,28 +685,6 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
-  - id: asin
-    description: Returns a new tensor with the arcsine of the elements of input.
-    for:
-      - asin
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: asin_
-    description: The in-place version of `asin()`.
-    for:
-      - asin_
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: as_strided_copy
     description: |
       Creates a contiguous copy of an `as_strided` view of the input tensor.
@@ -730,6 +708,28 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: asin
+    description: Returns a new tensor with the arcsine of the elements of input.
+    for:
+      - asin
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: asin_
+    description: The in-place version of `asin()`.
+    for:
+      - asin_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: asinh
     description: Returns a new tensor with the inverse hyperbolic sine of the elements of input.
     for:
@@ -1412,6 +1412,18 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: clone
+    description: Pure layout/memory operation (clone).
+    for:
+      - clone
+    labels:
+      - KernelGen
+      - aten
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: col2im
     description: |
       Rearranges column blocks back into a multidimensional tensor (inverse of im2col).
@@ -1856,6 +1868,19 @@ ops:
     description: "deg2rad operator"
     for:
       - deg2rad
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: dequantize
+    description: >
+      Returns an fp32 Tensor by dequantizing a quantized Tensor.
+    for:
+      - dequantize
+      - dequantize.self
     labels:
       - aten
       - KernelGen
@@ -2970,6 +2995,28 @@ ops:
       - Tensor
     stages:
       - beta: '5.0'
+  - id: fused_adam
+    description: Fused Adam optimizer step with optional AdamW weight decay, AMSGrad, and gradient maximize support.
+    for:
+      - _fused_adam
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: fused_adam_
+    description: The in-place version of `fused_adam()`.
+    for:
+      - _fused_adam_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: fused_add_rms_norm
     for:
       - add_rms_norm
@@ -3987,6 +4034,28 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: lgamma
+    description: Computes the logarithm of the gamma function on input.
+    for:
+      - lgamma
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: lgamma_
+    description: In-place version of lgamma().
+    for:
+      - lgamma_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: lift_fresh_copy
     description: |
       Creates a new, independent copy of a tensor within a compiled graph.
@@ -4000,6 +4069,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_eigvals
+    description: Computes the eigenvalues of a square matrix.
+    for:
+      - _linalg_eigvals
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linear
     description: |
       Applies a linear transformation to the incoming data: y = x @ W^T + b.
@@ -4010,17 +4090,6 @@ ops:
       - KernelGen
     kind:
       - BLAS
-    stages:
-      - alpha: '5.4'
-  - id: linalg_eigvals
-    description: Computes the eigenvalues of a square matrix.
-    for:
-      - _linalg_eigvals
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
     stages:
       - alpha: '5.4'
   - id: linspace
@@ -7306,6 +7375,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: threshold_
+    description: >
+      In-place version of threshold(). Thresholds each element of the input Tensor.
+    for:
+      - threshold_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: threshold_backward
     description: This is the backward version for `threshold`.
     for:
@@ -8005,15 +8086,3 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
-  - id: clone
-    description: Pure layout/memory operation (clone).
-    for:
-      - clone
-    labels:
-      - KernelGen
-      - aten
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.4'

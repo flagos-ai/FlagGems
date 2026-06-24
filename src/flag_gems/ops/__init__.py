@@ -6,6 +6,7 @@ from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from flag_gems.ops._fused_adam import _fused_adam, _fused_adam_
 from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
@@ -135,6 +136,7 @@ from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
 from flag_gems.ops.deg2rad import deg2rad
+from flag_gems.ops.dequantize import dequantize
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
@@ -246,6 +248,7 @@ from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
+from flag_gems.ops.lgamma_ import lgamma, lgamma_
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linear import linear
 from flag_gems.ops.linspace import linspace
@@ -454,6 +457,7 @@ from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
 from flag_gems.ops.tensor_split import tensor_split
 from flag_gems.ops.threshold import threshold, threshold_backward
+from flag_gems.ops.threshold_ import threshold_
 from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
@@ -508,6 +512,8 @@ __all__ = [
     "_conv_depthwise2d",
     "_euclidean_dist",
     "_functional_sym_constrain_range_for_size",
+    "_fused_adam",
+    "_fused_adam_",
     "_index_put_impl_",
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
@@ -664,6 +670,7 @@ __all__ = [
     "cumsum",
     "cumsum_out",
     "deg2rad",
+    "dequantize",
     "diag",
     "diag_embed",
     "diagonal_backward",
@@ -805,6 +812,8 @@ __all__ = [
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
+    "lgamma",
+    "lgamma_",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
     "linear",
@@ -1054,6 +1063,7 @@ __all__ = [
     "tanh_backward",
     "tensor_split",
     "threshold",
+    "threshold_",
     "threshold_backward",
     "tile",
     "to_copy",
