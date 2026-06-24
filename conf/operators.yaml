@@ -6854,6 +6854,21 @@ ops:
       Applies the log of the softmax function along a given dimension.
     for:
       - special.log_softmax
+  - id: special_log1p
+    description: Computes log(1 + x) for each element of the input tensor.
+    for:
+      - special.log1p
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_log1p_out
+    description: A variant of `special.log1p` that allows the output to be assigned to another tensor.
+    for:
+      - special_log1p.out
     labels:
       - aten
       - KernelGen

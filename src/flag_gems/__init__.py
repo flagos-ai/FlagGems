@@ -583,6 +583,8 @@ _FULL_CONFIG = (
     ("softshrink.out", softshrink_out),
     ("sort", sort),
     ("sort.stable", sort_stable),
+    ("special.log1p", special_log1p),
+    ("special_log1p.out", special_log1p_out),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special.gammainc", special_gammainc),
     ("special.gammainc.out", special_gammainc),
