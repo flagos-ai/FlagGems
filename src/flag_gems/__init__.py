@@ -248,6 +248,7 @@ _FULL_CONFIG = (
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
+    ("diagonal_copy", diagonal_copy),
     ("diff", diff),
     ("digamma_", digamma_),
     ("div.Scalar", true_divide),
