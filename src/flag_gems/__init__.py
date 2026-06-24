@@ -366,6 +366,8 @@ _FULL_CONFIG = (
     ("isneginf.out", isneginf_out),
     ("kron", kron),
     ("kthvalue", kthvalue),
+    ("lcm", lcm),
+    ("lcm_", lcm_),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
     ("leaky_relu", leaky_relu),
