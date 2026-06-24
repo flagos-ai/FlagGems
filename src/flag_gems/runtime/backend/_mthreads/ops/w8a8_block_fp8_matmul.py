@@ -7,7 +7,6 @@ import triton
 import triton.language as tl
 from triton.tools.tensor_descriptor import TensorDescriptor
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
@@ -46,16 +45,6 @@ def is_sqmma_compatible(a, b, output_dtype, n, k):
     )
 
 
-def get_triton_type(elem_type):
-    type_map = {
-        torch.float16: tl.float16,
-        torch.bfloat16: tl.bfloat16,
-        torch.float32: tl.float32,
-        torch.float8_e4m3fn: tl.float8e4nv,
-    }
-    return type_map.get(elem_type, None)
-
-
 def matmul_get_configs():
     return [
         triton.Config(
@@ -73,19 +62,14 @@ def matmul_get_configs():
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else matmul_get_configs(),
+    configs=matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=5,
+    flagtune_op_name="w8a8_block_fp8_matmul",
+    flagtune_expand_op_name="w8a8_block_fp8_general",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
 )
 @triton.jit
 def w8a8_block_fp8_matmul_kernel(
@@ -161,6 +145,31 @@ def w8a8_block_fp8_matmul_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
+def sqmma_descriptor_pre_hook(nargs):
+    nargs["a_desc"].block_shape = [nargs["BLOCK_M"], nargs["BLOCK_K"]]
+    nargs["b_desc"].block_shape = [nargs["BLOCK_K"], nargs["BLOCK_N"]]
+    nargs["c_desc"].block_shape = [nargs["BLOCK_M"], nargs["BLOCK_N"]]
+
+
+@libentry()
+@libtuner(
+    configs=[
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 128, "GROUP_M": 8},
+            num_stages=3,
+            num_warps=4,
+            pre_hook=sqmma_descriptor_pre_hook,
+        )
+    ],
+    key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    strategy=["align32", "align32", "align32", "align32", "align32", "default"],
+    warmup=5,
+    rep=5,
+    flagtune_op_name="w8a8_block_fp8_matmul",
+    flagtune_expand_op_name="w8a8_block_fp8_general_tma",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=sqmma_descriptor_pre_hook,
+)
 @triton.jit
 def w8a8_block_fp8_matmul_sqmma_kernel(
     a_desc,
@@ -171,6 +180,9 @@ def w8a8_block_fp8_matmul_sqmma_kernel(
     M,
     N,
     K,
+    stride_am,
+    stride_bk,
+    dtype: tl.constexpr,
     group_n,
     group_k,
     stride_As_m,
@@ -299,14 +311,9 @@ def sqmma_w8a8_block_fp8_matmul(
     if not b.is_contiguous():
         b = b.contiguous()
 
-    BLOCK_M = 64
-    BLOCK_N = 64
-    BLOCK_K = 128
-    GROUP_M = 8
-
-    desc_a = TensorDescriptor.from_tensor(a, [BLOCK_M, BLOCK_K])
-    desc_b = TensorDescriptor.from_tensor(b, [BLOCK_K, BLOCK_N])
-    desc_c = TensorDescriptor.from_tensor(c, [BLOCK_M, BLOCK_N])
+    desc_a = TensorDescriptor.from_tensor(a, [1, 1])
+    desc_b = TensorDescriptor.from_tensor(b, [1, 1])
+    desc_c = TensorDescriptor.from_tensor(c, [1, 1])
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
@@ -324,18 +331,15 @@ def sqmma_w8a8_block_fp8_matmul(
             M,
             N,
             K,
+            a.stride(0),
+            b.stride(1),
+            str(a.dtype).split(".")[-1],
             group_n,
             group_k,
             a_s.stride(0),
             a_s.stride(1),
             b_s.stride(0),
             b_s.stride(1),
-            GROUP_M,
-            BLOCK_M,
-            BLOCK_N,
-            BLOCK_K,
-            num_warps=4,
-            num_stages=3,
         )
     return c
 
