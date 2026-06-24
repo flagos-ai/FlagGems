@@ -34,6 +34,10 @@ from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import (
 )
 from flag_gems.fused.fused_indexer_q_rope_quant import fused_indexer_q_rope_quant
 from flag_gems.fused.fused_inv_rope_fp8_quant import fused_inv_rope_fp8_quant
+from flag_gems.fused.deepseek_v4_attention_gather_k_cache import gather_k_cache
+from flag_gems.fused.deepseek_v4_attention_fused_inv_rope import fused_inv_rope
+from flag_gems.fused.deepseek_v4_attention_fused_indexer_q_rope import fused_indexer_q_rope
+from flag_gems.fused.deepseek_v4_attention_mqa_logits import gather_bf16_kv_from_pages, bf16_mqa_logits
 from flag_gems.fused.fused_moe import (
     dispatch_fused_moe_kernel,
     fused_experts_impl,
