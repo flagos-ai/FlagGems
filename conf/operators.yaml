@@ -838,10 +838,10 @@ ops:
       - BLAS
     stages:
       - beta: '5.3'
-  - id: BeamSearchScore
+  - id: beam_search_score
     description: Computes beam search scores by adding cumulative log probabilities with new token scores.
     for:
-      - BeamSearchScore
+      - beam_search_score
     labels:
       - KernelGen
       - fused
@@ -849,10 +849,10 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: BeamSearchScore_
+  - id: beam_search_score_
     description: In-place version of beam search score computation.
     for:
-      - BeamSearchScore_
+      - beam_search_score_
     labels:
       - KernelGen
       - fused

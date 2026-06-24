@@ -6,14 +6,14 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.BeamSearchScore
+@pytest.mark.beam_search_score
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_BeamSearchScore(shape, dtype):
-    # BeamSearchScore: log_probs [batch, vocab] + beam_scores [batch] -> [batch, vocab]
+def test_beam_search_score(shape, dtype):
+    # beam_search_score: log_probs [batch, vocab] + beam_scores [batch] -> [batch, vocab]
     # We test with 2D shapes to ensure broadcasting works correctly
     if len(shape) < 2:
-        pytest.skip("BeamSearchScore requires at least 2D tensors")
+        pytest.skip("beam_search_score requires at least 2D tensors")
     batch_size = shape[0]
     vocab_size = shape[1]
 
@@ -28,17 +28,17 @@ def test_BeamSearchScore(shape, dtype):
     ref_out = ref_log_probs + ref_beam_scores.unsqueeze(-1)
 
     with flag_gems.use_gems():
-        res_out = flag_gems.BeamSearchScore(log_probs, beam_scores)
+        res_out = flag_gems.beam_search_score(log_probs, beam_scores)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.BeamSearchScore_
+@pytest.mark.beam_search_score_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_BeamSearchScore_(shape, dtype):
+def test_beam_search_score_(shape, dtype):
     if len(shape) < 2:
-        pytest.skip("BeamSearchScore_ requires at least 2D tensors")
+        pytest.skip("beam_search_score_ requires at least 2D tensors")
     batch_size = shape[0]
     vocab_size = shape[1]
 
@@ -50,7 +50,7 @@ def test_BeamSearchScore_(shape, dtype):
     ref_out = ref_inp + ref_beam_scores.unsqueeze(-1)
 
     with flag_gems.use_gems():
-        res_out = flag_gems.BeamSearchScore_(inp, beam_scores)
+        res_out = flag_gems.beam_search_score_(inp, beam_scores)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp, ref_out, dtype)

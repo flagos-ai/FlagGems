@@ -45,9 +45,9 @@ class BeamSearchScoreBenchmark(base.Benchmark):
         self.shape_desc = self.DEFAULT_SHAPE_DESC
 
 
-@pytest.mark.BeamSearchScore
+@pytest.mark.beam_search_score
 @pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
-def test_BeamSearchScore(dtype):
+def test_beam_search_score(dtype):
     if flag_gems.vendor_name == "metax":
         pytest.skip("Metax backend CI validates correctness; skip backend benchmark.")
 
@@ -56,17 +56,17 @@ def test_BeamSearchScore(dtype):
         return log_probs + beam_scores.unsqueeze(-1)
 
     bench = BeamSearchScoreBenchmark(
-        op_name="BeamSearchScore",
+        op_name="beam_search_score",
         torch_op=torch_op,
         dtypes=[dtype],
     )
-    bench.gems_op = flag_gems.BeamSearchScore
+    bench.gems_op = flag_gems.beam_search_score
     bench.run()
 
 
-@pytest.mark.BeamSearchScore_
+@pytest.mark.beam_search_score_
 @pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
-def test_BeamSearchScore_(dtype):
+def test_beam_search_score_(dtype):
     if flag_gems.vendor_name == "metax":
         pytest.skip("Metax backend CI validates correctness; skip backend benchmark.")
 
@@ -75,10 +75,10 @@ def test_BeamSearchScore_(dtype):
         return log_probs + beam_scores.unsqueeze(-1)
 
     bench = BeamSearchScoreBenchmark(
-        op_name="BeamSearchScore_",
+        op_name="beam_search_score_",
         torch_op=torch_op,
         dtypes=[dtype],
         is_inplace=True,
     )
-    bench.gems_op = flag_gems.BeamSearchScore_
+    bench.gems_op = flag_gems.beam_search_score_
     bench.run()

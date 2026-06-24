@@ -33,7 +33,7 @@ def beam_search_score_kernel(log_probs, beam_scores):
     return log_probs + beam_scores
 
 
-def BeamSearchScore(log_probs, beam_scores):
+def beam_search_score(log_probs, beam_scores):
     """Compute Beam Search scores by adding cumulative scores with log probabilities.
 
     In Beam Search, each candidate's score is computed by adding the cumulative
@@ -67,8 +67,8 @@ def BeamSearchScore(log_probs, beam_scores):
     return beam_search_score_kernel(log_probs, beam_scores)
 
 
-def BeamSearchScore_(log_probs, beam_scores):
-    """In-place version of BeamSearchScore.
+def beam_search_score_(log_probs, beam_scores):
+    """In-place version of beam_search_score.
 
     Computes Beam Search scores in-place, modifying log_probs directly.
     """
