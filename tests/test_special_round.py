@@ -1,5 +1,4 @@
 import pytest
-
 import torch
 
 import flag_gems
