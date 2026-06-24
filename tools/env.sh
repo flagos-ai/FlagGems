@@ -14,6 +14,10 @@ case $BACKEND in
     # TODO: Check if this is necessary
     # export TRITON_ALL_BLOCKS_PARALLEL=1
     ;;
+  cambricon)
+    export PATH=/usr/local/neuware/bin:$PATH
+    export LD_LIBRARY_PATH=/usr/local/neuware/lib64:$LD_LIBRARY_PATH
+    ;;
   hygon)
     source /opt/dtk-26.04/env.sh
     echo "PATH=$PATH"
