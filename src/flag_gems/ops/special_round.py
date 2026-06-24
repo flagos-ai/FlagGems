@@ -35,8 +35,8 @@ def special_round_func(x):
     abs_x = tl.math.abs(x_f32)
     floor_x = tl.math.floor(abs_x)
     frac = abs_x - floor_x
-    is_half = (frac == 0.5)
-    is_even = ((floor_x % 2.0) == 0.0)
+    is_half = frac == 0.5
+    is_even = (floor_x % 2.0) == 0.0
     rounded_abs = tl.where(
         frac > 0.5,
         floor_x + 1.0,
