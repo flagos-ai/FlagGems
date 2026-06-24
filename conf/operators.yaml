@@ -1076,6 +1076,28 @@ ops:
       - Math
     stages:
       - stable: '4.0'
+  - id: cast
+    description: Performs a cast operation on a tensor, changing its data type.
+    for:
+      - cast
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: cast_
+    description: The in-place version of `cast()`.
+    for:
+      - cast_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: bmm
     description: Performs a batch matrix-matrix product of matrices stored in `input` and `mat2`.
     for:
