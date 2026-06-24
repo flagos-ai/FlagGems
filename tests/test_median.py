@@ -4,7 +4,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.median import median_dim as gems_median_dim
+from flag_gems import median_dim as gems_median_dim
 
 from . import accuracy_utils as utils
 from . import conftest as cfg

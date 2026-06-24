@@ -211,3 +211,61 @@ def test_div_complex_int_scalar(shape, complex_dtype):
         res_out = torch.div(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
+
+
+@pytest.mark.div_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_out_tensor_tensor(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1, False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = torch.empty_like(ref_inp1)
+    torch.div(ref_inp1, ref_inp2, out=ref_out)
+
+    out = torch.empty_like(inp1)
+    with flag_gems.use_gems():
+        res_out = torch.div(inp1, inp2, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.div_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_out_tensor_scalar(shape, scalar, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_out = torch.empty_like(ref_inp)
+    torch.div(ref_inp, scalar, out=ref_out)
+
+    out = torch.empty_like(inp)
+    with flag_gems.use_gems():
+        res_out = torch.div(inp, scalar, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.div_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_out_scalar_tensor(shape, scalar, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_out = torch.empty_like(ref_inp)
+    torch.div(scalar, ref_inp, out=ref_out)
+
+    out = torch.empty_like(inp)
+    with flag_gems.use_gems():
+        res_out = torch.div(scalar, inp, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
