@@ -7149,6 +7149,41 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_erfinv
+    description: |
+      Computes the inverse error function element-wise.
+      Maps values in (-1, 1) to the real line.
+    for:
+      - special_erfinv
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_erfinv_out
+    description: A variant of `special_erfinv()` that assigns the output to the `out` tensor.
+    for:
+      - special_erfinv.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_erfinv_
+    description: The in-place version of `special_erfinv()`.
+    for:
+      - special_erfinv_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_gammainc
     description: |
       Computes the regularized lower incomplete gamma function P(a, x) element-wise.
