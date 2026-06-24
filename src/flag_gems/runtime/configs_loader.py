@@ -6,7 +6,7 @@ import warnings
 import triton
 
 from . import backend, common
-from .backend.device import DeviceDetector
+from .backend.device_finder import DeviceDetector
 
 
 class TunedConfigLoader(object):
@@ -161,13 +161,15 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "mm_general_tma":
+        if op_name in ("mm_general_tma", "mm_sqmma"):
+            group_m_values = ranges.get("GROUP_M", [8])
             return [
                 triton.Config(
                     {
                         "BLOCK_M": block_m,
                         "BLOCK_N": block_n,
                         "BLOCK_K": block_k,
+                        "GROUP_M": group_m,
                     },
                     num_stages=s,
                     num_warps=w,
@@ -176,11 +178,12 @@ class TunedConfigLoader(object):
                 for block_m in ranges["BLOCK_M"]
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
+                for group_m in group_m_values
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
 
-        if op_name in ("mm", "mm_sqmma"):
+        if op_name == "mm":
             return [
                 triton.Config(
                     {
@@ -375,9 +378,9 @@ class TunedConfigLoader(object):
                 )
             filenames.extend(
                 (
-                    f"general_ops_{backend_name}_configs.yaml",
-                    f"general_ops_{vendor_name}_configs.yaml",
-                    "general_ops_configs.yaml",
+                    f"general_ops_{backend_name}_expand.yaml",
+                    f"general_ops_{vendor_name}_expand.yaml",
+                    "general_ops_expand.yaml",
                 )
             )
 
@@ -410,6 +413,9 @@ class TunedConfigLoader(object):
             "gemv": self._build_single_expand_spec("gemv"),
             "mm": self._build_single_expand_spec(
                 "mm", expand_yaml_path=self._get_expand_config_path("mm")
+            ),
+            "mm_sqmma": self._build_single_expand_spec(
+                "mm_sqmma", yaml_op_name="mm_general_tma"
             ),
             "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
             "mv": self._build_single_expand_spec(

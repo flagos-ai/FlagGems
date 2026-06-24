@@ -17,6 +17,7 @@ class vendors(Enum):
     ENFLAME = 12
     SPACEMIT = 13
     THEAD = 14
+    ARM = 15
 
     @classmethod
     def get_all_vendors(cls) -> dict:
@@ -26,39 +27,6 @@ class vendors(Enum):
         return vendorDict
 
 
-UNSUPPORT_FP64 = frozenset(
-    {
-        vendors.AIPU,
-        vendors.ASCEND,
-        vendors.CAMBRICON,
-        vendors.ENFLAME,
-        vendors.ILUVATAR,
-        vendors.KUNLUNXIN,
-        vendors.MTHREADS,
-        vendors.SUNRISE,
-        vendors.SPACEMIT,
-        vendors.TSINGMICRO,
-    }
-)
-
-UNSUPPORT_BF16 = frozenset(
-    {
-        vendors.AIPU,
-        vendors.SUNRISE,
-        vendors.SPACEMIT,
-    }
-)
-
-UNSUPPORT_INT64 = frozenset(
-    {
-        vendors.AIPU,
-        vendors.ENFLAME,
-        vendors.SPACEMIT,
-        vendors.SUNRISE,
-        vendors.TSINGMICRO,
-    }
-)
-
 DEFAULT_STRATEGIES = {
     "addmm": ["align32", "align32", "align32"],
     "addmm_sqmma": ["align32", "align32", "align32"],
@@ -67,6 +35,7 @@ DEFAULT_STRATEGIES = {
     "bmm_sqmma": ["align32", "align32", "align32"],
     "gemv": ["align32", "align32", "align32", "default"],
     "mm": ["align32", "align32", "align32", "align32", "align32"],
+    "mm_sqmma": ["align32", "align32", "align32", "default"],
     "mm_general_tma": [
         "align32",
         "align32",
@@ -110,6 +79,7 @@ OP_KEY_ORDERS = {
     "baddbmm": ["M", "N", "K"],
     "gemv": ["M", "K", "stride_am", "stride_bk"],
     "mm": ["M", "N", "K", "stride_am", "stride_bk"],
+    "mm_sqmma": ["M", "N", "K", "dtype"],
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mv": ["M", "N"],
     "sparse_attention": ["topk", "H_ACTUAL", "D"],
@@ -133,9 +103,6 @@ _VENDOR_TORCH_ATTR = {
 
 __all__ = [
     "vendors",
-    "UNSUPPORT_FP64",
-    "UNSUPPORT_BF16",
-    "UNSUPPORT_INT64",
     "DEFAULT_STRATEGIES",
     "OP_KEY_ORDERS",
     "_VENDOR_TORCH_ATTR",
