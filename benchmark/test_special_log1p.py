@@ -17,6 +17,16 @@ def test_special_log1p():
     bench.run()
 
 
+@pytest.mark.special_log1p_out
+def test_special_log1p_out():
+    bench = base.UnaryPointwiseOutBenchmark(
+        op_name="special_log1p_out",
+        torch_op=torch.ops.aten.special_log1p.out,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.special_log1p
 @pytest.mark.parametrize("inp", [1.0, 5, -0.5])
 def test_special_log1p_non_tensor(inp):

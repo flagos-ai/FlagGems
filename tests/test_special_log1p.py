@@ -2,7 +2,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.special_log1p import special_log1p
+from flag_gems.ops.special_log1p import special_log1p, special_log1p_out
 
 from . import accuracy_utils as utils
 
@@ -26,6 +26,21 @@ def test_special_log1p_non_tensor(inp):
     ref_out = torch.special.log1p(torch.tensor(inp, dtype=torch.float32))
     res_out = special_log1p(inp)
     utils.gems_assert_close(ref_out, res_out, torch.float32)
+
+
+@pytest.mark.special_log1p_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_special_log1p_out(shape, dtype):
+    utils.init_seed(0)
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone())
+    ref_out_buf = torch.empty(shape, dtype=ref_inp.dtype, device=ref_inp.device)
+    ref_out = torch.ops.aten.special_log1p.out(ref_inp, out=ref_out_buf)
+    res_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.special_log1p.out(inp, out=res_out_buf)
+    utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.special_log1p
