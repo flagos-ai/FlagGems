@@ -241,6 +241,7 @@ from flag_gems.ops.logit_ import logit_
 from flag_gems.ops.logspace import logspace
 from flag_gems.ops.logsumexp import logsumexp
 from flag_gems.ops.lt import lt, lt_scalar
+from flag_gems.ops.lt_ import lt_, lt_scalar_
 from flag_gems.ops.margin_ranking_loss import margin_ranking_loss
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
@@ -768,7 +769,9 @@ __all__ = [
     "logspace",
     "logsumexp",
     "lt",
+    "lt_",
     "lt_scalar",
+    "lt_scalar_",
     "margin_ranking_loss",
     "masked_fill",
     "masked_fill_",

@@ -4114,6 +4114,17 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: lt_
+    description: The in-place version of `lt()`.
+    for:
+      - lt_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: lt_scalar
     description: The scalar version of `lt`.
     for:
@@ -4125,6 +4136,17 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: lt_scalar_
+    description: The scalar version of `lt_()`.
+    for:
+      - lt_.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: margin_ranking_loss
     description: Compute the margin ranking loss.
     for:
