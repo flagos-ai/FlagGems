@@ -534,6 +534,7 @@ _FULL_CONFIG = (
     ("repeat_interleave.self_int", repeat_interleave_self_int),
     ("replication_pad1d", replication_pad1d),
     ("replication_pad1d.out", replication_pad1d_out),
+    ("replication_pad1d_backward", replication_pad1d_backward),
     ("replication_pad3d", replication_pad3d),
     ("resolve_conj", resolve_conj),
     ("resolve_neg", resolve_neg),
