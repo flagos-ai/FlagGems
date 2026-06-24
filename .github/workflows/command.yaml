@@ -55,27 +55,53 @@ jobs:
     if: needs.preprocess.outputs.continue == 'true'
     runs-on: ${{ needs.preprocess.outputs.runner }}
     steps:
-      - id: checkout-attempt-1
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        continue-on-error: true
-      - id: sleep-1
-        if: steps.checkout-attempt-1.outcome == 'failure'
+      - id: resolve-vendor
         shell: bash
-        run: sleep 30s
+        env:
+          RUNNER_LABEL: ${{ needs.preprocess.outputs.runner }}
+        run: |
+          case "${RUNNER_LABEL}" in
+            h20|a100|h100)
+              VENDOR="nvidia"
+              BACKEND="nvidia"
+              ;;
+            cann850)
+              VENDOR="ascend"
+              BACKEND="ascend-cann850"
+              ;;
+            cann9)
+              VENDOR="ascend"
+              BACKEND="ascend-cann900"
+              ;;
+            *)
+              VENDOR="${RUNNER_LABEL}"
+              BACKEND="${RUNNER_LABEL}"
+              ;;
+          esac
+          echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
+          echo "BACKEND=${BACKEND}" >> $GITHUB_ENV
 
-      - id: checkout-attempt-2
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         continue-on-error: true
-      - id: sleep-2
-        if: steps.checkout-attempt-2.outcome == 'failure'
+      - uses: ./.github/actions/checkout-retry
+      - name: setup-gh
         shell: bash
-        run: sleep 30s
-
-      - id: checkout-attempt-3
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-
+        env:
+          GH_VERSION: "2.95.0"
+        run: |
+          GH_DIR="${HOME}/.local/bin"
+          if command -v gh &>/dev/null; then
+            echo "gh already available: $(gh --version | head -1)"
+          elif [ -x "${GH_DIR}/gh" ]; then
+            echo "gh found at ${GH_DIR}: $("${GH_DIR}/gh" --version | head -1)"
+            echo "${GH_DIR}" >> $GITHUB_PATH
+          else
+            mkdir -p "${GH_DIR}"
+            curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
+              | tar -xz --strip-components=2 -C "${GH_DIR}" "gh_${GH_VERSION}_linux_amd64/bin/gh"
+            echo "Installed gh ${GH_VERSION} to ${GH_DIR}"
+            echo "${GH_DIR}" >> $GITHUB_PATH
+          fi
       - id: checkout-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -83,45 +109,28 @@ jobs:
           echo "checking out ${{ needs.preprocess.outputs.pull }}"
           gh pr checkout ${{ needs.preprocess.outputs.pull }}
 
-      - name: Setup FlagGems
+      - id: setup-flaggems
         shell: bash
-        env:
-          RUNNER_LABEL: ${{ needs.preprocess.outputs.runner }}
         run: |
-          # Validate vendor names
-          case "${RUNNER_LABEL}" in
-            h20)
-              VENDOR="nvidia"
-              ;;
-            *)
-              VENDOR="${RUNNER_LABEL}"
-              ;;
-          esac
-
-          echo "VENDOR=${VENDOR}"
-          echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
-
-          ./setup.sh ${VENDOR}
-          # Install vllm for testing
-          if [ "${VENDOR}" == "nvidia" ]; then
-             source .venv/bin/activate
-             uv pip install --no-cache-dir vllm==0.21.0 --torch-backend=cu130
+          ./setup.sh ${BACKEND}
+          if [ "${BACKEND}" == "nvidia" ]; then
+            source .venv/bin/activate
+            uv pip install vllm==0.21.0 --torch-backend=cu130
           fi
 
-      - name: Check GPU availability
+      - id: check-gpu
         shell: bash
         run: |
-          echo ${{ env.VENDOR }}
-          source tools/env.sh ${{ env.VENDOR }}
-          tools/gpu_check_${{ env.VENDOR }}.sh
+          source tools/env.sh ${BACKEND}
+          bash tools/gpu_check_${VENDOR}.sh
 
-      - name: Run tests
+      - id: run-tests
         shell: bash
         env:
           EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
         run: |
           source .venv/bin/activate
-          source tools/env.sh ${VENDOR}
+          source tools/env.sh ${BACKEND}
           tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
             --dump-output \
             --output-dir results_new
@@ -150,18 +159,20 @@ jobs:
               results
           fi
 
-      - name: Upload results
+      - id: upload-results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ondemand-test
           path: results/
 
-      - name: comment
+      - id: attach-result-link
+        run: |
+          echo -e "\n---\n" >> report.md
+          echo -e "📎 Download the full log [here](${{ steps.upload-results.outputs.artifact-url }})" >> report.md
+
+      - id: comment
         uses: mshick/add-pr-comment@8e4927817251f1ff60c001f04568532b38e0b4a0  # 3.11.0
         with:
           message-path: report.md
           message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           allow-repeats: True
-          attach-path: results/*
-          attach-name: report-${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
-          attach-text: '📎 [Download %ATTACH_NAME%](%ARTIFACT_URL%)'
