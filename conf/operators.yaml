@@ -1875,6 +1875,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: dequantize
+    description: >
+      Returns an fp32 Tensor by dequantizing a quantized Tensor.
+    for:
+      - dequantize
+      - dequantize.self
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dequantize_and_gather_k_cache
     description: |
       Dequantizes FP8 K-cache entries and gathers them into a BF16 tensor for DeepSeekV4 attention.
