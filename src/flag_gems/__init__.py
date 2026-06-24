@@ -389,6 +389,8 @@ _FULL_CONFIG = (
     ("lerp.Tensor", lerp_tensor),
     ("lerp_.Scalar", lerp_scalar_),
     ("lerp_.Tensor", lerp_tensor_),
+    ("lgamma", lgamma),
+    ("lgamma_", lgamma_),
     ("lift_fresh_copy", lift_fresh_copy),
     ("linalg_vector_norm", vector_norm),
     ("linear", linear),
