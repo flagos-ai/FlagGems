@@ -7033,6 +7033,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: subtract_
+    description: In-place version of subtract. Subtracts other, scaled by alpha, from input.
+    for:
+      - subtract_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: sum
     description: Returns the sum of all elements in the `input` tensor.
     for:
