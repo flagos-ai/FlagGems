@@ -6765,6 +6765,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: sparse_semi_structured_mm
+    description: >
+      Performs a sparse semi-structured matrix multiplication of a dense matrix
+      with a 2:4 sparsity pattern against a dense matrix.
+    for:
+      - _sparse_semi_structured_mm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: special_chebyshev_polynomial_v
     description: |
       Triton kernel implementation for special_chebyshev_polynomial_v.
