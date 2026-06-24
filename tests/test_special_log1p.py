@@ -2,7 +2,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.special_log1p import special_log1p, special_log1p_out
+from flag_gems.ops.special_log1p import special_log1p
 
 from . import accuracy_utils as utils
 
