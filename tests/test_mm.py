@@ -113,6 +113,7 @@ def test_mm_out_vllm_tma_column_major_weight():
 
 
 @pytest.mark.mm
+@pytest.mark.skipif(not hasattr(triton.tools.tensor_descriptor, "TensorDescriptor")")
 def test_mm_kernel_general_host_tma_vllm_column_major_weight_compile_error():
     """Reproduce the vLLM TMA descriptor compile error for a column-major BF16 weight."""
     from triton.tools.tensor_descriptor import TensorDescriptor
