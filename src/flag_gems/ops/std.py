@@ -277,7 +277,6 @@ def std(x, dim=None, *, correction=None, keepdim=False):
 
             return out.squeeze(dim=dim0) if not keepdim else out
 
-
         x_view = dim_compress(x, dim_list_normalized)
 
         N = 1
