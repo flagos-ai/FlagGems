@@ -90,7 +90,13 @@ def nextafter_func(input, other):
             tl.where(is_zero_cross, x_int + cross_const, x_int + normal_inc),
         )
 
-        return result_int.to(input.dtype, bitcast=True)
+        # Return input directly for NaN/equal to avoid bitcast round-trip
+        # which can corrupt NaN in some Triton backends.
+        return tl.where(
+            is_nan | is_equal,
+            input,  # preserve NaN or self directly
+            result_int.to(input.dtype, bitcast=True),
+        )
     else:
         # float32
         return tl_extra_shim.nextafter(input, other)
