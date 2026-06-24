@@ -584,7 +584,6 @@ _FULL_CONFIG = (
     ("sort", sort),
     ("sort.stable", sort_stable),
     ("special.legendre_polynomial_p", special_legendre_polynomial_p),
-    ("special.chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special.gammainc", special_gammainc),
     ("special.gammainc.out", special_gammainc),
