@@ -76,10 +76,8 @@ def _pdist_backward_p2_kernel(
         g = tl.load(grad_ptr + pdist_idx).to(tl.float32)
         dist = tl.load(pdist_ptr + pdist_idx).to(tl.float32)
 
-        # Avoid division by zero
-        safe_dist = tl.where(dist != 0.0, dist, 1.0)
-        scale = g / safe_dist
-        contrib = diff * scale
+        # Avoid division by zero: when dist=0 (identical vectors), gradient is 0
+        contrib = tl.where(dist != 0.0, diff * g / dist, 0.0)
         acc += contrib
 
     # Second: pairs where this row is the second index (j, i) with j < i
@@ -97,10 +95,8 @@ def _pdist_backward_p2_kernel(
         g = tl.load(grad_ptr + pdist_idx).to(tl.float32)
         dist = tl.load(pdist_ptr + pdist_idx).to(tl.float32)
 
-        # Avoid division by zero
-        safe_dist = tl.where(dist != 0.0, dist, 1.0)
-        scale = g / safe_dist
-        contrib = diff * scale
+        # Avoid division by zero: when dist=0 (identical vectors), gradient is 0
+        contrib = tl.where(dist != 0.0, diff * g / dist, 0.0)
         acc += contrib
 
     tl.store(out_ptr_row + m_offsets, acc.to(out_ptr.dtype.element_ty), mask=m_mask)
