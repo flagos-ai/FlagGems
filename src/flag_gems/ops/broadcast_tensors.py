@@ -16,29 +16,7 @@
 
 import logging
 
-import triton
-import triton.language as tl
-
-from flag_gems.utils import libentry
-
 logger = logging.getLogger(__name__)
-
-
-@libentry()
-@triton.jit
-def _copy_kernel(
-    input_ptr,
-    output_ptr,
-    total_numel: tl.int64,
-    BLOCK_SIZE: tl.constexpr,
-):
-    """Simple copy kernel for testing."""
-    pid = tl.program_id(0)
-    offsets = tl.arange(0, BLOCK_SIZE) + pid * BLOCK_SIZE
-    mask = offsets < total_numel
-
-    val = tl.load(input_ptr + offsets, mask=mask)
-    tl.store(output_ptr + offsets, val, mask=mask)
 
 
 def _compute_broadcast_shape(tensors):
