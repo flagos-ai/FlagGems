@@ -19,8 +19,8 @@ GRID_SAMPLER_SHAPES = [
 # Custom benchmark: runs inline without bench.run() due to complex op signature
 @pytest.mark.grid_sampler_2d
 def test_grid_sampler_2d():
-    for shape in GRID_SAMPLER_SHAPES:
-        for dtype in consts.FLOAT_DTYPES:
+    for dtype in consts.FLOAT_DTYPES:
+        for shape in GRID_SAMPLER_SHAPES:
             N, C, H, W = shape
             OH, OW = H // 2, W // 2
 
