@@ -6819,6 +6819,18 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_hermite_polynomial_h
+    description: |
+      Computes the physicist's Hermite polynomial H_n(x) of degree n at input.
+    for:
+      - special_hermite_polynomial_h
+    kind:
+      - Math
+    labels:
+      - aten
+      - KernelGen
+    stages:
+      - alpha: '5.1'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
