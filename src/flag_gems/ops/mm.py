@@ -540,11 +540,12 @@ def streamk_scenario(a, b, M, N, K):
     # The optimal settings for other devices need to be determined through real testing.
     capability = get_device_capability()
     return (
-        capability[0] == 8
+        capability[0] >= 8
         and a.dtype in [torch.float16, torch.bfloat16]
         and b.dtype in [torch.float16, torch.bfloat16]
         and a.is_contiguous()
         and b.is_contiguous()
+        and K > 102400
         and K > M * 5
         and K > N * 5
     )
