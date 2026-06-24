@@ -226,6 +226,7 @@ from flag_gems.ops.index_copy_ import index_copy, index_copy_
 from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_reduce import index_reduce_
 from flag_gems.ops.index_select import index_select
+from flag_gems.ops.is_nonzero import is_nonzero
 from flag_gems.ops.isclose import allclose, isclose
 from flag_gems.ops.isfinite import isfinite
 from flag_gems.ops.isin import isin
@@ -761,6 +762,7 @@ __all__ = [
     "index_put_",
     "index_reduce_",
     "index_select",
+    "is_nonzero",
     "isclose",
     "isfinite",
     "isin",

@@ -3650,6 +3650,17 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: is_nonzero
+    description: Returns True if the single-element input tensor is not equal to zero.
+    for:
+      - is_nonzero
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: isclose
     description: |
       Returns a new tensor with boolean elements representing if each element of `input`
