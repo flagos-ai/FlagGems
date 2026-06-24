@@ -238,7 +238,7 @@ def batch_norm_heur_block_n(args):
     # A maximum of 16384 elements are loaded at once.
     BLOCK_M = batch_norm_heur_block_m(args)
     BLOCK_N = triton.next_power_of_2(args["spatial_dim"])
-    return min(BLOCK_N, max(1, 2**10 // BLOCK_M))
+    return min(BLOCK_N, max(1, 2**7 // BLOCK_M))
 
 
 def vdot_heur_block_size(args):

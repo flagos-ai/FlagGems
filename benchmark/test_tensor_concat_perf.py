@@ -141,6 +141,16 @@ def repeat_interleave_self_tensor_input_fn(shape, dtype, device):
         ],
         device=device,
     )
+    if vendor_name == "sophgo":
+        repeats = torch.randint(
+            low=0,
+            high=0x1F,  # control the repeats number here
+            size=[
+                shape[0],
+            ],
+            dtype=torch.int32,
+            device=device,
+        )
     dim = 0
     yield inp, repeats, dim
 
@@ -155,6 +165,16 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
         ],
         device=device,
     )
+    if vendor_name == "sophgo":
+        repeats = torch.randint(
+            low=0,
+            high=0x1F,  # control the repeats number here
+            size=[
+                shape[0],
+            ],
+            dtype=torch.int32,
+            device=device,
+        )
     yield repeats,
 
 
