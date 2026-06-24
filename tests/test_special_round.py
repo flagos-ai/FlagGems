@@ -93,5 +93,7 @@ def test_special_round_midpoints():
     utils.gems_assert_equal(res_out, ref_out)
 
     # Also verify the expected values match
-    expected_tensor = torch.tensor(expected_values, dtype=torch.float32)
-    utils.gems_assert_equal(res_out, expected_tensor.to(flag_gems.device))
+    expected_tensor = torch.tensor(
+        expected_values, dtype=torch.float32, device=flag_gems.device
+    )
+    utils.gems_assert_equal(res_out, utils.to_reference(expected_tensor))

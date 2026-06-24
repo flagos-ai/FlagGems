@@ -35,7 +35,6 @@ def special_round_func(x):
     abs_x = tl.math.abs(x_f32)
     floor_x = tl.math.floor(abs_x)
     frac = abs_x - floor_x
-    is_half = frac == 0.5
     is_even = (floor_x % 2.0) == 0.0
     rounded_abs = tl.where(
         frac > 0.5,
@@ -46,7 +45,11 @@ def special_round_func(x):
             tl.where(is_even, floor_x, floor_x + 1.0),
         ),
     )
-    return (sign * rounded_abs).to(x.dtype)
+    result = sign * rounded_abs
+    # Preserve signed zero: torch.special.round(-0.0) returns -0.0.
+    # When rounding exactly zero, copy the sign from the input.
+    result = tl.where(abs_x == 0.0, x_f32, result)
+    return result.to(x.dtype)
 
 
 def special_round(A):
