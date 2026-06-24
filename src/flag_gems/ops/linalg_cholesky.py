@@ -27,16 +27,16 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def cholesky_kernel(A, L, N, stride_a, stride_l):
+def cholesky_kernel(A, L, N, batch_stride, stride_a, stride_l):
     """Cholesky decomposition kernel.
 
     Each program computes one matrix in the batch.
     """
     pid = program_id(0)
 
-    # Each matrix is N*N elements
-    a_offset = pid * stride_a
-    l_offset = pid * stride_l
+    # Each matrix is N*N elements; batch_stride is the stride between matrices
+    a_offset = pid * batch_stride
+    l_offset = pid * batch_stride
 
     # Sequential Cholesky: L[i,j] for j <= i
     for i in range(N):
@@ -119,13 +119,15 @@ def linalg_cholesky(A, upper=False):
     if len(shape) > 2:
         A_kernel = A_sym.reshape(-1, n, n)
         L_kernel = L.reshape(-1, n, n)
-        stride_a = n
-        stride_l = n
+        stride_a = A_kernel.stride(1)      # row stride within a matrix = n
+        stride_l = L_kernel.stride(1)
+        batch_stride = A_kernel.stride(0)   # stride between matrices = n * n
     else:
         A_kernel = A_sym
         L_kernel = L
         stride_a = A_sym.stride(0)
         stride_l = L.stride(0)
+        batch_stride = stride_a * n   # n * n; pid=0 so a_offset = 0
 
     grid = (batch_size,)
 
@@ -134,6 +136,7 @@ def linalg_cholesky(A, upper=False):
             A_kernel,
             L_kernel,
             n,
+            batch_stride,
             stride_a,
             stride_l,
         )
