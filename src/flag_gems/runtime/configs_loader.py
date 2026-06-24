@@ -161,7 +161,7 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "mm_general_tma":
+        if op_name in ("mm_general_tma", "mm_sqmma"):
             group_m_values = ranges.get("GROUP_M", [8])
             return [
                 triton.Config(
@@ -183,7 +183,7 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name in ("mm", "mm_sqmma"):
+        if op_name == "mm":
             return [
                 triton.Config(
                     {
@@ -413,6 +413,9 @@ class TunedConfigLoader(object):
             "gemv": self._build_single_expand_spec("gemv"),
             "mm": self._build_single_expand_spec(
                 "mm", expand_yaml_path=self._get_expand_config_path("mm")
+            ),
+            "mm_sqmma": self._build_single_expand_spec(
+                "mm_sqmma", yaml_op_name="mm_general_tma"
             ),
             "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
             "mv": self._build_single_expand_spec(
