@@ -25,7 +25,6 @@ def test_special_hermite_polynomial_he(shape, dtype):
     ref_out = torch.special.hermite_polynomial_he(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.special.hermite_polynomial_he(inp1, inp2)
-    res_out = utils.to_reference(res_out, True)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -34,6 +33,5 @@ def test_special_hermite_polynomial_he(shape, dtype):
         ref_out = torch.special.hermite_polynomial_he(ref_inp1, n)
         with flag_gems.use_gems():
             res_out = torch.special.hermite_polynomial_he(inp1, n)
-        res_out = utils.to_reference(res_out, True)
 
         utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
