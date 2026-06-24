@@ -36,13 +36,21 @@ def nextafter_func(input, other):
     # For float32: use libdevice's nextafter (which also handles NaN / Inf / same).
     dtype = input.dtype
     if tl.constexpr(dtype == tl.float16) or tl.constexpr(dtype == tl.bfloat16):
-        # NaN detection: NaN compares not equal to itself (IEEE 754)
-        # Use value comparison instead of bit-manipulation because bitcast
-        # to uint16 does not work reliably for NaN when Triton internally
-        # promotes float16/bfloat16 to float32 before bitcast.
-        is_nan = (input != input) | (other != other)
+        # NaN check: all exponent bits set and mantissa non-zero
+        if tl.constexpr(dtype == tl.float16):
+            exp_mask = 0x7C00  # 5 exponent bits
+            frac_mask = 0x03FF  # 10 mantissa bits
+        else:  # bf16
+            exp_mask = 0x7F80  # 8 exponent bits
+            frac_mask = 0x007F  # 7 mantissa bits
 
         x_int = input.to(tl.uint16, bitcast=True)
+        y_int = other.to(tl.uint16, bitcast=True)
+
+        # NaN: all exponent bits set and mantissa non-zero
+        x_is_nan = ((x_int & exp_mask) == exp_mask) & ((x_int & frac_mask) != 0)
+        y_is_nan = ((y_int & exp_mask) == exp_mask) & ((y_int & frac_mask) != 0)
+        is_nan = x_is_nan | y_is_nan
 
         # Same value: return input (matches IEEE 754)
         is_equal = input == other
@@ -90,13 +98,7 @@ def nextafter_func(input, other):
             tl.where(is_zero_cross, x_int + cross_const, x_int + normal_inc),
         )
 
-        # Return input directly for NaN/equal to avoid bitcast round-trip
-        # which can corrupt NaN in some Triton backends.
-        return tl.where(
-            is_nan | is_equal,
-            input,  # preserve NaN or self directly
-            result_int.to(input.dtype, bitcast=True),
-        )
+        return result_int.to(input.dtype, bitcast=True)
     else:
         # float32
         return tl_extra_shim.nextafter(input, other)
