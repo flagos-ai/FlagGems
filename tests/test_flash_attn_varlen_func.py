@@ -18,15 +18,16 @@ def make_paged_kv_cache(
     head_size: int,
     dtype: torch.dtype,
     non_contiguous: bool,
+    device: str = device,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     shape = (num_blocks, block_size, num_kv_heads, head_size)
     if not non_contiguous:
-        key_cache = torch.randn(*shape, dtype=dtype)
+        key_cache = torch.randn(*shape, dtype=dtype, device=device)
         value_cache = torch.randn_like(key_cache)
         return key_cache, value_cache
 
     storage_shape = (num_blocks * 2, block_size, num_kv_heads, head_size)
-    key_storage = torch.randn(*storage_shape, dtype=dtype)
+    key_storage = torch.randn(*storage_shape, dtype=dtype, device=device)
     value_storage = torch.randn_like(key_storage)
     key_cache = key_storage[::2][:num_blocks]
     value_cache = value_storage[::2][:num_blocks]
@@ -333,6 +334,7 @@ def test_flash_attn_varlen_func_noncontiguous_kv_cache(
             head_size,
             dtype=dtype,
             non_contiguous=True,
+            device=device,
         )
         cu_query_lens = torch.tensor(
             [0] + query_lens, dtype=torch.int32, device=device
