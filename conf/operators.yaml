@@ -685,6 +685,28 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: asin
+    description: Returns a new tensor with the arcsine of the elements of input.
+    for:
+      - asin
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: asin_
+    description: The in-place version of `asin()`.
+    for:
+      - asin_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: as_strided_copy
     description: |
       Creates a contiguous copy of an `as_strided` view of the input tensor.
