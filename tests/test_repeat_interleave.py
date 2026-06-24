@@ -4,15 +4,22 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
-REPEAT_INTERLEAVE_SHAPES = [
-    (1024, 1024),
-    (20, 320, 15),
-    (16, 128, 64, 60),
-    (16, 7, 57, 32, 29),
-]
-
-REPEAT_INTERLEAVE_DIM = [-1, 0, None]
+if cfg.QUICK_MODE:
+    REPEAT_INTERLEAVE_SHAPES = [
+        (1024, 1024),
+        (20, 320, 15),
+    ]
+    REPEAT_INTERLEAVE_DIM = [-1, 0]
+else:
+    REPEAT_INTERLEAVE_SHAPES = [
+        (1024, 1024),
+        (20, 320, 15),
+        (16, 128, 64, 60),
+        (16, 7, 57, 32, 29),
+    ]
+    REPEAT_INTERLEAVE_DIM = [-1, 0, None]
 
 
 @pytest.mark.repeat_interleave_self_int

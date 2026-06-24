@@ -9,7 +9,7 @@ import flag_gems
 from flag_gems import runtime
 from flag_gems.utils import libentry
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def conv2d_output_size(
@@ -578,7 +578,11 @@ class Conv2d(torch.autograd.Function):
             dilation_width,
         )
         if bias is not None:
-            bias_grad = out_grad.sum(dim=(0, 2, 3))
+            if out_grad.dtype in (torch.float16, torch.bfloat16):
+                # [sunrise fix] Fallback to high precision.
+                bias_grad = out_grad.float().sum(dim=(0, 2, 3)).to(dtype=bias.dtype)
+            else:
+                bias_grad = out_grad.sum(dim=(0, 2, 3))
         else:
             bias_grad = None
         return (

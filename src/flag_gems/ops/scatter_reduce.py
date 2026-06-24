@@ -90,6 +90,7 @@ def scatter_reduce_sum_2d_kernel(
     out_ptr,
     mask_ptr,
     N,
+    idx_ncols,
     src_ncols,
     out_ncols,
     DIM: tl.constexpr,
@@ -104,16 +105,18 @@ def scatter_reduce_sum_2d_kernel(
         offsets = (base_offsets + i * BLOCK).to(tl.int64)
         mask = offsets < N
 
-        row = offsets // src_ncols
-        col = offsets % src_ncols
+        row = offsets // idx_ncols
+        col = offsets % idx_ncols
 
         if DIM == 0:
+            idx_offsets = row * idx_ncols + col
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
+            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = idx * out_ncols + col
         else:
+            idx_offsets = row * idx_ncols + col
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
+            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = row * out_ncols + idx
 
         src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
@@ -133,6 +136,7 @@ def scatter_reduce_prod_2d_kernel(
     out_ptr,
     mask_ptr,
     N,
+    idx_ncols,
     src_ncols,
     out_ncols,
     DIM: tl.constexpr,
@@ -147,16 +151,18 @@ def scatter_reduce_prod_2d_kernel(
         offsets = (base_offsets + i * BLOCK).to(tl.int64)
         mask = offsets < N
 
-        row = offsets // src_ncols
-        col = offsets % src_ncols
+        row = offsets // idx_ncols
+        col = offsets % idx_ncols
 
         if DIM == 0:
+            idx_offsets = row * idx_ncols + col
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
+            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = idx * out_ncols + col
         else:
+            idx_offsets = row * idx_ncols + col
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
+            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = row * out_ncols + idx
 
         src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
@@ -190,6 +196,7 @@ def scatter_reduce_mean_2d_kernel(
     count_ptr,
     mask_ptr,
     N,
+    idx_ncols,
     src_ncols,
     out_ncols,
     DIM: tl.constexpr,
@@ -204,16 +211,18 @@ def scatter_reduce_mean_2d_kernel(
         offsets = (base_offsets + i * BLOCK).to(tl.int64)
         mask = offsets < N
 
-        row = offsets // src_ncols
-        col = offsets % src_ncols
+        row = offsets // idx_ncols
+        col = offsets % idx_ncols
 
         if DIM == 0:
+            idx_offsets = row * idx_ncols + col
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
+            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = idx * out_ncols + col
         else:
+            idx_offsets = row * idx_ncols + col
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
+            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = row * out_ncols + idx
 
         src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
@@ -236,6 +245,7 @@ def scatter_reduce_amax_2d_kernel(
     out_ptr,
     mask_ptr,
     N,
+    idx_ncols,
     src_ncols,
     out_ncols,
     DIM: tl.constexpr,
@@ -252,16 +262,18 @@ def scatter_reduce_amax_2d_kernel(
         offsets = (base_offsets + i * BLOCK).to(tl.int64)
         mask = offsets < N
 
-        row = offsets // src_ncols
-        col = offsets % src_ncols
+        row = offsets // idx_ncols
+        col = offsets % idx_ncols
 
         if DIM == 0:
+            idx_offsets = row * idx_ncols + col
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
+            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = idx * out_ncols + col
         else:
+            idx_offsets = row * idx_ncols + col
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
+            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = row * out_ncols + idx
 
         src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
@@ -896,7 +908,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
     index = index.contiguous()
 
     # Convert strides/shapes to int64 to avoid overflow in kernel arithmetic
-    src_shapes = [int(x) for x in _pad5(list(src.shape), 1)]
+    idx_shapes = [int(x) for x in _pad5(list(index.shape), 1)]
     src_strides_p = [int(x) for x in _pad5(list(src.stride()), 0)]
     idx_strides_p = [int(x) for x in _pad5(list(index.stride()), 0)]
     out_strides_p = [int(x) for x in _pad5(list(out.stride()), 0)]
@@ -915,6 +927,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
     with torch_device_fn.device(inp.device):
         if reduce == "sum":
             if use_2d:
+                idx_ncols = index.shape[1]
                 src_ncols = src.shape[1]
                 out_ncols = out.shape[1]
                 scatter_reduce_sum_2d_kernel[grid](
@@ -923,6 +936,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                     out,
                     mask_ptr,
                     N,
+                    idx_ncols,
                     src_ncols,
                     out_ncols,
                     dim_2d,
@@ -946,11 +960,11 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                     src_strides_p[2],
                     src_strides_p[3],
                     src_strides_p[4],
-                    src_shapes[0],
-                    src_shapes[1],
-                    src_shapes[2],
-                    src_shapes[3],
-                    src_shapes[4],
+                    idx_shapes[0],
+                    idx_shapes[1],
+                    idx_shapes[2],
+                    idx_shapes[3],
+                    idx_shapes[4],
                     idx_strides_p[0],
                     idx_strides_p[1],
                     idx_strides_p[2],
@@ -964,6 +978,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                 )
         elif reduce == "prod":
             if use_2d:
+                idx_ncols = index.shape[1]
                 src_ncols = src.shape[1]
                 out_ncols = out.shape[1]
                 scatter_reduce_prod_2d_kernel[grid](
@@ -972,6 +987,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                     out,
                     mask_ptr,
                     N,
+                    idx_ncols,
                     src_ncols,
                     out_ncols,
                     dim_2d,
@@ -995,11 +1011,11 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                     src_strides_p[2],
                     src_strides_p[3],
                     src_strides_p[4],
-                    src_shapes[0],
-                    src_shapes[1],
-                    src_shapes[2],
-                    src_shapes[3],
-                    src_shapes[4],
+                    idx_shapes[0],
+                    idx_shapes[1],
+                    idx_shapes[2],
+                    idx_shapes[3],
+                    idx_shapes[4],
                     idx_strides_p[0],
                     idx_strides_p[1],
                     idx_strides_p[2],
@@ -1013,6 +1029,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                 )
         elif reduce == "mean":
             if use_2d:
+                idx_ncols = index.shape[1]
                 src_ncols = src.shape[1]
                 out_ncols = out.shape[1]
                 scatter_reduce_mean_2d_kernel[grid](
@@ -1022,6 +1039,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                     count,
                     mask_ptr,
                     N,
+                    idx_ncols,
                     src_ncols,
                     out_ncols,
                     dim_2d,
@@ -1046,11 +1064,11 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                     src_strides_p[2],
                     src_strides_p[3],
                     src_strides_p[4],
-                    src_shapes[0],
-                    src_shapes[1],
-                    src_shapes[2],
-                    src_shapes[3],
-                    src_shapes[4],
+                    idx_shapes[0],
+                    idx_shapes[1],
+                    idx_shapes[2],
+                    idx_shapes[3],
+                    idx_shapes[4],
                     idx_strides_p[0],
                     idx_strides_p[1],
                     idx_strides_p[2],
@@ -1069,6 +1087,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
         elif reduce in ("amax", "amin"):
             use_cas = _needs_cas_fallback()
             if use_2d:
+                idx_ncols = index.shape[1]
                 src_ncols = src.shape[1]
                 out_ncols = out.shape[1]
                 scatter_reduce_amax_2d_kernel[grid](
@@ -1077,6 +1096,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                     out,
                     mask_ptr,
                     N,
+                    idx_ncols,
                     src_ncols,
                     out_ncols,
                     dim_2d,
@@ -1104,11 +1124,11 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                     src_strides_p[2],
                     src_strides_p[3],
                     src_strides_p[4],
-                    src_shapes[0],
-                    src_shapes[1],
-                    src_shapes[2],
-                    src_shapes[3],
-                    src_shapes[4],
+                    idx_shapes[0],
+                    idx_shapes[1],
+                    idx_shapes[2],
+                    idx_shapes[3],
+                    idx_shapes[4],
                     idx_strides_p[0],
                     idx_strides_p[1],
                     idx_strides_p[2],
