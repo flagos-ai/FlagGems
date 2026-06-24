@@ -5277,6 +5277,20 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: prelu_kernel_backward
+    description: |
+      Computes backward gradients for Parametric ReLU (PReLU) forward pass.
+      PReLU scales negative inputs by a learnable per-channel weight. This backward
+      kernel computes gradients with respect to both input and weight.
+    for:
+      - _prelu_kernel_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: prod
     description: Returns the product of all elements in the `input` tensor.
     for:
