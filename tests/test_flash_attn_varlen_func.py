@@ -149,9 +149,6 @@ def test_flash_attn_varlen_func(
     num_blocks: int,
     optimize_init: bool,
 ) -> None:
-    if vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     # (Issue) numerical stability concern
     if alibi is True and soft_cap is not None:
         return
@@ -306,9 +303,6 @@ def test_flash_attn_varlen_func_noncontiguous_kv_cache(
     dtype: torch.dtype,
     optimize_init: bool,
 ) -> None:
-    if vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     with torch.device(flag_gems.device):
         utils.init_seed(1234567890)
 
@@ -409,9 +403,6 @@ def test_flash_attn_varlen_func_swap_qg(
     soft_cap: Optional[float],
     num_blocks: int,
 ) -> None:
-    if vendor_name == "mthreads":
-        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
     with torch.device(flag_gems.device):
         utils.init_seed(1234567890)
         num_seqs = len(seq_lens)
