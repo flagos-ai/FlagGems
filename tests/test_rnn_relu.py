@@ -161,10 +161,10 @@ def test_rnn_relu_direct_backward():
     hid_r = h.unsqueeze(0)
     (out_r.sum() + hid_r.sum()).backward()
 
-    torch.testing.assert_close(inp_g.grad, inp_r.grad)
-    torch.testing.assert_close(hx_g.grad, hx_r.grad)
+    utils.gems_assert_close(inp_g.grad, inp_r.grad, dtype)
+    utils.gems_assert_close(hx_g.grad, hx_r.grad, dtype)
     for pg, pr in zip(params_g, params_r):
-        torch.testing.assert_close(pg.grad, pr.grad)
+        utils.gems_assert_close(pg.grad, pr.grad, dtype)
 
 
 @pytest.mark.skipif(
