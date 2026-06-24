@@ -18,7 +18,7 @@ import logging
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,27 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def special_round_func(x):
-    return tl_extra_shim.rint(x.to(tl.float32)).to(x.dtype)
+    x_f32 = x.to(tl.float32)
+    # Manual round-half-to-even (banker's rounding).
+    # abs_x = |x|, floor = floor(|x|), frac = |x| - floor(|x|)
+    #  frac > 0.5 → ceil; frac < 0.5 → floor
+    #  frac == 0.5 → round to even (banker's tie-breaking)
+    sign = tl.where(x_f32 >= 0.0, 1.0, -1.0)
+    abs_x = tl.math.abs(x_f32)
+    floor_x = tl.math.floor(abs_x)
+    frac = abs_x - floor_x
+    is_half = (frac == 0.5)
+    is_even = ((floor_x % 2.0) == 0.0)
+    rounded_abs = tl.where(
+        frac > 0.5,
+        floor_x + 1.0,
+        tl.where(
+            frac < 0.5,
+            floor_x,
+            tl.where(is_even, floor_x, floor_x + 1.0),
+        ),
+    )
+    return (sign * rounded_abs).to(x.dtype)
 
 
 def special_round(A):
