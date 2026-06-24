@@ -685,28 +685,6 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
-  - id: asin
-    description: Returns a new tensor with the arcsine of the elements of input.
-    for:
-      - asin
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: asin_
-    description: The in-place version of `asin()`.
-    for:
-      - asin_
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: as_strided_copy
     description: |
       Creates a contiguous copy of an `as_strided` view of the input tensor.
@@ -730,6 +708,28 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: asin
+    description: Returns a new tensor with the arcsine of the elements of input.
+    for:
+      - asin
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: asin_
+    description: The in-place version of `asin()`.
+    for:
+      - asin_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: asinh
     description: Returns a new tensor with the inverse hyperbolic sine of the elements of input.
     for:
@@ -1412,6 +1412,18 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: clone
+    description: Pure layout/memory operation (clone).
+    for:
+      - clone
+    labels:
+      - KernelGen
+      - aten
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: col2im
     description: |
       Rearranges column blocks back into a multidimensional tensor (inverse of im2col).
@@ -4000,6 +4012,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_eigvals
+    description: Computes the eigenvalues of a square matrix.
+    for:
+      - _linalg_eigvals
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linear
     description: |
       Applies a linear transformation to the incoming data: y = x @ W^T + b.
@@ -4010,17 +4033,6 @@ ops:
       - KernelGen
     kind:
       - BLAS
-    stages:
-      - alpha: '5.4'
-  - id: linalg_eigvals
-    description: Computes the eigenvalues of a square matrix.
-    for:
-      - _linalg_eigvals
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
     stages:
       - alpha: '5.4'
   - id: linspace
@@ -8016,15 +8028,3 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
-  - id: clone
-    description: Pure layout/memory operation (clone).
-    for:
-      - clone
-    labels:
-      - KernelGen
-      - aten
-      - skip_precision_check
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.4'
