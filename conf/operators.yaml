@@ -6982,6 +6982,24 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_ndtri
+    description: |
+      Computes the argument x for which the area under the standard normal
+      probability density function (integrated from minus infinity to x)
+      equals the input, elementwise. Inverse of the normal CDF.
+    for:
+      - special_ndtri
+    labels:
+      - aten
+      - pointwise
+  - id: special_ndtri_out
+    description: |
+      A variant of `special_ndtri()` with output saved to provided `out`.
+    for:
+      - special_ndtri.out
+    labels:
+      - aten
+      - pointwise
   - id: special_log_softmax
     description: |
       Applies the log of the softmax function along a given dimension.
