@@ -4494,10 +4494,10 @@ ops:
     for:
       - matmul_bias_residual
     labels:
-      - aten
+      - fused
       - KernelGen
     kind:
-      - Math
+      - BLAS
     stages:
       - alpha: '5.4'
   - id: max
