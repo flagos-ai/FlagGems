@@ -1,8 +1,8 @@
-VENDOR=$1
-echo "Setting up environment variable for vendor $VENDOR"
+BACKEND=$1
+echo "Setting up environment variable for backend $BACKEND"
 
-case $VENDOR in
-  ascend|ascend-cann9)
+case $BACKEND in
+  ascend-cann850|ascend-cann900)
     # This script is provided by the Huawei Ascend CANN toolkit installation.
     if [ -f /usr/local/Ascend/ascend-toolkit/set_env.sh ]; then
       source /usr/local/Ascend/ascend-toolkit/set_env.sh
