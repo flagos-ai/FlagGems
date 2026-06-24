@@ -6,8 +6,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry, tl_extra_shim
+from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max, get_dtype_min
 
@@ -57,6 +58,7 @@ ASCEND_FLAT_SORT_DTYPES = (
     torch.int16,
     torch.int32,
 )
+IS_NVIDIA_BACKEND = runtime_device.vendor_name == "nvidia"
 
 
 def _triton_version_at_least(major, minor):
@@ -80,8 +82,6 @@ CUDA_SUPPORTS_MASKED_HISTOGRAM = _triton_version_at_least(3, 4)
 @triton.jit
 def _is_not_nan(vals, USE_ISNAN: tl.constexpr):
     vals_fp32 = vals.to(tl.float32)
-    if USE_ISNAN:
-        return ~tl_extra_shim.isnan(vals_fp32)
     return vals_fp32 == vals_fp32
 
 
@@ -814,10 +814,8 @@ def _empty_flat_value(inp):
     out = torch.empty((), dtype=inp.dtype, device=inp.device)
     if torch.is_floating_point(inp):
         out.fill_(float("nan"))
-    elif inp.is_cuda:
-        out.fill_(torch.iinfo(inp.dtype).min)
     else:
-        out.zero_()
+        out.fill_(torch.iinfo(inp.dtype).min)
     return out
 
 
@@ -1032,10 +1030,12 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
 
     inp = dim_compress(inp, dim)
     is_cuda = inp.is_cuda
+    is_nvidia = IS_NVIDIA_BACKEND
     is_ascend = inp.device.type == "npu"
     in_radix_range = MAX_BLOCK_N < N <= LONG_RADIX_REDUCTION_N
     use_cuda_histogram = (
-        is_cuda
+        is_nvidia
+        and is_cuda
         and CUDA_SUPPORTS_MASKED_HISTOGRAM
         and N > MAX_BLOCK_N
         and N == triton.next_power_of_2(N)
@@ -1055,7 +1055,7 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
         and in_radix_range
     )
 
-    if is_cuda and inp.dtype in RADIX_SELECT_DTYPES and in_radix_range:
+    if is_nvidia and is_cuda and inp.dtype in RADIX_SELECT_DTYPES and in_radix_range:
         flat_values = values.reshape(M)
         flat_indices = indices.reshape(M)
         block_n = _radix_block_n(inp, N)
@@ -1331,7 +1331,8 @@ def _nanmedian_flat_impl(inp, out=None):
         return result
 
     if (
-        inp.is_cuda
+        IS_NVIDIA_BACKEND
+        and inp.is_cuda
         and inp.dtype in RADIX_SELECT_DTYPES
         and LONG_RADIX_REDUCTION_N < n <= INT32_MAX
     ):
