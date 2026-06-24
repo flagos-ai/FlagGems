@@ -174,7 +174,7 @@ def get_moe_configs(
     embedded_configs, _ = get_embedded_moe_configs()
     device_table = embedded_configs.get(device_name)
     if device_table is None:
-        logger.warning(
+        logger.debug(
             "No embedded MoE configs for device %s. Will use default config.",
             device_name,
         )
@@ -185,9 +185,11 @@ def get_moe_configs(
     key = f"{E},{N},{dtype},{_block_n},{_block_k}"
     configs = device_table.get(key)
     if configs is not None:
-        logger.info("Using embedded MoE config for device=%s, key=%s", device_name, key)
+        logger.debug(
+            "Using embedded MoE config for device=%s, key=%s", device_name, key
+        )
         return configs
-    logger.warning(
+    logger.debug(
         "No embedded MoE config for device=%s, key=%s. Will use default config.",
         device_name,
         key,
