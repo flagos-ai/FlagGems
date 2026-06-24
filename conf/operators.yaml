@@ -2982,6 +2982,28 @@ ops:
       - Tensor
     stages:
       - beta: '5.0'
+  - id: fused_adam
+    description: Fused Adam optimizer step with optional AdamW weight decay, AMSGrad, and gradient maximize support.
+    for:
+      - _fused_adam
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: fused_adam_
+    description: The in-place version of `fused_adam()`.
+    for:
+      - _fused_adam_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: fused_add_rms_norm
     for:
       - add_rms_norm
