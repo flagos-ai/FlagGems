@@ -635,6 +635,7 @@ _FULL_CONFIG = (
     ("tanh_backward", tanh_backward),
     ("tensor_split", tensor_split),
     ("threshold", threshold),
+    ("threshold_", threshold_),
     ("threshold_backward", threshold_backward),
     ("tile", tile),
     ("topk", topk),

@@ -7443,6 +7443,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: threshold_
+    description: >
+      In-place version of threshold(). Thresholds each element of the input Tensor.
+    for:
+      - threshold_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: threshold_backward
     description: This is the backward version for `threshold`.
     for:

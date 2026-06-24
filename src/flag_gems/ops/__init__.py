@@ -456,6 +456,7 @@ from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
 from flag_gems.ops.tensor_split import tensor_split
 from flag_gems.ops.threshold import threshold, threshold_backward
+from flag_gems.ops.threshold_ import threshold_
 from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
@@ -1059,6 +1060,7 @@ __all__ = [
     "tanh_backward",
     "tensor_split",
     "threshold",
+    "threshold_",
     "threshold_backward",
     "tile",
     "to_copy",
