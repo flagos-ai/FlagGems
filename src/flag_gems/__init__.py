@@ -188,6 +188,7 @@ _FULL_CONFIG = (
     ("bitwise_right_shift", bitwise_right_shift),
     ("bmm", bmm),
     ("bmm.out", bmm_out),
+    ("broadcast_to", broadcast_to),
     ("cat", cat),
     ("cat.out", cat_out),
     ("cauchy", cauchy),
