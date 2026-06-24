@@ -12,7 +12,8 @@ except ImportError:
     VLLM_AVAILABLE = False
     SM100_AVAILABLE = False
 
-from tests.test_fp8_fp4_mega_moe import _build_inputs
+from flag_gems.fused.fp8_fp4_mega_moe import fp8_fp4_mega_moe_torch_ref
+from tests.test_fp8_fp4_mega_moe import _build_inputs, _has_native_fp8
 
 from . import base
 
@@ -58,6 +59,29 @@ def _vllm_wrapper(
     )
 
 
+def _torch_ref_wrapper(
+    x_fp8,
+    x_scale,
+    topk_idx,
+    topk_weights,
+    l1_weights,
+    l1_scales,
+    l2_weights,
+    l2_scales,
+    dtype,
+):
+    return fp8_fp4_mega_moe_torch_ref(
+        x_fp8,
+        x_scale,
+        topk_idx,
+        topk_weights,
+        l1_weights,
+        l1_scales,
+        l2_weights,
+        l2_scales,
+    )
+
+
 def _gems_wrapper(
     x_fp8,
     x_scale,
@@ -92,7 +116,8 @@ def _gems_wrapper(
     reason="requires vLLM with DeepGEMM MegaMoE support",
 )
 @pytest.mark.fp8_fp4_mega_moe
-def test_fp8_fp4_mega_moe():
+@pytest.mark.fp8_fp4_mega_moe_vllm
+def test_fp8_fp4_mega_moe_vllm():
     pytest.skip(
         "vLLM/DeepGEMM fp8_fp4_mega_moe requires a torch.distributed "
         "symmetric-memory group, so it cannot be invoked through the generic "
@@ -102,6 +127,22 @@ def test_fp8_fp4_mega_moe():
     bench = FP8FP4MegaMoEBenchmark(
         op_name="fp8_fp4_mega_moe",
         torch_op=_vllm_wrapper,
+        gems_op=_gems_wrapper,
+        dtypes=[torch.bfloat16],
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(
+    not _has_native_fp8(),
+    reason="requires CUDA with native FP8 support (SM90+)",
+)
+@pytest.mark.fp8_fp4_mega_moe
+@pytest.mark.fp8_fp4_mega_moe_torch_ref
+def test_fp8_fp4_mega_moe_torch_ref():
+    bench = FP8FP4MegaMoEBenchmark(
+        op_name="fp8_fp4_mega_moe_torch_ref",
+        torch_op=_torch_ref_wrapper,
         gems_op=_gems_wrapper,
         dtypes=[torch.bfloat16],
     )
