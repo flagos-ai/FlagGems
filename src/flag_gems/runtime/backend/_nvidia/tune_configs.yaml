@@ -1145,6 +1145,15 @@ unbind_copy:
     block_size: [1024, 2048, 4096]
     warps: [4, 8]
 
+grid_sampler_2d:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: block_n
+      num_warps: warps
+    block_n: [1024, 2048]
+    warps: [4, 8]
+
 upsample_nearest1d:
   - gen: true
     param_map:

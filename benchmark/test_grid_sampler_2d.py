@@ -57,5 +57,5 @@ def test_grid_sampler_2d():
             speedup = torch_time / gems_time
             sys.stdout.write(
                 f"SUCCESS  {torch_time:.3f}  {gems_time:.3f}  {speedup:.3f}"
-                f"  {{shape=torch.Size({shape}) dtype={str(dtype).split('.')[-1]}}}\n"
+                f"  {{shape=torch.Size([{N}, {C}, {H}, {W}]) dtype={str(dtype).split('.')[-1]}}}\n"
             )
