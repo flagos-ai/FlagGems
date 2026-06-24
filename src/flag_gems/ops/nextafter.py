@@ -35,9 +35,9 @@ def nextafter_func(input, other):
     # 1.00000012 rounds back to 1.0 in fp16).
     # For float32: use libdevice's nextafter (which also handles NaN / Inf / same).
     dtype = input.dtype
-    if dtype.is_fp16() or dtype.is_bf16():
+    if tl.constexpr(dtype == tl.float16) or tl.constexpr(dtype == tl.bfloat16):
         # NaN check: all exponent bits set and mantissa non-zero
-        if dtype.is_fp16():
+        if tl.constexpr(dtype == tl.float16):
             exp_mask = 0x7C00  # 5 exponent bits
             frac_mask = 0x03FF  # 10 mantissa bits
         else:  # bf16

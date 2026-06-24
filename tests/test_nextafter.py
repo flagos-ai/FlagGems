@@ -47,9 +47,7 @@ EDGE_DTYPES = utils.FLOAT_DTYPES
 
 def _make_special_tensors(dtype, device, *values):
     """Build tensors of the given dtype from Python float values."""
-    return tuple(
-        torch.tensor(v, dtype=dtype, device=device) for v in values
-    )
+    return tuple(torch.tensor(v, dtype=dtype, device=device) for v in values)
 
 
 @pytest.mark.nextafter
@@ -154,10 +152,12 @@ def test_nextafter_small_values(dtype):
     finfo = torch.finfo(dtype)
 
     # Smallest positive values
-    pos = torch.tensor([0.0, finfo.tiny, finfo.smallest_normal],
-                       dtype=dtype, device=device)
-    neg = torch.tensor([-0.0, -finfo.tiny, -finfo.smallest_normal],
-                       dtype=dtype, device=device)
+    pos = torch.tensor(
+        [0.0, finfo.tiny, finfo.smallest_normal], dtype=dtype, device=device
+    )
+    neg = torch.tensor(
+        [-0.0, -finfo.tiny, -finfo.smallest_normal], dtype=dtype, device=device
+    )
 
     for inp_t, other_t in [(pos, neg), (neg, pos)]:
         ref_inp = utils.to_reference(inp_t)
