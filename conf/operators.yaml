@@ -7187,6 +7187,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: sym_stride
+    description: Returns the stride of the input tensor as a tuple of integers. Used for torch.compile symbolic tracing.
+    for:
+      - sym_stride
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Utility
+    stages:
+      - alpha: '5.4'
   - id: t_copy
     description: Transpose a 2D tensor into a new tensor with contiguous memory layout.
     for:
