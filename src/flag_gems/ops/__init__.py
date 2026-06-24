@@ -1,13 +1,21 @@
 from flag_gems.ops.__ilshift__ import __ilshift__
+from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
+    _amp_foreach_non_finite_check_and_unscale_,
+)
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
 from flag_gems.ops._is_all_true import _is_all_true
+from flag_gems.ops._jagged_to_padded_dense_forward import (
+    _jagged_to_padded_dense_forward,
+)
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._prelu_kernel import _prelu_kernel
+from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
+from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
     _thnn_fused_lstm_cell_backward_impl,
 )
@@ -27,6 +35,7 @@ from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
 from flag_gems.ops.addcdiv_ import addcdiv_
 from flag_gems.ops.addcmul import addcmul, addcmul_out
 from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
+from flag_gems.ops.addmm_ import addmm_
 from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addr import addr
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
@@ -213,6 +222,7 @@ from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
+from flag_gems.ops.im2col import im2col
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
 from flag_gems.ops.index_copy_ import index_copy, index_copy_
@@ -417,9 +427,14 @@ from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from flag_gems.ops.special_gammainc import special_gammainc, special_gammainc_out
+from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.special_log_softmax import special_log_softmax
+from flag_gems.ops.special_shifted_chebyshev_polynomial_u import (
+    special_shifted_chebyshev_polynomial_u,
+    special_shifted_chebyshev_polynomial_u_,
+)
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
@@ -481,6 +496,7 @@ __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "__ilshift__",
+    "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_cdist_backward",
     "_conv_depthwise2d",
@@ -488,12 +504,15 @@ __all__ = [
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
     "_is_all_true",
+    "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
     "_prelu_kernel",
+    "_prelu_kernel_backward",
     "_resize_output",
     "_safe_softmax",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_sparse_semi_structured_mm",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
     "_unsafe_masked_index",
@@ -516,6 +535,7 @@ __all__ = [
     "addcmul",
     "addcmul_out",
     "addmm",
+    "addmm_",
     "addmm_dtype",
     "addmm_dtype_out",
     "addmm_out",
@@ -673,13 +693,13 @@ __all__ = [
     "feature_dropout",
     "feature_dropout_",
     "fft",
-    "fix",
     "fill_scalar",
     "fill_scalar_",
     "fill_scalar_out",
     "fill_tensor",
     "fill_tensor_",
     "fill_tensor_out",
+    "fix",
     "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
@@ -742,6 +762,7 @@ __all__ = [
     "i0",
     "i0_",
     "i0_out",
+    "im2col",
     "index",
     "index_add",
     "index_add_",
@@ -855,12 +876,12 @@ __all__ = [
     "nonzero",
     "nonzero_numpy",
     "normal_",
-    "not_equal",
-    "not_equal_scalar",
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
     "normed_cumsum",
+    "not_equal",
+    "not_equal_scalar",
     "one_hot",
     "ones",
     "ones_like",
@@ -987,11 +1008,14 @@ __all__ = [
     "special_chebyshev_polynomial_v",
     "special_gammainc",
     "special_gammainc_out",
+    "special_hermite_polynomial_h",
     "special_i0e",
     "special_i0e_out",
     "special_i1",
     "special_i1_out",
     "special_log_softmax",
+    "special_shifted_chebyshev_polynomial_u",
+    "special_shifted_chebyshev_polynomial_u_",
     "split_with_sizes_copy",
     "sqrt",
     "sqrt_",
