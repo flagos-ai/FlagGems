@@ -184,12 +184,12 @@ def _std_dim_kernel_non_inner(
 
 
 def std(x, dim=None, *, correction=None, keepdim=False):
+    logger.debug("GEMS STD")
     effective_correction = 1.0 if correction is None else float(correction)
     original_shape = x.shape
     input_ndim = x.ndim
 
     if dim is None:
-        logger.debug("GEMS STD (Global Simple Map-Reduce Path)")
         N = x.numel()
         if N == 0 or N - effective_correction <= 0:
             return torch.full([], float("nan"), device=x.device, dtype=x.dtype)
@@ -225,7 +225,6 @@ def std(x, dim=None, *, correction=None, keepdim=False):
         dim_list_normalized = [d % input_ndim for d in dim_list]
 
         if len(dim_list_normalized) == 1:
-            logger.debug("GEMS STD_DIM (single-dim fast path)")
             dim0 = dim_list_normalized[0]
             shape = list(original_shape)
             N = shape[dim0]
@@ -278,9 +277,6 @@ def std(x, dim=None, *, correction=None, keepdim=False):
 
             return out.squeeze(dim=dim0) if not keepdim else out
 
-        logger.warning(
-            f"GEMS std: Using compatible but non-optimal path for dim={dim} (dim_compress)."
-        )
 
         x_view = dim_compress(x, dim_list_normalized)
 
