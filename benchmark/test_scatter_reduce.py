@@ -47,7 +47,7 @@ def scatter_input_fn_factory(reduce=None):
         if reduce is None:
             yield inp, dim, index, src
         else:
-            yield inp, dim, index, src, reduce
+            yield inp, dim, index, src, {"reduce": reduce}
 
     return inner
 
