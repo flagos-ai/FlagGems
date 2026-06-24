@@ -106,7 +106,6 @@ def test_fp8_fp4_mega_moe():
 
 
 @pytest.mark.fp8_fp4_mega_moe
-@pytest.mark.fp8_fp4_mega_moe_torch_ref
 @pytest.mark.skipif(
     not _has_native_fp8(),
     reason="requires CUDA with native FP8 support (SM90+)",

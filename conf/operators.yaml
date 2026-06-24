@@ -2947,7 +2947,7 @@ ops:
       - MoE
       - NeuralNetwork
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: fp8_mqa_logits
     description: |
       For each token in the given E4M3 tensor, iterate all tokens from two other given tensors,
