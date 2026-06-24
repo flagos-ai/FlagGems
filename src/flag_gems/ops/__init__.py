@@ -40,6 +40,7 @@ from flag_gems.ops.addr import addr
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
 from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
 from flag_gems.ops.all import all, all_dim, all_dims
+from flag_gems.ops.alpha_dropout import alpha_dropout
 from flag_gems.ops.amax import amax
 from flag_gems.ops.aminmax import aminmax
 from flag_gems.ops.angle import angle
@@ -550,6 +551,7 @@ __all__ = [
     "all_dim",
     "all_dims",
     "allclose",
+    "alpha_dropout",
     "amax",
     "aminmax",
     "angle",
