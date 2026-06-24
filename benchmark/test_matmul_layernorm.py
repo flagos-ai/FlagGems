@@ -15,7 +15,7 @@ def matmul_layernorm_input_fn(m, n, cur_dtype, device):
 
 class MatmulLayerNormBenchmark(base.GenericBenchmark2DOnly):
     """
-    Benchmark for Matmul_Layer_Norm operation
+    Benchmark for matmul_layernorm operation
     """
 
     def set_more_shapes(self):
