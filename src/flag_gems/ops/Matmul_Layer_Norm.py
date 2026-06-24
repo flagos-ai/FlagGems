@@ -21,7 +21,7 @@ def matmul_layernorm(input, weight, bias=None, eps=1e-5):
     Returns:
         Output tensor of shape (..., N) with layer normalization applied
     """
-    logger.debug("GEMS MATMUL_LAYERNORM FORWARD")
+    logger.debug("GEMS MATMUL_LAYERNORM")
 
     # Handle multi-dimensional input: flatten all dimensions except last
     input_shape = input.shape

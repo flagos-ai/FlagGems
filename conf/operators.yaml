@@ -710,7 +710,7 @@ ops:
       - aten
       - KernelGen
     kind:
-      - Math
+      - NeuralNetwork
     stages:
       - alpha: '5.4'
   - id: atanh_
