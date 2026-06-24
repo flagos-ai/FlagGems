@@ -97,8 +97,12 @@ def test_nextafter_nan(dtype):
         ([nan_val], [nan_val]),
     ]
     for inp_vals, other_vals in cases:
-        inp_t = torch.tensor(inp_vals, dtype=dtype, device=device)
-        other_t = torch.tensor(other_vals, dtype=dtype, device=device)
+        # Create NaN tensors via float32 first, then cast to target dtype.
+        # torch.tensor([float("nan")], dtype=torch.float16) can silently convert
+        # NaN to 1.0 in some PyTorch builds, so we go through float32 where
+        # NaN is reliably representable.
+        inp_t = torch.tensor(inp_vals, dtype=torch.float32, device=device).to(dtype)
+        other_t = torch.tensor(other_vals, dtype=torch.float32, device=device).to(dtype)
         ref_inp = utils.to_reference(inp_t)
         ref_other = utils.to_reference(other_t)
 
