@@ -26,9 +26,7 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def special_round_func(x):
-    # Use nearbyint which implements round-half-to-even (banker's rounding)
-    # This matches torch.round and torch.special.round behavior
-    return tl_extra_shim.nearbyint(x.to(tl.float32)).to(x.dtype)
+    return tl_extra_shim.rint(x.to(tl.float32)).to(x.dtype)
 
 
 def special_round(A):
