@@ -6982,6 +6982,44 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_round
+    description: |
+      Rounds a tensor to the nearest integer, with ties rounding to the nearest
+      even value (banker's rounding).
+    for:
+      - special.round
+      - special.round.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_round_
+    description: |
+      The in-place version of `special_round()`.
+    for:
+      - special.round_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_round_out
+    description: |
+      A variant of `special_round()` with output saved to provided `out`.
+    for:
+      - special.round.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_log_softmax
     description: |
       Applies the log of the softmax function along a given dimension.
