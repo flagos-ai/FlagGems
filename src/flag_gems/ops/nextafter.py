@@ -43,7 +43,6 @@ def nextafter_func(input, other):
         is_nan = (input != input) | (other != other)
 
         x_int = input.to(tl.uint16, bitcast=True)
-        y_int = other.to(tl.uint16, bitcast=True)
 
         # Same value: return input (matches IEEE 754)
         is_equal = input == other
