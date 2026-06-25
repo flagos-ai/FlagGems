@@ -120,6 +120,7 @@ from .repeat_interleave import (
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .scatter import scatter, scatter_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .select_backward import select_backward
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
@@ -129,6 +130,7 @@ from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out
 from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
+from .svd import svd
 from .t_copy import t_copy, t_copy_out
 from .tile import tile
 from .to import to_copy
@@ -287,6 +289,9 @@ __all__ = [
     "scaled_dot_product_attention_forward",
     "scatter",
     "scatter_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "select_backward",
     "sigmoid",
     "sigmoid_",
@@ -303,6 +308,7 @@ __all__ = [
     "special_i1_out",
     "sub",
     "sub_",
+    "svd",
     "sum",
     "sum_dim",
     "sum_dim_out",
