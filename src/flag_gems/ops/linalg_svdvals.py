@@ -20,7 +20,7 @@ import torch
 
 from flag_gems.ops.svd import svd
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 
 def linalg_svdvals(A: torch.Tensor, driver: str = None) -> torch.Tensor:
