@@ -16,20 +16,8 @@
 import logging
 
 import torch
-import triton
-import triton.language as tl
 
 logger = logging.getLogger(__name__)
-
-
-@triton.jit
-def lift_copy_kernel(in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(in_ptr + offsets, mask=mask)
-    tl.store(out_ptr + offsets, x, mask=mask)
 
 
 def lift(A):
@@ -58,17 +46,12 @@ def lift(A):
 def lift_out(A, *, out=None):
     """
     Implements aten::lift.out variant - copies A to out and returns out.
+
+    Uses PyTorch's optimized copy_() instead of a Triton kernel for
+    cross-backend compatibility and better performance.
     """
     logger.debug("GEMS LIFT_OUT")
     if out is None:
         out = torch.empty_like(A, memory_format=torch.contiguous_format)
-
-    A_contiguous = A.contiguous()
-    n_elements = A_contiguous.numel()
-    if n_elements == 0:
-        return out
-
-    # Copy A's values to out using Triton kernel
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    lift_copy_kernel[grid](A_contiguous, out, n_elements, BLOCK_SIZE=1024)
+    out.copy_(A)
     return out
