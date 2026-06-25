@@ -62,8 +62,8 @@ class BenchConfig:
     def __init__(self):
         self.mode = consts.BenchMode.KERNEL
         self.bench_level = consts.BenchLevel.COMPREHENSIVE
-        self.warm_up = consts.DEFAULT_WARMUP_COUNT
-        self.repetition = consts.DEFAULT_ITER_COUNT
+        self.warm_up = consts.DEFAULT_WARMUP_TIME
+        self.repetition = consts.DEFAULT_ITER_TIME
 
         # Speed Up Benchmark Test, Big Shape Will Cause Timeout
         if vendor_name == "kunlunxin":
@@ -106,14 +106,14 @@ def pytest_addoption(parser):
 
     parser.addoption(
         "--warmup",
-        default=consts.DEFAULT_WARMUP_COUNT,
-        help="Number of warmup runs before benchmark run.",
+        default=consts.DEFAULT_WARMUP_TIME,
+        help="Time(ms) of warmup runs before benchmark run.",
     )
 
     parser.addoption(
         "--iter",
-        default=consts.DEFAULT_ITER_COUNT,
-        help="Number of reps for each benchmark run.",
+        default=consts.DEFAULT_ITER_TIME,
+        help="Time(ms) of reps for each benchmark run.",
     )
 
     parser.addoption(
