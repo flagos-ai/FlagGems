@@ -346,6 +346,7 @@ _FULL_CONFIG = (
     ("greater.Scalar_out", greater_scalar_out),
     ("greater.Tensor", greater),
     ("greater.out", greater_out),
+    ("greater_equal_", greater_equal_),
     ("grid_sample", grid_sample),
     ("gt.Scalar", gt_scalar),
     ("gt.Tensor", gt),
