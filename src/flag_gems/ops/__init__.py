@@ -11,6 +11,7 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
+from flag_gems.ops._pdist_forward import _pdist_forward
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
@@ -512,6 +513,7 @@ __all__ = [
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
+    "_pdist_forward",
     "_prelu_kernel_backward",
     "_resize_output",
     "_safe_softmax",
