@@ -4023,6 +4023,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_svdvals
+    description: Computes the singular values of a matrix.
+    for:
+      - linalg_svdvals
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linear
     description: |
       Applies a linear transformation to the incoming data: y = x @ W^T + b.
