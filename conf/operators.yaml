@@ -6988,19 +6988,6 @@ ops:
       even value (banker's rounding).
     for:
       - special.round
-      - special.round.out
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: special_round_
-    description: |
-      The in-place version of `special_round()`.
-    for:
-      - special.round_
     labels:
       - aten
       - KernelGen

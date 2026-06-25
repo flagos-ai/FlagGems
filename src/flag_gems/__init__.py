@@ -604,7 +604,6 @@ _FULL_CONFIG = (
     ("special.log_softmax", special_log_softmax),
     ("special.round", special_round),
     ("special.round.out", special_round_out),
-    ("special.round_", special_round_),
     ("special_shifted_chebyshev_polynomial_u", special_shifted_chebyshev_polynomial_u),
     (
         "special_shifted_chebyshev_polynomial_u_",

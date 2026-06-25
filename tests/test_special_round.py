@@ -20,24 +20,6 @@ def test_special_round(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-# torch.special.round_ does not exist as a native PyTorch function.
-# Test in-place behavior via torch.special.round(..., out=inp) which
-# dispatches to special_round_out with out==inp.
-@pytest.mark.special_round_
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_special_round_(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone())
-
-    ref_out = torch.special.round(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.special.round(inp, out=inp)
-
-    utils.gems_assert_equal(res_out, ref_out)
-    utils.gems_assert_equal(inp, ref_out)
-
-
 @pytest.mark.special_round_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -97,3 +79,39 @@ def test_special_round_midpoints():
         expected_values, dtype=torch.float32, device=flag_gems.device
     )
     utils.gems_assert_equal(res_out, utils.to_reference(expected_tensor))
+
+
+@pytest.mark.special_round
+@pytest.mark.parametrize("decimals", [0, 1, 2, 3, -1, -2])
+def test_special_round_decimals(decimals):
+    inp = torch.tensor(
+        [1.2345, 2.5678, -3.4567, 4.0, 0.0, -0.0, 0.5, -0.5],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.special.round(ref_inp, decimals=decimals)
+    with flag_gems.use_gems():
+        res_out = torch.special.round(inp, decimals=decimals)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.special_round_out
+@pytest.mark.parametrize("decimals", [0, 1, 2, 3, -1, -2])
+def test_special_round_out_decimals(decimals):
+    inp = torch.tensor(
+        [1.2345, 2.5678, -3.4567, 4.0, 0.0, -0.0, 0.5, -0.5],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+    out = torch.empty_like(inp)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.special.round(ref_inp, decimals=decimals)
+    with flag_gems.use_gems():
+        res_out = torch.special.round(inp, decimals=decimals, out=out)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(out, ref_out)

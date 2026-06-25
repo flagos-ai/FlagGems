@@ -23,14 +23,8 @@ from flag_gems.utils import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
-@triton.jit
-def special_round_func(x):
-    x_f32 = x.to(tl.float32)
-    # Manual round-half-to-even (banker's rounding).
-    # abs_x = |x|, floor = floor(|x|), frac = |x| - floor(|x|)
-    #  frac > 0.5 → ceil; frac < 0.5 → floor
-    #  frac == 0.5 → round to even (banker's tie-breaking)
+def _round_half_to_even(x_f32):
+    """Round fp32 values to nearest integer with ties to even (banker's rounding)."""
     sign = tl.where(x_f32 >= 0.0, 1.0, -1.0)
     abs_x = tl.math.abs(x_f32)
     floor_x = tl.math.floor(abs_x)
@@ -47,25 +41,28 @@ def special_round_func(x):
     )
     result = sign * rounded_abs
     # Preserve signed zero: torch.special.round(-0.0) returns -0.0.
-    # When rounding exactly zero, copy the sign from the input.
     result = tl.where(abs_x == 0.0, x_f32, result)
-    return result.to(x.dtype)
+    return result
 
 
-def special_round(A):
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def special_round_func(x, scale):
+    x_f32 = (x * scale).to(tl.float32)
+    result = _round_half_to_even(x_f32)
+    return (result / scale).to(x.dtype)
+
+
+def special_round(A, *, decimals=0):
     logger.debug("GEMS SPECIAL_ROUND")
-    return special_round_func(A)
+    scale = float(10**decimals)
+    return special_round_func(A, scale)
 
 
-def special_round_(A):
-    logger.debug("GEMS SPECIAL_ROUND_")
-    special_round_func(A, out0=A)
-    return A
-
-
-def special_round_out(A, *, out=None):
+def special_round_out(A, *, decimals=0, out=None):
     logger.debug("GEMS SPECIAL_ROUND_OUT")
+    scale = float(10**decimals)
     if out is None:
-        return special_round_func(A)
-    special_round_func(A, out0=out)
+        return special_round_func(A, scale)
+    special_round_func(A, scale, out0=out)
     return out
