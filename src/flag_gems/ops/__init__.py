@@ -538,7 +538,6 @@ __all__ = [
     "acos",
     "acosh",
     "acosh_",
-    "act_quant_triton",
     "adaptive_avg_pool2d",
     "adaptive_max_pool3d_backward",
     "add",
