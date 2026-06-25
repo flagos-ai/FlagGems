@@ -2,6 +2,7 @@ import random
 
 import pytest
 import torch
+from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
@@ -36,6 +37,10 @@ def resolve_neg_input_fn(shape, dtype, device):
 def resolve_conj_input_fn(shape, dtype, device):
     x = torch.randn(size=shape, dtype=dtype, device=device)
     yield x.conj(),
+
+
+def _underscore_mark(name):
+    return MarkDecorator(Mark(name, (), {}))
 
 
 special_operations = [
@@ -100,6 +105,7 @@ def test_isin_perf():
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.unique
+@_underscore_mark("_unique2")
 def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
@@ -151,6 +157,7 @@ def test_multinomial_with_replacement():
 
 
 @pytest.mark.pad
+@pytest.mark.constant_pad_nd
 def test_perf_pad():
     def padding_input_fn(shape, dtype, device):
         input = torch.randn(shape, device=device, dtype=dtype)
@@ -245,6 +252,7 @@ class UpsampleBenchmark(GenericBenchmark):
 
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.upsample_bicubic2d_aa
+@_underscore_mark("_upsample_bicubic2d_aa")
 def test_perf_upsample_bicubic2d_aa():
     def upsample_bicubic2d_aa_input_fn(shape, dtype, device):
         batch, channel, height, weight = shape

@@ -10,6 +10,7 @@ from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES, to_reference
 device = flag_gems.device
 
 
+@pytest.mark.normal_tensor_tensor
 @pytest.mark.normal
 @pytest.mark.parametrize("float", ["none", "mean", "std"])
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)

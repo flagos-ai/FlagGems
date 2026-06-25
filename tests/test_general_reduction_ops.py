@@ -56,6 +56,7 @@ def test_accuracy_all_without_dim(shape, dtype, kind):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.all_dim
 @pytest.mark.all
 @pytest.mark.skipif(SkipVersion("torch", "<2.2"), reason="Skipping Pytorch version.")
 @pytest.mark.parametrize("kind, keepdim, dim, shape", KIND_KEEPDIM_DIMS_SHAPE)
@@ -92,6 +93,7 @@ def test_accuracy_any_without_dim(shape, dtype, kind):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.any_dim
 @pytest.mark.any
 @pytest.mark.skipif(SkipVersion("torch", "<2.2"), reason="Skipping Pytorch version.")
 @pytest.mark.parametrize("kind, keepdim, dim, shape", KIND_KEEPDIM_DIMS_SHAPE)
@@ -184,6 +186,7 @@ def test_accuracy_max_without_dim_uncontiguous(shape, dtype):
 
 
 # TODO: failed at (200, 40999, 3), while successed at this shape in mean_dim
+@pytest.mark.max_dim
 @pytest.mark.max
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
@@ -203,6 +206,7 @@ def test_accuracy_max_dim(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out_value, ref_out_value)
 
 
+@pytest.mark.max_dim
 @pytest.mark.max
 @pytest.mark.parametrize("shape", [(4, 1048577, 4)])
 @pytest.mark.parametrize("keepdim, dim", [(True, 1), (False, 1)])
@@ -236,6 +240,7 @@ def test_accuracy_mean_without_dim(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.mean_dim
 @pytest.mark.mean
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIMS)
@@ -286,6 +291,7 @@ def test_accuracy_min_without_dim_all_inf(shape, dtype):
 
 
 # TODO: failed at (200, 40999, 3), while successed at this shape in mean_dim
+@pytest.mark.min_dim
 @pytest.mark.min
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
@@ -320,6 +326,7 @@ def test_accuracy_prod_without_dim(shape, dtype):
 
 
 # TODO: failed at (200, 40999, 3), while successed at this shape in mean_dim
+@pytest.mark.prod_dim
 @pytest.mark.prod
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
@@ -349,6 +356,7 @@ def test_accuracy_sum_without_dim(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
 
 
+@pytest.mark.sum_dim
 @pytest.mark.sum
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM + [(False, []), (True, [])])

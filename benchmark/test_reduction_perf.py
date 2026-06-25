@@ -52,6 +52,7 @@ class UnaryReductionBenchmark(Benchmark):
 
 forward_operations = [
     ("all", torch.all, FLOAT_DTYPES),
+    ("all_dim", torch.all, FLOAT_DTYPES),
     *(
         [
             ("any", torch.any, FLOAT_DTYPES),
@@ -60,14 +61,20 @@ forward_operations = [
         else []
     ),
     ("amax", torch.amax, FLOAT_DTYPES),
+    ("any_dim", torch.any, FLOAT_DTYPES),
     ("argmax", torch.argmax, FLOAT_DTYPES),
     ("argmin", torch.argmin, FLOAT_DTYPES),
     ("max", torch.max, FLOAT_DTYPES),
+    ("max_dim", torch.max, FLOAT_DTYPES),
     ("mean", torch.mean, FLOAT_DTYPES),
+    ("mean_dim", torch.mean, FLOAT_DTYPES),
     ("min", torch.min, FLOAT_DTYPES),
+    ("min_dim", torch.min, FLOAT_DTYPES),
     ("prod", torch.prod, FLOAT_DTYPES),
+    ("prod_dim", torch.prod, FLOAT_DTYPES),
     ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
     ("sum", torch.sum, FLOAT_DTYPES),
+    ("sum_dim", torch.sum, FLOAT_DTYPES),
     ("var_mean", torch.var_mean, FLOAT_DTYPES),
 ]
 
@@ -173,7 +180,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             torch.nn.functional.cross_entropy,
             cross_entropy_loss_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.cross_entropy_loss,
+            marks=[pytest.mark.CrossEntropyLoss, pytest.mark.cross_entropy_loss],
         ),
         pytest.param(
             "cumsum",

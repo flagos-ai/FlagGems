@@ -29,8 +29,8 @@ from .conftest import TO_CPU
 device = flag_gems.device
 
 
-@pytest.mark.dropout
 @pytest.mark.native_dropout
+@pytest.mark.dropout
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -369,6 +369,7 @@ def test_accuracy_resolve_conj(shape, dtype):
     assert not z.is_conj()
 
 
+@pytest.mark._unique2
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.unique
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
@@ -505,6 +506,7 @@ def test_accuracy_multinomial_without_replacement(pool, dtype):
         assert torch.all(idx_cnt <= 1)
 
 
+@pytest.mark.constant_pad_nd
 @pytest.mark.pad
 @pytest.mark.parametrize("shape", [[1024, 1024], [64, 64, 64, 64]])
 # @pytest.mark.parametrize("dtype", [torch.float32] if TO_CPU else FLOAT_DTYPES)
@@ -551,6 +553,7 @@ def test_pad(shape, dtype, pad_mode, contiguous):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark._upsample_bicubic2d_aa
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="fix")
 @pytest.mark.upsample_bicubic2d_aa
 @pytest.mark.parametrize("align_corners", [False, True])
@@ -717,6 +720,7 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
     gems_assert_equal(res0_out, ref0_out)
 
 
+@pytest.mark.fill_scalar
 @pytest.mark.fill
 @pytest.mark.parametrize("value", [0, 1, 9])
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
@@ -969,6 +973,7 @@ REPEAT_INTERLEAVE_REPEATS = [2]
 REPEAT_INTERLEAVE_DIM = [-1, 0, None]
 
 
+@pytest.mark.repeat_interleave_self_int
 @pytest.mark.repeat_interleave
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES + [(1,)])
 @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
@@ -984,6 +989,7 @@ def test_accuracy_repeat_interleave_self_int(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.repeat_interleave_self_int
 @pytest.mark.repeat_interleave
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
 @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
@@ -999,6 +1005,7 @@ def test_accuracy_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.repeat_interleave_tensor
 @pytest.mark.repeat_interleave
 @pytest.mark.parametrize("shape", UT_SHAPES_1D)
 @pytest.mark.parametrize("dtype", [torch.int32])
@@ -1012,6 +1019,7 @@ def test_accuracy_repeat_interleave_tensor(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.repeat_interleave_self_tensor
 @pytest.mark.repeat_interleave
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
 @pytest.mark.parametrize("dim", [-1, 0, 1])

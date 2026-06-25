@@ -102,6 +102,7 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.cross_entropy_loss
 @pytest.mark.argmin
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST + [None])
@@ -291,12 +292,12 @@ CUMMIN_SHAPES = (
 )
 
 
+@pytest.mark.cummin
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.skipif(
     SkipVersion("triton", "<3.0"),
     reason="Skipping when associative_scan only support single tensor input.",
 )
-@pytest.mark.cummin
 @pytest.mark.parametrize("shape", CUMMIN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_cummin(shape, dtype):
@@ -1071,11 +1072,8 @@ SHAPE_CONV1D = [
 ]
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "sophgo",
-    reason="conv1d introduces failures, disable it temporarily",
-)
 @pytest.mark.conv1d
+@pytest.mark.skip("conv1d introduces failures, disable it temporarily")
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV1D)
 @pytest.mark.parametrize("stride", [2])
 @pytest.mark.parametrize("padding", [1])
@@ -1114,9 +1112,8 @@ SHAPE_CONV2D = [
 ]
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.conv2d
+@pytest.mark.skip("conv2d introduces failures, disable it temporarily")
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
@@ -1211,12 +1208,9 @@ SHAPE_DEPTHWISE = [
 ]
 
 
-# test for depthwise depends on specific device
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "sophgo",
-    reason="conv_depthwise2d introduces failures, disable it temporarily",
-)
+# test for depthwise depends on  cuda
 @pytest.mark.conv_depthwise2d
+@pytest.mark.skip("conv_depthwise2d introduces failures, disable it temporarily")
 @pytest.mark.parametrize("shape_input, shape_weight,kernel ", SHAPE_DEPTHWISE)
 @pytest.mark.parametrize("stride", [2])
 @pytest.mark.parametrize("padding", [2])

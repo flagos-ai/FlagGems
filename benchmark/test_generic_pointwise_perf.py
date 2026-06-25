@@ -62,7 +62,7 @@ def clamp_input_fn(shape, cur_dtype, device):
             torch.clamp,
             clamp_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.clamp,
+            marks=[pytest.mark.clamp, pytest.mark.clamp_tensor],
         ),
         pytest.param(
             "flip",
@@ -72,7 +72,11 @@ def clamp_input_fn(shape, cur_dtype, device):
             marks=pytest.mark.flip,
         ),
         pytest.param(
-            "where", torch.where, where_input_fn, FLOAT_DTYPES, marks=pytest.mark.where
+            "where",
+            torch.where,
+            where_input_fn,
+            FLOAT_DTYPES,
+            marks=[pytest.mark.where, pytest.mark.where_self],
         ),
     ],
 )

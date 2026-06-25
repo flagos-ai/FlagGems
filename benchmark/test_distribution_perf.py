@@ -18,7 +18,7 @@ def normal_input_fn(shape, cur_dtype, device):
             "normal",
             torch.normal,
             normal_input_fn,
-            marks=pytest.mark.normal,
+            marks=[pytest.mark.normal, pytest.mark.normal_tensor_tensor],
         ),
         pytest.param(
             "uniform_",
