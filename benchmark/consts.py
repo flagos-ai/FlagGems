@@ -163,6 +163,7 @@ class BenchMode(Enum):
     KERNEL = "kernel"
     OPERATOR = "operator"
     WRAPPER = "wrapper"
+    CUDAGRAPH = "cudagraph"
 
 
 class BenchLevel(Enum):

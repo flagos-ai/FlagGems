@@ -87,10 +87,11 @@ def pytest_addoption(parser):
         action="store",
         default="kernel",
         required=False,
-        choices=["kernel", "operator", "wrapper"],
+        choices=[mode.value for mode in consts.BenchMode],
         help=(
             "Specify how to measure latency, 'kernel' for device kernel, "
-            "'operator' for end2end operator or 'wrapper' for runtime wrapper."
+            "'operator' for end2end operator, 'wrapper' for runtime wrapper, "
+            "or 'cudagraph' for CUDA Graph captured execution."
         ),
     )
 
