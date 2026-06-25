@@ -3173,6 +3173,18 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: ge_
+    description: The in-place version of `ge()`.
+    for:
+      - ge_.Tensor
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - stable: '2.0'
   - id: geglu
     description: Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid function.
     for:
