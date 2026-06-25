@@ -3,7 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from . import base, consts, utils
+from . import base, utils
 
 
 class MaskedScaleBenchmark(base.Benchmark):
