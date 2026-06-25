@@ -11,8 +11,7 @@ if QUICK_MODE:
     SPARSE_LINEAR_SHAPES = [
         (16, 32),
     ]
-    # Use float32 only in quick mode for faster validation
-    FLOAT_DTYPES = [torch.float32]
+    FLOAT_DTYPES = [torch.float16, torch.bfloat16, torch.float32]
 else:
     # Representative shapes covering small to medium matrix dimensions
     SPARSE_LINEAR_SHAPES = [

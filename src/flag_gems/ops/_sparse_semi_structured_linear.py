@@ -19,12 +19,34 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 
-logger = logging.getLogger("flag_gems._sparse_semi_structured_linear")
+logger = logging.getLogger(__name__)
 
 
 @libentry()
+@libtuner(
+    configs=[
+        triton.Config(
+            {"BLOCK_M": 16, "BLOCK_N": 16, "BLOCK_K": 16}, num_warps=4, num_stages=3
+        ),
+        triton.Config(
+            {"BLOCK_M": 32, "BLOCK_N": 32, "BLOCK_K": 16}, num_warps=4, num_stages=3
+        ),
+        triton.Config(
+            {"BLOCK_M": 32, "BLOCK_N": 32, "BLOCK_K": 32}, num_warps=4, num_stages=2
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 32}, num_warps=8, num_stages=2
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 16}, num_warps=8, num_stages=2
+        ),
+    ],
+    key=["M", "N", "K"],
+    strategy=["log", "log", "log"],
+    flagtune_op_name="sparse_semi_structured_linear",
+)
 @triton.jit
 def _sparse_linear_kernel(
     input_ptr,
@@ -131,13 +153,10 @@ def _sparse_semi_structured_linear(
     # Allocate output in fp32 for accumulation, convert at the end
     output = torch.empty((M, N), device=input.device, dtype=torch.float32)
 
-    # Determine block sizes
-    BLOCK_M = 16
-    BLOCK_N = 16
-    BLOCK_K = 16
-
-    # Launch kernel
-    grid = lambda META: (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
+    # Launch kernel with autotuned block sizes
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+    )
 
     _sparse_linear_kernel[grid](
         input,
@@ -155,9 +174,6 @@ def _sparse_semi_structured_linear(
         meta.stride(1),
         output.stride(0),
         output.stride(1),
-        BLOCK_M=BLOCK_M,
-        BLOCK_N=BLOCK_N,
-        BLOCK_K=BLOCK_K,
     )
 
     # Add bias if provided
