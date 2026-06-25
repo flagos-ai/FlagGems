@@ -411,6 +411,7 @@ _FULL_CONFIG = (
     ("mm", mm),
     ("mm.out", mm_out),
     ("mode", mode),
+    ("moe_gate_top_k_routing", moe_gate_top_k_routing),
     ("mse_loss", mse_loss),
     ("mul.Tensor", mul),
     ("mul_.Tensor", mul_),
