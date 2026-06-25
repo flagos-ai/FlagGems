@@ -22,6 +22,7 @@ from .log_softmax import (
 )
 from .max import max, max_dim
 from .min import min, min_dim
+from .mode import mode
 from .normal import normal_
 from .one_hot import one_hot
 from .ones import ones
@@ -81,6 +82,7 @@ __all__ = [
     "max_dim",
     "min",
     "min_dim",
+    "mode",
     "normal_",
     "one_hot",
     "ones",
