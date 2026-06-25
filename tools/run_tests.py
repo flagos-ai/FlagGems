@@ -929,7 +929,12 @@ def _parse_marks_file(marks_file):
     return marks
 
 
-def collect_marks():
+def collect_marks(ops):
+    # 算子数量少时跳过扫描，直接假设全部存在，让 pytest 自行判断
+    if len(ops) <= 10:
+        pinfo(f"Only {len(ops)} operators requested, skipping mark collection")
+        return set(ops), set(ops)
+
     accuracy_marks = set()
     benchmark_marks = set()
 
@@ -1031,7 +1036,7 @@ def main():
         sys.exit(1)
     pinfo(f"Testing {op_count} operators ...")
 
-    CFG.accuracy_marks, CFG.benchmark_marks = collect_marks()
+    CFG.accuracy_marks, CFG.benchmark_marks = collect_marks(ops)
 
     CFG.ops = ops
 
