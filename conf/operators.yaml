@@ -946,6 +946,18 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: binary_cross_entropy_with_logits
+    description: Compute the binary cross entropy loss with logits.
+    for:
+      - binary_cross_entropy_with_logits
+    labels:
+      - aten
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
   - id: bincount
     description: Count the frequency of each value in an array of non-negative integers.
     for:
@@ -1782,6 +1794,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: cudnn_convolution_transpose
+    description: |
+      Wrapper for torch.cudnn_convolution_transpose, providing autograd support
+      and device-agnostic interface for cuDNN transposed convolution.
+    for:
+      - cudnn_convolution_transpose
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cummax
     description: |
       Returns a named tuple `(values, indices)` where `values` is the cumulative maximum of elements

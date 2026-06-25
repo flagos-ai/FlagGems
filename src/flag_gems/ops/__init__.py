@@ -77,6 +77,9 @@ from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
+from flag_gems.ops.binary_cross_entropy_with_logits import (
+    binary_cross_entropy_with_logits,
+)
 from flag_gems.ops.bincount import bincount
 from flag_gems.ops.bitwise_and import (
     bitwise_and_scalar,
@@ -130,6 +133,7 @@ from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
+from flag_gems.ops.cudnn_convolution_transpose import cudnn_convolution_transpose
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_
@@ -601,6 +605,7 @@ __all__ = [
     "batch_norm_backward",
     "bernoulli",
     "bernoulli_",
+    "binary_cross_entropy_with_logits",
     "bincount",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
@@ -661,6 +666,7 @@ __all__ = [
     "count_nonzero",
     "ctc_loss",
     "cudnn_convolution",
+    "cudnn_convolution_transpose",
     "cummax",
     "cummin",
     "cumprod",
