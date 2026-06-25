@@ -930,7 +930,6 @@ def _parse_marks_file(marks_file):
 
 
 def collect_marks(ops):
-    # 算子数量少时跳过扫描，直接假设全部存在，让 pytest 自行判断
     if len(ops) <= 10:
         pinfo(f"Only {len(ops)} operators requested, skipping mark collection")
         return set(ops), set(ops)
