@@ -6913,6 +6913,11 @@ ops:
       - special_shifted_chebyshev_polynomial_u_
     labels:
       - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_scaled_modified_bessel_k1
     description: |
       Computes the scaled modified Bessel function of the first kind
@@ -6923,7 +6928,6 @@ ops:
     labels:
       - aten
       - pointwise
-      - KernelGen
     kind:
       - Math
     stages:
