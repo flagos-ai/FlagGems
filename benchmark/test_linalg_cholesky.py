@@ -37,7 +37,7 @@ class CholeskyBenchmark(base.Benchmark):
 def test_linalg_cholesky():
     bench = CholeskyBenchmark(
         op_name="linalg_cholesky",
-        torch_op=torch.ops.aten.cholesky,
+        torch_op=torch.ops.aten.linalg_cholesky,
         # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
         dtypes=[torch.float32],
     )
