@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 import pytest
 import torch
@@ -10,10 +10,41 @@ from . import base, utils
 vendor_name = flag_gems.vendor_name
 
 
+def make_paged_kv_cache(
+    num_blocks: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_size: int,
+    dtype: torch.dtype,
+    device: str,
+    non_contiguous: bool,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    shape = (num_blocks, block_size, num_kv_heads, head_size)
+    if not non_contiguous:
+        key_cache = torch.randn(*shape, dtype=dtype, device=device)
+        value_cache = torch.randn_like(key_cache)
+        return key_cache, value_cache
+
+    storage_shape = (num_blocks * 2, block_size, num_kv_heads, head_size)
+    key_storage = torch.randn(*storage_shape, dtype=dtype, device=device)
+    value_storage = torch.randn_like(key_storage)
+    key_cache = key_storage[::2][:num_blocks]
+    value_cache = value_storage[::2][:num_blocks]
+
+    assert key_cache.shape == shape
+    assert value_cache.shape == shape
+    assert key_cache.stride() == value_cache.stride()
+    assert key_cache.stride(-1) == 1
+    assert key_cache.stride(0) != block_size * key_cache.stride(1)
+    return key_cache, value_cache
+
+
 class FlashAttnVarlenBenchmark(base.Benchmark):
     """
     benchmark for flash_attn_varlen_func
     """
+
+    cache_non_contiguous = False
 
     def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
         # Collecting from qwen/Qwen3-1.7B
@@ -149,15 +180,15 @@ class FlashAttnVarlenBenchmark(base.Benchmark):
                 device=device,
             )
             out = torch.empty_like(query)
-            key_cache = torch.randn(
+            key_cache, value_cache = make_paged_kv_cache(
                 num_blocks,
                 block_size,
                 num_kv_heads,
                 head_size,
                 dtype=dtype,
                 device=device,
+                non_contiguous=self.cache_non_contiguous,
             )
-            value_cache = torch.randn_like(key_cache)
             cu_query_lens = torch.tensor(
                 cu_query_lens, dtype=torch.int32, device=device
             )
@@ -308,7 +339,40 @@ def test_flash_attn_varlen_func(monkeypatch):
     bench = FlashAttnVarlenBenchmark(
         op_name="flash_attn_varlen_func",
         torch_op=flash_attn_varlen_func,
-        gems_op=flag_gems.flash_attn_varlen_func,
+        gems_op=flag_gems.ops.flash_attn_varlen_func,
+        # Match the supported flash_attn_varlen_func dtype coverage.
         dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(
+    utils.SkipVersion("vllm", "<0.9"),
+    reason="vLLM version prior to 0.9 does not include the flash_attn_varlen_func API.",
+)
+@pytest.mark.skipif(
+    utils.SkipVersion("torch", "<2.7"),
+    reason="Torch version prior to 2.7 is not compatible with VLLM.",
+)
+@pytest.mark.skipif(vendor_name == "hygon", reason="#2816: RuntimeError")
+@pytest.mark.skipif(vendor_name == "cambricon", reason="#2886: TypeError")
+@pytest.mark.flash_attn_varlen_func
+@pytest.mark.flash_attn_varlen_func_noncontig
+def test_flash_attn_varlen_func_noncontig(monkeypatch):
+    monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
+
+    if vendor_name == "iluvatar":
+        # iluvatar does not have updated vllm_flash_attn, use conversion wrapper
+        flash_attn_varlen_func = flash_attn_varlen_legacy
+    else:
+        from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
+
+    bench = FlashAttnVarlenBenchmark(
+        op_name="flash_attn_varlen_func_noncontig",
+        torch_op=flash_attn_varlen_func,
+        gems_op=flag_gems.ops.flash_attn_varlen_func,
+        # Match the supported flash_attn_varlen_func dtype coverage.
+        dtypes=[torch.float16, torch.bfloat16],
+        cache_non_contiguous=True,
     )
     bench.run()
