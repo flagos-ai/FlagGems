@@ -89,6 +89,7 @@ jobs:
         env:
           GH_VERSION: "2.95.0"
         run: |
+          export HOME=$(eval echo ~"$(whoami)")
           GH_DIR="${HOME}/.local/bin"
           if command -v gh &>/dev/null; then
             echo "gh already available: $(gh --version | head -1)"
