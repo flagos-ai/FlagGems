@@ -1,6 +1,14 @@
 BACKEND=$1
 echo "Setting up environment variable for backend $BACKEND"
 
+# Vendor env scripts append to these variables without guarding against unset.
+# Default them here so callers with `set -u` (e.g. setup.sh) don't fail.
+export CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH:-}"
+export C_INCLUDE_PATH="${C_INCLUDE_PATH:-}"
+export CPLUS_INCLUDE_PATH="${CPLUS_INCLUDE_PATH:-}"
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+export LIBRARY_PATH="${LIBRARY_PATH:-}"
+
 case $BACKEND in
   ascend-cann850|ascend-cann900)
     # This script is provided by the Huawei Ascend CANN toolkit installation.
