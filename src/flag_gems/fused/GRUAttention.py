@@ -67,35 +67,39 @@ def GRUAttention_kernel(
     offs_d = tl.arange(0, D)
     offs_n = tl.arange(0, N)
 
+    mask_d = offs_d < D
+    mask_nd = (offs_n[:, None] < N) & (offs_d[None, :] < D)
+
+    output_elem_ty = output_tensor.dtype.element_ty
+
     # Load query - shape (D,)
     q_ptrs = query + query_offset + offs_d
-    q = tl.load(q_ptrs).to(tl.float32)
+    q = tl.load(q_ptrs, mask=mask_d, other=0.0).to(tl.float32)
 
     # Load all keys - shape (N, D)
     k_ptrs = key + key_offset + offs_n[:, None] * D + offs_d[None, :]
-    k = tl.load(k_ptrs).to(tl.float32)
+    k = tl.load(k_ptrs, mask=mask_nd, other=0.0).to(tl.float32)
 
     # Compute qk scores: (D,) @ (D, N) -> (N,)
     qk = tl.sum(q[None, :] * k, axis=1) * scale
 
-    # Softmax
+    # Softmax (safe softmax with dtype-appropriate epsilon)
+    eps = 1e-12 if output_elem_ty == tl.float32 else 1e-6
     qk_max = tl.max(qk, axis=0)
     qk_shifted = qk - qk_max
     exp_qk = tl.exp(qk_shifted)
-    attn_weights = exp_qk / (tl.sum(exp_qk, axis=0) + 1e-10)
+    attn_weights = exp_qk / (tl.sum(exp_qk, axis=0) + eps)
 
     # Load all values - shape (N, D)
     v_ptrs = value + value_offset + offs_n[:, None] * D + offs_d[None, :]
-    v = tl.load(v_ptrs).to(tl.float32)
+    v = tl.load(v_ptrs, mask=mask_nd, other=0.0).to(tl.float32)
 
     # Compute weighted sum: (N,) @ (N, D) -> (D,)
     output_val = tl.sum(attn_weights[:, None] * v, axis=0)
 
-    # Store output - convert to the output tensor's dtype
-    # output_tensor.dtype gives us the element type
-    output_elem_ty = output_tensor.dtype.element_ty
+    # Store output
     o_ptrs = output_tensor + output_offset + offs_d
-    tl.store(o_ptrs, output_val.to(output_elem_ty))
+    tl.store(o_ptrs, output_val.to(output_elem_ty), mask=mask_d)
 
 
 def GRUAttention(query, key, value, scale=None):

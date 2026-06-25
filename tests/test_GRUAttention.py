@@ -5,17 +5,15 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# GRUAttention test - custom attention mechanism with GRU-style gating
-# Using float32 only for accuracy test due to numerical precision concerns with float16/bfloat16
+# GRUAttention test - scaled dot-product attention
 ATTENTION_SHAPES = [(1, 2, 4, 8), (2, 4, 8, 16)]
 
 
 @pytest.mark.GRUAttention
 @pytest.mark.parametrize("shape", ATTENTION_SHAPES)
-# float32 only: custom GRU attention computation is numerically sensitive
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_GRUAttention(shape, dtype):
-    """Test for GRUAttention operator with float32.
+    """Test for GRUAttention operator.
 
     This implements an attention mechanism:
     - Computes attention scores between query and key
