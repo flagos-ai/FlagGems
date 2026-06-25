@@ -20,7 +20,7 @@ jobs:
       existing: ${{ steps.parse-command.outputs.EXISTING_OP }}
     steps:
       - id: checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       - id: check
         uses: github/command@3442f3fa1efe01bdb024b157083c337902d17372  # v2.0.3
         with:
@@ -83,7 +83,7 @@ jobs:
           echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
           echo "BACKEND=${BACKEND}" >> $GITHUB_ENV
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
       - name: setup-gh
