@@ -5,7 +5,6 @@ from flag_gems.ops._cdist_forward import _cdist_forward
 
 from . import base
 
-
 # Shapes for cdist benchmark: (P, M), (R, M) -> (P, R)
 # torch.cdist doesn't support float16 on CUDA
 CDIST_FORWARD_SHAPES = [
