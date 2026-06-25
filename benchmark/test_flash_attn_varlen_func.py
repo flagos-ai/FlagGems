@@ -1,4 +1,3 @@
-import inspect
 from typing import Any, List, Optional, Tuple
 
 import pytest
@@ -317,34 +316,6 @@ def flash_attn_varlen_legacy(*args, **kwargs):
     return result
 
 
-def get_flash_attn_varlen_baseline():
-    if vendor_name == "iluvatar":
-        return flash_attn_varlen_legacy
-
-    from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
-
-    try:
-        signature = inspect.signature(flash_attn_varlen_func)
-        accepts_kwargs = any(
-            param.kind == inspect.Parameter.VAR_KEYWORD
-            for param in signature.parameters.values()
-        )
-        accepted_kwargs = set(signature.parameters)
-    except (TypeError, ValueError):
-        accepts_kwargs = False
-        accepted_kwargs = {
-            "out",
-            "bias",
-        }
-
-    def flash_attn_varlen_baseline_compat(*args, **kwargs):
-        if not accepts_kwargs:
-            kwargs = {k: v for k, v in kwargs.items() if k in accepted_kwargs}
-        return flash_attn_varlen_func(*args, **kwargs)
-
-    return flash_attn_varlen_baseline_compat
-
-
 @pytest.mark.skipif(
     utils.SkipVersion("vllm", "<0.9"),
     reason="vLLM version prior to 0.9 does not include the flash_attn_varlen_func API.",
@@ -358,9 +329,16 @@ def get_flash_attn_varlen_baseline():
 @pytest.mark.flash_attn_varlen_func
 def test_flash_attn_varlen_func(monkeypatch):
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
+
+    if vendor_name == "iluvatar":
+        # iluvatar does not have updated vllm_flash_attn, use conversion wrapper
+        flash_attn_varlen_func = flash_attn_varlen_legacy
+    else:
+        from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
+
     bench = FlashAttnVarlenBenchmark(
         op_name="flash_attn_varlen_func",
-        torch_op=get_flash_attn_varlen_baseline(),
+        torch_op=flash_attn_varlen_func,
         gems_op=flag_gems.ops.flash_attn_varlen_func,
         # Match the supported flash_attn_varlen_func dtype coverage.
         dtypes=[torch.float16, torch.bfloat16],
@@ -382,9 +360,16 @@ def test_flash_attn_varlen_func(monkeypatch):
 @pytest.mark.flash_attn_varlen_func_noncontig
 def test_flash_attn_varlen_func_noncontig(monkeypatch):
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
+
+    if vendor_name == "iluvatar":
+        # iluvatar does not have updated vllm_flash_attn, use conversion wrapper
+        flash_attn_varlen_func = flash_attn_varlen_legacy
+    else:
+        from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
+
     bench = FlashAttnVarlenBenchmark(
         op_name="flash_attn_varlen_func_noncontig",
-        torch_op=get_flash_attn_varlen_baseline(),
+        torch_op=flash_attn_varlen_func,
         gems_op=flag_gems.ops.flash_attn_varlen_func,
         # Match the supported flash_attn_varlen_func dtype coverage.
         dtypes=[torch.float16, torch.bfloat16],
