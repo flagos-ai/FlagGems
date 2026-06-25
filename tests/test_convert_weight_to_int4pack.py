@@ -1,27 +1,9 @@
-import os
-import sys
+import pytest
+import torch
 
-# Ensure flag_gems is imported from the current worktree, not from
-# an editable install or sys.path entry pointing to a different worktree.
-for _i, _f in enumerate(sys.meta_path):
-    if type(_f).__name__ == "ScikitBuildRedirectingFinder":
-        del sys.meta_path[_i]
-        break
-_src = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
-sys.path.insert(0, _src)
+import flag_gems
 
-# conftest.py imports flag_gems before our workaround runs, so the stale
-# module from another worktree is cached in sys.modules.  Clear it.
-for _mod in list(sys.modules.keys()):
-    if _mod == "flag_gems" or _mod.startswith("flag_gems."):
-        del sys.modules[_mod]
-
-import pytest  # noqa: E402
-import torch  # noqa: E402
-
-import flag_gems  # noqa: E402
-
-from . import accuracy_utils as utils  # noqa: E402
+from . import accuracy_utils as utils
 
 
 # This operator operates on int4 values stored in int32 tensors (a subset of utils.INT_DTYPES).
