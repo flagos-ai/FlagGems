@@ -90,9 +90,11 @@ def _convert_weight_to_int4pack(inp: torch.Tensor, innerKTiles: int) -> torch.Te
     # whose shape depends on innerKTiles: (M/8, N/(8*innerKTiles), 32, innerKTiles/2).
     # For full compatibility with PyTorch's int4 quantization ecosystem,
     # the Marlin tiled format should be implemented in a future update.
-    assert innerKTiles in (2, 4, 8), (
-        f"innerKTiles must be 2, 4, or 8, got {innerKTiles}"
-    )
+    assert innerKTiles in (
+        2,
+        4,
+        8,
+    ), f"innerKTiles must be 2, 4, or 8, got {innerKTiles}"
 
     M, N = inp.shape
     # Ensure N is divisible by 2
