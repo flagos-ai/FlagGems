@@ -87,61 +87,7 @@ def matmuladd_kernel(
     tl.store(c_ptrs, c, mask=bias_mask)
 
 
-def matmuladd(input, other, bias):
-    """
-    Matrix multiplication with addition: output = matmul(input, other) + bias
-    """
-    assert input.shape[1] == other.shape[0], "Incompatible dimensions"
-    assert broadcastable_to(
-        bias.shape, (input.shape[0], other.shape[1])
-    ), "Incompatible input shape"
-    M, K = input.shape
-    _, N = other.shape
-
-    logger.debug(
-        "GEMS MatMulAdd, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
-        M,
-        N,
-        K,
-        input.stride(0) == 1,
-        other.stride(0) == 1,
-        bias.stride(0) == 1,
-    )
-    input = input.contiguous()
-    # other = other.contiguous()
-    out = torch.empty((M, N), device=input.device, dtype=input.dtype)
-    bias = bias.broadcast_to(out.shape)
-
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]),
-        triton.cdiv(N, META["BLOCK_SIZE_N"]),
-    )
-    with torch_device_fn.device(input.device):
-        matmuladd_kernel[grid](
-            input,
-            other,
-            out,
-            bias,
-            M,
-            N,
-            K,
-            input.stride(0),
-            input.stride(1),
-            other.stride(0),
-            other.stride(1),
-            out.stride(0),
-            out.stride(1),
-            bias.stride(0),
-            bias.stride(1),
-        )
-    return out
-
-
-def matmuladd_out(input, other, bias, *, out=None):
-    """
-    Matrix multiplication with addition (out variant): output = matmul(input, other) + bias
-    """
+def _matmuladd(input, other, bias, out=None):
     assert input.shape[1] == other.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (input.shape[0], other.shape[1])
@@ -152,16 +98,6 @@ def matmuladd_out(input, other, bias, *, out=None):
         out = torch.empty((M, N), device=input.device, dtype=input.dtype)
     else:
         assert out.shape == (M, N), "Incompatible output shape"
-    logger.debug(
-        "GEMS MatMulAdd_OUT, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
-        M,
-        N,
-        K,
-        input.stride(0) == 1,
-        other.stride(0) == 1,
-        bias.stride(0) == 1,
-    )
     input = input.contiguous()
     bias = bias.broadcast_to(out.shape)
 
@@ -188,3 +124,19 @@ def matmuladd_out(input, other, bias, *, out=None):
             bias.stride(1),
         )
     return out
+
+
+def matmuladd(input, other, bias):
+    """
+    Matrix multiplication with addition: output = matmul(input, other) + bias
+    """
+    logger.debug("GEMS MATMULADD")
+    return _matmuladd(input, other, bias)
+
+
+def matmuladd_out(input, other, bias, *, out=None):
+    """
+    Matrix multiplication with addition (out variant): output = matmul(input, other) + bias
+    """
+    logger.debug("GEMS MATMULADD_OUT")
+    return _matmuladd(input, other, bias, out=out)

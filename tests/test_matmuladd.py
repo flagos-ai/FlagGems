@@ -1,5 +1,3 @@
-import os
-
 import pytest
 import torch
 
@@ -20,10 +18,10 @@ MNK_SHAPES = [
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_matmuladd(M, N, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skipping fp32 matmuladd test on tsingmicro platform")
-
-    if flag_gems.vendor_name == "mthreads":
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+        pytest.skip(
+            "Issue #3794: Skipping fp32 matmuladd test on TsingMicro because "
+            "TX81 does not support fp32 dot."
+        )
 
     # Test case 1: 1D bias
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
@@ -50,6 +48,3 @@ def test_matmuladd(M, N, K, dtype):
         res_out_2d = flag_gems.matmuladd(mat1, mat2, bias_2d)
 
     utils.gems_assert_close(res_out_2d, ref_out_2d, dtype, reduce_dim=K)
-
-    if flag_gems.vendor_name == "mthreads":
-        del os.environ["MUSA_ENABLE_SQMMA"]
