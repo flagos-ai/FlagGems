@@ -29,8 +29,7 @@ def matmul_bias_activation_kernel(
     stride_ak,
     stride_bk,
     stride_bn,
-    stride_bm,
-    stride_bias_n,
+    stride_bias,
     stride_cm,
     stride_cn,
     BLOCK_SIZE_M: tl.constexpr,
@@ -67,10 +66,9 @@ def matmul_bias_activation_kernel(
     c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
 
-    bias_ptrs = bias_ptr + stride_bm * offs_cm[:, None] + stride_bias_n * offs_cn
-    bias = tl.load(bias_ptrs, mask=c_mask, other=0.0)
-
-    accumulator = accumulator + bias
+    bias_ptrs = bias_ptr + offs_cn * stride_bias
+    bias = tl.load(bias_ptrs, mask=offs_cn < N, other=0.0)
+    accumulator = accumulator + bias[None, :]
     accumulator = tl.where(accumulator > 0, accumulator, 0.0)
 
     c = accumulator.to(bias.dtype)
@@ -87,9 +85,13 @@ def matmul_bias_activation(input, weight, bias):
     M, K = input.shape
     _, N = weight.shape
 
-    input = input.contiguous()
+    if input.stride(0) > 1 and input.stride(1) > 1:
+        input = input.contiguous()
+    if weight.stride(0) > 1 and weight.stride(1) > 1:
+        weight = weight.contiguous()
+    if bias.dim() > 1:
+        bias = bias.reshape(-1)
     out = torch.empty((M, N), device=input.device, dtype=input.dtype)
-    bias = bias.broadcast_to(out.shape)
 
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
@@ -109,7 +111,6 @@ def matmul_bias_activation(input, weight, bias):
             weight.stride(0),
             weight.stride(1),
             bias.stride(0),
-            bias.stride(1),
             out.stride(0),
             out.stride(1),
             BLOCK_SIZE_M,
