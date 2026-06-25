@@ -99,7 +99,6 @@ printf "Python: $(python --version)"
 ok
 
 # ── Source vendor environment ─────────────────────────────────
-export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 export USE_TRITON="${USE_TRITON:-}"
 source tools/env.sh "${VENDOR}"
 
