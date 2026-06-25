@@ -6905,7 +6905,6 @@ ops:
     description: Computes the logarithm of the absolute value of the Gamma function on input.
     for:
       - special.gammaln
-      - special.gammaln.out
     labels:
       - aten
       - KernelGen
