@@ -1,11 +1,8 @@
 import pytest
 import torch
-import triton
 
 import flag_gems
 from flag_gems.utils import shape_utils
-
-print(f"[DEBUG] triton={triton.__version__}, torch={torch.__version__}, python={__import__('sys').version}")
 
 from . import base, consts
 
