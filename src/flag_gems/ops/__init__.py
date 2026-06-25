@@ -263,6 +263,7 @@ from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mul import mul, mul_
+from flag_gems.ops.Multi_Query_Attention_MQA import multi_query_attention_mqa
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.mv import mv
 from flag_gems.ops.nan_to_num import nan_to_num
@@ -797,6 +798,7 @@ __all__ = [
     "mse_loss",
     "mul",
     "mul_",
+    "multi_query_attention_mqa",
     "multinomial",
     "mv",
     "nan_to_num",
