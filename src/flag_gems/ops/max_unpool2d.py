@@ -97,7 +97,15 @@ def max_unpool2d_kernel(
     out_offsets = h_orig * out_stride_h + w_orig * out_stride_w
 
     # Store values at original positions
-    out_mask = (h_offsets[:, None] < pooled_h) & (w_offsets[None, :] < pooled_w)
+    # Bounds check: flat indices decoded from max_pool2d may land outside
+    # the output tensor when input dims are not evenly divisible by stride
+    # (e.g. ceil_mode=False MaxPool on odd-sized dims). In that case skip.
+    in_bounds = (h_orig >= 0) & (h_orig < out_h) & (w_orig >= 0) & (w_orig < out_w)
+    out_mask = (
+        (h_offsets[:, None] < pooled_h)
+        & (w_offsets[None, :] < pooled_w)
+        & in_bounds
+    )
     tl.store(output_base_ptr + out_offsets, pooled_vals, mask=out_mask)
 
 
