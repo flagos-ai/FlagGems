@@ -2944,6 +2944,23 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.1'
+  - id: fp8_fp4_mega_moe
+    description: |
+      Functional Triton fallback for local FP8 x FP4 MegaMoE. It consumes
+      staged FP8 activations, packed FP4 expert weights, scales, and top-k
+      routing tensors, then computes the two-layer SwiGLU MoE output.
+    for:
+      - flag_gems.fused.fp8_fp4_mega_moe
+      - vllm.third_party.deep_gemm.fp8_fp4_mega_moe
+    labels:
+      - fused
+      - vLLM
+      - Triton
+    kind:
+      - MoE
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: fp8_mqa_logits
     description: |
       For each token in the given E4M3 tensor, iterate all tokens from two other given tensors,
