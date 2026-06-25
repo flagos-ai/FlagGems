@@ -1,10 +1,10 @@
 ops:
-  - id: MatMulAdd
+  - id: matmuladd
     description: Computes matrix multiplication followed by bias addition.
     for:
       - matmuladd
     labels:
-      - aten
+      - fused
       - KernelGen
     kind:
       - Math

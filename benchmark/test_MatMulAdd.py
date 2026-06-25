@@ -30,11 +30,11 @@ class MatMulAddBenchmark(base.BlasBenchmark):
         return args[0].shape[0] * args[1].shape[1] * (args[0].shape[1] * 2 + 1)
 
 
-@pytest.mark.MatMulAdd
-def test_MatMulAdd():
+@pytest.mark.matmuladd
+def test_matmuladd():
     bench = MatMulAddBenchmark(
         input_fn=matmuladd_input_fn,
-        op_name="MatMulAdd",
+        op_name="matmuladd",
         torch_op=matmuladd_torch_wrapper,
         dtypes=consts.FLOAT_DTYPES,
     )

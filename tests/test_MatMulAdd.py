@@ -15,7 +15,7 @@ MNK_SHAPES = [
 ]
 
 
-@pytest.mark.MatMulAdd
+@pytest.mark.matmuladd
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_matmuladd(M, N, K, dtype):
