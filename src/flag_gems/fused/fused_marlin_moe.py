@@ -29,6 +29,7 @@ import triton
 import triton.language as tl
 from torch.utils.weak import WeakTensorKeyDictionary
 
+from flag_gems import runtime
 from flag_gems.fused.fused_moe import (
     MoEActivation,
     _get_config_dtype_str,
@@ -42,6 +43,7 @@ from flag_gems.fused.fused_moe import (
 from flag_gems.fused.moe_align_block_size import moe_align_block_size
 from flag_gems.fused.moe_sum import moe_sum
 from flag_gems.fused.silu_and_mul import silu_and_mul_out
+from flag_gems.utils import libentry, libtuner
 
 # ----------------------------------------------------------------------------
 # quant_type_id constants — mirror a subset of vLLM scalar_types ids.
@@ -840,35 +842,13 @@ def fused_moe_w4a16_gptq(
     return out_hidden_states
 
 
-def _mxfp4_autotune_configs():
-    cfgs = []
-    for bn in (16, 32, 64):
-        for w in (2, 4):
-            for s in (4, 5, 6):
-                cfgs.append(
-                    triton.Config(
-                        {"BLOCK_SIZE_N": bn, "GROUP_SIZE_M": 1},
-                        num_warps=w,
-                        num_stages=s,
-                    )
-                )
-    for bn in (128, 256):
-        for gm in (1, 4):
-            for w in (4, 8):
-                for s in (2, 3, 4):
-                    cfgs.append(
-                        triton.Config(
-                            {"BLOCK_SIZE_N": bn, "GROUP_SIZE_M": gm},
-                            num_warps=w,
-                            num_stages=s,
-                        )
-                    )
-    return cfgs
-
-
-@triton.autotune(
-    configs=_mxfp4_autotune_configs(),
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("fused_marlin_moe_mxfp4"),
     key=["N", "K", "BLOCK_SIZE_M", "SWAP_AB"],
+    strategy=["align32", "align32", "align32", "default"],
+    flagtune_op_name="fused_marlin_moe_mxfp4",
+    flagtune_expand_op_name="fused_marlin_moe_mxfp4",
 )
 @triton.jit
 def _mxfp4_moe_gemm_kernel(
