@@ -414,6 +414,20 @@ ops:
       - Math
     stages:
       - stable: '2.1'
+  - id: alpha_dropout
+    description: |
+      Applies alpha dropout to the input. Alpha Dropout is a type of Dropout
+      that maintains the self-normalizing property by scaling activations
+      with SELU activation function parameters.
+    for:
+      - alpha_dropout
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: amax
     description: Returns the maximum value of each slice of the `input` tensor in the given dimension(s) `dim`.
     for:
@@ -694,6 +708,28 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: asin
+    description: Returns a new tensor with the arcsine of the elements of input.
+    for:
+      - asin
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: asin_
+    description: The in-place version of `asin()`.
+    for:
+      - asin_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: asinh
     description: Returns a new tensor with the inverse hyperbolic sine of the elements of input.
     for:
@@ -1100,6 +1136,17 @@ ops:
     stages:
       - stable: '5.0'
     cpp: '4.0'
+  - id: broadcast_to
+    description: Broadcasts input to the shape size. Equivalent to calling input.expand(size).
+    for:
+      - broadcast_to
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: bucket_sort_topk
     description: A wrapper of the TLE version and the Triton version bucket-sort topk operation.
     for:
@@ -1365,6 +1412,18 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: clone
+    description: Pure layout/memory operation (clone).
+    for:
+      - clone
+    labels:
+      - KernelGen
+      - aten
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: col2im
     description: |
       Rearranges column blocks back into a multidimensional tensor (inverse of im2col).
@@ -1816,6 +1875,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: dequantize
+    description: >
+      Returns an fp32 Tensor by dequantizing a quantized Tensor.
+    for:
+      - dequantize
+      - dequantize.self
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dequantize_and_gather_k_cache
     description: |
       Dequantizes FP8 K-cache entries and gathers them into a BF16 tensor for DeepSeekV4 attention.
@@ -1887,6 +1959,19 @@ ops:
       - LinearAlg
     stages:
       - stable: '2.2'
+  - id: diagonal_copy
+    description: |
+      Performs the same operation as torch.diagonal, but all output tensors
+      are freshly created instead of aliasing the input.
+    for:
+      - diagonal_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: diff
     description: |
       Computes the n-th forward difference along the given dimension.
@@ -2306,6 +2391,28 @@ ops:
       - Science
     stages:
       - stable: '2.2'
+  - id: erfinv
+    description: Computes the inverse error function of `input`.
+    for:
+      - erfinv
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: erfinv_
+    description: The in-place version of `erfinv()`.
+    for:
+      - erfinv_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: euclidean_dist
     description: |
       Computes pairwise Euclidean distances between rows of two 2D tensors.
@@ -2837,6 +2944,22 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.1'
+  - id: fp8_fp4_paged_mqa_logits
+    description: |
+      Compute paged multi-query attention logits from FP8 queries against
+      FP8/FP4 paged KV cache with per-token scaling. Used in DeepSeek-V4
+      decode-phase inference with adaptive tile sizing.
+    for:
+      - vllm.utils.deep_gemm.fp8_fp4_paged_mqa_logits
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.3'
   - id: fp8_mqa_logits
     description: |
       For each token in the given E4M3 tensor, iterate all tokens from two other given tensors,
@@ -2888,6 +3011,28 @@ ops:
       - Tensor
     stages:
       - beta: '5.0'
+  - id: fused_adam
+    description: Fused Adam optimizer step with optional AdamW weight decay, AMSGrad, and gradient maximize support.
+    for:
+      - _fused_adam
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: fused_adam_
+    description: The in-place version of `fused_adam()`.
+    for:
+      - _fused_adam_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: fused_add_rms_norm
     for:
       - add_rms_norm
@@ -3905,6 +4050,28 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: lgamma
+    description: Computes the logarithm of the gamma function on input.
+    for:
+      - lgamma
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: lgamma_
+    description: In-place version of lgamma().
+    for:
+      - lgamma_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: lift_fresh_copy
     description: |
       Creates a new, independent copy of a tensor within a compiled graph.
@@ -3918,6 +4085,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_eigvals
+    description: Computes the eigenvalues of a square matrix.
+    for:
+      - _linalg_eigvals
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linear
     description: |
       Applies a linear transformation to the incoming data: y = x @ W^T + b.
@@ -3928,17 +4106,6 @@ ops:
       - KernelGen
     kind:
       - BLAS
-    stages:
-      - alpha: '5.4'
-  - id: linalg_eigvals
-    description: Computes the eigenvalues of a square matrix.
-    for:
-      - _linalg_eigvals
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
     stages:
       - alpha: '5.4'
   - id: linspace
@@ -5277,6 +5444,20 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: prelu_kernel_backward
+    description: |
+      Computes backward gradients for Parametric ReLU (PReLU) forward pass.
+      PReLU scales negative inputs by a learnable per-channel weight. This backward
+      kernel computes gradients with respect to both input and weight.
+    for:
+      - _prelu_kernel_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: prod
     description: Returns the product of all elements in the `input` tensor.
     for:
@@ -6765,6 +6946,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: sparse_semi_structured_mm
+    description: >
+      Performs a sparse semi-structured matrix multiplication of a dense matrix
+      with a 2:4 sparsity pattern against a dense matrix.
+    for:
+      - _sparse_semi_structured_mm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: special_chebyshev_polynomial_v
     description: |
       Triton kernel implementation for special_chebyshev_polynomial_v.
@@ -6792,6 +6986,18 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_hermite_polynomial_h
+    description: |
+      Computes the physicist's Hermite polynomial H_n(x) of degree n at input.
+    for:
+      - special_hermite_polynomial_h
+    kind:
+      - Math
+    labels:
+      - aten
+      - KernelGen
+    stages:
+      - alpha: '5.1'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
@@ -6854,6 +7060,24 @@ ops:
       Applies the log of the softmax function along a given dimension.
     for:
       - special.log_softmax
+  - id: special_shifted_chebyshev_polynomial_u
+    description: |
+      Computes the shifted Chebyshev polynomial of the second kind U_n^*(x)
+      for each pair of elements in `x` and `n`.
+    for:
+      - special_shifted_chebyshev_polynomial_u
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_shifted_chebyshev_polynomial_u_
+    description: |
+      Inplace variant of `special_shifted_chebyshev_polynomial_u`.
+    for:
+      - special_shifted_chebyshev_polynomial_u_
     labels:
       - aten
       - KernelGen
@@ -6976,6 +7200,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: subtract_
+    description: In-place version of subtract. Subtracts other, scaled by alpha, from input.
+    for:
+      - subtract_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: sum
     description: Returns the sum of all elements in the `input` tensor.
     for:
@@ -7156,6 +7391,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: threshold_
+    description: >
+      In-place version of threshold(). Thresholds each element of the input Tensor.
+    for:
+      - threshold_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: threshold_backward
     description: This is the backward version for `threshold`.
     for:
