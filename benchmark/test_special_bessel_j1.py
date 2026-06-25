@@ -2,24 +2,16 @@
 import pytest
 import torch
 
-import flag_gems
-
-from . import base, consts
+from . import base
 
 
-# torch.special.bessel_j1 on CUDA dispatches to bessel_j1_cuda which only supports
-# float32/double, so we benchmark fp32 only on CUDA. On non-NVIDIA backends the
-# reference may support more dtypes, so we use FLOAT_DTYPES.
+# torch.special.bessel_j1 only supports float32/float64 on all backends,
+# so we benchmark float32 only.
 @pytest.mark.special_bessel_j1
 def test_special_bessel_j1():
-    if flag_gems.device == "cuda":
-        # CUDA bessel_j1_cuda only supports float32/float64; benchmark fp32.
-        dtypes = [torch.float32]
-    else:
-        dtypes = consts.FLOAT_DTYPES
     bench = base.UnaryPointwiseBenchmark(
         op_name="special_bessel_j1",
         torch_op=torch.special.bessel_j1,
-        dtypes=dtypes,
+        dtypes=[torch.float32],
     )
     bench.run()
