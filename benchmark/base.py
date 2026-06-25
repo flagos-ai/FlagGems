@@ -48,7 +48,7 @@ def get_iter_count(fn):
             fn()
         torch_device_fn.synchronize()
         end = time.time()
-        latency = (end - start) / 5
+        latency = (end - start) / 5 * 1000
     elif Config.mode == consts.BenchMode.WRAPPER:
         torch_device_fn.synchronize()
         start = time.time()
@@ -56,7 +56,7 @@ def get_iter_count(fn):
             fn()
         end = time.time()
         torch_device_fn.synchronize()
-        latency = (end - start) / 5
+        latency = (end - start) / 5 * 1000
     else:
         raise ValueError("Unsupport Benchmark Mode.")
     return max(1, int(Config.warm_up / latency)), max(
