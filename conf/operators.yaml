@@ -1875,6 +1875,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: deg2rad_
+    description: The in-place version of `deg2rad()`.
+    for:
+      - deg2rad_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dequantize
     description: >
       Returns an fp32 Tensor by dequantizing a quantized Tensor.
