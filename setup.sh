@@ -74,7 +74,10 @@ if command -v uv &>/dev/null; then
   ok
 else
   printf " not found, installing ...\n"
+  # Ensure HOME is correct — some runners inherit HOME=/root from sudo
+  export HOME=$(eval echo ~"$(whoami)")
   ARCH=$(uname -m)
+  mkdir -p "$HOME/.local/bin"
   curl -sSf "${UV_MIRROR}/uv-${ARCH}-${UV_VERSION}-linux-gnu.tar.gz" \
     | tar xz -C "$HOME/.local/bin" 2>/dev/null \
     || { curl -LsSf https://astral.sh/uv/install.sh | sh; }
