@@ -95,6 +95,13 @@ from flag_gems.ops.bitwise_or import (
     bitwise_or_tensor_,
 )
 from flag_gems.ops.bitwise_right_shift import bitwise_right_shift
+from flag_gems.ops.bitwise_xor import (
+    bitwise_xor_scalar,
+    bitwise_xor_scalar_,
+    bitwise_xor_scalar_tensor,
+    bitwise_xor_tensor,
+    bitwise_xor_tensor_,
+)
 from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.broadcast_to import broadcast_to
 from flag_gems.ops.cat import cat, cat_out
@@ -616,6 +623,11 @@ __all__ = [
     "bitwise_or_tensor",
     "bitwise_or_tensor_",
     "bitwise_right_shift",
+    "bitwise_xor_scalar",
+    "bitwise_xor_scalar_",
+    "bitwise_xor_scalar_tensor",
+    "bitwise_xor_tensor",
+    "bitwise_xor_tensor_",
     "bmm",
     "bmm_out",
     "broadcast_to",
