@@ -8,7 +8,7 @@ from . import base, consts
 def test_special_sinc():
     bench = base.UnaryPointwiseBenchmark(
         op_name="special_sinc",
-        torch_op=torch.special.sinc,
+        torch_op=torch.ops.aten.special_sinc,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
