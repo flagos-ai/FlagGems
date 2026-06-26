@@ -52,17 +52,25 @@ dependencies = [
 
 [project.optional-dependencies]
 
-ascend = [
+ascend-cann850 = [
     "torch==2.9.0+cpu",
     "torch-npu==2.9.0",
     "flagtree==0.5.0+ascend3.2",
 ]
 
-ascend-cann9 = [
+ascend-cann900 = [
     "torch==2.10.0+cpu",
     "torch-npu==2.10.0",
     "triton==3.5.0",
     # "triton-ascend==3.2.1",
+]
+
+cambricon = [
+    "cambricon_dali==0.13.0",
+    "torch==2.7.1+cpu",
+    "torch-mlu==1.29.2+torch2.7.1",
+    "torch-mlu-ops==1.8.0+torch2.7.1",
+    "triton==3.2.0+mlu1.7.2",
 ]
 
 enflame = [
