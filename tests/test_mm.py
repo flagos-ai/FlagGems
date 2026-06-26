@@ -3,6 +3,7 @@ import random
 import numpy as np
 import pytest
 import torch
+import triton
 
 import flag_gems
 
@@ -83,6 +84,93 @@ def test_mm_broadcast_stride_zero(dtype):
         res_out = torch.mm(a, b)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+def test_mm_out_vllm_tma_column_major_weight():
+    """Regression test for vLLM Inductor mm_out with a column-major BF16 weight."""
+    torch.manual_seed(0)
+    M, K, N = 4096, 4096, 3328
+    dtype = torch.bfloat16
+
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2_storage = torch.randn((N, K), dtype=dtype, device=flag_gems.device)
+    mat2 = mat2_storage.t()
+    out = torch.empty((M, N), dtype=dtype, device=flag_gems.device)
+
+    assert mat2.shape == (K, N)
+    assert mat2.stride() == (1, K)
+
+    ref_mat1 = utils.to_reference(mat1, True)
+    ref_mat2 = utils.to_reference(mat2, True)
+    ref_out = torch.empty((M, N), dtype=ref_mat1.dtype, device=ref_mat1.device)
+    torch.mm(ref_mat1, ref_mat2, out=ref_out)
+
+    with flag_gems.use_gems():
+        torch.mm(mat1, mat2, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(
+    not hasattr(
+        getattr(getattr(triton, "tools", None), "tensor_descriptor", None),
+        "TensorDescriptor",
+    ),
+    reason="Host TMA TensorDescriptor is required for this regression test.",
+)
+def test_mm_kernel_general_host_tma_vllm_column_major_weight_compile_error():
+    """Reproduce the vLLM TMA descriptor compile error for a column-major BF16 weight."""
+    from triton.tools.tensor_descriptor import TensorDescriptor
+
+    from flag_gems.runtime.backend._nvidia.hopper.ops.mm import (
+        mm_kernel_general_host_tma,
+    )
+
+    torch.manual_seed(0)
+    M, K, N = 64, 4096, 3328
+    dtype = torch.bfloat16
+
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2_storage = torch.randn((N, K), dtype=dtype, device=flag_gems.device)
+    mat2 = mat2_storage.t()
+    out = torch.empty((M, N), dtype=dtype, device=flag_gems.device)
+
+    assert mat2.shape == (K, N)
+    assert mat2.stride() == (1, K)
+
+    dummy_block = [1, 1]
+    a_desc = TensorDescriptor(mat1, mat1.shape, mat1.stride(), dummy_block)
+    b_desc = TensorDescriptor(mat2, mat2.T.shape, mat2.T.stride(), dummy_block)
+    c_desc = TensorDescriptor(out, out.shape, out.stride(), dummy_block)
+
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+    )
+    mm_kernel_general_host_tma.fn.fn[grid](
+        a_desc,
+        b_desc,
+        c_desc,
+        M,
+        N,
+        K,
+        mat1.stride(0),
+        mat1.stride(1),
+        mat2.stride(0),
+        mat2.stride(1),
+        out.stride(0),
+        out.stride(1),
+        BLOCK_M=64,
+        BLOCK_N=128,
+        BLOCK_K=64,
+        GROUP_M=8,
+        A_ROW_MAJOR=True,
+        B_ROW_MAJOR=False,
+        dtype="bfloat16",
+        num_warps=4,
+        num_stages=2,
+    )
 
 
 @pytest.mark.mm
