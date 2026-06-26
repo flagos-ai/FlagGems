@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from flag_gems.ops.rms_norm import rms_norm_fp8_w8a16
+from flag_gems.ops.rmsnorm_w8a16 import rms_norm_fp8_w8a16
 
 from . import base
 
