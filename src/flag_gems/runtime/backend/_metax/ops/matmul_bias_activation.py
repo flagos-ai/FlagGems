@@ -67,9 +67,9 @@ def matmul_bias_activation_kernel(
     c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
 
-    bias_ptrs = bias_ptr + offs_cn * stride_bias
+    bias_ptrs = bias_ptr + offs_cn
     bias = tl.load(bias_ptrs, mask=offs_cn < N, other=0.0)
-    accumulator = accumulator + bias[None, :]
+    accumulator = accumulator + bias
     accumulator = tl.where(accumulator > 0, accumulator, 0.0)
 
     c = accumulator.to(bias.dtype)
