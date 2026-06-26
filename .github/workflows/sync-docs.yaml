@@ -1,0 +1,27 @@
+name: Sync docs branch
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: gh-pages
+          submodules: recursive
+          fetch-depth: 0
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
+        with:
+          ref: gh-pages
+          submodules: recursive
+          fetch-depth: "0"
+
+      - id: rebase
+        run: |
+          git rebase master
+          git push -u origin gh-pages -f

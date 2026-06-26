@@ -15,5 +15,5 @@ def logical_and_func(x, y):
 
 
 def logical_and(A, B):
-    logger.debug("GEMS LOGICAL_AND")
+    logger.debug("GEMS_KUNLUNXIN LOGICAL_AND")
     return logical_and_func(A, B)
