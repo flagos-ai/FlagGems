@@ -1,10 +1,6 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
-
-logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -174,7 +170,6 @@ def _launch_adaptive_avg_pool3d_kernel(x, out):
 
 
 def _adaptive_avg_pool3d(input: torch.Tensor, output_size):
-    logger.debug("GEMS _ADAPTIVE_AVG_POOL3D")
     x5d, squeezed = _prepare_5d_input(input)
     D_out, H_out, W_out = _normalize_output_size_3d(output_size)
 
@@ -192,7 +187,6 @@ def _adaptive_avg_pool3d(input: torch.Tensor, output_size):
 
 
 def _adaptive_avg_pool3d_out(input: torch.Tensor, output_size, out: torch.Tensor):
-    logger.debug("GEMS _ADAPTIVE_AVG_POOL3D_OUT")
     x5d, squeezed = _prepare_5d_input(input)
     D_out, H_out, W_out = _normalize_output_size_3d(output_size)
 
