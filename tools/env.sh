@@ -1,14 +1,30 @@
-VENDOR=$1
-echo "Setting up environment variable for vendor $VENDOR"
+BACKEND=$1
+echo "Setting up environment variable for backend $BACKEND"
 
-case $VENDOR in
-  ascend|ascend-cann9)
+# Vendor env scripts append to these variables without guarding against unset.
+# Default them here so callers with `set -u` (e.g. setup.sh) don't fail.
+export CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH:-}"
+export C_INCLUDE_PATH="${C_INCLUDE_PATH:-}"
+export CPLUS_INCLUDE_PATH="${CPLUS_INCLUDE_PATH:-}"
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+export LIBRARY_PATH="${LIBRARY_PATH:-}"
+
+case $BACKEND in
+  ascend-cann850|ascend-cann900)
     # This script is provided by the Huawei Ascend CANN toolkit installation.
     if [ -f /usr/local/Ascend/ascend-toolkit/set_env.sh ]; then
       source /usr/local/Ascend/ascend-toolkit/set_env.sh
-      # TODO: Check if this is necessary
-      # export TRITON_ALL_BLOCKS_PARALLEL=1
     fi
+    if [ -f /usr/local/Ascend/toolbox/set_env.sh ]; then
+      source /usr/local/Ascend/toolbox/set_env.sh
+    fi
+
+    # TODO: Check if this is necessary
+    # export TRITON_ALL_BLOCKS_PARALLEL=1
+    ;;
+  cambricon)
+    export PATH=/usr/local/neuware/bin:$PATH
+    export LD_LIBRARY_PATH=/usr/local/neuware/lib64:$LD_LIBRARY_PATH
     ;;
   hygon)
     source /opt/dtk-26.04/env.sh
@@ -44,6 +60,10 @@ case $VENDOR in
       SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
       export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH
     fi
+    ;;
+  thead)
+    # The envsetup.sh is provided by the PPU SDK
+    source /usr/local/PPU_SDK/envsetup.sh
     ;;
   tsingmicro)
     export TX8_DEPS_ROOT=/opt/tx8_deps
