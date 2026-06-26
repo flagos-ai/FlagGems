@@ -168,6 +168,7 @@ def pytest_configure(config):
             filemode="w",
             level=logging.INFO,
             format="[%(levelname)s] %(message)s",
+            force=(vendor_name == "sophgo"),
         )
 
 
