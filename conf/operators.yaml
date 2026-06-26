@@ -2944,6 +2944,22 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.1'
+  - id: fp8_fp4_paged_mqa_logits
+    description: |
+      Compute paged multi-query attention logits from FP8 queries against
+      FP8/FP4 paged KV cache with per-token scaling. Used in DeepSeek-V4
+      decode-phase inference with adaptive tile sizing.
+    for:
+      - vllm.utils.deep_gemm.fp8_fp4_paged_mqa_logits
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.3'
   - id: fp8_mqa_logits
     description: |
       For each token in the given E4M3 tensor, iterate all tokens from two other given tensors,
