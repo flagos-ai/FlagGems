@@ -104,6 +104,7 @@ _FULL_CONFIG = (
     ("_sparse_semi_structured_mm", _sparse_semi_structured_mm),
     ("_thnn_fused_lstm_cell_backward_impl", _thnn_fused_lstm_cell_backward_impl),
     ("_unique2", _unique2),
+    ("_unsafe_index", _unsafe_index),
     ("_unsafe_masked_index", _unsafe_masked_index),
     ("_unsafe_masked_index_put_accumulate", _unsafe_masked_index_put_accumulate),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),

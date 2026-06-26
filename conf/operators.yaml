@@ -7836,6 +7836,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: unsafe_index
+    description: |
+      Indexes `input` along each dimension with the given indices, matching
+      `aten._unsafe_index`. Unlike the safe `index` operator, it performs no
+      bounds checking and rejects `bool` / `int8` masks.
+    for:
+      - _unsafe_index
+    labels:
+      - aten
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: unsafe_masked_index
     description: Gathers elements from self at given indices where mask is True, filling unmasked positions with a scalar value.
     for:

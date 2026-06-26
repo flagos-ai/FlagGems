@@ -481,6 +481,7 @@ from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
+from flag_gems.ops.unsafe_index import _unsafe_index
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -537,6 +538,7 @@ __all__ = [
     "_sparse_semi_structured_mm",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
+    "_unsafe_index",
     "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
