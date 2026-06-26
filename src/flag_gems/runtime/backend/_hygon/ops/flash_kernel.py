@@ -281,7 +281,7 @@ def flash_fwd_kernel_heur_block_k(args):
 
 @libentry()
 @triton.autotune(
-    configs=list(filter(keep, runtime.get_tuned_config("attention"))),
+    configs=runtime.get_tuned_config("flash_fwd"),
     prune_configs_by={"early_config_prune": prune_fwd_configs},
     key=["d", "is_dropout"],
 )
