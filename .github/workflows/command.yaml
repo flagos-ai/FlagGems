@@ -19,6 +19,8 @@ jobs:
       pull: ${{ steps.parse-command.outputs.PR_NUMBER }}
       existing: ${{ steps.parse-command.outputs.EXISTING_OP }}
     steps:
+      - id: checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       - id: check
         uses: github/command@3442f3fa1efe01bdb024b157083c337902d17372  # v2.0.3
         with:
@@ -43,7 +45,7 @@ jobs:
           echo "PR_NUMBER=${PULL_NUMBER}" >> $GITHUB_OUTPUT
 
           # Detect if operator exists before
-          num=$(grep "pytest.mark.${{ needs.preprocess.outputs.op }}" -r tests | wc -l)
+          num=$(grep -rP "pytest\.mark\.${{ needs.preprocess.outputs.op }}\b" tests | wc -l)
           if [ "$num" -eq "0" ]; then
             echo "EXISTING_OP=0" >> $GITHUB_OUTPUT
           else
@@ -81,7 +83,7 @@ jobs:
           echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
           echo "BACKEND=${BACKEND}" >> $GITHUB_ENV
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
       - name: setup-gh
@@ -173,7 +175,7 @@ jobs:
           echo -e "📎 Download the full log [here](${{ steps.upload-results.outputs.artifact-url }})" >> report.md
 
       - id: comment
-        uses: mshick/add-pr-comment@8e4927817251f1ff60c001f04568532b38e0b4a0  # 3.11.0
+        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
         with:
           message-path: report.md
           message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
