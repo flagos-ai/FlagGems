@@ -28,6 +28,7 @@ from flag_gems.fused.flash_mla import flash_mla
 from flag_gems.fused.flash_mla_with_kvcache import flash_mla_with_kvcache
 from flag_gems.fused.flashmla_sparse import flash_mla_sparse_fwd
 from flag_gems.fused.fp8_fp4_mqa_logits import fp8_fp4_mqa_logits
+from flag_gems.fused.fp8_fp4_paged_mqa_logits import fp8_fp4_paged_mqa_logits
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
 from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import (
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
@@ -108,6 +109,7 @@ __all__ = [
     "flash_mla_sparse_fwd",
     "flash_mla_with_kvcache",
     "fp8_fp4_mqa_logits",
+    "fp8_fp4_paged_mqa_logits",
     "fused_add_rms_norm",
     "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     "fused_experts_impl",

@@ -929,7 +929,11 @@ def _parse_marks_file(marks_file):
     return marks
 
 
-def collect_marks():
+def collect_marks(ops):
+    if len(ops) <= 10:
+        pinfo(f"Only {len(ops)} operators requested, skipping mark collection")
+        return set(ops), set(ops)
+
     accuracy_marks = set()
     benchmark_marks = set()
 
@@ -1031,7 +1035,7 @@ def main():
         sys.exit(1)
     pinfo(f"Testing {op_count} operators ...")
 
-    CFG.accuracy_marks, CFG.benchmark_marks = collect_marks()
+    CFG.accuracy_marks, CFG.benchmark_marks = collect_marks(ops)
 
     CFG.ops = ops
 
