@@ -22,7 +22,7 @@ if [ ! -f "$BACKENDS_YAML" ]; then
 fi
 
 eval $(python3 -c "
-import yaml, sys, json
+import yaml, sys
 
 cfg = yaml.safe_load(open('${BACKENDS_YAML}'))
 key = '${BACKEND}'
@@ -41,11 +41,22 @@ print(f'VENDOR={vendor}')
 print(f'FLAGOS_PYPI={index_url}')
 print(f'MIRROR={cfg[\"mirror\"]}')
 
-# Encode deps and post_install as space-separated strings
 deps = ' '.join(b.get('deps', []))
-post = ' '.join(b.get('post_install', []))
 print(f'BACKEND_DEPS=\"{deps}\"')
-print(f'POST_INSTALL=\"{post}\"')
+
+# Encode post_install: split into install and uninstall lists
+post_install = []
+post_uninstall = []
+for item in b.get('post_install', []):
+    if isinstance(item, dict) and 'uninstall' in item:
+        post_uninstall.append(item['uninstall'])
+    else:
+        post_install.append(item)
+print(f'POST_INSTALL=\"{\" \".join(post_install)}\"')
+print(f'POST_UNINSTALL=\"{\" \".join(post_uninstall)}\"')
+
+cmake_backend = b.get('cmake_backend', '')
+print(f'CMAKE_BACKEND={cmake_backend}')
 ")
 
 printf "Backend: ${BACKEND} (vendor: ${VENDOR})"
@@ -103,9 +114,29 @@ uv pip install -q \
   || fail
 ok
 
+# ── C++ extensions ───────────────────────────────────────────
+# Set ENABLE_CPP=1 to build C++ wrapped operators.
+# Default: OFF (C++ extensions require vendor SDK and toolchain).
+if [ "${ENABLE_CPP:-0}" = "1" ]; then
+  if [ -z "${CMAKE_BACKEND}" ]; then
+    echo "Error: ENABLE_CPP=1 but backend '${BACKEND}' does not support C++ extensions"
+    exit 1
+  fi
+  export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=${CMAKE_BACKEND}"
+  printf "C++ extensions: ON (${CMAKE_BACKEND})"
+  ok
+else
+  printf "C++ extensions: OFF"
+  ok
+fi
+
 # ── Install FlagGems ──────────────────────────────────────────
+# Use --no-build-isolation so the build process reuses the build tools
+# already installed in the current venv (setuptools, scikit-build-core, etc.)
+# This is safe for all backends — when CMAKE_ARGS is not set, C++ extensions
+# are not built and cmake/ninja are not invoked.
 printf "Installing FlagGems [${BACKEND}] ..."
-uv pip install ".[${BACKEND}]" \
+uv pip install --no-build-isolation ".[${BACKEND}]" \
   --default-index "${FLAGOS_PYPI}" \
   --index "${MIRROR}" \
   || fail
@@ -120,9 +151,12 @@ if [ -n "${POST_INSTALL}" ]; then
   done
 fi
 
-# Kunlunxin-specific cleanup
-if [ "$BACKEND" = "kunlunxin" ]; then
-  uv pip uninstall -q pytest-repeat 2>/dev/null || true
+if [ -n "${POST_UNINSTALL}" ]; then
+  for pkg in ${POST_UNINSTALL}; do
+    printf "Post-uninstall: ${pkg} ..."
+    uv pip uninstall -q "${pkg}" 2>/dev/null || true
+    ok
+  done
 fi
 
 # ── Install test dependencies ─────────────────────────────────

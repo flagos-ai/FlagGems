@@ -142,12 +142,24 @@ def main():
 
     # Step 3: Post-install overrides
     if post_install:
-        print("[Step 3] Post-install overrides ...")
-        for pkg in post_install:
-            run([*pip, "install", "--index-url", index, pkg], dry_run=args.dry_run)
-        print()
+        installs = [p for p in post_install if not isinstance(p, dict)]
+        uninstalls = [
+            p["uninstall"]
+            for p in post_install
+            if isinstance(p, dict) and "uninstall" in p
+        ]
+        if installs:
+            print("[Step 3] Post-install overrides ...")
+            for pkg in installs:
+                run([*pip, "install", "--index-url", index, pkg], dry_run=args.dry_run)
+            print()
+        if uninstalls:
+            print("[Step 3] Post-install uninstalls ...")
+            for pkg in uninstalls:
+                run([*pip, "uninstall", "-y", pkg], dry_run=args.dry_run)
+            print()
 
-    print(f"✅ FlagGems vendor dependencies installed for {backend_key}")
+    print(f"FlagGems vendor dependencies installed for {backend_key}")
 
 
 if __name__ == "__main__":
