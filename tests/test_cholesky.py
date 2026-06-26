@@ -13,9 +13,6 @@ CHOLESKY_DTYPES = [torch.float32, torch.float64]
 @pytest.mark.parametrize("shape", utils.UT_SHAPES_2D)
 @pytest.mark.parametrize("dtype", CHOLESKY_DTYPES)
 def test_cholesky(shape, dtype):
-    if flag_gems.vendor_name == "mthreads":
-        pytest.skip("Skipping cholesky test on mthreads platform")
-
     # Create a symmetric positive-definite matrix
     # A = A @ A.T + I ensures positive definiteness
     n = shape[0]
@@ -40,9 +37,6 @@ def test_cholesky(shape, dtype):
 @pytest.mark.parametrize("shape", utils.UT_SHAPES_2D)
 @pytest.mark.parametrize("dtype", CHOLESKY_DTYPES)
 def test_cholesky_upper(shape, dtype):
-    if flag_gems.vendor_name == "mthreads":
-        pytest.skip("Skipping cholesky upper test on mthreads platform")
-
     # Create a symmetric positive-definite matrix
     n = shape[0]
     A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
