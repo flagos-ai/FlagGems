@@ -4,7 +4,9 @@ from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from .abs import abs, abs_
 from .add import add, add_
 from .addmm import addmm, addmm_out
-from .aminmax import amax, amax_out, amin, amin_out, aminmax, aminmax_out
+from .amax import amax, amax_out
+from .amin import amin, amin_out
+from .aminmax import aminmax, aminmax_out
 from .angle import angle
 from .arcsinh import arcsinh, arcsinh_out
 from .attention import (
