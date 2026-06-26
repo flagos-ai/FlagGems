@@ -102,9 +102,7 @@ def max_unpool2d_kernel(
     # (e.g. ceil_mode=False MaxPool on odd-sized dims). In that case skip.
     in_bounds = (h_orig >= 0) & (h_orig < out_h) & (w_orig >= 0) & (w_orig < out_w)
     out_mask = (
-        (h_offsets[:, None] < pooled_h)
-        & (w_offsets[None, :] < pooled_w)
-        & in_bounds
+        (h_offsets[:, None] < pooled_h) & (w_offsets[None, :] < pooled_w) & in_bounds
     )
     tl.store(output_base_ptr + out_offsets, pooled_vals, mask=out_mask)
 
