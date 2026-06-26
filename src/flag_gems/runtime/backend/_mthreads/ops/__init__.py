@@ -22,6 +22,7 @@ from .log_softmax import (
 )
 from .max import max, max_dim
 from .min import min, min_dim
+from .mode import mode
 from .normal import normal_
 from .one_hot import one_hot
 from .ones import ones
@@ -81,6 +82,7 @@ __all__ = [
     "max_dim",
     "min",
     "min_dim",
+    "mode",
     "normal_",
     "one_hot",
     "ones",
@@ -110,6 +112,7 @@ __all__ = [
 
 if get_device_capability(current_device())[0] >= 3:
     from .addmm import addmm, addmm_dtype, addmm_dtype_out  # noqa: F401
+    from .baddbmm import baddbmm  # noqa: F401
     from .bmm import bmm  # noqa: F401
     from .gelu import gelu  # noqa: F401
     from .mm import mm  # noqa: F401
@@ -120,6 +123,7 @@ if get_device_capability(current_device())[0] >= 3:
             "addmm",
             "addmm_dtype",
             "addmm_dtype_out",
+            "baddbmm",
             "bmm",
             "gelu",
             "mm",
