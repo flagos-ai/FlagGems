@@ -435,6 +435,7 @@ from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from flag_gems.ops.special_gammainc import special_gammainc, special_gammainc_out
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
+from flag_gems.ops.special_hermite_polynomial_he import special_hermite_polynomial_he
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.special_log_softmax import special_log_softmax
@@ -1029,6 +1030,7 @@ __all__ = [
     "special_gammainc",
     "special_gammainc_out",
     "special_hermite_polynomial_h",
+    "special_hermite_polynomial_he",
     "special_i0e",
     "special_i0e_out",
     "special_i1",

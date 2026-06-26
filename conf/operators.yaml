@@ -6951,6 +6951,11 @@ ops:
     for:
       - special.gammainc
       - special.gammainc.out
+  - id: special_hermite_polynomial_he
+    description: |
+      Probabilists' Hermite polynomial He_n(input).
+    for:
+      - special.hermite_polynomial_he
     labels:
       - aten
       - KernelGen
