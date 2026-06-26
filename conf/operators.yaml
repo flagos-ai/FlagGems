@@ -657,10 +657,8 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
-    stages:
-      - alpha: '5.3'
   - id: as_strided
-    description: Triton kernel implementation for as_strided.
+    description: Zero-copy view operation returning a tensor with specified size, stride and storage_offset.
     for:
       - as_strided
     labels:
