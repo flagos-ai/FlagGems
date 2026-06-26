@@ -104,7 +104,6 @@ jobs:
             --output "${OUTPUT_DIR}"
 
       - name: Package results
-        if: always()
         shell: bash
         run: |
           ARCHIVE="${{ runner.temp }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
@@ -112,7 +111,6 @@ jobs:
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
       - name: Upload artifact
-        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: weekly-${{ matrix.name }}-${{ needs.prepare.outputs.date }}
