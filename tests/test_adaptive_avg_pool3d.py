@@ -28,7 +28,7 @@ ADAPTIVE_AVG_POOL3D_CONFIGS = [
 @pytest.mark.adaptive_avg_pool3d
 @pytest.mark.parametrize("shape, output_size", ADAPTIVE_AVG_POOL3D_CONFIGS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_adaptive_avg_pool3d_forward(shape, output_size, dtype):
+def test_adaptive_avg_pool3d_forward(shape, output_size, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
