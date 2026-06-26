@@ -837,6 +837,22 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: binary_cross_entropy_out
+  description: |
+    The out variant of binary_cross_entropy. Measures the binary cross entropy
+    between the target and input probabilities and writes the result to the
+    provided output tensor.
+  for:
+    - binary_cross_entropy_out
+  labels:
+    - aten
+    - pointwise
+    - nn.functional
+    - KernelGen
+  kind:
+    - NeuralNetwork
+  stages:
+    - alpha: '5.4'
   - id: bitwise_and_scalar
     description: Computes the bitwise AND of `input` and `other` scalar.
     for:
