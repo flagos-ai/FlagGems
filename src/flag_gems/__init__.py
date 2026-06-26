@@ -170,8 +170,6 @@ _FULL_CONFIG = (
     ("atan2.out", atan2_out),
     ("atan_", atan_),
     ("atanh", atanh),
-    ("_adaptive_avg_pool3d", _adaptive_avg_pool3d),
-    ("_adaptive_avg_pool3d.out", _adaptive_avg_pool3d_out),
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
     ("avg_pool3d", avg_pool3d),
