@@ -18,7 +18,6 @@ container_volumes:
 # Container options for this backends
 container_options: >-
   --uts=host
-  --network=host
   --ipc=host
   --user 0
   --security-opt=seccomp=unconfined

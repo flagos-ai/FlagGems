@@ -19,7 +19,6 @@ container_volumes:
 
 # Container options for this backends
 container_options: >-
-  --network=host
   --ipc=host
   --privileged
   --group-add video

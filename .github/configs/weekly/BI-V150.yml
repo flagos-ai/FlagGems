@@ -20,7 +20,6 @@ container_volumes:
 
 # Container options for this backends
 container_options: >-
-  --net=host
   --ipc=host
   --privileged
   --cap-add=ALL

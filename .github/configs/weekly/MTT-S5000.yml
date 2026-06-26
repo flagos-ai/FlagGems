@@ -21,7 +21,6 @@ container_volumes:
 
 # Container options for this backends
 container_options: >-
-  --network=host
   --pid=host
   --privileged
   --cap-add=SYS_PTRACE

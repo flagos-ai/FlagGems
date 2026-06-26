@@ -18,7 +18,6 @@ container_volumes:
 
 # Container options for this backends
 container_options: >-
-  --network=host
   --privileged
   --ulimit=stack=67108864
   --ulimit=memlock=-1

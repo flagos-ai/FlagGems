@@ -19,7 +19,6 @@ container_volumes:
 
 # Container options for this backends
 container_options: >-
-  --network=host
   --cap-add=SYS_PTRACE
   --privileged
   --shm-size=32g

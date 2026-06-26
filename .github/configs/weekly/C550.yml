@@ -18,7 +18,6 @@ container_volumes:
 
 # Container options for this backends
 container_options: >-
-  --net=host
   --uts=host
   --ipc=host
   --privileged
