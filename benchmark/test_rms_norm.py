@@ -23,7 +23,14 @@ def test_rms_norm():
 
 
 GROUP_SIZE = 128
-FP8_DTYPE = torch.float8_e4m3fn
+FP8_DTYPE = torch.float8_e4m3fn if hasattr(torch, "float8_e4m3fn") else None
+
+
+def _cuda_fp8_e4m3fn_available():
+    if FP8_DTYPE is None or not torch.cuda.is_available():
+        return False
+    major, _ = torch.cuda.get_device_capability()
+    return major >= 9
 
 
 def _quantize_fp8_grouped(w, group_size=GROUP_SIZE):
@@ -49,8 +56,6 @@ def _torch_rms_norm_w8a16(x, normalized_shape, weight_fp8, weight_scale, weight_
 
 def _gems_rms_norm_w8a16(x, normalized_shape, weight_fp8, weight_scale, weight_ref):
     return rms_norm_fp8_w8a16(x, normalized_shape, weight_fp8, weight_scale)
-
-
 
 
 class RmsNormFp8Benchmark(base.Benchmark):
@@ -81,8 +86,11 @@ class RmsNormFp8W8A16Benchmark(RmsNormFp8Benchmark):
             yield x, (n,), weight_fp8, weight_scale, weight
 
 
-
 @pytest.mark.rms_norm
+@pytest.mark.skipif(
+    not _cuda_fp8_e4m3fn_available(),
+    reason="RMSNorm FP8-W8A16 benchmark requires CUDA sm90+ float8_e4m3fn support",
+)
 def test_rms_norm_fp8_w8a16():
     bench = RmsNormFp8W8A16Benchmark(
         op_name="rms_norm_fp8_w8a16",

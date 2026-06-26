@@ -130,12 +130,10 @@ def rms_norm_loop_kernel(
         tl.store(out_ptr + pid * N + n_offsets, y)
 
 
-
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
 def rms_norm_fp8_w8a16_kernel(
     out_ptr,
-    INV_RMS,
     in_ptr,
     w_ptr,
     w_scale_ptr,
@@ -155,7 +153,100 @@ def rms_norm_fp8_w8a16_kernel(
     w_scale = tl.load(w_scale_ptr + group_ids, mask=mask, other=0.0).to(tl.float32)
     y = x * rrms * w * w_scale
     tl.store(out_ptr + pid * N + cols, y, mask=mask)
-    tl.store(INV_RMS + pid, rrms)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def rms_norm_fp8_w8a16_grouped_kernel(
+    out_ptr,
+    in_ptr,
+    w_ptr,
+    w_scale_ptr,
+    N,
+    eps,
+    GROUP_SIZE: tl.constexpr,
+    NUM_GROUPS: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    groups = tl.arange(0, NUM_GROUPS)
+    cols = tl.arange(0, GROUP_SIZE)
+    offsets = groups[:, None] * GROUP_SIZE + cols[None, :]
+    mask = offsets < N
+
+    x = tl.load(in_ptr + pid * N + offsets, mask=mask, other=0.0).to(tl.float32)
+    var = tl.sum(x * x) / N
+    rrms = 1 / tl.sqrt(var + eps)
+
+    w = tl.load(w_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    w_scale = tl.load(w_scale_ptr + groups).to(tl.float32)[:, None]
+    y = x * rrms * w * w_scale
+    tl.store(out_ptr + pid * N + offsets, y, mask=mask)
+
+
+@libentry()
+@triton.autotune(
+    configs=runtime.get_tuned_config("rms_norm_loop"),
+    key=["N"],
+)
+@triton.jit(do_not_specialize=["eps"])
+def rms_norm_fp8_w8a16_loop_kernel(
+    out_ptr,
+    in_ptr,
+    w_ptr,
+    w_scale_ptr,
+    N,
+    eps,
+    TILE_N: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+):
+    pid = ext.program_id(0)
+
+    acc = tl.zeros((TILE_N,), dtype=tl.float32)
+    num_steps = tl.cdiv(N, TILE_N)
+
+    for step in range(0, num_steps - 1):
+        start_n = step * TILE_N
+        n_offsets = start_n + tl.arange(0, TILE_N)
+        x = tl.load(in_ptr + pid * N + n_offsets).to(tl.float32)
+        acc += x * x
+
+    start_n = (num_steps - 1) * TILE_N
+    n_offsets = start_n + tl.arange(0, TILE_N)
+    mask = n_offsets < N
+    x = tl.load(in_ptr + pid * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
+    acc += x * x
+
+    var = tl.sum(acc) / N
+    rrms = 1 / tl.sqrt(var + eps)
+
+    prev_multiple = prev_multiple_of(N, TILE_N)
+
+    for start_n in range(0, TILE_N, TILE_N):
+        n_offsets = (prev_multiple - start_n) + tl.arange(0, TILE_N)
+        mask = n_offsets < N
+        x = tl.load(
+            in_ptr + pid * N + n_offsets,
+            mask=mask,
+            other=0.0,
+            eviction_policy="evict_first",
+        ).to(tl.float32)
+        group_ids = n_offsets // GROUP_SIZE
+        w = tl.load(w_ptr + n_offsets, mask=mask, other=0.0).to(tl.float32)
+        w_scale = tl.load(w_scale_ptr + group_ids, mask=mask, other=0.0).to(tl.float32)
+        y = x * rrms * w * w_scale
+        tl.store(out_ptr + pid * N + n_offsets, y, mask=mask)
+
+    for start_n in range(TILE_N, N, TILE_N):
+        n_offsets = (prev_multiple - start_n) + tl.arange(0, TILE_N)
+        x = tl.load(
+            in_ptr + pid * N + n_offsets,
+            eviction_policy="evict_first",
+        ).to(tl.float32)
+        group_ids = n_offsets // GROUP_SIZE
+        w = tl.load(w_ptr + n_offsets).to(tl.float32)
+        w_scale = tl.load(w_scale_ptr + group_ids).to(tl.float32)
+        y = x * rrms * w * w_scale
+        tl.store(out_ptr + pid * N + n_offsets, y)
 
 
 @libentry()
@@ -359,12 +450,64 @@ def rms_norm_fp8_w8a16(
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
     y = torch.empty(x.shape, device=x.device, dtype=x.dtype)
-    inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
     with torch_device_fn.device(x.device):
-        BLOCK_SIZE = triton.next_power_of_2(N)
-        rms_norm_fp8_w8a16_kernel[M,](
-            y, inv_rms, x, weight_fp8, weight_scale, N, eps, BLOCK_SIZE, group_size
-        )
+        if N == 4096 and M >= 512:
+            rms_norm_fp8_w8a16_grouped_kernel[M,](
+                y,
+                x,
+                weight_fp8,
+                weight_scale,
+                N,
+                eps,
+                GROUP_SIZE=group_size,
+                NUM_GROUPS=N // group_size,
+                num_warps=8,
+            )
+        elif N == 4096 and M >= 128:
+            rms_norm_fp8_w8a16_grouped_kernel[M,](
+                y,
+                x,
+                weight_fp8,
+                weight_scale,
+                N,
+                eps,
+                GROUP_SIZE=group_size,
+                NUM_GROUPS=N // group_size,
+                num_warps=4,
+            )
+        elif N == 8192 and M >= 64:
+            rms_norm_fp8_w8a16_grouped_kernel[M,](
+                y,
+                x,
+                weight_fp8,
+                weight_scale,
+                N,
+                eps,
+                GROUP_SIZE=group_size,
+                NUM_GROUPS=N // group_size,
+                num_warps=4,
+            )
+        elif N == 16384:
+            rms_norm_fp8_w8a16_grouped_kernel[M,](
+                y,
+                x,
+                weight_fp8,
+                weight_scale,
+                N,
+                eps,
+                GROUP_SIZE=group_size,
+                NUM_GROUPS=N // group_size,
+                num_warps=4,
+            )
+        elif N > 16384:
+            rms_norm_fp8_w8a16_loop_kernel[M,](
+                y, x, weight_fp8, weight_scale, N, eps, GROUP_SIZE=group_size
+            )
+        else:
+            BLOCK_SIZE = triton.next_power_of_2(N)
+            rms_norm_fp8_w8a16_kernel[M,](
+                y, x, weight_fp8, weight_scale, N, eps, BLOCK_SIZE, group_size
+            )
     return y
 
 
