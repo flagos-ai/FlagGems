@@ -442,6 +442,9 @@ from flag_gems.ops.special_shifted_chebyshev_polynomial_u import (
     special_shifted_chebyshev_polynomial_u,
     special_shifted_chebyshev_polynomial_u_,
 )
+from flag_gems.ops.special_shifted_chebyshev_polynomial_w import (
+    special_shifted_chebyshev_polynomial_w,
+)
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
@@ -502,6 +505,7 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "special_shifted_chebyshev_polynomial_w",
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "__ilshift__",
