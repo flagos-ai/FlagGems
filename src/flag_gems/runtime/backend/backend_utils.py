@@ -7,12 +7,21 @@ import yaml
 
 # Metadata template,  Each vendor needs to specialize instances of this template
 @dataclass
-class VendorInfoBase:
+class VendorDescriptor:
+    """
+    A dataclass to describe the vendor-specific information for a hardware backend.
+    """
+
     vendor_name: str
     device_name: str
     device_query_cmd: str
     dispatch_key: str = None
     triton_extra_name: str = None
+    trademark: str = None
+    fp64_enabled: bool = True
+    bf16_enabled: bool = True
+    int64_enabled: bool = True
+    tle_enabled: bool = False
 
 
 def get_tune_config(vendor_name=None, file_mode="r", file_path=None):
@@ -37,6 +46,17 @@ def get_tune_config(vendor_name=None, file_mode="r", file_path=None):
         raise RuntimeError(f"An unexpected error occurred: {e}")
 
     return config
+
+
+class BackendEventBase:
+    def __init__(self):
+        ...
+
+    def get_ops(self):
+        ...
+
+    def is_available(self):
+        ...
 
 
 @functools.lru_cache(maxsize=None)
