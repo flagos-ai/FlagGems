@@ -289,7 +289,7 @@ ops:
       - stable: '4.0'
   - id: addr
     description: |
-      Performs the outer-product of vectors `vec1` and `vec2`
+      Performs the outer product of vectors `vec1` and `vec2`
       and adds it to the matrix `input`.
     for:
       - addr
@@ -2215,7 +2215,7 @@ ops:
       - beta: '5.4'
   - id: einsum
     description: |
-      Sums the product of the elements of the input `operands` along dimensions specified using a notation
+      Sums the reduce_product of the elements of the input `operands` along dimensions specified using a notation
       based on the Einstein summation convention.
     for:
       - einsum
@@ -3466,7 +3466,7 @@ ops:
     description: |
       The head fusion kernel for MHC (Manifold-Constrained Hyper-Connections).
       This fused implementation computes RMS-normalized hidden states and applies
-      per-head weighted mixing to produce the output activations.
+      per-head weighted mixing to reduce_produce the output activations.
     for:
       - mhc_head_fused_kernel
     labels:
@@ -3697,7 +3697,7 @@ ops:
   - id: index_reduce_
     description: |
       Accumulates the elements of `source` into `input` at the indices specified
-      by `index` along `dim`, using `prod`, `mean`, `amax`, or `amin` reduction.
+      by `index` along `dim`, using `reduce_prod`, `mean`, `amax`, or `amin` reduction.
     for:
       - index_reduce_
     labels:
@@ -5029,7 +5029,7 @@ ops:
     description: |
       Measures the performance of a classification model by calculating the negative log probability
       of the true class. This defines the computation flow, transforming input data through layers
-      to produce output predictions.
+      to reduce_produce output predictions.
     for:
       - nll_loss_nd_forward
     labels:
@@ -5211,7 +5211,7 @@ ops:
       - stable: '2.1'
   - id: outer
     description: |
-      Computes outer product of self and the input vector.
+      Computes outer reduce_product of self and the input vector.
       If the self tensor is a vector of size `n` and the input tensor is a vector of size `m`,
       the `out` tensor (if specified) must be a matrix of size `n * m`.
     for:
@@ -5430,27 +5430,17 @@ ops:
       - Math
     stages:
       - alpha: '5.1'
-  - id: prod
-    description: Returns the product of all elements in the `input` tensor.
+  - id: reduce_prod
+    description: Returns the product of all elements or along a dimension of the input tensor.
     for:
-      - prod
+      - reduce_prod
     labels:
       - aten
-      - Reduction
+      - KernelGen
     kind:
       - LinearAlg
     stages:
       - stable: '2.0'
-  - id: prod_dim_int
-    description: Returns the product of each row of the `input` tensor in the given dimension `dim`.
-    for:
-      - prod.dim_int
-    kind:
-      - Reduction
-    stages:
-      - stable: '2.0'
-    labels:
-      - aten
   - id: quantile
     description: Computes the q-th quantiles of each row of the `input` tensor along the dimension `dim`.
     for:
@@ -6407,7 +6397,7 @@ ops:
   - id: segment_reduce
     description: |
       Reduces contiguous segments of a tensor along the specified axis. Segments are described
-      by `lengths` or `offsets`, and supported reductions include sum, mean, max, min, and prod.
+      by `lengths` or `offsets`, and supported reductions include sum, mean, max, min, and reduce_prod.
     for:
       - segment_reduce
     labels:
