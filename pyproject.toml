@@ -65,6 +65,14 @@ ascend-cann900 = [
     # "triton-ascend==3.2.1",
 ]
 
+cambricon = [
+    "cambricon_dali==0.13.0",
+    "torch==2.7.1+cpu",
+    "torch-mlu==1.29.2+torch2.7.1",
+    "torch-mlu-ops==1.8.0+torch2.7.1",
+    "triton==3.2.0+mlu1.7.2",
+]
+
 enflame = [
     "pyefml==1.9.10",
     "torch==2.10.0+cpu",
