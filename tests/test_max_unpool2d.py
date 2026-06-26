@@ -37,6 +37,13 @@ POOL_CONFIGS = [
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_max_unpool2d(shape, pool_cfg, dtype):
     kernel_size, stride, padding = pool_cfg
+    H, W = shape[2], shape[3]
+    out_h = (H + 2 * padding - kernel_size) // stride + 1
+    out_w = (W + 2 * padding - kernel_size) // stride + 1
+    if out_h <= 0 or out_w <= 0:
+        pytest.skip(
+            f"Output size ({out_h},{out_w}) too small for shape {shape} + cfg {pool_cfg}"
+        )
     # Create input tensor
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
