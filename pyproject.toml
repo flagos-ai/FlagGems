@@ -195,12 +195,16 @@ Repository = "https://github.com/flagos-ai/FlagGems"
 Documentation = "https://flagos-ai.github.io/FlagGems"
 "Bug Tracker" = "https://github.com/flagos-ai/FlagGems/issues"
 
+[project.scripts]
+flaggems-setup = "flag_gems._setup:main"
+
 [tool.setuptools.packages.find]
 
 where = ["src"]
 
 [tool.setuptools.package-data]
 
+"flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
 
 [tool.scikit-build]
