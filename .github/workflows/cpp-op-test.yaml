@@ -10,26 +10,14 @@ jobs:
   test:
     runs-on: h20
     steps:
-      - id: checkout-attempt-1
-        uses: actions/checkout@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         continue-on-error: true
-      - id: sleep-1
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        shell: bash
-        run: sleep 30s
+      - uses: ./.github/actions/checkout-retry
+      - uses: ./.github/actions/setup-flaggems
+        with:
+          vendor: nvidia
+          gpu_check_script: tools/gpu_check_nvidia.sh
 
-      - id: checkout-attempt-2
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@v6
-        continue-on-error: true
-      - id: sleep-2
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        shell: bash
-        run: sleep 30s
-
-      - id: checkout-attempt-3
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@v6
       - shell: bash
         run: |
           export PATH="/home/secure/.pyenv/bin:/usr/local/cuda/bin:$PATH"
