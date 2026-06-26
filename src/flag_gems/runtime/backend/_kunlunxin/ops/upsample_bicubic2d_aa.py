@@ -533,7 +533,7 @@ def _upsample_bicubic2d_aa(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ):
-    logger.debug("GEMS UPSAMPLE BICUBIC2D AA")
+    logger.debug("GEMS_KUNLUNXIN UPSAMPLE_BICUBIC2D_AA")
     assert input.device.type == device
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"

@@ -1,3 +1,4 @@
+import fcntl
 import json
 import logging
 import os
@@ -74,12 +75,10 @@ def pytest_addoption(parser):
     try:
         parser.addoption(
             "--collect-marks",
-            action="store_true",
-            help="Collect the tests with marker information without executing them",
+            default=None,
+            help="Collect the tests with marker information and write to the specified file",
         )
     except ValueError:
-        # Mixed test+benchmark pytest runs may already register this option in
-        # benchmark/conftest.py. Reuse the existing option in that case.
         pass
 
 
@@ -194,18 +193,24 @@ def pytest_runtest_logreport(report):
 
 def pytest_terminal_summary(terminalreporter):
     data = TEST_RESULTS
-    if os.path.exists(REPORT_FILE):
-        with open(REPORT_FILE, "r") as json_file:
-            existing_data = json.load(json_file)
-        existing_data.update(TEST_RESULTS)
-        data = existing_data
-
-    with open(REPORT_FILE, "w") as json_file:
+    with open(REPORT_FILE, "a+") as json_file:
+        fcntl.flock(json_file, fcntl.LOCK_EX)
+        json_file.seek(0)
+        content = json_file.read()
+        if content:
+            existing_data = json.loads(content)
+            existing_data.update(TEST_RESULTS)
+            data = existing_data
+        json_file.seek(0)
+        json_file.truncate()
         json.dump(data, json_file, indent=2, default=str)
+        json_file.flush()
+        os.fsync(json_file.fileno())
 
 
 def pytest_collection_modifyitems(session, config, items):
-    if config.getoption("--collect-marks"):
+    collect_marks_file = config.getoption("--collect-marks")
+    if collect_marks_file:
         report = []
         for item in items:
             data = {}
@@ -228,7 +233,8 @@ def pytest_collection_modifyitems(session, config, items):
             data["marks"] = op_marks
             report.append(data)
 
-        print(yaml.dump(report, indent=2))
+        with open(collect_marks_file, "w") as f:
+            yaml.dump(report, f, indent=2)
 
         # Skip all tests
         items.clear()
