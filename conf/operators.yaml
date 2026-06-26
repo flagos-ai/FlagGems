@@ -72,34 +72,6 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
-  - id: adaptive_avg_pool3d
-    description: |
-      Apply a 3D adaptive average pooling over an input signal composed of several input planes.
-    for:
-      - _adaptive_avg_pool3d
-    labels:
-      - aten
-      - nn.functional
-      - KernelGen
-    kind:
-      - NeuralNetwork
-    stages:
-      - alpha: '5.0'
-      - beta: '5.3'
-  - id: adaptive_avg_pool3d_out
-    description: |
-      A variant of `_adaptive_avg_pool3d` that assigns the output to the `out` tensor.
-    for:
-      - _adaptive_avg_pool3d.out
-    labels:
-      - aten
-      - nn.functional
-      - KernelGen
-    kind:
-      - NeuralNetwork
-    stages:
-      - alpha: '5.0'
-      - beta: '5.3'
   - id: adaptive_max_pool3d_backward
     description: |
       Computes the gradient for adaptive max pooling 3D.
