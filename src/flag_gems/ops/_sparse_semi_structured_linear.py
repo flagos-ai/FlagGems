@@ -104,7 +104,7 @@ def _sparse_linear_kernel(
         meta_block = tl.load(meta_ptrs, mask=(offs_k < K), other=0)
 
         # Apply mask and accumulate
-        masked_weight = tl.where(meta_block != 0, b, 0.0)
+        masked_weight = tl.where(meta_block[:, None] != 0, b, 0.0)
         accumulator += tl.dot(a, masked_weight, allow_tf32=False)
 
         offs_k += BLOCK_K
