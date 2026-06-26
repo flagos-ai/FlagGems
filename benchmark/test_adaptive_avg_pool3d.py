@@ -30,7 +30,7 @@ class AdaptiveAvgPool3dBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.adaptive_avg_pool3d
-def test_perf_adaptive_avg_pool3d():
+def test_adaptive_avg_pool3d():
     bench = AdaptiveAvgPool3dBenchmark(
         input_fn=adaptive_avg_pool3d_input_fn,
         op_name="adaptive_avg_pool3d",
