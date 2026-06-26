@@ -168,6 +168,7 @@ _FULL_CONFIG = (
     ("atan2.out", atan2_out),
     ("atan_", atan_),
     ("atanh", atanh),
+    ("aten::var", reduce_variance),
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
     ("avg_pool3d", avg_pool3d),
