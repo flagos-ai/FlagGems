@@ -248,6 +248,23 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name == "fused_marlin_moe_mxfp4":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_SIZE_N": block_size_n,
+                        "GROUP_SIZE_M": group_size_m,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_size_n in ranges["BLOCK_SIZE_N"]
+                for group_size_m in ranges["GROUP_SIZE_M"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
         if op_name == "w8a8_block_fp8_general":
             return [
                 triton.Config(
@@ -410,6 +427,10 @@ class TunedConfigLoader(object):
                 "bmm", expand_yaml_path=self._get_expand_config_path("bmm")
             ),
             "bmm_sqmma": self._build_single_expand_spec("bmm_sqmma"),
+            "fused_marlin_moe_mxfp4": self._build_single_expand_spec(
+                "fused_marlin_moe_mxfp4",
+                expand_yaml_path=self._get_expand_config_path("fused_marlin_moe_mxfp4"),
+            ),
             "gemv": self._build_single_expand_spec("gemv"),
             "mm": self._build_single_expand_spec(
                 "mm", expand_yaml_path=self._get_expand_config_path("mm")
