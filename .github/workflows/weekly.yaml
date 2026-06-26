@@ -34,25 +34,27 @@ jobs:
         run: echo "DATE=$(date -u '+%Y-%m-%d')" >> "$GITHUB_OUTPUT"
 
       - id: build-matrix
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
-        with:
-          script: |
-            const fs = require('fs');
-            const yaml = require('js-yaml');
+        shell: python3 {0}
+        run: |
+          import json
+          import os
+          import yaml
 
-            const main = yaml.load(fs.readFileSync('.github/configs/weekly/weekly-test.yaml', 'utf8'));
+          with open('.github/configs/weekly/weekly-test.yaml') as f:
+              main = yaml.safe_load(f)
 
-            const include = [];
-            for (const [name, cfg] of Object.entries(main.backends)) {
-              if (!cfg.enabled) continue;
-              const backendFile = `.github/configs/weekly/${name}.yml`;
-              const backend = yaml.load(fs.readFileSync(backendFile, 'utf8'));
-              include.push(backend);
-            }
+          include = []
+          for name, cfg in main['backends'].items():
+              if not cfg.get('enabled'):
+                  continue
+              with open(f'.github/configs/weekly/{name}.yml') as f:
+                  backend = yaml.safe_load(f)
+              include.append(backend)
 
-            core.setOutput('matrix', JSON.stringify({ include }));
-            core.setOutput('api', main.server.api);
-            core.setOutput('api_key', main.server.api_key);
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f"matrix={json.dumps({'include': include})}\n")
+              out.write(f"api={main['server']['api']}\n")
+              out.write(f"api_key={main['server']['api_key']}\n")
 
   test:
     needs: prepare
