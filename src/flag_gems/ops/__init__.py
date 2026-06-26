@@ -22,10 +22,10 @@ from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
-from flag_gems.ops._upsample_nearest_exact3d import _upsample_nearest_exact3d
 from flag_gems.ops._upsample_nearest_exact2d_backward import (
     _upsample_nearest_exact2d_backward,
 )
+from flag_gems.ops._upsample_nearest_exact3d import _upsample_nearest_exact3d
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
