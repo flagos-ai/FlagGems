@@ -1,8 +1,12 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 import flag_gems
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -139,12 +143,14 @@ def _run_special_ndtri_kernel(x: torch.Tensor, out: torch.Tensor):
 
 def special_ndtri(x: torch.Tensor):
     """ATen wrapper: special_ndtri(Tensor self) -> Tensor"""
+    logger.debug("GEMS SPECIAL_NDTRI")
     out = torch.empty_like(x)
     return _run_special_ndtri_kernel(x, out)
 
 
 def special_ndtri_out(x: torch.Tensor, out: torch.Tensor):
     """ATen wrapper: special_ndtri.out(Tensor self, Tensor out) -> Tensor"""
+    logger.debug("GEMS SPECIAL_NDTRI_OUT")
     if x.shape != out.shape:
         x = x.expand(out.shape)
     _run_special_ndtri_kernel(x, out)

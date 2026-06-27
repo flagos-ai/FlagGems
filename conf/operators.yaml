@@ -6988,18 +6988,26 @@ ops:
       probability density function (integrated from minus infinity to x)
       equals the input, elementwise. Inverse of the normal CDF.
     for:
-      - special_ndtri
+      - special.ndtri
     labels:
       - aten
       - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_ndtri_out
     description: |
       A variant of `special_ndtri()` with output saved to provided `out`.
     for:
-      - special_ndtri.out
+      - special.ndtri.out
     labels:
       - aten
       - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_log_softmax
     description: |
       Applies the log of the softmax function along a given dimension.
