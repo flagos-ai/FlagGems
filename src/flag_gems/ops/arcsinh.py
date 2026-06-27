@@ -91,3 +91,9 @@ def arcsinh(input_tensor: torch.Tensor):
 def arcsinh_out(input_tensor: torch.Tensor, out: torch.Tensor):
     logger.debug("GEMS ARCSINH_OUT")
     return _arcsinh_impl(input_tensor, out)
+
+
+def arcsinh_(x: torch.Tensor):
+    logger.debug("GEMS ARCSINH_")
+
+    return _arcsinh_impl(x, out=x)

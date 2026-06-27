@@ -33,8 +33,7 @@ from flag_gems.ops.adaptive_max_pool3d_backward import adaptive_max_pool3d_backw
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_, addcdiv_out
 from flag_gems.ops.addcmul import addcmul, addcmul_, addcmul_out
-from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
-from flag_gems.ops.addmm_ import addmm_
+from flag_gems.ops.addmm import addmm, addmm_, addmm_dtype, addmm_dtype_out, addmm_out
 from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addr import addr
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
@@ -47,8 +46,7 @@ from flag_gems.ops.angle import angle
 from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
 from flag_gems.ops.arcsin import arcsin, arcsin_, arcsin_out
-from flag_gems.ops.arcsinh import arcsinh, arcsinh_out
-from flag_gems.ops.arcsinh_ import arcsinh_
+from flag_gems.ops.arcsinh import arcsinh, arcsinh_, arcsinh_out
 from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
