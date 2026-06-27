@@ -44,7 +44,19 @@ print(f'MIRROR={cfg[\"mirror\"]}')
 deps = ' '.join(b.get('deps', []))
 print(f'BACKEND_DEPS=\"{deps}\"')
 
-# Encode post_install: split into install and uninstall lists
+cmake_backend = b.get('cmake_backend', '')
+print(f'CMAKE_BACKEND={cmake_backend}')
+
+ft = b.get('flagtree', '')
+if isinstance(ft, list):
+    ft = ' '.join(ft)
+print(f'FLAGTREE_PKGS=\"{ft}\"')
+
+tr = b.get('triton', '')
+if isinstance(tr, list):
+    tr = ' '.join(tr)
+print(f'TRITON_PKGS=\"{tr}\"')
+
 post_install = []
 post_uninstall = []
 for item in b.get('post_install', []):
@@ -54,9 +66,6 @@ for item in b.get('post_install', []):
         post_install.append(item)
 print(f'POST_INSTALL=\"{\" \".join(post_install)}\"')
 print(f'POST_UNINSTALL=\"{\" \".join(post_uninstall)}\"')
-
-cmake_backend = b.get('cmake_backend', '')
-print(f'CMAKE_BACKEND={cmake_backend}')
 ")
 
 printf "Backend: ${BACKEND} (vendor: ${VENDOR})"
@@ -132,15 +141,58 @@ fi
 
 # ── Install FlagGems ──────────────────────────────────────────
 # Use --no-build-isolation so the build process reuses the build tools
-# already installed in the current venv (setuptools, scikit-build-core, etc.)
-# This is safe for all backends — when CMAKE_ARGS is not set, C++ extensions
-# are not built and cmake/ninja are not invoked.
+# already installed in the current venv.
 printf "Installing FlagGems [${BACKEND}] ..."
 uv pip install --no-build-isolation ".[${BACKEND}]" \
   --default-index "${FLAGOS_PYPI}" \
   --index "${MIRROR}" \
   || fail
 ok
+
+# ── Compiler selection ───────────────────────────────────────
+# COMPILER controls which Triton-compatible compiler to use:
+#   COMPILER=flagtree → use FlagTree (default when available)
+#   COMPILER=triton   → use vendor Triton
+#   unset             → auto: FlagTree if available, otherwise Triton
+COMPILER="${COMPILER:-}"
+
+if [ -z "${COMPILER}" ]; then
+  if [ -n "${FLAGTREE_PKGS}" ]; then
+    COMPILER=flagtree
+  else
+    COMPILER=triton
+  fi
+fi
+
+if [ "${COMPILER}" = "flagtree" ]; then
+  if [ -n "${FLAGTREE_PKGS}" ]; then
+    # FlagTree installs into site-packages/triton, so any existing
+    # triton-prefixed packages must be removed first.
+    TRITON_INSTALLED=$(uv pip list 2>/dev/null | awk '{print $1}' | grep -i '^triton' || true)
+    if [ -n "${TRITON_INSTALLED}" ]; then
+      printf "Replacing Triton with FlagTree ..."
+      echo "${TRITON_INSTALLED}" | xargs uv pip uninstall -q 2>/dev/null || true
+      ok
+    fi
+    printf "Installing FlagTree ..."
+    uv pip install -q ${FLAGTREE_PKGS} --default-index "${FLAGOS_PYPI}" || fail
+    ok
+  else
+    printf "FlagTree not available for ${BACKEND}, using Triton\n"
+    COMPILER=triton
+  fi
+fi
+
+if [ "${COMPILER}" = "triton" ] && [ -n "${TRITON_PKGS}" ]; then
+  printf "Installing Triton ..."
+  uv pip install -q ${TRITON_PKGS} --default-index "${FLAGOS_PYPI}" || fail
+  ok
+fi
+
+if [ "${COMPILER}" != "flagtree" ] && [ "${COMPILER}" != "triton" ]; then
+  echo "Error: unknown COMPILER value '${COMPILER}' (expected 'flagtree' or 'triton')"
+  exit 1
+fi
 
 # ── Vendor-specific post-install ──────────────────────────────
 if [ -n "${POST_INSTALL}" ]; then
