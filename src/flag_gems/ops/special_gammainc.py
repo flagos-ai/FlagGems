@@ -170,28 +170,5 @@ def special_gammainc(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = No
             f"gammainc: second input tensor must be on {flag_gems.device} device"
         )
 
-    if out is None:
-        if not a.is_floating_point():
-            a = a.to(torch.get_default_dtype())
-        if not x.is_floating_point():
-            x = x.to(torch.get_default_dtype())
-        out_dtype = torch.promote_types(a.dtype, x.dtype)
-        out = torch.empty_like(a, dtype=out_dtype, device=a.device)
-    else:
-        if out.device.type != flag_gems.device:
-            raise ValueError(
-                f"gammainc_out: output tensor must be on {flag_gems.device} device"
-            )
-        if not out.is_floating_point():
-            raise TypeError("gammainc_out: output tensor must be a floating point type")
-        if a.numel() != x.numel() or a.numel() != out.numel():
-            raise ValueError(
-                "gammainc_out: input and output must have the same number of elements"
-            )
     _launch_gammainc(out, a, x)
     return out
-
-
-def special_gammainc_out(a: torch.Tensor, x: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS SPECIAL_GAMMAINC_OUT")
-    return special_gammainc(a, x, out=out)
