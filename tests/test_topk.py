@@ -86,6 +86,14 @@ GROUP_SIZE = 128
 FP8_DTYPE = getattr(torch, "float8_e4m3fn", None)
 
 
+def _is_fp8_topk_supported():
+    return (
+        flag_gems.device == "cuda"
+        and FP8_DTYPE is not None
+        and torch.cuda.get_device_capability()[0] >= 9
+    )
+
+
 def _quantize_fp8_grouped_lastdim(x, group_size=GROUP_SIZE):
     fp8_info = torch.finfo(FP8_DTYPE)
     n = x.shape[-1]
@@ -120,8 +128,8 @@ def _quantize_fp8_row(x):
 
 @pytest.mark.topk
 @pytest.mark.skipif(
-    flag_gems.device != "cuda" or not hasattr(torch, "float8_e4m3fn"),
-    reason="FP8 TopK requires CUDA FP8 support",
+    not _is_fp8_topk_supported(),
+    reason="FP8 TopK requires CUDA FP8 support on compute capability >= 9.0",
 )
 @pytest.mark.parametrize("shape, topk", [((4, 128), 5), ((8, 256), 16), ((2, 1024), 8)])
 @pytest.mark.parametrize("largest", [True, False])
@@ -144,8 +152,8 @@ def test_topk_fp8_w8a16(shape, topk, largest):
 
 @pytest.mark.topk
 @pytest.mark.skipif(
-    flag_gems.device != "cuda" or not hasattr(torch, "float8_e4m3fn"),
-    reason="FP8 TopK requires CUDA FP8 support",
+    not _is_fp8_topk_supported(),
+    reason="FP8 TopK requires CUDA FP8 support on compute capability >= 9.0",
 )
 @pytest.mark.parametrize("shape, topk", [((4, 128), 5), ((8, 256), 16), ((2, 4096), 8)])
 def test_topk_fp8_w8a16_row_scale(shape, topk):

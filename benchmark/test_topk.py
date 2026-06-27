@@ -62,6 +62,14 @@ GROUP_SIZE = 128
 FP8_DTYPE = getattr(torch, "float8_e4m3fn", None)
 
 
+def _is_fp8_topk_supported():
+    return (
+        FP8_DTYPE is not None
+        and torch.cuda.is_available()
+        and torch.cuda.get_device_capability()[0] >= 9
+    )
+
+
 def _quantize_fp8_grouped_lastdim(x, group_size=GROUP_SIZE):
     fp8_info = torch.finfo(FP8_DTYPE)
     n = x.shape[-1]
@@ -118,8 +126,8 @@ class TopKFp8W8A16Benchmark(base.Benchmark):
 
 @pytest.mark.topk
 @pytest.mark.skipif(
-    FP8_DTYPE is None,
-    reason="FP8 TopK requires CUDA FP8 support",
+    not _is_fp8_topk_supported(),
+    reason="FP8 TopK requires CUDA FP8 support on compute capability >= 9.0",
 )
 def test_topk_fp8_w8a16():
     bench = TopKFp8W8A16Benchmark(

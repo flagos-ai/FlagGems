@@ -21,8 +21,11 @@ from flag_gems.utils.triton_version_utils import HAS_TLE
 
 if HAS_TLE:
     import triton.experimental.tle.language as tle_gpu
+
+    HAS_TLE_GPU = hasattr(tle_gpu, "gpu")
 else:
     tle_gpu = None
+    HAS_TLE_GPU = False
 
 logger = logging.getLogger(__name__)
 _MIN_FLOAT32_VAL = tl.constexpr(torch.finfo(torch.float32).min)
@@ -693,7 +696,7 @@ def topk_fp8_row_radix_sort_kernel(
     tl.store(index_ptr + pid * K + offs, sorted_idx, mask=mask)
 
 
-if HAS_TLE:
+if HAS_TLE_GPU:
 
     @triton.jit
     def _get_topmask_and_fullmask(x):
@@ -1066,7 +1069,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     batch_size = math.prod(x.shape) // topk_elem_cnt
 
     if (
-        HAS_TLE
+        HAS_TLE_GPU
         and sorted
         and descending
         and x.is_cuda
@@ -1222,7 +1225,7 @@ def topk_fp8_w8a16(
     y_idx_2d = y_idx.reshape(batch_size, k)
 
     if (
-        HAS_TLE
+        HAS_TLE_GPU
         and num_groups == 1
         and descending
         and sorted
