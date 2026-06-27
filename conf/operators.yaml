@@ -6988,7 +6988,7 @@ ops:
       probability density function (integrated from minus infinity to x)
       equals the input, elementwise. Inverse of the normal CDF.
     for:
-      - special.ndtri
+      - special_ndtri
     labels:
       - aten
       - pointwise
@@ -7000,7 +7000,7 @@ ops:
     description: |
       A variant of `special_ndtri()` with output saved to provided `out`.
     for:
-      - special.ndtri.out
+      - special_ndtri.out
     labels:
       - aten
       - pointwise
