@@ -75,9 +75,7 @@ def _quantize_fp8_grouped_lastdim(x, group_size=GROUP_SIZE):
     else:
         x_for_scale = x
     grouped = x_for_scale.reshape(*x.shape[:-1], num_groups, group_size).float()
-    scale = (grouped.abs().amax(dim=-1, keepdim=True) / fp8_info.max).clamp(
-        min=1e-8
-    )
+    scale = (grouped.abs().amax(dim=-1, keepdim=True) / fp8_info.max).clamp(min=1e-8)
     q = (grouped / scale).clamp(fp8_info.min, fp8_info.max).to(FP8_DTYPE)
     q = q.reshape(*x.shape[:-1], padded_n)[..., :n].contiguous()
     return q, scale.squeeze(-1).to(x.dtype).contiguous()
@@ -85,9 +83,7 @@ def _quantize_fp8_grouped_lastdim(x, group_size=GROUP_SIZE):
 
 def _quantize_fp8_row(x):
     fp8_info = torch.finfo(FP8_DTYPE)
-    scale = (x.float().abs().amax(dim=-1, keepdim=True) / fp8_info.max).clamp(
-        min=1e-8
-    )
+    scale = (x.float().abs().amax(dim=-1, keepdim=True) / fp8_info.max).clamp(min=1e-8)
     q = (x.float() / scale).clamp(fp8_info.min, fp8_info.max).to(FP8_DTYPE)
     return q.contiguous(), scale.to(x.dtype).contiguous()
 

@@ -135,9 +135,9 @@ def topk_fp8_single_stage_kernel(
     mask_index_val = _MIN_INT32_VAL if DESCENDING else _MAX_INT32_VAL
 
     x_q = tl.load(x_ptr + cols, mask=mask, other=0.0).to(tl.float32)
-    x_scale = tl.load(
-        scale_ptr + cols // GROUP_SIZE, mask=mask, other=0.0
-    ).to(tl.float32)
+    x_scale = tl.load(scale_ptr + cols // GROUP_SIZE, mask=mask, other=0.0).to(
+        tl.float32
+    )
     x_val = tl.where(mask, x_q * x_scale, pad_val)
     idx_val = tl.where(mask, cols, mask_index_val).to(tl.int32)
 
@@ -225,9 +225,9 @@ def topk_fp8_stage1_kernel(
 
     mask_val = float("-inf") if DESCENDING else float("inf")
     x_q = tl.load(x_ptr + cols, mask=mask, other=0.0).to(tl.float32)
-    x_scale = tl.load(
-        scale_ptr + global_cols // GROUP_SIZE, mask=mask, other=0.0
-    ).to(tl.float32)
+    x_scale = tl.load(scale_ptr + global_cols // GROUP_SIZE, mask=mask, other=0.0).to(
+        tl.float32
+    )
     x_val = tl.where(mask, x_q * x_scale, mask_val)
     available = mask
 
