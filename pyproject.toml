@@ -55,14 +55,13 @@ dependencies = [
 ascend-cann850 = [
     "torch==2.9.0+cpu",
     "torch-npu==2.9.0",
-    "flagtree==0.5.0+ascend3.2",
+    "flagtree==0.6.0+ascend3.2",
 ]
 
 ascend-cann900 = [
     "torch==2.10.0+cpu",
     "torch-npu==2.10.0",
-    "triton==3.5.0",
-    # "triton-ascend==3.2.1",
+    "flagtree==0.6.0+ascend3.5",
 ]
 
 cambricon = [
@@ -86,7 +85,7 @@ enflame = [
 
 hygon = [
     "torch==2.9.0+das.opt1.dtk2604",
-    "flagtree==0.5.0+hcu3.0",
+    "flagtree==0.5.1+hcu3.1",
 ]
 
 iluvatar = [
