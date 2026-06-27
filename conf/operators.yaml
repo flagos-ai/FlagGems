@@ -7032,6 +7032,12 @@ ops:
       Applies the log of the softmax function along a given dimension.
     for:
       - special.log_softmax
+  - id: special_logit
+    description: |
+      Returns a new tensor with the logit of the elements of input.
+      Input is clamped to [eps, 1 - eps] when eps is not None.
+    for:
+      - special.logit
   - id: special_shifted_chebyshev_polynomial_u
     description: |
       Computes the shifted Chebyshev polynomial of the second kind U_n^*(x)
@@ -7045,6 +7051,22 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_logit_
+    description: |
+      The in-place version of `special_logit()`.
+    for:
+      - special.logit_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_logit_out
+    description: A variant of `special_logit` that allows the output to be assigned to the `out` tensor.
+    for:
+      - special.logit.out
   - id: special_shifted_chebyshev_polynomial_u_
     description: |
       Inplace variant of `special_shifted_chebyshev_polynomial_u`.
