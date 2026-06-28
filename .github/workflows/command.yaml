@@ -125,6 +125,7 @@ jobs:
       - id: check-gpu
         shell: bash
         run: |
+          source .venv/bin/activate
           source tools/env.sh ${BACKEND}
           bash tools/gpu_check_${VENDOR}.sh
 
@@ -196,4 +197,3 @@ jobs:
 
             The test failed to complete. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
           message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
-          allow-repeats: True
