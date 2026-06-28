@@ -63,6 +63,23 @@ def _leaky_relu_kernel(
     tl.store(output_ptr + offsets, output, mask=mask)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["negative_slope"])
+def _leaky_relu_inplace_kernel(
+    input_ptr,
+    n_elements,
+    negative_slope,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    x = tl.load(input_ptr + offsets, mask=mask)
+    output = tl.where(x >= 0, x, x * negative_slope)
+    tl.store(input_ptr + offsets, output, mask=mask)
+
+
 def leaky_relu(A, negative_slope=0.01):
     logger.debug("GEMS LEAKY_RELU")
     if not A.is_contiguous():
@@ -86,9 +103,10 @@ def leaky_relu_(A, negative_slope=0.01):
     n_elements = A.numel()
     if n_elements == 0:
         return A
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    BLOCK_SIZE = 1024
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
     with torch_device_fn.device(A.device.index):
-        _leaky_relu_kernel[grid](A, A, n_elements, negative_slope)
+        _leaky_relu_inplace_kernel[grid](A, n_elements, negative_slope, BLOCK_SIZE)
     return A
 
 
