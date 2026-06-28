@@ -21,52 +21,21 @@ if [ ! -f "$BACKENDS_YAML" ]; then
   exit 1
 fi
 
-eval $(python3 -c "
-import yaml, sys
+# Phase 1: Extract only python version and vendor using grep/awk
+# (no pyyaml dependency — runs before venv creation)
+PYTHON_VERSION=$(awk "/^  ${BACKEND}:/{found=1} found && /python:/{print \$2; exit}" "$BACKENDS_YAML" | tr -d '"')
+if [ -z "${PYTHON_VERSION}" ]; then
+  echo "Error: unknown backend '${BACKEND}'"
+  echo "Available backends:"
+  awk '/^  [a-z].*:$/{gsub(/:$/,""); print "  "$1}' "$BACKENDS_YAML"
+  exit 1
+fi
 
-cfg = yaml.safe_load(open('${BACKENDS_YAML}'))
-key = '${BACKEND}'
-
-if key not in cfg['backends']:
-    avail = ', '.join(cfg['backends'].keys())
-    print(f'echo \"Unknown backend: {key}\"; echo \"Available: {avail}\"; exit 1')
-    sys.exit()
-
-b = cfg['backends'][key]
-vendor = key.rsplit('-', 1)[0] if '-' in key else key
-index_url = b.get('index') or cfg['pypi_base'].format(vendor=vendor)
-
-print(f'PYTHON_VERSION={b[\"python\"]}')
-print(f'VENDOR={vendor}')
-print(f'FLAGOS_PYPI={index_url}')
-print(f'MIRROR={cfg[\"mirror\"]}')
-
-deps = ' '.join(b.get('deps', []))
-print(f'BACKEND_DEPS=\"{deps}\"')
-
-cmake_backend = b.get('cmake_backend', '')
-print(f'CMAKE_BACKEND={cmake_backend}')
-
-ft = b.get('flagtree', '')
-if isinstance(ft, list):
-    ft = ' '.join(ft)
-print(f'FLAGTREE_PKGS=\"{ft}\"')
-
-tr = b.get('triton', '')
-if isinstance(tr, list):
-    tr = ' '.join(tr)
-print(f'TRITON_PKGS=\"{tr}\"')
-
-post_install = []
-post_uninstall = []
-for item in b.get('post_install', []):
-    if isinstance(item, dict) and 'uninstall' in item:
-        post_uninstall.append(item['uninstall'])
-    else:
-        post_install.append(item)
-print(f'POST_INSTALL=\"{\" \".join(post_install)}\"')
-print(f'POST_UNINSTALL=\"{\" \".join(post_uninstall)}\"')
-")
+VENDOR=$(echo "${BACKEND}" | sed 's/-[^-]*$//')
+[ "${VENDOR}" = "${BACKEND}" ] && VENDOR="${BACKEND}"
+PYPI_BASE=$(grep '^pypi_base:' "$BACKENDS_YAML" | sed 's/^pypi_base: *"//;s/"$//')
+FLAGOS_PYPI=$(echo "${PYPI_BASE}" | sed "s/{vendor}/${VENDOR}/")
+MIRROR=$(grep '^mirror:' "$BACKENDS_YAML" | sed 's/^mirror: *"//;s/"$//')
 
 printf "Backend: ${BACKEND} (vendor: ${VENDOR})"
 ok
@@ -119,9 +88,41 @@ uv pip install -q \
   "pybind11==3.0.3" \
   "cmake>=3.20,<4" \
   "ninja==1.13.0" \
+  "PyYAML>=6.0" \
   --index "${MIRROR}" \
   || fail
 ok
+
+# ── Phase 2: Full YAML parse (pyyaml now available in venv) ──
+eval $(python3 -c "
+import yaml, sys
+
+cfg = yaml.safe_load(open('${BACKENDS_YAML}'))
+b = cfg['backends']['${BACKEND}']
+
+cmake_backend = b.get('cmake_backend', '')
+print(f'CMAKE_BACKEND={cmake_backend}')
+
+ft = b.get('flagtree', '')
+if isinstance(ft, list):
+    ft = ' '.join(ft)
+print(f'FLAGTREE_PKGS=\"{ft}\"')
+
+tr = b.get('triton', '')
+if isinstance(tr, list):
+    tr = ' '.join(tr)
+print(f'TRITON_PKGS=\"{tr}\"')
+
+post_install = []
+post_uninstall = []
+for item in b.get('post_install', []):
+    if isinstance(item, dict) and 'uninstall' in item:
+        post_uninstall.append(item['uninstall'])
+    else:
+        post_install.append(item)
+print(f'POST_INSTALL=\"{\" \".join(post_install)}\"')
+print(f'POST_UNINSTALL=\"{\" \".join(post_uninstall)}\"')
+")
 
 # ── C++ extensions ───────────────────────────────────────────
 # Set ENABLE_CPP=1 to build C++ wrapped operators.
