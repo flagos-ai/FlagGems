@@ -118,7 +118,13 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
 
     if torch.Size(broadcast_shape) != dst.shape:
         raise RuntimeError(
-            f"The broadcast shape {broadcast_shape} does not match destination shape {tuple(dst.shape)}"
+            f"The broadcast shape {broadcast_shape} does not match dst shape {dst.shape}"
+        )
+
+    _copy_kernel[(dst,) if dst.is_cuda else None](
+        src, dst
+    )
+    return dstast_shape} does not match destination shape {tuple(dst.shape)}"
         )
 
     expanded_src = _expand_like(src, dst.shape)
