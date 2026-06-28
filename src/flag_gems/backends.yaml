@@ -99,7 +99,7 @@ backends:
     python: "3.10"
     cmake_backend: IX
     triton: triton==3.1.0+corex.4.4.0
-    flagtree: flagtree==0.5.1+iluvatar3.1
+    # flagtree==0.5.1+iluvatar3.1 — plugin loading bug in venv, disabled for now
     deps:
       - torch==2.7.1+corex.4.4.0
       - torchaudio==2.7.1+corex.4.4.0
