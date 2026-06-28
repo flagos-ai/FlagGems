@@ -225,13 +225,19 @@ compute_global_topk_indices_and_lens:
       - 4
       - 8
     stages:
+      - 1
       - 2
       - 3
       - 4
+      - 5
+      - 6
     warps:
+      - 1
       - 2
       - 4
       - 8
+      - 16
+      - 32
   - strategy:
       topk: log
       num_tokens: log
