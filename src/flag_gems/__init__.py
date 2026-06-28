@@ -406,6 +406,8 @@ _FULL_CONFIG = (
     ("log_sigmoid", log_sigmoid),
     ("logaddexp", logaddexp),
     ("logaddexp.out", logaddexp_out),
+    ("logaddexp2", logaddexp2),
+    ("logaddexp2.out", logaddexp2_out),
     ("logical_and", logical_and),
     ("logical_and_", logical_and_),
     ("logical_not", logical_not),
