@@ -431,7 +431,6 @@ class LibTuner(triton.runtime.Autotuner):
         key += tuple(str(arg.dtype) for arg in args.values() if hasattr(arg, "dtype"))
         return key
 
-    @staticmethod
     @abstractmethod
     def policy(
         self,
@@ -502,7 +501,7 @@ class LibTuner(triton.runtime.Autotuner):
                     args: Tuple[Any],
                     kwargs: Dict[str, Any],
                 ) -> Tuple[triton.Config, Dict[str, float]]:
-                    return policy_impl(fn, configs, args, kwargs)
+                    return policy_impl(self, fn, configs, args, kwargs)
 
             return AnonymousLibTunerImpl
 
@@ -592,6 +591,172 @@ class LibTuner(triton.runtime.Autotuner):
         return ret
 
 
+# ---- FlagTune Proposer Integration ----
+
+_FLAGTUNE_PROPOSER_POOL: Dict[str, Any] = {}
+_FLAGTUNE_OP_INFO_POOL: Dict[str, Any] = {}
+
+
+def _ensure_flagtune_proposer(op_id: str, operator_id: str):
+    """Lazily load flagtune proposer and operator_info.
+
+    op_id:       FlagTree-format operator identifier, e.g. "flaggems/mm_general_tma"
+    operator_id: FlagTree registry internal operator_id, e.g. "mm_general_tma"
+    """
+    if op_id not in _FLAGTUNE_PROPOSER_POOL:
+        from triton.flagtune.predict import make_config_proposer
+        from triton.flagtune.registry import get as _get_op_info
+
+        _FLAGTUNE_PROPOSER_POOL[op_id] = make_config_proposer({"op_id": op_id})
+        _FLAGTUNE_OP_INFO_POOL[op_id] = _get_op_info(operator_id)
+
+    return _FLAGTUNE_PROPOSER_POOL[op_id], _FLAGTUNE_OP_INFO_POOL[op_id]
+
+
+def _configs_to_dicts_for_proposer(
+    configs: Iterator[triton.Config], param_fields: List[str]
+) -> List[Dict[str, Any]]:
+    """Convert libtuner triton.Config iterator to dict list for proposer."""
+    result = []
+    for cfg in configs:
+        d: Dict[str, Any] = {}
+        for f in param_fields:
+            if f in getattr(cfg, "kwargs", {}):
+                d[f] = int(cfg.kwargs[f])
+        for attr in ("num_warps", "num_stages", "num_ctas"):
+            if hasattr(cfg, attr):
+                d[attr] = int(getattr(cfg, attr))
+        if d:
+            result.append(d)
+    return result
+
+
+def _make_proposer_bench_adapter(
+    bench_fn: Callable[[triton.Config], List[float]],
+    to_config: Callable[[Dict[str, Any]], triton.Config],
+):
+    """Adapt libtuner bench(triton.Config) -> List[float] to proposer BenchmarkFn.
+
+    The adapter itself does no database operations — bench_fn internally handles
+    BenchmarkCache read/write (see LibTuner.run() bench closure at lines ~527-532).
+    """
+
+    def adapted(config_dict: Dict[str, Any], n_runs=None) -> List[float]:
+        config = to_config(config_dict)
+        return bench_fn(config)
+
+    return adapted
+
+
+@LibTuner.register_policy("flagtune")
+def flagtune_policy(
+    self,
+    bench_fn: Callable[[triton.Config], List[float]],
+    configs: Iterator[triton.Config],
+    args: Tuple[Any],
+    kwargs: Dict[str, Any],
+) -> Tuple[triton.Config, Dict[str, float]]:
+    """FlagTune policy: delegate config search to FlagTree ConfigProposer (XGBoost + GA).
+
+    Flow:
+        1. Construct proposer (XGBoost model + GA searcher)
+        2. Extract shape from libtuner args
+        3. Adapt benchmark function signature
+        4. Call proposer: XGBoost predict -> benchmark seeds -> GA iterate
+        5. Convert results back to (best_config, timings)
+
+    Falls back to default policy if any step fails.
+    """
+    expand_name = self._flagtune_expand_op_name or self._flagtune_op_name
+    if expand_name is None:
+        return LibTuner.get("default").policy(
+            self, bench_fn, configs, args, kwargs
+        )
+    op_id = f"flaggems/{expand_name}"
+
+    try:
+        proposer, op_info = _ensure_flagtune_proposer(op_id, expand_name)
+    except Exception as exc:
+        logger.warning(
+            "FlagTune proposer init failed for op_id=%s: %s; falling back to default.",
+            op_id, exc,
+        )
+        return LibTuner.get("default").policy(
+            self, bench_fn, configs, args, kwargs
+        )
+
+    extract = getattr(op_info, "extract_shape", None)
+    if extract is None:
+        logger.warning(
+            "No extract_shape for op_id=%s; falling back to default.", op_id
+        )
+        return LibTuner.get("default").policy(
+            self, bench_fn, configs, args, kwargs
+        )
+
+    shape = extract(self.nargs)
+
+    param_fields = op_info.param_space.all_field_names
+    to_config = op_info.to_config
+    initial = _configs_to_dicts_for_proposer(configs, param_fields)
+    meta = {"op_id": op_id}
+
+    adapter = _make_proposer_bench_adapter(bench_fn, to_config)
+
+    try:
+        result_dicts = proposer(adapter, shape, initial, meta)
+    except Exception as exc:
+        logger.warning(
+            "FlagTune proposer failed for op_id=%s shape=%s: %s; falling back to default.",
+            op_id, shape, exc,
+        )
+        return LibTuner.get("default").policy(
+            self, bench_fn, configs, args, kwargs
+        )
+
+    if not result_dicts:
+        logger.warning(
+            "FlagTune proposer returned empty for op_id=%s; falling back to default.",
+            op_id,
+        )
+        return LibTuner.get("default").policy(
+            self, bench_fn, configs, args, kwargs
+        )
+
+    # Filter out configs that are invalid for the current shape.
+    # The config proposer does not guarantee shape-validity of its output.
+    validate_fn = getattr(op_info, "validate_shape_config", None)
+    if validate_fn is not None:
+        valid_dicts = [r for r in result_dicts if validate_fn(shape, r)]
+        if not valid_dicts:
+            logger.warning(
+                "FlagTune proposer results all invalid for op_id=%s shape=%s; falling back to default.",
+                op_id, shape,
+            )
+            return LibTuner.get("default").policy(
+                self, bench_fn, configs, args, kwargs
+            )
+        result_dicts = valid_dicts
+
+    timings: Dict[triton.Config, float] = {}
+    best_config: Optional[triton.Config] = None
+    best_latency: float = float("inf")
+
+    for d in result_dicts:
+        cfg = to_config(d)
+        lat = float(bench_fn(cfg)[0])
+        timings[cfg] = lat
+        if lat < best_latency:
+            best_latency = lat
+            best_config = cfg
+
+    if best_config is None:
+        return LibTuner.get("default").policy(
+            self, bench_fn, configs, args, kwargs
+        )
+    return best_config, timings
+
+
 @LibTuner.register_strategy(None)
 @LibTuner.register_strategy("default")
 def default_strategy(key: Any) -> Any:
@@ -614,6 +779,7 @@ def align32_strategy(key: Union[int, float]) -> int:
 
 @LibTuner.register_policy("default")
 def default_policy(
+    self,
     bench_fn: Callable[[triton.Config], List[float]],
     configs: Iterator[triton.Config],
     args: Tuple[Any],
