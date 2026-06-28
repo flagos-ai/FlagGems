@@ -380,6 +380,7 @@ _FULL_CONFIG = (
     ("isneginf.out", isneginf_out),
     ("kron", kron),
     ("kthvalue", kthvalue),
+    ("LayerNorm", LayerNorm),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
     ("leaky_relu", leaky_relu),

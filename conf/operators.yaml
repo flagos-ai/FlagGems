@@ -3904,6 +3904,17 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: LayerNorm
+    description: Applies Layer Normalization over a mini-batch of inputs.
+    for:
+      - LayerNorm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: layer_norm
     description: An internal IR for applying Layer Normalization for last certain number of dimensions.
     for:
