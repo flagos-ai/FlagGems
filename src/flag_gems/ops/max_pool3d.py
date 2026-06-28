@@ -4,7 +4,7 @@ import triton.language as tl
 
 
 @triton.jit
-def pool3d_kernel(
+def max_pool3d_kernel(
     x_ptr,
     out_ptr,
     D,
@@ -28,8 +28,7 @@ def pool3d_kernel(
     pw = hw_idx % oW
 
     x_base = x_ptr + idx * stride_c
-    acc = 0.0
-    count = 0
+    max_val = -float("inf")
     for i in range(k):
         for j in range(k):
             for m in range(k):
@@ -46,21 +45,21 @@ def pool3d_kernel(
                 )
                 if valid:
                     offset = d_in * stride_d + h_in * stride_h + w_in * stride_w
-                    acc += tl.load(x_base + offset)
-                    count += 1
+                    val = tl.load(x_base + offset)
+                    max_val = tl.maximum(max_val, val)
 
     out_idx = idx * (oD * oH * oW) + pd * (oH * oW) + ph * oW + pw
-    tl.store(out_ptr + out_idx, acc / count)
+    tl.store(out_ptr + out_idx, max_val)
 
 
-def avg_pool3d_triton(x, kernel_size=3, stride=2, padding=1):
+def max_pool3d_triton(x, kernel_size=3, stride=2, padding=1):
     B, C, D, H, W = x.shape
     oD = (D + 2 * padding - kernel_size) // stride + 1
     oH = (H + 2 * padding - kernel_size) // stride + 1
     oW = (W + 2 * padding - kernel_size) // stride + 1
     out = torch.zeros(B * C, oD, oH, oW, device=x.device, dtype=x.dtype)
     grid = (B * C, oD, oH * oW)
-    pool3d_kernel[grid](
+    max_pool3d_kernel[grid](
         x,
         out,
         D,
