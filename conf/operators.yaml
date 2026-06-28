@@ -4606,6 +4606,20 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: max_unpool3d
+    description: >
+      Computes a partial inverse of max_pool3d. MaxPool3d stores the indices of the maximal
+      values. max_unpool3d takes these indices and scatters the input values to an output tensor
+      of a given size.
+    for:
+      - max_unpool3d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: maximum
     description: Computes the element-wise maximum of `input` and `other`.
     for:
