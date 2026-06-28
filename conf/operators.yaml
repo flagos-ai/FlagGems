@@ -4835,6 +4835,17 @@ ops:
       - BLAS
     stages:
       - stable: '2.0'
+  - id: mvlgamma_
+    description: Computes the multivariate log-gamma function in-place.
+    for:
+      - mvlgamma_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: nan_to_num
     description: |
       Replaces `NaN`, positive infinity, and negative infinity values in `input`

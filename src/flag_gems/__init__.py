@@ -453,6 +453,7 @@ _FULL_CONFIG = (
     ("mul_.Tensor", mul_),
     ("multinomial", multinomial),
     ("mv", mv),
+    ("mvlgamma_", mvlgamma_),
     ("nan_to_num", nan_to_num),
     ("nanmedian", nanmedian),
     ("nanmedian.dim", nanmedian_dim),
