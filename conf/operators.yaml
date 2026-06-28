@@ -4715,6 +4715,19 @@ ops:
       - Math
     stages:
       - stable: '2.1'
+  - id: mish_backward
+    description: |
+      Computes the gradient of Mish activation with respect to the input.
+    for:
+      - mish_backward
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: mm
     description: Performs a matrix multiplication of the two input matrices.
     for:
