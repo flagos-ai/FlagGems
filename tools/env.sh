@@ -62,7 +62,7 @@ case $BACKEND in
       export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/backends/metax/lib:$LD_LIBRARY_PATH
     fi
     ;;
-  nvidia)
+  nvidia|nvidia-cuda128|nvidia-cuda133)
     export PATH=/usr/local/cuda/bin:$PATH
     export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
     ;;
