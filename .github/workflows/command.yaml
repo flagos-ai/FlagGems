@@ -180,3 +180,20 @@ jobs:
           message-path: report.md
           message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           allow-repeats: True
+
+      - id: failure-report
+        if: failure()
+        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          message: |
+            ## ❌ On-demand test failed
+
+            **Operator:** `${{ needs.preprocess.outputs.op }}`
+            **Runner:** `${{ needs.preprocess.outputs.runner }}`
+            **Backend:** ${{ env.BACKEND }}
+
+            The test failed to complete. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
+          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
+          allow-repeats: True

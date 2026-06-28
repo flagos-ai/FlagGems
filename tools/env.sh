@@ -40,6 +40,15 @@ case $BACKEND in
     export COREX_ROOT=/usr/local/corex
     export PATH=$COREX_ROOT/bin:$PATH
     export LD_LIBRARY_PATH=$COREX_ROOT/lib:$LD_LIBRARY_PATH
+    # Iluvatar's triton (3.1.0+corex) links libtriton.so directly against
+    # libpython3.10.so.1.0, unlike upstream triton and other vendor forks
+    # which use -undefined dynamic_lookup or bundle their own copy.
+    # When Python is uv-managed, the shared lib lives outside standard
+    # search paths, so we must add it explicitly.
+    PYTHON_LIBDIR=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))" 2>/dev/null)
+    if [ -n "$PYTHON_LIBDIR" ]; then
+      export LD_LIBRARY_PATH=$PYTHON_LIBDIR:$LD_LIBRARY_PATH
+    fi
     ;;
   kunlunxin)
     export LD_LIBRARY_PATH=/xcudart/lib:/usr/local/cuda/lib64
