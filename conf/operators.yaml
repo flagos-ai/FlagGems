@@ -72,34 +72,6 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
-  - id: adaptive_avg_pool3d
-    description: |
-      Apply a 3D adaptive average pooling over an input signal composed of several input planes.
-    for:
-      - _adaptive_avg_pool3d
-    labels:
-      - aten
-      - nn.functional
-      - KernelGen
-    kind:
-      - NeuralNetwork
-    stages:
-      - alpha: '5.0'
-      - beta: '5.3'
-  - id: adaptive_avg_pool3d_out
-    description: |
-      A variant of `_adaptive_avg_pool3d` that assigns the output to the `out` tensor.
-    for:
-      - _adaptive_avg_pool3d.out
-    labels:
-      - aten
-      - nn.functional
-      - KernelGen
-    kind:
-      - NeuralNetwork
-    stages:
-      - alpha: '5.0'
-      - beta: '5.3'
   - id: adaptive_max_pool3d_backward
     description: |
       Computes the gradient for adaptive max pooling 3D.
@@ -1875,6 +1847,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: dequantize
+    description: >
+      Returns an fp32 Tensor by dequantizing a quantized Tensor.
+    for:
+      - dequantize
+      - dequantize.self
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dequantize_and_gather_k_cache
     description: |
       Dequantizes FP8 K-cache entries and gathers them into a BF16 tensor for DeepSeekV4 attention.
@@ -2931,6 +2916,22 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.1'
+  - id: fp8_fp4_paged_mqa_logits
+    description: |
+      Compute paged multi-query attention logits from FP8 queries against
+      FP8/FP4 paged KV cache with per-token scaling. Used in DeepSeek-V4
+      decode-phase inference with adaptive tile sizing.
+    for:
+      - vllm.utils.deep_gemm.fp8_fp4_paged_mqa_logits
+    labels:
+      - fused
+      - vLLM
+      - DeepSeekV4
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.3'
   - id: fp8_mqa_logits
     description: |
       For each token in the given E4M3 tensor, iterate all tokens from two other given tensors,
@@ -2982,6 +2983,28 @@ ops:
       - Tensor
     stages:
       - beta: '5.0'
+  - id: fused_adam
+    description: Fused Adam optimizer step with optional AdamW weight decay, AMSGrad, and gradient maximize support.
+    for:
+      - _fused_adam
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: fused_adam_
+    description: The in-place version of `fused_adam()`.
+    for:
+      - _fused_adam_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: fused_add_rms_norm
     for:
       - add_rms_norm
@@ -3999,6 +4022,28 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: lgamma
+    description: Computes the logarithm of the gamma function on input.
+    for:
+      - lgamma
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: lgamma_
+    description: In-place version of lgamma().
+    for:
+      - lgamma_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: lift_fresh_copy
     description: |
       Creates a new, independent copy of a tensor within a compiled graph.
@@ -6901,11 +6946,8 @@ ops:
   - id: special_gammainc
     description: |
       Computes the regularized lower incomplete gamma function P(a, x) element-wise.
-      A variant with output saved to a provided `out` tensor is also registered
-      as `special.gammainc.out`.
     for:
       - special.gammainc
-      - special.gammainc.out
     labels:
       - aten
       - KernelGen
@@ -7344,6 +7386,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: threshold_
+    description: >
+      In-place version of threshold(). Thresholds each element of the input Tensor.
+    for:
+      - threshold_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: threshold_backward
     description: This is the backward version for `threshold`.
     for:
