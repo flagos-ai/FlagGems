@@ -528,13 +528,14 @@ def normed_cumsum(inp, dim=-1):
     # First and last dims are easier to handle, but transpose the middle dim to the last
     ranked_dims = sorted(range(inp.ndim), key=lambda i: inp.stride(i), reverse=True)
     is_mid_dim = dim not in (ranked_dims[0], ranked_dims[-1])
+    orig_dim = dim
     if is_mid_dim:
         inp = inp.transpose(dim, -1).contiguous()
         dim = -1
     out = torch.empty_like(inp)
     with torch_device_fn.device(inp.device.index):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
-        num_sms = get_device_properties(device).multi_processor_count
+        num_sms = get_device_properties(inp.device).multi_processor_count
         TILE = 2048
         # Each row is split into n_chunks of chunks where each chunk is compised of
         # n_tiles of tiles. Different chunks are assigned to different ctas.
@@ -569,11 +570,13 @@ def normed_cumsum(inp, dim=-1):
                 HAS_OUT_LAYOUT=False,
                 TILE=TILE,
             )
+            if is_mid_dim:
+                out = out.transpose(orig_dim, -1).contiguous()
             return out
 
         if inp.dtype != torch.float64:
             acc_dtype = torch.float32
-        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device.name)
+        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=inp.device)
         cumsums = torch.empty_like(sums)
         block_cumsum_kernel[grid](
             inp,
@@ -629,4 +632,6 @@ def normed_cumsum(inp, dim=-1):
             HAS_OUT_LAYOUT=False,
             TILE=TILE,
         )
+        if is_mid_dim:
+            out = out.transpose(orig_dim, -1).contiguous()
         return out
