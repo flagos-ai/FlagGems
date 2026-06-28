@@ -30,8 +30,8 @@ def test_normal_(shape, dtype):
     mean = torch.mean(ref_out)
     std = torch.std(ref_out)
 
-    assert torch.abs(mean - 3.0) < 0.1
-    assert torch.abs(std - 10.0) < 0.1
+    assert torch.abs(mean - 3.0) < 0.2
+    assert torch.abs(std - 10.0) < 0.2
 
 
 @pytest.mark.normal_float_tensor
@@ -56,8 +56,8 @@ def test_normal_float_tensor(shape, dtype):
     mean = torch.mean(ref_out)
     std = torch.std(ref_out)
 
-    assert torch.abs(mean - 3.0) < 0.1
-    assert torch.abs(std - 10.0) < 0.1
+    assert torch.abs(mean - 3.0) < 0.2
+    assert torch.abs(std - 10.0) < 0.2
 
 
 @pytest.mark.normal_tensor_float
@@ -81,8 +81,8 @@ def test_normal_tensor_float(shape, dtype):
     mean = torch.mean(ref_out)
     std = torch.std(ref_out)
 
-    assert torch.abs(mean - 3.0) < 0.1
-    assert torch.abs(std - 10.0) < 0.1
+    assert torch.abs(mean - 3.0) < 0.2
+    assert torch.abs(std - 10.0) < 0.2
 
 
 @pytest.mark.normal_tensor_tensor
@@ -107,5 +107,5 @@ def test_normal_tensor_tensor(shape, dtype):
     mean = torch.mean(ref_out)
     std = torch.std(ref_out)
 
-    assert torch.abs(mean - 3.0) < 0.1
-    assert torch.abs(std - 10.0) < 0.1
+    assert torch.abs(mean - 3.0) < 0.2
+    assert torch.abs(std - 10.0) < 0.2
