@@ -63,9 +63,14 @@ jobs:
           RUNNER_LABEL: ${{ needs.preprocess.outputs.runner }}
         run: |
           case "${RUNNER_LABEL}" in
-            h20|a100|h100)
+            h20)
               VENDOR="nvidia"
-              BACKEND="nvidia"
+              BACKEND="nvidia-cuda133"
+              ;;
+            a100|h100)
+              # TODO: verify CUDA version on a100/h100, then set correct backend
+              VENDOR="nvidia"
+              BACKEND="nvidia-cuda133"
               ;;
             cann850)
               VENDOR="ascend"
@@ -117,7 +122,7 @@ jobs:
         shell: bash
         run: |
           ./setup.sh ${BACKEND}
-          if [ "${BACKEND}" == "nvidia" ]; then
+          if [ "${BACKEND}" == "nvidia-cuda133" ]; then
             source .venv/bin/activate
             uv pip install vllm==0.21.0 --torch-backend=cu130
           fi

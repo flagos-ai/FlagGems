@@ -26,13 +26,24 @@ pypi_base: "https://resource.flagos.net/repository/flagos-pypi-{vendor}/simple"
 mirror: "https://mirrors.aliyun.com/pypi/simple"
 
 backends:
-  nvidia:
+  nvidia-cuda128:
+    python: "3.12"
+    cmake_backend: CUDA
+    triton: triton==3.6.0
+    flagtree: flagtree==0.6.0
+    deps:
+      - torch==2.10.0+cu128
+      - torchaudio==2.10.0+cu128
+      - torchvision==0.25.0+cu128
+
+  nvidia-cuda133:
     python: "3.12"
     cmake_backend: CUDA
     triton: triton==3.6.0
     flagtree: flagtree==0.6.0
     deps:
       - torch==2.11.0+cu130
+      - torchaudio==2.11.0+cu130
       - torchvision==0.26.0+cu130
 
   ascend-cann850:

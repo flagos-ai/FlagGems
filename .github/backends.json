@@ -49,7 +49,14 @@
     "enabled": true
   },
   {
-    "vendor": "nvidia",
+    "vendor": "nvidia-cuda128",
+    "runner_label": "h20-cu128",
+    "label": "vendor/NVIDIA",
+    "gpu_check": "tools/gpu_check_nvidia.sh",
+    "enabled": false
+  },
+  {
+    "vendor": "nvidia-cuda133",
     "runner_label": "h20",
     "label": "vendor/NVIDIA",
     "gpu_check": "tools/gpu_check_nvidia.sh",
