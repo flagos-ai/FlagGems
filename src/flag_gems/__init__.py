@@ -404,6 +404,7 @@ _FULL_CONFIG = (
     ("log10_", log10_),
     ("log_normal_", log_normal_),
     ("log_sigmoid", log_sigmoid),
+    ("log_sigmoid_forward", log_sigmoid_forward),
     ("logaddexp", logaddexp),
     ("logaddexp.out", logaddexp_out),
     ("logical_and", logical_and),
