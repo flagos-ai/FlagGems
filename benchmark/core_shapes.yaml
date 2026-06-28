@@ -476,6 +476,14 @@ AttentionBenchmark:
     - [4, 32, 4096, 128]
     - [4, 32, 8192, 128]
 
+ScaledDotProductFusedAttentionOverrideableBenchmark:
+  shapes:
+    - [2, 8, 64, 64]
+    - [4, 8, 128, 64]
+    - [2, 8, 128, 128]
+    - [1, 16, 256, 64]
+  shape_desc: "B, H, S, D"
+
 KronBenchmark:
   shapes:
     - [16, 16]
