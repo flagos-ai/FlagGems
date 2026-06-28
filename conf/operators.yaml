@@ -2218,6 +2218,17 @@ ops:
     stages:
       stable: '2.2'
       removed: '3.0'
+  - name: is_strides_like_format
+    description: |
+      Checks whether the stride pattern of the input tensor matches the specified memory format (contiguous, channels_last, or any).
+    for:
+      - is_strides_like_format
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      stable: '1.0'
   - name: isclose
     description: |
       Returns a new tensor with boolean elements representing if each element of `input`

@@ -26,6 +26,7 @@ from .hstack import hstack
 from .index import index
 from .index_add import index_add
 from .index_select import index_select
+from .is_strides_like_format import is_strides_like_format
 from .isin import isin
 from .linspace import linspace
 from .log_softmax import log_softmax, log_softmax_backward
@@ -105,6 +106,7 @@ __all__ = [
     "index",
     "index_add",
     "index_select",
+    "is_strides_like_format",
     "isin",
     "linspace",
     "log_softmax",
