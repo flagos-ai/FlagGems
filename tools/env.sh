@@ -26,6 +26,12 @@ case $BACKEND in
     export PATH=/usr/local/neuware/bin:$PATH
     export LD_LIBRARY_PATH=/usr/local/neuware/lib64:$LD_LIBRARY_PATH
     ;;
+  enflame)
+    # gcc-toolset-14 provides GLIBCXX_3.4.32+ required by some packages
+    if [ -d /opt/OpenCloudOS/gcc-toolset-14/root/usr/lib64 ]; then
+      export LD_LIBRARY_PATH=/opt/OpenCloudOS/gcc-toolset-14/root/usr/lib64:$LD_LIBRARY_PATH
+    fi
+    ;;
   hygon)
     source /opt/dtk-26.04/env.sh
     echo "PATH=$PATH"
@@ -34,6 +40,22 @@ case $BACKEND in
     export COREX_ROOT=/usr/local/corex
     export PATH=$COREX_ROOT/bin:$PATH
     export LD_LIBRARY_PATH=$COREX_ROOT/lib:$LD_LIBRARY_PATH
+    # Iluvatar's triton (3.1.0+corex) links libtriton.so directly against
+    # libpython3.10.so.1.0, unlike upstream triton and other vendor forks
+    # which use -undefined dynamic_lookup or bundle their own copy.
+    # When Python is uv-managed, the shared lib lives outside standard
+    # search paths, so we must add it explicitly.
+    if command -v python &>/dev/null; then
+      PYTHON_LIBDIR=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))" 2>/dev/null) || true
+      if [ -n "$PYTHON_LIBDIR" ]; then
+        export LD_LIBRARY_PATH=$PYTHON_LIBDIR:$LD_LIBRARY_PATH
+      fi
+    fi
+    # Iluvatar's libtriton.so has the plugin search path hardcoded to
+    # /usr/local/lib/python3.10/site-packages/triton/_C at compile time.
+    # Add the venv's triton/_C to LD_LIBRARY_PATH so the plugin is found.
+    SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
+    export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH
     ;;
   kunlunxin)
     export LD_LIBRARY_PATH=/xcudart/lib:/usr/local/cuda/lib64
@@ -47,7 +69,7 @@ case $BACKEND in
       export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/backends/metax/lib:$LD_LIBRARY_PATH
     fi
     ;;
-  nvidia)
+  nvidia|nvidia-cuda128|nvidia-cuda133)
     export PATH=/usr/local/cuda/bin:$PATH
     export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
     ;;

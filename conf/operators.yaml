@@ -6957,11 +6957,8 @@ ops:
   - id: special_gammainc
     description: |
       Computes the regularized lower incomplete gamma function P(a, x) element-wise.
-      A variant with output saved to a provided `out` tensor is also registered
-      as `special.gammainc.out`.
     for:
       - special.gammainc
-      - special.gammainc.out
     labels:
       - aten
       - KernelGen

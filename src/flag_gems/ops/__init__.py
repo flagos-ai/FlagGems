@@ -31,9 +31,8 @@ from flag_gems.ops.acos import acos
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
 from flag_gems.ops.adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from flag_gems.ops.add import add, add_
-from flag_gems.ops.addcdiv import addcdiv, addcdiv_out
-from flag_gems.ops.addcdiv_ import addcdiv_
-from flag_gems.ops.addcmul import addcmul, addcmul_out
+from flag_gems.ops.addcdiv import addcdiv, addcdiv_, addcdiv_out
+from flag_gems.ops.addcmul import addcmul, addcmul_, addcmul_out
 from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from flag_gems.ops.addmm_ import addmm_
 from flag_gems.ops.addmv import addmv, addmv_out
@@ -434,7 +433,7 @@ from flag_gems.ops.softplus import softplus
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
-from flag_gems.ops.special_gammainc import special_gammainc, special_gammainc_out
+from flag_gems.ops.special_gammainc import special_gammainc
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
@@ -544,6 +543,7 @@ __all__ = [
     "addcdiv_",
     "addcdiv_out",
     "addcmul",
+    "addcmul_",
     "addcmul_out",
     "addmm",
     "addmm_",
@@ -1029,7 +1029,6 @@ __all__ = [
     "sort_stable",
     "special_chebyshev_polynomial_v",
     "special_gammainc",
-    "special_gammainc_out",
     "special_hermite_polynomial_h",
     "special_i0e",
     "special_i0e_out",
