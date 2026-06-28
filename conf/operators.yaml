@@ -3345,6 +3345,19 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.3'
+  - id: grid_sampler_2d
+    description: |
+      Performs 2D grid sampling of the input tensor using the given grid.
+      Supports bilinear, nearest, and bicubic interpolation with zeros, border, and reflection padding.
+    for:
+      - grid_sampler_2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: group_norm
     description: An internal IR for applying Group Normalization for last certain number of dimensions.
     for:
