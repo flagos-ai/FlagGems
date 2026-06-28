@@ -48,6 +48,7 @@ from .bmm import bmm, bmm_out
 from .cat import cat
 from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_min, clamp_min_, clamp_tensor, clamp_tensor_
+from .clone import clone
 from .contiguous import contiguous
 from .conv1d import conv1d
 from .conv2d import conv2d
@@ -59,10 +60,12 @@ from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .cummax import cummax
 from .cummin import cummin
+from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .diff import diff
 from .digamma_ import digamma_
 from .div import (
     div_mode,
@@ -208,6 +211,7 @@ from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .sqrt import sqrt, sqrt_
+from .square import square, square_
 from .stack import stack
 from .std import std
 from .sub import sub, sub_
@@ -305,6 +309,7 @@ __all__ = [
     "clamp_tensor_",
     "clamp_min",
     "clamp_min_",
+    "clone",
     "constant_pad_nd",
     "contiguous",
     "conv1d",
@@ -319,12 +324,14 @@ __all__ = [
     "count_nonzero",
     "cummax",
     "cummin",
+    "cumprod",
     "cumprod_",
     "cumsum",
     "cumsum_out",
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diff",
     "div_mode",
     "div_mode_",
     "dot",
@@ -525,6 +532,8 @@ __all__ = [
     "sort_stable",
     "sqrt",
     "sqrt_",
+    "square",
+    "square_",
     "stack",
     "std",
     "sub",
