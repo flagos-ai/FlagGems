@@ -9,6 +9,19 @@ from . import backend, common
 from .backend.device_finder import DeviceDetector
 
 
+def _ensure_triton_config():
+    if hasattr(triton, "Config"):
+        return
+    try:
+        from triton.runtime.autotuner import Config
+    except ImportError:
+        from triton.runtime import Config
+    triton.Config = Config
+
+
+_ensure_triton_config()
+
+
 class TunedConfigLoader(object):
     _instance = None
 
