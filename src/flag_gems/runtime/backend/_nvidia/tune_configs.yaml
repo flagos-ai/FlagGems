@@ -2359,3 +2359,21 @@ fused_marlin_moe_mxfp4:
   - META: {BLOCK_SIZE_N: 256, GROUP_SIZE_M: 1}
     num_warps: 4
     num_stages: 4
+
+w8a8_block_fp8_bmm:
+  - gen: true
+    param_map:
+      META:
+        TILE_ORDER: tile_order
+      num_warps: warps
+      num_stages: stages
+    tile_order:
+      - 0
+      - 1
+    warps:
+      - 4
+      - 8
+    stages:
+      - 4
+      - 6
+      - 8

@@ -265,6 +265,19 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name == "w8a8_block_fp8_bmm":
+            return [
+                triton.Config(
+                    {"TILE_ORDER": tile_order},
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for tile_order in ranges["TILE_ORDER"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
         if op_name == "w8a8_block_fp8_general":
             return [
                 triton.Config(
@@ -450,6 +463,10 @@ class TunedConfigLoader(object):
             ),
             "w8a8_block_fp8_general_tma": self._build_single_expand_spec(
                 "w8a8_block_fp8_general_tma"
+            ),
+            "w8a8_block_fp8_bmm": self._build_single_expand_spec(
+                "w8a8_block_fp8_bmm",
+                expand_yaml_path=self._get_expand_config_path("w8a8_block_fp8_bmm"),
             ),
             "mm_splitk": self._build_single_expand_spec("mm_splitk"),
             "sparse_attention": self._build_single_expand_spec("sparse_attention"),
