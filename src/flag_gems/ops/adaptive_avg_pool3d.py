@@ -192,7 +192,7 @@ def _adaptive_avg_pool3d(input: torch.Tensor, output_size):
 
 
 def _adaptive_avg_pool3d_out(input: torch.Tensor, output_size, out: torch.Tensor):
-    logger.debug("GEMS _ADAPTIVE_AVG_POOL3D_OUT")
+    logger.debug("GEMS ADAPTIVE_AVG_POOL3D_OUT")
     x5d, squeezed = _prepare_5d_input(input)
     D_out, H_out, W_out = _normalize_output_size_3d(output_size)
 
