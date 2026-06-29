@@ -12,6 +12,8 @@
     }
   },
   "runArgs": [
+	"--ulimit",
+        "nofile=1048576:1048576",
         "--gpus=all",
         "--net=host",
         "--ipc=host",
