@@ -19,6 +19,8 @@ jobs:
       pull: ${{ steps.parse-command.outputs.PR_NUMBER }}
       existing: ${{ steps.parse-command.outputs.EXISTING_OP }}
     steps:
+      - id: checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       - id: check
         uses: github/command@3442f3fa1efe01bdb024b157083c337902d17372  # v2.0.3
         with:
@@ -43,7 +45,7 @@ jobs:
           echo "PR_NUMBER=${PULL_NUMBER}" >> $GITHUB_OUTPUT
 
           # Detect if operator exists before
-          num=$(grep "pytest.mark.${{ needs.preprocess.outputs.op }}" -r tests | wc -l)
+          num=$(grep -rP "pytest\.mark\.${op}\b" tests | wc -l)
           if [ "$num" -eq "0" ]; then
             echo "EXISTING_OP=0" >> $GITHUB_OUTPUT
           else
@@ -61,9 +63,14 @@ jobs:
           RUNNER_LABEL: ${{ needs.preprocess.outputs.runner }}
         run: |
           case "${RUNNER_LABEL}" in
-            h20|a100|h100)
+            h20)
               VENDOR="nvidia"
-              BACKEND="nvidia"
+              BACKEND="nvidia-cuda133"
+              ;;
+            a100|h100)
+              # TODO: verify CUDA version on a100/h100, then set correct backend
+              VENDOR="nvidia"
+              BACKEND="nvidia-cuda133"
               ;;
             cann850)
               VENDOR="ascend"
@@ -81,13 +88,29 @@ jobs:
           echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
           echo "BACKEND=${BACKEND}" >> $GITHUB_ENV
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
       - name: setup-gh
-        uses: sersoft-gmbh/setup-gh-cli-action@v3
-        with:
-          version: stable
+        shell: bash
+        env:
+          GH_VERSION: "2.95.0"
+        run: |
+          export HOME=$(eval echo ~"$(whoami)")
+          echo "HOME=${HOME}" >> $GITHUB_ENV
+          GH_DIR="${HOME}/.local/bin"
+          if command -v gh &>/dev/null; then
+            echo "gh already available: $(gh --version | head -1)"
+          elif [ -x "${GH_DIR}/gh" ]; then
+            echo "gh found at ${GH_DIR}: $("${GH_DIR}/gh" --version | head -1)"
+            echo "${GH_DIR}" >> $GITHUB_PATH
+          else
+            mkdir -p "${GH_DIR}"
+            curl -fsSL "https://resource.flagos.net/repository/flagos-filestore/github/gh_${GH_VERSION}_linux_amd64.tar.gz" \
+              | tar -xz --strip-components=2 -C "${GH_DIR}" "gh_${GH_VERSION}_linux_amd64/bin/gh"
+            echo "Installed gh ${GH_VERSION} to ${GH_DIR}"
+            echo "${GH_DIR}" >> $GITHUB_PATH
+          fi
       - id: checkout-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -99,7 +122,7 @@ jobs:
         shell: bash
         run: |
           ./setup.sh ${BACKEND}
-          if [ "${BACKEND}" == "nvidia" ]; then
+          if [ "${BACKEND}" == "nvidia-cuda133" ]; then
             source .venv/bin/activate
             uv pip install vllm==0.21.0 --torch-backend=cu130
           fi
@@ -107,6 +130,7 @@ jobs:
       - id: check-gpu
         shell: bash
         run: |
+          source .venv/bin/activate
           source tools/env.sh ${BACKEND}
           bash tools/gpu_check_${VENDOR}.sh
 
@@ -157,8 +181,24 @@ jobs:
           echo -e "📎 Download the full log [here](${{ steps.upload-results.outputs.artifact-url }})" >> report.md
 
       - id: comment
-        uses: mshick/add-pr-comment@8e4927817251f1ff60c001f04568532b38e0b4a0  # 3.11.0
+        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
         with:
           message-path: report.md
           message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           allow-repeats: True
+
+      - id: failure-report
+        if: failure()
+        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          message: |
+            ## ❌ On-demand test failed
+
+            **Operator:** `${{ needs.preprocess.outputs.op }}`
+            **Runner:** `${{ needs.preprocess.outputs.runner }}`
+            **Backend:** ${{ env.BACKEND }}
+
+            The test failed to complete. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
+          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}

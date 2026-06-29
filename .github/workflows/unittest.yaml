@@ -20,6 +20,7 @@ jobs:
       changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
       pr_id: ${{ steps.get-pr-id.outputs.PR_ID }}
       labels: ${{ fromJSON(steps.get-labels.outputs.result) }}
+      backend_matrix: ${{ steps.build-backend-matrix.outputs.matrix }}
     steps:
       - id: changed-files
         uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96  # v47.0.6
@@ -60,6 +61,29 @@ jobs:
             console.log('Labels:', labels.map(label => label.name));
             return JSON.stringify(labels.map(label => label.name));
 
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          sparse-checkout: .github/backends.json
+          sparse-checkout-cone-mode: false
+
+      - id: build-backend-matrix
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const backends = JSON.parse(fs.readFileSync('.github/backends.json', 'utf8'));
+            const labels = JSON.parse(${{ steps.get-labels.outputs.result }} || '[]');
+            const filtered = backends.filter(b => b.enabled && labels.includes(b.label));
+            const matrix = {
+              vendor: filtered.map(b => b.vendor),
+              include: filtered.map(b => ({
+                vendor: b.vendor,
+                runner_label: b.runner_label,
+                gpu_check: b.gpu_check
+              }))
+            };
+            core.setOutput('matrix', JSON.stringify(matrix));
+
   build-doc:
     needs: preprocess
     if: (contains(needs.preprocess.outputs.labels, 'documentation') &&
@@ -79,7 +103,7 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
 
@@ -100,7 +124,7 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
 
@@ -113,162 +137,17 @@ jobs:
         run: |
           bash tools/test-examples.sh ${{ needs.preprocess.outputs.pr_id }}
 
-  backend-ascend-cann850:
+  backend-tests:
     needs: preprocess
-    # The ascend backend runners need to be reconfigured.
-    if: false
-    # if: contains(needs.preprocess.outputs.labels, 'vendor/Ascend')
+    if: fromJSON(needs.preprocess.outputs.backend_matrix).vendor[0] != null
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.preprocess.outputs.backend_matrix) }}
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: ascend-cann850
-      runner_label: ascend
-      gpu_check_script: tools/gpu_check_ascend.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-enflame:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Enflame')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: enflame
-      runner_label: enflame
-      # gpu_check_script: tools/gpu_check_hygon.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-hygon:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Hygon')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: hygon
-      runner_label: hygon
-      gpu_check_script: tools/gpu_check_hygon.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-iluvatar:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Iluvatar')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: iluvatar
-      runner_label: iluvatar
-      gpu_check_script: tools/gpu_check_iluvatar.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-kunlunxin:
-    needs: preprocess
-    # Skipping backend-kunlunxin because we the backend runner is not ready
-    if: false
-    # if: contains(needs.preprocess.outputs.labels, 'vendor/Kunlunxin')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: kunlunxin
-      runner_label: kunlunxin
-      gpu_check_script: tools/gpu_check_kunlunxin.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-metax:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/MetaX')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: metax
-      runner_label: metax
-      gpu_check_script: tools/gpu_check_metax.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-mthreads:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: mthreads
-      runner_label: mthreads
-      gpu_check_script: tools/gpu_check_mthreads.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-nvidia:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/NVIDIA')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: nvidia
-      runner_label: h20
-      gpu_check_script: tools/gpu_check_nvidia.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-spacemit:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/SpaceMit')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: spacemit
-      runner_label: spacemit
-      # gpu_check_script: tools/gpu_check_thead.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-sunrise:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Sunrise')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: sunrise
-      runner_label: sunrise
-      # gpu_check_script: tools/gpu_check_thead.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-  backend-thead:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Thead')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: thead
-      runner_label: thead
-      gpu_check_script: tools/gpu_check_thead.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
-
-  backend-tsingmicro:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/TsingMicro')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: tsingmicro
-      runner_label: tsingmicro
-      gpu_check_script: tools/gpu_check_tsingmicro.sh
+      vendor: ${{ matrix.vendor }}
+      runner_label: ${{ matrix.runner_label }}
+      gpu_check_script: ${{ matrix.gpu_check }}
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
@@ -281,7 +160,7 @@ jobs:
     if: contains(needs.preprocess.outputs.labels, 'ops/alpha')
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: nvidia
+      vendor: nvidia-cuda133
       runner_label: h20
       gpu_check_script: tools/gpu_check_nvidia.sh
       test_script: tools/test-op-experimental.sh
