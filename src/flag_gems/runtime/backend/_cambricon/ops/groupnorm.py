@@ -59,7 +59,7 @@ def group_norm_kernel_opt_prune(configs, named_args, **kwargs):
         for size in [64, 256, 512, 1024, 2048, 4096, 5120]
         for s in [1, 4, 6, 8, 16]
     ],
-    key=["X", "group_size", "C", "HW", "num_groups"],
+    key=["group_size", "C", "HW", "num_groups"],
     prune_configs_by={"early_config_prune": group_norm_kernel_opt_prune},
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -217,7 +217,7 @@ def group_norm_backward_kernel_opt_prune(configs, named_args, **kwargs):
         for size in [64, 256, 512, 1024, 2048]
     ],
     prune_configs_by={"early_config_prune": group_norm_backward_kernel_opt_prune},
-    key=["X", "group_size", "C", "HW", "num_groups"],
+    key=["group_size", "C", "HW", "num_groups"],
 )
 @triton.jit()
 def group_norm_backward_kernel_opt(
@@ -391,7 +391,7 @@ def weight_bias_backward_kernel_opt_prune(configs, named_args, **kwargs):
         for size in [512, 1024, 2048]
     ],
     prune_configs_by={"early_config_prune": weight_bias_backward_kernel_opt_prune},
-    key=["X", "N", "C", "HW", "num_groups"],
+    key=["N", "C", "HW", "num_groups"],
 )
 @triton.jit
 def weight_bias_backward_kernel_opt(

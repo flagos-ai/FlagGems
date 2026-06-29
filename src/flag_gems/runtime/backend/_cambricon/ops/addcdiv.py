@@ -23,19 +23,26 @@ logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(
-    is_tensor=[True, True, True, False], promotion_methods=[(0, 1, 2, "DEFAULT")]
+    is_tensor=[True, True, True, False, False], promotion_methods=[(0, 1, 2, "DEFAULT")]
 )
 @triton.jit
-def addcdiv_kernel(x, t1, t2, value):
+def addcdiv_kernel(x, t1, t2, value, inplace):
     return x + value * t1 / t2
 
 
-def addcdiv(inp, tensor1, tensor2, value=1.0, out=None):
+def addcdiv(inp, tensor1, tensor2, value=1.0):
     logger.debug("GEMS_CAMBRICON ADDCDIV")
+    out = torch.empty_like(inp)
+    return addcdiv_kernel(inp, tensor1, tensor2, value, False, out0=out)
 
-    if out is None:
-        out = torch.empty_like(inp)
 
-    addcdiv_kernel(inp, tensor1, tensor2, value, out0=out)
-
+def addcdiv_out(inp, tensor1, tensor2, *, value=1.0, out):
+    logger.debug("GEMS_CAMBRICON ADDCDIV_OUT")
+    addcdiv_kernel(inp, tensor1, tensor2, value, True, out0=out)
     return out
+
+
+def addcdiv_(inp, tensor1, tensor2, value=1.0):
+    logger.debug("GEMS_CAMBRICON ADDCDIV_")
+    addcdiv_kernel(inp, tensor1, tensor2, value, True, out0=inp)
+    return inp

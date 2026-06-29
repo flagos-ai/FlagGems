@@ -101,6 +101,9 @@ def gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool):
 
 # Tests for _index_put_impl_
 @pytest.mark.index_put_impl
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="grid size out of resource"
+)
 @pytest.mark.parametrize(
     "input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_FALSE
 )

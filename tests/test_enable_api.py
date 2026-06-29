@@ -55,14 +55,24 @@ def test_enable(tmp_path):
         for line in log_content.splitlines()
         if line.strip() and ":" in line
     }
-    expected_fragments = [
-        "flag_gems.ops.add",
-        "flag_gems.ops.mul",
-        "flag_gems.ops.sum",
-        "flag_gems.ops.gt.gt_scalar",
-        "flag_gems.ops.bitwise_not",
-        "flag_gems.ops.masked_fill",
-    ]
+    if flag_gems.vendor_name == "cambricon":
+        expected_fragments = [
+            "flag_gems._cambricon.ops.add",
+            "flag_gems._cambricon.ops.mul",
+            "flag_gems._cambricon.ops.sum",
+            "flag_gems._cambricon.ops.gt.gt_scalar",
+            "flag_gems._cambricon.ops.bitwise_not",
+            "flag_gems._cambricon.ops.masked_fill",
+        ]
+    else:
+        expected_fragments = [
+            "flag_gems.ops.add",
+            "flag_gems.ops.mul",
+            "flag_gems.ops.sum",
+            "flag_gems.ops.gt.gt_scalar",
+            "flag_gems.ops.bitwise_not",
+            "flag_gems.ops.masked_fill",
+        ]
     missing = [
         frag
         for frag in expected_fragments
@@ -120,8 +130,10 @@ def test_only_enable_with_yaml(tmp_path):
         "gems_only_enable_yaml.log",
         include=str(yaml_path),
     )
-
-    pattern = r"flag_gems\.ops\.\w+\.(\w+):"
+    if flag_gems.vendor_name == "cambricon":
+        pattern = r"flag_gems\._cambricon\.ops\.\w+\.(\w+):"
+    else:
+        pattern = r"flag_gems\.ops\.\w+\.(\w+):"
     found_ops = set(re.findall(pattern, log_content))
 
     assert found_ops, "No ops were logged; expected YAML include to be applied"
@@ -168,7 +180,10 @@ def test_only_enable_default(tmp_path, monkeypatch):
     assert path_file.exists(), f"Log file {path_file} not found"
     log_content = path_file.read_text()
 
-    pattern = r"flag_gems\.ops\.[^\.]+\.(\w+):"
+    if flag_gems.vendor_name == "cambricon":
+        pattern = r"flag_gems\._cambricon\.ops\.[^\.]+\.(\w+):"
+    else:
+        pattern = r"flag_gems\.ops\.[^\.]+\.(\w+):"
     found_ops = set(re.findall(pattern, log_content))
     assert found_ops, "No ops were logged for default include"
     assert found_ops.issubset(

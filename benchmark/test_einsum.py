@@ -17,6 +17,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -151,7 +153,14 @@ def test_einsum_diagonal():
     bench = EinsumGenericBenchmark(
         input_fn=unary_2d_input_fn,
         op_name="einsum",
-        torch_op=lambda A: torch.einsum("ii->i", A),
+        # Cambricon needs a materialized baseline; diagonal einsum returns a view.
+        torch_op=(
+            lambda A: (
+                torch.einsum("ii->i", A).clone()
+                if flag_gems.vendor_name == "cambricon"
+                else torch.einsum("ii->i", A)
+            )
+        ),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.shapes = [(1024, 1024), (4096, 4096)]
@@ -163,7 +172,14 @@ def test_einsum_transpose():
     bench = EinsumGenericBenchmark(
         input_fn=unary_2d_input_fn,
         op_name="einsum",
-        torch_op=lambda A: torch.einsum("ij->ji", A),
+        # Cambricon needs a materialized baseline; transpose einsum returns a view.
+        torch_op=(
+            lambda A: (
+                torch.einsum("ij->ji", A).clone()
+                if flag_gems.vendor_name == "cambricon"
+                else torch.einsum("ij->ji", A)
+            )
+        ),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.shapes = [(1024, 1024), (4096, 4096)]

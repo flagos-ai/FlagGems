@@ -46,13 +46,25 @@ class ToCopyBenchmark(base.Benchmark):
             ]:
                 inp = torch.randn(shape, dtype=self.src_dtype, device=self.device)
             elif self.src_dtype in [torch.int8, torch.int16, torch.int32, torch.int64]:
-                inp = torch.randint(
-                    -100, 100, shape, dtype=self.src_dtype, device=self.device
-                )
+                if flag_gems.vendor_name == "cambricon":
+                    # Cambricon torch.randint currently does not support int8/int16 generation.
+                    inp = torch.randint(
+                        -100, 100, shape, dtype=self.src_dtype, device="cpu"
+                    ).to(self.device)
+                else:
+                    inp = torch.randint(
+                        -100, 100, shape, dtype=self.src_dtype, device=self.device
+                    )
             elif self.src_dtype == torch.uint8:
-                inp = torch.randint(
-                    0, 255, shape, dtype=self.src_dtype, device=self.device
-                )
+                if flag_gems.vendor_name == "cambricon":
+                    # Cambricon torch.randint currently does not support int8/int16 generation.
+                    inp = torch.randint(
+                        0, 255, shape, dtype=self.src_dtype, device="cpu"
+                    ).to(self.device)
+                else:
+                    inp = torch.randint(
+                        0, 255, shape, dtype=self.src_dtype, device=self.device
+                    )
             else:
                 inp = torch.randn(shape, dtype=self.src_dtype, device=self.device)
             yield inp, {"dtype": dtype}

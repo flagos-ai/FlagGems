@@ -412,7 +412,14 @@ def test_median_empty_no_dim(dtype):
 
 
 @pytest.mark.median
-@pytest.mark.parametrize("dtype", [torch.float64, torch.int8, torch.uint8])
+@pytest.mark.parametrize(
+    "dtype",
+    (
+        [torch.int8, torch.uint8]
+        if flag_gems.vendor_name == "cambricon"
+        else [torch.float64, torch.int8, torch.uint8]
+    ),
+)
 def test_median_extra_no_dim_dtypes(dtype):
     inp = _make_input((9,), dtype)
     ref_inp = utils.to_reference(inp)

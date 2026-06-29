@@ -32,6 +32,9 @@ if QUICK_MODE:
 
 def _make_input(shape, dtype, device):
     if dtype in INT_DTYPES:
+        if flag_gems.vendor_name == "cambricon":
+            # Cambricon torch.randint currently does not support int8/int16 generation.
+            return torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(device)
         return torch.randint(-100, 100, shape, dtype=dtype, device=device)
     return torch.randn(shape, dtype=dtype, device=device)
 

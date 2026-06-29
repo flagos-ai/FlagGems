@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import math
 
 import torch
@@ -25,6 +26,8 @@ from ..utils import MAX_GRID_SIZE_X
 from .all import reduce_all
 from .any import reduce_any
 from .unique import _unique2
+
+logger = logging.getLogger(__name__)
 
 
 def launch_arg(BLOCK_M, BLOCK_N, N, num_warps):
@@ -266,6 +269,7 @@ def isin(
     assume_unique: bool = False,
     invert: bool = False,
 ) -> torch.Tensor:
+    logger.debug("GEMS_CAMBRICON ISIN")
     if not torch.is_tensor(in0):
         assert torch.is_tensor(in1)
         in0 = torch.tensor(in0, device=in1.device)

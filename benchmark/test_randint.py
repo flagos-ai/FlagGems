@@ -22,6 +22,9 @@ from . import base, consts
 
 def randint_input_fn(shape, dtype, device):
     high = 100
+    if base.vendor_name == "cambricon":
+        yield high, shape, {"device": device}
+        return
     yield high, shape
 
 

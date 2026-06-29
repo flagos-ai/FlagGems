@@ -50,4 +50,8 @@ def test_rwkv_mmsparsity(dtype):
     ref_V_ = utils.to_reference(V_, True)
     ref_res = ref_k @ ref_V_
 
-    utils.gems_assert_close(res, ref_res, dtype, equal_nan=True)
+    # Cambricon accumulates a length-n dot product, so scale tolerance by the reduction size.
+    if flag_gems.vendor_name == "cambricon":
+        utils.gems_assert_close(res, ref_res, dtype, equal_nan=True, reduce_dim=n)
+    else:
+        utils.gems_assert_close(res, ref_res, dtype, equal_nan=True)

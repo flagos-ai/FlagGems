@@ -34,7 +34,8 @@ logger = logging.getLogger(__name__)
         triton.Config(kwargs={"BLOCK_SIZE": 65536}, num_stages=3, num_warps=1),
         triton.Config(kwargs={"BLOCK_SIZE": 131072}, num_stages=3, num_warps=1),
     ],
-    key=["n_elements"],
+    key=["n_elements", "is_inplace"],
+    restore_value=["OUT_ptr"],
 )
 @triton.jit
 def logical_or_kernel(
@@ -42,6 +43,7 @@ def logical_or_kernel(
     Y_ptr,
     OUT_ptr,
     n_elements,
+    is_inplace: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -68,7 +70,7 @@ def logical_or(A, B):
         return out
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
     with torch_device_fn.device(A.device):
-        logical_or_kernel[grid_fn](A, B, out, N)
+        logical_or_kernel[grid_fn](A, B, out, N, is_inplace=False)
     return out
 
 
@@ -81,7 +83,7 @@ def logical_or_(A, B):
         return A
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
     with torch_device_fn.device(A.device):
-        logical_or_kernel[grid_fn](A_contig, B, A_contig, N)
+        logical_or_kernel[grid_fn](A_contig, B, A_contig, N, is_inplace=True)
     if not A.is_contiguous():
         A.copy_(A_contig)
     return A

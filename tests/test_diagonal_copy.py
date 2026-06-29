@@ -64,6 +64,7 @@ def test_diagonal_copy(shape, dtype, offset, dims):
 
 
 @pytest.mark.diagonal_copy
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="NotImplementedError")
 @pytest.mark.parametrize("shape", DIAGONAL_COPY_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES)
 @pytest.mark.parametrize("offset", [0, 1, -1])

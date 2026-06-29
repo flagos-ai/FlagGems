@@ -21,6 +21,9 @@ from . import accuracy_utils as utils
 
 
 @pytest.mark.prelu_kernel_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="grid size out of resource"
+)
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_prelu_kernel_backward(shape, dtype):

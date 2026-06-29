@@ -18,7 +18,13 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused.DSA.sparse_mla import triton_sparse_mla_fwd_interface
+
+if flag_gems.vendor_name == "cambricon":
+    from flag_gems.runtime.backend._cambricon.fused.DSA.sparse_mla import (
+        triton_sparse_mla_fwd_interface,
+    )
+else:
+    from flag_gems.fused.DSA.sparse_mla import triton_sparse_mla_fwd_interface
 
 from . import base
 

@@ -21,6 +21,15 @@ import torch.nn.functional as F
 
 import flag_gems
 
+if flag_gems.vendor_name == "cambricon":
+    from flag_gems.runtime.backend._cambricon.fused.FLA import (
+        fused_recurrent_gated_delta_rule_fwd as gems_fused_recurrent_gated_delta_rule_fwd,
+    )
+else:
+    gems_fused_recurrent_gated_delta_rule_fwd = (
+        flag_gems.fused_recurrent_gated_delta_rule_fwd
+    )
+
 try:
     from vllm.model_executor.layers.fla.ops import (
         fused_recurrent_gated_delta_rule as base_fused_recurrent_gated_delta_rule,
@@ -181,7 +190,7 @@ def test_fused_recurrent_gated_delta_rule_matches_vllm(cfg, T, qkv_contiguous):
     flag_initial = inputs["initial_state"].clone()
     base_initial = inputs["initial_state"].clone()
 
-    flag_out, flag_final = flag_gems.fused_recurrent_gated_delta_rule_fwd(
+    flag_out, flag_final = gems_fused_recurrent_gated_delta_rule_fwd(
         q=inputs["q"],
         k=inputs["k"],
         v=inputs["v"],
@@ -337,7 +346,7 @@ def test_fused_recurrent_gated_delta_rule_fwd_accuracy(
         inplace_final_state=True,
     )
 
-    flag_out, flag_final = flag_gems.fused_recurrent_gated_delta_rule_fwd(
+    flag_out, flag_final = gems_fused_recurrent_gated_delta_rule_fwd(
         q=query,
         k=key,
         v=value,
