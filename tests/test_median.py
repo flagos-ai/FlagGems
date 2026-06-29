@@ -36,7 +36,7 @@ MEDIAN_OPS = ["median", "median_out", "median_dim", "median_dim_values"]
 
 
 def _make_input(shape, dtype):
-    if dtype in utils.ALL_INT_DTYPES or dtype in (torch.int8, torch.uint8):
+    if not dtype.is_floating_point:
         numel = 1
         for size in shape:
             numel *= size
