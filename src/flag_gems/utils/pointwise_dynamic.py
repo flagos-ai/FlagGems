@@ -1165,6 +1165,8 @@ class ModuleGenerator:
                 continue
             if _has_decorator(node, "pointwise_dynamic"):
                 continue
+            if _has_decorator(node, "libentry") or _has_decorator(node, "libtuner"):
+                continue
             local_sources.append(_extract_source(node))
 
         return extra_imports, local_sources

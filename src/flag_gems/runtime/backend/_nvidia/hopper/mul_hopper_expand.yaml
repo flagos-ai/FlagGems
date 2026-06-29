@@ -1,0 +1,22 @@
+mul:
+  - config:
+    param_map:
+      META:
+        BLOCK_SIZE: block_size
+      num_stages: stages
+      num_warps: warps
+    block_size:
+      - 256
+      - 512
+      - 1024
+      - 2048
+      - 4096
+    stages:
+      - 3
+      - 4
+    warps:
+      - 4
+      - 8
+  - strategy:
+     n_elements: align32
+     dtype: default
