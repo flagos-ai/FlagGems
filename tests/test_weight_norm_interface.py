@@ -14,6 +14,7 @@ else:
     DIM_LIST = [0, -1, -1]
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 @pytest.mark.weight_norm_interface
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)

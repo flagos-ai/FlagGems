@@ -56,6 +56,7 @@ class CatKernelGenerator(IndentedBuffer):
         dim: int,
         high_num: int,
         low_cat_accum: List[int],
+        out: torch.Tensor = None,
     ):
         self.__init(tensors, dim, high_num, low_cat_accum)
         key = f"{len(tensors)}_{high_num}_{low_cat_accum[-1]}"
@@ -66,15 +67,17 @@ class CatKernelGenerator(IndentedBuffer):
             filepath = code_cache_dir() / filename
             write_atomic(filepath, self.getvalue())
 
-            spec = importlib.util.spec_from_file_location(
-                f"_gen_module_{key}", filepath
+            module_name = (
+                "flag_gems.runtime.backend._cambricon.ops."
+                f"_gen_cat_module_{self.pid}_{key}"
             )
+            spec = importlib.util.spec_from_file_location(module_name, filepath)
             m = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(m)
             overload = getattr(m, self.wrapper_name)
             self.cache[key] = overload
         overload = self.cache[key]
-        return overload(tensors, dim, high_num, low_cat_accum)
+        return overload(tensors, dim, high_num, low_cat_accum, out=out)
 
     def gen_imports(self):
         self.writeline("import math")
@@ -85,16 +88,14 @@ class CatKernelGenerator(IndentedBuffer):
         self.writeline("import triton.language as tl")
         self.newline()
         self.writeline("from flag_gems.runtime import torch_device_fn")
-        self.writeline("from flag_gems.runtime.backend import _state")
         self.writeline("from flag_gems.utils import libentry, libtuner")
-        self.newline()
-        self.writeline("TOTAL_CORE_NUM = _state.vendor_module.TOTAL_CORE_NUM")
+        self.writeline("from ..utils import TOTAL_CORE_NUM")
         self.newline()
         self.newline()
 
     def gen_wrapper(self):
         self.writeline(
-            f"def {self.wrapper_name}(tensors, dim, high_num, low_cat_accum):"
+            f"def {self.wrapper_name}(tensors, dim, high_num, low_cat_accum, out=None):"
         )
         with self.indent():
             self.writeline("device = tensors[0].device")
@@ -104,14 +105,33 @@ class CatKernelGenerator(IndentedBuffer):
             self.writeline("out_shape = list(tensors[0].shape)")
             self.writeline("out_shape[dim] = cat_dim_size")
             self.writeline("out_cat_num = low_cat_accum[-1]")
-            self.writeline("out = torch.empty(out_shape, device=device, dtype=dtype)")
+            self.writeline("if out is None:")
+            with self.indent():
+                self.writeline(
+                    "out = torch.empty(out_shape, device=device, dtype=dtype)"
+                )
+            self.writeline("else:")
+            with self.indent():
+                self.writeline("if out.dtype != dtype:")
+                with self.indent():
+                    self.writeline(
+                        "raise RuntimeError("
+                        'f"cat.out: expected out dtype {dtype}, got {out.dtype}")'
+                    )
+                self.writeline("if out.device != device:")
+                with self.indent():
+                    self.writeline(
+                        "raise RuntimeError("
+                        'f"cat.out: expected out device {device}, got {out.device}")'
+                    )
+                self.writeline("out.resize_(out_shape)")
             for i in range(self.tensor_num):
                 self.writeline(f"in{i}_stride_high = tensors[{i}].stride(dim - 1)")
                 self.writeline(f"in{i}_stride_low = tensors[{i}].stride(-1)")
             self.writeline("out_stride_high = out.stride(dim - 1)")
             self.writeline("out_stride_low = out.stride(-1)")
             self.writeline(
-                "grid = lambda meta: (TOTAL_CORE_NUM // meta['num_warps'], )"
+                "grid = lambda meta: (min(TOTAL_CORE_NUM // meta['num_warps'], TOTAL_CORE_NUM),)"
             )
             self.writeline("with torch_device_fn.device(device):")
             with self.indent():
@@ -249,20 +269,17 @@ class CatKernelGenerator(IndentedBuffer):
         self.gen_kernel()
 
 
-def cat(
+def _cat_prepare(
     tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
-) -> torch.Tensor:
-    logger.debug("GEMS_CAMBRICON CAT")
-
-    # Check empty inputs.
+):
+    """Validate concat inputs and build the Cambricon kernel launch payload."""
     if len(tensors) == 0:
         raise RuntimeError(
             "Expected a non-empty list or tuple/list of non-empty torch.Tensor"
         )
     if len(tensors) == 1:
-        return tensors[0]
+        return "single", tensors[0]
 
-    # remove torch.Size([0]) tensors
     device = tensors[0].device
     dtype = tensors[0].dtype
     tensors = list(tensors)
@@ -271,25 +288,23 @@ def cat(
         if tensors[i].shape == torch.Size([0]):
             tensors.pop(i)
     if len(tensors) == 0:
-        return torch.tensor([], dtype=dtype, device=device)
-    elif len(tensors) == 1:
-        return tensors[0]
+        return "empty", (torch.Size([0]), dtype, device)
+    if len(tensors) == 1:
+        return "single", tensors[0]
 
-    # Check dimensions.
     ndim = tensors[0].ndim
     assert dim >= -ndim and dim < ndim, f"Invalid concat dimension: {dim}"
     dim %= ndim
 
-    # Check shapes and zero element tensors.
-    device = tensors[0].device
     dtypes = [t.dtype for t in tensors]
     dtype = dtypes[0]
     for ty in dtypes[1:]:
         dtype = torch.promote_types(dtype, ty)
     shape = tensors[0].shape
     valid_tensors = []
+    valid_cat_dim_sizes = []
 
-    for _, tensor in enumerate(tensors):
+    for tensor in tensors:
         assert (
             tensor.ndim == ndim
         ), f"Requires same ndim of inputs, but got {ndim} and {tensor.ndim}"
@@ -301,37 +316,90 @@ def cat(
                 dim == d_idx or size == base_size
             ), f"Requires same dim sizes of dim {d_idx}, but got {size} and {base_size}"
         if tensor.numel() != 0:
+            valid_cat_dim_sizes.append(tensor.shape[dim])
             tensor = tensor.contiguous()
             valid_tensors.append(tensor.to(dtype) if tensor.dtype != dtype else tensor)
-
-    tensor_num = len(valid_tensors)
-
-    # Deal with special cases.
-    if tensor_num == 1:
-        return valid_tensors[0]
 
     cat_dim_sizes = [_.shape[dim] for _ in tensors]
     out_shape = list(tensors[0].shape)
     out_shape[dim] = sum(cat_dim_sizes)
 
-    if tensor_num == 0:
-        return torch.empty(out_shape, dtype=dtype, device=device)
+    if len(valid_tensors) == 0:
+        return "empty", (out_shape, dtype, device)
+    if len(valid_tensors) == 1:
+        return "single", valid_tensors[0]
 
-    # Preprocess kernel parameters.
     high_num = int(math.prod(out_shape[:dim]))
     low_num = int(math.prod(out_shape[dim + 1 :]))
     out_cat_num = 0
     low_cat_accum = [0]
 
-    for size in cat_dim_sizes:
+    for size in valid_cat_dim_sizes:
         out_cat_num += size * low_num
         low_cat_accum.append(out_cat_num)
 
-    # Launch kernel.
+    return "multi", (
+        valid_tensors,
+        dim,
+        out_shape,
+        dtype,
+        device,
+        high_num,
+        low_cat_accum,
+    )
+
+
+def cat(
+    tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
+) -> torch.Tensor:
+    logger.debug("GEMS_CAMBRICON CAT")
+
+    mode, payload = _cat_prepare(tensors, dim)
+    if mode == "single":
+        return payload
+    if mode == "empty":
+        out_shape, dtype, device = payload
+        return torch.empty(out_shape, dtype=dtype, device=device)
+
+    valid_tensors, dim, out_shape, _, _, high_num, low_cat_accum = payload
     if high_num == 1:
         # Vstack and Concat results in the same storage arrangement when high_num == 1.
         valid_tensors = [t.view(t.shape[dim], -1) for t in valid_tensors]
         return vstack(valid_tensors).view(out_shape)
-    else:
-        # Dealing with concat situations that having arbitary nums of inputs via template code genertaor.
-        return CatKernelGenerator()(valid_tensors, dim, high_num, low_cat_accum)
+
+    # Dealing with concat situations that having arbitary nums of inputs via template code genertaor.
+    return CatKernelGenerator()(valid_tensors, dim, high_num, low_cat_accum)
+
+
+def cat_out(
+    tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
+    dim: int = 0,
+    *,
+    out: torch.Tensor,
+) -> torch.Tensor:
+    logger.debug("GEMS_CAMBRICON CAT_OUT")
+
+    mode, payload = _cat_prepare(tensors, dim)
+    if mode == "single":
+        tensor = payload
+        out.resize_(tensor.shape)
+        out.copy_(tensor)
+        return out
+    if mode == "empty":
+        out_shape, dtype, device = payload
+        if out.dtype != dtype:
+            raise RuntimeError(f"cat.out: expected out dtype {dtype}, got {out.dtype}")
+        if out.device != device:
+            raise RuntimeError(
+                f"cat.out: expected out device {device}, got {out.device}"
+            )
+        out.resize_(out_shape)
+        return out
+
+    valid_tensors, dim, _, dtype, device, high_num, low_cat_accum = payload
+    if out.dtype != dtype:
+        raise RuntimeError(f"cat.out: expected out dtype {dtype}, got {out.dtype}")
+    if out.device != device:
+        raise RuntimeError(f"cat.out: expected out device {device}, got {out.device}")
+    CatKernelGenerator()(valid_tensors, dim, high_num, low_cat_accum, out=out)
+    return out

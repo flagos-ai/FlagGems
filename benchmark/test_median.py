@@ -3,6 +3,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -39,6 +41,7 @@ class MedianReductionBenchmark(base.Benchmark):
 
 
 @pytest.mark.median
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 def test_median():
     bench = MedianNoDimBenchmark(
         op_name="median",
@@ -49,6 +52,7 @@ def test_median():
 
 
 @pytest.mark.median
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 def test_median_dim():
     bench = MedianReductionBenchmark(
         op_name="median_dim",

@@ -25,10 +25,6 @@ vendor_info = VendorDescriptor(
     fp64_enabled=False,
 )
 
-CUSTOMIZED_UNUSED_OPS = (
-    "masked_scatter",
-    "masked_scatter_",
-    "scatter_add_",
-)
+CUSTOMIZED_UNUSED_OPS = ()
 
 __all__ = ["*"]

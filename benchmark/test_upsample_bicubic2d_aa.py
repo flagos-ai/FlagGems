@@ -88,10 +88,11 @@ class UpsampleBicubic2dAaBackwardBenchmark(base.Benchmark):
 
 @pytest.mark.upsample_bicubic2d_aa_backward
 def test_upsample_bicubic2d_aa_backward():
+    dtypes = [torch.float32] if vendor_name == "cambricon" else consts.FLOAT_DTYPES
     bench = UpsampleBicubic2dAaBackwardBenchmark(
         op_name="upsample_bicubic2d_aa_backward",
         torch_op=torch.ops.aten._upsample_bicubic2d_aa_backward,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=dtypes,
     )
 
     bench.run()

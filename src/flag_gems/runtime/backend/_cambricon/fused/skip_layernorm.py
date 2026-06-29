@@ -10,7 +10,7 @@ from flag_gems.utils import libentry
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 # When the reduced dimension is greater than MAX_C_MLU_SKIP_LAYERNORM_FORWARD,
 # it is necessary to split the reduced dimension.
 MAX_C_MLU_SKIP_LAYERNORM_FORWARD = 8192

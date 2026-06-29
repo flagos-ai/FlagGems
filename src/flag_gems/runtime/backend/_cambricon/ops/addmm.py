@@ -14,10 +14,11 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("addmm"),
-    key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=["align32", "align32", "align32", "align32", "align32"],
+    key=["M", "N", "K"],
+    strategy=["align32", "align32", "align32"],
     warmup=5,
     rep=10,
+    flagtune_op_name="addmm",
 )
 @triton.heuristics(
     {
@@ -215,3 +216,39 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
             out.stride(1),
         )
     return out
+
+
+def addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1):
+    logger.debug("GEMS_CAMBRICON ADDMM_DTYPE")
+    out = torch.empty(
+        (mat1.shape[0], mat2.shape[1]),
+        device=mat1.device,
+        dtype=out_dtype,
+    )
+    return addmm_dtype_out(bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha, out=out)
+
+
+def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
+    logger.debug("GEMS_CAMBRICON ADDMM_DTYPE_OUT")
+    if mat1.dtype != mat2.dtype:
+        raise RuntimeError(
+            f"mat1 and mat2 must have the same dtype, but got {mat1.dtype} and {mat2.dtype}"
+        )
+    if out.dtype != out_dtype:
+        raise RuntimeError(
+            "out_dtype must be the same as the dtype of the provided out tensor"
+        )
+    if not (
+        out_dtype == mat1.dtype
+        or (
+            out_dtype == torch.float32 and mat1.dtype in (torch.float16, torch.bfloat16)
+        )
+    ):
+        raise RuntimeError(
+            "out_dtype must be the same as input dtype or fp32 for fp16/bf16 inputs"
+        )
+    if bias.dtype != out_dtype and bias.dtype != mat1.dtype:
+        raise RuntimeError("self dtype must match either out_dtype or mat1 dtype")
+
+    bias_c = bias.to(out_dtype)
+    return addmm_out(bias_c, mat1, mat2, beta=beta, alpha=alpha, out=out)

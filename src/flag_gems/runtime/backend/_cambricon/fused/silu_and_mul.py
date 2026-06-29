@@ -6,7 +6,7 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
@@ -40,6 +40,7 @@ class SiluAndMul(torch.autograd.Function):
 
     def backward(ctx, grad_output):
         A, B = ctx.saved_tensors
+        logger.debug("GEMS_CAMBRICON SILU AND MUL BACKWARD")
         grad_A, grad_B = silu_and_mul_grad_kernel(A, B, grad_output)
         return grad_A, grad_B
 
@@ -49,5 +50,6 @@ def silu_and_mul(A, B):
 
 
 def silu_and_mul_out(A, B, out):
+    logger.debug("GEMS_CAMBRICON SILU AND MUL OUT")
     silu_and_mul_kernel(A, B, out0=out)
     return out

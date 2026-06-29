@@ -85,6 +85,7 @@ def _assert_nanmedian_indices_valid(inp, values, indices, dim, keepdim, dtype):
 
 
 @pytest.mark.nanmedian
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 @pytest.mark.parametrize("shape", [(), (1,), (17,), (4, 33), (2, 3, 129)])
 @pytest.mark.parametrize("dtype", NANMEDIAN_DTYPES)
 def test_nanmedian(shape, dtype):
@@ -99,6 +100,7 @@ def test_nanmedian(shape, dtype):
 
 
 @pytest.mark.nanmedian_dim
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 @pytest.mark.parametrize(
     ("shape", "dim"),
     [((7,), 0), ((4, 33), 0), ((4, 33), -1), ((2, 3, 129), 1), ((2, 3, 1031), -1)],
@@ -118,6 +120,7 @@ def test_nanmedian_dim(shape, dim, keepdim, dtype):
 
 
 @pytest.mark.nanmedian_dim
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 @pytest.mark.parametrize("dtype", LARGE_RADIX_DTYPES)
 def test_nanmedian_large_radix_path(dtype):
     inp = _make_input((4, 8192), dtype)
@@ -132,6 +135,7 @@ def test_nanmedian_large_radix_path(dtype):
 
 
 @pytest.mark.nanmedian_dim
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_nanmedian_all_nan_rows(dtype):
     inp = torch.tensor(
@@ -150,6 +154,7 @@ def test_nanmedian_all_nan_rows(dtype):
 
 
 @pytest.mark.nanmedian_dim
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 @pytest.mark.parametrize("dtype", NANMEDIAN_DTYPES)
 def test_nanmedian_non_contiguous(dtype):
     inp = _make_input((5, 7, 3), dtype).transpose(0, 1)
@@ -164,6 +169,7 @@ def test_nanmedian_non_contiguous(dtype):
 
 
 @pytest.mark.nanmedian_out
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 @pytest.mark.parametrize("dtype", NANMEDIAN_DTYPES)
 def test_nanmedian_out(dtype):
     inp = _make_input((4, 33), dtype)
@@ -180,6 +186,7 @@ def test_nanmedian_out(dtype):
 
 
 @pytest.mark.nanmedian_dim_values
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 @pytest.mark.parametrize("dtype", NANMEDIAN_DTYPES)
 def test_nanmedian_dim_values(dtype):
     inp = _make_input((4, 33), dtype)
@@ -201,6 +208,7 @@ def test_nanmedian_dim_values(dtype):
 
 
 @pytest.mark.nanmedian_dim_values
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 @pytest.mark.parametrize("dtype", [torch.int8, torch.uint8, torch.int16, torch.int32])
 def test_nanmedian_dim_values_large_int(dtype):
     inp = _make_input((4, 8192), dtype)
@@ -222,6 +230,7 @@ def test_nanmedian_dim_values_large_int(dtype):
 
 
 @pytest.mark.nanmedian
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.uint8])
 def test_nanmedian_empty(dtype):
     inp = torch.empty((0,), dtype=dtype, device=flag_gems.device)
@@ -235,6 +244,7 @@ def test_nanmedian_empty(dtype):
 
 
 @pytest.mark.nanmedian_dim
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.uint8])
 def test_nanmedian_dim_empty(dtype):
     inp = torch.empty((2, 0), dtype=dtype, device=flag_gems.device)

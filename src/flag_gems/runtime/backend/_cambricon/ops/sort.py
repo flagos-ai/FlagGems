@@ -128,19 +128,20 @@ def compute_global_hist_kernel(
         bit_offset = p * num_bits_per_pass
         for r_start in range(0, r, TILE_R):
             bin_indices = r_start + tl.arange(0, TILE_R)
-            acc = tl.zeros((TILE_R, TILE_N), dtype=tl.int64)
+            acc = tl.zeros((TILE_R,), dtype=tl.int32)
             for n_start in range(cta_n_start, cta_n_end, TILE_N):
                 n_offsets = n_start + tl.arange(0, TILE_N)
                 mask = n_offsets < cta_n_end
                 arr = tl.load(arr_ptr + pid_m * n + n_offsets, mask=mask)
                 arr = convert_to_uint_preverse_order(arr, descending)
                 key = (arr >> bit_offset) & bfe_mask
-                matches = tl.where(mask, (bin_indices[:, None] == key), False)
-                acc += matches
-            local_sum = tl.sum(acc, axis=1)
+                matches = tl.where(
+                    mask[None, :], (bin_indices[:, None] == key[None, :]), False
+                )
+                acc += tl.sum(matches.to(tl.int32), axis=1)
             tl.atomic_add(
                 out_ptr + pid_m * num_passes * r + p * r + bin_indices,
-                local_sum,
+                acc,
                 sem="relaxed",
             )
 
@@ -202,6 +203,10 @@ def sweep(
             arr_u = convert_to_uint_preverse_order(arr, descending)
             key = (arr_u >> bit_offset) & bfe_mask  # (TILE_N, )
 
+            if associate_arr_ptr is not None:
+                associate_arr = tl.load(
+                    associate_arr_ptr + pid_m * N + n_offsets, mask=mask
+                )
             # since triton can only use scalar as condition, loop by bin_index
             # status must be pre zero-initialized, or else we have to initialize it
             for bin_index in range(cta_r_start, cta_r_end):
@@ -245,9 +250,6 @@ def sweep(
                 # scatter
                 tl.store(out_ptr + pid_m * N + pos, arr, mask=matches)
                 if associate_arr_ptr is not None:
-                    associate_arr = tl.load(
-                        associate_arr_ptr + pid_m * N + n_offsets, mask=mask
-                    )
                     tl.store(
                         associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches
                     )
@@ -260,10 +262,7 @@ def radix_sort(arr, k_bits=8, descending=False):
     dtype = arr.dtype
     num_bits = 1 if dtype == torch.bool else (arr.itemsize * 8)
 
-    if arr.dtype == torch.int64:
-        TILE_N = 512
-    else:
-        TILE_N = 1024
+    TILE_N = 512
     tiles_n_per_cta = 8
     CTA_TILE_N = tiles_n_per_cta * TILE_N
 

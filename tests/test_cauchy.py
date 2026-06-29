@@ -9,14 +9,18 @@ from . import conftest as cfg
 
 if cfg.QUICK_MODE:
     CAUCHY_SHAPES = [(1024,)]
-    CAUCHY_DTYPES = [torch.float32]
     CAUCHY_MEDIANS = [0.0]
     CAUCHY_SIGMAS = [1.0]
 else:
     CAUCHY_SHAPES = [(1024,), (256, 256)]
-    CAUCHY_DTYPES = [torch.float32, torch.float64]
     CAUCHY_MEDIANS = [0.0, 1.0, -0.5]
     CAUCHY_SIGMAS = [1.0, 0.5, 2.0]
+
+CAUCHY_DTYPES = (
+    [torch.float32]
+    if cfg.QUICK_MODE or flag_gems.vendor_name == "cambricon"
+    else [torch.float32, torch.float64]
+)
 
 
 @pytest.mark.cauchy_

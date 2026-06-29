@@ -567,7 +567,12 @@ def run_accuracy_q(gpu_id, op):
     op_dir = CFG.output_dir.joinpath(op)
     ensure_dir(op_dir)
     dur = time.time()
-    code = run_cmd(op, cmd, cwd=accuracy_dir, env=env, flavor="accuracy")
+    vendor = ENV_INFO.get("flag_gems", {}).get("vendor", "")
+    # Some Cambricon accuracy cases run long and are still being optimized.
+    timeout = 18500 if vendor == "cambricon" else 600
+    code = run_cmd(
+        op, cmd, cwd=accuracy_dir, env=env, timeout=timeout, flavor="accuracy"
+    )
     dur = time.time() - dur
 
     if code == TIMEOUT:
@@ -623,7 +628,12 @@ def run_benchmark_q(gpu_id, op):
     cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
     if ENV_INFO["flag_gems"]["vendor"] == "kunlunxin":
         cmd += " --fg_mode operator"
-    code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
+    vendor = ENV_INFO.get("flag_gems", {}).get("vendor", "")
+    # Some Cambricon benchmark cases run long and are still being optimized.
+    timeout = 3600 if vendor == "cambricon" else 600
+    code = run_cmd(
+        op, cmd, cwd=benchmark_dir, env=env, timeout=timeout, flavor="performance"
+    )
     dur = time.time() - dur
 
     if code == TIMEOUT:

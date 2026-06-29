@@ -10,6 +10,7 @@ KTHVALUE_K_VALUES = [1, 2, 4]
 
 
 @pytest.mark.kthvalue
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="grid size exceeded")
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("k", KTHVALUE_K_VALUES)
 @pytest.mark.parametrize("dim", [0, 1])
@@ -39,6 +40,7 @@ def test_kthvalue(shape, k, dim, keepdim, dtype):
 
 
 @pytest.mark.kthvalue
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="grid size exceeded")
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("k", [1, 2])
 # kthvalue implementation relies on topk gemm path which requires float32 precision

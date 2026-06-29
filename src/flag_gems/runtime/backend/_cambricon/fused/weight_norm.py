@@ -11,7 +11,7 @@ from flag_gems.utils import libentry
 
 from ..ops import weight_norm_interface, weight_norm_interface_backward
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 MAX_N = 31744
 

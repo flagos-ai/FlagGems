@@ -78,8 +78,8 @@ from triton import language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.runtime.backend import _state
-TOTAL_CORE_NUM = vendor_module.TOTAL_CORE_NUM
-MAX_NRAM_SIZE = vendor_module.MAX_NRAM_SIZE
+TOTAL_CORE_NUM = _state.vendor_module.TOTAL_CORE_NUM
+MAX_NRAM_SIZE = _state.vendor_module.MAX_NRAM_SIZE
         """
         )
 
@@ -256,14 +256,14 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                                 input_idx = i - 1
                                 if self.input_num == 2:
                                     self.writeline(
-                                        f"condidate_num = idx_{idx} - idx_{i}"
+                                        f"condidate_num = tl.cast(idx_{idx} - idx_{i}, tl.int32)"
                                     )
                                 else:
                                     if i == 1:
                                         self.writeline(f"if input_iter == {input_idx}:")
                                         with self.indent():
                                             self.writeline(
-                                                f"condidate_num = idx_{idx} - idx_{i}"
+                                                f"condidate_num = tl.cast(idx_{idx} - idx_{i}, tl.int32)"
                                             )
                                     else:
                                         if i < self.input_num - 1:
@@ -272,13 +272,13 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                                             )
                                             with self.indent():
                                                 self.writeline(
-                                                    f"condidate_num = idx_{idx} - idx_{i}"
+                                                    f"condidate_num = tl.cast(idx_{idx} - idx_{i}, tl.int32)"
                                                 )
                                         else:
                                             self.writeline("else:")
                                             with self.indent():
                                                 self.writeline(
-                                                    f"condidate_num = idx_{idx} - idx_{i}"
+                                                    f"condidate_num = tl.cast(idx_{idx} - idx_{i}, tl.int32)"
                                                 )
 
                             self.writeline("input_iter += 1")

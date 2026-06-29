@@ -5,6 +5,7 @@ import math
 import torch
 import triton
 import triton.language as tl
+from triton._utils import TRITON_MAX_TENSOR_NUMEL
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
@@ -15,6 +16,13 @@ from .zeros import zero_
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 MAX_N = 16384
+
+
+def block_numel_safe(*dims):
+    numel = 1
+    for dim in dims:
+        numel *= dim
+    return numel <= TRITON_MAX_TENSOR_NUMEL
 
 
 def align(max_block):
@@ -201,15 +209,17 @@ def config_prune2(configs, named_args, **kwargs):
             m_per_core = math.ceil(M / TOTAL_CORE_NUM)
             BLOCK_M = config.kwargs["BLOCK_M"] = m_per_core
             num_stages = config.num_stages = 1
-            key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
-            configs_map.setdefault(key, config)
+            if block_numel_safe(BLOCK_M, BLOCK_N):
+                key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+                configs_map.setdefault(key, config)
 
             config = copy.deepcopy(config)
             max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (2 * BLOCK_N + 1)
             BLOCK_M = config.kwargs["BLOCK_M"] = align(max_block_m_without_pipe)
             num_stages = config.num_stages = 1
-            key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
-            configs_map.setdefault(key, config)
+            if block_numel_safe(BLOCK_M, BLOCK_N):
+                key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+                configs_map.setdefault(key, config)
 
             config = copy.deepcopy(config)
             max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (4 * BLOCK_N + 1)
@@ -217,11 +227,13 @@ def config_prune2(configs, named_args, **kwargs):
                 max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (6 * BLOCK_N + 1)
             BLOCK_M = config.kwargs["BLOCK_M"] = align(max_block_m_without_pipe)
             num_stages = config.num_stages = 3
+            if block_numel_safe(BLOCK_M, BLOCK_N):
+                key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+                configs_map.setdefault(key, config)
+        if block_numel_safe(BLOCK_M, BLOCK_N):
             key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+            # Only keep one config for the same key
             configs_map.setdefault(key, config)
-        key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
-        # Only keep one config for the same key
-        configs_map.setdefault(key, config)
     pruned_configs = []
     for k, v in configs_map.items():
         pruned_configs.append(v)
@@ -315,7 +327,7 @@ def softmax_kernel_inner(
             for start_n in range(0, N, BLOCK_N):
                 n_offset = start_n + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
                     tl.float32
                 )
@@ -340,7 +352,7 @@ def softmax_kernel_inner(
             for start_n in range(0, N, BLOCK_N):
                 n_offset = start_n + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
                     tl.float32
                 )
@@ -480,6 +492,98 @@ def softmax_kernel_inner_k_write_softmax(
 # ------------------------  backward -------------------------------
 
 
+@triton.jit
+def softmax_backward_kernel_inner_k_partial_sum(
+    output_ptr,
+    out_grad_ptr,
+    sum_buf_ptr,
+    M,
+    N,
+    T,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pnum = tl.num_programs(axis=0)
+    pid = tl.program_id(0)
+    total_blocks = M * T
+    work_per_core = (total_blocks + pnum - 1) // pnum
+    start = pid * work_per_core
+    end = tl.minimum(start + work_per_core, total_blocks)
+
+    for task in range(start, end):
+        row_id = task // T
+        tile_id = task % T
+
+        offs_m = row_id * BLOCK_M + tl.arange(0, BLOCK_M)
+        offs_n = tile_id * BLOCK_N + tl.arange(0, BLOCK_N)
+        mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+        offset = offs_m[:, None] * N + offs_n[None, :]
+
+        out_tile = tl.load(output_ptr + offset, mask=mask, other=0.0).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offset, mask=mask, other=0.0).to(
+            tl.float32
+        )
+        partial_sum = tl.sum(out_tile * out_grad_tile, axis=1)
+        tl.store(sum_buf_ptr + offs_m * T + tile_id, partial_sum, mask=offs_m < M)
+
+
+@triton.jit
+def softmax_backward_kernel_inner_k_merge_sum(
+    sum_buf_ptr,
+    scale_ptr,
+    M,
+    T: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+):
+    pid_m = tl.program_id(axis=0)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    mask_m = offs_m < M
+    partial_sum = tl.load(
+        sum_buf_ptr + offs_m[:, None] * T + tl.arange(0, T)[None, :],
+        mask=mask_m[:, None],
+        other=0.0,
+    ).to(tl.float32)
+    scale = tl.sum(partial_sum, axis=1)
+    tl.store(scale_ptr + offs_m, scale, mask=mask_m)
+
+
+@triton.jit
+def softmax_backward_kernel_inner_k_write_grad(
+    output_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    scale_ptr,
+    M,
+    N,
+    T,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pnum = tl.num_programs(axis=0)
+    pid = tl.program_id(0)
+    total_blocks = M * T
+    work_per_core = (total_blocks + pnum - 1) // pnum
+    start = pid * work_per_core
+    end = tl.minimum(start + work_per_core, total_blocks)
+
+    for task in range(start, end):
+        row_id = task // T
+        tile_id = task % T
+
+        offs_m = row_id * BLOCK_M + tl.arange(0, BLOCK_M)
+        offs_n = tile_id * BLOCK_N + tl.arange(0, BLOCK_N)
+        mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+        offset = offs_m[:, None] * N + offs_n[None, :]
+
+        scale = tl.load(scale_ptr + offs_m, mask=offs_m < M, other=0.0).to(tl.float32)
+        out_tile = tl.load(output_ptr + offset, mask=mask, other=0.0).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offset, mask=mask, other=0.0).to(
+            tl.float32
+        )
+        in_grad_tile = out_tile * (out_grad_tile - scale[:, None])
+        tl.store(in_grad_ptr + offset, in_grad_tile, mask=mask)
+
+
 def nram_usage_for_backward_non_inner(bn, bk, tile_mode, num_stages, dtype):
     coef = 1
     if tile_mode == 0:
@@ -511,7 +615,9 @@ def config_prune3(configs, named_args, **kwargs):
     dtype = output.dtype
     k_per_core = math.ceil(K / max(TOTAL_CORE_NUM // M, 1))
     # No need for any loop.
-    if nram_usage_for_backward_non_inner(N, k_per_core, 0, 1, dtype) < MAX_NRAM_SIZE:
+    if nram_usage_for_backward_non_inner(
+        N, k_per_core, 0, 1, dtype
+    ) < MAX_NRAM_SIZE and block_numel_safe(N, k_per_core):
         config = copy.deepcopy(configs[0])
         config.kwargs["TILE_K"] = k_per_core
         config.kwargs["TILE_N"] = N
@@ -528,6 +634,8 @@ def config_prune3(configs, named_args, **kwargs):
         )
         # Align the lowest dimension to 256B while loading/storing data.
         if TILE_K % align_num != 0:
+            continue
+        if not block_numel_safe(TILE_N, TILE_K):
             continue
         # nram usage shoule be smaller than MAX_NRAM_SIZE
         mode = softmax_tile_mode_for_non_inner(M, N, K, TILE_N, TILE_K)
@@ -584,7 +692,7 @@ def softmax_backward_kernel_non_inner(
             k_offset = k_start + k_idx + tl.arange(0, TILE_K)
             n_offset = tl.arange(0, TILE_N)
             offset = pid_m * N * K + n_offset[:, None] * K + k_offset[None, :]
-            mask = k_offset[None, :] < K and n_offset[:, None] < N
+            mask = (k_offset[None, :] < K) & (n_offset[:, None] < N)
             out_tile = tl.load(output_ptr + offset, mask=mask).to(tl.float32)
             out_grad_tile = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
             scale = tl.sum(out_tile * out_grad_tile, axis=0)
@@ -633,15 +741,17 @@ def config_prune4(configs, named_args, **kwargs):
             m_per_core = math.ceil(M / TOTAL_CORE_NUM)
             BLOCK_M = config.kwargs["BLOCK_M"] = m_per_core
             num_stages = config.num_stages = 1
-            key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
-            configs_map.setdefault(key, config)
+            if block_numel_safe(BLOCK_M, BLOCK_N):
+                key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+                configs_map.setdefault(key, config)
 
             config = copy.deepcopy(config)
             max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (3 * BLOCK_N + 1)
             BLOCK_M = config.kwargs["BLOCK_M"] = align(max_block_m_without_pipe)
             num_stages = config.num_stages = 1
-            key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
-            configs_map.setdefault(key, config)
+            if block_numel_safe(BLOCK_M, BLOCK_N):
+                key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+                configs_map.setdefault(key, config)
 
             config = copy.deepcopy(config)
             max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (6 * BLOCK_N + 1)
@@ -649,24 +759,27 @@ def config_prune4(configs, named_args, **kwargs):
                 max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (7 * BLOCK_N + 1)
             BLOCK_M = config.kwargs["BLOCK_M"] = align(max_block_m_without_pipe)
             num_stages = config.num_stages = 3
+            if block_numel_safe(BLOCK_M, BLOCK_N):
+                key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+                configs_map.setdefault(key, config)
+        if block_numel_safe(BLOCK_M, BLOCK_N):
             key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+            # Only keep one config for the same key
             configs_map.setdefault(key, config)
-        key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
-        # Only keep one config for the same key
-        configs_map.setdefault(key, config)
     pruned_configs = []
     for k, v in configs_map.items():
         pruned_configs.append(v)
     # Add a heuristic config.
-    extra_config = copy.deepcopy(pruned_configs[0])
-    extra_config.kwargs["BLOCK_M"] = 1
-    extra_config.kwargs["BLOCK_N"] = N
-    extra_config.num_warps = 1
-    extra_config.num_stages = 3
-    pruned_configs.append(extra_config)
-    extra_config2 = copy.deepcopy(extra_config)
-    extra_config2.num_stages = 1
-    pruned_configs.append(extra_config2)
+    if block_numel_safe(1, N):
+        extra_config = copy.deepcopy(pruned_configs[0])
+        extra_config.kwargs["BLOCK_M"] = 1
+        extra_config.kwargs["BLOCK_N"] = N
+        extra_config.num_warps = 1
+        extra_config.num_stages = 3
+        pruned_configs.append(extra_config)
+        extra_config2 = copy.deepcopy(extra_config)
+        extra_config2.num_stages = 1
+        pruned_configs.append(extra_config2)
     return pruned_configs
 
 
@@ -726,7 +839,7 @@ def softmax_backward_kernel_inner(
             for start_n in range(0, N, BLOCK_N):
                 n_offset = start_n + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 out_tile = tl.load(
                     output_ptr + offset, mask=mask, eviction_policy="evict_last"
                 ).to(tl.float32)
@@ -736,7 +849,7 @@ def softmax_backward_kernel_inner(
             for start_n in range(0, N, BLOCK_N):
                 n_offset = start_n + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 out_tile = tl.load(
                     output_ptr + offset, mask=mask, eviction_policy="evict_first"
                 ).to(tl.float32)
@@ -745,16 +858,15 @@ def softmax_backward_kernel_inner(
                 tl.store(in_grad_ptr + offset, in_grad_tile, mask=mask)
 
 
-def softmax(self, dim, half_to_float=False):
-    logger.debug("GEMS_CAMBRICON SOFTMAX")
+def softmax_out(self, dim, half_to_float=False, *, out):
+    logger.debug("GEMS_CAMBRICON SOFTMAX_OUT")
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
 
     # special handling for dim = 0 and empty tensor
     if self.numel() == 0:
-        # empty tensor, return the same shape with 1's
-        out_shape = list(self.shape)
-        out = torch.empty(out_shape, dtype=self.dtype, device=self.device)
+        if tuple(out.shape) != tuple(self.shape):
+            out.resize_(self.shape)
         zero_(out)
         return out
 
@@ -764,11 +876,11 @@ def softmax(self, dim, half_to_float=False):
     for i in range(dim):
         M *= self.shape[i]  # pre_dim
     self = self.contiguous()
-    if half_to_float:
-        dtype = torch.float32
-    else:
-        dtype = self.dtype
-    out = torch.empty_like(self, dtype=dtype)
+    dtype = torch.float32 if half_to_float else self.dtype
+    if tuple(out.shape) != tuple(self.shape):
+        out.resize_(self.shape)
+    if out.dtype != dtype:
+        raise RuntimeError(f"_softmax.out: expected out dtype {dtype}, got {out.dtype}")
     K = self.numel() // M // N  # post_dim
 
     with torch_device_fn.device(self.device):
@@ -795,7 +907,7 @@ def softmax(self, dim, half_to_float=False):
                 block_m = 1
                 block_n = 8192 * 4
                 if dtype is torch.float32:
-                    block_n = 8192 * 2
+                    block_n = 8192 * 4
                 # workspace
                 T = (N + block_n - 1) // block_n
                 max_buf = torch.empty((M, T), device=self.device, dtype=torch.float32)
@@ -813,7 +925,7 @@ def softmax(self, dim, half_to_float=False):
                     BLOCK_M=block_m,
                     BLOCK_N=block_n,
                     bottleneck="simd",
-                    num_stages=3,
+                    num_stages=1,
                 )
                 # kernel 2: merge stats along N-tiles
                 grid_merge = (triton.cdiv(M, block_m),)
@@ -834,13 +946,29 @@ def softmax(self, dim, half_to_float=False):
                     BLOCK_M=block_m,
                     BLOCK_N=block_n,
                     bottleneck="simd",
-                    num_stages=3,
+                    num_stages=1,
                 )
     return out
 
 
-def softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS_CAMBRICON SOFTMAX VJP")
+def softmax(self, dim, half_to_float=False):
+    logger.debug("GEMS_CAMBRICON SOFTMAX")
+
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+
+    if self.numel() == 0:
+        out_shape = list(self.shape)
+        out = torch.empty(out_shape, dtype=self.dtype, device=self.device)
+        zero_(out)
+        return out
+
+    dtype = torch.float32 if half_to_float else self.dtype
+    out = torch.empty_like(self, dtype=dtype)
+    return softmax_out(self, dim, half_to_float, out=out)
+
+
+def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
+    logger.debug("GEMS_CAMBRICON SOFTMAX_BACKWARD_OUT")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
@@ -850,28 +978,84 @@ def softmax_backward(grad_output, output, dim, input_dtype):
         M *= output.shape[i]
 
     grad_output = grad_output.contiguous()
-    in_grad = torch.empty_like(output)
+    if tuple(grad_input.shape) != tuple(output.shape):
+        grad_input.resize_(output.shape)
+    if grad_input.dtype != input_dtype:
+        raise RuntimeError(
+            f"_softmax_backward_data.out: expected grad_input dtype {input_dtype}, got {grad_input.dtype}"
+        )
     K = output.numel() // M // N
 
-    with torch_device_fn.device(in_grad.device):
+    with torch_device_fn.device(grad_input.device):
         if K > 1:
             logger.debug("GEMS_CAMBRICON SOFTMAX VJP USE NON INNER")
             grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
             softmax_backward_kernel_non_inner[grid](
                 output,
                 grad_output,
-                in_grad,
+                grad_input,
                 M,
                 N,
                 K,
             )
         else:
             logger.debug("GEMS_CAMBRICON SOFTMAX VJP USE INNER")
-            softmax_backward_kernel_inner[TOTAL_CORE_NUM, 1, 1](
-                output,
-                grad_output,
-                in_grad,
-                M,
-                N,
-            )
-    return in_grad
+            if M > TOTAL_CORE_NUM or N < 1024 * 8 * 8:
+                softmax_backward_kernel_inner[TOTAL_CORE_NUM, 1, 1](
+                    output,
+                    grad_output,
+                    grad_input,
+                    M,
+                    N,
+                )
+            else:
+                block_m = 1
+                block_n = 8192 * 2
+                if input_dtype is torch.float32:
+                    block_n = 8192 * 2
+                T = (N + block_n - 1) // block_n
+                sum_buf = torch.empty((M, T), device=output.device, dtype=torch.float32)
+                scale = torch.empty((M,), device=output.device, dtype=torch.float32)
+                softmax_backward_kernel_inner_k_partial_sum[(TOTAL_CORE_NUM,)](
+                    output,
+                    grad_output,
+                    sum_buf,
+                    M,
+                    N,
+                    T,
+                    BLOCK_M=block_m,
+                    BLOCK_N=block_n,
+                    bottleneck="simd",
+                    num_stages=3,
+                )
+                softmax_backward_kernel_inner_k_merge_sum[(M,)](
+                    sum_buf,
+                    scale,
+                    M,
+                    T,
+                    BLOCK_M=block_m,
+                    bottleneck="simd",
+                    num_stages=3,
+                )
+                softmax_backward_kernel_inner_k_write_grad[(TOTAL_CORE_NUM,)](
+                    output,
+                    grad_output,
+                    grad_input,
+                    scale,
+                    M,
+                    N,
+                    T,
+                    BLOCK_M=block_m,
+                    BLOCK_N=block_n,
+                    bottleneck="simd",
+                    num_stages=3,
+                )
+    return grad_input
+
+
+def softmax_backward(grad_output, output, dim, input_dtype):
+    logger.debug("GEMS_CAMBRICON SOFTMAX VJP")
+    in_grad = torch.empty_like(output, dtype=input_dtype)
+    return softmax_backward_out(
+        grad_output, output, dim, input_dtype, grad_input=in_grad
+    )
