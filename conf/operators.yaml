@@ -5978,6 +5978,17 @@ ops:
     stages:
       - stable: '2.0'
     cpp: '4.0'
+  - id: rms_norm_linear
+    description: Fused RMSNorm + Linear operation implemented with Triton kernel. Combines RMS normalization with a subsequent linear projection in a single kernel to reduce memory bandwidth and improve efficiency.
+    for:
+      - rms_norm_linear
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: roll
     description: |
       Roll the tensor input along the given dimension(s). Elements that are shifted beyond the last position
