@@ -820,6 +820,55 @@ addmm:
       BLOCK_SIZE_K: 32
     num_stages: 5
     num_warps: 2
+linear:
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 256
+      BLOCK_SIZE_K: 64
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 256
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 128
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 128
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 32
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 32
+      BLOCK_SIZE_K: 32
+    num_stages: 5
+    num_warps: 2
+  - META:
+      BLOCK_SIZE_M: 32
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 32
+    num_stages: 5
+    num_warps: 2
 cross_entropy_loss:
   - META:
       BLOCK_C: 256
@@ -1087,6 +1136,15 @@ conj_physical:
       BLOCK_SIZE: 2048
     num_warps: 8
 
+unbind_copy:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: block_size
+      num_warps: warps
+    block_size: [1024, 2048, 4096]
+    warps: [4, 8]
+
 upsample_nearest1d:
   - gen: true
     param_map:
@@ -1115,6 +1173,17 @@ upsample_nearest3d:
     warps: [4, 8]
 
 upsample_bicubic2d_aa:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_X: block_x
+        BLOCK_Y: block_y
+      num_warps: warps
+    block_x: [512, 256, 128, 64]
+    block_y: [2, 1]
+    warps: [4, 8]
+
+upsample_bilinear2d_aa:
   - gen: true
     param_map:
       META:
@@ -1692,6 +1761,35 @@ fp8_mqa_logits:
     stages:
       - 2
       - 3
+fp8_fp4_mqa_logits:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        HEAD_BLOCK: head_block
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 1
+      - 2
+      - 4
+      - 8
+    block_n:
+      - 64
+      - 128
+    head_block:
+      - 16
+      - 32
+      - 64
+    warps:
+      - 4
+      - 8
+    stages:
+      - 1
+      - 2
+      - 3
+
 # Shared memory tiling kernel for large tensors
 # Optimized for memory bandwidth by caching input tiles# Grid sample operator configurations
 grid_sample_2d_nearest:
@@ -1803,6 +1901,32 @@ grid_sample_2d_nearest_tiled:
       BLOCK_W: 16
     num_warps: 4
     num_stages: 4
+
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 32
+    num_warps: 16
+    num_stages: 3
+  - META:
+      BLOCK_H: 64
+      BLOCK_W: 64
+    num_warps: 16
+    num_stages: 3
+  - META:
+      BLOCK_H: 128
+      BLOCK_W: 128
+    num_warps: 16
+    num_stages: 2
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 16
+    num_warps: 16
+    num_stages: 3
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 32
+    num_warps: 16
+    num_stages: 3
 grid_sample_2d_bilinear_tiled:
   - META:
       BLOCK_H: 4
@@ -2118,6 +2242,85 @@ conv_transpose1d:
       BLOCK_IC: 32
     num_warps: 4
     num_stages: 3
+im2col:
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 128
+    num_stages: 2
+    num_warps: 4
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 64
+    num_stages: 2
+    num_warps: 4
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 64
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 128
+    num_stages: 2
+    num_warps: 4
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 32
+    num_stages: 2
+    num_warps: 4
+diff_1d:
+- gen: true
+  param_map:
+    META:
+      BLOCK_DIFF: block_diff
+    num_warps: warps
+  warps:
+  - 4
+  - 8
+  - 16
+  block_diff:
+  - 16
+  - 256
+  - 1024
+diff:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_DIFF: block_diff
+    num_warps: warps
+  warps:
+  - 4
+  - 8
+  - 16
+  block_m:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 32
+  block_diff:
+  - 16
+  - 256
+  - 1024
+
+adaptive_max_pool3d_backward:
+  - META:
+      BLOCK_SIZE: 16
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 32
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 64
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 128
+    num_warps: 4
+    num_stages: 3
 
 rot90:
   - META:
@@ -2136,3 +2339,41 @@ rot90:
       BLOCK_SIZE: 4096
     num_warps: 16
     num_stages: 1
+
+fused_marlin_moe_mxfp4:
+  - META: {BLOCK_SIZE_N: 64, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 3
+  - META: {BLOCK_SIZE_N: 64, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 4
+  - META: {BLOCK_SIZE_N: 128, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 3
+  - META: {BLOCK_SIZE_N: 128, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 4
+  - META: {BLOCK_SIZE_N: 256, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 3
+  - META: {BLOCK_SIZE_N: 256, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 4
+
+w8a8_block_fp8_bmm:
+  - gen: true
+    param_map:
+      META:
+        TILE_ORDER: tile_order
+      num_warps: warps
+      num_stages: stages
+    tile_order:
+      - 0
+      - 1
+    warps:
+      - 4
+      - 8
+    stages:
+      - 4
+      - 6
+      - 8

@@ -268,7 +268,7 @@ def mm_kernel_general(
 def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     configs = [
         triton.Config(
-            {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
+            {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK, "GROUP_M": 8},
             num_stages=s,
             num_warps=w,
             pre_hook=pre_hook,
@@ -376,6 +376,44 @@ def mm_kernel_general_host_tma(
     c_desc.store([offset_am, offset_bn], c)
 
 
+def _sync_mm_host_tma_descriptor_block_shapes(args, kwargs):
+    if len(args) < 3:
+        return
+    block_m = kwargs.get("BLOCK_M")
+    block_n = kwargs.get("BLOCK_N")
+    block_k = kwargs.get("BLOCK_K")
+    a_row_major = kwargs.get("A_ROW_MAJOR")
+    b_row_major = kwargs.get("B_ROW_MAJOR")
+    if None in (block_m, block_n, block_k, a_row_major, b_row_major):
+        return
+
+    a_desc, b_desc, c_desc = args[:3]
+    if not all(hasattr(desc, "block_shape") for desc in (a_desc, b_desc, c_desc)):
+        return
+
+    a_desc.block_shape = [block_m, block_k] if a_row_major else [block_k, block_m]
+    b_desc.block_shape = [block_k, block_n] if b_row_major else [block_n, block_k]
+    c_desc.block_shape = [block_m, block_n]
+
+
+def _install_mm_host_tma_descriptor_block_shape_guard():
+    jit_fn = mm_kernel_general_host_tma.fn.fn
+    if getattr(jit_fn, "_flag_gems_mm_tma_block_shape_guard", False):
+        return
+
+    original_run = jit_fn.run
+
+    def run_with_descriptor_block_shapes(*args, **kwargs):
+        _sync_mm_host_tma_descriptor_block_shapes(args, kwargs)
+        return original_run(*args, **kwargs)
+
+    jit_fn.run = run_with_descriptor_block_shapes
+    jit_fn._flag_gems_mm_tma_block_shape_guard = True
+
+
+_install_mm_host_tma_descriptor_block_shape_guard()
+
+
 def get_higher_dtype(a, b):
     _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
 
@@ -448,7 +486,6 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
                 b.stride(1),
                 c.stride(0),
                 c.stride(1),
-                GROUP_M=8,
                 A_ROW_MAJOR=a_row_major,
                 B_ROW_MAJOR=b_row_major,
                 dtype=dtype_str,
