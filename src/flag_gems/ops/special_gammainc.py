@@ -62,8 +62,6 @@ def gammainc_kernel(a_ptr, x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr)
     for i in range(1, 200):
         term = term * x_f32 / (a_f32 + tl.cast(i, tl.float32))
         series_sum = series_sum + term
-        if tl.abs(term) < tl.abs(series_sum) * 1e-10:
-            break
 
     # Divide by Gamma(a) to get the regularized value P(a, x)
     log_gamma_a = tl_extra_shim.lgamma(a_f32)
