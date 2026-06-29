@@ -99,13 +99,13 @@ def isin_by_comparation(
     if M <= 1024:
         BLOCK_M, BLOCK_N, num_warps = launch_arg(1, 256, N, 4)
     elif M <= 3072:
-        BLOCK_M, BLOCK_N, num_warps = launch_arg(2, 256, N, 4)
+        BLOCK_M, BLOCK_N, num_warps = launch_arg(1, 256, N, 4)
     elif M <= 6144:
-        BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 128, N, 4)
+        BLOCK_M, BLOCK_N, num_warps = launch_arg(1, 128, N, 4)
     elif M <= 9216:
-        BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 256, N, 8)
+        BLOCK_M, BLOCK_N, num_warps = launch_arg(1, 256, N, 8)
     else:
-        BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 128, N, 4)
+        BLOCK_M, BLOCK_N, num_warps = launch_arg(1, 128, N, 4)
     ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
     grid = (ctas_num,)

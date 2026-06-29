@@ -46,7 +46,12 @@ forward_operations = [
             (
                 "angle",
                 torch.angle,
-                COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES,
+                (
+                    [] if flag_gems.device == "tpu" else COMPLEX_DTYPES
+                )  # complex angle not supported on tpu
+                + [torch.float32]
+                + INT_DTYPES
+                + BOOL_DTYPES,
             )
         ]
     ),

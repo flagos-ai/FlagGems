@@ -173,7 +173,9 @@ def gather_input_fn(shape, dtype, device):
     size_dim = shape[dim]
     index_shape = list(shape)
     index_shape[dim] = 2 * shape[dim]
-    index = torch.randint(0, size_dim, index_shape, dtype=torch.long, device=device)
+    # TPU gather/scatter kernels use int32 indices
+    index_dtype = torch.int32 if device == "tpu" else torch.long
+    index = torch.randint(0, size_dim, index_shape, dtype=index_dtype, device=device)
     yield inp, dim, index
 
 

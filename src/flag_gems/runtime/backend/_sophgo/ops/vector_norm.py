@@ -15,6 +15,11 @@ from ..utils.shape_utils import dim_compress
 pow = tl_extra_shim.pow
 logger = logging.getLogger(__name__)
 
+# Cap block size so local-memory tensors fit on TPU even for very large M
+# (e.g. M=2^30 -> sqrt(M)=32768 would overflow). The _1 kernels hold
+# ~2*BLOCK_SIZE*4B; the _2 kernels loop in fixed BLOCK_MID chunks.
+MAX_BLOCK = 4096
+
 
 @libentry()
 @triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
@@ -56,11 +61,15 @@ def l2_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
 @libentry()
 @triton.jit
 def l2_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    Mid = Mid + offset
-    mask = offset < MID_SIZE
-    mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
-    out = tl.sqrt(tl.sum(mid))
+    # MID_SIZE can be very large for big M; loop over fixed BLOCK_MID chunks
+    # instead of one giant tl.arange(0, BLOCK_MID) that overflows local memory.
+    acc = tl.zeros([BLOCK_MID], dtype=tl.float32)
+    for off in range(0, MID_SIZE, BLOCK_MID):
+        offset = off + tl.arange(0, BLOCK_MID)
+        mask = offset < MID_SIZE
+        mid = tl.load(Mid + offset, mask=mask, other=0.0).to(tl.float32)
+        acc += mid
+    out = tl.sqrt(tl.sum(acc))
     tl.store(Out, out)
 
 
@@ -104,11 +113,13 @@ def max_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
 @libentry()
 @triton.jit
 def max_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    Mid = Mid + offset
-    mask = offset < MID_SIZE
-    mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
-    out = tl.max(mid)
+    acc = tl.full([BLOCK_MID], value=float("-inf"), dtype=tl.float32)
+    for off in range(0, MID_SIZE, BLOCK_MID):
+        offset = off + tl.arange(0, BLOCK_MID)
+        mask = offset < MID_SIZE
+        mid = tl.load(Mid + offset, mask=mask, other=float("-inf")).to(tl.float32)
+        acc = tl.maximum(acc, mid)
+    out = tl.max(acc)
     tl.store(Out, out)
 
 
@@ -152,11 +163,13 @@ def min_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
 @libentry()
 @triton.jit
 def min_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    Mid = Mid + offset
-    mask = offset < MID_SIZE
-    mid = tl.load(Mid, mask=mask, other=float("inf")).to(tl.float32)
-    out = tl.min(mid)
+    acc = tl.full([BLOCK_MID], value=float("inf"), dtype=tl.float32)
+    for off in range(0, MID_SIZE, BLOCK_MID):
+        offset = off + tl.arange(0, BLOCK_MID)
+        mask = offset < MID_SIZE
+        mid = tl.load(Mid + offset, mask=mask, other=float("inf")).to(tl.float32)
+        acc = tl.minimum(acc, mid)
+    out = tl.min(acc)
     tl.store(Out, out)
 
 
@@ -200,11 +213,13 @@ def l0_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
 @libentry()
 @triton.jit
 def l0_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    Mid = Mid + offset
-    mask = offset < MID_SIZE
-    mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
-    out = tl.sum(mid)
+    acc = tl.zeros([BLOCK_MID], dtype=tl.float32)
+    for off in range(0, MID_SIZE, BLOCK_MID):
+        offset = off + tl.arange(0, BLOCK_MID)
+        mask = offset < MID_SIZE
+        mid = tl.load(Mid + offset, mask=mask, other=0.0).to(tl.float32)
+        acc += mid
+    out = tl.sum(acc)
     tl.store(Out, out)
 
 
@@ -247,11 +262,13 @@ def l1_norm_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr):
 @libentry()
 @triton.jit(do_not_specialize=["ord"])
 def l1_norm_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    Mid = Mid + offset
-    mask = offset < MID_SIZE
-    mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
-    out = pow(tl.sum(mid), 1 / ord)
+    acc = tl.zeros([BLOCK_MID], dtype=tl.float32)
+    for off in range(0, MID_SIZE, BLOCK_MID):
+        offset = off + tl.arange(0, BLOCK_MID)
+        mask = offset < MID_SIZE
+        mid = tl.load(Mid + offset, mask=mask, other=0.0).to(tl.float32)
+        acc += mid
+    out = pow(tl.sum(acc), 1 / ord)
     tl.store(Out, out)
 
 
@@ -270,9 +287,9 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             shape = [1] * x.ndim
             x = dim_compress(x, dim)
             M = x.numel()
-            BLOCK_SIZE = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+            BLOCK_SIZE = min(triton.next_power_of_2(math.ceil(math.sqrt(M))), MAX_BLOCK)
             MID_SIZE = triton.cdiv(M, BLOCK_SIZE)
-            BLOCK_MID = triton.next_power_of_2(MID_SIZE)
+            BLOCK_MID = min(MAX_BLOCK, triton.next_power_of_2(MID_SIZE))
 
             mid = torch.empty([MID_SIZE], dtype=dtype, device=x.device)
             out = torch.empty(shape, dtype=dtype, device=x.device)

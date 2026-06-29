@@ -143,7 +143,11 @@ def generate_destination_passing_padding_wrapper(
         # Scale BLOCK_SIZE inversely with rank to keep local memory usage constant.
         # Each rank adds 2 int64 tensors (dst_index, src_index) alive simultaneously.
         # rank=2: BLOCK_SIZE=4096 works; rank=4: 4096 OOMs.
-        block_size = min(4096, max(256, 8192 // rank))
+        # BLOCK_SIZE must be a power of 2 for tl.arange (8192//rank may be
+        # non-pow2, e.g. rank=3 -> 2730). Round down to nearest pow2 to also
+        # respect the per-rank local-memory budget (rank=4: 4096 OOMs).
+        _raw = max(256, 8192 // rank)
+        block_size = min(4096, 1 << (_raw.bit_length() - 1))
         code.writeline(f"BLOCK_SIZE = {block_size}")
         code.writeline("grid = (triton.cdiv(out0.numel(), BLOCK_SIZE), 1, 1)")
         code.newline()
@@ -312,8 +316,8 @@ def generate_pad_kernel(
                 )
             for i in range(rank):
                 code.writeline(
-                    f"""src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end,
-                    (valid_dim{i}_end - 1) - (dst_index_{i} - (valid_dim{i}_end - 1)) - valid_dim{i}_start, src_index_{i})"""
+                    f"""src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end, (valid_dim{i}_end - 1) -
+                    (dst_index_{i} - (valid_dim{i}_end - 1)) - valid_dim{i}_start, src_index_{i})"""
                 )
 
         code.newline()
@@ -357,9 +361,7 @@ def generate_pad_kernel(
             code.writeline(
                 "x_val = tl.load(in0_ptr + src_offset, mask=load_cond, other=0)"
             )
-            code.writeline(
-                "x_val = tl.where(if_pad, value, x_val)"
-            )
+            code.writeline("x_val = tl.where(if_pad, value, x_val)")
         code.writeline("else: ")
         with code.indent():
             code.writeline(

@@ -14,6 +14,7 @@ from .cumsum import cumsum, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal
+from .dot import dot
 from .dropout import dropout, native_dropout
 from .erf import erf, erf_
 from .exponential_ import exponential_
@@ -188,6 +189,7 @@ __all__ = [
     "_unique2",
     "var_mean",
     "vector_norm",
+    "dot",
     "vdot",
     "where_scalar_other",
     "where_scalar_self",

@@ -47,7 +47,8 @@ special_operations = [
             ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
             ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
         ]
-        if flag_gems.device != "musa"
+        if flag_gems.device
+        not in ("musa", "tpu")  # complex dtypes not supported on musa/tpu
         else []
     ),
 ]
@@ -303,7 +304,7 @@ class ConvBenchmark(GenericBenchmark):
         return None
 
 
-@pytest.mark.skipif(True, reason="Conv2d not registered yet")
+@pytest.mark.skipif(flag_gems.device != "tpu", reason="Conv2d not registered yet")
 @pytest.mark.conv2d
 def test_perf_conv2d():
     def conv2d_input_fn(shape, dtype, device):

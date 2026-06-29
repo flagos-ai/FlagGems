@@ -202,6 +202,7 @@ def test_vdot_benchmark():
         input_fn=vdot_input_fn,
         op_name="vdot",
         torch_op=torch.Tensor.vdot,
-        dtypes=COMPLEX_DTYPES + FLOAT_DTYPES,
+        dtypes=([] if flag_gems.device == "tpu" else COMPLEX_DTYPES)
+        + FLOAT_DTYPES,  # complex (vdot) not supported on tpu
     )
     bench.run()
