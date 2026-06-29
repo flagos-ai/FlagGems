@@ -14,6 +14,7 @@ from .index_add import index_add, index_add_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
 from .log import log
+from .log10 import log10, log10_, log10_out
 from .log_softmax import (
     log_softmax,
     log_softmax_backward,
@@ -74,6 +75,9 @@ __all__ = [
     "_index_put_impl_",
     "index_select",
     "log",
+    "log10",
+    "log10_",
+    "log10_out",
     "log_softmax",
     "log_softmax_backward",
     "log_softmax_backward_out",
