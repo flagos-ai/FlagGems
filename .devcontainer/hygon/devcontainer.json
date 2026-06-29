@@ -1,14 +1,18 @@
 {
   "name": "FlagGems - HYGON",
   "build": {
-    "context": "./",
+    "context": "../../",
     "dockerfile": "./Dockerfile",
     "args": {
-      "USERNAME": "vscode",
-      "BUILDKIT_INLINE_CACHE": "0"
+      // Pre-built image produced by container/flaggems-hygon-26.04 (runtime stage).
+      // Override this arg to use a different tag.
+      "IMAGE": "flaggems-hygon:26.04",
+      "USERNAME": "vscode"
     }
   },
   "runArgs": [
+	"--ulimit",
+        "nofile=1048576:1048576",
 	"--device=/dev/kfd",
         "--device=/dev/mkfd",
         "--device=/dev/dri",
@@ -40,16 +44,9 @@
   // Mount the full repo only after the container starts
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/FlagGems,type=bind,consistency=cached",
   "workspaceFolder": "/workspace/FlagGems",
-  // Maps -v volume mounts
-  // Note: VS Code mounts the current project directory by default.
-  // If you need to explicitly mount the home directory or other directories, configure as follows:
   "mounts": [
       "source=/opt/hyhal,target=/opt/hyhal,type=bind",
-      // Mount a large-capacity storage volume
       //"source=/data,target=/data,type=bind",
-      //"source=/tmp,target=/host_tmp,type=bind",
-      // Mount the host home directory into the container at /home/host
-      // localEnv:HOME maps to the $HOME variable on Linux/Mac
       //"source=${localEnv:HOME},target=/home/host,type=bind",
       // Use a named data volume to persist the .claude folder
       "source=claude-code-data,target=/home/vscode/.claude,type=volume"
@@ -58,18 +55,10 @@
     "PIP_USER": "0" // <‑‑ disable implicit --user
   },
 
-  // Ensure /data exists before mounting to avoid silent directory creation
-  //"initializeCommand": "mkdir -p /data",
-
-// Use 'forwardPorts' to make a list of ports inside the container available locally.
-  // "forwardPorts": [],
-
   // Use 'postCreateCommand' to run commands after the container is created.
+  // Installs FlagGems in editable mode so source edits take effect immediately.
   "postCreateCommand": "bash .devcontainer/hygon/scripts/install-dev-tools.sh",
-  // install-dev-tools.sh sources .devcontainer/hygon/flaggems.env then calls
-  // .devcontainer/common/scripts/install-flaggems.sh for the shared build logic
-  // Configure tool-specific properties.
-  // "customizations": {},
+
   "customizations": {
     "vscode": {
       "extensions": [
@@ -88,7 +77,5 @@
   // VSCode will automatically update the container user's UID/GID to match the host user
   "updateRemoteUserUID": true,
 
-  // Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
-  // "remoteUser": "root"
   "remoteUser": "vscode"
 }
