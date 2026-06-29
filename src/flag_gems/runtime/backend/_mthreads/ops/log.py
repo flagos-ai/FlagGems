@@ -36,6 +36,7 @@ def log_kernel(
     dtype_size,
     BLOCK_SIZE: tl.constexpr,
     USE_APPROX: tl.constexpr,
+    SCALE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -52,15 +53,13 @@ def log_kernel(
         k = exp.to(tl.int32) - 127
         t = (m - 1.0) / (m + 1.0)
         t2 = t * t
-        # t4 = t2 * t2
-        # t6 = t4 * t2
         log_m = 2.0 * (t + t2 * t * (1.0 / 3.0 + t2 * (1.0 / 5.0 + t2 * (1.0 / 7.0))))
         log_val = log_m + k.to(tl.float32) * 0.6931471805599453
         nan_or_inf = tl.where(zero_mask, -float("inf"), float("nan"))
         y = tl.where(pos_mask, log_val, nan_or_inf)
     else:
         y = tl_extra_shim.log(x_fp32)
-    tl.store(out_ptr + offsets, y, mask=mask)
+    tl.store(out_ptr + offsets, y * SCALE, mask=mask)
 
 
 def _use_triton_kernel(x: torch.Tensor) -> Tuple[bool, int]:
@@ -73,11 +72,15 @@ def _use_triton_kernel(x: torch.Tensor) -> Tuple[bool, int]:
     return True, x.element_size()
 
 
-def _launch_log(x: torch.Tensor, out: torch.Tensor, dtype_size: int):
+def _launch_log(
+    x: torch.Tensor, out: torch.Tensor, dtype_size: int, scale: float = 1.0
+):
     n_elements = out.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(out.device):
-        log_kernel[grid](x, out, n_elements, dtype_size, USE_APPROX=dtype_size == 2)
+        log_kernel[grid](
+            x, out, n_elements, dtype_size, USE_APPROX=dtype_size == 2, SCALE=scale
+        )
     return out
 
 
