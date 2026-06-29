@@ -310,6 +310,14 @@ class Benchmark:
                 fn()
             end = time.time()
             latency = (end - start) / n_rep * 1000
+        elif Config.mode == consts.BenchMode.CUDAGRAPH:
+            do_bench_cudagraph = triton.testing.do_bench_cudagraph
+            latency = do_bench_cudagraph(
+                fn,
+                rep=Config.repetition,
+                return_mode="median",
+                grad_to_none=xs if self.is_backward else None,
+            )
         else:
             raise ValueError("Undefined Value of Benchmark Mode.")
         # average latency in ms
