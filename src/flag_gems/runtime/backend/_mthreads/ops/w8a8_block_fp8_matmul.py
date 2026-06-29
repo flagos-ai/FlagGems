@@ -247,7 +247,7 @@ def general_w8a8_block_fp8_matmul(
     group_k,
 ):
     logger.debug(
-        "GEMS_MTHREADS W8A8_BLOCK_FP8_MATMUL(general), [shape info]: [-, %s, %s, %s](batch, M, N, K)",
+        "GEMS_MTHREADS W8A8_BLOCK_FP8_MATMUL_GENERAL_, [shape info]: [-, %s, %s, %s](batch, M, N, K)",
         M,
         N,
         K,
@@ -295,8 +295,8 @@ def sqmma_w8a8_block_fp8_matmul(
     group_k,
 ):
     logger.debug(
-        "GEMS_MTHREADS W8A8_BLOCK_FP8_MATMUL(sqmma), [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s",
+        "GEMS_MTHREADS W8A8_BLOCK_FP8_MATMUL_SQMMA_, [shape info]: "
+        "[-, %s, %s, %s](batch, M, N, K), [A column-major]: %s, [B column-major]: %s",
         M,
         N,
         K,

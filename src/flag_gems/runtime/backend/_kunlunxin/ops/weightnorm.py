@@ -262,7 +262,7 @@ def weight_norm_bwd_kernel_first(
 
 
 def weight_norm_interface(v, g, dim=0):
-    logger.debug("GEMS_KUNLUNXIN WEIGHT_NORM_INTERFACE_FORWARD")
+    logger.debug("GEMS_KUNLUNXIN WEIGHT_NORM_INTERFACE")
     v = v.contiguous()
     g = g.contiguous()
     output = torch.empty_like(v)

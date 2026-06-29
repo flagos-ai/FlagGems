@@ -134,7 +134,7 @@ def min(inp):
 
 
 def min_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_ARM MIN DIM")
+    logger.debug("GEMS_ARM MIN_DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     dim = dim % inp.ndim
     inp_np = inp.detach().cpu().numpy()

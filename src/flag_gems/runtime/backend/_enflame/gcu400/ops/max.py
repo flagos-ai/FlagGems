@@ -204,7 +204,7 @@ def max(inp):
 
 
 def max_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_ENFLAME MAX DIM")
+    logger.debug("GEMS_ENFLAME MAX_DIM")
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape

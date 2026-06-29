@@ -83,7 +83,7 @@ def masked_fill_kernel_self(
 
 
 def masked_fill(inp, mask, value):
-    logger.debug("GEMS_ASCEND MASKED FILL")
+    logger.debug("GEMS_ASCEND MASKED_FILL")
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
@@ -118,7 +118,7 @@ def masked_fill(inp, mask, value):
 
 
 def masked_fill_(inp, mask, value):
-    logger.debug("GEMS_ASCEND MASKED FILL_")
+    logger.debug("GEMS_ASCEND MASKED_FILL_")
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)

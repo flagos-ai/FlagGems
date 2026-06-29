@@ -55,7 +55,7 @@ def true_divide(A, B):
 
 
 def true_divide_out(A, B, out):
-    logger.debug("GEMS_CAMBRICON TRUE_DIVIDE OUT")
+    logger.debug("GEMS_CAMBRICON TRUE_DIVIDE_OUT")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return true_div_func(A, B, False, out0=out)
     elif isinstance(A, torch.Tensor):

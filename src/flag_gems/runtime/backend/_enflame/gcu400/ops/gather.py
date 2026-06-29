@@ -285,7 +285,7 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logger.debug("GEMS_ENFLAME GATHER BACKWARD")
+    logger.debug("GEMS_ENFLAME GATHER_BACKWARD")
     from .scatter import scatter_
 
     result = grad.new_zeros(self.shape)

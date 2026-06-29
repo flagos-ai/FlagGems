@@ -56,7 +56,7 @@ UNROLL = 4
 
 
 def uniform_(self, from_=0.0, to=1.0, *, generator=None):
-    logger.debug("GEMS_CAMBRICON UNIFORM")
+    logger.debug("GEMS_CAMBRICON UNIFORM_")
     N = volume(self.shape)
     grid_fn = lambda meta: (
         min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),

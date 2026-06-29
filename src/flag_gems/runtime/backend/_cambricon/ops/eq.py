@@ -35,7 +35,7 @@ def eq_func_scalar(x, y):
 
 
 def eq_scalar(A, B):
-    logger.debug("GEMS_CAMBRICON EQ SCALAR")
+    logger.debug("GEMS_CAMBRICON EQ_SCALAR")
     return eq_func_scalar(A, B)
 
 

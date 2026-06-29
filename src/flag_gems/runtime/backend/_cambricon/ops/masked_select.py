@@ -87,7 +87,7 @@ def get_out_kernel(
 
 
 def masked_select(inp, mask):
-    logger.debug("GEMS_CAMBRICON MASKED SELECT")
+    logger.debug("GEMS_CAMBRICON MASKED_SELECT")
 
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)

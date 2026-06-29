@@ -157,7 +157,7 @@ def min(inp):
 
 
 def min_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_MTHREADS MIN DIM")
+    logger.debug("GEMS_MTHREADS MIN_DIM")
     assert dim is not None, "dim must be specified"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     dim = dim % inp.ndim

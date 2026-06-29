@@ -25,5 +25,5 @@ def ge_func_scalar(x, y):
 
 
 def ge_scalar(A, B):
-    logger.debug("GEMS_CAMBRICON GE SCALAR")
+    logger.debug("GEMS_CAMBRICON GE_SCALAR")
     return ge_func_scalar(A, B)

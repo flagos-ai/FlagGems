@@ -146,7 +146,7 @@ def bmm_kernel(
 
 
 def bmm_fma(A, B):
-    logger.debug("GEMS_MTHREADS BMM(FMA)")
+    logger.debug("GEMS_MTHREADS BMM_FMA")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()

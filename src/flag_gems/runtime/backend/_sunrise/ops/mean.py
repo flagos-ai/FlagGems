@@ -379,6 +379,6 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
 
 
 def mean_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS_SUNRISE MEAN_DIM (wrapper)")
+    logger.debug("GEMS_SUNRISE MEAN_DIM")
 
     return mean_dim_comm(inp, dim, keepdim, dtype=dtype)

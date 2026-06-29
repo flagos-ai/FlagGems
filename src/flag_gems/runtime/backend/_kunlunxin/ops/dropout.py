@@ -155,7 +155,7 @@ def dropout(input, p, train=True):
 
 
 def dropout_backward(grad_output, mask, scale):
-    logger.debug("GEMS_KUNLUNXIN NATIVE_DROPOUT_BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN DROPOUT_BACKWARD")
     grad_output = grad_output.contiguous()
     grad_input = torch.empty_like(grad_output)
     N = grad_output.numel()

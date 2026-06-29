@@ -439,7 +439,7 @@ def sort(inp, dim=-1, descending=False):
 
 
 def sort_stable(inp, *, stable, dim=-1, descending=False):
-    logger.debug("GEMS_ENFLAME SORT.STABLE")
+    logger.debug("GEMS_ENFLAME SORT_STABLE")
 
     _ = stable
     sort_elem_cnt = inp.shape[dim]

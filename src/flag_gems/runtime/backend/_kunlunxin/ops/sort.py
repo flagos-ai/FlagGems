@@ -569,7 +569,7 @@ def sort(inp, dim=-1, descending=False):
 
 
 def sort_stable(inp, *, stable, dim=-1, descending=False):
-    logger.debug("GEMS_KUNLUNXIN SORT.STABLE")
+    logger.debug("GEMS_KUNLUNXIN SORT_STABLE")
     # We only implement stable radix sort here
     _ = stable
     sort_elem_cnt = inp.shape[dim]

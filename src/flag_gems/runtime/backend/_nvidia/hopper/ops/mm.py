@@ -396,7 +396,7 @@ def get_higher_dtype(a, b):
 def general_mm(a, b, c, M, N, K, op_name="mm"):
     # TODO: Remove this debug message
     logger.debug(
-        "GEMS_NVIDIA MM-hopper, [op]: %s, [mm scenario]: general, [shape info]: "
+        "GEMS_NVIDIA MM_HOPPER, [op]: %s, [mm scenario]: general, [shape info]: "
         "[-, %s, %s, %s](batch, M, N, K), [A column-major]: %s, [B column-major]: %s",
         op_name,
         M,
@@ -552,7 +552,7 @@ def gemv_kernel(
 def gemv_mm(a, b, c, M, K):
     """Optimized matrix-vector multiplication for N=1 case"""
     logger.debug(
-        "GEMS_NVIDIA MM-hopper, [mm scenario]: gemv (N=1), [shape info]: [%s, %s, 1](M, K, N)",
+        "GEMS_NVIDIA MM_HOPPER, [mm scenario]: gemv (N=1), [shape info]: [%s, %s, 1](M, K, N)",
         M,
         K,
     )
@@ -649,7 +649,7 @@ def mm_kernel_splitk(
 
 def splitk_mm(a, b, c, M, N, K, op_name="mm"):
     logger.debug(
-        "GEMS_NVIDIA MM-hopper, [op]: %s, [mm scenario]: splitk, [shape info]: [-, %s, %s, %s](batch, M, N, K)",
+        "GEMS_NVIDIA MM_HOPPER, [op]: %s, [mm scenario]: splitk, [shape info]: [-, %s, %s, %s](batch, M, N, K)",
         op_name,
         M,
         N,

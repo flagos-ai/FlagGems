@@ -1421,7 +1421,7 @@ def fused_experts_impl(
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ASCEND FUSED MOE")
+    logger.debug("GEMS_ASCEND FUSED_MOE")
     if hasattr(activation, "value"):
         activation = activation.value
     assert (

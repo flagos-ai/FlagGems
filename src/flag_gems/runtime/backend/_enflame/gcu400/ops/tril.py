@@ -913,7 +913,7 @@ def tril_(input: torch.Tensor, diagonal: int = 0):
 
 
 def tril_out(input: torch.Tensor, diagonal: int = 0, *, out: torch.Tensor = None):
-    logger.debug("GEMS_ENFLAME TRIL.OUT")
+    logger.debug("GEMS_ENFLAME TRIL_OUT")
 
     if out is None:
         return tril(input, diagonal)

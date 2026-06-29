@@ -53,7 +53,7 @@ def threshold_backward_kernel(grad_output, self, threshold):
 
 
 def threshold(self, threshold_val, value_val):
-    logger.debug("GEMS_CAMBRICON THRESHOLD FORWARD")
+    logger.debug("GEMS_CAMBRICON THRESHOLD")
     A = self.contiguous()
     out = torch.empty_like(A)
     N = A.numel()
@@ -66,5 +66,5 @@ def threshold(self, threshold_val, value_val):
 
 
 def threshold_backward(grad_output, self, threshold_val):
-    logger.debug("GEMS_CAMBRICON THRESHOLD BACKWARD")
+    logger.debug("GEMS_CAMBRICON THRESHOLD_BACKWARD")
     return threshold_backward_kernel(grad_output, self, threshold_val)

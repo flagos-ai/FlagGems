@@ -25,5 +25,5 @@ def le_func_scalar(x, y):
 
 
 def le_scalar(A, B):
-    logger.debug("GEMS_CAMBRICON LE SCALAR")
+    logger.debug("GEMS_CAMBRICON LE_SCALAR")
     return le_func_scalar(A, B)

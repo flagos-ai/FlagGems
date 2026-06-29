@@ -156,7 +156,7 @@ def weight_norm_except_dim_bwd_kernel(
 
 
 def weight_norm_except_dim(v, g, dim):
-    logger.debug("GEMS_KUNLUNXIN WEIGHT_NORM_EXCEPT_DIM_FORWARD")
+    logger.debug("GEMS_KUNLUNXIN WEIGHT_NORM_EXCEPT_DIM")
     v = v.contiguous()
     output = torch.empty_like(v)
     norm = torch.empty_like(g, dtype=torch.float32)

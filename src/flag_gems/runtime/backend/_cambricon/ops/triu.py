@@ -184,7 +184,7 @@ def triu(A, diagonal=0):
 
 
 def triu_(A, diagonal=0):
-    logger.debug("GEMS_CAMBRICON TRIU_(inplace)")
+    logger.debug("GEMS_CAMBRICON TRIU_")
 
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
     diagonal = int(diagonal)

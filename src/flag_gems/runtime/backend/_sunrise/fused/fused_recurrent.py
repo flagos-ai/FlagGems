@@ -507,7 +507,7 @@ def fused_recurrent_gated_delta_rule_fwd(
     num_accepted_tokens: torch.Tensor | None = None,
     use_qk_l2norm_in_kernel: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    logger.debug("GEMS_SUNRISE FUSED RECURRENT GATED DELTA RULE FWD")
+    logger.debug("GEMS_SUNRISE FUSED_RECURRENT_GATED_DELTA_RULE_FWD")
     if not use_qk_l2norm_in_kernel:
         q = q.contiguous()
         k = k.contiguous()
@@ -579,7 +579,7 @@ def fused_recurrent_gated_delta_rule_fwd(
         )
     else:
         logger.debug(
-            "GEMS_SUNRISE fused_recurrent_gated_delta_rule_fwd, "
+            "GEMS_SUNRISE FUSED_RECURRENT_GATED_DELTA_RULE_FWD, "
             "[q.shape]: %s, [q.stride]: %s, [k.shape]: %s, [k.stride]: %s, "
             "[v.shape]: %s, [v.stride]: %s, [g.shape]: %s, [beta.shape]: %s, "
             "[initial_state.shape]: %s, [cu_seqlens.shape]: %s, "

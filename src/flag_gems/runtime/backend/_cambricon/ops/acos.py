@@ -19,6 +19,6 @@ def acos_kernel(x):
 
 
 def acos(x):
-    logger.debug("GEMS_CAMBRICON ACOS FORWARD")
+    logger.debug("GEMS_CAMBRICON ACOS")
     y = acos_kernel(x)
     return y

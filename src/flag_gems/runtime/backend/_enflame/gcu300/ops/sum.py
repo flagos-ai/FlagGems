@@ -149,7 +149,7 @@ def sum_out(inp, *, dtype=None, out):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS_ENFLAME SUM DIM")
+    logger.debug("GEMS_ENFLAME SUM_DIM")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:

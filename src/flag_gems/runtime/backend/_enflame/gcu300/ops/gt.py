@@ -31,5 +31,5 @@ def gt_scalar(A, B):
         A = A.to(torch.int32)
     if A.dtype == torch.float64:
         A = A.to(torch.float32)
-    logger.debug("GEMS_ENFLAME GT SCALAR")
+    logger.debug("GEMS_ENFLAME GT_SCALAR")
     return gt_func_scalar(A, B)

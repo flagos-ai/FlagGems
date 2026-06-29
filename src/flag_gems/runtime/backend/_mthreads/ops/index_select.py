@@ -133,7 +133,7 @@ def _get_num_warps(total_elements):
 
 
 def index_select(inp, dim, index):
-    logger.debug("GEMS_MTHREADS INDEX SELECT")
+    logger.debug("GEMS_MTHREADS INDEX_SELECT")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
 

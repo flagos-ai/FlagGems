@@ -535,7 +535,7 @@ def pad_2d_constant_kernel(
 
 
 def pad(self, pad, mode="constant", value=None):
-    logger.debug("GEMS_CAMBRICON CONSTANT PAD ND")
+    logger.debug("GEMS_CAMBRICON CONSTANT_PAD_ND")
 
     ndim = self.ndim
     pad_size = len(pad)

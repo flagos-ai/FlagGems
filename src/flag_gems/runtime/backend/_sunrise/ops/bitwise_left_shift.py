@@ -32,7 +32,7 @@ def bitwise_left_shift(A, B):
 
 
 def bitwise_left_shift_out(A, B, out):
-    logger.debug("GEMS_SUNRISE BITWISE_LEFT_SHIFT OUT")
+    logger.debug("GEMS_SUNRISE BITWISE_LEFT_SHIFT_OUT")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return bitwise_left_shift_func(A, B, out0=out)
     elif isinstance(A, torch.Tensor):

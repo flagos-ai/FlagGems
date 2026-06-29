@@ -486,7 +486,7 @@ def batch_norm(
     momentum: float = 0.1,
     eps: float = 1e-05,
 ):
-    logger.debug("GEMS_MTHREADS BATCHNORM FORWARD")
+    logger.debug("GEMS_MTHREADS BATCH_NORM")
     input_3d = _make_3d_for_bn(input)
     batch_dim, feat_dim, spatial_dim = input_3d.shape
     total = batch_dim * spatial_dim
@@ -628,7 +628,7 @@ def batch_norm_backward(
     eps: float = 1e-05,
     output_mask=None,
 ):
-    logger.debug("GEMS_MTHREADS BATCHNORM BACKWARD")
+    logger.debug("GEMS_MTHREADS BATCH_NORM_BACKWARD")
 
     input_3d = _make_3d_for_bn(input)
     output_grad_3d = _make_3d_for_bn(grad_out)

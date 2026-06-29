@@ -250,7 +250,7 @@ def prod(inp, *, dtype=None):
 
 
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS_MTHREADS PROD DIM")
+    logger.debug("GEMS_MTHREADS PROD_DIM")
     assert dim is not None, "dim must be specified"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     dim = dim % inp.ndim

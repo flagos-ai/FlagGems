@@ -299,7 +299,7 @@ def rms_norm_grad_kernel(
 
 
 def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
-    logger.debug("GEMS_KUNLUNXIN RMS_NORM_FORWARD")
+    logger.debug("GEMS_KUNLUNXIN RMS_NORM")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)

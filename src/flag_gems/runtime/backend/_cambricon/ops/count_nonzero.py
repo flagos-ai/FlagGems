@@ -96,7 +96,7 @@ def count_nonzero_combin_kernel(
 
 
 def count_nonzero(x, dim=None):
-    logger.debug("GEMS_CAMBRICON COUNT NONZERO")
+    logger.debug("GEMS_CAMBRICON COUNT_NONZERO")
     if dim is not None:
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         shape = x.shape

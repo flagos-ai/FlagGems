@@ -289,7 +289,7 @@ def w8a8_block_fp8_matmul_kernel_splitk(
 
 def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
     logger.debug(
-        "GEMS_NVIDIA w8a8_block_fp8_matmul-hopper, [scenario]: general, "
+        "GEMS_NVIDIA W8A8_BLOCK_FP8_MATMUL_HOPPER, [scenario]: general, "
         "[shape info]: [-, %s, %s, %s](batch, M, N, K), "
         "[A column-major]: %s, [B column-major]: %s",
         M,

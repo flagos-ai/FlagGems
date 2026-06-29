@@ -174,7 +174,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS_CAMBRICON SUM DIM")
+    logger.debug("GEMS_CAMBRICON SUM_DIM")
     # support dim = 0, which are consistent with PyTorch
     if inp.numel() == 0:
         if dtype is None:

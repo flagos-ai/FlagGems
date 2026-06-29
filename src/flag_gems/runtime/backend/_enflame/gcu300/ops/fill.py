@@ -28,7 +28,7 @@ def fill_tensor_func(inp, value):
 
 
 def fill_scalar(input, value):
-    logger.debug("GEMS_ENFLAME FILL (Dynamic)")
+    logger.debug("GEMS_ENFLAME FILL")
     return_type = input.dtype
     if return_type == torch.int64:
         input = input.to(torch.int32)
@@ -40,7 +40,7 @@ def fill_scalar(input, value):
 def fill_tensor(input, value):
     if not value.is_cuda:
         return fill_scalar(input, value.item())
-    logger.debug("GEMS_ENFLAME FILL (Dynamic)")
+    logger.debug("GEMS_ENFLAME FILL")
     return_type = input.dtype
     if return_type == torch.int64:
         input = input.to(torch.int32)

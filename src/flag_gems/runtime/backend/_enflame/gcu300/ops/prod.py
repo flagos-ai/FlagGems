@@ -129,7 +129,7 @@ def prod_kernel(
 
 
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS_ENFLAME PROD DIM")
+    logger.debug("GEMS_ENFLAME PROD_DIM")
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = list(inp.shape)

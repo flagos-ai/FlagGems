@@ -116,7 +116,7 @@ class Embedding(torch.autograd.Function):
     def forward(
         ctx, weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False
     ):
-        logger.debug("GEMS_ASCEND EMBEDDING FORWARD")
+        logger.debug("GEMS_ASCEND EMBEDDING_FORWARD")
         assert not sparse, "Currently do not support sparse format"
 
         M = math.prod(indices.shape)
@@ -144,7 +144,7 @@ class Embedding(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_outputs):
-        logger.debug("GEMS_ASCEND EMBEDDING BACKWARD")
+        logger.debug("GEMS_ASCEND EMBEDDING_BACKWARD")
         assert not ctx.sparse, "Currently do not support sparse format"
 
         grad_inputs = torch.zeros(

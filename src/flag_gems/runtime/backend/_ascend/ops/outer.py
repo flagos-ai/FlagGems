@@ -132,7 +132,7 @@ class Outer(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_ASCEND OUTER VJP")
+        logger.debug("GEMS_ASCEND OUTER_VJP")
         assert out_grad.ndim == 2, "invalide out_grad shape"
 
         inp, weight = ctx.saved_tensors

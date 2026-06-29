@@ -391,7 +391,7 @@ def l1_norm_kernel_2(
 
 
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
-    logger.debug("GEMS_CAMBRICON VECTOR NORM")
+    logger.debug("GEMS_CAMBRICON VECTOR_NORM")
     if dtype is not None:
         if isinstance(dtype, str):
             dtype = getattr(torch, dtype)

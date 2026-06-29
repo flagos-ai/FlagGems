@@ -1222,7 +1222,7 @@ def flash_attn_varlen_func(
             normalization factor).
     """
     if use_c_extension:
-        logger.debug("GEMS_KUNLUNXIN FLASH_ATTN_VARLEN_FUNC (C Extension)")
+        logger.debug("GEMS_KUNLUNXIN FLASH_ATTN_VARLEN_FUNC")
         with torch_device_fn.device(q.device):
             out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
                 q,

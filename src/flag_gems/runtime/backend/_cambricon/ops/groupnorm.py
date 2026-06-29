@@ -572,7 +572,7 @@ def weight_bias_backward_kernel_opt(
 
 
 def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
-    logger.debug("GEMS_CAMBRICON GROUPNORM FORWARD")
+    logger.debug("GEMS_CAMBRICON GROUP_NORM")
     group_size = C // group
     input = input.contiguous()
     if weight is not None:
@@ -605,7 +605,7 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
 def group_norm_backward(
     grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask
 ):
-    logger.debug("GEMS_CAMBRICON GROUPNORM BACKWARD")
+    logger.debug("GEMS_CAMBRICON GROUP_NORM_BACKWARD")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()

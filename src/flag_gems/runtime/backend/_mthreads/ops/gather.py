@@ -137,5 +137,5 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logger.debug("GEMS_MTHREADS GATHER BACKWARD")
+    logger.debug("GEMS_MTHREADS GATHER_BACKWARD")
     return default_gather_backward(grad, self, dim, index, sparse_grad)

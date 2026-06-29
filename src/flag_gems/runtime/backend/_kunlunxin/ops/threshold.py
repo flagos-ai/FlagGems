@@ -21,7 +21,7 @@ def threshold_backward_kernel(grad_output, self, threshold):
 
 
 def threshold(self, threshold, value):
-    logger.debug("GEMS_KUNLUNXIN THRESHOLD_FORWARD")
+    logger.debug("GEMS_KUNLUNXIN THRESHOLD")
     output = threshold_kernel(self, threshold, value)
     return output
 

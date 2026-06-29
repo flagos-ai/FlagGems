@@ -111,7 +111,7 @@ def addmm_kernel(
 
 
 def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
-    logger.debug("GEMS_MTHREADS ADDMM(FMA)")
+    logger.debug("GEMS_MTHREADS ADDMM_FMA")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
@@ -214,7 +214,7 @@ def addmm_sqmma_kernel(
 
 
 def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
-    logger.debug("GEMS_MTHREADS ADDMM(SQMMA)")
+    logger.debug("GEMS_MTHREADS ADDMM_SQMMA")
     device = mat1.device
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])

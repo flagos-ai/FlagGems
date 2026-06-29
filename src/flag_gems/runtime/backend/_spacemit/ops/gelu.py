@@ -64,7 +64,7 @@ def gelu_backward_tanh(x, dy):
 
 
 def gelu(A, *, approximate="none"):
-    logger.debug("GEMS_SPACEMIT GELU FORWARD")
+    logger.debug("GEMS_SPACEMIT GELU")
     if approximate == "tanh":
         out = gelu_tanh(A)
     else:
@@ -82,7 +82,7 @@ def gelu_backward(grad_output, self, *, approximate="none"):
 
 
 def gelu_(A, *, approximate="none"):
-    logger.debug("GEMS_SPACEMIT GELU_ FORWARD")
+    logger.debug("GEMS_SPACEMIT GELU_")
     if approximate == "tanh":
         out = gelu_tanh(A, out0=A)
     else:

@@ -25,7 +25,7 @@ def copy_func(x):
 
 
 def diagonal_backward(grad_output, input_sizes, offset, dim1, dim2):
-    logger.debug("GEMS_ASCEND DIAGONAL BACKWARD")
+    logger.debug("GEMS_ASCEND DIAGONAL_BACKWARD")
     grad_input = torch.zeros(
         input_sizes, dtype=grad_output.dtype, device=grad_output.device
     )

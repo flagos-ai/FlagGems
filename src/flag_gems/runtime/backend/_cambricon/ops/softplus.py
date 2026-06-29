@@ -19,6 +19,6 @@ def softplus_forward(x, beta, threshold):
 
 
 def softplus(self, beta=1.0, threshold=20.0):
-    logger.debug("GEMS_CAMBRICON SOFTPLUS FORWARD")
+    logger.debug("GEMS_CAMBRICON SOFTPLUS")
     output = softplus_forward(self, beta, threshold)
     return output

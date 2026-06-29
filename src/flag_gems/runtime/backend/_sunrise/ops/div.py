@@ -239,7 +239,7 @@ def true_divide(A, B):
 
 
 def true_divide_out(A, B, out):
-    logger.debug("GEMS_SUNRISE TRUE_DIVIDE OUT")
+    logger.debug("GEMS_SUNRISE TRUE_DIVIDE_OUT")
     # [sunrise fix]
     A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
         A, complex

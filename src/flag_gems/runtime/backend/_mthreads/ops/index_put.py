@@ -273,7 +273,7 @@ _index_put_func = IndexPutFunction()
 
 
 def index_put(inp, indices, values, accumulate=False):
-    logger.debug("GEMS_MTHREADS INDEX PUT")
+    logger.debug("GEMS_MTHREADS INDEX_PUT")
 
     indices = list(indices)
     if len(indices) == 1 and indices[0].dtype == torch.bool:
@@ -298,9 +298,11 @@ def index_put(inp, indices, values, accumulate=False):
         raise ValueError("At least one index tensor is required")
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
 
@@ -377,7 +379,7 @@ def index_put(inp, indices, values, accumulate=False):
 
 
 def index_put_(inp, indices, values, accumulate=False):
-    logger.debug("GEMS_MTHREADS INDEX PUT_")
+    logger.debug("GEMS_MTHREADS INDEX_PUT_")
 
     indices = list(indices)
     if len(indices) == 1 and indices[0].dtype == torch.bool:
@@ -402,9 +404,11 @@ def index_put_(inp, indices, values, accumulate=False):
         raise ValueError("At least one index tensor is required")
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
 
@@ -506,9 +510,11 @@ def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
             values = values.reshape((K,)).expand(target_shape)
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
 

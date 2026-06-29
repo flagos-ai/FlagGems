@@ -25,5 +25,5 @@ def gt_func_scalar(x, y):
 
 
 def gt_scalar(A, B):
-    logger.debug("GEMS_CAMBRICON GT SCALAR")
+    logger.debug("GEMS_CAMBRICON GT_SCALAR")
     return gt_func_scalar(A, B)

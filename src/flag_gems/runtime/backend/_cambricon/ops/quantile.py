@@ -272,7 +272,7 @@ def quantile_bitonic_kernel(
 def quantile(
     inp, q, dim=None, keepdim=False, interpolation="linear", out=None
 ) -> Tensor:
-    logger.debug("GEMS_CAMBRICON QUANTILE DIM")
+    logger.debug("GEMS_CAMBRICON QUANTILE")
     assert torch.is_floating_point(inp)
     assert dim is None or isinstance(dim, int)
     assert isinstance(q, (float, torch.Tensor))

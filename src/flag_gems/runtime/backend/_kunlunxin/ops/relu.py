@@ -23,12 +23,12 @@ def relu_backward(x, dy):
 
 
 def relu(self):
-    logger.debug("GEMS_KUNLUNXIN RELU_FORWARD")
+    logger.debug("GEMS_KUNLUNXIN RELU")
     output = relu_forward(self)
     return output
 
 
 def relu_(A):
-    logger.debug("GEMS_KUNLUNXIN RELU__FORWARD")
+    logger.debug("GEMS_KUNLUNXIN RELU_")
     out = relu_forward(A, out0=A)
     return out

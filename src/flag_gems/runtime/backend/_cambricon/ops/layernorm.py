@@ -489,7 +489,7 @@ def layer_norm_backward_kernel_middle_n(
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
-    logger.debug("GEMS_CAMBRICON LAYERNORM FORWARD")
+    logger.debug("GEMS_CAMBRICON LAYER_NORM")
     # dim = x.ndim - len(normalized_shape)
     # M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
@@ -528,7 +528,7 @@ def layer_norm_backward(
     bias=None,
     output_mask=None,
 ):
-    logger.debug("GEMS_CAMBRICON LAYERNORM BACKWARD")
+    logger.debug("GEMS_CAMBRICON LAYER_NORM_BACKWARD")
     grad_out = grad_out.contiguous()
     input = input.contiguous()
     mean = mean.contiguous()
