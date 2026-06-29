@@ -1951,6 +1951,7 @@ ops:
       - diff
     labels:
       - aten
+      - KernelGen
     kind:
       - Math
     stages:
@@ -3763,6 +3764,7 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -4448,6 +4450,7 @@ ops:
     labels:
       - aten
       - nn.functional
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -7029,6 +7032,8 @@ ops:
       Applies the log of the softmax function along a given dimension.
     for:
       - special.log_softmax
+    labels:
+      - KernelGen
   - id: special_shifted_chebyshev_polynomial_u
     description: |
       Computes the shifted Chebyshev polynomial of the second kind U_n^*(x)
