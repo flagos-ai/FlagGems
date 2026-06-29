@@ -346,7 +346,7 @@ class LibEntry(triton.KernelInterface):
         return tuple(spec_key + dns_key + const_args)
 
     def run(self, *args, **kwargs):
-        grid = kwargs["grid"]
+        # grid = kwargs["grid"]
 
         # collect all the arguments
         spec_args = []  # specialize arguments
