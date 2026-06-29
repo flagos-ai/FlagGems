@@ -55,14 +55,21 @@ dependencies = [
 ascend-cann850 = [
     "torch==2.9.0+cpu",
     "torch-npu==2.9.0",
-    "flagtree==0.5.0+ascend3.2",
+    "flagtree==0.6.0+ascend3.2",
 ]
 
 ascend-cann900 = [
     "torch==2.10.0+cpu",
     "torch-npu==2.10.0",
-    "triton==3.5.0",
-    # "triton-ascend==3.2.1",
+    "flagtree==0.6.0+ascend3.5",
+]
+
+cambricon = [
+    "cambricon_dali==0.13.0",
+    "torch==2.7.1+cpu",
+    "torch-mlu==1.29.2+torch2.7.1",
+    "torch-mlu-ops==1.8.0+torch2.7.1",
+    "triton==3.2.0+mlu1.7.2",
 ]
 
 enflame = [
@@ -73,12 +80,12 @@ enflame = [
     "torch-gcu==2.10.0+3.7.20260408",
     "triton-gcu==3.6.0+1.0.20260521.cc.1.9.10",
     "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323",
-    #"flagtree==0.5.0+enflame.gitadb592d5",
+    "flagtree==0.6.0+enflame3.6",
 ]
 
 hygon = [
     "torch==2.9.0+das.opt1.dtk2604",
-    "flagtree==0.5.0+hcu3.0",
+    "flagtree==0.5.1+hcu3.1",
 ]
 
 iluvatar = [
@@ -127,11 +134,18 @@ mthreads = [
     # "flagtree==0.5.1+mthreads3.6",
 ]
 
-nvidia = [
+nvidia-cuda128 = [
+    "torch==2.10.0+cu128",
+    "torchaudio==2.10.0+cu128",
+    "torchvision==0.25.0+cu128",
+    "flagtree==0.6.0",
+]
+
+nvidia-cuda133 = [
     "torch==2.11.0+cu130",
+    "torchaudio==2.11.0+cu130",
     "torchvision==0.26.0+cu130",
-    "triton==3.6.0",
-    # "flagtree==0.5.1+3.6",
+    "flagtree==0.6.0",
 ]
 
 spacemit = [
@@ -187,12 +201,16 @@ Repository = "https://github.com/flagos-ai/FlagGems"
 Documentation = "https://flagos-ai.github.io/FlagGems"
 "Bug Tracker" = "https://github.com/flagos-ai/FlagGems/issues"
 
+[project.scripts]
+flaggems-setup = "flag_gems._setup:main"
+
 [tool.setuptools.packages.find]
 
 where = ["src"]
 
 [tool.setuptools.package-data]
 
+"flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
 
 [tool.scikit-build]
