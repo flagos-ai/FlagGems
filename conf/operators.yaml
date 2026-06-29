@@ -7247,7 +7247,7 @@ ops:
       Computes attention scores for query, key, and value tensors using
       window-based attention as used in Swin Transformer architectures.
     for:
-      - Swin_Transformer_Attention
+      - swin_transformer_attention
     labels:
       - aten
       - Vision
