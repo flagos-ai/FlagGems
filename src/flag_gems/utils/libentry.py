@@ -38,6 +38,19 @@ logger = logging.getLogger(__name__)
 
 DEVICE_COUNT = runtime.device.device_count
 
+
+def _ensure_triton_config():
+    if hasattr(triton, "Config"):
+        return
+    try:
+        from triton.runtime.autotuner import Config
+    except ImportError:
+        from triton.runtime import Config
+    triton.Config = Config
+
+
+_ensure_triton_config()
+
 version = triton.__version__.split(".")
 major_version, minor_version = eval(version[0]), eval(version[1])
 
