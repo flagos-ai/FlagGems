@@ -61,27 +61,36 @@ _baseline_op = _vllm_top_k_per_row_decode if HAS_VLLM else _torch_topk_ref
 
 
 class TopKPerRowDecodeBenchmark(base.Benchmark):
-    DEFAULT_SHAPE_DESC = "vocab_size, top_k"
+    DEFAULT_SHAPE_DESC = "batch_size, vocab_size, top_k"
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
-            (129280, 1024),
-            (32768, 512),
-            (16384, 256),
-            (8192, 128),
-            (4096, 64),
+            (1, 129280, 1024),
+            (1, 32768, 512),
+            (1, 16384, 256),
+            (1, 8192, 128),
+            (1, 4096, 64),
+            (2048, 129280, 1024),
+            (2048, 32768, 512),
+            (2048, 16384, 256),
+            (2048, 8192, 128),
+            (2048, 4096, 64),
         ]
 
     def get_input_iter(self, dtype):
-        for vocab_size, top_k in self.shapes:
+        for batch_size, vocab_size, top_k in self.shapes:
             torch.manual_seed(42)
-            logits = torch.randn(
-                (1, vocab_size), dtype=torch.float32, device=self.device
-            )
-            seq_lens = torch.tensor([vocab_size], dtype=torch.int32, device=self.device)
-            indices = torch.zeros((1, top_k), dtype=torch.int32, device=self.device)
-            num_rows = 1
             next_n = 1
+            num_rows = batch_size * next_n
+            logits = torch.randn(
+                (num_rows, vocab_size), dtype=torch.float32, device=self.device
+            )
+            seq_lens = torch.full(
+                (batch_size,), vocab_size, dtype=torch.int32, device=self.device
+            )
+            indices = torch.zeros(
+                (num_rows, top_k), dtype=torch.int32, device=self.device
+            )
             stride0 = logits.stride(0)
             stride1 = logits.stride(1)
 

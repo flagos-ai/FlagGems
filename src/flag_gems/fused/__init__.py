@@ -78,8 +78,7 @@ from flag_gems.fused.silu_and_mul_with_clamp import (
 from flag_gems.fused.skip_layernorm import skip_layer_norm
 from flag_gems.fused.sparse_attention import sparse_attn_triton
 from flag_gems.fused.swiglu import dswiglu, swiglu
-from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
-from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
+from flag_gems.fused.top_k_per_row import top_k_per_row_decode, top_k_per_row_prefill
 from flag_gems.fused.topk_softmax import topk_softmax
 from flag_gems.fused.topk_softplus_sqrt import topk_softplus_sqrt
 from flag_gems.fused.unpack_seq import unpack_seq_triton
