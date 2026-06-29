@@ -160,7 +160,7 @@ jobs:
     if: contains(needs.preprocess.outputs.labels, 'ops/alpha')
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: nvidia
+      vendor: nvidia-cuda133
       runner_label: h20
       gpu_check_script: tools/gpu_check_nvidia.sh
       test_script: tools/test-op-experimental.sh
