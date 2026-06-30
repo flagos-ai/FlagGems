@@ -90,6 +90,24 @@ def test_remainder_(shape, dtype):
         utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.remainder_scalar
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+@pytest.mark.parametrize("scalar", [7, -7])
+def test_remainder_scalar(shape, dtype, scalar):
+    inp = torch.randint(
+        torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
+    ).to(flag_gems.device)
+
+    ref_inp = utils.to_reference(inp, False)
+    ref_out = torch.remainder(ref_inp, scalar)
+
+    with flag_gems.use_gems():
+        res_out = torch.remainder(inp, scalar)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.remainder_scalar_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
