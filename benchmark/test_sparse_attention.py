@@ -69,7 +69,6 @@ class SparseAttentionBenchmark(base.Benchmark):
             yield q, kv, attn_sink, topk_idxs, 1.0 / math.sqrt(dim)
 
 
-@pytest.mark.skip(reason="The test case fails with many exceptions: #2669")
 @pytest.mark.skipif(flag_gems.device == "cpu", reason="Unsupported in CPU mode")
 @pytest.mark.sparse_attn_triton
 def test_sparse_attn_triton():
