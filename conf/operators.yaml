@@ -7054,6 +7054,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_scaled_modified_bessel_k1
+    description: |
+      Computes the scaled modified Bessel function of the first kind
+      of order 1 (scaled K_1(x) = exp(x)*K_1(x)) for each element in the input tensor.
+    for:
+      - special.scaled_modified_bessel_k1
+      - special.scaled_modified_bessel_k1.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,
