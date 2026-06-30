@@ -273,13 +273,6 @@ def _broadcasted_stride(shape, stride, out_shape):
     return tuple(result)
 
 
-def _pad_left(values, length, fill=1):
-    values = tuple(values)
-    if len(values) > length:
-        raise RuntimeError(f"mul supports at most {length} broadcast dimensions")
-    return (fill,) * (length - len(values)) + values
-
-
 def _real_output(a_t, b_t, out=None):
     out_shape = _broadcast_shape(a_t, b_t)
     if out is None:
@@ -408,11 +401,6 @@ def _launch_generic(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride,
     return output
 
 
-def mul_all_real_func(x: torch.Tensor, y: torch.Tensor):
-    output = torch.empty_like(x)
-    return _launch_contiguous_tensor_tensor(x, y, output, x.dtype)
-
-
 def mul_broadcast_func(a, b, out=None):
     if not (_is_tensor_or_number(a) and _is_tensor_or_number(b)):
         raise TypeError("mul expects tensor or scalar inputs")
@@ -451,18 +439,10 @@ def mul_broadcast_func(a, b, out=None):
     return _launch_generic(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype)
 
 
-def _real_dtype_for_complex(dtype):
-    if dtype == torch.complex128:
-        return torch.float64
-    return torch.float32
-
-
-def _complex_parts(value, *, device, complex_dtype, real_dtype):
+def _complex_parts(value, *, device, complex_dtype):
     tensor = _as_tensor(value, device=device, dtype=complex_dtype)
-    if tensor.is_complex():
-        real_view = torch.view_as_real(tensor)
-        return real_view[..., 0], real_view[..., 1]
-    return tensor.to(real_dtype), torch.zeros((), device=device, dtype=real_dtype)
+    real_view = torch.view_as_real(tensor)
+    return real_view[..., 0], real_view[..., 1]
 
 
 def _complex_output(out_shape, *, device, dtype, out=None):
@@ -528,12 +508,8 @@ def mul_complex_broadcast_func(a, b, out=None):
         return torch.mul(a, b, out=out) if out is not None else torch.mul(a, b)
 
     dtype = _result_dtype(a, b)
-    if not dtype.is_complex:
-        return mul_broadcast_func(a, b, out=out)
-
-    real_dtype = _real_dtype_for_complex(dtype)
-    ar, ai = _complex_parts(a, device=device, complex_dtype=dtype, real_dtype=real_dtype)
-    br, bi = _complex_parts(b, device=device, complex_dtype=dtype, real_dtype=real_dtype)
+    ar, ai = _complex_parts(a, device=device, complex_dtype=dtype)
+    br, bi = _complex_parts(b, device=device, complex_dtype=dtype)
     out_shape = tuple(torch.broadcast_shapes(tuple(ar.shape), tuple(ai.shape), tuple(br.shape), tuple(bi.shape)))
     output = _complex_output(out_shape, device=device, dtype=dtype, out=out)
     out_view = torch.view_as_real(output)
