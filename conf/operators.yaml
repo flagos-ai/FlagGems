@@ -1246,6 +1246,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.0'
+  - id: chunk_cat
+    description: Triton kernel implementation for _chunk_cat.
+    for:
+      - _chunk_cat
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: channel_shuffle
     description: Divides the channels into groups and rearranges each group.
     for:

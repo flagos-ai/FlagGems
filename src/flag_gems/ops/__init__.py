@@ -2,6 +2,7 @@ from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
+from flag_gems.ops._chunk_cat import chunk_cat as _chunk_cat
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -510,6 +511,7 @@ __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_cdist_backward",
+    "_chunk_cat",
     "_conv_depthwise2d",
     "_euclidean_dist",
     "_functional_sym_constrain_range_for_size",
