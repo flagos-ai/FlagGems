@@ -6,7 +6,7 @@ from flag_gems.ops.scatter import scatter as _scatter
 from flag_gems.ops.scatter import scatter_ as _scatter_
 from flag_gems.utils.shape_utils import restride_dim
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 def _compute_flat_offset(shape, strides, dim, N):

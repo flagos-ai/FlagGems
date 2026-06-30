@@ -8,7 +8,7 @@ from flag_gems.runtime import torch_device_fn
 
 from .full import check_dtype, full_kernel
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 def full_like(

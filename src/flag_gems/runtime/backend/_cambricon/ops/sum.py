@@ -11,7 +11,7 @@ from flag_gems.utils import dim_compress, libentry, libtuner
 from ..utils import MAX_GRID_SIZE_X, TOTAL_CORE_NUM, cfggen_reduce_op
 from .zeros import zero_
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -174,7 +174,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS_CAMBRICON SUM DIM")
+    logger.debug("GEMS_CAMBRICON SUM_DIM")
     # support dim = 0, which are consistent with PyTorch
     if inp.numel() == 0:
         if dtype is None:

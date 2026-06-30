@@ -164,12 +164,12 @@ def min_kernel_inner_batch(
 
 
 def min(inp):
-    logger.debug("GEMS MIN GCU400")
+    logger.debug("GEMS_ENFLAME MIN")
     return torch.amin(inp)
 
 
 def min_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS MIN DIM GCU400")
+    logger.debug("GEMS_ENFLAME MIN_DIM")
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape

@@ -71,7 +71,7 @@ def _launch_fmin(a_c, b_c, out_c):
 
 
 def fmin(a, b):
-    logger.debug("GEMS FMIN GCU400")
+    logger.debug("GEMS_ENFLAME FMIN")
     a_c, b_c, out_dtype, compute_dtype = _prepare_inputs(a, b, out=None)
     out_shape = a_c.shape
     if compute_dtype == out_dtype:
@@ -87,7 +87,7 @@ def fmin(a, b):
 
 
 def fmin_out(a, b, out):
-    logger.debug("GEMS FMIN_OUT GCU400")
+    logger.debug("GEMS_ENFLAME FMIN_OUT")
     if not isinstance(out, torch.Tensor):
         raise TypeError("out must be a Tensor")
     a_c, b_c, out_dtype, compute_dtype = _prepare_inputs(a, b, out=out)

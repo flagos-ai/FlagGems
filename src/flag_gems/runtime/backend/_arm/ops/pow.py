@@ -12,6 +12,8 @@ from flag_gems.ops.pow import pow_tensor_scalar_ as base_pow_tensor_scalar_
 from flag_gems.ops.pow import pow_tensor_tensor as base_pow_tensor_tensor
 from flag_gems.ops.pow import pow_tensor_tensor_ as base_pow_tensor_tensor_
 
+logger = logging.getLogger(__name__)
+
 # For small tensors, bypass Triton entirely via numpy (zero-copy views).
 _POW_NATIVE_THRESHOLD = 4096
 
@@ -423,12 +425,12 @@ def _maybe_prewarm_pow_kernels():
                 block1024,
             )
     except Exception:
-        logging.debug("GEMS ARM pow prewarm failed", exc_info=True)
+        logger.debug("GEMS_ARM pow prewarm failed", exc_info=True)
     _PREWARM_POW_DONE = True
 
 
 def pow_tensor_tensor(A, exponent):
-    logging.debug("GEMS_ARM POW_TENSOR_TENSOR")
+    logger.debug("GEMS_ARM POW_TENSOR_TENSOR")
     if (
         isinstance(A, torch.Tensor)
         and A.numel() < _POW_NATIVE_THRESHOLD
@@ -453,7 +455,7 @@ def pow_tensor_tensor(A, exponent):
 
 
 def pow_tensor_tensor_(A, exponent):
-    logging.debug("GEMS_ARM POW_TENSOR_TENSOR_")
+    logger.debug("GEMS_ARM POW_TENSOR_TENSOR_")
     _maybe_prewarm_pow_kernels()
     scalar_exp = _maybe_scalar(exponent)
     if scalar_exp is not None:
@@ -465,7 +467,7 @@ def pow_tensor_tensor_(A, exponent):
 
 
 def pow_tensor_scalar(A, exponent):
-    logging.debug("GEMS_ARM POW_TENSOR_SCALAR")
+    logger.debug("GEMS_ARM POW_TENSOR_SCALAR")
     if (
         isinstance(A, torch.Tensor)
         and A.numel() < _POW_NATIVE_THRESHOLD
@@ -491,7 +493,7 @@ def pow_tensor_scalar(A, exponent):
 
 
 def pow_tensor_scalar_(A, exponent):
-    logging.debug("GEMS_ARM POW_TENSOR_SCALAR_")
+    logger.debug("GEMS_ARM POW_TENSOR_SCALAR_")
     _maybe_prewarm_pow_kernels()
     scalar_exp = _maybe_scalar(exponent)
     if scalar_exp is not None:
@@ -503,7 +505,7 @@ def pow_tensor_scalar_(A, exponent):
 
 
 def pow_scalar(A, exponent):
-    logging.debug("GEMS_ARM POW_SCALAR")
+    logger.debug("GEMS_ARM POW_SCALAR")
     _maybe_prewarm_pow_kernels()
     return base_pow_scalar(A, exponent)
 

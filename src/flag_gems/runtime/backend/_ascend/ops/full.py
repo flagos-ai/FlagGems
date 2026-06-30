@@ -11,7 +11,7 @@ from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
 device_ = device
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 ALL_INT_DTYPES = (torch.int8, torch.int16, torch.int32, torch.int64)
 ALL_FLOAT_DTYPES = (torch.bfloat16, torch.float16, torch.float32, torch.float64)

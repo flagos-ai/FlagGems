@@ -241,7 +241,7 @@ def nll_loss2d_backward_kernel(
 
 # 1d & 2d tensor
 def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
-    logger.debug("GEMS NLL Loss FWD")
+    logger.debug("GEMS_ENFLAME NLL_LOSS_FWD")
     assert self.ndim <= 2, "Invalid input ndim"
     if target.dtype == torch.int64:
         target = target.to(torch.int32)
@@ -305,7 +305,7 @@ def nll_loss_backward(
     ignore_index=-100,
     total_weight=None,
 ):
-    logger.debug("GEMS NLL Loss BWD")
+    logger.debug("GEMS_ENFLAME NLL_LOSS_BWD")
     if target.dtype == torch.int64:
         target = target.to(torch.int32)
     N = 1 if self.ndim == 1 else self.shape[0]
@@ -336,7 +336,7 @@ def nll_loss_backward(
 
 # 3d+ tensor
 def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100):
-    logger.debug("GEMS NLL Loss2d FWD")
+    logger.debug("GEMS_ENFLAME NLL_LOSS2D_FWD")
     assert self.ndim == 4, "Invalid input ndim"
 
     shape = list(target.shape)
@@ -390,7 +390,7 @@ def nll_loss2d_backward(
     ignore_index=-100,
     total_weight=None,
 ):
-    logger.debug("GEMS NLL Loss2d BWD")
+    logger.debug("GEMS_ENFLAME NLL_LOSS2D_BWD")
     N, C, D1, D2 = self.shape
     D = D1 * D2
     grad_output = grad_output.contiguous()

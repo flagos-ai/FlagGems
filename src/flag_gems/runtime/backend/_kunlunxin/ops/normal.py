@@ -10,7 +10,7 @@ from flag_gems.utils.shape_utils import broadcast_shapes, volume
 from ..utils.pointwise_dynamic import pointwise_dynamic
 from .randn import randn_kernel
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(

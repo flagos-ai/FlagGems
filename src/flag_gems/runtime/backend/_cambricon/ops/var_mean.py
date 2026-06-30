@@ -15,7 +15,7 @@ from ..utils import (
     count_divisible_by_2,
 )
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -219,7 +219,7 @@ def var_mean_kernel_2(
 
 
 def var_mean(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS_CAMBRICON VAR MEAN")
+    logger.debug("GEMS_CAMBRICON VAR_MEAN")
     if correction is None:
         correction = 1.0
 

@@ -342,7 +342,7 @@ _scatter_func = ScatterFunction()
 
 
 def scatter(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER")
+    logger.debug("GEMS_ENFLAME SCATTER")
 
     orig_dtype = inp.dtype
     needs_upcast = reduce == "multiply" and orig_dtype == torch.float16
@@ -386,7 +386,7 @@ def scatter(inp, dim, index, src, reduce=None):
 
 
 def scatter_(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER_")
+    logger.debug("GEMS_ENFLAME SCATTER_")
 
     orig_dtype = inp.dtype
     needs_upcast = reduce == "multiply" and orig_dtype == torch.float16

@@ -279,7 +279,7 @@ def softmax_backward_kernel_non_inner(
 
 
 def softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS SOFTMAX VJP (GCU400)")
+    logger.debug("GEMS_ENFLAME SOFTMAX_VJP")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim

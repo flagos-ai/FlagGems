@@ -34,7 +34,7 @@ def one_hot_kernel(
 
 
 def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
-    logger.debug("GEMS ONE_HOT")
+    logger.debug("GEMS_ENFLAME ONE_HOT")
     if not tensor.is_contiguous():
         tensor = tensor.contiguous()
     numel = tensor.numel()

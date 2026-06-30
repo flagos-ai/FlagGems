@@ -271,7 +271,7 @@ def fused_exponential_kernel_f64(
 
 
 def exponential_(x, lambd: float = 1.0, *, generator=None):
-    logger.debug("GEMS EXPONENTIAL_")
+    logger.debug("GEMS_SUNRISE EXPONENTIAL_")
 
     dtype = x.dtype
     device = x.device

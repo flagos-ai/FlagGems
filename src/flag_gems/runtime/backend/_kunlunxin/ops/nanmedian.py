@@ -13,7 +13,7 @@ from flag_gems.utils.limits import get_dtype_max, get_dtype_min
 
 from .sort import convert_to_uint_preverse_order
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 NanMedian = namedtuple("nanmedian", ["values", "indices"])
 MAX_BLOCK_N = 128
@@ -433,18 +433,18 @@ def nanmedian(inp):
 
 
 def nanmedian_out(inp, *, out):
-    logger.debug("GEMS_KUNLUNXIN NANMEDIAN OUT")
+    logger.debug("GEMS_KUNLUNXIN NANMEDIAN_OUT")
     _check_supported_dtype(inp)
     return _nanmedian_flat_impl(inp, out=out)
 
 
 def nanmedian_dim(inp, dim=-1, keepdim=False):
-    logger.debug("GEMS_KUNLUNXIN NANMEDIAN DIM")
+    logger.debug("GEMS_KUNLUNXIN NANMEDIAN_DIM")
     _check_supported_dtype(inp)
     return _nanmedian_dim_impl(inp, dim, keepdim)
 
 
 def nanmedian_dim_values(inp, dim=-1, keepdim=False, *, values, indices):
-    logger.debug("GEMS_KUNLUNXIN NANMEDIAN DIM VALUES")
+    logger.debug("GEMS_KUNLUNXIN NANMEDIAN_DIM_VALUES")
     _check_supported_dtype(inp)
     return _nanmedian_dim_impl(inp, dim, keepdim, out=(values, indices))

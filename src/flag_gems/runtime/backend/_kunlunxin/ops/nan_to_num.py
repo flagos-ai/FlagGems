@@ -9,7 +9,7 @@ from flag_gems.utils import tl_extra_shim
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 _isnan = tl_extra_shim.isnan
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(
@@ -28,7 +28,7 @@ def nan_to_num_func(x, nan, posinf, neginf):
 
 # nan_to_num(Tensor self, float? nan=None, float? posinf=None, float? neginf=None) -> Tensor
 def nan_to_num(A, nan=None, posinf=None, neginf=None):
-    logger.debug("GEMS_KUNLUNXIN NAN_TO_NUM_TENSOR")
+    logger.debug("GEMS_KUNLUNXIN NAN_TO_NUM")
     if posinf is None:
         posinf = torch.finfo(A.dtype).max
     if neginf is None:

@@ -10,7 +10,7 @@ from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 device_ = device
 
@@ -408,7 +408,7 @@ def sort_by_key(key, value, valid_bits):
     else:
         # bitonic method
         BLOCK_SIZE = triton.next_power_of_2(n_elements)
-        logger.debug(n_elements)
+        logger.debug("GEMS_ASCEND n_elements=%s", n_elements)
 
         grid = (1,)
         k_out = torch.empty_like(key)

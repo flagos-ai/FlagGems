@@ -57,7 +57,7 @@ def make_contiguous_with_correct_stride(tensor):
 
 
 def index_select(inp, dim, index):
-    logger.debug("GEMS INDEX SELECT")
+    logger.debug("GEMS_ENFLAME INDEX_SELECT")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
     assert ((i >= 0 and i < inp.size(dim)) for i in index), "Index out of range"

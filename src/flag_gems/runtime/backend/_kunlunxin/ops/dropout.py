@@ -11,7 +11,7 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.heuristics(runtime.get_heuristic_config("dropout"))
@@ -155,7 +155,7 @@ def dropout(input, p, train=True):
 
 
 def dropout_backward(grad_output, mask, scale):
-    logger.debug("GEMS_KUNLUNXIN NATIVE_DROPOUT_BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN DROPOUT_BACKWARD")
     grad_output = grad_output.contiguous()
     grad_input = torch.empty_like(grad_output)
     N = grad_output.numel()

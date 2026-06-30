@@ -101,7 +101,7 @@ def _launch_i0(out: torch.Tensor, x: torch.Tensor):
 
 
 def i0(x: torch.Tensor):
-    logger.debug("GEMS I0")
+    logger.debug("GEMS_SUNRISE I0")
     if x.device.type != flag_gems.device:
         raise ValueError(f"i0: input tensor must be on {flag_gems.device} device")
     # Result dtype follows PyTorch's floating type behavior
@@ -112,7 +112,7 @@ def i0(x: torch.Tensor):
 
 
 def i0_out(x: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS I0_OUT")
+    logger.debug("GEMS_SUNRISE I0_OUT")
     if x.device.type != flag_gems.device or out.device.type != flag_gems.device:
         raise ValueError(
             f"i0_out: input and output tensors must be on {flag_gems.device} device"

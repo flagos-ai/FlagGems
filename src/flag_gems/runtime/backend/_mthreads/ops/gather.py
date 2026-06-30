@@ -11,9 +11,7 @@ from flag_gems.ops.gather import gather_backward as default_gather_backward
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-logger = logging.getLogger(
-    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
-)
+logger = logging.getLogger(__name__)
 
 _SUPPORTED_DTYPES = {torch.float16, torch.bfloat16, torch.float32}
 
@@ -139,5 +137,5 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logger.debug("GEMS_MTHREADS GATHER BACKWARD")
+    logger.debug("GEMS_MTHREADS GATHER_BACKWARD")
     return default_gather_backward(grad, self, dim, index, sparse_grad)

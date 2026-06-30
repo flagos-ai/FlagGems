@@ -10,7 +10,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def weight_norm_kernel_last_block_row(args):
@@ -262,7 +262,7 @@ def weight_norm_bwd_kernel_first(
 
 
 def weight_norm_interface(v, g, dim=0):
-    logger.debug("GEMS_KUNLUNXIN WEIGHT_NORM_INTERFACE_FORWARD")
+    logger.debug("GEMS_KUNLUNXIN WEIGHT_NORM_INTERFACE")
     v = v.contiguous()
     g = g.contiguous()
     output = torch.empty_like(v)

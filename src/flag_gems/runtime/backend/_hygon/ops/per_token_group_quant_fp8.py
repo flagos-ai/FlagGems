@@ -725,7 +725,7 @@ def per_token_group_quant_fp8(
     column_major_scales: bool = False,
     scale_ue8m0: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    logger.debug("GEMS PER TOKEN GROUP QUANT FP8")
+    logger.debug("GEMS_HYGON PER_TOKEN_GROUP_QUANT_FP8")
     # dtype: The dype of output tensor. Note that only `torch.float8_e4m3fn`
     fp8_dtype = SUPPORTED_FP8_DTYPE if dtype is None else dtype
     assert x.shape[-1] % group_size == 0, (

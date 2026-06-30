@@ -126,7 +126,7 @@ def masked_select_out_size(mask_ptr, out_size_ptr, N: tl.constexpr):
 
 
 def masked_select(inp, mask):
-    logger.debug("GEMS MASKED SELECT")
+    logger.debug("GEMS_ENFLAME MASKED_SELECT")
 
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)

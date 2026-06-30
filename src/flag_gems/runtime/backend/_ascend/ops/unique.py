@@ -8,7 +8,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -856,7 +856,7 @@ def _unique2(
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
-    logger.debug("GEMS_ASCEND _UNIQUE2")
+    logger.debug("GEMS_ASCEND UNIQUE2")
     sorted_data, sorted_indices = torch.sort(in0.ravel())
     if in0.numel() <= 8192:
         data_out, inverse_indices, counts = simple_unique_flat(

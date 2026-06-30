@@ -58,7 +58,7 @@ class Reduction(Enum):
 
 
 def mse_loss(inp, target, reduction=Reduction.MEAN.value):
-    logger.debug("GEMS MSE LOSS")
+    logger.debug("GEMS_ENFLAME MSE_LOSS")
     if reduction == Reduction.NONE.value:
         return func(inp, target)
 

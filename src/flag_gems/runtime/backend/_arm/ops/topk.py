@@ -266,7 +266,7 @@ def topk_stage2_kernel(
 
 
 def topk(x, k, dim=-1, largest=True, sorted=True):
-    logger.debug("GEMS TOPK")
+    logger.debug("GEMS_ARM TOPK")
     if dim < 0:
         dim = dim + x.ndim
 

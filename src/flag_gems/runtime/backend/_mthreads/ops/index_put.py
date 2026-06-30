@@ -8,9 +8,7 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
-logger = logging.getLogger(
-    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
-)
+logger = logging.getLogger(__name__)
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
@@ -275,7 +273,7 @@ _index_put_func = IndexPutFunction()
 
 
 def index_put(inp, indices, values, accumulate=False):
-    logger.debug("GEMS_MTHREADS INDEX PUT")
+    logger.debug("GEMS_MTHREADS INDEX_PUT")
 
     indices = list(indices)
     if len(indices) == 1 and indices[0].dtype == torch.bool:
@@ -300,9 +298,11 @@ def index_put(inp, indices, values, accumulate=False):
         raise ValueError("At least one index tensor is required")
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
 
@@ -379,7 +379,7 @@ def index_put(inp, indices, values, accumulate=False):
 
 
 def index_put_(inp, indices, values, accumulate=False):
-    logger.debug("GEMS_MTHREADS INDEX PUT_")
+    logger.debug("GEMS_MTHREADS INDEX_PUT_")
 
     indices = list(indices)
     if len(indices) == 1 and indices[0].dtype == torch.bool:
@@ -404,9 +404,11 @@ def index_put_(inp, indices, values, accumulate=False):
         raise ValueError("At least one index tensor is required")
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
 
@@ -482,7 +484,7 @@ def index_put_(inp, indices, values, accumulate=False):
 
 
 def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
-    logger.debug("GEMS_MTHREADS _INDEX_PUT_IMPL_")
+    logger.debug("GEMS_MTHREADS INDEX_PUT_IMPL_")
 
     # The `unsafe` parameter is a hint to PyTorch for bounds checking.
     # Our implementation always performs bounds checking, so we ignore this parameter.
@@ -508,9 +510,11 @@ def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
             values = values.reshape((K,)).expand(target_shape)
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
 

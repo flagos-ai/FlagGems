@@ -15,7 +15,7 @@ def bitwise_and_func(x, y):
 
 
 def bitwise_and_tensor(A, B):
-    logger.debug("GEMS BITWISE AND")
+    logger.debug("GEMS_ENFLAME BITWISE_AND")
     if A.dtype == torch.int64:
         A = A.to(torch.int32)
     if B.dtype == torch.int64:
@@ -24,7 +24,7 @@ def bitwise_and_tensor(A, B):
 
 
 def bitwise_and_tensor_(A, B):
-    logger.debug("GEMS BITWISE AND_")
+    logger.debug("GEMS_ENFLAME BITWISE_AND_")
     if A.dtype == torch.int64:
         A = A.to(torch.int32)
     if B.dtype == torch.int64:
@@ -39,17 +39,17 @@ def bitwise_and_func_scalar(x, y):
 
 
 def bitwise_and_scalar(A, B):
-    logger.debug("GEMS BITWISE AND SCALAR")
+    logger.debug("GEMS_ENFLAME BITWISE_AND_SCALAR")
     return bitwise_and_func_scalar(A, B)
 
 
 def bitwise_and_scalar_(A, B):
-    logger.debug("GEMS BITWISE AND_ SCALAR")
+    logger.debug("GEMS_ENFLAME BITWISE_AND_SCALAR_")
     return bitwise_and_func_scalar(A, B, out0=A)
 
 
 def bitwise_and_scalar_tensor(A, B):
-    logger.debug("GEMS BITWISE AND SCALAR TENSOR")
+    logger.debug("GEMS_ENFLAME BITWISE_AND_SCALAR_TENSOR")
     if isinstance(A, torch.Tensor) and A.dtype == torch.int64:
         A = A.to(torch.int32)
     if isinstance(B, torch.Tensor) and B.dtype == torch.int64:

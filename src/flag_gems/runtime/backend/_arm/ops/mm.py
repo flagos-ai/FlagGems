@@ -8,6 +8,8 @@ import triton.language as tl
 
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 MM_GENERIC_CONFIG_TABLE = (
     # Decode-like long vocab projection prefers narrower N tiles.
     {"m_max": 1, "n_min": 65536, "k_min": 0, "config": (4, 16, 8)},
@@ -488,7 +490,7 @@ def _launch_mm_m1_transposed_rhs_kernel(a, b, c, N, K):
 
 
 def mm(a, b):
-    logging.debug("GEMS MM")
+    logger.debug("GEMS_ARM MM")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -592,7 +594,7 @@ def mm(a, b):
 
 
 def mm_out(a, b, *, out):
-    logging.debug("GEMS MM_OUT")
+    logger.debug("GEMS_ARM MM_OUT")
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
     if b.stride(0) > 1 and b.stride(1) > 1:

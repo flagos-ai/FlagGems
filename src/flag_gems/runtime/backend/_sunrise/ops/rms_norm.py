@@ -326,7 +326,7 @@ def rms_norm_out(result, x, normalized_shape, weight, eps=1e-5):
 
 
 def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
-    logger.debug("GEMS RMS_NORM FORWARD")
+    logger.debug("GEMS_SUNRISE RMS_NORM")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
@@ -355,7 +355,7 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
 
 
 def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
-    logger.debug("GEMS RMS_NORM BACKWARD")
+    logger.debug("GEMS_SUNRISE RMS_NORM_BACKWARD")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)

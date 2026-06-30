@@ -27,7 +27,7 @@ def arctanh_kernel_(x_ptr, N_total, BLOCK: tl.constexpr):
 
 
 def arctanh_(*args, **kwargs):
-    logger.debug("GEMS ARCTANH_ GCU400")
+    logger.debug("GEMS_ENFLAME ARCTANH_")
     x = None
     if len(args) >= 1 and isinstance(args[0], torch.Tensor):
         x = args[0]

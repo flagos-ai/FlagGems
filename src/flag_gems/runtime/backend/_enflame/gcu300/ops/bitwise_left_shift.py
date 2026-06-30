@@ -21,7 +21,7 @@ def bitwise_left_shift_func_scalar(x, y):
 
 
 def bitwise_left_shift(A, B):
-    logger.debug("GEMS BITWISE_LEFT_SHIFT")
+    logger.debug("GEMS_ENFLAME BITWISE_LEFT_SHIFT")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return bitwise_left_shift_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -34,7 +34,7 @@ def bitwise_left_shift(A, B):
 
 
 def bitwise_left_shift_(A, B):
-    logger.debug("GEMS BITWISE_LEFT_SHIFT")
+    logger.debug("GEMS_ENFLAME BITWISE_LEFT_SHIFT_")
     if isinstance(B, torch.Tensor):
         return bitwise_left_shift_func(A, B, out0=A)
     else:

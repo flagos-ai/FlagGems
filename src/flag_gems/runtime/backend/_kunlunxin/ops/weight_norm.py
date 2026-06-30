@@ -11,7 +11,7 @@ from flag_gems.utils import triton_lang_extension as ext
 
 from ..ops import weight_norm_interface, weight_norm_interface_backward
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def heur_row_weight_norm_except_dim_kernel(args):
@@ -156,7 +156,7 @@ def weight_norm_except_dim_bwd_kernel(
 
 
 def weight_norm_except_dim(v, g, dim):
-    logger.debug("GEMS_KUNLUNXIN WEIGHT_NORM_EXCEPT_DIM_FORWARD")
+    logger.debug("GEMS_KUNLUNXIN WEIGHT_NORM_EXCEPT_DIM")
     v = v.contiguous()
     output = torch.empty_like(v)
     norm = torch.empty_like(g, dtype=torch.float32)

@@ -7,7 +7,7 @@ from triton import language as tl
 from flag_gems.ops.mv import mv
 from flag_gems.utils import libentry
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 # The outer kernel requires 3 parameters to determine the splitting method,
@@ -132,7 +132,7 @@ class Outer(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_ASCEND OUTER VJP")
+        logger.debug("GEMS_ASCEND OUTER_VJP")
         assert out_grad.ndim == 2, "invalide out_grad shape"
 
         inp, weight = ctx.saved_tensors

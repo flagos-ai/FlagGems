@@ -140,7 +140,9 @@ def patch_qwen3_mlp(model) -> int:
     """
     mlp_classes = _get_qwen_mlp_classes()
     if not mlp_classes:
-        logger.debug("No Qwen MLP classes found in transformers, skipping patch")
+        logger.debug(
+            "GEMS_ARM No Qwen MLP classes found in transformers, skipping patch"
+        )
         return 0
 
     n = 0
@@ -163,7 +165,9 @@ def patch_qwen3_mlp(model) -> int:
     if n > 0:
         cls_names = ", ".join(c.__name__ for c in mlp_classes)
         logger.info(
-            "Patched %d MLP modules (classes: %s) with fused_mlp_bf16", n, cls_names
+            "GEMS_ARM Patched %d MLP modules (classes: %s) with fused_mlp_bf16",
+            n,
+            cls_names,
         )
     return n
 

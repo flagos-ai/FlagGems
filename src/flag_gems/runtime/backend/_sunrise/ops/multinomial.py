@@ -9,7 +9,7 @@ from flag_gems.utils.random_utils import philox_backend_seed_offset, uniform
 
 from .cumsum import normed_cumsum
 
-logger = logging.getLogger(f'flag_gems.runtime._sunrise.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 @libentry()

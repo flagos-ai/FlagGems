@@ -11,7 +11,7 @@ from flag_gems.utils import libentry
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op2, count_divisible_by_2
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -136,7 +136,7 @@ def prod_kernel(
 
 
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS_CAMBRICON PROD DIM")
+    logger.debug("GEMS_CAMBRICON PROD_DIM")
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape

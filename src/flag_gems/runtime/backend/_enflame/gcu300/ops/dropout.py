@@ -96,7 +96,7 @@ UNROLL = 4
 
 
 def dropout(input, p, train=True):
-    logger.debug("GEMS NATIVE DROPOUT FORWARD")
+    logger.debug("GEMS_ENFLAME NATIVE_DROPOUT_FORWARD")
     if not train or p == 0:
         out = input.clone()
         mask = torch.ones_like(input, dtype=torch.bool)
@@ -127,7 +127,7 @@ def dropout(input, p, train=True):
 
 
 def dropout_backward(grad_output, mask, scale):
-    logger.debug("GEMS NATIVE DROPOUT BACKWARD")
+    logger.debug("GEMS_ENFLAME DROPOUT_BACKWARD")
     grad_output = grad_output.contiguous()
     grad_input = torch.empty_like(grad_output)
     N = grad_output.numel()

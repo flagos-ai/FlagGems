@@ -39,7 +39,7 @@ def floor_kernel_(
 
 
 def floor_(input):
-    logger.debug("GEMS FLOOR_ GCU400")
+    logger.debug("GEMS_ENFLAME FLOOR_")
     x = input
     if not isinstance(x, torch.Tensor):
         raise TypeError("floor_ expects a torch.Tensor.")

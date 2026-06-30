@@ -69,7 +69,7 @@ def reshape_and_cache_flash(
     v_scale,
 ):
     if use_c_extension:
-        logger.debug("GEMS RESHAPE_AND_CACHE_FLASH(C EXTENSION)")
+        logger.debug("GEMS_SUNRISE RESHAPE_AND_CACHE_FLASH")
         torch.ops.flag_gems.reshape_and_cache_flash(
             key,
             value,
@@ -81,7 +81,7 @@ def reshape_and_cache_flash(
             v_scale,
         )
     else:
-        logger.debug("GEMS RESHAPE_AND_CACHE_FLASH")
+        logger.debug("GEMS_SUNRISE RESHAPE_AND_CACHE_FLASH")
         num_tokens = slot_mapping.size(0)
         num_heads = key.size(1)
         head_size = key.size(2)

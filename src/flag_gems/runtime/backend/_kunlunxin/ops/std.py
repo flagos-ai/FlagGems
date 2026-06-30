@@ -7,7 +7,7 @@ import triton.language as tl
 # from flag_gems import runtime
 from flag_gems.utils import dim_compress
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -122,7 +122,7 @@ def std(x, dim=None, *, correction=None, keepdim=False):
     input_ndim = x.ndim
 
     if dim is None:
-        logger.debug("GEMS_KUNLUNXIN STD (Global Simple Map-Reduce Path)")
+        logger.debug("GEMS_KUNLUNXIN STD")
         N = x.numel()
         if N == 0 or N - effective_correction <= 0:
             return torch.full([], float("nan"), device=x.device, dtype=x.dtype)
@@ -149,7 +149,7 @@ def std(x, dim=None, *, correction=None, keepdim=False):
 
     else:
         logger.warning(
-            f"GEMS std: Using compatible but non-optimal path for dim={dim} (dim_compress)."
+            f"GEMS_KUNLUNXIN std: Using compatible but non-optimal path for dim={dim} (dim_compress)."
         )
 
         if isinstance(dim, int):

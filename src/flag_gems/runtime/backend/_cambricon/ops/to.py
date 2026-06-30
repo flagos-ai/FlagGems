@@ -6,7 +6,7 @@ import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
@@ -112,7 +112,7 @@ def to_copy(
             memory_format=target_memory_format,
         )
 
-    logger.debug("GEMS_CAMBRICON _TO_COPY")
+    logger.debug("GEMS_CAMBRICON TO_COPY")
     empty_kwargs = {"dtype": target_dtype, "device": target_device}
 
     if target_memory_format is torch.preserve_format:

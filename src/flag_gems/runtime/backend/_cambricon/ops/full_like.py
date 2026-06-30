@@ -8,7 +8,7 @@ from flag_gems.runtime import torch_device_fn
 from ..utils import TOTAL_CORE_NUM
 from .full import check_dtype, full_scalar_kernel, full_tensor_kernel
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def full_like(

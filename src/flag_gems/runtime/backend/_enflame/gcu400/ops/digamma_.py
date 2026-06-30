@@ -56,7 +56,7 @@ def digamma_kernel_(x_ptr, N_total, BLOCK: tl.constexpr):
 
 
 def digamma_(*args, **kwargs):
-    logger.debug("GEMS DIGAMMA_ GCU400")
+    logger.debug("GEMS_ENFLAME DIGAMMA_")
     x = args[0]
     if not isinstance(x, torch.Tensor):
         raise TypeError("digamma_ expects a torch.Tensor as the first argument")

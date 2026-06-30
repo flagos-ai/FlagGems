@@ -216,7 +216,7 @@ def argmax_kernel_non_inner(
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS ARGMAX GCU400")
+    logger.debug("GEMS_ENFLAME ARGMAX")
 
     if dim is None:
         M = inp.numel()

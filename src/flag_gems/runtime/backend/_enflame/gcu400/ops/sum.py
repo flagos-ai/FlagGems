@@ -167,7 +167,7 @@ def _launch_dim_sum(inp, out, M, N):
 
 
 def sum(inp, *, dtype=None):
-    logger.debug("GEMS SUM GCU400")
+    logger.debug("GEMS_ENFLAME SUM")
 
     if dtype is None:
         dtype = inp.dtype
@@ -184,7 +184,7 @@ def sum(inp, *, dtype=None):
 
 
 def sum_out(inp, *, dtype=None, out):
-    logger.debug("GEMS SUM_OUT GCU400")
+    logger.debug("GEMS_ENFLAME SUM_OUT")
 
     if dtype is None:
         dtype = inp.dtype
@@ -199,7 +199,7 @@ def sum_out(inp, *, dtype=None, out):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS SUM_DIM GCU400")
+    logger.debug("GEMS_ENFLAME SUM_DIM")
 
     if dtype is None:
         dtype = inp.dtype
@@ -255,7 +255,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
 
 def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
-    logger.debug("GEMS SUM_DIM_OUT GCU400")
+    logger.debug("GEMS_ENFLAME SUM_DIM_OUT")
 
     if dtype is None:
         dtype = inp.dtype

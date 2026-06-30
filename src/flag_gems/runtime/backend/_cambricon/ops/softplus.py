@@ -5,7 +5,7 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, "DEFAULT")])
@@ -19,6 +19,6 @@ def softplus_forward(x, beta, threshold):
 
 
 def softplus(self, beta=1.0, threshold=20.0):
-    logger.debug("GEMS_CAMBRICON SOFTPLUS FORWARD")
+    logger.debug("GEMS_CAMBRICON SOFTPLUS")
     output = softplus_forward(self, beta, threshold)
     return output

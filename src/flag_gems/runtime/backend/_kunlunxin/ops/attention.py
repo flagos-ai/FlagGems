@@ -15,7 +15,7 @@ from flag_gems.runtime import torch_device_fn
 from .flash_api import mha_fwd, mha_varlan_fwd
 from .flash_kernel import keep
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 # Modified from Triton tutorial: https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
@@ -849,8 +849,8 @@ def scaled_dot_product_attention_backward(
     )
 
     grid = (triton.cdiv(Q_CTX, BLOCK_N1), 1, BATCH * Q_HEAD)
-    logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
-    logger.info(f"{M.shape=}")
+    logger.info(f"GEMS_KUNLUNXIN {triton.cdiv(Q_CTX, BLOCK_N1)=}")
+    logger.info(f"GEMS_KUNLUNXIN {M.shape=}")
 
     _attn_bwd[grid](
         query,
@@ -1222,7 +1222,7 @@ def flash_attn_varlen_func(
             normalization factor).
     """
     if use_c_extension:
-        logger.debug("GEMS_KUNLUNXIN FLASH_ATTN_VARLEN_FUNC (C Extension)")
+        logger.debug("GEMS_KUNLUNXIN FLASH_ATTN_VARLEN_FUNC")
         with torch_device_fn.device(q.device):
             out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
                 q,

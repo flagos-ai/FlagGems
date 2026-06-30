@@ -9,9 +9,7 @@ from flag_gems.runtime import device, torch_device_fn
 from flag_gems.runtime.backend._ascend.utils import CORE_NUM
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._ascend.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 device = device.name
 
 

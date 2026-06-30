@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems.utils import libentry
 from flag_gems.utils.shape_utils import restride_dim
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 UB_SIZE_BYTES = 192 * 1024
 
 
@@ -51,7 +51,7 @@ def _gather_flat_kernel_fixed(
 
 
 def gather_flat_fixed(inp: torch.Tensor, dim: int, index: torch.Tensor, out=None):
-    logger.debug("GEMS_ASCEND GATHER (fixed version)")
+    logger.debug("GEMS_ASCEND GATHER")
 
     if out is None:
         out = torch.empty_like(index, dtype=inp.dtype, device=inp.device)
@@ -92,7 +92,7 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logger.debug("GEMS_ASCEND GATHER BACKWARD")
+    logger.debug("GEMS_ASCEND GATHER_BACKWARD")
     from .scatter import scatter_
 
     result = grad.new_zeros(self.shape)

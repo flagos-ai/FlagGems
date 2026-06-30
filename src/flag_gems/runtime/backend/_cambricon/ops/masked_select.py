@@ -10,7 +10,7 @@ from flag_gems.utils import broadcastable
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.autotune(configs=runtime.get_tuned_config("masked_select"), key=["n_elements"])
@@ -87,7 +87,7 @@ def get_out_kernel(
 
 
 def masked_select(inp, mask):
-    logger.debug("GEMS_CAMBRICON MASKED SELECT")
+    logger.debug("GEMS_CAMBRICON MASKED_SELECT")
 
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)

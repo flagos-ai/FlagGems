@@ -39,7 +39,7 @@ def _choose_block(N, is_fp32):
 
 
 def acos(A):
-    logger.debug("GEMS ACOS GCU400")
+    logger.debug("GEMS_ENFLAME ACOS")
     inp = A if A.is_contiguous() else A.contiguous()
     N = inp.numel()
     out = torch.empty_like(inp)

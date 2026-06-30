@@ -112,7 +112,7 @@ def _maybe_prewarm():
                 num_stages=1,
             )
     except Exception:
-        logger.debug("GEMS ARM fused RMSNorm prewarm failed", exc_info=True)
+        logger.debug("GEMS_ARM fused RMSNorm prewarm failed", exc_info=True)
     _PREWARM_DONE = True
 
 

@@ -20,7 +20,7 @@ def copy_func(x):
 def cat(
     A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
-    logger.debug("GEMS CAT")
+    logger.debug("GEMS_ENFLAME CAT")
 
     if len(A) == 0:
         raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")

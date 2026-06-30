@@ -9,7 +9,7 @@ from flag_gems.utils import libentry
 
 from .conv2d import conv2d_output_size
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def conv3d_output_size(

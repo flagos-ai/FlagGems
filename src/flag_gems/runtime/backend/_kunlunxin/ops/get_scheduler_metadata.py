@@ -8,7 +8,7 @@ import triton.language as tl
 
 from flag_gems.utils.device_info import get_device_capability, get_device_info
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def get_dtype_bytes(dtype):

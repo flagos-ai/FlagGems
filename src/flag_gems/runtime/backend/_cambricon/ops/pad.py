@@ -13,7 +13,7 @@ from flag_gems.utils.code_utils import IndentedBuffer
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 # --------------------------- padding wrapper genration -----------------------------------
@@ -535,7 +535,7 @@ def pad_2d_constant_kernel(
 
 
 def pad(self, pad, mode="constant", value=None):
-    logger.debug("GEMS_CAMBRICON CONSTANT PAD ND")
+    logger.debug("GEMS_CAMBRICON CONSTANT_PAD_ND")
 
     ndim = self.ndim
     pad_size = len(pad)

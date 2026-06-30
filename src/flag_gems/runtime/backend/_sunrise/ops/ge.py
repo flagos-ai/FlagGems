@@ -25,7 +25,7 @@ def ge_func(x, y):
 
 
 def ge(A, B):
-    logger.debug("GEMS GE")
+    logger.debug("GEMS_SUNRISE GE")
     return ge_func(A, B)
 
 
@@ -38,5 +38,5 @@ def ge_func_scalar(x, y):
 
 
 def ge_scalar(A, B):
-    logger.debug("GEMS GE SCALAR")
+    logger.debug("GEMS_SUNRISE GE_SCALAR")
     return ge_func_scalar(A, B)

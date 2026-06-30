@@ -3454,7 +3454,7 @@ def _should_use_gram(batch, m, n):
 
 
 def svd(input, some=True, compute_uv=True):
-    logger.debug("GEMS SVD")
+    logger.debug("GEMS_SUNRISE SVD")
     if (
         input.device.type == "ptpu"
         and input.dtype == torch.complex64

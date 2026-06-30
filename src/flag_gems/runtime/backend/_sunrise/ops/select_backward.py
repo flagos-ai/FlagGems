@@ -34,7 +34,7 @@ def _select_backward_kernel(
 
 
 def select_backward(grad, input_sizes, dim, index, out=None):
-    logger.debug("GEMS SELECT_BACKWARD")
+    logger.debug("GEMS_SUNRISE SELECT_BACKWARD")
     dim = int(dim)
     index = int(index)
     sizes = list(input_sizes)

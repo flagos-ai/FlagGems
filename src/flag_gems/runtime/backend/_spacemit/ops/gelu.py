@@ -6,6 +6,8 @@ import triton.language as tl
 from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
+
 erf = tl_extra_shim.erf
 exp = tl_extra_shim.exp
 pow = tl_extra_shim.pow
@@ -62,7 +64,7 @@ def gelu_backward_tanh(x, dy):
 
 
 def gelu(A, *, approximate="none"):
-    logging.debug("GEMS_SPACEMIT GELU FORWARD")
+    logger.debug("GEMS_SPACEMIT GELU")
     if approximate == "tanh":
         out = gelu_tanh(A)
     else:
@@ -71,7 +73,7 @@ def gelu(A, *, approximate="none"):
 
 
 def gelu_backward(grad_output, self, *, approximate="none"):
-    logging.debug("GEMS_SPACEMIT GELU_BACKWARD")
+    logger.debug("GEMS_SPACEMIT GELU_BACKWARD")
     if approximate == "tanh":
         in_grad = gelu_backward_tanh(self, grad_output)
     else:
@@ -80,7 +82,7 @@ def gelu_backward(grad_output, self, *, approximate="none"):
 
 
 def gelu_(A, *, approximate="none"):
-    logging.debug("GEMS_SPACEMIT GELU_ FORWARD")
+    logger.debug("GEMS_SPACEMIT GELU_")
     if approximate == "tanh":
         out = gelu_tanh(A, out0=A)
     else:

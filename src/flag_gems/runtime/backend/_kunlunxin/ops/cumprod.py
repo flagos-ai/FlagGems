@@ -377,7 +377,7 @@ def reduce_then_scan_block_scan_kernel_row(
 
 
 def cumprod(inp, dim, *, dtype=None):
-    logger.debug("GEMS CUMPROD")
+    logger.debug("GEMS_KUNLUNXIN CUMPROD")
     out_dtype = _get_output_dtype(inp, dtype)
     if is_boolean_dtype(inp.dtype):
         if is_boolean_dtype(out_dtype):
@@ -398,7 +398,7 @@ def cumprod(inp, dim, *, dtype=None):
 
 
 def cumprod_(inp, dim, *, dtype=None):
-    logger.debug("GEMS CUMPROD_")
+    logger.debug("GEMS_KUNLUNXIN CUMPROD_")
     if dtype is not None and dtype != inp.dtype:
         raise RuntimeError(
             "Bad in-place call: input tensor dtype and output tensor dtype should match"

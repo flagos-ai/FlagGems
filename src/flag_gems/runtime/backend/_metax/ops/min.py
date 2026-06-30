@@ -12,7 +12,7 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_max
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -124,7 +124,7 @@ def min(inp):
 
 
 def min_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_METAX MIN DIM")
+    logger.debug("GEMS_METAX MIN_DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

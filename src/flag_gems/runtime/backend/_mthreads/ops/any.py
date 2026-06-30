@@ -10,9 +10,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 
 def _flatten_dim(shape: Sequence[int], dim: int):
@@ -200,7 +198,7 @@ def triton_any_dim_strided(
 
 
 def any_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_MTHREADS ANY DIM")
+    logger.debug("GEMS_MTHREADS ANY_DIM")
     # shape = list(inp.shape)
     if dim is None:
         out = any(inp)
@@ -212,7 +210,7 @@ def any_dim(inp, dim=None, keepdim=False):
 
 
 def any_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_MTHREADS ANY DIMS")
+    logger.debug("GEMS_MTHREADS ANY_DIMS")
 
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)

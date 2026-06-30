@@ -55,7 +55,7 @@ def _run_neg(inp, out, N_total):
 
 
 def neg(A):
-    logger.debug("GEMS NEG")
+    logger.debug("GEMS_ENFLAME NEG")
     inp = A.contiguous()
     out = torch.empty_like(inp)
     _run_neg(inp, out, inp.numel())
@@ -63,7 +63,7 @@ def neg(A):
 
 
 def neg_(A):
-    logger.debug("GEMS NEG_")
+    logger.debug("GEMS_ENFLAME NEG_")
     inp = A.contiguous()
     _run_neg(inp, A, inp.numel())
     return A

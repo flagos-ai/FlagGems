@@ -28,7 +28,7 @@ def fill_tensor_func(inp, value):
 
 
 def fill_scalar(input, value):
-    logger.debug("GEMS_HYGON FILL (Dynamic)")
+    logger.debug("GEMS_HYGON FILL")
     out = torch.empty_like(input)
     with torch_device_fn.device(input.device):
         return fill_scalar_func(input, value, out0=out)
@@ -37,7 +37,7 @@ def fill_scalar(input, value):
 def fill_tensor(input, value):
     if not value.is_cuda:
         return fill_scalar(input, value.item())
-    logger.debug("GEMS_HYGON FILL (Dynamic)")
+    logger.debug("GEMS_HYGON FILL")
     if value.ndim != 0:
         raise RuntimeError(
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."

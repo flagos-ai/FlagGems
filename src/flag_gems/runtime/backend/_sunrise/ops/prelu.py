@@ -40,7 +40,7 @@ def prelu_kernel(
 
 
 def prelu(*args, **kwargs):
-    logger.debug("GEMS PRELU")
+    logger.debug("GEMS_SUNRISE PRELU")
     # Extract inputs
     if len(args) >= 2:
         x, weight = args[0], args[1]

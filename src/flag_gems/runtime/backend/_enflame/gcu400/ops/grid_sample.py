@@ -4713,7 +4713,7 @@ def grid_sample(
             else:  # reflection
                 kernel = grid_sample_2d_bicubic_reflection_kernel
         else:  # unsupported mode
-            logger.info(f"grid_sample mode '{mode}' not supported")
+            logger.info(f"GEMS_ENFLAME grid_sample mode '{mode}' not supported")
             raise NotImplementedError
 
         # Launch kernel with appropriate grid size
@@ -4978,7 +4978,9 @@ def grid_sample(
                 else:  # reflection
                     kernel = grid_sample_3d_trilinear_reflection_kernel
         else:  # unsupported mode for 5D
-            logger.info(f"grid_sample mode '{mode}' not supported for 5D input")
+            logger.info(
+                f"GEMS_ENFLAME grid_sample mode '{mode}' not supported for 5D input"
+            )
             raise NotImplementedError("Unsupported mode for 5D input")
 
         # Launch kernel with appropriate grid size

@@ -37,7 +37,7 @@ def angle_float_and_int(real):
 
 
 def angle(input_tensor: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS ANGLE")
+    logger.debug("GEMS_ENFLAME ANGLE")
     if input_tensor.dtype == torch.complex32 or input_tensor.dtype == torch.complex64:
         real = input_tensor.real
         imag = input_tensor.imag

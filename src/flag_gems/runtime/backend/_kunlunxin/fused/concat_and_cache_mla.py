@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.utils import libentry
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 # enum Fp8KVCacheDataType
 FP8_KV_CACHE_DATA_TYPE_AUTO = tl.constexpr(0)
@@ -168,7 +168,7 @@ def concat_and_cache_mla(
     kv_cache_dtype: str,
     scale: torch.Tensor,
 ) -> None:
-    logger.debug("GEMS CONCAT_AND_CACHE_MLA")
+    logger.debug("GEMS_KUNLUNXIN CONCAT_AND_CACHE_MLA")
     return ConcatAndCacheMla.apply(
         kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
     )

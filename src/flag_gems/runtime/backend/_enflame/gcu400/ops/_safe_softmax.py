@@ -42,7 +42,7 @@ def _safe_softmax_kernel(
 
 
 def _safe_softmax(x: torch.Tensor, dim: int = -1, dtype: torch.dtype = None):
-    logger.debug("GEMS _SAFE_SOFTMAX")
+    logger.debug("GEMS_ENFLAME SAFE_SOFTMAX")
     assert (
         x.device.type == flag_gems.device
     ), f"Input tensor must be on {flag_gems.device} device"

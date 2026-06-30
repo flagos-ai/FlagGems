@@ -150,10 +150,10 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
 
 
 def reflection_pad2d(input: torch.Tensor, padding):
-    logger.debug("GEMS REFLECTION_PAD2D")
+    logger.debug("GEMS_SUNRISE REFLECTION_PAD2D")
     return launch_reflection_pad2d(input, padding, out=None)
 
 
 def reflection_pad2d_out(input: torch.Tensor, padding, out: torch.Tensor):
-    logger.debug("GEMS REFLECTION_PAD2D_OUT")
+    logger.debug("GEMS_SUNRISE REFLECTION_PAD2D_OUT")
     return launch_reflection_pad2d(input, padding, out=out)

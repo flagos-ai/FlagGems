@@ -24,7 +24,7 @@ def polar_kernel(abs, angle):
 
 
 def polar(abs, angle):
-    logger.debug("GEMS POLAR")
+    logger.debug("GEMS_SUNRISE POLAR")
     output = torch.empty((*abs.shape, 2), dtype=abs.dtype, device=abs.device)
 
     polar_kernel(abs, angle, out0=output[..., 0], out1=output[..., 1])

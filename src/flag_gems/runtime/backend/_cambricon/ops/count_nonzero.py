@@ -10,7 +10,7 @@ from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -96,7 +96,7 @@ def count_nonzero_combin_kernel(
 
 
 def count_nonzero(x, dim=None):
-    logger.debug("GEMS_CAMBRICON COUNT NONZERO")
+    logger.debug("GEMS_CAMBRICON COUNT_NONZERO")
     if dim is not None:
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         shape = x.shape

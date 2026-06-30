@@ -26,7 +26,7 @@ def isfinite_func(x):
 def isfinite(
     A: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS ISFINITE")
+    logger.debug("GEMS_ENFLAME ISFINITE")
     if A.is_floating_point():
         assert A.dtype != torch.float64, "Currently do not support fp64"
         return isfinite_func(A)

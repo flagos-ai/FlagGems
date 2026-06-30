@@ -333,7 +333,7 @@ _scatter_func = ScatterFunction()
 
 # 由于atomic不支持fp16相关操作，所以需要进行转换之后再运算，恢复成fp16;
 def scatter(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER")
+    logger.debug("GEMS_SUNRISE SCATTER")
     is_fp16 = inp.dtype == torch.float16 and (reduce is not None)
     if is_fp16:
         inp = inp.float()
@@ -373,7 +373,7 @@ def scatter(inp, dim, index, src, reduce=None):
 
 
 def scatter_(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER_")
+    logger.debug("GEMS_SUNRISE SCATTER_")
     base_inp = inp
     is_fp16 = inp.dtype == torch.float16 and (reduce is not None)
     if is_fp16:

@@ -11,7 +11,7 @@ from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def cfggen():
@@ -60,7 +60,7 @@ def index_add_kernel(
 
 
 def index_add(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS_CAMBRICON INDEX ADD")
+    logger.debug("GEMS_CAMBRICON INDEX_ADD")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device="cuda")
     ), "0 <= index < self.size(dim)"
@@ -309,7 +309,7 @@ _index_add_func = IndexAddFunction()
 
 
 def index_add_(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS_CAMBRICON INDEX ADD_")
+    logger.debug("GEMS_CAMBRICON INDEX_ADD_")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
     ), "0 <= index < self.size(dim)"

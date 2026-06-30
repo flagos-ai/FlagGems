@@ -103,8 +103,9 @@ def validate_and_fix_config(config, arch_id, op_name, dtype):
         config.kwargs["MICRO_N"] = fixed_config["MICRO_N"]
 
         logger.warning(
-            "Invalid config for op_name=%s, arch_id=%s, dtype=%s. Changed from "
-            "MICRO_M=%s, MICRO_N=%s, MICRO_K=%s to MICRO_M=%s, MICRO_K=%s, MICRO_N=%s",
+            "GEMS_SPACEMIT Invalid config for op_name=%s, arch_id=%s, dtype=%s. "
+            "Changed from MICRO_M=%s, MICRO_N=%s, MICRO_K=%s to "
+            "MICRO_M=%s, MICRO_K=%s, MICRO_N=%s",
             op_name,
             arch_id,
             dtype,
@@ -181,7 +182,7 @@ def get_tuned_config(func):
                         config_obj.kwargs["MICRO_K"] = fixed["MICRO_K"]
                         config_obj.kwargs["MICRO_N"] = fixed["MICRO_N"]
                         logger.warning(
-                            "pre_hook fixed config for op=%s arch=%s dtype=%s: "
+                            "GEMS_SPACEMIT pre_hook fixed config for op=%s arch=%s dtype=%s: "
                             "MICRO_M=%s->%s, MICRO_K=%s->%s, MICRO_N=%s->%s",
                             op_name,
                             arch_id,

@@ -27,7 +27,7 @@ def sinh_kernel_(x_ptr, N_total, BLOCK: tl.constexpr):
 
 
 def sinh_(*args, **kwargs):
-    logger.debug("GEMS SINH_ GCU400")
+    logger.debug("GEMS_ENFLAME SINH_")
     x = args[0] if args else kwargs.get("self", kwargs.get("input", None))
     if x is None:
         raise TypeError("sinh_ expected a Tensor as the first argument")

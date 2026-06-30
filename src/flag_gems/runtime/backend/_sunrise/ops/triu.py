@@ -107,7 +107,7 @@ def _check_batch_contiguous(tensor, allow_zero_stride=True):
 
 
 def triu(A, diagonal=0):
-    logger.debug("GEMS TRIU")
+    logger.debug("GEMS_SUNRISE TRIU")
     ori_type = A.dtype
     out = torch.empty(A.shape, device="ptpu").as_strided(A.shape, A.stride())
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
@@ -138,7 +138,7 @@ def triu(A, diagonal=0):
 
 
 def triu_(A, diagonal=0):
-    logger.debug("GEMS TRIU_ (inplace)")
+    logger.debug("GEMS_SUNRISE TRIU_")
 
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
     diagonal = int(diagonal)
@@ -148,8 +148,7 @@ def triu_(A, diagonal=0):
 
     if not can_use_directly:
         logger.debug(
-            "Input tensor does not satisfy contiguity requirements, "
-            "using temporary tensor for computation"
+            "GEMS_SUNRISE Input tensor does not satisfy contiguity requirements, using temporary tensor for computation"
         )
 
         result_temp = torch.empty_like(A_to_use, memory_format=torch.contiguous_format)

@@ -11,7 +11,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems.runtime.backend._mthreads.ops.mm")
+logger = logging.getLogger(__name__)
 
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "mm_mthreads_expand.yaml")
@@ -217,7 +217,7 @@ def get_higher_dtype(a, b):
 
 
 def mm_fma(a, b):
-    logger.debug("GEMS_MTHREADS MM(FMA)")
+    logger.debug("GEMS_MTHREADS MM_FMA")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -258,7 +258,7 @@ def mm_fma(a, b):
 
 def gemv_mm(a, b, c, M, K):
     logger.debug(
-        "GEMS_MTHREADS MM(GEMV), [shape info]: [%s, %s, 1](M, K, N)",
+        "GEMS_MTHREADS MM_GEMV_, [shape info]: [%s, %s, 1](M, K, N)",
         M,
         K,
     )
@@ -379,7 +379,7 @@ def mm_sqmma_kernel(
 
 
 def mm_sqmma(A, B, M, N, K):
-    logger.debug("GEMS_MTHREADS MM(SQMMA)")
+    logger.debug("GEMS_MTHREADS MM_SQMMA")
     device = A.device
     if not A.is_contiguous():
         A = A.contiguous()

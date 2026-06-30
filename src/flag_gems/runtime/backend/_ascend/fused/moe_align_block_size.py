@@ -8,7 +8,7 @@ import triton.language as tl
 
 from flag_gems.utils import libentry, libtuner
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def _triton_version_at_least(major: int, minor: int, patch: int = 0) -> bool:
@@ -538,7 +538,7 @@ def moe_align_block_size_triton(
     expert_ids: torch.Tensor,
     num_tokens_post_pad: torch.Tensor,
 ) -> None:
-    logger.debug("GEMS_ASCEND MOE ALIGN BLOCK SIZE")
+    logger.debug("GEMS_ASCEND MOE_ALIGN_BLOCK_SIZE")
     numel = topk_ids.numel()
     numel_sorted_token_ids = sorted_token_ids.numel()
     numel_expert_ids = expert_ids.numel()
@@ -594,7 +594,7 @@ def moe_align_block_size_triton(
                         continue
                     if num_blocks <= 1 or "cooperative" not in msg:
                         logger.debug(
-                            "TLE atomic fused launch failed, fallback to triton: %s",
+                            "GEMS_ASCEND TLE atomic fused launch failed, fallback to triton: %s",
                             ex,
                         )
                         return False
@@ -624,7 +624,7 @@ def moe_align_block_size_triton(
                 return
             except Exception as ex:
                 logger.debug(
-                    "TLE cluster fused launch failed, fallback to atomic/triton: %s",
+                    "GEMS_ASCEND TLE cluster fused launch failed, fallback to atomic/triton: %s",
                     ex,
                 )
 

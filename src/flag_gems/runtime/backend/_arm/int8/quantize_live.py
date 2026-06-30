@@ -87,7 +87,7 @@ def quantize_and_replace_linears(
         if K % require_divisible_by != 0 or N % require_divisible_by != 0:
             n_skipped_align += 1
             logger.debug(
-                "quantize_and_replace_linears: %s K=%d N=%d not divisible by %d",
+                "GEMS_ARM quantize_and_replace_linears: %s K=%d N=%d not divisible by %d",
                 name,
                 K,
                 N,
@@ -117,8 +117,7 @@ def quantize_and_replace_linears(
     apply_arm_overrides(include=["_int_mm"])
 
     logger.info(
-        "quantize_and_replace_linears: replaced %d Linears "
-        "(skipped: %d alignment, %d bias, %d explicit)",
+        "GEMS_ARM quantize_and_replace_linears: replaced %d Linears (skipped: %d alignment, %d bias, %d explicit)",
         n_replaced,
         n_skipped_align,
         n_skipped_bias,

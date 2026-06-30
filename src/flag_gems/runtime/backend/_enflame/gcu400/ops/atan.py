@@ -40,7 +40,7 @@ def _choose_block(N, is_fp32):
 
 
 def atan(A):
-    logger.debug("GEMS ATAN GCU400")
+    logger.debug("GEMS_ENFLAME ATAN")
     inp = A if A.is_contiguous() else A.contiguous()
     N = inp.numel()
     out = torch.empty_like(inp)
@@ -61,7 +61,7 @@ def atan(A):
 
 
 def atan_(A):
-    logger.debug("GEMS ATAN_ GCU400")
+    logger.debug("GEMS_ENFLAME ATAN_")
     inp = A if A.is_contiguous() else A.contiguous()
     N = inp.numel()
 

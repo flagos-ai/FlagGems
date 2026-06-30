@@ -50,7 +50,7 @@ def slice_scatter_kernel(
 
 
 def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
-    logger.debug("GEMS SLICE_SCATTER")
+    logger.debug("GEMS_ENFLAME SLICE_SCATTER")
     assert src.device == inp.device, "inp and src reside on different devices."
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert step > 0, "slice step must be positive"

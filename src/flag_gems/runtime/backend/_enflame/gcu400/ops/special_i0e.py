@@ -92,13 +92,13 @@ def _run_special_i0e_kernel(x: torch.Tensor, out: torch.Tensor):
 
 
 def special_i0e(x: torch.Tensor):
-    logger.debug("GEMS SPECIAL_I0E GCU400")
+    logger.debug("GEMS_ENFLAME SPECIAL_I0E")
     out = torch.empty_like(x)
     return _run_special_i0e_kernel(x, out)
 
 
 def special_i0e_out(x: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS SPECIAL_I0E_OUT GCU400")
+    logger.debug("GEMS_ENFLAME SPECIAL_I0E_OUT")
     if x.shape != out.shape:
         x = x.expand(out.shape)
     return _run_special_i0e_kernel(x, out)

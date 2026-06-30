@@ -8,6 +8,8 @@ from flag_gems import runtime
 from flag_gems.utils import broadcastable_to
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 ADDMM_M1_CONFIG_TABLE = (
     {"n_min": 4096, "k_min": 0, "config": (64, 8)},
     {"n_min": 2048, "k_min": 0, "config": (32, 16)},
@@ -278,7 +280,7 @@ def addmm_kernel(
 
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
-    logging.debug("GEMS ADDMM")
+    logger.debug("GEMS_ARM ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
@@ -366,7 +368,7 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
 
 
 def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
-    logging.debug("GEMS ADDMM_OUT")
+    logger.debug("GEMS_ARM ADDMM_OUT")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     M, K = mat1.shape
     _, N = mat2.shape

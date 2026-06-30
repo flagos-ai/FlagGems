@@ -70,7 +70,7 @@ def _launch_special_i1(x: torch.Tensor, out: torch.Tensor):
 
 
 def special_i1(self: torch.Tensor):
-    logger.debug("GEMS SPECIAL_I1 GCU400")
+    logger.debug("GEMS_ENFLAME SPECIAL_I1")
     x_c = self.contiguous()
     out = torch.empty_like(x_c)
     _launch_special_i1(x_c, out)
@@ -80,7 +80,7 @@ def special_i1(self: torch.Tensor):
 
 
 def special_i1_out(self: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS SPECIAL_I1_OUT GCU400")
+    logger.debug("GEMS_ENFLAME SPECIAL_I1_OUT")
     if out.dtype != self.dtype:
         raise TypeError("out dtype must match input dtype")
     if out.device != self.device:

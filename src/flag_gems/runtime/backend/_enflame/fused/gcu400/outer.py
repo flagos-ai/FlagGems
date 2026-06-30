@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class Outer(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, weight):
-        logger.debug("GEMS OUTER")
+        logger.debug("GEMS_ENFLAME OUTER")
         assert inp.ndim == 1 and weight.ndim == 1, "Invalid input"
         inp1 = inp[:, None]
         weight1 = weight[None, :]
@@ -24,7 +24,7 @@ class Outer(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS OUTER VJP")
+        logger.debug("GEMS_ENFLAME OUTER_VJP")
         assert out_grad.ndim == 2, "invalide out_grad shape"
 
         inp, weight = ctx.saved_tensors

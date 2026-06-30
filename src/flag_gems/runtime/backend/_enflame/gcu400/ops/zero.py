@@ -48,7 +48,7 @@ def _launch_zero_kernel(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def zero(*args, **kwargs):
-    logger.debug("GEMS ZERO")
+    logger.debug("GEMS_ENFLAME ZERO")
     target = None
     if len(args) >= 1 and isinstance(args[0], torch.Tensor):
         target = args[0]
@@ -66,7 +66,7 @@ def zero(*args, **kwargs):
 
 
 def zero_out(*args, **kwargs):
-    logger.debug("GEMS ZERO_OUT")
+    logger.debug("GEMS_ENFLAME ZERO_OUT")
     out = None
     if "out" in kwargs and isinstance(kwargs["out"], torch.Tensor):
         out = kwargs["out"]
@@ -80,5 +80,5 @@ def zero_out(*args, **kwargs):
 
 
 def zero_(x: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS ZERO_")
+    logger.debug("GEMS_ENFLAME ZERO_")
     return _launch_zero_kernel(x)

@@ -13,9 +13,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_max
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 MinOut = namedtuple("min", ["values", "indices"])
 
@@ -159,7 +157,7 @@ def min(inp):
 
 
 def min_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_MTHREADS MIN DIM")
+    logger.debug("GEMS_MTHREADS MIN_DIM")
     assert dim is not None, "dim must be specified"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     dim = dim % inp.ndim

@@ -15,5 +15,5 @@ def log_func(x):
 
 
 def log(A):
-    logger.debug("GEMS LOG")
+    logger.debug("GEMS_ENFLAME LOG")
     return log_func(A)
