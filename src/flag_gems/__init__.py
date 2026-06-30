@@ -93,6 +93,7 @@ _FULL_CONFIG = (
     ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
     ("_softmax_backward_data.out", softmax_backward_out),
+    ("_sparse_semi_structured_linear", _sparse_semi_structured_linear),
     (
         "_to_copy",
         to_copy,
