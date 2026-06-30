@@ -496,8 +496,8 @@ HEURISTICS_CONFIGS = {
         "BLOCK_SIZE": vdot_heur_block_size,
     },
     "mha_varlen_fwd": {
-        "BLOCK_M": mha_varlen_heur_block_m,
-        "BLOCK_N": mha_varlen_heur_block_n,
+        "BLOCK_M": lambda a: 16,  # mha_varlen_heur_block_m,
+        "BLOCK_N": lambda a: 32,  # mha_varlen_heur_block_n,
         "num_warps": lambda args: 1,
         "num_stages": lambda args: 1,
     },

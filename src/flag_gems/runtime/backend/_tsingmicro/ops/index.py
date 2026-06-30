@@ -41,7 +41,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems.utils import libentry, libtuner")
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils.shape_utils import volume")
-    code.writeline("from flag_gems.utils import triton_lang_extension as ext")
+    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
 
     code.newline()
     code.newline()
@@ -83,16 +83,18 @@ def generate_index_kernel(
     code.writeline("):")
 
     with code.indent():
-        code.writeline("pid0 = ext.program_id(axis=0)")
-        code.writeline("pid1 = ext.program_id(axis=1)")
+        code.writeline("pid0 = tle.program_id(axis=0)")
+        code.writeline("pid1 = tle.program_id(axis=1)")
         code.writeline(
-            "offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
+            "offset0 = pid0.to(tl.int64)* BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0).to(tl.int64)[:, None]"
         )
         if inp_rank == indices_len:
-            code.writeline("offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]")
+            code.writeline(
+                "offset1 = pid1.to(tl.int64) * 1 + tl.arange(0, 1).to(tl.int64)[None, :]"
+            )
         else:
             code.writeline(
-                "offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]"
+                "offset1 = pid1.to(tl.int64) * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1).to(tl.int64)[None, :]"
             )
         code.newline()
         code.writeline("cur_idx = offset0")
