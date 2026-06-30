@@ -85,9 +85,9 @@ def config_prune_for_first(configs, named_args, **kwargs):
                 max_block_m_without_pipe = (
                     MAX_NRAM_SIZE // 4 // (3 * BLOCK_COL_SIZE + 1)
                 )
-                BLOCK_ROW_SIZE = config.kwargs["BLOCK_ROW_SIZE"] = (
-                    max_block_m_without_pipe
-                )
+                BLOCK_ROW_SIZE = config.kwargs[
+                    "BLOCK_ROW_SIZE"
+                ] = max_block_m_without_pipe
                 num_stages = config.num_stages = 1
                 key = (BLOCK_ROW_SIZE, BLOCK_COL_SIZE, num_warps, num_stages)
                 configs_map.setdefault(key, config)
