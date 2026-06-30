@@ -13,6 +13,7 @@ def test_divide():
     )
     bench.run()
 
+
 @pytest.mark.divide_
 def test_divide_():
     bench = base.BinaryPointwiseBenchmark(

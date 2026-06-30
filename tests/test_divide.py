@@ -44,6 +44,7 @@ def test_divide_(shape, dtype):
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
+
 @pytest.mark.divide
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
