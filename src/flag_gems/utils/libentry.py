@@ -29,8 +29,8 @@ from typing import (
 import triton
 
 from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
-from flag_gems.runtime.backend import vendor_module
+from flag_gems.runtime import device, torch_device_fn
+from flag_gems.runtime.backend import _state
 from flag_gems.utils.code_cache import config_cache_dir
 from flag_gems.utils.models import PersistantModel, SQLPersistantModel
 
@@ -157,15 +157,10 @@ class LibCache(object):
     def __init__(self, db_url: Optional[str] = None):
         self.global_cache: Dict = {}
         self.volumn: Dict = {}
+        vendor_name = _state.vendor_module.vendor_info.vendor_name
         if db_url is None:
-            try:
-                device_name: str = torch_device_fn.get_device_name().replace(" ", "_")
-            except AttributeError:
-                device_name: str = vendor_module.vendor_info.device_name
             cache_file_name: str = (
-                f"TunedConfig_{device_name}_triton_{major_version}_{minor_version}.db"
-                if vendor_module.vendor_info.vendor_name == "nvidia"
-                else f"TunedConfig_{vendor_module.vendor_info.vendor_name}_triton_{major_version}_{minor_version}.db"
+                f"TunedConfig_{vendor_name}_triton_{major_version}_{minor_version}.db"
             )
             cache_path: Path = config_cache_dir() / cache_file_name
             self.db_url: str = f"sqlite:///{cache_path}"
@@ -243,6 +238,10 @@ class LibTuner(triton.runtime.Autotuner):
         use_cuda_graph=False,
         do_bench=None,
         strategy=None,
+        flagtune_op_name=None,
+        flagtune_expand_op_name=None,
+        flagtune_yaml_path=None,
+        flagtune_pre_hook=None,
     ):
         # NOTE(zhengyang): See discussion in https://github.com/triton-lang/triton/pull/4496
         if major_version == 2 or (major_version == 3 and minor_version <= 1):
@@ -265,7 +264,7 @@ class LibTuner(triton.runtime.Autotuner):
             self.base_fn = fn
             while not inspect.isfunction(self.base_fn):
                 self.base_fn = self.base_fn.fn
-        else:
+        elif major_version == 3 and minor_version <= 1:
             super().__init__(
                 fn,
                 arg_names,
@@ -280,8 +279,58 @@ class LibTuner(triton.runtime.Autotuner):
                 rep,
                 use_cuda_graph,
             )
+        else:
+            # Triton 3.2+ removed warmup/rep/use_cuda_graph positional arguments.
+            # Preserve FlagGems tuning behavior by translating them into do_bench.
+            if do_bench is None:
+                if use_cuda_graph:
+                    from triton.testing import do_bench_cudagraph
+
+                    def do_bench(kernel_call, quantiles):
+                        return do_bench_cudagraph(
+                            kernel_call,
+                            rep=rep if rep is not None else 100,
+                            quantiles=quantiles,
+                        )
+
+                elif warmup is not None or rep is not None:
+
+                    def do_bench(kernel_call, quantiles):
+                        return triton.testing.do_bench(
+                            kernel_call,
+                            warmup=warmup if warmup is not None else 25,
+                            rep=rep if rep is not None else 100,
+                            quantiles=quantiles,
+                        )
+
+            super().__init__(
+                fn,
+                arg_names,
+                configs,
+                key,
+                reset_to_zero,
+                restore_value,
+                pre_hook=pre_hook,
+                post_hook=post_hook,
+                prune_configs_by=prune_configs_by,
+                do_bench=do_bench,
+            )
         self.__name__ = self.base_fn.__name__
         self.keys = key
+        self.strategy: List[Callable[[Any], Any]] = self._normalize_strategy(strategy)
+        self.config_table_name: str = f"{self.__name__}_{self.kernel_hash}"
+        self.benchmark_table_name: str = f"{self.__name__}_{self.cache_key}_benchmark"
+        self.cache: BenchmarkCache = libcache[self.config_table_name]
+        self._flagtune_default_configs = self.configs
+        self._flagtune_default_strategy = strategy
+        self._flagtune_active = False
+        self._flagtune_warned = False
+        self._flagtune_op_name = flagtune_op_name
+        self._flagtune_expand_op_name = flagtune_expand_op_name or flagtune_op_name
+        self._flagtune_yaml_path = flagtune_yaml_path
+        self._flagtune_pre_hook = flagtune_pre_hook
+
+    def _normalize_strategy(self, strategy):
         if isinstance(strategy, str):
             strategy = LibTuner.get_strategy(strategy)
         if not isinstance(strategy, (list, tuple)):
@@ -289,13 +338,54 @@ class LibTuner(triton.runtime.Autotuner):
         assert len(strategy) == len(
             self.keys
         ), f"the length of strategy {len(strategy)} must match the length of keys {len(self.keys)}"
-        strategy: List[Callable[[Any], Any]] = [
-            LibTuner.get_strategy(s) if isinstance(s, str) else s for s in strategy
-        ]
-        self.strategy: List[Callable[[Any], Any]] = strategy
-        self.config_table_name: str = f"{self.__name__}_{self.kernel_hash}"
-        self.benchmark_table_name: str = f"{self.__name__}_{self.cache_key}_benchmark"
-        self.cache: BenchmarkCache = libcache[self.config_table_name]
+        return [LibTuner.get_strategy(s) if isinstance(s, str) else s for s in strategy]
+
+    def _set_configs_and_strategy(self, configs, strategy):
+        self.configs = configs
+        self.strategy = self._normalize_strategy(strategy)
+        self.__dict__.pop("configs_hash", None)
+        self.__dict__.pop("kernel_hash", None)
+        self.config_table_name = f"{self.__name__}_{self.kernel_hash}"
+        self.benchmark_table_name = f"{self.__name__}_{self.cache_key}_benchmark"
+        self.cache = libcache[self.config_table_name]
+
+    def apply_flagtune(self):
+        if self._flagtune_op_name is None:
+            return False
+
+        enabled = runtime.flagtune_enabled(self._flagtune_op_name)
+        if enabled == self._flagtune_active:
+            return False
+
+        if not enabled:
+            self._set_configs_and_strategy(
+                self._flagtune_default_configs,
+                self._flagtune_default_strategy,
+            )
+            self._flagtune_active = False
+            return True
+
+        expand_config = runtime.get_expand_config(
+            self._flagtune_expand_op_name,
+            yaml_path=self._flagtune_yaml_path,
+        )
+        configs = runtime.ops_get_configs(
+            self._flagtune_expand_op_name,
+            yaml_path=self._flagtune_yaml_path,
+            pre_hook=self._flagtune_pre_hook,
+        )
+        if expand_config == -1 or not configs:
+            if not self._flagtune_warned:
+                logger.warning(
+                    "FlagTune expand config is unavailable for %s; using default configs.",
+                    self._flagtune_expand_op_name,
+                )
+                self._flagtune_warned = True
+            return False
+
+        self._set_configs_and_strategy(configs, expand_config["strategy"])
+        self._flagtune_active = True
+        return True
 
     @cached_property
     def cache_key(self) -> str:
@@ -417,6 +507,8 @@ class LibTuner(triton.runtime.Autotuner):
         return decorator
 
     def run(self, *args, **kwargs):
+        if hasattr(self, "seen_tuned_metas"):
+            self.seen_tuned_metas = {}  # flagtree aabs: deduplicate tuned meta
         # `arg_names` corresponds to the arguments of the `JITFunction`'s signature,
         # so please make sure the orders of `arg_names` and `args` match.
         self.nargs = dict(zip(self.arg_names, args))
@@ -471,8 +563,13 @@ class LibTuner(triton.runtime.Autotuner):
                 f"Triton autotuning for function {self.base_fn.__name__} finished after "
                 f"{self.bench_time:.2f}s; key info: {key}, best config selected: {self.best_config};"
             )
-        if config.pre_hook is not None:
-            full_nargs = {**self.nargs, **kwargs, **config.all_kwargs()}
+        full_nargs = {**self.nargs, **kwargs, **config.all_kwargs()}
+        if (
+            hasattr(self, "shared_config_pre_hook")
+            and self.shared_config_pre_hook is not None
+        ):
+            self.shared_config_pre_hook(full_nargs)
+        elif config.pre_hook is not None:
             config.pre_hook(full_nargs)
         ret = self.fn.run(
             *args,
@@ -496,6 +593,10 @@ def log2_strategy(key: Union[int, float]) -> float:
 
 @LibTuner.register_strategy("align32")
 def align32_strategy(key: Union[int, float]) -> int:
+    if key == 0:
+        return 0
+    if key < 32:
+        return 2 ** math.ceil(math.log2(key))
     return math.ceil(key / 32) * 32
 
 
@@ -570,6 +671,10 @@ def libtuner(
         str, Callable[[Any], Any], List[Union[str, Callable[[Any], Any]]]
     ] = "default",
     policy: Union[str, Type[LibTuner]] = "default",
+    flagtune_op_name=None,
+    flagtune_expand_op_name=None,
+    flagtune_yaml_path=None,
+    flagtune_pre_hook=None,
 ):
     """Decorator for triton library autotuner.
 
@@ -603,6 +708,10 @@ def libtuner(
             use_cuda_graph=use_cuda_graph,
             do_bench=do_bench,
             strategy=strategy,
+            flagtune_op_name=flagtune_op_name,
+            flagtune_expand_op_name=flagtune_expand_op_name,
+            flagtune_yaml_path=flagtune_yaml_path,
+            flagtune_pre_hook=flagtune_pre_hook,
         )
 
     return decorator
@@ -617,6 +726,8 @@ class LibEntry(triton.KernelInterface):
         self.arg_names = fn.arg_names
         self.divisibility = 16
         self.kernel_cache = tuple(dict() for _ in range(DEVICE_COUNT))
+        self._has_flagtune_tuner = self._contains_flagtune_tuner(fn)
+        self._cpu_cache = dict()
 
         while not isinstance(fn, triton.runtime.JITFunction):
             fn = fn.fn
@@ -634,9 +745,45 @@ class LibEntry(triton.KernelInterface):
         self.lock = multiprocessing.Lock()
         self.signature = fn.signature
 
+    @staticmethod
+    def _contains_flagtune_tuner(fn):
+        while not isinstance(fn, triton.runtime.JITFunction):
+            if (
+                getattr(fn, "apply_flagtune", None) is not None
+                and getattr(fn, "_flagtune_op_name", None) is not None
+            ):
+                return True
+            fn = getattr(fn, "fn", None)
+            if fn is None:
+                break
+        return False
+
+    def _apply_flagtune(self):
+        changed = False
+        fn = self.fn
+        while not isinstance(fn, triton.runtime.JITFunction):
+            apply_flagtune = getattr(fn, "apply_flagtune", None)
+            if apply_flagtune is not None:
+                changed = apply_flagtune() or changed
+            fn = getattr(fn, "fn", None)
+            if fn is None:
+                break
+        if changed:
+            for cache in self.kernel_cache:
+                cache.clear()
+
     def key(self, spec_args, dns_args, const_args):
         def spec_arg(arg):
             if hasattr(arg, "data_ptr"):
+                if device.vendor_name == "hygon":
+                    from triton.backends.hcu.compiler import HIPBackend
+
+                    if hasattr(HIPBackend, "get_tensor_specialization"):
+                        return (
+                            arg.dtype,
+                            arg.data_ptr() % self.divisibility == 0,
+                            HIPBackend.get_tensor_specialization(arg),
+                        )
                 return (arg.dtype, arg.data_ptr() % self.divisibility == 0)
             return (type(arg), arg)
 
@@ -658,6 +805,8 @@ class LibEntry(triton.KernelInterface):
 
     def run(self, *args, **kwargs):
         grid = kwargs["grid"]
+        if self._has_flagtune_tuner:
+            self._apply_flagtune()
 
         # collect all the arguments
         spec_args = []  # specialize arguments
@@ -711,7 +860,14 @@ class LibEntry(triton.KernelInterface):
 
         entry_key = self.key(spec_args, dns_args, const_args)
         device = torch_device_fn.current_device()
-        cache = self.kernel_cache[device]
+        # CPU has one device per process and `current_device()` returns the
+        # string "cpu" (can't index into the int-keyed `kernel_cache` tuple).
+        # This branch is CPU-generic — any future x86 / RISC-V CPU backend
+        # reuses the same path; no ARM-specific assumption here.
+        if device == "cpu":
+            cache = self._cpu_cache
+        else:
+            cache = self.kernel_cache[device]
         while entry_key not in cache:
             # NOTE: we serialize the first run of a jit function regardless of which device to run on
             # because Triton runtime is currently not threadsafe.
@@ -724,6 +880,7 @@ class LibEntry(triton.KernelInterface):
                 constexprs = {}
                 tune_constexprs = {}
                 heur_constexprs = {}
+                launch_pre_hooks = []
                 while not isinstance(fn, triton.runtime.JITFunction):
                     if isinstance(fn, triton.runtime.Autotuner):
                         config = fn.best_config
@@ -732,6 +889,10 @@ class LibEntry(triton.KernelInterface):
                         constexprs["num_ctas"] = config.num_ctas
                         constexprs = {**constexprs, **config.kwargs}
                         tune_constexprs = {**tune_constexprs, **config.kwargs}
+                        if config.pre_hook is not None:
+                            launch_pre_hooks.append(
+                                (config.pre_hook, config.all_kwargs())
+                            )
                     elif isinstance(fn, triton.runtime.Heuristics):
                         for v, heur in fn.values.items():
                             heur_constexprs[v] = heur(
@@ -757,10 +918,17 @@ class LibEntry(triton.KernelInterface):
                     constexprs,
                     tune_constexprs,
                     heur_constexprs,
+                    tuple(launch_pre_hooks),
                 )
             return kernel, constexprs
 
-        kernel, constexprs, tune_constexprs, heur_constexprs = cache[entry_key]
+        (
+            kernel,
+            constexprs,
+            tune_constexprs,
+            heur_constexprs,
+            launch_pre_hooks,
+        ) = cache[entry_key]
 
         if callable(grid):
             # collect all arguments to the grid fn，ie:
@@ -771,6 +939,11 @@ class LibEntry(triton.KernelInterface):
             meta = {**dict(zip(self.arg_names, args)), **kwargs, **constexprs}
             grid = grid(meta)
         grid = grid + (1, 1)
+
+        if launch_pre_hooks:
+            hook_nargs = {**dict(zip(self.arg_names, args)), **kwargs}
+            for pre_hook, hook_kwargs in launch_pre_hooks:
+                pre_hook({**hook_nargs, **hook_kwargs})
 
         if major_version == 3 and 3 <= minor_version <= 6:
             all_args = []

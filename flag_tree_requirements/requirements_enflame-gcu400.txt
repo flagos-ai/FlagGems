@@ -1,2 +1,0 @@
-RES="--index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple"
-flagtree==0.5.0+gcu400-enflame3.5 $RES

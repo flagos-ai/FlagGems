@@ -50,9 +50,8 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
         return False
     if dst.is_quantized or src.is_quantized:
         return False
-    if src.is_complex() and not dst.is_complex():
-        # Preserve PyTorch's behaviour of warning when casting complex to real
-        # by forcing the redispatch path, which issues the warning internally.
+    if src.is_complex() or dst.is_complex():
+        # Triton on kunlunxin does not support complex dtypes; fall back to PyTorch.
         return False
     if not src.is_contiguous():
         return False
@@ -68,7 +67,7 @@ def _expand_like(src: torch.Tensor, target_shape: torch.Size) -> torch.Tensor:
 def copy(
     template: torch.Tensor, src: torch.Tensor, *, non_blocking: Optional[bool] = False
 ):
-    logger.debug("GEMS COPY (functional)")
+    logger.debug("GEMS_KUNLUNXIN COPY")
     out = torch.empty_strided(
         template.size(), template.stride(), dtype=template.dtype, device=template.device
     )
@@ -114,7 +113,7 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
             _FALLBACK_KEYSET, dst, src, non_blocking
         )
 
-    logger.debug("GEMS COPY_")
+    logger.debug("GEMS_KUNLUNXIN COPY_")
 
     try:
         broadcast_shape = torch.broadcast_shapes(dst.shape, src.shape)

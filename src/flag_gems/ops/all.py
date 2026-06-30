@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def all_kernel_dim(
     BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of inp it should compute.
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + rows * N
     out = out + rows
@@ -64,7 +64,7 @@ def all_kernel_1(
     mid_size,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < n_elements
@@ -117,6 +117,10 @@ def all_dim(inp, dim=None, keepdim=False):
         shape[dim] = 1
         M = inp.numel() // N
 
+        # Cast to bool to avoid float16/bfloat16 comparison issues in kernel
+        if inp.dtype != torch.bool:
+            inp = inp.bool()
+
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
@@ -142,6 +146,10 @@ def all_dims(inp, dim=None, keepdim=False):
         N *= shape[i]
         shape[i] = 1
     M = inp.numel() // N
+
+    # Cast to bool to avoid float16/bfloat16 comparison issues in kernel
+    if inp.dtype != torch.bool:
+        inp = inp.bool()
 
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 

@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ def mm_kernel(
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
 
     # --------------------------
     # match naming: num_pid_m, num_pid_n
@@ -151,7 +151,7 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
-    logger.debug("GEMS MM")
+    logger.debug("GEMS_HYGON MM")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -189,7 +189,7 @@ def mm(a, b):
 
 
 def mm_out(a, b, *, out):
-    logger.debug("GEMS MM_OUT")
+    logger.debug("GEMS_HYGON MM_OUT")
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()

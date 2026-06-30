@@ -8,7 +8,7 @@ import triton.language as tl
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -78,8 +78,8 @@ def mm_kernel(
     EVEN_K: tl.constexpr,
 ):
     # matrix multiplication
-    pid = tle.program_id(0)
-    pid_z = tle.program_id(1)
+    pid = ext.program_id(0)
+    pid_z = ext.program_id(1)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
     # re-order program ID for better L2 performance
@@ -144,12 +144,12 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
-    logger.debug("GEMS MM")
+    logger.debug("GEMS_KUNLUNXIN MM")
     device = a.device
     # handle non-contiguous inputs if necessary
-    if a.stride(0) > 1 and a.stride(1) > 1:
+    if not a.is_contiguous():
         a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
+    if not b.is_contiguous():
         b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
@@ -184,11 +184,11 @@ def mm(a, b):
 
 
 def mm_out(a, b, *, out):
-    logger.debug("GEMS MM_OUT")
+    logger.debug("GEMS_KUNLUNXIN MM_OUT")
     # handle non-contiguous inputs if necessary
-    if a.stride(0) > 1 and a.stride(1) > 1:
+    if not a.is_contiguous():
         a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
+    if not b.is_contiguous():
         b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"

@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,8 +32,8 @@ def _soft_margin_loss_elementwise_kernel(
 
 
 @triton.jit
-def _soft_margin_loss_sum_kernel(
-    x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+def _soft_margin_loss_partial_sum_kernel(
+    x_ptr, y_ptr, mid_ptr, n_elements, BLOCK_SIZE: tl.constexpr
 ):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
@@ -49,7 +51,18 @@ def _soft_margin_loss_sum_kernel(
     vals = tl.where(mask, vals, 0.0)
 
     acc = tl.sum(vals, axis=0)
-    tl.atomic_add(out_ptr, acc)
+    tl.store(mid_ptr + pid, acc)
+
+
+@triton.jit
+def _soft_margin_loss_final_reduce_kernel(
+    mid_ptr, out_ptr, mid_size, BLOCK_MID: tl.constexpr
+):
+    offsets = tl.arange(0, BLOCK_MID)
+    mask = offsets < mid_size
+    vals = tl.load(mid_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    acc = tl.sum(vals, axis=0)
+    tl.store(out_ptr, acc)
 
 
 def _normalize_reduction(reduction):
@@ -71,9 +84,9 @@ def _normalize_reduction(reduction):
 
 
 def _check_tensors(input: torch.Tensor, target: torch.Tensor):
-    if not (input.is_cuda and target.is_cuda):
+    if input.device.type != flag_gems.device or target.device.type != flag_gems.device:
         raise AssertionError(
-            "soft_margin_loss: input and target must be CUDA tensors for Triton kernel."
+            f"soft_margin_loss: input and target must be {flag_gems.device} tensors for Triton kernel."
         )
     if input.device != target.device:
         raise AssertionError(
@@ -117,11 +130,16 @@ def soft_margin_loss(input: torch.Tensor, target: torch.Tensor, reduction="mean"
                 return torch.full(
                     (), float("nan"), device=input.device, dtype=input.dtype
                 )
-        tmp_sum = torch.zeros((), device=input.device, dtype=torch.float32)
         BLOCK_SIZE = 1024
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        _soft_margin_loss_sum_kernel[grid](
-            input, target, tmp_sum, n_elements, BLOCK_SIZE=BLOCK_SIZE
+        mid_size = triton.cdiv(n_elements, BLOCK_SIZE)
+        block_mid = triton.next_power_of_2(mid_size)
+        mid = torch.empty((mid_size,), device=input.device, dtype=torch.float32)
+        _soft_margin_loss_partial_sum_kernel[(mid_size,)](
+            input, target, mid, n_elements, BLOCK_SIZE=BLOCK_SIZE
+        )
+        tmp_sum = torch.zeros((), device=input.device, dtype=torch.float32)
+        _soft_margin_loss_final_reduce_kernel[(1,)](
+            mid, tmp_sum, mid_size, BLOCK_MID=block_mid
         )
         if red == 2:
             # sum
@@ -150,8 +168,10 @@ def soft_margin_loss_out(
         else:
             out = torch.empty((), device=input.device, dtype=input.dtype)
     else:
-        if not out.is_cuda:
-            raise AssertionError("soft_margin_loss_out: out must be a CUDA tensor.")
+        if out.device.type != flag_gems.device:
+            raise AssertionError(
+                f"soft_margin_loss_out: out must be a {flag_gems.device} tensor."
+            )
         if red == 0:
             if out.numel() != n_elements:
                 raise AssertionError(
@@ -182,11 +202,16 @@ def soft_margin_loss_out(
             else:
                 out.fill_(float("nan"))
             return out
-        tmp_sum = torch.zeros((), device=input.device, dtype=torch.float32)
         BLOCK_SIZE = 1024
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        _soft_margin_loss_sum_kernel[grid](
-            input, target, tmp_sum, n_elements, BLOCK_SIZE=BLOCK_SIZE
+        mid_size = triton.cdiv(n_elements, BLOCK_SIZE)
+        block_mid = triton.next_power_of_2(mid_size)
+        mid = torch.empty((mid_size,), device=input.device, dtype=torch.float32)
+        _soft_margin_loss_partial_sum_kernel[(mid_size,)](
+            input, target, mid, n_elements, BLOCK_SIZE=BLOCK_SIZE
+        )
+        tmp_sum = torch.zeros((), device=input.device, dtype=torch.float32)
+        _soft_margin_loss_final_reduce_kernel[(1,)](
+            mid, tmp_sum, mid_size, BLOCK_MID=block_mid
         )
         if red == 2:
             out.fill_(tmp_sum.to(dtype=input.dtype))

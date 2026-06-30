@@ -19,10 +19,14 @@ def asinh_kernel_(
 
     if COMPUTE_FP32:
         x32 = x.to(tl.float32)
-        y32 = tl.log(x32 + tl.sqrt(x32 * x32 + 1.0))
+        abs_x = tl.abs(x32)
+        y32 = tl.log(abs_x + tl.sqrt(abs_x * abs_x + 1.0))
+        y32 = tl.where(x32 < 0.0, -y32, y32)
         y = y32.to(x.dtype)
     else:
-        y = tl.log(x + tl.sqrt(x * x + 1.0))
+        abs_x = tl.abs(x)
+        y = tl.log(abs_x + tl.sqrt(abs_x * abs_x + 1.0))
+        y = tl.where(x < 0.0, -y, y)
 
     tl.store(x_ptr + offsets, y, mask=mask)
 

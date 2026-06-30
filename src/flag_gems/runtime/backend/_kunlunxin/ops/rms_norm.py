@@ -8,7 +8,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -29,14 +29,13 @@ def rms_norm_kernel(
     eps: tl.constexpr,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     Y += pid * y_stride_r
     X += pid * x_stride_r
 
-    colMask = tl.arange(0, BLOCK_SIZE) < M
     mask = tl.arange(0, BLOCK_SIZE) < N
     cols = tl.arange(0, BLOCK_SIZE)
-    x = tl.load(X + cols * x_stride_c, mask & colMask, other=0.0).to(tl.float32)
+    x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
 
     var = tl.sum(x * x, axis=0) / N
     rrms = 1 / tl.sqrt(var + eps)
@@ -74,13 +73,11 @@ def rms_norm_kerne_tile(
     # var = tl.sum(x * x, axis=0) / N
     # rrms = 1 / tl.sqrt(var + eps)
 
-    colMask = tl.arange(0, BLOCK_SIZE) < M
-
     _var_base = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
     for off in range(0, N, BLOCK_SIZE):
         cols = off + tl.arange(0, BLOCK_SIZE)
         mask = cols < N
-        x = tl.load(X + cols, mask & colMask, other=0.0).to(tl.float32)
+        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _var_base += x * x / N
     var = tl.sum(_var_base)
     rrms = 1 / tl.sqrt(var + eps)
@@ -115,7 +112,7 @@ def rms_norm_grad_dx_kernel(
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     DX += pid * dx_stride_r
     X += pid * x_stride_r
     DY += pid * x_stride_r
@@ -155,7 +152,7 @@ def rms_norm_grad_dx_kernel_tile(
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     DX += pid * dx_stride_r
     X += pid * x_stride_r
     DY += pid * x_stride_r
@@ -302,7 +299,7 @@ def rms_norm_grad_kernel(
 
 
 def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
-    logger.debug("GEMS RMS_NORM FORWARD")
+    logger.debug("GEMS_KUNLUNXIN RMS_NORM_FORWARD")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
@@ -331,7 +328,7 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
 
 
 def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
-    logger.debug("GEMS RMS_NORM BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN RMS_NORM_BACKWARD")
 
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
@@ -410,7 +407,7 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
 
 
 def rms_norm_backward_fusion(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
-    logger.debug("GEMS RMS_NORM BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN RMS_NORM_BACKWARD")
 
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])  # Batch dimension
@@ -456,8 +453,7 @@ class RmsNorm(torch.autograd.Function):
         normalized_shape = ctx.normalized_shape
         eps = ctx.eps
 
-        # dx, dw = rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps)
-        dx, dw = rms_norm_backward_fusion(dy, x, inv_rms, normalized_shape, weight, eps)
+        dx, dw = rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps)
         return dx, None, dw, None
 
 

@@ -1,12 +1,14 @@
 add_library(operators
             SHARED
             device_info.cpp
+            act_quant.cpp
             zeros.cpp
             utils.cpp
             sum.cpp
             max.cpp
             mm.cpp
             rms_norm.cpp
+            gemma_rms_norm.cpp
             fused_add_rms_norm.cpp
             rotary_embedding.cpp
             topk.cpp
@@ -25,7 +27,9 @@ add_library(operators
             rwkv_mm_sparsity.cpp
             rwkv_ka_fusion.cpp
             copy.cpp
-            accuracy_utils.cpp)
+            accuracy_utils.cpp
+            fp8_matmul.cpp
+            fp8_matmul_direct.cpp)
 
 if (TRITON_GE_3P5)
   target_compile_definitions(operators PRIVATE TRITON_GE_3P5)
@@ -52,6 +56,17 @@ elseif(FLAGGEMS_BACKEND STREQUAL "MUSA")
     target_link_libraries(operators
       PUBLIC Torch::Torch
       PRIVATE TritonJIT::triton_jit)
+elseif(FLAGGEMS_BACKEND STREQUAL "GCU")
+    target_link_gcu_libraries(operators)
+    target_link_libraries(operators
+      PUBLIC Torch::Torch
+      PRIVATE TritonJIT::triton_jit)
+elseif(FLAGGEMS_BACKEND STREQUAL HCU)
+    target_link_hcu_libraries(operators)
+    target_link_libraries(operators
+      PUBLIC Torch::Torch
+      PRIVATE TritonJIT::triton_jit)
+    target_compile_options(operators PRIVATE -std=c++20)
 endif()
 target_compile_definitions(operators PRIVATE BACKEND_${FLAGGEMS_BACKEND})
 

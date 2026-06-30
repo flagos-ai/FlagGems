@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ def weight_norm_kernel_last(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     tx = tl.arange(0, BLOCK_COL_SIZE)[:, None]
-    bx = tle.program_id(axis=0) * BLOCK_COL_SIZE
+    bx = ext.program_id(axis=0) * BLOCK_COL_SIZE
     col_offset = bx + tx
     col_mask = col_offset < N
 
@@ -72,7 +72,7 @@ def weight_norm_kernel_first(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     ty = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-    by = tle.program_id(axis=0) * BLOCK_ROW_SIZE
+    by = ext.program_id(axis=0) * BLOCK_ROW_SIZE
     row_offset = by + ty
     row_mask = row_offset < M
 
@@ -116,7 +116,7 @@ def weight_norm_bwd_kernel_last(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     tx = tl.arange(0, BLOCK_COL_SIZE)[:, None]
-    bx = tle.program_id(axis=0) * BLOCK_COL_SIZE
+    bx = ext.program_id(axis=0) * BLOCK_COL_SIZE
     col_offset = tx + bx
     col_mask = col_offset < N
 
@@ -167,7 +167,7 @@ def weight_norm_bwd_kernel_first(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     ty = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-    by = tle.program_id(axis=0) * BLOCK_ROW_SIZE
+    by = ext.program_id(axis=0) * BLOCK_ROW_SIZE
     row_offset = by + ty
     row_mask = row_offset < M
 
@@ -204,7 +204,7 @@ def weight_norm_interface(v, g, dim=0):
     v = v.contiguous()
     g = g.contiguous()
     output = torch.empty_like(v)
-    norm = torch.empty_like(g)
+    norm = torch.empty_like(g, dtype=torch.float32)
     if dim == 0:
         M = v.shape[0]
         N = math.prod(v.shape[1:])

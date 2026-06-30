@@ -7,7 +7,7 @@ from torch import Tensor
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 INTERPOLATION_METHOD = ["linear", "lower", "higher", "nearest", "midpoint"]
@@ -56,8 +56,8 @@ def quantile_kernel(
     BLOCK_N: tl.constexpr,
     interpolation: tl.constexpr,
 ):
-    pid_Q = tle.program_id(0)
-    pid_N = tle.program_id(1)
+    pid_Q = ext.program_id(0)
+    pid_N = ext.program_id(1)
     ctype = inp.dtype.element_ty
 
     offsets_Q = pid_Q * BLOCK_Q + tl.arange(0, BLOCK_Q)
@@ -103,7 +103,7 @@ def quantile_kernel(
 def quantile(
     inp, q, dim=None, keepdim=False, interpolation="linear", out=None
 ) -> Tensor:
-    logger.debug("GEMS QUANTILE DIM")
+    logger.debug("GEMS_KUNLUNXIN QUANTILE_DIM")
     assert torch.is_floating_point(inp)
     assert dim is None or isinstance(dim, int)
     assert isinstance(q, (float, torch.Tensor))

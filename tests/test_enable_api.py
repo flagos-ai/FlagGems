@@ -5,6 +5,11 @@ import torch
 
 import flag_gems
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3832: logger get '_sunrise.ops.xx', test need 'flag_gems.ops.xx'.",
+)
+
 
 def ops_list_to_str(ops_list):
     return "_".join(ops_list).replace(".", "_").replace("-", "_")
@@ -29,7 +34,6 @@ def run_ops_and_logs(tmp_path, filename, include=None, exclude=None):
     return log_content
 
 
-@pytest.mark.enable
 def test_enable(tmp_path):
     log_content = run_ops_and_logs(tmp_path, "gems_enable.log")
     log_prefixes = {
@@ -53,7 +57,6 @@ def test_enable(tmp_path):
     assert not missing, f"Missing expected log entries (prefix match): {missing}"
 
 
-@pytest.mark.enable_with_exclude
 @pytest.mark.parametrize(
     "exclude_op", [["masked_fill", "masked_fill_"], ["mul", "sum", "sum_dim"]]
 )
@@ -75,7 +78,6 @@ def test_enable_with_exclude(exclude_op, tmp_path):
         assert not present, f"Found excluded op '{op}' in log file: {present}"
 
 
-@pytest.mark.only_enable
 @pytest.mark.parametrize(
     "include_op", [["sum"], ["mul", "sum"], ["bitwise_not", "masked_fill"]]
 )
@@ -94,7 +96,6 @@ def test_only_enable(include_op, tmp_path):
         ), f"Found unexpected op '{op}' in log file. Allowed op: {include_op}"
 
 
-@pytest.mark.only_enable
 def test_only_enable_with_yaml(tmp_path):
     include_ops = ["sum", "mul"]
     yaml_path = tmp_path / "only_enable.yaml"
@@ -116,7 +117,6 @@ def test_only_enable_with_yaml(tmp_path):
     assert not unexpected, f"Found unexpected ops via YAML include: {unexpected}"
 
 
-@pytest.mark.only_enable
 def test_only_enable_default(tmp_path, monkeypatch):
     # Create a mock YAML file with known include ops
     include_ops = ["sum", "mul", "add"]

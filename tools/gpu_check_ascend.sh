@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # Configuration parameters
-memory_usage_max=30000     # Maximum memory usage limit (MB)
+mem_threshold=30000     # Maximum memory usage limit (MB)
 sleep_time=120             # Wait time (seconds), default is 2 minutes
 
 # Get the number of NPU chips from npu-smi info output
 # Chip lines look like: "| 0     0                   | 0000:9D:00.0  | 0           0    / 0          2894 / 65536         |"
 # Count lines that contain HBM usage pattern "xxxx / xxxxx" at the end (the HBM-Usage column)
-npu_smi_output=$(npu-smi info 2>/dev/null)
+npu_smi_output=$(npu-smi info)
 
 if [ $? -ne 0 ]; then
     echo "Failed to run npu-smi. Please check if npu-smi is installed and working correctly."
@@ -15,9 +15,9 @@ if [ $? -ne 0 ]; then
 fi
 
 # Count chip lines (lines with Chip/Phy-ID and HBM usage info)
-chip_count=$(echo "$npu_smi_output" | grep -cP '\d+\s*/\s*\d+\s*\|\s*$')
+npu_count=$(echo "$npu_smi_output" | grep -cP '\d+\s*/\s*\d+\s*\|\s*$')
 # Each NPU card has 2 chips, but we check per-chip
-npu_count=$(echo "$npu_smi_output" | grep -c "Ascend")
+npu_count=$(echo "$npu_smi_output" | grep -c "OK")
 
 if [ "$npu_count" -eq 0 ]; then
     echo "No Ascend NPUs detected. Please ensure you have Ascend NPUs installed and properly configured."
@@ -45,30 +45,31 @@ while true; do
     done)
 
     need_wait=false
-    chip_idx=0
+    i=0
 
+    printf " GPU  Total (MiB)  Used (MiB)  Free (MiB)\n"
     for line in "${hbm_lines[@]}"; do
-        memory_used=$(echo "$line" | awk -F'/' '{gsub(/[[:space:]]/, "", $1); print $1}')
-        memory_total=$(echo "$line" | awk -F'/' '{gsub(/[[:space:]]/, "", $2); print $2}')
+        used_i=$(echo "$line" | awk -F'/' '{gsub(/[[:space:]]/, "", $1); print $1}')
+        total_i=$(echo "$line" | awk -F'/' '{gsub(/[[:space:]]/, "", $2); print $2}')
 
-        if [ -z "$memory_used" ] || [ -z "$memory_total" ]; then
-            echo "Warning: Failed to parse chip $chip_idx memory information."
-            chip_idx=$((chip_idx + 1))
+        if [ -z "$used_i" ] || [ -z "$total_i" ]; then
+            echo "Warning: Failed to parse memory infor for chip $i."
+            i=$((i + 1))
             continue
         fi
 
-        memory_remin=$((memory_total - memory_used))
+        free_i=$((total_i - used_i))
 
-        if [ $memory_remin -lt $memory_usage_max ]; then
+        printf "%4d%'13d%'12d%'12d\n" $i ${total_i} ${used_i} ${free_i}
+        if [ $free_i -lt $mem_threshold ]; then
             need_wait=true
-            echo "Chip $chip_idx: Used ${memory_used}MB / Total ${memory_total}MB (Available: ${memory_remin}MB < ${memory_usage_max}MB)"
             break
         fi
-        chip_idx=$((chip_idx + 1))
+        i=$((i + 1))
     done
 
     if [ "$need_wait" = false ]; then
-        echo "All Ascend NPUs have sufficient available memory. Proceeding with execution."
+        echo "All NPUs have sufficient memory, proceeding with execution."
         break
     fi
 

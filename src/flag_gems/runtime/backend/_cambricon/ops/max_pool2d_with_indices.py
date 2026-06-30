@@ -4,12 +4,12 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.limits import get_dtype_min
 
 from ..utils import MAX_GRID_SIZE_X, MAX_GRID_SIZE_Y
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def max_pool2d_output_size(
@@ -40,22 +40,19 @@ def limit_grid(grid_0, grid_1):
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=[
         triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=4, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 16}, num_stages=3, num_warps=4),
         triton.Config({"BLOCK_H": 16, "BLOCK_W": 32}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 32}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 8}, num_stages=5, num_warps=2),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 8}, num_stages=5, num_warps=2),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 16}, num_stages=5, num_warps=2),
-        triton.Config({"BLOCK_H": 64, "BLOCK_W": 16}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 64}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 64}, num_stages=3, num_warps=8),
-        triton.Config({"BLOCK_H": 64, "BLOCK_W": 32}, num_stages=3, num_warps=8),
-        triton.Config({"BLOCK_H": 64, "BLOCK_W": 64}, num_stages=2, num_warps=8),
+        triton.Config({"BLOCK_H": 16, "BLOCK_W": 8}, num_stages=5, num_warps=1),
+        triton.Config({"BLOCK_H": 8, "BLOCK_W": 16}, num_stages=5, num_warps=1),
+        triton.Config({"BLOCK_H": 8, "BLOCK_W": 8}, num_stages=5, num_warps=1),
+        triton.Config({"BLOCK_H": 32, "BLOCK_W": 32}, num_stages=2, num_warps=4),
     ],
     key=["out_h", "out_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
+    strategy=["align32", "align32", "align32", "align32", "align32", "align32"],
+    warmup=5,
+    rep=10,
 )
 @triton.jit
 def max_pool2d_forward_kernel(
@@ -155,16 +152,25 @@ def max_pool2d_forward_kernel(
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=[
-        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 16}, num_warps=4),
-        triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 8}, num_warps=4),
-        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 32}, num_warps=4),
-        triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 32}, num_warps=8),
-        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 64}, num_warps=8),
-        triton.Config({"BLOCK_IN_H": 64, "BLOCK_IN_W": 16}, num_warps=8),
+        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 32}, num_warps=1, num_stages=0),
+        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 32}, num_warps=1, num_stages=5),
+        triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 64}, num_warps=1, num_stages=0),
+        triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 64}, num_warps=1, num_stages=5),
+        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 16}, num_warps=1, num_stages=0),
+        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 16}, num_warps=1, num_stages=5),
+        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 32}, num_warps=1, num_stages=0),
+        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 8}, num_warps=1, num_stages=0),
+        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 8}, num_warps=1, num_stages=5),
+        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 16}, num_warps=1, num_stages=5),
+        triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 32}, num_warps=1, num_stages=0),
+        triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 32}, num_warps=1, num_stages=5),
     ],
     key=["in_h", "in_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
+    strategy=["align32", "align32", "align32", "align32", "align32", "align32"],
+    warmup=5,
+    rep=10,
 )
 @triton.jit
 def max_pool2d_backward_kernel(
@@ -367,6 +373,7 @@ def max_pool2d_with_indices(
         padding_w,
         dilation_h,
         dilation_w,
+        is_linear=True,
     )
 
     return output, indices
@@ -439,6 +446,7 @@ def max_pool2d_backward(
         padding_w,
         dilation_h,
         dilation_w,
+        is_linear=True,
     )
 
     return grad_input.to(grad_output.dtype)

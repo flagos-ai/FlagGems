@@ -33,6 +33,23 @@ namespace backend {
   using RawStreamType = musaStream_t;
 }  // namespace backend
 }  // namespace flag_gems
+#elif defined(FLAGGEMS_USE_GCU)
+#include <tops_runtime_api.h>
+namespace flag_gems {
+namespace backend {
+  using StreamType = topsStream_t;
+  using RawStreamType = topsStream_t;
+}  // namespace backend
+}  // namespace flag_gems
+#elif defined(FLAGGEMS_USE_HCU)
+#include <c10/hip/HIPStream.h>
+#include <hip/hip_runtime.h>
+namespace flag_gems {
+namespace backend {
+  using StreamType = c10::hip::HIPStream;
+  using RawStreamType = hipStream_t;
+}  // namespace backend
+}  // namespace flag_gems
 #endif
 
 namespace flag_gems {
@@ -46,9 +63,14 @@ namespace backend {
     return c10_npu::getCurrentNPUStream(device.index());
 #elif defined(FLAGGEMS_USE_MUSA)
     return c10::musa::getCurrentMUSAStream(device.index());
+#elif defined(FLAGGEMS_USE_GCU)
+    (void)device;
+    return nullptr;
+#elif defined(FLAGGEMS_USE_HCU)
+    return c10::hip::getCurrentHIPStream(device.index());
 #else
 #error \
-    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA"
+    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, FLAGGEMS_USE_GCU, FLAGGEMS_USE_HCU"
 #endif
   }
 
@@ -60,6 +82,10 @@ namespace backend {
     return c10_npu::getCurrentNPUStream();
 #elif defined(FLAGGEMS_USE_MUSA)
     return c10::musa::getCurrentMUSAStream();
+#elif defined(FLAGGEMS_USE_GCU)
+    return nullptr;
+#elif defined(FLAGGEMS_USE_HCU)
+    return c10::hip::getCurrentHIPStream();
 #else
 #error "No backend defined"
 #endif
@@ -67,7 +93,11 @@ namespace backend {
 
   // Get the raw stream from a typed stream (for passing to triton_jit)
   inline RawStreamType getRawStream(const StreamType& stream) {
+#if defined(FLAGGEMS_USE_GCU)
+    return stream;
+#else
     return stream.stream();
+#endif
   }
 
   // Check if tensor is on the correct device type for this backend
@@ -78,6 +108,10 @@ namespace backend {
     TORCH_CHECK(tensor.is_privateuseone(), tensor_name, " must be on NPU device, but got ", tensor.device());
 #elif defined(FLAGGEMS_USE_MUSA)
     TORCH_CHECK(tensor.is_privateuseone(), tensor_name, " must be on MUSA device, but got ", tensor.device());
+#elif defined(FLAGGEMS_USE_GCU)
+    TORCH_CHECK(tensor.is_privateuseone(), tensor_name, " must be on GCU device, but got ", tensor.device());
+#elif defined(FLAGGEMS_USE_HCU)
+    TORCH_CHECK(tensor.is_cuda(), tensor_name, " must be on HCU device, but got ", tensor.device());
 #else
 #error "No backend defined"
 #endif
@@ -91,6 +125,10 @@ namespace backend {
     return tensor.is_privateuseone();
 #elif defined(FLAGGEMS_USE_MUSA)
     return tensor.is_privateuseone();
+#elif defined(FLAGGEMS_USE_GCU)
+    return tensor.is_privateuseone();
+#elif defined(FLAGGEMS_USE_HCU)
+    return tensor.is_cuda();
 #else
 #error "No backend defined"
 #endif
@@ -106,6 +144,10 @@ namespace backend {
     return "NPU";
 #elif defined(FLAGGEMS_USE_MUSA)
     return "MUSA";
+#elif defined(FLAGGEMS_USE_GCU)
+    return "GCU";
+#elif defined(FLAGGEMS_USE_HCU)
+    return "HCU";
 #else
 #error "No backend defined"
 #endif
@@ -113,9 +155,9 @@ namespace backend {
 
   // Get the torch device type used by the active backend.
   inline at::DeviceType getBackendDeviceType() {
-#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_HCU)
     return at::kCUDA;
-#elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA)
+#elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_GCU)
     return at::kPrivateUse1;
 #else
 #error "No backend defined"
@@ -130,6 +172,10 @@ namespace backend {
     return c10::musa::current_device();
 #elif defined(FLAGGEMS_USE_NPU)
     return 0;  // TODO: NPU current device query
+#elif defined(FLAGGEMS_USE_GCU)
+    return 0;
+#elif defined(FLAGGEMS_USE_HCU)
+    return at::cuda::current_device();
 #else
     return 0;
 #endif
@@ -153,6 +199,10 @@ namespace backend {
     return torch::custom_class_available("npu");
 #elif defined(FLAGGEMS_USE_MUSA)
     return true;
+#elif defined(FLAGGEMS_USE_GCU)
+    return true;
+#elif defined(FLAGGEMS_USE_HCU)
+    return torch::cuda::is_available();
 #else
     return false;
 #endif
@@ -166,6 +216,10 @@ namespace backend {
     // NPU sync if needed
 #elif defined(FLAGGEMS_USE_MUSA)
     // MUSA sync if needed
+#elif defined(FLAGGEMS_USE_GCU)
+    topsDeviceSynchronize();
+#elif defined(FLAGGEMS_USE_HCU)
+    hipDeviceSynchronize();
 #endif
   }
 

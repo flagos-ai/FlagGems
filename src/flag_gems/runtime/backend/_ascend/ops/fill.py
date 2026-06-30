@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -20,7 +20,7 @@ def fill_scalar_kernel(
     BLOCK_SIZE: tl.constexpr,
     SUBBLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     pid_offset = pid * BLOCK_SIZE
     cols = tl.arange(0, SUBBLOCK_SIZE)
     num_loop = triton.cdiv(BLOCK_SIZE, SUBBLOCK_SIZE)
@@ -38,7 +38,7 @@ def fill_tensor_kernel(
     BLOCK_SIZE: tl.constexpr,
     SUBBLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     pid_offset = pid * BLOCK_SIZE
     cols = tl.arange(0, SUBBLOCK_SIZE)
     num_loop = triton.cdiv(BLOCK_SIZE, SUBBLOCK_SIZE)
@@ -91,6 +91,8 @@ def fill_tensor_(self, value):
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
         )
     N = self.numel()
+    if N == 0:
+        return self
     # FIXME: 910B3&910B4 have 40 AIV cores while 910B1 has 50, 910B2 has 48.
     grid = min(40, N)
     BLOCK_SIZE = (N + grid - 1) // grid
@@ -104,6 +106,8 @@ def fill_tensor_(self, value):
 def fill_scalar_(self, value):
     logger.debug("GEMS_ASCEND FILL_SCALAR_")
     N = self.numel()
+    if N == 0:
+        return self
     # FIXME: 910B3&910B4 have 40 AIV cores while 910B1 has 50, 910B2 has 48.
     grid = min(40, N)
     BLOCK_SIZE = (N + grid - 1) // grid

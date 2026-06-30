@@ -12,8 +12,7 @@ import triton
 from triton import language as tl
 
 import flag_gems
-from flag_gems.runtime import torch_device_fn
-from flag_gems.runtime.backend import vendor_module
+from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.code_cache import config_cache_dir
 from flag_gems.utils.libentry import libcache, major_version, minor_version
@@ -176,10 +175,7 @@ def softmax_kernel_inner(
             offset += TILE_N
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="Test Files for Operators Not Pending Testing",
-)
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Issue #2825")
 def test_decorator_cascade():
     # to test inner decorator can use arguments supplied by outer decorator
     # and grid function can use arguments supplied by all the decorator
@@ -188,20 +184,14 @@ def test_decorator_cascade():
         _ = softmax_inner_decorator_cascade(x, dim=2)
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="Test Files for Operators Not Pending Testing",
-)
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Issue #2825")
 def test_pass_kernel_arg_via_kw():
     x = torch.randn((128, 128, 128), device=flag_gems.device)
     with not_raises(KeyError):
         _ = softmax_inner_pass_kernel_arg_via_kw(x, dim=2)
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="Test Files for Operators Not Pending Testing",
-)
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Issue #2825")
 def test_kernel_arg_apply_default():
     x = torch.randn((128, 128, 128), device=flag_gems.device)
     with not_raises(KeyError):
@@ -235,10 +225,7 @@ def run_two_threads():
         fs[i].join()
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="Test Files for Operators Not Pending Testing",
-)
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Issue #2825")
 def test_threadsafety():
     for i in range(100):
         with not_raises(Exception):
@@ -360,11 +347,11 @@ def test_hash_changes_when_dependency_modified():
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "mthreads",
-    reason=" Cannot re-initialize MUSA in forked subprocess",
+    reason="Issue #2826: Cannot re-initialize MUSA in forked subprocess",
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "metax",
-    reason="It's not stable in full test though it's passed by single test",
+    reason="Issue #2827: It's not stable in full test though it's passed by single test",
 )
 def test_libcache_vllm_signal_scenario():
     def child_process():
@@ -380,8 +367,8 @@ def test_libcache_vllm_signal_scenario():
 
     cache_file_name = (
         f"TunedConfig_{torch.cuda.get_device_name().replace(' ', '_')}_triton_{major_version}_{minor_version}.db"
-        if vendor_module.vendor_info.vendor_name == "nvidia"
-        else f"TunedConfig_{vendor_module.vendor_info.vendor_name}_triton_{major_version}_{minor_version}.db"
+        if device.vendor_name == "nvidia"
+        else f"TunedConfig_{device.vendor_name}_triton_{major_version}_{minor_version}.db"
     )
     cache_path = config_cache_dir() / cache_file_name
     # Start child process
@@ -416,7 +403,7 @@ def test_libcache_vllm_signal_scenario():
 @pytest.mark.skipif(
     flag_gems.vendor_name == "mthreads"
     or True,  # TODO: skip currently due to libcache table rename
-    reason=" Cannot re-initialize MUSA in forked subprocess",
+    reason="Issue #2826: Cannot re-initialize MUSA in forked subprocess",
 )
 def test_libcache_concurrent_write_on_signal():
     """
@@ -437,8 +424,8 @@ def test_libcache_concurrent_write_on_signal():
 
     cache_file_name = (
         f"TunedConfig_{torch.cuda.get_device_name().replace(' ', '_')}_triton_{major_version}_{minor_version}.db"
-        if vendor_module.vendor_info.vendor_name == "nvidia"
-        else f"TunedConfig_{vendor_module.vendor_info.vendor_name}_triton_{major_version}_{minor_version}.db"
+        if device.vendor_name == "nvidia"
+        else f"TunedConfig_{device.vendor_name}_triton_{major_version}_{minor_version}.db"
     )
     cache_path = config_cache_dir() / cache_file_name
     if cache_path.exists():

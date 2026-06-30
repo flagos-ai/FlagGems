@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import broadcastable_to, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -25,7 +25,7 @@ def masked_fill_kernel_heur_block_size(args):
 def masked_fill_kernel(
     inp, expand_mask, value, out, N: tl.constexpr, BLOCK_SIZE: tl.constexpr
 ):
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < N
 
@@ -50,7 +50,7 @@ def masked_fill_kernel_self_heur_block_size(args):
 # )
 @triton.jit
 def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr):
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < N
 
@@ -59,7 +59,7 @@ def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr
 
 
 def masked_fill(inp, mask, value):
-    logger.debug("GEMS MASKED FILL")
+    logger.debug("GEMS_KUNLUNXIN MASKED_FILL")
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
@@ -114,7 +114,7 @@ def masked_fill(inp, mask, value):
 
 
 def masked_fill_(inp, mask, value):
-    logger.debug("GEMS MASKED FILL")
+    logger.debug("GEMS_KUNLUNXIN MASKED_FILL_")
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)

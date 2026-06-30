@@ -8,7 +8,7 @@ import triton.language as tl
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -39,7 +39,7 @@ def triu_kernel(
     M_BLOCK_SIZE: tl.constexpr,
     N_BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     row = pid * M_BLOCK_SIZE + tl.arange(0, M_BLOCK_SIZE)[:, None]
     m_mask = row < M
     X += row * N
@@ -85,8 +85,8 @@ def triu_batch_kernel(
     BATCH_BLOCK_SIZE: tl.constexpr,
     MN_BLOCK_SIZE: tl.constexpr,
 ):
-    batch_id = tle.program_id(0)
-    mn_id = tle.program_id(1)
+    batch_id = ext.program_id(0)
+    mn_id = ext.program_id(1)
     row = batch_id * BATCH_BLOCK_SIZE + tl.arange(0, BATCH_BLOCK_SIZE)[:, None]
     batch_mask = row < batch
     X += row * MN
@@ -106,7 +106,7 @@ INT32_MAX = torch.iinfo(torch.int32).max
 
 
 def triu(A, diagonal=0):
-    logger.debug("GEMS TRIU")
+    logger.debug("GEMS_KUNLUNXIN TRIU")
     A = A.contiguous()
     out = torch.empty_like(A)
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"

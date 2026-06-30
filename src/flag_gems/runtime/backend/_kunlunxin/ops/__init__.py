@@ -8,6 +8,7 @@ from .addmv import addmv, addmv_out
 from .addr import addr
 from .all import all, all_dim, all_dims
 from .amax import amax
+from .aminmax import aminmax
 from .angle import angle
 from .any import any, any_dim, any_dims
 from .apply_repetition_penalties import apply_repetition_penalties
@@ -53,6 +54,7 @@ from .conv2d import conv2d
 from .conv3d import conv3d
 from .conv_depthwise2d import _conv_depthwise2d
 from .copy import copy, copy_
+from .copysign import copysign, copysign_out
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .cummax import cummax
@@ -95,6 +97,7 @@ from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
+from .hadamard_transform import hadamard_transform
 from .hstack import hstack
 from .index import index
 from .index_add import index_add, index_add_
@@ -108,6 +111,7 @@ from .isnan import isnan
 from .kron import kron
 from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
+from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .linspace import linspace
 from .log import log
@@ -118,10 +122,13 @@ from .logical_not import logical_not
 from .logical_or import logical_or
 from .logical_xor import logical_xor
 from .logspace import logspace
+from .logsumexp import logsumexp
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_select import masked_select
+from .matmul_bf16 import matmul_bf16
+from .matmul_int8 import matmul_int8
 from .max import max, max_dim
 from .max_pool2d_with_indices import max_pool2d_backward, max_pool2d_with_indices
 from .maximum import maximum
@@ -134,6 +141,7 @@ from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv, mv_cluster
 from .nan_to_num import nan_to_num
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .nllloss import (
@@ -143,6 +151,7 @@ from .nllloss import (
     nll_loss_forward,
 )
 from .nonzero import nonzero
+from .nonzero_numpy import nonzero_numpy
 from .normal import (
     normal_,
     normal_float_tensor,
@@ -169,6 +178,8 @@ from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
 from .reciprocal import reciprocal, reciprocal_
+from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
+from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from .relu import relu, relu_
 from .repeat import repeat
 from .repeat_interleave import (
@@ -179,6 +190,7 @@ from .repeat_interleave import (
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
+from .round import round, round_, round_out
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
@@ -186,9 +198,11 @@ from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
+from .signbit import signbit, signbit_out
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .slice_scatter import slice_scatter
+from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 from .softmax import softmax, softmax_backward
 from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
@@ -205,10 +219,12 @@ from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
+from .tril import tril, tril_, tril_out
 from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
@@ -217,12 +233,15 @@ from .vector_norm import vector_norm
 from .vstack import vstack
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
+from .zero import zero, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
     "digamma_",
+    "soft_margin_loss",
+    "soft_margin_loss_out",
     "softshrink",
     "softshrink_out",
     "_unique2",
@@ -245,6 +264,7 @@ __all__ = [
     "all_dims",
     "allclose",
     "amax",
+    "aminmax",
     "angle",
     "any",
     "any_dim",
@@ -292,11 +312,14 @@ __all__ = [
     "conv3d",
     "copy",
     "copy_",
+    "copysign",
+    "copysign_out",
     "cos",
     "cos_",
     "count_nonzero",
     "cummax",
     "cummin",
+    "cumprod_",
     "cumsum",
     "cumsum_out",
     "diag",
@@ -350,6 +373,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "hstack",
+    "hadamard_transform",
     "index",
     "index_add",
     "index_add_",
@@ -364,6 +388,9 @@ __all__ = [
     "kron",
     "layer_norm",
     "layer_norm_backward",
+    "leaky_relu",
+    "leaky_relu_",
+    "leaky_relu_out",
     "le",
     "le_scalar",
     "lerp_scalar",
@@ -375,6 +402,7 @@ __all__ = [
     "log_sigmoid",
     "log_softmax",
     "log_softmax_backward",
+    "logsumexp",
     "logical_and",
     "logical_not",
     "logical_or",
@@ -382,6 +410,8 @@ __all__ = [
     "logspace",
     "lt",
     "lt_scalar",
+    "matmul_bf16",
+    "matmul_int8",
     "masked_fill",
     "masked_fill_",
     "masked_scatter",
@@ -406,6 +436,10 @@ __all__ = [
     "mv",
     "mv_cluster",
     "nan_to_num",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "ne",
     "ne_scalar",
     "neg",
@@ -415,6 +449,7 @@ __all__ = [
     "nll_loss2d_backward",
     "nll_loss2d_forward",
     "nonzero",
+    "nonzero_numpy",
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
@@ -440,6 +475,10 @@ __all__ = [
     "randperm",
     "reciprocal",
     "reciprocal_",
+    "reflection_pad1d",
+    "reflection_pad1d_out",
+    "reflection_pad2d",
+    "reflection_pad2d_out",
     "relu",
     "relu_",
     "remainder",
@@ -450,6 +489,9 @@ __all__ = [
     "repeat_interleave_tensor",
     "resolve_conj",
     "resolve_neg",
+    "round",
+    "round_",
+    "round_out",
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
@@ -468,6 +510,8 @@ __all__ = [
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
+    "signbit",
+    "signbit_out",
     "silu",
     "silu_",
     "silu_backward",
@@ -502,11 +546,15 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "tril",
+    "tril_",
+    "tril_out",
     "triu",
     "true_divide",
     "true_divide_out",
     "true_divide_",
     "uniform_",
+    "upsample_linear1d",
     "upsample_nearest1d",
     "upsample_nearest2d",
     "var_mean",
@@ -519,6 +567,8 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "zero",
+    "zero_out",
     "zeros",
     "zeros_like",
 ]

@@ -1,19 +1,22 @@
 [build-system]
-# cmake locks to '>=3.20,<4.0' to sync with FlagTree
-requires = ["setuptools==82.0.1", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake==3.31.10", "ninja==1.13.0"]
+# The cmake and ninja packages are not supposed to be listed in build-system.requires.
+# The version expectation is "cmake>=3.20,<4.0", "ninja==1.13.0".
+# They must be installed separately for `--no-build-isolation` to work.
+requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3"]
+
 build-backend = "scikit_build_core.build"
 
 [project]
 
 name = "flag_gems"
 
-version = "5.0.1.rc.0"
+version = "5.4.0dev"
 
 description = "FlagGems is a function library written in Triton language."
 
 readme = { file = "README.md", content-type = "text/markdown" }
 
-requires-python = ">=3.8.0"
+requires-python = ">=3.10.0"
 
 license = { text = "Apache Software License" }
 
@@ -42,28 +45,47 @@ classifiers = [
 
 dependencies = [
     "packaging==26.0",
-    "PyYAML==6.0.3",
+    "PyYAML==6.0.1",
     "sqlalchemy==2.0.48",
     "numpy==1.26.4",
 ]
 
 [project.optional-dependencies]
 
-# Backend specific packages
-official_torch_290 = [
-    "torch==2.9.0",
-    "torchvision==0.24.0",
-    "torchaudio==2.9.0",
+ascend-cann850 = [
+    "torch==2.9.0+cpu",
+    "torch-npu==2.9.0",
+    "flagtree==0.6.0+ascend3.2",
 ]
 
-official_torch_270 = [
-    "torch==2.7.0",
-    "torchvision==0.22.0",
-    "torchaudio==2.7.0",
+ascend-cann900 = [
+    "torch==2.10.0+cpu",
+    "torch-npu==2.10.0",
+    "flagtree==0.6.0+ascend3.5",
 ]
 
-nvidia = [
-    "flag_gems[official_torch_290]",
+cambricon = [
+    "cambricon_dali==0.13.0",
+    "torch==2.7.1+cpu",
+    "torch-mlu==1.29.2+torch2.7.1",
+    "torch-mlu-ops==1.8.0+torch2.7.1",
+    "triton==3.2.0+mlu1.7.2",
+]
+
+enflame = [
+    "pyefml==1.9.10",
+    "torch==2.10.0+cpu",
+    "torchaudio==2.10.0+cpu",
+    "torchvision==0.25.0+cpu",
+    "torch-gcu==2.10.0+3.7.20260408",
+    "triton-gcu==3.6.0+1.0.20260521.cc.1.9.10",
+    "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323",
+    "flagtree==0.6.0+enflame3.6",
+]
+
+hygon = [
+    "torch==2.9.0+das.opt1.dtk2604",
+    "flagtree==0.5.1+hcu3.1",
 ]
 
 iluvatar = [
@@ -71,19 +93,100 @@ iluvatar = [
     "torchaudio==2.7.1+corex.4.4.0",
     "torchvision==0.22.1+corex.4.4.0",
     "triton==3.1.0+corex.4.4.0",
+    # "flagtree==0.5.1+iluvatar3.1"
 ]
 
+kunlunxin = [
+    "apex==0.1",
+    "benchflow==1.0.0",
+    "colorama==0.4.6",
+    "flash_attn==2.4.2+7e2dd4d",
+    "hydrax==0.1.0",
+    "hyperparameter==0.5.6",
+    "psutil==6.1.0",
+    "regex==2026.4.4",
+    "torch==2.9.0+cu129",
+    "torchaudio==2.9.0+cu129",
+    "torchvision==0.24.0+cu129",
+    "torch_plugin==0.1.0",
+    "torch_xray==2.0.4",
+    "xformers==0.0.29+1e7a8ec.d20260114",
+    "xmlir==1.0.0.1",
+    # Triton cannot be installed with torch
+    # because torch requires triton==3.5.0
+    # "triton==3.0.0+a48aedef",
+]
+
+metax = [
+    "torch==2.8.0+metax3.7.2.0",
+    "torchaudio==2.4.1+metax3.7.2.0",
+    "torchvision==0.15.1+metax3.7.2.0",
+    "flagtree==3.1.0+metax3.7.2.0",
+    "flash_attn==2.6.3+metax3.7.2.0torch2.8",
+    # "triton==3.0.0+metax3.7.2.0",
+]
+
+mthreads = [
+    "torch==2.9.0+musa.4.3.6",
+    "torch_musa==2.9.0",
+    "triton==3.6.0+git89458660",
+    "mkl==2024.0.0",
+    # "flagtree==0.5.1+mthreads3.6",
+]
+
+nvidia-cuda128 = [
+    "torch==2.10.0+cu128",
+    "torchaudio==2.10.0+cu128",
+    "torchvision==0.25.0+cu128",
+    "flagtree==0.6.0",
+]
+
+nvidia-cuda133 = [
+    "torch==2.11.0+cu130",
+    "torchaudio==2.11.0+cu130",
+    "torchvision==0.26.0+cu130",
+    "flagtree==0.6.0",
+]
+
+spacemit = [
+    "torch==2.8.0+spacemit.0",
+    "triton==3.6.0+spacemit.a5",
+]
+
+sunrise = [
+    "torch==2.11.0+cpu",
+    "torchaudio==2.11.0+cpu",
+    "torchvision==0.26.0+cpu",
+    "torch-ptpu==0.2.1+gaf2c267.torch2.11",
+    "triton==3.4.0.6+gite4f6d6e4",
+    # "flagtree-0.4.0+sunrise3.4"
+]
+
+thead = [
+    "torch==2.9.0+ppu2.0.0.oe",
+    "triton==3.5.0+ppu2.0.0.oe",
+]
+
+
 tsingmicro = [
-    "flag_gems[official_torch_270]",
-    "torch_txda==0.1.0+20260225.008333cf",
-    "txops==0.1.0+20260225.5cc33e4e",
-    "triton==3.3.0+git6b95f337",
+    "torch==2.7.0+cpu",
+    "torchvision==0.22.0+cpu",
+    "torchaudio==2.7.0+cpu",
+    "torch_txda==0.1.0+20260610.3968e515",
+    "txops==0.1.0+20260508.60287151",
+    "flagtree==0.5.0.post20260612+git705a4064",
+    # "flagtree==0.5.0+tsingmicro3.3",
+    # "triton==3.3.0+git2e9c1195",
 ]
 
 # Test packages
 test = [
     "distro==1.9.0",
-    "pytest==9.0.2",
+    "coverage==7.13.5",
+    "gitpython==3.1.50",
+    "openpyxl==3.1.5",
+    "pytest==9.0.3",
+    "pytest-md-report==0.8.0",
     "scipy>=1.15.3",
 ]
 
@@ -98,12 +201,16 @@ Repository = "https://github.com/flagos-ai/FlagGems"
 Documentation = "https://flagos-ai.github.io/FlagGems"
 "Bug Tracker" = "https://github.com/flagos-ai/FlagGems/issues"
 
+[project.scripts]
+flaggems-setup = "flag_gems._setup:main"
+
 [tool.setuptools.packages.find]
 
 where = ["src"]
 
 [tool.setuptools.package-data]
 
+"flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
 
 [tool.scikit-build]
@@ -115,50 +222,7 @@ build-dir = "build/{cache_tag}"
 
 [tool.uv]
 
+# Tell 'uv' that each index has an equal importance for each package,
+# in other words, don't treat the first index with a matching package
+# as the best one.
 index-strategy = "unsafe-best-match"
-
-conflicts = [
-    [
-        { group = "iluvatar" },
-        { group = "tsingmicro" },
-        { group = "nvidia" },
-    ]
-]
-
-# Source for Iluvatar packages
-[[tool.uv.index]]
-name = "iluvatar-pypi"
-url = "https://resource.flagos.net/repository/flagos-pypi-iluvatar/simple"
-
-# Source for TsingMicro packages
-[[tool.uv.index]]
-name = "tsingmicro-pypi"
-url = "https://resource.flagos.net/repository/flagos-pypi-tsingmicro/simple"
-
-# Source for common packages
-[[tool.uv.index]]
-name = "default"
-url = "https://mirrors.aliyun.com/pypi/simple/"
-default = true
-
-[[tool.uv.index]]
-name = "torch-pypi"
-url = "https://download.pytorch.org/whl/cu128"
-
-[tool.uv.sources]
-# Mapping from optional groups to index servers
-iluvatar = [
-    { index = "iluvatar-pypi" }
-]
-
-tsingmicro = [
-    { index = "tsingmicro-pypi" }
-]
-
-official_torch_290 = [
-   { index = "torch-pypi"}
-]
-
-official_torch_270 = [
-   { index = "torch-pypi"}
-]

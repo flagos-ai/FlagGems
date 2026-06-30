@@ -108,6 +108,34 @@ b = torch.randn(1024, 1024, device=flag_gems.device, dtype=torch.float16)
 c = ops.mm(a, b)
 ```
 
+对于融合算子，你可以直接从 `flag_gems.fused` 包中导入并使用：
+
+```python
+import torch
+import flag_gems
+from flag_gems.fused.moe_align_block_size import moe_align_block_size
+
+# moe_align_block_size 的使用示例
+num_tokens = 4096
+topk = 2
+num_experts = 128
+
+# topk_ids 表示每个 token 对应的 expert 索引
+topk_ids = torch.randint(
+    low=0,
+    high=num_experts,
+    size=(num_tokens, topk),
+    device=flag_gems.device,
+    dtype=torch.int32,
+)
+
+sorted_ids, expert_ids, num_tokens_post_pad = moe_align_block_size(
+    topk_ids=topk_ids,
+    block_size=128,
+    num_experts=num_experts,
+)
+```
+
 <!--
 ## 4. Query Registered Operators
 

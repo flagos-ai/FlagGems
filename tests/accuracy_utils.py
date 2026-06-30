@@ -74,12 +74,45 @@ FP8_QUANT_SHAPES = {
     "GROUP_SIZE": [512] if QUICK_MODE else [64, 128, 256, 512],
     "SEEDS": [0],
 }
-
+FUSED_INV_ROPE_FP8_QUANT_SHAPES = {
+    "NUM_TOKENS": [7] if QUICK_MODE else [1, 7, 32, 128],
+    "NUM_HEADS_AND_GROUPS": ([(64, 8)] if QUICK_MODE else [(32, 4), (64, 8), (128, 8)]),
+    "OUTPUT_LAYOUT_NUM_TOKENS": [7] if QUICK_MODE else [1, 7, 32, 128],
+    "OUTPUT_LAYOUT_NUM_HEADS_AND_GROUPS": (
+        [(64, 8)] if QUICK_MODE else [(64, 8), (128, 8)]
+    ),
+    "PER_GROUP_CONTIGUITY_NUM_TOKENS": [7] if QUICK_MODE else [1, 7, 32, 128],
+    "REAL_ROPE_NUM_TOKENS": [32] if QUICK_MODE else [1, 32, 256],
+    "TMA_ALIGNED_SCALES": [False, True],
+    "SEEDS": [0, 42],
+}
 DISTRIBUTION_SHAPES = [(20, 320, 15)]
 REDUCTION_SHAPES = [(2, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 40999, 3)]
 REDUCTION_SMALL_SHAPES = (
     [(1, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 2560, 3)]
 )
+SVD_FAST_SHAPES = [(2, 2), (8, 2), (2, 8), (16, 8), (8, 16), (64, 32), (32, 64)]
+SVD_RANK1_SHAPES = [(8, 1), (1, 8), (2, 17, 1), (2, 1, 17), (1025, 1), (1, 1025)]
+SVD_FALLBACK_SHAPES = [(5, 3), (3, 5), (2, 4, 4)]
+SVD_GRAM_ILL_CONDITIONED_SHAPES = [(17, 17), (16, 16, 16)]
+SVD_TINY_RANK_DEGENERATE_CASES = [
+    "zero_2x2",
+    "repeated_2x2",
+    "zero_column_8x2",
+    "zero_row_2x8",
+]
+SEGMENT_REDUCE_LENGTH_CASES = (
+    ((5,), 0, [2, 0, 3]),
+    ((2, 3), 1, [[1, 1, 1], [1, 1, 1]]),
+    ((2, 3, 4), 1, [[1, 2], [2, 1]]),
+    ((2, 3, 5), 2, [[[2, 3], [1, 4], [3, 2]], [[5, 0], [2, 3], [4, 1]]]),
+)
+SEGMENT_REDUCE_OFFSET_CASES = (
+    ((5,), 0, [0, 2, 5]),
+    ((2, 3, 4), 1, [[0, 1, 3], [0, 2, 3]]),
+)
+SEGMENT_REDUCE_LENGTH_OUT_CASE = SEGMENT_REDUCE_LENGTH_CASES[2]
+SEGMENT_REDUCE_OFFSET_OUT_CASE = SEGMENT_REDUCE_OFFSET_CASES[1]
 STACK_SHAPES = [
     [(16,), (16,)],
     [(16, 256), (16, 256)],
@@ -195,21 +228,31 @@ KRON_SHAPES = [
 # Add some test cases with zeor-dimensional tensor and zero-sized tensors.
 PRIMARY_FLOAT_DTYPES = [torch.float16, torch.float32]
 FLOAT_DTYPES = (
-    PRIMARY_FLOAT_DTYPES + [torch.bfloat16]
-    if bf16_is_supported
-    else PRIMARY_FLOAT_DTYPES
+    ([torch.bfloat16] if bf16_is_supported else [torch.float32])
+    if QUICK_MODE
+    else (
+        PRIMARY_FLOAT_DTYPES + [torch.bfloat16]
+        if bf16_is_supported
+        else PRIMARY_FLOAT_DTYPES
+    )
 )
 
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOAT_DTYPES
-INT_DTYPES = [torch.int16, torch.int32]
+INT_DTYPES = [torch.int32] if QUICK_MODE else [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPES
 BOOL_TYPES = [torch.bool]
-COMPLEX_DTYPES = [torch.complex32, torch.complex64]
+COMPLEX_DTYPES = [torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64]
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
-STACK_DIM_LIST = [-2, -1, 0, 1]
+STACK_DIM_LIST = [-1, 0] if QUICK_MODE else [-2, -1, 0, 1]
 
 ARANGE_START = [0] if TO_CPU else [0, 1, 3]
+
+GLU_SHAPES = (
+    [(2, 19, 8)]
+    if QUICK_MODE
+    else [(2,), (128, 256), (20, 32, 16), (16, 128, 64, 60), (16, 7, 57, 32, 30)]
+)
 
 
 def to_reference(inp, upcast=False):
@@ -220,9 +263,11 @@ def to_reference(inp, upcast=False):
         ref_inp = ref_inp.to("cpu")
     if upcast:
         if ref_inp.is_complex():
-            ref_inp = ref_inp.to(torch.complex128)
+            ref_inp = ref_inp.to(
+                torch.complex128 if fp64_is_supported else torch.complex64
+            )
         else:
-            ref_inp = ref_inp.to(torch.float64)
+            ref_inp = ref_inp.to(torch.float64 if fp64_is_supported else torch.float32)
     return ref_inp
 
 

@@ -5,17 +5,62 @@ from typing import Optional
 import torch
 import triton
 import triton.language as tl
-import yaml
 
 from flag_gems import runtime
 from flag_gems.ops.mm_streamk import streamk_mm
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.device_info import get_device_capability, get_sm_count
+from flag_gems.utils.triton_version_utils import HAS_TLE, HAS_TLE_DEVICE_MESH
 
 logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.mm")
 CACHE_USAGE_THRESHOLD = 0.8
+EXPAND_CONFIG_FILENAME = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "mm_hopper_expand.yaml")
+)
+_SHARED_MEM_SAFETY_MARGIN_BYTES = 1024
+
+
+def _get_shared_memory_limit_bytes():
+    """Return per-block opt-in shared-memory limit for current CUDA device."""
+    try:
+        if not torch.cuda.is_available():
+            return None
+        return torch.cuda.get_device_properties(
+            torch.cuda.current_device()
+        ).shared_memory_per_block_optin
+    except Exception:
+        return None
+
+
+def _estimate_tma_shared_memory_bytes(block_m, block_n, block_k, num_stages):
+    bytes_per_element = 4
+    tile_bytes = (block_m * block_k + block_k * block_n) * bytes_per_element
+    return tile_bytes * num_stages + _SHARED_MEM_SAFETY_MARGIN_BYTES
+
+
+if HAS_TLE_DEVICE_MESH:
+    import triton.experimental.tle.language as tle_exp
+
+    BLOCK_CLUSTER_MESH = tle_exp.device_mesh({"block_cluster": [("cluster_x", 2)]})
+    TLE_CLUSTER_SIZE = 2
+    TLE_REMOTE_BM = 64
+    TLE_REMOTE_BN = 256
+    TLE_REMOTE_BK = 64
+    TLE_REMOTE_NUM_WARPS = 8
+    TLE_REMOTE_NUM_STAGES = 2
+    TLE_REMOTE_A_SLOTS = 2
+else:
+    tle_exp = None
+    BLOCK_CLUSTER_MESH = None
+    TLE_CLUSTER_SIZE = 2
+    TLE_REMOTE_BM = 64
+    TLE_REMOTE_BN = 256
+    TLE_REMOTE_BK = 64
+    TLE_REMOTE_NUM_WARPS = 8
+    TLE_REMOTE_NUM_STAGES = 2
+    TLE_REMOTE_A_SLOTS = 2
 
 
 def is_tma_compatible(a, b, N, K):
@@ -33,7 +78,7 @@ def is_tma_compatible(a, b, N, K):
         N, K: Matrix dimensions
 
     Returns:
-        bool: True if compatible with TMA's 128-bit alignment requirement
+        bool: True if compatible with TMA's alignment requirements
     """
     return (
         a.dtype in (torch.float16, torch.bfloat16)
@@ -71,118 +116,12 @@ def matmul_tma_set_block_size_hook(nargs):
     nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
 
 
-def get_expand_config(op):
-    default_strategies = {
-        "matmul": ["align32", "align32", "align32", "align32", "align32", "default"],
-        "gemv": ["align32", "align32", "align32", "default"],
-    }
-    op_key_orders = {
-        "matmul": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-        "gemv": ["M", "K", "stride_am", "stride_bk"],
-    }
-    op_meta_map = {
-        "matmul": {
-            "BM": "BLOCK_M",
-            "BN": "BLOCK_N",
-            "BK": "BLOCK_K",
-        },
-        "gemv": {
-            "BM": "BLOCK_M",
-            "BK": "BLOCK_K",
-        },
-    }
-
-    if op not in default_strategies:
-        return -1
-
-    default_strategy = default_strategies[op]
-    config_path = os.path.join(os.path.dirname(__file__), "..", "mm_hopper_expand.yaml")
-    if not os.path.exists(config_path):
-        return -1
-
-    try:
-        with open(config_path, "r") as file:
-            config = yaml.safe_load(file) or {}
-
-        expand_configs = config.get(op)
-
-        gen_config = None
-        strategy_config = None
-        for single_config in expand_configs:
-            if isinstance(single_config, dict) and "param_map" in single_config:
-                gen_config = single_config
-            if isinstance(single_config, dict) and "strategy" in single_config:
-                strategy_config = single_config.get("strategy")
-
-        param_map = gen_config["param_map"]
-        meta_map = param_map["META"]
-
-        strategy = default_strategy
-        if isinstance(strategy_config, dict):
-            strategy = [
-                strategy_config.get(k, default_strategy[idx])
-                for idx, k in enumerate(op_key_orders[op])
-            ]
-
-        ranges = {}
-        for range_key, meta_key in op_meta_map[op].items():
-            ranges[range_key] = gen_config[meta_map[meta_key]]
-        ranges["s"] = gen_config[param_map["num_stages"]]
-        ranges["w"] = gen_config[param_map["num_warps"]]
-
-        return {
-            "ranges": ranges,
-            "strategy": strategy,
-        }
-    except Exception:
-        return -1
-
-
-def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
-    if os.environ.get("USE_FLAGTUNE") == "1":
-        expand_config = get_expand_config("matmul")
-        if expand_config != -1:
-            logger.debug(
-                "Using expand configurations from mm_hopper_expand.yaml for matmul kernel autotuning"
-            )
-            ranges = expand_config["ranges"]
-            return [
-                triton.Config(
-                    {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
-                    num_stages=s,
-                    num_warps=w,
-                    pre_hook=pre_hook,
-                )
-                for BM in ranges["BM"]
-                for BN in ranges["BN"]
-                for BK in ranges["BK"]
-                for s in ranges["s"]
-                for w in ranges["w"]
-            ]
-    return [
-        triton.Config(
-            {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
-            num_stages=s,
-            num_warps=w,
-            pre_hook=pre_hook,
-        )
-        for BM in [32, 64, 128, 256]
-        for BN in [32, 64, 128]
-        for BK in [32, 64, 128]
-        for s in [2, 3, 4]
-        for w in [4, 8]
-    ]
-
-
 @libentry()
 @libtuner(
-    configs=matmul_get_configs(pre_hook=None)
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
-    else runtime.get_tuned_config("mm"),
+    configs=runtime.get_tuned_config("mm"),
+    # Add 'stride_am' and 'stride_bk' to trigger autotune for tensors with the same shape but different strides.
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=get_expand_config("matmul")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
-    else ["default", "default", "default", "default", "default"],
+    strategy=["default", "default", "default", "default", "default"],
     warmup=5,
     rep=10,
 )
@@ -204,9 +143,10 @@ def mm_kernel_general(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
+    IS_FP64: tl.constexpr = False,
 ):
     # matrix multiplication
-    pid = tle.program_id(0)
+    pid = ext.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
     # re-order program ID for better L2 performance
@@ -252,11 +192,17 @@ def mm_kernel_general(
             block_shape=[BLOCK_M, BLOCK_N],
         )
 
-        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+        if IS_FP64:
+            acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
+        else:
+            acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
         for k in range(0, tl.cdiv(K, BLOCK_K)):
             a = a_desc.load([offset_am.to(tl.int32), offset_k.to(tl.int32)])
             b = b_desc.load([offset_k.to(tl.int32), offset_bn.to(tl.int32)])
-            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+            if IS_FP64:
+                acc += tl.dot(a, b, allow_tf32=False)
+            else:
+                acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
             offset_k += BLOCK_K
 
         acc = acc.to(a_desc.dtype)
@@ -272,7 +218,10 @@ def mm_kernel_general(
         rn = rn.to(tl.int64)
         prev_multiple = prev_multiple_of(K, BLOCK_K)
 
-        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+        if IS_FP64:
+            acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
+        else:
+            acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
         for start_k in range(0, prev_multiple, BLOCK_K):
             rk = (start_k + tl.arange(0, BLOCK_K)).to(tl.int64)
             a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
@@ -280,7 +229,10 @@ def mm_kernel_general(
             if a.dtype != b.dtype:
                 a = a.to(C.dtype.element_ty)
                 b = b.to(C.dtype.element_ty)
-            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+            if IS_FP64:
+                acc += tl.dot(a, b, allow_tf32=False)
+            else:
+                acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
         # loop peeling
         rk = (prev_multiple + tl.arange(0, BLOCK_K)).to(tl.int64)
@@ -298,7 +250,10 @@ def mm_kernel_general(
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
-        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+        if IS_FP64:
+            acc += tl.dot(a, b, allow_tf32=False)
+        else:
+            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
         acc = acc.to(C.dtype.element_ty)
         # rematerialize rm and rn to save registers
@@ -310,15 +265,55 @@ def mm_kernel_general(
         tl.store(offsets, acc, mask=mask)
 
 
+def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
+    configs = [
+        triton.Config(
+            {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK, "GROUP_M": 8},
+            num_stages=s,
+            num_warps=w,
+            pre_hook=pre_hook,
+        )
+        for BM in [32, 64, 128, 256]
+        for BN in [32, 64, 128]
+        for BK in [32, 64, 128]
+        for s in [2, 3, 4]
+        for w in [4, 8]
+    ]
+    shared_mem_limit = _get_shared_memory_limit_bytes()
+    if shared_mem_limit is None:
+        return configs
+
+    filtered_configs = [
+        cfg
+        for cfg in configs
+        if _estimate_tma_shared_memory_bytes(
+            cfg.kwargs["BLOCK_M"],
+            cfg.kwargs["BLOCK_N"],
+            cfg.kwargs["BLOCK_K"],
+            cfg.num_stages,
+        )
+        <= shared_mem_limit
+    ]
+    if not filtered_configs:
+        logger.warning(
+            "No mm_general_tma config fits shared memory limit (%s bytes); falling back to unfiltered configs.",
+            shared_mem_limit,
+        )
+        return configs
+    return filtered_configs
+
+
 @libentry()
 @libtuner(
     configs=matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=get_expand_config("matmul")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=["align32", "align32", "align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
+    flagtune_op_name="mm",
+    flagtune_expand_op_name="mm_general_tma",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=matmul_tma_set_block_size_hook,
 )
 @triton.jit
 def mm_kernel_general_host_tma(
@@ -381,8 +376,46 @@ def mm_kernel_general_host_tma(
     c_desc.store([offset_am, offset_bn], c)
 
 
+def _sync_mm_host_tma_descriptor_block_shapes(args, kwargs):
+    if len(args) < 3:
+        return
+    block_m = kwargs.get("BLOCK_M")
+    block_n = kwargs.get("BLOCK_N")
+    block_k = kwargs.get("BLOCK_K")
+    a_row_major = kwargs.get("A_ROW_MAJOR")
+    b_row_major = kwargs.get("B_ROW_MAJOR")
+    if None in (block_m, block_n, block_k, a_row_major, b_row_major):
+        return
+
+    a_desc, b_desc, c_desc = args[:3]
+    if not all(hasattr(desc, "block_shape") for desc in (a_desc, b_desc, c_desc)):
+        return
+
+    a_desc.block_shape = [block_m, block_k] if a_row_major else [block_k, block_m]
+    b_desc.block_shape = [block_k, block_n] if b_row_major else [block_n, block_k]
+    c_desc.block_shape = [block_m, block_n]
+
+
+def _install_mm_host_tma_descriptor_block_shape_guard():
+    jit_fn = mm_kernel_general_host_tma.fn.fn
+    if getattr(jit_fn, "_flag_gems_mm_tma_block_shape_guard", False):
+        return
+
+    original_run = jit_fn.run
+
+    def run_with_descriptor_block_shapes(*args, **kwargs):
+        _sync_mm_host_tma_descriptor_block_shapes(args, kwargs)
+        return original_run(*args, **kwargs)
+
+    jit_fn.run = run_with_descriptor_block_shapes
+    jit_fn._flag_gems_mm_tma_block_shape_guard = True
+
+
+_install_mm_host_tma_descriptor_block_shape_guard()
+
+
 def get_higher_dtype(a, b):
-    _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
+    _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
 
     if a is b:
         return a
@@ -397,17 +430,23 @@ def get_higher_dtype(a, b):
             return a
 
 
-def general_mm(a, b, c, M, N, K):
+def general_mm(a, b, c, M, N, K, op_name="mm"):
     # TODO: Remove this debug message
     logger.debug(
-        "GEMS MM-hopper, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "GEMS MM-hopper, [op]: %s, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
         "[A column-major]: %s, [B column-major]: %s",
+        op_name,
         M,
         N,
         K,
         a.stride(0) == 1,
         b.stride(0) == 1,
     )
+    # Broadcast tensors from expand() have stride=0, incompatible with TMA
+    if 0 in a.stride():
+        a = a.contiguous()
+    if 0 in b.stride():
+        b = b.contiguous()
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
@@ -447,7 +486,6 @@ def general_mm(a, b, c, M, N, K):
                 b.stride(1),
                 c.stride(0),
                 c.stride(1),
-                GROUP_M=8,
                 A_ROW_MAJOR=a_row_major,
                 B_ROW_MAJOR=b_row_major,
                 dtype=dtype_str,
@@ -474,45 +512,26 @@ def general_mm(a, b, c, M, N, K):
                 c.stride(0),
                 c.stride(1),
                 GROUP_M=8,
+                IS_FP64=a.dtype == torch.float64,
             )
     return c
 
 
-def gemv_get_configs():
-    if os.environ.get("USE_FLAGTUNE") == "1":
-        expand_config = get_expand_config("gemv")
-        if expand_config != -1:
-            logger.debug(
-                "Using expand configurations from mm_hopper_expand.yaml for gemv kernel autotuning"
-            )
-            ranges = expand_config["ranges"]
-            return [
-                triton.Config(
-                    {"BLOCK_M": BM, "BLOCK_K": BK},
-                    num_stages=s,
-                    num_warps=w,
-                )
-                for BM in ranges["BM"]
-                for BK in ranges["BK"]
-                for s in ranges["s"]
-                for w in ranges["w"]
-            ]
-    return [
+@libentry()
+@libtuner(
+    configs=[
         triton.Config(
             {"BLOCK_M": 32, "BLOCK_K": 256},
         )
-    ]
-
-
-@libentry()
-@libtuner(
-    configs=gemv_get_configs(),
+    ],
     key=["M", "K", "stride_am", "stride_bk"],
-    strategy=get_expand_config("gemv")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("gemv") != -1
-    else ["align32", "align32", "align32", "default"],
+    strategy=["align32", "align32", "align32", "default"],
     warmup=5,
     rep=10,
+    flagtune_op_name="mm",
+    flagtune_expand_op_name="gemv",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=None,
 )
 @triton.jit
 def gemv_kernel(
@@ -526,6 +545,7 @@ def gemv_kernel(
     stride_bk,
     BLOCK_M: tl.constexpr,
     BLOCK_K: tl.constexpr,
+    IS_FP64: tl.constexpr = False,
 ):
     """Optimized kernel for matrix-vector multiplication (N=1 case)"""
     pid = tl.program_id(0)
@@ -536,7 +556,10 @@ def gemv_kernel(
     row_mask = row_offset < M
 
     # Accumulator for this block of rows
-    acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
+    if IS_FP64:
+        acc = tl.zeros((BLOCK_M,), dtype=tl.float64)
+    else:
+        acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
 
     # Iterate over K dimension
     for k_start in range(0, K, BLOCK_K):
@@ -552,7 +575,10 @@ def gemv_kernel(
         b = tl.load(b_ptrs, mask=k_mask, other=0.0)
 
         # Accumulate: sum over K dimension
-        acc += tl.sum(a * b[None, :], axis=1)
+        if IS_FP64:
+            acc += tl.sum(a * b[None, :], axis=1)
+        else:
+            acc += tl.sum(a.to(tl.float32) * b.to(tl.float32)[None, :], axis=1)
 
     # Store result
     c_ptrs = C + row_offset
@@ -580,6 +606,110 @@ def gemv_mm(a, b, c, M, K):
             a.stride(0),
             a.stride(1),
             b.stride(0),
+            IS_FP64=a.dtype == torch.float64,
+        )
+    return c
+
+
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("mm_splitk"),
+    key=["M", "N", "K", "stride_am", "stride_bk"],
+    reset_to_zero=["C"],
+    strategy=["align32", "align32", "align32", "align32", "align32"],
+    warmup=5,
+    rep=10,
+    flagtune_op_name="mm",
+    flagtune_expand_op_name="mm_splitk",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=None,
+)
+@triton.jit
+def mm_kernel_splitk(
+    A,
+    B,
+    C,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    pid_k = tl.program_id(1)
+
+    grid_n = tl.cdiv(N, BLOCK_N)
+    pid_m = pid // grid_n
+    pid_n = pid % grid_n
+
+    offset_am = pid_m * BLOCK_M
+    offset_bn = pid_n * BLOCK_N
+    offs_am = offset_am + tl.arange(0, BLOCK_M)
+    offs_bn = offset_bn + tl.arange(0, BLOCK_N)
+
+    total_k_iters = tl.cdiv(K, BLOCK_K)
+    k_per_split = tl.cdiv(total_k_iters, SPLIT_K)
+    k_start = pid_k * k_per_split
+    k_end = min((pid_k + 1) * k_per_split, total_k_iters)
+
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(k_start, k_end):
+        offset_k = k * BLOCK_K
+        offs_k = offset_k + tl.arange(0, BLOCK_K)
+
+        a = tl.load(
+            A + offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak,
+            mask=(offs_am[:, None] < M) & (offs_k[None, :] < K),
+            other=0.0,
+        )
+        b = tl.load(
+            B + offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn,
+            mask=(offs_k[:, None] < K) & (offs_bn[None, :] < N),
+            other=0.0,
+        )
+        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+
+    offs_cm = offset_am + tl.arange(0, BLOCK_M)
+    offs_cn = offset_bn + tl.arange(0, BLOCK_N)
+    c_ptrs = C + offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn
+    mask = (offs_cm < M)[:, None] & (offs_cn < N)[None, :]
+    tl.atomic_add(c_ptrs, acc, mask=mask)
+
+
+def splitk_mm(a, b, c, M, N, K, op_name="mm"):
+    logger.debug(
+        "GEMS MM-hopper, [op]: %s, [mm scenario]: splitk, [shape info]: [-, %s, %s, %s](batch, M, N, K)",
+        op_name,
+        M,
+        N,
+        K,
+    )
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        META["SPLIT_K"],
+    )
+    with torch_device_fn.device(a.device):
+        mm_kernel_splitk[grid](
+            a,
+            b,
+            c,
+            M,
+            N,
+            K,
+            a.stride(0),
+            a.stride(1),
+            b.stride(0),
+            b.stride(1),
+            c.stride(0),
+            c.stride(1),
         )
     return c
 
@@ -598,6 +728,250 @@ def streamk_scenario(a, b, M, N, K):
         and K > M * 5
         and K > N * 5
     )
+
+
+if HAS_TLE:
+
+    @triton.jit
+    def _cluster_remote_gemm_kernel(
+        a_ptr,
+        b_ptr,
+        c_ptr,
+        M,
+        N,
+        K,
+        stride_am,
+        stride_ak,
+        stride_bk,
+        stride_bn,
+        stride_cm,
+        stride_cn,
+        mesh: tl.constexpr,
+        BM: tl.constexpr,
+        BN: tl.constexpr,
+        BK: tl.constexpr,
+        DOT_K: tl.constexpr,
+        CLUSTER_SIZE: tl.constexpr,
+        USE_MASK: tl.constexpr,
+        A_SLOTS: tl.constexpr,
+        USE_NV_MMA_SMEM_LAYOUT: tl.constexpr,
+    ):
+        pid = tl.program_id(0)
+        cluster_rank = tle_exp.shard_id(mesh, "cluster_x")
+        cluster_id = pid // CLUSTER_SIZE
+
+        num_pid_n = tl.cdiv(N, BN)
+        num_pid_n_group = tl.cdiv(num_pid_n, CLUSTER_SIZE)
+        pid_m = cluster_id // num_pid_n_group
+        pid_ng = cluster_id % num_pid_n_group
+        pid_n = pid_ng * CLUSTER_SIZE + cluster_rank
+
+        offs_m = pid_m * BM + tl.arange(0, BM)
+        offs_n = pid_n * BN + tl.arange(0, BN)
+        offs_k = tl.arange(0, BK)
+        a_row_base = offs_m - pid_m * BM
+        a_rows_full = tl.broadcast_to(a_row_base[:, None], (BM, BK))
+        a_cols_full = tl.broadcast_to(tl.arange(0, BK)[None, :], (BM, BK))
+        a_rows_t = tl.broadcast_to(a_row_base[None, :], (DOT_K, BM))
+        a_buf = tle_exp.gpu.alloc(
+            [A_SLOTS, BM, BK],
+            dtype=tl.float16,
+            layout=None,
+            scope=tle_exp.gpu.smem,
+            nv_mma_shared_layout=USE_NV_MMA_SMEM_LAYOUT,
+        )
+        a_buf_remote = tle_exp.remote(a_buf, 0, scope=mesh)
+
+        acc = tl.zeros((BM, BN), dtype=tl.float32)
+        slot0 = 0
+        slot0_full = tl.zeros((BM, BK), dtype=tl.int32) + slot0
+        if cluster_rank == 0:
+            a_ptrs = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
+            if USE_MASK:
+                a_mask_tile = (offs_m[:, None] < M) & (offs_k[None, :] < K)
+                a_tile = tl.load(a_ptrs, mask=a_mask_tile, other=0.0)
+            else:
+                a_tile = tl.load(a_ptrs)
+            a_local_ptr_tile = tle_exp.gpu.local_ptr(
+                a_buf, (slot0_full, a_rows_full, a_cols_full)
+            )
+            if USE_MASK:
+                tl.store(a_local_ptr_tile, a_tile, mask=a_mask_tile)
+            else:
+                tl.store(a_local_ptr_tile, a_tile)
+
+        tle_exp.distributed_barrier(mesh)
+
+        for k0 in range(0, K, BK):
+            iter_idx = k0 // BK
+            slot = iter_idx % A_SLOTS
+
+            for ks in range(0, BK, DOT_K):
+                k_local = ks + tl.arange(0, DOT_K)
+                a_cols_t = tl.broadcast_to(k_local[:, None], (DOT_K, BM))
+                slot_dot_t = tl.zeros((DOT_K, BM), dtype=tl.int32) + slot
+                a_ptr_remote = tle_exp.gpu.local_ptr(
+                    a_buf_remote, (slot_dot_t, a_rows_t, a_cols_t)
+                )
+                if USE_MASK:
+                    a_mask_t = ((k0 + k_local)[:, None] < K) & (offs_m[None, :] < M)
+                    a = tl.trans(tl.load(a_ptr_remote, mask=a_mask_t, other=0.0))
+                else:
+                    a = tl.trans(tl.load(a_ptr_remote))
+
+                b_ptrs = (
+                    b_ptr
+                    + (k0 + k_local)[:, None] * stride_bk
+                    + offs_n[None, :] * stride_bn
+                )
+                if USE_MASK:
+                    b_mask = ((k0 + k_local)[:, None] < K) & (offs_n[None, :] < N)
+                    b = tl.load(b_ptrs, mask=b_mask, other=0.0)
+                else:
+                    b = tl.load(b_ptrs)
+                acc = tl.dot(a, b, acc)
+
+            if A_SLOTS == 1:
+                tle_exp.distributed_barrier(mesh)
+
+            next_k0 = k0 + BK
+            has_next = next_k0 < K
+            next_iter = iter_idx + 1
+            next_slot = next_iter % A_SLOTS
+            next_slot_full = tl.zeros((BM, BK), dtype=tl.int32) + next_slot
+            if has_next and cluster_rank == 0:
+                a_ptrs = (
+                    a_ptr
+                    + offs_m[:, None] * stride_am
+                    + (next_k0 + offs_k)[None, :] * stride_ak
+                )
+                if USE_MASK:
+                    a_mask_tile = (offs_m[:, None] < M) & (
+                        (next_k0 + offs_k)[None, :] < K
+                    )
+                    a_tile = tl.load(a_ptrs, mask=a_mask_tile, other=0.0)
+                else:
+                    a_tile = tl.load(a_ptrs)
+                a_local_ptr_tile = tle_exp.gpu.local_ptr(
+                    a_buf, (next_slot_full, a_rows_full, a_cols_full)
+                )
+                if USE_MASK:
+                    tl.store(a_local_ptr_tile, a_tile, mask=a_mask_tile)
+                else:
+                    tl.store(a_local_ptr_tile, a_tile)
+
+            tle_exp.distributed_barrier(mesh)
+
+        c_ptrs = c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
+        if USE_MASK:
+            c_mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+            tl.store(c_ptrs, acc.to(c_ptr.dtype.element_ty), mask=c_mask)
+        else:
+            tl.store(c_ptrs, acc.to(c_ptr.dtype.element_ty))
+
+
+def _select_remote_dot_k(bk: int) -> int:
+    if bk % 16 == 0:
+        return 16
+    raise ValueError(f"BK must be divisible by 16 for remote dot path, got BK={bk}")
+
+
+def _grid_cluster_remote(
+    M: int,
+    N: int,
+    BM: int,
+    BN: int,
+    cluster_size: int = TLE_CLUSTER_SIZE,
+) -> tuple:
+    num_pid_n = triton.cdiv(N, BN)
+    num_pid_n_group = triton.cdiv(num_pid_n, cluster_size)
+    return (triton.cdiv(M, BM) * num_pid_n_group,)
+
+
+def _run_cluster_remote(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    c: torch.Tensor,
+    bm: int,
+    bn: int,
+    bk: int,
+    num_warps: int,
+    num_stages: int,
+) -> None:
+    M, K = a.shape
+    N = b.shape[1]
+    dot_k = _select_remote_dot_k(bk)
+    use_mask = (M % bm != 0) or (N % bn != 0) or (K % bk != 0)
+    a_slots = TLE_REMOTE_A_SLOTS
+    use_nv_mma_smem_layout = (bk == 32) or (bk == 64 and num_stages <= 2)
+    _cluster_remote_gemm_kernel[_grid_cluster_remote(M, N, bm, bn)](
+        a,
+        b,
+        c,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        c.stride(0),
+        c.stride(1),
+        mesh=BLOCK_CLUSTER_MESH,
+        BM=bm,
+        BN=bn,
+        BK=bk,
+        DOT_K=dot_k,
+        CLUSTER_SIZE=TLE_CLUSTER_SIZE,
+        USE_MASK=use_mask,
+        A_SLOTS=a_slots,
+        USE_NV_MMA_SMEM_LAYOUT=use_nv_mma_smem_layout,
+        num_ctas=1,
+        num_warps=num_warps,
+        num_stages=num_stages,
+    )
+
+
+def cluster_remote_mm_scenario(a, b, c, M, N, K):
+    capability = get_device_capability()
+    return (
+        HAS_TLE
+        and BLOCK_CLUSTER_MESH is not None
+        and capability[0] >= 9
+        and a.is_cuda
+        and b.is_cuda
+        and c.is_cuda
+        and a.dtype == torch.float16
+        and b.dtype == torch.float16
+        and c.dtype == torch.float16
+        and a.is_contiguous()
+        and b.is_contiguous()
+        and M >= TLE_REMOTE_BM
+        and N >= TLE_REMOTE_BN
+        and K >= TLE_REMOTE_BK
+    )
+
+
+def cluster_remote_mm(a, b, c, M, N, K):
+    logger.debug(
+        M,
+        N,
+        K,
+        a.stride(0) == 1,
+        b.stride(0) == 1,
+    )
+    with torch_device_fn.device(a.device):
+        _run_cluster_remote(
+            a,
+            b,
+            c,
+            TLE_REMOTE_BM,
+            TLE_REMOTE_BN,
+            TLE_REMOTE_BK,
+            TLE_REMOTE_NUM_WARPS,
+            TLE_REMOTE_NUM_STAGES,
+        )
+    return c
 
 
 def mm(a, b):
@@ -622,8 +996,14 @@ def mm(a, b):
     sm_count = get_sm_count()
     if streamk_scenario(a, b, M, N, K):
         return streamk_mm(a, b, c, M, N, K, sm_count=sm_count)
-    else:
-        return general_mm(a, b, c, M, N, K)
+    if HAS_TLE and BLOCK_CLUSTER_MESH is not None:
+        if cluster_remote_mm_scenario(a, b, c, M, N, K):
+            return cluster_remote_mm(a, b, c, M, N, K)
+    # Use splitk for small M
+    if M < 2048 and N < 2048 and K >= 4096:
+        c.zero_()
+        return splitk_mm(a, b, c, M, N, K)
+    return general_mm(a, b, c, M, N, K)
 
 
 def mm_out(a, b, *, out):
@@ -644,5 +1024,25 @@ def mm_out(a, b, *, out):
     sm_count = get_sm_count()
     if streamk_scenario(a, b, M, N, K):
         return streamk_mm(a, b, out, M, N, K, sm_count=sm_count)
-    else:
-        return general_mm(a, b, out, M, N, K)
+    if HAS_TLE and BLOCK_CLUSTER_MESH is not None:
+        if cluster_remote_mm_scenario(a, b, out, M, N, K):
+            return cluster_remote_mm(a, b, out, M, N, K)
+    # Use splitk for small M
+    if M < 2048 and N < 2048 and K >= 4096:
+        out.zero_()
+        return splitk_mm(a, b, out, M, N, K)
+    return general_mm(a, b, out, M, N, K)
+
+
+def router_gemm(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+    """bf16 x bf16 -> fp32 GEMM for MoE router gate. weight shape: (N, K)."""
+    if x.stride(0) > 1 and x.stride(1) > 1:
+        x = x.contiguous()
+    M, K = x.shape
+    N = weight.shape[0]
+    c = torch.empty((M, N), device=x.device, dtype=torch.float32)
+    b = weight.t()
+    if M < 2048 and N < 2048 and K >= 4096:
+        c.zero_()
+        return splitk_mm(x, b, c, M, N, K, op_name="router_gemm")
+    return general_mm(x, b, c, M, N, K, op_name="router_gemm")

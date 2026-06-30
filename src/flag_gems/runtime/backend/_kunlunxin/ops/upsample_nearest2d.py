@@ -7,7 +7,7 @@ import triton.language as tl
 
 # from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 device = device.name
@@ -45,7 +45,7 @@ def upsample_nearest2d_kernel(
     SAME_H: tl.constexpr,
     SAME_W: tl.constexpr,
 ):
-    pid = tle.program_id(axis=0)
+    pid = ext.program_id(axis=0)
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     ow = idx % OW
     oh = idx // OW % OH
@@ -72,7 +72,7 @@ def upsample_nearest2d(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS UPSAMPLE NEAREST2D")
+    logger.debug("GEMS_KUNLUNXIN UPSAMPLE_NEAREST2D")
     assert input.device.type == device
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"
