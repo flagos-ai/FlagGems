@@ -3302,6 +3302,18 @@ ops:
       - Math
     stages:
       - stable: '5.3'
+  - id: greater_
+    description: The in-place version of `greater()`.
+    for:
+      - greater_.Tensor
+      - greater_.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: greater_out
     description: A variant of `greater` that saves the output to the specified `out`.
     for:
@@ -3345,6 +3357,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.3'
+  - id: grid_sampler_2d
+    description: Triton kernel implementation for grid_sampler_2d.
+    for:
+      - grid_sampler_2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: group_norm
     description: An internal IR for applying Group Normalization for last certain number of dimensions.
     for:
