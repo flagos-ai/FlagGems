@@ -4080,6 +4080,17 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: linear_backward
+    description: Triton kernel implementation for linear_backward.
+    for:
+      - linear_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linspace
     description: |
       Creates a one-dimensional tensor of size `steps` whose values are evenly spaced from `start` to `end`, inclusive.
