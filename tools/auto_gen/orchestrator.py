@@ -67,6 +67,39 @@ def load_dotenv(env_path: str = None):
 
 
 # ---------------------------------------------------------------------------
+# Pre-commit check
+# ---------------------------------------------------------------------------
+
+def check_pre_commit(python_path: str) -> bool:
+    """Check if pre-commit is installed in the given Python environment."""
+    try:
+        result = subprocess.run(
+            [python_path, "-m", "pre_commit", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def install_pre_commit(python_path: str) -> bool:
+    """Install pre-commit via pip."""
+    try:
+        subprocess.run(
+            [python_path, "-m", "pip", "install", "pre-commit"],
+            check=True,
+            capture_output=True,
+            timeout=60
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to install pre-commit: {e}")
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Config loading
 # ---------------------------------------------------------------------------
 
@@ -606,6 +639,7 @@ def run(args):
     config = load_config(config_path)
 
     flaggems_dir = config.get("flaggems_dir", os.path.dirname(os.path.dirname(script_dir)))
+    python_path = config.get("python_path", sys.executable)
     results_dir = os.path.join(script_dir, config.get("results_dir", "results"))
     log_dir = os.path.join(results_dir, "logs")
     summary_path = os.path.join(results_dir, "summary.json")
@@ -614,6 +648,23 @@ def run(args):
     poll_interval = config.get("poll_interval", 10)
     vendor = config.get("vendor")
     base_branch = config.get("base_branch", "master")
+
+    # Check pre-commit availability
+    if not check_pre_commit(python_path):
+        print("\n⚠️  pre-commit is not installed in your Python environment.")
+        print("   Code style checks require pre-commit to be installed.")
+        response = input("\n   Install pre-commit now? [Y/n]: ").strip().lower()
+
+        if response in ('', 'y', 'yes'):
+            print("   Installing pre-commit...")
+            if install_pre_commit(python_path):
+                print("   ✅ pre-commit installed successfully\n")
+            else:
+                print("   ❌ Failed to install pre-commit")
+                sys.exit(1)
+        else:
+            print("   ❌ Cannot proceed without pre-commit. Exiting.")
+            sys.exit(1)
 
     # Select template based on mode
     if vendor:
