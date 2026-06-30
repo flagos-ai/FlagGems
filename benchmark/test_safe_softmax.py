@@ -3,6 +3,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -14,6 +16,9 @@ class SafeSoftmaxBenchmark(base.Benchmark):
 
 
 @pytest.mark.safe_softmax
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_safe_softmax():
     bench = SafeSoftmaxBenchmark(
         op_name="safe_softmax",

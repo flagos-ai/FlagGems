@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
 @pytest.mark.floor_divide
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_floor_divide():
     bench = base.BinaryPointwiseBenchmark(
         op_name="floor_divide",
@@ -15,6 +20,9 @@ def test_floor_divide():
 
 
 @pytest.mark.floor_divide_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_floor_divide_inplace():
     bench = base.BinaryPointwiseBenchmark(
         op_name="floor_divide_",
@@ -31,6 +39,9 @@ def _floor_divide_scalar_input_fn(shape, dtype, device):
 
 
 @pytest.mark.floor_divide_scalar
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_floor_divide_scalar():
     bench = base.GenericBenchmark(
         op_name="floor_divide_scalar",
@@ -47,6 +58,9 @@ def _floor_divide_scalar_inplace_input_fn(shape, dtype, device):
 
 
 @pytest.mark.floor_divide_scalar_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_floor_divide_scalar_():
     bench = base.GenericBenchmark(
         op_name="floor_divide_scalar_",
@@ -59,6 +73,9 @@ def test_floor_divide_scalar_():
 
 
 @pytest.mark.floor_divide_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_floor_divide_tensor():
     bench = base.BinaryPointwiseBenchmark(
         op_name="floor_divide_tensor",

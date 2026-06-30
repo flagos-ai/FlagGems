@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -13,6 +15,9 @@ class GluBenchmark(base.UnaryPointwiseBenchmark):
 
 
 @pytest.mark.glu
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_glu():
     bench = GluBenchmark(
         op_name="glu",
@@ -23,6 +28,9 @@ def test_glu():
 
 
 @pytest.mark.glu_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_glu_backward():
     bench = GluBenchmark(
         op_name="glu_backward",

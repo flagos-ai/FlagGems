@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -34,6 +36,9 @@ def _torch_tril_inplace(inp, diagonal=0):
 
 
 @pytest.mark.tril
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_tril():
     bench = base.GenericBenchmarkExcluse1D(
         input_fn=utils.unary_input_fn,
@@ -45,6 +50,9 @@ def test_tril():
 
 
 @pytest.mark.tril
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_tril_extreme_diagonal():
     bench = base.GenericBenchmarkExcluse1D(
         input_fn=_tril_extreme_diagonal_input_fn,
@@ -57,6 +65,9 @@ def test_tril_extreme_diagonal():
 
 @pytest.mark.tril
 @pytest.mark.tril_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_tril_out_transposed():
     bench = base.GenericBenchmarkExcluse1D(
         input_fn=_tril_out_transposed_input_fn,
@@ -69,6 +80,9 @@ def test_tril_out_transposed():
 
 @pytest.mark.tril
 @pytest.mark.tril_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_tril_out_sliced():
     bench = base.GenericBenchmarkExcluse1D(
         input_fn=_tril_out_sliced_input_fn,
@@ -80,6 +94,9 @@ def test_tril_out_sliced():
 
 
 @pytest.mark.tril_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_tril_inplace():
     bench = base.GenericBenchmarkExcluse1D(
         input_fn=utils.unary_input_fn,

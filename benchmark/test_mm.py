@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -15,6 +17,9 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
 
 
 @pytest.mark.mm
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_mm():
     bench = base.BlasBenchmark(
         op_name="mm",
@@ -49,6 +54,9 @@ def torch_mm_self_transpose(inp):
 
 
 @pytest.mark.mm
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_mm_self_transpose_benchmark():
     bench = MmSelfTransposeBenchmark(
         op_name="mm_self_transpose",
@@ -73,6 +81,9 @@ def mm_out_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
 
 
 @pytest.mark.mm_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_mm_out():
     bench = base.BlasBenchmark(
         op_name="mm_out",

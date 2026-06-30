@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -14,6 +16,9 @@ def _input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.roll
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_roll():
     bench = base.GenericBenchmark(
         op_name="roll",

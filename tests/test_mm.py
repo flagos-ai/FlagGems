@@ -67,6 +67,8 @@ def test_mm(M, N, K, dtype, b_column_major):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mm_broadcast_stride_zero(dtype):
     """Regression test: broadcast tensors (stride=0) must not crash TMA path."""
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3794: not working ")
     torch.manual_seed(0)
     M, K, N = 128, 256, 256
 

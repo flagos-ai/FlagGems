@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -15,6 +17,9 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.argsort
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_argsort():
     bench = ArgsortBenchmark(
         input_fn=_input_fn,

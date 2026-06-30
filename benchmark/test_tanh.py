@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
 @pytest.mark.tanh
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_tanh():
     bench = base.UnaryPointwiseBenchmark(
         op_name="tanh", torch_op=torch.tanh, dtypes=consts.FLOAT_DTYPES
@@ -13,6 +18,9 @@ def test_tanh():
 
 
 @pytest.mark.tanh_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_tanh_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="tanh_",
@@ -24,6 +32,9 @@ def test_tanh_inplace():
 
 
 @pytest.mark.tanh_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_tanh_backward():
     bench = base.UnaryPointwiseBenchmark(
         op_name="tanh_backward",

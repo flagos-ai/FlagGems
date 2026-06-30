@@ -78,6 +78,9 @@ def scatter_input_fn_factory(reduce=None):
 
 
 @pytest.mark.scatter_src
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scatter_src():
     bench = TensorSelectBenchmark(
         op_name="scatter_src",
@@ -90,6 +93,9 @@ def test_scatter_src():
 
 
 @pytest.mark.scatter_src_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scatter_src_inplace():
     bench = TensorSelectBenchmark(
         op_name="scatter_src_",

@@ -18,6 +18,9 @@ else:
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_weight_norm_interface(shape, dtype, dim):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(42)
@@ -43,6 +46,9 @@ def test_weight_norm_interface(shape, dtype, dim):
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_weight_norm_interface_backward(shape, dtype, dim):
     dim = dim % len(shape)
     res_w_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)

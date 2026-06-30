@@ -7,6 +7,9 @@ from . import base, consts, utils
 
 
 @pytest.mark.silu_and_mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_silu_and_mul():
     def torch_op(x, y):
         return torch.mul(torch.nn.functional.silu(x), y)
@@ -22,6 +25,9 @@ def test_silu_and_mul():
 
 
 @pytest.mark.silu_and_mul_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_silu_and_mul_out():
     def gems_op(x, y):
         out = torch.empty_like(x)

@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
 @pytest.mark.triu
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_triu():
     bench = base.GenericBenchmarkExcluse1D(
         input_fn=utils.unary_input_fn,
@@ -16,6 +21,9 @@ def test_triu():
 
 
 @pytest.mark.triu_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_triu_inplace():
     bench = base.GenericBenchmarkExcluse1D(
         input_fn=utils.unary_input_fn,

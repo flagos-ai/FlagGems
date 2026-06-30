@@ -23,6 +23,9 @@ def lerp_input_fn(shape, dtype, device):
 
 
 @pytest.mark.lerp_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_lerp_tensor():
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
@@ -35,6 +38,9 @@ def test_lerp_tensor():
 
 
 @pytest.mark.lerp_tensor_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_lerp_tensor_inplace():
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
@@ -53,6 +59,9 @@ def lerp_scalar_input_fn(shape, dtype, device):
 
 
 @pytest.mark.lerp_scalar
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_lerp_scalar():
     bench = LerpBenchmark(
         input_fn=lerp_scalar_input_fn,
@@ -64,6 +73,9 @@ def test_lerp_scalar():
 
 
 @pytest.mark.lerp_scalar_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_lerp_scalar_inplace():
     bench = LerpBenchmark(
         input_fn=lerp_scalar_input_fn,

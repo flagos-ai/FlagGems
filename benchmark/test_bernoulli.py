@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -11,6 +13,9 @@ def input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.bernoulli_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_bernoulli_inplace():
     bench = base.GenericBenchmark(
         op_name="bernoulli_",
@@ -26,6 +31,9 @@ def bernoulli_input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.bernoulli
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_bernoulli():
     bench = base.GenericBenchmark(
         input_fn=bernoulli_input_fn,

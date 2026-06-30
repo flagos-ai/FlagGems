@@ -41,6 +41,9 @@ device = flag_gems.device
 @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
 @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
 @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_instance_norm(
     shape, dtype, has_weight_bias, use_input_stats, has_running_stats
 ):

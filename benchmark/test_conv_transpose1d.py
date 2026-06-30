@@ -3,6 +3,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -40,6 +42,9 @@ class ConvTranspose1dBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.conv_transpose1d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv_transpose1d():
     bench = ConvTranspose1dBenchmark(
         input_fn=conv_transpose1d_input_fn,

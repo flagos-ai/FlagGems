@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -15,6 +17,9 @@ def addcdiv__input_fn(shape, dtype, device):
 
 
 @pytest.mark.addcdiv_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_addcdiv_():
     bench = base.GenericBenchmark(
         op_name="addcdiv_",

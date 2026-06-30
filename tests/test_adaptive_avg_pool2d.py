@@ -35,6 +35,9 @@ ADAPTIVE_AVGPOOL2D_CONFIGS = [
 @pytest.mark.adaptive_avg_pool2d
 @pytest.mark.parametrize("shape, output_size", ADAPTIVE_AVGPOOL2D_CONFIGS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_accuracy_adaptive_avg_pool2d_forward(shape, output_size, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)

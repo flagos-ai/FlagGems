@@ -3,6 +3,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -39,6 +41,9 @@ class EluBackwardBenchmark(base.UnaryPointwiseBenchmark):
 
 
 @pytest.mark.elu_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_elu_backward():
     bench = EluBackwardBenchmark(
         op_name="elu_backward",

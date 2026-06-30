@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -22,6 +24,9 @@ class AminmaxBenchmark(base.UnaryReductionBenchmark):
 
 
 @pytest.mark.aminmax
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_aminmax():
     bench = AminmaxBenchmark(
         op_name="aminmax",

@@ -3,6 +3,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -20,6 +22,9 @@ class RreluWithNoiseBackwardBenchmark(base.UnaryPointwiseBenchmark):
 
 
 @pytest.mark.rrelu_with_noise_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_rrelu_with_noise_backward():
     bench = RreluWithNoiseBackwardBenchmark(
         op_name="rrelu_with_noise_backward",

@@ -16,6 +16,9 @@ class AttentionBenchmark(base.GenericBenchmark):
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize("dropout_p", [0.0])
 @pytest.mark.parametrize("is_causal", [True, False])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scaled_dot_product_attention(monkeypatch, dropout_p, is_causal):
     if flag_gems.vendor_name == "hygon":
         monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")

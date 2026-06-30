@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -12,6 +14,9 @@ def _dropout_backward_input_fn(shape, dtype, device):
 
 
 @pytest.mark.dropout
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_dropout():
     bench = base.UnaryPointwiseBenchmark(
         op_name="dropout", torch_op=torch.nn.Dropout(p=0.5), dtypes=consts.FLOAT_DTYPES
@@ -20,6 +25,9 @@ def test_dropout():
 
 
 @pytest.mark.dropout_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_dropout_backward():
     bench = base.GenericBenchmark(
         op_name="dropout_backward",

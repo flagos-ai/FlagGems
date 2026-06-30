@@ -20,6 +20,10 @@ random.seed(time.time() // 100)
 @pytest.mark.count_nonzero
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_count_nonzero(shape, dtype):
     if dtype == torch.bool:
         inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(

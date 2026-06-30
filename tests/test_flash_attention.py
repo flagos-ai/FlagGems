@@ -221,6 +221,7 @@ def attn_bias_from_alibi_slopes(slopes, seqlen_q, seqlen_k, causal=False):
 @pytest.mark.skipif(vendor_name == "metax", reason="Issue #2811: Not supported")
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not working")
+@pytest.mark.skipif(vendor_name == "tsingmicro", reason="Issue #4083: Not working")
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
     NONSQUARE_QK_CONFIGS,
@@ -406,6 +407,7 @@ def attention_ref(
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not supported")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not supported")
+@pytest.mark.skipif(vendor_name == "tsingmicro", reason="Issue #4083: Not working")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
@@ -482,6 +484,7 @@ def test_flash_attention_forward_gqa_alibi_softcap(
 @pytest.mark.skipif(vendor_name == "metax", reason="Issue #2811: Not working")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not working")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not working")
+@pytest.mark.skipif(vendor_name == "tsingmicro", reason="Issue #4083: Not working")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
@@ -557,6 +560,7 @@ def test_flash_attention_foward_splitkv(
 @pytest.mark.skipif(vendor_name == "metax", reason="Issue #2811: Not working")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not working")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not working")
+@pytest.mark.skipif(vendor_name == "tsingmicro", reason="Issue #4083: Not working")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],

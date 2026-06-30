@@ -3,10 +3,15 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
 @pytest.mark.silu
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_silu():
     bench = base.UnaryPointwiseBenchmark(
         op_name="silu", torch_op=torch.nn.functional.silu, dtypes=consts.FLOAT_DTYPES
@@ -15,6 +20,9 @@ def test_silu():
 
 
 @pytest.mark.silu_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_silu_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="silu_",
@@ -34,6 +42,9 @@ class SiluBackwardBenchmark(base.UnaryPointwiseBenchmark):
 
 
 @pytest.mark.silu_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_silu_backward():
     bench = SiluBackwardBenchmark(
         op_name="silu_backward",

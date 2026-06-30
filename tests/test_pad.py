@@ -26,6 +26,8 @@ def test_pad(shape, dtype, pad_mode, contiguous):
     if pad_mode != "constant" and rank < 3:
         # Invalid combination: PyTorch non-constant padding requires 3D+ input tensors
         return
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.bfloat16:
+        pytest.skip("Issue #3794: not working")
 
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)

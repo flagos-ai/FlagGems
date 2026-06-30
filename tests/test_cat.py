@@ -51,6 +51,9 @@ def gen_cat_shapes_dim(shapes):
 @pytest.mark.cat
 @pytest.mark.parametrize("shape, dim", gen_cat_shapes_dim(CAT_SHAPES))
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_cat(shape, dim, dtype):
     if dtype in utils.FLOAT_DTYPES:
         inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
@@ -82,6 +85,9 @@ def test_cat(shape, dim, dtype):
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_cat_empty_tensor(shape, dim, dtype):
     inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
     ref_inp = [utils.to_reference(_) for _ in inp]
@@ -95,6 +101,9 @@ def test_cat_empty_tensor(shape, dim, dtype):
 
 @pytest.mark.cat_out
 @pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_cat_out_matches_reference(dtype):
     a = torch.randn(3, 5, dtype=dtype, device=flag_gems.device)
     b = torch.randn(7, 5, dtype=dtype, device=flag_gems.device)

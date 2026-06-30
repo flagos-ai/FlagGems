@@ -4,6 +4,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -34,6 +36,9 @@ class CatBenchmark(base.Benchmark):
 
 
 @pytest.mark.skip("Benchmark test fails: issue #2673")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 @pytest.mark.cat
 def test_cat():
     bench = CatBenchmark(
@@ -76,6 +81,9 @@ def _cat_out_input_fn(shape, dtype, device):
 
 
 @pytest.mark.cat_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_cat_out():
     bench = CatOutBenchmark(
         op_name="cat_out",

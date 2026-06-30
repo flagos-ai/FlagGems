@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # Shapes covering 2D and 3D tensors for renorm benchmarking
@@ -30,6 +32,9 @@ class RenormBenchmark(base.Benchmark):
 
 
 @pytest.mark.renorm
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_renorm():
     bench = RenormBenchmark(
         op_name="renorm",

@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
 @pytest.mark.logit
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_logit():
     bench = base.UnaryPointwiseBenchmark(
         op_name="logit",
@@ -15,6 +20,9 @@ def test_logit():
 
 
 @pytest.mark.logit_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_logit_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="logit_",

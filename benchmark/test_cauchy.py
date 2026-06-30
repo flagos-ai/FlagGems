@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -12,6 +14,9 @@ def input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.cauchy_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_cauchy_inplace():
     bench = base.GenericBenchmark(
         op_name="cauchy_",
@@ -23,6 +28,9 @@ def test_cauchy_inplace():
 
 
 @pytest.mark.cauchy
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_cauchy_out():
     bench = base.GenericBenchmark(
         op_name="cauchy",

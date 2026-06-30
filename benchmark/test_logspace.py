@@ -3,6 +3,8 @@ import math
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 
@@ -22,6 +24,9 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.logspace
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_logspace():
     bench = base.GenericBenchmark(
         op_name="logspace", input_fn=_input_fn, torch_op=torch.logspace

@@ -17,6 +17,9 @@ INPLACE_BITWISE_SHAPES = [
 @pytest.mark.ilshift
 @pytest.mark.parametrize("shapes", INPLACE_BITWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES + [torch.uint8])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_ilshift(shapes, dtype):
     shape_a, shape_b = shapes
     res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(

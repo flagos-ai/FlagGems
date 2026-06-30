@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -11,6 +13,9 @@ class UpsampleBenchmark(base.GenericBenchmark):
 
 @pytest.mark.upsample_trilinear3d
 @pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_upsample_trilinear3d(align_corners):
     def upsample_trilinear3d_input_fn(shape, dtype, device):
         batch, channel, height, width = shape

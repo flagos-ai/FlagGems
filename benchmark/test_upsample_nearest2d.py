@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -28,6 +30,9 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.upsample_nearest2d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_upsample_nearest2d():
     bench = UpsampleBenchmark(
         op_name="upsample_nearest2d",

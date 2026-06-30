@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -27,6 +29,9 @@ def greater_out_input_fn(shape, dtype, device):
 
 
 @pytest.mark.greater_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_greater_out():
     bench = base.GenericBenchmark(
         op_name="greater_out",
@@ -38,6 +43,9 @@ def test_greater_out():
 
 
 @pytest.mark.greater_scalar
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_greater_scalar():
     bench = base.GenericBenchmark(
         input_fn=_scalar_input_fn,
@@ -55,6 +63,9 @@ def greater_scalar_out_input_fn(shape, dtype, device):
 
 
 @pytest.mark.greater_scalar_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_greater_scalar_out():
     bench = base.GenericBenchmark(
         op_name="greater_scalar_out",

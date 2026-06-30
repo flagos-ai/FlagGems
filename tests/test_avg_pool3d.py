@@ -40,6 +40,9 @@ AVGPOOL3D_CONFIGS = [
     AVGPOOL3D_CONFIGS,
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_avg_pool3d(
     shape,
     kernel_size,
@@ -83,6 +86,9 @@ def test_avg_pool3d(
     AVGPOOL3D_CONFIGS,
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_avg_pool3d_backward(
     shape,
     kernel_size,

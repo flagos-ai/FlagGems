@@ -94,6 +94,9 @@ class IndexPutAccFalseBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.index_put
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_put_acc_false():
     bench = IndexPutAccFalseBenchmark(
         op_name="index_put",
@@ -105,6 +108,9 @@ def test_index_put_acc_false():
 
 
 @pytest.mark.index_put_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_put__acc_false():
     bench = IndexPutAccFalseBenchmark(
         op_name="index_put_",
@@ -132,6 +138,9 @@ class IndexPutAccTrueBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.index_put
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_put_acc_true():
     bench = IndexPutAccTrueBenchmark(
         op_name="index_put",
@@ -143,6 +152,9 @@ def test_index_put_acc_true():
 
 
 @pytest.mark.index_put_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_put__acc_true():
     bench = IndexPutAccTrueBenchmark(
         op_name="index_put_",

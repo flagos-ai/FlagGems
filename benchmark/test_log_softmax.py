@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -14,6 +16,9 @@ def log_softmax_out_input_fn(shape, dtype, device):
 
 
 @pytest.mark.log_softmax
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_log_softmax():
     bench = base.GenericBenchmark2DOnly(
         op_name="log_softmax",
@@ -25,6 +30,9 @@ def test_log_softmax():
 
 
 @pytest.mark.log_softmax_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_log_softmax_out():
     bench = base.GenericBenchmarkExcluse1D(
         op_name="log_softmax_out",
@@ -36,6 +44,9 @@ def test_log_softmax_out():
 
 
 @pytest.mark.log_softmax_backward_data
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_log_softmax_backward_data():
     def log_softmax_backward_data_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
@@ -61,6 +72,9 @@ def log_softmax_backward_data_out_input_fn(shape, dtype, device):
 
 
 @pytest.mark.log_softmax_backward_data_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_log_softmax_backward_data_out():
     bench = base.GenericBenchmark2DOnly(
         op_name="log_softmax_backward_data_out",
