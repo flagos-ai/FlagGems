@@ -3332,6 +3332,17 @@ ops:
       - Math
     stages:
       - stable: '5.3'
+  - id: greater_equal_
+    description: The in-place version of `greater_equal` that is greater or equal to comparison.
+    for:
+      - greater_equal_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: grid_sample
     description: |
       Given an `input` and a flow-field `grid`, computes the `output` using `input` values and
