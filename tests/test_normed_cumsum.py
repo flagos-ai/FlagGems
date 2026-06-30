@@ -65,5 +65,5 @@ def test_normed_cumsum_output_is_normalized(dtype):
 
     res_out = flag_gems.normed_cumsum(inp)
 
-    expected_last = torch.ones_like(res_out[..., -1])
+    expected_last = utils.to_reference(torch.ones_like(res_out[..., -1]))
     utils.gems_assert_close(res_out[..., -1], expected_last, dtype, atol=1e-3)
