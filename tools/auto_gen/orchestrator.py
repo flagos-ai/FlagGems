@@ -193,7 +193,6 @@ def create_worktree(
     vendor: str = None,
     base_branch: str = "master",
     dry_run: bool = False,
-    python_path: str = None,
 ) -> tuple[str, str]:
     """Create a git worktree for an operator. Returns (worktree_path, branch_name)."""
     prefix = "auto-gen-dryrun" if dry_run else "auto-gen"
@@ -236,19 +235,6 @@ def create_worktree(
     )
     if result.returncode != 0:
         raise RuntimeError(f"Failed to create worktree for {operator}: {result.stderr}")
-
-    # Install pre-commit hooks so git commit automatically runs style checks
-    _python = python_path or sys.executable
-    hook_result = subprocess.run(
-        [_python, "-m", "pre_commit", "install"],
-        cwd=worktree_path,
-        capture_output=True,
-        text=True,
-    )
-    if hook_result.returncode != 0:
-        logger.warning(
-            f"Failed to install pre-commit hooks in worktree: {hook_result.stderr.strip()}"
-        )
 
     logger.info(f"Created worktree for {operator} at {worktree_path}")
     return worktree_path, branch_name
@@ -731,7 +717,22 @@ def run(args):
             print("   ❌ Cannot proceed without pre-commit. Exiting.")
             sys.exit(1)
 
-    # Pre-warm pre-commit hook environments (downloads to ~/.cache/pre-commit/)
+    # Install pre-commit hook into main repo (worktrees inherit it automatically)
+    logger.info("Installing pre-commit git hook...")
+    hook_result = subprocess.run(
+        [python_path, "-m", "pre_commit", "install"],
+        cwd=flaggems_dir,
+        capture_output=True,
+        text=True,
+    )
+    if hook_result.returncode == 0:
+        logger.info("Pre-commit hook installed")
+    else:
+        logger.warning(
+            f"Failed to install pre-commit hook (non-fatal): {hook_result.stderr.strip()}"
+        )
+
+    # Pre-warm hook environments (downloads to ~/.cache/pre-commit/)
     logger.info(
         "Pre-warming pre-commit hook environments (first time may take a few minutes)..."
     )
@@ -868,7 +869,6 @@ def run(args):
                     vendor,
                     base_branch,
                     args.dry_run,
-                    python_path,
                 )
                 vendor_op = vendor_ops_map.get(operator)
                 proc = launch_cc(
