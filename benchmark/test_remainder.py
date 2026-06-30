@@ -56,6 +56,17 @@ def remainder_scalar_input_fn(shape, dtype, device):
     yield inp, scalar
 
 
+@pytest.mark.remainder_scalar
+def test_remainder_scalar():
+    bench = base.GenericBenchmark(
+        input_fn=remainder_scalar_input_fn,
+        op_name="remainder_scalar",
+        torch_op=torch.remainder,
+        dtypes=consts.INT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.remainder_scalar_
 def test_remainder_scalar_inplace():
     bench = base.GenericBenchmark(
