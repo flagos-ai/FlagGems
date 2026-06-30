@@ -5592,6 +5592,19 @@ ops:
       - Distribution
     stages:
       - stable: '2.2'
+  - id: range
+    description: |
+      Returns a 1-D tensor of size `floor(end - start) + 1` with values from `start` to
+      `end` with step `1`.
+    for:
+      - range
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: reciprocal
     description: Returns a new tensor with the reciprocal of the elements of `input`.
     for:
