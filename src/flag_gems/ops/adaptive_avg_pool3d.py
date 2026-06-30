@@ -136,7 +136,6 @@ def _prepare_5d_input(t):
 
 
 def _launch_adaptive_avg_pool3d_kernel(x, out):
-    assert x.is_cuda and out.is_cuda, "Tensors must be CUDA tensors"
     N, C, D_in, H_in, W_in = x.shape
     D_out, H_out, W_out = out.shape[-3], out.shape[-2], out.shape[-1]
 
