@@ -31,8 +31,8 @@ def get_fp8_dtype():
 
 FP8_DTYPES = [get_fp8_dtype()]
 
-DEFAULT_WARMUP_COUNT = 1000
-DEFAULT_ITER_COUNT = 100
+DEFAULT_WARMUP_TIME = 1000
+DEFAULT_ITER_TIME = 100
 
 # LEGACY_SHAPES are maintained for legacy benchmark SIZE settings and may be removed in the future.
 # Do not reference this elsewhere.
@@ -163,6 +163,7 @@ class BenchMode(Enum):
     KERNEL = "kernel"
     OPERATOR = "operator"
     WRAPPER = "wrapper"
+    CUDAGRAPH = "cudagraph"
 
 
 class BenchLevel(Enum):
