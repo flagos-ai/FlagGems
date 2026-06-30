@@ -6214,6 +6214,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
+      - alpha: '5.4'
       - beta: "5.0"
   - id: t_copy
     description: Transpose a 2D tensor into a new tensor with contiguous memory layout.
