@@ -169,10 +169,3 @@ def linalg_tensorsolve(A, B, dims=None):
     else:
         # For higher dimensional cases, fall back to torch
         return torch.linalg.tensorsolve(A, B, dims=dims)
-
-
-def linalg_tensorsolve_(A, B, dims=None):
-    """In-place version - not supported for tensorsolve, just call the regular function"""
-    logger.debug("GEMS LINALG_TENSORSOLVE_")
-    result = linalg_tensorsolve(A, B, dims=dims)
-    return result
