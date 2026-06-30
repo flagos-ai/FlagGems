@@ -5065,6 +5065,19 @@ ops:
       - Tensor
     stages:
       - alpha: '5.3'
+  - id: native_batch_norm_legit_functional
+    description: >
+      Functional version of batch normalization that returns the saved mean and
+      inverse standard deviation, along with updated running estimates.
+    for:
+      - _native_batch_norm_legit_functional
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: normal_
     description: Random sampling operator (normal_).
     for:

@@ -1,9 +1,11 @@
+from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from .div import div_mode, div_mode_
 from .hadamard_transform import hadamard_transform
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 
 __all__ = [
+    "_native_batch_norm_legit_functional",
     "div_mode",
     "div_mode_",
     "hadamard_transform",
