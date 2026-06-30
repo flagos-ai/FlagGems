@@ -181,7 +181,7 @@ def render_template(template_path: str, variables: dict) -> str:
 # Worktree management
 # ---------------------------------------------------------------------------
 
-def create_worktree(flaggems_dir: str, operator: str, vendor: str = None, base_branch: str = "master", dry_run: bool = False) -> tuple[str, str]:
+def create_worktree(flaggems_dir: str, operator: str, vendor: str = None, base_branch: str = "master", dry_run: bool = False, python_path: str = None) -> tuple[str, str]:
     """Create a git worktree for an operator. Returns (worktree_path, branch_name)."""
     prefix = "auto-gen-dryrun" if dry_run else "auto-gen"
 
@@ -220,6 +220,17 @@ def create_worktree(flaggems_dir: str, operator: str, vendor: str = None, base_b
     )
     if result.returncode != 0:
         raise RuntimeError(f"Failed to create worktree for {operator}: {result.stderr}")
+
+    # Install pre-commit hooks so git commit automatically runs style checks
+    _python = python_path or sys.executable
+    hook_result = subprocess.run(
+        [_python, "-m", "pre_commit", "install"],
+        cwd=worktree_path,
+        capture_output=True,
+        text=True,
+    )
+    if hook_result.returncode != 0:
+        logger.warning(f"Failed to install pre-commit hooks in worktree: {hook_result.stderr.strip()}")
 
     logger.info(f"Created worktree for {operator} at {worktree_path}")
     return worktree_path, branch_name
@@ -770,7 +781,7 @@ def run(args):
 
             operator, attempt = queue.popleft()
             try:
-                worktree_path, branch = create_worktree(flaggems_dir, operator, vendor, base_branch, args.dry_run)
+                worktree_path, branch = create_worktree(flaggems_dir, operator, vendor, base_branch, args.dry_run, python_path)
                 vendor_op = vendor_ops_map.get(operator)
                 proc = launch_cc(operator, worktree_path, gpu_id, config, template_path, log_dir, vendor_op, args.dry_run)
 
