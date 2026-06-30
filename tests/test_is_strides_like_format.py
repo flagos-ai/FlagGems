@@ -4,22 +4,22 @@ import pytest
 import torch
 import flag_gems
 
-# ---------- 随机形状生成器 ----------
+# ---------- random shape producer ----------
 def generate_random_shape(min_dims=2, max_dims=4, min_dim_size=1, max_dim_size=8):
     ndims = random.randint(min_dims, max_dims)
     return tuple(random.randint(min_dim_size, max_dim_size) for _ in range(ndims))
 
-# ---------- 随机测试 contiguous ----------
+# ---------- random test: contiguous ----------
 def test_contiguous_random():
     num_examples = 100
     for _ in range(num_examples):
         shape = generate_random_shape()
-        x = torch.randn(shape)  # 默认 CPU
+        x = torch.randn(shape)  #  CPU
         with flag_gems.use_gems():
             result = flag_gems.is_strides_like_format(x, "contiguous")
         assert result.item() is True, f"Expected True for contiguous tensor with shape {shape}, got {result.item()}"
 
-        # 制造非连续张量
+        # produce incontiguous tensor
         if x.dim() == 2:
             x_t = x.t()
         else:
@@ -31,7 +31,7 @@ def test_contiguous_random():
                 result2 = flag_gems.is_strides_like_format(x_t, "contiguous")
             assert result2.item() is False, f"Expected False for non‑contiguous tensor with shape {shape}, got {result2.item()}"
 
-# ---------- 随机测试 any ----------
+# ---------- random test: any ----------
 def test_any_random():
     num_examples = 100
     for _ in range(num_examples):
@@ -51,13 +51,13 @@ def test_any_random():
             result2 = flag_gems.is_strides_like_format(x_t, "any")
         assert result2.item() is True, f"Expected True for non‑contiguous any tensor with shape {shape}, got {result2.item()}"
 
-# ---------- 随机测试 channels_last（移除 skipif，因为 CPU 总是支持）----------
+# ---------- random test: channels_last ----------
 def test_channels_last_random():
-    """随机测试 channels_last 分支（固定运行在 CPU 上）"""
+    """random test: channels_last case"""
     num_examples = 50
     for _ in range(num_examples):
         shape = generate_random_shape()
-        # 非 4D 张量必须返回 False
+        # un_4D tensor return False
         if len(shape) != 4:
             x = torch.randn(shape)
             with flag_gems.use_gems():
@@ -65,17 +65,15 @@ def test_channels_last_random():
             assert result.item() is False, f"Expected False for non-4D shape {shape}, got {result.item()}"
             continue
 
-        # 4D 张量：比较算子结果与 PyTorch 的判断
+        # 4D tensor：compare the result of operator with PyTorch's judge
         x = torch.randn(shape)
-        # 计算 PyTorch 的标准结果
+        # calculate PyTorch' result
         expected = x.is_contiguous(memory_format=torch.channels_last)
         with flag_gems.use_gems():
             actual = flag_gems.is_strides_like_format(x, "channels_last")
         assert actual.item() == expected, \
             f"Shape {shape}: expected {expected}, got {actual.item()}"
 
-        # 测试转换为 channels_last 后的张量
-        # 注意：在 CPU 上转换总是成功（但某些形状可能转换后仍与 contiguous 相同）
         x_cl = x.contiguous(memory_format=torch.channels_last)
         expected_cl = x_cl.is_contiguous(memory_format=torch.channels_last)
         with flag_gems.use_gems():
@@ -83,7 +81,7 @@ def test_channels_last_random():
         assert actual_cl.item() == expected_cl, \
             f"Shape {shape} after conversion: expected {expected_cl}, got {actual_cl.item()}"
 
-# ---------- 异常测试 ----------
+# ---------- abnormal test ----------
 def test_unsupported_format():
     x = torch.randn(2, 3)
     with flag_gems.use_gems():

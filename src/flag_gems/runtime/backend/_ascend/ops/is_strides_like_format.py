@@ -16,17 +16,17 @@ def is_strides_like_format(
     format: str
 ) -> Union[bool, torch.Tensor]:
     """
-    检查张量 x 的 stride 是否与指定内存格式对齐
+    Checks whether the stride pattern of the input tensor matches the specified memory format.
 
     Args:
-        x (torch.Tensor): 输入张量
-        format (str): 目标内存格式，支持：
-                     - "contiguous": 连续内存
-                     - "channels_last": 通道后置（仅 4D）
-                     - "any": 任意格式（直接通过）
+        x: Input tensor.
+        format: Target memory format. Supported values:
+                "contiguous" - standard contiguous memory layout.
+                "channels_last" - channels-last (NHWC) format (only valid for 4D tensors).
+                "any" - always returns True.
 
     Returns:
-        torch.Tensor: 标量布尔张量
+        A scalar boolean tensor indicating whether the stride matches the target format.
     """
     logger.debug(f"GEMS_ASCEND IS_STRIDES_LIKE_FORMAT: format={format}")
 
@@ -36,20 +36,15 @@ def is_strides_like_format(
             f"Supported formats: {SUPPORTED_FORMATS}"
         )
 
-    # case 1：any，dirctely pass
     if format == "any":
         return torch.tensor(True, dtype=torch.bool, device=x.device)
 
-    # case 2: contiguous check
     if format == "contiguous":
         result = x.is_contiguous()
-
-    # case 3：Channels Last check（only  4D vialied）
-    elif format == "channels_last":
+    else:  # format == "channels_last"
         if x.dim() != 4:
             result = False
         else:
             result = x.is_contiguous(memory_format=torch.channels_last)
 
-    # return PyTorch biaoliang bool tensor
     return torch.tensor(result, dtype=torch.bool, device=x.device)

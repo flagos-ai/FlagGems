@@ -12,7 +12,7 @@ def main():
     ]
     formats = ["contiguous", "channels_last", "any"]
 
-    # 自动跳过 NPU 上的 channels_last（因为硬件不支持转换）
+    #  NPU doesn't support channels_last,skip
     if flag_gems.device == "npu":
         if "channels_last" in formats:
             print("ERROR: npu not support channels_last format, skipping this benchmark")
@@ -24,13 +24,13 @@ def main():
     for shape in shapes:
         x = torch.randn(shape).to(flag_gems.device)
 
-        # 只在需要 channels_last 且形状为4D时才尝试转换
+        # only turn to channels_last and dim equals 4D
         x_cl = None
         if "channels_last" in formats and len(shape) == 4:
             try:
                 x_cl = x.contiguous(memory_format=torch.channels_last)
             except RuntimeError:
-                # 若转换失败（例如某些硬件不支持），则回退并移除该格式
+                # if false,exit
                 print(f"ERROR: npu not support channels_last for shape {shape}, removing format")
                 formats = [fmt for fmt in formats if fmt != "channels_last"]
                 x_cl = None
