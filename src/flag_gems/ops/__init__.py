@@ -124,6 +124,7 @@ from flag_gems.ops.conv_transpose1d import conv_transpose1d
 from flag_gems.ops.conv_transpose2d import conv_transpose2d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copysign import copysign, copysign_out
+from flag_gems.ops.copysign_ import copysign_
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
@@ -652,6 +653,7 @@ __all__ = [
     "copy",
     "copy_",
     "copysign",
+    "copysign_",
     "copysign_out",
     "cos",
     "cos_",

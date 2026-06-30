@@ -1639,6 +1639,17 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: copysign_
+    description: Triton kernel implementation for copysign_.
+    for:
+      - copysign_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: copysign_out
     description: |
       A variant of `copysign` that allows the output to be saved into `out`.

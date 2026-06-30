@@ -235,6 +235,7 @@ _FULL_CONFIG = (
     ),
     ("copysign", copysign),
     ("copysign.out", copysign_out),
+    ("copysign_.Tensor", copysign_),
     ("cos", cos),
     ("cos_", cos_),
     ("cosh", cosh),
