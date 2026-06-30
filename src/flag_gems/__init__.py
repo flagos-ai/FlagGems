@@ -205,6 +205,7 @@ _FULL_CONFIG = (
     ("celu", celu),
     ("celu_", celu_),
     ("channel_shuffle", channel_shuffle),
+    ("cholesky", cholesky),
     ("clamp", clamp),
     ("clamp.Tensor", clamp_tensor),
     ("clamp_", clamp_),
