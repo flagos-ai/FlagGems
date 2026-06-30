@@ -52,6 +52,10 @@ _FULL_CONFIG = (
     ("_cdist_backward", _cdist_backward),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_efficient_attention_backward", efficient_attention_backward),
+    (
+        "_embedding_bag_per_sample_weights_backward",
+        _embedding_bag_per_sample_weights_backward,
+    ),
     ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_backward", flash_attention_backward),
     ("_flash_attention_forward", flash_attention_forward),

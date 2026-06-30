@@ -2,6 +2,9 @@ from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
+from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
+    _embedding_bag_per_sample_weights_backward,
+)
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -511,6 +514,7 @@ __all__ = [
     "_assert_async",
     "_cdist_backward",
     "_conv_depthwise2d",
+    "_embedding_bag_per_sample_weights_backward",
     "_euclidean_dist",
     "_functional_sym_constrain_range_for_size",
     "_fused_adam",
