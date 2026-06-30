@@ -73,7 +73,7 @@ def _launch_celu(inp, out, N_total, alpha):
 
 
 def celu(A, alpha=1.0):
-    logger.debug("GEMS CELU")
+    logger.debug("GEMS_ENFLAME CELU")
     inp = A.contiguous()
     out = torch.empty_like(inp)
     _launch_celu(inp, out, inp.numel(), alpha)
@@ -81,7 +81,7 @@ def celu(A, alpha=1.0):
 
 
 def celu_(A, alpha=1.0):
-    logger.debug("GEMS CELU_")
+    logger.debug("GEMS_ENFLAME CELU_")
     inp = A.contiguous()
     _launch_celu(inp, inp, inp.numel(), alpha)
     return A

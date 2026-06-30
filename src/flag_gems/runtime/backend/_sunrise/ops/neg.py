@@ -24,10 +24,10 @@ def neg_func(x):
 
 
 def neg(A):
-    logger.debug("GEMS NEG")
+    logger.debug("GEMS_SUNRISE NEG")
     return neg_func(A)
 
 
 def neg_(A):
-    logger.debug("GEMS NEG_")
+    logger.debug("GEMS_SUNRISE NEG_")
     return neg_func(A, out0=A)

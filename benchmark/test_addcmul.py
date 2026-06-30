@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -13,6 +15,9 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.addcmul
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_addcmul():
     bench = base.GenericBenchmark(
         op_name="addcmul",
@@ -33,6 +38,9 @@ def _input_fn_out(shape, dtype, device):
 
 
 @pytest.mark.addcmul_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_addcmul_out():
     bench = base.GenericBenchmark(
         op_name="addcmul_out",

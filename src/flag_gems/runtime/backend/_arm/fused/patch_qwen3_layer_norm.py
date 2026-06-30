@@ -94,7 +94,7 @@ def patch_qwen3_layer_norm() -> int:
         _PATCHED[key] = (cls, orig)
         cls.forward = _make_patched_forward(orig)
         n += 1
-        logger.info(f"Patched {modname}.{cls_name}.forward")
+        logger.info(f"GEMS_ARM Patched {modname}.{cls_name}.forward")
     return n
 
 
