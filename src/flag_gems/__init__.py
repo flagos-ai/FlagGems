@@ -233,6 +233,7 @@ _FULL_CONFIG = (
         copy_,
         lambda: version.parse(torch.__version__) >= version.parse("2.4"),
     ),
+    ("convolution", convolution),
     ("copysign", copysign),
     ("copysign.out", copysign_out),
     ("cos", cos),

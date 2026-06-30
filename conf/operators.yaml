@@ -1573,6 +1573,19 @@ ops:
     stages:
       - beta: '2.2'
       - stable: '5.3'
+  - id: convolution
+    description: |
+      Implements the generic n-dimensional convolution operator via Triton kernel, supporting conv1d, conv2d, and conv3d with stride, padding, dilation, and group convolution.
+      The operator dispatches to dimension-specific implementations based on input spatial dimensions.
+    for:
+      - convolution
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - alpha: '5.4'
   - id: conv_transpose1d
     description: |
       Applies a 1D transposed convolution operator over an input image composed of several input planes.
