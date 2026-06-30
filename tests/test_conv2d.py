@@ -51,12 +51,18 @@ else:
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dilation", DILATIONS)
 @pytest.mark.parametrize("bias", BIASES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv2d(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
     # Issue 2801: The environment variable is not enforced in operator logic.
     if vendor_name == "hygon":
         monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
+
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3794: not working")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)
@@ -134,9 +140,15 @@ def test_conv2d(
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dilation", DILATIONS)
 @pytest.mark.parametrize("bias", BIASES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv2d_padding(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3794: not working")
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False

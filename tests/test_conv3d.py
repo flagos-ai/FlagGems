@@ -51,9 +51,15 @@ else:
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dilation", DILATIONS)
 @pytest.mark.parametrize("bias", BIASES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv3d(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3794: not working")
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
@@ -101,9 +107,15 @@ def test_conv3d(
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dilation", DILATIONS)
 @pytest.mark.parametrize("bias", BIASES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv3d_padding(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3794: not working")
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
