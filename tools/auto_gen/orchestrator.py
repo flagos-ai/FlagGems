@@ -148,13 +148,15 @@ def render_template(template_path: str, variables: dict) -> str:
 # Worktree management
 # ---------------------------------------------------------------------------
 
-def create_worktree(flaggems_dir: str, operator: str, vendor: str = None, base_branch: str = "master") -> tuple[str, str]:
+def create_worktree(flaggems_dir: str, operator: str, vendor: str = None, base_branch: str = "master", dry_run: bool = False) -> tuple[str, str]:
     """Create a git worktree for an operator. Returns (worktree_path, branch_name)."""
+    prefix = "auto-gen-dryrun" if dry_run else "auto-gen"
+
     if vendor:
-        branch_name = f"auto-gen/{vendor}/{operator}"
+        branch_name = f"{prefix}/{vendor}/{operator}"
         worktree_path = os.path.join(flaggems_dir, ".worktrees", f"gen-{vendor}-{operator}")
     else:
-        branch_name = f"auto-gen/{operator}"
+        branch_name = f"{prefix}/{operator}"
         worktree_path = os.path.join(flaggems_dir, ".worktrees", f"gen-{operator}")
 
     # Always clean up: remove worktree, delete leftover directory, prune git records
@@ -717,7 +719,7 @@ def run(args):
 
             operator, attempt = queue.popleft()
             try:
-                worktree_path, branch = create_worktree(flaggems_dir, operator, vendor, base_branch)
+                worktree_path, branch = create_worktree(flaggems_dir, operator, vendor, base_branch, args.dry_run)
                 vendor_op = vendor_ops_map.get(operator)
                 proc = launch_cc(operator, worktree_path, gpu_id, config, template_path, log_dir, vendor_op, args.dry_run)
 
