@@ -3119,6 +3119,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: gather_block_quantized
+    description: Triton kernel implementation for gather_block_quantized.
+    for:
+      - gather_block_quantized
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: gcd
     description: Computes the element-wise greatest common divisor (GCD) of `input` and `other`.
     for:

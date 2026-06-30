@@ -332,6 +332,7 @@ _FULL_CONFIG = (
     ("full_like", full_like),
     ("gather", gather),
     ("gather_backward", gather_backward),
+    ("gather_block_quantized", gather_block_quantized),
     ("gcd", gcd),
     ("gcd.out", gcd_out),
     ("ge.Scalar", ge_scalar),
