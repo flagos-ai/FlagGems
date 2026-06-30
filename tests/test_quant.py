@@ -6,18 +6,25 @@ import torch
 
 import flag_gems
 
+from . import conftest as cfg
 from .accuracy_utils import gems_assert_close, to_reference
 
 device = flag_gems.device
 
 COPYING_DIRECTION = [("cuda", "cpu"), ("cuda", "cuda"), ("cpu", "cuda")]
-DTYPES = [torch.half, torch.bfloat16, torch.float]
+if cfg.QUICK_MODE:
+    DTYPES = [torch.float]
+    HEAD_SIZES = [64]
+    BLOCK_SIZES = [16]
+    CACHE_LAYOUTS = ["NHD"]
+else:
+    DTYPES = [torch.half, torch.bfloat16, torch.float]
+    HEAD_SIZES = [64, 80, 120, 256]
+    BLOCK_SIZES = [8, 16, 32]
+    CACHE_LAYOUTS = ["NHD", "HND"]
 NUM_TOKENS = [42]  # Arbitrary values for testing
 NUM_LAYERS = [1]  # Arbitrary values for testing
 NUM_HEADS = [8]  # Arbitrary values for testing
-HEAD_SIZES = [64, 80, 120, 256]
-BLOCK_SIZES = [8, 16, 32]
-CACHE_LAYOUTS = ["NHD", "HND"]
 
 # Parameters for MLA tests.
 KV_LORA_RANKS = [512]
@@ -28,14 +35,14 @@ NUM_BLOCKS_MLA = [8]
 
 # Arbitrary values for testing
 # don't make it too large. e.g. [1024, 36000] will OOM
-NUM_BLOCKS = [1024, 10000]
+NUM_BLOCKS = [1024] if cfg.QUICK_MODE else [1024, 10000]
 
 NUM_MAPPINGS = [256]  # Arbitrary values for testing
 SEEDS = [0]
 CUDA_DEVICES = [f"cuda:{i}" for i in range(1 if torch.cuda.device_count() == 1 else 2)]
 
 # We assume fp8 is always enabled for testing.
-if flag_gems.vendor_name in ["kunlunxin", "cambricon"]:
+if flag_gems.vendor_name in ["kunlunxin", "cambricon", "sunrise"]:
     KV_CACHE_DTYPE = ["auto"]
 else:
     KV_CACHE_DTYPE = ["auto", "fp8"]
@@ -82,7 +89,9 @@ def convert_fp8(
 @pytest.mark.parametrize("seed", SEEDS)
 @pytest.mark.parametrize(
     "device",
-    [flag_gems.device] if flag_gems.vendor_name == "mthreads" else CUDA_DEVICES,
+    [flag_gems.device]
+    if flag_gems.vendor_name in ["mthreads", "sunrise"]
+    else CUDA_DEVICES,
 )
 @pytest.mark.parametrize("kv_cache_dtype", KV_CACHE_DTYPE)
 @torch.inference_mode()

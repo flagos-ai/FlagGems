@@ -128,6 +128,13 @@ CODEGEN_COFIGS = {
         True,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),
+    vendors.ILUVATAR: CodeGenConfig(
+        1024,
+        (65536, 65536, 65536),
+        32,
+        False,
+        prefer_1d_tile=True,
+    ),
     vendors.TSINGMICRO: CodeGenConfig(
         4096,
         (16, 16, 16),
