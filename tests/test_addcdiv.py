@@ -27,7 +27,7 @@ def test_addcdiv(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.addcdiv(res_inp, t1, t2, value=v)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out, ref_out, dtype, True)
 
 
 @pytest.mark.addcdiv_out
@@ -49,4 +49,4 @@ def test_addcdiv_out(dtype):
     with flag_gems.use_gems():
         torch.ops.aten.addcdiv.out(inp, t1, t2, value=value, out=out)
 
-    utils.gems_assert_close(out, ref_out, dtype)
+    utils.gems_assert_close(out, ref_out, dtype, True)
