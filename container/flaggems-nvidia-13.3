@@ -1,3 +1,4 @@
+Welcome to JumpServer SSH Server
 # ============================================================
 # FlagGems + vLLM — NVIDIA GPU container image
 # Two-stage build: devel (build C extensions) → runtime
@@ -30,11 +31,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Prepare uv and virtual environment ─────────────────────────
-# Install 'uv' to /usr/local/bin
-RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+ARG UV_VERSION=0.11.22
+ARG UV_MIRROR=https://resource.flagos.net/repository/flagos-filestore/utils
+RUN ARCH=$(uname -m) && \
+    curl -sSf "${UV_MIRROR}/uv-${ARCH}-${UV_VERSION}-linux-gnu.tar.gz" \
+    | tar xf - -C /usr/local/bin
 RUN uv venv /flagos --python ${PYTHON_VERSION} --relocatable
 ENV VIRTUAL_ENV=/flagos \
-    PATH="/venv/bin:${PATH}"
+    PATH="/flagos/bin:${PATH}"
 
 # ── Build FlagGems ─────────────────────────────────────────────
 WORKDIR /build
@@ -50,8 +54,9 @@ RUN uv pip install --no-cache-dir \
         "pip"
 
 # ── PyTorch + Triton/FlagTree  ─────────────────────────────────
-RUN uv pip install --no-cache-dir ".[nvidia]" \
-    --index ${FLAGOS_PYPI} \
+RUN uv pip install --no-cache-dir ".[nvidia-cuda133]" \
+    --default-index ${FLAGOS_PYPI} \
+    --index ${EXTRA_PYPI} \
     --trusted-host resource.flagos.net
 
 # ── Build FlagGems (with C extensions) ─────────────────────────
@@ -59,13 +64,11 @@ WORKDIR /build
 COPY . /build/FlagGems
 WORKDIR /build/FlagGems
 
-ENV CMAKE_PREFIX_PATH="$(python -c 'import torch; print(torch.utils.cmake_prefix_path)')"
 ENV CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=CUDA"
 
 RUN uv pip install --no-cache-dir --no-build-isolation .
 RUN uv pip install --no-cache-dir --no-build-isolation ".[test]" \
-      --index ${EXTRA_PYPI} \
-      --trusted-host mirrors.aliyun.com
+    --index ${EXTRA_PYPI}
 
 # ── Copy test suite if requested ───────────────────────────────
 RUN mkdir /app
