@@ -639,6 +639,7 @@ def run(args):
     config = load_config(config_path)
 
     flaggems_dir = config.get("flaggems_dir", os.path.dirname(os.path.dirname(script_dir)))
+    python_path = config.get("python_path", sys.executable)
     results_dir = os.path.join(script_dir, config.get("results_dir", "results"))
     log_dir = os.path.join(results_dir, "logs")
     summary_path = os.path.join(results_dir, "summary.json")
@@ -647,6 +648,23 @@ def run(args):
     poll_interval = config.get("poll_interval", 10)
     vendor = config.get("vendor")
     base_branch = config.get("base_branch", "master")
+
+    # Check pre-commit availability
+    if not check_pre_commit(python_path):
+        print("\n⚠️  pre-commit is not installed in your Python environment.")
+        print("   Code style checks require pre-commit to be installed.")
+        response = input("\n   Install pre-commit now? [Y/n]: ").strip().lower()
+
+        if response in ('', 'y', 'yes'):
+            print("   Installing pre-commit...")
+            if install_pre_commit(python_path):
+                print("   ✅ pre-commit installed successfully\n")
+            else:
+                print("   ❌ Failed to install pre-commit")
+                sys.exit(1)
+        else:
+            print("   ❌ Cannot proceed without pre-commit. Exiting.")
+            sys.exit(1)
 
     # Select template based on mode
     if vendor:
@@ -913,28 +931,6 @@ def main():
     )
 
     load_dotenv()
-
-    # Check pre-commit availability before starting
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = args.config or os.path.join(script_dir, "config.yaml")
-    config = load_config(config_path)
-    python_path = config.get("python_path", sys.executable)
-
-    if not check_pre_commit(python_path):
-        print("\n⚠️  pre-commit is not installed in your Python environment.")
-        print("   Code style checks require pre-commit to be installed.")
-        response = input("\n   Install pre-commit now? [Y/n]: ").strip().lower()
-
-        if response in ['', 'y', 'yes']:
-            print("   Installing pre-commit...")
-            if install_pre_commit(python_path):
-                print("   ✅ pre-commit installed successfully\n")
-            else:
-                print("   ❌ Failed to install pre-commit")
-                sys.exit(1)
-        else:
-            print("   ❌ Cannot proceed without pre-commit. Exiting.")
-            sys.exit(1)
 
     run(args)
 
