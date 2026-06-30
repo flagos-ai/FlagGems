@@ -77,9 +77,8 @@ def sparse_attn_triton_kernel(
         # -- scores: Q @ KV^T -> (H, BLOCK) via GEMM --
         acc_s = tl.dot(q_block, tl.trans(kv_block))  # (H, D) @ (D, BLOCK) = (H, BLOCK)
         acc_s = acc_s * scale
-        # mask invalid positions to -inf
-        mask_bias = tl.where(valid_mask, 0.0, float("-inf"))  # (BLOCK,)
-        acc_s = acc_s + mask_bias[None, :]  # broadcast: (H, BLOCK)
+        # mask invalid positions to -inf (apply on 2D tensor to avoid layout mismatch)
+        acc_s = tl.where(valid_mask[None, :], acc_s, float("-inf"))
 
         # -- online softmax update --
         scores_max_prev = scores_max
