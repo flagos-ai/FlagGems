@@ -724,6 +724,7 @@ def run(args):
         cwd=flaggems_dir,
         capture_output=True,
         text=True,
+        timeout=30,
     )
     if hook_result.returncode == 0:
         logger.info("Pre-commit hook installed")
@@ -733,21 +734,24 @@ def run(args):
         )
 
     # Pre-warm hook environments (downloads to ~/.cache/pre-commit/)
-    logger.info(
-        "Pre-warming pre-commit hook environments (first time may take a few minutes)..."
-    )
-    warm_result = subprocess.run(
-        [python_path, "-m", "pre_commit", "install-hooks"],
-        cwd=flaggems_dir,
-        capture_output=True,
-        text=True,
-    )
-    if warm_result.returncode == 0:
-        logger.info("Pre-commit hook environments ready")
-    else:
-        logger.warning(
-            f"Pre-commit hook warm-up failed (non-fatal): {warm_result.stderr.strip()}"
+    if not args.dry_run:
+        logger.info(
+            "Pre-warming pre-commit hook environments"
+            " (first time may take a few minutes)..."
         )
+        warm_result = subprocess.run(
+            [python_path, "-m", "pre_commit", "install-hooks"],
+            cwd=flaggems_dir,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if warm_result.returncode == 0:
+            logger.info("Pre-commit hook environments ready")
+        else:
+            logger.warning(
+                f"Pre-commit hook warm-up failed (non-fatal): {warm_result.stderr.strip()}"
+            )
 
     # Select template based on mode
     if vendor:
