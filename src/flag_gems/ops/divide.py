@@ -8,11 +8,7 @@ logger = logging.getLogger(__name__)
 
 # Re-export div_mode functions as divide
 def divide(A, B, *, rounding_mode=None):
-    """Divide with optional rounding_mode (None, "trunc", "floor").
-
-    Alias for torch.divide / div_mode. Input dtype and type validation
-    (including raise TypeError on unsupported type) is handled by div_mode.
-    """
+    """Divide with optional rounding_mode (None, "trunc", "floor"). Alias for torch.divide/div_mode; dtype/type validation is handled by div_mode."""
     logger.debug("GEMS DIVIDE")
     return div_mode(A, B, rounding_mode=rounding_mode)
 
