@@ -7033,7 +7033,13 @@ ops:
     for:
       - special.log_softmax
     labels:
+      - aten
+      - nn.functional
       - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_shifted_chebyshev_polynomial_u
     description: |
       Computes the shifted Chebyshev polynomial of the second kind U_n^*(x)
