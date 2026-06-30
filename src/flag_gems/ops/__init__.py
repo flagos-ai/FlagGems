@@ -431,6 +431,7 @@ from flag_gems.ops.softmax import (
 from flag_gems.ops.softplus import softplus
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
+from flag_gems.ops.special_bessel_j1 import special_bessel_j1
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from flag_gems.ops.special_gammainc import special_gammainc
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
@@ -1025,6 +1026,7 @@ __all__ = [
     "softshrink_out",
     "sort",
     "sort_stable",
+    "special_bessel_j1",
     "special_chebyshev_polynomial_v",
     "special_gammainc",
     "special_hermite_polynomial_h",
