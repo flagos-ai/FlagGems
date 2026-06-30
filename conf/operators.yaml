@@ -2945,6 +2945,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: frexp
+    description: Return mantissa and exponent of input, such that x = mantissa * 2^exponent, with mantissa in (-1, 1).
+    for:
+      - frexp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: full
     description: |
       Creates a tensor of size `size` filled with `fill_value`.
