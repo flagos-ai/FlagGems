@@ -84,6 +84,20 @@ def clamp_min_(A, mini):
     return clamp_func_min(A, mini, out0=A)
 
 
+def clamp_max(A, maxi):
+    logger.debug("GEMS_KUNLUNXIN CLAMP_MAX")
+    if maxi is None:
+        raise ValueError("Maxi must not be None")
+    return clamp_func_max(A, maxi)
+
+
+def clamp_max_(A, maxi):
+    logger.debug("GEMS_KUNLUNXIN CLAMP_MAX_")
+    if maxi is None:
+        raise ValueError("Maxi must not be None")
+    return clamp_func_max(A, maxi, out0=A)
+
+
 def clamp(A, mini=None, maxi=None):
     logger.debug("GEMS_KUNLUNXIN CLAMP")
     if mini is None and maxi is None:

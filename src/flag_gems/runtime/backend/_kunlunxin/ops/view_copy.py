@@ -21,7 +21,7 @@ def _view_copy_kernel(src_ptr, dst_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def view_copy(x: torch.Tensor, size) -> torch.Tensor:
-    logger.debug("GEMS_KUNLUNXIN VIEW_COPY")
+    logger.debug("GEMS VIEW_COPY")
     """
     Wrapper for aten::view_copy
     Creates and returns a copy of `x` with the specified shape.

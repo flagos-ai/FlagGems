@@ -47,7 +47,17 @@ from .bitwise_right_shift import bitwise_right_shift
 from .bmm import bmm, bmm_out
 from .cat import cat
 from .celu import celu, celu_
-from .clamp import clamp, clamp_, clamp_min, clamp_min_, clamp_tensor, clamp_tensor_
+from .clamp import (
+    clamp,
+    clamp_,
+    clamp_max,
+    clamp_max_,
+    clamp_min,
+    clamp_min_,
+    clamp_tensor,
+    clamp_tensor_,
+)
+from .clip import clip, clip_
 from .contiguous import contiguous
 from .conv1d import conv1d
 from .conv2d import conv2d
@@ -83,6 +93,7 @@ from .eq import eq, eq_scalar
 from .erf import erf, erf_
 from .exp import exp, exp_, exp_out
 from .exp2 import exp2, exp2_
+from .expm1 import expm1, expm1_, expm1_out
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
@@ -95,6 +106,7 @@ from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
 from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
+from .greater import greater, greater_out, greater_scalar, greater_scalar_out
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .hadamard_transform import hadamard_transform
@@ -172,6 +184,7 @@ from .pow import (
 )
 from .prod import prod, prod_dim
 from .quantile import quantile
+from .rad2deg import rad2deg, rad2deg_
 from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
@@ -190,6 +203,7 @@ from .repeat_interleave import (
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
+from .rot90 import rot90
 from .round import round, round_, round_out
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub
@@ -230,6 +244,7 @@ from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
+from .view_copy import view_copy
 from .vstack import vstack
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
@@ -299,10 +314,14 @@ __all__ = [
     "cat",
     "celu",
     "celu_",
+    "clip",
+    "clip_",
     "clamp",
     "clamp_",
     "clamp_tensor",
     "clamp_tensor_",
+    "clamp_max",
+    "clamp_max_",
     "clamp_min",
     "clamp_min_",
     "constant_pad_nd",
@@ -344,6 +363,9 @@ __all__ = [
     "exp_out",
     "exp2",
     "exp2_",
+    "expm1",
+    "expm1_",
+    "expm1_out",
     "exponential_",
     "eye",
     "eye_m",
@@ -368,6 +390,10 @@ __all__ = [
     "get_scheduler_metadata",
     "glu",
     "glu_backward",
+    "greater",
+    "greater_out",
+    "greater_scalar",
+    "greater_scalar_out",
     "group_norm",
     "group_norm_backward",
     "gt",
@@ -473,6 +499,8 @@ __all__ = [
     "randn",
     "randn_like",
     "randperm",
+    "rad2deg",
+    "rad2deg_",
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",
@@ -489,6 +517,7 @@ __all__ = [
     "repeat_interleave_tensor",
     "resolve_conj",
     "resolve_neg",
+    "rot90",
     "round",
     "round_",
     "round_out",
@@ -560,6 +589,7 @@ __all__ = [
     "var_mean",
     "vdot",
     "vector_norm",
+    "view_copy",
     "vstack",
     "weight_norm_interface",
     "weight_norm_interface_backward",
