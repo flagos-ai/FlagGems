@@ -609,6 +609,31 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.4'
+  - id: arctan
+  description: |
+    Returns a new tensor with the element-wise inverse tangent (arctangent) of the input tensor.
+  for:
+    - arctan
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.4'
+  - id: arctan_
+    description: |
+      Computes the element-wise inverse tangent (arctangent) of a given input tensor.
+      This is an in-place version.
+    for:
+      - arctan_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: arctanh_
     description: |
       Computes the element-wise inverse hyperbolic tangent of a given input tensor.
