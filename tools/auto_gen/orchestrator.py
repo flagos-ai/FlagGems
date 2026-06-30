@@ -12,7 +12,6 @@ import sys
 import time
 from collections import deque
 from datetime import datetime, timezone
-from pathlib import Path
 
 from device_manager import DeviceManager
 
@@ -45,6 +44,7 @@ VENDOR_ENV_MAP = {
 # .env loading
 # ---------------------------------------------------------------------------
 
+
 def load_dotenv(env_path: str = None):
     """Load .env file into os.environ (simple key=value parser)."""
     if env_path is None:
@@ -70,6 +70,7 @@ def load_dotenv(env_path: str = None):
 # Pre-commit check
 # ---------------------------------------------------------------------------
 
+
 def check_pre_commit(python_path: str) -> bool:
     """Check if pre-commit is installed in the given Python environment."""
     try:
@@ -77,7 +78,7 @@ def check_pre_commit(python_path: str) -> bool:
             [python_path, "-m", "pre_commit", "--version"],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
         )
         return result.returncode == 0
     except Exception:
@@ -91,7 +92,7 @@ def install_pre_commit(python_path: str) -> bool:
             [python_path, "-m", "pip", "install", "pre-commit"],
             check=True,
             capture_output=True,
-            timeout=60
+            timeout=60,
         )
         return True
     except Exception as e:
@@ -103,10 +104,13 @@ def install_pre_commit(python_path: str) -> bool:
 # Config loading
 # ---------------------------------------------------------------------------
 
+
 def load_config(config_path: str) -> dict:
     """Load YAML config file."""
     if yaml is None:
-        print("Error: 'pyyaml' is required but not installed. Please install it with: pip install pyyaml")
+        print(
+            "Error: 'pyyaml' is required but not installed. Please install it with: pip install pyyaml"
+        )
         sys.exit(1)
     with open(config_path) as f:
         return yaml.safe_load(f)
@@ -125,7 +129,7 @@ def load_ops_list(path: str) -> list[str]:
             if line and not line.startswith("#"):
                 # Strip aten:: prefix
                 if line.startswith("aten::"):
-                    line = line[len("aten::"):]
+                    line = line[len("aten::") :]
                 # Strip overload suffix (e.g. .Tensor, .Scalar)
                 if "." in line:
                     line = line.split(".")[0]
@@ -168,6 +172,7 @@ def load_vendor_ops(path: str) -> list[dict]:
 # Template rendering
 # ---------------------------------------------------------------------------
 
+
 def render_template(template_path: str, variables: dict) -> str:
     """Render a template file with {{VAR}} substitution."""
     with open(template_path) as f:
@@ -181,13 +186,23 @@ def render_template(template_path: str, variables: dict) -> str:
 # Worktree management
 # ---------------------------------------------------------------------------
 
-def create_worktree(flaggems_dir: str, operator: str, vendor: str = None, base_branch: str = "master", dry_run: bool = False, python_path: str = None) -> tuple[str, str]:
+
+def create_worktree(
+    flaggems_dir: str,
+    operator: str,
+    vendor: str = None,
+    base_branch: str = "master",
+    dry_run: bool = False,
+    python_path: str = None,
+) -> tuple[str, str]:
     """Create a git worktree for an operator. Returns (worktree_path, branch_name)."""
     prefix = "auto-gen-dryrun" if dry_run else "auto-gen"
 
     if vendor:
         branch_name = f"{prefix}/{vendor}/{operator}"
-        worktree_path = os.path.join(flaggems_dir, ".worktrees", f"gen-{vendor}-{operator}")
+        worktree_path = os.path.join(
+            flaggems_dir, ".worktrees", f"gen-{vendor}-{operator}"
+        )
     else:
         branch_name = f"{prefix}/{operator}"
         worktree_path = os.path.join(flaggems_dir, ".worktrees", f"gen-{operator}")
@@ -200,6 +215,7 @@ def create_worktree(flaggems_dir: str, operator: str, vendor: str = None, base_b
     )
     if os.path.exists(worktree_path):
         import shutil
+
         shutil.rmtree(worktree_path, ignore_errors=True)
     subprocess.run(["git", "worktree", "prune"], cwd=flaggems_dir, capture_output=True)
 
@@ -230,7 +246,9 @@ def create_worktree(flaggems_dir: str, operator: str, vendor: str = None, base_b
         text=True,
     )
     if hook_result.returncode != 0:
-        logger.warning(f"Failed to install pre-commit hooks in worktree: {hook_result.stderr.strip()}")
+        logger.warning(
+            f"Failed to install pre-commit hooks in worktree: {hook_result.stderr.strip()}"
+        )
 
     logger.info(f"Created worktree for {operator} at {worktree_path}")
     return worktree_path, branch_name
@@ -239,6 +257,7 @@ def create_worktree(flaggems_dir: str, operator: str, vendor: str = None, base_b
 # ---------------------------------------------------------------------------
 # CC process management
 # ---------------------------------------------------------------------------
+
 
 def launch_cc(
     operator: str,
@@ -267,7 +286,9 @@ def launch_cc(
         "PYTHON_PATH": config.get("python_path", "python"),
         "DEVICE_PREFIX": device_prefix,
         "VENDOR": vendor or "",
-        "VENDOR_OPS_DIR": f"src/flag_gems/runtime/backend/_{vendor}/ops" if vendor else "",
+        "VENDOR_OPS_DIR": f"src/flag_gems/runtime/backend/_{vendor}/ops"
+        if vendor
+        else "",
         "ERROR_TYPE": (vendor_op or {}).get("type", ""),
         "ERROR_DESC": (vendor_op or {}).get("error_desc", ""),
         "TEST_CMD": (vendor_op or {}).get("test_cmd", ""),
@@ -289,11 +310,16 @@ def launch_cc(
     # Debug: verify API credentials are present
     _token = env.get("ANTHROPIC_AUTH_TOKEN", "")
     _base = env.get("ANTHROPIC_BASE_URL", "")
-    logger.debug(f"CC env for {operator}: AUTH_TOKEN={'set(' + _token[:8] + '...)' if _token else 'MISSING'}, BASE_URL={_base or 'MISSING'}")
+    token_info = "set(" + _token[:8] + "...)" if _token else "MISSING"
+    logger.debug(
+        f"CC env for {operator}: AUTH_TOKEN={token_info}, BASE_URL={_base or 'MISSING'}"
+    )
 
     # Dry-run mode: simulate CC process without actually launching
     if dry_run:
-        logger.info(f"[DRY-RUN] Would launch CC for {operator} (GPU={gpu_id}, worktree={worktree_path})")
+        logger.info(
+            f"[DRY-RUN] Would launch CC for {operator} (GPU={gpu_id}, worktree={worktree_path})"
+        )
         logger.debug(f"[DRY-RUN] Template variables: {variables}")
 
         # Create mock process that immediately "succeeds"
@@ -302,12 +328,16 @@ def launch_cc(
 
         # Write mock success result
         with open(stdout_path, "w") as f:
-            f.write('{"status":"success","accuracy_passed":true,"files_created":[],"error_message":null}\n')
+            f.write(
+                '{"status":"success","accuracy_passed":true,"files_created":[],"error_message":null}\n'
+            )
         with open(stderr_path, "w") as f:
             f.write("[DRY-RUN] Simulated CC execution\n")
 
         # Return mock process that exits immediately with success
-        mock_proc = subprocess.Popen(["true"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        mock_proc = subprocess.Popen(
+            ["true"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
         mock_proc.wait()  # Ensure it's finished
         mock_proc._stdout_path = stdout_path
         mock_proc._stderr_path = stderr_path
@@ -318,9 +348,11 @@ def launch_cc(
     claude_bin = config.get("claude_bin", "claude")
     cmd = [
         claude_bin,
-        "-p", prompt,
+        "-p",
+        prompt,
         "--dangerously-skip-permissions",
-        "--output-format", "stream-json",
+        "--output-format",
+        "stream-json",
         "--verbose",
     ]
 
@@ -388,7 +420,9 @@ def check_worktree_has_changes(worktree_path: str, operator: str) -> bool:
     return bool(result.stdout.strip())
 
 
-def parse_cc_result(proc: subprocess.Popen, operator: str, worktree_path: str = None) -> dict:
+def parse_cc_result(
+    proc: subprocess.Popen, operator: str, worktree_path: str = None
+) -> dict:
     """Parse stream-json output from a CC process.
 
     The .jsonl file contains one JSON object per line. We look for the last
@@ -397,9 +431,9 @@ def parse_cc_result(proc: subprocess.Popen, operator: str, worktree_path: str = 
     """
     try:
         # Close file handles first so all data is flushed (skip for dry-run mock processes)
-        if hasattr(proc, '_stdout_file') and proc._stdout_file:
+        if hasattr(proc, "_stdout_file") and proc._stdout_file:
             proc._stdout_file.close()
-        if hasattr(proc, '_stderr_file') and proc._stderr_file:
+        if hasattr(proc, "_stderr_file") and proc._stderr_file:
             proc._stderr_file.close()
 
         # Parse stream-json: read lines and find the result event
@@ -424,13 +458,21 @@ def parse_cc_result(proc: subprocess.Popen, operator: str, worktree_path: str = 
                 return json.loads(json_match.group(1))
 
             # Try to find any JSON object with operator/status fields
-            json_match = re.search(r"\{[^{}]*\"operator\"[^{}]*\"status\"[^{}]*\}", result_text, re.DOTALL)
+            json_match = re.search(
+                r"\{[^{}]*\"operator\"[^{}]*\"status\"[^{}]*\}", result_text, re.DOTALL
+            )
             if json_match:
                 return json.loads(json_match.group(0))
 
         # Fallback: if CC exited normally and worktree has changes, treat as success
-        if proc.returncode == 0 and worktree_path and check_worktree_has_changes(worktree_path, operator):
-            logger.info(f"CC output not parseable, but worktree has changes for {operator}")
+        if (
+            proc.returncode == 0
+            and worktree_path
+            and check_worktree_has_changes(worktree_path, operator)
+        ):
+            logger.info(
+                f"CC output not parseable, but worktree has changes for {operator}"
+            )
             return {
                 "operator": operator,
                 "status": "success",
@@ -508,9 +550,11 @@ def generate_timeline(jsonl_path: str, operator: str) -> str | None:
                 # Extract tool result output
                 tool_result = event.get("tool_use_result")
                 if isinstance(tool_result, dict):
-                    output = tool_result.get("stdout", "") or tool_result.get("stderr", "")
+                    output = tool_result.get("stdout", "") or tool_result.get(
+                        "stderr", ""
+                    )
                     if output:
-                        out.append(f"    ↳ Output:")
+                        out.append("    ↳ Output:")
                         out.append(str(output))
                         out.append("")
                         continue
@@ -521,7 +565,7 @@ def generate_timeline(jsonl_path: str, operator: str) -> str | None:
                         if isinstance(c, dict) and c.get("type") == "tool_result":
                             content_val = c.get("content", "")
                             if content_val:
-                                out.append(f"    ↳ Output:")
+                                out.append("    ↳ Output:")
                                 out.append(str(content_val))
                                 out.append("")
                             break
@@ -576,6 +620,7 @@ def generate_timeline(jsonl_path: str, operator: str) -> str | None:
 # Summary management
 # ---------------------------------------------------------------------------
 
+
 class Summary:
     """Manages the summary.json file with real-time updates."""
 
@@ -628,9 +673,15 @@ class Summary:
         """Recount summary statistics."""
         ops = self.data["operators"]
         self.data["summary"]["total"] = len(ops)
-        self.data["summary"]["success"] = sum(1 for v in ops.values() if v["status"] == "success")
-        self.data["summary"]["failed"] = sum(1 for v in ops.values() if v["status"] in ("failed", "cancelled"))
-        self.data["summary"]["in_progress"] = sum(1 for v in ops.values() if v["status"] in ("in_progress", "retrying"))
+        self.data["summary"]["success"] = sum(
+            1 for v in ops.values() if v["status"] == "success"
+        )
+        self.data["summary"]["failed"] = sum(
+            1 for v in ops.values() if v["status"] in ("failed", "cancelled")
+        )
+        self.data["summary"]["in_progress"] = sum(
+            1 for v in ops.values() if v["status"] in ("in_progress", "retrying")
+        )
 
     def _save(self):
         """Write summary to disk."""
@@ -643,13 +694,16 @@ class Summary:
 # Main orchestrator
 # ---------------------------------------------------------------------------
 
+
 def run(args):
     """Main orchestration loop."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = args.config or os.path.join(script_dir, "config.yaml")
     config = load_config(config_path)
 
-    flaggems_dir = config.get("flaggems_dir", os.path.dirname(os.path.dirname(script_dir)))
+    flaggems_dir = config.get(
+        "flaggems_dir", os.path.dirname(os.path.dirname(script_dir))
+    )
     python_path = config.get("python_path", sys.executable)
     results_dir = os.path.join(script_dir, config.get("results_dir", "results"))
     log_dir = os.path.join(results_dir, "logs")
@@ -666,7 +720,7 @@ def run(args):
         print("   Code style checks require pre-commit to be installed.")
         response = input("\n   Install pre-commit now? [Y/n]: ").strip().lower()
 
-        if response in ('', 'y', 'yes'):
+        if response in ("", "y", "yes"):
             print("   Installing pre-commit...")
             if install_pre_commit(python_path):
                 print("   ✅ pre-commit installed successfully\n")
@@ -677,11 +731,32 @@ def run(args):
             print("   ❌ Cannot proceed without pre-commit. Exiting.")
             sys.exit(1)
 
+    # Pre-warm pre-commit hook environments (downloads to ~/.cache/pre-commit/)
+    logger.info(
+        "Pre-warming pre-commit hook environments (first time may take a few minutes)..."
+    )
+    warm_result = subprocess.run(
+        [python_path, "-m", "pre_commit", "install-hooks"],
+        cwd=flaggems_dir,
+        capture_output=True,
+        text=True,
+    )
+    if warm_result.returncode == 0:
+        logger.info("Pre-commit hook environments ready")
+    else:
+        logger.warning(
+            f"Pre-commit hook warm-up failed (non-fatal): {warm_result.stderr.strip()}"
+        )
+
     # Select template based on mode
     if vendor:
-        template_path = os.path.join(script_dir, config.get("vendor_template", "templates/generate_vendor_op.md"))
+        template_path = os.path.join(
+            script_dir, config.get("vendor_template", "templates/generate_vendor_op.md")
+        )
     else:
-        template_path = os.path.join(script_dir, config.get("template", "templates/generate_op.md"))
+        template_path = os.path.join(
+            script_dir, config.get("template", "templates/generate_op.md")
+        )
 
     os.makedirs(log_dir, exist_ok=True)
 
@@ -760,17 +835,23 @@ def run(args):
             os.system("stty sane 2>/dev/null")
             os._exit(1)
         shutdown_requested = True
-        logger.warning(f"Shutdown requested (signal={sig}), killing {len(running)} running tasks...")
+        logger.warning(
+            f"Shutdown requested (signal={sig}), killing {len(running)} running tasks..."
+        )
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
     if args.dry_run:
-        logger.warning("[DRY-RUN MODE] Simulating workflow without launching Claude Code")
+        logger.warning(
+            "[DRY-RUN MODE] Simulating workflow without launching Claude Code"
+        )
 
-    logger.info(f"Starting orchestrator: {len(ops)} operators, {len(device_mgr.gpu_ids)} GPUs, max_retries={max_retries}"
-                + (f", vendor={vendor}" if vendor else "")
-                + (" [DRY-RUN]" if args.dry_run else ""))
+    logger.info(
+        f"Starting orchestrator: {len(ops)} operators, {len(device_mgr.gpu_ids)} GPUs, max_retries={max_retries}"
+        + (f", vendor={vendor}" if vendor else "")
+        + (" [DRY-RUN]" if args.dry_run else "")
+    )
 
     while (queue or running) and not shutdown_requested:
         # Launch new tasks if GPUs are available
@@ -781,14 +862,32 @@ def run(args):
 
             operator, attempt = queue.popleft()
             try:
-                worktree_path, branch = create_worktree(flaggems_dir, operator, vendor, base_branch, args.dry_run, python_path)
+                worktree_path, branch = create_worktree(
+                    flaggems_dir,
+                    operator,
+                    vendor,
+                    base_branch,
+                    args.dry_run,
+                    python_path,
+                )
                 vendor_op = vendor_ops_map.get(operator)
-                proc = launch_cc(operator, worktree_path, gpu_id, config, template_path, log_dir, vendor_op, args.dry_run)
+                proc = launch_cc(
+                    operator,
+                    worktree_path,
+                    gpu_id,
+                    config,
+                    template_path,
+                    log_dir,
+                    vendor_op,
+                    args.dry_run,
+                )
 
                 running[operator] = (proc, gpu_id, attempt, worktree_path, time.time())
 
                 summary.add_operator(operator, gpu_id, attempt + 1)
-                summary.update_operator(operator, worktree_path=worktree_path, branch=branch)
+                summary.update_operator(
+                    operator, worktree_path=worktree_path, branch=branch
+                )
 
             except Exception as e:
                 logger.error(f"Failed to launch CC for {operator}: {e}")
@@ -809,8 +908,14 @@ def run(args):
             proc, gpu_id, attempt, worktree_path, start_time = running[operator]
 
             # Check for timeout
-            if timeout_per_op and proc.poll() is None and time.time() - start_time > timeout_per_op:
-                logger.error(f"[TIMEOUT] {operator} exceeded {timeout_per_op}s, killing process")
+            if (
+                timeout_per_op
+                and proc.poll() is None
+                and time.time() - start_time > timeout_per_op
+            ):
+                logger.error(
+                    f"[TIMEOUT] {operator} exceeded {timeout_per_op}s, killing process"
+                )
                 _kill_cc_process(proc)
                 duration = time.time() - start_time
                 device_mgr.release(gpu_id)
@@ -851,7 +956,9 @@ def run(args):
                 )
 
                 if success:
-                    logger.info(f"[SUCCESS] {operator} (attempt {attempt+1}, {duration:.0f}s)")
+                    logger.info(
+                        f"[SUCCESS] {operator} (attempt {attempt + 1}, {duration:.0f}s)"
+                    )
                     summary.update_operator(
                         operator,
                         status="success",
@@ -862,7 +969,7 @@ def run(args):
                     )
                 elif attempt + 1 < max_retries:
                     logger.warning(
-                        f"[RETRY] {operator} (attempt {attempt+1}/{max_retries}, "
+                        f"[RETRY] {operator} (attempt {attempt + 1}/{max_retries}, "
                         f"reason: {result.get('error_message', 'unknown')})"
                     )
                     summary.update_operator(
@@ -875,7 +982,7 @@ def run(args):
                     queue.append((operator, attempt + 1))
                 else:
                     logger.error(
-                        f"[FAILED] {operator} after {attempt+1} attempts: "
+                        f"[FAILED] {operator} after {attempt + 1} attempts: "
                         f"{result.get('error_message', 'unknown')}"
                     )
                     summary.update_operator(
@@ -915,8 +1022,7 @@ def run(args):
     # Print final summary
     s = summary.data["summary"]
     logger.info(
-        f"Done: {s['total']} total, {s['success']} success, "
-        f"{s['failed']} failed"
+        f"Done: {s['total']} total, {s['success']} success, " f"{s['failed']} failed"
     )
     print(f"\nResults saved to: {summary_path}")
 
@@ -925,13 +1031,26 @@ def run(args):
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Auto-generate FlagGems operators using Claude Code")
-    parser.add_argument("ops_list", nargs="?", help="Path to operator list file (default: ops_list.txt)")
+    parser = argparse.ArgumentParser(
+        description="Auto-generate FlagGems operators using Claude Code"
+    )
+    parser.add_argument(
+        "ops_list", nargs="?", help="Path to operator list file (default: ops_list.txt)"
+    )
     parser.add_argument("-c", "--config", help="Path to config.yaml")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
-    parser.add_argument("--skip-fetch", action="store_true", help="Skip auto-fetch of upstream remote")
-    parser.add_argument("--dry-run", action="store_true", help="Simulate workflow without launching CC (for testing)")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable debug logging"
+    )
+    parser.add_argument(
+        "--skip-fetch", action="store_true", help="Skip auto-fetch of upstream remote"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Simulate workflow without launching CC (for testing)",
+    )
     args = parser.parse_args()
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
