@@ -1,0 +1,19 @@
+# Vendor specialization ops list
+# Each entry specifies an operator to specialize for the target vendor.
+# Fields:
+#   operator (required): operator base name
+#   type (optional): accuracy_fail | performance | compilation_error
+#   error_desc (optional): description of the problem to help CC diagnose
+#   test_cmd (optional): custom test command (default: pytest -m <op> tests/ -vs)
+
+ops:
+  - operator: softmax
+
+  - operator: layernorm
+    type: accuracy_fail
+    error_desc: "fp16 precision exceeds rtol=1e-3 on this vendor"
+
+  - operator: matmul
+    type: performance
+    error_desc: "2x slower than pytorch eager on this vendor"
+    test_cmd: "pytest -m matmul tests/ -vs"

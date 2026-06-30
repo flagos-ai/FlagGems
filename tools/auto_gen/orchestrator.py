@@ -24,6 +24,24 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Vendor device environment variable mapping
+# (copied from tools/run_tests.py — maps vendor name to device visibility env vars)
+# ---------------------------------------------------------------------------
+
+VENDOR_ENV_MAP = {
+    "ascend": ["ASCEND_RT_VISIBLE_DEVICES", "NPU_VISIBLE_DEVICES"],
+    "hygon": ["HIP_VISIBLE_DEVICES"],
+    "metax": ["MACA_VISIBLE_DEVICES"],
+    "mthreads": ["MUSA_VISIBLE_DEVICES"],
+    "tsingmicro": ["TXDA_VISIBLE_DEVICES"],
+    "iluvatar": ["ILUVATAR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES"],
+    "thead": ["CUDA_VISIBLE_DEVICES"],
+    "cambricon": ["MLU_VISIBLE_DEVICES"],
+    "kunlunxin": ["CUDA_VISIBLE_DEVICES"],
+    "sunrise": ["TANG_VISIBLE_DEVICES"],
+}
+
+# ---------------------------------------------------------------------------
 # .env loading
 # ---------------------------------------------------------------------------
 
@@ -83,6 +101,36 @@ def load_ops_list(path: str) -> list[str]:
     return ops
 
 
+def load_vendor_ops(path: str) -> list[dict]:
+    """Load vendor ops from a YAML file.
+
+    Expected format:
+        ops:
+          - operator: softmax
+          - operator: layernorm
+            type: accuracy_fail
+            error_desc: "fp16 precision exceeds rtol=1e-3"
+            test_cmd: "pytest -m layernorm tests/ -vs"
+    """
+    if yaml is None:
+        print("Error: 'pyyaml' is required. Install with: pip install pyyaml")
+        sys.exit(1)
+    with open(path) as f:
+        data = yaml.safe_load(f)
+
+    ops = data.get("ops", [])
+    validated = []
+    for op in ops:
+        if "operator" not in op:
+            logger.warning(f"Op entry missing 'operator', skipping: {op}")
+            continue
+        op.setdefault("type", "")
+        op.setdefault("error_desc", "")
+        op.setdefault("test_cmd", "")
+        validated.append(op)
+    return validated
+
+
 # ---------------------------------------------------------------------------
 # Template rendering
 # ---------------------------------------------------------------------------
@@ -100,10 +148,14 @@ def render_template(template_path: str, variables: dict) -> str:
 # Worktree management
 # ---------------------------------------------------------------------------
 
-def create_worktree(flaggems_dir: str, operator: str) -> tuple[str, str]:
+def create_worktree(flaggems_dir: str, operator: str, vendor: str = None, base_branch: str = "master") -> tuple[str, str]:
     """Create a git worktree for an operator. Returns (worktree_path, branch_name)."""
-    branch_name = f"auto-gen/{operator}"
-    worktree_path = os.path.join(flaggems_dir, ".worktrees", f"gen-{operator}")
+    if vendor:
+        branch_name = f"auto-gen/{vendor}/{operator}"
+        worktree_path = os.path.join(flaggems_dir, ".worktrees", f"gen-{vendor}-{operator}")
+    else:
+        branch_name = f"auto-gen/{operator}"
+        worktree_path = os.path.join(flaggems_dir, ".worktrees", f"gen-{operator}")
 
     # Always clean up: remove worktree, delete leftover directory, prune git records
     subprocess.run(
@@ -123,10 +175,10 @@ def create_worktree(flaggems_dir: str, operator: str) -> tuple[str, str]:
         capture_output=True,
     )
 
-    # Create worktree based on master
+    # Create worktree based on base_branch
     os.makedirs(os.path.dirname(worktree_path), exist_ok=True)
     result = subprocess.run(
-        ["git", "worktree", "add", "-b", branch_name, worktree_path, "master"],
+        ["git", "worktree", "add", "-b", branch_name, worktree_path, base_branch],
         cwd=flaggems_dir,
         capture_output=True,
         text=True,
@@ -149,13 +201,29 @@ def launch_cc(
     config: dict,
     template_path: str,
     log_dir: str,
+    vendor_op: dict = None,
 ) -> subprocess.Popen:
     """Launch a Claude Code process for an operator."""
+    vendor = config.get("vendor")
+
+    # Build device prefix
+    if vendor:
+        env_vars = VENDOR_ENV_MAP.get(vendor, ["CUDA_VISIBLE_DEVICES"])
+        device_prefix = " ".join(f"{v}={gpu_id}" for v in env_vars)
+    else:
+        device_prefix = f"CUDA_VISIBLE_DEVICES={gpu_id}"
+
     variables = {
         "OPERATOR": operator,
         "GPU_ID": str(gpu_id),
         "WORK_DIR": worktree_path,
         "PYTHON_PATH": config.get("python_path", "python"),
+        "DEVICE_PREFIX": device_prefix,
+        "VENDOR": vendor or "",
+        "VENDOR_OPS_DIR": f"src/flag_gems/runtime/backend/_{vendor}/ops" if vendor else "",
+        "ERROR_TYPE": (vendor_op or {}).get("type", ""),
+        "ERROR_DESC": (vendor_op or {}).get("error_desc", ""),
+        "TEST_CMD": (vendor_op or {}).get("test_cmd", ""),
     }
     prompt = render_template(template_path, variables)
 
@@ -166,6 +234,9 @@ def launch_cc(
     env.pop("CLAUDECODE", None)
     # Allow --dangerously-skip-permissions under root
     env["IS_SANDBOX"] = "1"
+    # Set vendor for FlagGems backend detection
+    if vendor:
+        env["GEMS_VENDOR"] = vendor
     # Do NOT set CUDA_VISIBLE_DEVICES here; CC will set it per-command via the template
 
     # Debug: verify API credentials are present
@@ -506,24 +577,42 @@ def run(args):
     config = load_config(config_path)
 
     flaggems_dir = config.get("flaggems_dir", os.path.dirname(os.path.dirname(script_dir)))
-    template_path = os.path.join(script_dir, config.get("template", "templates/generate_op.md"))
     results_dir = os.path.join(script_dir, config.get("results_dir", "results"))
     log_dir = os.path.join(results_dir, "logs")
     summary_path = os.path.join(results_dir, "summary.json")
     max_retries = config.get("max_retries", 3)
     timeout_per_op = config.get("timeout_per_op", 1800) or 0
     poll_interval = config.get("poll_interval", 10)
+    vendor = config.get("vendor")
+    base_branch = config.get("base_branch", "master")
+
+    # Select template based on mode
+    if vendor:
+        template_path = os.path.join(script_dir, config.get("vendor_template", "templates/generate_vendor_op.md"))
+    else:
+        template_path = os.path.join(script_dir, config.get("template", "templates/generate_op.md"))
 
     os.makedirs(log_dir, exist_ok=True)
 
     # Load operator list
-    ops_list_path = args.ops_list or os.path.join(script_dir, "ops_list.txt")
-    ops = load_ops_list(ops_list_path)
-    if not ops:
-        logger.error("No operators to process. Check your ops_list.txt.")
-        return
-
-    logger.info(f"Loaded {len(ops)} operators: {ops}")
+    ops_list_path = args.ops_list or os.path.join(
+        script_dir, "vendor_ops.yaml" if vendor else "ops_list.txt"
+    )
+    if vendor:
+        vendor_ops = load_vendor_ops(ops_list_path)
+        if not vendor_ops:
+            logger.error("No operators to process. Check your vendor_ops.yaml.")
+            return
+        ops = [op["operator"] for op in vendor_ops]
+        vendor_ops_map = {op["operator"]: op for op in vendor_ops}
+        logger.info(f"Vendor mode ({vendor}): loaded {len(ops)} operators: {ops}")
+    else:
+        ops = load_ops_list(ops_list_path)
+        vendor_ops_map = {}
+        if not ops:
+            logger.error("No operators to process. Check your ops_list.txt.")
+            return
+        logger.info(f"Loaded {len(ops)} operators: {ops}")
 
     # Initialize device manager
     device_cfg = config.get("device", {}) or {}
@@ -555,7 +644,8 @@ def run(args):
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    logger.info(f"Starting orchestrator: {len(ops)} operators, {len(device_mgr.gpu_ids)} GPUs, max_retries={max_retries}")
+    logger.info(f"Starting orchestrator: {len(ops)} operators, {len(device_mgr.gpu_ids)} GPUs, max_retries={max_retries}"
+                + (f", vendor={vendor}" if vendor else ""))
 
     while (queue or running) and not shutdown_requested:
         # Launch new tasks if GPUs are available
@@ -566,8 +656,9 @@ def run(args):
 
             operator, attempt = queue.popleft()
             try:
-                worktree_path, branch = create_worktree(flaggems_dir, operator)
-                proc = launch_cc(operator, worktree_path, gpu_id, config, template_path, log_dir)
+                worktree_path, branch = create_worktree(flaggems_dir, operator, vendor, base_branch)
+                vendor_op = vendor_ops_map.get(operator)
+                proc = launch_cc(operator, worktree_path, gpu_id, config, template_path, log_dir, vendor_op)
 
                 running[operator] = (proc, gpu_id, attempt, worktree_path, time.time())
 
@@ -617,6 +708,17 @@ def run(args):
                 # Parse result and generate timeline
                 result = parse_cc_result(proc, operator, worktree_path)
                 generate_timeline(proc._stdout_path, operator)
+
+                # Vendor cross-check: files_created should reference the vendor dir
+                if vendor and result.get("status") == "success":
+                    files = result.get("files_created", [])
+                    vendor_dir = f"_{vendor}"
+                    if files and not any(vendor_dir in f for f in files):
+                        logger.warning(
+                            f"[WARN] {operator}: files_created does not reference "
+                            f"vendor dir '{vendor_dir}': {files}"
+                        )
+
                 success = (
                     result.get("status") == "success"
                     and result.get("accuracy_passed", False)

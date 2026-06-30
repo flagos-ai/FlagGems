@@ -34,3 +34,14 @@ timeout_per_op: 1800
 
 # Polling interval (seconds) for checking process status
 poll_interval: 10
+
+# --- Vendor specialization (optional) ---
+# Set to a vendor name (ascend, cambricon, iluvatar, etc.) to enable vendor
+# specialization mode. null or omitted = generic layer generation (default).
+vendor: null
+
+# Prompt template for vendor specialization mode
+vendor_template: templates/generate_vendor_op.md
+
+# Base branch for worktrees (default: master)
+base_branch: master
