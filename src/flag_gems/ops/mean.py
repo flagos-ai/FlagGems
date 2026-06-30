@@ -285,7 +285,7 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             inp = inp.to(torch.int64)
             dtype = torch.int64
 
-    if dim == []:
+    if dim == [] or dim == ():
         # mean over all elements
         if not keepdim:
             return mean(inp, dtype=dtype)

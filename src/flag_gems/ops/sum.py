@@ -250,7 +250,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             result = result.reshape([1] * inp.ndim)
         return result
 
-    if dim == []:
+    if dim == [] or dim == ():
         if not keepdim:
             return sum(inp, dtype=dtype)
         else:
