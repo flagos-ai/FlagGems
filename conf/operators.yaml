@@ -5274,6 +5274,17 @@ ops:
     stages:
       - alpha: '4.2'
       - beta: '5.3'
+  - id: pdist_forward
+    description: Computes the pairwise distance between rows of a matrix.
+    for:
+      - _pdist_forward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: pixel_shuffle
     description: Rearranges elements in a tensor to a new tensor of different shape.
     for:
