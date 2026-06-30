@@ -67,6 +67,39 @@ def load_dotenv(env_path: str = None):
 
 
 # ---------------------------------------------------------------------------
+# Pre-commit check
+# ---------------------------------------------------------------------------
+
+def check_pre_commit(python_path: str) -> bool:
+    """Check if pre-commit is installed in the given Python environment."""
+    try:
+        result = subprocess.run(
+            [python_path, "-m", "pre_commit", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def install_pre_commit(python_path: str) -> bool:
+    """Install pre-commit via pip."""
+    try:
+        subprocess.run(
+            [python_path, "-m", "pip", "install", "pre-commit"],
+            check=True,
+            capture_output=True,
+            timeout=60
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to install pre-commit: {e}")
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Config loading
 # ---------------------------------------------------------------------------
 
@@ -880,6 +913,28 @@ def main():
     )
 
     load_dotenv()
+
+    # Check pre-commit availability before starting
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = args.config or os.path.join(script_dir, "config.yaml")
+    config = load_config(config_path)
+    python_path = config.get("python_path", sys.executable)
+
+    if not check_pre_commit(python_path):
+        print("\n⚠️  pre-commit is not installed in your Python environment.")
+        print("   Code style checks require pre-commit to be installed.")
+        response = input("\n   Install pre-commit now? [Y/n]: ").strip().lower()
+
+        if response in ['', 'y', 'yes']:
+            print("   Installing pre-commit...")
+            if install_pre_commit(python_path):
+                print("   ✅ pre-commit installed successfully\n")
+            else:
+                print("   ❌ Failed to install pre-commit")
+                sys.exit(1)
+        else:
+            print("   ❌ Cannot proceed without pre-commit. Exiting.")
+            sys.exit(1)
 
     run(args)
 

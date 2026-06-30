@@ -146,17 +146,49 @@ cd {{WORK_DIR}}
 
 如果问题类型是性能问题（performance），确认 benchmark 数据显示有改善。
 
-### Step 7: 提交代码
+### Step 7: 运行代码格式检查
 
-**当测试通过且性能验证完成后**，提交所有改动：
+**当测试通过且性能验证完成后**，对所有修改的文件运行 FlagGems 的 pre-commit hooks：
 
 ```bash
 cd {{WORK_DIR}}
+
+# 暂存所有修改
 git add -A
+
+# 收集所有修改的 Python 文件
+MODIFIED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.py$' | tr '\n' ' ')
+
+if [ -n "$MODIFIED_FILES" ]; then
+    echo "Running pre-commit on: $MODIFIED_FILES"
+    {{PYTHON_PATH}} -m pre_commit run --files $MODIFIED_FILES
+    
+    # Pre-commit 可能自动修复了一些问题，重新 add
+    git add $MODIFIED_FILES
+fi
+```
+
+**重要说明**：
+- pre-commit 包含 **black**（格式化）、**isort**（import 排序）、**flake8**（linter）
+- 大部分问题会被自动修复（black/isort）
+- 如果 flake8 报告无法自动修复的问题（如未使用的变量、逻辑错误等），**必须手动修复代码**，然后重新运行 pre-commit 直到通过
+- flake8 配置：`--ignore=F405,E731,W503,E203 --max-line-length=120`
+
+**如果 pre-commit 检查失败**：
+1. 查看错误信息，确定是格式问题还是代码逻辑问题
+2. 修复代码后重新 `git add` 并运行 pre-commit
+3. 重复直到所有检查通过
+
+### Step 8: 提交代码
+
+**当所有 pre-commit 检查通过后**，提交代码：
+
+```bash
+cd {{WORK_DIR}}
 git commit --author="taooo <gumptao2997@gmail.com>" -m "[{{VENDOR}}] Add {{OPERATOR}} vendor specialization"
 ```
 
-### Step 8: 输出结果
+### Step 9: 输出结果
 
 **【必须】** 输出以下 JSON 格式的最终结果。用 ````json` 和 ```` ` 代码块包裹：
 
