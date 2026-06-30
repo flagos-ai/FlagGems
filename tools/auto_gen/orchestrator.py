@@ -202,6 +202,7 @@ def launch_cc(
     template_path: str,
     log_dir: str,
     vendor_op: dict = None,
+    dry_run: bool = False,
 ) -> subprocess.Popen:
     """Launch a Claude Code process for an operator."""
     vendor = config.get("vendor")
@@ -243,6 +244,30 @@ def launch_cc(
     _token = env.get("ANTHROPIC_AUTH_TOKEN", "")
     _base = env.get("ANTHROPIC_BASE_URL", "")
     logger.debug(f"CC env for {operator}: AUTH_TOKEN={'set(' + _token[:8] + '...)' if _token else 'MISSING'}, BASE_URL={_base or 'MISSING'}")
+
+    # Dry-run mode: simulate CC process without actually launching
+    if dry_run:
+        logger.info(f"[DRY-RUN] Would launch CC for {operator} (GPU={gpu_id}, worktree={worktree_path})")
+        logger.debug(f"[DRY-RUN] Template variables: {variables}")
+
+        # Create mock process that immediately "succeeds"
+        stdout_path = os.path.join(log_dir, f"{operator}.jsonl")
+        stderr_path = log_path
+
+        # Write mock success result
+        with open(stdout_path, "w") as f:
+            f.write('{"status":"success","accuracy_passed":true,"files_created":[],"error_message":null}\n')
+        with open(stderr_path, "w") as f:
+            f.write("[DRY-RUN] Simulated CC execution\n")
+
+        # Return mock process that exits immediately with success
+        mock_proc = subprocess.Popen(["true"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        mock_proc.wait()  # Ensure it's finished
+        mock_proc._stdout_path = stdout_path
+        mock_proc._stderr_path = stderr_path
+        mock_proc._stdout_file = None
+        mock_proc._stderr_file = None
+        return mock_proc
 
     claude_bin = config.get("claude_bin", "claude")
     cmd = [
@@ -325,9 +350,11 @@ def parse_cc_result(proc: subprocess.Popen, operator: str, worktree_path: str = 
     operator JSON from the result text.
     """
     try:
-        # Close file handles first so all data is flushed
-        proc._stdout_file.close()
-        proc._stderr_file.close()
+        # Close file handles first so all data is flushed (skip for dry-run mock processes)
+        if hasattr(proc, '_stdout_file') and proc._stdout_file:
+            proc._stdout_file.close()
+        if hasattr(proc, '_stderr_file') and proc._stderr_file:
+            proc._stderr_file.close()
 
         # Parse stream-json: read lines and find the result event
         result_text = ""
@@ -674,8 +701,12 @@ def run(args):
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
+    if args.dry_run:
+        logger.warning("[DRY-RUN MODE] Simulating workflow without launching Claude Code")
+
     logger.info(f"Starting orchestrator: {len(ops)} operators, {len(device_mgr.gpu_ids)} GPUs, max_retries={max_retries}"
-                + (f", vendor={vendor}" if vendor else ""))
+                + (f", vendor={vendor}" if vendor else "")
+                + (" [DRY-RUN]" if args.dry_run else ""))
 
     while (queue or running) and not shutdown_requested:
         # Launch new tasks if GPUs are available
@@ -688,7 +719,7 @@ def run(args):
             try:
                 worktree_path, branch = create_worktree(flaggems_dir, operator, vendor, base_branch)
                 vendor_op = vendor_ops_map.get(operator)
-                proc = launch_cc(operator, worktree_path, gpu_id, config, template_path, log_dir, vendor_op)
+                proc = launch_cc(operator, worktree_path, gpu_id, config, template_path, log_dir, vendor_op, args.dry_run)
 
                 running[operator] = (proc, gpu_id, attempt, worktree_path, time.time())
 
@@ -836,6 +867,7 @@ def main():
     parser.add_argument("-c", "--config", help="Path to config.yaml")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument("--skip-fetch", action="store_true", help="Skip auto-fetch of upstream remote")
+    parser.add_argument("--dry-run", action="store_true", help="Simulate workflow without launching CC (for testing)")
     args = parser.parse_args()
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
