@@ -243,6 +243,7 @@ _FULL_CONFIG = (
     ("count_nonzero", count_nonzero),
     ("ctc_loss.IntList", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("ctc_loss.Tensor", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("cudnn_batch_norm_backward", cudnn_batch_norm_backward),
     ("cudnn_convolution", cudnn_convolution),
     ("cummax", cummax),
     ("cummin", cummin),

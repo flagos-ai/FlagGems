@@ -1742,6 +1742,17 @@ ops:
     stages:
       - stable: '2.0'
       - removed: '3.0'
+  - id: cudnn_batch_norm_backward
+    description: Triton kernel implementation for cudnn_batch_norm_backward.
+    for:
+      - cudnn_batch_norm_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cudnn_convolution
     description: |
       A wrapper for cuDNN convolution backend.
