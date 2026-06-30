@@ -5694,6 +5694,21 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: reflection_pad3d
+    description: |
+      Pads the input 5D tensor by reflecting the boundary values at both edges
+      along the last three spatial dimensions (depth, height, width).
+    for:
+      - reflection_pad3d
+      - reflection_pad3d.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: reflection_pad3d_backward
     description: Computes the gradient of reflection_pad3d with respect to the input tensor.
     for:
