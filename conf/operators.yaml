@@ -3143,6 +3143,7 @@ ops:
     description: Computes `input` is greater or equal to `other` element-wise.
     for:
       - ge.Tensor
+      - greater_equal.Tensor
     labels:
       - aten
       - pointwise
@@ -3154,6 +3155,7 @@ ops:
     description: The scalar version of `ge()`.
     for:
       - ge.Scalar
+      - greater_equal.Scalar
     labels:
       - aten
       - pointwise
@@ -3302,6 +3304,18 @@ ops:
       - Math
     stages:
       - stable: '5.3'
+  - id: greater_equal_
+    description: The in-place version of `greater_equal()`, which is an alias for `ge()`.
+    for:
+      - greater_equal_.Tensor
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: greater_out
     description: A variant of `greater` that saves the output to the specified `out`.
     for:
@@ -5578,6 +5592,19 @@ ops:
       - Distribution
     stages:
       - stable: '2.2'
+  - id: range
+    description: |
+      Returns a 1-D tensor of size `floor(end - start) + 1` with values from `start` to
+      `end` with step `1`.
+    for:
+      - range
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: reciprocal
     description: Returns a new tensor with the reciprocal of the elements of `input`.
     for:
@@ -5667,6 +5694,21 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: reflection_pad3d
+    description: |
+      Pads the input 5D tensor by reflecting the boundary values at both edges
+      along the last three spatial dimensions (depth, height, width).
+    for:
+      - reflection_pad3d
+      - reflection_pad3d.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: reflection_pad3d_backward
     description: Computes the gradient of reflection_pad3d with respect to the input tensor.
     for:
