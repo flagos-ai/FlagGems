@@ -9,7 +9,14 @@ Please also provide test cases if applicable.
 Pull requests require approvals from **one member** before merging.
 Additionally, they must pass continuous integration checks.
 
-## 1. Operator inventory
+## 1. Dev Container (Recommended)
+
+If you use VS Code and your code runs inside a container, the recommended way to set up
+your development environment is through the provided Dev Container configurations.
+See the dedicated [Dev Container](/FlagGems/contribution/devcontainer/) page for setup
+instructions, including local and SSH remote workflows.
+
+## 2. Operator inventory
 
 Starting from v4.2, the FlagGems project introduced an operator inventory which can be found
 as the `conf/operators.yaml` file. Each operator has a unique ID denoted as the `id` field.
@@ -48,7 +55,7 @@ tracking. When deciding the identifier for an operator, please follow the follow
 - For other variants such as operators processing tensor or scalar inputs, we use the same
   criteria to determine if it needs a separate entry in the `conf/operators.yaml` file.
 
-## 2. Code Format Check
+## 3. Code Format Check
 
 Using `pre-commit` git hooks with FlagGems, you can format source Python code
 and perform basic code pre-checks when calling the `git commit` command.
@@ -59,7 +66,7 @@ pre-commit install
 pre-commit
 ```
 
-## 3. Operator unit tests
+## 4. Operator unit tests
 
 The unit tests check the correctness of operators.
 When adding new operators, you need to add unit test cases in the corresponding file
@@ -86,7 +93,7 @@ will collect lines covered by unit tests and compute a coverage rate.
 Test coverage are summarized during an unit test and the daily full unit test job.
 The unit test coverage data are reported on the FlagGems website.
 
-## 4. Operator performance benchmarking
+## 5. Operator performance benchmarking
 
 An *operator benchmark* is used to evaluate the performance of operators.
 If you are adding a new operator or optimizing an existing operator,
@@ -100,7 +107,7 @@ and trigger a benchmark operation.
 For detailed instructions on writing performance test case, please refer to
 [Python performance tests](/FlagGems/performance/python/).
 
-## 5. About test case marking
+## 6. About test case marking
 
 The `pytest` tool we used for driving accuracy tests (unit tests) and performance
 tests (benchmarks) provides a mechanism to annotate a test case with *custom marks*.

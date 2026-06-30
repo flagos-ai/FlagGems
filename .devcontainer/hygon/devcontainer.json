@@ -1,0 +1,81 @@
+{
+  "name": "FlagGems - HYGON",
+  "build": {
+    "context": "../../",
+    "dockerfile": "./Dockerfile",
+    "args": {
+      // Pre-built image produced by container/flaggems-hygon-26.04 (runtime stage).
+      // Override this arg to use a different tag.
+      "IMAGE": "flaggems-hygon:26.04",
+      "USERNAME": "vscode"
+    }
+  },
+  "runArgs": [
+	"--ulimit",
+        "nofile=1048576:1048576",
+	"--device=/dev/kfd",
+        "--device=/dev/mkfd",
+        "--device=/dev/dri",
+        "--group-add=video",
+        "--net=host",
+        "--ipc=host",
+        "--privileged"
+  ],
+  // Corresponds to --cap-add=SYS_PTRACE and --security-opt seccomp=unconfined
+  "containerCapabilities": [
+      "SYS_PTRACE"
+  ],
+  "securityOpt": [
+      "seccomp=unconfined"
+  ],
+  // Maps --ulimit memlock=-1 and stack=67108864
+  "hostRequirements": {
+      "ulimits": {
+          "memlock": {
+              "soft": -1,
+              "hard": -1
+          },
+          "stack": {
+              "soft": 67108864,
+              "hard": 67108864
+          }
+      }
+  },
+  // Mount the full repo only after the container starts
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/FlagGems,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace/FlagGems",
+  "mounts": [
+      "source=/opt/hyhal,target=/opt/hyhal,type=bind",
+      //"source=/data,target=/data,type=bind",
+      //"source=${localEnv:HOME},target=/home/host,type=bind",
+      // Use a named data volume to persist the .claude folder
+      "source=claude-code-data,target=/home/vscode/.claude,type=volume"
+  ],
+  "containerEnv": {
+    "PIP_USER": "0" // <‑‑ disable implicit --user
+  },
+
+  // Use 'postCreateCommand' to run commands after the container is created.
+  // Installs FlagGems in editable mode so source edits take effect immediately.
+  "postCreateCommand": "bash .devcontainer/hygon/scripts/install-dev-tools.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+          "streetsidesoftware.code-spell-checker",
+          "ms-python.python"
+      ]
+    }
+  },
+
+  // Features to add to the dev container. More info: https://containers.dev/features.
+  "features": {
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+
+  // VSCode will automatically update the container user's UID/GID to match the host user
+  "updateRemoteUserUID": true,
+
+  "remoteUser": "vscode"
+}
