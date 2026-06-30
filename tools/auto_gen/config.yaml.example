@@ -43,5 +43,9 @@ vendor: null
 # Prompt template for vendor specialization mode
 vendor_template: templates/generate_vendor_op.md
 
-# Base branch for worktrees (default: master)
-base_branch: master
+# Base branch for worktrees — recommended to use upstream/master to ensure
+# generated operators are based on the latest upstream code
+base_branch: upstream/master
+
+# Auto-fetch upstream before creating worktrees (set to false to skip)
+auto_fetch_upstream: true

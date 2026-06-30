@@ -614,6 +614,36 @@ def run(args):
             return
         logger.info(f"Loaded {len(ops)} operators: {ops}")
 
+    # Fetch upstream to ensure base_branch is up-to-date
+    auto_fetch = config.get("auto_fetch_upstream", True)
+    if not args.skip_fetch and auto_fetch:
+        logger.info("Fetching upstream to ensure base_branch is current...")
+        result = subprocess.run(
+            ["git", "fetch", "upstream"],
+            cwd=flaggems_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            if "does not resolve" in result.stderr or "Unknown remote" in result.stderr:
+                logger.error(
+                    "upstream remote not found. Add it with:\n"
+                    "  git remote add upstream https://github.com/flagos-ai/FlagGems.git\n"
+                    "Or run with --skip-fetch to bypass."
+                )
+            else:
+                logger.error(
+                    f"git fetch upstream failed: {result.stderr.strip()}\n"
+                    f"Check network connection or run with --skip-fetch to bypass."
+                )
+            sys.exit(1)
+        logger.info("Fetch completed successfully")
+    elif args.skip_fetch or not auto_fetch:
+        logger.warning(
+            f"Skipping upstream fetch (--skip-fetch or auto_fetch_upstream=false). "
+            f"Worktrees will be based on local {base_branch} which may be outdated."
+        )
+
     # Initialize device manager
     device_cfg = config.get("device", {}) or {}
     device_mgr = DeviceManager(
@@ -805,6 +835,7 @@ def main():
     parser.add_argument("ops_list", nargs="?", help="Path to operator list file (default: ops_list.txt)")
     parser.add_argument("-c", "--config", help="Path to config.yaml")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
+    parser.add_argument("--skip-fetch", action="store_true", help="Skip auto-fetch of upstream remote")
     args = parser.parse_args()
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
