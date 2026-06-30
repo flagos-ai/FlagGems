@@ -1,5 +1,4 @@
 import logging
-import math
 from functools import reduce
 
 import torch
@@ -7,22 +6,24 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
+TOTAL_CORE_NUM = torch_device_fn.get_device_properties().multi_processor_count
+
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @libentry()
 @triton.jit
-def sum_kernel_1(
+def mean_kernel_1(
     inp,
     mid,
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
+    # accumulation dtype
     if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
         inp.dtype.element_ty == tl.bfloat16
     ):
@@ -30,7 +31,7 @@ def sum_kernel_1(
     else:
         cdtype = inp.dtype.element_ty
 
-    pid = ext.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -43,7 +44,7 @@ def sum_kernel_1(
 
 @libentry()
 @triton.jit
-def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
+def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
     if tl.constexpr(mid.dtype.element_ty == tl.float16) or tl.constexpr(
         mid.dtype.element_ty == tl.bfloat16
     ):
@@ -53,57 +54,40 @@ def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
-    mask = offset < mid_size
+    mask = offset < MID_SIZE
     mid_val = tl.load(mid_ptrs, mask=mask, other=0).to(cdtype)
     sum_val = tl.sum(mid_val)
-    tl.store(out, sum_val)
+    # divide by total element count M to get mean
+    mean_val = sum_val / M
+    tl.store(out, mean_val)
 
 
-def sum(inp, *, dtype=None):
-    logger.debug("GEMS SUM")
+def mean(inp, *, dtype=None):
+    logger.debug("GEMS_TSINGMICRO MEAN")
     inp = inp.contiguous()
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
-        if dtype is torch.bool:
-            inp = inp.to(torch.int64)
-            dtype = torch.int64
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    cdtype = dtype
+    if cdtype != torch.float32:
+        cdtype = torch.float32
+    block_size = min(triton.next_power_of_2(triton.cdiv(M, TOTAL_CORE_NUM)), 65536)
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    mid = torch.empty((mid_size,), dtype=cdtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-        sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
-    return out
-
-
-def sum_out(inp, *, dtype=None, out):
-    logger.debug("GEMS SUM_OUT")
-    M = inp.numel()
-    if dtype is None:
-        dtype = inp.dtype
-        if dtype is torch.bool:
-            inp = inp.to(torch.int64)
-            dtype = torch.int64
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
-
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-    with torch_device_fn.device(inp.device):
-        sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-        sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+        mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+        mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid)
     return out
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.heuristics(runtime.get_heuristic_config("mean_non_inner"))
 @triton.jit
-def sum_dim_kernel_non_inner(
+def mean_dim_kernel_non_inner(
     output_ptr,
     input_ptr,
     M,
@@ -113,6 +97,7 @@ def sum_dim_kernel_non_inner(
     TILE_K: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
+    # accumulation dtype
     if tl.constexpr(input_ptr.dtype.element_ty == tl.float16) or tl.constexpr(
         input_ptr.dtype.element_ty == tl.bfloat16
     ):
@@ -120,8 +105,8 @@ def sum_dim_kernel_non_inner(
     else:
         cdtype = input_ptr.dtype.element_ty
 
-    pid_m = ext.program_id(0)
-    pid_k = ext.program_id(1)
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
 
     k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
 
@@ -131,21 +116,23 @@ def sum_dim_kernel_non_inner(
         mask = (n_offsets < N) & (k_offsets < K)
         input_ptrs = input_ptr + inp_offset
         inp = tl.load(input_ptrs, mask=mask, other=0).to(cdtype)
-        out = tl.sum(inp, axis=0, keep_dims=True)
+        # sum along reduction axis (N) -> keep dims so axis 0 corresponds to TILE_K
+        summed = tl.sum(inp, axis=0, keep_dims=True)
+        # divide by N to get mean
+        out = summed / N
         out_offset = pid_m * K + k_offsets
         output_ptrs = output_ptr + out_offset
         tl.store(output_ptrs, out, mask=k_offsets < K)
     else:
-        sum = tl.zeros([TILE_N, TILE_K], dtype=cdtype)
-
-        # specialization does not improve performance inn this example, as tested
+        sum_tile = tl.zeros([TILE_N, TILE_K], dtype=cdtype)
         for start_n in range(0, N, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
             inp_offsets = pid_m * N * K + n_offsets * K + k_offsets
             mask = (n_offsets < N) & (k_offsets < K)
             inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(cdtype)
-            sum += inp
-        out = tl.sum(sum, axis=0, keep_dims=True)
+            sum_tile += inp
+        summed = tl.sum(sum_tile, axis=0, keep_dims=True)
+        out = summed / N
         out_offset = pid_m * K + k_offsets
         output_ptrs = output_ptr + out_offset
         tl.store(output_ptrs, out, mask=k_offsets < K)
@@ -154,7 +141,7 @@ def sum_dim_kernel_non_inner(
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
 @triton.jit
-def sum_dim_kernel_inner(
+def mean_dim_kernel_inner(
     output_ptr,
     input_ptr,
     M,
@@ -169,19 +156,20 @@ def sum_dim_kernel_inner(
     else:
         cdtype = input_ptr.dtype.element_ty
 
-    pid_m = ext.program_id(0)
+    pid_m = tle.program_id(0)
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
         inp_offset = pid_m * N + n_offsets
         input_ptrs = input_ptr + inp_offset
         mask = n_offsets < N
         inp = tl.load(input_ptrs, mask=mask, other=0).to(cdtype)
-        out = tl.sum(inp, axis=0)
+        summed = tl.sum(inp, axis=0)
+        out = summed / N
         out_offset = pid_m
         output_ptrs = output_ptr + out_offset
         tl.store(output_ptrs, out)
     else:
-        sum = tl.zeros(
+        sum_vec = tl.zeros(
             [
                 TILE_N,
             ],
@@ -192,8 +180,9 @@ def sum_dim_kernel_inner(
             inp_offsets = pid_m * N + n_offsets
             mask = n_offsets < N
             inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(cdtype)
-            sum += inp
-        out = tl.sum(sum, axis=0)
+            sum_vec += inp
+        summed = tl.sum(sum_vec, axis=0)
+        out = summed / N
         out_offset = pid_m
         output_ptrs = output_ptr + out_offset
         tl.store(output_ptrs, out)
@@ -205,7 +194,7 @@ def sum_dim_kernel_inner(
     key=["M", "N"],
 )
 @triton.jit
-def sum_dim_kernel(
+def mean_dim_kernel(
     inp,
     out,
     M,
@@ -221,7 +210,7 @@ def sum_dim_kernel(
         cdtype = inp.dtype.element_ty
 
     # Map the program id to the row of inp it should compute.
-    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + pid * N
     out = out + pid
     row_mask = pid < M
@@ -234,55 +223,58 @@ def sum_dim_kernel(
 
         a = tl.load(inp + cols, mask, other=0).to(cdtype)
         _sum += a
-    sum = tl.sum(_sum, axis=1)[:, None]
-    tl.store(out, sum, row_mask)
+    summed = tl.sum(_sum, axis=1)[:, None]
+    mean = summed / N
+    tl.store(out, mean, row_mask)
 
 
-def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
+def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
+    logger.debug("GEMS_TSINGMICRO MEAN_DIM")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
+            inp = inp.to(torch.int64)
             dtype = torch.int64
 
-    if dim is None:
-        result = torch.sum(inp, dtype=dtype)
-        if keepdim:
-            result = result.reshape([1] * inp.ndim)
-        return result
-
-    if dim == [] or dim == ():
+    if dim == []:
+        # mean over all elements
         if not keepdim:
-            return sum(inp, dtype=dtype)
+            return mean(inp, dtype=dtype)
         else:
             dim_num = inp.ndim
-            return torch.reshape(sum(inp, dtype=dtype), [1] * dim_num)
+            return torch.reshape(mean(inp, dtype=dtype), [1] * dim_num)
 
     shape = list(inp.shape)
+
+    # -------- normalize dim to a list of ints --------
+    if isinstance(dim, int):
+        dim = [dim]
+    else:
+        try:
+            dim = list(dim)
+        except TypeError:
+            raise TypeError(
+                f"dim must be an int, iterable of ints, or [], got {type(dim)}"
+            )
+
     dim = [d % inp.ndim for d in dim]
+    # -------------------------------------------------
 
     if len(dim) == 1:
-        dim = dim[0]
-        N = inp.shape[dim]
-        M = reduce(lambda x, y: x * y, shape[:dim], 1)
+        dim0 = dim[0]
+        N = inp.shape[dim0]  # reduction length
+        # product of dims before dim0; use initializer 1 for empty slice
+        M = reduce(lambda x, y: x * y, shape[:dim0], 1)
         inp = inp.contiguous()
         K = inp.numel() // M // N
-        shape[dim] = 1
-        _out_provided = out is not None
-        if _out_provided:
-            # Resize out to the expected output shape, matching native PyTorch
-            # sum.out behavior. The caller (e.g. logsumexp) may pass a
-            # zero-size placeholder that needs to be resized before use.
-            if keepdim:
-                out.resize_(shape)
-            else:
-                out.resize_(shape[:dim] + shape[dim + 1 :])
-        else:
+        shape[dim0] = 1
+        if out is None:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         with torch_device_fn.device(inp.device):
             if K > 1:
                 grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
-                sum_dim_kernel_non_inner[grid](
+                mean_dim_kernel_non_inner[grid](
                     out,
                     inp,
                     M,
@@ -291,14 +283,14 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
                 )
             else:
                 grid = (M, 1, 1)
-                sum_dim_kernel_inner[grid](
+                mean_dim_kernel_inner[grid](
                     out,
                     inp,
                     M,
                     N,
                 )
-        if not keepdim and not _out_provided:
-            out = out.squeeze(dim=dim)
+        if not keepdim:
+            out = out.squeeze(dim=dim0)
         return out
     else:
         inp = dim_compress(inp, dim)
@@ -307,63 +299,18 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             N *= shape[i]
             shape[i] = 1
         M = inp.numel() // N
-        _out_provided = out is not None
-        if _out_provided:
-            dim_set = set(dim)
-            if keepdim:
-                out.resize_(shape)
-            else:
-                out.resize_([s for i, s in enumerate(shape) if i not in dim_set])
-        else:
+        if out is None:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
-            sum_dim_kernel[grid](inp, out, M, N)
-        if not keepdim and not _out_provided:
-            for d in sorted(dim, reverse=True):
-                out = out.squeeze(dim=d)
+            mean_dim_kernel[grid](inp, out, M, N)
+        if not keepdim:
+            out = out.squeeze(dim=dim)
         return out
 
 
-def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS SUM_DIM")
-    # support dim = 0, which are consistent with PyTorch
-    if inp.numel() == 0:
-        if dtype is None:
-            dtype = inp.dtype
-        if dtype is torch.bool:
-            dtype = torch.int64
+def mean_dim(inp, dim=None, keepdim=False, *, dtype=None):
+    logger.debug("GEMS_TSINGMICRO MEAN_DIM (wrapper)")
 
-        out_shape = list(inp.shape)
-        if dim is None:
-            if keepdim:
-                out_shape = [1] * len(out_shape)
-            else:
-                out_shape = []
-        elif isinstance(dim, (list, tuple)) and len(dim) == 0:
-            if keepdim:
-                out_shape = [1] * len(out_shape)
-            else:
-                out_shape = []
-        else:
-            dims_to_reduce = dim if isinstance(dim, (list, tuple)) else [dim]
-            if keepdim:
-                for d in dims_to_reduce:
-                    out_shape[d % inp.ndim] = 1
-            else:
-                sorted_dims_to_remove = sorted(
-                    dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True
-                )
-                for d in sorted_dims_to_remove:
-                    index_to_remove = d % inp.ndim
-                    out_shape.pop(index_to_remove)
-        out = torch.empty(out_shape, dtype=dtype, device=inp.device)
-        zero_(out)
-        return out
-    return sum_dim_comm(inp, dim, keepdim, dtype=dtype)
-
-
-def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
-    logger.debug("GEMS SUM_DIM_OUT")
-    return sum_dim_comm(inp, dim, keepdim, dtype=dtype, out=out)
+    return mean_dim_comm(inp, dim, keepdim, dtype=dtype)
