@@ -26,6 +26,29 @@ else:
     MAX_SEQLEN_K_LIST = [512, 2048]
 
 
+def _round_multiple(x, m):
+    return (x + m - 1) // m * m
+
+
+def _zero_padding(metadata, batch_size):
+    """Zero out padding bytes in metadata tensor for comparison.
+
+    The new vLLM metadata format (>= v0.17.0) pads batch vectors to
+    round_multiple(batch_size, 4). Padding values are uninitialized in the
+    C++ kernel, so we zero them in both ref and gems before comparing.
+    """
+    b_rounded = _round_multiple(batch_size, 4)
+    if b_rounded == batch_size:
+        return metadata.clone()
+    result = metadata.clone()
+    total = result.numel()
+    offset = 0
+    while offset + b_rounded <= total:
+        result[offset + batch_size : offset + b_rounded] = 0
+        offset += b_rounded
+    return result
+
+
 @pytest.mark.get_scheduler_metadata
 @pytest.mark.skipif(not HAS_VLLM, reason="vLLM not installed")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Skipping correctness test in CPU mode.")
@@ -46,8 +69,6 @@ def test_scheduler_metadata_correctness(
     num_heads, num_heads_k = 32, 8
     headdim_v = headdim
     qkv_dtype = torch.float16
-
-    # num_sm = torch.cuda.get_device_properties(device).multi_processor_count
 
     from vllm.vllm_flash_attn import flash_attn_interface as vllm_ops  # noqa: F401
 
@@ -104,4 +125,12 @@ def test_scheduler_metadata_correctness(
             sm_margin=0,
         )
 
-    utils.gems_assert_close(gems_metadata, ref_metadata, dtype=torch.int32)
+    assert (
+        gems_metadata.shape == ref_metadata.shape
+    ), f"Shape mismatch: gems={gems_metadata.shape}, ref={ref_metadata.shape}"
+
+    utils.gems_assert_close(
+        _zero_padding(gems_metadata, batch_size),
+        _zero_padding(ref_metadata, batch_size),
+        dtype=torch.int32,
+    )

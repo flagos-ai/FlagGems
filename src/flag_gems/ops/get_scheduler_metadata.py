@@ -11,6 +11,24 @@ from flag_gems.utils.device_info import get_device_capability, get_device_info
 logger = logging.getLogger(__name__)
 
 
+def _get_vllm_version():
+    try:
+        from importlib.metadata import version
+
+        v = version("vllm")
+        parts = v.split(".")
+        return (int(parts[0]), int(parts[1]))
+    except Exception:
+        return (0, 17)
+
+
+_USE_NEW_METADATA_FORMAT = _get_vllm_version() >= (0, 17)
+
+
+def _round_multiple(x, m):
+    return (x + m - 1) // m * m
+
+
 def tile_size_fwd_sm8x(
     sm86_or_89: bool,
     headdim: int,
@@ -845,53 +863,134 @@ def get_scheduler_metadata(
 
     total_blocks_val = total_blocks.item()
 
-    if use_dynamic_split:
-        _prepare_pass2_kernel[grid](
-            num_n_blocks,
-            num_splits_dynamic,
-            total_blocks=total_blocks_val,
-            num_batch=batch_size,
-            num_head=num_head_k,
-            num_sm=num_sm,
-            num_splits_static=eff_num_splits,
-            BLOCK_SIZE_B=BLOCK_SIZE_B,
-        )
-    else:
-        num_splits_dynamic.fill_(eff_num_splits)
+    if _USE_NEW_METADATA_FORMAT:
+        use_dynamic_split_new = batch_size <= 992 and eff_num_splits > 1
+        if use_dynamic_split_new:
+            _prepare_pass2_kernel[grid](
+                num_n_blocks,
+                num_splits_dynamic,
+                total_blocks=total_blocks_val,
+                num_batch=batch_size,
+                num_head=num_head_k,
+                num_sm=num_sm,
+                num_splits_static=eff_num_splits,
+                BLOCK_SIZE_B=BLOCK_SIZE_B,
+            )
 
-    final_num_splits = eff_num_splits
+        scheduler_needs_semaphore = arch >= 90 or eff_num_splits > 1
+        head_swizzle = final_is_causal or final_is_local
 
-    is_varlen = True
+        b_rounded = _round_multiple(batch_size, 4)
+        num_vectors = 1  # prepare_seqlen_q always present
+        if use_dynamic_split_new:
+            num_vectors += 1
+        if head_swizzle:
+            num_vectors += 1
 
-    if arch >= 90:
-        scheduler_needs_semaphore = (
-            (final_is_causal or final_is_local) and (final_num_splits == 1)
-        ) or is_varlen
-    else:
-        scheduler_needs_semaphore = (final_is_causal and not is_varlen) or (
-            is_varlen and final_num_splits > 1
-        )
-
-    if use_dynamic_split:
-        final_num_splits_for_sem_check = eff_num_splits
-    else:
-        final_num_splits_for_sem_check = eff_num_splits
-
-    scheduler_needs_semaphore = arch >= 90 or final_num_splits_for_sem_check > 1
-
-    alloc_size = int(scheduler_needs_semaphore) + int(use_dynamic_split) * batch_size
-
-    if alloc_size > 0:
+        alloc_size = b_rounded * num_vectors + int(scheduler_needs_semaphore)
         scheduler_metadata = torch.empty(alloc_size, dtype=torch.int32, device=device)
+
         offset = 0
+        # prepare_seqlen_q: seqlen_q[i] * (qhead_per_khead if pack_gqa else 1) per batch
+        prepare_region = scheduler_metadata[offset : offset + b_rounded]
+        gqa_mult = qhead_per_khead if pack_gqa else 1
+        if seqused_q is not None:
+            prepare_region[:batch_size] = seqused_q * gqa_mult
+        elif cu_seqlens_q is not None:
+            per_batch_q = cu_seqlens_q[1 : batch_size + 1] - cu_seqlens_q[:batch_size]
+            prepare_region[:batch_size] = per_batch_q * gqa_mult
+        else:
+            prepare_region[:batch_size].fill_(max_seqlen_q * gqa_mult)
+        offset += b_rounded
+
+        # num_splits_dynamic (only when use_dynamic_split_new)
+        if use_dynamic_split_new:
+            split_region = scheduler_metadata[offset : offset + b_rounded]
+            split_region[:batch_size] = num_splits_dynamic[:batch_size]
+            offset += b_rounded
+
+        # num_nheads_in_l2 (only when head_swizzle)
+        if head_swizzle:
+            nheads_region = scheduler_metadata[offset : offset + b_rounded]
+            size_l2_divisor = (
+                1
+                if qhead_per_khead == 1
+                else 2
+                if qhead_per_khead <= 2
+                else 4
+                if qhead_per_khead <= 4
+                else 8
+                if qhead_per_khead <= 8
+                else 16
+            )
+            size_l2 = (32 * 1024 * 1024) // size_l2_divisor
+            size_one_kvblock = blockN * (headdim + headdim_v) * element_size
+            max_kvblocks_in_l2 = (
+                size_l2 // size_one_kvblock if size_one_kvblock > 0 else 1
+            )
+            num_head_total = num_heads_k if pack_gqa else num_heads
+            nn = num_n_blocks[:batch_size].clamp(min=1)
+            if use_dynamic_split_new:
+                ns = num_splits_dynamic[:batch_size].clamp(min=1)
+                nn = (nn + ns - 1) // ns
+                nn = nn.clamp(min=1)
+            nheads = torch.where(
+                nn * 16 <= max_kvblocks_in_l2,
+                16,
+                torch.where(
+                    nn * 8 <= max_kvblocks_in_l2,
+                    8,
+                    torch.where(
+                        nn * 4 <= max_kvblocks_in_l2,
+                        4,
+                        torch.where(nn * 2 <= max_kvblocks_in_l2, 2, 1),
+                    ),
+                ),
+            )
+            if not pack_gqa:
+                nheads = nheads * qhead_per_khead
+            nheads = nheads.clamp(max=num_head_total)
+            nheads_region[:batch_size] = nheads
+            offset += b_rounded
+
+        # semaphore at the end
         if scheduler_needs_semaphore:
             scheduler_metadata[offset] = 0
-            offset += 1
 
-        if use_dynamic_split:
-            scheduler_metadata[offset:] = num_splits_dynamic
-        elif scheduler_needs_semaphore and not use_dynamic_split:
-            pass
         return scheduler_metadata
     else:
-        return torch.empty((0,), dtype=torch.int32, device=device)
+        # Old format (vLLM <= v0.16.0)
+        if use_dynamic_split:
+            _prepare_pass2_kernel[grid](
+                num_n_blocks,
+                num_splits_dynamic,
+                total_blocks=total_blocks_val,
+                num_batch=batch_size,
+                num_head=num_head_k,
+                num_sm=num_sm,
+                num_splits_static=eff_num_splits,
+                BLOCK_SIZE_B=BLOCK_SIZE_B,
+            )
+        else:
+            num_splits_dynamic.fill_(eff_num_splits)
+
+        scheduler_needs_semaphore = arch >= 90 or eff_num_splits > 1
+
+        alloc_size = (
+            int(scheduler_needs_semaphore) + int(use_dynamic_split) * batch_size
+        )
+
+        if alloc_size > 0:
+            scheduler_metadata = torch.empty(
+                alloc_size, dtype=torch.int32, device=device
+            )
+            offset = 0
+            if scheduler_needs_semaphore:
+                scheduler_metadata[offset] = 0
+                offset += 1
+
+            if use_dynamic_split:
+                scheduler_metadata[offset:] = num_splits_dynamic
+            return scheduler_metadata
+        else:
+            return torch.empty((0,), dtype=torch.int32, device=device)
