@@ -1,0 +1,182 @@
+# FlagGems Backend Configuration
+#
+# Single source of truth for all vendor/backend dependencies.
+# Used by: setup.sh, flaggems-setup CLI, CI workflows.
+#
+# Vendor is derived from the backend key: everything before the last '-'.
+# e.g. "ascend-cann900" → vendor "ascend"
+# Single-segment keys (e.g. "nvidia") use the whole key as vendor.
+#
+# The PyPI index URL is auto-generated:
+#   pypi_base.format(vendor=<derived_vendor>)
+# Override per-backend with an explicit "index:" field if needed.
+#
+# cmake_backend: maps to FLAGGEMS_BACKEND in CMakeLists.txt.
+# Only present for backends that support C++ extensions.
+#
+# Compiler packages (triton / flagtree) are NOT in deps.
+# They are installed as a post-install step controlled by the COMPILER
+# environment variable:
+#   COMPILER=flagtree (default when available) or COMPILER=triton
+#
+# "triton:" — vendor-specific Triton packages for this backend
+# "flagtree:" — FlagTree package for this backend (preferred)
+
+pypi_base: "https://resource.flagos.net/repository/flagos-pypi-{vendor}/simple"
+mirror: "https://mirrors.aliyun.com/pypi/simple"
+
+backends:
+  nvidia-cuda128:
+    python: "3.12"
+    cmake_backend: CUDA
+    triton: triton==3.6.0
+    flagtree: flagtree==0.6.0
+    deps:
+      - torch==2.10.0+cu128
+      - torchaudio==2.10.0+cu128
+      - torchvision==0.25.0+cu128
+
+  nvidia-cuda133:
+    python: "3.12"
+    cmake_backend: CUDA
+    triton: triton==3.6.0
+    flagtree: flagtree==0.6.0
+    deps:
+      - torch==2.11.0+cu130
+      - torchaudio==2.11.0+cu130
+      - torchvision==0.26.0+cu130
+
+  ascend-cann850:
+    python: "3.11"
+    cmake_backend: NPU
+    triton: triton-ascend==3.2.0
+    flagtree: flagtree==0.6.0+ascend3.2
+    deps:
+      - torch==2.9.0+cpu
+      - torch-npu==2.9.0
+
+  ascend-cann900:
+    python: "3.11"
+    cmake_backend: NPU
+    triton:
+      - triton==3.5.0
+      - triton-ascend==3.2.1
+    flagtree: flagtree==0.6.0+ascend3.5
+    deps:
+      - torch==2.10.0+cpu
+      - torch-npu==2.10.0
+
+  cambricon:
+    python: "3.10"
+    triton: triton==3.2.0+mlu1.7.2
+    deps:
+      - cambricon_dali==0.13.0
+      - torch==2.7.1+cpu
+      - torch-mlu==1.29.2+torch2.7.1
+      - torch-mlu-ops==1.8.0+torch2.7.1
+
+  enflame:
+    python: "3.12"
+    cmake_backend: GCU
+    triton: triton-gcu==3.6.0+1.0.20260521.cc.1.9.10
+    flagtree: flagtree==0.6.0+enflame3.6
+    deps:
+      - pyefml==1.9.10
+      - torch==2.10.0+cpu
+      - torchaudio==2.10.0+cpu
+      - torchvision==0.25.0+cpu
+      - torch-gcu==2.10.0+3.7.20260408
+      - flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323
+
+  hygon:
+    python: "3.10"
+    triton: triton==3.3.0+das.opt1.dtk2604.torch290
+    flagtree: flagtree==0.5.1+hcu3.1
+    deps:
+      - torch==2.9.0+das.opt1.dtk2604
+
+  iluvatar:
+    python: "3.10"
+    cmake_backend: IX
+    triton: triton==3.1.0+corex.4.4.0
+    # flagtree==0.5.1+iluvatar3.1 — plugin loading bug in venv, disabled for now
+    deps:
+      - torch==2.7.1+corex.4.4.0
+      - torchaudio==2.7.1+corex.4.4.0
+      - torchvision==0.22.1+corex.4.4.0
+
+  kunlunxin:
+    python: "3.10"
+    triton: triton==3.0.0+a48aedef
+    flagtree: flagtree==0.5.1+xpu3.0
+    deps:
+      - apex==0.1
+      - benchflow==1.0.0
+      - colorama==0.4.6
+      - flash_attn==2.4.2+7e2dd4d
+      - hydrax==0.1.0
+      - hyperparameter==0.5.6
+      - psutil==6.1.0
+      - regex==2026.4.4
+      - torch==2.9.0+cu129
+      - torchaudio==2.9.0+cu129
+      - torchvision==0.24.0+cu129
+      - torch_plugin==0.1.0
+      - torch_xray==2.0.4
+      - xformers==0.0.29+1e7a8ec.d20260114
+      - xmlir==1.0.0.1
+    post_install:
+      - uninstall: pytest-repeat
+
+  metax:
+    python: "3.12"
+    triton: triton==3.0.0+metax3.7.2.0
+    flagtree: flagtree==3.1.0+metax3.7.2.0
+    deps:
+      - torch==2.8.0+metax3.7.2.0
+      - torchaudio==2.4.1+metax3.7.2.0
+      - torchvision==0.15.1+metax3.7.2.0
+      - flash_attn==2.6.3+metax3.7.2.0torch2.8
+
+  mthreads:
+    python: "3.10"
+    cmake_backend: MUSA
+    triton: triton==3.6.0+git89458660
+    flagtree: flagtree==0.6.0+mthreads3.6
+    deps:
+      - torch==2.9.0+musa.4.3.6
+      - torch_musa==2.9.0
+      - mkl==2024.0.0
+
+  spacemit:
+    python: "3.12"
+    triton: triton==3.6.0+spacemit.a5
+    deps:
+      - torch==2.8.0+spacemit.0
+
+  sunrise:
+    python: "3.10"
+    triton: triton==3.4.0.6+gite4f6d6e4
+    flagtree: flagtree==0.4.0+sunrise3.4
+    deps:
+      - torch==2.11.0+cpu
+      - torchaudio==2.11.0+cpu
+      - torchvision==0.26.0+cpu
+      - torch-ptpu==0.2.1+gaf2c267.torch2.11
+
+  thead:
+    python: "3.12"
+    triton: triton==3.5.0+ppu2.0.0.oe
+    deps:
+      - torch==2.9.0+ppu2.0.0.oe
+
+  tsingmicro:
+    python: "3.10"
+    triton: triton==3.3.0+gitfe2a28fa
+    flagtree: flagtree==0.5.0.post20260612+git705a4064
+    deps:
+      - torch==2.7.0+cpu
+      - torchvision==0.22.0+cpu
+      - torchaudio==2.7.0+cpu
+      - torch_txda==0.1.0+20260610.3968e515
+      - txops==0.1.0+20260508.60287151

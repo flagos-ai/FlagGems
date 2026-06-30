@@ -5,6 +5,8 @@
 Thank you for your interest in FlagGems! We use github to host code, manage issues and pull requests.
 Before contributing, please read the following guidelines.
 
+For project governance, roles, and decision-making processes, see [GOVERNANCE.md](./GOVERNANCE.md).
+
 ## 1. Bug Report
 
 Please report bugs using Github's issues. When reporting bugs, please provide

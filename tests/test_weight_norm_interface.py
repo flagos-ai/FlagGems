@@ -34,7 +34,9 @@ def test_weight_norm_interface(shape, dtype, dim):
     with flag_gems.use_gems():
         res_w_out, res_norm_out = torch._weight_norm_interface(v, g, dim)
     utils.gems_assert_close(res_w_out, ref_w_out, dtype, reduce_dim=reduce_size)
-    utils.gems_assert_close(res_norm_out, ref_norm_out, dtype, reduce_dim=reduce_size)
+    utils.gems_assert_close(
+        res_norm_out, ref_norm_out, torch.float32, reduce_dim=reduce_size
+    )
 
 
 @pytest.mark.weight_norm_interface_backward

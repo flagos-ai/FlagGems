@@ -469,14 +469,41 @@ class KernelGenerator:
         for i in range(schema.num_input_tensors()):
             strides = _tuple_content(tuple(f"in{i}_stride{j}" for j in range(ndim)))
             order = _tuple_content(tuple(f"in{i}_stride_order{j}" for j in range(ndim)))
-            code.writeline(
-                f"in{i}_bptr = tl.make_block_ptr("
-                f"in{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
-            )
-            code.writeline(
-                f"in{i} = tl.load(in{i}_bptr, boundary_check=({order})).to(in{i}_ptr.type.element_ty) "
-                "# workaround the bug on bool, we should use the original pointer's dtype(instead of block pointer's)"
-            )
+            if ndim == 2:
+                code.writeline(f"if in{i}_stride1 == 0:")
+                with code.indent():
+                    code.writeline("rows = offset0 + tl.arange(0, tile_size0)")
+                    code.writeline("row_mask = rows < s0")
+                    code.writeline(
+                        f"in{i} = tl.load("
+                        f"in{i}_ptr + rows[:, None] * in{i}_stride0, "
+                        f"mask=row_mask[:, None], other=0.0"
+                        f").to(in{i}_ptr.type.element_ty)"
+                    )
+                    code.writeline(
+                        f"in{i} = tl.broadcast_to(in{i}, (tile_size0, tile_size1))"
+                    )
+                code.writeline("else:")
+                with code.indent():
+                    code.writeline(
+                        f"in{i}_bptr = tl.make_block_ptr("
+                        f"in{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
+                    )
+                    code.writeline(
+                        f"in{i} = tl.load(in{i}_bptr, boundary_check=({order})).to(in{i}_ptr.type.element_ty) "
+                        "# workaround the bug on bool, "
+                        "#we should use the original pointer's dtype(instead of block pointer's)"
+                    )
+            else:
+                code.writeline(
+                    f"in{i}_bptr = tl.make_block_ptr("
+                    f"in{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
+                )
+                code.writeline(
+                    f"in{i} = tl.load(in{i}_bptr, boundary_check=({order})).to(in{i}_ptr.type.element_ty) "
+                    "# workaround the bug on bool, "
+                    "#we should use the original pointer's dtype(instead of block pointer's)"
+                )
         code.newline()
 
         # compute
@@ -512,7 +539,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_with_bptr(self, code):
-        code.writeline("num_ctas = ext.num_programs(0)")
+        code.writeline("num_ctas = tle.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -550,15 +577,37 @@ class KernelGenerator:
         # loads
         code.writeline("# loads")
         for i in range(schema.num_input_tensors()):
-            offsets = tuple(
-                f"offsets{j}{_broadcast_vec(j, ndim)} * in{i}_stride{j}"
-                for j in range(ndim)
-            )
-            offset_combine = " + ".join(offsets)
-            code.writeline(
-                f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
-            )
-
+            if ndim == 2:
+                code.writeline(f"if in{i}_stride1 == 0:")
+                with code.indent():
+                    code.writeline(
+                        f"in{i} = tl.load("
+                        f"in{i}_ptr + offsets0[:, None] * in{i}_stride0, "
+                        f"mask=mask0[:, None], other=0.0"
+                        f").to(in{i}_ptr.type.element_ty)"
+                    )
+                    code.writeline(
+                        f"in{i} = tl.broadcast_to(in{i}, (tile_size0, tile_size1))"
+                    )
+                code.writeline("else:")
+                with code.indent():
+                    offsets = tuple(
+                        f"offsets{j}{_broadcast_vec(j, ndim)} * in{i}_stride{j}"
+                        for j in range(ndim)
+                    )
+                    offset_combine = " + ".join(offsets)
+                    code.writeline(
+                        f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
+                    )
+            else:
+                offsets = tuple(
+                    f"offsets{j}{_broadcast_vec(j, ndim)} * in{i}_stride{j}"
+                    for j in range(ndim)
+                )
+                offset_combine = " + ".join(offsets)
+                code.writeline(
+                    f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
+                )
         code.newline()
 
         # compute
@@ -588,7 +637,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_without_bptr(self, code):
-        code.writeline("num_ctas = ext.num_programs(0)")
+        code.writeline("num_ctas = tle.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -607,7 +656,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = ext.program_id(0)")
+            code.writeline("pid = tle.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -633,7 +682,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = ext.program_id(0)")
+            code.writeline("pid = tle.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -707,7 +756,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_1d_tile(self, code):
-        code.writeline("num_ctas = ext.num_programs(0)")
+        code.writeline("num_ctas = tle.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -726,7 +775,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = ext.program_id(0)")
+            code.writeline("pid = tle.program_id(0)")
             # code.writeline("num_ctas = te.num_programs(0)")
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -1091,7 +1140,7 @@ class ModuleGenerator:
         code.writeline(")")
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
         code.writeline("from flag_gems.utils.libentry import libentry")
-        code.writeline("from flag_gems.utils import triton_lang_extension as ext")
+        code.writeline("from flag_gems.utils import triton_lang_extension as tle")
         code.writeline("from flag_gems.runtime import torch_device_fn")
         code.newline()
         code.newline()
@@ -1333,7 +1382,14 @@ class PointwiseDynamicFunction:
             wrapper_name,
             self.config,
         )
-        module_gen.codegen(code)
+
+        if ndim == 2:
+            rm_prefer_1d_tile = self.config.prefer_1d_tile
+            self.config.prefer_1d_tile = False
+            module_gen.codegen(code)
+            self.config.prefer_1d_tile = rm_prefer_1d_tile
+        else:
+            module_gen.codegen(code)
 
         # NOTE: [why write the generated code to a file]
         # triton uses inpsect to get the source of the jitted function, which requires

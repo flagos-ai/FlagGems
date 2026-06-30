@@ -117,6 +117,10 @@ def all_dim(inp, dim=None, keepdim=False):
         shape[dim] = 1
         M = inp.numel() // N
 
+        # Cast to bool to avoid float16/bfloat16 comparison issues in kernel
+        if inp.dtype != torch.bool:
+            inp = inp.bool()
+
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
@@ -142,6 +146,10 @@ def all_dims(inp, dim=None, keepdim=False):
         N *= shape[i]
         shape[i] = 1
     M = inp.numel() // N
+
+    # Cast to bool to avoid float16/bfloat16 comparison issues in kernel
+    if inp.dtype != torch.bool:
+        inp = inp.bool()
 
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 

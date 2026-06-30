@@ -96,8 +96,9 @@ else()
   set(TRITON_JIT_INSTALL ON) # install triton jit
   set(BACKEND ${FLAGGEMS_BACKEND} CACHE STRING "Backend for TritonJIT" FORCE)
   FetchContent_Declare(TritonJIT
-    GIT_REPOSITORY https://github.com/flagos-ai/libtriton_jit
-    GIT_TAG master
+    URL https://resource.flagos.net/repository/flagos-filestore/libtriton_jit/libtriton_jit-0.2.0-rc0.1.tar.gz
+    # GIT_REPOSITORY https://github.com/flagos-ai/libtriton_jit
+    # GIT_TAG master
     # SOURCE_DIR <your local source dir of libtriton_jit>
   )
   FetchContent_MakeAvailable(TritonJIT)

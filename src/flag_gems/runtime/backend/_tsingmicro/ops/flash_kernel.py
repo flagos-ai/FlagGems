@@ -192,12 +192,12 @@ def softmax_rescale(
     else:
         cur_max = row_max
 
-    p_scale = tl.math.exp2((prev_max - cur_max) * softmax_scale_log2e)
+    p_scale = tl.exp(prev_max - cur_max)
     row_sum *= p_scale
     O_acc *= p_scale[:, None]
 
-    max_scaled = tl.where(row_max == float("-inf"), 0, row_max * softmax_scale_log2e)
-    P = tl.math.exp2(S * softmax_scale_log2e - max_scaled[:, None])
+    max_scaled = tl.where(row_max == float("-inf"), 0, row_max)
+    P = tl.exp(S - max_scaled[:, None])
     row_sum = row_sum + tl.sum(P, 1)
     return O_acc, P, row_max, row_sum
 
@@ -1076,18 +1076,48 @@ def flash_fwd_splitkv_combine_kernel(
 
 
 @triton.jit
-def block_to_cache_index(
-    n_block, page_table_ptr, block_size, page_stride, row_stride, BLOCK_N
+def block_to_cache_offset(
+    n_block, page_table_ptr, block_size, block_stride, row_stride, BLOCK_N
 ):
     row_index = n_block * BLOCK_N
     page_offset = row_index % block_size
     virtual_page_index = row_index // block_size
     # page_table_ptr is already pointed at the start of the current batch element
     cache_page_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int32)
-    return cache_page_index * block_size + page_offset
+    return cache_page_index * block_stride + page_offset * row_stride
 
 
-@libentry()
+@triton.jit
+def load_paged_kv_block(
+    n_block,
+    page_table_ptr,
+    k_ptr_base,
+    v_ptr_base,
+    block_size,
+    k_block_stride,
+    k_row_stride,
+    v_block_stride,
+    v_row_stride,
+    d: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    row_index = n_block * BLOCK_N
+    page_offset = row_index % block_size
+    virtual_page_index = row_index // block_size
+    cache_page_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int32)
+
+    offs_n = tl.arange(0, BLOCK_N)
+    offs_d = tl.arange(0, d)
+
+    k_cache_offset = cache_page_index * k_block_stride + page_offset * k_row_stride
+    v_cache_offset = cache_page_index * v_block_stride + page_offset * v_row_stride
+
+    k_offsets = k_cache_offset + offs_d[:, None] + offs_n[None, :] * k_row_stride
+    v_offsets = v_cache_offset + offs_n[:, None] * v_row_stride + offs_d[None, :]
+
+    return tl.load(k_ptr_base + k_offsets), tl.load(v_ptr_base + v_offsets)
+
+
 @triton.jit(
     do_not_specialize=[
         "seqlen_q",
@@ -1231,8 +1261,10 @@ def flash_varlen_fwd_kernel(
 
     # start processing kv blocks
     page_table_ptr += bid * page_table_batch_stride
+    kv_head = hid // h_hk_ratio
     q_row_offset = hid * q_head_stride
-    k_row_offset = (hid // h_hk_ratio) * k_head_stride
+    k_row_offset = kv_head * k_head_stride
+    v_row_offset = kv_head * v_head_stride
 
     gQ = tl.make_block_ptr(
         base=q_ptr + q_offset + q_row_offset,
@@ -1240,24 +1272,6 @@ def flash_varlen_fwd_kernel(
         strides=(q_row_stride, 1),
         offsets=(0, 0),
         block_shape=(BLOCK_M, d),
-        order=(1, 0),
-    )
-
-    gK = tl.make_block_ptr(
-        base=k_ptr + k_row_offset,
-        shape=(d, bk * block_size),
-        strides=(1, k_row_stride),
-        offsets=(0, 0),
-        block_shape=(d, BLOCK_N),
-        order=(0, 1),
-    )
-
-    gV = tl.make_block_ptr(
-        base=v_ptr + k_row_offset,
-        shape=(bk * block_size, d),
-        strides=(k_row_stride, 1),
-        offsets=(0, 0),
-        block_shape=(BLOCK_N, d),
         order=(1, 0),
     )
 
@@ -1270,7 +1284,6 @@ def flash_varlen_fwd_kernel(
     if is_alibi:
         alibi_offset = bid * alibi_slopes_batch_stride + hid
         alibi_slope = tl.load(alibi_slopes_ptr + alibi_offset)
-        alibi_slope /= scale_softmax
     else:
         alibi_slope = 0.0
 
@@ -1282,93 +1295,23 @@ def flash_varlen_fwd_kernel(
         n_masking_steps = tl.cdiv(BLOCK_M, BLOCK_N) + 1
 
     n_masking_steps = min(n_block_max - n_block_min, n_masking_steps)
-    for step in tl.range(0, n_masking_steps):
-        # for step in tl.range(1):
-        n_block = n_block_max - 1 - step
-        cache_row_index = block_to_cache_index(
+    for n_block in tl.range(n_block_min, n_block_max - n_masking_steps):
+        bK, bV = load_paged_kv_block(
             n_block,
             page_table_ptr,
+            k_ptr + k_row_offset,
+            v_ptr + v_row_offset,
             block_size,
-            page_table_batch_stride,
+            k_batch_stride,
             k_row_stride,
+            v_batch_stride,
+            v_row_stride,
+            d,
             BLOCK_N,
         )
-        bK = tl.load(gK.advance([0, cache_row_index]), boundary_check=(1,))
-        # preload V
-        bV = tl.load(gV.advance([cache_row_index, 0]), boundary_check=(0,))
         S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
-        col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
-        row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
-        S = apply_alibi(
-            S,
-            col_idx,
-            row_idx,
-            q_len,
-            k_len,
-            is_causal=is_causal,
-            is_alibi=is_alibi,
-            alibi_slope=alibi_slope,
-        )
-        S = apply_mask(
-            S,
-            col_idx,
-            row_idx,
-            q_len,
-            k_len,
-            window_size_left,
-            window_size_right,
-            is_even_mn=is_even_mn,
-            is_causal=is_causal,
-            is_local=is_local,
-        )
-
-        acc_, P, rowmax_, rowsum_ = softmax_rescale(
-            acc_,
-            S,
-            rowmax_,
-            rowsum_,
-            softmax_scale_log2e=scale_softmax_log2,
-            is_border=True,
-        )
-        P = P.to(v_ptr.type.element_ty)
-
-        if is_dropout:
-            P = apply_dropout(
-                P,
-                n_block * BLOCK_N,
-                m_block * BLOCK_M,
-                k_len,
-                bid,
-                hid,
-                philox_seed,
-                philox_offset,
-                p_dropout_in_uint8_t,
-                is_dropout,
-                encode_dropout_in_sign_bit=False,
-                NUM_HEADS=h,
-                BLOCK_M=BLOCK_M,
-                BLOCK_N=BLOCK_N,
-            )
-
-        acc_ = tl.dot(P, bV, acc_)
-
-    for n_block in tl.range(
-        n_block_max - n_masking_steps - 1, n_block_min - 1, step=-1
-    ):
-        cache_row_index = block_to_cache_index(
-            n_block,
-            page_table_ptr,
-            block_size,
-            page_table_batch_stride,
-            k_row_stride,
-            BLOCK_N,
-        )
-        bK = tl.load(gK.advance([0, cache_row_index]))
-        # preload V
-        bV = tl.load(gV.advance([cache_row_index, 0]))
-        S = tl.dot(bQ, bK, out_dtype=tl.float32)
-        S = apply_softcap(S, softcap, is_softcap)
+        S *= scale_softmax
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
         S = apply_alibi(
@@ -1421,19 +1364,88 @@ def flash_varlen_fwd_kernel(
                 BLOCK_M=BLOCK_M,
                 BLOCK_N=BLOCK_N,
             )
+
+        acc_ = tl.dot(P, bV, acc_)
+
+    for n_block in tl.range(n_block_max - n_masking_steps, n_block_max):
+        bK, bV = load_paged_kv_block(
+            n_block,
+            page_table_ptr,
+            k_ptr + k_row_offset,
+            v_ptr + v_row_offset,
+            block_size,
+            k_batch_stride,
+            k_row_stride,
+            v_batch_stride,
+            v_row_stride,
+            d,
+            BLOCK_N,
+        )
+        S = tl.dot(bQ, bK, out_dtype=tl.float32)
+        S = apply_softcap(S, softcap, is_softcap)
+        S *= scale_softmax
+        col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
+        row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+        S = apply_alibi(
+            S,
+            col_idx,
+            row_idx,
+            q_len,
+            k_len,
+            is_causal=is_causal,
+            is_alibi=is_alibi,
+            alibi_slope=alibi_slope,
+        )
+        S = apply_mask(
+            S,
+            col_idx,
+            row_idx,
+            q_len,
+            k_len,
+            window_size_left,
+            window_size_right,
+            is_even_mn=is_even_mn,
+            is_causal=is_causal,
+            is_local=is_local,
+        )
+
+        acc_, P, rowmax_, rowsum_ = softmax_rescale(
+            acc_,
+            S,
+            rowmax_,
+            rowsum_,
+            softmax_scale_log2e=scale_softmax_log2,
+            is_border=True,
+        )
+        P = P.to(v_ptr.type.element_ty)
+
+        if is_dropout:
+            P = apply_dropout(
+                P,
+                m_block * BLOCK_M,
+                n_block * BLOCK_N,
+                k_len,
+                bid,
+                hid,
+                philox_seed,
+                philox_offset,
+                p_dropout_in_uint8_t,
+                is_dropout,
+                encode_dropout_in_sign_bit=False,
+                NUM_HEADS=h,
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+            )
         acc_ = tl.dot(P, bV, acc_)
 
     # LSE
     lse = tl.where(
         rowsum_ == 0 | (rowsum_ != rowsum_),
         float("inf"),
-        rowmax_ * scale_softmax + tl.log(rowsum_),
+        rowmax_ + tl.log(rowsum_),
     )
-    inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
-
-    acc_ *= inv_sum[:, None]
-
-    out = acc_.to(o_ptr.type.element_ty)  # noqa
+    rowsum_safe = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, rowsum_)
+    out = (acc_ / rowsum_safe[:, None]).to(o_ptr.type.element_ty)  # noqa
 
     # Write back output
     o_row_offset = hid * o_head_stride

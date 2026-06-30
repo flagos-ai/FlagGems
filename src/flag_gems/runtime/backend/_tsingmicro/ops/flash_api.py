@@ -342,8 +342,10 @@ def mha_varlan_fwd(
         # o_batch_stride = out.stride(0) * max_seqlen_q
     else:
         q_batch_stride = 0
-        k_batch_stride = 0
-        v_batch_stride = 0
+        # Paged KV cache may be a per-layer view with a non-compact block
+        # stride, so the kernel must receive the physical block stride.
+        k_batch_stride = k.stride(0)
+        v_batch_stride = v.stride(0)
         o_batch_stride = 0
 
     total_q = q.size(0)
@@ -523,10 +525,10 @@ def mha_varlan_fwd(
         # to avoid breaking a kv block onto multiple cache pages.
         cfg = runtime.get_heuristic_config("mha_varlen_fwd")
         cfg_params = {
-            "BLOCK_M": cfg["BLOCK_M"](params),
-            "BLOCK_N": cfg["BLOCK_N"](params),
-            "num_warps": cfg["num_warps"](params),
-            "num_stages": cfg["num_stages"](params),
+            "BLOCK_M": cfg["BLOCK_M"](args),
+            "BLOCK_N": cfg["BLOCK_N"](args),
+            "num_warps": cfg["num_warps"](args),
+            "num_stages": cfg["num_stages"](args),
         }
         # BLOCK_M, BLOCK_N, num_warps, num_stages = 128, 32, 4, 3
         assert (

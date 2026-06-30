@@ -129,8 +129,8 @@ CODEGEN_COFIGS = {
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),
     vendors.TSINGMICRO: CodeGenConfig(
-        1024 * 8,
-        (16, 16, 16),
+        2048,
+        (16, 1, 1),
         1,
         False,
         prefer_1d_tile=True,
