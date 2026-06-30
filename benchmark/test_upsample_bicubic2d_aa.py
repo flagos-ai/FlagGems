@@ -77,9 +77,9 @@ class UpsampleBicubic2dAaBackwardBenchmark(base.Benchmark):
         ]
 
     def get_input_iter(self, dtype):
-        for N, C, Hi, Wi, Ho, Wo, ac, label in self._cfgs:
+        for N, C, Hi, Wi, Ho, Wo, ac, _label in self._cfgs:
             grad = torch.randn([N, C, Ho, Wo], device=self.device, dtype=dtype)
-            yield grad, [Ho, Wo], [N, C, Hi, Wi], ac, None, None, label
+            yield grad, [Ho, Wo], [N, C, Hi, Wi], ac, None, None
 
     def get_tflops(self, op, *args, **kwargs):
         grad = args[0]
