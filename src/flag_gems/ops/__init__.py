@@ -209,6 +209,7 @@ from flag_gems.ops.greater import (
     greater_scalar,
     greater_scalar_out,
 )
+from flag_gems.ops.greater_equal import greater_equal_
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.group_gemm import group_mm
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
@@ -354,10 +355,12 @@ from flag_gems.ops.randint_like import randint_like
 from flag_gems.ops.randn import randn
 from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
+from flag_gems.ops.range import range
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
+from flag_gems.ops.reflection_pad3d import reflection_pad3d, reflection_pad3d_out
 from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
@@ -756,6 +759,7 @@ __all__ = [
     "glu",
     "glu_backward",
     "greater",
+    "greater_equal_",
     "greater_out",
     "greater_scalar",
     "greater_scalar_out",
@@ -930,6 +934,7 @@ __all__ = [
     "randn",
     "randn_like",
     "randperm",
+    "range",
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",
@@ -937,7 +942,9 @@ __all__ = [
     "reflection_pad1d_out",
     "reflection_pad2d",
     "reflection_pad2d_out",
+    "reflection_pad3d",
     "reflection_pad3d_backward",
+    "reflection_pad3d_out",
     "relu",
     "relu6",
     "relu_",

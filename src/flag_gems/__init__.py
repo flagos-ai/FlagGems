@@ -12,6 +12,7 @@ from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
+from flag_gems.ops import range as range_op
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
@@ -347,6 +348,9 @@ _FULL_CONFIG = (
     ("greater.Scalar_out", greater_scalar_out),
     ("greater.Tensor", greater),
     ("greater.out", greater_out),
+    ("greater_equal.Scalar", ge_scalar),
+    ("greater_equal.Tensor", ge),
+    ("greater_equal_.Tensor", greater_equal_),
     ("grid_sample", grid_sample),
     ("gt.Scalar", gt_scalar),
     ("gt.Tensor", gt),
@@ -514,6 +518,7 @@ _FULL_CONFIG = (
     ("randn", randn),
     ("randn_like", randn_like),
     ("randperm", randperm),
+    ("range", range_op),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
     ("reflection_pad1d", reflection_pad1d),
@@ -521,6 +526,8 @@ _FULL_CONFIG = (
     ("reflection_pad1d_backward", reflection_pad1d_backward),
     ("reflection_pad2d", reflection_pad2d),
     ("reflection_pad2d.out", reflection_pad2d_out),
+    ("reflection_pad3d", reflection_pad3d),
+    ("reflection_pad3d.out", reflection_pad3d),
     ("reflection_pad3d_backward", reflection_pad3d_backward),
     ("relu", relu),
     ("relu6", relu6),
