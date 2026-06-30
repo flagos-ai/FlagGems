@@ -413,7 +413,8 @@ WEIGHT_NORM_SHAPE_DIM = list(zip(REDUCTION_SHAPES, [-1] if QUICK_MODE else [0, -
 
 
 @pytest.mark.skipif(
-    True, reason="Temporarely skip for ci"
+    flag_gems.vendor_name != "sophgo",
+    reason="Temporarely skip for ci",
 )  # todo: improve backward precision
 @pytest.mark.weight_norm
 @pytest.mark.parametrize("shape, dim", WEIGHT_NORM_SHAPE_DIM)
@@ -479,7 +480,12 @@ def test_accuracy_weightnorm_interface(shape, dtype, dim):
     with flag_gems.use_gems():
         res_w_out, res_norm_out = torch._weight_norm_interface(v, g, dim)
     gems_assert_close(res_w_out, ref_w_out, dtype, reduce_dim=reduce_size)
-    gems_assert_close(res_norm_out, ref_norm_out, dtype, reduce_dim=reduce_size)
+    gems_assert_close(
+        res_norm_out,
+        ref_norm_out,
+        torch.float32 if flag_gems.vendor_name == "sophgo" else dtype,
+        reduce_dim=reduce_size,
+    )
 
 
 @pytest.mark.skipif(
@@ -657,7 +663,9 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    if flag_gems.vendor_name == "sophgo" and (ord == 1 or (ord == 2 and shape[1] == 40999)):
+    if flag_gems.vendor_name == "sophgo" and (
+        ord == 1 or (ord == 2 and shape[1] == 40999)
+    ):
         pytest.skip("sophgo's vector_norm has precision issue, skip it for now")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)

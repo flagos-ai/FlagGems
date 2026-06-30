@@ -1071,7 +1071,10 @@ SHAPE_CONV1D = [
 ]
 
 
-@pytest.mark.skip("conv1d introduces failures, disable it temporarily")
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "sophgo",
+    reason="conv1d introduces failures, disable it temporarily",
+)
 @pytest.mark.conv1d
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV1D)
 @pytest.mark.parametrize("stride", [2])
@@ -1209,7 +1212,10 @@ SHAPE_DEPTHWISE = [
 
 
 # test for depthwise depends on specific device
-@pytest.mark.skip("conv_depthwise2d introduces failures, disable it temporarily")
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "sophgo",
+    reason="conv_depthwise2d introduces failures, disable it temporarily",
+)
 @pytest.mark.conv_depthwise2d
 @pytest.mark.parametrize("shape_input, shape_weight,kernel ", SHAPE_DEPTHWISE)
 @pytest.mark.parametrize("stride", [2])

@@ -1,6 +1,7 @@
 from .addmm import addmm
 from .all import all, all_dim, all_dims
 from .any import any, any_dim, any_dims
+from .arange import arange, arange_start
 from .batch_norm import batch_norm
 from .bmm import bmm
 from .cat import cat
@@ -83,6 +84,7 @@ from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
+from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 
 __all__ = [
@@ -94,6 +96,8 @@ __all__ = [
     "any",
     "any_dim",
     "any_dims",
+    "arange",
+    "arange_start",
     "batch_norm",
     "bmm",
     "cat",
@@ -189,6 +193,8 @@ __all__ = [
     "_unique2",
     "var_mean",
     "vector_norm",
+    "weight_norm_interface",
+    "weight_norm_interface_backward",
     "dot",
     "vdot",
     "where_scalar_other",

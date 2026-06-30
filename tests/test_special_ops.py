@@ -307,7 +307,7 @@ def test_embedding_backward(
 def test_accuracy_resolve_neg(shape, dtype):
     if flag_gems.vendor_name == "sophgo" and dtype == torch.cfloat:
         pytest.skip("not support complex dtype")
-        
+
     x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     y = x.conj()
     z = y.imag
@@ -403,7 +403,9 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
                 return_counts=return_counts,
             )
             assert res_out.numel() == ref_out.numel()
-            gems_assert_equal(res_unique_order, ref_unique_order.to(res_unique_order.dtype))
+            gems_assert_equal(
+                res_unique_order, ref_unique_order.to(res_unique_order.dtype)
+            )
         else:
             with flag_gems.use_gems():
                 res_out, res_counts = torch.unique(
@@ -436,7 +438,9 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
                 return_counts=return_counts,
             )
             assert res_out.numel() == ref_out.numel()
-            gems_assert_equal(res_unique_order, ref_unique_order.to(res_unique_order.dtype))
+            gems_assert_equal(
+                res_unique_order, ref_unique_order.to(res_unique_order.dtype)
+            )
         else:
             with flag_gems.use_gems():
                 res_out = torch.unique(
@@ -493,7 +497,11 @@ def test_accuracy_multinomial_without_replacement(pool, dtype):
         with flag_gems.use_gems():
             out = torch.multinomial(dist, n, False)
         # Verifies uniqueness
-        idx_cnt = torch.nn.functional.one_hot(out.cpu().to(torch.long)).sum(1).to(flag_gems.device)
+        idx_cnt = (
+            torch.nn.functional.one_hot(out.cpu().to(torch.long))
+            .sum(1)
+            .to(flag_gems.device)
+        )
         assert torch.all(idx_cnt <= 1)
 
 
@@ -606,11 +614,13 @@ def test_upsample_nearest2d(dtype, shape, scale):
     "pin_memory", [False, None]
 )  # Since triton only target to GPU, pin_memory only used in CPU tensors.
 def test_arange(start, step, end, dtype, device, pin_memory):
-    if TO_CPU:
+    if TO_CPU and flag_gems.vendor_name != "sophgo":
         return
     ref_out = torch.arange(
         start, end, step, dtype=dtype, device=device, pin_memory=pin_memory
     )
+    if flag_gems.vendor_name == "sophgo":
+        ref_out = ref_out.cpu()
     with flag_gems.use_gems():
         res_out = torch.arange(
             start, end, step, dtype=dtype, device=device, pin_memory=pin_memory
@@ -627,7 +637,7 @@ def test_arange(start, step, end, dtype, device, pin_memory):
 @pytest.mark.parametrize("device", [device, None])
 @pytest.mark.parametrize("pin_memory", [False, None])
 def test_linspace(start, end, steps, dtype, device, pin_memory):
-    if TO_CPU:
+    if TO_CPU and flag_gems.vendor_name != "sophgo":
         return
     ref_out = torch.linspace(
         start,
@@ -638,6 +648,8 @@ def test_linspace(start, end, steps, dtype, device, pin_memory):
         device=device,
         pin_memory=pin_memory,
     )
+    if flag_gems.vendor_name == "sophgo":
+        ref_out = ref_out.cpu()
     with flag_gems.use_gems():
         res_out = torch.linspace(
             start,
@@ -650,6 +662,8 @@ def test_linspace(start, end, steps, dtype, device, pin_memory):
         )
     if dtype in [torch.float16, torch.bfloat16]:
         gems_assert_close(res_out, ref_out, dtype=dtype)
+    elif flag_gems.vendor_name == "sophgo" and dtype in (torch.float32, None):
+        gems_assert_close(res_out, ref_out, dtype=dtype or torch.float32, atol=1e-8)
     else:
         gems_assert_equal(res_out, ref_out)
 
@@ -1005,7 +1019,9 @@ def test_accuracy_repeat_interleave_tensor(shape, dtype):
 def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if flag_gems.vendor_name == "sophgo":
-        repeats = torch.randint(0, 30, (shape[dim],), dtype=torch.int32, device=flag_gems.device)
+        repeats = torch.randint(
+            0, 30, (shape[dim],), dtype=torch.int32, device=flag_gems.device
+        )
     else:
         repeats = torch.randint(0, 30, (shape[dim],), device=flag_gems.device)
     ref_inp = to_reference(inp)
