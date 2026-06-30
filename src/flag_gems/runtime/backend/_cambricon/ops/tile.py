@@ -208,6 +208,7 @@ def generate_destination_passing_tile_wrapper(
                 code.writeline("tile_size=tile_size,")
                 code.writeline("one_tile_per_cta=tiles_per_cta==1,")
             code.writeline("num_warps=num_warps,")
+            code.writeline("task_type='block',")
         code.writeline(")")
 
         # return
@@ -250,16 +251,16 @@ def generate_tile_kernel(
             code.writeline(f"{stride_args}, # strides for out0")
 
             # task space, used to reconstruct multi index
-            task_space_args = ", ".join(f"s{i}: int" for i in range(rank))
+            task_space_args = ", ".join(f"s{i}: tl.constexpr" for i in range(rank))
             code.writeline(f"{task_space_args}, # task_space")
 
-            task_space_args2 = ", ".join(f"in_s{i}: int" for i in range(rank))
+            task_space_args2 = ", ".join(f"in_s{i}: tl.constexpr" for i in range(rank))
             code.writeline(
                 f"{task_space_args2}, # task_space2 used when input and output tensor has different shape"
             )
 
             # number of tasks, used to compute mask
-            code.writeline("num_tasks: int,")
+            code.writeline("num_tasks: tl.constexpr,")
 
         # tile size & tiles_per_cta, gsl style
         if rank > 0:

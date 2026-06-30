@@ -11,7 +11,7 @@ from flag_gems.utils.device_info import get_device_capability
 
 vendor_name = device.vendor_name
 device = device.name
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 # @triton.autotune(

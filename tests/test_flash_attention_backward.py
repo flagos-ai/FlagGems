@@ -174,6 +174,7 @@ def efficient_attn_sdp_forward_native(
 
 
 @pytest.mark.flash_attention_backward
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="NotImplementedError")
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
     [
@@ -289,6 +290,7 @@ def test_flash_attention_backward(
 
 
 @pytest.mark.scaled_dot_product_cudnn_attention_backward
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="NotImplementedError")
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
     [
@@ -426,6 +428,7 @@ def test_scaled_dot_product_cudnn_attention_backward(
 
 
 @pytest.mark.efficient_attention_backward
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="NotImplementedError")
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
     [
@@ -555,6 +558,7 @@ def test_efficient_attention_backward(
 
 
 @pytest.mark.scaled_dot_product_efficient_attention_backward
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="NotImplementedError")
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
     [

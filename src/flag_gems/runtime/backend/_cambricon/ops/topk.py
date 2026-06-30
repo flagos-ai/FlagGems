@@ -109,8 +109,40 @@ def get_topk_bubble_res(
     return ret, ret_ind
 
 
+@triton.jit
+def get_topk_bubble_res_2k(buffer, buffer_ind, k, axis, mask_val, DESCENDING, BLOCK_M):
+    # Incremental merge: top-k selection on a [BLOCK_M, 2*k] buffer.
+    # Used to avoid storing TILE_N_NUM * k intermediate results.
+    kep_buffer_n = buffer
+    topk_buffer_index_n = buffer_ind
+    ret = tl.empty([BLOCK_M, k], dtype=buffer.dtype)
+    ret_ind = tl.empty([BLOCK_M, k], dtype=buffer_ind.dtype)
+    TWO_K: tl.constexpr = 2 * k
+    for k_ind in tl.range(0, k):
+        if DESCENDING:
+            sel_val, sel_index = tl.max(kep_buffer_n, axis=axis, return_indices=True)
+        else:
+            sel_val, sel_index = tl.min(kep_buffer_n, axis=axis, return_indices=True)
+
+        if BLOCK_M > 1:
+            mask_sel = tl.arange(0, TWO_K)[None, :] == sel_index[:, None]
+            tep_sel_index_buffer = tl.where(mask_sel, topk_buffer_index_n, 0)
+            sel_index_res = tl.max(tep_sel_index_buffer, axis=axis)
+            ret[:, k_ind] = sel_val
+            ret_ind[:, k_ind] = sel_index_res
+            kep_buffer_n = tl.where(mask_sel, mask_val, kep_buffer_n)
+        else:
+            indices = sel_index[0]
+            ret[:, k_ind] = sel_val
+            ret_ind[:, k_ind] = topk_buffer_index_n[:, indices]
+            kep_buffer_n[:, indices] = mask_val
+    return ret, ret_ind
+
+
 BLOCK_BATCH = [1, 16]
 BLOCK_N = [128, 512, 1024, 2048]
+
+NRAM_LIMIT = 524288  # bytes, MLU hardware limit
 
 
 def topk_cfggen():
@@ -128,6 +160,8 @@ def topk_config_prune(configs, named_args, **kwargs):
     k = named_args["k"]
     N = named_args["N"]
     block_m = named_args["BLOCK_M"]
+    dtype_size = named_args.get("DTYPE_SIZE", kwargs.get("DTYPE_SIZE", 4))
+    idx_size = 8  # int64 for index
     new_configs = []
 
     for config in configs:
@@ -140,12 +174,62 @@ def topk_config_prune(configs, named_args, **kwargs):
             last_tm = new_configs[-1].kwargs["TILE_M"]
             if tile_n > N and last_tn >= N and last_tm == tile_m:
                 continue
+
+        # NRAM budget check (incremental merge version):
+        # topk_buffer_n:     [tile_m, k]      * dtype_size
+        # topk_buffer_index: [tile_m, k]      * idx_size
+        # merge_buffer:      [tile_m, 2*k]    * dtype_size
+        # merge_buffer_ind:  [tile_m, 2*k]    * idx_size
+        # block_inp_val:     [tile_m, tile_n] * dtype_size
+        # bubble_res kep:    [tile_m, tile_n] * dtype_size
+        # bubble_res idx:    [tile_m, tile_n] * idx_size
+        # bubble_res ret/ind:[tile_m, k]      * (dtype+idx)
+        # bubble_res_2k kep: [tile_m, 2*k]    * dtype_size
+        # bubble_res_2k idx: [tile_m, 2*k]    * idx_size
+        # bubble_res_2k ret: [tile_m, k]      * (dtype+idx)
+        nram_estimate = (
+            tile_m * k * dtype_size
+            + tile_m * k * idx_size
+            + tile_m * 2 * k * dtype_size
+            + tile_m * 2 * k * idx_size
+            + tile_m * tile_n * dtype_size
+            + tile_m * tile_n * dtype_size
+            + tile_m * tile_n * idx_size
+            + tile_m * k * dtype_size
+            + tile_m * k * idx_size
+            + tile_m * 2 * k * dtype_size
+            + tile_m * 2 * k * idx_size
+            + tile_m * k * dtype_size
+            + tile_m * k * idx_size
+        )
+        if nram_estimate > NRAM_LIMIT:
+            continue
+
         config.kwargs["TILE_M_NUM"] = triton.cdiv(block_m, tile_m)
         config.kwargs["TILE_N_NUM"] = triton.cdiv(N, tile_n)
         new_configs.append(config)
 
     if (N not in BLOCK_N) and (N <= max(BLOCK_N)):
         for tm in BLOCK_BATCH:
+            tile_n = N
+            tile_m = tm
+            nram_estimate = (
+                tile_m * k * dtype_size
+                + tile_m * k * idx_size
+                + tile_m * 2 * k * dtype_size
+                + tile_m * 2 * k * idx_size
+                + tile_m * tile_n * dtype_size
+                + tile_m * tile_n * dtype_size
+                + tile_m * tile_n * idx_size
+                + tile_m * k * dtype_size
+                + tile_m * k * idx_size
+                + tile_m * 2 * k * dtype_size
+                + tile_m * 2 * k * idx_size
+                + tile_m * k * dtype_size
+                + tile_m * k * idx_size
+            )
+            if nram_estimate > NRAM_LIMIT:
+                continue
             new_configs.append(
                 triton.Config(
                     {
@@ -164,7 +248,7 @@ def topk_config_prune(configs, named_args, **kwargs):
 @libentry()
 @libtuner(
     configs=topk_cfggen(),
-    key=["k", "N", "M", "BLOCK_M"],
+    key=["k", "N", "M", "BLOCK_M", "DTYPE_SIZE"],
     prune_configs_by={"early_config_prune": topk_config_prune},
 )
 @triton.jit
@@ -181,6 +265,7 @@ def topk_bubble_kernel(
     TILE_M_NUM: tl.constexpr,
     TILE_N_NUM: tl.constexpr,
     DESCENDING: tl.constexpr,
+    DTYPE_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     m_st = pid * BLOCK_M
@@ -188,18 +273,29 @@ def topk_bubble_kernel(
     mask_val = _get_finfo_val(inp_ptr.dtype.element_ty, return_max=not DESCENDING)
     mask_val = mask_val.to(inp_ptr.dtype.element_ty)
 
+    TWO_K: tl.constexpr = 2 * k
+
     for m_block_ind in tl.range(0, TILE_M_NUM):
         m_iter_st = m_block_ind * TILE_M + m_st
         m_offset_val = m_iter_st + tl.arange(0, TILE_M)
         m_offset = m_offset_val[:, None]
         m_offset_mask = m_offset < M
 
+        # Incremental merge: keep only k elements instead of TILE_N_NUM * k.
         topk_buffer_n = tl.full(
-            [TILE_M, TILE_N_NUM * k], value=mask_val, dtype=inp_ptr.dtype.element_ty
+            [TILE_M, k], value=mask_val, dtype=inp_ptr.dtype.element_ty
         )
         topk_buffer_index_n = tl.full(
-            [TILE_M, TILE_N_NUM * k], value=0, dtype=out_index_ptr.dtype.element_ty
+            [TILE_M, k], value=0, dtype=out_index_ptr.dtype.element_ty
         )
+        # Temporary buffers for merging current top-k with new chunk's top-k
+        merge_buffer = tl.full(
+            [TILE_M, TWO_K], value=mask_val, dtype=inp_ptr.dtype.element_ty
+        )
+        merge_buffer_ind = tl.full(
+            [TILE_M, TWO_K], value=0, dtype=out_index_ptr.dtype.element_ty
+        )
+
         for n_block_ind in tl.range(0, TILE_N_NUM):
             n_st = n_block_ind * TILE_N
             n_offset = n_st + tl.arange(0, TILE_N)[None, :]
@@ -219,29 +315,28 @@ def topk_bubble_kernel(
                 TILE_M,
                 TILE_N,
             )
-            tep_index = n_block_ind * k
-            topk_buffer_n[:, tep_index : tep_index + k] = local_buffer
-            topk_buffer_index_n[:, tep_index : tep_index + k] = local_buffer_ind
-        if TILE_N_NUM > 1:
-            global_res, global_res_ind = get_topk_bubble_res(
-                topk_buffer_n,
-                topk_buffer_index_n,
+
+            # Merge current top-k with new chunk's top-k incrementally
+            merge_buffer[:, :k] = topk_buffer_n
+            merge_buffer[:, k:] = local_buffer
+            merge_buffer_ind[:, :k] = topk_buffer_index_n
+            merge_buffer_ind[:, k:] = local_buffer_ind
+
+            topk_buffer_n, topk_buffer_index_n = get_topk_bubble_res_2k(
+                merge_buffer,
+                merge_buffer_ind,
                 k,
                 1,
                 mask_val,
                 DESCENDING,
                 TILE_M,
-                TILE_N_NUM * k,
             )
-        else:
-            global_res = topk_buffer_n
-            global_res_ind = topk_buffer_index_n
 
         # Store topk.
         store_ptrs = m_offset * k + tl.arange(0, k)[None, :]
         store_mask = m_offset_mask
-        tl.store(store_ptrs + out_ptr, global_res, store_mask)
-        tl.store(store_ptrs + out_index_ptr, global_res_ind, store_mask)
+        tl.store(store_ptrs + out_ptr, topk_buffer_n, store_mask)
+        tl.store(store_ptrs + out_index_ptr, topk_buffer_index_n, store_mask)
 
 
 if HAS_TLE:
@@ -425,7 +520,7 @@ if HAS_TLE:
         topk = tl.sort(selected_packed, dim=0, descending=True)
         idx_mask = tl.full(topk.shape, (1 << 16) - 1, dtype=topk.dtype)
         idx_raw = (topk & idx_mask).to(tl.uint32)
-        y_indices = (n_cols - idx_raw.to(tl.int32)).to(tl.int32)
+        y_indices = (n_cols - idx_raw.to(tl.int32)).to(tl.int64)
         y_values_raw = (topk >> 16).to(x_utype)
         y_values = _key_to_fpval(y_values_raw).to(x_dtype, bitcast=True)
 
@@ -469,24 +564,28 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         and descending
         and x.is_cuda
         and x.dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and k >= 8
+        and topk_elem_cnt > 128
         and topk_elem_cnt <= 65535
         and triton.next_power_of_2(k) <= 1024
     ):
         k_pad = triton.next_power_of_2(k)
         out_shape = x.shape[:-1] + (k,)
         y_vals = torch.empty(out_shape, device=x.device, dtype=x.dtype)
-        y_idx = torch.empty(out_shape, device=x.device, dtype=torch.int32)
+        y_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
         block_n_radix = max(k_pad, min(512, triton.next_power_of_2(topk_elem_cnt)))
         block_n_radix = min(block_n_radix, 1024)
 
         x_2d = x.reshape(batch_size, topk_elem_cnt)
+        y_vals_2d = y_vals.reshape(batch_size, k)
+        y_idx_2d = y_idx.reshape(batch_size, k)
         with torch_device_fn.device(x.device):
             topk_kernel_radix_tle[(batch_size,)](
                 x_2d,
-                y_vals,
-                y_idx,
+                y_vals_2d,
+                y_idx_2d,
                 x_2d.stride(0),
-                y_vals.stride(0),
+                y_vals_2d.stride(0),
                 topk_elem_cnt,
                 K=k,
                 K_PAD=k_pad,
@@ -495,7 +594,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
                 num_warps=4,
                 num_stages=1,
             )
-        return (y_vals, y_idx.to(torch.int64))
+        return (y_vals, y_idx)
 
     if k <= math.log2(topk_elem_cnt):
         logger.debug("GEMS_CAMBRICON TOPK USING BUBBLE")
@@ -515,6 +614,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
             topk_elem_cnt,
             block_m,
             DESCENDING=descending,
+            DTYPE_SIZE=x.element_size(),
         )
         return (topk_out, topk_out_idx)
     else:
@@ -529,7 +629,57 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         if chunk_size < k:
             chunk_size = triton.next_power_of_2(k)
 
+        # NRAM budget checks for both stage1 and stage2 kernels.
+        # stage1 (bubble select per chunk): ~2 * CHUNK_SIZE * dtype_size bytes
+        # stage2 (bitonic sort): ~16 * BLOCK_SIZE * 4 bytes (fp32 sort + int32 index)
+        # Both must stay under NRAM_LIMIT = 524288 bytes.
+        MAX_STAGE1_CHUNK = 32768
+        MAX_STAGE2_BLOCK = 2048
+
+        # Clamp chunk_size for stage1 NRAM budget first
+        chunk_size = min(chunk_size, MAX_STAGE1_CHUNK)
+        # Then ensure chunk_num is small enough for stage2 NRAM budget
+        max_chunk_num = max(1, MAX_STAGE2_BLOCK // max(k, 1))
+        min_chunk_size_for_s2 = triton.cdiv(topk_elem_cnt, max_chunk_num)
+        chunk_size = max(chunk_size, min_chunk_size_for_s2)
+        # Re-clamp to stage1 limit (if s2 demand exceeds s1 limit, will fallback)
+        chunk_size = min(chunk_size, MAX_STAGE1_CHUNK)
+        # Ensure chunk_size >= k
+        chunk_size = max(chunk_size, k)
+        chunk_size = triton.next_power_of_2(chunk_size)
+
         chunk_num = triton.cdiv(topk_elem_cnt, chunk_size)
+        stage2_elem_cnt = chunk_num * k
+        BLOCK_SIZE = triton.next_power_of_2(stage2_elem_cnt)
+
+        # If stage2 BLOCK_SIZE still exceeds NRAM budget (conflicting limits),
+        # fall back to bubble path which uses incremental merge and is NRAM-safe.
+        if BLOCK_SIZE > MAX_STAGE2_BLOCK:
+            logger.debug(
+                "GEMS_CAMBRICON TOPK SORT->BUBBLE FALLBACK: "
+                "stage2 BLOCK_SIZE=%d exceeds MAX_STAGE2_BLOCK=%d",
+                BLOCK_SIZE,
+                MAX_STAGE2_BLOCK,
+            )
+            topk_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
+            topk_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
+
+            def grid_fn(meta):
+                return (min(batch_size, TOTAL_CORE_NUM),)
+
+            block_m = triton.cdiv(batch_size, TOTAL_CORE_NUM)
+            topk_bubble_kernel[grid_fn](
+                x,
+                topk_out,
+                topk_out_idx,
+                k,
+                batch_size,
+                topk_elem_cnt,
+                block_m,
+                DESCENDING=descending,
+                DTYPE_SIZE=x.element_size(),
+            )
+            return (topk_out, topk_out_idx)
 
         stage1_out = torch.empty(
             batch_size * chunk_num * k, device=x.device, dtype=x.dtype
@@ -554,8 +704,6 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
                 chunk_size,
                 descending,
             )
-        stage2_elem_cnt = chunk_num * k
-        BLOCK_SIZE = triton.next_power_of_2(stage2_elem_cnt)
 
         with torch_device_fn.device(x.device):
             topk_stage2_kernel[batch_size,](

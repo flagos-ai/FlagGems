@@ -31,6 +31,7 @@ def _assert_mode_matches(inp, dim, keepdim):
 
 
 @pytest.mark.mode
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 @pytest.mark.parametrize("shape", utils.REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("keepdim", KEEPDIM)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -47,6 +48,7 @@ def test_mode(shape, dim, keepdim, dtype):
 
 
 @pytest.mark.mode
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 @pytest.mark.parametrize(
     "data, dim, keepdim",

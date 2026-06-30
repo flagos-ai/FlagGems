@@ -46,6 +46,8 @@ def scatter_input_fn_factory(reduce=None):
 
         if reduce is None:
             yield inp, dim, index, src
+        elif flag_gems.vendor_name == "cambricon":
+            yield inp, dim, index, src, {"reduce": reduce}
         else:
             yield inp, dim, index, src, reduce
 
@@ -74,6 +76,8 @@ def scatter_inplace_input_fn_factory(reduce=None):
 
         if reduce is None:
             yield inp, dim, index, src
+        elif flag_gems.vendor_name == "cambricon":
+            yield inp, dim, index, src, {"reduce": reduce}
         else:
             yield inp, dim, index, src, reduce
 

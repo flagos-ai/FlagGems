@@ -8,12 +8,18 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
-@pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "ALWAYS_BOOL")])
 @triton.jit
-def logical_not_func(x):
+def logical_not_func(x, inplace):
     return not x.to(tl.int1)
 
 
 def logical_not(A):
     logger.debug("GEMS_CAMBRICON LOGICAL_NOT")
-    return logical_not_func(A)
+    return logical_not_func(A, False)
+
+
+def logical_not_(A):
+    logger.debug("GEMS_CAMBRICON LOGICAL_NOT_")
+    logical_not_func(A, True, out0=A)
+    return A

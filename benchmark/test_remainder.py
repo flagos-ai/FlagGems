@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -37,20 +39,37 @@ def test_remainder_tensor_inplace():
 
 
 def remainder_scalar_input_fn(shape, dtype, device):
-    inp = torch.randint(
-        torch.iinfo(dtype).min,
-        torch.iinfo(dtype).max,
-        shape,
-        dtype=dtype,
-        device=device,
-    )
-    scalar = torch.randint(
-        torch.iinfo(dtype).min,
-        torch.iinfo(dtype).max,
-        (1,),
-        dtype=dtype,
-        device=device,
-    ).item()
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        inp = torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            shape,
+            dtype=dtype,
+            device="cpu",
+        ).to(device)
+        scalar = torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            (1,),
+            dtype=dtype,
+            device="cpu",
+        ).item()
+    else:
+        inp = torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            shape,
+            dtype=dtype,
+            device=device,
+        )
+        scalar = torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            (1,),
+            dtype=dtype,
+            device=device,
+        ).item()
     if scalar == 0:
         scalar = 1
     yield inp, scalar
@@ -80,7 +99,11 @@ def test_remainder_scalar_inplace():
 
 
 def scalar_tensor_remainder_input_fn(shape, dtype, device):
-    inp = torch.randint(1, 100, shape, dtype=dtype, device=device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        inp = torch.randint(1, 100, shape, dtype=dtype, device="cpu").to(device)
+    else:
+        inp = torch.randint(1, 100, shape, dtype=dtype, device=device)
     scalar = 7
     yield scalar, inp
 

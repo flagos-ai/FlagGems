@@ -110,7 +110,13 @@ def test_to_copy_float_to_int(shape, src_dtype, dst_dtype):
 def test_to_copy_int_to_float(shape, src_dtype, dst_dtype):
     if flag_gems.vendor_name == "ascend" and dst_dtype == torch.bfloat16:
         pytest.skip("Ascend NPU may have issues with bfloat16")
-    x = torch.randint(-100, 100, shape, dtype=src_dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        x = torch.randint(-100, 100, shape, dtype=src_dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        x = torch.randint(-100, 100, shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
     with flag_gems.use_gems():
@@ -125,7 +131,13 @@ def test_to_copy_int_to_float(shape, src_dtype, dst_dtype):
 def test_to_copy_int_to_int(shape, src_dtype, dst_dtype):
     if src_dtype == dst_dtype:
         pytest.skip("Skip same dtype conversion")
-    x = torch.randint(-100, 100, shape, dtype=src_dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        x = torch.randint(-100, 100, shape, dtype=src_dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        x = torch.randint(-100, 100, shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
     with flag_gems.use_gems():
@@ -153,7 +165,13 @@ def test_to_copy_float_to_uint8(shape, src_dtype):
 def test_to_copy_uint8_to_float(shape, dst_dtype):
     if flag_gems.vendor_name == "ascend" and dst_dtype == torch.bfloat16:
         pytest.skip("Ascend NPU may have issues with bfloat16")
-    x = torch.randint(0, 255, shape, dtype=torch.uint8, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        x = torch.randint(0, 255, shape, dtype=torch.uint8, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        x = torch.randint(0, 255, shape, dtype=torch.uint8, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
     with flag_gems.use_gems():
@@ -165,7 +183,13 @@ def test_to_copy_uint8_to_float(shape, dst_dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dst_dtype", [torch.int8, torch.int16, torch.int32])
 def test_to_copy_uint8_to_int(shape, dst_dtype):
-    x = torch.randint(0, 255, shape, dtype=torch.uint8, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        x = torch.randint(0, 255, shape, dtype=torch.uint8, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        x = torch.randint(0, 255, shape, dtype=torch.uint8, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
     with flag_gems.use_gems():

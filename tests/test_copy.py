@@ -91,14 +91,28 @@ def test_copy_inplace_float8_e8m0fnu(shape):
     device = flag_gems.device
 
     # e8m0 is an exponent-only format, create via view from uint8
-    src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device=device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device="cpu").to(
+            device
+        )
+    else:
+        src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device=device)
     src = src_uint8.view(torch.float8_e8m0fnu)
     ref_src = utils.to_reference(src)
 
-    ref_dst = utils.to_reference(
-        torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
-    )
-    res_dst = torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
+    if flag_gems.vendor_name == "cambricon":
+        ref_dst = utils.to_reference(
+            torch.zeros(shape, dtype=torch.float8_e8m0fnu, device="cpu").to(device)
+        )
+        res_dst = torch.zeros(shape, dtype=torch.float8_e8m0fnu, device="cpu").to(
+            device
+        )
+    else:
+        ref_dst = utils.to_reference(
+            torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
+        )
+        res_dst = torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
     ref_dst.copy_(ref_src)
 
     with flag_gems.use_gems():
@@ -117,7 +131,13 @@ def test_copy_inplace_float8_e8m0fnu_to_float32():
     device = flag_gems.device
     shape = (8,)
 
-    src_uint8 = torch.randint(1, 200, shape, dtype=torch.uint8, device=device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        src_uint8 = torch.randint(1, 200, shape, dtype=torch.uint8, device="cpu").to(
+            device
+        )
+    else:
+        src_uint8 = torch.randint(1, 200, shape, dtype=torch.uint8, device=device)
     src = src_uint8.view(torch.float8_e8m0fnu)
     ref_src = utils.to_reference(src)
 

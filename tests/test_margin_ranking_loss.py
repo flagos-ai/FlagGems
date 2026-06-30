@@ -22,12 +22,24 @@ else:
 @pytest.mark.parametrize("margin", MARGIN_RANKING_MARGINS)
 @pytest.mark.parametrize("reduction", MARGIN_RANKING_REDUCTIONS)
 def test_margin_ranking_loss(shape, dtype, margin, reduction):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     input1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     input2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    target = (
-        torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int8) * 2 - 1
-    ).to(dtype)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        target = (
+            (torch.randint(0, 2, shape, device="cpu", dtype=torch.int8) * 2 - 1)
+            .to(dtype)
+            .to(flag_gems.device)
+        )
+    else:
+        target = (
+            torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int8) * 2
+            - 1
+        ).to(dtype)
 
     ref_input1 = utils.to_reference(input1)
     ref_input2 = utils.to_reference(input2)
@@ -52,16 +64,34 @@ REDUCTION_MAP = {0: "none", 1: "mean", 2: "sum"}
 @pytest.mark.parametrize("margin", MARGIN_RANKING_MARGINS)
 @pytest.mark.parametrize("reduction", MARGIN_RANKING_REDUCTIONS)
 def test_margin_ranking_loss_backward(shape, dtype, margin, reduction):
-    input1 = torch.randn(
-        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
-    input2 = torch.randn(
-        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
 
-    target = (
-        torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int8) * 2 - 1
-    ).to(dtype)
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        input1 = torch.randn(shape, dtype=dtype, device="cpu", requires_grad=True).to(
+            flag_gems.device
+        )
+        input2 = torch.randn(shape, dtype=dtype, device="cpu", requires_grad=True).to(
+            flag_gems.device
+        )
+        target = (
+            (torch.randint(0, 2, shape, device="cpu", dtype=torch.int8) * 2 - 1)
+            .to(dtype)
+            .to(flag_gems.device)
+        )
+    else:
+        input1 = torch.randn(
+            shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+        )
+        input2 = torch.randn(
+            shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+        )
+
+        target = (
+            torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int8) * 2
+            - 1
+        ).to(dtype)
 
     # Avoid boundary elements where val = -y*(x1-x2)+margin ≈ 0, since the
     # discontinuous gradient at the boundary can differ between Triton (float32

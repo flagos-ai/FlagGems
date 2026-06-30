@@ -16,12 +16,13 @@ def addcdiv_kernel(x, t1, t2, value):
     return x + value * t1 / t2
 
 
+def addcdiv_out(inp, tensor1, tensor2, *, value=1.0, out):
+    logger.debug("GEMS_CAMBRICON ADDCDIV_OUT")
+    addcdiv_kernel(inp, tensor1, tensor2, value, out0=out)
+    return out
+
+
 def addcdiv(inp, tensor1, tensor2, value=1.0, out=None):
     logger.debug("GEMS_CAMBRICON ADDCDIV FORWARD")
-
-    if out is None:
-        out = torch.empty_like(inp)
-
-    addcdiv_kernel(inp, tensor1, tensor2, value, out0=out)
-
-    return out
+    out = torch.empty_like(inp)
+    return addcdiv_kernel(inp, tensor1, tensor2, value, out0=out)

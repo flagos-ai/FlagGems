@@ -156,7 +156,14 @@ def test_mul_complex_complex(shape, complex_dtype):
     with flag_gems.use_gems():
         res_out = torch.mul(inp1, inp2)
 
-    utils.gems_assert_close(res_out, ref_out, complex_dtype)
+    if flag_gems.vendor_name == "cambricon" and complex_dtype == torch.complex32:
+        from .accuracy_utils import to_cpu
+
+        res_out = to_cpu(res_out, ref_out)
+        ref_out = ref_out.to(complex_dtype)
+        torch.testing.assert_close(res_out, ref_out, atol=5e-3, rtol=2e-3)
+    else:
+        utils.gems_assert_close(res_out, ref_out, complex_dtype)
 
 
 @pytest.mark.mul

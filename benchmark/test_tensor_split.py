@@ -3,6 +3,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -41,4 +43,6 @@ def test_tensor_split():
         torch_op=torch.tensor_split,
         dtypes=consts.FLOAT_DTYPES,
     )
+    if flag_gems.vendor_name == "cambricon":
+        bench.set_gems(flag_gems.tensor_split)
     bench.run()

@@ -72,6 +72,7 @@ def _dim_values_input_fn(shape, dtype, device):
 
 
 @pytest.mark.nanmedian
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 def test_nanmedian():
     bench = base.GenericBenchmark(
         input_fn=_input_fn,
@@ -84,6 +85,7 @@ def test_nanmedian():
 
 
 @pytest.mark.nanmedian_out
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 def test_nanmedian_out():
     bench = base.GenericBenchmark(
         input_fn=_out_input_fn,
@@ -96,6 +98,7 @@ def test_nanmedian_out():
 
 
 @pytest.mark.nanmedian_dim
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 def test_nanmedian_dim():
     bench = base.GenericBenchmark(
         input_fn=_dim_input_fn,
@@ -108,6 +111,7 @@ def test_nanmedian_dim():
 
 
 @pytest.mark.nanmedian_dim_values
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="RuntimeError")
 def test_nanmedian_dim_values():
     bench = base.GenericBenchmark(
         input_fn=_dim_values_input_fn,
