@@ -240,6 +240,22 @@ CMAKE_ARGS="-DFLAGGEMS_BACKEND=MUSA -DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DCMAKE_BUI
 pip install -v -e .
 ```
 
+**沐曦 MetaX MACA**
+
+```shell
+export MACA_PATH=<maca-install-dir>
+#export MACA_PATH=/opt/maca
+export CMAKE_ARGS="-DFLAGGEMS_BACKEND=MACA \
+-DFLAGGEMS_BUILD_C_EXTENSIONS=ON \
+-DCMAKE_BUILD_TYPE=Release"
+source tools/env.sh metax
+pip install -e .
+```
+
+请按照 `pyproject.toml` 中 `metax` extra group 记录的版本矩阵安装
+MetaX Python 软件包，并确保在构建前已经安装 MACA 版本的 PyTorch/Triton。
+启用 C++ 扩展时，`tools/env.sh` 会准备 MACA 构建 wrapper。
+
 **华为昇腾 (NPU)**
 
 ```shell
@@ -476,7 +492,8 @@ The CMake options for configuring `flag_gems` are listed below:
   <td><code>FLAGGEMS_BACKEND</code></td>
   <td>
     <!--Target backend for building.-->
-    目标后端平台。合法取值为 <code>CUDA</code>、<code>IX</code>、<code>MUSA</code> 和 <code>NPU</code>。
+    目标后端平台。合法取值为 <code>CUDA</code>、<code>IX</code>、<code>MUSA</code>、
+    <code>NPU</code>、<code>GCU</code> 和 <code>MACA</code>。
   </td>
   <td><code>CUDA</code></td>
 </tr>

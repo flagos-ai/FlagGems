@@ -148,6 +148,22 @@ CMAKE_ARGS="-DFLAGGEMS_BACKEND=MUSA -DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DCMAKE_BUI
 pip install -e .
 ```
 
+**MetaX MACA**
+
+```shell
+export MACA_PATH=<maca-install-dir>
+export CMAKE_ARGS="-DFLAGGEMS_BACKEND=MACA -DFLAGGEMS_BUILD_C_EXTENSIONS=ON \
+-DCMAKE_BUILD_TYPE=Release"
+source tools/env.sh metax
+pip install -e .
+```
+
+Install the MetaX Python packages according to the version matrix in
+the `metax` extra group in `pyproject.toml`, and make sure the MACA
+version of PyTorch/Triton is installed before building. The
+`tools/env.sh` script prepares the MACA build wrapper when C++
+extensions are enabled.
+
 **Huawei Ascend (NPU)**
 
 ```shell
@@ -284,7 +300,8 @@ The CMake options for configuring `flag_gems` are listed below:
 <tr>
   <td><code>FLAGGEMS_BACKEND</code></td>
   <td>Target backend for building. Valid values are <code>CUDA</code>,
-      <code>IX</code>, <code>MUSA</code>, and <code>NPU</code>.</td>
+      <code>IX</code>, <code>MUSA</code>, <code>NPU</code>, <code>GCU</code>,
+      and <code>MACA</code>.</td>
   <td><code>CUDA</code></td>
 </tr>
 <tr>

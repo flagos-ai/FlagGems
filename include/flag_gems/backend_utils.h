@@ -15,6 +15,15 @@ namespace backend {
   using RawStreamType = CUstream;
 }  // namespace backend
 }  // namespace flag_gems
+#elif defined(FLAGGEMS_USE_MACA)
+#include <c10/cuda/CUDAStream.h>
+#include <mcc/mcc_global.h>
+namespace flag_gems {
+namespace backend {
+  using StreamType = c10::cuda::CUDAStream;
+  using RawStreamType = mcStream_t;
+}  // namespace backend
+}  // namespace flag_gems
 #elif defined(FLAGGEMS_USE_NPU)
 #include <acl/acl.h>
 #include "torch_npu/csrc/core/npu/NPUStream.h"
@@ -48,7 +57,7 @@ namespace backend {
 
   // Get the current stream for the given device
   inline StreamType getCurrentStream(const at::Device& device) {
-#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_MACA)
     return c10::cuda::getCurrentCUDAStream(device.index());
 #elif defined(FLAGGEMS_USE_NPU)
     return c10_npu::getCurrentNPUStream(device.index());
@@ -59,13 +68,13 @@ namespace backend {
     return nullptr;
 #else
 #error \
-    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, FLAGGEMS_USE_GCU"
+    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, FLAGGEMS_USE_GCU, FLAGGEMS_USE_MACA"
 #endif
   }
 
   // Get the current stream for the default device
   inline StreamType getCurrentStream() {
-#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_MACA)
     return c10::cuda::getCurrentCUDAStream();
 #elif defined(FLAGGEMS_USE_NPU)
     return c10_npu::getCurrentNPUStream();
@@ -80,7 +89,9 @@ namespace backend {
 
   // Get the raw stream from a typed stream (for passing to triton_jit)
   inline RawStreamType getRawStream(const StreamType& stream) {
-#if defined(FLAGGEMS_USE_GCU)
+#if defined(FLAGGEMS_USE_MACA)
+    return reinterpret_cast<mcStream_t>(stream.stream());
+#elif defined(FLAGGEMS_USE_GCU)
     return stream;
 #else
     return stream.stream();
@@ -89,7 +100,7 @@ namespace backend {
 
   // Check if tensor is on the correct device type for this backend
   inline void checkDeviceType(const at::Tensor& tensor, const char* tensor_name) {
-#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_MACA)
     TORCH_CHECK(tensor.is_cuda(), tensor_name, " must be on CUDA device, but got ", tensor.device());
 #elif defined(FLAGGEMS_USE_NPU)
     TORCH_CHECK(tensor.is_privateuseone(), tensor_name, " must be on NPU device, but got ", tensor.device());
@@ -104,7 +115,7 @@ namespace backend {
 
   // Check if tensor is on the correct device type (returns bool instead of throwing)
   inline bool isOnDevice(const at::Tensor& tensor) {
-#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_MACA)
     return tensor.is_cuda();
 #elif defined(FLAGGEMS_USE_NPU)
     return tensor.is_privateuseone();
@@ -123,6 +134,8 @@ namespace backend {
     return "CUDA";
 #elif defined(FLAGGEMS_USE_IX)
     return "IX (CUDA-compatible)";
+#elif defined(FLAGGEMS_USE_MACA)
+    return "MACA (CUDA-compatible)";
 #elif defined(FLAGGEMS_USE_NPU)
     return "NPU";
 #elif defined(FLAGGEMS_USE_MUSA)
@@ -136,7 +149,7 @@ namespace backend {
 
   // Get the torch device type used by the active backend.
   inline at::DeviceType getBackendDeviceType() {
-#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_MACA)
     return at::kCUDA;
 #elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_GCU)
     return at::kPrivateUse1;
@@ -147,7 +160,7 @@ namespace backend {
 
   // Get the current device index for the active backend.
   inline c10::DeviceIndex getCurrentDeviceIndex() {
-#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_MACA)
     return at::cuda::current_device();
 #elif defined(FLAGGEMS_USE_MUSA)
     return c10::musa::current_device();
@@ -172,7 +185,7 @@ namespace backend {
 
   // Check if the backend device is available.
   inline bool isDeviceAvailable() {
-#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_MACA)
     return torch::cuda::is_available();
 #elif defined(FLAGGEMS_USE_NPU)
     return torch::custom_class_available("npu");
@@ -187,7 +200,7 @@ namespace backend {
 
   // Synchronize the backend device.
   inline void synchronize() {
-#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_MACA)
     torch::cuda::synchronize();
 #elif defined(FLAGGEMS_USE_NPU)
     // NPU sync if needed
