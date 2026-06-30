@@ -365,6 +365,28 @@ cd {{WORK_DIR}}
 git add conf/operators.yaml
 ```
 
+**自我验证（可选但推荐）**：
+
+你可以使用验证脚本检查实现的完整性：
+
+```bash
+cd {{WORK_DIR}}
+{{PYTHON_PATH}} ../tools/auto_gen/validate_operator.py . {{OPERATOR}} <aten_ops> -v
+```
+
+其中 `<aten_ops>` 是你注册的 ATen 算子列表（用空格分隔），例如：
+```bash
+# 示例：sign 算子有三个变体
+{{PYTHON_PATH}} ../tools/auto_gen/validate_operator.py . sign sign sign.out sign_ -v
+```
+
+验证脚本会检查：
+- `conf/operators.yaml` 中是否有对应条目且带 `KernelGen` 标签
+- `tests/test_{{OPERATOR}}.py` 是否存在且包含所有变体的 pytest.mark
+- `benchmark/test_{{OPERATOR}}.py` 是否存在且包含所有变体的 pytest.mark
+
+如果验证失败，修复缺失项后重新验证。
+
 ### Step 6.7: 提交代码
 
 **当所有 pre-commit 检查通过且 operators.yaml 已更新后**，提交代码：
