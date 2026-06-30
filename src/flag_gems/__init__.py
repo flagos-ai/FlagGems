@@ -281,6 +281,7 @@ _FULL_CONFIG = (
     ("elu_", elu_),
     ("elu_backward", elu_backward),
     ("embedding", embedding),
+    ("embeddingSpMDMGrad", embeddingSpMDMGrad),
     ("embedding_backward", embedding_backward),
     ("embedding_dense_backward", embedding_dense_backward),
     ("empty", empty),

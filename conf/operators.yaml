@@ -2274,6 +2274,17 @@ ops:
     stages:
       - stable: '2.1'
     cpp: '4.0'
+  - id: embeddingSpMDMGrad
+    description: Triton kernel implementation for embeddingSpMDMGrad.
+    for:
+      - embeddingSpMDMGrad
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: embedding_backward
     description: The backward version of `embedding()`.
     for:
