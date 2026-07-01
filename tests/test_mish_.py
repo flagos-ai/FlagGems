@@ -18,3 +18,4 @@ def test_mish_(shape, dtype):
         res_out = torch.ops.aten.mish_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+    assert res_out.data_ptr() == inp.data_ptr(), "mish_ must operate in-place"

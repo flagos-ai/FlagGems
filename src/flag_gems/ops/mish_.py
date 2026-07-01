@@ -14,14 +14,13 @@ _tanh = tl_extra_shim.tanh
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def mish_func(x):
-    # mish(x) = x * tanh(softplus(x)) = x * tanh(ln(1 + e^x))
+    # mish(x) = x * tanh(softplus(x))
+    # softplus(x) = max(x, 0) + log(1 + exp(-|x|)) is numerically stable
+    #   - for x >> 0: max(x,0) = x, exp(-|x|) ≈ 0 → softplus ≈ x
+    #   - for x << 0: max(x,0) = 0, exp(-|x|) ≈ 0 → softplus ≈ 0
     x_fp32 = x.to(tl.float32)
-    return (x_fp32 * _tanh(tl.log(1 + tl.exp(x_fp32)))).to(x.dtype)
-
-
-def mish(A):
-    logger.debug("GEMS MISH")
-    return mish_func(A)
+    softplus = tl.maximum(x_fp32, 0.0) + tl.log(1.0 + tl.exp(-tl.abs(x_fp32)))
+    return (x_fp32 * _tanh(softplus)).to(x.dtype)
 
 
 def mish_(A):
