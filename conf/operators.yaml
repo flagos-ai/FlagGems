@@ -6982,6 +6982,11 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_log_softmax
+    description: |
+      Applies the log of the softmax function along a given dimension.
+    for:
+      - special.log_softmax
   - id: special_round
     description: |
       Rounds a tensor to the nearest integer, with ties rounding to the nearest
@@ -7007,11 +7012,6 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: special_log_softmax
-    description: |
-      Applies the log of the softmax function along a given dimension.
-    for:
-      - special.log_softmax
   - id: special_shifted_chebyshev_polynomial_u
     description: |
       Computes the shifted Chebyshev polynomial of the second kind U_n^*(x)
