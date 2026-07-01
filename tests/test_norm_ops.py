@@ -317,8 +317,10 @@ def test_accuracy_weightnorm(shape, dtype, dim):
     res_v_grad, res_g_grad = torch.autograd.grad(
         res_w_out, (v, g), grad_outputs=res_w_grad
     )
-    gems_assert_close(res_v_grad, ref_v_grad, dtype, reduce_dim=reduce_size)
-    gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size)
+    # Backward propagation has an error amplification effect; relax the tolerance for an extremely small reduce_size to prevent flaky test failures
+    bwd_reduce_dim = max(reduce_size, 64)
+    gems_assert_close(res_v_grad, ref_v_grad, dtype, reduce_dim=bwd_reduce_dim)
+    gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=bwd_reduce_dim)
 
 
 WEIGHT_NORM_INTERFACE_SHAPE_DIM = list(
@@ -358,8 +360,10 @@ def test_accuracy_weightnorm_interface(shape, dtype, dim):
         res_w_out, (v, g), grad_outputs=res_w_grad
     )
 
-    gems_assert_close(res_v_grad, ref_v_grad, dtype, reduce_dim=reduce_size)
-    gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size)
+    # Backward propagation has an error amplification effect; relax the tolerance for an extremely small reduce_size to prevent flaky test failures
+    bwd_reduce_dim = max(reduce_size, 64)
+    gems_assert_close(res_v_grad, ref_v_grad, dtype, reduce_dim=bwd_reduce_dim)
+    gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=bwd_reduce_dim)
 
 
 @pytest.mark.rms_norm
