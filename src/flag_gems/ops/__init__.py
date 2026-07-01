@@ -336,6 +336,7 @@ from flag_gems.ops.per_token_group_quant_fp8 import (
     SUPPORTED_FP8_DTYPE,
     per_token_group_quant_fp8,
 )
+from flag_gems.ops.permute_copy import permute_copy
 from flag_gems.ops.pixel_shuffle import pixel_shuffle
 from flag_gems.ops.pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from flag_gems.ops.poisson import poisson
@@ -915,6 +916,7 @@ __all__ = [
     "ones_like",
     "pad",
     "per_token_group_quant_fp8",
+    "permute_copy",
     "pixel_shuffle",
     "pixel_unshuffle",
     "pixel_unshuffle_out",
