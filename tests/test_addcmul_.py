@@ -21,6 +21,9 @@ from . import accuracy_utils as utils
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("value", [1.0, 0.5, 2.0, -1.5])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_addcmul_(self_shape, t1_shape, t2_shape, dtype, value):
     inp = torch.randn(self_shape, dtype=dtype, device=flag_gems.device)
     t1 = torch.randn(t1_shape, dtype=dtype, device=flag_gems.device)

@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner
 
-logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.sqrt")
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -37,7 +37,7 @@ def sqrt_kernel(
 
 
 def sqrt(A):
-    logger.debug("GEMS_HOPPER SQRT")
+    logger.debug("GEMS_NVIDIA SQRT")
     output = torch.empty_like(A)
     n_elements = output.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
@@ -46,7 +46,7 @@ def sqrt(A):
 
 
 def sqrt_(A):
-    logger.debug("GEMS_HOPPER SQRT_")
+    logger.debug("GEMS_NVIDIA SQRT_")
     output = torch.empty_like(A)
     n_elements = A.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)

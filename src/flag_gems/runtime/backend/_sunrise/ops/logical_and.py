@@ -26,7 +26,7 @@ def logical_and_func(x, y):
 
 
 def logical_and(A, B):
-    logger.debug("GEMS LOGICAL_AND")
+    logger.debug("GEMS_SUNRISE LOGICAL_AND")
     return logical_and_func(A, B)
 
 
@@ -37,6 +37,6 @@ def logical_and_func_(x, y):
 
 
 def logical_and_(A, B):
-    logger.debug("GEMS LOGICAL_AND_")
+    logger.debug("GEMS_SUNRISE LOGICAL_AND_")
     logical_and_func_(A, B, out0=A)
     return A

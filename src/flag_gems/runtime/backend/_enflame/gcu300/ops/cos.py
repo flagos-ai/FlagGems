@@ -15,11 +15,11 @@ def cos_func(x):
 
 
 def cos(A):
-    logger.debug("GEMS COS")
+    logger.debug("GEMS_ENFLAME COS")
     return cos_func(A)
 
 
 def cos_(A):
-    logger.debug("GEMS COS_")
+    logger.debug("GEMS_ENFLAME COS_")
     cos_func(A, out0=A)
     return A

@@ -12,7 +12,7 @@ from flag_gems.utils import libentry, libtuner
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 MAX_N = 16384
 
 
@@ -808,7 +808,7 @@ def log_softmax(self, dim, half_to_float=False):
 
     with torch_device_fn.device(inp.device):
         if K > 1:
-            logger.debug("GEMS_CAMBRICON LOGSOFTMAX USE NON INNER")
+            logger.debug("GEMS_CAMBRICON LOG_SOFTMAX")
             grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
             log_softmax_kernel_non_inner[grid](
                 out,
@@ -818,7 +818,7 @@ def log_softmax(self, dim, half_to_float=False):
                 K,
             )
         else:
-            logger.debug("GEMS_CAMBRICON LOGSOFTMAX USE INNER")
+            logger.debug("GEMS_CAMBRICON LOG_SOFTMAX")
             if M > TOTAL_CORE_NUM or N < 1024 * 8 * 8:
                 log_softmax_kernel_inner[TOTAL_CORE_NUM, 1, 1](
                     out,
@@ -875,7 +875,7 @@ def log_softmax(self, dim, half_to_float=False):
 
 
 def log_softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS_CAMBRICON LOG_SOFTMAX VJP")
+    logger.debug("GEMS_CAMBRICON LOG_SOFTMAX_VJP")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
@@ -890,7 +890,7 @@ def log_softmax_backward(grad_output, output, dim, input_dtype):
 
     with torch_device_fn.device(in_grad.device):
         if K > 1:
-            logger.debug("GEMS_CAMBRICON LOG SOFTMAX VJP USE NON INNER")
+            logger.debug("GEMS_CAMBRICON LOG_SOFTMAX_VJP_USE_NON_INNER")
             grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
             log_softmax_backward_kernel_non_inner[grid](
                 output,
@@ -901,7 +901,7 @@ def log_softmax_backward(grad_output, output, dim, input_dtype):
                 K,
             )
         else:
-            logger.debug("GEMS_CAMBRICON LOG SOFTMAX VJP USE INNER")
+            logger.debug("GEMS_CAMBRICON LOG_SOFTMAX_VJP_USE_INNER")
             grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
             log_softmax_backward_kernel_inner[TOTAL_CORE_NUM, 1, 1](
                 output,

@@ -43,7 +43,7 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 
 
 def zero_(x: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS ZERO_")
+    logger.debug("GEMS_ENFLAME ZERO_")
     N = x.numel()
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), 24),)
     with torch_device_fn.device(x.device):

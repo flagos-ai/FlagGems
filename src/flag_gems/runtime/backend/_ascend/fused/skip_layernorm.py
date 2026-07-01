@@ -82,7 +82,7 @@ def skip_layer_norm_kernel(
 class SkipLayerNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, residual, normalized_shape, weight, bias, eps=1e-5):
-        logger.debug("GEMS_ASCEND SKIP LAYERNORM FORWARD")
+        logger.debug("GEMS_ASCEND SKIP_LAYERNORM_FORWARD")
         dim = x.ndim - len(normalized_shape)
         M = min(math.prod(x.shape[:dim]), 65535)
         N = math.prod(normalized_shape)

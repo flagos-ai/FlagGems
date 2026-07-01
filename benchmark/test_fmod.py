@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -17,6 +19,9 @@ def _scalar_input_fn(shape, dtype, device):
 
 
 @pytest.mark.fmod_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_fmod_tensor():
     bench = base.GenericBenchmark(
         input_fn=_tensor_input_fn,
@@ -28,6 +33,9 @@ def test_fmod_tensor():
 
 
 @pytest.mark.fmod_scalar
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_fmod_scalar():
     bench = base.GenericBenchmark(
         input_fn=_scalar_input_fn,
@@ -39,6 +47,9 @@ def test_fmod_scalar():
 
 
 @pytest.mark.fmod_tensor_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_fmod_tensor_():
     bench = base.GenericBenchmark(
         input_fn=_tensor_input_fn,
@@ -51,6 +62,9 @@ def test_fmod_tensor_():
 
 
 @pytest.mark.fmod_scalar_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_fmod_scalar_():
     bench = base.GenericBenchmark(
         input_fn=_scalar_input_fn,

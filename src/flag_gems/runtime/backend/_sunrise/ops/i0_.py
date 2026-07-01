@@ -67,7 +67,7 @@ def i0_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def i0_(*args, **kwargs):
-    logger.debug("GEMS I0_")
+    logger.debug("GEMS_SUNRISE I0_")
     x = None
     if len(args) > 0:
         x = args[0]

@@ -282,7 +282,7 @@ def softmax_backward_kernel_inner(
 
 
 def softmax_out(self, dim, half_to_float=False, *, out):
-    logger.debug("GEMS SOFTMAX_OUT")
+    logger.debug("GEMS_SUNRISE SOFTMAX_OUT")
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
 
@@ -329,7 +329,7 @@ def softmax_out(self, dim, half_to_float=False, *, out):
 
 
 def softmax(self, dim, half_to_float=False):
-    logger.debug("GEMS SOFTMAX")
+    logger.debug("GEMS_SUNRISE SOFTMAX")
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
 
@@ -345,7 +345,7 @@ def softmax(self, dim, half_to_float=False):
 
 
 def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
-    logger.debug("GEMS SOFTMAX_BACKWARD_OUT")
+    logger.debug("GEMS_SUNRISE SOFTMAX_BACKWARD_OUT")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
@@ -388,7 +388,7 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
 
 
 def softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS SOFTMAX_BACKWARD")
+    logger.debug("GEMS_SUNRISE SOFTMAX_BACKWARD")
     in_grad = torch.empty_like(output, dtype=input_dtype)
     return softmax_backward_out(
         grad_output, output, dim, input_dtype, grad_input=in_grad

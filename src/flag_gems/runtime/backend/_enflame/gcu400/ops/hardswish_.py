@@ -31,7 +31,7 @@ def hardswish_kernel_(x_ptr, N_total, BLOCK_SIZE: tl.constexpr):
 
 
 def hardswish_(*args, **kwargs):
-    logger.debug("GEMS HARDSWISH_ GCU400")
+    logger.debug("GEMS_ENFLAME HARDSWISH_")
     if len(args) >= 1:
         x = args[0]
     else:

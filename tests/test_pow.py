@@ -10,6 +10,9 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_pow_tensor_tensor(shape, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3008: Skiping fp32 pow test on tsingmicro platform")
+
     if flag_gems.vendor_name == "sunrise" and dtype == torch.float32:
         pytest.skip("Issues #3838: Skipping fp32 pow test on sunrise platform")
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)

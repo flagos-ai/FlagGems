@@ -106,6 +106,12 @@ ENV  LLVM_BINARY_DIR=${LLVM_SYSPATH}/bin \
     PYTHONPATH=${LLVM_SYSPATH}/python_packages/mlir_core \
     LD_LIBRARY_PATH=${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}
 
+# - Torch XLA is not used in TsingMicro, and it may lead to LLVM error
+# - Torch compiler is not supported on TsingMicro, and in particular,
+#   it is not used for inference scenario
+ENV USE_TORCH_XLA=0 \
+    TORCH_COMPILE_DISABLE=1
+
 # Note: VIRTUAL_ENV and PATH are not sharable between stages
 ENV VIRTUAL_ENV=/flagos \
    PATH="/flagos/bin:${PATH}"

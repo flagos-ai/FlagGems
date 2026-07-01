@@ -11,9 +11,7 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 
 @triton.heuristics(runtime.get_heuristic_config("dropout"))
@@ -102,7 +100,7 @@ UNROLL = 4
 
 
 def dropout(input, p, train=True):
-    logger.debug("GEMS_MTHREADS NATIVE DROPOUT FORWARD")
+    logger.debug("GEMS_MTHREADS NATIVE_DROPOUT_FORWARD")
     if not train or p == 0:
         out = input.clone()
         mask = torch.ones_like(input, dtype=torch.bool)
@@ -131,7 +129,7 @@ def dropout(input, p, train=True):
 
 
 def dropout_backward(grad_output, mask, scale):
-    logger.debug("GEMS_MTHREADS NATIVE_DROPOUT_BACKWARD")
+    logger.debug("GEMS_MTHREADS DROPOUT_BACKWARD")
     grad_output = grad_output.contiguous()
     grad_input = torch.empty_like(grad_output)
     N = grad_output.numel()

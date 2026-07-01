@@ -7,7 +7,7 @@ from triton.language.extra.xpu.libdevice import rint as _rint
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 # rint(fp32) implements round-half-to-even, matching torch.round semantics.

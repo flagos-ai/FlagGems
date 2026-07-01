@@ -10,7 +10,7 @@ from flag_gems.utils import libentry, libtuner
 from ..utils import TOTAL_CORE_NUM
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -50,7 +50,7 @@ def relu_backward(x, dy):
 
 
 def relu(self):
-    logger.debug("GEMS_CAMBRICON RELU FORWARD")
+    logger.debug("GEMS_CAMBRICON RELU")
     A = self.contiguous()
     out = torch.empty_like(A)
     N = A.numel()
@@ -63,7 +63,7 @@ def relu(self):
 
 
 def relu_(A):
-    logger.debug("GEMS_CAMBRICON RELU_ FORWARD")
+    logger.debug("GEMS_CAMBRICON RELU_")
     A_contig = A.contiguous()
     N = A_contig.numel()
     if N == 0:

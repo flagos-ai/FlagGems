@@ -183,7 +183,7 @@ _gather_func = GatherFunction()
 
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
-    logger.debug("GEMS GATHER")
+    logger.debug("GEMS_ARM GATHER")
     if out is None:
         out = torch.empty_like(index, dtype=inp.dtype, device=inp.device)
     dim_stride = inp.stride(dim)
@@ -194,6 +194,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logger.debug("GEMS GATHER BACKWARD")
+    logger.debug("GEMS_ARM GATHER_BACKWARD")
     result = grad.new_zeros(self.shape)
     return scatter_(result, dim, index, grad, reduce="add")

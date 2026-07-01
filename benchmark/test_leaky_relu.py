@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
 @pytest.mark.leaky_relu
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_leaky_relu():
     bench = base.UnaryPointwiseBenchmark(
         op_name="leaky_relu",
@@ -15,6 +20,9 @@ def test_leaky_relu():
 
 
 @pytest.mark.leaky_relu_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_leaky_relu_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="leaky_relu_",
@@ -26,6 +34,9 @@ def test_leaky_relu_inplace():
 
 
 @pytest.mark.leaky_relu_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_leaky_relu_out():
     bench = base.UnaryPointwiseBenchmark(
         op_name="leaky_relu_out",

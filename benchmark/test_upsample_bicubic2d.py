@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -15,6 +17,9 @@ class UpsampleBenchmark(base.GenericBenchmark):
 @pytest.mark.skip(reason="Benchmark fails: issue #2666")
 @pytest.mark.upsample_bicubic2d
 @pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_upsample_bicubic2d(align_corners):
     def _input_fn(shape, dtype, device):
         input = torch.randn(shape, device=device, dtype=dtype)

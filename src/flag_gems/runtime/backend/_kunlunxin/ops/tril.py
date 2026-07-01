@@ -769,7 +769,7 @@ def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
 
 
 def tril(input: torch.Tensor, diagonal: int = 0):
-    logger.debug("GEMS TRIL")
+    logger.debug("GEMS_KUNLUNXIN TRIL")
     _check_input(input)
 
     out = _empty_contiguous_like(input)
@@ -777,7 +777,7 @@ def tril(input: torch.Tensor, diagonal: int = 0):
 
 
 def tril_(input: torch.Tensor, diagonal: int = 0):
-    logger.debug("GEMS TRIL_")
+    logger.debug("GEMS_KUNLUNXIN TRIL_")
     _check_input(input)
 
     diagonal = int(diagonal)
@@ -797,7 +797,7 @@ def tril_(input: torch.Tensor, diagonal: int = 0):
 
 
 def tril_out(input: torch.Tensor, diagonal: int = 0, *, out: torch.Tensor = None):
-    logger.debug("GEMS TRIL.OUT")
+    logger.debug("GEMS_KUNLUNXIN TRIL_OUT")
 
     if out is None:
         return tril(input, diagonal)

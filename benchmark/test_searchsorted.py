@@ -134,6 +134,9 @@ class SearchsortedScalarOutBenchmark(SearchsortedScalarBenchmark):
 
 
 @pytest.mark.searchsorted
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 @pytest.mark.parametrize("dtype", SEARCHSORTED_DTYPES)
 def test_searchsorted(dtype):
     bench = SearchsortedBenchmark(
@@ -145,6 +148,9 @@ def test_searchsorted(dtype):
 
 
 @pytest.mark.searchsorted_scalar
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 @pytest.mark.parametrize("dtype", SEARCHSORTED_DTYPES)
 def test_searchsorted_scalar(dtype):
     bench = SearchsortedScalarBenchmark(
@@ -156,6 +162,9 @@ def test_searchsorted_scalar(dtype):
 
 
 @pytest.mark.searchsorted_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 @pytest.mark.parametrize("dtype", SEARCHSORTED_DTYPES)
 def test_searchsorted_out(dtype):
     bench = SearchsortedOutBenchmark(
@@ -167,6 +176,9 @@ def test_searchsorted_out(dtype):
 
 
 @pytest.mark.searchsorted_scalar_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 @pytest.mark.parametrize("dtype", SEARCHSORTED_DTYPES)
 def test_searchsorted_scalar_out(dtype):
     bench = SearchsortedScalarOutBenchmark(

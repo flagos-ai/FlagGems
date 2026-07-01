@@ -202,7 +202,7 @@ def dot_kernel_fp32(
 
 
 def vdot(input: Tensor, other: Tensor):
-    logger.debug("GEMS VDOT")
+    logger.debug("GEMS_SUNRISE VDOT")
 
     assert (
         input.dtype == other.dtype

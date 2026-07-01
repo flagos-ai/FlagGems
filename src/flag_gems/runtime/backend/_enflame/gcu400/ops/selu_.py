@@ -29,7 +29,7 @@ def selu_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def selu_(*args, **kwargs):
-    logger.debug("GEMS SELU_")
+    logger.debug("GEMS_ENFLAME SELU_")
     x = None
     if len(args) > 0 and torch.is_tensor(args[0]):
         x = args[0]

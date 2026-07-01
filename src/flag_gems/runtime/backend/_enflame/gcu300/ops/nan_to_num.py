@@ -29,7 +29,7 @@ def nan_to_num_func(x, nan, posinf, neginf):
 
 # nan_to_num(Tensor self, float? nan=None, float? posinf=None, float? neginf=None) -> Tensor
 def nan_to_num(A, nan=None, posinf=None, neginf=None):
-    logger.debug("GEMS NAN_TO_NUM TENSOR")
+    logger.debug("GEMS_ENFLAME NAN_TO_NUM")
     if posinf is None:
         posinf = torch.finfo(A.dtype).max
     if neginf is None:

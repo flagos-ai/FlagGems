@@ -106,7 +106,7 @@ def one_hot_set_one_kernel(
 
 
 def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
-    logger.debug("GEMS ONE_HOT")
+    logger.debug("GEMS_SUNRISE ONE_HOT")
 
     if tensor.dtype != torch.int64:
         raise RuntimeError(

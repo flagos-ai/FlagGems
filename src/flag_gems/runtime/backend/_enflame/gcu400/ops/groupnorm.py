@@ -263,7 +263,7 @@ def weight_bias_backward_kernel(
 
 
 def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
-    logger.debug("GEMS GROUPNORM FORWARD (GCU400)")
+    logger.debug("GEMS_ENFLAME GROUP_NORM")
 
     group_size = triton.cdiv(C, group)
     input = input.contiguous()
@@ -300,7 +300,7 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
 def group_norm_backward(
     grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask
 ):
-    logger.debug("GEMS GROUPNORM BACKWARD (GCU400)")
+    logger.debug("GEMS_ENFLAME GROUP_NORM_BACKWARD")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()

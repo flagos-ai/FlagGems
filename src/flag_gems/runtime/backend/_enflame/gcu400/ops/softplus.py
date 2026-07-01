@@ -63,7 +63,7 @@ def _choose_block(N, is_fp32):
 
 
 def softplus(self, beta=1.0, threshold=20.0):
-    logger.debug("GEMS SOFTPLUS GCU400")
+    logger.debug("GEMS_ENFLAME SOFTPLUS")
     inp = self if self.is_contiguous() else self.contiguous()
     N = inp.numel()
     out = torch.empty_like(inp)

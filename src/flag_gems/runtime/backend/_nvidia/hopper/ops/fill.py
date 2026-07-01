@@ -55,7 +55,7 @@ def _as_contiguous(tensor):
 
 
 def fill_scalar(input, value):
-    logger.debug("GEMS_HOPPER FILL_SCALAR")
+    logger.debug("GEMS_NVIDIA FILL_SCALAR")
     out = torch.empty_like(input)
     n_elements = out.numel()
     grid = (triton.cdiv(n_elements, 1024),)
@@ -65,7 +65,7 @@ def fill_scalar(input, value):
 
 
 def fill_scalar_out(input, value, *, out=None):
-    logger.debug("GEMS_HOPPER FILL_SCALAR_OUT")
+    logger.debug("GEMS_NVIDIA FILL_SCALAR_OUT")
     if out is None:
         return fill_scalar(input, value)
     out_contig, need_copy = _as_contiguous(out)
@@ -81,7 +81,7 @@ def fill_scalar_out(input, value, *, out=None):
 def fill_tensor(input, value):
     if not value.is_cuda:
         return fill_scalar(input, value.item())
-    logger.debug("GEMS_HOPPER FILL_TENSOR")
+    logger.debug("GEMS_NVIDIA FILL_TENSOR")
     if value.ndim != 0:
         raise RuntimeError(
             f"fill only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
@@ -95,7 +95,7 @@ def fill_tensor(input, value):
 
 
 def fill_tensor_out(input, value, *, out=None):
-    logger.debug("GEMS_HOPPER FILL_TENSOR_OUT")
+    logger.debug("GEMS_NVIDIA FILL_TENSOR_OUT")
     if out is None:
         return fill_tensor(input, value)
     if not value.is_cuda:
@@ -117,7 +117,7 @@ def fill_tensor_out(input, value, *, out=None):
 def fill_tensor_(self, value):
     if not value.is_cuda:
         return fill_scalar_(self, value.item())
-    logger.debug("GEMS_HOPPER FILL_TENSOR_")
+    logger.debug("GEMS_NVIDIA FILL_TENSOR_")
     if value.ndim != 0:
         raise RuntimeError(
             f"fill only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
@@ -138,7 +138,7 @@ def fill_tensor_(self, value):
 
 
 def fill_scalar_(self, value):
-    logger.debug("GEMS_HOPPER FILL_SCALAR_")
+    logger.debug("GEMS_NVIDIA FILL_SCALAR_")
     if self.is_contiguous():
         n_elements = self.numel()
         grid = (triton.cdiv(n_elements, 1024),)

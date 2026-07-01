@@ -3,6 +3,7 @@ import random
 import pytest
 import torch
 
+import flag_gems
 from flag_gems.fused.DSA.sparse_mla import triton_sparse_mla_fwd_interface
 
 from . import base
@@ -77,6 +78,9 @@ class SparseMlaFwdBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.sparse_mla_fwd_interface
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_sparse_mla_fwd_interface():
     bench = SparseMlaFwdBenchmark(
         op_name="sparse_mla_fwd_interface",

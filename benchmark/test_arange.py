@@ -3,6 +3,8 @@ import math
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -24,6 +26,9 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.arange
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_arange():
     bench = base.GenericBenchmark(
         op_name="arange", input_fn=_input_fn, torch_op=torch.arange
@@ -77,6 +82,9 @@ def _input_fn_start_step(shape, dtype, device):
 
 
 @pytest.mark.arange_start_step
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_arange_start_step():
     bench = base.GenericBenchmark(
         op_name="arange_start_step",

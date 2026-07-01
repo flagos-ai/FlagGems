@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
 @pytest.mark.logical_and
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_logical_and():
     bench = base.BinaryPointwiseBenchmark(
         op_name="logical_and",
@@ -15,6 +20,9 @@ def test_logical_and():
 
 
 @pytest.mark.logical_and_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_logical_and_inplace():
     bench = base.BinaryPointwiseBenchmark(
         op_name="logical_and_",

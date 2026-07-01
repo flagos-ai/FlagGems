@@ -21,7 +21,7 @@ def mul_func_scalar(x, y):
 
 
 def mul(A, B):
-    logger.debug("GEMS MUL")
+    logger.debug("GEMS_ENFLAME MUL")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         if A.dtype == torch.int64:
             A = A.to(torch.int32)
@@ -42,7 +42,7 @@ def mul(A, B):
 
 
 def mul_(A, B):
-    logger.debug("GEMS MUL_")
+    logger.debug("GEMS_ENFLAME MUL_")
     if isinstance(B, torch.Tensor):
         if B.dtype == torch.int64:
             B = B.to(torch.int32)

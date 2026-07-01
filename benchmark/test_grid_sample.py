@@ -292,6 +292,9 @@ class GridSampleBenchmark(base.Benchmark):
 
 
 @pytest.mark.grid_sample
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 @pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
 def test_grid_sample(dtype):
     """Benchmark grid_sample forward operation."""

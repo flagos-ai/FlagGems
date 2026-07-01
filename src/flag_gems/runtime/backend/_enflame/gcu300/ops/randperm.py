@@ -419,7 +419,7 @@ def randperm(
     requires_grad=False,
     pin_memory=False,
 ):
-    logger.debug("GEMS RANDPERM")
+    logger.debug("GEMS_ENFLAME RANDPERM")
     assert dtype == torch.int16 or dtype == torch.int32
     assert n <= _MAX_INT32_VAL, "n exceeds maximum int32"
 

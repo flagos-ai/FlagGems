@@ -326,7 +326,7 @@ def mha_varlan_fwd(
     )
     q_groups = num_heads // num_heads_k
     if seqlenq_ngroups_swapped:
-        logger.debug("Swapping query groups and sequence dimensions")
+        logger.debug("GEMS_HYGON Swapping query groups and sequence dimensions")
         q = (
             q.reshape((batch_size, num_heads_k, q_groups, head_size))
             .transpose(1, 2)
@@ -512,7 +512,7 @@ def mha_varlan_fwd(
         if flag_gems.vendor_name == "iluvatar":
             params.k_ptr = k.view(k.shape[0], k.shape[1], -1)
             params.v_ptr = v.view(v.shape[0], v.shape[1], -1)
-        logger.debug("kernel: flash_varlen_fwd")
+        logger.debug("GEMS_HYGON kernel: flash_varlen_fwd")
         grid = lambda args: (
             triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
             batch_size,
@@ -551,7 +551,9 @@ def mha_varlan_fwd(
             "num_stages": cfg["num_stages"](args),
         }
 
-        logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
+        logger.debug(
+            "GEMS_HYGON Running flash_varlen_fwd_kernel with config: %s", cfg_params
+        )
         kernel(*args, **cfg_params)
 
         if seqlenq_ngroups_swapped:
@@ -636,7 +638,7 @@ def mha_fwd(
     q_groups = num_heads // num_heads_k
 
     if seqlenq_ngroups_swapped:
-        logger.debug("q_kg swapped.")
+        logger.debug("GEMS_HYGON q_kg swapped.")
         q = q.reshape(batch_size, num_heads_k, q_groups, head_size).transpose(1, 2)
         seqlen_q = q_groups
         num_heads = num_heads_k
@@ -759,7 +761,7 @@ def mha_fwd(
                 n_splits = splits_heuristic(n_tasks, num_sms, n_blocks)
 
                 if n_splits > 1:
-                    logger.debug("kernel: flash_fwd_splitkv")
+                    logger.debug("GEMS_HYGON kernel: flash_fwd_splitkv")
                     lse_splits = torch.empty(
                         (n_splits, B, H, Q), dtype=torch.float, device=q_device
                     )
@@ -809,7 +811,7 @@ def mha_fwd(
                     return kernel
 
             # Last option: flash_fwd
-            logger.debug("kernel: flash_fwd")
+            logger.debug("GEMS_HYGON kernel: flash_fwd")
             grid = lambda args: (
                 triton.cdiv(Q, args["BLOCK_M"]),
                 H * B,

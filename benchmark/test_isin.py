@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -20,6 +22,9 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.isin
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_isin():
     bench = base.GenericBenchmark2DOnly(
         op_name="isin",
@@ -46,6 +51,9 @@ def _scalar_tensor_input_fn(shape, dtype, device):
 
 
 @pytest.mark.isin_scalar_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_isin_scalar_tensor():
     bench = base.GenericBenchmark2DOnly(
         op_name="isin_scalar_tensor",
@@ -69,6 +77,9 @@ def _input_fn_tensor_scalar(shape, dtype, device):
 
 
 @pytest.mark.isin_tensor_scalar
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_isin_tensor_scalar():
     bench = base.GenericBenchmark2DOnly(
         op_name="isin_tensor_scalar",

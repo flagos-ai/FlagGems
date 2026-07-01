@@ -136,7 +136,7 @@ class MarginRankingLossOp(torch.autograd.Function):
         Returns:
             Loss tensor with shape depending on reduction mode
         """
-        logger.debug("GEMS MARGIN_RANKING_LOSS")
+        logger.debug("GEMS_SUNRISE MARGIN_RANKING_LOSS")
 
         if not (
             x1.is_floating_point()
@@ -225,7 +225,7 @@ class MarginRankingLossOp(torch.autograd.Function):
             Tuple of gradients (grad_x1, grad_x2, None, None, None)
             where None corresponds to target, margin, and reduction (no gradients needed)
         """
-        logger.debug("GEMS MARGIN_RANKING_LOSS_BACKWARD")
+        logger.debug("GEMS_SUNRISE MARGIN_RANKING_LOSS_BACKWARD")
 
         x1, x2, y = ctx.saved_tensors
         margin = ctx.margin

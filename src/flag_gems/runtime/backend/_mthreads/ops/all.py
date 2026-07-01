@@ -12,7 +12,7 @@ from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
 shortname = __name__.split(".")[-1]
-logger = logging.getLogger(f"flag_gems.runtime.backend._mthreads.ops.{shortname}")
+logger = logging.getLogger(__name__)
 
 NAIVE_REDUCTION_CONFIGS = [
     triton.Config({"BLOCK_M": 4, "BLOCK_N": 1024}, num_warps=4),
@@ -195,7 +195,7 @@ def all(inp):
 
 
 def all_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_MTHREADS ALL DIM")
+    logger.debug("GEMS_MTHREADS ALL_DIM")
     if dim is None:
         out = all(inp)
         if keepdim:
@@ -210,7 +210,7 @@ def all_dim(inp, dim=None, keepdim=False):
 
 
 def all_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_MTHREADS ALL DIMS")
+    logger.debug("GEMS_MTHREADS ALL_DIMS")
 
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)

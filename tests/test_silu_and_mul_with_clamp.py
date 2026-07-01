@@ -12,6 +12,10 @@ SILU_AND_MUL_WITH_CLAMP_LIMITS = [3.0, 7.0]
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("limit", SILU_AND_MUL_WITH_CLAMP_LIMITS)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_silu_and_mul_with_clamp(shape, dtype, limit):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
@@ -42,6 +46,10 @@ def test_silu_and_mul_with_clamp(shape, dtype, limit):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("limit", SILU_AND_MUL_WITH_CLAMP_LIMITS)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_silu_and_mul_with_clamp_out(shape, dtype, limit):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)

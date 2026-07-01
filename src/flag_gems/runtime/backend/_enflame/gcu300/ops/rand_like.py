@@ -14,7 +14,7 @@ UNROLL = 4
 def rand_like(
     x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
 ):
-    logger.debug("GEMS RAND_LIKE")
+    logger.debug("GEMS_ENFLAME RAND_LIKE")
     if device is None:
         device = x.device
     if dtype is None:

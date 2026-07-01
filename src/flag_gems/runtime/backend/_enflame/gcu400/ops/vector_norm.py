@@ -532,7 +532,7 @@ def _launch_dim_norm(x, out, M, N, ord_val):
 
 
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
-    logger.debug("GEMS VECTOR NORM GCU400")
+    logger.debug("GEMS_ENFLAME VECTOR_NORM")
     if dtype is not None:
         dtype = torch.dtype(dtype)
     else:

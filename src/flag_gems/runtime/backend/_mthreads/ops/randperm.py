@@ -11,9 +11,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 device_ = device
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 _MIN_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).min)
 _MAX_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).max)

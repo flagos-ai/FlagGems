@@ -35,7 +35,7 @@ def selu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def selu(*args, **kwargs):
-    logger.debug("GEMS SELU")
+    logger.debug("GEMS_ENFLAME SELU")
     x = None
     if len(args) > 0:
         x = args[0]

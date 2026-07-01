@@ -29,6 +29,12 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
+    if flag_gems.vendor_name == "tsingmicro" and dtype in (
+        torch.float16,
+        torch.float32,
+    ):
+        pytest.skip("Issue #3796: not working")
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 

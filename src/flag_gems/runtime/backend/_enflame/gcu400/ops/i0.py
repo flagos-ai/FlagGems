@@ -92,7 +92,7 @@ def _launch_i0(out: torch.Tensor, x: torch.Tensor):
 
 
 def i0(x: torch.Tensor):
-    logger.debug("GEMS I0 GCU400")
+    logger.debug("GEMS_ENFLAME I0")
     if x.device.type != flag_gems.device:
         raise ValueError(f"i0: input tensor must be on {flag_gems.device} device")
     out_dtype = x.dtype if x.is_floating_point() else torch.get_default_dtype()
@@ -102,7 +102,7 @@ def i0(x: torch.Tensor):
 
 
 def i0_out(x: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS I0_OUT GCU400")
+    logger.debug("GEMS_ENFLAME I0_OUT")
     if x.device.type != flag_gems.device or out.device.type != flag_gems.device:
         raise ValueError(
             f"i0_out: input and output tensors must be on {flag_gems.device} device"
@@ -167,7 +167,7 @@ def i0_kernel_(x_ptr, N_total, BLOCK: tl.constexpr):
 
 
 def i0_(*args, **kwargs):
-    logger.debug("GEMS I0_ GCU400")
+    logger.debug("GEMS_ENFLAME I0_")
     x = args[0] if args else kwargs.get("self", kwargs.get("input", None))
     if x is None:
         raise ValueError(

@@ -11,9 +11,7 @@ from flag_gems.utils import triton_lang_extension as ext
 
 from .sort import sort as gems_sort
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 ModeOut = namedtuple("mode", ["values", "indices"])
 

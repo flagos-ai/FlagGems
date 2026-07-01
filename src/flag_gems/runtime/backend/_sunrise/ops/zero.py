@@ -41,7 +41,7 @@ def _launch_zero_kernel(tensor: torch.Tensor):
 
 
 def zero(*args, **kwargs):
-    logger.debug("GEMS ZERO")
+    logger.debug("GEMS_SUNRISE ZERO")
     # Accept common conventions: first positional as target, or 'self'/'input'/'out' in kwargs
     target = None
     if len(args) >= 1 and isinstance(args[0], torch.Tensor):
@@ -60,7 +60,7 @@ def zero(*args, **kwargs):
 
 
 def zero_out(*args, **kwargs):
-    logger.debug("GEMS ZERO_OUT")
+    logger.debug("GEMS_SUNRISE ZERO_OUT")
     # Out variant: prefer 'out' kwarg; else first positional
     out = None
     if "out" in kwargs and isinstance(kwargs["out"], torch.Tensor):

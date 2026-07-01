@@ -14,6 +14,9 @@ def _input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.threshold
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_threshold():
     bench = base.GenericBenchmark(
         op_name="threshold",
@@ -31,6 +34,9 @@ def _threshold_backward_input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.threshold_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_threshold_backward():
     bench = base.GenericBenchmark(
         op_name="threshold_backward",

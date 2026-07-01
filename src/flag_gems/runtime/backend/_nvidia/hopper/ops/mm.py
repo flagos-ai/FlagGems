@@ -14,7 +14,7 @@ from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.device_info import get_device_capability, get_sm_count
 from flag_gems.utils.triton_version_utils import HAS_TLE, HAS_TLE_DEVICE_MESH
 
-logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.mm")
+logger = logging.getLogger(__name__)
 CACHE_USAGE_THRESHOLD = 0.8
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "mm_hopper_expand.yaml")
@@ -296,7 +296,8 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     ]
     if not filtered_configs:
         logger.warning(
-            "No mm_general_tma config fits shared memory limit (%s bytes); falling back to unfiltered configs.",
+            "GEMS_NVIDIA No mm_general_tma config fits shared memory limit (%s bytes); "
+            "falling back to unfiltered configs.",
             shared_mem_limit,
         )
         return configs
@@ -433,8 +434,8 @@ def get_higher_dtype(a, b):
 def general_mm(a, b, c, M, N, K, op_name="mm"):
     # TODO: Remove this debug message
     logger.debug(
-        "GEMS MM-hopper, [op]: %s, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s",
+        "GEMS_NVIDIA MM_HOPPER, [op]: %s, [mm scenario]: general, [shape info]: "
+        "[-, %s, %s, %s](batch, M, N, K), [A column-major]: %s, [B column-major]: %s",
         op_name,
         M,
         N,
@@ -589,7 +590,7 @@ def gemv_kernel(
 def gemv_mm(a, b, c, M, K):
     """Optimized matrix-vector multiplication for N=1 case"""
     logger.debug(
-        "GEMS MM-hopper, [mm scenario]: gemv (N=1), [shape info]: [%s, %s, 1](M, K, N)",
+        "GEMS_NVIDIA MM_HOPPER, [mm scenario]: gemv (N=1), [shape info]: [%s, %s, 1](M, K, N)",
         M,
         K,
     )
@@ -686,7 +687,7 @@ def mm_kernel_splitk(
 
 def splitk_mm(a, b, c, M, N, K, op_name="mm"):
     logger.debug(
-        "GEMS MM-hopper, [op]: %s, [mm scenario]: splitk, [shape info]: [-, %s, %s, %s](batch, M, N, K)",
+        "GEMS_NVIDIA MM_HOPPER, [op]: %s, [mm scenario]: splitk, [shape info]: [-, %s, %s, %s](batch, M, N, K)",
         op_name,
         M,
         N,
@@ -954,6 +955,7 @@ def cluster_remote_mm_scenario(a, b, c, M, N, K):
 
 def cluster_remote_mm(a, b, c, M, N, K):
     logger.debug(
+        "GEMS_NVIDIA M=%s N=%s K=%s a_col_major=%s b_col_major=%s",
         M,
         N,
         K,

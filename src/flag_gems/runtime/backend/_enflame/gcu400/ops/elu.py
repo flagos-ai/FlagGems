@@ -83,7 +83,7 @@ def _launch_elu(inp, out, N_total, alpha, scale, input_scale):
 
 
 def elu(A, alpha=1.0, scale=1.0, input_scale=1.0):
-    logger.debug("GEMS ELU")
+    logger.debug("GEMS_ENFLAME ELU")
     inp = A.contiguous()
     out = torch.empty_like(inp)
     _launch_elu(inp, out, inp.numel(), alpha, scale, input_scale)
@@ -91,7 +91,7 @@ def elu(A, alpha=1.0, scale=1.0, input_scale=1.0):
 
 
 def elu_(A, alpha=1.0, scale=1.0, input_scale=1.0):
-    logger.debug("GEMS ELU_")
+    logger.debug("GEMS_ENFLAME ELU_")
     inp = A.contiguous()
     _launch_elu(inp, inp, inp.numel(), alpha, scale, input_scale)
     return A

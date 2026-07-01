@@ -143,7 +143,7 @@ def patch_qwen3_5_conv1d(model) -> int:
             _PATCHED.add(id(module))
             n += 1
     if n > 0:
-        logger.info("Patched %d GDN causal_conv1d_update with TLE kernel", n)
+        logger.info("GEMS_ARM Patched %d GDN causal_conv1d_update with TLE kernel", n)
     return n
 
 

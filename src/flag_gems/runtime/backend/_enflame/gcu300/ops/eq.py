@@ -25,7 +25,7 @@ def eq(A, B):
             B = B.to(A.device)
         else:
             A = A.to(B.device)
-    logger.debug("GEMS EQ")
+    logger.debug("GEMS_ENFLAME EQ")
     return eq_func(A, B)
 
 
@@ -36,12 +36,12 @@ def eq_func_scalar(x, y):
 
 
 def eq_scalar(A, B):
-    logger.debug("GEMS EQ SCALAR")
+    logger.debug("GEMS_ENFLAME EQ_SCALAR")
     return eq_func_scalar(A, B)
 
 
 def equal(x: torch.Tensor, y: torch.Tensor) -> bool:
-    logger.debug("GEMS EQUAL")
+    logger.debug("GEMS_ENFLAME EQUAL")
     if x.shape != y.shape:
         return False
     eq_tensor = eq(x, y)

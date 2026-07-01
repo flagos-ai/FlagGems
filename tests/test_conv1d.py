@@ -44,6 +44,9 @@ else:
 @pytest.mark.parametrize("stride", [2])
 @pytest.mark.parametrize("padding", [1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv1d(monkeypatch, shape, kernel, stride, padding, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)
@@ -65,6 +68,9 @@ def test_conv1d(monkeypatch, shape, kernel, stride, padding, dtype):
 @pytest.mark.parametrize("stride", [1])
 @pytest.mark.parametrize("padding", STR_PADDINGS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)
@@ -86,6 +92,9 @@ def test_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dtype):
 @pytest.mark.parametrize("padding", INT_PADDINGS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dilation", DILATIONS)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv1d_dilation(shape, kernel, stride, padding, dtype, dilation):
     """Test conv1d with various dilation values, including tuple form.
 

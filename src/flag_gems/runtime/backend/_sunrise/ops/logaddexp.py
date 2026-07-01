@@ -20,11 +20,11 @@ def logaddexp_func(x, y):
 
 
 def logaddexp(self, other):
-    logger.debug("GEMS LOGADDEXP")
+    logger.debug("GEMS_SUNRISE LOGADDEXP")
     return logaddexp_func(self, other)
 
 
 def logaddexp_out(self, other, out):
-    logger.debug("GEMS LOGADDEXP_OUT")
+    logger.debug("GEMS_SUNRISE LOGADDEXP_OUT")
     logaddexp_func(self, other, out0=out)
     return out

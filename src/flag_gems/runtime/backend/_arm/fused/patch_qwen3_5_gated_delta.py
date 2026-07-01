@@ -191,7 +191,9 @@ def patch_qwen3_5_gated_delta(model) -> int:
     """
     gdn_classes = _get_qwen3_5_gated_delta_classes()
     if not gdn_classes:
-        logger.debug("No Qwen GDN classes found in transformers, skipping patch")
+        logger.debug(
+            "GEMS_ARM No Qwen GDN classes found in transformers, skipping patch"
+        )
         return 0
 
     n = 0
@@ -205,7 +207,7 @@ def patch_qwen3_5_gated_delta(model) -> int:
     if n > 0:
         cls_names = ", ".join(c.__name__ for c in gdn_classes)
         logger.info(
-            "Patched %d GDN modules (classes: %s) with TLE gated_delta_decode",
+            "GEMS_ARM Patched %d GDN modules (classes: %s) with TLE gated_delta_decode",
             n,
             cls_names,
         )

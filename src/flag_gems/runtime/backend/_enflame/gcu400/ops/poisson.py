@@ -86,7 +86,7 @@ def poisson_kernel(
 
 
 def poisson(input, generator=None):
-    logger.debug("GEMS POISSON GCU400")
+    logger.debug("GEMS_ENFLAME POISSON")
     assert input.dtype in (
         torch.float16,
         torch.bfloat16,

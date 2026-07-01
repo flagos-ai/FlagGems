@@ -6,7 +6,7 @@ import triton.language as tl
 from ..utils.codegen_config_utils import CodeGenConfig
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 # Custom config with memory async enabled for better memory throughput
 _abs_config = CodeGenConfig(

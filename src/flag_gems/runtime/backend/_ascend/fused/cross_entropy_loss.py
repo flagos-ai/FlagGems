@@ -520,7 +520,7 @@ def sum_and_scale(
 class CrossEntropyLoss(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, target, weight, reduction, ignore_index, label_smoothing):
-        logger.debug("GEMS_ASCEND CrossEntropyLoss")
+        logger.debug("GEMS_ASCEND CROSS_ENTROPY_LOSS")
 
         shape = list(inp.shape)
         dim = inp.ndim
@@ -608,7 +608,7 @@ class CrossEntropyLoss(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_ASCEND CrossEntropyLoss VJP")
+        logger.debug("GEMS_ASCEND CROSS_ENTROPY_LOSS_VJP")
 
         inp, tgt, weight = ctx.saved_tensors
         N = ctx.N

@@ -260,7 +260,7 @@ def smooth_l1_loss(
     reduction=1,
     beta: float = 1.0,
 ) -> torch.Tensor:
-    logger.debug("GEMS SMOOTH_L1_LOSS GCU400")
+    logger.debug("GEMS_ENFLAME SMOOTH_L1_LOSS")
     reduction = _normalize_reduction(reduction)
     input, target = _check_input(input, target, float(beta))
     if reduction == 0:
@@ -276,7 +276,7 @@ def smooth_l1_loss_out(
     *,
     out: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS SMOOTH_L1_LOSS OUT GCU400")
+    logger.debug("GEMS_ENFLAME SMOOTH_L1_LOSS_OUT")
     reduction = _normalize_reduction(reduction)
     input, target = _check_input(input, target, float(beta))
     if reduction == 0:
@@ -291,7 +291,7 @@ def smooth_l1_loss_backward(
     reduction,
     beta: float,
 ) -> torch.Tensor:
-    logger.debug("GEMS SMOOTH_L1_LOSS BACKWARD GCU400")
+    logger.debug("GEMS_ENFLAME SMOOTH_L1_LOSS_BACKWARD")
     reduction = _normalize_reduction(reduction)
     grad_output, input, target, reduction_elements = _check_backward_input(
         grad_output, input, target, float(beta)

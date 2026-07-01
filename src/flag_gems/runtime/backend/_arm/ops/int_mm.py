@@ -220,7 +220,9 @@ def _triton_int_mm(self: torch.Tensor, mat2: torch.Tensor) -> torch.Tensor:
 
     # Fallback for non-BN-aligned N (uncommon in practice)
     if N % BN != 0:
-        logger.debug("FlagGems _int_mm: N=%d not %%64, using int32 fallback", N)
+        logger.debug(
+            "GEMS_ARM FlagGems _int_mm: N=%d not %%64, using int32 fallback", N
+        )
         return a.to(torch.int32) @ b.to(torch.int32)
 
     # ------------------------------------------------------------------
@@ -345,6 +347,10 @@ def register():
             "CPU",
             allow_override=True,
         )
-        logger.debug("FlagGems ARM: registered Triton-CPU i8mm for aten::_int_mm")
+        logger.debug(
+            "GEMS_ARM FlagGems ARM: registered Triton-CPU i8mm for aten::_int_mm"
+        )
     except Exception as e:
-        logger.warning("FlagGems ARM: failed to register aten::_int_mm override: %s", e)
+        logger.warning(
+            "GEMS_ARM FlagGems ARM: failed to register aten::_int_mm override: %s", e
+        )

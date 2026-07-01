@@ -46,7 +46,7 @@ def test_cumsum(shape, dtype):
             res_out = torch.cumsum(inp, dim=dim)
 
     # we should use ref's output type, since cumsum of int dtype results in int64
-    if flag_gems.vendor_name in ["cambricon", "enflame"]:
+    if flag_gems.vendor_name in ["cambricon", "enflame", "tsingmicro"]:
         check_dtype = dtype
     elif dtype in utils.INT_DTYPES:
         check_dtype = ref_out.dtype

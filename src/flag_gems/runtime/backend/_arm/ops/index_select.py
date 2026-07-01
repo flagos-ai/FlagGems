@@ -39,7 +39,7 @@ def index_select_kernel(
 
 
 def index_select(inp, dim, index):
-    logger.debug("GEMS INDEX SELECT")
+    logger.debug("GEMS_ARM INDEX_SELECT")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
 

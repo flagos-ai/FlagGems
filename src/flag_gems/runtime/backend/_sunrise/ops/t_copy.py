@@ -128,13 +128,13 @@ def t_copy_out(
     out: torch.Tensor,
     memory_format: torch.memory_format | None = None,
 ):
-    logger.debug("GEMS T_COPY_OUT")
+    logger.debug("GEMS_SUNRISE T_COPY_OUT")
     _launch_t_copy_kernel(input, out)
     return out
 
 
 def t_copy(input: torch.Tensor, memory_format: torch.memory_format | None = None):
-    logger.debug("GEMS T_COPY")
+    logger.debug("GEMS_SUNRISE T_COPY")
     dim = input.dim()
     if dim == 0:
         out = torch.empty((), dtype=input.dtype, device=input.device)

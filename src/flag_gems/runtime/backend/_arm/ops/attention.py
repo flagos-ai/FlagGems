@@ -305,7 +305,7 @@ def scaled_dot_product_attention(
 
     if not use_triton:
         log.debug(
-            "GEMS SDPA: ATen fallback (M=%d, dtype=%s, mask=%s)",
+            "GEMS_ARM SDPA: ATen fallback (M=%d, dtype=%s, mask=%s)",
             M,
             query.dtype,
             attn_mask is not None,
@@ -323,7 +323,7 @@ def scaled_dot_product_attention(
 
     sm_scale = scale if scale is not None else D**-0.5
     log.debug(
-        "GEMS SDPA: Triton Flash Attention (M=%d, N=%d, D=%d, causal=%s, Hq=%d, Hkv=%d)",
+        "GEMS_ARM SDPA: Triton Flash Attention (M=%d, N=%d, D=%d, causal=%s, Hq=%d, Hkv=%d)",
         M,
         key.shape[2],
         D,

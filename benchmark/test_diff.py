@@ -3,6 +3,8 @@ import functools
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -25,6 +27,9 @@ class DiffBenchmark(base.GenericBenchmark2DOnly):
 
 
 @pytest.mark.diff
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_diff():
     bench = DiffBenchmark(
         op_name="diff",
@@ -36,6 +41,9 @@ def test_diff():
 
 
 @pytest.mark.diff
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_diff_n2():
     bench = DiffBenchmark(
         op_name="diff",

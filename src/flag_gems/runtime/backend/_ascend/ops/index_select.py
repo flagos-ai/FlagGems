@@ -8,7 +8,7 @@ from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -41,7 +41,7 @@ def index_select_kernel(
 
 
 def index_select(inp, dim, index):
-    logger.debug("GEMS_ASCEND INDEX SELECT")
+    logger.debug("GEMS_ASCEND INDEX_SELECT")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
     assert ((i >= 0 and i < inp.size(dim)) for i in index), "Index out of range"

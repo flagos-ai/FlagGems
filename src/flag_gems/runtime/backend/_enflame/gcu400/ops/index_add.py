@@ -221,7 +221,7 @@ _index_add_func = IndexAddFunction()
 
 
 def index_add(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS INDEX ADD")
+    logger.debug("GEMS_ENFLAME INDEX_ADD")
     if index.dtype == torch.int64:
         index = index.to(torch.int32)
     assert ((0 <= index) * (index < inp.size(dim))).equal(
@@ -264,7 +264,7 @@ def index_add(inp, dim, index, src, alpha=1):
 
 
 def index_add_(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS INDEX ADD_")
+    logger.debug("GEMS_ENFLAME INDEX_ADD_")
     if index.dtype == torch.int64:
         index = index.to(torch.int32)
     assert ((0 <= index) * (index < inp.size(dim))).equal(

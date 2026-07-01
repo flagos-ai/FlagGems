@@ -11,7 +11,7 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 @triton.heuristics(_hcu.HEURISTICS_CONFIGS["exponential_"])

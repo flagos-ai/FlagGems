@@ -804,7 +804,7 @@ def celoss_indices_smooth_bwd(
 class CrossEntropyLoss(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, target, weight, reduction, ignore_index, label_smoothing):
-        logger.debug("GEMS_CAMBRICON CrossEntropyLoss")
+        logger.debug("GEMS_CAMBRICON CROSS_ENTROPY_LOSS")
 
         shape = list(inp.shape)
         dim = inp.ndim
@@ -938,7 +938,7 @@ class CrossEntropyLoss(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_CAMBRICON CrossEntropyLoss VJP")
+        logger.debug("GEMS_CAMBRICON CROSS_ENTROPY_LOSS_VJP")
 
         inp, tgt, weight, final_max, final_sum = ctx.saved_tensors
         N = ctx.N

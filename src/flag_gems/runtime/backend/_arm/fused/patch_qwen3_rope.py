@@ -82,7 +82,7 @@ def _prewarm():
                 num_stages=1,
             )
     except Exception:
-        logger.debug("rope prewarm failed", exc_info=True)
+        logger.debug("GEMS_ARM rope prewarm failed", exc_info=True)
     _PREWARM_DONE = True
 
 
@@ -164,7 +164,7 @@ def patch_qwen3_rope() -> int:
         _PATCHED[modname] = True
         setattr(mod, "apply_rotary_pos_emb", _patched_apply_rotary_pos_emb)
         n += 1
-        logger.info(f"Patched {modname}.apply_rotary_pos_emb")
+        logger.info(f"GEMS_ARM Patched {modname}.apply_rotary_pos_emb")
     return n
 
 

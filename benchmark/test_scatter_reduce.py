@@ -90,6 +90,9 @@ def gather_scatter_gbps(bench_fn_args, latency):
 
 
 @pytest.mark.scatter_reduce
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scatter_reduce_add():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce",
@@ -102,6 +105,9 @@ def test_scatter_reduce_add():
 
 
 @pytest.mark.scatter_reduce
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scatter_reduce_multiply():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce",
@@ -114,6 +120,9 @@ def test_scatter_reduce_multiply():
 
 
 @pytest.mark.scatter_reduce_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scatter_reduce_add_inplace():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce_",
@@ -127,6 +136,9 @@ def test_scatter_reduce_add_inplace():
 
 
 @pytest.mark.scatter_reduce_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scatter_reduce_multiply_inplace():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce_",
@@ -140,6 +152,9 @@ def test_scatter_reduce_multiply_inplace():
 
 
 @pytest.mark.scatter_reduce_two
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scatter_reduce_two_sum():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce.two",
@@ -152,6 +167,9 @@ def test_scatter_reduce_two_sum():
 
 
 @pytest.mark.scatter_reduce_two
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scatter_reduce_two_amax():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce.two",

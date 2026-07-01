@@ -9,9 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -135,7 +133,7 @@ def _get_num_warps(total_elements):
 
 
 def index_select(inp, dim, index):
-    logger.debug("GEMS_MTHREADS INDEX SELECT")
+    logger.debug("GEMS_MTHREADS INDEX_SELECT")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
 

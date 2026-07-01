@@ -37,7 +37,7 @@ def _find_input(*args, **kwargs):
 
 
 def lift_fresh_copy(*args, **kwargs):
-    logger.debug("GEMS LIFT_FRESH_COPY GCU400")
+    logger.debug("GEMS_ENFLAME LIFT_FRESH_COPY")
     x = _find_input(*args, **kwargs)
     if x.device.type != flag_gems.device:
         raise ValueError(
@@ -58,7 +58,7 @@ def lift_fresh_copy(*args, **kwargs):
 
 
 def lift_fresh_copy_out(x: torch.Tensor, out: torch.Tensor = None):
-    logger.debug("GEMS LIFT_FRESH_COPY_OUT GCU400")
+    logger.debug("GEMS_ENFLAME LIFT_FRESH_COPY_OUT")
     if x is None or not isinstance(x, torch.Tensor):
         raise ValueError("lift_fresh_copy_out expects 'x' to be a Tensor")
     if x.device.type != flag_gems.device:

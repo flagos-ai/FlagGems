@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -16,6 +18,9 @@ def _input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.clamp_min
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_clamp_min():
     bench = base.GenericBenchmark(
         op_name="clamp_min",
@@ -27,6 +32,9 @@ def test_clamp_min():
 
 
 @pytest.mark.clamp_min_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_clamp_min_inplace():
     bench = base.GenericBenchmark(
         input_fn=_input_fn,

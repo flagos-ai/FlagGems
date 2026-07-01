@@ -78,8 +78,7 @@ def fused_add_rms_norm_kernel(
 
 def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     logger.debug(
-        "GEMS FUSED_ADD_RMS_NORM FORWARD, [input shape]: %s, "
-        "[residual shape]: %s, [weight shape]: %s",
+        "GEMS_ENFLAME FUSED_ADD_RMS_NORM, [input shape]: %s, [residual shape]: %s, [weight shape]: %s",
         x.size(),
         residual.size(),
         weight.size(),

@@ -7,7 +7,7 @@ from flag_gems.utils.codegen_config_utils import CodeGenConfig
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.shape_utils import has_internal_overlapping
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 config_ = CodeGenConfig(

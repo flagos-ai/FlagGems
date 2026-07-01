@@ -5,7 +5,7 @@ import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(
@@ -17,7 +17,7 @@ def addcdiv_kernel(x, t1, t2, value):
 
 
 def addcdiv(inp, tensor1, tensor2, value=1.0, out=None):
-    logger.debug("GEMS_CAMBRICON ADDCDIV FORWARD")
+    logger.debug("GEMS_CAMBRICON ADDCDIV")
 
     if out is None:
         out = torch.empty_like(inp)

@@ -53,6 +53,9 @@ def _input_fn(shapes, dtype, device):
 
 
 @pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_acc_perf():
     bench = IndexAccBenchmark(
         op_name="index",

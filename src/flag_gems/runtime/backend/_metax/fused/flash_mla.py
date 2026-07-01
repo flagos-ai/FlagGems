@@ -160,7 +160,7 @@ def flash_mla(
     dv,
     causal,
 ):
-    logger.debug("METAX GEMS FLASH MLA")
+    logger.debug("GEMS_METAX FLASH_MLA")
     assert causal, "causal False not supported"
     assert d > dv, "mla with rope dim should be larger than no rope dim"
 

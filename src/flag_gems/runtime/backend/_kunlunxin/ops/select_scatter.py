@@ -5,7 +5,7 @@ import triton.language as tl
 
 from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.jit

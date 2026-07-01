@@ -8,7 +8,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 erf = tl_extra_shim.erf
 pow = tl_extra_shim.pow
 tanh = tl_extra_shim.tanh
@@ -97,7 +97,7 @@ def gelu_tanh_and_mul_grad_kernel(x, y, dgrad):
 class GeluAndMul(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, y, approximate="none"):
-        logger.debug("GEMS GELU AND MUL FORWARD")
+        logger.debug("GEMS_KUNLUNXIN GELU_AND_MUL_FORWARD")
         ctx.save_for_backward(x, y)
         ctx.approximate = approximate
         if approximate == "none":
@@ -109,7 +109,7 @@ class GeluAndMul(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dgrad):
-        logger.debug("GEMS GELU AND MUL BACKWARD")
+        logger.debug("GEMS_KUNLUNXIN GELU_AND_MUL_BACKWARD")
         x, y = ctx.saved_tensors
         if ctx.approximate == "none":
             dx, dy = gelu_none_and_mul_grad_kernel(x, y, dgrad)

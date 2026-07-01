@@ -147,14 +147,16 @@ def patch_qwen3_5_attention(model=None) -> int:
     """
     global _PATCHED
     if _flash_attn_kernel is None:
-        logger.warning("flash_attn_decode_bf16 not available; SDPA patch skipped")
+        logger.warning(
+            "GEMS_ARM flash_attn_decode_bf16 not available; SDPA patch skipped"
+        )
         return 0
     if _PATCHED:
         return 1
     F.scaled_dot_product_attention = _patched_sdpa
     _PATCHED = True
     logger.info(
-        "Patched F.scaled_dot_product_attention with TLE flash_attn_decode_bf16"
+        "GEMS_ARM Patched F.scaled_dot_product_attention with TLE flash_attn_decode_bf16"
     )
     return 1
 

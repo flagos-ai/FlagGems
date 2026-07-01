@@ -5,7 +5,7 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
@@ -15,6 +15,6 @@ def log_sigmoid_forward(x):
 
 
 def log_sigmoid(x):
-    logger.debug("GEMS_CAMBRICON LOG_SIGMOID FORWARD")
+    logger.debug("GEMS_CAMBRICON LOG_SIGMOID")
 
     return log_sigmoid_forward(x)

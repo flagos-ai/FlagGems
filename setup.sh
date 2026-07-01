@@ -172,10 +172,12 @@ if [ "${COMPILER}" = "flagtree" ]; then
     TRITON_INSTALLED=$(uv pip list 2>/dev/null | awk '{print $1}' | grep -i '^triton' || true)
     if [ -n "${TRITON_INSTALLED}" ]; then
       printf "Replacing Triton with FlagTree ..."
-      echo "${TRITON_INSTALLED}" | xargs uv pip uninstall -q 2>/dev/null || true
+      # echo "${TRITON_INSTALLED}" | xargs uv pip uninstall -q 2>/dev/null || true
+      uv pip uninstall "${TRITON_INSTALLED}"
       ok
     fi
     printf "Installing FlagTree ..."
+    uv pip uninstall ${FLAGTREE_PKGS}
     uv pip install -q ${FLAGTREE_PKGS} --default-index "${FLAGOS_PYPI}" || fail
     ok
   else

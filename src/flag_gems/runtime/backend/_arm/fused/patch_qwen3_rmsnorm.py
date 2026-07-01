@@ -71,7 +71,7 @@ def _prewarm():
                 x, w, o, N, N, 1e-6, BLOCK_SIZE=_TILE, num_warps=1, num_stages=1
             )
     except Exception:
-        logger.debug("rmsnorm prewarm failed", exc_info=True)
+        logger.debug("GEMS_ARM rmsnorm prewarm failed", exc_info=True)
     _PREWARM_DONE = True
 
 
@@ -133,7 +133,7 @@ def patch_qwen3_rmsnorm() -> int:
         _PATCHED[key] = (cls, orig)
         cls.forward = _make_patched_forward(orig)
         n += 1
-        logger.info(f"Patched {modname}.{cls_name}.forward")
+        logger.info(f"GEMS_ARM Patched {modname}.{cls_name}.forward")
     return n
 
 

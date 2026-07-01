@@ -49,6 +49,9 @@ class ToCopyBenchmark(base.Benchmark):
 
 
 @pytest.mark.to_copy
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_to_copy():
     base_dtypes = [torch.float16, torch.bfloat16]
     if fp64_is_supported:

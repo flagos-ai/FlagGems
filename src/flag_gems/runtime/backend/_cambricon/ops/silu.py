@@ -7,7 +7,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 div_rn = tl_extra_shim.div_rn
 
 
@@ -30,18 +30,18 @@ def silu_backward_kernel(x, dy):
 
 
 def silu(self):
-    logger.debug("GEMS_CAMBRICON SILU FORWARD")
+    logger.debug("GEMS_CAMBRICON SILU")
     output = silu_forward(self, False)
     return output
 
 
 def silu_backward(grad_output, self):
-    logger.debug("GEMS_CAMBRICON SILU BACKWARD")
+    logger.debug("GEMS_CAMBRICON SILU_BACKWARD")
     grad_input = silu_backward_kernel(self, grad_output)
     return grad_input
 
 
 def silu_(A):
-    logger.debug("GEMS_CAMBRICON SILU_ FORWARD")
+    logger.debug("GEMS_CAMBRICON SILU_")
     out = silu_forward(A, True, out0=A)
     return out

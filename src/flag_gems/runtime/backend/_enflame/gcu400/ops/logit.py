@@ -155,7 +155,7 @@ def logit_out(input, eps=None, out=None):
 
 
 def logit_(*args, **kwargs):
-    logger.debug("GEMS LOGIT_")
+    logger.debug("GEMS_ENFLAME LOGIT_")
     if len(args) == 0:
         raise TypeError("logit_ expected at least 1 argument (got 0)")
     x = args[0]

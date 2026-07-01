@@ -9,7 +9,7 @@ from flag_gems.utils import libentry, libtuner
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -68,7 +68,7 @@ def fill_tensor_kernel(
 
 
 def fill_tensor(input, value):
-    logger.debug("GEMS_CAMBRICON FILL TENSOR")
+    logger.debug("GEMS_CAMBRICON FILL_TENSOR")
     if value.ndim != 0:
         raise RuntimeError(
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
@@ -84,7 +84,7 @@ def fill_tensor(input, value):
 
 
 def fill_scalar(input, value):
-    logger.debug("GEMS_CAMBRICON FILL SCALAR")
+    logger.debug("GEMS_CAMBRICON FILL_SCALAR")
     if 0 in input.shape:
         return input
     out = torch.empty_like(input)
@@ -98,7 +98,7 @@ def fill_scalar(input, value):
 
 
 def fill_scalar_out(input, value, *, out=None):
-    logger.debug("GEMS_CAMBRICON FILL SCALAR_OUT")
+    logger.debug("GEMS_CAMBRICON FILL_SCALAR_OUT")
     if out is None:
         return fill_scalar(input, value)
     N = out.numel()

@@ -23,6 +23,10 @@ random.seed(time.time() // 100)
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_select_scatter(shape, dim, dtype):
     index = random.randint(0, shape[dim] - 1)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -41,6 +45,10 @@ def test_select_scatter(shape, dim, dtype):
 
 
 @pytest.mark.select_scatter
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_select_scatter_with_self_overlapping_input():
     dim = 0
     index = 1

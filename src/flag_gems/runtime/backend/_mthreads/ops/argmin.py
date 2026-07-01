@@ -11,9 +11,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_max
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 # Favor wider column tiles for long rows and more rows per block for tall shapes.
 ARGMIN_REDUCTION_CONFIGS = [

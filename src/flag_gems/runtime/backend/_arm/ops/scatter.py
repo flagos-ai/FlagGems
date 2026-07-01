@@ -327,7 +327,7 @@ _scatter_func = ScatterFunction()
 
 
 def scatter(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER")
+    logger.debug("GEMS_ARM SCATTER")
     if reduce == "multiply":
         raise RuntimeError(
             "scatter(reduce='multiply') is not supported on ARM Triton CPU backend yet."
@@ -367,7 +367,7 @@ def scatter(inp, dim, index, src, reduce=None):
 
 
 def scatter_(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER_")
+    logger.debug("GEMS_ARM SCATTER_")
     if reduce == "multiply":
         raise RuntimeError(
             "scatter_(reduce='multiply') is not supported on ARM Triton CPU backend yet."

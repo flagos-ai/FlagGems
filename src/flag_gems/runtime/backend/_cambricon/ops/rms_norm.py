@@ -10,12 +10,12 @@ from flag_gems.utils import libentry
 
 from ..utils import MAX_GRID_SIZE_X, cfggen_reduce_op
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 MAX_NRAM_C_FORWARD = 16384 * 2
 
 
 def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
-    logger.debug("GEMS_CAMBRICON RMSNORM FORWARD")
+    logger.debug("GEMS_CAMBRICON RMS_NORM")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
@@ -28,18 +28,18 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
     grid = (min(M, MAX_GRID_SIZE_X // 4),)
     with torch_device_fn.device(x.device):
         if BLOCK_SIZE <= MAX_NRAM_C_FORWARD:
-            logger.debug("GEMS_CAMBRICON RMSNORM FORWARD NOT USING C SPLIT")
+            logger.debug("GEMS_CAMBRICON RMS_NORM")
             rms_norm_kernel[grid](
                 y, inv_rms, x, weight, N, 1, N, 1, N, eps, M, BLOCK_SIZE
             )
         else:
-            logger.debug("GEMS_CAMBRICON RMSNORM FORWARD USING C SPLIT")
+            logger.debug("GEMS_CAMBRICON RMS_NORM")
             rms_norm_kernel_C_split[grid](y, inv_rms, x, weight, N, 1, N, 1, N, eps, M)
     return y, inv_rms
 
 
 def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
-    logger.debug("GEMS_CAMBRICON RMSNORM BACKWARD")
+    logger.debug("GEMS_CAMBRICON RMS_NORM_BACKWARD")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
@@ -52,12 +52,12 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
     grid = (min(M, MAX_GRID_SIZE_X // 4),)
     with torch_device_fn.device(x.device):
         if BLOCK_SIZE <= MAX_NRAM_C_FORWARD:
-            logger.debug("GEMS_CAMBRICON RMSNORM BACKWARD NOT USING C SPLIT")
+            logger.debug("GEMS_CAMBRICON RMS_NORM_BACKWARD")
             rms_norm_grad_dx_kernel[grid](
                 x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, M, BLOCK_SIZE
             )
         else:
-            logger.debug("GEMS_CAMBRICON RMSNORM BACKWARD USING C SPLIT")
+            logger.debug("GEMS_CAMBRICON RMS_NORM_BACKWARD")
             rms_norm_grad_dx_kernel_C_split[grid](
                 x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, M
             )

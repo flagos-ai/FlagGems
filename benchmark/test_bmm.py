@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -15,6 +17,9 @@ def _input_fn(b, m, n, k, dtype, device, b_column_major):
 
 
 @pytest.mark.bmm
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_bmm(monkeypatch):
     bench = base.BlasBenchmark(
         op_name="bmm",
@@ -38,6 +43,9 @@ def _input_fn_out(b, m, n, k, dtype, device, b_column_major):
 
 
 @pytest.mark.bmm_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_bmm_out(monkeypatch):
     bench = base.BlasBenchmark(
         op_name="bmm_out",

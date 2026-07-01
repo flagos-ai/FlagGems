@@ -37,6 +37,9 @@ FP8_MNK_SHAPES = [
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_baddbmm(monkeypatch, M, N, K, scalar, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3794: not working")
+
     batch = 4
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
@@ -82,6 +85,9 @@ def test_baddbmm_out(M, N, K, scalar, dtype):
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_baddbmm_backward(M, N, K, scalar, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3794: not working")
+
     batch = 2
     mat1 = torch.randn(
         (batch, M, K), dtype=dtype, device=flag_gems.device, requires_grad=True

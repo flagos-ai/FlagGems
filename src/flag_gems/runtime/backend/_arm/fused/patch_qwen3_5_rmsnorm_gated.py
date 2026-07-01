@@ -95,7 +95,8 @@ def patch_qwen3_5_rmsnorm_gated(model) -> int:
             n += 1
     if n > 0:
         logger.info(
-            "Patched %d Qwen3.5 RMSNormGated modules with TLE rms_norm_gated", n
+            "GEMS_ARM Patched %d Qwen3.5 RMSNormGated modules with TLE rms_norm_gated",
+            n,
         )
     return n
 

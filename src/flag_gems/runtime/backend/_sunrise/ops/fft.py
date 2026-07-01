@@ -887,7 +887,7 @@ def fft(x: torch.Tensor) -> torch.Tensor:
     - cuTile path is optional and requires `cuda.tile` + `cupy`; it uses a 3-factor
       decomposition with precomputed DFT/twiddle tables.
     """
-    logger.debug("GEMS FFT")
+    logger.debug("GEMS_SUNRISE FFT")
     assert x.is_ptpu, "input must be on PTPU"
     assert x.ndim == 2, "input must be 2D (M, N)"
     m, n = x.shape

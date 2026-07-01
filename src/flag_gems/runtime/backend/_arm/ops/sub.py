@@ -510,12 +510,12 @@ def _maybe_prewarm_sub_kernels():
         ob = torch.empty_like(xb)
         _launch_sub_broadcast_lastdim1(xb, yb.view(-1), ob, 1.0)
     except Exception:
-        logger.debug("GEMS ARM sub prewarm failed", exc_info=True)
+        logger.debug("GEMS_ARM sub prewarm failed", exc_info=True)
     _PREWARM_SUB_DONE = True
 
 
 def sub(A, B, *, alpha=1):
-    logger.debug("GEMS SUB")
+    logger.debug("GEMS_ARM SUB")
     _maybe_prewarm_sub_kernels()
 
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
@@ -571,7 +571,7 @@ def sub(A, B, *, alpha=1):
 
 
 def sub_(A, B, *, alpha=1):
-    logger.debug("GEMS SUB_")
+    logger.debug("GEMS_ARM SUB_")
     _maybe_prewarm_sub_kernels()
 
     if isinstance(B, torch.Tensor):

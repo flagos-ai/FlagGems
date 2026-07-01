@@ -260,7 +260,7 @@ def isin(
     assume_unique: bool = False,
     invert: bool = False,
 ) -> torch.Tensor:
-    logger.debug("GEMS ISIN")
+    logger.debug("GEMS_ENFLAME ISIN")
     if not torch.is_tensor(in0):
         assert torch.is_tensor(in1)
         in0 = torch.tensor(in0, device=in1.device)

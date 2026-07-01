@@ -13,7 +13,7 @@ from flag_gems.utils.limits import get_dtype_max
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op, prune_reduce_config
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -236,7 +236,7 @@ def min(inp):
 
 
 def min_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_CAMBRICON MIN DIM")
+    logger.debug("GEMS_CAMBRICON MIN_DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

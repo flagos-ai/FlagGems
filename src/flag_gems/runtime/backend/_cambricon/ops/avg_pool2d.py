@@ -8,7 +8,7 @@ from flag_gems.utils import libentry
 
 from ..utils import MAX_GRID_SIZE_X, MAX_GRID_SIZE_Y
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def pool2d_output_size(
@@ -337,7 +337,7 @@ def avg_pool2d(
     count_include_pad=True,
     divisor_override=None,
 ):
-    logger.debug("GEMS_CAMBRICON AVG_POOL2D FORWARD")
+    logger.debug("GEMS_CAMBRICON AVG_POOL2D")
 
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")
@@ -412,7 +412,7 @@ def avg_pool2d_backward(
     count_include_pad,
     divisor_override,
 ):
-    logger.debug("GEMS_CAMBRICON AVG_POOL2D BACKWARD")
+    logger.debug("GEMS_CAMBRICON AVG_POOL2D_BACKWARD")
 
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")

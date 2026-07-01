@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -19,6 +21,9 @@ class UpsampleNearestExact1dBenchmark(base.Benchmark):
 
 
 @pytest.mark.upsample_nearest_exact1d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_upsample_nearest_exact1d():
     bench = UpsampleNearestExact1dBenchmark(
         op_name="upsample_nearest_exact1d",

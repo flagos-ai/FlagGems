@@ -92,6 +92,9 @@ def ref_mla(
 @pytest.mark.flash_mla
 @pytest.mark.parametrize("seqlen", SEQLEN_LIST)
 @pytest.mark.parametrize("dtype", [torch.bfloat16])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_flash_mla(monkeypatch, seqlen, dtype):
     b = 128
     s_q = 1

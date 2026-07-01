@@ -44,14 +44,14 @@ def fill_tensor_func(inp, value):
 
 
 def fill_scalar(input, value):
-    logger.debug("GEMS FILL (Dynamic)")
+    logger.debug("GEMS_SUNRISE FILL")
     out = torch.empty_like(input)
     with torch_device_fn.device(input.device):
         return fill_scalar_func(input, value, out0=out)
 
 
 def fill_scalar_out(input, value, *, out=None):
-    logger.debug("GEMS FILL_SCALAR_OUT")
+    logger.debug("GEMS_SUNRISE FILL_SCALAR_OUT")
     if out is None:
         return fill_scalar(input, value)
     with torch_device_fn.device(input.device):
@@ -62,7 +62,7 @@ def fill_scalar_out(input, value, *, out=None):
 def fill_tensor(input, value):
     if not value.is_cuda:
         return fill_scalar(input, value.item())
-    logger.debug("GEMS FILL (Dynamic)")
+    logger.debug("GEMS_SUNRISE FILL")
     if value.ndim != 0:
         raise RuntimeError(
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
@@ -73,7 +73,7 @@ def fill_tensor(input, value):
 
 
 def fill_tensor_out(input, value, *, out=None):
-    logger.debug("GEMS FILL_TENSOR_OUT")
+    logger.debug("GEMS_SUNRISE FILL_TENSOR_OUT")
     if out is None:
         return fill_tensor(input, value)
     if not value.is_cuda:
@@ -90,7 +90,7 @@ def fill_tensor_out(input, value, *, out=None):
 def fill_tensor_(self, value):
     if not value.is_cuda:
         return fill_scalar_(self, value.item())
-    logger.debug("GEMS FILL_TENSOR_")
+    logger.debug("GEMS_SUNRISE FILL_TENSOR_")
     if value.ndim != 0:
         raise RuntimeError(
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
@@ -101,7 +101,7 @@ def fill_tensor_(self, value):
 
 
 def fill_scalar_(self, value):
-    logger.debug("GEMS FILL_SCALAR_")
+    logger.debug("GEMS_SUNRISE FILL_SCALAR_")
     with torch_device_fn.device(self.device):
         fill_scalar_func(self, value, out0=self)
     return self

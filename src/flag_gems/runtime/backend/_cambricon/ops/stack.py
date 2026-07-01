@@ -13,7 +13,7 @@ from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from ..utils import TOTAL_CORE_NUM
 from .vstack import vstack
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def get_dtype_size(dtype):

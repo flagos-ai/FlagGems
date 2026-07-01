@@ -9,6 +9,9 @@ vendor_name = flag_gems.vendor_name
 
 
 @pytest.mark.celu
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_celu():
     bench = base.UnaryPointwiseBenchmark(
         op_name="celu", torch_op=torch.nn.functional.celu, dtypes=consts.FLOAT_DTYPES
@@ -17,6 +20,9 @@ def test_celu():
 
 
 @pytest.mark.celu_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_celu_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="celu_",

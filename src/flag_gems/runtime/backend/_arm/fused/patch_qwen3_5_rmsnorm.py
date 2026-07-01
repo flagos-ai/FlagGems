@@ -100,7 +100,7 @@ def patch_qwen3_5_rmsnorm(model) -> int:
             _PATCHED.add(id(mod))
             n += 1
     if n > 0:
-        logger.info("Patched %d Qwen3.5 RMSNorm modules with TLE rms_norm", n)
+        logger.info("GEMS_ARM Patched %d Qwen3.5 RMSNorm modules with TLE rms_norm", n)
     return n
 
 

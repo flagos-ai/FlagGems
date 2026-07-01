@@ -149,7 +149,7 @@ def _choose_block(dtype):
 
 
 def dropout(input, p, train=True):
-    logger.debug("GEMS NATIVE DROPOUT FORWARD")
+    logger.debug("GEMS_ENFLAME NATIVE_DROPOUT_FORWARD")
     if not train or p == 0:
         out = input.clone()
         mask = torch.ones_like(input, dtype=torch.bool)

@@ -8,7 +8,7 @@ import flag_gems.runtime as runtime
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -38,7 +38,7 @@ def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr
 
 
 def masked_fill(inp, mask, value):
-    logger.debug("GEMS_METAX MASKED FILL")
+    logger.debug("GEMS_METAX MASKED_FILL")
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
@@ -73,7 +73,7 @@ def masked_fill(inp, mask, value):
 
 
 def masked_fill_(inp, mask, value):
-    logger.debug("GEMS_METAX MASKED FILL")
+    logger.debug("GEMS_METAX MASKED_FILL_")
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)

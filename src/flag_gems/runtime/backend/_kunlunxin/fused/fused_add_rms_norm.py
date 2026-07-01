@@ -9,7 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -103,7 +103,7 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     Both `x` and `residual` tensors will be modified. Use with caution if these tensors
     are reused elsewhere or require gradients.
     """
-    logger.debug("GEMS FUSED_ADD_RMS_NORM FORWARD")
+    logger.debug("GEMS_KUNLUNXIN FUSED_ADD_RMS_NORM")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)

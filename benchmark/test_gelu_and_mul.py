@@ -7,6 +7,9 @@ from . import base, consts, utils
 
 
 @pytest.mark.gelu_and_mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_gelu_and_mul():
     def torch_op(x, y):
         return torch.mul(torch.nn.functional.gelu(x), y)

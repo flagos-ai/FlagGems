@@ -6,7 +6,7 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -66,7 +66,7 @@ def reshape_and_cache_flash(
     k_scale,
     v_scale,
 ):
-    logger.debug("GEMS RESHAPE_AND_CACHE_FLASH")
+    logger.debug("GEMS_KUNLUNXIN RESHAPE_AND_CACHE_FLASH")
     num_tokens = slot_mapping.size(0)
     num_heads = key.size(1)
     head_size = key.size(2)

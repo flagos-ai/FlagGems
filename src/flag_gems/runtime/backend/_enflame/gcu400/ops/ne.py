@@ -15,7 +15,7 @@ def ne_func(x, y):
 
 
 def ne(A, B):
-    logger.debug("GEMS NE")
+    logger.debug("GEMS_ENFLAME NE")
     return ne_func(A, B)
 
 
@@ -26,5 +26,5 @@ def ne_func_scalar(x, y):
 
 
 def ne_scalar(A, B):
-    logger.debug("GEMS NE SCALAR")
+    logger.debug("GEMS_ENFLAME NE_SCALAR")
     return ne_func_scalar(A, B)

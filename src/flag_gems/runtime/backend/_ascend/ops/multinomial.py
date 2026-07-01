@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset, uniform
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 @libentry()

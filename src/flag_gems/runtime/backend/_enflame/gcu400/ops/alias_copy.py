@@ -32,7 +32,7 @@ def _launch_copy(src, dst, N):
 
 
 def alias_copy(x: torch.Tensor):
-    logger.debug("GEMS ALIAS_COPY GCU400")
+    logger.debug("GEMS_ENFLAME ALIAS_COPY")
     out = torch.empty_like(x)
     n_elements = out.numel()
     if n_elements == 0:
@@ -47,7 +47,7 @@ def alias_copy(x: torch.Tensor):
 
 
 def alias_copy_out(x: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS ALIAS_COPY_OUT GCU400")
+    logger.debug("GEMS_ENFLAME ALIAS_COPY_OUT")
     if x.dtype != out.dtype:
         raise RuntimeError("alias_copy_out: dtype of input and output must match.")
     if x.numel() != out.numel():

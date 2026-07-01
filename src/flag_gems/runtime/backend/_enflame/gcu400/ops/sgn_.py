@@ -31,7 +31,7 @@ def sgn_kernel_(x_ptr, N_total, BLOCK: tl.constexpr):
 
 
 def sgn_(*args, **kwargs):
-    logger.debug("GEMS SGN_ GCU400")
+    logger.debug("GEMS_ENFLAME SGN_")
     x = None
     if len(args) == 1 and isinstance(args[0], torch.Tensor):
         x = args[0]

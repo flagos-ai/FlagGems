@@ -5,7 +5,7 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
@@ -23,12 +23,12 @@ def relu_backward(x, dy):
 
 
 def relu(self):
-    logger.debug("GEMS_KUNLUNXIN RELU_FORWARD")
+    logger.debug("GEMS_KUNLUNXIN RELU")
     output = relu_forward(self)
     return output
 
 
 def relu_(A):
-    logger.debug("GEMS_KUNLUNXIN RELU__FORWARD")
+    logger.debug("GEMS_KUNLUNXIN RELU_")
     out = relu_forward(A, out0=A)
     return out

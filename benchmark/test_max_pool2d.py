@@ -64,6 +64,9 @@ def max_pool2d_input_fn(shape, dtype, device):
 
 
 @pytest.mark.max_pool2d_with_indices
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_max_pool2d_with_indices():
     bench = MaxPool2dBenchmark(
         op_name="max_pool2d_with_indices",
@@ -98,6 +101,9 @@ def torch_max_pool2d_backward_wrapper(grad_output, input, indices, **kwargs):
 
 
 @pytest.mark.max_pool2d_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_max_pool2d_backward():
     bench = MaxPool2dBenchmark(
         input_fn=max_pool2d_backward_input_fn,

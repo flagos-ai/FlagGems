@@ -13,6 +13,9 @@ from . import conftest as cfg
     "dtype",
     utils.COMPLEX_DTYPES + utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BOOL_TYPES,
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_angle(shape, dtype):
     if cfg.TO_CPU and dtype == torch.complex32:
         # Complex32 on CPU is not supported

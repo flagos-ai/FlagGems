@@ -21,6 +21,9 @@ else:
 @pytest.mark.parametrize("scale", UPSAMPLE_NEAREST2D_SCALES)
 @pytest.mark.parametrize("shape", utils.UPSAMPLE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_upsample_nearest2d(dtype, shape, scale):
     if flag_gems.vendor_name == "sunrise" and shape[2] * shape[3] >= 1023 * 1025:
         pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")

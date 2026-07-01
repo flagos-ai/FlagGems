@@ -30,6 +30,9 @@ class Conv3DPaddingBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.conv3d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv3d():
     def conv3d_input_fn(shape, dtype, device):
         (
@@ -72,6 +75,9 @@ def test_conv3d():
 
 
 @pytest.mark.conv3d_padding
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv3d_padding():
     def conv3d_padding_input_fn(shape, dtype, device):
         (

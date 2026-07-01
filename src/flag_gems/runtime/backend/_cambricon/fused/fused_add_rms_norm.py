@@ -99,7 +99,7 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     are reused elsewhere or require gradients.
     """
     logger.debug(
-        "GEMS_CAMBRICON FUSED_ADD_RMS_NORM FORWARD, [input shape]: %s, [residual shape]: %s, [weight shape]: %s",
+        "GEMS_CAMBRICON FUSED_ADD_RMS_NORM, [input shape]: %s, [residual shape]: %s, [weight shape]: %s",
         x.size(),
         residual.size(),
         weight.size(),

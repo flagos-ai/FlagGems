@@ -96,7 +96,7 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     _, N = mat2.shape
 
     logger.debug(
-        "GEMS ADDMM, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "GEMS_SUNRISE ADDMM, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
         "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
         M,
         N,
@@ -150,7 +150,7 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
     else:
         assert out.shape == (M, N), "Incompatible output shape"
     logger.debug(
-        "GEMS ADDMM_OUT, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "GEMS_SUNRISE ADDMM_OUT, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
         "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
         M,
         N,
@@ -191,7 +191,7 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
 
 
 def addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1):
-    logger.debug("GEMS ADDMM_DTYPE")
+    logger.debug("GEMS_SUNRISE ADDMM_DTYPE")
     out = torch.empty(
         (mat1.shape[0], mat2.shape[1]),
         device=mat1.device,
@@ -201,7 +201,7 @@ def addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1):
 
 
 def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
-    logger.debug("GEMS ADDMM_DTYPE_OUT")
+    logger.debug("GEMS_SUNRISE ADDMM_DTYPE_OUT")
     if mat1.dtype != mat2.dtype:
         raise RuntimeError(
             f"mat1 and mat2 must have the same dtype, but got {mat1.dtype} and {mat2.dtype}"

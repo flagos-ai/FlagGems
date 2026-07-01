@@ -7,6 +7,9 @@ from . import base, consts, utils
 
 
 @pytest.mark.silu_and_mul_with_clamp
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_silu_and_mul_with_clamp():
     limit = 7.0
 
@@ -29,6 +32,9 @@ def test_silu_and_mul_with_clamp():
 
 
 @pytest.mark.silu_and_mul_with_clamp_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_silu_and_mul_with_clamp_out():
     limit = 7.0
 

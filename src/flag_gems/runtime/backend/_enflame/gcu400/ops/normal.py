@@ -250,7 +250,7 @@ def _get_block_and_grid(
 
 
 def normal_(self, mean=0, std=1, *, generator=None):
-    logger.debug("GEMS NORMAL_")
+    logger.debug("GEMS_ENFLAME NORMAL_")
     shape = self.shape
     device = self.device
     N = volume(shape)
@@ -291,7 +291,7 @@ def normal_(self, mean=0, std=1, *, generator=None):
 
 
 def normal_tensor_tensor(mean, std, *, generator=None):
-    logger.debug("GEMS NORMAL_TENSOR_TENSOR")
+    logger.debug("GEMS_ENFLAME NORMAL_TENSOR_TENSOR")
     shape = broadcast_shapes([mean.shape, std.shape])
     device = mean.device
     N = volume(shape)
@@ -319,7 +319,7 @@ def normal_tensor_tensor(mean, std, *, generator=None):
 
 
 def normal_tensor_float(mean, std, *, generator=None):
-    logger.debug("GEMS NORMAL_TENSOR_FLOAT")
+    logger.debug("GEMS_ENFLAME NORMAL_TENSOR_FLOAT")
     shape = mean.shape
     device = mean.device
     N = volume(shape)
@@ -345,7 +345,7 @@ def normal_tensor_float(mean, std, *, generator=None):
 
 
 def normal_float_tensor(mean, std, *, generator=None):
-    logger.debug("GEMS NORMAL_FLOAT_TENSOR")
+    logger.debug("GEMS_ENFLAME NORMAL_FLOAT_TENSOR")
     shape = std.shape
     device = std.device
     N = volume(shape)

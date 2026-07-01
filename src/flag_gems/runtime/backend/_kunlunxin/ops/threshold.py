@@ -5,7 +5,7 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, "DEFAULT")])
@@ -21,7 +21,7 @@ def threshold_backward_kernel(grad_output, self, threshold):
 
 
 def threshold(self, threshold, value):
-    logger.debug("GEMS_KUNLUNXIN THRESHOLD_FORWARD")
+    logger.debug("GEMS_KUNLUNXIN THRESHOLD")
     output = threshold_kernel(self, threshold, value)
     return output
 

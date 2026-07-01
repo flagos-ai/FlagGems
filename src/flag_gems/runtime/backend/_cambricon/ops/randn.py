@@ -15,7 +15,7 @@ from flag_gems.utils.shape_utils import volume
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 try:
     pair_uniform_to_normal = tl.pair_uniform_to_normal
 except AttributeError:

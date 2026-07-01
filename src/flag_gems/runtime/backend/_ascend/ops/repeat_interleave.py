@@ -8,7 +8,7 @@ from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.shape_utils import c_contiguous_stride
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 config_ = CodeGenConfig(

@@ -7,7 +7,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 pow = tl_extra_shim.pow
 _tanh = tl_extra_shim.fast_tanh
 
@@ -26,18 +26,18 @@ def tanh_backward_kernel(y, dy):
 
 
 def tanh(self):
-    logger.debug("GEMS_CAMBRICON TANH FORWARD")
+    logger.debug("GEMS_CAMBRICON TANH")
     out = tanh_kernel(self, False)
     return out
 
 
 def tanh_backward(grad_output, output):
-    logger.debug("GEMS_CAMBRICON TANH BACKWARD")
+    logger.debug("GEMS_CAMBRICON TANH_BACKWARD")
     in_grad = tanh_backward_kernel(output, grad_output)
     return in_grad
 
 
 def tanh_(A):
-    logger.debug("GEMS_CAMBRICON TANH_ FORWARD")
+    logger.debug("GEMS_CAMBRICON TANH_")
     out = tanh_kernel(A, True, out0=A)
     return out

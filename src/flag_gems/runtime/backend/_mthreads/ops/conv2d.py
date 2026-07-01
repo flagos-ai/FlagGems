@@ -7,9 +7,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.utils import libentry
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 
 def conv2d_output_size(
@@ -440,7 +438,7 @@ class Conv2d(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_MTHREADS CONV2D VJP")
+        logger.debug("GEMS_MTHREADS CONV2D_VJP")
         (weight, input, bias) = ctx.saved_tensors
         # (out_c equals origin cout divide groups)
         out_c, weight_c, weight_height, weight_width = ctx.weight_info

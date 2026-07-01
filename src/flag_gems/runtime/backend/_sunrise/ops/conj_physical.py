@@ -30,7 +30,7 @@ def conj_physical_kernel(in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def conj_physical(input: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS Conj_Physical")
+    logger.debug("GEMS_SUNRISE CONJ_PHYSICAL")
     if not input.is_complex():
         return input
 

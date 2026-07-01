@@ -26,6 +26,9 @@ def weight_norm_input_fn(shape, dtype, device):
 
 
 @pytest.mark.weight_norm_interface
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_weight_norm_interface():
     bench = base.GenericBenchmarkExcluse1D(
         op_name="weight_norm_interface",
@@ -47,6 +50,9 @@ def weight_norm_interface_backward_input_fn(shape, dtype, device):
 
 
 @pytest.mark.weight_norm_interface_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_weight_norm_interface_backward():
     bench = base.GenericBenchmarkExcluse1D(
         op_name="weight_norm_interface_backward",

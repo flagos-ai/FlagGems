@@ -19,7 +19,7 @@ from flag_gems.utils import triton_lang_extension as ext
 from ..utils import MAX_GRID_SIZE_X
 from .topk import _get_finfo_val
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 INTERPOLATION_METHOD = ["linear", "lower", "higher", "nearest", "midpoint"]
 MAX_BITONIC_M = 1024
@@ -272,7 +272,7 @@ def quantile_bitonic_kernel(
 def quantile(
     inp, q, dim=None, keepdim=False, interpolation="linear", out=None
 ) -> Tensor:
-    logger.debug("GEMS_CAMBRICON QUANTILE DIM")
+    logger.debug("GEMS_CAMBRICON QUANTILE")
     assert torch.is_floating_point(inp)
     assert dim is None or isinstance(dim, int)
     assert isinstance(q, (float, torch.Tensor))

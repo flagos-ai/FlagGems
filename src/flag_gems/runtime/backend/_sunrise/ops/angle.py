@@ -35,7 +35,7 @@ def angle_float_and_int(real):
 
 
 def angle(input_tensor: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS ANGLE")
+    logger.debug("GEMS_SUNRISE ANGLE")
     if input_tensor.dtype == torch.complex32 or input_tensor.dtype == torch.complex64:
         device = input_tensor.device
         input_tensor = input_tensor.to(device="cpu")

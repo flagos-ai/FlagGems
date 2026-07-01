@@ -104,7 +104,7 @@ def sum_kernel(
 
 
 def sum(inp, *, dtype=None):
-    logger.debug("GEMS SUM")
+    logger.debug("GEMS_ENFLAME SUM")
     if inp.dtype == torch.int64:
         inp = inp.to(torch.int32)
     if dtype == torch.int64:
@@ -130,7 +130,7 @@ def sum(inp, *, dtype=None):
 
 
 def sum_out(inp, *, dtype=None, out):
-    logger.debug("GEMS SUM_OUT")
+    logger.debug("GEMS_ENFLAME SUM_OUT")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -149,7 +149,7 @@ def sum_out(inp, *, dtype=None, out):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS SUM DIM")
+    logger.debug("GEMS_ENFLAME SUM_DIM")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
@@ -182,7 +182,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
 
 def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
-    logger.debug("GEMS SUM_DIM_OUT")
+    logger.debug("GEMS_ENFLAME SUM_DIM_OUT")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:

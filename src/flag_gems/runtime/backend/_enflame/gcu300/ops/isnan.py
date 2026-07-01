@@ -19,5 +19,5 @@ def isnan_func(x):
 
 
 def isnan(A):
-    logger.debug("GEMS ISNAN")
+    logger.debug("GEMS_ENFLAME ISNAN")
     return isnan_func(A)

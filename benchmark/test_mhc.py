@@ -1,6 +1,7 @@
 import pytest
 import torch
 
+import flag_gems
 from flag_gems.fused.mhc.hc_head_fused_kernel import hc_head_fused_kernel
 
 try:
@@ -49,6 +50,9 @@ class MHCPostBenchmark(base.Benchmark):
 
 
 @pytest.mark.mhc_post
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_mhc_post():
     bench = MHCPostBenchmark(
         op_name="mhc_post",
@@ -119,6 +123,9 @@ class MHCPreBenchmark(base.Benchmark):
 
 
 @pytest.mark.mhc_pre
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_mhc_pre():
     bench = MHCPreBenchmark(
         op_name="mhc_pre",
@@ -165,6 +172,9 @@ class MHCSplitSinkhornBenchmark(base.Benchmark):
 
 
 @pytest.mark.hc_split_sinkhorn_forward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_hc_split_sinkhorn_forward():
     bench = MHCSplitSinkhornBenchmark(
         op_name="hc_split_sinkhorn_forward",
@@ -207,6 +217,9 @@ class MHCBwdBenchmark(base.Benchmark):
 
 
 @pytest.mark.mhc_bwd
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_mhc_bwd():
     bench = MHCBwdBenchmark(
         op_name="mhc_bwd",
@@ -265,6 +278,9 @@ def _hc_head_fused_kernel_ref(
 
 
 @pytest.mark.hc_head_fused_kernel
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 @pytest.mark.skipif(not HAS_VLLM, reason="vLLM not available")
 def test_hc_head_fused_kernel():
     bench = HCHeadFusedBenchmark(

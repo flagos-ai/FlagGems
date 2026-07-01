@@ -53,7 +53,7 @@ def _get_block_config(M, N):
 
 
 def index_add(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS_ASCEND INDEX ADD")
+    logger.debug("GEMS_ASCEND INDEX_ADD")
 
     inp = inp.contiguous()
     index = index.contiguous()
@@ -100,7 +100,7 @@ def index_add(inp, dim, index, src, alpha=1):
 
 
 def index_add_(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS_ASCEND INDEX ADD_")
+    logger.debug("GEMS_ASCEND INDEX_ADD_")
 
     index = index.contiguous()
     src = src.contiguous()

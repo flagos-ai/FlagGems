@@ -92,7 +92,7 @@ def _launch_tt(inp_a, inp_b, out, N, dtype):
 
 
 def remainder(A, B):
-    logger.debug("GEMS REMAINDER GCU400")
+    logger.debug("GEMS_ENFLAME REMAINDER")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         inp_a = A if A.is_contiguous() else A.contiguous()
         inp_b = B if B.is_contiguous() else B.contiguous()
@@ -141,7 +141,7 @@ def remainder(A, B):
 
 
 def remainder_(A, B):
-    logger.debug("GEMS REMAINDER_ GCU400")
+    logger.debug("GEMS_ENFLAME REMAINDER_")
     inp_a = A if A.is_contiguous() else A.contiguous()
     N = inp_a.numel()
     if isinstance(B, torch.Tensor):

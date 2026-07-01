@@ -6,6 +6,8 @@ import triton.language as tl
 
 from flag_gems.utils import broadcastable_to
 
+logger = logging.getLogger(__name__)
+
 
 @triton.jit(do_not_specialize=["value", "n_elements"])
 def _masked_fill_kernel(
@@ -173,7 +175,7 @@ def _launch_masked_fill_inplace(inp, expand_mask, value):
 
 
 def masked_fill(inp, mask, value):
-    logging.debug("GEMS MASKED_FILL")
+    logger.debug("GEMS_ARM MASKED_FILL")
     value = _normalize_scalar_value(value)
     assert broadcastable_to(
         mask.shape, inp.shape
@@ -199,7 +201,7 @@ def masked_fill(inp, mask, value):
 
 
 def masked_fill_(inp, mask, value):
-    logging.debug("GEMS MASKED_FILL_")
+    logger.debug("GEMS_ARM MASKED_FILL_")
     value = _normalize_scalar_value(value)
     assert broadcastable_to(
         mask.shape, inp.shape

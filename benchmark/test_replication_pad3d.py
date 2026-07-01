@@ -32,6 +32,9 @@ class ReplicationPad3dBenchmark(base.GenericBenchmarkExcluse3D):
 
 
 @pytest.mark.replication_pad3d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_replication_pad3d():
     def torch_replication_pad3d(input, padding):
         return torch.nn.functional.pad(input, padding, mode="replicate")

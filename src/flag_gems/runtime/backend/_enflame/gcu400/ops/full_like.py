@@ -17,7 +17,7 @@ def full_like(
     pin_memory=None,
     memory_format=None,
 ):
-    logger.debug("GEMS FULL_LIKE")
+    logger.debug("GEMS_ENFLAME FULL_LIKE")
     if device is None:
         device = x.device
     if dtype is None:
