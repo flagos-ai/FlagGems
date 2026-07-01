@@ -874,6 +874,28 @@ ops:
       - BLAS
     stages:
       - beta: '5.3'
+  - id: beam_search_score
+    description: Computes beam search scores by adding cumulative log probabilities with new token scores.
+    for:
+      - beam_search_score
+    labels:
+      - KernelGen
+      - fused
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: beam_search_score_
+    description: In-place version of beam search score computation.
+    for:
+      - beam_search_score_
+    labels:
+      - KernelGen
+      - fused
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: batch_norm
     description: An internal operator used for implementing the `BatchNorm` functionality.
     for:

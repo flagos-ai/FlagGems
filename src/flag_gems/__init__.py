@@ -178,6 +178,8 @@ _FULL_CONFIG = (
     ("avg_pool3d_backward", avg_pool3d_backward),
     ("baddbmm", baddbmm),
     ("baddbmm.out", baddbmm_out),
+    ("beam_search_score", beam_search_score),
+    ("beam_search_score_", beam_search_score_),
     ("bernoulli", bernoulli),
     ("bernoulli_.float", bernoulli_),
     ("bincount", bincount),
