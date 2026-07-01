@@ -4562,6 +4562,18 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: masked_scale
+    description: The low-level implementation for computing input multiplied by scale with masking.
+    for:
+      - _masked_scale
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: masked_scatter
     description: Copies elements from `source` into the given tensor at positions where the `mask` is True.
     for:
