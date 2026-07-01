@@ -58,11 +58,11 @@ mm_splitk:
       num_stages: stages
       num_warps: warps
     block_m:
-      - 8
-      - 16
+      - 64
+      - 128
     block_n:
-      - 16
-      - 32
+      - 64
+      - 128
     block_k:
       - 64
       - 128
@@ -71,14 +71,12 @@ mm_splitk:
       - 4
       - 8
     group_m:
-      - 8
+      - 16
+      - 32
     stages:
       - 2
       - 3
       - 4
-      - 5
-      - 6
-      - 8
     warps:
       - 2
       - 4
