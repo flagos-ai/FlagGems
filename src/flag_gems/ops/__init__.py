@@ -20,6 +20,9 @@ from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
     _thnn_fused_lstm_cell_backward_impl,
 )
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
+from flag_gems.ops._unsafe_masked_index_put_accumulate import (
+    _unsafe_masked_index_put_accumulate,
+)
 from flag_gems.ops._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops._upsample_nearest_exact2d_backward import (
@@ -113,6 +116,7 @@ from flag_gems.ops.clamp import (
 from flag_gems.ops.clamp_max import clamp_max, clamp_max_  # noqa: F401
 from flag_gems.ops.clip import clip, clip_
 from flag_gems.ops.col2im import col2im
+from flag_gems.ops.concat import concat
 from flag_gems.ops.concatenate import concatenate
 from flag_gems.ops.conj_physical import conj_physical
 from flag_gems.ops.contiguous import contiguous
@@ -209,6 +213,7 @@ from flag_gems.ops.greater import (
     greater_scalar,
     greater_scalar_out,
 )
+from flag_gems.ops.greater_equal import greater_equal_
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.group_gemm import group_mm
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
@@ -332,6 +337,7 @@ from flag_gems.ops.per_token_group_quant_fp8 import (
     SUPPORTED_FP8_DTYPE,
     per_token_group_quant_fp8,
 )
+from flag_gems.ops.permute_copy import permute_copy
 from flag_gems.ops.pixel_shuffle import pixel_shuffle
 from flag_gems.ops.pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from flag_gems.ops.poisson import poisson
@@ -354,10 +360,12 @@ from flag_gems.ops.randint_like import randint_like
 from flag_gems.ops.randn import randn
 from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
+from flag_gems.ops.range import range
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
+from flag_gems.ops.reflection_pad3d import reflection_pad3d, reflection_pad3d_out
 from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
@@ -371,6 +379,7 @@ from flag_gems.ops.repeat_interleave import (
 )
 from flag_gems.ops.replication_pad1d import replication_pad1d, replication_pad1d_out
 from flag_gems.ops.replication_pad3d import replication_pad3d
+from flag_gems.ops.resize import resize, resize_
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
@@ -525,6 +534,7 @@ __all__ = [
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
     "_unsafe_masked_index",
+    "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_bilinear2d_aa",
@@ -640,6 +650,7 @@ __all__ = [
     "clip",
     "clip_",
     "col2im",
+    "concat",
     "concatenate",
     "conj_physical",
     "constant_pad_nd",
@@ -756,6 +767,7 @@ __all__ = [
     "glu",
     "glu_backward",
     "greater",
+    "greater_equal_",
     "greater_out",
     "greater_scalar",
     "greater_scalar_out",
@@ -907,6 +919,7 @@ __all__ = [
     "ones_like",
     "pad",
     "per_token_group_quant_fp8",
+    "permute_copy",
     "pixel_shuffle",
     "pixel_unshuffle",
     "pixel_unshuffle_out",
@@ -930,6 +943,7 @@ __all__ = [
     "randn",
     "randn_like",
     "randperm",
+    "range",
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",
@@ -937,7 +951,9 @@ __all__ = [
     "reflection_pad1d_out",
     "reflection_pad2d",
     "reflection_pad2d_out",
+    "reflection_pad3d",
     "reflection_pad3d_backward",
+    "reflection_pad3d_out",
     "relu",
     "relu6",
     "relu_",
@@ -952,6 +968,8 @@ __all__ = [
     "replication_pad1d",
     "replication_pad1d_out",
     "replication_pad3d",
+    "resize",
+    "resize_",
     "resolve_conj",
     "resolve_neg",
     "rms_norm",

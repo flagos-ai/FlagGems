@@ -54,7 +54,7 @@ def _safe_softmax(x: torch.Tensor, dim: int = -1, dtype: torch.dtype = None):
     if x.dtype != torch.float32:
         return generic_safe_softmax(x, dim=dim, dtype=dtype)
 
-    logger.debug("GEMS TURING FP32 _SAFE_SOFTMAX")
+    logger.debug("GEMS_NVIDIA SAFE_SOFTMAX")
     assert x.is_cuda, "Input tensor must be on CUDA device"
     assert x.ndim >= 1, "Input tensor must have at least 1 dimension"
 
