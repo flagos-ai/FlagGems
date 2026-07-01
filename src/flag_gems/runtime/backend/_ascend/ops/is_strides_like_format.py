@@ -1,20 +1,17 @@
 import logging
-import torch
 from typing import Union
+
+import torch
 
 from flag_gems.runtime import device
 
 device_ = device
-logger = logging.getLogger(
-    f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
 SUPPORTED_FORMATS = {"contiguous", "channels_last", "any"}
 
-def is_strides_like_format(
-    x: torch.Tensor,
-    format: str
-) -> Union[bool, torch.Tensor]:
+
+def is_strides_like_format(x: torch.Tensor, format: str) -> Union[bool, torch.Tensor]:
     """
     Checks whether the stride pattern of the input tensor matches the specified memory format.
 

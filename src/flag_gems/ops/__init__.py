@@ -795,7 +795,7 @@ __all__ = [
     "index_put_",
     "index_reduce_",
     "index_select",
-    "is_strides_like_format", 
+    "is_strides_like_format",
     "isclose",
     "isfinite",
     "isin",
