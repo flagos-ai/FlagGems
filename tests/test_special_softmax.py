@@ -29,9 +29,7 @@ def test_special_softmax(shape, dtype, dim):
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", [-1, 0, 1])
-@pytest.mark.parametrize(
-    "dtype_arg", [None, torch.float32, torch.float16, torch.bfloat16]
-)
+@pytest.mark.parametrize("dtype_arg", [None] + list(utils.FLOAT_DTYPES))
 def test_special_softmax_with_dtype(shape, dtype, dim, dtype_arg):
     # Test special_softmax with dtype parameter
     if len(shape) == 1:
