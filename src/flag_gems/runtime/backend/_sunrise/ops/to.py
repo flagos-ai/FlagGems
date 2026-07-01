@@ -110,7 +110,7 @@ def to_copy(
     # a backend copy_ implementation that does not handle complex. Stage through CPU
     # to avoid ptpu complex copy_/view_as_real gaps.
     if x.dtype.is_complex or target_dtype.is_complex:
-        logger.debug("GEMS_SUNRISE _TO_COPY COMPLEX VIA CPU")
+        logger.debug("GEMS_SUNRISE TO_COPY")
         cpu_x = x
         if x.device.type != "cpu":
             cpu_x = _fallback_to_copy(
@@ -157,7 +157,7 @@ def to_copy(
             memory_format=target_memory_format,
         )
 
-    logger.debug("GEMS_SUNRISE _TO_COPY")
+    logger.debug("GEMS_SUNRISE TO_COPY")
     empty_kwargs = {"dtype": target_dtype, "device": target_device}
 
     if target_memory_format is torch.preserve_format:

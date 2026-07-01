@@ -80,6 +80,12 @@ case $BACKEND in
     export LD_LIBRARY_PATH=/usr/local/kuiper/tsm8-profiler/lib:$LD_LIBRARY_PATH
     export LD_LIBRARY_PATH=${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}
 
+    # Torch XLA is not used in TsingMicro, and it may lead to LLVM error
+    export USE_TORCH_XLA=0
+    # Torch compiler is not supported on TsingMicro, and in particular,
+    # it is not used for inference scenario
+    export TORCH_COMPILE_DIABLE=1
+
     # if [ -n "${USE_TRITON}" ]; then
     #   export PYTHONPATH=$SITE_PACKAGES/triton/backends/tsingmicro/llvm/python_packages/mlir_core
     # fi
