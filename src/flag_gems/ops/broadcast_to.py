@@ -154,7 +154,7 @@ def broadcast_to(x, size):
 
     def _to_device(data, device):
         t = torch.tensor(data, dtype=torch.int64, device='cpu')
-        if device.type == "cuda":
+        if device.type == flag_gems.device:
             t = t.pin_memory()
         return t.to(device, non_blocking=True)
 
