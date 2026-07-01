@@ -190,6 +190,7 @@ _FULL_CONFIG = (
     ("bitwise_and_.Scalar", bitwise_and_scalar_),
     ("bitwise_and_.Tensor", bitwise_and_tensor_),
     ("bitwise_left_shift", bitwise_left_shift),
+    ("bitwise_left_shift_", bitwise_left_shift_),
     ("bitwise_not", bitwise_not),
     ("bitwise_not_", bitwise_not_),
     ("bitwise_or.Scalar", bitwise_or_scalar),

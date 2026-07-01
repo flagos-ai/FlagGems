@@ -1029,6 +1029,17 @@ ops:
       - Math
     stages:
       - stable: '4.0'
+  - id: bitwise_left_shift_
+    description: The in-place version of `bitwise_left_shift()`.
+    for:
+      - bitwise_left_shift_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: bitwise_not
     description: Computes the bitwise NOT of the given `input` tensor.
     for:
