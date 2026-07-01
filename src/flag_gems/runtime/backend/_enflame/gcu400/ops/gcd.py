@@ -218,7 +218,7 @@ def _launch_gcd(lhs, rhs, out):
 
 
 def gcd(self, other, *, out=None):
-    logger.debug("GEMS GCD GCU400")
+    logger.debug("GEMS_ENFLAME GCD")
     lhs, rhs, promoted_dtype = _materialize_inputs(self, other)
     result = torch.empty_like(lhs, dtype=promoted_dtype)
     _launch_gcd(lhs.reshape(-1), rhs.reshape(-1), result.reshape(-1))
@@ -230,7 +230,7 @@ def gcd(self, other, *, out=None):
 
 
 def gcd_out(self, other, *, out=None):
-    logger.debug("GEMS GCD_OUT GCU400")
+    logger.debug("GEMS_ENFLAME GCD_OUT")
     if out is None:
         return gcd(self, other)
     return gcd(self, other, out=out)
