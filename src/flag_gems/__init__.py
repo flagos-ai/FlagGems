@@ -12,6 +12,7 @@ from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
+from flag_gems.ops import range as range_op
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
@@ -48,6 +49,7 @@ _FULL_CONFIG = (
         _amp_foreach_non_finite_check_and_unscale_,
     ),
     ("_assert_async", _assert_async),
+    ("_batch_norm_no_update", _batch_norm_no_update),
     ("_cdist_backward", _cdist_backward),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_efficient_attention_backward", efficient_attention_backward),
@@ -69,6 +71,7 @@ _FULL_CONFIG = (
     ("_log_softmax.out", log_softmax_out),
     ("_log_softmax_backward_data", log_softmax_backward),
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
+    ("_masked_scale", _masked_scale),
     ("_prelu_kernel_backward", _prelu_kernel_backward),
     ("_resize_output", _resize_output),
     ("_safe_softmax", _safe_softmax),
@@ -102,6 +105,7 @@ _FULL_CONFIG = (
     ("_thnn_fused_lstm_cell_backward_impl", _thnn_fused_lstm_cell_backward_impl),
     ("_unique2", _unique2),
     ("_unsafe_masked_index", _unsafe_masked_index),
+    ("_unsafe_masked_index_put_accumulate", _unsafe_masked_index_put_accumulate),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
     ("_upsample_bilinear2d_aa", _upsample_bilinear2d_aa),
@@ -175,6 +179,8 @@ _FULL_CONFIG = (
     ("avg_pool3d_backward", avg_pool3d_backward),
     ("baddbmm", baddbmm),
     ("baddbmm.out", baddbmm_out),
+    ("beam_search_score", beam_search_score),
+    ("beam_search_score_", beam_search_score_),
     ("bernoulli", bernoulli),
     ("bernoulli_.float", bernoulli_),
     ("bincount", bincount),
@@ -197,6 +203,7 @@ _FULL_CONFIG = (
     ("broadcast_to", broadcast_to),
     ("cat", cat),
     ("cat.out", cat_out),
+    ("concat", concat),
     ("cauchy", cauchy),
     ("cauchy_", cauchy_),
     ("ceil", ceil),
@@ -347,6 +354,9 @@ _FULL_CONFIG = (
     ("greater.Scalar_out", greater_scalar_out),
     ("greater.Tensor", greater),
     ("greater.out", greater_out),
+    ("greater_equal.Scalar", ge_scalar),
+    ("greater_equal.Tensor", ge),
+    ("greater_equal_.Tensor", greater_equal_),
     ("grid_sample", grid_sample),
     ("gt.Scalar", gt_scalar),
     ("gt.Tensor", gt),
@@ -492,6 +502,7 @@ _FULL_CONFIG = (
     ("ones", ones),
     ("ones_like", ones_like),
     ("pad", pad),
+    ("permute_copy", permute_copy),
     ("pixel_shuffle", pixel_shuffle),
     ("pixel_unshuffle", pixel_unshuffle),
     ("pixel_unshuffle.out", pixel_unshuffle_out),
@@ -515,6 +526,7 @@ _FULL_CONFIG = (
     ("randn", randn),
     ("randn_like", randn_like),
     ("randperm", randperm),
+    ("range", range_op),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
     ("reflection_pad1d", reflection_pad1d),
@@ -522,6 +534,8 @@ _FULL_CONFIG = (
     ("reflection_pad1d_backward", reflection_pad1d_backward),
     ("reflection_pad2d", reflection_pad2d),
     ("reflection_pad2d.out", reflection_pad2d_out),
+    ("reflection_pad3d", reflection_pad3d),
+    ("reflection_pad3d.out", reflection_pad3d),
     ("reflection_pad3d_backward", reflection_pad3d_backward),
     ("relu", relu),
     ("relu6", relu6),
@@ -541,6 +555,8 @@ _FULL_CONFIG = (
     ("replication_pad1d", replication_pad1d),
     ("replication_pad1d.out", replication_pad1d_out),
     ("replication_pad3d", replication_pad3d),
+    ("resize", resize),
+    ("resize_", resize_),
     ("resolve_conj", resolve_conj),
     ("resolve_neg", resolve_neg),
     ("rms_norm", rms_norm),

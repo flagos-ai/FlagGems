@@ -26,13 +26,24 @@ pypi_base: "https://resource.flagos.net/repository/flagos-pypi-{vendor}/simple"
 mirror: "https://mirrors.aliyun.com/pypi/simple"
 
 backends:
-  nvidia:
+  nvidia-cuda128:
+    python: "3.12"
+    cmake_backend: CUDA
+    triton: triton==3.6.0
+    flagtree: flagtree==0.6.0
+    deps:
+      - torch==2.10.0+cu128
+      - torchaudio==2.10.0+cu128
+      - torchvision==0.25.0+cu128
+
+  nvidia-cuda133:
     python: "3.12"
     cmake_backend: CUDA
     triton: triton==3.6.0
     flagtree: flagtree==0.6.0
     deps:
       - torch==2.11.0+cu130
+      - torchaudio==2.11.0+cu130
       - torchvision==0.26.0+cu130
 
   ascend-cann850:
@@ -88,7 +99,7 @@ backends:
     python: "3.10"
     cmake_backend: IX
     triton: triton==3.1.0+corex.4.4.0
-    flagtree: flagtree==0.5.1+iluvatar3.1
+    # flagtree==0.5.1+iluvatar3.1 — plugin loading bug in venv, disabled for now
     deps:
       - torch==2.7.1+corex.4.4.0
       - torchaudio==2.7.1+corex.4.4.0
@@ -167,5 +178,5 @@ backends:
       - torch==2.7.0+cpu
       - torchvision==0.22.0+cpu
       - torchaudio==2.7.0+cpu
-      - torch_txda==0.1.0+20260610.3968e515
+      - torch_txda==0.1.0+20260615.37ba6bbd
       - txops==0.1.0+20260508.60287151

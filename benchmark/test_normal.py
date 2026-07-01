@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -11,6 +13,9 @@ def normal_input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.normal_tensor_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_normal_tensor_tensor():
     bench = base.GenericBenchmark(
         input_fn=normal_input_fn,
@@ -28,6 +33,9 @@ def normal_tensor_float_input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.normal_tensor_float
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_normal_tensor_float():
     bench = base.GenericBenchmark(
         input_fn=normal_tensor_float_input_fn,
@@ -46,6 +54,9 @@ def normal_inplace_input_fn(shape, dtype, device):
 
 
 @pytest.mark.normal_float_float_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_normal_inplace():
     bench = base.GenericBenchmark(
         input_fn=normal_inplace_input_fn,
@@ -63,6 +74,9 @@ def normal_float_tensor_input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.normal_float_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_normal_float_tensor():
     bench = base.GenericBenchmark(
         input_fn=normal_float_tensor_input_fn,
