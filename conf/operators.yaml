@@ -1438,6 +1438,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: concat
+    description: An alias of `cat()`.
+    for:
+      - concat
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: concat_and_cache_mla
     description: |
       Writes the latent and RoPE value into KV cache for Multi-head Latent Attention forward case.

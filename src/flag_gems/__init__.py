@@ -199,6 +199,7 @@ _FULL_CONFIG = (
     ("broadcast_to", broadcast_to),
     ("cat", cat),
     ("cat.out", cat_out),
+    ("concat", concat),
     ("cauchy", cauchy),
     ("cauchy_", cauchy_),
     ("ceil", ceil),
