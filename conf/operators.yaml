@@ -7201,18 +7201,6 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: special_round_out
-    description: |
-      A variant of `special_round()` with output saved to provided `out`.
-    for:
-      - special.round.out
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: special_shifted_chebyshev_polynomial_u
     description: |
       Computes the shifted Chebyshev polynomial of the second kind U_n^*(x)
