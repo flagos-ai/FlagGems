@@ -775,7 +775,7 @@ class LibEntry(triton.KernelInterface):
     def key(self, spec_args, dns_args, const_args):
         def spec_arg(arg):
             if hasattr(arg, "data_ptr"):
-                if device.vendor_name == "hygon":
+                if device.vendor_name == "hygon" and hasattr(triton.backends, "hcu"):
                     from triton.backends.hcu.compiler import HIPBackend
 
                     if hasattr(HIPBackend, "get_tensor_specialization"):
