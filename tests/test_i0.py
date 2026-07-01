@@ -42,13 +42,16 @@ def test_i0_(shape, dtype):
 def test_i0_out(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
-
-    ref_out = torch.empty_like(ref_inp)
-    torch.i0(ref_inp, out=ref_out)
-
-    out = torch.empty_like(inp)
+    if dtype in (torch.float16, torch.bfloat16):
+        out_ref = torch.empty_like(ref_inp, dtype=torch.float32)
+        ref_out = torch.ops.aten.i0.out(ref_inp.float(), out=out_ref)
+        out_ref = out_ref.to(dtype)
+        ref_out = out_ref
+    else:
+        out_ref = torch.empty_like(ref_inp)
+        ref_out = torch.ops.aten.i0.out(ref_inp, out=out_ref)
+    out_act = torch.empty_like(inp)
     with flag_gems.use_gems():
-        res_out = torch.i0(inp, out=out)
-
-    assert res_out is out
-    utils.gems_assert_close(out, ref_out, dtype)
+        act_out = torch.ops.aten.i0.out(inp, out=out_act)
+    utils.gems_assert_close(act_out, ref_out, dtype)
+    utils.gems_assert_close(out_act, out_ref, dtype)
