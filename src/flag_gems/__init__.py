@@ -530,6 +530,7 @@ _FULL_CONFIG = (
     ("range", range_op),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
+    ("reduce_mean", reduce_mean),
     ("reflection_pad1d", reflection_pad1d),
     ("reflection_pad1d.out", reflection_pad1d_out),
     ("reflection_pad1d_backward", reflection_pad1d_backward),
