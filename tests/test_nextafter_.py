@@ -27,9 +27,6 @@ def test_nextafter_(shape, dtype):
         utils.gems_assert_close(x_clone, ref_x, dtype)
 
 
-# --- Boundary tests for nextafter_ ---
-
-
 @pytest.mark.nextafter_
 def test_nextafter_zero_boundary():
     """Test +0/-0 crossing: +0 toward -inf => -0, -0 toward +inf => min pos subnormal."""
@@ -148,9 +145,6 @@ def test_nextafter_finfo_extremes():
         imp_x = x.clone()
         imp_x.nextafter_(y)
         utils.gems_assert_close(imp_x, ref_x, torch.float32)
-
-
-# --- Scalar input tests for nextafter_ ---
 
 
 @pytest.mark.nextafter_

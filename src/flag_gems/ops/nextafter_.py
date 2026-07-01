@@ -25,9 +25,8 @@ from flag_gems.utils import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
-def nextafter_kernel(x, y):
+def _nextafter_impl(x, y):
     # nextafter(x, y) returns y if x == y
     # Otherwise, returns the next representable value from x toward y
 
@@ -57,48 +56,22 @@ def nextafter_kernel(x, y):
     return result
 
 
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def nextafter_kernel(x, y):
+    return _nextafter_impl(x, y)
+
+
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def nextafter_kernel_tensor_scalar(x, y):
-    x_i32 = x.to(tl.int32, bitcast=True)
-    toward_pos_inf = y > x
-    is_neg = x_i32 < 0
-    step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
-    result_i32 = x_i32 + step
-
-    # Handle zero boundary
-    result_i32 = tl.where((x_i32 == 0) & ~toward_pos_inf, -2147483648, result_i32)
-    result_i32 = tl.where((x_i32 == -2147483648) & toward_pos_inf, 1, result_i32)
-
-    result = result_i32.to(tl.float32, bitcast=True)
-    result = tl.where(x == y, y, result)
-
-    # IEEE 754: if either input is NaN, return NaN
-    result = tl.where((x != x) | (y != y), float("nan"), result)
-
-    return result
+    return _nextafter_impl(x, y)
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def nextafter_kernel_scalar_tensor(x, y):
-    x_i32 = x.to(tl.int32, bitcast=True)
-    toward_pos_inf = y > x
-    is_neg = x_i32 < 0
-    step = tl.where(is_neg ^ toward_pos_inf, 1, -1)
-    result_i32 = x_i32 + step
-
-    # Handle zero boundary
-    result_i32 = tl.where((x_i32 == 0) & ~toward_pos_inf, -2147483648, result_i32)
-    result_i32 = tl.where((x_i32 == -2147483648) & toward_pos_inf, 1, result_i32)
-
-    result = result_i32.to(tl.float32, bitcast=True)
-    result = tl.where(x == y, y, result)
-
-    # IEEE 754: if either input is NaN, return NaN
-    result = tl.where((x != x) | (y != y), float("nan"), result)
-
-    return result
+    return _nextafter_impl(x, y)
 
 
 def nextafter_(A, B):
