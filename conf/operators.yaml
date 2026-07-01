@@ -4161,7 +4161,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: mm
     description: Performs a matrix multiplication of the two input matrices.
     for:
