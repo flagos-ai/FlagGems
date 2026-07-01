@@ -792,7 +792,7 @@ ops:
       - aten
       - KernelGen
     kind:
-      - Math
+      - NeuralNetwork
     stages:
       - alpha: '5.4'
   - id: atanh_
@@ -4561,6 +4561,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: matmul_layernorm
+    description: Fused matmul and layer normalization operation.
+    for:
+      - matmul_layernorm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: max
     description: Returns the maximum value of all elements in the `input` tensor.
     for:
