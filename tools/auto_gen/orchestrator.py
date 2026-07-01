@@ -24,6 +24,16 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
+
+
+def utc_timestamp() -> str:
+    """Get current UTC timestamp in ISO format."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ---------------------------------------------------------------------------
 # Vendor device environment variable mapping
 # (copied from tools/run_tests.py — maps vendor name to device visibility env vars)
 # ---------------------------------------------------------------------------
@@ -608,6 +618,78 @@ def generate_timeline(jsonl_path: str, operator: str) -> str | None:
         return None
 
 
+def schedule_retry_or_fail(
+    summary,
+    queue: deque,
+    operator: str,
+    attempt: int,
+    max_retries: int,
+    duration: float,
+    result: dict,
+    validation_result: dict = None,
+    needs_fixup: bool = False,
+) -> bool:
+    """
+    Schedule retry or mark operator as failed.
+
+    Args:
+        summary: Summary tracker instance
+        queue: Task queue to append retry to
+        operator: Operator name
+        attempt: Current attempt number (0-indexed)
+        max_retries: Maximum retry attempts
+        duration: Task duration in seconds
+        result: CC result dict
+        validation_result: Validation result if needs_fixup is True
+        needs_fixup: Whether this is a validation fixup retry
+
+    Returns:
+        True if scheduled for retry, False if marked as failed
+    """
+    if attempt + 1 >= max_retries:
+        logger.error(
+            f"[FAILED] {operator} after {attempt + 1} attempts: "
+            f"{result.get('error_message', 'unknown')}"
+        )
+        summary.update_operator(
+            operator,
+            status="failed",
+            accuracy_passed=result.get("accuracy_passed", False),
+            duration_seconds=round(duration),
+            end_time=utc_timestamp(),
+            error_message=result.get("error_message"),
+            cc_result=result,
+        )
+        return False
+
+    # Schedule retry
+    if needs_fixup:
+        logger.warning(
+            f"[FIXUP] {operator} (attempt {attempt + 1}/{max_retries}, "
+            f"reason: validation incomplete)"
+        )
+        error_msg = (
+            f"Validation incomplete: {', '.join(validation_result['missing'][:3])}..."
+        )
+        queue.append((operator, attempt + 1, validation_result["missing"]))
+    else:
+        logger.warning(
+            f"[RETRY] {operator} (attempt {attempt + 1}/{max_retries}, "
+            f"reason: {result.get('error_message', 'unknown')})"
+        )
+        error_msg = result.get("error_message")
+        queue.append((operator, attempt + 1))
+
+    summary.update_operator(
+        operator,
+        status="retrying",
+        duration_seconds=round(duration),
+        error_message=error_msg,
+        cc_result=result,
+    )
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Summary management
 # ---------------------------------------------------------------------------
@@ -619,7 +701,7 @@ class Summary:
     def __init__(self, path: str):
         self.path = path
         self.data = {
-            "start_time": datetime.now(timezone.utc).isoformat(),
+            "start_time": utc_timestamp(),
             "end_time": None,
             "summary": {
                 "total": 0,
@@ -639,7 +721,7 @@ class Summary:
             "attempt": attempt,
             "worktree_path": None,
             "branch": None,
-            "start_time": datetime.now(timezone.utc).isoformat(),
+            "start_time": utc_timestamp(),
             "end_time": None,
             "duration_seconds": None,
             "accuracy_passed": None,
@@ -658,7 +740,7 @@ class Summary:
 
     def finalize(self):
         """Mark the run as complete."""
-        self.data["end_time"] = datetime.now(timezone.utc).isoformat()
+        self.data["end_time"] = utc_timestamp()
         self._save()
 
     def _recount(self):
@@ -953,7 +1035,7 @@ def run(args):
                         operator,
                         status="failed",
                         error_message=str(e),
-                        end_time=datetime.now(timezone.utc).isoformat(),
+                        end_time=utc_timestamp(),
                     )
 
         # Check running tasks
@@ -978,7 +1060,7 @@ def run(args):
                     status="failed",
                     accuracy_passed=False,
                     duration_seconds=round(duration),
-                    end_time=datetime.now(timezone.utc).isoformat(),
+                    end_time=utc_timestamp(),
                     error_message=f"Timed out after {timeout_per_op}s",
                 )
                 continue
@@ -1041,50 +1123,21 @@ def run(args):
                         status="success",
                         accuracy_passed=True,
                         duration_seconds=round(duration),
-                        end_time=datetime.now(timezone.utc).isoformat(),
+                        end_time=utc_timestamp(),
                         cc_result=result,
                     )
-                elif needs_fixup and attempt + 1 < max_retries:
-                    # Validation failed, queue fixup attempt
-                    logger.warning(
-                        f"[FIXUP] {operator} (attempt {attempt + 1}/{max_retries}, "
-                        f"reason: validation incomplete)"
-                    )
-                    summary.update_operator(
-                        operator,
-                        status="retrying",
-                        duration_seconds=round(duration),
-                        error_message=f"Validation incomplete: {', '.join(validation_result['missing'][:3])}...",
-                        cc_result=result,
-                    )
-                    # Mark as fixup attempt so we can generate special prompt
-                    queue.append((operator, attempt + 1, validation_result["missing"]))
-                elif attempt + 1 < max_retries:
-                    logger.warning(
-                        f"[RETRY] {operator} (attempt {attempt + 1}/{max_retries}, "
-                        f"reason: {result.get('error_message', 'unknown')})"
-                    )
-                    summary.update_operator(
-                        operator,
-                        status="retrying",
-                        duration_seconds=round(duration),
-                        error_message=result.get("error_message"),
-                        cc_result=result,
-                    )
-                    queue.append((operator, attempt + 1))
                 else:
-                    logger.error(
-                        f"[FAILED] {operator} after {attempt + 1} attempts: "
-                        f"{result.get('error_message', 'unknown')}"
-                    )
-                    summary.update_operator(
+                    # Handle retry or failure (including fixup)
+                    schedule_retry_or_fail(
+                        summary,
+                        queue,
                         operator,
-                        status="failed",
-                        accuracy_passed=result.get("accuracy_passed", False),
-                        duration_seconds=round(duration),
-                        end_time=datetime.now(timezone.utc).isoformat(),
-                        error_message=result.get("error_message"),
-                        cc_result=result,
+                        attempt,
+                        max_retries,
+                        duration,
+                        result,
+                        validation_result=validation_result,
+                        needs_fixup=needs_fixup,
                     )
 
         if running:
@@ -1098,7 +1151,7 @@ def run(args):
             summary.update_operator(
                 operator,
                 status="cancelled",
-                end_time=datetime.now(timezone.utc).isoformat(),
+                end_time=utc_timestamp(),
                 duration_seconds=round(time.time() - st),
             )
 
