@@ -7111,6 +7111,21 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: igammac
+    description: |
+      Computes the regularized upper incomplete gamma function Q(a, x) element-wise.
+      A variant with output saved to a provided `out` tensor is also registered
+      as `special.gammaincc.out`.
+    for:
+      - special.gammaincc
+      - special.gammaincc.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_hermite_polynomial_h
     description: |
       Computes the physicist's Hermite polynomial H_n(x) of degree n at input.

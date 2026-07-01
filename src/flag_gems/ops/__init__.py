@@ -235,6 +235,7 @@ from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
+from flag_gems.ops.igammac import igammac, igammac_out
 from flag_gems.ops.im2col import im2col
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
@@ -1053,6 +1054,8 @@ __all__ = [
     "sort_stable",
     "special_chebyshev_polynomial_v",
     "special_gammainc",
+    "igammac",
+    "igammac_out",
     "special_hermite_polynomial_h",
     "special_i0e",
     "special_i0e_out",
