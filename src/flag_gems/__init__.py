@@ -224,6 +224,7 @@ _FULL_CONFIG = (
     ("clip_", clip_),
     ("col2im", col2im),
     ("concatenate", concatenate),
+    ("conj", conj),
     ("conj_physical", conj_physical),
     ("constant_pad_nd", constant_pad_nd),
     # ("contiguous", contiguous),
