@@ -880,13 +880,36 @@ def run(args):
                 missing_items = None
 
             try:
-                worktree_path, branch = create_worktree(
-                    flaggems_dir,
-                    operator,
-                    vendor,
-                    base_branch,
-                    args.dry_run,
-                )
+                # For fixup attempts, reuse existing worktree instead of creating new one
+                if missing_items and operator in summary.data["operators"]:
+                    existing = summary.data["operators"][operator]
+                    worktree_path = existing.get("worktree_path")
+                    branch = existing.get("branch")
+                    if worktree_path and os.path.exists(worktree_path):
+                        logger.info(
+                            f"[FIXUP] Reusing existing worktree for {operator}: {worktree_path}"
+                        )
+                    else:
+                        logger.warning(
+                            f"[FIXUP] Existing worktree not found for {operator}, creating new one"
+                        )
+                        worktree_path, branch = create_worktree(
+                            flaggems_dir,
+                            operator,
+                            vendor,
+                            base_branch,
+                            args.dry_run,
+                        )
+                else:
+                    # Normal first attempt: create new worktree
+                    worktree_path, branch = create_worktree(
+                        flaggems_dir,
+                        operator,
+                        vendor,
+                        base_branch,
+                        args.dry_run,
+                    )
+
                 vendor_op = vendor_ops_map.get(operator)
 
                 # For fixup attempts, append missing items to the prompt
