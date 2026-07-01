@@ -2522,6 +2522,17 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: expand_copy
+    description: Returns a new tensor that is a copy of the input expanded to the specified size, broadcasting singleton dimensions.
+    for:
+      - expand_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: expm1
     description: Computes the exponential of the elements minus 1 of `input`.
     for:
