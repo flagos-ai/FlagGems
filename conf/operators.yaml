@@ -7074,6 +7074,32 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_airy_ai
+    description: |
+      Computes the Airy function Ai(x) for each element of the input tensor.
+    for:
+      - special_airy_ai
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_airy_ai_out
+    description: |
+      A variant of `special_airy_ai` with output saved to provided `out`.
+    for:
+      - special_airy_ai.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: sparse_semi_structured_mm
     description: >
       Performs a sparse semi-structured matrix multiplication of a dense matrix
