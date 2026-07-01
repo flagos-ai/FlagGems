@@ -295,6 +295,8 @@ _FULL_CONFIG = (
     ("equal", equal),
     ("erf", erf),
     ("erf_", erf_),
+    ("erfc", erfc),
+    ("erfc_", erfc_),
     ("erfinv", erfinv),
     ("erfinv_", erfinv_),
     ("exp", exp),
