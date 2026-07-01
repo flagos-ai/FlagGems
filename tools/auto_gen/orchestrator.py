@@ -14,6 +14,7 @@ from collections import deque
 from datetime import datetime, timezone
 
 from device_manager import DeviceManager
+from validate_operator import validate_operator
 
 try:
     import yaml
@@ -254,6 +255,7 @@ def launch_cc(
     log_dir: str,
     vendor_op: dict = None,
     dry_run: bool = False,
+    fixup_prompt: str = None,
 ) -> subprocess.Popen:
     """Launch a Claude Code process for an operator."""
     vendor = config.get("vendor")
@@ -280,6 +282,10 @@ def launch_cc(
         "TEST_CMD": (vendor_op or {}).get("test_cmd", ""),
     }
     prompt = render_template(template_path, variables)
+
+    # Append fixup instructions if this is a validation retry
+    if fixup_prompt:
+        prompt += fixup_prompt
 
     log_path = os.path.join(log_dir, f"{operator}.log")
 
@@ -865,16 +871,58 @@ def run(args):
             if gpu_id is None:
                 break
 
-            operator, attempt = queue.popleft()
+            # Queue items can be (operator, attempt) or (operator, attempt, missing_items)
+            queue_item = queue.popleft()
+            if len(queue_item) == 3:
+                operator, attempt, missing_items = queue_item
+            else:
+                operator, attempt = queue_item
+                missing_items = None
+
             try:
-                worktree_path, branch = create_worktree(
-                    flaggems_dir,
-                    operator,
-                    vendor,
-                    base_branch,
-                    args.dry_run,
-                )
+                # For fixup attempts, reuse existing worktree instead of creating new one
+                if missing_items and operator in summary.data["operators"]:
+                    existing = summary.data["operators"][operator]
+                    worktree_path = existing.get("worktree_path")
+                    branch = existing.get("branch")
+                    if worktree_path and os.path.exists(worktree_path):
+                        logger.info(
+                            f"[FIXUP] Reusing existing worktree for {operator}: {worktree_path}"
+                        )
+                    else:
+                        logger.warning(
+                            f"[FIXUP] Existing worktree not found for {operator}, creating new one"
+                        )
+                        worktree_path, branch = create_worktree(
+                            flaggems_dir,
+                            operator,
+                            vendor,
+                            base_branch,
+                            args.dry_run,
+                        )
+                else:
+                    # Normal first attempt: create new worktree
+                    worktree_path, branch = create_worktree(
+                        flaggems_dir,
+                        operator,
+                        vendor,
+                        base_branch,
+                        args.dry_run,
+                    )
+
                 vendor_op = vendor_ops_map.get(operator)
+
+                # For fixup attempts, append missing items to the prompt
+                fixup_prompt = None
+                if missing_items:
+                    fixup_prompt = (
+                        "\n\n---\n\n"
+                        "The previous attempt was successful but incomplete. "
+                        "Please fix the following missing items:\n\n"
+                        + "\n".join(f"- {item}" for item in missing_items)
+                        + "\n\nMake the necessary changes and commit."
+                    )
+
                 proc = launch_cc(
                     operator,
                     worktree_path,
@@ -884,6 +932,7 @@ def run(args):
                     log_dir,
                     vendor_op,
                     args.dry_run,
+                    fixup_prompt=fixup_prompt,
                 )
 
                 running[operator] = (proc, gpu_id, attempt, worktree_path, time.time())
@@ -943,6 +992,29 @@ def run(args):
                 result = parse_cc_result(proc, operator, worktree_path)
                 generate_timeline(proc._stdout_path, operator)
 
+                # Validate operator completeness (operators.yaml, test marks, benchmark marks)
+                validation_result = None
+                needs_fixup = False
+                if result.get("status") == "success" and not vendor:
+                    aten_ops = result.get("aten_ops_registered", [])
+                    # Always run validation; if aten_ops is empty, validator will try to infer
+                    try:
+                        validation_result = validate_operator(
+                            worktree_path, operator, aten_ops
+                        )
+                        if not validation_result["valid"]:
+                            logger.warning(
+                                f"[VALIDATION] {operator} missing {len(validation_result['missing'])} items"
+                            )
+                            # Only attempt fixup on first attempt to avoid infinite loop
+                            if attempt == 0:
+                                needs_fixup = True
+                                logger.info(
+                                    f"[FIXUP] Will resume {operator} to complete missing items"
+                                )
+                    except Exception as e:
+                        logger.warning(f"Validation failed for {operator}: {e}")
+
                 # Vendor cross-check: files_created should reference the vendor dir
                 if vendor and result.get("status") == "success":
                     files = result.get("files_created", [])
@@ -957,6 +1029,7 @@ def run(args):
                     result.get("status") == "success"
                     and result.get("accuracy_passed", False)
                     and proc.returncode == 0
+                    and not needs_fixup
                 )
 
                 if success:
@@ -971,6 +1044,21 @@ def run(args):
                         end_time=datetime.now(timezone.utc).isoformat(),
                         cc_result=result,
                     )
+                elif needs_fixup and attempt + 1 < max_retries:
+                    # Validation failed, queue fixup attempt
+                    logger.warning(
+                        f"[FIXUP] {operator} (attempt {attempt + 1}/{max_retries}, "
+                        f"reason: validation incomplete)"
+                    )
+                    summary.update_operator(
+                        operator,
+                        status="retrying",
+                        duration_seconds=round(duration),
+                        error_message=f"Validation incomplete: {', '.join(validation_result['missing'][:3])}...",
+                        cc_result=result,
+                    )
+                    # Mark as fixup attempt so we can generate special prompt
+                    queue.append((operator, attempt + 1, validation_result["missing"]))
                 elif attempt + 1 < max_retries:
                     logger.warning(
                         f"[RETRY] {operator} (attempt {attempt + 1}/{max_retries}, "

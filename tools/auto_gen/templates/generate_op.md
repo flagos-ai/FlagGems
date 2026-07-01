@@ -276,7 +276,7 @@ MODIFIED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.py$'
 if [ -n "$MODIFIED_FILES" ]; then
     echo "Running pre-commit on: $MODIFIED_FILES"
     {{PYTHON_PATH}} -m pre_commit run --files $MODIFIED_FILES
-    
+
     # Pre-commit 可能自动修复了一些问题，重新 add
     git add $MODIFIED_FILES
 fi
@@ -293,9 +293,103 @@ fi
 2. 修复代码后重新 `git add` 并运行 pre-commit
 3. 重复直到所有检查通过
 
-### Step 6.6: 提交代码
+### Step 6.6: 更新算子目录
 
-**当所有 pre-commit 检查通过后**，提交代码：
+**当 pre-commit 检查通过后**，在 `conf/operators.yaml` 中注册新算子的元数据。
+
+**重要**：从 FlagGems v4.2 开始，所有新算子都必须在算子目录中注册，用于跟踪其成熟度和文档。
+
+**操作步骤**：
+
+1. 打开 `conf/operators.yaml`
+2. 找到合适的字母顺序位置（按 operator 名称排序）
+3. 为每个变体添加一个条目（如 `sign`, `sign_`, `sign.out`）
+
+**参考同类算子的格式**（如 `abs`, `ceil`, `floor` 等）：
+
+```yaml
+- id: {{OPERATOR}}
+  description: |
+    [算子功能的简短描述，1-2 句话]
+  for:
+    - {{OPERATOR}}
+  labels:
+    - aten
+    - pointwise  # 或其他类别：reduction, norm, blas 等
+  kind:
+    - Math  # 或 NeuralNetwork, Tensor 等
+  stages:
+    - stable: '1.0'  # 或 beta: 'X.X'
+
+- id: {{OPERATOR}}_
+  description: In-place version of {{OPERATOR}}().
+  for:
+    - {{OPERATOR}}_
+  labels:
+    - aten
+    - pointwise
+  kind:
+    - Math
+
+- id: {{OPERATOR}}_out
+  description: A variant of {{OPERATOR}}() that assigns the output to the out tensor.
+  for:
+    - {{OPERATOR}}.out
+  labels:
+    - aten
+    - pointwise
+  kind:
+    - Math
+```
+
+**字段说明**：
+- `id`: 唯一标识符（通常是算子名）
+- `description`: 功能描述（参考 PyTorch 官方文档）
+- `for`: ATen 算子名列表（注意 `.out` 后缀格式）
+- `labels`: 分类标签（`aten`, `pointwise`, `reduction` 等）
+- `kind`: 算子类型（`Math`, `NeuralNetwork`, `Tensor` 等）
+- `stages`: 成熟度阶段（`beta` 或 `stable`，带版本号）
+
+**验证 YAML 语法**：
+
+```bash
+cd {{WORK_DIR}}
+{{PYTHON_PATH}} -c "import yaml; yaml.safe_load(open('conf/operators.yaml'))"
+```
+
+如果有语法错误，修复后重新验证。
+
+**提交 operators.yaml 修改**：
+
+```bash
+git add conf/operators.yaml
+```
+
+**自我验证（可选但推荐）**：
+
+你可以使用验证脚本检查实现的完整性：
+
+```bash
+cd {{WORK_DIR}}
+{{PYTHON_PATH}} ../tools/auto_gen/validate_operator.py . {{OPERATOR}} <aten_ops> -v
+```
+
+其中 `<aten_ops>` 是你注册的 ATen 算子列表（用空格分隔），例如：
+```bash
+# 示例：sign 算子有三个变体
+{{PYTHON_PATH}} ../tools/auto_gen/validate_operator.py . sign sign sign.out sign_ -v
+```
+
+验证脚本会检查：
+- `conf/operators.yaml` 中是否有对应条目且带 `KernelGen` 标签
+- `tests/test_{{OPERATOR}}.py` 是否存在且包含所有变体的 pytest.mark
+- `benchmark/test_{{OPERATOR}}.py` 是否存在且包含所有变体的 pytest.mark
+
+如果验证失败，修复缺失项后重新验证。
+
+### Step 6.7: 提交代码
+
+**当所有 pre-commit 检查通过且 operators.yaml 已更新后**，提交代码：
 
 ```bash
 cd {{WORK_DIR}}
