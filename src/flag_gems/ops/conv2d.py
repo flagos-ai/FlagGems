@@ -618,7 +618,10 @@ def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
             ow = int(
                 (iw + 2 * padding_w - dilation * (kernel_size_w - 1) - 1) / stride + 1
             )
-            padding = max(padding_h, padding_w)
+            # Use per-dimension padding so asymmetric kernels (kh != kw) pad each
+            # spatial axis independently; the trailing slice trims the extra pad
+            # that ceil() introduces on the bottom/right, matching torch's "same".
+            padding = (padding_h, padding_w)
             return Conv2d.apply(input, weight, bias, stride, padding, dilation, groups)[
                 ..., (oh - ih) :, (ow - iw) :
             ]
