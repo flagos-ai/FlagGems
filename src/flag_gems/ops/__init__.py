@@ -2,6 +2,7 @@ from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
+from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -12,6 +13,7 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
+from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
@@ -515,6 +517,7 @@ __all__ = [
     "__ilshift__",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
+    "_batch_norm_no_update",
     "_cdist_backward",
     "_conv_depthwise2d",
     "_euclidean_dist",
@@ -525,6 +528,7 @@ __all__ = [
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
+    "_masked_scale",
     "_prelu_kernel_backward",
     "_resize_output",
     "_safe_softmax",
