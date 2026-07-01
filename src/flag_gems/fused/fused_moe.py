@@ -157,6 +157,12 @@ def _get_device_name() -> str:
     return name
 
 
+@functools.lru_cache(maxsize=1)
+def _is_h20() -> bool:
+    """Whether the current device is an NVIDIA H20 (gates the FP8 MoE swap_ab default)."""
+    return "H20" in _get_device_name().split("_")
+
+
 def get_moe_configs(
     E: int,
     N: int,
@@ -366,7 +372,10 @@ def get_default_config(
             "GROUP_SIZE_M": 8 if (is_large_m and avg_tokens_per_expert > 16) else 1,
             "num_warps": 8 if (is_large_m and block_m > 32) else 4,
             "num_stages": 4 if M >= 1024 else 3,
-            "SWAP_AB": False,
+            # H20: swap_ab puts the larger N dim on the wgmma M-axis, a measured
+            # win on H20 for small token tiles (block_m<=32) but a regression for
+            # large tiles (e.g. 16k/32k-token prefill), so gate on both.
+            "SWAP_AB": _is_h20() and block_m <= 32,
         }
     elif dtype in _PLAIN_HALF_CONFIG_DTYPES:
         # Routed rows per expert drives block_m.  Each token contributes topk

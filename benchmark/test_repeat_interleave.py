@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -31,6 +33,9 @@ def repeat_interleave_self_int_input_fn(shape, dtype, device):
 
 
 @pytest.mark.repeat_interleave_self_int
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_repeat_interleave_self_int():
     bench = RepeatInterleaveBenchmark(
         input_fn=repeat_interleave_self_int_input_fn,
@@ -57,6 +62,9 @@ def repeat_interleave_self_tensor_input_fn(shape, dtype, device):
 
 
 @pytest.mark.skip(reason="This test case runs out of memory: issue #2674")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 @pytest.mark.repeat_interleave_self_tensor
 def test_repeat_interleave_self_tensor():
     bench = RepeatInterleaveBenchmark(
