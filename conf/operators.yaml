@@ -4788,6 +4788,17 @@ ops:
       - Math
     stages:
       - stable: '2.1'
+  - id: miopen_batch_norm
+    description: Triton kernel implementation for miopen_batch_norm.
+    for:
+      - miopen_batch_norm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: mm
     description: Performs a matrix multiplication of the two input matrices.
     for:
