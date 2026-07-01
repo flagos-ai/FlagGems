@@ -5,7 +5,8 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import dim_compress
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import dim_compress, libentry
 
 logger = logging.getLogger(__name__)
 
@@ -99,16 +100,102 @@ def _std_fused_dim_kernel(
     tl.store(out_ptrs, std_dev.to(Out.dtype.element_ty), mask=row_mask)
 
 
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
+@triton.jit(do_not_specialize=["correction"])
+def _std_dim_kernel_inner(
+    Out,
+    X,
+    M,
+    N,
+    correction,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)
+        mask = n_offsets < N
+        x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
+        sum_val = tl.sum(x, axis=0)
+        sum_sq_val = tl.sum(x * x, axis=0)
+    else:
+        sum_acc = tl.zeros((TILE_N,), dtype=tl.float32)
+        sum_sq_acc = tl.zeros((TILE_N,), dtype=tl.float32)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            mask = n_offsets < N
+            x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
+            sum_acc += x
+            sum_sq_acc += x * x
+        sum_val = tl.sum(sum_acc, axis=0)
+        sum_sq_val = tl.sum(sum_sq_acc, axis=0)
+
+    mean = sum_val / N
+    var = (sum_sq_val - sum_val * mean) / (N - correction)
+    std_dev = tl.sqrt(tl.maximum(var, 0.0))
+    tl.store(Out + pid_m, std_dev.to(Out.dtype.element_ty), mask=pid_m < M)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.jit(do_not_specialize=["correction"])
+def _std_dim_kernel_non_inner(
+    Out,
+    X,
+    M,
+    N,
+    K,
+    correction,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
+
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)[:, None]
+        mask = (n_offsets < N) & (k_offsets < K)
+        offsets = pid_m * N * K + n_offsets * K + k_offsets
+        x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
+        sum_val = tl.sum(x, axis=0, keep_dims=True)
+        sum_sq_val = tl.sum(x * x, axis=0, keep_dims=True)
+    else:
+        sum_acc = tl.zeros((TILE_N, TILE_K), dtype=tl.float32)
+        sum_sq_acc = tl.zeros((TILE_N, TILE_K), dtype=tl.float32)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
+            mask = (n_offsets < N) & (k_offsets < K)
+            offsets = pid_m * N * K + n_offsets * K + k_offsets
+            x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
+            sum_acc += x
+            sum_sq_acc += x * x
+        sum_val = tl.sum(sum_acc, axis=0, keep_dims=True)
+        sum_sq_val = tl.sum(sum_sq_acc, axis=0, keep_dims=True)
+
+    mean = sum_val / N
+    var = (sum_sq_val - sum_val * mean) / (N - correction)
+    std_dev = tl.sqrt(tl.maximum(var, 0.0))
+    out_offsets = pid_m * K + k_offsets
+    tl.store(Out + out_offsets, std_dev.to(Out.dtype.element_ty), mask=k_offsets < K)
+
+
 def std(x, dim=None, *, correction=None, keepdim=False):
+    logger.debug("GEMS STD")
     effective_correction = 1.0 if correction is None else float(correction)
     original_shape = x.shape
     input_ndim = x.ndim
 
     if dim is None:
-        logger.debug("GEMS STD (Global Simple Map-Reduce Path)")
         N = x.numel()
         if N == 0 or N - effective_correction <= 0:
             return torch.full([], float("nan"), device=x.device, dtype=x.dtype)
+        if N == 1 and effective_correction == 0.0:
+            out = torch.zeros([], device=x.device, dtype=x.dtype)
+            return out.view([1] * input_ndim) if keepdim else out
 
         BLOCK_N_MAP = 1024
         BLOCK_NUM = triton.cdiv(N, BLOCK_N_MAP)
@@ -131,15 +218,64 @@ def std(x, dim=None, *, correction=None, keepdim=False):
         return out.view([1] * input_ndim) if keepdim else out
 
     else:
-        logger.warning(
-            f"GEMS std: Using compatible but non-optimal path for dim={dim} (dim_compress)."
-        )
-
         if isinstance(dim, int):
             dim_list = [dim]
         else:
             dim_list = list(dim)
         dim_list_normalized = [d % input_ndim for d in dim_list]
+
+        if len(dim_list_normalized) == 1:
+            dim0 = dim_list_normalized[0]
+            shape = list(original_shape)
+            N = shape[dim0]
+            M = 1
+            for size in shape[:dim0]:
+                M *= size
+            K = 1
+            for size in shape[dim0 + 1 :]:
+                K *= size
+            shape[dim0] = 1
+
+            if M * N * K > 0 and (N - effective_correction <= 0):
+                final_shape = shape if keepdim else shape[:dim0] + shape[dim0 + 1 :]
+                return torch.full(
+                    final_shape,
+                    float("nan"),
+                    device=x.device,
+                    dtype=x.dtype,
+                )
+
+            if N == 1 and effective_correction == 0.0:
+                final_shape = shape if keepdim else shape[:dim0] + shape[dim0 + 1 :]
+                return torch.zeros(final_shape, device=x.device, dtype=x.dtype)
+
+            out = torch.empty(shape, device=x.device, dtype=x.dtype)
+            if M * N * K == 0:
+                return out.squeeze(dim=dim0) if not keepdim else out
+
+            x_contiguous = x.contiguous()
+            with torch_device_fn.device(x.device):
+                if K > 1:
+                    grid = lambda META: (M, triton.cdiv(K, META["TILE_K"]), 1)
+                    _std_dim_kernel_non_inner[grid](
+                        out,
+                        x_contiguous,
+                        M,
+                        N,
+                        K,
+                        effective_correction,
+                    )
+                else:
+                    grid = (M, 1, 1)
+                    _std_dim_kernel_inner[grid](
+                        out,
+                        x_contiguous,
+                        M,
+                        N,
+                        effective_correction,
+                    )
+
+            return out.squeeze(dim=dim0) if not keepdim else out
 
         x_view = dim_compress(x, dim_list_normalized)
 
