@@ -41,6 +41,9 @@ def _get_gbps(bench_fn_args, latency):
 
 
 @pytest.mark.masked_select
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_masked_select():
     bench = TensorSelectBenchmark(
         op_name="masked_select",

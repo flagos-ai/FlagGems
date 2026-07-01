@@ -89,7 +89,7 @@ def apply_feature_mask_kernel(
 
 
 def feature_dropout(input, p, train=True):
-    logger.debug("GEMS FEATURE_DROPOUT GCU400")
+    logger.debug("GEMS_ENFLAME FEATURE_DROPOUT")
 
     if not train or p == 0:
         return input.clone()
@@ -142,7 +142,7 @@ def feature_dropout(input, p, train=True):
 
 
 def feature_dropout_(input, p, train=True):
-    logger.debug("GEMS FEATURE_DROPOUT_ GCU400")
+    logger.debug("GEMS_ENFLAME FEATURE_DROPOUT_")
     if not train or p == 0:
         return input
     if p == 1:
