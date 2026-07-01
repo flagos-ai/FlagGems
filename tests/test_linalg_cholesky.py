@@ -9,7 +9,7 @@ from . import accuracy_utils as utils
 @pytest.mark.linalg_cholesky
 @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8), (16, 16), (32, 32)])
 # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_linalg_cholesky(shape, dtype):
     # Create a positive-definite matrix: A = B @ B^T + I
     n = shape[-1]
@@ -33,7 +33,7 @@ def test_linalg_cholesky(shape, dtype):
 @pytest.mark.linalg_cholesky
 @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8)])
 # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_linalg_cholesky_upper(shape, dtype):
     # Test with upper=True
     n = shape[-1]
@@ -57,7 +57,7 @@ def test_linalg_cholesky_upper(shape, dtype):
 @pytest.mark.linalg_cholesky
 @pytest.mark.parametrize("shape", [(2, 4, 4), (3, 8, 8)])
 # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_linalg_cholesky_batch(shape, dtype):
     # Create positive-definite matrices for batched input: A = B @ B^T + I
     n = shape[-1]

@@ -41,7 +41,8 @@ def cholesky_kernel(A, L, N, batch_stride, stride_a, stride_l):
     # Sequential Cholesky: L[i,j] for j <= i
     for i in range(N):
         for j in range(i + 1):
-            sum_val = tl.zeros((), dtype=tl.float32)
+            # Accumulate in the input dtype to support float32 and float64
+            sum_val = tl.zeros((), dtype=A.dtype.element_ty)
 
             # sum(L[i,k] * L[j,k]) for k in [0, j)
             if j > 0:
