@@ -433,6 +433,8 @@ _FULL_CONFIG = (
     ("logsumexp", logsumexp),
     ("lt.Scalar", lt_scalar),
     ("lt.Tensor", lt),
+    ("lt_.Scalar", lt_scalar_),
+    ("lt_.Tensor", lt_),
     ("margin_ranking_loss", margin_ranking_loss),
     ("masked_fill.Scalar", masked_fill),
     ("masked_fill.Tensor", masked_fill),
