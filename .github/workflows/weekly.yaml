@@ -57,6 +57,7 @@ jobs:
               out.write(f"api_key={main['server']['api_key']}\n")
 
   test:
+    name: test (${{ matrix.name }})
     needs: prepare
     strategy:
       fail-fast: false
