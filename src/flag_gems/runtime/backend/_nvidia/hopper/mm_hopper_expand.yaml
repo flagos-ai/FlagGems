@@ -54,6 +54,7 @@ mm_splitk:
         BLOCK_N: block_n
         BLOCK_K: block_k
         SPLIT_K: split_k
+        GROUP_M: group_m
       num_stages: stages
       num_warps: warps
     block_m:
@@ -69,8 +70,8 @@ mm_splitk:
     split_k:
       - 4
       - 8
-      - 16
-      - 32
+    group_m:
+      - 8
     stages:
       - 2
       - 3
