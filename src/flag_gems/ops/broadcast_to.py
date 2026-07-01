@@ -19,6 +19,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -153,7 +155,7 @@ def broadcast_to(x, size):
     # The device.type guard avoids calling pin_memory() on CPU-only tensors.
 
     def _to_device(data, device):
-        t = torch.tensor(data, dtype=torch.int64, device='cpu')
+        t = torch.tensor(data, dtype=torch.int64, device="cpu")
         if device.type == flag_gems.device:
             t = t.pin_memory()
         return t.to(device, non_blocking=True)
