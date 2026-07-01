@@ -51,4 +51,3 @@ def test_narrow_copy_perf():
         get_gbps=narrow_copy_gbps,
     )
     bench.run()
-    bench.run()
