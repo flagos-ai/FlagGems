@@ -456,6 +456,7 @@ from flag_gems.ops.special_shifted_chebyshev_polynomial_u import (
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
+from flag_gems.ops.squeeze_copy import squeeze_copy
 from flag_gems.ops.stack import stack
 from flag_gems.ops.std import std
 from flag_gems.ops.sub import sub, sub_
@@ -1067,6 +1068,7 @@ __all__ = [
     "square",
     "square_",
     "square_out",
+    "squeeze_copy",
     "stack",
     "std",
     "sub",

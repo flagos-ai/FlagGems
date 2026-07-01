@@ -7286,6 +7286,17 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: squeeze_copy
+    description: Triton kernel implementation for squeeze_copy.
+    for:
+      - squeeze_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: stack
     description: Concatenates a sequence of tensors along a new dimension.
     for:

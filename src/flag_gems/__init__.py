@@ -634,6 +634,7 @@ _FULL_CONFIG = (
     ("sqrt_", sqrt_),
     ("square", square),
     ("square.out", square_out),
+    ("squeeze_copy", squeeze_copy),
     ("square_", square_),
     ("stack", stack),
     ("std.correction", std),
