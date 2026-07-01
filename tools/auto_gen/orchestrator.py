@@ -974,23 +974,23 @@ def run(args):
                 needs_fixup = False
                 if result.get("status") == "success" and not vendor:
                     aten_ops = result.get("aten_ops_registered", [])
-                    if aten_ops:
-                        try:
-                            validation_result = validate_operator(
-                                worktree_path, operator, aten_ops
+                    # Always run validation; if aten_ops is empty, validator will try to infer
+                    try:
+                        validation_result = validate_operator(
+                            worktree_path, operator, aten_ops
+                        )
+                        if not validation_result["valid"]:
+                            logger.warning(
+                                f"[VALIDATION] {operator} missing {len(validation_result['missing'])} items"
                             )
-                            if not validation_result["valid"]:
-                                logger.warning(
-                                    f"[VALIDATION] {operator} missing {len(validation_result['missing'])} items"
+                            # Only attempt fixup on first attempt to avoid infinite loop
+                            if attempt == 0:
+                                needs_fixup = True
+                                logger.info(
+                                    f"[FIXUP] Will resume {operator} to complete missing items"
                                 )
-                                # Only attempt fixup on first attempt to avoid infinite loop
-                                if attempt == 0:
-                                    needs_fixup = True
-                                    logger.info(
-                                        f"[FIXUP] Will resume {operator} to complete missing items"
-                                    )
-                        except Exception as e:
-                            logger.warning(f"Validation failed for {operator}: {e}")
+                    except Exception as e:
+                        logger.warning(f"Validation failed for {operator}: {e}")
 
                 # Vendor cross-check: files_created should reference the vendor dir
                 if vendor and result.get("status") == "success":

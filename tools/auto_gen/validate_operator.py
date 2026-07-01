@@ -60,6 +60,46 @@ def parse_variants_from_aten_ops(aten_ops: list[str]) -> dict[str, str]:
     return variants
 
 
+def infer_aten_ops_from_worktree(worktree_path: str, operator: str) -> list[str]:
+    """
+    Infer registered ATen ops by parsing src/flag_gems/__init__.py.
+
+    Fallback when aten_ops_registered is missing from CC output.
+
+    Returns:
+        List of aten ops like ['sign', 'sign.out', 'sign_']
+    """
+    init_py = os.path.join(worktree_path, "src", "flag_gems", "__init__.py")
+    if not os.path.exists(init_py):
+        return []
+
+    try:
+        with open(init_py) as f:
+            content = f.read()
+    except Exception:
+        return []
+
+    aten_ops = []
+    # Look for lines like: ("sign", sign), ("sign.out", sign_out), ("sign_", sign_)
+    # Match operator name or operator_ or operator.out
+    patterns = [
+        rf'\("{re.escape(operator)}"',  # base: ("sign"
+        rf'\("{re.escape(operator)}\.out"',  # out: ("sign.out"
+        rf'\("{re.escape(operator)}_"',  # inplace: ("sign_"
+    ]
+
+    for pattern in patterns:
+        matches = re.findall(pattern, content)
+        if pattern == patterns[0] and matches:
+            aten_ops.append(operator)
+        elif pattern == patterns[1] and matches:
+            aten_ops.append(f"{operator}.out")
+        elif pattern == patterns[2] and matches:
+            aten_ops.append(f"{operator}_")
+
+    return aten_ops
+
+
 def check_operators_yaml(
     worktree_path: str, variants: dict[str, str]
 ) -> dict[str, Any]:
@@ -170,6 +210,7 @@ def validate_operator(
         worktree_path: Path to worktree
         operator: Base operator name (e.g., 'sign')
         aten_ops: Registered ATen ops (e.g., ['sign', 'sign.out', 'sign_'])
+                  If empty, will attempt to infer from worktree
 
     Returns:
         {
@@ -182,6 +223,25 @@ def validate_operator(
             }
         }
     """
+    # Fallback: if aten_ops is empty, try to infer from worktree
+    if not aten_ops:
+        logger.debug(
+            f"aten_ops_registered missing or empty, inferring from worktree for {operator}"
+        )
+        aten_ops = infer_aten_ops_from_worktree(worktree_path, operator)
+        if not aten_ops:
+            logger.warning(
+                f"Cannot infer aten_ops for {operator}, validation will be incomplete"
+            )
+            return {
+                "valid": False,
+                "missing": [
+                    f"Cannot determine registered ATen ops for {operator} "
+                    f"(aten_ops_registered missing from CC output and inference failed)"
+                ],
+                "checks": {},
+            }
+
     variants = parse_variants_from_aten_ops(aten_ops)
     logger.debug(f"Parsed variants for {operator}: {variants}")
 
@@ -218,8 +278,9 @@ def main():
     parser.add_argument("operator", help="Base operator name (e.g., 'sign')")
     parser.add_argument(
         "aten_ops",
-        nargs="+",
-        help="Registered ATen ops (e.g., sign sign.out sign_)",
+        nargs="*",
+        help="Registered ATen ops (e.g., sign sign.out sign_). "
+        "If omitted, will attempt to infer from worktree.",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable debug logging"
