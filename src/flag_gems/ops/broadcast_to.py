@@ -153,7 +153,7 @@ def broadcast_to(x, size):
     # The device.type guard avoids calling pin_memory() on CPU-only tensors.
 
     def _to_device(data, device):
-        t = torch.tensor(data, dtype=torch.int64)
+        t = torch.tensor(data, dtype=torch.int64, device='cpu')
         if device.type == "cuda":
             t = t.pin_memory()
         return t.to(device, non_blocking=True)
