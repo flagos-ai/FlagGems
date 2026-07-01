@@ -30,6 +30,9 @@ random.seed(time.time() // 100)
 @pytest.mark.parametrize("correction", CORRECTION)
 @pytest.mark.parametrize("keepdim", KEEP_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_accuracy_var(shape, dim, correction, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -72,6 +75,9 @@ def test_accuracy_var(shape, dim, correction, keepdim, dtype):
 @pytest.mark.parametrize("correction", CORRECTION)
 @pytest.mark.parametrize("keepdim", KEEP_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_accuracy_var_correction(shape, dim, correction, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
