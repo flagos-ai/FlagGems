@@ -7218,6 +7218,30 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_spherical_bessel_j0
+    description: |
+      Computes the spherical Bessel function of the first kind of order 0.
+    for:
+      - special_spherical_bessel_j0
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_spherical_bessel_j0_
+    description: |
+      Computes the spherical Bessel function of the first kind of order 0 in-place.
+    for:
+      - special_spherical_bessel_j0_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,
