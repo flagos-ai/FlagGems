@@ -81,7 +81,7 @@ def transform_exponential(u, lambd, eps):
 
 
 def exponential_(x, lambd: float = 1.0, *, gen=None):
-    logger.debug("GEMS EXPONENTIAL_")
+    logger.debug("GEMS_ENFLAME EXPONENTIAL_")
     if x.dtype == torch.int64:
         x = x.to(torch.int32)
     elif x.dtype == torch.float64:

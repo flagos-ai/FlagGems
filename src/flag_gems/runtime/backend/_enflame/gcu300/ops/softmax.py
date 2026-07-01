@@ -280,7 +280,7 @@ def softmax_backward_kernel_inner(
 
 
 def softmax(self, dim, half_to_float=False):
-    logger.debug("GEMS SOFTMAX")
+    logger.debug("GEMS_ENFLAME SOFTMAX")
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
     dim = dim % self.ndim
@@ -318,7 +318,7 @@ def softmax(self, dim, half_to_float=False):
 
 
 def softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS SOFTMAX VJP")
+    logger.debug("GEMS_ENFLAME SOFTMAX_VJP")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
