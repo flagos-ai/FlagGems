@@ -103,11 +103,13 @@ jobs:
       cancel-in-progress: true
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: nvidia
+      vendor: nvidia-cuda133
       runner_label: h20
-      gpu_check_script: gpu_check_nvidia.sh
+      gpu_check_script: tools/gpu_check_nvidia.sh
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
     # runs-on: jiuding
     # steps:
