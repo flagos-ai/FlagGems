@@ -1,4 +1,15 @@
 ops:
+  - id: matmuladd
+    description: Computes matrix multiplication followed by bias addition.
+    for:
+      - matmuladd
+    labels:
+      - fused
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: abs
     description: |
       Computes the absolute value of each element in `input`.
