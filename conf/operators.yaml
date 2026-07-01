@@ -657,6 +657,17 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: as_strided_
+    description: In-place view operation that changes tensor shape and stride without copying data.
+    for:
+      - as_strided_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: as_strided_copy
     description: |
       Creates a contiguous copy of an `as_strided` view of the input tensor.
