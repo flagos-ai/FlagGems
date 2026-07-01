@@ -301,7 +301,7 @@ def moe_align_block_size(
     expert_map: Optional[torch.Tensor] = None,
     pad_sorted_ids: bool = False,
 ) -> "tuple[torch.Tensor, torch.Tensor, torch.Tensor]":
-    logger.debug("GEMS MOE ALIGN BLOCK SIZE")
+    logger.debug("GEMS_TSINGMICRO MOE_ALIGN_BLOCK_SIZE")
     max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
     if pad_sorted_ids:
         max_num_tokens_padded = round_up(max_num_tokens_padded, block_size)
