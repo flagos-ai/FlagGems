@@ -166,6 +166,11 @@ register_flagtune_op(
     description="MXFP4 fused Marlin MoE GEMM",
 )
 register_flagtune_op(
+    "mul",
+    default=False,
+    description="elementwise multiplication",
+)
+register_flagtune_op(
     "w8a8_block_fp8_matmul",
     default=False,
     description="W8A8 block FP8 matrix multiplication",

@@ -46,6 +46,7 @@ DEFAULT_STRATEGIES = {
         "default",
     ],
     "mv": ["align32", "align32"],
+    "mul": ["align32", "default"],
     "sparse_attention": ["align32", "align32", "align32"],
     "w8a8_block_fp8_general": [
         "align32",
@@ -85,6 +86,7 @@ OP_KEY_ORDERS = {
     "mm_sqmma": ["M", "N", "K", "dtype"],
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mv": ["M", "N"],
+    "mul": ["n_elements", "dtype"],
     "sparse_attention": ["topk", "H_ACTUAL", "D"],
     "w8a8_block_fp8_general": ["M", "N", "K", "stride_am", "stride_bk"],
     "w8a8_block_fp8_general_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
