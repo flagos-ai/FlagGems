@@ -7187,6 +7187,7 @@ ops:
       - special.log_softmax
     labels:
       - aten
+      - nn.functional
   - id: special_round
     description: |
       Rounds a tensor to the nearest integer, with ties rounding to the nearest
