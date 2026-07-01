@@ -11,6 +11,7 @@ from flag_gems.utils.shape_utils import volume
 
 logger = logging.getLogger(__name__)
 
+
 def mul_get_configs():
     return [
         triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=3),
@@ -350,7 +351,9 @@ def _launch_scalar(tensor, scalar, output, dtype):
     return output
 
 
-def _launch_2d_broadcast(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype):
+def _launch_2d_broadcast(
+    a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype
+):
     n_elements = output.numel()
     if n_elements == 0:
         return output
@@ -411,13 +414,21 @@ def mul_broadcast_func(a, b, out=None):
 
     dtype = _result_dtype(a, b)
 
-    if isinstance(a, torch.Tensor) and not isinstance(b, torch.Tensor) and not isinstance(b, complex):
+    if (
+        isinstance(a, torch.Tensor)
+        and not isinstance(b, torch.Tensor)
+        and not isinstance(b, complex)
+    ):
         a_t = _as_tensor(a, device=device, dtype=dtype)
         output = _real_output(a_t, a_t.new_empty(()), out=out)
         if _can_use_contiguous_scalar(a_t, output):
             return _launch_scalar(a_t, b, output, dtype)
 
-    if isinstance(b, torch.Tensor) and not isinstance(a, torch.Tensor) and not isinstance(a, complex):
+    if (
+        isinstance(b, torch.Tensor)
+        and not isinstance(a, torch.Tensor)
+        and not isinstance(a, complex)
+    ):
         b_t = _as_tensor(b, device=device, dtype=dtype)
         output = _real_output(b_t.new_empty(()), b_t, out=out)
         if _can_use_contiguous_scalar(b_t, output):
@@ -436,7 +447,9 @@ def mul_broadcast_func(a, b, out=None):
         return _launch_2d_broadcast(
             a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype
         )
-    return _launch_generic(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype)
+    return _launch_generic(
+        a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype
+    )
 
 
 def _complex_parts(value, *, device, complex_dtype):
@@ -453,7 +466,9 @@ def _complex_output(out_shape, *, device, dtype, out=None):
             f"output with shape {tuple(out.shape)} cannot be broadcast to {out_shape}"
         )
     if out.dtype != dtype:
-        raise RuntimeError(f"output dtype {out.dtype} does not match result dtype {dtype}")
+        raise RuntimeError(
+            f"output dtype {out.dtype} does not match result dtype {dtype}"
+        )
     if out.device != device:
         raise RuntimeError("output must be on the same device as inputs")
     return out
@@ -464,10 +479,16 @@ def _complex_layout(out_shape, tensors, out_r, out_i):
         _broadcasted_stride(tuple(tensor.shape), tuple(tensor.stride()), out_shape)
         for tensor in tensors
     ]
-    return strides, tuple(out_r.stride()) if out_shape else (), tuple(out_i.stride()) if out_shape else ()
+    return (
+        strides,
+        tuple(out_r.stride()) if out_shape else (),
+        tuple(out_i.stride()) if out_shape else (),
+    )
 
 
-def _launch_complex_generic(ar, ai, br, bi, output, out_shape, strides, out_r_stride, out_i_stride, dtype):
+def _launch_complex_generic(
+    ar, ai, br, bi, output, out_shape, strides, out_r_stride, out_i_stride, dtype
+):
     n_elements = volume(out_shape)
     if n_elements == 0:
         return output
@@ -510,7 +531,11 @@ def mul_complex_broadcast_func(a, b, out=None):
     dtype = _result_dtype(a, b)
     ar, ai = _complex_parts(a, device=device, complex_dtype=dtype)
     br, bi = _complex_parts(b, device=device, complex_dtype=dtype)
-    out_shape = tuple(torch.broadcast_shapes(tuple(ar.shape), tuple(ai.shape), tuple(br.shape), tuple(bi.shape)))
+    out_shape = tuple(
+        torch.broadcast_shapes(
+            tuple(ar.shape), tuple(ai.shape), tuple(br.shape), tuple(bi.shape)
+        )
+    )
     output = _complex_output(out_shape, device=device, dtype=dtype, out=out)
     out_view = torch.view_as_real(output)
     strides, out_r_stride, out_i_stride = _complex_layout(
@@ -541,7 +566,13 @@ def mul_(A, B):
         raise TypeError("mul_ expects the first argument to be a tensor")
     dtype = _result_dtype(A, B)
     if dtype != A.dtype:
-        raise RuntimeError(f"result type {dtype} cannot be cast to inplace dtype {A.dtype}")
-    if A.is_complex() or (isinstance(B, torch.Tensor) and B.is_complex()) or isinstance(B, complex):
+        raise RuntimeError(
+            f"result type {dtype} cannot be cast to inplace dtype {A.dtype}"
+        )
+    if (
+        A.is_complex()
+        or (isinstance(B, torch.Tensor) and B.is_complex())
+        or isinstance(B, complex)
+    ):
         return mul_complex_broadcast_func(A, B, out=A)
     return mul_broadcast_func(A, B, out=A)
