@@ -503,7 +503,6 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
-    "reduce_mean",
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "__ilshift__",
@@ -934,6 +933,7 @@ __all__ = [
     "randperm",
     "reciprocal",
     "reciprocal_",
+    "reduce_mean",
     "reflection_pad1d",
     "reflection_pad1d_backward",
     "reflection_pad1d_out",

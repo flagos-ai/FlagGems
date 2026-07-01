@@ -1,15 +1,4 @@
 ops:
-  - id: reduce_mean
-    description: Triton kernel implementation for reduce_mean.
-    for:
-      - reduce_mean
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: abs
     description: |
       Computes the absolute value of each element in `input`.
@@ -5611,6 +5600,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: reduce_mean
+    description: Triton kernel implementation for reduce_mean.
+    for:
+      - reduce_mean
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: reflection_pad1d
     description: |
       Pads the input 3D or 2D tensor (typically representing signals or sequences)
