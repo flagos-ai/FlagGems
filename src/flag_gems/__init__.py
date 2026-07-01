@@ -44,6 +44,8 @@ _FULL_CONFIG = (
     ("__or__.Scalar", bitwise_or_scalar),
     ("__or__.Tensor", bitwise_or_tensor),
     ("_adaptive_avg_pool2d", adaptive_avg_pool2d),
+    ("_adaptive_avg_pool3d", _adaptive_avg_pool3d),
+    ("_adaptive_avg_pool3d.out", _adaptive_avg_pool3d_out),
     (
         "_amp_foreach_non_finite_check_and_unscale_",
         _amp_foreach_non_finite_check_and_unscale_,
