@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
 @pytest.mark.round
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_round():
     bench = base.UnaryPointwiseBenchmark(
         op_name="round", torch_op=torch.round, dtypes=consts.FLOAT_DTYPES
@@ -13,6 +18,9 @@ def test_round():
 
 
 @pytest.mark.round_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_round_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="round_",
@@ -24,6 +32,9 @@ def test_round_inplace():
 
 
 @pytest.mark.round_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_round_out():
     bench = base.UnaryPointwiseOutBenchmark(
         op_name="round_out",
