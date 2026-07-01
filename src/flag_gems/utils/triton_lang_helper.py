@@ -60,9 +60,26 @@ def _fallback_tanh(x):
     return 2.0 / (1.0 + tl.exp(-2.0 * x)) - 1.0
 
 
+@triton.jit
+def _fallback_erfinv(x):
+    abs_x = tl.math.abs(x)
+    a = 0.147
+    inv_pi_a = 2.0 / (3.141592653589793 * a)
+    two_over_sqrt_pi = 1.1283791670955126
+    ln1mx2 = tl.math.log((1.0 - abs_x) * (1.0 + abs_x))
+    term1 = inv_pi_a + 0.5 * ln1mx2
+    term2 = ln1mx2 / a
+    inner = tl.math.sqrt(term1 * term1 - term2) - term1
+    y = tl.math.sqrt(inner)
+    for _ in range(2):
+        y = y - (tl.math.erf(y) - abs_x) / (two_over_sqrt_pi * tl.math.exp(-y * y))
+    return tl.where(x >= 0.0, y, -y)
+
+
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
     "tanh": _fallback_tanh,
+    "erfinv": _fallback_erfinv,
 }
 
 
@@ -90,6 +107,7 @@ tl_extra_shim = _patch_missing_symbols(
         "div_rn",
         "div_rz",
         "erf",
+        "erfinv",
         "exp",
         "exp2",
         "fast_erf",
