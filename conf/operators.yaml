@@ -894,6 +894,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: batch_norm_no_update
+    description: Applies Batch Normalization using precomputed running statistics without updating running_mean/running_var.
+    for:
+      - _batch_norm_no_update
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: bernoulli
     description: |
       Draws binary random numbers (0 or 1) from a Bernoulli distribution with per-element probabilities.

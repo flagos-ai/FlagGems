@@ -49,6 +49,7 @@ _FULL_CONFIG = (
         _amp_foreach_non_finite_check_and_unscale_,
     ),
     ("_assert_async", _assert_async),
+    ("_batch_norm_no_update", _batch_norm_no_update),
     ("_cdist_backward", _cdist_backward),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_efficient_attention_backward", efficient_attention_backward),
