@@ -87,7 +87,7 @@ def test_gather(inp_shape, dim, dtype):
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_gather_backward(inp_shape, dim, dtype):
+def test_gather_backward_autograd(inp_shape, dim, dtype):
     # Exercise the backward path with repeated indices, which forces
     # gradient accumulation (reduce="add") and exposes precision loss in
     # reduced-precision dtypes as well as the unsupported bfloat16 path.
