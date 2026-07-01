@@ -144,12 +144,14 @@ def broadcast_to(x, size):
 
     # Create device arrays for shapes/strides with padding for MAX_DIMS
     pad_len = STATIC_MAX - out_ndim
+
     # torch.tensor(..., device=cuda) first allocates on CPU then copies to CUDA.
     # This implicit unpinned CPU->CUDA copy is illegal during CUDA graph capture
     # (triggered by models with attention_bias=True or mlp_bias=True that route
     # through addmm -> broadcast_to).
     # Fix: allocate on CPU with pin_memory=True, then transfer non-blocking.
     # The device.type guard avoids calling pin_memory() on CPU-only tensors.
+
     def _to_device(data, device):
         t = torch.tensor(data, dtype=torch.int64)
         if device.type == "cuda":
