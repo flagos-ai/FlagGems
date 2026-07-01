@@ -232,6 +232,7 @@ from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
+from flag_gems.ops.igammac import igammac, igammac_out
 from flag_gems.ops.im2col import im2col
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
@@ -442,7 +443,6 @@ from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from flag_gems.ops.special_gammainc import special_gammainc
-from flag_gems.ops.igammac import igammac, igammac_out
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out

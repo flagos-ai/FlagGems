@@ -167,8 +167,7 @@ def test_igammac_inf_nan(dtype):
         both_nan = math.isnan(res_v) and math.isnan(ref_v)
         match = both_nan or abs(res_v - ref_v) < 1e-5
         assert match, (
-            f"Mismatch at (a={a_val}, x={x_val}): "
-            f"igammac={res_v}, torch={ref_v}"
+            f"Mismatch at (a={a_val}, x={x_val}): " f"igammac={res_v}, torch={ref_v}"
         )
 
 
