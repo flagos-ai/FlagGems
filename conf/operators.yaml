@@ -4950,19 +4950,6 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: nextafter_
-    description: |
-      Returns the next floating-point value after input towards other, elementwise,
-      with the same output Tensor as input.
-    for:
-      - nextafter_
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: new_full
     description: |
       Returns a Tensor of size `size` filled with `fill_value`.
@@ -4977,6 +4964,19 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: nextafter_
+    description: |
+      Returns the next floating-point value after input towards other, elementwise,
+      with the same output Tensor as input.
+    for:
+      - nextafter_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: nll_loss2d_backward
     description: |
       An internal IR for supporting `torch.nn.NLLLoss2d`, which has been deprecated
