@@ -7074,20 +7074,6 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
-  - id: special_digamma
-    description: |
-      Computes the digamma function (logarithmic derivative of the gamma function)
-      using reflection formula, recurrence relation, and asymptotic expansion.
-    for:
-      - digamma
-    labels:
-      - aten
-      - pointwise
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.1'
   - id: sparse_semi_structured_mm
     description: >
       Performs a sparse semi-structured matrix multiplication of a dense matrix
@@ -7113,6 +7099,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_digamma
+    description: |
+      Computes the digamma function (logarithmic derivative of the gamma function)
+      using reflection formula, recurrence relation, and asymptotic expansion.
+    for:
+      - digamma
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: special_gammainc
     description: |
       Computes the regularized lower incomplete gamma function P(a, x) element-wise.
