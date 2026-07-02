@@ -615,6 +615,8 @@ _FULL_CONFIG = (
     ("upsample_nearest2d", upsample_nearest2d),
     ("upsample_nearest3d", upsample_nearest3d),
     ("upsample_trilinear3d", upsample_trilinear3d),
+    ("unsqueeze_copy", unsqueeze_copy),
+    ("unsqueeze_copy.out", unsqueeze_copy_out),
     ("var", var),
     ("var.correction", var_correction),
     ("var.dim", var_dim),
