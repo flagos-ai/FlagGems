@@ -342,8 +342,10 @@ def mha_varlan_fwd(
         # o_batch_stride = out.stride(0) * max_seqlen_q
     else:
         q_batch_stride = 0
-        k_batch_stride = 0
-        v_batch_stride = 0
+        # Paged KV cache may be a per-layer view with a non-compact block
+        # stride, so the kernel must receive the physical block stride.
+        k_batch_stride = k.stride(0)
+        v_batch_stride = v.stride(0)
         o_batch_stride = 0
 
     total_q = q.size(0)
@@ -510,7 +512,7 @@ def mha_varlan_fwd(
             block_size,  # block_size,
         )
 
-        logger.debug("kernel: flash_varlen_fwd")
+        logger.debug("GEMS_TSINGMICRO kernel: flash_varlen_fwd")
         grid = lambda args: (
             triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
             batch_size,
@@ -523,10 +525,10 @@ def mha_varlan_fwd(
         # to avoid breaking a kv block onto multiple cache pages.
         cfg = runtime.get_heuristic_config("mha_varlen_fwd")
         cfg_params = {
-            "BLOCK_M": cfg["BLOCK_M"](params),
-            "BLOCK_N": cfg["BLOCK_N"](params),
-            "num_warps": cfg["num_warps"](params),
-            "num_stages": cfg["num_stages"](params),
+            "BLOCK_M": cfg["BLOCK_M"](args),
+            "BLOCK_N": cfg["BLOCK_N"](args),
+            "num_warps": cfg["num_warps"](args),
+            "num_stages": cfg["num_stages"](args),
         }
         # BLOCK_M, BLOCK_N, num_warps, num_stages = 128, 32, 4, 3
         assert (
@@ -616,7 +618,7 @@ def mha_fwd(
     q_groups = num_heads // num_heads_k
 
     if seqlenq_ngroups_swapped:
-        logger.debug("q_kg swapped.")
+        logger.debug("GEMS_TSINGMICRO q_kg swapped.")
         q = q.reshape(batch_size, num_heads_k, q_groups, head_size).transpose(1, 2)
         seqlen_q = q_groups
         num_heads = num_heads_k
@@ -740,7 +742,7 @@ def mha_fwd(
                 #     print("blocks_per_split", blocks_per_split)
 
                 if n_splits > 1:
-                    logger.debug("kernel: flash_fwd_splitkv")
+                    logger.debug("GEMS_TSINGMICRO kernel: flash_fwd_splitkv")
                     lse_splits = torch.empty(
                         (n_splits, B, H, Q), dtype=torch.float, device=q_device
                     )
@@ -784,7 +786,7 @@ def mha_fwd(
                     return kernel
 
             # Last option: flash_fwd
-            logger.debug("kernel: flash_fwd")
+            logger.debug("GEMS_TSINGMICRO kernel: flash_fwd")
             grid = lambda args: (
                 triton.cdiv(Q, args["BLOCK_M"]),
                 H * B,

@@ -1,6 +1,7 @@
 from flag_gems.fused.act_quant import act_quant_triton
 from flag_gems.fused.add_rms_norm import add_rms_norm
 from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
+from flag_gems.fused.beam_search_score import beam_search_score, beam_search_score_
 from flag_gems.fused.bincount import bincount
 from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
@@ -28,10 +29,12 @@ from flag_gems.fused.flash_mla import flash_mla
 from flag_gems.fused.flash_mla_with_kvcache import flash_mla_with_kvcache
 from flag_gems.fused.flashmla_sparse import flash_mla_sparse_fwd
 from flag_gems.fused.fp8_fp4_mqa_logits import fp8_fp4_mqa_logits
+from flag_gems.fused.fp8_fp4_paged_mqa_logits import fp8_fp4_paged_mqa_logits
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
 from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import (
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
 )
+from flag_gems.fused.fused_indexer_q_rope_quant import fused_indexer_q_rope_quant
 from flag_gems.fused.fused_inv_rope_fp8_quant import fused_inv_rope_fp8_quant
 from flag_gems.fused.fused_moe import (
     dispatch_fused_moe_kernel,
@@ -88,6 +91,8 @@ __all__ = [
     "act_quant_triton",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
+    "beam_search_score",
+    "beam_search_score_",
     "bincount",
     "bucket_sort_topk",
     "chunk_gated_delta_rule",
@@ -107,9 +112,11 @@ __all__ = [
     "flash_mla_sparse_fwd",
     "flash_mla_with_kvcache",
     "fp8_fp4_mqa_logits",
+    "fp8_fp4_paged_mqa_logits",
     "fused_add_rms_norm",
     "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     "fused_experts_impl",
+    "fused_indexer_q_rope_quant",
     "fused_inv_rope_fp8_quant",
     "fused_q_kv_rmsnorm",
     "fused_recurrent_gated_delta_rule_fwd",

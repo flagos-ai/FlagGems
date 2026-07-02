@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -10,6 +12,9 @@ def _scalar_input_fn(shape, dtype, device):
 
 
 @pytest.mark.le
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_le():
     bench = base.BinaryPointwiseBenchmark(
         op_name="le",
@@ -20,6 +25,9 @@ def test_le():
 
 
 @pytest.mark.le_scalar
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_le_scalar():
     bench = base.GenericBenchmark(
         input_fn=_scalar_input_fn,
