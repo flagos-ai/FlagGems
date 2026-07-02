@@ -178,6 +178,7 @@ fused_marlin_moe_mxfp4:
   - strategy:
       N: align32
       K: align32
+      AUTOTUNE_WORKLOAD_KEY: align32
       BLOCK_SIZE_M: align32
       SWAP_AB: default
 w8a8_block_fp8_bmm:
