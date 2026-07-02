@@ -43,6 +43,10 @@ _FULL_CONFIG = (
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__or__.Scalar", bitwise_or_scalar),
     ("__or__.Tensor", bitwise_or_tensor),
+    ("__ixor__.Scalar", xor_scalar_),
+    ("__ixor__.Tensor", xor_),
+    ("__xor__.Scalar", xor_scalar),
+    ("__xor__.Tensor", xor),
     ("_adaptive_avg_pool2d", adaptive_avg_pool2d),
     (
         "_amp_foreach_non_finite_check_and_unscale_",
