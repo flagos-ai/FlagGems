@@ -4940,6 +4940,19 @@ ops:
     stages:
       - beta: '4.0'
       - stable: '4.2'
+  - id: MoELoadBalanceLoss
+    description: >
+      The auxiliary load balancing loss for Mixture of Experts (MoE),
+      encouraging even distribution of tokens across experts.
+    for:
+      - MoELoadBalanceLoss
+    labels:
+      - KernelGen
+      - fused
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: moe_sum
     description: |
       An implementation of Mixture of Experts (MoE) with sum-based aggregation
