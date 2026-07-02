@@ -4,6 +4,9 @@ from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
 from flag_gems.ops._euclidean_dist import _euclidean_dist
+from flag_gems.ops._functional_sym_constrain_range import (
+    _functional_sym_constrain_range,
+)
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -256,6 +259,7 @@ from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.lgamma_ import lgamma, lgamma_
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
+from flag_gems.ops.linalg_cholesky import linalg_cholesky
 from flag_gems.ops.linear import linear
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
@@ -294,6 +298,7 @@ from flag_gems.ops.max_pool3d_with_indices import (
     max_pool3d_backward,
     max_pool3d_with_indices,
 )
+from flag_gems.ops.max_unpool2d import max_unpool2d
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
@@ -316,6 +321,7 @@ from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.negative import negative
 from flag_gems.ops.new_full import new_full
+from flag_gems.ops.nextafter_ import nextafter_
 from flag_gems.ops.nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward
 from flag_gems.ops.nllloss import (
     nll_loss2d_backward,
@@ -524,6 +530,7 @@ __all__ = [
     "_cdist_backward",
     "_conv_depthwise2d",
     "_euclidean_dist",
+    "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_fused_adam",
     "_fused_adam_",
@@ -835,6 +842,7 @@ __all__ = [
     "lgamma_",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
+    "linalg_cholesky",
     "linear",
     "linspace",
     "log",
@@ -879,6 +887,7 @@ __all__ = [
     "max_pool2d_with_indices",
     "max_pool3d_backward",
     "max_pool3d_with_indices",
+    "max_unpool2d",
     "maximum",
     "mean",
     "mean_dim",
@@ -908,6 +917,7 @@ __all__ = [
     "neg_",
     "negative",
     "new_full",
+    "nextafter_",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
     "nll_loss_backward",

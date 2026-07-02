@@ -874,28 +874,6 @@ ops:
       - BLAS
     stages:
       - beta: '5.3'
-  - id: beam_search_score
-    description: Computes beam search scores by adding cumulative log probabilities with new token scores.
-    for:
-      - beam_search_score
-    labels:
-      - KernelGen
-      - fused
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: beam_search_score_
-    description: In-place version of beam search score computation.
-    for:
-      - beam_search_score_
-    labels:
-      - KernelGen
-      - fused
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: batch_norm
     description: An internal operator used for implementing the `BatchNorm` functionality.
     for:
@@ -925,6 +903,28 @@ ops:
       - KernelGen
     kind:
       - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: beam_search_score
+    description: Computes beam search scores by adding cumulative log probabilities with new token scores.
+    for:
+      - beam_search_score
+    labels:
+      - KernelGen
+      - fused
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: beam_search_score_
+    description: In-place version of beam search score computation.
+    for:
+      - beam_search_score_
+    labels:
+      - KernelGen
+      - fused
+    kind:
+      - Math
     stages:
       - alpha: '5.4'
   - id: bernoulli
@@ -3037,6 +3037,19 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: functional_sym_constrain_range
+    description: |
+      A low-level function used in symbolic shape analysis to restrict the possible numerical range
+      (min/max) of a symbolic integer based on tensor input arguments.
+    for:
+      - _functional_sym_constrain_range
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: functional_sym_constrain_range_for_size
     description: |
       A low-level function used in symbolic shape analysis to restrict the possible numerical range
@@ -4139,6 +4152,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_cholesky
+    description: |-
+      Computes the Cholesky decomposition of a symmetric positive-definite matrix A
+      or for batches of symmetric positive-definite matrices.
+    for:
+      - linalg_cholesky
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: linalg_eigvals
     description: Computes the eigenvalues of a square matrix.
     for:
@@ -4701,6 +4727,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: max_unpool2d
+    description: Computes a partial inverse of `MaxPool2d`.
+    for:
+      - max_unpool2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: maximum
     description: Computes the element-wise maximum of `input` and `other`.
     for:
@@ -5059,6 +5096,19 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: nextafter_
+    description: |
+      Returns the next representable floating-point value from `input` toward
+      `other`, elementwise. In-place version of `nextafter`.
+    for:
+      - nextafter_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: nll_loss2d_backward
     description: |
       An internal IR for supporting `torch.nn.NLLLoss2d`, which has been deprecated
