@@ -8,7 +8,7 @@ from flag_gems.runtime import torch_device_fn
 from ..utils import TOTAL_CORE_NUM
 from .zeros import zeros_kernel
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def zeros_like(

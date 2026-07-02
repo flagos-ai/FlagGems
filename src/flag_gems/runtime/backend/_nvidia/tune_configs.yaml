@@ -1306,6 +1306,37 @@ triu_batch:
       - 8
       - 16
       - 32
+max_unpool2d:
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 16
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 16
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 32
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 32
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_H: 64
+      BLOCK_W: 32
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 64
+    num_warps: 8
+    num_stages: 2
 weight_norm_kernel_last:
   - gen: true
     param_map:
@@ -2319,6 +2350,24 @@ adaptive_max_pool3d_backward:
     num_stages: 3
   - META:
       BLOCK_SIZE: 128
+    num_warps: 4
+    num_stages: 3
+
+rnn_relu:
+  - META:
+      BLOCK_SIZE: 64
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 128
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 512
     num_warps: 4
     num_stages: 3
 
