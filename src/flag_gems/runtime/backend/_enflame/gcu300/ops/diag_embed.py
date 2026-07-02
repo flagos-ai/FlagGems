@@ -15,7 +15,7 @@ def copy_func(x):
 
 
 def diag_embed(x, offset=0, dim1=-2, dim2=-1):
-    logger.debug("GEMS DIAG_EMBED")
+    logger.debug("GEMS_ENFLAME DIAG_EMBED")
     return_type = x.dtype
     if x.dtype == torch.int64:
         x = x.to(torch.int32)

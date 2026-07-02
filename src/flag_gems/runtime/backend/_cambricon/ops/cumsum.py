@@ -11,7 +11,7 @@ from flag_gems.utils import libentry, libtuner
 
 from ..utils import MAX_GRID_SIZE_Y, TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 device = device.name
 
 # FIXME(cambricon): double 8192 when JIRA:1488 is fixed
