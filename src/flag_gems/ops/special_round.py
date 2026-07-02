@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def special_round_func(x, scale):
     """Round to nearest integer with ties to even (banker's rounding)."""
-    x_f32 = (x * scale).to(tl.float32)
+    x_f32 = x.to(tl.float32) * scale
 
     # Banker's rounding: round half to even.
     # Decompose into sign, absolute value, and fractional part.
