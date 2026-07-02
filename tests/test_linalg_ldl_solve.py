@@ -16,7 +16,7 @@ LDL_SOLVE_SHAPES = [
 ]
 
 
-# ldl_factor_ex only supports float32 and float64
+# CUDA ldl_factor_ex used to build LD supports only float32 and float64 here.
 LDL_SOLVE_DTYPES = [torch.float32, torch.float64]
 
 

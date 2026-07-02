@@ -13,6 +13,9 @@ LDL_SOLVE_SHAPES = [
     (128, 128),
 ]
 
+# CUDA ldl_factor_ex used to build LD supports only float32 and float64 here.
+LDL_SOLVE_DTYPES = [torch.float32, torch.float64]
+
 
 class LinalgLdlSolveBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
@@ -36,7 +39,6 @@ def test_linalg_ldl_solve():
     bench = LinalgLdlSolveBenchmark(
         op_name="linalg_ldl_solve",
         torch_op=torch.linalg.ldl_solve,
-        # ldl_factor_ex only supports float32 and float64
-        dtypes=[torch.float32, torch.float64],
+        dtypes=LDL_SOLVE_DTYPES,
     )
     bench.run()

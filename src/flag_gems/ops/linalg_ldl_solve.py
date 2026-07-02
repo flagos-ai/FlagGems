@@ -5,9 +5,7 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-)
+_FALLBACK_KEYSET = torch.DispatchKeySet(torch.DispatchKey.CompositeExplicitAutograd)
 
 
 def linalg_ldl_solve(LD, pivots, B, *, hermitian=False):
