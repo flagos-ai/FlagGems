@@ -48,6 +48,9 @@ def conv1d_input_fn(shape, dtype, device):
 
 
 @pytest.mark.conv1d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv1d():
     torch.backends.cudnn.allow_tf32 = False
     bench = Conv1DBenchmark(
@@ -85,6 +88,9 @@ class Conv1DPaddingBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.conv1d_padding
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv1d_padding():
     torch.backends.cudnn.allow_tf32 = False
     bench = Conv1DPaddingBenchmark(

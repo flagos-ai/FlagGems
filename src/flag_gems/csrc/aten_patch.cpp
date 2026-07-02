@@ -30,13 +30,13 @@ namespace flag_gems {
 // Define dispatch key based on backend
 // CUDA and IX use CUDA dispatch key (IX is CUDA-compatible)
 // NPU and MUSA use PrivateUse1 dispatch key
-#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_HCU)
 #define FLAGGEMS_DISPATCH_KEY CUDA
 #elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_GCU)
 #define FLAGGEMS_DISPATCH_KEY PrivateUse1
 #else
 #error \
-    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, FLAGGEMS_USE_GCU"
+    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, FLAGGEMS_USE_GCU, FLAGGEMS_USE_HCU"
 #endif
 
 TORCH_LIBRARY_IMPL(aten, FLAGGEMS_DISPATCH_KEY, m) {
