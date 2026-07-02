@@ -2,7 +2,11 @@ from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
+from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
 from flag_gems.ops._euclidean_dist import _euclidean_dist
+from flag_gems.ops._functional_sym_constrain_range import (
+    _functional_sym_constrain_range,
+)
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -12,6 +16,7 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
+from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
@@ -31,6 +36,7 @@ from flag_gems.ops._upsample_nearest_exact2d_backward import (
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
+from flag_gems.ops.acosh import acosh, acosh_
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
 from flag_gems.ops.adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from flag_gems.ops.add import add, add_
@@ -96,7 +102,7 @@ from flag_gems.ops.bitwise_or import (
     bitwise_or_tensor,
     bitwise_or_tensor_,
 )
-from flag_gems.ops.bitwise_right_shift import bitwise_right_shift
+from flag_gems.ops.bitwise_right_shift import bitwise_right_shift, bitwise_right_shift_
 from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.broadcast_to import broadcast_to
 from flag_gems.ops.cat import cat, cat_out
@@ -197,6 +203,7 @@ from flag_gems.ops.fmod_ import fmod_
 from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.fp8_mqa_logits import fp8_mqa_logits
 from flag_gems.ops.fp8_paged_mqa_logits import fp8_paged_mqa_logits
+from flag_gems.ops.frac_ import frac, frac_
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
@@ -239,6 +246,7 @@ from flag_gems.ops.index_copy_ import index_copy, index_copy_
 from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_reduce import index_reduce_
 from flag_gems.ops.index_select import index_select
+from flag_gems.ops.is_nonzero import is_nonzero
 from flag_gems.ops.isclose import allclose, isclose
 from flag_gems.ops.isfinite import isfinite
 from flag_gems.ops.isin import isin
@@ -253,6 +261,7 @@ from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.lgamma_ import lgamma, lgamma_
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
+from flag_gems.ops.linalg_cholesky import linalg_cholesky
 from flag_gems.ops.linear import linear
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
@@ -291,6 +300,7 @@ from flag_gems.ops.max_pool3d_with_indices import (
     max_pool3d_backward,
     max_pool3d_with_indices,
 )
+from flag_gems.ops.max_unpool2d import max_unpool2d
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
@@ -299,6 +309,7 @@ from flag_gems.ops.minimum import minimum
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
+from flag_gems.ops.mse_loss_backward import mse_loss_backward
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.mv import mv
@@ -313,6 +324,7 @@ from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.negative import negative
 from flag_gems.ops.new_full import new_full
+from flag_gems.ops.nextafter_ import nextafter_
 from flag_gems.ops.nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward
 from flag_gems.ops.nllloss import (
     nll_loss2d_backward,
@@ -459,6 +471,7 @@ from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.subtract_ import subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.svd import svd
+from flag_gems.ops.sym_stride import sym_stride
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
@@ -515,9 +528,11 @@ __all__ = [
     "__ilshift__",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
+    "_batch_norm_no_update",
     "_cdist_backward",
     "_conv_depthwise2d",
     "_euclidean_dist",
+    "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_fused_adam",
     "_fused_adam_",
@@ -525,6 +540,7 @@ __all__ = [
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
+    "_masked_scale",
     "_prelu_kernel_backward",
     "_resize_output",
     "_safe_softmax",
@@ -544,6 +560,8 @@ __all__ = [
     "abs_",
     "absolute",
     "acos",
+    "acosh",
+    "acosh_",
     "adaptive_avg_pool2d",
     "adaptive_max_pool3d_backward",
     "add",
@@ -626,6 +644,7 @@ __all__ = [
     "bitwise_or_tensor",
     "bitwise_or_tensor_",
     "bitwise_right_shift",
+    "bitwise_right_shift_",
     "bmm",
     "bmm_out",
     "broadcast_to",
@@ -749,6 +768,8 @@ __all__ = [
     "fp8_matmul",
     "fp8_mqa_logits",
     "fp8_paged_mqa_logits",
+    "frac",
+    "frac_",
     "full",
     "full_like",
     "gather",
@@ -802,6 +823,7 @@ __all__ = [
     "index_put_",
     "index_reduce_",
     "index_select",
+    "is_nonzero",
     "isclose",
     "isfinite",
     "isin",
@@ -826,6 +848,7 @@ __all__ = [
     "lgamma_",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
+    "linalg_cholesky",
     "linear",
     "linspace",
     "log",
@@ -870,6 +893,7 @@ __all__ = [
     "max_pool2d_with_indices",
     "max_pool3d_backward",
     "max_pool3d_with_indices",
+    "max_unpool2d",
     "maximum",
     "mean",
     "mean_dim",
@@ -884,6 +908,7 @@ __all__ = [
     "mm_out",
     "mode",
     "mse_loss",
+    "mse_loss_backward",
     "mul",
     "mul_",
     "multinomial",
@@ -899,6 +924,7 @@ __all__ = [
     "neg_",
     "negative",
     "new_full",
+    "nextafter_",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
     "nll_loss_backward",
@@ -1069,6 +1095,7 @@ __all__ = [
     "sum_dim_out",
     "sum_out",
     "svd",
+    "sym_stride",
     "t_copy",
     "t_copy_out",
     "tan",

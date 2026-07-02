@@ -323,6 +323,19 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name == "mul":
+            return [
+                triton.Config(
+                    {"BLOCK_SIZE": block_size},
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_size in ranges["BLOCK_SIZE"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
         if op_name == "w8a8_block_fp8_general_splitk":
             return [
                 triton.Config(
@@ -454,6 +467,9 @@ class TunedConfigLoader(object):
             "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
             "mv": self._build_single_expand_spec(
                 "mv", expand_yaml_path=self._get_expand_config_path("mv")
+            ),
+            "mul": self._build_single_expand_spec(
+                "mul", expand_yaml_path=self._get_expand_config_path("mul")
             ),
             "w8a8_block_fp8_general": self._build_single_expand_spec(
                 "w8a8_block_fp8_general"

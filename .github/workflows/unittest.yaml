@@ -101,30 +101,20 @@ jobs:
     concurrency:
       group: python-op-${{ needs.preprocess.outputs.pr_id }}
       cancel-in-progress: true
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: nvidia
-      runner_label: h20
-      gpu_check_script: gpu_check_nvidia.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+    runs-on: jiuding
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
 
-    # runs-on: jiuding
-    # steps:
-    #   - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-    #     continue-on-error: true
-    #   - uses: ./.github/actions/checkout-retry
+      - shell: bash
+        run: tools/gpu_check_nvidia.sh
 
-    #   - shell: bash
-    #     run: tools/gpu_check_nvidia.sh
-
-    #   - shell: bash
-    #     env:
-    #       CHANGED_FILES: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
-    #     run: |
-    #       bash tools/test-op.sh ${{ needs.preprocess.outputs.pr_id }}
+      - shell: bash
+        env:
+          CHANGED_FILES: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+        run: |
+          bash tools/test-op.sh ${{ needs.preprocess.outputs.pr_id }}
 
   examples:
     needs: preprocess
