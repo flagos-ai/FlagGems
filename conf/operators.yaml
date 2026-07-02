@@ -1197,6 +1197,19 @@ ops:
     stages:
       - stable: '5.0'
     cpp: '4.0'
+  - id: broadcast_tensors
+    description: >-
+      Broadcasts the given tensors to a common shape according to
+      broadcasting semantics, returning a list of tensors.
+    for:
+      - broadcast_tensors
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: broadcast_to
     description: Broadcasts input to the shape size. Equivalent to calling input.expand(size).
     for:
