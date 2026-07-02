@@ -49,6 +49,28 @@ ops:
       - Math
     stages:
       - stable: '5.0'
+  - id: acosh
+    description: Triton kernel implementation for acosh.
+    for:
+      - acosh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: acosh_
+    description: The in-place version of `acosh()`.
+    for:
+      - acosh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: act_quant_triton
     description: This is a fused operator.
     for:
