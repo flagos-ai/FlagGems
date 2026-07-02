@@ -1561,6 +1561,19 @@ ops:
       - Tensor
     stages:
       - alpha: '5.3'
+  - id: conj
+    description: |
+      Computes the element-wise conjugate of a complex tensor.
+      For non-complex tensors, returns the input unchanged.
+    for:
+      - _conj
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: conj_physical
     description: |
       Computes the element-wise conjugate of the given `input` tensor.
