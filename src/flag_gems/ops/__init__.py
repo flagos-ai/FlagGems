@@ -36,6 +36,7 @@ from flag_gems.ops._upsample_nearest_exact2d_backward import (
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
+from flag_gems.ops.acosh import acosh, acosh_
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
 from flag_gems.ops.adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from flag_gems.ops.add import add, add_
@@ -101,7 +102,7 @@ from flag_gems.ops.bitwise_or import (
     bitwise_or_tensor,
     bitwise_or_tensor_,
 )
-from flag_gems.ops.bitwise_right_shift import bitwise_right_shift
+from flag_gems.ops.bitwise_right_shift import bitwise_right_shift, bitwise_right_shift_
 from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.broadcast_to import broadcast_to
 from flag_gems.ops.cat import cat, cat_out
@@ -558,6 +559,8 @@ __all__ = [
     "abs_",
     "absolute",
     "acos",
+    "acosh",
+    "acosh_",
     "adaptive_avg_pool2d",
     "adaptive_max_pool3d_backward",
     "add",
@@ -640,6 +643,7 @@ __all__ = [
     "bitwise_or_tensor",
     "bitwise_or_tensor_",
     "bitwise_right_shift",
+    "bitwise_right_shift_",
     "bmm",
     "bmm_out",
     "broadcast_to",
