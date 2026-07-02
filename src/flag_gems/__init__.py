@@ -665,6 +665,7 @@ _FULL_CONFIG = (
     ("sum.out", sum_out),
     ("svd", svd),
     ("sym_stride", sym_stride),
+    ("t_", t_),
     ("t_copy", t_copy),
     ("t_copy.out", t_copy_out),
     ("tan", tan),

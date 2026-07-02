@@ -476,6 +476,7 @@ from flag_gems.ops.subtract_ import subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.svd import svd
 from flag_gems.ops.sym_stride import sym_stride
+from flag_gems.ops.t_ import t_
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
@@ -1107,6 +1108,7 @@ __all__ = [
     "sum_out",
     "svd",
     "sym_stride",
+    "t_",
     "t_copy",
     "t_copy_out",
     "tan",
