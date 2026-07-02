@@ -1,0 +1,93 @@
+[
+  {
+    "vendor": "ascend-cann850",
+    "runner_label": "ascend",
+    "label": "vendor/Ascend",
+    "gpu_check": "tools/gpu_check_ascend.sh",
+    "enabled": true
+  },
+  {
+    "vendor": "enflame",
+    "runner_label": "enflame",
+    "label": "vendor/Enflame",
+    "gpu_check": "",
+    "enabled": true
+  },
+  {
+    "vendor": "hygon",
+    "runner_label": "hygon",
+    "label": "vendor/Hygon",
+    "gpu_check": "tools/gpu_check_hygon.sh",
+    "enabled": true
+  },
+  {
+    "vendor": "iluvatar",
+    "runner_label": "iluvatar",
+    "label": "vendor/Iluvatar",
+    "gpu_check": "tools/gpu_check_iluvatar.sh",
+    "enabled": true
+  },
+  {
+    "vendor": "kunlunxin",
+    "runner_label": "kunlunxin",
+    "label": "vendor/Kunlunxin",
+    "gpu_check": "tools/gpu_check_kunlunxin.sh",
+    "enabled": true
+  },
+  {
+    "vendor": "metax",
+    "runner_label": "metax",
+    "label": "vendor/MetaX",
+    "gpu_check": "tools/gpu_check_metax.sh",
+    "enabled": true
+  },
+  {
+    "vendor": "mthreads",
+    "runner_label": "mthreads",
+    "label": "vendor/MooreThreads",
+    "gpu_check": "tools/gpu_check_mthreads.sh",
+    "enabled": true
+  },
+  {
+    "vendor": "nvidia-cuda128",
+    "runner_label": "h20-cu128",
+    "label": "vendor/NVIDIA",
+    "gpu_check": "tools/gpu_check_nvidia.sh",
+    "enabled": false
+  },
+  {
+    "vendor": "nvidia-cuda133",
+    "runner_label": "h20",
+    "label": "vendor/NVIDIA",
+    "gpu_check": "tools/gpu_check_nvidia.sh",
+    "enabled": true
+  },
+  {
+    "vendor": "spacemit",
+    "runner_label": "spacemit",
+    "label": "vendor/SpaceMit",
+    "gpu_check": "",
+    "enabled": true
+  },
+  {
+    "vendor": "sunrise",
+    "runner_label": "sunrise",
+    "label": "vendor/Sunrise",
+    "gpu_check": "",
+    "enabled": true
+  },
+  {
+    "vendor": "thead",
+    "runner_label": "thead",
+    "label": "vendor/Thead",
+    "gpu_check": "tools/gpu_check_thead.sh",
+    "enabled": true
+  },
+  {
+    "vendor": "tsingmicro",
+    "runner_label": "tsingmicro",
+    "label": "vendor/TsingMicro",
+    "gpu_check": "tools/gpu_check_tsingmicro.sh",
+    "enabled": true
+  }
+]
