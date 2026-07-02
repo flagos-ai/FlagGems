@@ -7,17 +7,18 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
 @triton.jit
 def count_nonzero_kernel_1(x_ptr, out_ptr, numel, BLOCK_SIZE: tl.constexpr):
-    pid = ext.program_id(0)
+    pid = tle.program_id(0).to(tl.int64)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    numel = tl.cast(numel, tl.int64)
     mask = offsets < numel
     x = tl.load(x_ptr + offsets, mask=mask, other=0)
     is_nonzero = (x != 0).to(tl.int32)
@@ -35,10 +36,11 @@ def count_nonzero_kernel_1(x_ptr, out_ptr, numel, BLOCK_SIZE: tl.constexpr):
 )
 @triton.jit
 def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
-    pid_0 = ext.program_id(0)
-    num_p = ext.num_programs(0)
+    pid_0 = tle.program_id(0).to(tl.int64)
+    num_p = tle.num_programs(0).to(tl.int64)
     rows = (numel + N - 1) // N
     rows_per_p = rows // num_p
+    numel = tl.cast(numel, tl.int64)
 
     for pid_n in range(0, rows_per_p):
         pid_x = pid_0 * rows_per_p + pid_n
@@ -79,7 +81,8 @@ def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
 )
 @triton.jit
 def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
-    pid_x = ext.program_id(0)
+    pid_x = tle.program_id(0).to(tl.int64)
+    numel = tl.cast(numel, tl.int64)
     nonzero_count = tl.full((), value=0, dtype=out_ptr.dtype.element_ty)
     for start_n in range(0, N, BLOCK_SIZE):
         cols_offsets = start_n + tl.arange(0, BLOCK_SIZE)
@@ -95,8 +98,9 @@ def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.const
 def count_nonzero_combin_kernel(
     x_ptr, combin_ptr, N, combin_N, numel, BLOCK_SIZE: tl.constexpr
 ):
-    pid_x = ext.program_id(0)
-    pid_y = ext.program_id(1)
+    pid_x = tle.program_id(0).to(tl.int64)
+    pid_y = tle.program_id(1).to(tl.int64)
+    numel = tl.cast(numel, tl.int64)
     cols_offsets = pid_y * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     offset = pid_x * N + cols_offsets
     mask = offset < numel and cols_offsets < N
@@ -107,8 +111,7 @@ def count_nonzero_combin_kernel(
 
 
 def count_nonzero(x, dim=None):
-    logger.debug("GEMS_TSINGMICRO COUNT_NONZERO")
-    print("GEMS_TSINGMICRO COUNT_NONZERO")
+    logger.debug("GEMS_TSINGMICRO COUNT NONZERO")
     if dim is not None:
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         shape = x.shape
@@ -148,7 +151,7 @@ def count_nonzero(x, dim=None):
         x = x.contiguous().flatten()
         numel = x.numel()
 
-        out = torch.zeros(1, dtype=torch.int32, device=x.device)
+        out = torch.zeros(1, dtype=torch.int64, device=x.device)
 
         BLOCK_SIZE = 1024 * 8
         grid = lambda meta: (triton.cdiv(numel, meta["BLOCK_SIZE"]),)

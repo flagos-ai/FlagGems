@@ -37,7 +37,7 @@ def add_func_scalar_tensor(x, y, alpha):
 
 
 def add(A, B, *, alpha=1):
-    logger.debug("GEMS ADD")
+    logger.debug("GEMS_ENFLAME ADD")
     if alpha == 1 and isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return add_func_no_alpha(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
@@ -59,7 +59,7 @@ def add(A, B, *, alpha=1):
 
 
 def add_(A, B, *, alpha=1):
-    logger.debug("GEMS ADD_")
+    logger.debug("GEMS_ENFLAME ADD_")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         if A.dtype == torch.int64:
             A = A.to(torch.int32)

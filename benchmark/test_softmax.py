@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
 @pytest.mark.softmax
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_softmax():
     bench = base.UnaryReductionBenchmark(
         op_name="softmax",
@@ -15,6 +20,9 @@ def test_softmax():
 
 
 @pytest.mark.softmax_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_softmax_backward():
     bench = base.UnaryReductionBenchmark(
         op_name="softmax",
@@ -35,6 +43,9 @@ def softmax_backward_out_input_fn(shape, dtype, device):
 
 
 @pytest.mark.softmax_backward_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_softmax_backward_out():
     bench = base.GenericBenchmark(
         op_name="softmax_backward_out",
@@ -53,6 +64,9 @@ def softmax_out_input_fn(shape, dtype, device):
 
 
 @pytest.mark.softmax_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_softmax_out():
     bench = base.GenericBenchmark(
         op_name="softmax_out",
