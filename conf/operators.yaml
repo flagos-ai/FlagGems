@@ -433,6 +433,28 @@ ops:
       - LinearAlg
     stages:
       - stable: '2.0'
+  - id: amin
+    description: Returns the minimum value of each row of the input tensor in the given dimension dim.
+    for:
+      - amin
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
+  - id: amin_
+    description: The in-place version of amin, returns the minimum value of each row in the given dimension.
+    for:
+      - amin_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: aminmax
     description: |
       Computes the minimum and maximum values of the `input` tensor.
@@ -4175,6 +4197,28 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: less_equal
+    description: Computes element-wise less-than-or-equal-to comparison.
+    for:
+      - less_equal.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: less_equal_scalar
+    description: Computes less-than-or-equal-to comparison with a scalar.
+    for:
+      - less_equal.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: lgamma
     description: Computes the logarithm of the gamma function on input.
     for:
@@ -6254,6 +6298,18 @@ ops:
     stages:
       - stable: '2.0'
     cpp: '4.0'
+  - id: rnn_relu
+    description: Triton kernel implementation for rnn_relu.
+    for:
+      - rnn_relu
+    labels:
+      - aten
+      - KernelGen
+      - NoCPU
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: roll
     description: |
       Roll the tensor input along the given dimension(s). Elements that are shifted beyond the last position
@@ -6957,6 +7013,29 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: sinc
+    description: |
+      Computes the normalized sinc function `sin(π·x) / (π·x)` for each element of the input.
+    for:
+      - sinc
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: sinc_
+    description: The in-place version of `sinc()`.
+    for:
+      - sinc_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: sinh_
     description: |
       Computes the hyperbolic sine `(e^x-e^{-x})/2` of each element in a tensor.
