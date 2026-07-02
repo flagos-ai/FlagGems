@@ -7591,17 +7591,6 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
-  - id: t_
-    description: Transpose a 2D tensor in-place.
-    for:
-      - t_
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Tensor
-    stages:
-      - alpha: '5.4'
   - id: t_copy
     description: Transpose a 2D tensor into a new tensor with contiguous memory layout.
     for:
