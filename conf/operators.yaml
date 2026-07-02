@@ -3130,6 +3130,20 @@ ops:
     stages:
       - stable: '2.0'
     cpp: '4.0'
+  - id: fused_deepseek_v4_qnorm_rope_kv_rope_insert
+    description: |
+      Horizontally-fused DeepseekV4-MLA BF16 variant.
+      per-head RMSNorm + GPT-J RoPE for Q, and GPT-J RoPE + bf16 paged
+      cache insert for KV, all in one kernel launch. No FP8 quantization.
+    for:
+      - fused_deepseek_v4_qnorm_rope_kv_rope_insert
+    labels:
+      - fused
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
     description: |
       Horizontally-fused DeepseekV4-MLA.
