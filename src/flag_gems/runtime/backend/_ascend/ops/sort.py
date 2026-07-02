@@ -9,7 +9,7 @@ from flag_gems.ops.topk import _get_finfo_val, _get_iinfo_val, argsort
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 @libentry()
