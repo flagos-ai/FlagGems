@@ -20,6 +20,7 @@ from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
+from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
     _thnn_fused_lstm_cell_backward_impl,
@@ -550,6 +551,7 @@ __all__ = [
     "_safe_softmax",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_mm",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
