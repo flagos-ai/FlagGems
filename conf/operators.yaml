@@ -2578,6 +2578,18 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: expand_dims
+    description: Adds a dimension of size 1 at the specified position. Equivalent to torch.unsqueeze. For contiguous input, returns a zero-cost view; for non-contiguous input, uses a Triton kernel.
+    for:
+      - expand_dims
+      - unsqueeze
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: expm1
     description: Computes the exponential of the elements minus 1 of `input`.
     for:
