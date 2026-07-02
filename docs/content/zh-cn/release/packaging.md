@@ -1,6 +1,6 @@
 ---
-title: 打包与发布
-weight: 50
+title: 打包
+weight: 20
 ---
 
 <!--
