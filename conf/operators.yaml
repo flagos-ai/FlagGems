@@ -49,6 +49,28 @@ ops:
       - Math
     stages:
       - stable: '5.0'
+  - id: acosh
+    description: Triton kernel implementation for acosh.
+    for:
+      - acosh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: acosh_
+    description: The in-place version of `acosh()`.
+    for:
+      - acosh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: act_quant_triton
     description: This is a fused operator.
     for:
@@ -1117,6 +1139,18 @@ ops:
       - Math
     stages:
       - stable: '4.0'
+  - id: bitwise_right_shift_
+    description: The in-place version of `bitwise_right_shift()`.
+    for:
+      - bitwise_right_shift_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: bmm
     description: Performs a batch matrix-matrix product of matrices stored in `input` and `mat2`.
     for:
@@ -3886,6 +3920,17 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: is_nonzero
+    description: Returns True if the single-element input tensor is not equal to zero.
+    for:
+      - is_nonzero
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: isclose
     description: |
       Returns a new tensor with boolean elements representing if each element of `input`
@@ -4945,6 +4990,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: mse_loss_backward
+    description: Compute the gradient of mean squared error loss with respect to the input.
+    for:
+      - mse_loss_backward
+    labels:
+      - aten
+      - NeuralNetwork
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: mul
     description: Multiplies `input` by `other`.
     for:
