@@ -1975,6 +1975,17 @@ ops:
       - LinearAlg
     stages:
       - stable: '2.2'
+  - id: diagonal_scatter
+    description: Scatter source values into the diagonal of a tensor with optional offset.
+    for:
+      - diagonal_scatter
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: diagonal_copy
     description: |
       Performs the same operation as torch.diagonal, but all output tensors
