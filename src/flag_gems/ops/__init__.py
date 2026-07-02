@@ -199,6 +199,7 @@ from flag_gems.ops.fmod_ import fmod_
 from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.fp8_mqa_logits import fp8_mqa_logits
 from flag_gems.ops.fp8_paged_mqa_logits import fp8_paged_mqa_logits
+from flag_gems.ops.frac_ import frac, frac_
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
@@ -461,6 +462,7 @@ from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.subtract_ import subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.svd import svd
+from flag_gems.ops.sym_stride import sym_stride
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
@@ -753,6 +755,8 @@ __all__ = [
     "fp8_matmul",
     "fp8_mqa_logits",
     "fp8_paged_mqa_logits",
+    "frac",
+    "frac_",
     "full",
     "full_like",
     "gather",
@@ -1073,6 +1077,7 @@ __all__ = [
     "sum_dim_out",
     "sum_out",
     "svd",
+    "sym_stride",
     "t_copy",
     "t_copy_out",
     "tan",
