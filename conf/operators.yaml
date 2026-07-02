@@ -4743,6 +4743,16 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: matmul_bias_activation
+    description: Fused matrix multiplication with bias addition and ReLU activation.
+    for:
+      - matmul_bias_activation
+    labels:
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: max
     description: Returns the maximum value of all elements in the `input` tensor.
     for:
