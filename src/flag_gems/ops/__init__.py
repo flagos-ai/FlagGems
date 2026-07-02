@@ -28,6 +28,7 @@ from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._unsafe_masked_index_put_accumulate import (
     _unsafe_masked_index_put_accumulate,
 )
+from flag_gems.ops._unsafe_view import _unsafe_view
 from flag_gems.ops._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops._upsample_nearest_exact2d_backward import (
@@ -51,6 +52,7 @@ from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
 from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.alpha_dropout import alpha_dropout
 from flag_gems.ops.amax import amax
+from flag_gems.ops.amin import amin, amin_
 from flag_gems.ops.aminmax import aminmax
 from flag_gems.ops.angle import angle
 from flag_gems.ops.any import any, any_dim, any_dims
@@ -259,6 +261,7 @@ from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
+from flag_gems.ops.less_equal import less_equal, less_equal_scalar
 from flag_gems.ops.lgamma_ import lgamma, lgamma_
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
@@ -396,6 +399,7 @@ from flag_gems.ops.resize_as import resize_as, resize_as_
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
+from flag_gems.ops.rnn_relu import rnn_relu
 from flag_gems.ops.roll import roll
 from flag_gems.ops.rot90 import rot90
 from flag_gems.ops.round import round, round_, round_out
@@ -434,6 +438,7 @@ from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.signbit import signbit, signbit_out
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
+from flag_gems.ops.sinc import sinc, sinc_
 from flag_gems.ops.sinh_ import sinh_
 from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_scatter import slice_scatter
@@ -552,6 +557,7 @@ __all__ = [
     "_unique2",
     "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
+    "_unsafe_view",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_bilinear2d_aa",
@@ -590,6 +596,8 @@ __all__ = [
     "allclose",
     "alpha_dropout",
     "amax",
+    "amin",
+    "amin_",
     "aminmax",
     "angle",
     "any",
@@ -845,6 +853,8 @@ __all__ = [
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
+    "less_equal",
+    "less_equal_scalar",
     "lgamma",
     "lgamma_",
     "lift_fresh_copy",
@@ -1004,6 +1014,7 @@ __all__ = [
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
+    "rnn_relu",
     "roll",
     "rot90",
     "round",
@@ -1054,6 +1065,8 @@ __all__ = [
     "silu_backward",
     "sin",
     "sin_",
+    "sinc",
+    "sinc_",
     "sinh_",
     "slice_backward",
     "slice_scatter",

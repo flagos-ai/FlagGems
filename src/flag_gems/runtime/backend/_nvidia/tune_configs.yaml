@@ -2353,6 +2353,24 @@ adaptive_max_pool3d_backward:
     num_warps: 4
     num_stages: 3
 
+rnn_relu:
+  - META:
+      BLOCK_SIZE: 64
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 128
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 4
+    num_stages: 3
+
 rot90:
   - META:
       BLOCK_SIZE: 512
