@@ -146,7 +146,7 @@ from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
 from flag_gems.ops.diagonal_copy import diagonal_copy
 from flag_gems.ops.diff import diff
-from flag_gems.ops.digamma_ import digamma_
+from flag_gems.ops.digamma_ import digamma, digamma_
 from flag_gems.ops.div import (
     div_mode,
     div_mode_,
@@ -691,6 +691,7 @@ __all__ = [
     "diagonal_backward",
     "diagonal_copy",
     "diff",
+    "digamma",
     "digamma_",
     "div_mode",
     "div_mode_",
