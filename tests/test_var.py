@@ -24,7 +24,8 @@ else:
 random.seed(time.time() // 100)
 
 
-@pytest.mark.var
+@pytest.mark.var  # covers var (global reduction, dim=None)
+@pytest.mark.var_dim  # covers var.dim (reduction over specified dim)
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIMS_LIST + [None])
 @pytest.mark.parametrize("correction", CORRECTION)
