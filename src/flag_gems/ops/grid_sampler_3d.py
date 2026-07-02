@@ -163,9 +163,7 @@ def grid_sampler_3d_kernel(
             x_is_even = x_floor_int % 2 == 0
             x_round = tl.where(x_frac < 0.5, x_floor, x_floor + 1)
             ix = tl.cast(
-                tl.where(
-                    x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-                ),
+                tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
                 tl.int32,
             )
             # Y coordinate rounding
@@ -176,9 +174,7 @@ def grid_sampler_3d_kernel(
             y_is_even = y_floor_int % 2 == 0
             y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
             iy = tl.cast(
-                tl.where(
-                    y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-                ),
+                tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
                 tl.int32,
             )
             # Z coordinate rounding
@@ -189,9 +185,7 @@ def grid_sampler_3d_kernel(
             z_is_even = z_floor_int % 2 == 0
             z_round = tl.where(z_frac < 0.5, z_floor, z_floor + 1)
             iz = tl.cast(
-                tl.where(
-                    z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round
-                ),
+                tl.where(z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round),
                 tl.int32,
             )
         else:
@@ -203,9 +197,7 @@ def grid_sampler_3d_kernel(
             x_is_even = x_floor_int % 2 == 0
             x_round = tl.where(x_frac < 0.5, x_floor, x_floor + 1)
             ix = tl.cast(
-                tl.where(
-                    x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-                ),
+                tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
                 tl.int32,
             )
             # Y coordinate rounding (padded)
@@ -216,9 +208,7 @@ def grid_sampler_3d_kernel(
             y_is_even = y_floor_int % 2 == 0
             y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
             iy = tl.cast(
-                tl.where(
-                    y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-                ),
+                tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
                 tl.int32,
             )
             # Z coordinate rounding (padded)
@@ -229,9 +219,7 @@ def grid_sampler_3d_kernel(
             z_is_even = z_floor_int % 2 == 0
             z_round = tl.where(z_frac < 0.5, z_floor, z_floor + 1)
             iz = tl.cast(
-                tl.where(
-                    z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round
-                ),
+                tl.where(z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round),
                 tl.int32,
             )
     else:  # BILINEAR (trilinear)
