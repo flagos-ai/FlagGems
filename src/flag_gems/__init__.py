@@ -610,6 +610,8 @@ _FULL_CONFIG = (
     ("selu", selu),
     ("selu_", selu_),
     ("sgn_", sgn_),
+    ("shape", shape),
+    ("shape_", shape_),
     ("sigmoid", sigmoid),
     ("sigmoid_", sigmoid_),
     ("sigmoid_backward", sigmoid_backward),

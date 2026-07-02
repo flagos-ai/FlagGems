@@ -6836,6 +6836,30 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: shape
+    description: |
+      Triton kernel implementation for shape.
+    for:
+      - shape
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: shape_
+    description: |
+      The in-place version of `shape()`.
+    for:
+      - shape_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: sigmoid
     description: Computes the expit (also known as the logistic sigmoid function) of the elements of `input`.
     for:
