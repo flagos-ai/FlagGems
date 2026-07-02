@@ -7099,6 +7099,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_digamma
+    description: |
+      Computes the digamma function (logarithmic derivative of the gamma function)
+      using reflection formula, recurrence relation, and asymptotic expansion.
+    for:
+      - digamma
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: special_gammainc
     description: |
       Computes the regularized lower incomplete gamma function P(a, x) element-wise.
@@ -7122,7 +7136,7 @@ ops:
       - aten
       - KernelGen
     stages:
-      - alpha: '5.1'
+      - alpha: '5.4'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
