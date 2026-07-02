@@ -663,6 +663,7 @@ from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
 from flag_gems.ops.unsafe_chunk import unsafe_chunk
 from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
+from flag_gems.ops.unsqueeze_copy import unsqueeze_copy, unsqueeze_copy_out
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -1475,6 +1476,8 @@ __all__ = [
     "unique_dim",
     "unsqueeze",
     "unsqueeze_",
+    "unsqueeze_copy",
+    "unsqueeze_copy_out",
     "upsample_bicubic2d",
     "upsample_linear1d",
     "upsample_linear1d_backward",
