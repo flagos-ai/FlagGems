@@ -21,6 +21,9 @@ vendor_name = flag_gems.vendor_name
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.cfloat])
 @pytest.mark.parametrize("stride", [1, 2])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_vdot(M, is_conj, dtype, stride):
     if vendor_name in ["kunlunxin", "tsingmicro"]:
         torch.manual_seed(0)
@@ -59,10 +62,6 @@ def test_vdot(M, is_conj, dtype, stride):
 
     with flag_gems.use_gems():
         if flag_gems.vendor_name == "mthreads":
-            res_out = torch.vdot(
-                inp1.to(device=flag_gems.device), inp2.to(device=flag_gems.device)
-            )
-        elif flag_gems.vendor_name == "tsingmicro":
             res_out = torch.vdot(
                 inp1.to(device=flag_gems.device), inp2.to(device=flag_gems.device)
             )

@@ -11,9 +11,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 
 EXPAND_CONFIG_FILENAME = os.path.normpath(
@@ -113,7 +111,7 @@ def addmm_kernel(
 
 
 def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
-    logger.debug("GEMS_MTHREADS ADDMM(FMA)")
+    logger.debug("GEMS_MTHREADS ADDMM_FMA")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
@@ -163,13 +161,7 @@ def addmm_sqmma_descriptor_pre_hook(nargs):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "addmm_sqmma",
-        pre_hook=addmm_sqmma_descriptor_pre_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
+    configs=[
         triton.Config(
             {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
             num_stages=1,
@@ -178,13 +170,13 @@ def addmm_sqmma_descriptor_pre_hook(nargs):
         )
     ],
     key=["M", "N", "K"],
-    strategy=runtime.get_expand_config("addmm_sqmma", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["default", "default", "default"],
+    strategy=["default", "default", "default"],
     warmup=5,
     rep=5,
+    flagtune_op_name="addmm",
+    flagtune_expand_op_name="addmm_sqmma",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=addmm_sqmma_descriptor_pre_hook,
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_sqmma_kernel(
@@ -222,7 +214,7 @@ def addmm_sqmma_kernel(
 
 
 def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
-    logger.debug("GEMS_MTHREADS ADDMM(SQMMA)")
+    logger.debug("GEMS_MTHREADS ADDMM_SQMMA")
     device = mat1.device
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])

@@ -6,8 +6,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry, tl_extra_shim
+from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max, get_dtype_min
 
@@ -57,6 +58,7 @@ ASCEND_FLAT_SORT_DTYPES = (
     torch.int16,
     torch.int32,
 )
+IS_NVIDIA_BACKEND = runtime_device.vendor_name == "nvidia"
 
 
 def _triton_version_at_least(major, minor):
@@ -80,8 +82,6 @@ CUDA_SUPPORTS_MASKED_HISTOGRAM = _triton_version_at_least(3, 4)
 @triton.jit
 def _is_not_nan(vals, USE_ISNAN: tl.constexpr):
     vals_fp32 = vals.to(tl.float32)
-    if USE_ISNAN:
-        return ~tl_extra_shim.isnan(vals_fp32)
     return vals_fp32 == vals_fp32
 
 
@@ -814,10 +814,8 @@ def _empty_flat_value(inp):
     out = torch.empty((), dtype=inp.dtype, device=inp.device)
     if torch.is_floating_point(inp):
         out.fill_(float("nan"))
-    elif inp.is_cuda:
-        out.fill_(torch.iinfo(inp.dtype).min)
     else:
-        out.zero_()
+        out.fill_(torch.iinfo(inp.dtype).min)
     return out
 
 
@@ -879,12 +877,18 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
         block_n = _count_block_n(inp, N)
         with torch_device_fn.device(inp.device):
             count_valid_kernel[(M,)](inp, valid_count, M, N, block_n, inp.is_cuda)
+        # Replace NaN with +inf so kthvalue sorts them to the end deterministically
+        kth_inp = torch.where(
+            torch.isnan(inp),
+            torch.tensor(float("inf"), dtype=inp.dtype, device=inp.device),
+            inp,
+        )
         min_count = int(torch.min(valid_count).item())
         max_count = int(torch.max(valid_count).item())
         if min_count == max_count:
             if max_count == 0:
                 return _full_nan_result((M,), inp.dtype, inp.device)
-            values, indices = torch.kthvalue(inp, (max_count + 1) // 2, dim=1)
+            values, indices = torch.kthvalue(kth_inp, (max_count + 1) // 2, dim=1)
             return NanMedian(values=values, indices=indices)
 
         if max_count - min_count <= 1:
@@ -892,7 +896,7 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             max_k = (max_count + 1) // 2
 
             if min_k == max_k:
-                values, indices = torch.kthvalue(inp, max_k, dim=1)
+                values, indices = torch.kthvalue(kth_inp, max_k, dim=1)
                 if min_count > 0:
                     return NanMedian(values=values, indices=indices)
                 fallback = _full_nan_result((M,), inp.dtype, inp.device)
@@ -905,14 +909,14 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             result = _full_nan_result((M,), inp.dtype, inp.device)
 
             if min_count > 0:
-                values, indices = torch.kthvalue(inp, min_k, dim=1)
+                values, indices = torch.kthvalue(kth_inp, min_k, dim=1)
                 mask = valid_count == min_count
                 result = NanMedian(
                     values=torch.where(mask, values, result.values),
                     indices=torch.where(mask, indices, result.indices),
                 )
 
-            values, indices = torch.kthvalue(inp, max_k, dim=1)
+            values, indices = torch.kthvalue(kth_inp, max_k, dim=1)
             mask = valid_count == max_count
             return NanMedian(
                 values=torch.where(mask, values, result.values),
@@ -925,7 +929,7 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             if count == 0:
                 continue
             row_indices = torch.nonzero(valid_count == count).flatten()
-            rows = torch.index_select(inp, 0, row_indices)
+            rows = torch.index_select(kth_inp, 0, row_indices)
             values, indices = torch.kthvalue(rows, (count + 1) // 2, dim=1)
             result.values[row_indices] = values
             result.indices[row_indices] = indices
@@ -1032,10 +1036,12 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
 
     inp = dim_compress(inp, dim)
     is_cuda = inp.is_cuda
+    is_nvidia = IS_NVIDIA_BACKEND
     is_ascend = inp.device.type == "npu"
     in_radix_range = MAX_BLOCK_N < N <= LONG_RADIX_REDUCTION_N
     use_cuda_histogram = (
-        is_cuda
+        is_nvidia
+        and is_cuda
         and CUDA_SUPPORTS_MASKED_HISTOGRAM
         and N > MAX_BLOCK_N
         and N == triton.next_power_of_2(N)
@@ -1055,7 +1061,7 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
         and in_radix_range
     )
 
-    if is_cuda and inp.dtype in RADIX_SELECT_DTYPES and in_radix_range:
+    if is_nvidia and is_cuda and inp.dtype in RADIX_SELECT_DTYPES and in_radix_range:
         flat_values = values.reshape(M)
         flat_indices = indices.reshape(M)
         block_n = _radix_block_n(inp, N)
@@ -1331,7 +1337,8 @@ def _nanmedian_flat_impl(inp, out=None):
         return result
 
     if (
-        inp.is_cuda
+        IS_NVIDIA_BACKEND
+        and inp.is_cuda
         and inp.dtype in RADIX_SELECT_DTYPES
         and LONG_RADIX_REDUCTION_N < n <= INT32_MAX
     ):

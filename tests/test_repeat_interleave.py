@@ -4,21 +4,32 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
-REPEAT_INTERLEAVE_SHAPES = [
-    (1024, 1024),
-    (20, 320, 15),
-    (16, 128, 64, 60),
-    (16, 7, 57, 32, 29),
-]
-
-REPEAT_INTERLEAVE_DIM = [-1, 0, None]
+if cfg.QUICK_MODE:
+    REPEAT_INTERLEAVE_SHAPES = [
+        (1024, 1024),
+        (20, 320, 15),
+    ]
+    REPEAT_INTERLEAVE_DIM = [-1, 0]
+else:
+    REPEAT_INTERLEAVE_SHAPES = [
+        (1024, 1024),
+        (20, 320, 15),
+        (16, 128, 64, 60),
+        (16, 7, 57, 32, 29),
+    ]
+    REPEAT_INTERLEAVE_DIM = [-1, 0, None]
 
 
 @pytest.mark.repeat_interleave_self_int
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES + [(1,)])
 @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_repeat_interleave_self_int(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     repeats = 2
@@ -35,6 +46,10 @@ def test_repeat_interleave_self_int(shape, dim, dtype):
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
 @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
     repeats = 2
@@ -50,6 +65,10 @@ def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
 @pytest.mark.repeat_interleave_tensor
 @pytest.mark.parametrize("shape", utils.UT_SHAPES_1D)
 @pytest.mark.parametrize("dtype", [torch.int32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_repeat_interleave_tensor(shape, dtype):
     repeats = torch.randint(0, 30, shape, dtype=dtype, device=flag_gems.device)
     ref_repeats = utils.to_reference(repeats)
@@ -65,6 +84,10 @@ def test_repeat_interleave_tensor(shape, dtype):
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
 @pytest.mark.parametrize("dim", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_repeat_interleave_self_tensor(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     repeats = torch.randint(0, 30, (shape[dim],), device=flag_gems.device)

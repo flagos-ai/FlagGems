@@ -237,7 +237,7 @@ def max_kernel_dim_mid(
 
 
 def max(inp):
-    logger.debug("GEMS MAX")
+    logger.debug("GEMS_ENFLAME MAX")
     return_dtype = inp.dtype
     if inp.dtype == torch.int64:
         inp = inp.to(torch.int32)
@@ -271,7 +271,7 @@ def max(inp):
 
 
 def max_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS MAX DIM")
+    logger.debug("GEMS_ENFLAME MAX_DIM")
     return_dtype = inp.dtype
     if inp.dtype == torch.int64:
         inp = inp.to(torch.int32)

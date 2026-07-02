@@ -20,17 +20,12 @@ ARG EXTRA_PYPI
 ARG INCLUDE_TESTS
 ARG DEBIAN_FRONTEND=noninteractive
 
-# ── System packages ────────────────────────────────────────────
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl \
-    && rm -rf /var/lib/apt/lists/*
-
 # ── Prepare uv and virtual environment ─────────────────────────
 # Install 'uv' to /usr/local/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
-RUN uv venv /venv --python ${PYTHON_VERSION} --relocatable
-ENV VIRTUAL_ENV=/venv \
-    PATH="/venv/bin:${PATH}"
+RUN uv venv /flagos --python ${PYTHON_VERSION} --relocatable
+ENV VIRTUAL_ENV=/flagos \
+    PATH="/flagos/bin:${PATH}"
 
 # ── Build FlagGems ─────────────────────────────────────────────
 WORKDIR /build
@@ -70,24 +65,18 @@ RUN if [ "$INCLUDE_TESTS" = "true" ]; then \
 FROM ${BASE_IMAGE} AS runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG INCLUDE_TESTS
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libelf1 \
-        libpython3-dev \
-    && rm -rf /var/lib/apt/lists/*
 
 # ── Copy uv and Python from builder ────────────────────────────
 COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
 COPY --from=builder /root/.local/share/uv /root/.local/share/uv
-COPY --from=builder /venv /venv
+COPY --from=builder /flagos /flagos
 
 # ── Copy tests and benchmarks into container if required ───────
 COPY --from=builder /app /app
 WORKDIR /app
 
 # Note: VIRTUAL_ENV and PATH are not sharable between stages
-ENV VIRTUAL_ENV=/venv \
-   PATH="/venv/bin:${PATH}"
+ENV VIRTUAL_ENV=/flagos \
+   PATH="/flagos/bin:${PATH}"
 
 ENTRYPOINT ["bash"]
