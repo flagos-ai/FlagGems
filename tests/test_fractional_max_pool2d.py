@@ -56,9 +56,7 @@ def test_fractional_max_pool2d(shape, kernel_size, output_size, dtype):
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     # Indices should match exactly since we use the same random_samples
-    torch.testing.assert_close(
-        res_indices.to(ref_indices.device), ref_indices
-    )
+    torch.testing.assert_close(res_indices.to(ref_indices.device), ref_indices)
 
 
 @pytest.mark.fractional_max_pool2d_backward
