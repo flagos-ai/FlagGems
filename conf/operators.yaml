@@ -4944,6 +4944,19 @@ ops:
       - Distribution
     stages:
       - stable: '2.1'
+  - id: multiply_
+    description: In-place multiplication using Triton kernel (alias for mul_). Supports tensor-tensor and tensor-scalar operations.
+    for:
+      - multiply_
+      - multiply_.Scalar
+      - multiply_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: mv
     description: Performs a matrix-vector product of the matrix `input` and the vector `vec`.
     for:
