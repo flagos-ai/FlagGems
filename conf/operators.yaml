@@ -7189,6 +7189,17 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: thnn_fused_lstm_cell
+    description: Fused LSTM cell computation with optional input and hidden biases.
+    for:
+      - _thnn_fused_lstm_cell
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: thnn_fused_lstm_cell_backward_impl
     description: |
       Computes gradients for the fused LSTM cell operation (_thnn_fused_lstm_cell).
@@ -7199,17 +7210,6 @@ ops:
       - KernelGen
     kind:
       - Math
-    stages:
-      - alpha: '5.4'
-  - id: thnn_fused_lstm_cell
-    description: Fused LSTM cell computation with optional input and hidden biases.
-    for:
-      - _thnn_fused_lstm_cell
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - NeuralNetwork
     stages:
       - alpha: '5.4'
   - id: threshold
