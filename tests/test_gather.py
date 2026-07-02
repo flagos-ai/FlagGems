@@ -69,8 +69,51 @@ def test_gather(inp_shape, dim, dtype):
 
     utils.gems_assert_equal(res_out, ref_out)
 
-    if dtype in (torch.bfloat16,):
-        return
+    out_grad = torch.randn_like(res_out)
+    ref_grad = utils.to_reference(out_grad)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+
+    res_in_grad = utils.to_reference(res_in_grad)
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise", reason="Issues #3835: LLVM ERROR"
+)
+@pytest.mark.gather_backward
+@pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
+@pytest.mark.parametrize("dim", [0, 1, 2])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_gather_backward_autograd(inp_shape, dim, dtype):
+    # Exercise the backward path with repeated indices, which forces
+    # gradient accumulation (reduce="add") and exposes precision loss in
+    # reduced-precision dtypes as well as the unsupported bfloat16 path.
+    inp = torch.randn(
+        inp_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    size_dim = inp_shape[dim]
+
+    index_shape = [
+        random.randint(1, inp_shape[0]),
+        random.randint(1, inp_shape[1]),
+        random.randint(1, inp_shape[2]),
+    ]
+    # Allow repeated indices along `dim` so gradients accumulate.
+    index = torch.randint(
+        0, size_dim, index_shape, dtype=torch.long, device=flag_gems.device
+    )
+
+    ref_inp = utils.to_reference(inp)
+    ref_index = utils.to_reference(index)
+    ref_out = torch.gather(ref_inp, dim, ref_index)
+
+    with flag_gems.use_gems():
+        res_out = torch.gather(inp, dim, index)
+
+    utils.gems_assert_equal(res_out, ref_out)
 
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad)
