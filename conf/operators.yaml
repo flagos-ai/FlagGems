@@ -7591,6 +7591,12 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: sym_size
+    description: |
+      Returns the size of a tensor as a list of integers.
+      This is a metadata operation with no computation.
+    for:
+      - sym_size
   - id: sym_stride
     description: Returns the stride of the input tensor as a tuple of integers. Used for torch.compile symbolic tracing.
     for:
