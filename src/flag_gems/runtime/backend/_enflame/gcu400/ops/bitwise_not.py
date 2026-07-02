@@ -14,11 +14,11 @@ def bitwise_not_func(x):
 
 
 def bitwise_not(A):
-    logger.debug("GEMS BITWISE NOT")
+    logger.debug("GEMS_ENFLAME BITWISE_NOT")
     return bitwise_not_func(A)
 
 
 def bitwise_not_(A):
-    logger.debug("GEMS BITWISE NOT_")
+    logger.debug("GEMS_ENFLAME BITWISE_NOT_")
     bitwise_not_func(A, out0=A)
     return A
