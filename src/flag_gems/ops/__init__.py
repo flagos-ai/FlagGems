@@ -466,6 +466,9 @@ from flag_gems.ops.special_shifted_chebyshev_polynomial_u import (
     special_shifted_chebyshev_polynomial_u,
     special_shifted_chebyshev_polynomial_u_,
 )
+from flag_gems.ops.special_shifted_chebyshev_polynomial_v import (
+    special_shifted_chebyshev_polynomial_v,
+)
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
@@ -1090,6 +1093,7 @@ __all__ = [
     "special_log_softmax",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",
+    "special_shifted_chebyshev_polynomial_v",
     "split_with_sizes_copy",
     "sqrt",
     "sqrt_",

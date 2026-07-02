@@ -648,6 +648,7 @@ _FULL_CONFIG = (
         "special_shifted_chebyshev_polynomial_u_",
         special_shifted_chebyshev_polynomial_u_,
     ),
+    ("special_shifted_chebyshev_polynomial_v", special_shifted_chebyshev_polynomial_v),
     ("split_with_sizes_copy", split_with_sizes_copy),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
