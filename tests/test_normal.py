@@ -34,6 +34,35 @@ def test_normal_(shape, dtype):
     assert torch.abs(std - 10.0) < 0.2
 
 
+@pytest.mark.normal_float_float_
+@pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_normal_float_float_(shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
+
+    if flag_gems.vendor_name in ["metax", "iluvatar"]:
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
+
+    loc = 3.0
+    scale = 10.0
+    res_out = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+    original_ptr = res_out.data_ptr()
+    with flag_gems.use_gems():
+        returned = res_out.normal_(loc, scale)
+
+    assert returned.data_ptr() == original_ptr
+
+    ref_out = utils.to_reference(res_out)
+    mean = torch.mean(ref_out)
+    std = torch.std(ref_out)
+
+    assert torch.abs(mean - 3.0) < 0.2
+    assert torch.abs(std - 10.0) < 0.2
+
+
 @pytest.mark.normal_float_tensor
 @pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
