@@ -85,15 +85,6 @@ def grid_sampler_3d_kernel(
     gy = tl.load(grid_ptr + grid_offset + 1 * grid_stride_xyz).to(tl.float32)
     gz = tl.load(grid_ptr + grid_offset + 2 * grid_stride_xyz).to(tl.float32)
 
-    # Handle NaN - use sentinel value -2.0 (outside valid grid range [-1, 1])
-    # PyTorch returns 0.0 for NaN grid values
-    grid_x_nan = gx != gx
-    grid_y_nan = gy != gy
-    grid_z_nan = gz != gz
-    gx = tl.where(grid_x_nan, -2.0, gx)
-    gy = tl.where(grid_y_nan, -2.0, gy)
-    gz = tl.where(grid_z_nan, -2.0, gz)
-
     # Convert grid coordinates from [-1, 1] to input space
     if align_corners:
         x = (gx + 1.0) * tl.cast(in_w - 1, tl.float32) * 0.5
@@ -152,77 +143,15 @@ def grid_sampler_3d_kernel(
     # positions are caught by the mask and set to zero.
     # For BORDER/REFLECTION: use padded coordinates.
     if interpolation_mode == 1:  # NEAREST
-        # Use banker's rounding (round half to even) to match PyTorch behavior.
-        # For fractional part exactly 0.5, round to nearest even integer.
         if padding_mode == 0:
-            # X coordinate rounding
-            x_floor = tl.floor(x)
-            x_frac = x - x_floor
-            x_is_half = x_frac == 0.5
-            x_floor_int = tl.cast(x_floor, tl.int32)
-            x_is_even = x_floor_int % 2 == 0
-            x_round = tl.where(x_frac < 0.5, x_floor, x_floor + 1)
-            ix = tl.cast(
-                tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
-                tl.int32,
-            )
-            # Y coordinate rounding
-            y_floor = tl.floor(y)
-            y_frac = y - y_floor
-            y_is_half = y_frac == 0.5
-            y_floor_int = tl.cast(y_floor, tl.int32)
-            y_is_even = y_floor_int % 2 == 0
-            y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
-            iy = tl.cast(
-                tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
-                tl.int32,
-            )
-            # Z coordinate rounding
-            z_floor = tl.floor(z)
-            z_frac = z - z_floor
-            z_is_half = z_frac == 0.5
-            z_floor_int = tl.cast(z_floor, tl.int32)
-            z_is_even = z_floor_int % 2 == 0
-            z_round = tl.where(z_frac < 0.5, z_floor, z_floor + 1)
-            iz = tl.cast(
-                tl.where(z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round),
-                tl.int32,
-            )
+            ix = tl.cast(tl.floor(x + 0.5), tl.int32)
+            iy = tl.cast(tl.floor(y + 0.5), tl.int32)
+            iz = tl.cast(tl.floor(z + 0.5), tl.int32)
         else:
-            # X coordinate rounding (padded)
-            x_floor = tl.floor(x_pad)
-            x_frac = x_pad - x_floor
-            x_is_half = x_frac == 0.5
-            x_floor_int = tl.cast(x_floor, tl.int32)
-            x_is_even = x_floor_int % 2 == 0
-            x_round = tl.where(x_frac < 0.5, x_floor, x_floor + 1)
-            ix = tl.cast(
-                tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
-                tl.int32,
-            )
-            # Y coordinate rounding (padded)
-            y_floor = tl.floor(y_pad)
-            y_frac = y_pad - y_floor
-            y_is_half = y_frac == 0.5
-            y_floor_int = tl.cast(y_floor, tl.int32)
-            y_is_even = y_floor_int % 2 == 0
-            y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
-            iy = tl.cast(
-                tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
-                tl.int32,
-            )
-            # Z coordinate rounding (padded)
-            z_floor = tl.floor(z_pad)
-            z_frac = z_pad - z_floor
-            z_is_half = z_frac == 0.5
-            z_floor_int = tl.cast(z_floor, tl.int32)
-            z_is_even = z_floor_int % 2 == 0
-            z_round = tl.where(z_frac < 0.5, z_floor, z_floor + 1)
-            iz = tl.cast(
-                tl.where(z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round),
-                tl.int32,
-            )
-    else:  # BILINEAR (trilinear)
+            ix = tl.cast(tl.floor(x_pad + 0.5), tl.int32)
+            iy = tl.cast(tl.floor(y_pad + 0.5), tl.int32)
+            iz = tl.cast(tl.floor(z_pad + 0.5), tl.int32)
+    else:  # BILINEAR
         if padding_mode == 0:
             ix0 = tl.cast(tl.floor(x), tl.int32)
             iy0 = tl.cast(tl.floor(y), tl.int32)
@@ -262,14 +191,7 @@ def grid_sampler_3d_kernel(
                 mask_od = (iz >= 0) & (iz < in_d)
                 mask_oh = (iy >= 0) & (iy < in_h)
                 mask_ow = (ix >= 0) & (ix < in_w)
-                mask = (
-                    mask_od
-                    & mask_oh
-                    & mask_ow
-                    & ~grid_x_nan
-                    & ~grid_y_nan
-                    & ~grid_z_nan
-                )
+                mask = mask_od & mask_oh & mask_ow
                 inp_offset = (
                     n_idx * in_strides_n
                     + channel * in_strides_c
@@ -286,11 +208,7 @@ def grid_sampler_3d_kernel(
                     + iy * in_strides_h
                     + ix * in_strides_w
                 )
-                val = tl.where(
-                    grid_x_nan | grid_y_nan | grid_z_nan,
-                    0.0,
-                    tl.load(input_ptr + inp_offset),
-                )
+                val = tl.load(input_ptr + inp_offset)
         else:
             # Trilinear interpolation
             if padding_mode == 0:  # ZEROS
@@ -301,9 +219,6 @@ def grid_sampler_3d_kernel(
                     & (iy0 < in_h)
                     & (ix0 >= 0)
                     & (ix0 < in_w)
-                    & ~grid_x_nan
-                    & ~grid_y_nan
-                    & ~grid_z_nan
                 )
                 mask_001 = (
                     (iz0 >= 0)
@@ -312,9 +227,6 @@ def grid_sampler_3d_kernel(
                     & (iy0 < in_h)
                     & (ix1 >= 0)
                     & (ix1 < in_w)
-                    & ~grid_x_nan
-                    & ~grid_y_nan
-                    & ~grid_z_nan
                 )
                 mask_010 = (
                     (iz0 >= 0)
@@ -323,9 +235,6 @@ def grid_sampler_3d_kernel(
                     & (iy1 < in_h)
                     & (ix0 >= 0)
                     & (ix0 < in_w)
-                    & ~grid_x_nan
-                    & ~grid_y_nan
-                    & ~grid_z_nan
                 )
                 mask_011 = (
                     (iz0 >= 0)
@@ -334,9 +243,6 @@ def grid_sampler_3d_kernel(
                     & (iy1 < in_h)
                     & (ix1 >= 0)
                     & (ix1 < in_w)
-                    & ~grid_x_nan
-                    & ~grid_y_nan
-                    & ~grid_z_nan
                 )
                 mask_100 = (
                     (iz1 >= 0)
@@ -345,9 +251,6 @@ def grid_sampler_3d_kernel(
                     & (iy0 < in_h)
                     & (ix0 >= 0)
                     & (ix0 < in_w)
-                    & ~grid_x_nan
-                    & ~grid_y_nan
-                    & ~grid_z_nan
                 )
                 mask_101 = (
                     (iz1 >= 0)
@@ -356,9 +259,6 @@ def grid_sampler_3d_kernel(
                     & (iy0 < in_h)
                     & (ix1 >= 0)
                     & (ix1 < in_w)
-                    & ~grid_x_nan
-                    & ~grid_y_nan
-                    & ~grid_z_nan
                 )
                 mask_110 = (
                     (iz1 >= 0)
@@ -367,9 +267,6 @@ def grid_sampler_3d_kernel(
                     & (iy1 < in_h)
                     & (ix0 >= 0)
                     & (ix0 < in_w)
-                    & ~grid_x_nan
-                    & ~grid_y_nan
-                    & ~grid_z_nan
                 )
                 mask_111 = (
                     (iz1 >= 0)
@@ -378,9 +275,6 @@ def grid_sampler_3d_kernel(
                     & (iy1 < in_h)
                     & (ix1 >= 0)
                     & (ix1 < in_w)
-                    & ~grid_x_nan
-                    & ~grid_y_nan
-                    & ~grid_z_nan
                 )
 
                 offset_000 = (
@@ -525,10 +419,6 @@ def grid_sampler_3d_kernel(
             c1 = c01 * (1.0 - fy) + c11 * fy
 
             val = c0 * (1.0 - fx) + c1 * fx
-
-            # Handle NaN in grid for border/reflection modes
-            if padding_mode != 0:
-                val = tl.where(grid_x_nan | grid_y_nan | grid_z_nan, 0.0, val)
 
         # Store result
         out_offset = out_offset_base + channel * out_strides_c
