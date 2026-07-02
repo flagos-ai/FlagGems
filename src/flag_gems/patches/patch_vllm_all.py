@@ -8,6 +8,15 @@ import flag_gems
 from flag_gems.patches.patch_util import patch_module_method, patch_vllm_lib
 
 
+def _metadata_max_num_splits(metadata) -> int:
+    if metadata is None:
+        return 0
+    value = getattr(metadata, "max_num_splits", None)
+    if value is None:
+        value = getattr(metadata, "num_splits", 0)
+    return int(value or 0)
+
+
 def custom_gems_rms_forward_cuda(self, x, residual=None):
     from flag_gems.modules.normalization import gems_rms_forward
 
@@ -211,6 +220,14 @@ def custom_gems_flash_attention_impl_forward(
             max_seqlen_k = local_metadata.local_max_seq_len
             block_table = local_metadata.local_block_table
             scheduler_metadata = local_metadata.local_scheduler_metadata
+            num_splits = int(
+                getattr(
+                    local_metadata,
+                    "local_max_num_splits",
+                    _metadata_max_num_splits(local_metadata),
+                )
+                or 0
+            )
         else:
             cu_seqlens_q = attn_metadata.query_start_loc
             seqused_k = attn_metadata.seq_lens
@@ -218,6 +235,7 @@ def custom_gems_flash_attention_impl_forward(
             max_seqlen_k = attn_metadata.max_seq_len
             block_table = attn_metadata.block_table
             scheduler_metadata = attn_metadata.scheduler_metadata
+            num_splits = _metadata_max_num_splits(attn_metadata)
 
         descale_shape = (cu_seqlens_q.shape[0] - 1, key.shape[1])
 
@@ -242,7 +260,7 @@ def custom_gems_flash_attention_impl_forward(
             k_descale=layer._k_scale.expand(descale_shape),
             v_descale=layer._v_scale.expand(descale_shape),
             s_aux=None,
-            num_splits=0,
+            num_splits=num_splits,
             cp_world_size=1,
             cp_rank=0,
             cp_tot_seqused_k=None,
@@ -497,7 +515,7 @@ def custom_gems_flashattn_mla_forward_decode(
         return_softmax_lse=self.need_to_return_lse_for_decode,
         fa_version=2,
         scheduler_metadata=attn_metadata.decode.scheduler_metadata,
-        num_splits=0,
+        num_splits=_metadata_max_num_splits(attn_metadata.decode),
         cp_world_size=self.dcp_world_size,
         cp_rank=self.dcp_rank,
         cp_tot_seqused_k=attn_metadata.decode.dcp_tot_seq_lens,

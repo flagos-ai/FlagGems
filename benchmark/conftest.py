@@ -119,6 +119,69 @@ def pytest_addoption(parser):
         "--query", action="store_true", default=False, help="Enable query mode"
     )
 
+    try:
+        parser.addoption(
+            "--flash-attn-varlen-fa-version",
+            action="store",
+            type=int,
+            default=2,
+            choices=[2, 3],
+            help=(
+                "FA version used by flash_attn_varlen_func accuracy and benchmark "
+                "tests."
+            ),
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register this option in
+        # tests/conftest.py. Reuse the existing option in that case.
+        pass
+
+    try:
+        parser.addoption(
+            "--flash-attn-varlen-enable-vllm",
+            action="store_true",
+            default=False,
+            help=(
+                "Enable vLLM flash-attention baseline benchmarks for "
+                "flash_attn_varlen_func. FA3 benchmarks run FlagGems-only by "
+                "default."
+            ),
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register this option in
+        # tests/conftest.py. Reuse the existing option in that case.
+        pass
+
+    try:
+        parser.addoption(
+            "--flash-attn-varlen-case",
+            action="store",
+            default="all",
+            choices=["all", "qwenCase", "prefillDecodePageCase"],
+            help=(
+                "Select flash_attn_varlen_func benchmark cases. 'all' runs both "
+                "qwenCase and prefillDecodePageCase."
+            ),
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register this option in
+        # tests/conftest.py. Reuse the existing option in that case.
+        pass
+
+    try:
+        parser.addoption(
+            "--hopper-mm-version",
+            action="store",
+            default="original",
+            required=False,
+            choices=["original", "wasp"],
+            help="Hopper mm implementation used by mm accuracy and benchmark tests.",
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register this option in
+        # tests/conftest.py. Reuse the existing option in that case.
+        pass
+
     parser.addoption(
         "--metrics",
         action="append",

@@ -6,9 +6,339 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .hopper_fa3_utils import (
+    Shape as HopperFA3Shape,
+    accuracy_shapes as hopper_fa3_accuracy_shapes,
+    build_reference as build_hopper_fa3_reference,
+    dispatch_source as hopper_fa3_dispatch_source,
+    dispatches_to_hopper as dispatches_to_hopper_fa3,
+    is_fa3_supported as is_hopper_fa3_supported,
+    make_varlen as make_hopper_fa3_varlen,
+    max_mean_abs as hopper_fa3_max_mean_abs,
+    output_tensor as hopper_fa3_output_tensor,
+    run_flag_gems as run_hopper_fa3,
+    tolerances as hopper_fa3_tolerances,
+)
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
+
+
+def _selected_fa_version(pytestconfig) -> int:
+    return pytestconfig.getoption("flash_attn_varlen_fa_version")
+
+
+def _skip_unless_hopper_fa3(pytestconfig) -> None:
+    if _selected_fa_version(pytestconfig) != 3:
+        pytest.skip("Hopper FA3 coverage only runs with fa_version=3.")
+    if not is_hopper_fa3_supported():
+        pytest.skip("requires CUDA Hopper with Triton FA3 support.")
+
+
+def _skip_unless_selected_fa_supported(pytestconfig) -> None:
+    fa_version = _selected_fa_version(pytestconfig)
+    if fa_version == 3 and not is_hopper_fa3_supported():
+        pytest.skip("FA3 requires CUDA Hopper with Triton FA3 support.")
+
+
+def _skip_unsupported_fa3_legacy_paged_case(
+    pytestconfig,
+    *,
+    optimize_init: bool = False,
+) -> None:
+    if _selected_fa_version(pytestconfig) != 3:
+        return
+    _skip_unless_selected_fa_supported(pytestconfig)
+    if optimize_init:
+        pytest.skip("FA3 opt-init path is not implemented for this test.")
+
+
+def _is_fa3_supported() -> bool:
+    try:
+        from flag_gems.runtime.backend._nvidia.hopper.ops.flash_api_v3 import (
+            is_fa3_supported,
+        )
+
+        return is_fa3_supported()
+    except Exception:
+        if flag_gems.device != "cuda" or not torch.cuda.is_available():
+            return False
+        return torch.cuda.get_device_capability()[0] >= 9
+
+
+def _run_flash_attn_varlen_func(
+    q,
+    k,
+    v,
+    cu_seqlens_q,
+    seqused_k,
+    max_seqlen_q,
+    max_seqlen_k,
+    softmax_scale,
+    causal,
+    window_size,
+    block_table,
+    softcap,
+    alibi_slopes=None,
+    optimize_init=False,
+    fa_version=2,
+):
+    if fa_version == 3:
+        if optimize_init:
+            pytest.skip("FA3 opt-init path is not implemented for this test.")
+        if not _is_fa3_supported():
+            pytest.skip("FA3 requires CUDA Hopper with Triton FA3 support.")
+        op = flag_gems.flash_attn_varlen_func
+    elif vendor_name == "cambricon":
+        op = flag_gems.flash_attn_varlen_func
+    elif optimize_init:
+        op = flag_gems.ops.flash_attn_varlen_opt_func
+    else:
+        op = flag_gems.ops.flash_attn_varlen_func
+
+    return op(
+        q=q,
+        k=k,
+        v=v,
+        cu_seqlens_q=cu_seqlens_q,
+        seqused_k=seqused_k,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        softmax_scale=softmax_scale,
+        causal=causal,
+        window_size=window_size,
+        block_table=block_table,
+        softcap=softcap,
+        alibi_slopes=alibi_slopes,
+        fa_version=fa_version,
+    )
+
+
+@pytest.mark.hopper_fa3
+@pytest.mark.flash_attn_varlen_func
+def test_flash_attn_varlen_func_hopper_fa3_dispatch(pytestconfig):
+    _skip_unless_hopper_fa3(pytestconfig)
+    assert dispatches_to_hopper_fa3(), (
+        "flag_gems.flash_attn_varlen_func is not routed to the Hopper backend; "
+        f"source={hopper_fa3_dispatch_source()}"
+    )
+
+
+@pytest.mark.hopper_fa3
+@pytest.mark.flash_attn_varlen_func
+@pytest.mark.parametrize(
+    "shape", hopper_fa3_accuracy_shapes(), ids=lambda shape: shape.name
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@torch.inference_mode()
+def test_flash_attn_varlen_func_hopper_fa3_accuracy(pytestconfig, shape, dtype):
+    _skip_unless_selected_fa_supported(pytestconfig)
+    fa_version = _selected_fa_version(pytestconfig)
+    tensors = make_hopper_fa3_varlen(shape, dtype, flag_gems.device, seed=2026)
+    ref, ref_kind = build_hopper_fa3_reference(
+        tensors, shape, fa_version=fa_version
+    )
+    out = hopper_fa3_output_tensor(
+        run_hopper_fa3(tensors, shape, fa_version=fa_version)
+    )
+    atol, rtol = hopper_fa3_tolerances(dtype, tensors.max_seqlen_k, ref_kind)
+
+    max_abs, mean_abs = hopper_fa3_max_mean_abs(out, ref)
+    msg = (
+        f"shape={shape.name}, dtype={dtype}, fa_version={fa_version}, ref={ref_kind}, "
+        f"max_abs={max_abs:.3e}, mean_abs={mean_abs:.3e}"
+    )
+    torch.testing.assert_close(out.float(), ref.float(), atol=atol, rtol=rtol, msg=msg)
+
+
+@pytest.mark.hopper_fa3
+@pytest.mark.flash_attn_varlen_func
+@pytest.mark.parametrize(
+    "force_path,shape",
+    [
+        ("long", hopper_fa3_accuracy_shapes()[0]),
+        ("short", hopper_fa3_accuracy_shapes()[2]),
+        ("decode", hopper_fa3_accuracy_shapes()[2]),
+        ("splitkv", hopper_fa3_accuracy_shapes()[2]),
+        ("splitkv", hopper_fa3_accuracy_shapes()[3]),
+        ("paged_decode", hopper_fa3_accuracy_shapes()[3]),
+        (
+            "direct",
+            HopperFA3Shape(
+                "force_direct_dense_small",
+                [(64, 64), (32, 96), (1, 128)],
+                8,
+                2,
+                128,
+                True,
+            ),
+        ),
+        (
+            "auto",
+            HopperFA3Shape(
+                "auto_paged_small",
+                [(32, 128), (64, 512), (1, 256)],
+                8,
+                2,
+                128,
+                True,
+                paged=True,
+                block_size=16,
+            ),
+        ),
+        (
+            "auto",
+            HopperFA3Shape(
+                "auto_paged_medium",
+                [(512, 512)],
+                8,
+                2,
+                128,
+                True,
+                paged=True,
+                block_size=16,
+            ),
+        ),
+        (
+            "mixed",
+            HopperFA3Shape(
+                "force_mixed_dense_serve",
+                [(128, 128), (1, 256), (1, 320), (1, 384)],
+                8,
+                2,
+                128,
+                True,
+            ),
+        ),
+        (
+            "serve",
+            HopperFA3Shape(
+                "force_serve_dense",
+                [(128, 128), (1, 256), (1, 320), (1, 384)],
+                8,
+                2,
+                128,
+                True,
+            ),
+        ),
+        (
+            "mixed",
+            HopperFA3Shape(
+                "force_mixed_paged_serve",
+                [(128, 128), (1, 256), (1, 320), (1, 384)],
+                8,
+                2,
+                128,
+                True,
+                paged=True,
+                block_size=16,
+            ),
+        ),
+        (
+            "paged_serve",
+            HopperFA3Shape(
+                "force_paged_serve",
+                [(128, 128), (1, 256), (1, 320), (1, 384)],
+                8,
+                2,
+                128,
+                True,
+                paged=True,
+                block_size=16,
+            ),
+        ),
+    ],
+    ids=lambda item: item if isinstance(item, str) else item.name,
+)
+@torch.inference_mode()
+def test_flash_attn_varlen_func_hopper_fa3_force_paths(
+    monkeypatch, pytestconfig, force_path, shape
+):
+    _skip_unless_hopper_fa3(pytestconfig)
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_FORCE_PATH", force_path)
+    tensors = make_hopper_fa3_varlen(shape, torch.float16, flag_gems.device, seed=2027)
+    ref, ref_kind = build_hopper_fa3_reference(tensors, shape, fa_version=3)
+    out = hopper_fa3_output_tensor(run_hopper_fa3(tensors, shape, fa_version=3))
+    atol, rtol = hopper_fa3_tolerances(torch.float16, tensors.max_seqlen_k, ref_kind)
+    max_abs, mean_abs = hopper_fa3_max_mean_abs(out, ref)
+    msg = (
+        f"force_path={force_path}, shape={shape.name}, ref={ref_kind}, "
+        f"max_abs={max_abs:.3e}, mean_abs={mean_abs:.3e}"
+    )
+    torch.testing.assert_close(out.float(), ref.float(), atol=atol, rtol=rtol, msg=msg)
+
+
+@pytest.mark.hopper_fa3
+@pytest.mark.flash_attn_varlen_func
+@pytest.mark.parametrize(
+    "decode_strategy,shape",
+    [
+        ("onepass", hopper_fa3_accuracy_shapes()[2]),
+        ("short", hopper_fa3_accuracy_shapes()[2]),
+        ("splitkv", hopper_fa3_accuracy_shapes()[3]),
+        ("flashdecoding", hopper_fa3_accuracy_shapes()[3]),
+    ],
+    ids=lambda item: item if isinstance(item, str) else item.name,
+)
+@torch.inference_mode()
+def test_flash_attn_varlen_func_hopper_fa3_decode_strategies(
+    monkeypatch, pytestconfig, decode_strategy, shape
+):
+    _skip_unless_hopper_fa3(pytestconfig)
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_FORCE_PATH", "auto")
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_DECODE_STRATEGY", decode_strategy)
+    tensors = make_hopper_fa3_varlen(shape, torch.float16, flag_gems.device, seed=2028)
+    ref, ref_kind = build_hopper_fa3_reference(tensors, shape, fa_version=3)
+    out = hopper_fa3_output_tensor(run_hopper_fa3(tensors, shape, fa_version=3))
+    atol, rtol = hopper_fa3_tolerances(torch.float16, tensors.max_seqlen_k, ref_kind)
+    max_abs, mean_abs = hopper_fa3_max_mean_abs(out, ref)
+    msg = (
+        f"decode_strategy={decode_strategy}, shape={shape.name}, ref={ref_kind}, "
+        f"max_abs={max_abs:.3e}, mean_abs={mean_abs:.3e}"
+    )
+    torch.testing.assert_close(out.float(), ref.float(), atol=atol, rtol=rtol, msg=msg)
+
+
+@pytest.mark.hopper_fa3
+@pytest.mark.flash_attn_varlen_func
+@pytest.mark.parametrize("small_strategy", ["direct", "short"])
+@torch.inference_mode()
+def test_flash_attn_varlen_func_hopper_fa3_small_strategies(
+    monkeypatch, pytestconfig, small_strategy
+):
+    _skip_unless_hopper_fa3(pytestconfig)
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_FORCE_PATH", "auto")
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_SMALL_STRATEGY", small_strategy)
+    shape = HopperFA3Shape(
+        f"small_strategy_{small_strategy}",
+        [(64, 64), (32, 96), (1, 128)],
+        8,
+        2,
+        128,
+        True,
+    )
+    tensors = make_hopper_fa3_varlen(shape, torch.float16, flag_gems.device, seed=2029)
+    ref, ref_kind = build_hopper_fa3_reference(tensors, shape, fa_version=3)
+    out = hopper_fa3_output_tensor(run_hopper_fa3(tensors, shape, fa_version=3))
+    atol, rtol = hopper_fa3_tolerances(torch.float16, tensors.max_seqlen_k, ref_kind)
+    max_abs, mean_abs = hopper_fa3_max_mean_abs(out, ref)
+    msg = (
+        f"small_strategy={small_strategy}, ref={ref_kind}, "
+        f"max_abs={max_abs:.3e}, mean_abs={mean_abs:.3e}"
+    )
+    torch.testing.assert_close(out.float(), ref.float(), atol=atol, rtol=rtol, msg=msg)
+
+
+@pytest.mark.hopper_fa3
+@pytest.mark.flash_attn_varlen_func
+@torch.inference_mode()
+def test_flash_attn_varlen_func_hopper_fa3_mixed_dtype_unsupported(pytestconfig):
+    _skip_unless_hopper_fa3(pytestconfig)
+    shape = hopper_fa3_accuracy_shapes()[0]
+    tensors = make_hopper_fa3_varlen(shape, torch.float16, flag_gems.device, seed=2026)
+    tensors.k = tensors.k.to(torch.bfloat16)
+    with pytest.raises(RuntimeError, match="same dtype"):
+        run_hopper_fa3(tensors, shape, fa_version=3)
 
 
 # Following varlen and paged attn tests are copied from
@@ -93,6 +423,7 @@ def ref_paged_attn(
     return torch.cat(outputs, dim=0)
 
 
+@pytest.mark.hopper_fa3
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2815: Not supported")
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2816: Not working")
@@ -109,6 +440,7 @@ def ref_paged_attn(
 @torch.inference_mode()
 def test_flash_attn_varlen_func(
     monkeypatch,
+    pytestconfig,
     seq_lens: List[Tuple[int, int]],
     num_heads: Tuple[int, int],
     head_size: int,
@@ -122,10 +454,14 @@ def test_flash_attn_varlen_func(
 ) -> None:
     if vendor_name == "mthreads":
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
+    fa_version = _selected_fa_version(pytestconfig)
+    _skip_unsupported_fa3_legacy_paged_case(
+        pytestconfig, optimize_init=optimize_init
+    )
 
     # (Issue) numerical stability concern
     if alibi is True and soft_cap is not None:
-        return
+        pytest.skip("ALiBi + softcap reference is disabled for this test.")
 
     with torch.device(flag_gems.device):
         utils.init_seed(1234567890)
@@ -181,58 +517,23 @@ def test_flash_attn_varlen_func(
         else:
             alibi_slopes, attn_bias = None, None
 
-        if vendor_name == "cambricon":
-            output = flag_gems.flash_attn_varlen_func(
-                q=query,
-                k=key_cache,
-                v=value_cache,
-                cu_seqlens_q=cu_query_lens,
-                seqused_k=seqused_k,
-                max_seqlen_q=max_query_len,
-                max_seqlen_k=max_kv_len,
-                softmax_scale=scale,
-                causal=causal,
-                window_size=window_size,
-                block_table=block_tables,
-                softcap=soft_cap if soft_cap is not None else 0,
-                alibi_slopes=alibi_slopes,
-                fa_version=2,
-            )
-        else:
-            if optimize_init:
-                output = flag_gems.ops.flash_attn_varlen_opt_func(
-                    q=query,
-                    k=key_cache,
-                    v=value_cache,
-                    cu_seqlens_q=cu_query_lens,
-                    seqused_k=seqused_k,
-                    max_seqlen_q=max_query_len,
-                    max_seqlen_k=max_kv_len,
-                    softmax_scale=scale,
-                    causal=causal,
-                    window_size=window_size,
-                    block_table=block_tables,
-                    softcap=soft_cap if soft_cap is not None else 0,
-                    alibi_slopes=alibi_slopes,
-                    fa_version=2,
-                )
-            else:
-                output = flag_gems.ops.flash_attn_varlen_func(
-                    q=query,
-                    k=key_cache,
-                    v=value_cache,
-                    cu_seqlens_q=cu_query_lens,
-                    seqused_k=seqused_k,
-                    max_seqlen_q=max_query_len,
-                    max_seqlen_k=max_kv_len,
-                    softmax_scale=scale,
-                    causal=causal,
-                    window_size=window_size,
-                    block_table=block_tables,
-                    softcap=soft_cap if soft_cap is not None else 0,
-                    alibi_slopes=alibi_slopes,
-                    fa_version=2,
-                )
+        output = _run_flash_attn_varlen_func(
+            q=query,
+            k=key_cache,
+            v=value_cache,
+            cu_seqlens_q=cu_query_lens,
+            seqused_k=seqused_k,
+            max_seqlen_q=max_query_len,
+            max_seqlen_k=max_kv_len,
+            softmax_scale=scale,
+            causal=causal,
+            window_size=window_size,
+            block_table=block_tables,
+            softcap=soft_cap if soft_cap is not None else 0,
+            alibi_slopes=alibi_slopes,
+            optimize_init=optimize_init,
+            fa_version=fa_version,
+        )
 
         ref_output = ref_paged_attn(
             query=query,
@@ -253,6 +554,7 @@ def test_flash_attn_varlen_func(
 
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2815: Not working")
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2816: Not working")
+@pytest.mark.hopper_fa3
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (1, 18), (1, 463)]])
 @pytest.mark.parametrize("num_heads", [(8, 2)])
@@ -265,6 +567,7 @@ def test_flash_attn_varlen_func(
 @torch.inference_mode()
 def test_flash_attn_varlen_func_swap_qg(
     monkeypatch,
+    pytestconfig,
     seq_lens: List[Tuple[int, int]],
     num_heads: Tuple[int, int],
     head_size: int,
@@ -276,7 +579,8 @@ def test_flash_attn_varlen_func_swap_qg(
 ) -> None:
     if vendor_name == "mthreads":
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
-
+    fa_version = _selected_fa_version(pytestconfig)
+    _skip_unsupported_fa3_legacy_paged_case(pytestconfig)
     with torch.device(flag_gems.device):
         utils.init_seed(1234567890)
         num_seqs = len(seq_lens)
@@ -310,38 +614,21 @@ def test_flash_attn_varlen_func_swap_qg(
             device=device,
         )
 
-        if vendor_name == "cambricon":
-            output = flag_gems.flash_attn_varlen_func(
-                q=query,
-                k=key_cache,
-                v=value_cache,
-                cu_seqlens_q=cu_query_lens,
-                seqused_k=seqused_k,
-                max_seqlen_q=max_query_len,
-                max_seqlen_k=max_kv_len,
-                softmax_scale=scale,
-                causal=True,
-                window_size=window_size,
-                block_table=block_tables,
-                softcap=soft_cap if soft_cap is not None else 0,
-                fa_version=2,
-            )
-        else:
-            output = flag_gems.ops.flash_attn_varlen_func(
-                q=query,
-                k=key_cache,
-                v=value_cache,
-                cu_seqlens_q=cu_query_lens,
-                seqused_k=seqused_k,
-                max_seqlen_q=max_query_len,
-                max_seqlen_k=max_kv_len,
-                softmax_scale=scale,
-                causal=True,
-                window_size=window_size,
-                block_table=block_tables,
-                softcap=soft_cap if soft_cap is not None else 0,
-                fa_version=2,
-            )
+        output = _run_flash_attn_varlen_func(
+            q=query,
+            k=key_cache,
+            v=value_cache,
+            cu_seqlens_q=cu_query_lens,
+            seqused_k=seqused_k,
+            max_seqlen_q=max_query_len,
+            max_seqlen_k=max_kv_len,
+            softmax_scale=scale,
+            causal=True,
+            window_size=window_size,
+            block_table=block_tables,
+            softcap=soft_cap if soft_cap is not None else 0,
+            fa_version=fa_version,
+        )
 
         ref_output = ref_paged_attn(
             query=query,
