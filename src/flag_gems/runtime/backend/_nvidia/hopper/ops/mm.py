@@ -63,6 +63,43 @@ else:
     TLE_REMOTE_A_SLOTS = 2
 
 
+def _is_tma_stride_aligned(t: torch.Tensor) -> bool:
+    """TMA requires the tensor's outer (non-unit) stride to be 16-byte aligned.
+
+    The inner dim must be contiguous (stride 1) for TMA; verify the other dim's
+    stride, in bytes, is a multiple of 16. Fully-strided tensors (neither dim
+    contiguous) are copied to contiguous upstream, so they do not reach here.
+    """
+    align = 16 // t.element_size()  # elems per 16 bytes: fp16/bf16 -> 8, fp32 -> 4
+    s0, s1 = t.stride()
+    if s1 == 1:
+        return s0 % align == 0
+    if s0 == 1:
+        return s1 % align == 0
+    return False
+
+
+def _tma_safe(t: torch.Tensor) -> torch.Tensor:
+    """Return ``t``, or an aligned contiguous copy of it, safe for the Hopper mm path.
+
+    ``general_mm`` builds a TMA ``TensorDescriptor`` from the operand, which requires
+    both the outer (non-unit) stride and the base address to be 16-byte aligned. A
+    gapped view with an unaligned outer stride (e.g. ``as_strided((M, K), (65, 1))``
+    -> 65 * 2B = 130B) or any view with an unaligned base (odd ``storage_offset``,
+    e.g. ``weight[:, 1:]``) otherwise makes the descriptor illegal ("strides/base must
+    be 16-byte aligned"). Copy those to a fresh contiguous buffer. Contiguous tensors,
+    clean transposes (column-major, already handled by the kernels), and aligned
+    gapped views are left untouched -- copying them would be wasteful and could change
+    the dispatched kernel. ``.contiguous()`` is a no-op for a stride-contiguous tensor,
+    so a misaligned base is fixed with ``.clone()``. See issue #2489.
+    """
+    if t.data_ptr() % 16 == 0 and (
+        t.is_contiguous() or t.t().is_contiguous() or _is_tma_stride_aligned(t)
+    ):
+        return t
+    return t.contiguous() if not t.is_contiguous() else t.clone()
+
+
 def is_tma_compatible(a, b, N, K):
     """
     Check if tensors are compatible with TMA (Tensor Memory Accelerator).
@@ -978,11 +1015,9 @@ def cluster_remote_mm(a, b, c, M, N, K):
 
 def mm(a, b):
     device = a.device
-    # handle non-contiguous inputs if necessary
-    if a.stride(0) > 1 and a.stride(1) > 1:
-        a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
-        b = b.contiguous()
+    # copy operands that are not TMA-safe (unaligned stride/base); see #2489
+    a = _tma_safe(a)
+    b = _tma_safe(b)
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
@@ -1009,11 +1044,9 @@ def mm(a, b):
 
 
 def mm_out(a, b, *, out):
-    # handle non-contiguous inputs if necessary
-    if a.stride(0) > 1 and a.stride(1) > 1:
-        a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
-        b = b.contiguous()
+    # copy operands that are not TMA-safe (unaligned stride/base); see #2489
+    a = _tma_safe(a)
+    b = _tma_safe(b)
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
