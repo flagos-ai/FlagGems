@@ -10,7 +10,7 @@ from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 # avoid

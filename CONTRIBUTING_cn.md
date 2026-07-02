@@ -4,6 +4,8 @@
 
 感谢您对 FlagGems 的兴趣！我们使用 GitHub 来托管代码、管理问题和处理拉取请求。在贡献之前，请阅读以下指南。
 
+有关项目治理、角色定义和决策流程，请参阅 [GOVERNANCE_cn.md](./GOVERNANCE_cn.md)。
+
 ## 1. 错误报告
 
 请使用 GitHub 的 Issues 来报告错误。在报告错误时，请提供：

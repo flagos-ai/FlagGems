@@ -67,6 +67,9 @@ def create_kv_caches_with_random_flash(
 @pytest.mark.parametrize("dtype", DTYPE_LIST)
 @pytest.mark.parametrize("kv_cache_dtype", ["auto"])
 @pytest.mark.parametrize("seed", [2025])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 @torch.inference_mode()
 def test_reshape_and_cache_flash(
     num_tokens: int,

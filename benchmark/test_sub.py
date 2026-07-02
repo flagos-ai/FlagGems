@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
 @pytest.mark.sub
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_sub():
     bench = base.BinaryPointwiseBenchmark(
         op_name="sub",
@@ -16,6 +21,9 @@ def test_sub():
 
 # TODO(Qiming): Check why we don't have complex type here
 @pytest.mark.sub_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_sub_inplace():
     bench = base.BinaryPointwiseBenchmark(
         op_name="sub_",

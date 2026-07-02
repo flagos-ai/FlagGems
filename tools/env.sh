@@ -1,6 +1,14 @@
 BACKEND=$1
 echo "Setting up environment variable for backend $BACKEND"
 
+# Vendor env scripts append to these variables without guarding against unset.
+# Default them here so callers with `set -u` (e.g. setup.sh) don't fail.
+export CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH:-}"
+export C_INCLUDE_PATH="${C_INCLUDE_PATH:-}"
+export CPLUS_INCLUDE_PATH="${CPLUS_INCLUDE_PATH:-}"
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+export LIBRARY_PATH="${LIBRARY_PATH:-}"
+
 case $BACKEND in
   ascend-cann850|ascend-cann900)
     # This script is provided by the Huawei Ascend CANN toolkit installation.
@@ -13,6 +21,16 @@ case $BACKEND in
 
     # TODO: Check if this is necessary
     # export TRITON_ALL_BLOCKS_PARALLEL=1
+    ;;
+  cambricon)
+    export PATH=/usr/local/neuware/bin:$PATH
+    export LD_LIBRARY_PATH=/usr/local/neuware/lib64:$LD_LIBRARY_PATH
+    ;;
+  enflame)
+    # gcc-toolset-14 provides GLIBCXX_3.4.32+ required by some packages
+    if [ -d /opt/OpenCloudOS/gcc-toolset-14/root/usr/lib64 ]; then
+      export LD_LIBRARY_PATH=/opt/OpenCloudOS/gcc-toolset-14/root/usr/lib64:$LD_LIBRARY_PATH
+    fi
     ;;
   hygon)
     source /opt/dtk-26.04/env.sh
@@ -35,7 +53,7 @@ case $BACKEND in
       export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/backends/metax/lib:$LD_LIBRARY_PATH
     fi
     ;;
-  nvidia)
+  nvidia|nvidia-cuda128|nvidia-cuda133)
     export PATH=/usr/local/cuda/bin:$PATH
     export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
     ;;
@@ -61,6 +79,12 @@ case $BACKEND in
     export LD_LIBRARY_PATH=/usr/local/kuiper/lib:$LD_LIBRARY_PATH
     export LD_LIBRARY_PATH=/usr/local/kuiper/tsm8-profiler/lib:$LD_LIBRARY_PATH
     export LD_LIBRARY_PATH=${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}
+
+    # Torch XLA is not used in TsingMicro, and it may lead to LLVM error
+    export USE_TORCH_XLA=0
+    # Torch compiler is not supported on TsingMicro, and in particular,
+    # it is not used for inference scenario
+    export TORCH_COMPILE_DIABLE=1
 
     # if [ -n "${USE_TRITON}" ]; then
     #   export PYTHONPATH=$SITE_PACKAGES/triton/backends/tsingmicro/llvm/python_packages/mlir_core
