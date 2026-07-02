@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -16,6 +18,9 @@ class RandintBenchmark(base.GenericBenchmarkExcluse1D):
 
 
 @pytest.mark.randint
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_randint():
     bench = RandintBenchmark(
         input_fn=randint_input_fn,
