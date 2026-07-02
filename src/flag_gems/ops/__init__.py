@@ -193,6 +193,7 @@ from flag_gems.ops.flash_attention_backward import (
 from flag_gems.ops.flip import flip
 from flag_gems.ops.floor import floor, floor_out
 from flag_gems.ops.floor_ import floor_
+from flag_gems.ops.fmax import fmax, fmax_out
 from flag_gems.ops.fmin import fmin, fmin_out
 from flag_gems.ops.fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from flag_gems.ops.fmod_ import fmod_
@@ -745,6 +746,8 @@ __all__ = [
     "floor_divide",
     "floor_divide_",
     "floor_out",
+    "fmax",
+    "fmax_out",
     "fmin",
     "fmin_out",
     "fmod_",
