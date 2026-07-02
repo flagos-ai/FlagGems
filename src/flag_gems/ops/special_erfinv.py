@@ -67,7 +67,7 @@ def _special_erfinv_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr)
 
 
 def _launch_special_erfinv_kernel(x: torch.Tensor, out: torch.Tensor):
-    assert x.is_cuda and out.is_cuda, "Inputs must be CUDA tensors"
+    assert x.device == out.device, "Input and output must be on the same device"
     assert (
         x.numel() == out.numel()
     ), "Input and output must have the same number of elements"

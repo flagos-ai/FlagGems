@@ -7162,10 +7162,10 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: special_erfinv_out
-    description: A variant of `special_erfinv()` that assigns the output to the `out` tensor.
+  - id: special_erfinv_
+    description: The in-place version of `special_erfinv()`.
     for:
-      - special_erfinv.out
+      - special_erfinv_
     labels:
       - aten
       - KernelGen
@@ -7173,10 +7173,10 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: special_erfinv_
-    description: The in-place version of `special_erfinv()`.
+  - id: special_erfinv_out
+    description: A variant of `special_erfinv()` that assigns the output to the `out` tensor.
     for:
-      - special_erfinv_
+      - special_erfinv.out
     labels:
       - aten
       - KernelGen
