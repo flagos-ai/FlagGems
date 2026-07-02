@@ -193,6 +193,12 @@ def grid_sampler_3d_kernel(
             zeven = zf_int % 2 == 0
             zr = tl.where(zfrac < 0.5, zf, zf + 1)
             iz = tl.cast(tl.where(zhalf, tl.where(zeven, zf, zf + 1), zr), tl.int32)
+        # Clamp rounded indices for border/reflection:
+        # banker's rounding can round in_w-0.5 to in_w (out of bounds).
+        if padding_mode != 0:
+            ix = tl.maximum(0, tl.minimum(ix, in_w - 1))
+            iy = tl.maximum(0, tl.minimum(iy, in_h - 1))
+            iz = tl.maximum(0, tl.minimum(iz, in_d - 1))
     else:  # BILINEAR (trilinear)
         if padding_mode == 0:
             ix0 = tl.cast(tl.floor(x), tl.int32)
@@ -212,9 +218,12 @@ def grid_sampler_3d_kernel(
         iy1 = iy0 + 1
         iz1 = iz0 + 1
         if padding_mode != 0:
-            ix1 = tl.minimum(ix1, in_w - 1)
-            iy1 = tl.minimum(iy1, in_h - 1)
-            iz1 = tl.minimum(iz1, in_d - 1)
+            ix0 = tl.maximum(0, tl.minimum(ix0, in_w - 1))
+            iy0 = tl.maximum(0, tl.minimum(iy0, in_h - 1))
+            iz0 = tl.maximum(0, tl.minimum(iz0, in_d - 1))
+            ix1 = tl.maximum(0, tl.minimum(ix1, in_w - 1))
+            iy1 = tl.maximum(0, tl.minimum(iy1, in_h - 1))
+            iz1 = tl.maximum(0, tl.minimum(iz1, in_d - 1))
 
     out_offset_base = (
         n_idx * out_strides_n
