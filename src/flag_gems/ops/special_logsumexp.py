@@ -224,10 +224,16 @@ def special_logsumexp(inp, dim, keepdim=False):
                 )
         return out
 
-    # Multiple dimensions - delegate to PyTorch for now
-    # Convert dim indices to positive if needed
+    # Multiple dimensions - reduce sequentially by recursing into the
+    # single-dim path above (which dispatches to the Triton kernel).
+    # logsumexp composes across dims: log(sum_{d1} exp(log(sum_{d2} exp(x))))
+    # == log(sum_{d1} sum_{d2} exp(x)), so per-dim reduction is exact.
     dim = [d % inp.ndim for d in dim]
-    inp = inp.contiguous()
-    dtype = inp.dtype
-    out = torch.special.logsumexp(inp, dim=dim, keepdim=keepdim)
-    return out
+    sorted_dims = sorted(dim, reverse=True)
+    result = inp
+    for d in sorted_dims:
+        result = special_logsumexp(result, d, keepdim=True)
+    if not keepdim:
+        for d in sorted(sorted_dims, reverse=True):
+            result = result.squeeze(d)
+    return result
