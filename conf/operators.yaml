@@ -951,6 +951,18 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: binary_cross_entropy_with_logits
+    description: Compute the binary cross entropy loss with logits.
+    for:
+      - binary_cross_entropy_with_logits
+    labels:
+      - nn.functional
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: bincount
     description: Count the frequency of each value in an array of non-negative integers.
     for:
