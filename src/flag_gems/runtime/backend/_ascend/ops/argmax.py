@@ -11,7 +11,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_min
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -51,7 +51,6 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
     tl.store(out, out_val)
 
 
-@libentry()
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("argmax"))
 @triton.jit

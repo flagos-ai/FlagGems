@@ -29,6 +29,9 @@ def test_accuracy_bincount(size, max_val):
 @pytest.mark.parametrize("size", BINCOUNT_SIZES)
 @pytest.mark.parametrize("max_val", BINCOUNT_MAXVALS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_accuracy_bincount_with_weights(size, max_val, dtype):
     """Test bincount with weights."""
     inp = torch.randint(0, max_val, (size,), dtype=torch.int64, device=flag_gems.device)
@@ -100,6 +103,9 @@ def test_accuracy_bincount_all_zeros():
 
 @pytest.mark.bincount
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_accuracy_bincount_weights_edge_cases(dtype):
     """Test bincount with edge case weights."""
     inp = torch.tensor([0, 1, 2, 1, 0], dtype=torch.int64, device=flag_gems.device)

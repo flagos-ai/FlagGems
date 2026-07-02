@@ -8,7 +8,7 @@ import triton
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
