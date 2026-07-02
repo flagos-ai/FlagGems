@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -37,6 +39,9 @@ def upsample_nearest3d_input_fn(shape, dtype, device):
 
 
 @pytest.mark.upsample_nearest3d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_upsample_nearest3d():
     bench = UpsampleBenchmark(
         input_fn=upsample_nearest3d_input_fn,

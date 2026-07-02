@@ -49,6 +49,9 @@ def gen_cat_shapes_dim(shapes):
 @pytest.mark.concatenate
 @pytest.mark.parametrize("shape, dim", gen_cat_shapes_dim(CAT_SHAPES))
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_concatenate(shape, dim, dtype):
     if dtype in FLOAT_DTYPES:
         inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
@@ -80,6 +83,9 @@ def test_concatenate(shape, dim, dtype):
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_concatenate_empty_tensor(shape, dim, dtype):
     inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
     ref_inp = [to_reference(_) for _ in inp]

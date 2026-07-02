@@ -142,7 +142,7 @@ def _complex_mul(A, B):
 
 
 def mul(A, B):
-    logger.debug("GEMS MUL")
+    logger.debug("GEMS_SUNRISE MUL")
     A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
         A, complex
     )
@@ -163,7 +163,7 @@ def mul(A, B):
 
 
 def mul_(A, B):
-    logger.debug("GEMS MUL_")
+    logger.debug("GEMS_SUNRISE MUL_")
     if isinstance(B, torch.Tensor):
         return mul_func(A, B, out0=A)
     else:

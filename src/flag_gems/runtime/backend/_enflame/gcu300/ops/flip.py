@@ -17,7 +17,7 @@ def copy_func(x):
 
 
 def flip(A: torch.Tensor, dims) -> torch.Tensor:
-    logger.debug("GEMS FLIP")
+    logger.debug("GEMS_ENFLAME FLIP")
     return_type = A.dtype
     if A.dtype == torch.int64:
         A = A.to(torch.int32)
