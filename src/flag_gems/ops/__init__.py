@@ -262,6 +262,7 @@ from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.less_equal import less_equal, less_equal_scalar
 from flag_gems.ops.lgamma_ import lgamma, lgamma_
+from flag_gems.ops.lift import lift, lift_out
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
 from flag_gems.ops.linear import linear
@@ -854,8 +855,10 @@ __all__ = [
     "less_equal_scalar",
     "lgamma",
     "lgamma_",
+    "lift",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
+    "lift_out",
     "linalg_cholesky",
     "linear",
     "linspace",

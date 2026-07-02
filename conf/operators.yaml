@@ -4228,6 +4228,32 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: lift
+    description: |
+      Returns self tensor. Used within compiled graphs to lift
+      tensors out of the graph or modify autograd metadata.
+    for:
+      - lift
+      - lift.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: lift_out
+    description: |
+      Out-of-place variant of lift that copies self to the out tensor.
+    for:
+      - lift_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: lift_fresh_copy
     description: |
       Creates a new, independent copy of a tensor within a compiled graph.
