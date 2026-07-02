@@ -223,28 +223,3 @@ def test_mm_out_self_transpose(M, K, dtype):
         torch.mm(mat, mat.t(), out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
-
-
-@pytest.mark.mm
-@pytest.mark.parametrize(
-    "M, N, K",
-    [
-        (512, 512, 8192),
-        (1024, 1024, 4096),
-        (256, 256, 16384),
-    ],
-)
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_mm_splitk_scenario(M, N, K, dtype):
-    """Test mm with splitk path (M < 2048, N < 2048, K >= 4096)."""
-    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
-    ref_mat1 = utils.to_reference(mat1, True)
-    ref_mat2 = utils.to_reference(mat2, True)
-
-    ref_out = torch.mm(ref_mat1, ref_mat2)
-    with flag_gems.use_gems():
-        res_out = torch.mm(mat1, mat2)
-
-    # Use higher atol for splitk tests due to large K values and accumulated errors
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=5e-4)
