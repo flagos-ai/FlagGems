@@ -49,6 +49,28 @@ ops:
       - Math
     stages:
       - stable: '5.0'
+  - id: acosh
+    description: Triton kernel implementation for acosh.
+    for:
+      - acosh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: acosh_
+    description: The in-place version of `acosh()`.
+    for:
+      - acosh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: act_quant_triton
     description: This is a fused operator.
     for:
@@ -874,28 +896,6 @@ ops:
       - BLAS
     stages:
       - beta: '5.3'
-  - id: beam_search_score
-    description: Computes beam search scores by adding cumulative log probabilities with new token scores.
-    for:
-      - beam_search_score
-    labels:
-      - KernelGen
-      - fused
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: beam_search_score_
-    description: In-place version of beam search score computation.
-    for:
-      - beam_search_score_
-    labels:
-      - KernelGen
-      - fused
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: batch_norm
     description: An internal operator used for implementing the `BatchNorm` functionality.
     for:
@@ -925,6 +925,28 @@ ops:
       - KernelGen
     kind:
       - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: beam_search_score
+    description: Computes beam search scores by adding cumulative log probabilities with new token scores.
+    for:
+      - beam_search_score
+    labels:
+      - KernelGen
+      - fused
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: beam_search_score_
+    description: In-place version of beam search score computation.
+    for:
+      - beam_search_score_
+    labels:
+      - KernelGen
+      - fused
+    kind:
+      - Math
     stages:
       - alpha: '5.4'
   - id: bernoulli
@@ -1117,6 +1139,18 @@ ops:
       - Math
     stages:
       - stable: '4.0'
+  - id: bitwise_right_shift_
+    description: The in-place version of `bitwise_right_shift()`.
+    for:
+      - bitwise_right_shift_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: bmm
     description: Performs a batch matrix-matrix product of matrices stored in `input` and `mat2`.
     for:
@@ -2990,6 +3024,28 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: frac
+    description: Computes the fractional part of each element, returning x - trunc(x).
+    for:
+      - frac
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: frac_
+    description: In-place fractional part computation, returning x - trunc(x).
+    for:
+      - frac_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: full
     description: |
       Creates a tensor of size `size` filled with `fill_value`.
@@ -3015,6 +3071,19 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: functional_sym_constrain_range
+    description: |
+      A low-level function used in symbolic shape analysis to restrict the possible numerical range
+      (min/max) of a symbolic integer based on tensor input arguments.
+    for:
+      - _functional_sym_constrain_range
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: functional_sym_constrain_range_for_size
     description: |
       A low-level function used in symbolic shape analysis to restrict the possible numerical range
@@ -3827,6 +3896,17 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: is_nonzero
+    description: Returns True if the single-element input tensor is not equal to zero.
+    for:
+      - is_nonzero
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: isclose
     description: |
       Returns a new tensor with boolean elements representing if each element of `input`
@@ -4117,6 +4197,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_cholesky
+    description: |-
+      Computes the Cholesky decomposition of a symmetric positive-definite matrix A
+      or for batches of symmetric positive-definite matrices.
+    for:
+      - linalg_cholesky
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: linalg_eigvals
     description: Computes the eigenvalues of a square matrix.
     for:
@@ -4679,6 +4772,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: max_unpool2d
+    description: Computes a partial inverse of `MaxPool2d`.
+    for:
+      - max_unpool2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: maximum
     description: Computes the element-wise maximum of `input` and `other`.
     for:
@@ -4862,6 +4966,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: mse_loss_backward
+    description: Compute the gradient of mean squared error loss with respect to the input.
+    for:
+      - mse_loss_backward
+    labels:
+      - aten
+      - NeuralNetwork
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: mul
     description: Multiplies `input` by `other`.
     for:
@@ -5037,6 +5153,19 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: nextafter_
+    description: |
+      Returns the next representable floating-point value from `input` toward
+      `other`, elementwise. In-place version of `nextafter`.
+    for:
+      - nextafter_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: nll_loss2d_backward
     description: |
       An internal IR for supporting `torch.nn.NLLLoss2d`, which has been deprecated
@@ -7383,6 +7512,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: sym_stride
+    description: Returns the stride of the input tensor as a tuple of integers. Used for torch.compile symbolic tracing.
+    for:
+      - sym_stride
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: t_copy
     description: Transpose a 2D tensor into a new tensor with contiguous memory layout.
     for:
