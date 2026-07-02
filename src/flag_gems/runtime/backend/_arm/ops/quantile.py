@@ -91,7 +91,7 @@ def quantile_kernel(
 def quantile(
     inp, q, dim=None, keepdim=False, interpolation="linear", out=None
 ) -> Tensor:
-    logger.debug("GEMS QUANTILE DIM")
+    logger.debug("GEMS_ARM QUANTILE")
     assert torch.is_floating_point(inp)
     assert dim is None or isinstance(dim, int)
     assert isinstance(q, (float, torch.Tensor))

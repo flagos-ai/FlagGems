@@ -41,7 +41,7 @@ def _launch_exp2(inp, out, N):
 
 
 def exp2(A):
-    logger.debug("GEMS EXP2 GCU400")
+    logger.debug("GEMS_ENFLAME EXP2")
     inp = A if A.is_contiguous() else A.contiguous()
     out = torch.empty_like(inp)
     _launch_exp2(inp, out, inp.numel())
@@ -49,7 +49,7 @@ def exp2(A):
 
 
 def exp2_(A):
-    logger.debug("GEMS EXP2_ GCU400")
+    logger.debug("GEMS_ENFLAME EXP2_")
     inp = A if A.is_contiguous() else A.contiguous()
     _launch_exp2(inp, inp, inp.numel())
     if not A.is_contiguous():

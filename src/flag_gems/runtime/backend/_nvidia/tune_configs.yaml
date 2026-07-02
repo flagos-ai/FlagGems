@@ -1306,6 +1306,37 @@ triu_batch:
       - 8
       - 16
       - 32
+max_unpool2d:
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 16
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 16
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 32
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 32
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_H: 64
+      BLOCK_W: 32
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 64
+    num_warps: 8
+    num_stages: 2
 weight_norm_kernel_last:
   - gen: true
     param_map:
@@ -2339,3 +2370,41 @@ rot90:
       BLOCK_SIZE: 4096
     num_warps: 16
     num_stages: 1
+
+fused_marlin_moe_mxfp4:
+  - META: {BLOCK_SIZE_N: 64, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 3
+  - META: {BLOCK_SIZE_N: 64, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 4
+  - META: {BLOCK_SIZE_N: 128, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 3
+  - META: {BLOCK_SIZE_N: 128, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 4
+  - META: {BLOCK_SIZE_N: 256, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 3
+  - META: {BLOCK_SIZE_N: 256, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 4
+
+w8a8_block_fp8_bmm:
+  - gen: true
+    param_map:
+      META:
+        TILE_ORDER: tile_order
+      num_warps: warps
+      num_stages: stages
+    tile_order:
+      - 0
+      - 1
+    warps:
+      - 4
+      - 8
+    stages:
+      - 4
+      - 6
+      - 8

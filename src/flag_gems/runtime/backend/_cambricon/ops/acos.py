@@ -8,7 +8,7 @@ from flag_gems.utils import tl_extra_shim
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 _acos = tl_extra_shim.acos
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
@@ -19,6 +19,6 @@ def acos_kernel(x):
 
 
 def acos(x):
-    logger.debug("GEMS_CAMBRICON ACOS FORWARD")
+    logger.debug("GEMS_CAMBRICON ACOS")
     y = acos_kernel(x)
     return y
