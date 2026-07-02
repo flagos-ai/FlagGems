@@ -56,6 +56,12 @@ sizes_2d_nr = [1] if QUICK_MODE else [1, 5, 1024]
 
 UT_SHAPES_1D = list((n,) for n in sizes_1d)
 UT_SHAPES_2D = list(itertools.product(sizes_2d_nr, sizes_2d_nc))
+_UNSAFE_MASKED_INDEX_PUT_SHAPES = [
+    ((16,), (16,), (16,), (16,)),
+    ((64,), (64,), (64,), (64,)),
+    ((8, 32), (8, 32), (8, 32), (8, 32)),
+    ((2, 16, 64), (2, 16, 64), (2, 16, 64), (2, 16, 64)),
+]
 POINTWISE_SHAPES = (
     [(2, 19, 7)]
     if QUICK_MODE
@@ -247,6 +253,12 @@ SCALARS = [0.001, -0.999, 100.001, -111.999]
 STACK_DIM_LIST = [-1, 0] if QUICK_MODE else [-2, -1, 0, 1]
 
 ARANGE_START = [0] if TO_CPU else [0, 1, 3]
+
+GLU_SHAPES = (
+    [(2, 19, 8)]
+    if QUICK_MODE
+    else [(2,), (128, 256), (20, 32, 16), (16, 128, 64, 60), (16, 7, 57, 32, 30)]
+)
 
 
 def to_reference(inp, upcast=False):

@@ -528,7 +528,7 @@ if HAS_TLE:
 
 
 def topk(x, k, dim=-1, largest=True, sorted=True):
-    logger.debug("GEMS TOPK")
+    logger.debug("GEMS_ENFLAME TOPK")
     # If dim equals to last dim, we set it to -1.
     if dim < 0:
         dim = dim + x.ndim
