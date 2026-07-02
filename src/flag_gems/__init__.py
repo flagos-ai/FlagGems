@@ -149,6 +149,8 @@ _FULL_CONFIG = (
     ("allclose", allclose),
     ("alpha_dropout", alpha_dropout),
     ("amax", amax),
+    ("amin", amin),
+    ("amin_", amin_),
     ("aminmax", aminmax),
     ("angle", angle),
     ("any", any),

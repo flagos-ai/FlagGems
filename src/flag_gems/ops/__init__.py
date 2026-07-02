@@ -51,6 +51,7 @@ from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
 from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.alpha_dropout import alpha_dropout
 from flag_gems.ops.amax import amax
+from flag_gems.ops.amin import amin, amin_
 from flag_gems.ops.aminmax import aminmax
 from flag_gems.ops.angle import angle
 from flag_gems.ops.any import any, any_dim, any_dims
@@ -590,6 +591,8 @@ __all__ = [
     "allclose",
     "alpha_dropout",
     "amax",
+    "amin",
+    "amin_",
     "aminmax",
     "angle",
     "any",

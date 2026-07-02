@@ -433,6 +433,28 @@ ops:
       - LinearAlg
     stages:
       - stable: '2.0'
+  - id: amin
+    description: Returns the minimum value of each row of the input tensor in the given dimension dim.
+    for:
+      - amin
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
+  - id: amin_
+    description: The in-place version of amin, returns the minimum value of each row in the given dimension.
+    for:
+      - amin_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: aminmax
     description: |
       Computes the minimum and maximum values of the `input` tensor.
