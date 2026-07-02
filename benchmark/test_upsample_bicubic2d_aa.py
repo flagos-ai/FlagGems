@@ -34,6 +34,9 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.upsample_bicubic2d_aa
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_upsample_bicubic2d_aa():
     if vendor_name == "cambricon":
         dtypes = [torch.float32]
@@ -77,9 +80,9 @@ class UpsampleBicubic2dAaBackwardBenchmark(base.Benchmark):
         ]
 
     def get_input_iter(self, dtype):
-        for N, C, Hi, Wi, Ho, Wo, ac, label in self._cfgs:
+        for N, C, Hi, Wi, Ho, Wo, ac, _label in self._cfgs:
             grad = torch.randn([N, C, Ho, Wo], device=self.device, dtype=dtype)
-            yield grad, [Ho, Wo], [N, C, Hi, Wi], ac, None, None, label
+            yield grad, [Ho, Wo], [N, C, Hi, Wi], ac, None, None
 
     def get_tflops(self, op, *args, **kwargs):
         grad = args[0]
@@ -87,6 +90,9 @@ class UpsampleBicubic2dAaBackwardBenchmark(base.Benchmark):
 
 
 @pytest.mark.upsample_bicubic2d_aa_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_upsample_bicubic2d_aa_backward():
     bench = UpsampleBicubic2dAaBackwardBenchmark(
         op_name="upsample_bicubic2d_aa_backward",
