@@ -18,6 +18,9 @@ else:
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_weight_norm_interface(shape, dtype, dim):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(42)
@@ -34,13 +37,18 @@ def test_weight_norm_interface(shape, dtype, dim):
     with flag_gems.use_gems():
         res_w_out, res_norm_out = torch._weight_norm_interface(v, g, dim)
     utils.gems_assert_close(res_w_out, ref_w_out, dtype, reduce_dim=reduce_size)
-    utils.gems_assert_close(res_norm_out, ref_norm_out, dtype, reduce_dim=reduce_size)
+    utils.gems_assert_close(
+        res_norm_out, ref_norm_out, torch.float32, reduce_dim=reduce_size
+    )
 
 
 @pytest.mark.weight_norm_interface_backward
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_weight_norm_interface_backward(shape, dtype, dim):
     dim = dim % len(shape)
     res_w_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)

@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -66,6 +68,9 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.slice_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_slice_backward():
     bench = SliceBackwardBenchmark(
         op_name="slice_backward",

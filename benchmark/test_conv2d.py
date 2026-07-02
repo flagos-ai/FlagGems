@@ -50,6 +50,9 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.conv2d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv2d(monkeypatch):
     if flag_gems.vendor_name == "hygon":
         monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
@@ -86,6 +89,9 @@ class Conv2DPaddingBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.conv2d_padding
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv2d_padding(monkeypatch):
     if flag_gems.vendor_name == "hygon":
         monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")

@@ -125,7 +125,7 @@ def var_kernel_2(
 
 
 def var(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS VAR")
+    logger.debug("GEMS_ENFLAME VAR")
     if correction is None:
         correction = 1.0
 
@@ -164,10 +164,10 @@ def var(x, dim=None, *, correction=None, keepdim=False):
 
 
 def var_dim(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS VAR_DIM")
+    logger.debug("GEMS_ENFLAME VAR_DIM")
     return var(x, dim=dim, correction=correction, keepdim=keepdim)
 
 
 def var_correction(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS VAR_CORRECTION")
+    logger.debug("GEMS_ENFLAME VAR_CORRECTION")
     return var(x, dim=dim, correction=correction, keepdim=keepdim)
