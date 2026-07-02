@@ -104,7 +104,7 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: nvidia-cuda133
-      runner_label: h20
+      runner_label: jiuding
       gpu_check_script: tools/gpu_check_nvidia.sh
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
