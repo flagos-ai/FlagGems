@@ -7206,6 +7206,32 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_chebyshev_polynomial_w
+    description: |
+      Computes the Chebyshev polynomial of the fourth kind
+      :math:`W_{n}(\\text{input})`.
+    for:
+      - special.chebyshev_polynomial_w
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_chebyshev_polynomial_w_out
+    description: |
+      A variant of `special_chebyshev_polynomial_w()` with output saved to
+      provided `out`.
+    for:
+      - special.chebyshev_polynomial_w.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_gammainc
     description: |
       Computes the regularized lower incomplete gamma function P(a, x) element-wise.

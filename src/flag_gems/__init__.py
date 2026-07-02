@@ -631,6 +631,8 @@ _FULL_CONFIG = (
     ("special.gammainc", special_gammainc),
     ("special.log_softmax", special_log_softmax),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
+    ("special.chebyshev_polynomial_w", special_chebyshev_polynomial_w),
+    ("special.chebyshev_polynomial_w.out", special_chebyshev_polynomial_w_out),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_i0e", special_i0e),
     ("special_i0e.out", special_i0e_out),
