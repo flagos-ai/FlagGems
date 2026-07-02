@@ -3,6 +3,7 @@ from .hadamard_transform import hadamard_transform
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .repeat import repeat
+from .scatter_add import scatter_add_
 from .tile import tile
 from .var import var, var_correction, var_dim
 
@@ -13,6 +14,7 @@ __all__ = [
     "matmul_bf16",
     "matmul_int8",
     "repeat",
+    "scatter_add_",
     "tile",
     "var",
     "var_correction",
