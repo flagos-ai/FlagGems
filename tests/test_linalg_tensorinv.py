@@ -21,11 +21,15 @@ TENSORINV_SHAPES_IND1 = [
     (3, 3),  # 3x3 matrix -> output (3, 3)
 ]
 
+# Only float32 and float16 are covered: float32 exercises PyTorch's native
+# tensorinv reference, while float16 exercises the manual fp32 reference path.
+TENSORINV_DTYPES = [torch.float32, torch.float16]
+
 
 @pytest.mark.linalg_tensorinv
 @pytest.mark.parametrize("shape", TENSORINV_SHAPES_IND2)
 # torch.linalg.tensorinv requires a float32 reference path for lower precision inputs.
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", TENSORINV_DTYPES)
 def test_linalg_tensorinv_ind2(shape, dtype):
     """Test linalg_tensorinv with ind=2"""
     # Generate a random invertible matrix by using A = L @ L.T + I where L is random
@@ -73,7 +77,7 @@ def test_linalg_tensorinv_ind2(shape, dtype):
 @pytest.mark.linalg_tensorinv
 @pytest.mark.parametrize("shape", TENSORINV_SHAPES_IND1)
 # torch.linalg.tensorinv requires a float32 reference path for lower precision inputs.
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", TENSORINV_DTYPES)
 def test_linalg_tensorinv_ind1(shape, dtype):
     """Test linalg_tensorinv with ind=1 (equivalent to matrix inverse)"""
     ind = 1
