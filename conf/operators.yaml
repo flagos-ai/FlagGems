@@ -4011,6 +4011,17 @@ ops:
       - Math
     stages:
       - stable: '5.3'
+  - id: isposinf
+    description: Tests if each element of input is positive infinity or not.
+    for:
+      - isposinf
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: jagged_to_padded_dense_forward
     description: |
       Converts a jagged (variable-length) tensor to a padded dense tensor.

@@ -398,6 +398,7 @@ _FULL_CONFIG = (
     ("isnan", isnan),
     ("isneginf", isneginf),
     ("isneginf.out", isneginf_out),
+    ("isposinf", isposinf),
     ("kron", kron),
     ("kthvalue", kthvalue),
     ("le.Scalar", le_scalar),
