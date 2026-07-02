@@ -1117,6 +1117,66 @@ ops:
       - Math
     stages:
       - stable: '4.0'
+  - id: bitwise_xor_scalar
+    description: Computes the bitwise XOR of tensor `input` and scalar `other`.
+    for:
+      - bitwise_xor.Scalar
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: bitwise_xor_scalar_
+    description: The in-place version of `bitwise_xor_scalar()`.
+    for:
+      - bitwise_xor_.Scalar
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: bitwise_xor_scalar_tensor
+    description: Computes the bitwise XOR of scalar `input` and tensor `other`.
+    for:
+      - bitwise_xor.Scalar_Tensor
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: bitwise_xor_tensor
+    description: Computes the element-wise bitwise XOR of tensor `input` and tensor `other`.
+    for:
+      - bitwise_xor.Tensor
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: bitwise_xor_tensor_
+    description: The in-place version of `bitwise_xor_tensor()`.
+    for:
+      - bitwise_xor_.Tensor
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: bmm
     description: Performs a batch matrix-matrix product of matrices stored in `input` and `mat2`.
     for:
