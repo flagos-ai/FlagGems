@@ -269,9 +269,9 @@ from flag_gems.ops.linalg_cholesky import linalg_cholesky
 from flag_gems.ops.linear import linear
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
-from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log1p import log1p, log1p_out
 from flag_gems.ops.log1p_ import log1p_
+from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log_normal_ import log_normal_
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import (

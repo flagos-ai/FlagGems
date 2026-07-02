@@ -77,12 +77,12 @@ def fractional_max_pool2d_forward_kernel(
     sample_alpha_h = (sample_h * alpha_h).to(tl.int32)
     sample_alpha_w = (sample_w * alpha_w).to(tl.int32)
 
-    h_starts = (
-        (h_out_offsets.to(tl.float32) + sample_h) * alpha_h
-    ).to(tl.int32) - sample_alpha_h
-    w_starts = (
-        (w_out_offsets.to(tl.float32) + sample_w) * alpha_w
-    ).to(tl.int32) - sample_alpha_w
+    h_starts = ((h_out_offsets.to(tl.float32) + sample_h) * alpha_h).to(
+        tl.int32
+    ) - sample_alpha_h
+    w_starts = ((w_out_offsets.to(tl.float32) + sample_w) * alpha_w).to(
+        tl.int32
+    ) - sample_alpha_w
 
     # Override last position: start[output_size - 1] = input_size - pool_size
     h_starts = tl.where(h_out_offsets == out_h - 1, in_h - kernel_h, h_starts)
@@ -120,7 +120,9 @@ def fractional_max_pool2d_forward_kernel(
 
     # Write output and indices
     out_nc_offset = pid_nc * out_h * out_w
-    out_offsets = out_nc_offset + h_out_offsets[:, None] * out_w + w_out_offsets[None, :]
+    out_offsets = (
+        out_nc_offset + h_out_offsets[:, None] * out_w + w_out_offsets[None, :]
+    )
     out_mask = h_mask[:, None] & w_mask[None, :]
     tl.store(output_ptr + out_offsets, max_val_acc, mask=out_mask)
     tl.store(indices_ptr + out_offsets, max_idx_acc, mask=out_mask)
@@ -172,7 +174,11 @@ def fractional_max_pool2d_backward_kernel(
 
     # Load grad_output and indices for this tile
     out_base = pid_nc * out_stride_nc
-    out_offsets = out_base + h_out_offsets[:, None] * out_stride_h + w_out_offsets[None, :] * out_stride_w
+    out_offsets = (
+        out_base
+        + h_out_offsets[:, None] * out_stride_h
+        + w_out_offsets[None, :] * out_stride_w
+    )
 
     grad_vals = tl.load(grad_output_ptr + out_offsets, mask=out_mask, other=0.0)
     idx_vals = tl.load(indices_ptr + out_offsets, mask=out_mask, other=-1)
@@ -182,7 +188,9 @@ def fractional_max_pool2d_backward_kernel(
     in_offsets = in_nc_offset + idx_vals
 
     valid_mask = out_mask & (idx_vals >= 0)
-    tl.atomic_add(grad_input_ptr + in_offsets, grad_vals.to(tl.float32), mask=valid_mask)
+    tl.atomic_add(
+        grad_input_ptr + in_offsets, grad_vals.to(tl.float32), mask=valid_mask
+    )
 
 
 def fractional_max_pool2d(
@@ -257,8 +265,12 @@ def fractional_max_pool2d(
     alpha_h = (in_h - kernel_h) / (out_h - 1) if out_h > 1 else 0.0
     alpha_w = (in_w - kernel_w) / (out_w - 1) if out_w > 1 else 0.0
 
-    output = torch.empty(in_n, in_c, out_h, out_w, dtype=input.dtype, device=input.device)
-    indices = torch.empty(in_n, in_c, out_h, out_w, dtype=torch.int64, device=input.device)
+    output = torch.empty(
+        in_n, in_c, out_h, out_w, dtype=input.dtype, device=input.device
+    )
+    indices = torch.empty(
+        in_n, in_c, out_h, out_w, dtype=torch.int64, device=input.device
+    )
 
     if output.numel() == 0:
         return (output, indices) if return_indices else output
