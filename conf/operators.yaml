@@ -3196,12 +3196,25 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: gcd_
+    description: |
+      Computes the element-wise greatest common divisor (GCD) of `input` and `other` in-place.
+    for:
+      - gcd_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.1'
   - id: gcd_out
     description: A variant of `gcd()` that allows the output to be assigned to the specified `out`.
     for:
       - gcd.out
     labels:
       - aten
+      - KernelGen
     kind:
       - Math
     stages:
