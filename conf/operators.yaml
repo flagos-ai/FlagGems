@@ -4152,6 +4152,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_cholesky
+    description: |-
+      Computes the Cholesky decomposition of a symmetric positive-definite matrix A
+      or for batches of symmetric positive-definite matrices.
+    for:
+      - linalg_cholesky
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: linalg_eigvals
     description: Computes the eigenvalues of a square matrix.
     for:
