@@ -7352,6 +7352,26 @@ ops:
     labels:
       - aten
       - nn.functional
+  - id: special_round
+    description: |
+      Rounds a tensor to the nearest integer, with ties rounding to the nearest
+      even value (banker's rounding).
+    for:
+      - special.round
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_round_out
+    description: |
+      A variant of `special_round()` with output saved to provided `out`.
+    for:
+      - special.round.out
+    labels:
+      - aten
       - KernelGen
     kind:
       - Math
