@@ -925,10 +925,7 @@ __all__ = [
     "neg_",
     "negative",
     "new_full",
-<<<<<<< pr/nextafter
     "nextafter",
-=======
->>>>>>> master
     "nextafter_",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
