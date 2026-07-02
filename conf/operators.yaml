@@ -49,6 +49,21 @@ ops:
       - Math
     stages:
       - stable: '5.0'
+  - id: acos_
+    description: >
+      In-place version of acos. Computes the arccosine (in radians) of each element of `input` and writes the result
+      back to the input tensor.
+    for:
+      - acos_
+    labels:
+      - aten
+      - pointwise
+      - inplace
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: act_quant_triton
     description: This is a fused operator.
     for:

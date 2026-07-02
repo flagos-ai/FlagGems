@@ -33,6 +33,8 @@ from flag_gems.ops._upsample_nearest_exact2d_backward import (
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
+from flag_gems.ops.acos_ import acos_
+from flag_gems.ops.act_quant import act_quant_triton
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
 from flag_gems.ops.adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from flag_gems.ops.add import add, add_
@@ -550,6 +552,8 @@ __all__ = [
     "abs_",
     "absolute",
     "acos",
+    "acos_",
+    "act_quant_triton",
     "adaptive_avg_pool2d",
     "adaptive_max_pool3d_backward",
     "add",
