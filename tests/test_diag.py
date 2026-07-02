@@ -12,6 +12,9 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize(
     "dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES + utils.BOOL_TYPES
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_diag(shape, diagonal, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)

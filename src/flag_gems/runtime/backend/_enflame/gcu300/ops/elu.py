@@ -21,5 +21,5 @@ def elu_forward_kernel(x, alpha, scale, input_scale):
 
 
 def elu(A, alpha=1.0, scale=1.0, input_scale=1.0):
-    logger.debug("GEMS ELU")
+    logger.debug("GEMS_ENFLAME ELU")
     return elu_forward_kernel(A, alpha, scale, input_scale)
