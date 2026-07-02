@@ -49,6 +49,18 @@ ops:
       - Math
     stages:
       - stable: '5.0'
+  - id: acosh
+    description: Compute the element-wise inverse hyperbolic cosine.
+    for:
+      - acosh
+      - acosh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: act_quant_triton
     description: This is a fused operator.
     for:
