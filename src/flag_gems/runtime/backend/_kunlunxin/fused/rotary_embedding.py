@@ -9,7 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -202,7 +202,7 @@ def apply_rotary_pos_emb(
         q_embed: (*, q_heads, head_dim)
         k_embed: (*, k_heads, head_dim)
     """
-    logger.debug("GEMS ROTARY_POS_EMBEDDING")
+    logger.debug("GEMS_KUNLUNXIN ROTARY_POS_EMBEDDING")
     assert (
         k.shape[-1] == q.shape[-1]
     ), f"q and k must have the same last dimension, got {q.shape} and {k.shape}"

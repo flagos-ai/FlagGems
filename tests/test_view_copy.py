@@ -4,18 +4,25 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 # Shapes covering various reshape patterns: flatten, identity, merge dims, high-rank
-VIEW_COPY_SHAPES = [
-    ((2, 19, 7), (266,)),
-    ((1,), ()),
-    ((1024, 1024), (1048576,)),
-    ((1024, 1024), (1024, 1024)),
-    ((20, 320, 15), (20, 4800)),
-    ((20, 320, 15), (6400, 15)),
-    ((16, 128, 64, 60), (16, 128, 3840)),
-    ((16, 7, 57, 32, 29), (16, 7, 57, 928)),
-]
+if cfg.QUICK_MODE:
+    VIEW_COPY_SHAPES = [
+        ((2, 19, 7), (266,)),
+        ((20, 320, 15), (20, 4800)),
+    ]
+else:
+    VIEW_COPY_SHAPES = [
+        ((2, 19, 7), (266,)),
+        ((1,), ()),
+        ((1024, 1024), (1048576,)),
+        ((1024, 1024), (1024, 1024)),
+        ((20, 320, 15), (20, 4800)),
+        ((20, 320, 15), (6400, 15)),
+        ((16, 128, 64, 60), (16, 128, 3840)),
+        ((16, 7, 57, 32, 29), (16, 7, 57, 928)),
+    ]
 
 
 @pytest.mark.view_copy

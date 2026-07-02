@@ -1,137 +1,222 @@
 #!/bin/bash
-
-SUPPORTED_VENDORS=(
-  "ascend"
-  "enflame"
-  "hygon"
-  "iluvatar"
-  "kunlunxin"
-  "metax"
-  "mthreads"
-  "nvidia"
-  "spacemit"
-  "sunrise"
-  "thead"
-  "tsingmicro"
-)
-
-# TODO: Add thead PPU
-declare -A PYTHON_SUPPORTED=(
-  ["ascend"]="3.11"
-  ["enflame"]="3.12"
-  ["hygon"]="3.10"
-  ["iluvatar"]="3.10"
-  ["kunlunxin"]="3.10"
-  ["metax"]="3.12"
-  ["mthreads"]="3.10"
-  ["nvidia"]="3.12"
-  ["spacemit"]="3.12"
-  ["sunrise"]="3.10"
-  ["thead"]="3.12"
-  ["tsingmicro"]="3.10"
-)
+set -euo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m'
 
-valid_vendor() {
-  needle=$1
-  for item in "${SUPPORTED_VENDORS[@]}" ; do
-    [ $item == "$needle" ] && return 0
-  done
-  return 1
-}
+ok()   { printf " ${GREEN}[OK]${NC}\n"; }
+fail() { printf " ${RED}[FAILED]${NC}\n"; exit 1; }
 
-# Validate argument count
-[ "$#" -eq 1 ] || { echo "Please specify <VENDOR>"; exit 1; }
+BACKENDS_YAML="src/flag_gems/backends.yaml"
 
-# Validate vendor name
-VENDOR=${1}
-valid_vendor $VENDOR
-if [ "$?" != 0 ]; then
-    echo "Invalid vendor '${VENDOR}' specified ..."
-    echo "Please specify one of: ${SUPPORTED_VENDORS[@]}"
-    exit 1
-fi
-printf "Checking vendor ... ${VENDOR} $GREEN[OK]$NC\n"
+# ── Validate argument ─────────────────────────────────────────
+[ "$#" -eq 1 ] || { echo "Usage: $0 <BACKEND>"; exit 1; }
 
-printf "Detecting pyenv ... "
-pyenv_version=$(pyenv --version 2>/dev/null | awk '{print $NF}')
-if [ "$?" != 0 ]; then
-  # pyenv not installed
-  printf "NOT FOUND $GREEN[OK]$NC\n"
-else
-  printf "${pyenv_version} $GREEN[OK]$NC\n"
+BACKEND="${1}"
 
-  if [ x"$PYENV_ROOT" == x ]; then
-    # Initialize pyenv virtual environment
-    export PYENV_ROOT="$HOME/.pyenv"
-    export PATH="$PYENV_ROOT/bin:$PATH"
-    eval "$(pyenv init - bash)"
-  fi
-fi
-
-# Validate Python version
-printf "Checking Python version ... "
-python_version=$(python --version 2>/dev/null | awk '{print $NF}')
-expected_version=${PYTHON_SUPPORTED[$VENDOR]}
-if [[ "$python_version" == *"$expected_version"* ]]; then
-  printf "${python_version} $GREEN[OK]$NC\n"
-else
-  printf "${python_version}, expecting '${expected_version}.*' $RED[FAILED]$NC"
+# ── Read config from backends.yaml ────────────────────────────
+if [ ! -f "$BACKENDS_YAML" ]; then
+  echo "Error: $BACKENDS_YAML not found. Run from the FlagGems repo root."
   exit 1
 fi
 
-# Validate uv install
-printf "Checking uv ... "
-uv_version=$(uv --version 2>/dev/null | cut -d ' ' -f 2)
-if [ -n "$uv_version" ];  then
-  printf "uv ${uv_version} ${GREEN}[OK]${NC}\n"
-else
-  printf "${RED}NOT FOUND${NC}\n"
-  # Install uv and upgrade pip if necessary
-  printf "Installing/upgrading pip and uv ... "
-  pip install uv || exit 1;
-fi
-
-# Start installation
-printf "Installing FlagGems for ${VENDOR}\n"
-
-printf "Creating virtual environment ... "
-uv venv -q -c
-if [ "$?" != 0 ]; then
-  printf "$RED{FAILED]$NC\n"
+# Phase 1: Extract only python version and vendor using grep/awk
+# (no pyyaml dependency — runs before venv creation)
+PYTHON_VERSION=$(awk "/^  ${BACKEND}:/{found=1} found && /python:/{print \$2; exit}" "$BACKENDS_YAML" | tr -d '"')
+if [ -z "${PYTHON_VERSION}" ]; then
+  echo "Error: unknown backend '${BACKEND}'"
+  echo "Available backends:"
+  awk '/^  [a-z].*:$/{gsub(/:$/,""); print "  "$1}' "$BACKENDS_YAML"
   exit 1
-else
-  printf "$GREEN[OK]$NC\n"
-  source .venv/bin/activate
 fi
 
-# Install FlagGems
-export FLAGOS_PYPI="https://resource.flagos.net/repository/flagos-pypi-${VENDOR}/simple"
-printf "Install build tools ... "
-uv pip install \
+VENDOR=$(echo "${BACKEND}" | sed 's/-[^-]*$//')
+[ "${VENDOR}" = "${BACKEND}" ] && VENDOR="${BACKEND}"
+PYPI_BASE=$(grep '^pypi_base:' "$BACKENDS_YAML" | sed 's/^pypi_base: *"//;s/"$//')
+FLAGOS_PYPI=$(echo "${PYPI_BASE}" | sed "s/{vendor}/${VENDOR}/")
+MIRROR=$(grep '^mirror:' "$BACKENDS_YAML" | sed 's/^mirror: *"//;s/"$//')
+
+printf "Backend: ${BACKEND} (vendor: ${VENDOR})"
+ok
+
+# ── Detect or install uv ─────────────────────────────────────
+UV_VERSION="0.11.22"
+UV_MIRROR="https://resource.flagos.net/repository/flagos-filestore/utils"
+
+printf "Checking uv ..."
+if command -v uv &>/dev/null; then
+  printf " $(uv --version)"
+  ok
+else
+  printf " not found, installing ...\n"
+  export HOME=$(eval echo ~"$(whoami)")
+  ARCH=$(uname -m)
+  mkdir -p "$HOME/.local/bin"
+  curl -sSf "${UV_MIRROR}/uv-${ARCH}-${UV_VERSION}-linux-gnu.tar.gz" \
+    | tar xz -C "$HOME/.local/bin" 2>/dev/null \
+    || { curl -LsSf https://astral.sh/uv/install.sh | sh; }
+  export PATH="$HOME/.local/bin:$PATH"
+  command -v uv &>/dev/null || { printf "uv installation"; fail; }
+  printf "Installed $(uv --version)"
+  ok
+fi
+
+# ── Install Python via uv ────────────────────────────────────
+printf "Installing Python ${PYTHON_VERSION} ..."
+uv python install "${PYTHON_VERSION}" --python-preference only-managed -q || fail
+ok
+
+# ── Create virtual environment ────────────────────────────────
+printf "Creating virtual environment ..."
+uv venv .venv --python "${PYTHON_VERSION}" --python-preference only-managed -q || fail
+ok
+source .venv/bin/activate
+
+printf "Python: $(python --version)"
+ok
+
+# ── Source vendor environment ─────────────────────────────────
+export USE_TRITON="${USE_TRITON:-}"
+source tools/env.sh "${BACKEND}"
+
+# ── Install build tools ──────────────────────────────────────
+printf "Installing build tools ..."
+uv pip install -q \
   "setuptools>=64.0" \
   "scikit-build-core==0.12.2" \
   "pybind11==3.0.3" \
   "cmake>=3.20,<4" \
-  "ninja==1.13.0"
+  "ninja==1.13.0" \
+  "PyYAML>=6.0" \
+  --index "${MIRROR}" \
+  || fail
+ok
 
-if [ "$?" != 0 ]; then
-  printf "$RED[FAILED]$NC\n"
-  exit 1
+# ── Phase 2: Full YAML parse (pyyaml now available in venv) ──
+eval $(python3 -c "
+import yaml, sys
+
+cfg = yaml.safe_load(open('${BACKENDS_YAML}'))
+b = cfg['backends']['${BACKEND}']
+
+cmake_backend = b.get('cmake_backend', '')
+print(f'CMAKE_BACKEND={cmake_backend}')
+
+ft = b.get('flagtree', '')
+if isinstance(ft, list):
+    ft = ' '.join(ft)
+print(f'FLAGTREE_PKGS=\"{ft}\"')
+
+tr = b.get('triton', '')
+if isinstance(tr, list):
+    tr = ' '.join(tr)
+print(f'TRITON_PKGS=\"{tr}\"')
+
+post_install = []
+post_uninstall = []
+for item in b.get('post_install', []):
+    if isinstance(item, dict) and 'uninstall' in item:
+        post_uninstall.append(item['uninstall'])
+    else:
+        post_install.append(item)
+print(f'POST_INSTALL=\"{\" \".join(post_install)}\"')
+print(f'POST_UNINSTALL=\"{\" \".join(post_uninstall)}\"')
+")
+
+# ── C++ extensions ───────────────────────────────────────────
+# Set ENABLE_CPP=1 to build C++ wrapped operators.
+# Default: OFF (C++ extensions require vendor SDK and toolchain).
+if [ "${ENABLE_CPP:-0}" = "1" ]; then
+  if [ -z "${CMAKE_BACKEND}" ]; then
+    echo "Error: ENABLE_CPP=1 but backend '${BACKEND}' does not support C++ extensions"
+    exit 1
+  fi
+  export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=${CMAKE_BACKEND}"
+  printf "C++ extensions: ON (${CMAKE_BACKEND})"
+  ok
 else
-  printf "$GREEN[OK]$NC\n"
+  printf "C++ extensions: OFF"
+  ok
 fi
 
-# export USE_TRITON=0
+# ── Install FlagGems ──────────────────────────────────────────
+# Use --no-build-isolation so the build process reuses the build tools
+# already installed in the current venv.
+printf "Installing FlagGems [${BACKEND}] ..."
+uv pip install --no-build-isolation ".[${BACKEND}]" \
+  --default-index "${FLAGOS_PYPI}" \
+  --index "${MIRROR}" \
+  || fail
+ok
 
-## Vendor-specific installation steps
-source tools/env.sh ${VENDOR}
-# source tools/vendor.sh ${VENDOR}
-uv pip install ".[${VENDOR}]" --default-index ${FLAGOS_PYPI} \
-  --index https://mirrors.aliyun.com/pypi/simple
-uv pip install ".[test]"
+# ── Compiler selection ───────────────────────────────────────
+# COMPILER controls which Triton-compatible compiler to use:
+#   COMPILER=flagtree → use FlagTree (default when available)
+#   COMPILER=triton   → use vendor Triton
+#   unset             → auto: FlagTree if available, otherwise Triton
+COMPILER="${COMPILER:-}"
 
-[ "$?" == 0 ] || { echo "Failed to setup FlagGems" ; exit 1; }
+if [ -z "${COMPILER}" ]; then
+  if [ -n "${FLAGTREE_PKGS}" ]; then
+    COMPILER=flagtree
+  else
+    COMPILER=triton
+  fi
+fi
+
+if [ "${COMPILER}" = "flagtree" ]; then
+  if [ -n "${FLAGTREE_PKGS}" ]; then
+    # FlagTree installs into site-packages/triton, so any existing
+    # triton-prefixed packages must be removed first.
+    TRITON_INSTALLED=$(uv pip list 2>/dev/null | awk '{print $1}' | grep -i '^triton' || true)
+    if [ -n "${TRITON_INSTALLED}" ]; then
+      printf "Replacing Triton with FlagTree ..."
+      # echo "${TRITON_INSTALLED}" | xargs uv pip uninstall -q 2>/dev/null || true
+      uv pip uninstall "${TRITON_INSTALLED}"
+      ok
+    fi
+    printf "Installing FlagTree ..."
+    uv pip uninstall ${FLAGTREE_PKGS}
+    uv pip install -q ${FLAGTREE_PKGS} --default-index "${FLAGOS_PYPI}" || fail
+    ok
+  else
+    printf "FlagTree not available for ${BACKEND}, using Triton\n"
+    COMPILER=triton
+  fi
+fi
+
+if [ "${COMPILER}" = "triton" ] && [ -n "${TRITON_PKGS}" ]; then
+  printf "Installing Triton ..."
+  uv pip install -q ${TRITON_PKGS} --default-index "${FLAGOS_PYPI}" || fail
+  ok
+fi
+
+if [ "${COMPILER}" != "flagtree" ] && [ "${COMPILER}" != "triton" ]; then
+  echo "Error: unknown COMPILER value '${COMPILER}' (expected 'flagtree' or 'triton')"
+  exit 1
+fi
+
+# ── Vendor-specific post-install ──────────────────────────────
+if [ -n "${POST_INSTALL}" ]; then
+  for pkg in ${POST_INSTALL}; do
+    printf "Post-install: ${pkg} ..."
+    uv pip install -q "${pkg}" --default-index "${FLAGOS_PYPI}" || fail
+    ok
+  done
+fi
+
+if [ -n "${POST_UNINSTALL}" ]; then
+  for pkg in ${POST_UNINSTALL}; do
+    printf "Post-uninstall: ${pkg} ..."
+    uv pip uninstall -q "${pkg}" 2>/dev/null || true
+    ok
+  done
+fi
+
+# ── Install test dependencies ─────────────────────────────────
+printf "Installing test dependencies ..."
+uv pip install -q ".[test]" --index "${MIRROR}" || fail
+ok
+
+printf "\n${GREEN}FlagGems setup complete for ${BACKEND}${NC}\n"

@@ -172,7 +172,7 @@ def _scalar_complex_as_real_ptpu_safe(
 
 
 def add(A, B, *, alpha=1):
-    logger.debug("GEMS ADD")
+    logger.debug("GEMS_SUNRISE ADD")
     A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
         A, complex
     )
@@ -225,7 +225,7 @@ def add(A, B, *, alpha=1):
 
 
 def add_(A, B, *, alpha=1):
-    logger.debug("GEMS ADD_")
+    logger.debug("GEMS_SUNRISE ADD_")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         if B.device != A.device:
             B = B.to(A.device)

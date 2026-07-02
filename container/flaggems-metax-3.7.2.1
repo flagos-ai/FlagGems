@@ -7,7 +7,7 @@ ARG BASE_IMAGE=metax-maca:3.7.2.1
 ARG PYTHON_VERSION=3.12
 ARG FLAGOS_PYPI=https://resource.flagos.net/repository/flagos-pypi-metax/simple
 ARG EXTRA_PYPI=https://mirrors.aliyun.com/pypi/simple
-ARG INCLUDE_TESTS=false
+ARG INCLUDE_TESTS=true
 
 # ════════════════════════════════════════════════════════════════
 #  Stage 1 — builder
@@ -22,17 +22,16 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 # ── System packages ────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        software-properties-common ca-certificates \
-        curl \
-        build-essential gcc g++ \
+        curl build-essential ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Prepare uv and virtual environment ─────────────────────────
 # Install 'uv' to /usr/local/bin
-RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
-RUN uv venv /venv --python ${PYTHON_VERSION} --relocatable
-ENV VIRTUAL_ENV=/venv \
-    PATH="/venv/bin:${PATH}"
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && mv ~/.local/bin/uv /usr/local/bin/uv
+RUN uv venv /flagos --python ${PYTHON_VERSION} --relocatable
+ENV VIRTUAL_ENV=/flagos \
+    PATH="/flagos/bin:${PATH}"
 
 # ── Build FlagGems ─────────────────────────────────────────────
 WORKDIR /build
@@ -60,10 +59,10 @@ RUN uv pip install --no-cache-dir ".[test]" \
       --trusted-host mirrors.aliyun.com
 
 RUN if [ "$INCLUDE_TESTS" = "true" ]; then \
-      mkdir /export && \
-      cp -r /build/FlagGems/tests /export/tests && \
-      cp -r /build/FlagGems/benchmark /export/benchmark && \
-      cp /build/FlagGems/pytest.ini /export; \
+      mkdir /app && \
+      cp -r /build/FlagGems/tests /app/tests && \
+      cp -r /build/FlagGems/benchmark /app/benchmark && \
+      cp /build/FlagGems/pytest.ini /app; \
     fi
 
 
@@ -76,25 +75,21 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG INCLUDE_TESTS
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-        ca-certificates \
-        gcc \
-        g++ \
-        libpython3-dev \
+        build-essential libpython3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Copy uv and Python from builder ────────────────────────────
 COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
 COPY --from=builder /root/.local/share/uv /root/.local/share/uv
-COPY --from=builder /venv /venv
+COPY --from=builder /flagos /flagos
 
 # ── Copy tests and benchmarks into container if required ───────
-COPY --from=builder /export /app
+COPY --from=builder /app /app
 WORKDIR /app
 
 # Note: VIRTUAL_ENV and PATH are not sharable between stages
-ENV VIRTUAL_ENV=/venv \
-   PATH="/venv/bin:${PATH}" \
-   LD_LIBRARY_PATH="/venv/lib/python3.12/site-packages/triton/backends/metax/lib:${LD_LIBRARY_PATH}"
+ENV VIRTUAL_ENV=/flaogs \
+   PATH="/flagos/bin:${PATH}" \
+   LD_LIBRARY_PATH="/flagos/lib/python3.12/site-packages/triton/backends/metax/lib:${LD_LIBRARY_PATH}"
 
 ENTRYPOINT ["bash"]
