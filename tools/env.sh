@@ -40,22 +40,6 @@ case $BACKEND in
     export COREX_ROOT=/usr/local/corex
     export PATH=$COREX_ROOT/bin:$PATH
     export LD_LIBRARY_PATH=$COREX_ROOT/lib:$LD_LIBRARY_PATH
-    # Iluvatar's triton (3.1.0+corex) links libtriton.so directly against
-    # libpython3.10.so.1.0, unlike upstream triton and other vendor forks
-    # which use -undefined dynamic_lookup or bundle their own copy.
-    # When Python is uv-managed, the shared lib lives outside standard
-    # search paths, so we must add it explicitly.
-    if command -v python &>/dev/null; then
-      PYTHON_LIBDIR=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))" 2>/dev/null) || true
-      if [ -n "$PYTHON_LIBDIR" ]; then
-        export LD_LIBRARY_PATH=$PYTHON_LIBDIR:$LD_LIBRARY_PATH
-      fi
-    fi
-    # Iluvatar's libtriton.so has the plugin search path hardcoded to
-    # /usr/local/lib/python3.10/site-packages/triton/_C at compile time.
-    # Add the venv's triton/_C to LD_LIBRARY_PATH so the plugin is found.
-    SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
-    export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH
     ;;
   kunlunxin)
     export LD_LIBRARY_PATH=/xcudart/lib:/usr/local/cuda/lib64
@@ -95,6 +79,12 @@ case $BACKEND in
     export LD_LIBRARY_PATH=/usr/local/kuiper/lib:$LD_LIBRARY_PATH
     export LD_LIBRARY_PATH=/usr/local/kuiper/tsm8-profiler/lib:$LD_LIBRARY_PATH
     export LD_LIBRARY_PATH=${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}
+
+    # Torch XLA is not used in TsingMicro, and it may lead to LLVM error
+    export USE_TORCH_XLA=0
+    # Torch compiler is not supported on TsingMicro, and in particular,
+    # it is not used for inference scenario
+    export TORCH_COMPILE_DIABLE=1
 
     # if [ -n "${USE_TRITON}" ]; then
     #   export PYTHONPATH=$SITE_PACKAGES/triton/backends/tsingmicro/llvm/python_packages/mlir_core
