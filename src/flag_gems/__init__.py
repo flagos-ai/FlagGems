@@ -110,6 +110,7 @@ _FULL_CONFIG = (
     ("_unique2", _unique2),
     ("_unsafe_masked_index", _unsafe_masked_index),
     ("_unsafe_masked_index_put_accumulate", _unsafe_masked_index_put_accumulate),
+    ("_unsafe_view", _unsafe_view),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
     ("_upsample_bilinear2d_aa", _upsample_bilinear2d_aa),
