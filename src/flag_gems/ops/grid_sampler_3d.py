@@ -85,6 +85,15 @@ def grid_sampler_3d_kernel(
     gy = tl.load(grid_ptr + grid_offset + 1 * grid_stride_xyz).to(tl.float32)
     gz = tl.load(grid_ptr + grid_offset + 2 * grid_stride_xyz).to(tl.float32)
 
+    # Handle NaN - use sentinel value -2.0 (outside valid grid range [-1, 1])
+    # PyTorch returns 0.0 for NaN grid values
+    grid_x_nan = gx != gx
+    grid_y_nan = gy != gy
+    grid_z_nan = gz != gz
+    gx = tl.where(grid_x_nan, -2.0, gx)
+    gy = tl.where(grid_y_nan, -2.0, gy)
+    gz = tl.where(grid_z_nan, -2.0, gz)
+
     # Convert grid coordinates from [-1, 1] to input space
     if align_corners:
         x = (gx + 1.0) * tl.cast(in_w - 1, tl.float32) * 0.5
@@ -106,13 +115,6 @@ def grid_sampler_3d_kernel(
         y_pad = tl.maximum(tl.minimum(y, tl.cast(in_h - 1, tl.float32)), 0.0)
         z_pad = tl.maximum(tl.minimum(z, tl.cast(in_d - 1, tl.float32)), 0.0)
     else:  # REFLECTION - triangle wave reflection in grid space
-        # Reflect grid coordinates using a triangle wave with period 4.
-        # The valid range in grid space is [-1, 1]; coordinates outside this
-        # range are reflected back by mirroring at the boundaries.  Because a
-        # single pair of tl.where clauses only handles one reflection, coordinates
-        # far outside (e.g. grid = randn * 1.5) need periodic / repeated
-        # reflection.  This implementation follows the same triangle-wave pattern
-        # used by the kernel generator in grid_sample.py.
         x_shifted = gx + 1.0
         x_mod = x_shifted % 4.0
         x_mod = tl.where(x_mod < 0, x_mod + 4.0, x_mod)
@@ -138,20 +140,60 @@ def grid_sampler_3d_kernel(
             y_pad = (gy_refl + 1.0) * tl.cast(in_h, tl.float32) * 0.5 - 0.5
             z_pad = (gz_refl + 1.0) * tl.cast(in_d, tl.float32) * 0.5 - 0.5
 
-    # Compute indices based on interpolation mode.
-    # For ZEROS padding: use original coordinates so out-of-bounds
-    # positions are caught by the mask and set to zero.
-    # For BORDER/REFLECTION: use padded coordinates.
+    # Banker's rounding for nearest mode (round half to even).
+    # Matches PyTorch behavior for fractional 0.5 cases.
     if interpolation_mode == 1:  # NEAREST
         if padding_mode == 0:
-            ix = tl.cast(tl.floor(x + 0.5), tl.int32)
-            iy = tl.cast(tl.floor(y + 0.5), tl.int32)
-            iz = tl.cast(tl.floor(z + 0.5), tl.int32)
+            # X
+            xf = tl.floor(x)
+            xfrac = x - xf
+            xhalf = xfrac == 0.5
+            xf_int = tl.cast(xf, tl.int32)
+            xeven = xf_int % 2 == 0
+            xr = tl.where(xfrac < 0.5, xf, xf + 1)
+            ix = tl.cast(tl.where(xhalf, tl.where(xeven, xf, xf + 1), xr), tl.int32)
+            # Y
+            yf = tl.floor(y)
+            yfrac = y - yf
+            yhalf = yfrac == 0.5
+            yf_int = tl.cast(yf, tl.int32)
+            yeven = yf_int % 2 == 0
+            yr = tl.where(yfrac < 0.5, yf, yf + 1)
+            iy = tl.cast(tl.where(yhalf, tl.where(yeven, yf, yf + 1), yr), tl.int32)
+            # Z
+            zf = tl.floor(z)
+            zfrac = z - zf
+            zhalf = zfrac == 0.5
+            zf_int = tl.cast(zf, tl.int32)
+            zeven = zf_int % 2 == 0
+            zr = tl.where(zfrac < 0.5, zf, zf + 1)
+            iz = tl.cast(tl.where(zhalf, tl.where(zeven, zf, zf + 1), zr), tl.int32)
         else:
-            ix = tl.cast(tl.floor(x_pad + 0.5), tl.int32)
-            iy = tl.cast(tl.floor(y_pad + 0.5), tl.int32)
-            iz = tl.cast(tl.floor(z_pad + 0.5), tl.int32)
-    else:  # BILINEAR
+            # X (padded)
+            xf = tl.floor(x_pad)
+            xfrac = x_pad - xf
+            xhalf = xfrac == 0.5
+            xf_int = tl.cast(xf, tl.int32)
+            xeven = xf_int % 2 == 0
+            xr = tl.where(xfrac < 0.5, xf, xf + 1)
+            ix = tl.cast(tl.where(xhalf, tl.where(xeven, xf, xf + 1), xr), tl.int32)
+            # Y (padded)
+            yf = tl.floor(y_pad)
+            yfrac = y_pad - yf
+            yhalf = yfrac == 0.5
+            yf_int = tl.cast(yf, tl.int32)
+            yeven = yf_int % 2 == 0
+            yr = tl.where(yfrac < 0.5, yf, yf + 1)
+            iy = tl.cast(tl.where(yhalf, tl.where(yeven, yf, yf + 1), yr), tl.int32)
+            # Z (padded)
+            zf = tl.floor(z_pad)
+            zfrac = z_pad - zf
+            zhalf = zfrac == 0.5
+            zf_int = tl.cast(zf, tl.int32)
+            zeven = zf_int % 2 == 0
+            zr = tl.where(zfrac < 0.5, zf, zf + 1)
+            iz = tl.cast(tl.where(zhalf, tl.where(zeven, zf, zf + 1), zr), tl.int32)
+    else:  # BILINEAR (trilinear)
         if padding_mode == 0:
             ix0 = tl.cast(tl.floor(x), tl.int32)
             iy0 = tl.cast(tl.floor(y), tl.int32)
@@ -169,14 +211,11 @@ def grid_sampler_3d_kernel(
         ix1 = ix0 + 1
         iy1 = iy0 + 1
         iz1 = iz0 + 1
-        # Clamp upper bound for border/reflection modes:
-        # reflection can produce x_pad exactly at size-1, making ix1 = size (OOB).
         if padding_mode != 0:
             ix1 = tl.minimum(ix1, in_w - 1)
             iy1 = tl.minimum(iy1, in_h - 1)
             iz1 = tl.minimum(iz1, in_d - 1)
 
-    # Compute output offset for this (n, od, oh, ow) location
     out_offset_base = (
         n_idx * out_strides_n
         + od_idx * out_strides_d
@@ -188,10 +227,17 @@ def grid_sampler_3d_kernel(
     for channel in range(c):
         if interpolation_mode == 1:  # NEAREST
             if padding_mode == 0:  # ZEROS
-                mask_od = (iz >= 0) & (iz < in_d)
-                mask_oh = (iy >= 0) & (iy < in_h)
-                mask_ow = (ix >= 0) & (ix < in_w)
-                mask = mask_od & mask_oh & mask_ow
+                mask = (
+                    (iz >= 0)
+                    & (iz < in_d)
+                    & (iy >= 0)
+                    & (iy < in_h)
+                    & (ix >= 0)
+                    & (ix < in_w)
+                    & ~grid_x_nan
+                    & ~grid_y_nan
+                    & ~grid_z_nan
+                )
                 inp_offset = (
                     n_idx * in_strides_n
                     + channel * in_strides_c
@@ -208,219 +254,230 @@ def grid_sampler_3d_kernel(
                     + iy * in_strides_h
                     + ix * in_strides_w
                 )
-                val = tl.load(input_ptr + inp_offset)
+                val = tl.where(
+                    grid_x_nan | grid_y_nan | grid_z_nan,
+                    0.0,
+                    tl.load(input_ptr + inp_offset),
+                )
         else:
-            # Trilinear interpolation
             if padding_mode == 0:  # ZEROS
-                mask_000 = (
+                nm = ~grid_x_nan & ~grid_y_nan & ~grid_z_nan
+                m000 = (
                     (iz0 >= 0)
                     & (iz0 < in_d)
                     & (iy0 >= 0)
                     & (iy0 < in_h)
                     & (ix0 >= 0)
                     & (ix0 < in_w)
+                    & nm
                 )
-                mask_001 = (
+                m001 = (
                     (iz0 >= 0)
                     & (iz0 < in_d)
                     & (iy0 >= 0)
                     & (iy0 < in_h)
                     & (ix1 >= 0)
                     & (ix1 < in_w)
+                    & nm
                 )
-                mask_010 = (
+                m010 = (
                     (iz0 >= 0)
                     & (iz0 < in_d)
                     & (iy1 >= 0)
                     & (iy1 < in_h)
                     & (ix0 >= 0)
                     & (ix0 < in_w)
+                    & nm
                 )
-                mask_011 = (
+                m011 = (
                     (iz0 >= 0)
                     & (iz0 < in_d)
                     & (iy1 >= 0)
                     & (iy1 < in_h)
                     & (ix1 >= 0)
                     & (ix1 < in_w)
+                    & nm
                 )
-                mask_100 = (
+                m100 = (
                     (iz1 >= 0)
                     & (iz1 < in_d)
                     & (iy0 >= 0)
                     & (iy0 < in_h)
                     & (ix0 >= 0)
                     & (ix0 < in_w)
+                    & nm
                 )
-                mask_101 = (
+                m101 = (
                     (iz1 >= 0)
                     & (iz1 < in_d)
                     & (iy0 >= 0)
                     & (iy0 < in_h)
                     & (ix1 >= 0)
                     & (ix1 < in_w)
+                    & nm
                 )
-                mask_110 = (
+                m110 = (
                     (iz1 >= 0)
                     & (iz1 < in_d)
                     & (iy1 >= 0)
                     & (iy1 < in_h)
                     & (ix0 >= 0)
                     & (ix0 < in_w)
+                    & nm
                 )
-                mask_111 = (
+                m111 = (
                     (iz1 >= 0)
                     & (iz1 < in_d)
                     & (iy1 >= 0)
                     & (iy1 < in_h)
                     & (ix1 >= 0)
                     & (ix1 < in_w)
+                    & nm
                 )
 
-                offset_000 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                base = n_idx * in_strides_n + channel * in_strides_c
+                c000 = tl.load(
+                    input_ptr
+                    + base
                     + iz0 * in_strides_d
                     + iy0 * in_strides_h
-                    + ix0 * in_strides_w
+                    + ix0 * in_strides_w,
+                    mask=m000,
+                    other=0.0,
                 )
-                offset_001 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                c001 = tl.load(
+                    input_ptr
+                    + base
                     + iz0 * in_strides_d
                     + iy0 * in_strides_h
-                    + ix1 * in_strides_w
+                    + ix1 * in_strides_w,
+                    mask=m001,
+                    other=0.0,
                 )
-                offset_010 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                c010 = tl.load(
+                    input_ptr
+                    + base
                     + iz0 * in_strides_d
                     + iy1 * in_strides_h
-                    + ix0 * in_strides_w
+                    + ix0 * in_strides_w,
+                    mask=m010,
+                    other=0.0,
                 )
-                offset_011 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                c011 = tl.load(
+                    input_ptr
+                    + base
                     + iz0 * in_strides_d
                     + iy1 * in_strides_h
-                    + ix1 * in_strides_w
+                    + ix1 * in_strides_w,
+                    mask=m011,
+                    other=0.0,
                 )
-                offset_100 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                c100 = tl.load(
+                    input_ptr
+                    + base
                     + iz1 * in_strides_d
                     + iy0 * in_strides_h
-                    + ix0 * in_strides_w
+                    + ix0 * in_strides_w,
+                    mask=m100,
+                    other=0.0,
                 )
-                offset_101 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                c101 = tl.load(
+                    input_ptr
+                    + base
                     + iz1 * in_strides_d
                     + iy0 * in_strides_h
-                    + ix1 * in_strides_w
+                    + ix1 * in_strides_w,
+                    mask=m101,
+                    other=0.0,
                 )
-                offset_110 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                c110 = tl.load(
+                    input_ptr
+                    + base
                     + iz1 * in_strides_d
                     + iy1 * in_strides_h
-                    + ix0 * in_strides_w
+                    + ix0 * in_strides_w,
+                    mask=m110,
+                    other=0.0,
                 )
-                offset_111 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                c111 = tl.load(
+                    input_ptr
+                    + base
                     + iz1 * in_strides_d
                     + iy1 * in_strides_h
-                    + ix1 * in_strides_w
+                    + ix1 * in_strides_w,
+                    mask=m111,
+                    other=0.0,
                 )
-
-                c000 = tl.load(input_ptr + offset_000, mask=mask_000, other=0.0)
-                c001 = tl.load(input_ptr + offset_001, mask=mask_001, other=0.0)
-                c010 = tl.load(input_ptr + offset_010, mask=mask_010, other=0.0)
-                c011 = tl.load(input_ptr + offset_011, mask=mask_011, other=0.0)
-                c100 = tl.load(input_ptr + offset_100, mask=mask_100, other=0.0)
-                c101 = tl.load(input_ptr + offset_101, mask=mask_101, other=0.0)
-                c110 = tl.load(input_ptr + offset_110, mask=mask_110, other=0.0)
-                c111 = tl.load(input_ptr + offset_111, mask=mask_111, other=0.0)
             else:
-                offset_000 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                base = n_idx * in_strides_n + channel * in_strides_c
+                c000 = tl.load(
+                    input_ptr
+                    + base
                     + iz0 * in_strides_d
                     + iy0 * in_strides_h
                     + ix0 * in_strides_w
                 )
-                offset_001 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                c001 = tl.load(
+                    input_ptr
+                    + base
                     + iz0 * in_strides_d
                     + iy0 * in_strides_h
                     + ix1 * in_strides_w
                 )
-                offset_010 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                c010 = tl.load(
+                    input_ptr
+                    + base
                     + iz0 * in_strides_d
                     + iy1 * in_strides_h
                     + ix0 * in_strides_w
                 )
-                offset_011 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                c011 = tl.load(
+                    input_ptr
+                    + base
                     + iz0 * in_strides_d
                     + iy1 * in_strides_h
                     + ix1 * in_strides_w
                 )
-                offset_100 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                c100 = tl.load(
+                    input_ptr
+                    + base
                     + iz1 * in_strides_d
                     + iy0 * in_strides_h
                     + ix0 * in_strides_w
                 )
-                offset_101 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                c101 = tl.load(
+                    input_ptr
+                    + base
                     + iz1 * in_strides_d
                     + iy0 * in_strides_h
                     + ix1 * in_strides_w
                 )
-                offset_110 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                c110 = tl.load(
+                    input_ptr
+                    + base
                     + iz1 * in_strides_d
                     + iy1 * in_strides_h
                     + ix0 * in_strides_w
                 )
-                offset_111 = (
-                    n_idx * in_strides_n
-                    + channel * in_strides_c
+                c111 = tl.load(
+                    input_ptr
+                    + base
                     + iz1 * in_strides_d
                     + iy1 * in_strides_h
                     + ix1 * in_strides_w
                 )
-
-                c000 = tl.load(input_ptr + offset_000)
-                c001 = tl.load(input_ptr + offset_001)
-                c010 = tl.load(input_ptr + offset_010)
-                c011 = tl.load(input_ptr + offset_011)
-                c100 = tl.load(input_ptr + offset_100)
-                c101 = tl.load(input_ptr + offset_101)
-                c110 = tl.load(input_ptr + offset_110)
-                c111 = tl.load(input_ptr + offset_111)
 
             # Trilinear interpolation
             c00 = c000 * (1.0 - fz) + c100 * fz
             c01 = c001 * (1.0 - fz) + c101 * fz
             c10 = c010 * (1.0 - fz) + c110 * fz
             c11 = c011 * (1.0 - fz) + c111 * fz
-
             c0 = c00 * (1.0 - fy) + c10 * fy
             c1 = c01 * (1.0 - fy) + c11 * fy
-
             val = c0 * (1.0 - fx) + c1 * fx
+            if padding_mode != 0:
+                val = tl.where(grid_x_nan | grid_y_nan | grid_z_nan, 0.0, val)
 
-        # Store result
         out_offset = out_offset_base + channel * out_strides_c
         tl.store(output_ptr + out_offset, val)
 
