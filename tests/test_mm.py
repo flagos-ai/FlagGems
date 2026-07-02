@@ -229,7 +229,7 @@ def test_mm_out_self_transpose(M, K, dtype):
 @pytest.mark.parametrize(
     "M, N, K",
     [
-        (512, 512, 8192),  # splitk 场景: M < 2048, N < 2048, K >= 4096
+        (512, 512, 8192),
         (1024, 1024, 4096),
         (256, 256, 16384),
     ],
