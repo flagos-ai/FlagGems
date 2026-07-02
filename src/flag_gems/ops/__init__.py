@@ -30,6 +30,7 @@ from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops._upsample_nearest_exact2d_backward import (
     _upsample_nearest_exact2d_backward,
 )
+from flag_gems.ops._upsample_nearest_exact3d import _upsample_nearest_exact3d
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
@@ -545,6 +546,7 @@ __all__ = [
     "_upsample_bicubic2d_aa_backward",
     "_upsample_bilinear2d_aa",
     "_upsample_nearest_exact1d",
+    "_upsample_nearest_exact3d",
     "_upsample_nearest_exact2d_backward",
     "abs",
     "abs_",
