@@ -12,7 +12,7 @@ num_stages=4 for better pipelining.
 
 import logging
 
-import torch
+import torch  # noqa: F401
 import triton
 import triton.language as tl
 
