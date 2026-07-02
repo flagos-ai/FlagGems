@@ -1,6 +1,6 @@
+#include <c10/util/SmallVector.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
-#include <c10/util/SmallVector.h>
 #include "torch/python.h"
 
 #include "flag_gems/operators.h"
@@ -121,9 +121,7 @@ PYBIND11_MODULE(c_operators, m) {
       py::arg("dim") = 0);
   m.def(
       "unsafe_split_with_sizes",
-      [](const at::Tensor &self,
-         const std::vector<int64_t> &split_sizes,
-         int64_t dim) {
+      [](const at::Tensor &self, const std::vector<int64_t> &split_sizes, int64_t dim) {
         c10::SmallVector<c10::SymInt, 8> sym_split_sizes;
         sym_split_sizes.reserve(split_sizes.size());
         for (const int64_t split_size : split_sizes) {
