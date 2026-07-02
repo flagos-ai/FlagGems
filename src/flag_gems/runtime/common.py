@@ -33,6 +33,7 @@ DEFAULT_STRATEGIES = {
     "baddbmm": ["align32", "align32", "align32"],
     "bmm": ["align32", "align32", "align32", "align32", "align32"],
     "bmm_sqmma": ["align32", "align32", "align32"],
+    "fused_marlin_moe_mxfp4": ["align32", "align32", "align32", "default"],
     "gemv": ["align32", "align32", "align32", "default"],
     "mm": ["align32", "align32", "align32", "align32", "align32"],
     "mm_sqmma": ["align32", "align32", "align32", "default"],
@@ -45,6 +46,7 @@ DEFAULT_STRATEGIES = {
         "default",
     ],
     "mv": ["align32", "align32"],
+    "mul": ["align32", "default"],
     "sparse_attention": ["align32", "align32", "align32"],
     "w8a8_block_fp8_general": [
         "align32",
@@ -68,6 +70,7 @@ DEFAULT_STRATEGIES = {
         "align32",
         "default",
     ],
+    "w8a8_block_fp8_bmm": ["default", "align32", "align32", "align32"],
     "mm_splitk": ["align32", "align32", "align32", "align32", "align32"],
 }
 
@@ -77,15 +80,18 @@ OP_KEY_ORDERS = {
     "bmm": ["M", "N", "K", "stride_am", "stride_bk"],
     "bmm_sqmma": ["M", "N", "K"],
     "baddbmm": ["M", "N", "K"],
+    "fused_marlin_moe_mxfp4": ["N", "K", "BLOCK_SIZE_M", "SWAP_AB"],
     "gemv": ["M", "K", "stride_am", "stride_bk"],
     "mm": ["M", "N", "K", "stride_am", "stride_bk"],
     "mm_sqmma": ["M", "N", "K", "dtype"],
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mv": ["M", "N"],
+    "mul": ["n_elements", "dtype"],
     "sparse_attention": ["topk", "H_ACTUAL", "D"],
     "w8a8_block_fp8_general": ["M", "N", "K", "stride_am", "stride_bk"],
     "w8a8_block_fp8_general_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
     "w8a8_block_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    "w8a8_block_fp8_bmm": ["B", "M_aligned", "N", "K"],
     "mm_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
 }
 

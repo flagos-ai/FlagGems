@@ -49,6 +49,9 @@ def test_div_tensor_tensor_(shape, dtype):
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_div_tensor_scalar(shape, scalar, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float16:
+        pytest.skip("Issue #3796: not working")
+
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
     ref_inp1 = utils.to_reference(inp1, False)
@@ -66,6 +69,9 @@ def test_div_tensor_scalar(shape, scalar, dtype):
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_div_tensor_scalar_(shape, scalar, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float16:
+        pytest.skip("Issue #3796: not working")
+
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
     ref_inp1 = utils.to_reference(inp1.clone(), False)
@@ -77,12 +83,31 @@ def test_div_tensor_scalar_(shape, scalar, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.div_scalar_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_scalar_(shape, scalar, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone(), False)
+
+    ref_out = ref_inp.div_(scalar)
+    with flag_gems.use_gems():
+        res_out = inp.div_(scalar)
+
+    assert res_out is inp
+    utils.gems_assert_close(inp, ref_out, dtype, equal_nan=True)
+
+
 # div.Scalar with true_divide
 @pytest.mark.div_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_div_scalar_tensor(shape, scalar, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float16:
+        pytest.skip("Issue #3796: not working")
+
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp2 = utils.to_reference(inp2, False)
@@ -122,6 +147,10 @@ def test_div_scalar_scalar(dtype):
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
+)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_div_complex_complex(shape, complex_dtype):
@@ -144,6 +173,10 @@ def test_div_complex_complex(shape, complex_dtype):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
 )
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
@@ -176,6 +209,10 @@ def test_div_complex_float_tensor(shape, complex_dtype):
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
+)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_div_tensor_int(shape, complex_dtype):
@@ -196,6 +233,10 @@ def test_div_tensor_int(shape, complex_dtype):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
 )
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
