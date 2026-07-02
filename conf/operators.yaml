@@ -3849,6 +3849,17 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: is_strides_like_format
+    description: |
+      Checks whether the stride pattern of the input tensor matches the specified memory format (contiguous, channels_last, or any).
+    for:
+      - is_strides_like_format
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '1.0'
   - id: isclose
     description: |
       Returns a new tensor with boolean elements representing if each element of `input`
@@ -4596,6 +4607,28 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: masked_scatter
+    description: Copies elements from `source` into the given tensor at positions where the `mask` is True.
+    for:
+      - masked_scatter
+    labels:
+      - aten
+    kind:
+      - tensor
+    stages:
+      - stable: '4.2'
+  - id: masked_scatter_
+    description: The in-place version of `masked_scatter()`.
+    for:
+      - masked_fill_.Scalar
+    labels:
+      - aten
+      - pointwise
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
   - id: masked_scatter
     description: Copies elements from `source` into the given tensor at positions where the `mask` is True.
     for:

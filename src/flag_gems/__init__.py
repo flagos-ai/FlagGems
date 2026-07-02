@@ -381,6 +381,7 @@ _FULL_CONFIG = (
     ("index_put_", index_put_),
     ("index_reduce_", index_reduce_),
     ("index_select", index_select),
+    ("is_strides_like_format", is_strides_like_format),
     ("isclose", isclose),
     ("isfinite", isfinite),
     ("isin.Scalar_Tensor", isin),
