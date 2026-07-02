@@ -474,6 +474,7 @@ _FULL_CONFIG = (
     ("mse_loss_backward", mse_loss_backward),
     ("mul.Tensor", mul),
     ("mul_.Tensor", mul_),
+    ("multi_query_attention_mqa", multi_query_attention_mqa),
     ("multinomial", multinomial),
     ("mv", mv),
     ("nan_to_num", nan_to_num),

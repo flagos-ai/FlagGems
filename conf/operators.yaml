@@ -5000,6 +5000,18 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: multi_query_attention_mqa
+    description: |
+      Multi-Query Attention where key and value have a single head while query can have multiple heads.
+    for:
+      - multi_query_attention_mqa
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: multinomial
     description: |
       Returns a tensor where each row contains `num_samples` indices sampled
