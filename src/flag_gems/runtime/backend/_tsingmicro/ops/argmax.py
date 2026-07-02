@@ -8,9 +8,10 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
+from flag_gems.utils.limits import get_dtype_min
 from flag_gems.utils.shape_utils import can_use_int32_index
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def cfggen_reduce_op():
@@ -31,17 +32,16 @@ def argmax_kernel_once(
 
 
 @libentry()
-@libtuner(
-    configs=cfggen_reduce_op(),
-    key=["M"],
-    strategy=["log"],
-)
+# @libtuner(
+#     configs=cfggen_reduce_op(),
+#     key=["M"],
+#     strategy=["log"],
+# )
 @triton.jit
 def argmax_kernel_1(
     inp,
     mid_value,
     mid_index,
-    real_size,
     M,
     BLOCK_SIZE: tl.constexpr,
     INT64_INDEX: tl.constexpr = False,
@@ -55,14 +55,15 @@ def argmax_kernel_1(
     start_idx = pid * size_per_job
     end_idx = min(start_idx + size_per_job, M)
 
-    max_tmp = -float("inf")
+    min_value = get_dtype_min(inp.type.element_ty)
+    max_tmp = min_value
     index_tmp = 0
     if INT64_INDEX:
         index_tmp = index_tmp.to(tl.int64)
     for off in range(start_idx, end_idx, BLOCK_SIZE):
         offset = off + tl.arange(0, BLOCK_SIZE)
         mask = offset < end_idx
-        inp_val = tl.load(inp + offset, mask=mask, other=-float("inf"))
+        inp_val = tl.load(inp + offset, mask=mask, other=min_value)
         max_val, max_index = tl.max(inp_val, axis=0, return_indices=True)
         if max_val > max_tmp:
             max_tmp = max_val.to(tl.float32)
@@ -71,16 +72,15 @@ def argmax_kernel_1(
     max_index_ptr = mid_index + pid
     tl.store(mid_value_ptr, max_tmp)
     tl.store(max_index_ptr, index_tmp)
-    tl.store(real_size, num_jobs)
 
 
 @libentry()
 @triton.jit
-def argmax_kernel_2(mid_value, mid_index, out, real_size, mid_size: tl.constexpr):
-    size = tl.load(real_size)
-    offset = tl.arange(0, mid_size)
+def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr):
+    min_value = get_dtype_min(mid_value.type.element_ty)
+    offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid_value + offset
-    mid_val = tl.load(mid_ptrs, mask=offset < size, other=-float("inf"))
+    mid_val = tl.load(mid_ptrs, mask=(offset < mid_size), other=min_value)
     index_val = tl.argmax(mid_val, axis=0)
     mid_index_ptrs = mid_index + index_val
     out_val = tl.load(mid_index_ptrs)
@@ -115,14 +115,17 @@ def argmax_kernel(
         pid_k = pid_k.to(tl.int64)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
-    max_values = tl.full([BLOCK_M], dtype=tl.float32, value=float("-inf"))
+    dtype = inp.type.element_ty
+    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
+    min_value = get_dtype_min(dtype)
+    max_values = tl.full([BLOCK_M], dtype=acc_type, value=min_value)
     argmax_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
         local_max, local_argmax = tl.max(
             inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
         )
@@ -155,31 +158,26 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         else:
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
-        if M <= 65530:
+        if M <= 65536:
             with torch_device_fn.device(inp.device):
                 argmax_kernel_once[(1, 1, 1)](inp, out, M)
         else:
-            grid = lambda meta: (
-                min(
-                    triton.cdiv(M, meta["BLOCK_SIZE"]),
-                    torch_device_fn.get_device_properties().multi_processor_count,
-                ),
-            )
-            mid_size = torch_device_fn.get_device_properties().multi_processor_count
-            real_size = torch.empty([], dtype=torch.int32, device=inp.device)
-            mid_value = torch.empty((mid_size,), dtype=torch.float32, device=inp.device)
+            block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+            mid_size = triton.cdiv(M, block_size)
+            block_mid = triton.next_power_of_2(mid_size)
+            mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
             mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
             with torch_device_fn.device(inp.device):
-                argmax_kernel_1[grid](
+                argmax_kernel_1[(mid_size,)](
                     inp,
                     mid_value,
                     mid_index,
-                    real_size,
                     M,
+                    block_size,
                     INT64_INDEX=use_int64_index,
                 )
                 argmax_kernel_2[(1, 1, 1)](
-                    mid_value, mid_index, out, real_size, mid_size
+                    mid_value, mid_index, out, mid_size, block_mid
                 )
         return out
     else:

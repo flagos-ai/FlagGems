@@ -61,7 +61,7 @@ jobs:
             console.log('Labels:', labels.map(label => label.name));
             return JSON.stringify(labels.map(label => label.name));
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           sparse-checkout: .github/backends.json
           sparse-checkout-cone-mode: false
@@ -73,7 +73,15 @@ jobs:
             const fs = require('fs');
             const backends = JSON.parse(fs.readFileSync('.github/backends.json', 'utf8'));
             const labels = JSON.parse(${{ steps.get-labels.outputs.result }} || '[]');
-            const matrix = backends.filter(b => b.enabled && labels.includes(b.label));
+            const filtered = backends.filter(b => b.enabled && labels.includes(b.label));
+            const matrix = {
+              vendor: filtered.map(b => b.vendor),
+              include: filtered.map(b => ({
+                vendor: b.vendor,
+                runner_label: b.runner_label,
+                gpu_check: b.gpu_check
+              }))
+            };
             core.setOutput('matrix', JSON.stringify(matrix));
 
   build-doc:
@@ -95,7 +103,7 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
 
@@ -116,7 +124,7 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
 
@@ -131,16 +139,15 @@ jobs:
 
   backend-tests:
     needs: preprocess
-    if: fromJSON(needs.preprocess.outputs.backend_matrix)[0] != null
+    if: fromJSON(needs.preprocess.outputs.backend_matrix).vendor[0] != null
     strategy:
       fail-fast: false
-      matrix:
-        backend: ${{ fromJSON(needs.preprocess.outputs.backend_matrix) }}
+      matrix: ${{ fromJSON(needs.preprocess.outputs.backend_matrix) }}
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: ${{ matrix.backend.vendor }}
-      runner_label: ${{ matrix.backend.runner_label }}
-      gpu_check_script: ${{ matrix.backend.gpu_check }}
+      vendor: ${{ matrix.vendor }}
+      runner_label: ${{ matrix.runner_label }}
+      gpu_check_script: ${{ matrix.gpu_check }}
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
@@ -153,7 +160,7 @@ jobs:
     if: contains(needs.preprocess.outputs.labels, 'ops/alpha')
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: nvidia
+      vendor: nvidia-cuda133
       runner_label: h20
       gpu_check_script: tools/gpu_check_nvidia.sh
       test_script: tools/test-op-experimental.sh
