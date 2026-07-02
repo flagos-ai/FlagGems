@@ -23,13 +23,21 @@ from flag_gems.utils import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-def _round_half_to_even(x_f32):
-    """Round fp32 values to nearest integer with ties to even (banker's rounding)."""
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def special_round_func(x, scale):
+    """Round to nearest integer with ties to even (banker's rounding)."""
+    x_f32 = (x * scale).to(tl.float32)
+
+    # Banker's rounding: round half to even.
+    # Decompose into sign, absolute value, and fractional part.
     sign = tl.where(x_f32 >= 0.0, 1.0, -1.0)
     abs_x = tl.math.abs(x_f32)
     floor_x = tl.math.floor(abs_x)
     frac = abs_x - floor_x
     is_even = (floor_x % 2.0) == 0.0
+
+    # Round up when frac > 0.5, down when frac < 0.5, to even when frac == 0.5.
     rounded_abs = tl.where(
         frac > 0.5,
         floor_x + 1.0,
@@ -40,16 +48,7 @@ def _round_half_to_even(x_f32):
         ),
     )
     result = sign * rounded_abs
-    # Preserve signed zero: torch.special.round(-0.0) returns -0.0.
-    result = tl.where(abs_x == 0.0, x_f32, result)
-    return result
 
-
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
-@triton.jit
-def special_round_func(x, scale):
-    x_f32 = (x * scale).to(tl.float32)
-    result = _round_half_to_even(x_f32)
     return (result / scale).to(x.dtype)
 
 
