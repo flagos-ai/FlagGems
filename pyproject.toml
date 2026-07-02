@@ -69,7 +69,7 @@ cambricon = [
     "torch==2.7.1+cpu",
     "torch-mlu==1.29.2+torch2.7.1",
     "torch-mlu-ops==1.8.0+torch2.7.1",
-    "triton==3.2.0+mlu1.7.2",
+    "triton==3.2.0",
 ]
 
 enflame = [
@@ -92,7 +92,7 @@ iluvatar = [
     "torch==2.7.1+corex.4.4.0",
     "torchaudio==2.7.1+corex.4.4.0",
     "torchvision==0.22.1+corex.4.4.0",
-    "triton==3.1.0+corex.4.4.0",
+    "triton==3.2.0",
     # "flagtree==0.5.1+iluvatar3.1"
 ]
 
@@ -129,7 +129,7 @@ metax = [
 mthreads = [
     "torch==2.9.0+musa.4.3.6",
     "torch_musa==2.9.0",
-    "triton==3.6.0+git89458660",
+    "triton==3.2.0",
     "mkl==2024.0.0",
     # "flagtree==0.5.1+mthreads3.6",
 ]
@@ -150,7 +150,7 @@ nvidia-cuda133 = [
 
 spacemit = [
     "torch==2.8.0+spacemit.0",
-    "triton==3.6.0+spacemit.a5",
+    "triton==3.2.0",
 ]
 
 sunrise = [
@@ -158,13 +158,13 @@ sunrise = [
     "torchaudio==2.11.0+cpu",
     "torchvision==0.26.0+cpu",
     "torch-ptpu==0.2.1+gaf2c267.torch2.11",
-    "triton==3.4.0.6+gite4f6d6e4",
+    "triton==3.2.0",
     # "flagtree-0.4.0+sunrise3.4"
 ]
 
 thead = [
     "torch==2.9.0+ppu2.0.0.oe",
-    "triton==3.5.0+ppu2.0.0.oe",
+    "triton==3.2.0",
 ]
 
 
