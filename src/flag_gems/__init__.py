@@ -369,6 +369,7 @@ _FULL_CONFIG = (
     ("greater_equal.Tensor", ge),
     ("greater_equal_.Tensor", greater_equal_),
     ("grid_sample", grid_sample),
+    ("grid_sampler_3d", grid_sampler_3d),
     ("gt.Scalar", gt_scalar),
     ("gt.Tensor", gt),
     ("hardsigmoid", hardsigmoid),
