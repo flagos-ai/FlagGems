@@ -27,7 +27,7 @@ def relu6_kernel(x_ptr, out_ptr, N_total, BLOCK: tl.constexpr):
 
 
 def relu6(*args, **kwargs):
-    logger.debug("GEMS RELU6 GCU400")
+    logger.debug("GEMS_ENFLAME RELU6")
     x = (
         args[0]
         if len(args) > 0
