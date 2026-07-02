@@ -84,6 +84,10 @@ _FULL_CONFIG = (
         scaled_dot_product_cudnn_attention_backward,
     ),
     (
+        "_scaled_dot_product_efficient_attention",
+        _scaled_dot_product_efficient_attention,
+    ),
+    (
         "_scaled_dot_product_efficient_attention_backward",
         scaled_dot_product_efficient_attention_backward,
     ),
