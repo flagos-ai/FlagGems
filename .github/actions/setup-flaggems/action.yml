@@ -3,7 +3,7 @@ description: "Run setup.sh for a vendor and optionally check GPU availability"
 
 inputs:
   vendor:
-    description: "FlagGems vendor name (e.g. nvidia, mthreads, ascend-cann900)"
+    description: "FlagGems backend name (e.g. nvidia-cuda133, mthreads, ascend-cann900)"
     required: true
   gpu_check_script:
     description: "Path to GPU check script (leave empty to skip)"
@@ -18,7 +18,7 @@ runs:
       run: ./setup.sh ${{ inputs.vendor }}
 
     - name: Install vllm (nvidia only)
-      if: inputs.vendor == 'nvidia'
+      if: startsWith(inputs.vendor, 'nvidia')
       shell: bash
       run: |
         source .venv/bin/activate

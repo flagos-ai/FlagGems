@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 exp2 = tl_extra_shim.exp2
 
 
@@ -71,7 +71,7 @@ def sigmoid_backward_custom(x: torch.Tensor, y: torch.Tensor):
 class Sigmoid(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logger.debug("GEMS_METAX SIGMOID FORWARD")
+        logger.debug("GEMS_METAX SIGMOID_FORWARD")
         if A.requires_grad is True:
             out = sigmoid_forward(A.to(torch.float32))
             ctx.save_for_backward(out)
@@ -82,7 +82,7 @@ class Sigmoid(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_METAX SIGMOID BACKWARD")
+        logger.debug("GEMS_METAX SIGMOID_BACKWARD")
         (out,) = ctx.saved_tensors
 
         is_grad_stride_0 = True

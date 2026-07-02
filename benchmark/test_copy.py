@@ -3,6 +3,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -15,6 +17,9 @@ class CopyInplaceBenchmark(base.Benchmark):
 
 
 @pytest.mark.copy_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_copy_inplace():
     bench = CopyInplaceBenchmark(
         op_name="copy_",
@@ -35,6 +40,9 @@ class CopyFunctionalBenchmark(base.Benchmark):
 
 
 @pytest.mark.copy
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_copy_functional():
     bench = CopyFunctionalBenchmark(
         op_name="copy",
