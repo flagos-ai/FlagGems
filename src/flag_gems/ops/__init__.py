@@ -315,6 +315,7 @@ from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
+from flag_gems.ops.multiply_ import multiply_
 from flag_gems.ops.mv import mv
 from flag_gems.ops.nan_to_num import nan_to_num
 from flag_gems.ops.nanmedian import (
@@ -927,6 +928,7 @@ __all__ = [
     "mul",
     "mul_",
     "multinomial",
+    "multiply_",
     "mv",
     "nan_to_num",
     "nanmedian",
