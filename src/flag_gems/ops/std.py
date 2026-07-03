@@ -231,20 +231,21 @@ def std(x, dim=None, *, correction=None, keepdim=False):
         BLOCK_NUM = triton.cdiv(N, BLOCK_N_MAP)
         tmp_sum = torch.empty((BLOCK_NUM,), dtype=torch.float32, device=x.device)
         tmp_sum_sq = torch.empty((BLOCK_NUM,), dtype=torch.float32, device=x.device)
-        _std_map_kernel[(BLOCK_NUM,)](
-            x.contiguous(), tmp_sum, tmp_sum_sq, N, BLOCK_N_MAP
-        )
         out = torch.empty([], device=x.device, dtype=x.dtype)
         BLOCK_SIZE_REDUCE = 1024
-        _std_reduce_kernel[(1,)](
-            tmp_sum,
-            tmp_sum_sq,
-            out,
-            N,
-            effective_correction,
-            BLOCK_NUM,
-            BLOCK_SIZE_REDUCE,
-        )
+        with torch_device_fn.device(x.device):
+            _std_map_kernel[(BLOCK_NUM,)](
+                x.contiguous(), tmp_sum, tmp_sum_sq, N, BLOCK_N_MAP
+            )
+            _std_reduce_kernel[(1,)](
+                tmp_sum,
+                tmp_sum_sq,
+                out,
+                N,
+                effective_correction,
+                BLOCK_NUM,
+                BLOCK_SIZE_REDUCE,
+            )
         return out.view([1] * input_ndim) if keepdim else out
 
     else:
