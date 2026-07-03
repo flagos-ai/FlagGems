@@ -7,7 +7,7 @@ import triton.language as tl
 # from flag_gems.ops.mul import mul
 from flag_gems.ops.mv import mv
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -81,7 +81,7 @@ class Outer(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_METAX OUTER VJP")
+        logger.debug("GEMS_METAX OUTER_VJP")
         assert out_grad.ndim == 2, "invalide out_grad shape"
 
         inp, weight = ctx.saved_tensors

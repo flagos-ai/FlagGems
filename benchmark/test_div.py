@@ -1,11 +1,16 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
 # TODO(0x45f): Fix OOM when dtypes includes COMPLEX_DTYPES (Issue #2693).
 @pytest.mark.div_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_div():
     bench = base.BinaryPointwiseBenchmark(
         op_name="div_tensor",
@@ -16,6 +21,9 @@ def test_div():
 
 
 @pytest.mark.div_tensor_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_div_inplace():
     bench = base.BinaryPointwiseBenchmark(
         op_name="div_tensor_",
@@ -27,6 +35,9 @@ def test_div_inplace():
 
 
 @pytest.mark.div_scalar_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_div_scalar_inplace():
     def input_fn(shape, dtype, device):
         inp = utils.generate_tensor_input(shape, dtype, device)
@@ -43,6 +54,9 @@ def test_div_scalar_inplace():
 
 
 @pytest.mark.div_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_div_out():
     def input_fn(shape, dtype, device):
         inp1 = utils.generate_tensor_input(shape, dtype, device)

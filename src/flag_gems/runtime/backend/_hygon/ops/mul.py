@@ -46,7 +46,7 @@ mul_func_scalar.register_complex(
 
 
 def mul(A, B):
-    logger.debug("GEMS MUL")
+    logger.debug("GEMS_HYGON MUL")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return mul_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -59,7 +59,7 @@ def mul(A, B):
 
 
 def mul_(A, B):
-    logger.debug("GEMS MUL_")
+    logger.debug("GEMS_HYGON MUL_")
     if isinstance(B, torch.Tensor):
         return mul_func(A, B, out0=A)
     else:

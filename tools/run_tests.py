@@ -28,7 +28,6 @@ from pathlib import Path
 
 import consts
 import distro
-import git
 import yaml
 
 import flag_gems
@@ -293,14 +292,8 @@ def _probe_triton():
 def _probe_flaggems():
     try:
         version = flag_gems.__version__
-        repo = git.Repo(search_parent_directories=True)
-        sha = repo.head.object.hexsha
-        ver_str = f"{version}+git{sha[:8]}"
-        ENV_INFO["flag_gems"] = {"version": ver_str}
-        pinfo(f"flag_gems detected ... {ver_str}")
-    except RuntimeError as e:
-        perror(f"{e}")
-        sys.exit(-1)
+        ENV_INFO["flag_gems"] = {"version": version}
+        pinfo(f"flag_gems detected ... {version}")
     except Exception as e:
         perror(f"{e}")
         perror("flag_gems has not been installed, please run `uv pip install -e .`")
