@@ -5,7 +5,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from torch._prims_common import is_boolean_dtype, is_integer_dtype
 
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import get_device_properties, libentry
@@ -58,7 +57,10 @@ def logcumsumexp_wrapper(inp, dim=1, dtype=None, out=None):
 
     if dtype is None:
         dtype = inp.dtype
-        if is_integer_dtype(dtype) or is_boolean_dtype(dtype):
+        if (
+            dtype in (torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64)
+            or dtype == torch.bool
+        ):
             dtype = torch.float32
     if out is None:
         out = torch.empty_like(inp, dtype=dtype)
@@ -66,6 +68,7 @@ def logcumsumexp_wrapper(inp, dim=1, dtype=None, out=None):
     with torch_device_fn.device(inp.device):
         if K == 1:  # row scan
             TILE_SIZE = triton.next_power_of_2(N)
+            # Use more warps for wider rows to keep occupancy up on long scans.
             num_warps = 8 if TILE_SIZE > 2048 else 4
             logcumsumexp_kernel[(M, 1, 1)](
                 inp, out, M, N, TILE_SIZE, num_warps=num_warps
@@ -77,6 +80,7 @@ def logcumsumexp_wrapper(inp, dim=1, dtype=None, out=None):
             # Actually for simplicity, let's handle the K > 1 case with a different approach
             # by processing each (M, K) combination independently
             TILE_SIZE = triton.next_power_of_2(N)
+            # Use more warps for wider rows to keep occupancy up on long scans.
             num_warps = 8 if TILE_SIZE > 2048 else 4
             # Grid: (M, K, 1) to process each (m, k) pair independently
             logcumsumexp_kernel_3d[(M, K, 1)](
