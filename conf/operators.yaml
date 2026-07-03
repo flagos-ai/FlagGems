@@ -7641,6 +7641,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: subtract
+    description: Subtracts `other`, scaled by `alpha`, from `input`.
+    for:
+      - subtract.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: subtract_
     description: In-place version of subtract. Subtracts other, scaled by alpha, from input.
     for:
