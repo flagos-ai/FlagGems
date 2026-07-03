@@ -1,8 +1,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 
 
@@ -18,7 +16,7 @@ def test_If():
     bench = base.GenericBenchmark(
         op_name="If",
         input_fn=if_input_fn,
-        torch_op=flag_gems.If,
+        torch_op=torch.where,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
