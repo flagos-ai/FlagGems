@@ -1,0 +1,35 @@
+baddbmm:
+  - param_map:
+      META:
+        TILE_M: block_m
+        TILE_N: block_n
+        TILE_K: block_k
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 16
+      - 32
+      - 64
+      - 128
+    block_n:
+      - 16
+      - 32
+      - 64
+      - 128
+    block_k:
+      - 16
+      - 32
+      - 64
+      - 128
+    stages:
+      - 1
+      - 2
+      - 3
+      - 4
+    warps:
+      - 4
+      - 8
+  - strategy:
+      M: default
+      N: default
+      K: default

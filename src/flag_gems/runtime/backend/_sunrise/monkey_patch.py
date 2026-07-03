@@ -1679,15 +1679,16 @@ def _patch_json_loads_for_accuracy_result():
                 backup_path = _backup_corrupt_accuracy_report(frame_info, payload)
             except OSError as backup_exc:
                 _LOGGER.warning(
-                    "Sunrise skipped corrupt accuracy_result backup: %s", backup_exc
+                    "GEMS_SUNRISE skipped corrupt accuracy_result backup: %s",
+                    backup_exc,
                 )
             if backup_path is not None:
                 _LOGGER.warning(
-                    "Sunrise ignored corrupt accuracy_result JSON and backed it up to %s",
+                    "GEMS_SUNRISE ignored corrupt accuracy_result JSON and backed it up to %s",
                     backup_path,
                 )
             else:
-                _LOGGER.warning("Sunrise ignored corrupt accuracy_result JSON")
+                _LOGGER.warning("GEMS_SUNRISE ignored corrupt accuracy_result JSON")
             return {}
 
     json.loads = loads_with_accuracy_result_fallback
@@ -1711,7 +1712,7 @@ def _patch_json_dump_for_accuracy_result():
         safe_payload, replaced = _sanitize_accuracy_report_json(payload)
         if replaced:
             _LOGGER.warning(
-                "Sunrise sanitized %d tensor value(s) before writing accuracy_result JSON",
+                "GEMS_SUNRISE sanitized %d tensor value(s) before writing accuracy_result JSON",
                 replaced,
             )
             args = (safe_payload, *args[1:])
