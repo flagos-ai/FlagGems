@@ -3,8 +3,12 @@
 name: BI-V150
 vendor: Iluvatar
 
+
 # Runner labels for this backends (self-hosted)
 runner_labels: v150-flaggems-weekly
+
+# Use container or not for this backends
+use_container: true
 
 # Container image for this backends
 container_image: harbor.baai.ac.cn/flaggems/iluvatar-flaggems-test-bi-v150:20260526

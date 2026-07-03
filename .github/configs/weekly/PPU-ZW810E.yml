@@ -6,6 +6,9 @@ vendor: THead
 # Runner labels for this backends (self-hosted)
 runner_labels: 810e-flaggems-weekly
 
+# Use container or not for this backends
+use_container: false
+
 # Container image for this backends
 # container_image: baai-cp-registry.cn-wulanchabu.cr.aliyuncs.com/flagos/flagos:vllm-qwen3-next-0528
 

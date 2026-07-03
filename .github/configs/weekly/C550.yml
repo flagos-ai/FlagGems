@@ -3,8 +3,12 @@
 name: C550
 vendor: Metax
 
+
 # Runner labels for this backends (self-hosted)
 runner_labels: c550-flaggems-weekly
+
+# Use container or not for this backends
+use_container: true
 
 # Container image for this backends
 container_image: harbor.baai.ac.cn/flaggems/metax-flaggems-test-c550:20260701

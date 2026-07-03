@@ -3,8 +3,12 @@
 name: BW1000
 vendor: Hygon
 
+
 # Runner labels for this backends (self-hosted)
 runner_labels: bw1000-flaggems-weekly
+
+# Use container or not for this backends
+use_container: true
 
 # Container image for this backends
 container_image: harbor.baai.ac.cn/flaggems/hygon-flaggems-test-bw1000:20260701

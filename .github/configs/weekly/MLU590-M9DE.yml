@@ -3,8 +3,12 @@
 name: MLU590-M9DE
 vendor: Cambricon
 
+
 # Runner labels for this backends (self-hosted)
 runner_labels: mlu590-m9de-flaggems-weekly
+
+# Use container or not for this backends
+use_container: true
 
 # Container image for this backends
 container_image: harbor.baai.ac.cn/flaggems/cambricon-flaggems-test-mlu590-m9de-triton3-2-1:20260618

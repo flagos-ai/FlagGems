@@ -3,8 +3,12 @@
 name: MTT-S5000
 vendor: MThreads
 
+
 # Runner labels for this backends (self-hosted)
 runner_labels: s5000-flaggems-weekly
+
+# Use container or not for this backends
+use_container: true
 
 # Container image for this backends
 container_image: harbor.baai.ac.cn/flaggems/mthreads-flaggems-test-mtt-s5000:20260701

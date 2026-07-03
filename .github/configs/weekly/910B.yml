@@ -3,8 +3,12 @@
 name: 910B
 vendor: Ascend
 
+
 # Runner labels for this backends (self-hosted)
 runner_labels: 910b-flaggems-weekly
+
+# Use container or not for this backends
+use_container: true
 
 # Container image for this backends
 container_image: harbor.baai.ac.cn/flaggems/huawei-flaggems-test-910b4-1-flagtree-3-5:20260701

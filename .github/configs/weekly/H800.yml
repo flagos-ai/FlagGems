@@ -3,8 +3,12 @@
 name: H800
 vendor: Nvidia
 
+
 # Runner labels for this backends (self-hosted)
 runner_labels: h800-flaggems-weekly
+
+# Use container or not for this backends
+use_container: true
 
 # Container image for this backends
 container_image: harbor.baai.ac.cn/flaggems/nvidia-flaggems-test-h800:20260701

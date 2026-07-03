@@ -3,8 +3,12 @@
 name: P800
 vendor: KunLunXin
 
+
 # Runner labels for this backends (self-hosted)
 runner_labels: p800-flaggems-weekly
+
+# Use container or not for this backends
+use_container: true
 
 # Container image for this backends
 container_image: harbor.baai.ac.cn/flaggems/kunlunxin-flaggems-test-p800:20260526
