@@ -583,6 +583,28 @@ ops:
       - tensor
     stages:
       - stable: '2.1'
+  - id: arccos
+    description: Returns a new tensor with the arccosine of the elements of `input`.
+    for:
+      - arccos
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: arccos_
+    description: The in-place version of `arccos()`.
+    for:
+      - arccos_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: arcsin
     description: Returns a new tensor with the arcsine of the elements of input.
     for:
@@ -4627,6 +4649,17 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: lt_
+    description: The in-place version of `lt()`.
+    for:
+      - lt_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: lt_scalar
     description: The scalar version of `lt`.
     for:
@@ -4638,6 +4671,17 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: lt_scalar_
+    description: The scalar version of `lt_()`.
+    for:
+      - lt_.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: margin_ranking_loss
     description: Compute the margin ranking loss.
     for:
