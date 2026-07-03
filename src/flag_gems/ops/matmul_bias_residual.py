@@ -97,6 +97,8 @@ def matmul_bias_residual(input, weight, bias, residual, *, alpha=1.0, beta=1.0):
     """
     Compute: output = alpha * (input @ weight) + beta * bias + residual
     """
+    logger.debug("GEMS MATMUL_BIAS_RESIDUAL")
+
     assert input.shape[1] == weight.shape[0], "Incompatible dimensions for matmul"
     assert broadcastable_to(
         bias.shape, (input.shape[0], weight.shape[1])
@@ -107,18 +109,6 @@ def matmul_bias_residual(input, weight, bias, residual, *, alpha=1.0, beta=1.0):
 
     M, K = input.shape
     _, N = weight.shape
-
-    logger.debug(
-        "GEMS Matmul_Bias_Residual, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[input column-major]: %s, [weight column-major]: %s, [bias column-major]: %s, [residual column-major]: %s",
-        M,
-        N,
-        K,
-        input.stride(0) == 1,
-        weight.stride(0) == 1,
-        bias.stride(0) == 1,
-        residual.stride(0) == 1,
-    )
 
     input = input.contiguous()
     weight = weight.contiguous()
