@@ -1,15 +1,4 @@
 ops:
-  - id: matmuladd
-    description: Computes matrix multiplication followed by bias addition.
-    for:
-      - matmuladd
-    labels:
-      - fused
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: abs
     description: |
       Computes the absolute value of each element in `input`.
@@ -4228,6 +4217,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: matmuladd
+    description: Computes matrix multiplication followed by bias addition.
+    for:
+      - matmuladd
+    labels:
+      - fused
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: max
     description: Returns the maximum value of all elements in the `input` tensor.
     for:
