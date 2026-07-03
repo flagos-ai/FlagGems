@@ -4184,28 +4184,6 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
-  - id: less
-    description: Computes whether `input` is less than `other` element-wise.
-    for:
-      - less.Tensor
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: less_scalar
-    description: The scalar version of `less`.
-    for:
-      - less.Scalar
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: less_equal
     description: Computes element-wise less-than-or-equal-to comparison.
     for:
@@ -4641,6 +4619,7 @@ ops:
   - id: lt
     description: Computes that `input` is less than `other` element-wise.
     for:
+      - less.Tensor
       - lt.Tensor
     labels:
       - aten
@@ -4652,6 +4631,7 @@ ops:
   - id: lt_scalar
     description: The scalar version of `lt`.
     for:
+      - less.Scalar
       - lt.Scalar
     labels:
       - aten
