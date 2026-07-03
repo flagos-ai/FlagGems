@@ -2268,32 +2268,6 @@ ops:
       - Math
     stages:
       - stable: '2.1'
-  - id: div_tensor_mode
-    description: |
-      Divides each element of the `input` by the corresponding element of `other`.
-      An optional `rounding_mode` can be specified.
-    for:
-      - div.Tensor_mode
-      - divide.Tensor_mode
-    labels:
-      - aten
-      - pointwise
-    kind:
-      - Math
-    stages:
-      - stable: '1.0'
-  - id: div_tensor_mode_
-    description: The in-place version of `div_mode()`.
-    for:
-      - div_.Tensor_mode
-      - divide_.Tensor_mode
-    labels:
-      - aten
-      - pointwise
-    kind:
-      - Math
-    stages:
-      - stable: '2.2'
   - id: dot
     description: Computes the dot product of two 1D tensors.
     for:
