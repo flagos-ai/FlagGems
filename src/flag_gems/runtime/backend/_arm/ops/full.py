@@ -6,6 +6,8 @@ import triton.language as tl
 
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @triton.jit(do_not_specialize=["fill_value_or_ptr"])
 def full_kernel(
@@ -50,7 +52,7 @@ def check_dtype(fill_value, dtype, device):
 
 
 def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logging.debug("GEMS FULL")
+    logger.debug("GEMS_ARM FULL")
     if device is None:
         device = torch.device("cpu")
     if dtype is None:
