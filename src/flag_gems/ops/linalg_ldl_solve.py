@@ -29,14 +29,17 @@ REAL_DTYPES = (torch.float32, torch.float64)
 COMPLEX_DTYPES = (torch.complex64, torch.complex128)
 
 
+@triton.jit
 def _cmul(ar, ai, br, bi):
     return ar * br - ai * bi, ar * bi + ai * br
 
 
+@triton.jit
 def _cconj_mul(ar, ai, br, bi):
     return ar * br + ai * bi, ar * bi - ai * br
 
 
+@triton.jit
 def _cdiv(nr, ni, dr, di):
     denom = dr * dr + di * di
     return (nr * dr + ni * di) / denom, (ni * dr - nr * di) / denom
