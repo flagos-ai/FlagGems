@@ -2464,6 +2464,30 @@ ops:
       - Science
     stages:
       - stable: '2.2'
+  - id: erfc
+    description: Computes the complementary error function.
+    for:
+      - erfc
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: erfc_
+    description: In-place version of `erfc`.
+    for:
+      - erfc_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: erfinv
     description: Computes the inverse error function of `input`.
     for:
@@ -7339,18 +7363,6 @@ ops:
     description: Computes the complementary error function.
     for:
       - special_erfc
-    labels:
-      - aten
-      - pointwise
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: special_erfc_
-    description: In-place version of `special_erfc`.
-    for:
-      - special_erfc_
     labels:
       - aten
       - pointwise
