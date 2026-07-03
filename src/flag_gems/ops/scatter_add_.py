@@ -388,3 +388,9 @@ def scatter_add_(x, dim, index, src):
         return scatter_add_1(x, dim, index, src)
     else:
         return scatter_add_0(x, dim, index, src)
+
+
+def scatter_add(inp, dim, index, src):
+    logger.debug("GEMS SCATTER_ADD")
+    out = inp.clone()
+    return scatter_add_(out, dim, index, src)

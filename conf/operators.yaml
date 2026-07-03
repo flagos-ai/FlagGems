@@ -6607,7 +6607,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: scatter_add_
     description: |
       Adds all values from the tensor `src` into `self` at the indices specified
