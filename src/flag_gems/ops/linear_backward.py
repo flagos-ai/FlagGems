@@ -3,6 +3,8 @@ import logging
 
 import torch
 
+import flag_gems
+
 from .mm import mm
 from .sum import sum_dim
 
@@ -28,10 +30,14 @@ def linear_backward(
         Tuple of (grad_input, grad_weight, grad_bias), where each element is None
         if the corresponding mask is False
     """
-    logger.debug("GEMS linear_backward")
+    logger.debug("GEMS LINEAR_BACKWARD")
 
     # Validate inputs
-    assert input.is_cuda and grad_output.is_cuda and weight.is_cuda
+    assert (
+        input.device.type == flag_gems.device
+        and grad_output.device.type == flag_gems.device
+        and weight.device.type == flag_gems.device
+    )
     assert input.device == grad_output.device == weight.device
 
     # Handle output_mask - ensure it's a tuple
