@@ -4453,10 +4453,10 @@ ops:
     for:
       - moe_gate_top_k_routing
     labels:
-      - aten
       - KernelGen
+      - fused
     kind:
-      - Math
+      - MoE
     stages:
       - alpha: '5.4'
   - id: moe_sum
