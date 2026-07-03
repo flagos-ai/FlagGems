@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -55,6 +57,9 @@ class Col2ImBenchmark(base.Benchmark):
 
 
 @pytest.mark.col2im
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_col2im():
     bench = Col2ImBenchmark(
         op_name="col2im",

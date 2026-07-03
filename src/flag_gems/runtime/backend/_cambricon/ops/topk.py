@@ -17,7 +17,7 @@ else:
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 _MIN_FLOAT32_VAL = tl.constexpr(torch.finfo(torch.float32).min)
 _MAX_FLOAT32_VAL = tl.constexpr(torch.finfo(torch.float32).max)
 _MIN_FLOAT16_VAL = tl.constexpr(torch.finfo(torch.float16).min)
@@ -498,7 +498,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         return (y_vals, y_idx.to(torch.int64))
 
     if k <= math.log2(topk_elem_cnt):
-        logger.debug("GEMS_CAMBRICON TOPK USING BUBBLE")
+        logger.debug("GEMS_CAMBRICON TOPK")
         topk_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
         topk_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
 
@@ -518,7 +518,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         )
         return (topk_out, topk_out_idx)
     else:
-        logger.debug("GEMS_CAMBRICON TOPK USING SORT")
+        logger.debug("GEMS_CAMBRICON TOPK")
         # Note(Zhengzekang): Maybe we should add a heuristic search in selecting a proper chunk size.
         if topk_elem_cnt < 1024:
             chunk_size = 256

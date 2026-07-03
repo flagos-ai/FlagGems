@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
 @pytest.mark.atan2
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_atan2():
     bench = base.BinaryPointwiseBenchmark(
         op_name="atan2",
@@ -15,6 +20,9 @@ def test_atan2():
 
 
 @pytest.mark.atan2_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_atan2_out():
     def input_fn(shape, dtype, device):
         inp1 = utils.generate_tensor_input(shape, dtype, device)
