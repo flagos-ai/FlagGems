@@ -485,6 +485,7 @@ def test_apply_rotary_pos_emb(
 
 
 @pytest.mark.embedding
+@pytest.mark.embedding_backward
 @pytest.mark.parametrize("EmbeddingSize", [1024] if TO_CPU else [4096])
 @pytest.mark.parametrize("Batch", [2] if TO_CPU else [2, 4])
 @pytest.mark.parametrize("M", [4] if TO_CPU else [4, 8])

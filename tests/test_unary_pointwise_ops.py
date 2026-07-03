@@ -495,6 +495,7 @@ def test_accuracy_glu(shape, dtype):
 
 
 @pytest.mark.glu
+@pytest.mark.glu_backward
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_glu_backward(shape, dtype):

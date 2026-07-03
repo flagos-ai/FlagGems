@@ -1,0 +1,531 @@
+metadata:
+  created_at: '2026-07-03T04:36:05'
+  warmup: 1000
+  iter: 100
+  no_torch: false
+  level: comprehensive
+  mode: kernel
+  shape_file: /tmp/FlagGems-benchmark-v5.0.0/benchmark/core_shapes.yaml
+results:
+- op_name: unique_consecutive
+  dtype: torch.int16
+  mode: kernel
+  level: comprehensive
+  result:
+  - legacy_shape: null
+    shape_detail:
+    - - - 64
+        - 64
+    - return_inverse: true
+      return_counts: false
+    latency_base: 0.0390079990029335
+    latency: 0.038784001022577286
+    gbps_base: null
+    gbps: null
+    speedup: 1.0057755253313299
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 64
+        - 64
+    - return_inverse: true
+      return_counts: true
+    latency_base: 0.03798399865627289
+    latency: 0.06913599744439125
+    gbps_base: null
+    gbps: null
+    speedup: 0.5494098597018852
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 256
+        - 256
+    - return_inverse: true
+      return_counts: false
+    latency_base: 0.03868800029158592
+    latency: 0.040431998670101166
+    gbps_base: null
+    gbps: null
+    speedup: 0.9568658875178262
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 256
+        - 256
+    - return_inverse: true
+      return_counts: true
+    latency_base: 0.0395519994199276
+    latency: 0.062431998550891876
+    gbps_base: null
+    gbps: null
+    speedup: 0.6335212765563881
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 1024
+        - 1024
+    - return_inverse: true
+      return_counts: false
+    latency_base: 0.04867200180888176
+    latency: 0.05167999863624573
+    gbps_base: null
+    gbps: null
+    speedup: 0.9417957254887713
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 1024
+        - 1024
+    - return_inverse: true
+      return_counts: true
+    latency_base: 0.0575999990105629
+    latency: 0.07798399776220322
+    gbps_base: null
+    gbps: null
+    speedup: 0.7386130573377722
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 4096
+        - 4096
+    - return_inverse: true
+      return_counts: false
+    latency_base: 0.2765599936246872
+    latency: 0.20505599677562714
+    gbps_base: null
+    gbps: null
+    speedup: 1.3487047341868277
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 4096
+        - 4096
+    - return_inverse: true
+      return_counts: true
+    latency_base: 0.39958401024341583
+    latency: 0.43702399730682373
+    gbps_base: null
+    gbps: null
+    speedup: 0.9143296768732766
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 1024
+        - 65536
+    - return_inverse: true
+      return_counts: false
+    latency_base: 0.9854719936847687
+    latency: 0.9134719967842102
+    gbps_base: null
+    gbps: null
+    speedup: 1.0788201468178855
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 1024
+        - 65536
+    - return_inverse: true
+      return_counts: true
+    latency_base: 1.4831520318984985
+    latency: 2.781712055206299
+    gbps_base: null
+    gbps: null
+    speedup: 0.5331795680011546
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 10000
+        - 1
+    - return_inverse: true
+      return_counts: false
+    latency_base: 0.03782400116324425
+    latency: 0.04062400013208389
+    gbps_base: null
+    gbps: null
+    speedup: 0.9310752520742468
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 10000
+        - 1
+    - return_inverse: true
+      return_counts: true
+    latency_base: 0.03923200070858002
+    latency: 0.06700800359249115
+    gbps_base: null
+    gbps: null
+    speedup: 0.5854823096531757
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 10000
+        - 256
+    - return_inverse: true
+      return_counts: false
+    latency_base: 0.07340800017118454
+    latency: 0.09563199803233147
+    gbps_base: null
+    gbps: null
+    speedup: 0.7676091860630854
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 10000
+        - 256
+    - return_inverse: true
+      return_counts: true
+    latency_base: 0.08748800307512283
+    latency: 0.12479999661445618
+    gbps_base: null
+    gbps: null
+    speedup: 0.7010256846833014
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 10000
+        - 65536
+    - return_inverse: true
+      return_counts: false
+    latency_base: 9.278815746307373
+    latency: 35.26046371459961
+    gbps_base: null
+    gbps: null
+    speedup: 0.2631507010631138
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 10000
+        - 65536
+    - return_inverse: true
+      return_counts: true
+    latency_base: 14.151871681213379
+    latency: 45.305280685424805
+    gbps_base: null
+    gbps: null
+    speedup: 0.3123669353132644
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+- op_name: unique_consecutive
+  dtype: torch.int32
+  mode: kernel
+  level: comprehensive
+  result:
+  - legacy_shape: null
+    shape_detail:
+    - - - 64
+        - 64
+    - return_inverse: true
+      return_counts: false
+    latency_base: 0.038495998829603195
+    latency: 0.034591998904943466
+    gbps_base: null
+    gbps: null
+    speedup: 1.1128584657795482
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 64
+        - 64
+    - return_inverse: true
+      return_counts: true
+    latency_base: 0.038943998515605927
+    latency: 0.06976000219583511
+    gbps_base: null
+    gbps: null
+    speedup: 0.5582568418831129
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 256
+        - 256
+    - return_inverse: true
+      return_counts: false
+    latency_base: 0.03948799893260002
+    latency: 0.04209600016474724
+    gbps_base: null
+    gbps: null
+    speedup: 0.9380463411739709
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 256
+        - 256
+    - return_inverse: true
+      return_counts: true
+    latency_base: 0.0390079990029335
+    latency: 0.06265600025653839
+    gbps_base: null
+    gbps: null
+    speedup: 0.6225740366959167
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 1024
+        - 1024
+    - return_inverse: true
+      return_counts: false
+    latency_base: 0.048608001321554184
+    latency: 0.052799999713897705
+    gbps_base: null
+    gbps: null
+    speedup: 0.9206060906238959
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 1024
+        - 1024
+    - return_inverse: true
+      return_counts: true
+    latency_base: 0.05796799995005131
+    latency: 0.07945600152015686
+    gbps_base: null
+    gbps: null
+    speedup: 0.7295610003146917
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 4096
+        - 4096
+    - return_inverse: true
+      return_counts: false
+    latency_base: 0.2924320101737976
+    latency: 0.21590399742126465
+    gbps_base: null
+    gbps: null
+    speedup: 1.354453894631761
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 4096
+        - 4096
+    - return_inverse: true
+      return_counts: true
+    latency_base: 0.41280001401901245
+    latency: 0.43702399730682373
+    gbps_base: null
+    gbps: null
+    speedup: 0.9445705878004584
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 1024
+        - 65536
+    - return_inverse: true
+      return_counts: false
+    latency_base: 1.051200032234192
+    latency: 1.0896320343017578
+    gbps_base: null
+    gbps: null
+    speedup: 0.9647293757362839
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 1024
+        - 65536
+    - return_inverse: true
+      return_counts: true
+    latency_base: 1.529088020324707
+    latency: 2.5615360736846924
+    gbps_base: null
+    gbps: null
+    speedup: 0.5969418256621153
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 10000
+        - 1
+    - return_inverse: true
+      return_counts: false
+    latency_base: 0.03936000168323517
+    latency: 0.041280001401901245
+    gbps_base: null
+    gbps: null
+    speedup: 0.9534883804878542
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 10000
+        - 1
+    - return_inverse: true
+      return_counts: true
+    latency_base: 0.03907199949026108
+    latency: 0.06412799656391144
+    gbps_base: null
+    gbps: null
+    speedup: 0.6092814618233243
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 10000
+        - 256
+    - return_inverse: true
+      return_counts: false
+    latency_base: 0.07449600100517273
+    latency: 0.09539200365543365
+    gbps_base: null
+    gbps: null
+    speedup: 0.7809459718894304
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 10000
+        - 256
+    - return_inverse: true
+      return_counts: true
+    latency_base: 0.09471999853849411
+    latency: 0.1250239983201027
+    gbps_base: null
+    gbps: null
+    speedup: 0.7576145364986621
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 10000
+        - 65536
+    - return_inverse: true
+      return_counts: false
+    latency_base: 9.892256259918213
+    latency: 37.839792251586914
+    gbps_base: null
+    gbps: null
+    speedup: 0.26142469795148926
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - - 10000
+        - 65536
+    - return_inverse: true
+      return_counts: true
+    latency_base: 14.592159748077393
+    latency: 45.494815826416016
+    gbps_base: null
+    gbps: null
+    speedup: 0.3207433524679669
+    accuracy: null
+    tflops: null
+    utilization: null
+    compared_speedup: null
+    error_msg: null
