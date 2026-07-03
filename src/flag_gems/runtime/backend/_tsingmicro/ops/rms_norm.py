@@ -7,7 +7,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ def rms_norm_grad_dx_kernel(
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = ext.program_id(0)
+    pid = tle.program_id(0)
     DX += pid * dx_stride_r
     X += pid * x_stride_r
     DY += pid * x_stride_r
@@ -149,7 +149,7 @@ def rms_norm_grad_dw_kernel(
 
 
 def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
-    logger.debug("GEMS_TSINGMICRO RMS_NORM_FORWARD")
+    logger.debug("GEMS_TSINGMICRO RMS_NORM")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)

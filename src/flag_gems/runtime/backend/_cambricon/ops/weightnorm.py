@@ -12,7 +12,7 @@ from flag_gems.utils import libentry
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 MAX_N = 31744
 
 
@@ -303,7 +303,7 @@ def weight_norm_bwd_kernel_first(
 
 
 def weight_norm_interface(v, g, dim=0):
-    logger.debug("GEMS_CAMBRICON WEIGHTNORM FORWARD")
+    logger.debug("GEMS_CAMBRICON WEIGHTNORM_FORWARD")
     v = v.contiguous()
     g = g.contiguous()
     output = torch.empty_like(v)
@@ -327,7 +327,7 @@ def weight_norm_interface(v, g, dim=0):
 
 
 def weight_norm_interface_backward(w_grad, saved_v, saved_g, saved_norms, dim):
-    logger.debug("GEMS_CAMBRICON WEIGHTNORM BACKWARD")
+    logger.debug("GEMS_CAMBRICON WEIGHTNORM_BACKWARD")
     w_grad = w_grad.contiguous()
     saved_v = saved_v.contiguous()
     saved_g = saved_g.contiguous()
