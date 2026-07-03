@@ -5,13 +5,25 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    CAUCHY_SHAPES = [(1024,)]
+    CAUCHY_DTYPES = [torch.float32]
+    CAUCHY_MEDIANS = [0.0]
+    CAUCHY_SIGMAS = [1.0]
+else:
+    CAUCHY_SHAPES = [(1024,), (256, 256)]
+    CAUCHY_DTYPES = [torch.float32, torch.float64]
+    CAUCHY_MEDIANS = [0.0, 1.0, -0.5]
+    CAUCHY_SIGMAS = [1.0, 0.5, 2.0]
 
 
 @pytest.mark.cauchy_
-@pytest.mark.parametrize("shape", [(1024,), (256, 256)])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-@pytest.mark.parametrize("median", [0.0, 1.0, -0.5])
-@pytest.mark.parametrize("sigma", [1.0, 0.5, 2.0])
+@pytest.mark.parametrize("shape", CAUCHY_SHAPES)
+@pytest.mark.parametrize("dtype", CAUCHY_DTYPES)
+@pytest.mark.parametrize("median", CAUCHY_MEDIANS)
+@pytest.mark.parametrize("sigma", CAUCHY_SIGMAS)
 def test_cauchy_accuracy(shape, dtype, median, sigma):
     """
     Test that cauchy_ produces samples that follow the expected Cauchy distribution.
@@ -81,10 +93,10 @@ def test_cauchy_accuracy(shape, dtype, median, sigma):
 
 
 @pytest.mark.cauchy
-@pytest.mark.parametrize("shape", [(1024,), (256, 256)])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-@pytest.mark.parametrize("median", [0.0, 1.0, -0.5])
-@pytest.mark.parametrize("sigma", [1.0, 0.5, 2.0])
+@pytest.mark.parametrize("shape", CAUCHY_SHAPES)
+@pytest.mark.parametrize("dtype", CAUCHY_DTYPES)
+@pytest.mark.parametrize("median", CAUCHY_MEDIANS)
+@pytest.mark.parametrize("sigma", CAUCHY_SIGMAS)
 def test_cauchy_out_accuracy(shape, dtype, median, sigma):
     """
     Test the out-of-place cauchy function.
@@ -140,8 +152,8 @@ def test_cauchy_out_accuracy(shape, dtype, median, sigma):
 
 
 @pytest.mark.cauchy_
-@pytest.mark.parametrize("shape", [(1024,), (256, 256)])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("shape", CAUCHY_SHAPES)
+@pytest.mark.parametrize("dtype", CAUCHY_DTYPES)
 def test_cauchy_reproducibility(shape, dtype):
     """
     Test that cauchy_ produces reproducible results with the same seed.
@@ -163,7 +175,9 @@ def test_cauchy_reproducibility(shape, dtype):
 
 
 @pytest.mark.cauchy_
-@pytest.mark.parametrize("shape", [(1024, 1024), (512, 512, 4)])
+@pytest.mark.parametrize(
+    "shape", [(1024, 1024)] if cfg.QUICK_MODE else [(1024, 1024), (512, 512, 4)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_cauchy_large_tensors(shape, dtype):
     """

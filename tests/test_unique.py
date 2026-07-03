@@ -19,6 +19,9 @@ device = flag_gems.device
 @pytest.mark.parametrize("sorted", [True])
 @pytest.mark.parametrize("return_inverse", [True, False])
 @pytest.mark.parametrize("return_counts", [False, True])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_unique2(shape, dtype, sorted, return_inverse, return_counts):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)

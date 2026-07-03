@@ -3,6 +3,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -31,6 +33,9 @@ class AdaptiveAvgPool2dBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.adaptive_avg_pool2d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_perf_adaptive_avg_pool2d():
     bench = AdaptiveAvgPool2dBenchmark(
         input_fn=adaptive_avg_pool2d_input_fn,
