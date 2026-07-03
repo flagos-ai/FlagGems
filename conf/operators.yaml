@@ -3176,7 +3176,7 @@ ops:
   - id: ge_
     description: The in-place version of `ge()`.
     for:
-      - ge_.Tensor
+      - ge_
     labels:
       - aten
       - pointwise
