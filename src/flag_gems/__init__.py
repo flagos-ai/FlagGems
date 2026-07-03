@@ -22,7 +22,12 @@ from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 try:
     from flag_gems._version import version as __version__
 except ImportError:
-    __version__ = "unknown"
+    try:
+        from importlib.metadata import version as _meta_version
+
+        __version__ = _meta_version("flag-gems")
+    except Exception:
+        __version__ = "unknown"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 backend_info = runtime.device
@@ -164,6 +169,8 @@ _FULL_CONFIG = (
     ("arange", arange),
     ("arange.start", arange_start),
     ("arange.start_step", arange_start),
+    ("arccos", arccos),
+    ("arccos_", arccos_),
     ("arcsin", arcsin),
     ("arcsin.out", arcsin),
     ("arcsin_", arcsin_),
@@ -452,6 +459,8 @@ _FULL_CONFIG = (
     ("logsumexp", logsumexp),
     ("lt.Scalar", lt_scalar),
     ("lt.Tensor", lt),
+    ("lt_.Scalar", lt_scalar_),
+    ("lt_.Tensor", lt_),
     ("margin_ranking_loss", margin_ranking_loss),
     ("masked_fill.Scalar", masked_fill),
     ("masked_fill.Tensor", masked_fill),

@@ -583,6 +583,28 @@ ops:
       - tensor
     stages:
       - stable: '2.1'
+  - id: arccos
+    description: Returns a new tensor with the arccosine of the elements of `input`.
+    for:
+      - arccos
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: arccos_
+    description: The in-place version of `arccos()`.
+    for:
+      - arccos_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: arcsin
     description: Returns a new tensor with the arcsine of the elements of input.
     for:
@@ -908,7 +930,7 @@ ops:
       - BLAS
     stages:
       - stable: '4.1'
-  - id: baddbmm.out
+  - id: baddbmm_out
     description: This is a variant of `baddbmm()`.
     for:
       - baddbmm.out
@@ -969,6 +991,20 @@ ops:
       - fused
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: bf16_paged_mqa_logits
+    description: |
+      Compute multi-head weighted ReLU attention logits on paged BF16
+      KV cache. Uses shape-specialized Triton kernels for H=32 and H=64
+      with zero-constexpr dispatch for decode-phase inference.
+    for:
+      - bf16_paged_mqa_logits
+    labels:
+      - fused
+      - KernelGen
+    kind:
+      - NeuralNetwork
     stages:
       - alpha: '5.4'
   - id: bernoulli
@@ -3152,6 +3188,20 @@ ops:
     stages:
       - stable: '2.0'
     cpp: '4.0'
+  - id: fused_deepseek_v4_qnorm_rope_kv_rope_insert
+    description: |
+      Horizontally-fused DeepseekV4-MLA BF16 variant.
+      per-head RMSNorm + GPT-J RoPE for Q, and GPT-J RoPE + bf16 paged
+      cache insert for KV, all in one kernel launch. No FP8 quantization.
+    for:
+      - fused_deepseek_v4_qnorm_rope_kv_rope_insert
+    labels:
+      - fused
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
     description: |
       Horizontally-fused DeepseekV4-MLA.
@@ -4638,6 +4688,17 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: lt_
+    description: The in-place version of `lt()`.
+    for:
+      - lt_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: lt_scalar
     description: The scalar version of `lt`.
     for:
@@ -4649,6 +4710,17 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: lt_scalar_
+    description: The scalar version of `lt_()`.
+    for:
+      - lt_.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: margin_ranking_loss
     description: Compute the margin ranking loss.
     for:
