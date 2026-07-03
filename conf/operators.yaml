@@ -2214,32 +2214,6 @@ ops:
       - Math
     stages:
       - stable: '2.1'
-  - id: div_scalar_mode
-    description: |
-      Divides each element of the `input` by the corresponding element of `other`.
-      An optional `rounding_mode` can be specified.
-    for:
-      - div.Scalar_mode
-      - divide.Scalar_mode
-    labels:
-      - aten
-      - pointwise
-    kind:
-      - Math
-    stages:
-      - stable: '1.0'
-  - id: div_scalar_mode_
-    description: The in-place version of `div_mode()`.
-    for:
-      - div_.Scalar_mode
-      - divide_.Scalar_mode
-    labels:
-      - aten
-      - pointwise
-    kind:
-      - Math
-    stages:
-      - stable: '2.2'
   - id: div_tensor
     description: |
       Divides each element of the input `input` by the corresponding element of `other`.
