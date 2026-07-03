@@ -3184,7 +3184,7 @@ ops:
     kind:
       - Math
     stages:
-      - stable: '2.0'
+      - alpha: '5.4'
   - id: geglu
     description: Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid function.
     for:

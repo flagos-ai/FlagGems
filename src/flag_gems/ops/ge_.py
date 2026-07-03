@@ -12,22 +12,20 @@ logger = logging.getLogger(__name__)
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
-def ge_inplace_func(x, y):
-    return x.to(tl.float32) >= y
-
-
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
-@triton.jit
-def ge_scalar_inplace_func(x, y):
+def ge_func(x, y):
     return x.to(tl.float32) >= y
 
 
 def ge_(A, B):
     logger.debug("GEMS GE_")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        result = ge_inplace_func(A, B)
+        ge_func(A, B, out0=A)
     else:
-        result = ge_scalar_inplace_func(A, B)
-    result = result.to(A.dtype)
-    A.copy_(result)
+        ge_func_scalar(A, B, out0=A)
     return A
+
+
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
+@triton.jit
+def ge_func_scalar(x, y):
+    return x.to(tl.float32) >= y
