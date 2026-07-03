@@ -29,12 +29,10 @@ def test_and_(shape, dtype):
     ref_inp1 = utils.to_reference(inp1)
     ref_inp2 = utils.to_reference(inp2)
 
-    ref_out = ref_inp1.__iand__(ref_inp2)
+    ref_out = ref_inp1.__and__(ref_inp2)
     with flag_gems.use_gems():
-        res_out = flag_gems.__and___i(inp1, inp2)
+        res_out = inp1.__and__(inp2)
 
-    assert res_out.data_ptr() == inp1.data_ptr()
-    utils.gems_assert_equal(inp1, ref_inp1)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -90,10 +88,12 @@ def test_and_i(shape, dtype):
     ref_inp1 = utils.to_reference(inp1.clone())
     ref_inp2 = utils.to_reference(inp2)
 
-    ref_out = ref_inp1.__and__(ref_inp2)
+    ref_out = ref_inp1.__iand__(ref_inp2)
     with flag_gems.use_gems():
-        res_out = inp1.__and__(inp2)
+        res_out = flag_gems.__and___i(inp1, inp2)
 
+    assert res_out.data_ptr() == inp1.data_ptr()
+    utils.gems_assert_equal(inp1, ref_inp1)
     utils.gems_assert_equal(res_out, ref_out)
 
 
