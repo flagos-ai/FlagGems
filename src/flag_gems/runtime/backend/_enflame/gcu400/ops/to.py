@@ -38,7 +38,7 @@ def i64_i32_to_dtype_func(in_ptr, out_ptr, num_elem_per_grid, num_elem):
 
 
 def to_dtype(x, dtype, non_blocking=False, copy=False, memory_format=None):
-    logger.debug("GEMS TO.DTYPE")
+    logger.debug("GEMS_ENFLAME TO_DTYPE")
     if not copy and x.dtype == dtype:
         return x
     out = torch.empty_like(x, dtype=dtype, memory_format=memory_format)

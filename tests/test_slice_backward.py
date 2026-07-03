@@ -34,6 +34,9 @@ random.seed(time.time() // 100)
 @pytest.mark.parametrize("end", [64, 128])
 @pytest.mark.parametrize("step", [1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_slice_backward(shape, dim, start, end, step, dtype):
     device = flag_gems.device
 
@@ -69,6 +72,9 @@ def test_slice_backward(shape, dim, start, end, step, dtype):
 @pytest.mark.slice_backward
 @pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_slice_backward_oob_end(shape, dtype):
     # Regression test: end > dim_size caused out-of-bounds write in kernel.
     device = flag_gems.device
@@ -95,6 +101,9 @@ def test_slice_backward_oob_end(shape, dtype):
 @pytest.mark.slice_backward
 @pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_slice_backward_oob_start(shape, dtype):
     # Regression test: start > dim_size caused out-of-bounds write in kernel.
     device = flag_gems.device

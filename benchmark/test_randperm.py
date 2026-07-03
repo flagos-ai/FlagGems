@@ -11,6 +11,9 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.randperm
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_randperm(monkeypatch):
     if flag_gems.vendor_name == "mthreads":
         monkeypatch.setenv("DISABLE_LLVM_OPT", "1")
