@@ -22,7 +22,12 @@ from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 try:
     from flag_gems._version import version as __version__
 except ImportError:
-    __version__ = "unknown"
+    try:
+        from importlib.metadata import version as _meta_version
+
+        __version__ = _meta_version("flag-gems")
+    except Exception:
+        __version__ = "unknown"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 backend_info = runtime.device
