@@ -32,6 +32,7 @@ def _make_ldl_inputs(batch_shape, n, k, dtype, device):
 
 def _assert_ldl_close(res_out, ref_out, dtype):
     if dtype == torch.complex128:
+        res_out = utils.to_cpu(res_out, ref_out)
         torch.testing.assert_close(res_out, ref_out, atol=1e-7, rtol=1e-7)
     else:
         utils.gems_assert_close(res_out, ref_out, dtype)
