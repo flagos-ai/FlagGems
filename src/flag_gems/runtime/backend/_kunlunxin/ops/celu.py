@@ -6,7 +6,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 config_ = CodeGenConfig(
@@ -33,10 +33,10 @@ def celu_forward_kernel(x, alpha):
 
 
 def celu(A, alpha=1.0):
-    logger.debug("GEMS CELU")
+    logger.debug("GEMS_KUNLUNXIN CELU")
     return celu_forward_kernel(A, alpha)
 
 
 def celu_(A, alpha=1.0):
-    logger.debug("GEMS CELU_")
+    logger.debug("GEMS_KUNLUNXIN CELU_")
     return celu_forward_kernel(A, alpha, out0=A)

@@ -7,7 +7,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 erf = tl_extra_shim.erf
 exp = tl_extra_shim.exp
 pow = tl_extra_shim.pow
@@ -57,7 +57,7 @@ def gelu_backward_tanh(x, dy):
 
 
 def gelu(self, *, approximate="none"):
-    logger.debug("GEMS_KUNLUNXIN GELU FORWARD")
+    logger.debug("GEMS_KUNLUNXIN GELU")
     if approximate == "tanh":
         out = gelu_tanh(self)
     else:
@@ -66,7 +66,7 @@ def gelu(self, *, approximate="none"):
 
 
 def gelu_backward(grad_output, self, *, approximate="none"):
-    logger.debug("GEMS_KUNLUNXIN GELU BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN GELU_BACKWARD")
     if approximate == "tanh":
         in_grad = gelu_backward_tanh(self, grad_output)
     else:
@@ -75,7 +75,7 @@ def gelu_backward(grad_output, self, *, approximate="none"):
 
 
 def gelu_(A, *, approximate="none"):
-    logger.debug("GEMS_KUNLUNXIN GELU_ FORWARD")
+    logger.debug("GEMS_KUNLUNXIN GELU_")
     if approximate == "tanh":
         out = gelu_tanh(A, out0=A)
     else:

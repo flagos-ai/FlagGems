@@ -7,7 +7,7 @@ from flag_gems.runtime import device, torch_device_fn
 
 from .eye_m import eye_kernel
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 device_ = device
 
 
@@ -15,7 +15,7 @@ def eye(size, *, dtype=None, layout=torch.strided, device=None, pin_memory=None)
     """
     Triton-based implementation of torch.eye(n, n), using 2D tiles to split the matrix into blocks.
     """
-    logger.debug("GEMS EYE")
+    logger.debug("GEMS_KUNLUNXIN EYE")
 
     if dtype is None:
         dtype = torch.get_default_dtype()

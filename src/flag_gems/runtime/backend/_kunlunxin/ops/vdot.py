@@ -8,7 +8,7 @@ from torch import Tensor
 # from flag_gems import runtime
 from flag_gems.utils import libentry
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -149,7 +149,7 @@ def dot_kernel(
 
 
 def vdot(input: Tensor, other: Tensor):
-    logger.debug("GEMS VDOT")
+    logger.debug("GEMS_KUNLUNXIN VDOT")
 
     assert (
         input.dtype == other.dtype

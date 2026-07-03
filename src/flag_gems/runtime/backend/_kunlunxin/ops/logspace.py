@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -49,7 +49,7 @@ def logspace(
     device=None,
     pin_memory=None,
 ) -> torch.Tensor:
-    logger.debug("GEMS LOGSPACE")
+    logger.debug("GEMS_KUNLUNXIN LOGSPACE")
     assert steps >= 0, "number of steps must be non-negative"
     out_dtype = dtype if dtype is not None else torch.get_default_dtype()
     out = torch.empty(

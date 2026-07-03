@@ -7,7 +7,7 @@ from flag_gems.runtime import device
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 device = device.name
 
 
@@ -21,6 +21,6 @@ def minimum_kernel(X, Y):
 
 
 def minimum(X, Y):
-    logger.debug("GEMS MINIMUM")
+    logger.debug("GEMS_KUNLUNXIN MINIMUM")
     assert X.device.type == device and Y.device.type == device
     return minimum_kernel(X, Y)

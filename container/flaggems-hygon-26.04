@@ -1,4 +1,4 @@
- ============================================================
+# ============================================================
 # FlagGems development image for Hygon DTK-26.04
 # ============================================================
 
@@ -7,7 +7,7 @@ ARG BASE_IMAGE=hygon-dtk:26.04
 ARG PYTHON_VERSION=3.10
 ARG FLAGOS_PYPI=https://resource.flagos.net/repository/flagos-pypi-hygon/simple
 ARG EXTRA_PYPI=https://mirrors.aliyun.com/pypi/simple
-ARG INCLUDE_TESTS=false
+ARG INCLUDE_TESTS=true
 
 # ════════════════════════════════════════════════════════════════
 #  Stage 1 — builder
@@ -29,12 +29,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── Prepare uv and virtual environment ─────────────────────────
 # Install 'uv' to /usr/local/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
-RUN uv venv /venv --python ${PYTHON_VERSION} --relocatable
-ENV VIRTUAL_ENV=/venv \
-    PATH="/venv/bin:${PATH}"
+RUN uv venv /flagos --python ${PYTHON_VERSION} --relocatable
+ENV VIRTUAL_ENV=/flagos \
+    PATH="/flagos/bin:${PATH}"
 
 # ── Build FlagGems ─────────────────────────────────────────────
-ORKDIR /build
+WORKDIR /build
 COPY . /build/FlagGems
 WORKDIR /build/FlagGems
 
@@ -83,14 +83,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── Copy uv and Python from builder ────────────────────────────
 COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
 COPY --from=builder /root/.local/share/uv /root/.local/share/uv
-COPY --from=builder /venv /venv
+COPY --from=builder /flagos /flagos
 
 # ── Copy tests and benchmarks into container if required ───────
 COPY --from=builder /app /app
 WORKDIR /app
 
 # Note: VIRTUAL_ENV and PATH are not sharable between stages
-ENV VIRTUAL_ENV=/venv \
-   PATH="/venv/bin:${PATH}"
+ENV VIRTUAL_ENV=/flagos \
+   PATH="/flagos/bin:${PATH}"
 
 ENTRYPOINT ["bash"]
