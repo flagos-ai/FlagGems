@@ -60,6 +60,7 @@ except Exception:
         ),
     ],
 )
+@pytest.mark.combine_topk_swa_indices
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires cuda")
 def test_combine_topk_swa_indices_accuracy(
     topk_values,
@@ -119,6 +120,7 @@ def test_combine_topk_swa_indices_accuracy(
     fg_testing.assert_equal(actual_lens, expected_lens)
 
 
+@pytest.mark.combine_topk_swa_indices
 @pytest.mark.skipif(
     (not torch.cuda.is_available()) or (not _HAS_VLLM_COMBINE_TOPK_SWA_INDICES),
     reason="requires cuda and vllm deepseek_v4_ops.combine_topk_swa_indices",

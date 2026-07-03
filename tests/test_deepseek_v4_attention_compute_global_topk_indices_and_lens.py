@@ -36,6 +36,7 @@ except Exception:
         ),
     ],
 )
+@pytest.mark.compute_global_topk_indices_and_lens
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires cuda")
 def test_compute_global_topk_indices_and_lens_accuracy(
     topk_values, req_values, block_table_values, valid_values, block_size
@@ -72,6 +73,7 @@ def test_compute_global_topk_indices_and_lens_accuracy(
     fg_testing.assert_equal(actual_lens, expected_lens)
 
 
+@pytest.mark.compute_global_topk_indices_and_lens
 @pytest.mark.skipif(
     (not torch.cuda.is_available())
     or (not _HAS_VLLM_COMPUTE_GLOBAL_TOPK_INDICES_AND_LENS),

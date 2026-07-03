@@ -908,7 +908,7 @@ ops:
       - BLAS
     stages:
       - stable: '4.1'
-  - id: baddbmm.out
+  - id: baddbmm_out
     description: This is a variant of `baddbmm()`.
     for:
       - baddbmm.out

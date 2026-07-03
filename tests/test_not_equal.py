@@ -22,7 +22,7 @@ def test_accuracy_not_equal(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.not_equal
+@pytest.mark.not_equal_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_accuracy_not_equal_scalar(shape, dtype):

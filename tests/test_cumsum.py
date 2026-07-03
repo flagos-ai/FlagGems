@@ -54,3 +54,20 @@ def test_cumsum(shape, dtype):
         check_dtype = dtype
 
     utils.gems_assert_close(res_out, ref_out, check_dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.cumsum_out
+@pytest.mark.parametrize("shape", CUMSUM_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_cumsum_out(shape, dtype):
+    dim = 1 if shape == utils.REDUCTION_SHAPES[-1] else -1
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+    out = torch.empty_like(inp)
+    ref_out_buf = torch.empty_like(ref_inp)
+
+    torch.cumsum(ref_inp, dim=dim, out=ref_out_buf)
+    with flag_gems.use_gems():
+        torch.cumsum(inp, dim=dim, out=out)
+
+    utils.gems_assert_close(out, ref_out_buf, dtype, reduce_dim=shape[dim])

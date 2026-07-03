@@ -6,7 +6,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.trunc_
+@pytest.mark.trunc
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_trunc(shape, dtype):

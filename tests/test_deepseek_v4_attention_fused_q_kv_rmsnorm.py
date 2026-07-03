@@ -33,6 +33,7 @@ def _rmsnorm_ref(x, weight, eps):
         (8, 1536, 512),
     ],
 )
+@pytest.mark.fused_q_kv_rmsnorm
 @pytest.mark.skipif(not _has_cuda(), reason="requires cuda")
 def test_fused_q_kv_rmsnorm_accuracy(tokens, qdim, kvdim):
     device = "cuda"
@@ -52,6 +53,7 @@ def test_fused_q_kv_rmsnorm_accuracy(tokens, qdim, kvdim):
     )
 
 
+@pytest.mark.fused_q_kv_rmsnorm
 @pytest.mark.skipif(
     (not _has_cuda()) or (not _HAS_VLLM_FUSED_Q_KV_RMSNORM),
     reason="requires cuda and vllm deepseek_v4_ops.fused_q_kv_rmsnorm",
