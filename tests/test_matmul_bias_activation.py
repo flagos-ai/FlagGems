@@ -4,19 +4,35 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
 
-# Shapes for matmul-bias-activation tests
-# Shape format: (M, N, K) for matmul: (M, K) x (K, N)
-MNK_SHAPES = [
-    (1, 1, 32),
-    (15, 160, 1024),
-    (495, 5333, 71),
-]
+if QUICK_MODE:
+    MNK_SHAPES = [
+        (1, 1, 32),
+    ]
+    FLOAT_DTYPES = [torch.float32]
+else:
+    # Shape format: (M, N, K) for matmul: (M, K) x (K, N)
+    # Includes small / edge cases, non-square matrices, and large square
+    # matrices aligned with the BlasBenchmark shapes (384 / 1024 / 2048 / 4096)
+    # so that accuracy is validated on the same sizes that are benchmarked.
+    MNK_SHAPES = [
+        (1, 1, 32),
+        (15, 160, 1024),
+        (495, 5333, 71),
+        (384, 384, 384),
+        (1024, 1024, 1024),
+        (2048, 2048, 2048),
+        (4096, 4096, 4096),
+        (128, 256, 512),
+        (256, 1024, 4096),
+    ]
+    FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 
 @pytest.mark.matmul_bias_activation
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_matmul_bias_activation(M, N, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Skipping fp32 matmul_bias_activation test on tsingmicro platform")
