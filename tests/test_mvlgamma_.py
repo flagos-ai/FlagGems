@@ -24,7 +24,8 @@ def test_mvlgamma_(shape, dtype, p):
         )
 
     torch.manual_seed(42)
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    inp = inp + (p - 1) / 2 + 1.0
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.mvlgamma_(p)
