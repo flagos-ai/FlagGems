@@ -4499,12 +4499,13 @@ ops:
     description: |
       Multi-Query Attention where key and value have a single head while query can have multiple heads.
     for:
-      - multi_query_attention_mqa
+      - flag_gems.fused.multi_query_attention_mqa
     labels:
-      - aten
+      - fused
+      - Attention
       - KernelGen
     kind:
-      - Math
+      - NeuralNetwork
     stages:
       - alpha: '5.4'
   - id: multinomial

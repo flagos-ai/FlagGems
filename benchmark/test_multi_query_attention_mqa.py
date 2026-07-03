@@ -3,20 +3,9 @@ import math
 import pytest
 import torch
 
-import flag_gems
+from flag_gems.fused import multi_query_attention_mqa
 
 from . import base
-
-
-class AttentionBenchmark(base.GenericBenchmark):
-    """
-    benchmark for attention
-    """
-
-    def set_more_shapes(self):
-        # self.shapes is a list of tuples, each containing three elements:
-        # (batch, num_heads, seq_len, head_size).
-        return None
 
 
 @pytest.mark.multi_query_attention_mqa
@@ -65,11 +54,11 @@ def test_multi_query_attention_mqa(dtype):
             enable_gqa=True,
         )
 
-    bench = AttentionBenchmark(
+    bench = base.GenericBenchmark4DOnly(
         op_name="multi_query_attention_mqa",
         input_fn=mqa_kwargs,
         torch_op=torch_mqa_ref,
         dtypes=[dtype],
     )
-    bench.set_gems(flag_gems.ops.multi_query_attention_mqa)
+    bench.set_gems(multi_query_attention_mqa)
     bench.run()

@@ -1,10 +1,8 @@
-import os
-
 import numpy as np
 import pytest
 import torch
 
-import flag_gems
+from flag_gems.fused import multi_query_attention_mqa
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import set_philox_state
 
@@ -58,8 +56,6 @@ def test_multi_query_attention_mqa(
 
     In MQA, key and value have only 1 head while query has multiple heads.
     """
-    if flag_gems.vendor_name == "hygon":
-        os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"] = "0"
     device = torch_device_fn.current_device()
 
     # MQA: num_kv_head = 1
@@ -84,16 +80,15 @@ def test_multi_query_attention_mqa(
     ref_result = torch_sdpa_mqa(ref_q, ref_k, ref_v, scale, is_causal)
 
     # GEMS implementation
-    with flag_gems.use_gems():
-        gems_result = flag_gems.ops.multi_query_attention_mqa(
-            q,
-            k,
-            v,
-            attn_mask=None,
-            dropout_p=0.0,
-            is_causal=is_causal,
-            scale=scale,
-        )
+    gems_result = multi_query_attention_mqa(
+        q,
+        k,
+        v,
+        attn_mask=None,
+        dropout_p=0.0,
+        is_causal=is_causal,
+        scale=scale,
+    )
 
     # Use appropriate tolerance based on dtype
     if dtype == torch.float32:
