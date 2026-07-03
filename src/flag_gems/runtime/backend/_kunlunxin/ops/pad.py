@@ -8,7 +8,7 @@ import torch
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 # --------------------------- padding wrapper genration -----------------------------------
@@ -460,7 +460,7 @@ _pad_func = PadFunction()
 
 
 def pad(self, pad, mode="constant", value=None):
-    logger.debug("GEMS CONSTANT PAD ND")
+    logger.debug("GEMS_KUNLUNXIN CONSTANT_PAD_ND")
 
     ndim = self.ndim
 

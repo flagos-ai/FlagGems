@@ -4717,25 +4717,82 @@ def grid_sample(
             raise NotImplementedError
 
         # Launch kernel with appropriate grid size
-        # For very large outputs (> 512x512), fall back to original kernels to avoid grid size issues
+        # Adaptive block targeting for 2D outputs (similar to 5D implementation)
+        # Goal: Create optimal number of blocks for good GPU utilization
         output_pixels = H_out * W_out
-        MAX_TILED_PIXELS = 512 * 512
 
-        if (
-            use_tiled
-            and mode in ["nearest", "bilinear"]
-            and output_pixels <= MAX_TILED_PIXELS
-        ):
+        # Thresholds for adaptive block targeting (similar to 5D VOXEL_THRESHOLD_*)
+        # Use different variable names to avoid scope conflicts with 5D path
+        PIXEL_THRESHOLD_SMALL = 32 * 32  # 1024 pixels
+        PIXEL_THRESHOLD_MEDIUM = 64 * 64  # 4096 pixels
+        PIXEL_THRESHOLD_LARGE = 128 * 128  # 16384 pixels
+        PIXEL_THRESHOLD_VERY_LARGE = 256 * 256  # 65536 pixels
+
+        # Target block configuration for different output sizes (2D path)
+        TWO_D_TARGET_BLOCKS_SMALL = 512
+        TWO_D_MIN_BLOCKS_NC_SMALL = 64
+        TWO_D_MAX_BLOCKS_NC_SMALL = 1024
+
+        TWO_D_TARGET_BLOCKS_MEDIUM = 768
+        TWO_D_MIN_BLOCKS_NC_MEDIUM = 128
+        TWO_D_MAX_BLOCKS_NC_MEDIUM = 2048
+
+        TWO_D_TARGET_BLOCKS_LARGE = 1024
+        TWO_D_MIN_BLOCKS_NC_LARGE = 128
+        TWO_D_MAX_BLOCKS_NC_LARGE = 2048
+
+        TWO_D_TARGET_BLOCKS_VERY_LARGE = 512
+        TWO_D_MIN_BLOCKS_NC_VERY_LARGE = 64
+        TWO_D_MAX_BLOCKS_NC_VERY_LARGE = 1024
+
+        TWO_D_TARGET_BLOCKS_EXTRA_LARGE = 300
+        TWO_D_MIN_BLOCKS_NC_EXTRA_LARGE = 32
+        TWO_D_MAX_BLOCKS_NC_EXTRA_LARGE = 500
+
+        if use_tiled and mode in ["nearest", "bilinear"]:
             # Tiled kernels use 2D grid with adaptive tile size selection
-            # Goal: Create ~100-500 blocks total for good GPU utilization
-            target_total_blocks = (
-                300  # Target: aim for ~300 blocks across all batches/channels
-            )
-            min_blocks_per_nc = 50  # Minimum: ensure enough parallelism
-            max_blocks_per_nc = 1000  # Maximum: avoid too many blocks
-
-            # Estimate blocks per (batch, channel) pair
+            # Goal: Create optimal blocks for good GPU utilization
             nc_pairs = N * C
+
+            # Select target based on output size
+            if output_pixels < PIXEL_THRESHOLD_SMALL:
+                target_total_blocks = TWO_D_TARGET_BLOCKS_SMALL
+                min_blocks_per_nc = TWO_D_MIN_BLOCKS_NC_SMALL
+                max_blocks_per_nc = TWO_D_MAX_BLOCKS_NC_SMALL
+            elif output_pixels < PIXEL_THRESHOLD_MEDIUM:
+                target_total_blocks = TWO_D_TARGET_BLOCKS_MEDIUM
+                min_blocks_per_nc = TWO_D_MIN_BLOCKS_NC_MEDIUM
+                max_blocks_per_nc = TWO_D_MAX_BLOCKS_NC_MEDIUM
+            elif output_pixels < PIXEL_THRESHOLD_LARGE:
+                target_total_blocks = TWO_D_TARGET_BLOCKS_LARGE
+                min_blocks_per_nc = TWO_D_MIN_BLOCKS_NC_LARGE
+                max_blocks_per_nc = TWO_D_MAX_BLOCKS_NC_LARGE
+            elif output_pixels < PIXEL_THRESHOLD_VERY_LARGE:
+                target_total_blocks = TWO_D_TARGET_BLOCKS_VERY_LARGE
+                min_blocks_per_nc = TWO_D_MIN_BLOCKS_NC_VERY_LARGE
+                max_blocks_per_nc = TWO_D_MAX_BLOCKS_NC_VERY_LARGE
+            else:  # Extra large outputs (1024x1024+)
+                target_total_blocks = TWO_D_TARGET_BLOCKS_EXTRA_LARGE
+                min_blocks_per_nc = TWO_D_MIN_BLOCKS_NC_EXTRA_LARGE
+                max_blocks_per_nc = TWO_D_MAX_BLOCKS_NC_EXTRA_LARGE
+
+            # Channel-aware tiling: reduce targets for high channel counts
+            TWO_D_CHANNEL_COUNT_THRESHOLD = 32
+            TWO_D_CHANNEL_SCALING_EXPONENT = 0.7
+            TWO_D_MIN_TARGET_TOTAL_BLOCKS = 128
+            TWO_D_MIN_BLOCKS_PER_NC = 16
+
+            if C > TWO_D_CHANNEL_COUNT_THRESHOLD:
+                channel_scale = (
+                    TWO_D_CHANNEL_COUNT_THRESHOLD / C
+                ) ** TWO_D_CHANNEL_SCALING_EXPONENT
+                target_total_blocks = max(
+                    TWO_D_MIN_TARGET_TOTAL_BLOCKS,
+                    int(target_total_blocks * channel_scale),
+                )
+                min_blocks_per_nc = max(
+                    TWO_D_MIN_BLOCKS_PER_NC, int(min_blocks_per_nc * channel_scale)
+                )
 
             # Target blocks per (N, C) pair
             target_blocks_per_nc = max(
@@ -4743,8 +4800,7 @@ def grid_sample(
                 min(max_blocks_per_nc, target_total_blocks // max(1, nc_pairs)),
             )
 
-            # Calculate tile dimensions to achieve target block count
-            # Start with square tiles
+            # Calculate tile dimensions
             target_tile_pixels = output_pixels // target_blocks_per_nc
             target_tile_side = int(max(4, min(128, int(target_tile_pixels**0.5))))
 
@@ -4768,7 +4824,7 @@ def grid_sample(
             num_w_blocks = (W_out + block_w - 1) // block_w
             grid_size = (N * C, num_h_blocks * num_w_blocks)
         else:
-            # Original kernels use 1D grid (for small outputs or very large outputs)
+            # Original kernels use 1D grid (for bicubic or small outputs)
             grid_size = (N * C * H_out * W_out,)
 
         kernel[grid_size](

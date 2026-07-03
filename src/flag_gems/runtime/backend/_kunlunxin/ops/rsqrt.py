@@ -6,7 +6,7 @@ import triton.language.extra.xpu.libdevice as xpu
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
@@ -16,10 +16,10 @@ def rsqrt_func(x):
 
 
 def rsqrt(A):
-    logger.debug("GEMS RSQRT")
+    logger.debug("GEMS_KUNLUNXIN RSQRT")
     return rsqrt_func(A)
 
 
 def rsqrt_(A):
-    logger.debug("GEMS RSQRT_")
+    logger.debug("GEMS_KUNLUNXIN RSQRT_")
     return rsqrt_func(A, out0=A)

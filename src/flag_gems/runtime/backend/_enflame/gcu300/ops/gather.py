@@ -199,7 +199,13 @@ _gather_func = GatherFunction()
 
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
-    logger.debug("GEMS GATHER")
+    logger.debug("GEMS_ENFLAME GATHER")
+
+    # index must have same number of dimensions as input
+    if index.ndim != inp.ndim:
+        raise IndexError(
+            "Index tensor must have the same number of dimensions as input tensor"
+        )
 
     return_dtype = inp.dtype
     if inp.dtype == torch.int64:
@@ -215,6 +221,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logger.debug("GEMS GATHER BACKWARD")
+    logger.debug("GEMS_ENFLAME GATHER_BACKWARD")
     result = grad.new_zeros(self.shape)
     return scatter_(result, dim, index, grad, reduce="add")

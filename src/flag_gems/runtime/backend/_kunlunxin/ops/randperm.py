@@ -11,7 +11,7 @@ from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 from .topk import argsort
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 device_ = device
 
 _MIN_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).min)
@@ -422,7 +422,7 @@ def randperm(
     requires_grad=False,
     pin_memory=False,
 ):
-    logger.debug("GEMS RANDPERM")
+    logger.debug("GEMS_KUNLUNXIN RANDPERM")
     assert dtype == torch.int16 or dtype == torch.int32 or dtype == torch.int64
     assert n <= _MAX_INT64_VAL, "n exceeds maximum int64"
 

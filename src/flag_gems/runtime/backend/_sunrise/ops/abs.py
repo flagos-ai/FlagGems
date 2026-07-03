@@ -6,7 +6,7 @@ import triton.language as tl
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.pointwise_dynamic import CodeGenConfig
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 MAX_GRID_SIZES = (65535, 65535, 65535)
@@ -26,11 +26,11 @@ def abs_func(x):
 
 
 def abs(A):
-    logger.debug("GEMS ABS")
+    logger.debug("GEMS_SUNRISE ABS")
     return abs_func(A)
 
 
 def abs_(A):
-    logger.debug("GEMS ABS_")
+    logger.debug("GEMS_SUNRISE ABS_")
     abs_func(A, out0=A)
     return A

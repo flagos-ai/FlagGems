@@ -8,7 +8,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def heur_block_n(args):
@@ -108,7 +108,7 @@ def addmv(self, mat, vec, *, beta=1, alpha=1):
 
 
 def addmv_out(self, mat, vec, *, beta=1, alpha=1, out=None):
-    logger.debug("GEMS_KUNLUNXIN ADDMV OUT")
+    logger.debug("GEMS_KUNLUNXIN ADDMV_OUT")
     assert mat.shape[1] == vec.shape[0], "incompatible dimensions"
     assert broadcastable_to(self.shape, (mat.shape[0],)), "Incompatible self shape"
     N, M = mat.shape

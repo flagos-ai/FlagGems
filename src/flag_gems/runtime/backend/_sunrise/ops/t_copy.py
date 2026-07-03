@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,7 +64,8 @@ def copy_1d_strided_kernel(
 
 
 def _launch_t_copy_kernel(inp: torch.Tensor, out: torch.Tensor):
-    assert inp.is_ptpu and out.is_ptpu, "t_copy kernels require PTPU tensors"
+    if inp.device.type != flag_gems.device or out.device.type != flag_gems.device:
+        raise ValueError(f"t_copy kernels require {flag_gems.device} tensors")
     assert inp.dtype == out.dtype, "dtype mismatch between input and output"
 
     dim = inp.dim()
@@ -125,13 +128,13 @@ def t_copy_out(
     out: torch.Tensor,
     memory_format: torch.memory_format | None = None,
 ):
-    logger.debug("GEMS T_COPY_OUT")
+    logger.debug("GEMS_SUNRISE T_COPY_OUT")
     _launch_t_copy_kernel(input, out)
     return out
 
 
 def t_copy(input: torch.Tensor, memory_format: torch.memory_format | None = None):
-    logger.debug("GEMS T_COPY")
+    logger.debug("GEMS_SUNRISE T_COPY")
     dim = input.dim()
     if dim == 0:
         out = torch.empty((), dtype=input.dtype, device=input.device)

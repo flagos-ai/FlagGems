@@ -8,7 +8,7 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
@@ -264,14 +264,14 @@ _index_put_func = IndexPutFunction()
 
 
 def index_put(inp, indices, values, accumulate=False):
-    logger.debug("GEMS INDEX PUT")
+    logger.debug("GEMS_SUNRISE INDEX_PUT")
 
     out = inp.clone()
     return index_put_(out, indices, values, accumulate)
 
 
 def index_put_(inp, indices, values, accumulate=False):
-    logger.debug("GEMS INDEX PUT_")
+    logger.debug("GEMS_SUNRISE INDEX_PUT_")
 
     indices = list(indices)
 
@@ -279,9 +279,11 @@ def index_put_(inp, indices, values, accumulate=False):
         raise ValueError("At least one index tensor is required")
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
     # step 1: index preprocessing
@@ -361,4 +363,56 @@ def index_put_(inp, indices, values, accumulate=False):
 
     _index_put_func(inp_view, tensors, values, accumulate)
 
+    return inp
+
+
+def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
+    logger.debug("GEMS_SUNRISE INDEX_PUT_IMPL_")
+
+    # The `unsafe` parameter is a hint to PyTorch for bounds checking.
+    # Our implementation always performs bounds checking, so we ignore this parameter.
+    # This is consistent with how PyTorch handles it internally.
+
+    indices = list(indices)
+    if len(indices) == 1 and indices[0].dtype == torch.bool:
+        mask = indices[0]
+
+        if mask.device != inp.device:
+            mask = mask.to(inp.device)
+
+        indices = list(torch.where(mask))
+
+        K = indices[0].numel()
+        target_shape = (K,) + inp.shape[len(indices) :]
+
+        if values.numel() == 1:
+            values = torch.full(
+                target_shape, values.item(), dtype=inp.dtype, device=inp.device
+            )
+        elif values.numel() == K:
+            values = values.reshape((K,)).expand(target_shape)
+
+    indices = [
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
+        for index in indices
+    ]
+
+    target_shape = get_max_rank_shape(indices)
+    broadcast_indices(indices, target_shape)
+    target_shape += inp.shape[len(indices) :]
+    # Filter out None values for kernel call (only tensor indices)
+    # Must be done AFTER broadcast_indices, as broadcast may create new tensors
+    tensor_indices = [idx for idx in indices if idx is not None]
+    if not tensor_indices:
+        raise ValueError("At least one non-None index tensor is required")
+
+    if values.device != inp.device:
+        values = values.to(inp.device)
+    values = torch.broadcast_to(values, target_shape)
+
+    _index_put_func(inp, tensor_indices, values, accumulate)
     return inp

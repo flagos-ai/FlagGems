@@ -4,10 +4,16 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    SAFE_SOFTMAX_SHAPES = [(2, 3)]
+else:
+    SAFE_SOFTMAX_SHAPES = [(2, 3), (128, 256), (512, 512)]
 
 
 @pytest.mark.safe_softmax
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
 @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", [-1, 0])
 @pytest.mark.parametrize(

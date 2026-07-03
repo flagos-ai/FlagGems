@@ -6,7 +6,7 @@ import triton.language as tl
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.pointwise_dynamic import CodeGenConfig
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 MAX_GRID_SIZES = (65535, 65535, 65535)
 config = CodeGenConfig(
@@ -25,11 +25,11 @@ def cos_func(x):
 
 
 def cos(A):
-    logger.debug("GEMS COS")
+    logger.debug("GEMS_SUNRISE COS")
     return cos_func(A)
 
 
 def cos_(A):
-    logger.debug("GEMS COS_")
+    logger.debug("GEMS_SUNRISE COS_")
     cos_func(A, out0=A)
     return A

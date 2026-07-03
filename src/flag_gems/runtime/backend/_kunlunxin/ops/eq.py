@@ -9,7 +9,7 @@ from flag_gems.runtime import device
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 device = device.name
 
 config_ = CodeGenConfig(
@@ -55,5 +55,5 @@ def eq_func_scalar(x, y):
 
 
 def eq_scalar(A, B):
-    logger.debug("GEMS_KUNLUNXIN EQ SCALAR")
+    logger.debug("GEMS_KUNLUNXIN EQ_SCALAR")
     return eq_func_scalar(A, B)

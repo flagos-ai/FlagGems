@@ -8,7 +8,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable, libentry
 from flag_gems.utils.shape_utils import bracket_next_power_of_2
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -126,7 +126,7 @@ def write_back_kernel(
 
 
 def masked_select(inp, mask):
-    logger.debug("GEMS MASKED SELECT")
+    logger.debug("GEMS_SUNRISE MASKED_SELECT")
 
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)

@@ -5,7 +5,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 config_ = CodeGenConfig(
     512,
@@ -26,11 +26,11 @@ def bitwise_not_func(x):
 
 
 def bitwise_not(A):
-    logger.debug("GEMS BITWISE NOT")
+    logger.debug("GEMS_KUNLUNXIN BITWISE_NOT")
     return bitwise_not_func(A)
 
 
 def bitwise_not_(A):
-    logger.debug("GEMS BITWISE NOT_")
+    logger.debug("GEMS_KUNLUNXIN BITWISE_NOT_")
     bitwise_not_func(A, out0=A)
     return A

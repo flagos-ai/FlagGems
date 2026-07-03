@@ -5,7 +5,7 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(
@@ -50,7 +50,7 @@ def elu_(A, alpha=1.0, scale=1.0, input_scale=1.0):
 
 
 def elu_backward(grad_output, alpha, scale, input_scale, is_result, self_or_result):
-    logger.debug("GEMS_KUNLUNXIN ELU BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN ELU_BACKWARD")
     grad_input = elu_backward_kernel(
         grad_output, self_or_result, alpha, scale, input_scale, is_result
     )

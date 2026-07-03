@@ -6,7 +6,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 config_ = CodeGenConfig(
     512,
@@ -27,11 +27,11 @@ def sqrt_func(x):
 
 
 def sqrt(A):
-    logger.debug("GEMS SQRT")
+    logger.debug("GEMS_KUNLUNXIN SQRT")
     return sqrt_func(A)
 
 
 def sqrt_(A):
-    logger.debug("GEMS SQRT_")
+    logger.debug("GEMS_KUNLUNXIN SQRT_")
     sqrt_func(A, out0=A)
     return A

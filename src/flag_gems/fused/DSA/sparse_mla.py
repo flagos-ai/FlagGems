@@ -201,7 +201,8 @@ if HAS_TLE:
         is_causal: tl.constexpr,
     ):
         i_b, i_sq, i_gbh = tl.program_id(0), tl.program_id(1), tl.program_id(2)
-        i_g, i_bh = i_gbh // G, i_gbh % G
+        NH = tl.cdiv(G, BH)
+        i_g, i_bh = i_gbh // NH, i_gbh % NH
         q_base = q + i_b * stride_qb + i_sq * stride_qm + i_gbh * (BH * stride_qh)
         tq_base = q_base + D * stride_qd
         kv_base = kv + i_b * stride_kvb + i_g * stride_kvg

@@ -10,7 +10,7 @@ from flag_gems.utils import libentry
 
 from .topk import _get_finfo_val, _get_iinfo_val, argsort
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def unwrap_if_constexpr(o):
@@ -531,7 +531,7 @@ def sort_kernel(
 
 
 def sort(inp, dim=-1, descending=False):
-    logger.debug("GEMS SORT")
+    logger.debug("GEMS_KUNLUNXIN SORT")
     sort_elem_cnt = inp.shape[dim]
     if sort_elem_cnt == 1:
         return inp, torch.zeros_like(inp, dtype=torch.int64)
@@ -569,7 +569,7 @@ def sort(inp, dim=-1, descending=False):
 
 
 def sort_stable(inp, *, stable, dim=-1, descending=False):
-    logger.debug("GEMS SORT.STABLE")
+    logger.debug("GEMS_KUNLUNXIN SORT_STABLE")
     # We only implement stable radix sort here
     _ = stable
     sort_elem_cnt = inp.shape[dim]

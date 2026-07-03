@@ -311,8 +311,15 @@ class FlashmlaSparseTestKit:
         return q, kv, indices, attn_sink, topk_length
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3833: Precision & Compile Error.",
+)
 @pytest.mark.flash_mla_sparse_fwd
 @pytest.mark.parametrize("param", FlashmlaSparseTestKit.get_correctness_test_params())
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_flashmla_sparse(param):
     """Sparse MLA forward propagation test"""
     # Skip FlashMLA unsupported cases
@@ -379,6 +386,9 @@ def test_flashmla_sparse(param):
 @pytest.mark.flash_mla_sparse_fwd
 @pytest.mark.parametrize(
     "param", FlashmlaSparseTestKit.get_correctness_test_params_flashmla()
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_flash_mla_sparse_flashmla(param: Flashmla_Sparse_Test_Param):
     """Sparse MLA forward propagation test from FlashMLA"""
