@@ -3362,7 +3362,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: fractional_max_pool2d_backward
     description: |
       Computes the gradient of fractional_max_pool2d.
