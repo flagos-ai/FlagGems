@@ -466,20 +466,6 @@ ops:
       - Tensor
     stages:
       - beta: '5.1'
-  - id: and_
-    description: |
-      Computes the bitwise AND operation through the tensor dunder method.
-    for:
-      - _and_
-      - __and__.Scalar
-      - __and__.Tensor
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - beta: '5.3'
   - id: amp_foreach_non_finite_check_and_unscale_
     description: |
       Checks gradient tensors for non-finite values (inf or nan) and
@@ -494,6 +480,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: and_
+    description: |
+      Computes the bitwise AND operation through the tensor dunder method.
+    for:
+      - _and_
+      - __and__.Scalar
+      - __and__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.3'
   - id: angle
     description: Computes the element-wise angle (in radians) of the given `input` tensor.
     for:

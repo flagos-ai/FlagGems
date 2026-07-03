@@ -1,7 +1,4 @@
 from flag_gems.ops.__ilshift__ import __ilshift__
-from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
-    _amp_foreach_non_finite_check_and_unscale_,
-)
 from flag_gems.ops._and_ import (
     __and__,
     __and___i,
@@ -9,6 +6,9 @@ from flag_gems.ops._and_ import (
     __and___scalar_i,
     __and__scalar_tensor,
     _and_,
+)
+from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
+    _amp_foreach_non_finite_check_and_unscale_,
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
 from flag_gems.ops._euclidean_dist import _euclidean_dist
