@@ -19,7 +19,10 @@ from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
-__version__ = "5.4.0dev"
+try:
+    from flag_gems._version import version as __version__
+except ImportError:
+    __version__ = "unknown"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 backend_info = runtime.device
@@ -101,6 +104,7 @@ _FULL_CONFIG = (
     ("_softmax_backward_data", softmax_backward),
     ("_softmax_backward_data.out", softmax_backward_out),
     ("_sparse_semi_structured_mm", _sparse_semi_structured_mm),
+    ("_thnn_fused_lstm_cell", _thnn_fused_lstm_cell),
     ("_thnn_fused_lstm_cell_backward_impl", _thnn_fused_lstm_cell_backward_impl),
     (
         "_to_copy",
@@ -110,6 +114,7 @@ _FULL_CONFIG = (
     ("_unique2", _unique2),
     ("_unsafe_masked_index", _unsafe_masked_index),
     ("_unsafe_masked_index_put_accumulate", _unsafe_masked_index_put_accumulate),
+    ("_unsafe_view", _unsafe_view),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
     ("_upsample_bilinear2d_aa", _upsample_bilinear2d_aa),
@@ -479,12 +484,16 @@ _FULL_CONFIG = (
     ("mul.Tensor", mul),
     ("mul_.Tensor", mul_),
     ("multinomial", multinomial),
+    ("multiply_", multiply_),
+    ("multiply_.Scalar", multiply_),
+    ("multiply_.Tensor", multiply_),
     ("mv", mv),
     ("nan_to_num", nan_to_num),
     ("nanmedian", nanmedian),
     ("nanmedian.dim", nanmedian_dim),
     ("nanmedian.dim_values", nanmedian_dim_values),
     ("nanmedian.out", nanmedian_out),
+    ("narrow_copy", narrow_copy),
     ("native_batch_norm", batch_norm),
     ("native_batch_norm_backward", batch_norm_backward),
     ("native_dropout", dropout),
@@ -640,6 +649,8 @@ _FULL_CONFIG = (
     ("special.gammainc", special_gammainc),
     ("special.log_softmax", special_log_softmax),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
+    ("special.chebyshev_polynomial_w", special_chebyshev_polynomial_w),
+    ("special.chebyshev_polynomial_w.out", special_chebyshev_polynomial_w_out),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_i0e", special_i0e),
     ("special_i0e.out", special_i0e_out),
