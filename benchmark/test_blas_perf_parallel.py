@@ -1483,6 +1483,7 @@ def test_perf_mul():
         torch_op=torch.mul,
         dtypes=FLOAT_DTYPES,
     )
+    bench.set_gems(flag_gems.mul)
     bench.run()
 
 
