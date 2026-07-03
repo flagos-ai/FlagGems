@@ -7,7 +7,7 @@ vendor: Nvidia
 runner_labels: h800-flaggems-weekly
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flaggems/nvidia-flaggems-test-h800:2026701
+container_image: harbor.baai.ac.cn/flaggems/nvidia-flaggems-test-h800:20260701
 
 # Container volumes to mount for this backends
 container_volumes:

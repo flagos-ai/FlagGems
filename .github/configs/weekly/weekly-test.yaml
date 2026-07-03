@@ -10,7 +10,7 @@ backends:
   C550:
     enabled: false
   BW1000:
-    enabled: false
+    enabled: true
   MTT-S5000:
     enabled: false
   BI-V150:
