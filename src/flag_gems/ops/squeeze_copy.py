@@ -21,11 +21,11 @@ def _squeeze_copy_kernel(src_ptr, dst_ptr, n_elements, BLOCK_SIZE: tl.constexpr)
 
 
 def squeeze_copy(x: torch.Tensor):
-    logger.debug("GEMS SQUEEZE_COPY")
-    """
-    Wrapper for aten::squeeze_copy
+    """Wrapper for aten::squeeze_copy.
+
     Returns a copy of the input tensor with all dimensions of size 1 removed.
     """
+    logger.debug("GEMS SQUEEZE_COPY")
     # Compute squeezed shape: all dims != 1, or empty if all dims were 1
     squeezed_shape = [s for s in x.shape if s != 1]
 
