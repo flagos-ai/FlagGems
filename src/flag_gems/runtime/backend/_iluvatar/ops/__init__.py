@@ -1,3 +1,4 @@
+from .conv_transpose1d import conv_transpose1d
 from .div import div_mode, div_mode_
 from .hadamard_transform import hadamard_transform
 from .matmul_bf16 import matmul_bf16
@@ -17,4 +18,5 @@ __all__ = [
     "var",
     "var_correction",
     "var_dim",
+    "conv_transpose1d",
 ]
