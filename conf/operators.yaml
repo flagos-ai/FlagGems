@@ -6594,6 +6594,20 @@ ops:
       - Reduction
     stages:
       - stable: '4.2'
+  - id: scatter_add
+    description: |
+      Out-of-place version of scatter_add_: adds all values from the tensor `src`
+      into `inp` at the indices specified in the `index` tensor along dimension
+      `dim` and returns the result without modifying the input.
+    for:
+      - scatter_add
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.3'
   - id: scatter_add_
     description: |
       Adds all values from the tensor `src` into `self` at the indices specified

@@ -409,6 +409,7 @@ from flag_gems.ops.scaled_grouped_mm import scaled_grouped_mm
 from flag_gems.ops.scaled_mm import scaled_mm, scaled_mm_out
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
+from flag_gems.ops.scatter_add import scatter_add
 from flag_gems.ops.scatter_add_ import scatter_add_
 from flag_gems.ops.scatter_reduce import (
     scatter_reduce,
@@ -1035,6 +1036,7 @@ __all__ = [
     "scaled_softmax_forward",
     "scatter",
     "scatter_",
+    "scatter_add",
     "scatter_add_",
     "scatter_reduce",
     "scatter_reduce_",
