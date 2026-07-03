@@ -413,6 +413,7 @@ def test_accuracy_gelu(shape, dtype, approximate):
 
 
 @pytest.mark.gelu
+@pytest.mark.gelu_backward
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("approximate", ["none", "tanh"])

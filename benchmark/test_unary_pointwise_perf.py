@@ -148,28 +148,12 @@ def test_custom_unary_pointwise_perf(op_name, torch_op, dtypes, input_fn):
     bench.run()
 
 
-backward_operations = [
-    ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
-]
-
-
-@pytest.mark.parametrize(
-    "op_name, torch_op, dtypes",
-    [
-        pytest.param(
-            name,
-            op,
-            dtype,
-            marks=getattr(pytest.mark, name + "_backward", None),
-        )
-        for name, op, dtype in backward_operations
-    ],
-)
-def test_general_unary_pointwise_backward_perf(op_name, torch_op, dtypes):
+@pytest.mark.gelu_backward
+def test_perf_gelu_backward():
     bench = UnaryPointwiseBenchmark(
-        op_name=op_name,
-        torch_op=torch_op,
-        dtypes=dtypes,
+        op_name="gelu_backward",
+        torch_op=torch.nn.functional.gelu,
+        dtypes=FLOAT_DTYPES,
         is_backward=True,
     )
     bench.run()
