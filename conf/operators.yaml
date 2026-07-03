@@ -7406,7 +7406,7 @@ ops:
     kind:
       - Math
     stages:
-      - beta: '5.0'
+     - alpha: '5.4'
   - id: special_gammainc
     description: |
       Computes the regularized lower incomplete gamma function P(a, x) element-wise.
