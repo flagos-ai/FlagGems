@@ -4249,7 +4249,7 @@ ops:
       - aten
       - KernelGen
     kind:
-      - Math
+      - LinearAlg
     stages:
       - alpha: '5.4'
   - id: linalg_cholesky
