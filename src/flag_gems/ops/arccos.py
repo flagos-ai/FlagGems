@@ -31,7 +31,7 @@ def arccos_kernel(x):
 
 
 def arccos(x):
-    logger.debug("GEMS ARCCOS FORWARD")
+    logger.debug("GEMS ARCCOS")
     y = arccos_kernel(x)
     return y
 
