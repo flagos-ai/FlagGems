@@ -654,6 +654,8 @@ _FULL_CONFIG = (
     ("sort", sort),
     ("sort.stable", sort_stable),
     ("special.gammainc", special_gammainc),
+    ("special_gammaincc", igammac),
+    ("special_gammaincc.out", igammac_out),
     ("special.log_softmax", special_log_softmax),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special.chebyshev_polynomial_w", special_chebyshev_polynomial_w),
