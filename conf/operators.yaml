@@ -2486,30 +2486,6 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: erfc
-    description: Computes the complementary error function.
-    for:
-      - erfc
-    labels:
-      - aten
-      - pointwise
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: erfc_
-    description: In-place version of `erfc`.
-    for:
-      - erfc_
-    labels:
-      - aten
-      - pointwise
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: euclidean_dist
     description: |
       Computes pairwise Euclidean distances between rows of two 2D tensors.
