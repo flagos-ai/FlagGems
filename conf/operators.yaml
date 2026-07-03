@@ -4208,6 +4208,28 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: less_equal
+    description: Computes element-wise less-than-or-equal-to comparison.
+    for:
+      - less_equal.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: less_equal_scalar
+    description: Computes less-than-or-equal-to comparison with a scalar.
+    for:
+      - less_equal.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: lgamma
     description: Computes the logarithm of the gamma function on input.
     for:
@@ -5060,6 +5082,19 @@ ops:
       - Distribution
     stages:
       - stable: '2.1'
+  - id: multiply_
+    description: In-place multiplication using Triton kernel (alias for mul_). Supports tensor-tensor and tensor-scalar operations.
+    for:
+      - multiply_
+      - multiply_.Scalar
+      - multiply_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: mv
     description: Performs a matrix-vector product of the matrix `input` and the vector `vec`.
     for:
@@ -5130,6 +5165,17 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.4'
+  - id: narrow_copy
+    description: Triton kernel implementation for narrow_copy.
+    for:
+      - narrow_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: ne
     description: Computes that `input` is not equal to `other` element-wise.
     for:
@@ -7002,6 +7048,29 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: sinc
+    description: |
+      Computes the normalized sinc function `sin(π·x) / (π·x)` for each element of the input.
+    for:
+      - sinc
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: sinc_
+    description: The in-place version of `sinc()`.
+    for:
+      - sinc_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: sinh_
     description: |
       Computes the hyperbolic sine `(e^x-e^{-x})/2` of each element in a tensor.
@@ -7264,11 +7333,48 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: special_erfc
+  - id: special_chebyshev_polynomial_w
     description: |
-      Computes the complementary error function for each element of the input tensor.
+      Computes the Chebyshev polynomial of the fourth kind
+      :math:`W_{n}(\\text{input})`.
+    for:
+      - special.chebyshev_polynomial_w
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_chebyshev_polynomial_w_out
+    description: |
+      A variant of `special_chebyshev_polynomial_w()` with output saved to
+      provided `out`.
+    for:
+      - special.chebyshev_polynomial_w.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_erfc
+    description: Computes the complementary error function.
     for:
       - special_erfc
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_erfc_
+    description: In-place version of `special_erfc`.
+    for:
+      - special_erfc_
     labels:
       - aten
       - pointwise
@@ -7689,6 +7795,17 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: thnn_fused_lstm_cell
+    description: Fused LSTM cell computation with optional input and hidden biases.
+    for:
+      - _thnn_fused_lstm_cell
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: thnn_fused_lstm_cell_backward_impl
     description: |
       Computes gradients for the fused LSTM cell operation (_thnn_fused_lstm_cell).
@@ -8070,6 +8187,20 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: unsafe_view
+    description: |
+      Creates a new view of an existing tensor with a different shape without
+      performing safety checks, such as verifying if the tensor is contiguous or
+      if the reshape is valid.
+    for:
+      - _unsafe_view
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
     stages:
       - alpha: '5.4'
   - id: upsample_bicubic2d
