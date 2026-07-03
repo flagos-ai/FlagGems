@@ -31,6 +31,12 @@ def log_softmax(self, dim, half_to_float=False):
         K,
     )
     with torch_device_fn.device(inp.device):
+        # sophgo: BLOCK_N capped at 128 for local-mem. The grid-cap lever that
+        # sped up sum/mean (larger BLOCK_M -> fewer, fatter row-programs) was
+        # tried here and REVERTED: BLOCK_M=16 is numerically correct but its
+        # bigger per-program tiles overflow the TPU local memory under repeated
+        # invocation (cmodel emulator abort). This op is at the resource ceiling
+        # — same reason BLOCK_N was already lowered 256->128. Keep the default 8.
         log_softmax_kernel[grid](
             out,
             inp,

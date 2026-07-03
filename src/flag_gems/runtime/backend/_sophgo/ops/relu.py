@@ -1,0 +1,59 @@
+import logging
+import math
+
+import torch
+import triton
+import triton.language as tl
+
+logger = logging.getLogger(__name__)
+
+BLOCK_SIZE = 4096
+MAX_GRID = 64
+
+
+@triton.jit
+def relu_kernel_fast(x_ptr, out_ptr, n, BLOCK_SIZE: tl.constexpr, TPB: tl.constexpr):
+    pid = tl.program_id(0)
+    for t in range(TPB):
+        offs = (pid + t * tl.num_programs(0)) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        tl.store(out_ptr + offs, tl.maximum(tl.load(x_ptr + offs).to(tl.float32), 0.0))
+
+
+@triton.jit
+def relu_kernel_masked(x_ptr, out_ptr, n, BLOCK_SIZE: tl.constexpr, TPB: tl.constexpr):
+    pid = tl.program_id(0)
+    for t in range(TPB):
+        offs = (pid + t * tl.num_programs(0)) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offs < n
+        tl.store(
+            out_ptr + offs,
+            tl.maximum(tl.load(x_ptr + offs, mask=mask).to(tl.float32), 0.0),
+            mask=mask,
+        )
+
+
+def relu(A):
+    logger.debug("GEMS RELU (sophgo_tpu)")
+    out = torch.empty_like(A)
+    n = A.numel()
+    num_tiles = math.ceil(n / BLOCK_SIZE)
+    grid = min(num_tiles, MAX_GRID)
+    tpb = math.ceil(num_tiles / grid)
+    if n % BLOCK_SIZE == 0:
+        relu_kernel_fast[(grid,)](A, out, n, BLOCK_SIZE=BLOCK_SIZE, TPB=tpb)
+    else:
+        relu_kernel_masked[(grid,)](A, out, n, BLOCK_SIZE=BLOCK_SIZE, TPB=tpb)
+    return out
+
+
+def relu_(A):
+    logger.debug("GEMS RELU_ (sophgo_tpu)")
+    n = A.numel()
+    num_tiles = math.ceil(n / BLOCK_SIZE)
+    grid = min(num_tiles, MAX_GRID)
+    tpb = math.ceil(num_tiles / grid)
+    if n % BLOCK_SIZE == 0:
+        relu_kernel_fast[(grid,)](A, A, n, BLOCK_SIZE=BLOCK_SIZE, TPB=tpb)
+    else:
+        relu_kernel_masked[(grid,)](A, A, n, BLOCK_SIZE=BLOCK_SIZE, TPB=tpb)
+    return A

@@ -1,8 +1,10 @@
+from .abs import abs, abs_
 from .addmm import addmm
 from .all import all, all_dim, all_dims
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .batch_norm import batch_norm
+from .bitwise_not import bitwise_not, bitwise_not_
 from .bmm import bmm
 from .cat import cat
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
@@ -10,6 +12,7 @@ from .contiguous import contiguous
 from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
+from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .cumsum import cumsum, normed_cumsum
 from .diag import diag
@@ -18,6 +21,7 @@ from .diagonal import diagonal
 from .dot import dot
 from .dropout import dropout, native_dropout
 from .erf import erf, erf_
+from .exp import exp, exp_
 from .exponential_ import exponential_
 from .flip import flip
 from .full import full
@@ -34,6 +38,8 @@ from .isinf import isinf
 from .isnan import isnan
 from .kron import kron
 from .layernorm import layer_norm
+from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
+from .log import log, log_
 from .log_softmax import log_softmax
 from .logical_and import logical_and
 from .logical_not import logical_not
@@ -43,8 +49,10 @@ from .masked_select import masked_select
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
+from .mul import mul, mul_
 from .multinomial import multinomial
 from .nan_to_num import nan_to_num
+from .neg import neg, neg_
 from .nllloss import nll_loss2d_forward, nll_loss_forward
 from .nonzero import nonzero
 from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
@@ -62,6 +70,7 @@ from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
+from .relu import relu, relu_
 from .repeat import repeat
 from .repeat_interleave import (
     repeat_interleave_self_int,
@@ -69,12 +78,16 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .rms_norm import rms_norm
+from .rsqrt import rsqrt, rsqrt_
 from .scatter import scatter, scatter_
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid
+from .silu import silu, silu_
+from .sin import sin, sin_
 from .slice_scatter import slice_scatter
 from .softmax import softmax
 from .stack import stack
+from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .tanh import tanh, tanh_
 from .tile import tile
@@ -201,4 +214,32 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "rsqrt",
+    "rsqrt_",
+    "neg",
+    "neg_",
+    "bitwise_not",
+    "bitwise_not_",
+    "log",
+    "log_",
+    "lerp_scalar",
+    "lerp_scalar_",
+    "lerp_tensor",
+    "lerp_tensor_",
+    "abs",
+    "abs_",
+    "exp",
+    "exp_",
+    "sin",
+    "sin_",
+    "cos",
+    "cos_",
+    "silu",
+    "silu_",
+    "relu",
+    "relu_",
+    "sub",
+    "sub_",
+    "mul",
+    "mul_",
 ]

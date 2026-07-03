@@ -1,107 +1,140 @@
 import logging
+import math
 
+import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.codegen_config_utils import CodeGenConfig
-from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
+logger = logging.getLogger(__name__)
 
-config_ = CodeGenConfig(
-    128,
-    (512, 1, 1),
-    32,
-    False,
-    prefer_1d_tile=int(triton.__version__[0]) < 3,
-)
+BLOCK_SIZE = 4096
+MAX_GRID = 64
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, 2, "DEFAULT")], config=config_)
 @triton.jit
-def clamp_func_tensor(x, mini, maxi):
-    return tl.minimum(maxi, tl.maximum(mini, x.to(tl.float32)))
+def clamp_kernel_fast(
+    x_ptr, out_ptr, mini, maxi, n, BLOCK_SIZE: tl.constexpr, TPB: tl.constexpr
+):
+    pid = tl.program_id(0)
+    for t in range(TPB):
+        offs = (pid + t * tl.num_programs(0)) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        x = tl.load(x_ptr + offs)
+        tl.store(out_ptr + offs, tl.minimum(maxi, tl.maximum(mini, x)))
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=config_)
 @triton.jit
-def clamp_func_min_tensor(x, mini):
-    return tl.maximum(mini, x.to(tl.float32))
+def clamp_kernel_masked(
+    x_ptr, out_ptr, mini, maxi, n, BLOCK_SIZE: tl.constexpr, TPB: tl.constexpr
+):
+    pid = tl.program_id(0)
+    for t in range(TPB):
+        offs = (pid + t * tl.num_programs(0)) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offs < n
+        x = tl.load(x_ptr + offs, mask=mask)
+        tl.store(out_ptr + offs, tl.minimum(maxi, tl.maximum(mini, x)), mask=mask)
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=config_)
 @triton.jit
-def clamp_func_max_tensor(x, maxi):
-    return tl.minimum(maxi, x.to(tl.float32))
+def clamp_min_kernel_fast(
+    x_ptr, out_ptr, mini, n, BLOCK_SIZE: tl.constexpr, TPB: tl.constexpr
+):
+    pid = tl.program_id(0)
+    for t in range(TPB):
+        offs = (pid + t * tl.num_programs(0)) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        tl.store(out_ptr + offs, tl.maximum(mini, tl.load(x_ptr + offs)))
 
 
-def clamp_tensor(A, mini=None, maxi=None):
-    logging.debug("GEMS CLAMP TENSOR")
-    if mini is None and maxi is None:
-        raise ValueError("At least one of mini or maxi must not be None")
-    elif mini is None:
-        return clamp_func_max_tensor(A, maxi)
-    elif maxi is None:
-        return clamp_func_min_tensor(A, mini)
+@triton.jit
+def clamp_min_kernel_masked(
+    x_ptr, out_ptr, mini, n, BLOCK_SIZE: tl.constexpr, TPB: tl.constexpr
+):
+    pid = tl.program_id(0)
+    for t in range(TPB):
+        offs = (pid + t * tl.num_programs(0)) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offs < n
+        tl.store(
+            out_ptr + offs,
+            tl.maximum(mini, tl.load(x_ptr + offs, mask=mask)),
+            mask=mask,
+        )
+
+
+@triton.jit
+def clamp_max_kernel_fast(
+    x_ptr, out_ptr, maxi, n, BLOCK_SIZE: tl.constexpr, TPB: tl.constexpr
+):
+    pid = tl.program_id(0)
+    for t in range(TPB):
+        offs = (pid + t * tl.num_programs(0)) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        tl.store(out_ptr + offs, tl.minimum(maxi, tl.load(x_ptr + offs)))
+
+
+@triton.jit
+def clamp_max_kernel_masked(
+    x_ptr, out_ptr, maxi, n, BLOCK_SIZE: tl.constexpr, TPB: tl.constexpr
+):
+    pid = tl.program_id(0)
+    for t in range(TPB):
+        offs = (pid + t * tl.num_programs(0)) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offs < n
+        tl.store(
+            out_ptr + offs,
+            tl.minimum(maxi, tl.load(x_ptr + offs, mask=mask)),
+            mask=mask,
+        )
+
+
+def _clamp_scalar(A, out, mini, maxi):
+    n = A.numel()
+    num_tiles = math.ceil(n / BLOCK_SIZE)
+    grid = min(num_tiles, MAX_GRID)
+    tpb = math.ceil(num_tiles / grid)
+    if mini is not None and maxi is not None:
+        if n % BLOCK_SIZE == 0:
+            clamp_kernel_fast[(grid,)](
+                A, out, mini, maxi, n, BLOCK_SIZE=BLOCK_SIZE, TPB=tpb
+            )
+        else:
+            clamp_kernel_masked[(grid,)](
+                A, out, mini, maxi, n, BLOCK_SIZE=BLOCK_SIZE, TPB=tpb
+            )
+    elif mini is not None:
+        if n % BLOCK_SIZE == 0:
+            clamp_min_kernel_fast[(grid,)](
+                A, out, mini, n, BLOCK_SIZE=BLOCK_SIZE, TPB=tpb
+            )
+        else:
+            clamp_min_kernel_masked[(grid,)](
+                A, out, mini, n, BLOCK_SIZE=BLOCK_SIZE, TPB=tpb
+            )
     else:
-        return clamp_func_tensor(A, mini, maxi)
-
-
-def clamp_tensor_(A, mini=None, maxi=None):
-    logging.debug("GEMS CLAMP_ TENSOR")
-    if mini is None and maxi is None:
-        raise ValueError("At least one of mini or maxi must not be None")
-    elif mini is None:
-        return clamp_func_max_tensor(A, maxi, out0=A)
-    elif maxi is None:
-        return clamp_func_min_tensor(A, mini, out0=A)
-    else:
-        return clamp_func_tensor(A, mini, maxi, out0=A)
-
-
-@pointwise_dynamic(
-    is_tensor=[True, False, False],
-    promotion_methods=[(0, 1, 2, "DEFAULT")],
-    config=config_,
-)
-@triton.jit
-def clamp_func(x, mini, maxi):
-    return tl.minimum(maxi, tl.maximum(mini, x.to(tl.float32)))
-
-
-@pointwise_dynamic(
-    is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")], config=config_
-)
-@triton.jit
-def clamp_func_min(x, mini):
-    return tl.maximum(mini, x.to(tl.float32))
-
-
-@pointwise_dynamic(
-    is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")], config=config_
-)
-@triton.jit
-def clamp_func_max(x, maxi):
-    return tl.minimum(maxi, x.to(tl.float32))
+        if n % BLOCK_SIZE == 0:
+            clamp_max_kernel_fast[(grid,)](
+                A, out, maxi, n, BLOCK_SIZE=BLOCK_SIZE, TPB=tpb
+            )
+        else:
+            clamp_max_kernel_masked[(grid,)](
+                A, out, maxi, n, BLOCK_SIZE=BLOCK_SIZE, TPB=tpb
+            )
 
 
 def clamp(A, mini=None, maxi=None):
-    logging.debug("GEMS CLAMP")
-    if mini is None and maxi is None:
-        raise ValueError("At least one of mini or maxi must not be None")
-    elif mini is None:
-        return clamp_func_max(A, maxi)
-    elif maxi is None:
-        return clamp_func_min(A, mini)
-    else:
-        return clamp_func(A, mini, maxi)
+    logger.debug("GEMS CLAMP (sophgo_tpu)")
+    # Tensor bounds: fall back to generic (rare, complex broadcasting)
+    if isinstance(mini, torch.Tensor) or isinstance(maxi, torch.Tensor):
+        from flag_gems.ops.clamp import clamp_tensor
+
+        return clamp_tensor(A, mini, maxi)
+    out = torch.empty_like(A)
+    _clamp_scalar(A, out, mini, maxi)
+    return out
 
 
 def clamp_(A, mini=None, maxi=None):
-    logging.debug("GEMS CLAMP_")
-    if mini is None and maxi is None:
-        raise ValueError("At least one of mini or maxi must not be None")
-    elif mini is None:
-        return clamp_func_max(A, maxi, out0=A)
-    elif maxi is None:
-        return clamp_func_min(A, mini, out0=A)
-    else:
-        return clamp_func(A, mini, maxi, out0=A)
+    logger.debug("GEMS CLAMP_ (sophgo_tpu)")
+    if isinstance(mini, torch.Tensor) or isinstance(maxi, torch.Tensor):
+        from flag_gems.ops.clamp import clamp_tensor_
+
+        return clamp_tensor_(A, mini, maxi)
+    _clamp_scalar(A, A, mini, maxi)
+    return A

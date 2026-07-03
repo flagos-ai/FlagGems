@@ -1,5 +1,4 @@
 import logging
-import math
 
 import torch
 import triton
@@ -14,6 +13,13 @@ from ..utils.shape_utils import dim_compress
 
 logger = logging.getLogger(__name__)
 
+# sophgo grid-cap for the stage-1 full reduction (see sum.py): <=MAX_GRID fat
+# programs grid-stride over the tiles and accumulate partial SUMS in fp32;
+# stage-2 sums the <=MAX_GRID partials and divides by M (unchanged), so the
+# tiling does not affect the result.
+MAX_GRID = 64
+RED_BLOCK = 4096
+
 
 @libentry()
 @triton.jit
@@ -22,15 +28,16 @@ def mean_kernel_1(
     mid,
     M,
     BLOCK_SIZE: tl.constexpr,
+    TPB: tl.constexpr,
 ):
     pid = tle.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=0.0)
-    sum_val = tl.sum(inp_val, axis=0)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, sum_val)
+    nprog = tle.num_programs(0)
+    acc = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    for t in range(TPB):
+        offset = (pid + t * nprog) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        acc += tl.load(inp + offset, mask=mask, other=0.0).to(tl.float32)
+    tl.store(mid + pid, tl.sum(acc, axis=0))
 
 
 @libentry()
@@ -49,15 +56,17 @@ def mean(inp, *, dtype=None):
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
+    num_tiles = triton.cdiv(M, RED_BLOCK)
+    grid = min(num_tiles, MAX_GRID)
+    tpb = triton.cdiv(num_tiles, grid)
+    mid_size = grid
     block_mid = triton.next_power_of_2(mid_size)
 
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+        mean_kernel_1[(grid, 1, 1)](inp, mid, M, RED_BLOCK, tpb)
         mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid)
     return out
 

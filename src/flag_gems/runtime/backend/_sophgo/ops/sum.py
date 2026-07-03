@@ -1,5 +1,4 @@
 import logging
-import math
 
 import torch
 import triton
@@ -14,6 +13,14 @@ from ..utils.shape_utils import dim_compress
 
 logger = logging.getLogger(__name__)
 
+# sophgo grid-cap for the stage-1 full reduction: instead of launching
+# ceil(sqrt(M)) tiny programs (~1024 for M=1M), launch at most MAX_GRID
+# programs that grid-stride over the tiles and accumulate in-register, so
+# stage-2 only reduces <=MAX_GRID partials. Same insight as the pointwise
+# overrides (fewer, fatter programs win on this TPU).
+MAX_GRID = 64
+RED_BLOCK = 4096
+
 
 @libentry()
 @triton.jit
@@ -22,6 +29,7 @@ def sum_kernel_1(
     mid,
     M,
     BLOCK_SIZE: tl.constexpr,
+    TPB: tl.constexpr,
 ):
     if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
         inp.dtype.element_ty == tl.bfloat16
@@ -31,14 +39,13 @@ def sum_kernel_1(
         cdtype = inp.dtype.element_ty
 
     pid = tle.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
-
-    inp_val = tl.load(inp_ptrs, mask=mask, other=0).to(cdtype)
-    sum_val = tl.sum(inp_val)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, sum_val)
+    nprog = tle.num_programs(0)
+    acc = tl.zeros([BLOCK_SIZE], dtype=cdtype)
+    for t in range(TPB):
+        offset = (pid + t * nprog) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        acc += tl.load(inp + offset, mask=mask, other=0).to(cdtype)
+    tl.store(mid + pid, tl.sum(acc))
 
 
 @libentry()
@@ -107,15 +114,17 @@ def sum(inp, *, dtype=None):
         if dtype is torch.bool:
             inp = inp.to(torch.int64)
             dtype = torch.int64
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
+    num_tiles = triton.cdiv(M, RED_BLOCK)
+    grid = min(num_tiles, MAX_GRID)
+    tpb = triton.cdiv(num_tiles, grid)
+    mid_size = grid
     block_mid = triton.next_power_of_2(mid_size)
 
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+        sum_kernel_1[(grid, 1, 1)](inp, mid, M, RED_BLOCK, tpb)
         sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
 
@@ -128,13 +137,15 @@ def sum_out(inp, *, dtype=None, out):
         if dtype is torch.bool:
             inp = inp.to(torch.int64)
             dtype = torch.int64
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
+    num_tiles = triton.cdiv(M, RED_BLOCK)
+    grid = min(num_tiles, MAX_GRID)
+    tpb = triton.cdiv(num_tiles, grid)
+    mid_size = grid
     block_mid = triton.next_power_of_2(mid_size)
 
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     with torch_device_fn.device(inp.device):
-        sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+        sum_kernel_1[(grid, 1, 1)](inp, mid, M, RED_BLOCK, tpb)
         sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
 
