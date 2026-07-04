@@ -42,7 +42,7 @@ def _choose_block(N_total):
 
 
 def rsqrt(A):
-    logger.debug("GEMS RSQRT")
+    logger.debug("GEMS_ENFLAME RSQRT")
     inp = A.contiguous()
     N_total = inp.numel()
     out = torch.empty_like(inp)
@@ -65,7 +65,7 @@ def rsqrt(A):
 
 
 def rsqrt_(A):
-    logger.debug("GEMS RSQRT_")
+    logger.debug("GEMS_ENFLAME RSQRT_")
     inp = A.contiguous()
     N_total = inp.numel()
 

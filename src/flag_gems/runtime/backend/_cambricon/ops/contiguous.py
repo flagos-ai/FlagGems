@@ -4,7 +4,7 @@ import torch
 
 from .copy import copy_
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def contiguous(inp, memory_format=torch.contiguous_format):
