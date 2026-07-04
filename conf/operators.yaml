@@ -4933,6 +4933,21 @@ ops:
       - Reduction
     stages:
       - stable: '2.0'
+  - id: median
+    description: Returns the median of the values in `input`.
+    for:
+      - median
+      - median.dim
+      - median.dim_values
+      - median.out
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
   - id: mhc_bwd
     description: |
       The backward case for MHC (Manifold-Constrained Hyper-Connections).
@@ -5153,21 +5168,6 @@ ops:
       - BLAS
     stages:
       - stable: '2.0'
-  - id: median
-    description: Returns the median of the values in `input`.
-    for:
-      - median
-      - median.dim
-      - median.dim_values
-      - median.out
-    labels:
-      - aten
-      - KernelGen
-      - Reduction
-    kind:
-      - LinearAlg
-    stages:
-      - beta: '5.4'
   - id: nan_to_num
     description: |
       Replaces `NaN`, positive infinity, and negative infinity values in `input`
