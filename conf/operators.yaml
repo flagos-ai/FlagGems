@@ -5624,6 +5624,17 @@ ops:
       dispatching to dedicated digamma (n=0), trigamma (n=1), or Hurwitz-zeta (n>=2) Triton kernels.
     for:
       - polygamma
+      - polygamma.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: polygamma_
+    description: The in-place version of `polygamma()`.
+    for:
       - polygamma_
     labels:
       - aten

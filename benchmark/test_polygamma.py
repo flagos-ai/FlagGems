@@ -14,6 +14,7 @@ def test_polygamma():
     bench.run()
 
 
+@pytest.mark.polygamma_
 def test_polygamma_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="polygamma_",
@@ -24,6 +25,7 @@ def test_polygamma_inplace():
     bench.run()
 
 
+@pytest.mark.polygamma_out
 def test_polygamma_out():
     bench = base.UnaryPointwiseOutBenchmark(
         op_name="polygamma_out",

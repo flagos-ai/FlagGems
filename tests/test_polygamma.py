@@ -49,7 +49,7 @@ def test_polygamma_wide_domain(n):
     utils.gems_assert_close(res_out, ref_out, torch.float32)
 
 
-@pytest.mark.polygamma
+@pytest.mark.polygamma_out
 @pytest.mark.parametrize("n", [0, 1, 2])
 def test_polygamma_out(n):
     torch.manual_seed(0)
@@ -65,7 +65,7 @@ def test_polygamma_out(n):
     utils.gems_assert_close(out, ref_out, torch.float32)
 
 
-@pytest.mark.polygamma
+@pytest.mark.polygamma_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("n", POLYGAMMA_N)
