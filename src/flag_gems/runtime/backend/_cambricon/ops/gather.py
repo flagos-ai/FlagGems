@@ -11,7 +11,7 @@ from flag_gems.utils.shape_utils import restride_dim
 
 from .scatter import scatter
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -272,6 +272,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logger.debug("GEMS_CAMBRICON GATHER BACKWARD")
+    logger.debug("GEMS_CAMBRICON GATHER_BACKWARD")
     result = grad.new_zeros(self.shape)
     return scatter(result, dim, index, grad, reduce="add")
