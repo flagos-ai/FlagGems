@@ -11,7 +11,7 @@ from . import accuracy_utils as utils
 @pytest.mark.and_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)
-def test_and_(shape, dtype):
+def test_and_tensor(shape, dtype):
     if dtype in utils.BOOL_TYPES:
         inp1 = torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(
             flag_gems.device
