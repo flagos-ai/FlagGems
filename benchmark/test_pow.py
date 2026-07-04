@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
 @pytest.mark.pow_tensor_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_pow_tensor_tensor():
     bench = base.ScalarBinaryPointwiseBenchmark(
         op_name="pow_tensor_tensor",
@@ -15,6 +20,9 @@ def test_pow_tensor_tensor():
 
 
 @pytest.mark.pow_tensor_tensor_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_pow_inplace():
     bench = base.BinaryPointwiseBenchmark(
         op_name="pow_tensor_tensor_",
