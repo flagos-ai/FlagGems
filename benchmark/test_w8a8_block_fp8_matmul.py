@@ -8,16 +8,6 @@ import flag_gems
 from .attri_util import DEFAULT_METRICS
 from .performance_utils import Benchmark
 
-try:
-    from vllm.model_executor.layers.quantization.utils.fp8_utils import (
-        w8a8_triton_block_scaled_mm as vllm_w8a8_triton_block_scaled_mm,
-    )
-
-    VLLM_W8A8_BLOCK_FP8_AVAILABLE = True
-except Exception:
-    vllm_w8a8_triton_block_scaled_mm = None
-    VLLM_W8A8_BLOCK_FP8_AVAILABLE = False
-
 
 W8A8_BLOCK_FP8_MNK_SHAPES = [
     (64, 128, 128),
@@ -55,6 +45,37 @@ def rand_fp8_tensor(shape, device, dtype):
         .clamp(min=finfo.min, max=finfo.max)
         .to(dtype)
     )
+
+
+def torch_w8a8_block_fp8_matmul_ref(
+    A: torch.Tensor,
+    B: torch.Tensor,
+    As: torch.Tensor,
+    Bs: torch.Tensor,
+    block_size: list[int],
+    output_dtype: torch.dtype = torch.float16,
+) -> torch.Tensor:
+    block_n, block_k = block_size
+    K = A.shape[-1]
+    M = A.numel() // K
+    N = B.shape[0]
+
+    A_flat = A.reshape(M, K).to(torch.float32)
+    B_fp32 = B.to(torch.float32)
+
+    A_scale = (
+        As.reshape(M, -1)
+        .to(torch.float32)
+        .repeat_interleave(block_k, dim=-1)[:, :K]
+    )
+    B_scale = (
+        Bs.to(torch.float32)
+        .repeat_interleave(block_n, dim=0)[:N]
+        .repeat_interleave(block_k, dim=1)[:, :K]
+    )
+
+    out = torch.matmul(A_flat * A_scale, (B_fp32 * B_scale).T)
+    return out.to(output_dtype).reshape(A.shape[:-1] + (N,))
 
 
 class W8A8BlockFP8MatmulBenchmark(Benchmark):
@@ -104,10 +125,6 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
 
 
 @pytest.mark.w8a8_block_fp8_matmul
-@pytest.mark.skipif(
-    not VLLM_W8A8_BLOCK_FP8_AVAILABLE,
-    reason="w8a8_block_fp8_matmul benchmark requires vLLM baseline operator",
-)
 def test_perf_w8a8_block_fp8_matmul():
     if not FP8_DTYPES:
         pytest.skip(
@@ -116,7 +133,7 @@ def test_perf_w8a8_block_fp8_matmul():
 
     bench = W8A8BlockFP8MatmulBenchmark(
         op_name="w8a8_block_fp8_matmul",
-        torch_op=vllm_w8a8_triton_block_scaled_mm,
+        torch_op=torch_w8a8_block_fp8_matmul_ref,
         dtypes=FP8_DTYPES,
     )
     bench.set_gems(flag_gems.w8a8_block_fp8_matmul)
