@@ -54,7 +54,7 @@ def test_and_bool_broadcast():
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.and_
+@pytest.mark.and_tensor
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES)
 def test_and_integer_edge_cases(dtype):
     inp1 = torch.tensor([-1, -1, 0, 123, -123], dtype=dtype, device=flag_gems.device)
