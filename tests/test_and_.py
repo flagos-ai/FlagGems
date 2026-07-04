@@ -36,7 +36,7 @@ def test_and_tensor(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.and_
+@pytest.mark.and_tensor
 def test_and_bool_broadcast():
     inp1 = torch.tensor(
         [[True, False, True]], dtype=torch.bool, device=flag_gems.device
