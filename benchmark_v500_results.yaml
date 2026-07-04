@@ -1,291 +1,175 @@
 metadata:
-  created_at: '2026-07-04T04:31:23'
-  warmup: 1000
-  iter: 100
+  created_at: '2026-07-04T08:47:54'
+  warmup: 1
+  iter: 1
   no_torch: false
   level: core
   mode: kernel
   shape_file: /tmp/FlagGems-benchmark-v5.0.0/benchmark/core_shapes.yaml
 results:
-- op_name: weight_norm
-  dtype: torch.float16
+- op_name: w8a8_block_fp8_matmul
+  dtype: torch.float8_e4m3fn
   mode: kernel
   level: core
   result:
   - legacy_shape: null
     shape_detail:
     - - 64
-      - 64
+      - 128
+    - - 128
+      - 128
     - - 64
-      - 64
-    - 0
-    latency_base: 0.005647999932989478
-    latency: 0.005408000200986862
+      - 1
+    - - 1
+      - 1
+    - - 128
+      - 128
+    - torch.float16
+    latency_base: 0.07036799937486649
+    latency: 0.006895999889820814
     gbps_base: null
     gbps: null
-    speedup: 1.0443786470198022
+    speedup: 10.204176406489898
     accuracy: null
-    tflops: null
+    tflops: 0.30411137376837927
     utilization: null
     compared_speedup: null
     error_msg: null
   - legacy_shape: null
     shape_detail:
-    - - 1024
-      - 1024
-    - - 1024
-      - 1024
-    - 0
-    latency_base: 0.011008000001311302
-    latency: 0.007199999876320362
+    - - 128
+      - 512
+    - - 256
+      - 512
+    - - 128
+      - 4
+    - - 2
+      - 4
+    - - 128
+      - 128
+    - torch.float16
+    latency_base: 0.057103998959064484
+    latency: 0.010912000201642513
     gbps_base: null
     gbps: null
-    speedup: 1.5288889153338514
+    speedup: 5.233137637815383
     accuracy: null
-    tflops: null
+    tflops: 3.075002875728436
     utilization: null
     compared_speedup: null
     error_msg: null
   - legacy_shape: null
     shape_detail:
+    - - 1
+      - 7168
     - - 4096
-      - 4096
+      - 7168
+    - - 1
+      - 56
+    - - 32
+      - 56
+    - - 128
+      - 128
+    - torch.float16
+    latency_base: 0.38899199664592743
+    latency: 0.08646400272846222
+    gbps_base: null
+    gbps: null
+    speedup: 4.498889530566216
+    accuracy: null
+    tflops: 0.6791295122481124
+    utilization: null
+    compared_speedup: null
+    error_msg: null
+  - legacy_shape: null
+    shape_detail:
+    - - 16
+      - 7168
     - - 4096
-      - 4096
-    - 0
-    latency_base: 0.07203199714422226
-    latency: 0.029872000217437744
+      - 7168
+    - - 16
+      - 56
+    - - 32
+      - 56
+    - - 128
+      - 128
+    - torch.float16
+    latency_base: 0.46483200788497925
+    latency: 0.0854400023818016
     gbps_base: null
     gbps: null
-    speedup: 2.4113550020053114
+    speedup: 5.440449378826172
     accuracy: null
-    tflops: null
+    tflops: 10.99630231518012
     utilization: null
     compared_speedup: null
     error_msg: null
   - legacy_shape: null
     shape_detail:
     - - 64
-      - 512
-      - 512
-    - - 64
-      - 512
-      - 512
-    - 0
-    latency_base: 0.7858720123767853
-    latency: 0.08611200004816055
-    gbps_base: null
-    gbps: null
-    speedup: 9.126161416960056
-    accuracy: null
-    tflops: null
-    utilization: null
-    compared_speedup: null
-    error_msg: null
-  - legacy_shape: null
-    shape_detail:
-    - - 1024
-      - 1024
-      - 1024
-    - - 1024
-      - 1024
-      - 1024
-    - 0
-    latency_base: 6.7979841232299805
-    latency: 1.9524799585342407
-    gbps_base: null
-    gbps: null
-    speedup: 3.481717747481178
-    accuracy: null
-    tflops: null
-    utilization: null
-    compared_speedup: null
-    error_msg: null
-- op_name: weight_norm
-  dtype: torch.float32
-  mode: kernel
-  level: core
-  result:
-  - legacy_shape: null
-    shape_detail:
-    - - 64
-      - 64
-    - - 64
-      - 64
-    - 0
-    latency_base: 0.005791999865323305
-    latency: 0.005408000200986862
-    gbps_base: null
-    gbps: null
-    speedup: 1.0710058524528845
-    accuracy: null
-    tflops: null
-    utilization: null
-    compared_speedup: null
-    error_msg: null
-  - legacy_shape: null
-    shape_detail:
-    - - 1024
-      - 1024
-    - - 1024
-      - 1024
-    - 0
-    latency_base: 0.009952000342309475
-    latency: 0.00848000030964613
-    gbps_base: null
-    gbps: null
-    speedup: 1.1735849031737562
-    accuracy: null
-    tflops: null
-    utilization: null
-    compared_speedup: null
-    error_msg: null
-  - legacy_shape: null
-    shape_detail:
+      - 7168
     - - 4096
-      - 4096
-    - - 4096
-      - 4096
-    - 0
-    latency_base: 0.05382400006055832
-    latency: 0.04596799984574318
-    gbps_base: null
-    gbps: null
-    speedup: 1.1709015019399986
-    accuracy: null
-    tflops: null
-    utilization: null
-    compared_speedup: null
-    error_msg: null
-  - legacy_shape: null
-    shape_detail:
+      - 7168
     - - 64
-      - 512
-      - 512
-    - - 64
-      - 512
-      - 512
-    - 0
-    latency_base: 0.262719988822937
-    latency: 0.11919999867677689
+      - 56
+    - - 32
+      - 56
+    - - 128
+      - 128
+    - torch.float16
+    latency_base: 0.5049279928207397
+    latency: 0.08473600074648857
     gbps_base: null
     gbps: null
-    speedup: 2.204026776336881
+    speedup: 5.958836720786162
     accuracy: null
-    tflops: null
+    tflops: 44.35064613496919
     utilization: null
     compared_speedup: null
     error_msg: null
   - legacy_shape: null
     shape_detail:
-    - - 1024
-      - 1024
-      - 1024
-    - - 1024
-      - 1024
-      - 1024
-    - 0
-    latency_base: 4.1499199867248535
-    latency: 3.654144048690796
+    - - 83
+      - 3884
+    - - 7748
+      - 3884
+    - - 83
+      - 31
+    - - 61
+      - 31
+    - - 128
+      - 128
+    - torch.float16
+    latency_base: 0.6867200136184692
+    latency: 0.8949120044708252
     gbps_base: null
     gbps: null
-    speedup: 1.1356749847373104
+    speedup: 0.7673603775429708
     accuracy: null
-    tflops: null
-    utilization: null
-    compared_speedup: null
-    error_msg: null
-- op_name: weight_norm
-  dtype: torch.bfloat16
-  mode: kernel
-  level: core
-  result:
-  - legacy_shape: null
-    shape_detail:
-    - - 64
-      - 64
-    - - 64
-      - 64
-    - 0
-    latency_base: 0.005663999821990728
-    latency: 0.005727999843657017
-    gbps_base: null
-    gbps: null
-    speedup: 0.9888268115549689
-    accuracy: null
-    tflops: null
+    tflops: 5.582086827580215
     utilization: null
     compared_speedup: null
     error_msg: null
   - legacy_shape: null
     shape_detail:
-    - - 1024
-      - 1024
-    - - 1024
-      - 1024
-    - 0
-    latency_base: 0.011136000044643879
-    latency: 0.007296000141650438
+    - - 84
+      - 3884
+    - - 7168
+      - 3884
+    - - 84
+      - 31
+    - - 56
+      - 31
+    - - 128
+      - 128
+    - torch.float16
+    latency_base: 0.6563199758529663
+    latency: 0.9652799963951111
     gbps_base: null
     gbps: null
-    speedup: 1.5263157659595095
+    speedup: 0.6799270453174496
     accuracy: null
-    tflops: null
-    utilization: null
-    compared_speedup: null
-    error_msg: null
-  - legacy_shape: null
-    shape_detail:
-    - - 4096
-      - 4096
-    - - 4096
-      - 4096
-    - 0
-    latency_base: 0.07305599749088287
-    latency: 0.029839999973773956
-    gbps_base: null
-    gbps: null
-    speedup: 2.448257290720207
-    accuracy: null
-    tflops: null
-    utilization: null
-    compared_speedup: null
-    error_msg: null
-  - legacy_shape: null
-    shape_detail:
-    - - 64
-      - 512
-      - 512
-    - - 64
-      - 512
-      - 512
-    - 0
-    latency_base: 0.7901919782161713
-    latency: 0.08739200234413147
-    gbps_base: null
-    gbps: null
-    speedup: 9.04192554262071
-    accuracy: null
-    tflops: null
-    utilization: null
-    compared_speedup: null
-    error_msg: null
-  - legacy_shape: null
-    shape_detail:
-    - - 1024
-      - 1024
-      - 1024
-    - - 1024
-      - 1024
-      - 1024
-    - 0
-    latency_base: 6.790976047515869
-    latency: 1.9344960451126099
-    gbps_base: null
-    gbps: null
-    speedup: 3.5104626161799968
-    accuracy: null
-    tflops: null
+    tflops: 4.845439699845922
     utilization: null
     compared_speedup: null
     error_msg: null
