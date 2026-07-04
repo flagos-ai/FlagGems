@@ -48,10 +48,6 @@ case $BACKEND in
     export MACA_PATH=/opt/maca
     export LD_LIBRARY_PATH=$MACA_PATH/lib:$LD_LIBRARY_PATH
     export LD_LIBRARY_PATH=$MACA_PATH/mxgpu_llvm/lib:$LD_LIBRARY_PATH
-    if [ -z "${USE_TRITON}" ]; then
-      SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.12/site-packages
-      export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/backends/metax/lib:$LD_LIBRARY_PATH
-    fi
     ;;
   nvidia|nvidia-cuda128|nvidia-cuda133)
     export PATH=/usr/local/cuda/bin:$PATH
