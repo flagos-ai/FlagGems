@@ -132,11 +132,3 @@ def matmuladd(input, other, bias):
     """
     logger.debug("GEMS MATMULADD")
     return _matmuladd(input, other, bias)
-
-
-def matmuladd_out(input, other, bias, *, out=None):
-    """
-    Matrix multiplication with addition (out variant): output = matmul(input, other) + bias
-    """
-    logger.debug("GEMS MATMULADD_OUT")
-    return _matmuladd(input, other, bias, out=out)

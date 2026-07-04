@@ -54,34 +54,3 @@ def test_matmuladd(M, N, K, dtype):
         res_out_2d = flag_gems.matmuladd(mat1, mat2, bias_2d)
 
     utils.gems_assert_close(res_out_2d, ref_out_2d, dtype, reduce_dim=K)
-
-
-@pytest.mark.matmuladd_out
-@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_matmuladd_out(M, N, K, dtype):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip(
-            "Issue #3794: Skipping fp32 matmuladd_out test on TsingMicro because "
-            "TX81 does not support fp32 dot."
-        )
-
-    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
-
-    ref_mat1 = utils.to_reference(mat1, True)
-    ref_mat2 = utils.to_reference(mat2, True)
-
-    for bias_shape in [(N,), (M, N)]:
-        bias = torch.randn(bias_shape, dtype=dtype, device=flag_gems.device)
-        ref_bias = utils.to_reference(bias, True)
-        ref_out = torch.matmul(ref_mat1, ref_mat2) + ref_bias
-
-        for is_contiguous in [True, False]:
-            out = make_out(M, N, dtype, is_contiguous)
-
-            with flag_gems.use_gems():
-                res_out = flag_gems.matmuladd_out(mat1, mat2, bias, out=out)
-
-            assert res_out is out
-            utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
