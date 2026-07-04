@@ -4815,6 +4815,18 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: matmul_bias_residual
+    description: |
+      Computes matrix multiplication followed by bias and residual addition.
+    for:
+      - matmul_bias_residual
+    labels:
+      - fused
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: max
     description: Returns the maximum value of all elements in the `input` tensor.
     for:
