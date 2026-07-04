@@ -65,7 +65,7 @@ def test_miopen_batch_norm_backward():
                 running_var = torch.ones(channels, dtype=dtype, device=device)
 
             save_mean = torch.randn(channels, dtype=torch.float32, device=device)
-            # save_var should be positive (variance)
+            # MIOpen names this argument save_var, but it stores saved inverse std.
             save_var = (
                 torch.abs(torch.randn(channels, dtype=torch.float32, device=device))
                 + 0.1
@@ -94,8 +94,7 @@ def test_miopen_batch_norm_backward():
         save_var,
         epsilon,
     ):
-        # Convert save_var to save_invstd
-        save_invstd = torch.rsqrt(save_var + epsilon)
+        save_invstd = save_var
         # Use output_mask to get all 3 outputs
         output_mask = [True, weight is not None, True]
         train = True

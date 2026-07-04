@@ -35,7 +35,7 @@ def test_miopen_batch_norm_backward(shape, dtype, affine):
     res_running_mean = torch.zeros(size=(C,), dtype=dtype, device=flag_gems.device)
     res_running_var = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
     res_save_mean = torch.randn(C, dtype=torch.float32, device=flag_gems.device)
-    # save_var should be positive (variance), use abs to ensure positive values
+    # MIOpen names this argument save_var, but it stores saved inverse std.
     res_save_var = (
         torch.abs(torch.randn(C, dtype=torch.float32, device=flag_gems.device)) + 0.1
     )
@@ -50,9 +50,9 @@ def test_miopen_batch_norm_backward(shape, dtype, affine):
 
     eps = 1e-05
 
-    # For reference, since PyTorch doesn't have miopen_batch_norm_backward exposed,
-    # we use native_batch_norm_backward but with save_invstd computed from save_var
-    ref_save_invstd = torch.rsqrt(ref_save_var + eps)
+    # PyTorch's MIOpen kernel is unavailable on NVIDIA, so compare with the
+    # native backward using the saved inverse std directly.
+    ref_save_invstd = ref_save_var
     train = True
     if affine:
         output_mask = [True, True, True]

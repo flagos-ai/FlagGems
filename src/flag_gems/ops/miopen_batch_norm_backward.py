@@ -22,8 +22,8 @@ def miopen_batch_norm_backward(
 ) -> tuple:
     """Backward pass for batch normalization (MIOpen variant).
 
-    This is a wrapper around the native batch_norm_backward that accepts
-    save_var (variance) instead of save_invstd (inverse standard deviation).
+    This is a wrapper around the native batch_norm_backward. The MIOpen schema
+    calls the saved inverse standard deviation argument save_var.
 
     Args:
         input: The input tensor.
@@ -32,7 +32,7 @@ def miopen_batch_norm_backward(
         running_mean: The running mean.
         running_var: The running variance.
         save_mean: Saved mean from the forward pass.
-        save_var: Saved variance from the forward pass.
+        save_var: Saved inverse standard deviation from the forward pass.
         epsilon: Small constant for numerical stability.
 
     Returns:
@@ -40,9 +40,7 @@ def miopen_batch_norm_backward(
     """
     logger.debug("GEMS MIOPEN_BATCH_NORM_BACKWARD")
 
-    # Compute inv_std from save_var
-    # save_invstd = 1 / sqrt(save_var + epsilon)
-    save_invstd = torch.rsqrt(save_var + epsilon)
+    save_invstd = save_var
 
     input_3d = make_3d_for_bn(input)
     grad_output_3d = make_3d_for_bn(grad_output)
