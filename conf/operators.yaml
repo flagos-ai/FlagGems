@@ -480,7 +480,7 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: and_
+  - id: and
     description: |
       Computes the bitwise AND operation through the tensor dunder method.
     for:
