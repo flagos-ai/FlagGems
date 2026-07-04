@@ -4937,8 +4937,44 @@ ops:
     description: Returns the median of the values in `input`.
     for:
       - median
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
+  - id: median_dim
+    description: |
+      Returns a namedtuple `(values, indices)` where `values` contains the median
+      of each row of `input` in the dimension `dim`, and `indices` contains the
+      index location of each median value found.
+    for:
       - median.dim
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
+  - id: median_dim_values
+    description: A variant of `median_dim()` with the `out` argument.
+    for:
       - median.dim_values
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
+  - id: median_out
+    description: A variant of `median()` with the `out` argument.
+    for:
       - median.out
     labels:
       - aten
