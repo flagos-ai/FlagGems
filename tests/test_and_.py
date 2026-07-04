@@ -70,7 +70,7 @@ def test_and_integer_edge_cases(dtype):
 
     utils.gems_assert_equal(res_out, ref_out)
 
-@pytest.mark.and_
+@pytest.mark.and_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)
 def test_and_scalar(shape, dtype):
