@@ -10,7 +10,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 # torch.any: Tests if any elements in input evaluate to True. If the dtype of input
@@ -101,7 +101,7 @@ def any(inp):
 
 
 def any_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_ASCEND ANY DIM")
+    logger.debug("GEMS_ASCEND ANY_DIM")
     shape = list(inp.shape)
     if dim is None:
         out = any(inp)
@@ -129,7 +129,7 @@ def any_dim(inp, dim=None, keepdim=False):
 
 
 def any_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_ASCEND ANY DIMS")
+    logger.debug("GEMS_ASCEND ANY_DIMS")
 
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)
