@@ -68,7 +68,7 @@ def replace_linears_with_tle_int8(
         N, K = w.shape
         if K % require_divisible_by != 0 or N % require_divisible_by != 0:
             logger.debug(
-                "replace_linears_with_tle_int8: %s K=%d N=%d not divisible by %d",
+                "GEMS_ARM replace_linears_with_tle_int8: %s K=%d N=%d not divisible by %d",
                 name,
                 K,
                 N,
@@ -92,8 +92,7 @@ def replace_linears_with_tle_int8(
     apply_arm_overrides(include=["_int_mm"])
 
     logger.info(
-        "TLEInt8Linear: replaced %d Linear modules "
-        "(skipped: %d dtype, %d alignment, %d missing, %d explicit)",
+        "GEMS_ARM TLEInt8Linear: replaced %d Linear modules (skipped: %d dtype, %d alignment, %d missing, %d explicit)",
         n_replaced,
         n_skipped_dtype,
         n_skipped_align,

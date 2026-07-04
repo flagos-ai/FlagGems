@@ -22,6 +22,9 @@ def torch_op(x, residual, layer_shape, weight, eps):
 
 
 @pytest.mark.fused_add_rms_norm
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_fused_add_rms_norm():
     bench = base.GenericBenchmarkExcluse1D(
         input_fn=_input_fn,

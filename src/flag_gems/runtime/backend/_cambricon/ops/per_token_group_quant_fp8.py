@@ -10,7 +10,7 @@ from flag_gems.utils.device_info import get_device_capability
 
 from ..utils import MAX_GRID_SIZE_X
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 if torch_device_fn.is_available() and get_device_capability() >= (9, 0):
     SUPPORTED_FP8_DTYPE = torch.float8_e4m3fn

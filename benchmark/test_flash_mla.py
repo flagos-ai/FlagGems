@@ -19,6 +19,9 @@ class FlashMLABenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.skipif(vendor_name == "hygon", reason="#2890: RuntimeError")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 @pytest.mark.flash_mla
 def test_flash_mla(monkeypatch):
     def flash_mla_kwargs(shape, dtype, device):
