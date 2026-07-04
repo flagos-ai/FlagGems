@@ -2,14 +2,6 @@ from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
-from flag_gems.ops._and_ import (
-    __and__,
-    __and___i,
-    __and___scalar,
-    __and___scalar_i,
-    __and__scalar_tensor,
-    _and_,
-)
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range import (
@@ -545,14 +537,8 @@ from flag_gems.ops.zeros_like import zeros_like
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
-    "__and__",
-    "__and___i",
-    "__and___scalar",
-    "__and___scalar_i",
-    "__and__scalar_tensor",
     "__ilshift__",
     "_amp_foreach_non_finite_check_and_unscale_",
-    "_and_",
     "_assert_async",
     "_batch_norm_no_update",
     "_cdist_backward",

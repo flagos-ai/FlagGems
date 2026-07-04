@@ -465,7 +465,7 @@ ops:
     kind:
       - Tensor
     stages:
-      - beta: '5.1'
+      - beta: '5.3'
   - id: amp_foreach_non_finite_check_and_unscale_
     description: |
       Checks gradient tensors for non-finite values (inf or nan) and
@@ -484,7 +484,6 @@ ops:
     description: |
       Computes the bitwise AND operation through the tensor dunder method.
     for:
-      - _and_
       - __and__.Scalar
       - __and__.Tensor
     labels:

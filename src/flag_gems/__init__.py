@@ -41,8 +41,8 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
-    ("__and__.Scalar", __and___scalar),
-    ("__and__.Tensor", __and__),
+    ("__and__.Scalar", bitwise_and_scalar),
+    ("__and__.Tensor", bitwise_and_tensor),
     ("__ilshift__.Tensor", __ilshift__),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
@@ -53,7 +53,6 @@ _FULL_CONFIG = (
         "_amp_foreach_non_finite_check_and_unscale_",
         _amp_foreach_non_finite_check_and_unscale_,
     ),
-    ("_and_", _and_, lambda: "_and_" in dir(torch.ops.aten)),
     ("_assert_async", _assert_async),
     ("_batch_norm_no_update", _batch_norm_no_update),
     ("_cdist_backward", _cdist_backward),
