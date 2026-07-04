@@ -1,4 +1,3 @@
-Welcome to JumpServer SSH Server
 # ============================================================
 # FlagGems + vLLM — NVIDIA GPU container image
 # Two-stage build: devel (build C extensions) → runtime
@@ -54,7 +53,7 @@ RUN uv pip install --no-cache-dir \
         "pip"
 
 # ── PyTorch + Triton/FlagTree  ─────────────────────────────────
-RUN uv pip install --no-cache-dir ".[nvidia]" \
+RUN uv pip install --no-cache-dir ".[nvidia-cuda133]" \
     --default-index ${FLAGOS_PYPI} \
     --index ${EXTRA_PYPI} \
     --trusted-host resource.flagos.net
