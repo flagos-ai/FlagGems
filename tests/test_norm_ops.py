@@ -454,6 +454,7 @@ WEIGHT_NORM_INTERFACE_SHAPE_DIM = list(
 )
 
 
+@pytest.mark.weight_norm_interface
 @pytest.mark.weight_norm
 @pytest.mark.parametrize("shape, dim", WEIGHT_NORM_INTERFACE_SHAPE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

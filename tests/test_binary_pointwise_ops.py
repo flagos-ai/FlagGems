@@ -29,6 +29,7 @@ def replace_zeros(inp):
     return torch.where(inp == 0, 1, inp)
 
 
+@pytest.mark.add_tensor
 @pytest.mark.add
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("alpha", SCALARS)
@@ -64,6 +65,7 @@ def test_accuracy_add_(shape, alpha, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.add_tensor
 @pytest.mark.add
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -99,6 +101,7 @@ def test_accuracy_add_tensor_scalar_(shape, scalar, alpha, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.add_tensor
 @pytest.mark.add
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -116,6 +119,7 @@ def test_accuracy_add_scalar_tensor(shape, scalar, alpha, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.add_tensor
 @pytest.mark.add
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_accuracy_add_scalar_scalar(dtype):
@@ -138,6 +142,7 @@ def test_accuracy_add_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.bitwise_and_tensor
 @pytest.mark.bitwise_and
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
@@ -257,6 +262,7 @@ def test_accuracy_bitwiseand_scalar_tensor(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.bitwise_or_tensor
 @pytest.mark.bitwise_or
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
@@ -421,6 +427,7 @@ def test_accuracy_clamp_(shape, maxi, mini, isnone, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.clamp_tensor
 @pytest.mark.clamp
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("isnone", [None, "max", "min"])
@@ -501,6 +508,7 @@ def test_accuracy_clamp_min_(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.true_divide
 @pytest.mark.div
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -534,6 +542,7 @@ def test_accuracy_div_tensor_tensor_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.true_divide
 @pytest.mark.div
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -567,6 +576,7 @@ def test_accuracy_div_tensor_scalar_(shape, scalar, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.true_divide
 @pytest.mark.div
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -583,6 +593,7 @@ def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.true_divide
 @pytest.mark.div
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_accuracy_div_scalar_scalar(dtype):
@@ -593,9 +604,9 @@ def test_accuracy_div_scalar_scalar(dtype):
         inp1 = random.randint(1, 100)
         inp2 = random.randint(1, 100)
 
-    ref_out = torch.mul(inp1, inp2)
+    ref_out = torch.div(inp1, inp2)
     with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+        res_out = torch.div(inp1, inp2)
 
     if dtype == torch.int64:
         gems_assert_equal(res_out, ref_out)
@@ -1279,6 +1290,7 @@ def test_accuracy_ne_scalar(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.pow_tensor_tensor
 @pytest.mark.pow
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1671,6 +1683,7 @@ def test_accuracy_where_self_out(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.where_self
 @pytest.mark.where
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
