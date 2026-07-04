@@ -41,7 +41,7 @@ def patch_llama_rope() -> int:
     try:
         mod = __import__(_LLAMA_MODULE, fromlist=["apply_rotary_pos_emb"])
     except (ImportError, AttributeError):
-        logger.warning("Llama modeling module not available")
+        logger.warning("GEMS_ARM Llama modeling module not available")
         return 0
     if not hasattr(mod, "apply_rotary_pos_emb"):
         return 0
@@ -51,7 +51,7 @@ def patch_llama_rope() -> int:
     _ROPE_PATCHED["original"] = original  # NOTE: shared with qwen3 patch
     _ROPE_PATCHED[_LLAMA_MODULE] = True
     setattr(mod, "apply_rotary_pos_emb", _patched_apply_rotary_pos_emb)
-    logger.info(f"Patched {_LLAMA_MODULE}.apply_rotary_pos_emb")
+    logger.info(f"GEMS_ARM Patched {_LLAMA_MODULE}.apply_rotary_pos_emb")
     return 1
 
 
@@ -70,7 +70,7 @@ def patch_llama_rmsnorm() -> int:
     orig = cls.forward
     _RMS_PATCHED[key] = (cls, orig)
     cls.forward = _make_rmsnorm_patched(orig)
-    logger.info(f"Patched {_LLAMA_MODULE}.LlamaRMSNorm.forward")
+    logger.info(f"GEMS_ARM Patched {_LLAMA_MODULE}.LlamaRMSNorm.forward")
     return 1
 
 
@@ -93,7 +93,7 @@ def patch_llama_layer_norm() -> int:
     orig = cls.forward
     _LAYER_PATCHED[key] = (cls, orig)
     cls.forward = _make_layer_patched(orig)
-    logger.info(f"Patched {_LLAMA_MODULE}.LlamaDecoderLayer.forward")
+    logger.info(f"GEMS_ARM Patched {_LLAMA_MODULE}.LlamaDecoderLayer.forward")
     return 1
 
 
