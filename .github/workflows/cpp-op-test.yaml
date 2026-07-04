@@ -15,7 +15,7 @@ jobs:
       - uses: ./.github/actions/checkout-retry
       - uses: ./.github/actions/setup-flaggems
         with:
-          vendor: nvidia
+          vendor: nvidia-cuda133
           gpu_check_script: tools/gpu_check_nvidia.sh
 
       - shell: bash
