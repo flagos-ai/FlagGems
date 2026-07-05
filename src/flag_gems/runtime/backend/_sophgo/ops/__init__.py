@@ -60,6 +60,12 @@ from .nonzero import nonzero
 from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .pad import pad
 from .polar import polar
+from .amax import amax
+from .arange import arange, arange_start
+from .dot import dot
+from .full_like import full_like
+from .ones import ones
+from .ones_like import ones_like
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -196,6 +202,13 @@ __all__ = [
     "normed_cumsum",
     "pad",
     "polar",
+    "amax",
+    "arange",
+    "arange_start",
+    "dot",
+    "full_like",
+    "ones",
+    "ones_like",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_scalar_",

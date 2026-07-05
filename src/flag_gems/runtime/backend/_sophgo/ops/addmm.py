@@ -1,16 +1,16 @@
 """
-Sophgo TPU-specific addmm operator implementation.
+Sophgo TPU 专用 addmm 算子实现
 
-Fix notes:
-The original addmm kernel failed to compile on Sophgo TPU because:
-1. Pointer updates in loops (a_ptrs += ...) generate scf.for iter_args pattern,
-   which PPL ShapeInference cannot handle correctly.
-2. Generated ppl.get_value operation (scalar pointer dereference) fails on TPU.
+修复说明：
+原始 addmm kernel 在 Sophgo TPU 上编译失败，原因是：
+1. 循环中使用指针更新 (a_ptrs += ...) 导致生成 scf.for iter_args 模式，
+   PPL ShapeInference 无法正确处理
+2. 生成了 ppl.get_value 操作（标量指针解引用），TPU 上会失败
 
-Solution:
-1. Remove autotune, use fixed block size.
-2. Recompute addresses on each iteration, avoid pointer updates.
-3. Use 2D tensor mode for loading and storing.
+解决方案：
+1. 移除 autotune，使用固定 block size
+2. 每次迭代重新计算地址，避免指针更新
+3. 使用 2D tensor 模式进行加载和存储
 """
 
 import logging
@@ -22,6 +22,33 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
+
+
+def select_addmm_block_sizes(M, N, K):
+    if M <= 1:
+        block_m = 1
+    elif M <= 8:
+        block_m = 4
+    elif M <= 32:
+        block_m = 8
+    else:
+        block_m = 16
+
+    if N >= 2048:
+        block_n = 128
+    elif N >= 1024:
+        block_n = 64
+    else:
+        block_n = 32
+
+    if K >= 512:
+        block_k = 32
+    elif K >= 128:
+        block_k = 16
+    else:
+        block_k = 8
+
+    return block_m, block_n, block_k
 
 
 @libentry()
@@ -49,71 +76,71 @@ def addmm_kernel(
     BLOCK_SIZE_K: tl.constexpr,
 ):
     """
-    Sophgo TPU-specific addmm kernel.
-    Computes: beta * bias + alpha * (mat1 @ mat2)
+    Sophgo TPU 专用 addmm kernel
+    计算: beta * bias + alpha * (mat1 @ mat2)
 
-    Key modifications:
-    - Recompute addresses on each loop iteration, avoiding pointer updates that produce iter_args.
-    - Use 2D tensor mode for loading and storing.
+    关键修改点：
+    - 每次循环迭代重新计算地址，避免指针更新产生 iter_args
+    - 使用 2D tensor 模式进行加载和存储
     """
     pid_m = tle.program_id(0)
     pid_n = tle.program_id(1)
 
-    # Calculate row and column offsets for the current block
+    # 计算当前 block 的行列偏移
     offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
 
-    # Initialize accumulator
+    # 初始化累加器
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
 
-    # K dimension loop - recompute addresses each iteration, avoid pointer updates
+    # K 维度循环 - 每次迭代重新计算地址，避免指针更新
     num_k_blocks = tl.cdiv(K, BLOCK_SIZE_K)
     for k_idx in range(0, num_k_blocks):
-        # Calculate offset for the current K block
+        # 计算当前 K block 的偏移
         offs_k = k_idx * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
 
-        # Recompute A and B addresses (avoid pointer updates)
+        # 重新计算 A 和 B 的地址（避免指针更新）
         a_ptrs = a_ptr + (offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak)
         b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn)
 
-        # 2D tensor load with mask
+        # 2D tensor 加载 with mask
         a_mask = (offs_m[:, None] < M) & (offs_k[None, :] < K)
         b_mask = (offs_k[:, None] < K) & (offs_n[None, :] < N)
 
         a = tl.load(a_ptrs, mask=a_mask, other=0.0)
         b = tl.load(b_ptrs, mask=b_mask, other=0.0)
 
-        # Matrix multiplication accumulation
+        # 矩阵乘法累加
         accumulator += tl.dot(a, b, allow_tf32=False)
 
-    # Load bias (using 2D broadcasted bias)
+    # 加载 bias（使用 2D 广播后的 bias）
     bias_ptrs = bias_ptr + offs_m[:, None] * stride_im + offs_n[None, :] * stride_in
     out_mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
     bias = tl.load(bias_ptrs, mask=out_mask, other=0.0)
 
-    # Compute final result: beta * bias + alpha * (mat1 @ mat2)
+    # 计算最终结果: beta * bias + alpha * (mat1 @ mat2)
     c = accumulator * alpha + bias * beta
     c = c.to(bias.dtype)
 
-    # Store result (using 2D tensor store)
+    # 存储结果（使用 2D tensor 存储）
     c_ptrs = c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
     tl.store(c_ptrs, c, mask=out_mask)
 
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     """
-    Sophgo TPU-specific addmm implementation.
-    Computes: beta * bias + alpha * (mat1 @ mat2)
+    Sophgo TPU 专用 addmm 实现
+    计算: beta * bias + alpha * (mat1 @ mat2)
 
     Args:
-        bias: Bias tensor, shape (N,) or (M, N).
-        mat1: First matrix, shape (M, K).
-        mat2: Second matrix, shape (K, N).
-        beta: Scaling factor for bias, defaults to 1.
-        alpha: Scaling factor for matrix multiplication result, defaults to 1.
+        bias: 偏置张量，形状为 (N,) 或 (M, N)
+        mat1: 第一个矩阵，形状为 (M, K)
+        mat2: 第二个矩阵，形状为 (K, N)
+        beta: bias 的缩放系数，默认为 1
+        alpha: 矩阵乘法结果的缩放系数，默认为 1
 
     Returns:
-        Output tensor, shape (M, N).
+        输出张量，形状为 (M, N)
     """
     logging.debug("GEMS ADDMM (Sophgo TPU)")
 
@@ -126,13 +153,10 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     mat2 = mat2.contiguous()
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
 
-    # Broadcast bias to output shape and ensure contiguous
-    bias = bias.broadcast_to(out.shape).contiguous()
+    # 推理里常见的是 1D bias；这里保留广播视图，避免额外 materialize/copy kernel。
+    bias = bias.broadcast_to(out.shape)
 
-    # Use fixed block sizes (consistent with tune_configs.yaml configuration)
-    BLOCK_SIZE_M = 16
-    BLOCK_SIZE_N = 32
-    BLOCK_SIZE_K = 8
+    BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K = select_addmm_block_sizes(M, N, K)
 
     grid = (triton.cdiv(M, BLOCK_SIZE_M), triton.cdiv(N, BLOCK_SIZE_N))
 

@@ -1,3 +1,4 @@
+import itertools
 import logging
 from typing import List, Tuple, Union
 
@@ -5,75 +6,73 @@ import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger(__name__)
+from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
+from flag_gems.utils.tensor_wrapper import StridedBuffer
+from flag_gems.utils.codegen_config_utils import CodeGenConfig
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as tle
+
+config_ = CodeGenConfig(
+    256,
+    (512, 1, 1),
+    32,
+    False,
+    prefer_1d_tile=int(triton.__version__[0]) < 3,
+)
 
 
+@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")], config=config_)
 @triton.jit
-def stack_copy_func_kernel_4(
+def copy_func(x):
+    return x
+
+
+@libentry()
+@triton.jit
+def stack4_dim0_2d_kernel(
+    x0_ptr,
+    x1_ptr,
+    x2_ptr,
+    x3_ptr,
     out_ptr,
-    in_ptr_a,
-    in_ptr_b,
-    in_ptr_c,
-    in_ptr_d,
-    dim_size_out,
-    dim_prod_post,
-    dim_offset_a,
-    dim_offset_b,
-    dim_offset_c,
-    dim_offset_d,
-    total_elements_a,
-    total_elements_b,
-    total_elements_c,
-    total_elements_d,
-    BLOCK_X: tl.constexpr,
+    M,
+    N,
+    x0_stride_m,
+    x0_stride_n,
+    x1_stride_m,
+    x1_stride_n,
+    x2_stride_m,
+    x2_stride_n,
+    x3_stride_m,
+    x3_stride_n,
+    out_stride_t,
+    out_stride_m,
+    out_stride_n,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
-    pid_x = tl.program_id(0)
-    pid_y = tl.program_id(1)
-
-    if pid_y == 0:
-        in_ptr = in_ptr_a
-        dim_offset = dim_offset_a
-        total_elements = total_elements_a
-    elif pid_y == 1:
-        in_ptr = in_ptr_b
-        dim_offset = dim_offset_b
-        total_elements = total_elements_b
-    elif pid_y == 2:
-        in_ptr = in_ptr_c
-        dim_offset = dim_offset_c
-        total_elements = total_elements_c
-    else:
-        in_ptr = in_ptr_d
-        dim_offset = dim_offset_d
-        total_elements = total_elements_d
-
-    block_start = pid_x.to(tl.int64) * BLOCK_X
-    offsets = tl.arange(0, BLOCK_X).to(tl.int64)
-    idx = block_start + offsets
-    scalar_zero = offsets * 0
-
-    dim_size_out = dim_size_out + scalar_zero
-    dim_prod_post = dim_prod_post + scalar_zero
-    dim_offset = dim_offset + scalar_zero
-    total_elements = total_elements + scalar_zero
-
-    mask = idx < total_elements
-
-    pre_idx = idx // dim_prod_post
-    post_idx = idx % dim_prod_post
-
-    out_idx = (
-        pre_idx * dim_size_out * dim_prod_post + dim_offset * dim_prod_post + post_idx
-    )
-
-    data = tl.load(in_ptr + idx, mask=mask)
-    tl.store(out_ptr + out_idx, data, mask=mask)
+    rows = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    cols = tle.program_id(1) * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
+    mask = (rows < M) & (cols < N)
+    x0 = tl.load(x0_ptr + rows * x0_stride_m + cols * x0_stride_n, mask=mask, other=0.0)
+    x1 = tl.load(x1_ptr + rows * x1_stride_m + cols * x1_stride_n, mask=mask, other=0.0)
+    x2 = tl.load(x2_ptr + rows * x2_stride_m + cols * x2_stride_n, mask=mask, other=0.0)
+    x3 = tl.load(x3_ptr + rows * x3_stride_m + cols * x3_stride_n, mask=mask, other=0.0)
+    tl.store(out_ptr + rows * out_stride_m + cols * out_stride_n, x0, mask=mask)
+    tl.store(out_ptr + out_stride_t + rows * out_stride_m + cols * out_stride_n, x1, mask=mask)
+    tl.store(out_ptr + 2 * out_stride_t + rows * out_stride_m + cols * out_stride_n, x2, mask=mask)
+    tl.store(out_ptr + 3 * out_stride_t + rows * out_stride_m + cols * out_stride_n, x3, mask=mask)
 
 
 def stack(
     tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
-    logger.debug("GEMS STACK")
+    logging.debug("GEMS STACK")
+
+    def _generic_stack():
+        from flag_gems.ops.stack import stack as generic_stack
+
+        return generic_stack(tensors, dim)
 
     if len(tensors) == 0:
         raise RuntimeError("stack expected a non-empty TensorList")
@@ -89,85 +88,51 @@ def stack(
             )
         if s != inp0_shape:
             raise RuntimeError(
-                f"stack expects each tensor to be equal size, but got {inp0_shape} at entry 0 and {s} at entry {i + 1}"
+                f"stack expects each tensor to be equal size, but got {inp0_shape} at entry 0 and {s} at entry {i+1}"
             )
 
     if dim < 0:
         dim = dim + len(inp0_shape) + 1
 
-    # Type promotion: find the common dtype for all tensors
-    dtypes = [t.dtype for t in tensors]
-    dtype = dtypes[0]
-    for dt in dtypes[1:]:
-        dtype = torch.promote_types(dtype, dt)
-    # Convert all tensors to the result dtype if needed
-    tensors = [t.to(dtype) if t.dtype != dtype else t for t in tensors]
-    device = tensors[0].device
-    out_shape = inp0_shape[:dim] + [len(tensors)] + inp0_shape[dim:]
-    out = torch.empty(out_shape, dtype=dtype, device=device)
-
-    dim_prod_post = 1
-    for s in inp0_shape[dim:]:
-        dim_prod_post *= s
-
-    BLOCK = 1024
-    i = 0
-    while i < len(tensors):
-        tensors_in_batch = tensors[i : i + 4]
-        num_tensors_in_batch = len(tensors_in_batch)
-
-        args = []
-        total_elements_list = []
-
-        for j in range(4):
-            if j < num_tensors_in_batch:
-                tensor = tensors_in_batch[j].contiguous()
-                total_elements = tensor.numel()
-                args.extend([tensor, i + j, total_elements])
-                total_elements_list.append(total_elements)
-            else:
-                args.extend([tensors_in_batch[0], 0, 0])
-                total_elements_list.append(0)
-
-        dim_size_out = len(tensors)
-
-        grid_y = num_tensors_in_batch
-        max_elements_in_batch = tensors[0].numel() if total_elements_list else 0
-        grid = (triton.cdiv(max_elements_in_batch, BLOCK), grid_y)
-
-        (
-            tensor_a,
-            dim_offset_a,
-            total_elements_a,
-            tensor_b,
-            dim_offset_b,
-            total_elements_b,
-            tensor_c,
-            dim_offset_c,
-            total_elements_c,
-            tensor_d,
-            dim_offset_d,
-            total_elements_d,
-        ) = args
-
-        stack_copy_func_kernel_4[grid](
-            out,
-            tensor_a,
-            tensor_b,
-            tensor_c,
-            tensor_d,
-            dim_size_out,
-            dim_prod_post,
-            dim_offset_a,
-            dim_offset_b,
-            dim_offset_c,
-            dim_offset_d,
-            total_elements_a,
-            total_elements_b,
-            total_elements_c,
-            total_elements_d,
-            BLOCK_X=BLOCK,
+    if (
+        dim == 0
+        and len(tensors) == 4
+        and tensors[0].ndim == 2
+        and all(t.is_contiguous() for t in tensors)
+    ):
+        out = torch.empty(
+            (4, tensors[0].shape[0], tensors[0].shape[1]),
+            dtype=tensors[0].dtype,
+            device=tensors[0].device,
         )
-        i += num_tensors_in_batch
+        M, N = tensors[0].shape
+        grid = (triton.cdiv(M, 16), triton.cdiv(N, 64))
+        stack4_dim0_2d_kernel[grid](
+            tensors[0],
+            tensors[1],
+            tensors[2],
+            tensors[3],
+            out,
+            M,
+            N,
+            tensors[0].stride(0),
+            tensors[0].stride(1),
+            tensors[1].stride(0),
+            tensors[1].stride(1),
+            tensors[2].stride(0),
+            tensors[2].stride(1),
+            tensors[3].stride(0),
+            tensors[3].stride(1),
+            out.stride(0),
+            out.stride(1),
+            out.stride(2),
+            BLOCK_M=16,
+            BLOCK_N=64,
+        )
+        return out
 
-    return out
+    # The migrated historical optimization is only validated for the 4x2D dim0
+    # hotspot above. The legacy copy-based fallback regresses or fails on the
+    # broader pytest surface, so everything else should use the new repository's
+    # generic implementation.
+    return _generic_stack()
