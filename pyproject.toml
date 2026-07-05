@@ -21,7 +21,14 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",
 ]
-dependencies = []
+dependencies = [
+    "torch>=2.2.0",
+    "packaging",
+    "pybind11",
+    "PyYAML",
+    "packaging",
+    "sqlalchemy",
+]
 
 [project.optional-dependencies]
 test = [
