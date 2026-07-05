@@ -11,7 +11,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems.runtime.backend._mthreads.ops.mm")
+logger = logging.getLogger(__name__)
 
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "mm_mthreads_expand.yaml")
@@ -217,7 +217,7 @@ def get_higher_dtype(a, b):
 
 
 def mm_fma(a, b):
-    logger.debug("GEMS_MTHREADS MM(FMA)")
+    logger.debug("GEMS_MTHREADS MM_FMA")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -258,7 +258,7 @@ def mm_fma(a, b):
 
 def gemv_mm(a, b, c, M, K):
     logger.debug(
-        "GEMS_MTHREADS MM(GEMV), [shape info]: [%s, %s, 1](M, K, N)",
+        "GEMS_MTHREADS MM_GEMV_, [shape info]: [%s, %s, 1](M, K, N)",
         M,
         K,
     )
@@ -326,13 +326,7 @@ def sqmma_descriptor_pre_hook(nargs):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "mm_general_tma",
-        pre_hook=sqmma_descriptor_pre_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
+    configs=[
         triton.Config(
             {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64, "GROUP_M": 8},
             num_stages=1,
@@ -340,14 +334,14 @@ def sqmma_descriptor_pre_hook(nargs):
             pre_hook=sqmma_descriptor_pre_hook,
         )
     ],
-    key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=runtime.get_expand_config(
-        "mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    key=["M", "N", "K", "dtype"],
+    strategy=["align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
+    flagtune_op_name="mm",
+    flagtune_expand_op_name="mm_sqmma",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=sqmma_descriptor_pre_hook,
 )
 @triton.jit
 def mm_sqmma_kernel(
@@ -385,7 +379,7 @@ def mm_sqmma_kernel(
 
 
 def mm_sqmma(A, B, M, N, K):
-    logger.debug("GEMS_MTHREADS MM(SQMMA)")
+    logger.debug("GEMS_MTHREADS MM_SQMMA")
     device = A.device
     if not A.is_contiguous():
         A = A.contiguous()
