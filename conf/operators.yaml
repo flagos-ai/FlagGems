@@ -1,4 +1,15 @@
 ops:
+  - id: reduce_sum
+    description: Triton kernel implementation for reduce_sum.
+    for:
+      - reduce_sum
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: abs
     description: |
       Computes the absolute value of each element in `input`.
