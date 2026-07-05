@@ -485,6 +485,7 @@ _FULL_CONFIG = (
     ("min", min),
     ("min.dim", min_dim),
     ("minimum", minimum),
+    ("mish", mish),
     ("mish_backward", mish_backward),
     ("mm", mm),
     ("mm.out", mm_out),
