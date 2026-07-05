@@ -655,30 +655,24 @@ triu:
   param_map:
     META:
       M_BLOCK_SIZE: 1
-      N_BLOCK_SIZE: 2048
-    num_warps: warps
-  warps:
-  # - 1
-  - 2
-  # - 4
-  # - 8
-  # - 16
-  # - 32
+      N_BLOCK_SIZE: block_n
+    num_warps: 2
+  block_n:
+  - 512
+  - 1024
+  - 2048
 
 triu_batch:
 - gen: true
   param_map:
     META:
       BATCH_BLOCK_SIZE: 1
-      MN_BLOCK_SIZE: 512
-    num_warps: warps
-  warps:
-  # - 1
-  - 2
-  # - 4
-  # - 8
-  # - 16
-  # - 32
+      MN_BLOCK_SIZE: block_mn
+    num_warps: 2
+  block_mn:
+  - 256
+  - 512
+  - 1024
 
 weight_norm_kernel_last:
 - gen: true

@@ -1,3 +1,14 @@
+"""
+Sophgo TPU-specific weightnorm operator implementation.
+
+Fix notes:
+Adapted for Sophgo TPU by:
+1. Removed autotune, use fixed block sizes instead (Sophgo TPU does not support autotune).
+2. Recompute addresses on each loop iteration, avoiding pointer updates that produce
+   scf.for iter_args pattern which PPL ShapeInference cannot handle correctly.
+3. Use 2D tensor mode for loading and storing.
+"""
+
 import logging
 import math
 
@@ -5,34 +16,18 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
-# Sophgo TPU override of the weight_norm fused interface.
-#
-# 1. bwd kernel uses `norm_1 * norm_1 * norm_1` instead of `tl_extra_shim.pow(norm_1, 3)`.
-#    On sophgo TPU, `powf` is lowered by `handlePowf` (LinalgExtToPPLPatterns.hpp) to
-#    `exp(3 * log(x))` -- two software SFU approximations (flog Taylor + ppl.ExpOp) that
-#    lose precision. The bwd formula `v_grad = g*(grad_w*norm_1 - v*norm_3*vw_sum)` has two
-#    terms that cancel (catastrophic cancellation, especially when the dim axis has size 1),
-#    amplifying pow's error to ~43% relative error on v_grad. The mul chain is exact.
-#    Same convention as sophgo/ops/gelu.py ("pow is not available, use ** operator directly").
-#
-# 2. forward interface allocates `norm` as fp32 instead of `empty_like(g)` (fp16). `norm` is
-#    computed in fp32 (sqrt) by the fwd kernel, stored, then reloaded by the bwd kernel.
-#    fp16 storage truncates 13 mantissa bits between fwd-sqrt and bwd-load; fp32 avoids the
-#    loss. Matches the except_dim path (flag_gems/fused/weight_norm.py), which already uses
-#    fp32 for `norm`.
+# Fixed block sizes for Sophgo TPU (no autotune)
+BLOCK_ROW_SIZE = 16
+BLOCK_COL_SIZE = 32
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"]
-)
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_kernel_last(
     output,
@@ -53,28 +48,29 @@ def weight_norm_kernel_last(
     ty = tl.arange(0, BLOCK_ROW_SIZE)[None, :]
     v_block = tl.zeros([BLOCK_COL_SIZE, BLOCK_ROW_SIZE], dtype=tl.float32)
     for base in range(0, M, BLOCK_ROW_SIZE):
+        # Recompute offsets each iteration (Sophgo TPU compatible)
         row_offset = base + ty
         mask = row_offset < M and col_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         v_block += v_value * v_value
 
-    normalized = tl.sqrt(tl.sum(v_block, axis=1) + eps)
-    tl.store(norm + col_offset, normalized[:, None], mask=col_mask)
+    # Use rsqrt (hardware SFU) instead of sqrt + div.
+    normalized = tl.rsqrt(tl.sum(v_block, axis=1) + eps)
+    norm_val = 1.0 / normalized
+    tl.store(norm + col_offset, norm_val[:, None], mask=col_mask)
     g_value = tl.load(g + col_offset, mask=col_mask).to(tl.float32)
 
     for base in range(0, M, BLOCK_ROW_SIZE):
+        # Recompute offsets each iteration (Sophgo TPU compatible)
         row_offset = base + ty
         mask = row_offset < M and col_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
-        v_vec = v_value / normalized[:, None]
+        v_vec = v_value * normalized[:, None]
         out = v_vec * g_value
         tl.store(output + row_offset * N + col_offset, out, mask=mask)
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_norm_kernel_first"), key=["M", "N"]
-)
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_kernel_first(
     output,
@@ -95,28 +91,29 @@ def weight_norm_kernel_first(
     tx = tl.arange(0, BLOCK_COL_SIZE)[None, :]
     v_block = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     for base in range(0, N, BLOCK_COL_SIZE):
+        # Recompute offsets each iteration (Sophgo TPU compatible)
         col_offset = base + tx
         mask = col_offset < N and row_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         v_block += v_value * v_value
 
-    normalized = tl.sqrt(tl.sum(v_block, axis=1) + eps)
-    tl.store(norm + row_offset, normalized[:, None], mask=row_mask)
+    # Use rsqrt (hardware SFU) instead of sqrt + div.
+    normalized = tl.rsqrt(tl.sum(v_block, axis=1) + eps)
+    norm_val = 1.0 / normalized
+    tl.store(norm + row_offset, norm_val[:, None], mask=row_mask)
     g_value = tl.load(g + row_offset, mask=row_mask).to(tl.float32)
 
     for base in range(0, N, BLOCK_COL_SIZE):
+        # Recompute offsets each iteration (Sophgo TPU compatible)
         col_offset = base + tx
         mask = col_offset < N and row_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
-        v_vec = v_value / normalized[:, None]
+        v_vec = v_value * normalized[:, None]
         out = v_vec * g_value
         tl.store(output + row_offset * N + col_offset, out, mask=mask)
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"]
-)
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_last(
     v_grad,
@@ -138,15 +135,12 @@ def weight_norm_bwd_kernel_last(
 
     g_value = tl.load(g + col_offset, mask=col_mask).to(tl.float32)
     norm_value = tl.load(norm + col_offset, mask=col_mask).to(tl.float32)
-    norm_1 = 1 / (norm_value + eps)
-    norm_3 = (
-        norm_1 * norm_1 * norm_1
-    )  # mul chain: TPU powf lowers to exp(3*log(x)), loses precision
 
     ty = tl.arange(0, BLOCK_ROW_SIZE)[None, :]
 
     vw_block = tl.zeros([BLOCK_COL_SIZE, BLOCK_ROW_SIZE], dtype=tl.float32)
     for base in range(0, M, BLOCK_ROW_SIZE):
+        # Recompute offsets each iteration (Sophgo TPU compatible)
         row_offset = base + ty
         mask = row_offset < M and col_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
@@ -155,11 +149,15 @@ def weight_norm_bwd_kernel_last(
     vw_sum = tl.sum(vw_block, 1)[:, None]
 
     for base in range(0, M, BLOCK_ROW_SIZE):
+        # Recompute offsets each iteration (Sophgo TPU compatible)
         row_offset = base + ty
         mask = row_offset < M and col_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         w_value = tl.load(w + row_offset * N + col_offset, mask=mask).to(tl.float32)
-        v_grad_value = g_value * (w_value * norm_1 - v_value * norm_3 * vw_sum)
+        v_grad_value = g_value * (
+            w_value / (norm_value + eps)
+            - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
+        )
         tl.store(v_grad + row_offset * N + col_offset, v_grad_value, mask=mask)
 
     g_grad_value = vw_sum / (norm_value + eps)
@@ -167,9 +165,6 @@ def weight_norm_bwd_kernel_last(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_norm_kernel_first"), key=["M", "N"]
-)
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_first(
     v_grad,
@@ -191,15 +186,12 @@ def weight_norm_bwd_kernel_first(
 
     g_value = tl.load(g + row_offset, mask=row_mask).to(tl.float32)
     norm_value = tl.load(norm + row_offset, mask=row_mask).to(tl.float32)
-    norm_1 = 1 / (norm_value + eps)
-    norm_3 = (
-        norm_1 * norm_1 * norm_1
-    )  # mul chain: TPU powf lowers to exp(3*log(x)), loses precision
 
     tx = tl.arange(0, BLOCK_COL_SIZE)[None, :]
 
     v_block = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     for base in range(0, N, BLOCK_COL_SIZE):
+        # Recompute offsets each iteration (Sophgo TPU compatible)
         col_offset = base + tx
         mask = col_offset < N and row_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
@@ -208,11 +200,15 @@ def weight_norm_bwd_kernel_first(
     vw_sum = tl.sum(v_block, 1)[:, None]
 
     for base in range(0, N, BLOCK_COL_SIZE):
+        # Recompute offsets each iteration (Sophgo TPU compatible)
         col_offset = base + tx
         mask = col_offset < N and row_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         w_value = tl.load(w + row_offset * N + col_offset, mask=mask).to(tl.float32)
-        v_grad_value = g_value * (w_value * norm_1 - v_value * norm_3 * vw_sum)
+        v_grad_value = g_value * (
+            w_value / (norm_value + eps)
+            - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
+        )
         tl.store(v_grad + row_offset * N + col_offset, v_grad_value, mask=mask)
 
     g_grad_value = vw_sum / (norm_value + eps)
@@ -220,7 +216,18 @@ def weight_norm_bwd_kernel_first(
 
 
 def weight_norm_interface(v, g, dim=0):
-    logger.debug("GEMS WEIGHT NORM INTERFACE FORWARD")
+    """
+    Sophgo TPU-specific weight_norm forward implementation.
+
+    Args:
+        v: Weight tensor.
+        g: Gain tensor.
+        dim: Dimension along which to compute weight norm.
+
+    Returns:
+        Tuple of (output, norm) tensors.
+    """
+    logging.debug("GEMS WEIGHT NORM INTERFACE FORWARD (Sophgo TPU)")
     v = v.contiguous()
     g = g.contiguous()
     output = torch.empty_like(v)
@@ -230,24 +237,53 @@ def weight_norm_interface(v, g, dim=0):
     if dim == 0:
         M = v.shape[0]
         N = math.prod(v.shape[1:])
-        grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
+        grid = (triton.cdiv(M, BLOCK_ROW_SIZE),)
         with torch_device_fn.device(v.device):
             weight_norm_kernel_first[grid](
-                output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
+                output,
+                norm,
+                v,
+                g,
+                M,
+                N,
+                eps=torch.finfo(torch.float32).tiny,
+                BLOCK_ROW_SIZE=BLOCK_ROW_SIZE,
+                BLOCK_COL_SIZE=BLOCK_COL_SIZE,
             )
     elif dim == v.ndim - 1:
         M = math.prod(v.shape[:-1])
         N = v.shape[dim]
-        grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
+        grid = (triton.cdiv(N, BLOCK_COL_SIZE),)
         with torch_device_fn.device(v.device):
             weight_norm_kernel_last[grid](
-                output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
+                output,
+                norm,
+                v,
+                g,
+                M,
+                N,
+                eps=torch.finfo(torch.float32).tiny,
+                BLOCK_ROW_SIZE=BLOCK_ROW_SIZE,
+                BLOCK_COL_SIZE=BLOCK_COL_SIZE,
             )
     return output, norm
 
 
 def weight_norm_interface_backward(w_grad, saved_v, saved_g, saved_norms, dim):
-    logger.debug("GEMS WEIGHT NORM INTERFACE BACKWARD")
+    """
+    Sophgo TPU-specific weight_norm backward implementation.
+
+    Args:
+        w_grad: Gradient of the output.
+        saved_v: Saved v tensor from forward.
+        saved_g: Saved g tensor from forward.
+        saved_norms: Saved norms from forward.
+        dim: Dimension along which weight norm was computed.
+
+    Returns:
+        Tuple of (v_grad, g_grad) tensors.
+    """
+    logging.debug("GEMS WEIGHT NORM INTERFACE BACKWARD (Sophgo TPU)")
     w_grad = w_grad.contiguous()
     saved_v = saved_v.contiguous()
     saved_g = saved_g.contiguous()
@@ -258,7 +294,7 @@ def weight_norm_interface_backward(w_grad, saved_v, saved_g, saved_norms, dim):
     if dim == 0:
         M = saved_v.shape[0]
         N = math.prod(saved_v.shape[1:])
-        grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
+        grid = (triton.cdiv(M, BLOCK_ROW_SIZE),)
         with torch_device_fn.device(saved_v.device):
             weight_norm_bwd_kernel_first[grid](
                 v_grad,
@@ -270,11 +306,13 @@ def weight_norm_interface_backward(w_grad, saved_v, saved_g, saved_norms, dim):
                 M,
                 N,
                 eps=torch.finfo(torch.float32).tiny,
+                BLOCK_ROW_SIZE=BLOCK_ROW_SIZE,
+                BLOCK_COL_SIZE=BLOCK_COL_SIZE,
             )
     elif dim == saved_v.ndim - 1:
         M = math.prod(saved_v.shape[:dim])
         N = saved_v.shape[dim]
-        grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
+        grid = (triton.cdiv(N, BLOCK_COL_SIZE),)
         with torch_device_fn.device(saved_v.device):
             weight_norm_bwd_kernel_last[grid](
                 v_grad,
@@ -286,5 +324,7 @@ def weight_norm_interface_backward(w_grad, saved_v, saved_g, saved_norms, dim):
                 M,
                 N,
                 eps=torch.finfo(torch.float32).tiny,
+                BLOCK_ROW_SIZE=BLOCK_ROW_SIZE,
+                BLOCK_COL_SIZE=BLOCK_COL_SIZE,
             )
     return v_grad, g_grad

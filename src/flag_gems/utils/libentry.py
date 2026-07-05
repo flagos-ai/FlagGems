@@ -5,8 +5,11 @@ import os
 import sqlite3
 import threading
 import time
+import warnings
 import weakref
 from collections import OrderedDict
+from datetime import datetime
+from pathlib import Path
 from typing import Dict, Optional
 
 import triton
@@ -55,6 +58,147 @@ STRATEGY = {
     None: lambda v: v,
     "log": lambda v: math.ceil(math.log2(v)),
 }
+
+TRIU_AUTOTUNE_RECORD_PATH = Path(
+    "/workspace/triton_race/auto_config/triu_config_record.md"
+)
+TRIU_AUTOTUNE_RECORD_NAMES = {"triu_kernel", "triu_batch_kernel"}
+TRIU_EFFECTIVE_CONFIG_KEYS = {
+    "triu_kernel": ("M_BLOCK_SIZE", "N_BLOCK_SIZE"),
+    "triu_batch_kernel": ("BATCH_BLOCK_SIZE", "MN_BLOCK_SIZE"),
+}
+
+
+def _synchronize_for_bench():
+    try:
+        import torch_tpu
+
+        if hasattr(torch_tpu, "synchronize"):
+            torch_tpu.synchronize()
+            return
+        if hasattr(torch_tpu, "tpu") and hasattr(torch_tpu.tpu, "synchronize"):
+            torch_tpu.tpu.synchronize()
+            return
+    except Exception:
+        pass
+
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+    except Exception:
+        pass
+
+
+def _do_bench(kernel_call, warmup, rep):
+    for _ in range(warmup):
+        kernel_call()
+    _synchronize_for_bench()
+
+    timings = []
+    for _ in range(rep):
+        _synchronize_for_bench()
+        start = time.perf_counter()
+        kernel_call()
+        _synchronize_for_bench()
+        timings.append((time.perf_counter() - start) * 1000)
+    timings.sort()
+    return timings[len(timings) // 2]
+
+
+def _get_env_positive_int(name, default):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError:
+        warnings.warn(f"Ignore invalid {name}={value!r}; use {default}")
+        return default
+    if parsed <= 0:
+        warnings.warn(f"Ignore non-positive {name}={value!r}; use {default}")
+        return default
+    return parsed
+
+
+def _format_timing_ms(timing):
+    if isinstance(timing, (list, tuple)):
+        timing = timing[0]
+    if timing == float("inf"):
+        return "inf"
+    return f"{float(timing):.6f}"
+
+
+def _config_kwargs(config):
+    if hasattr(config, "all_kwargs"):
+        return config.all_kwargs()
+
+    return {
+        **config.kwargs,
+        **{
+            k: getattr(config, k)
+            for k in ("num_warps", "num_ctas", "num_stages")
+            if hasattr(config, k)
+        },
+    }
+
+
+def _triu_effective_config_kwargs(fn_name, config):
+    kwargs = _config_kwargs(config)
+    return {
+        key: kwargs[key] for key in TRIU_EFFECTIVE_CONFIG_KEYS[fn_name] if key in kwargs
+    }
+
+
+def _format_best_config(fn_name, config):
+    if fn_name in TRIU_AUTOTUNE_RECORD_NAMES:
+        return _triu_effective_config_kwargs(fn_name, config)
+    return config
+
+
+def _append_triu_autotune_record(
+    fn_name, key, key_names, warmup, rep, timings, best_config, bench_time
+):
+    if fn_name not in TRIU_AUTOTUNE_RECORD_NAMES:
+        return
+
+    TRIU_AUTOTUNE_RECORD_PATH.parent.mkdir(parents=True, exist_ok=True)
+    columns = []
+    for config in timings:
+        for column in _triu_effective_config_kwargs(fn_name, config):
+            if column not in columns:
+                columns.append(column)
+
+    lines = [
+        f"## {datetime.now().astimezone().isoformat(timespec='seconds')} `{fn_name}`",
+        "",
+        f"- tune key names: `{list(key_names)}`",
+        f"- tune key: `{key}`",
+        f"- warmup: `{warmup}`",
+        f"- rep: `{rep}`",
+        f"- total bench time: `{bench_time:.6f}s`",
+        f"- best config: `{_format_best_config(fn_name, best_config)}`",
+        "",
+    ]
+    if columns:
+        lines.append("| idx | " + " | ".join(columns) + " | time_ms | best |")
+        lines.append("| --- | " + " | ".join(["---"] * len(columns)) + " | --- | --- |")
+        for idx, (config, timing) in enumerate(timings.items(), start=1):
+            kwargs = _triu_effective_config_kwargs(fn_name, config)
+            values = [str(kwargs.get(column, "")) for column in columns]
+            best = "yes" if config is best_config else ""
+            lines.append(
+                f"| {idx} | "
+                + " | ".join(values)
+                + f" | {_format_timing_ms(timing)} | {best} |"
+            )
+    else:
+        lines.append("_No config timing data recorded._")
+    lines.append("")
+
+    with TRIU_AUTOTUNE_RECORD_PATH.open("a", encoding="utf-8") as record_file:
+        record_file.write("\n".join(lines))
 
 
 class LibCache:
@@ -148,13 +292,20 @@ class LibTuner(triton.runtime.Autotuner):
         pre_hook=None,
         post_hook=None,
         prune_configs_by: Optional[Dict] = None,
-        warmup=25,
-        rep=100,
+        warmup=None,
+        rep=None,
         use_cuda_graph=False,
         do_bench=None,
         strategy=None,
         share=None,
     ):
+        warmup = _get_env_positive_int(
+            "FLAGGEMS_AUTOTUNE_WARMUP", 25 if warmup is None else warmup
+        )
+        rep = _get_env_positive_int(
+            "FLAGGEMS_AUTOTUNE_REP", 100 if rep is None else rep
+        )
+
         if major_version == 2:
             super().__init__(
                 fn,
@@ -189,6 +340,7 @@ class LibTuner(triton.runtime.Autotuner):
         self.keys = key
         self.strategy = strategy
         self.share = share
+        self.do_bench = do_bench
         self.cache = libcache[share] if share else libcache[self.__name__]
         if strategy:
             assert len(self.strategy) == len(self.keys), "Invalid number of strategies"
@@ -203,6 +355,46 @@ class LibTuner(triton.runtime.Autotuner):
             v = s(args[k])
             key.append(v)
         return key
+
+    def _bench(self, *args, config, **meta):
+        from triton.compiler.errors import CompileTimeAssertionFailure
+        from triton.runtime.errors import OutOfResources
+
+        conflicts = meta.keys() & config.kwargs.keys()
+        if conflicts:
+            raise ValueError(
+                f"Conflicting meta-parameters: {', '.join(conflicts)}."
+                " Make sure that you don't re-define auto-tuned symbols."
+            )
+
+        current = dict(meta, **config.all_kwargs())
+        full_nargs = {**self.nargs, **current}
+
+        def kernel_call():
+            if config.pre_hook:
+                config.pre_hook(full_nargs)
+            self.pre_hook(args)
+            try:
+                self.fn.run(*args, **current)
+            except Exception as e:
+                try:
+                    self.post_hook(args, exception=e)
+                finally:
+                    raise
+            self.post_hook(args, exception=None)
+
+        try:
+            if self.do_bench is not None:
+                return self.do_bench(
+                    kernel_call, warmup=self.num_warmups, rep=self.num_reps
+                )
+            return _do_bench(kernel_call, self.num_warmups, self.num_reps)
+        except (OutOfResources, CompileTimeAssertionFailure):
+            return float("inf")
+        except RuntimeError as e:
+            if "ppl-compile" in str(e) or "OutOfResources" in str(e):
+                return float("inf")
+            raise
 
     def run(self, *args, **kwargs):
         self.nargs = dict(zip(self.arg_names, args))
@@ -235,6 +427,16 @@ class LibTuner(triton.runtime.Autotuner):
                 }
                 self.pre_hook(full_nargs, reset_only=True)
                 self.configs_timings = timings
+                _append_triu_autotune_record(
+                    self.base_fn.__name__,
+                    key,
+                    self.keys,
+                    self.num_warmups,
+                    self.num_reps,
+                    timings,
+                    self.cache[key],
+                    self.bench_time,
+                )
             config = self.cache[key]
         else:
             config = self.configs[0]
@@ -242,7 +444,8 @@ class LibTuner(triton.runtime.Autotuner):
         if os.getenv("TRITON_PRINT_AUTOTUNING", None) == "1" and not used_cached_result:
             print(
                 f"Triton autotuning for function {self.base_fn.__name__} finished after "
-                f"{self.bench_time:.2f}s; best config selected: {self.best_config};"
+                f"{self.bench_time:.2f}s; best config selected: "
+                f"{_format_best_config(self.base_fn.__name__, self.best_config)};"
             )
         if config.pre_hook is not None:
             full_nargs = {**self.nargs, **kwargs, **config.all_kwargs()}
@@ -264,8 +467,8 @@ def libtuner(
     restore_value=None,
     pre_hook=None,
     post_hook=None,
-    warmup=25,
-    rep=100,
+    warmup=None,
+    rep=None,
     use_cuda_graph=False,
     do_bench=None,
     strategy=None,
