@@ -1050,6 +1050,11 @@ def main():
         gpu_ids = [int(x) for x in gpu_list if x.strip()]
     gpu_count = len(gpu_ids)
 
+    # Don't spawn more workers than there are ops to test
+    if gpu_count > op_count:
+        gpu_ids = gpu_ids[:op_count]
+        gpu_count = op_count
+
     op_width = min(max(len(op) for op in ops), 40) if ops else 20
 
     work_queue = Queue()
