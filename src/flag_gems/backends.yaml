@@ -125,8 +125,6 @@ backends:
       - torch_xray==2.0.4
       - xformers==0.0.29+1e7a8ec.d20260114
       - xmlir==1.0.0.1
-    post_install:
-      - uninstall: pytest-repeat
 
   metax:
     python: "3.12"
@@ -157,7 +155,7 @@ backends:
   sunrise:
     python: "3.10"
     triton: triton==3.4.0.6+gite4f6d6e4
-    flagtree: flagtree==0.4.0+sunrise3.4
+    # flagtree==0.4.0+sunrise3.4 — requires GLIBC_2.39, unavailable on current system
     deps:
       - torch==2.11.0+cpu
       - torchaudio==2.11.0+cpu

@@ -181,7 +181,7 @@ def _synchronize():
 
 
 # ref: https://github.com/vllm-project/vllm/blob/main/tests/kernels/moe/test_moe.py
-@pytest.mark.moe_align_block_size
+@pytest.mark.moe_align_block_size_triton
 @pytest.mark.parametrize("num_experts", [10, 128, 250, 512])
 @pytest.mark.parametrize("block_size", [16, 32, 64])
 @pytest.mark.parametrize(
