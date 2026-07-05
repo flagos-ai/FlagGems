@@ -56,8 +56,10 @@ ops:
     labels:
       - aten
       - KernelGen
+      - pointwise
+      - Activation
     kind:
-      - Math
+      - NeuralNetwork
     stages:
       - alpha: '5.4'
   - id: acosh_
