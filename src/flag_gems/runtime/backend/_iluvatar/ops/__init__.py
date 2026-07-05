@@ -1,3 +1,4 @@
+from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
 from .div import div_mode, div_mode_
 from .hadamard_transform import hadamard_transform
@@ -8,6 +9,8 @@ from .tile import tile
 from .var import var, var_correction, var_dim
 
 __all__ = [
+    "_conv_depthwise2d",
+    "conv_transpose1d",
     "div_mode",
     "div_mode_",
     "hadamard_transform",
@@ -18,5 +21,4 @@ __all__ = [
     "var",
     "var_correction",
     "var_dim",
-    "conv_transpose1d",
 ]
