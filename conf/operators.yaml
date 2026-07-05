@@ -56,10 +56,8 @@ ops:
     labels:
       - aten
       - KernelGen
-      - pointwise
-      - Activation
     kind:
-      - NeuralNetwork
+      - Math
     stages:
       - alpha: '5.4'
   - id: acosh_
@@ -5014,6 +5012,19 @@ ops:
     description: Applies the Mish activation function element-wise.
     for:
       - mish
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+      - Activation
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: mish_
+    description: The in-place version of `mish()`.
+    for:
+      - mish_
     labels:
       - aten
       - KernelGen

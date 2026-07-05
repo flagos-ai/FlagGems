@@ -22,3 +22,8 @@ def mish_func(x):
 def mish(A):
     logger.debug("GEMS MISH")
     return mish_func(A)
+
+
+def mish_(A):
+    logger.debug("GEMS MISH_")
+    return mish_func(A, out0=A)

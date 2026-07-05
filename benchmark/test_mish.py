@@ -16,6 +16,17 @@ def test_mish():
     bench.run()
 
 
+@pytest.mark.mish_
+def test_mish_inplace():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="mish_",
+        torch_op=torch.ops.aten.mish_,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()
+
+
 class MishBackwardBenchmark(base.UnaryPointwiseBenchmark):
     def get_input_iter(self, dtype: torch.dtype) -> Generator:
         for shape in self.shapes:
