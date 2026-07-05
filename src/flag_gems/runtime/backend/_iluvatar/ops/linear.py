@@ -101,7 +101,7 @@ def linear_kernel(
 
 
 def linear(input, weight, bias=None):
-    logger.debug("GEMS ILUVATAR LINEAR")
+    logger.debug("GEMS_ILUVATAR LINEAR")
 
     input_dim = input.dim()
     if input_dim == 1:
