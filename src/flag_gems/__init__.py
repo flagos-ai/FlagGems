@@ -22,7 +22,12 @@ from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 try:
     from flag_gems._version import version as __version__
 except ImportError:
-    __version__ = "unknown"
+    try:
+        from importlib.metadata import version as _meta_version
+
+        __version__ = _meta_version("flag-gems")
+    except Exception:
+        __version__ = "unknown"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 backend_info = runtime.device
@@ -648,16 +653,16 @@ _FULL_CONFIG = (
     ("softshrink.out", softshrink_out),
     ("sort", sort),
     ("sort.stable", sort_stable),
-    ("special.gammainc", special_gammainc),
-    ("special.log_softmax", special_log_softmax),
+    ("special_gammainc", special_gammainc),
+    ("special_log_softmax", special_log_softmax),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
-    ("special.chebyshev_polynomial_w", special_chebyshev_polynomial_w),
-    ("special.chebyshev_polynomial_w.out", special_chebyshev_polynomial_w_out),
+    ("special_chebyshev_polynomial_w", special_chebyshev_polynomial_w),
+    ("special_chebyshev_polynomial_w_out", special_chebyshev_polynomial_w_out),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_i0e", special_i0e),
-    ("special_i0e.out", special_i0e_out),
+    ("special_i0e_out", special_i0e_out),
     ("special_i1", special_i1),
-    ("special_i1.out", special_i1_out),
+    ("special_i1_out", special_i1_out),
     ("special_shifted_chebyshev_polynomial_u", special_shifted_chebyshev_polynomial_u),
     (
         "special_shifted_chebyshev_polynomial_u_",
