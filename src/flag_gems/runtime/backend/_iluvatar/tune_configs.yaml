@@ -911,6 +911,103 @@ mm:
     BLOCK_K: 256
   num_stages: 2
   num_warps: 16
+linear:
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 256
+    BLOCK_K: 64
+  num_stages: 2
+  num_warps: 16
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 128
+    BLOCK_K: 64
+  num_stages: 2
+  num_warps: 16
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 256
+    BLOCK_K: 64
+  num_stages: 2
+  num_warps: 16
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 256
+    BLOCK_K: 32
+  num_stages: 2
+  num_warps: 16
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 64
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 32
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 64
+    BLOCK_K: 32
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 128
+    BLOCK_K: 32
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 32
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 64
+  num_stages: 1
+  num_warps: 8
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 64
+    BLOCK_K: 32
+  num_stages: 1
+  num_warps: 8
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 32
+    BLOCK_K: 32
+  num_stages: 1
+  num_warps: 8
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 32
+    BLOCK_K: 32
+  num_stages: 1
+  num_warps: 8
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 64
+    BLOCK_K: 32
+  num_stages: 2
+  num_warps: 16
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 256
+    BLOCK_K: 32
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 256
+    BLOCK_K: 128
+  num_stages: 2
+  num_warps: 16
 softmax_non_inner:
 - META:
     TILE_K: 32
@@ -2107,3 +2204,118 @@ diff:
   - 16
   - 256
   - 1024
+conv_transpose1d:
+  - META:
+      BLOCK_N_OW: 32
+      BLOCK_OC: 32
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 64
+      BLOCK_OC: 32
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 64
+      BLOCK_OC: 64
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 128
+      BLOCK_OC: 32
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 128
+      BLOCK_OC: 64
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 128
+      BLOCK_OC: 128
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 32
+      BLOCK_OC: 32
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_N_OW: 64
+      BLOCK_OC: 64
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_N_OW: 128
+      BLOCK_OC: 128
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_N_OW: 256
+      BLOCK_OC: 64
+      BLOCK_IC: 16
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 256
+      BLOCK_OC: 128
+      BLOCK_IC: 16
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 256
+      BLOCK_OC: 64
+      BLOCK_IC: 32
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 256
+      BLOCK_OC: 128
+      BLOCK_IC: 32
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 128
+      BLOCK_OC: 128
+      BLOCK_IC: 16
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 128
+      BLOCK_OC: 64
+      BLOCK_IC: 16
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 256
+      BLOCK_OC: 64
+      BLOCK_IC: 16
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_N_OW: 256
+      BLOCK_OC: 128
+      BLOCK_IC: 16
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_N_OW: 256
+      BLOCK_OC: 64
+      BLOCK_IC: 32
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_N_OW: 128
+      BLOCK_OC: 128
+      BLOCK_IC: 16
+    num_warps: 8
+    num_stages: 1
