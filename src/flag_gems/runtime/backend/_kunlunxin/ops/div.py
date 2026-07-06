@@ -301,6 +301,16 @@ def _int_floordiv(x, y):
 @triton.jit
 def _float_floordiv(x, y):
     # NOTE: fmod's sign is the same as the dividend
+    # The xpu fmod / div_rn libdevice only registers a float32 symbol, so
+    # low-precision floats (float16 / bfloat16) must be upcast to float32
+    # for the computation and the result cast back to the original dtype.
+    orig_dtype = x.dtype
+    if orig_dtype == tl.float16:
+        x = x.to(tl.float32)
+        y = y.to(tl.float32)
+    elif orig_dtype == tl.bfloat16:
+        x = x.to(tl.float32)
+        y = y.to(tl.float32)
     remainder = fmod(x, y)
     imperfect = remainder != 0.0
     different_sign = (x < 0) ^ (y < 0)
@@ -319,6 +329,10 @@ def _float_floordiv(x, y):
     is_div_by_zero = y == 0.0
     float_division = x / y
     out = tl.where(is_div_by_zero, float_division, floor_q)
+    if orig_dtype == tl.float16:
+        out = out.to(orig_dtype)
+    elif orig_dtype == tl.bfloat16:
+        out = out.to(orig_dtype)
     return out
 
 
