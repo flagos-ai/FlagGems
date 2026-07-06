@@ -95,7 +95,7 @@ def _launch_hypot_kernel(x: torch.Tensor, y: torch.Tensor, out: torch.Tensor):
 
 
 def hypot(a: torch.Tensor, b: torch.Tensor):
-    logger.debug("GEMS HYPOT")
+    logger.debug("GEMS_ENFLAME HYPOT")
     out_dtype = _infer_hypot_out_dtype(a, b)
     device = a.device
     if b.device != device:
@@ -112,7 +112,7 @@ def hypot(a: torch.Tensor, b: torch.Tensor):
 
 
 def hypot_out(a: torch.Tensor, b: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS HYPOT_OUT")
+    logger.debug("GEMS_ENFLAME HYPOT_OUT")
     if out.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
         raise ValueError(f"Unsupported out dtype for hypot_out: {out.dtype}")
 

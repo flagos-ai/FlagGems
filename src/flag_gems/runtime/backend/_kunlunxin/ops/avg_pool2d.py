@@ -290,7 +290,7 @@ def avg_pool2d(
     count_include_pad=True,
     divisor_override=None,
 ):
-    logger.debug("GEMS_KUNLUNXIN AVG_POOL2D_FORWARD")
+    logger.debug("GEMS_KUNLUNXIN AVG_POOL2D")
 
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")

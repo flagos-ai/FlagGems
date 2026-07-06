@@ -562,7 +562,7 @@ def _get_init_value(reduce: str, dtype: torch.dtype, include_self: bool):
 
 
 def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
-    logger.debug("GEMS SCATTER_REDUCE_")
+    logger.debug("GEMS_ENFLAME SCATTER_REDUCE_")
     return_dtype = inp.dtype
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
         inp = inp.to(torch.float32)

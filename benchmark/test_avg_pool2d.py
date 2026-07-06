@@ -69,6 +69,9 @@ def avg_pool2d_input_fn(shape, dtype, device):
 
 
 @pytest.mark.avg_pool2d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_avg_pool2d():
     bench = AvgPool2dBenchmark(
         input_fn=avg_pool2d_input_fn,
@@ -80,6 +83,9 @@ def test_avg_pool2d():
 
 
 @pytest.mark.avg_pool2d_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_avg_pool2d_backward():
     if flag_gems.vendor_name == "mthreads":
         dtypes = [torch.float32]
