@@ -1,6 +1,6 @@
 ---
-title: Packaging and Release
-weight: 50
+title: Packaging
+weight: 20
 ---
 
 # Packaging

@@ -84,6 +84,7 @@ source tools/env.sh "${BACKEND}"
 printf "Installing build tools ..."
 uv pip install -q \
   "setuptools>=64.0" \
+  "setuptools-scm>=8" \
   "scikit-build-core==0.12.2" \
   "pybind11==3.0.3" \
   "cmake>=3.20,<4" \
@@ -143,6 +144,8 @@ fi
 # ── Install FlagGems ──────────────────────────────────────────
 # Use --no-build-isolation so the build process reuses the build tools
 # already installed in the current venv.
+# Fetch tags for setuptools-scm version detection (shallow clones lack them).
+git fetch --tags --quiet 2>/dev/null || true
 printf "Installing FlagGems [${BACKEND}] ..."
 uv pip install --no-build-isolation ".[${BACKEND}]" \
   --default-index "${FLAGOS_PYPI}" \
@@ -172,10 +175,12 @@ if [ "${COMPILER}" = "flagtree" ]; then
     TRITON_INSTALLED=$(uv pip list 2>/dev/null | awk '{print $1}' | grep -i '^triton' || true)
     if [ -n "${TRITON_INSTALLED}" ]; then
       printf "Replacing Triton with FlagTree ..."
-      echo "${TRITON_INSTALLED}" | xargs uv pip uninstall -q 2>/dev/null || true
+      # echo "${TRITON_INSTALLED}" | xargs uv pip uninstall -q 2>/dev/null || true
+      uv pip uninstall "${TRITON_INSTALLED}"
       ok
     fi
     printf "Installing FlagTree ..."
+    uv pip uninstall ${FLAGTREE_PKGS}
     uv pip install -q ${FLAGTREE_PKGS} --default-index "${FLAGOS_PYPI}" || fail
     ok
   else
