@@ -5008,6 +5008,32 @@ ops:
       - Math
     stages:
       - stable: '2.1'
+  - id: mish
+    description: Applies the Mish activation function element-wise.
+    for:
+      - mish
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+      - Activation
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: mish_
+    description: The in-place version of `mish()`.
+    for:
+      - mish_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+      - Activation
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: mm
     description: Performs a matrix multiplication of the two input matrices.
     for:
@@ -7944,6 +7970,7 @@ ops:
       - None
     labels:
       - fused
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
