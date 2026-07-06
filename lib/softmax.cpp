@@ -24,21 +24,6 @@ namespace {
     for (int i = dim + 1; i < sizes.size(); ++i) K *= sizes[i];
   }
 
-  unsigned int next_power_of_2(int64_t value) {
-    if (value <= 1) {
-      return 1;
-    }
-    unsigned int result = 1;
-    while (result < static_cast<unsigned int>(value)) {
-      result <<= 1;
-    }
-    return result;
-  }
-
-  unsigned int cdiv(int64_t numerator, int64_t denominator) {
-    return static_cast<unsigned int>((numerator + denominator - 1) / denominator);
-  }
-
   unsigned int softmax_heur_num_warps(unsigned int tile_size) {
     if (tile_size < 2048) {
       return 4;
@@ -51,7 +36,7 @@ namespace {
 
   unsigned int softmax_heur_tile_n_inner(int64_t N) {
     if (N <= 32 * 1024) {
-      return next_power_of_2(N);
+      return static_cast<unsigned int>(utils::next_power_of_2(N));
     }
     return 4096;
   }
@@ -62,7 +47,7 @@ namespace {
     unsigned int tile_k = 1;
     const int64_t upper_bound = std::min(K, static_cast<int64_t>(MAX_TILE_K));
     while (static_cast<int64_t>(tile_k) <= upper_bound) {
-      const int64_t num_blocks = M * cdiv(K, tile_k);
+      const int64_t num_blocks = M * utils::cdiv(static_cast<int>(K), static_cast<int>(tile_k));
       const double num_waves = static_cast<double>(num_blocks) / num_sms;
       if (num_waves > 1.0 && static_cast<int64_t>(tile_k) * 2 <= upper_bound) {
         tile_k *= 2;
@@ -97,7 +82,7 @@ namespace {
 
   SoftmaxNonInnerConfig compute_forward_non_inner_config(int64_t M, int64_t N, int64_t K) {
     const unsigned int tile_k = softmax_heur_tile_k(M, K);
-    const unsigned int tile_n = cdiv(8192, tile_k);
+    const unsigned int tile_n = static_cast<unsigned int>(utils::cdiv(8192, static_cast<int>(tile_k)));
     const unsigned int tile_size = tile_n * tile_k;
     return {tile_n, tile_k, softmax_heur_one_tile_per_cta(tile_n, N), softmax_heur_num_warps(tile_size)};
   }
@@ -155,7 +140,8 @@ namespace {
       const SoftmaxNonInnerConfig config = compute_forward_non_inner_config(M, N, K);
       const TritonJITFunction &kernel = get_kernel("softmax_kernel_non_inner");
       const unsigned int grid_x = static_cast<unsigned int>(M);
-      const unsigned int grid_y = cdiv(K, config.tile_k);
+      const unsigned int grid_y =
+          static_cast<unsigned int>(utils::cdiv(static_cast<int>(K), static_cast<int>(config.tile_k)));
 
       kernel(raw_stream,
              grid_x,
@@ -217,7 +203,8 @@ namespace {
     if (K == 1) {
       const SoftmaxBackwardInnerConfig config = compute_backward_inner_config(N);
       const TritonJITFunction &kernel = get_kernel("softmax_backward_kernel_inner");
-      const unsigned int grid_x = cdiv(M, config.tile_m);
+      const unsigned int grid_x =
+          static_cast<unsigned int>(utils::cdiv(static_cast<int>(M), static_cast<int>(config.tile_m)));
 
       kernel(raw_stream,
              grid_x,
@@ -237,7 +224,8 @@ namespace {
       const SoftmaxNonInnerConfig config = compute_backward_non_inner_config(M, N, K);
       const TritonJITFunction &kernel = get_kernel("softmax_backward_kernel_non_inner");
       const unsigned int grid_x = static_cast<unsigned int>(M);
-      const unsigned int grid_y = cdiv(K, config.tile_k);
+      const unsigned int grid_y =
+          static_cast<unsigned int>(utils::cdiv(static_cast<int>(K), static_cast<int>(config.tile_k)));
 
       kernel(raw_stream,
              grid_x,

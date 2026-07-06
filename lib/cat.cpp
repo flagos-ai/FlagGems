@@ -56,14 +56,6 @@ at::Tensor cat(const at::TensorList& tensors, int64_t dim) {
     return *single_non_empty;
   }
 
-  for (const auto& tensor : tensors) {
-    if (is_unconstrained_empty(tensor)) {
-      continue;
-    }
-    TORCH_CHECK(tensor.device() == ref_tensor->device(),
-                "torch.cat(): all input tensors must be on the same device");
-  }
-
   int64_t ndim = ref_tensor->dim();
   TORCH_CHECK(dim >= -ndim && dim < ndim, "cat(): dimension out of range");
   if (dim < 0) {
