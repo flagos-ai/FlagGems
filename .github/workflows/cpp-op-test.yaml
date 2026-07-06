@@ -25,8 +25,7 @@ jobs:
           uv pip install -v -e . --no-build-isolation
       - shell: bash
         run: |
-          export PATH="/home/secure/.pyenv/bin:/usr/local/cuda/bin:$PATH"
-          eval "$(pyenv init -)"
+          export PATH="/home/.local/bin:/usr/local/cuda/bin:$PATH"
           cd build/cpython-*/ctests
           export FLAGGEMS_SOURCE_DIR=$(python -c "import os;import flag_gems;print(os.path.dirname(flag_gems.__file__))")
           ctest -V
