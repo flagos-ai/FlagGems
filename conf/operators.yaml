@@ -4669,6 +4669,7 @@ ops:
   - id: lt
     description: Computes that `input` is less than `other` element-wise.
     for:
+      - less.Tensor
       - lt.Tensor
     labels:
       - aten
@@ -4691,6 +4692,7 @@ ops:
   - id: lt_scalar
     description: The scalar version of `lt`.
     for:
+      - less.Scalar
       - lt.Scalar
     labels:
       - aten
