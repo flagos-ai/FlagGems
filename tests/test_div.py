@@ -425,12 +425,14 @@ def test_div_mode_tensor(shape, rounding_mode, dtype):
         pytest.skip(
             "trunc_divide uses libdevice.div_rz which only supports float32/float64"
         )
+    # trunc mode: use float64 reference to match div_rz round-to-zero semantics
+    upcast = rounding_mode == "trunc"
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     # avoid divide-by-zero for floor/trunc modes
     inp2 = inp2 + torch.sign(inp2).clamp(min=1) * 1e-3
-    ref_inp1 = utils.to_reference(inp1, False)
-    ref_inp2 = utils.to_reference(inp2, False)
+    ref_inp1 = utils.to_reference(inp1, upcast)
+    ref_inp2 = utils.to_reference(inp2, upcast)
 
     ref_out = torch.ops.aten.div.Tensor_mode(
         ref_inp1, ref_inp2, rounding_mode=rounding_mode
@@ -451,8 +453,9 @@ def test_div_mode_scalar(shape, scalar, rounding_mode, dtype):
         pytest.skip(
             "trunc_divide uses libdevice.div_rz which only supports float32/float64"
         )
+    upcast = rounding_mode == "trunc"
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, False)
+    ref_inp = utils.to_reference(inp, upcast)
 
     ref_out = torch.ops.aten.div.Scalar_mode(
         ref_inp, scalar, rounding_mode=rounding_mode
@@ -472,11 +475,12 @@ def test_div_mode_tensor_(shape, rounding_mode, dtype):
         pytest.skip(
             "trunc_divide uses libdevice.div_rz which only supports float32/float64"
         )
+    upcast = rounding_mode == "trunc"
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = inp2 + torch.sign(inp2).clamp(min=1) * 1e-3
-    ref_inp1 = utils.to_reference(inp1.clone(), False)
-    ref_inp2 = utils.to_reference(inp2, False)
+    ref_inp1 = utils.to_reference(inp1.clone(), upcast)
+    ref_inp2 = utils.to_reference(inp2, upcast)
 
     ref_out = torch.ops.aten.div_.Tensor_mode(
         ref_inp1, ref_inp2, rounding_mode=rounding_mode
@@ -497,8 +501,9 @@ def test_div_mode_scalar_(shape, scalar, rounding_mode, dtype):
         pytest.skip(
             "trunc_divide uses libdevice.div_rz which only supports float32/float64"
         )
+    upcast = rounding_mode == "trunc"
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone(), False)
+    ref_inp = utils.to_reference(inp.clone(), upcast)
 
     ref_out = torch.ops.aten.div_.Scalar_mode(
         ref_inp, scalar, rounding_mode=rounding_mode
