@@ -1,6 +1,8 @@
 from flag_gems.fused.act_quant import act_quant_triton
 from flag_gems.fused.add_rms_norm import add_rms_norm
 from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
+from flag_gems.fused.beam_search_score import beam_search_score, beam_search_score_
+from flag_gems.fused.bf16_paged_mqa_logits import bf16_paged_mqa_logits
 from flag_gems.fused.bincount import bincount
 from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
@@ -32,7 +34,11 @@ from flag_gems.fused.fp8_fp4_mega_moe import (
     fp8_fp4_mega_moe_torch_ref,
 )
 from flag_gems.fused.fp8_fp4_mqa_logits import fp8_fp4_mqa_logits
+from flag_gems.fused.fp8_fp4_paged_mqa_logits import fp8_fp4_paged_mqa_logits
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
+from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_insert import (
+    fused_deepseek_v4_qnorm_rope_kv_rope_insert,
+)
 from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import (
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
 )
@@ -50,6 +56,7 @@ from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.grouped_topk import grouped_topk
 from flag_gems.fused.indexer_k_quant_and_cache import indexer_k_quant_and_cache
 from flag_gems.fused.instance_norm import instance_norm
+from flag_gems.fused.matmuladd import matmuladd
 from flag_gems.fused.mhc import (
     hc_head_fused_kernel,
     hc_head_fused_kernel_ref,
@@ -93,6 +100,9 @@ __all__ = [
     "act_quant_triton",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
+    "beam_search_score",
+    "beam_search_score_",
+    "bf16_paged_mqa_logits",
     "bincount",
     "bucket_sort_topk",
     "chunk_gated_delta_rule",
@@ -114,7 +124,9 @@ __all__ = [
     "fp8_fp4_mega_moe",
     "fp8_fp4_mega_moe_torch_ref",
     "fp8_fp4_mqa_logits",
+    "fp8_fp4_paged_mqa_logits",
     "fused_add_rms_norm",
+    "fused_deepseek_v4_qnorm_rope_kv_rope_insert",
     "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     "fused_experts_impl",
     "fused_indexer_q_rope_quant",
@@ -130,6 +142,7 @@ __all__ = [
     "inplace_fused_experts",
     "instance_norm",
     "invoke_fused_moe_triton_kernel",
+    "matmuladd",
     "mhc_bwd",
     "mhc_bwd_ref",
     "mhc_post",

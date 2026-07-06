@@ -2,7 +2,7 @@ import logging
 
 import torch
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def resolve_conj(A: torch.Tensor):
