@@ -16,12 +16,7 @@ def irshift_kernel(a, b):
 
 
 def __irshift__(self, other):
-    """
-    In-place right shift: self >>= other
-
-    Performs bitwise right shift in-place, modifying self.
-    Equivalent to torch.bitwise_right_shift(self, other, out=self).
-    """
+    """In-place right shift: self >>= other."""
     logger.debug("GEMS __IRSHIFT__")
 
     # Handle scalar other

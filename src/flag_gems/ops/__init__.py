@@ -503,10 +503,10 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
-    "__irshift__",
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "__ilshift__",
+    "__irshift__",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_cdist_backward",
