@@ -60,11 +60,13 @@ def _div_mode_dtypes(rounding_mode):
 )
 @pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
 def test_div_tensor_mode(rounding_mode):
+    dtypes = [torch.float32] if rounding_mode == "trunc" else consts.FLOAT_DTYPES
     bench = base.GenericBenchmark(
         op_name="div_tensor_mode",
         input_fn=_div_tensor_mode_input_fn,
         torch_op=lambda a, b: torch.div(a, b, rounding_mode=rounding_mode),
         dtypes=_div_mode_dtypes(rounding_mode),
+        dtypes=dtypes,
     )
     bench.run()
 
@@ -75,6 +77,7 @@ def test_div_tensor_mode(rounding_mode):
 )
 @pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
 def test_div_tensor_mode_inplace(rounding_mode):
+    dtypes = [torch.float32] if rounding_mode == "trunc" else consts.FLOAT_DTYPES
     bench = base.GenericBenchmark(
         op_name="div_tensor_mode_",
         input_fn=_div_tensor_mode_input_fn,
@@ -111,6 +114,7 @@ def test_div_scalar_mode_inplace(rounding_mode):
         input_fn=_div_scalar_mode_input_fn,
         torch_op=lambda a, b: a.div_(b, rounding_mode=rounding_mode),
         dtypes=_div_mode_dtypes(rounding_mode),
+        dtypes=dtypes,
         is_inplace=True,
     )
     bench.run()

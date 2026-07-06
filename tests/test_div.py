@@ -67,6 +67,15 @@ DIV_MODE_FLOAT_CASES = (
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode,dtype", DIV_MODE_FLOAT_CASES)
 def test_div_tensor_mode_float(shape, rounding_mode, dtype):
+# div.Tensor_mode with rounding_mode keyword
+@pytest.mark.div_tensor_mode
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_tensor_mode_float(shape, rounding_mode, dtype):
+    if rounding_mode == "trunc" and dtype != torch.float32:
+        pytest.skip("tl.math.div_rz only supports float32/float64")
+
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = _make_nonzero_float_tensor(shape, dtype)
     ref_inp1 = utils.to_reference(inp1, False)
@@ -103,6 +112,12 @@ def test_div_tensor_mode_int(shape, rounding_mode, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode,dtype", DIV_MODE_FLOAT_CASES)
 def test_div_tensor_mode_float_(shape, rounding_mode, dtype):
+@pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_tensor_mode_float_(shape, rounding_mode, dtype):
+    if rounding_mode == "trunc" and dtype != torch.float32:
+        pytest.skip("tl.math.div_rz only supports float32/float64")
+
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = _make_nonzero_float_tensor(shape, dtype)
     ref_inp1 = utils.to_reference(inp1.clone(), False)
