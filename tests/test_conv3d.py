@@ -97,7 +97,6 @@ def test_conv3d(
 
 
 @pytest.mark.conv3d_padding
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #3023")
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV3D)
 @pytest.mark.parametrize("stride", [1])
 @pytest.mark.parametrize("padding", STR_PADDINGS)
