@@ -5355,8 +5355,7 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  -
-    id: native_dropout_backward
+  - id: native_dropout_backward
     description: Triton kernel implementation for native_dropout_backward.
     for:
       - native_dropout_backward
