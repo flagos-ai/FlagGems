@@ -49,7 +49,7 @@ def arange_int_func(
 def arange_start(
     start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None
 ):
-    logger.debug("GEMS ARANGE")
+    logger.debug("GEMS_ENFLAME ARANGE")
     if dtype is None:
         dtype = torch.int64
 

@@ -14,6 +14,9 @@ from triton.experimental.gluon.language.nvidia.hopper import (
 from triton.experimental.gluon.nvidia.hopper import TensorDescriptor
 from triton.language.core import _aggregate as aggregate
 
+from flag_gems import runtime
+from flag_gems.utils import libentry, libtuner
+
 _TORCH_TO_GL_DTYPE = {
     torch.float8_e4m3fn: gl.float8e4nv,
     torch.float8_e5m2: gl.float8e5,
@@ -375,14 +378,13 @@ def load_partition(channel, config, tensors):
             counter = counter.increment()
 
 
-@triton.autotune(
-    configs=[
-        triton.Config({"TILE_ORDER": tile_order}, num_warps=nw, num_stages=ns)
-        for nw in (4, 8)
-        for ns in (4, 6, 8)
-        for tile_order in (0, 1)  # 0=horizontal (n fastest), 1=vertical (m fastest)
-    ],
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("w8a8_block_fp8_bmm"),
     key=["B", "M_aligned", "N", "K"],
+    strategy=["default", "align32", "align32", "align32"],
+    flagtune_op_name="w8a8_block_fp8_bmm",
+    flagtune_expand_op_name="w8a8_block_fp8_bmm",
 )
 @gluon.jit
 def w8a8_block_fp8_bmm_kernel(
