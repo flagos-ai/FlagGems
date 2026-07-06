@@ -20,8 +20,7 @@ jobs:
 
       - shell: bash
         run: |
-          export PATH="/home/secure/.pyenv/bin:/usr/local/cuda/bin:$PATH"
-          eval "$(pyenv init -)"
+          export PATH="/home/secure/.local/bin:/usr/local/cuda/bin:$PATH"
           export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DCMAKE_BUILD_TYPE=Release"
           pip install -v -e . --no-build-isolation
       - shell: bash
