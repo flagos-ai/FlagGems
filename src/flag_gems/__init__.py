@@ -46,6 +46,8 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    ("__and__.Scalar", bitwise_and_scalar),
+    ("__and__.Tensor", bitwise_and_tensor),
     ("__iand__.Scalar", bitwise_and_scalar_),
     ("__iand__.Tensor", bitwise_and_tensor_),
     ("__ilshift__.Tensor", __ilshift__),

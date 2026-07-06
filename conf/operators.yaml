@@ -480,6 +480,30 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: and_scalar
+    description: |
+      Computes the bitwise AND operation through the tensor dunder method with a scalar operand.
+    for:
+      - __and__.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: and_tensor
+    description: |
+      Computes the bitwise AND operation through the tensor dunder method with tensor operands.
+    for:
+      - __and__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
   - id: angle
     description: Computes the element-wise angle (in radians) of the given `input` tensor.
     for:
