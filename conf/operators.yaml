@@ -5344,6 +5344,17 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.4'
+  - id: narrow
+    description: Returns a new tensor that is a narrowed version of the input tensor along the given dimension.
+    for:
+      - narrow
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: narrow_copy
     description: Triton kernel implementation for narrow_copy.
     for:
