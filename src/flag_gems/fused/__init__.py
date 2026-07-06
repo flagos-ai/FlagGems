@@ -29,6 +29,10 @@ from flag_gems.fused.FLA import (
 from flag_gems.fused.flash_mla import flash_mla
 from flag_gems.fused.flash_mla_with_kvcache import flash_mla_with_kvcache
 from flag_gems.fused.flashmla_sparse import flash_mla_sparse_fwd
+from flag_gems.fused.fp8_fp4_mega_moe import (
+    fp8_fp4_mega_moe,
+    fp8_fp4_mega_moe_torch_ref,
+)
 from flag_gems.fused.fp8_fp4_mqa_logits import fp8_fp4_mqa_logits
 from flag_gems.fused.fp8_fp4_paged_mqa_logits import fp8_fp4_paged_mqa_logits
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
@@ -52,6 +56,7 @@ from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.grouped_topk import grouped_topk
 from flag_gems.fused.indexer_k_quant_and_cache import indexer_k_quant_and_cache
 from flag_gems.fused.instance_norm import instance_norm
+from flag_gems.fused.matmuladd import matmuladd
 from flag_gems.fused.mhc import (
     hc_head_fused_kernel,
     hc_head_fused_kernel_ref,
@@ -116,6 +121,8 @@ __all__ = [
     "flash_mla",
     "flash_mla_sparse_fwd",
     "flash_mla_with_kvcache",
+    "fp8_fp4_mega_moe",
+    "fp8_fp4_mega_moe_torch_ref",
     "fp8_fp4_mqa_logits",
     "fp8_fp4_paged_mqa_logits",
     "fused_add_rms_norm",
@@ -135,6 +142,7 @@ __all__ = [
     "inplace_fused_experts",
     "instance_norm",
     "invoke_fused_moe_triton_kernel",
+    "matmuladd",
     "mhc_bwd",
     "mhc_bwd_ref",
     "mhc_post",
