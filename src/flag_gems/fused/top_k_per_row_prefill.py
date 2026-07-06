@@ -1,7 +1,7 @@
 """Triton top_k_per_row_prefill for DeepSeek V4 prefill-phase topk selection.
 
-   Implement based on file python/tutorials/tle/deepseek_v32/01-topk_selector.py from repo
-   https://github.com/flagos-ai/FlagTree.git, align with vLLM implementation.
+Implement based on file python/tutorials/tle/deepseek_v32/01-topk_selector.py from repo
+https://github.com/flagos-ai/FlagTree.git, align with vLLM implementation.
 
 """
 
@@ -39,6 +39,11 @@ NUM_FILNAL_ITEMS = 2048
 NUM_BINS = 2048
 RADIX_BITS_FINAL = 8
 RADIX_SIZE_FINAL = 1 << RADIX_BITS_FINAL
+RADIX_FINAL_PREFILL_VOCAB_THRESHOLD = 65536
+
+
+def _use_radix_final_for_prefill(vocab_size):
+    return vocab_size >= RADIX_FINAL_PREFILL_VOCAB_THRESHOLD
 
 
 @triton.jit
@@ -1188,24 +1193,28 @@ def top_k_per_row_prefill(
     assert num_rows == logits.shape[0]
     if HAS_TLE:
         topkp = triton.next_power_of_2(top_k)
-        num_insert_sort_blocks = min(num_rows, SORTING_ALGORITHM_THRESHOLD)
-        tle_top_k_per_row_prefill[(num_insert_sort_blocks,)](
-            logits,
-            indices,
-            row_starts,
-            row_ends,
-            stride0,
-            stride1,
-            vocab_size,
-            TOPK=top_k,
-            TOPKP=topkp,
-            BLOCK_SIZE=NUM_THREADS_PER_BLOCK,
-            USE_RADIX_FINAL=False,
-            ROW_OFFSET=0,
-            num_warps=NUM_THREADS_PER_BLOCK // 32,
+        use_radix_final = _use_radix_final_for_prefill(vocab_size)
+        num_insert_sort_blocks = (
+            0 if use_radix_final else min(num_rows, SORTING_ALGORITHM_THRESHOLD)
         )
-        if num_rows > SORTING_ALGORITHM_THRESHOLD:
-            num_radix_sort_blocks = num_rows - SORTING_ALGORITHM_THRESHOLD
+        if num_insert_sort_blocks > 0:
+            tle_top_k_per_row_prefill[(num_insert_sort_blocks,)](
+                logits,
+                indices,
+                row_starts,
+                row_ends,
+                stride0,
+                stride1,
+                vocab_size,
+                TOPK=top_k,
+                TOPKP=topkp,
+                BLOCK_SIZE=NUM_THREADS_PER_BLOCK,
+                USE_RADIX_FINAL=False,
+                ROW_OFFSET=0,
+                num_warps=NUM_THREADS_PER_BLOCK // 32,
+            )
+        if num_rows > num_insert_sort_blocks:
+            num_radix_sort_blocks = num_rows - num_insert_sort_blocks
             tle_top_k_per_row_prefill[(num_radix_sort_blocks,)](
                 logits,
                 indices,
@@ -1218,7 +1227,7 @@ def top_k_per_row_prefill(
                 TOPKP=topkp,
                 BLOCK_SIZE=NUM_THREADS_PER_BLOCK,
                 USE_RADIX_FINAL=True,
-                ROW_OFFSET=SORTING_ALGORITHM_THRESHOLD,
+                ROW_OFFSET=num_insert_sort_blocks,
                 num_warps=NUM_THREADS_PER_BLOCK // 32,
             )
     else:

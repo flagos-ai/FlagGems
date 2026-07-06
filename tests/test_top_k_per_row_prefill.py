@@ -11,6 +11,8 @@ Test shapes match DeepSeek V4 production config:
     - num_rows=32/64/2048: prefill batch sizes
 """
 
+from importlib import import_module
+
 import pytest
 import torch
 
@@ -103,6 +105,15 @@ def check_topk_values_match(logits, indices_test, indices_ref, row_starts, top_k
 
 
 @pytest.mark.top_k_per_row_prefill
+def test_top_k_per_row_prefill_radix_final_config_prefers_large_vocab():
+    topk_prefill = import_module("flag_gems.fused.top_k_per_row_prefill")
+
+    assert topk_prefill._use_radix_final_for_prefill(129280)
+    assert not topk_prefill._use_radix_final_for_prefill(8193)
+    assert not topk_prefill._use_radix_final_for_prefill(4095)
+
+
+@pytest.mark.top_k_per_row_prefill
 @pytest.mark.parametrize("num_rows", NUM_ROWS_FULL_VOCAB)
 @pytest.mark.parametrize("vocab_size", [129280])  # DeepSeek V4 vocab size
 @pytest.mark.parametrize("top_k", [1024])  # DeepSeek V4 KV cache topk
@@ -133,6 +144,35 @@ def test_top_k_per_row_prefill_full_vocab(num_rows, vocab_size, top_k):
     assert check_topk_values_match(
         logits, indices_test, indices_ref, row_starts, top_k
     ), f"FAIL: num_rows={num_rows}, vocab_size={vocab_size}, top_k={top_k}"
+
+
+@pytest.mark.top_k_per_row_prefill
+@pytest.mark.skipif(
+    not import_module("flag_gems.fused.top_k_per_row_prefill").HAS_TLE,
+    reason="TLE top_k_per_row_prefill path is unavailable",
+)
+def test_top_k_per_row_prefill_large_vocab_partial_nonzero_range():
+    torch.manual_seed(321)
+    num_rows = 2
+    vocab_size = 65536
+    top_k = 1024
+
+    logits = torch.randn(num_rows, vocab_size, device=device, dtype=torch.float32)
+    row_starts = torch.tensor([128, 4096], dtype=torch.int32, device=device)
+    row_ends = torch.tensor([4096, 8192], dtype=torch.int32, device=device)
+    stride0 = logits.stride(0)
+    stride1 = logits.stride(1)
+
+    indices_ref = reference_top_k_per_row(logits.clone(), row_starts, row_ends, top_k)
+
+    indices_test = torch.empty((num_rows, top_k), dtype=torch.int32, device=device)
+    top_k_per_row_prefill(
+        logits, row_starts, row_ends, indices_test, num_rows, stride0, stride1, top_k
+    )
+
+    assert check_topk_values_match(
+        logits, indices_test, indices_ref, row_starts, top_k
+    ), "FAIL: large vocab partial nonzero range"
 
 
 @pytest.mark.top_k_per_row_prefill

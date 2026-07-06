@@ -512,6 +512,20 @@ if HAS_TLE:
         tl.store(yi_ptrs, y_indices, mask=mask_k)
 
 
+def _get_topk_radix_tle_config(x_dtype, topk_elem_cnt, k, k_pad):
+    block_n_radix = max(k_pad, min(512, triton.next_power_of_2(topk_elem_cnt)))
+    block_n_radix = min(block_n_radix, 1024)
+    radix_bits = 4
+    num_warps = 4
+
+    if x_dtype == torch.float32 and topk_elem_cnt >= 32768 and k == 256:
+        block_n_radix = 1024
+        radix_bits = 8
+        num_warps = 8
+
+    return block_n_radix, radix_bits, num_warps
+
+
 def topk(x, k, dim=-1, largest=True, sorted=True):
     logger.debug("GEMS TOPK")
     # If dim equals to last dim, we set it to -1.
@@ -553,8 +567,9 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         out_shape = x.shape[:-1] + (k,)
         y_vals = torch.empty(out_shape, device=x.device, dtype=x.dtype)
         y_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
-        block_n_radix = max(k_pad, min(512, triton.next_power_of_2(topk_elem_cnt)))
-        block_n_radix = min(block_n_radix, 1024)
+        block_n_radix, radix_bits, num_warps = _get_topk_radix_tle_config(
+            x.dtype, topk_elem_cnt, k, k_pad
+        )
 
         x_2d = x.reshape(batch_size, topk_elem_cnt)
         y_vals_2d = y_vals.reshape(batch_size, k)
@@ -570,8 +585,8 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
                 K=k,
                 K_PAD=k_pad,
                 BLOCK_N=block_n_radix,
-                RADIX_BITS=4,
-                num_warps=4,
+                RADIX_BITS=radix_bits,
+                num_warps=num_warps,
                 num_stages=1,
             )
         return (y_vals, y_idx)

@@ -1,5 +1,6 @@
 import random
 import time
+from importlib import import_module
 
 import numpy as np
 import pytest
@@ -78,4 +79,59 @@ def test_topk_3d_lastdim(shape, topk, dtype):
         res_value, res_index = torch.topk(x, topk, dim=-1, largest=True, sorted=True)
 
     utils.gems_assert_close(res_value, ref_value, dtype)
+    utils.gems_assert_equal(res_index, ref_index)
+
+
+@pytest.mark.topk
+def test_topk_radix_tle_config_uses_large_fp32_shape_heuristic():
+    topk_op = import_module("flag_gems.ops.topk")
+
+    assert topk_op._get_topk_radix_tle_config(torch.float32, 32768, 256, 256) == (
+        1024,
+        8,
+        8,
+    )
+    assert topk_op._get_topk_radix_tle_config(torch.float16, 32768, 256, 256) == (
+        512,
+        4,
+        4,
+    )
+    assert topk_op._get_topk_radix_tle_config(torch.float32, 8192, 128, 128) == (
+        512,
+        4,
+        4,
+    )
+    assert topk_op._get_topk_radix_tle_config(torch.float32, 32768, 512, 512) == (
+        512,
+        4,
+        4,
+    )
+    assert topk_op._get_topk_radix_tle_config(torch.float32, 32768, 129, 256) == (
+        512,
+        4,
+        4,
+    )
+
+
+@pytest.mark.topk
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA device required")
+def test_topk_radix_tle_large_fp32_k256_correctness():
+    topk_op = import_module("flag_gems.ops.topk")
+    if not topk_op.HAS_TLE:
+        pytest.skip("TLE topk path is unavailable")
+
+    batch_size = 2
+    hiddensize = 32768
+    topk = 256
+    x = torch.arange(hiddensize, dtype=torch.float32, device=flag_gems.device)
+    x = x.repeat(batch_size).reshape(batch_size, hiddensize)
+
+    ref_value, ref_index = torch.topk(
+        utils.to_reference(x), topk, dim=-1, largest=True, sorted=True
+    )
+
+    with flag_gems.use_gems():
+        res_value, res_index = torch.topk(x, topk, dim=-1, largest=True, sorted=True)
+
+    utils.gems_assert_close(res_value, ref_value, torch.float32)
     utils.gems_assert_equal(res_index, ref_index)
