@@ -422,7 +422,9 @@ ROUNDING_MODES = ["trunc", "floor"]
 def test_div_mode_tensor(shape, rounding_mode, dtype):
     # div.Tensor_mode: div_mode(Tensor, Tensor, rounding_mode=...)
     if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
-        pytest.skip("trunc_divide uses libdevice.div_rz which only supports float32/float64")
+        pytest.skip(
+            "trunc_divide uses libdevice.div_rz which only supports float32/float64"
+        )
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     # avoid divide-by-zero for floor/trunc modes
@@ -446,7 +448,9 @@ def test_div_mode_tensor(shape, rounding_mode, dtype):
 def test_div_mode_scalar(shape, scalar, rounding_mode, dtype):
     # div.Scalar_mode: div_mode(Tensor, scalar, rounding_mode=...)
     if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
-        pytest.skip("trunc_divide uses libdevice.div_rz which only supports float32/float64")
+        pytest.skip(
+            "trunc_divide uses libdevice.div_rz which only supports float32/float64"
+        )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
 
@@ -465,7 +469,9 @@ def test_div_mode_scalar(shape, scalar, rounding_mode, dtype):
 def test_div_mode_tensor_(shape, rounding_mode, dtype):
     # div_.Tensor_mode: div_mode_(Tensor, Tensor, rounding_mode=...)
     if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
-        pytest.skip("trunc_divide uses libdevice.div_rz which only supports float32/float64")
+        pytest.skip(
+            "trunc_divide uses libdevice.div_rz which only supports float32/float64"
+        )
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = inp2 + torch.sign(inp2).clamp(min=1) * 1e-3
@@ -488,7 +494,9 @@ def test_div_mode_tensor_(shape, rounding_mode, dtype):
 def test_div_mode_scalar_(shape, scalar, rounding_mode, dtype):
     # div_.Scalar_mode: div_mode_(Tensor, scalar, rounding_mode=...)
     if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
-        pytest.skip("trunc_divide uses libdevice.div_rz which only supports float32/float64")
+        pytest.skip(
+            "trunc_divide uses libdevice.div_rz which only supports float32/float64"
+        )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp.clone(), False)
 
