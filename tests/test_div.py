@@ -245,6 +245,11 @@ def test_div_scalar_scalar(dtype):
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="xdnn does not implement complex/complex div on Kunlunxin (XPU); "
+    "reference path itself fails (xdnn_pytorch_wrapper/div.cpp:88)",
+)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_div_complex_complex(shape, complex_dtype):
@@ -271,6 +276,11 @@ def test_div_complex_complex(shape, complex_dtype):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3897: TX81 does not support complex32 dtype",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="xdnn does not implement complex/float div on Kunlunxin (XPU); "
+    "reference path itself fails (xdnn_pytorch_wrapper/div.cpp:88)",
 )
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
@@ -307,6 +317,11 @@ def test_div_complex_float_tensor(shape, complex_dtype):
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="xdnn does not implement int->complex cast on Kunlunxin (XPU); "
+    "reference path itself fails (xdnn_pytorch_wrapper/cast.cpp:162)",
+)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_div_tensor_int(shape, complex_dtype):
@@ -331,6 +346,11 @@ def test_div_tensor_int(shape, complex_dtype):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3897: TX81 does not support complex32 dtype",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="xdnn does not implement complex<->float cast on Kunlunxin (XPU); "
+    "reference path itself fails (xdnn_pytorch_wrapper/cast.cpp:162)",
 )
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
