@@ -35,6 +35,13 @@ class TensorSelectBenchmark(GenericBenchmark2DOnly):
         return shapes
 
 
+def _deterministic_index(index_shape, dim, size_dim, device):
+    index_size_dim = index_shape[dim]
+    values = torch.arange(index_size_dim, dtype=torch.int32, device=device) % size_dim
+    view_shape = [1] * len(index_shape)
+    view_shape[dim] = index_size_dim
+    return values.reshape(view_shape).expand(index_shape).contiguous()
+
 def index_select_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
     threshold = 0.1
@@ -110,10 +117,16 @@ def gather_scatter_gbps(bench_fn_args, latency):
 @pytest.mark.scatter
 def test_perf_scatter():
     def scatter_input_fn(shape, dtype, device):
-        input_gen = gather_input_fn(shape, dtype, device)
-        inp, dim, index = next(input_gen)
-        src_shape = list(size + 16 for size in index.shape)
+        batch, size = shape
+        src_shape = [max(1, batch // 16), max(1, size // 16)]
+        inp = torch.randn(shape, dtype=dtype, device=device)
         src = torch.randn(src_shape, dtype=dtype, device=device)
+
+        dim = 1
+        size_dim = min(src_shape[dim], shape[dim])
+        index_shape = src_shape[:]
+        index = _deterministic_index(index_shape, dim, size_dim, device)
+
         yield inp, dim, index, src
 
     bench = TensorSelectBenchmark(
@@ -181,6 +194,19 @@ def gather_input_fn(shape, dtype, device):
 
 @pytest.mark.gather
 def test_perf_gather():
+    def gather_input_fn(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+
+        dim = 1
+        size_dim = shape[dim]
+        index_shape = [
+            max(1, shape[0] // 4),
+            max(1, shape[1] // 16),
+        ]
+        index = _deterministic_index(index_shape, dim, size_dim, device)
+
+        yield inp, dim, index
+
     bench = TensorSelectBenchmark(
         op_name="gather",
         torch_op=torch.gather,
@@ -248,7 +274,7 @@ def test_slice_scatter_perf():
 def test_select_scatter_perf():
     def select_scatter_input_fn(shape, dtype, device):
         dim = 0 if len(shape) == 1 else 1
-        index = random.randint(0, shape[dim] - 1)
+        index = shape[dim] // 2
         inp = torch.randn(shape, dtype=dtype, device=device)
 
         src_shape = list(inp.shape)
