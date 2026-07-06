@@ -428,7 +428,9 @@ def test_div_mode_tensor(shape, rounding_mode, dtype):
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    ref_out = torch.ops.aten.div.Tensor_mode(ref_inp1, ref_inp2, rounding_mode=rounding_mode)
+    ref_out = torch.ops.aten.div.Tensor_mode(
+        ref_inp1, ref_inp2, rounding_mode=rounding_mode
+    )
     res_out = flag_gems.ops.div_mode(inp1, inp2, rounding_mode=rounding_mode)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -444,7 +446,9 @@ def test_div_mode_scalar(shape, scalar, rounding_mode, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
 
-    ref_out = torch.ops.aten.div.Scalar_mode(ref_inp, scalar, rounding_mode=rounding_mode)
+    ref_out = torch.ops.aten.div.Scalar_mode(
+        ref_inp, scalar, rounding_mode=rounding_mode
+    )
     res_out = flag_gems.ops.div_mode(inp, scalar, rounding_mode=rounding_mode)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -462,7 +466,9 @@ def test_div_mode_tensor_(shape, rounding_mode, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), False)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    ref_out = torch.ops.aten.div_.Tensor_mode(ref_inp1, ref_inp2, rounding_mode=rounding_mode)
+    ref_out = torch.ops.aten.div_.Tensor_mode(
+        ref_inp1, ref_inp2, rounding_mode=rounding_mode
+    )
     res_out = flag_gems.ops.div_mode_(inp1, inp2, rounding_mode=rounding_mode)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -478,7 +484,9 @@ def test_div_mode_scalar_(shape, scalar, rounding_mode, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp.clone(), False)
 
-    ref_out = torch.ops.aten.div_.Scalar_mode(ref_inp, scalar, rounding_mode=rounding_mode)
+    ref_out = torch.ops.aten.div_.Scalar_mode(
+        ref_inp, scalar, rounding_mode=rounding_mode
+    )
     res_out = flag_gems.ops.div_mode_(inp, scalar, rounding_mode=rounding_mode)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
