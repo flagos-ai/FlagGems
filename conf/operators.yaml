@@ -676,17 +676,17 @@ ops:
       - beta: '5.0'
       - stable: '5.4'
   - id: arctan
-  description: |
-    Returns a new tensor with the element-wise inverse tangent (arctangent) of the input tensor.
-  for:
-    - arctan
-  labels:
-    - aten
-    - KernelGen
-  kind:
-    - Math
-  stages:
-    - alpha: '5.4'
+    description: |
+      Returns a new tensor with the element-wise inverse tangent (arctangent) of the input tensor.
+    for:
+      - arctan
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: arctan_
     description: |
       Computes the element-wise inverse tangent (arctangent) of a given input tensor.
