@@ -4365,7 +4365,7 @@ ops:
       - aten
       - KernelGen
     kind:
-      - Tensor
+      - LinearAlg
     stages:
       - alpha: '5.4'
   - id: linear
