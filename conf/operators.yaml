@@ -4669,6 +4669,7 @@ ops:
   - id: lt
     description: Computes that `input` is less than `other` element-wise.
     for:
+      - less.Tensor
       - lt.Tensor
     labels:
       - aten
@@ -4691,6 +4692,7 @@ ops:
   - id: lt_scalar
     description: The scalar version of `lt`.
     for:
+      - less.Scalar
       - lt.Scalar
     labels:
       - aten
@@ -4933,6 +4935,57 @@ ops:
       - Reduction
     stages:
       - stable: '2.0'
+  - id: median
+    description: Returns the median of the values in `input`.
+    for:
+      - median
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
+  - id: median_dim
+    description: |
+      Returns a namedtuple `(values, indices)` where `values` contains the median
+      of each row of `input` in the dimension `dim`, and `indices` contains the
+      index location of each median value found.
+    for:
+      - median.dim
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
+  - id: median_dim_values
+    description: A variant of `median_dim()` with the `out` argument.
+    for:
+      - median.dim_values
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
+  - id: median_out
+    description: A variant of `median()` with the `out` argument.
+    for:
+      - median.out
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
   - id: mhc_bwd
     description: |
       The backward case for MHC (Manifold-Constrained Hyper-Connections).
