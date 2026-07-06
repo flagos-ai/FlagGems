@@ -2180,7 +2180,7 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
-id: div_mode
+  - id: div_mode
     description: |
       Divides each element of the `input` by the corresponding element of `other`.
       An optional `rounding_mode` can be specified.
