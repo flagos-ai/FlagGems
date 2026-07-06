@@ -480,6 +480,30 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: and_scalar
+    description: |
+      Computes the bitwise AND operation through the tensor dunder method with a scalar operand.
+    for:
+      - __and__.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: and_tensor
+    description: |
+      Computes the bitwise AND operation through the tensor dunder method with tensor operands.
+    for:
+      - __and__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
   - id: angle
     description: Computes the element-wise angle (in radians) of the given `input` tensor.
     for:
@@ -993,20 +1017,6 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: bf16_paged_mqa_logits
-    description: |
-      Compute multi-head weighted ReLU attention logits on paged BF16
-      KV cache. Uses shape-specialized Triton kernels for H=32 and H=64
-      with zero-constexpr dispatch for decode-phase inference.
-    for:
-      - bf16_paged_mqa_logits
-    labels:
-      - fused
-      - KernelGen
-    kind:
-      - NeuralNetwork
-    stages:
-      - alpha: '5.4'
   - id: bernoulli
     description: |
       Draws binary random numbers (0 or 1) from a Bernoulli distribution with per-element probabilities.
@@ -1031,6 +1041,20 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: bf16_paged_mqa_logits
+    description: |
+      Compute multi-head weighted ReLU attention logits on paged BF16
+      KV cache. Uses shape-specialized Triton kernels for H=32 and H=64
+      with zero-constexpr dispatch for decode-phase inference.
+    for:
+      - bf16_paged_mqa_logits
+    labels:
+      - fused
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: bincount
     description: Count the frequency of each value in an array of non-negative integers.
     for:
@@ -3038,6 +3062,23 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: fp8_fp4_mega_moe
+    description: |
+      Functional Triton fallback for local FP8 x FP4 MegaMoE. It consumes
+      staged FP8 activations, packed FP4 expert weights, scales, and top-k
+      routing tensors, then computes the two-layer SwiGLU MoE output.
+    for:
+      - flag_gems.fused.fp8_fp4_mega_moe
+      - vllm.third_party.deep_gemm.fp8_fp4_mega_moe
+    labels:
+      - fused
+      - vLLM
+      - Triton
+    kind:
+      - MoE
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: fp8_fp4_mqa_logits
     description: |
       Compute weighted MQA logits with FP8 quantized Q and K tensors.
@@ -4669,6 +4710,7 @@ ops:
   - id: lt
     description: Computes that `input` is less than `other` element-wise.
     for:
+      - less.Tensor
       - lt.Tensor
     labels:
       - aten
@@ -4691,6 +4733,7 @@ ops:
   - id: lt_scalar
     description: The scalar version of `lt`.
     for:
+      - less.Scalar
       - lt.Scalar
     labels:
       - aten
@@ -4815,6 +4858,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: matmuladd
+    description: Computes matrix multiplication followed by bias addition.
+    for:
+      - matmuladd
+    labels:
+      - fused
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: max
     description: Returns the maximum value of all elements in the `input` tensor.
     for:
@@ -4933,6 +4987,57 @@ ops:
       - Reduction
     stages:
       - stable: '2.0'
+  - id: median
+    description: Returns the median of the values in `input`.
+    for:
+      - median
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
+  - id: median_dim
+    description: |
+      Returns a namedtuple `(values, indices)` where `values` contains the median
+      of each row of `input` in the dimension `dim`, and `indices` contains the
+      index location of each median value found.
+    for:
+      - median.dim
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
+  - id: median_dim_values
+    description: A variant of `median_dim()` with the `out` argument.
+    for:
+      - median.dim_values
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
+  - id: median_out
+    description: A variant of `median()` with the `out` argument.
+    for:
+      - median.out
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
   - id: mhc_bwd
     description: |
       The backward case for MHC (Manifold-Constrained Hyper-Connections).
@@ -5008,6 +5113,32 @@ ops:
       - Math
     stages:
       - stable: '2.1'
+  - id: mish
+    description: Applies the Mish activation function element-wise.
+    for:
+      - mish
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+      - Activation
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: mish_
+    description: The in-place version of `mish()`.
+    for:
+      - mish_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+      - Activation
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: mm
     description: Performs a matrix multiplication of the two input matrices.
     for:
@@ -7615,6 +7746,20 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: stage_deepseek_v4_mega_moe_inputs
+    description: |
+      Stages DeepSeekV4 Mega-MoE inputs by quantizing hidden states to FP8
+      with UE8M0 scales and copying top-k indices and weights to output buffers.
+    for:
+      - stage_deepseek_v4_mega_moe_inputs
+    labels:
+      - fused
+      - DeepSeekV4
+      - MoE
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: std
     description: |
       Calculates the standard deviation over the dimensions specified by `dim`.
@@ -7940,6 +8085,7 @@ ops:
       - None
     labels:
       - fused
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
