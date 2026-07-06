@@ -80,6 +80,11 @@ def test_div_tensor_mode_float(shape, rounding_mode, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="xdnn does not implement integer div with rounding_mode on Kunlunxin (XPU); "
+    "reference path itself fails (xdnn_pytorch_wrapper/div.cpp:199)",
+)
 def test_div_tensor_mode_int(shape, rounding_mode, dtype):
     inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
         flag_gems.device
@@ -121,6 +126,11 @@ def test_div_tensor_mode_float_(shape, rounding_mode, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="xdnn does not implement integer div with rounding_mode on Kunlunxin (XPU); "
+    "reference path itself fails (xdnn_pytorch_wrapper/div.cpp:199)",
+)
 def test_div_tensor_mode_int_(shape, rounding_mode, dtype):
     inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
         flag_gems.device
