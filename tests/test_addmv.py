@@ -10,20 +10,18 @@ if cfg.QUICK_MODE:
     MN_SHAPES = [
         (1, 32),
     ]
-    FLOAT_DTYPES = [torch.float32]
 else:
     MN_SHAPES = [
         (1, 32),
         (160, 1024),
         (5333, 497),
     ]
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 
 @pytest.mark.addmv
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_addmv(M, N, scalar, dtype):
     mat = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
     vec = torch.randn((N,), dtype=dtype, device=flag_gems.device)
@@ -57,7 +55,7 @@ def test_addmv(M, N, scalar, dtype):
 @pytest.mark.addmv_out
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_addmv_out(M, N, scalar, dtype):
     mat = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
     vec = torch.randn((N,), dtype=dtype, device=flag_gems.device)
