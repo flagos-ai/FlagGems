@@ -211,6 +211,14 @@ def test_div_scalar_(shape, scalar, dtype):
 def test_div_scalar_tensor(shape, scalar, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float16:
         pytest.skip("Issue #3796: not working")
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.float16,
+        torch.bfloat16,
+    ):
+        pytest.skip(
+            "reference torch.div(scalar, low-precision-float tensor) fails on Kunlunxin (XPU); "
+            "xdnn expects Float but got Half/BFloat16"
+        )
 
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -422,6 +430,14 @@ def test_div_out_tensor_scalar(shape, scalar, dtype):
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_div_out_scalar_tensor(shape, scalar, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.float16,
+        torch.bfloat16,
+    ):
+        pytest.skip(
+            "reference torch.div(scalar, low-precision-float tensor, out=...) fails on Kunlunxin (XPU); "
+            "xdnn expects Float but got Half/BFloat16"
+        )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
 
