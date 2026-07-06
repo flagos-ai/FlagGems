@@ -233,28 +233,28 @@ def generate_tile_kernel(
         # only add this arguments when rank > 0
         if rank > 0:
             # strides for inputs
-            stride_args = ", ".join(f"in0_stride{j}: int" for j in range(rank))
+            stride_args = ", ".join(f"in0_stride{j}: tl.int64" for j in range(rank))
             code.writeline(f"{stride_args}, # strides for in0")
 
             # strides for outputs
-            stride_args = ", ".join(f"out0_stride{j}: int" for j in range(rank))
+            stride_args = ", ".join(f"out0_stride{j}: tl.int64" for j in range(rank))
             code.writeline(f"{stride_args}, # strides for out0")
 
             # task space, used to reconstruct multi index
-            task_space_args = ", ".join(f"s{i}: int" for i in range(rank))
+            task_space_args = ", ".join(f"s{i}: tl.int64" for i in range(rank))
             code.writeline(f"{task_space_args}, # task_space")
 
-            task_space_args2 = ", ".join(f"in_s{i}: int" for i in range(rank))
+            task_space_args2 = ", ".join(f"in_s{i}: tl.int64" for i in range(rank))
             code.writeline(
                 f"{task_space_args2}, # task_space2 used when input and output tensor has different shape"
             )
 
             # number of tasks, used to compute mask
-            code.writeline("num_tasks: int,")
+            code.writeline("num_tasks: tl.int64,")
 
         # tile size & tiles_per_cta, gsl style
         if rank > 0:
-            code.writeline("tiles_per_cta,")
+            code.writeline("tiles_per_cta: tl.int64,")
 
             code.writeline("tile_size: tl.constexpr,")
 
