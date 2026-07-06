@@ -282,6 +282,7 @@ from flag_gems.ops.log_softmax import (
     log_softmax_out,
 )
 from flag_gems.ops.logaddexp import logaddexp, logaddexp_out
+from flag_gems.ops.logaddexp2 import logaddexp2, logaddexp2_out
 from flag_gems.ops.logical_and import logical_and, logical_and_
 from flag_gems.ops.logical_not import logical_not, logical_not_
 from flag_gems.ops.logical_or import logical_or, logical_or_
@@ -532,6 +533,14 @@ from flag_gems.ops.where import (
     where_scalar_self,
     where_self,
     where_self_out,
+)
+from flag_gems.ops.xlogy import (
+    xlogy,
+    xlogy_out,
+    xlogy_scalar_tensor,
+    xlogy_scalar_tensor_out,
+    xlogy_tensor_scalar,
+    xlogy_tensor_scalar_out,
 )
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
@@ -889,6 +898,14 @@ __all__ = [
     "log_softmax_out",
     "logaddexp",
     "logaddexp_out",
+    "logaddexp2",
+    "logaddexp2_out",
+    "xlogy",
+    "xlogy_out",
+    "xlogy_tensor_scalar",
+    "xlogy_tensor_scalar_out",
+    "xlogy_scalar_tensor",
+    "xlogy_scalar_tensor_out",
     "logical_and",
     "logical_and_",
     "logical_not",

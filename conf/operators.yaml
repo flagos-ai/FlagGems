@@ -4523,6 +4523,50 @@ ops:
     stages:
       - alpha: '2.0'
       - stable: '3.0'
+  - id: logaddexp2
+    description: Computes the element-wise base-2 logarithm of the sum of base-2 exponentiations of two input tensors.
+    for:
+      - logaddexp2
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: logaddexp2_out
+    description: A variant of `logaddexp2` that allows the output to be assigned to an `out` tensor.
+    for:
+      - logaddexp2.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: xlogy
+    description: Computes `input * log(other)` element-wise, returning zero where `input` is zero (following PyTorch's `xlogy` semantics).
+    for:
+      - xlogy.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: xlogy_out
+    description: A variant of `xlogy` that allows the output to be assigned to an `out` tensor.
+    for:
+      - xlogy.OutTensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
   - id: logaddexp
     description: Computes the element-wise logarithm of the sum of the exponentials of two input tensors.
     for:
