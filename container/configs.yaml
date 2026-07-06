@@ -1,0 +1,101 @@
+# Container build configuration for FlagGems images.
+#
+# This file defines container-specific settings (base images, system packages,
+# runtime environment) for each backend. Dependency and compiler information
+# comes from backends.yaml — this file only has container concerns.
+#
+# Usage:
+#   python3 container/build.py <backend> [--dry-run] [--push]
+
+defaults:
+  extra_pypi: "https://mirrors.aliyun.com/pypi/simple"
+  include_tests: true
+  system_packages: "curl gcc g++ make build-essential cmake ca-certificates"
+  runtime_packages: ""
+  runtime_env: {}
+
+images:
+  nvidia-cuda128:
+    base_image: "nvidia/cuda:12.8.0-devel-ubuntu22.04"
+    runtime_image: "nvidia/cuda:12.8.0-runtime-ubuntu22.04"
+    runtime_packages: "gcc g++ make build-essential cmake libelf1 libpython3-dev"
+    runtime_env:
+      NVIDIA_VISIBLE_DEVICES: "all"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
+
+  nvidia-cuda133:
+    base_image: "nvcr.io/nvidia/cuda:13.3.0-devel-ubuntu24.04"
+    runtime_image: "nvcr.io/nvidia/cuda:13.3.0-runtime-ubuntu24.04"
+    system_packages: "curl gcc g++ make build-essential cmake git ca-certificates"
+    runtime_packages: "gcc g++ make build-essential cmake libelf1 libpython3-dev"
+    runtime_env:
+      NVIDIA_VISIBLE_DEVICES: "all"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
+
+  ascend-cann850:
+    base_image: "ascend-cann:8.5.0"
+
+  ascend-cann900:
+    base_image: "ascend-cann:9.0.0"
+
+  cambricon:
+    base_image: "cambricon-neuware:4.4.3"
+
+  enflame:
+    base_image: "enflame-tops:1.9.10"
+    system_packages: "curl build-essential ca-certificates"
+
+  hygon:
+    base_image: "hygon-dtk:26.04"
+    system_packages: "curl build-essential ca-certificates"
+
+  iluvatar:
+    base_image: "iluvatar-corex:4.4.0"
+
+  kunlunxin:
+    base_image: "kunlunxin-xre:5.29.0"
+    system_packages: "curl build-essential ca-certificates"
+
+  metax:
+    base_image: "metax-maca:3.7.2.1"
+    system_packages: "curl build-essential ca-certificates"
+    runtime_packages: "build-essential libpython3-dev"
+    runtime_env:
+      LD_LIBRARY_PATH: "/flagos/lib/python3.12/site-packages/triton/backends/metax/lib:${LD_LIBRARY_PATH}"
+
+  mthreads:
+    base_image: "mthreads-musa:4.3.6"
+    system_packages: "curl build-essential ca-certificates libnuma-dev"
+    runtime_packages: "libelf1 libnuma-dev libgfortran5 libpython3-dev libopenmpi-dev openmpi-bin"
+    runtime_env:
+      MUSA_HOME: "/usr/local/musa"
+      MTHREADS_VISIBLE_DEVICES: "all"
+      LD_LIBRARY_PATH: "${VIRTUAL_ENV}/lib:${MUSA_HOME}/lib:${LD_LIBRARY_PATH}"
+      GEMS_VENDOR: "mthreads"
+
+  spacemit:
+    base_image: "spacemit-base:latest"
+
+  sunrise:
+    base_image: "sunrise-base:latest"
+
+  thead:
+    base_image: "thead-base:latest"
+
+  tsingmicro:
+    base_image: "tsingmicro-tsm:260604"
+    runtime_env:
+      TX8_DEPS_ROOT: "/usr/local/tx8_deps"
+      LLVM_SYSPATH: "/usr/local/llvm"
+      LLVM_BINARY_DIR: "${LLVM_SYSPATH}/bin"
+      PYTHONPATH: "${LLVM_SYSPATH}/python_packages/mlir_core"
+      LD_LIBRARY_PATH: "${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}"
+      USE_TORCH_XLA: "0"
+      TORCH_COMPILE_DISABLE: "1"
+    # Tsingmicro requires extra SDK tarballs for FlagTree
+    pre_install: |
+      FILESTORE=https://resource.flagos.net/repository/flagos-filestore/tsingmicro
+      curl -o /tmp/tx8.tar.gz ${FILESTORE}/tx8_depends_dev_20260507_104051.tar.gz \
+        && tar xf /tmp/tx8.tar.gz -C /usr/local && rm /tmp/tx8.tar.gz
+      curl -o /tmp/llvm.tar.gz ${FILESTORE}/llvm-a66376b0-ubuntu-x64.tgz \
+        && tar xf /tmp/llvm.tar.gz -C /usr/local && rm /tmp/llvm.tar.gz

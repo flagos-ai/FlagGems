@@ -7726,6 +7726,20 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: stage_deepseek_v4_mega_moe_inputs
+    description: |
+      Stages DeepSeekV4 Mega-MoE inputs by quantizing hidden states to FP8
+      with UE8M0 scales and copying top-k indices and weights to output buffers.
+    for:
+      - stage_deepseek_v4_mega_moe_inputs
+    labels:
+      - fused
+      - DeepSeekV4
+      - MoE
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: std
     description: |
       Calculates the standard deviation over the dimensions specified by `dim`.
