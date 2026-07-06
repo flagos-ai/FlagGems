@@ -126,7 +126,7 @@ def write_back_kernel(
 
 
 def masked_select(inp, mask):
-    logger.debug("GEMS MASKED SELECT")
+    logger.debug("GEMS_SUNRISE MASKED_SELECT")
 
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)

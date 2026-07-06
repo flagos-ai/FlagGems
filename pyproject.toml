@@ -2,7 +2,7 @@
 # The cmake and ninja packages are not supposed to be listed in build-system.requires.
 # The version expectation is "cmake>=3.20,<4.0", "ninja==1.13.0".
 # They must be installed separately for `--no-build-isolation` to work.
-requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3"]
+requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3", "setuptools-scm>=8"]
 
 build-backend = "scikit_build_core.build"
 
@@ -10,7 +10,7 @@ build-backend = "scikit_build_core.build"
 
 name = "flag_gems"
 
-version = "5.4.0dev"
+dynamic = ["version"]
 
 description = "FlagGems is a function library written in Triton language."
 
@@ -172,7 +172,7 @@ tsingmicro = [
     "torch==2.7.0+cpu",
     "torchvision==0.22.0+cpu",
     "torchaudio==2.7.0+cpu",
-    "torch_txda==0.1.0+20260610.3968e515",
+    "torch_txda==0.1.0+20260615.37ba6bbd",
     "txops==0.1.0+20260508.60287151",
     "flagtree==0.5.0.post20260612+git705a4064",
     # "flagtree==0.5.0+tsingmicro3.3",
@@ -183,7 +183,6 @@ tsingmicro = [
 test = [
     "distro==1.9.0",
     "coverage==7.13.5",
-    "gitpython==3.1.50",
     "openpyxl==3.1.5",
     "pytest==9.0.3",
     "pytest-md-report==0.8.0",
@@ -219,6 +218,11 @@ build.verbose = true
 logging.level = "INFO"
 wheel.install-dir = "flag_gems"
 build-dir = "build/{cache_tag}"
+metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
+
+[tool.setuptools_scm]
+write_to = "src/flag_gems/_version.py"
+version_scheme = "no-guess-dev"
 
 [tool.uv]
 
