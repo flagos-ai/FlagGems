@@ -19,7 +19,7 @@ def test_special_round_out():
     # UnaryPointwiseOutBenchmark passes out= via kwargs internally
     bench = base.UnaryPointwiseOutBenchmark(
         op_name="special_round_out",
-        torch_op=torch.special.round,
+        torch_op=torch.ops.aten.special_round.out,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
