@@ -56,6 +56,15 @@ def test_cumsum(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, check_dtype, reduce_dim=shape[dim])
 
 
+@pytest.mark.cumsum
+def test_cumsum_empty():
+    inp = torch.empty(0, dtype=torch.int32, device=flag_gems.device)
+    with flag_gems.use_gems():
+        out = torch.cumsum(inp, dim=0)
+    assert out.shape == (0,)
+    assert out.dtype == torch.int64
+
+
 @pytest.mark.cumsum_out
 @pytest.mark.parametrize("shape", CUMSUM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
