@@ -22,7 +22,12 @@ from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 try:
     from flag_gems._version import version as __version__
 except ImportError:
-    __version__ = "unknown"
+    try:
+        from importlib.metadata import version as _meta_version
+
+        __version__ = _meta_version("flag-gems")
+    except Exception:
+        __version__ = "unknown"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 backend_info = runtime.device
@@ -164,6 +169,8 @@ _FULL_CONFIG = (
     ("arange", arange),
     ("arange.start", arange_start),
     ("arange.start_step", arange_start),
+    ("arccos", arccos),
+    ("arccos_", arccos_),
     ("arcsin", arcsin),
     ("arcsin.out", arcsin),
     ("arcsin_", arcsin_),
@@ -417,6 +424,8 @@ _FULL_CONFIG = (
     ("lerp.Tensor", lerp_tensor),
     ("lerp_.Scalar", lerp_scalar_),
     ("lerp_.Tensor", lerp_tensor_),
+    ("less.Scalar", lt_scalar),
+    ("less.Tensor", lt),
     ("less_equal.Scalar", less_equal_scalar),
     ("less_equal.Tensor", less_equal),
     ("lgamma", lgamma),
@@ -452,6 +461,8 @@ _FULL_CONFIG = (
     ("logsumexp", logsumexp),
     ("lt.Scalar", lt_scalar),
     ("lt.Tensor", lt),
+    ("lt_.Scalar", lt_scalar_),
+    ("lt_.Tensor", lt_),
     ("margin_ranking_loss", margin_ranking_loss),
     ("masked_fill.Scalar", masked_fill),
     ("masked_fill.Tensor", masked_fill),
@@ -460,6 +471,7 @@ _FULL_CONFIG = (
     ("masked_scatter", masked_scatter),
     ("masked_scatter_", masked_scatter_),
     ("masked_select", masked_select),
+    ("matmuladd", matmuladd),
     ("max", max),
     ("max.dim", max_dim),
     ("max_pool2d_backward", max_pool2d_backward),
@@ -477,6 +489,8 @@ _FULL_CONFIG = (
     ("min", min),
     ("min.dim", min_dim),
     ("minimum", minimum),
+    ("mish", mish),
+    ("mish_", mish_),
     ("mm", mm),
     ("mm.out", mm_out),
     ("mode", mode),
@@ -645,16 +659,16 @@ _FULL_CONFIG = (
     ("softshrink.out", softshrink_out),
     ("sort", sort),
     ("sort.stable", sort_stable),
-    ("special.gammainc", special_gammainc),
-    ("special.log_softmax", special_log_softmax),
+    ("special_gammainc", special_gammainc),
+    ("special_log_softmax", special_log_softmax),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
-    ("special.chebyshev_polynomial_w", special_chebyshev_polynomial_w),
-    ("special.chebyshev_polynomial_w.out", special_chebyshev_polynomial_w_out),
+    ("special_chebyshev_polynomial_w", special_chebyshev_polynomial_w),
+    ("special_chebyshev_polynomial_w_out", special_chebyshev_polynomial_w_out),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_i0e", special_i0e),
-    ("special_i0e.out", special_i0e_out),
+    ("special_i0e_out", special_i0e_out),
     ("special_i1", special_i1),
-    ("special_i1.out", special_i1_out),
+    ("special_i1_out", special_i1_out),
     ("special_shifted_chebyshev_polynomial_u", special_shifted_chebyshev_polynomial_u),
     (
         "special_shifted_chebyshev_polynomial_u_",
