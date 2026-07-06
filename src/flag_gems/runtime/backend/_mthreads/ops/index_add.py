@@ -8,9 +8,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(
-    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
-)
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -83,7 +81,7 @@ def index_add(inp, dim, index, src, alpha=1):
         self[:, index[i], :] += alpha * src[:, i, :]  # if dim == 1
         self[:, :, index[i]] += alpha * src[:, :, i]  # if dim == 2
     """
-    logger.debug("GEMS_MTHREADS INDEX ADD")
+    logger.debug("GEMS_MTHREADS INDEX_ADD")
 
     # Make inputs contiguous
     inp = inp.contiguous()
@@ -127,7 +125,7 @@ def index_add_(inp, dim, index, src, alpha=1):
     """
     In-place version of index_add.
     """
-    logger.debug("GEMS_MTHREADS INDEX ADD_")
+    logger.debug("GEMS_MTHREADS INDEX_ADD_")
 
     # Make index and src contiguous
     index = index.contiguous()

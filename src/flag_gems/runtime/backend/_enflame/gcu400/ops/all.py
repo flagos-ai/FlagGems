@@ -98,7 +98,7 @@ def _to_u8_if_bool(inp):
 
 
 def all(inp):
-    logger.debug("GEMS ALL GCU400")
+    logger.debug("GEMS_ENFLAME ALL")
     inp = _to_u8_if_bool(inp)
     N_total = inp.numel()
     if N_total <= 4096:
@@ -122,7 +122,7 @@ def all(inp):
 
 
 def all_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ALL DIM GCU400")
+    logger.debug("GEMS_ENFLAME ALL_DIM")
     shape = list(inp.shape)
     if dim is None:
         out = all(inp)
@@ -148,7 +148,7 @@ def all_dim(inp, dim=None, keepdim=False):
 
 
 def all_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ALL DIMS GCU400")
+    logger.debug("GEMS_ENFLAME ALL_DIMS")
 
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)
