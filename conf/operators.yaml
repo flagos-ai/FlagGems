@@ -1220,7 +1220,7 @@ ops:
     stages:
       - beta: '5.3'
   - id: bucketize
-    description: Triton kernel implementation for bucketize.
+    description: Returns the indices of the buckets to which each input value belongs.
     for:
       - bucketize.Tensor
     labels:
