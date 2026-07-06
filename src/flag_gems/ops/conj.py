@@ -113,12 +113,3 @@ def conj_physical(A):
         conj_physical_kernel_vec1[grid](A_flat, output_flat, num_complex, BLOCK_SIZE)
 
     return torch.view_as_complex(output_flat)
-
-
-def conj(A):
-    logger.debug("GEMS CONJ")
-    if not isinstance(A, torch.Tensor):
-        return torch.tensor(A)
-    if not A.is_complex():
-        return A.clone()
-    return torch.conj(A)

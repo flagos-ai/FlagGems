@@ -1190,4 +1190,4 @@ __all__ = [
     "conj",
     "conj_physical",
 ]
-from flag_gems.ops.conj import conj, conj_physical
+from flag_gems.ops.conj import conj_physical

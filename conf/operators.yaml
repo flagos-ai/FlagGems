@@ -8673,3 +8673,29 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: conj_physical
+    description: |
+      Computes the conjugate of a complex tensor with physical memory copy.
+    for:
+      - conj_physical
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: conj_physical
+    description: |
+      Computes the conjugate of a complex tensor with physical memory copy.
+    for:
+      - conj_physical
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
