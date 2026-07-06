@@ -7,9 +7,7 @@ from flag_gems.runtime import torch_device_fn
 
 from .ones import ones_kernel
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 
 def ones_like(

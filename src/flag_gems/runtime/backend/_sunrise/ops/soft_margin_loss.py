@@ -93,7 +93,7 @@ def _check_tensors(input: torch.Tensor, target: torch.Tensor):
 
 
 def soft_margin_loss(input: torch.Tensor, target: torch.Tensor, reduction="mean"):
-    logger.debug("GEMS SOFT_MARGIN_LOSS")
+    logger.debug("GEMS_SUNRISE SOFT_MARGIN_LOSS")
     input, target = _check_tensors(input, target)
     red = _normalize_reduction(reduction)
     n_elements = input.numel()
@@ -140,7 +140,7 @@ def soft_margin_loss_out(
     reduction="mean",
     out: torch.Tensor = None,
 ):
-    logger.debug("GEMS SOFT_MARGIN_LOSS_OUT")
+    logger.debug("GEMS_SUNRISE SOFT_MARGIN_LOSS_OUT")
     input, target = _check_tensors(input, target)
     red = _normalize_reduction(reduction)
     n_elements = input.numel()
