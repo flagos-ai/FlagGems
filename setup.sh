@@ -57,6 +57,8 @@ else
     | tar xz -C "$HOME/.local/bin" 2>/dev/null \
     || { curl -LsSf https://astral.sh/uv/install.sh | sh; }
   export PATH="$HOME/.local/bin:$PATH"
+  # Persist PATH for subsequent GitHub Actions steps
+  [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   command -v uv &>/dev/null || { printf "uv installation"; fail; }
   printf "Installed $(uv --version)"
   ok
