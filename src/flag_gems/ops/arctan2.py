@@ -20,3 +20,9 @@ def arctan2_kernel(x, y):
 def arctan2(input, other):
     logger.debug("GEMS ARCTAN2")
     return arctan2_kernel(input, other)
+
+
+def arctan2_(input, other):
+    logger.debug("GEMS ARCTAN2_")
+    arctan2_kernel(input, other, out0=input)
+    return input

@@ -154,6 +154,7 @@ _FULL_CONFIG = (
     ("arcsinh.out", arcsinh_out),
     ("arcsinh_", arcsinh_),
     ("arctan2", arctan2),
+    ("arctan2_", arctan2_),
     ("arctanh_", arctanh_),
     ("argmax", argmax),
     ("argmin", argmin),

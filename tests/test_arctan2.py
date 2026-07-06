@@ -23,6 +23,26 @@ def test_arctan2(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.arctan2_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_arctan2_(shape, dtype):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_x = utils.to_reference(x, True)
+    ref_y = utils.to_reference(y, True)
+    ref_out = ref_x.arctan2_(ref_y)
+
+    x1 = x.clone()
+    with flag_gems.use_gems():
+        res_out = x1.arctan2_(y)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(x1, ref_x, dtype)
+    assert res_out is x1
+
+
 @pytest.mark.arctan2
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_arctan2_special_values(dtype):
