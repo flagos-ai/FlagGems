@@ -34,6 +34,9 @@ random.seed(time.time() // 100)
 @pytest.mark.trace
 @pytest.mark.parametrize("shape", TRACE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_trace(shape, dtype):
     if dtype == torch.bool:
         inp = torch.randint(0, 2, size=shape, device=flag_gems.device).to(dtype)
