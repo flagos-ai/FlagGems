@@ -47,6 +47,20 @@ except (ImportError, AttributeError):
     _vllm_top_k_per_row_decode = None
 
 
+def _torch_top_k_per_row_decode(
+    logits, next_n, seq_lens, indices, num_rows, stride0, stride1, top_k
+):
+    for i in range(num_rows):
+        batch_id = i // next_n
+        batch_offset = i % next_n
+        row_len = int(seq_lens[batch_id].item()) - next_n + batch_offset + 1
+        k = min(top_k, row_len)
+        _, topk_idx = torch.topk(logits[i, :row_len], k, largest=True, sorted=False)
+        indices[i, :k] = topk_idx.to(torch.int32)
+        if k < top_k:
+            indices[i, k:] = -1
+
+
 class TopKPerRowDecodeBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "num_rows, vocab_size, next_n, top_k, stride0, stride1"
 
@@ -64,6 +78,10 @@ class TopKPerRowDecodeBenchmark(base.Benchmark):
             (4, 262144, 1, 512, 262144, 1),
             (8, 262144, 1, 512, 262144, 1),
             (24, 262144, 1, 512, 262144, 1),
+            # Medium vocab shapes exercise the split decode path tuned for A100.
+            (1, 129280, 1, 512, 129280, 1),
+            (16, 129280, 1, 512, 129280, 1),
+            (64, 129280, 1, 1024, 129280, 1),
         ]
 
     def get_input_iter(self, dtype):
@@ -97,11 +115,11 @@ class TopKPerRowDecodeBenchmark(base.Benchmark):
 
 
 @pytest.mark.top_k_per_row_decode
-@pytest.mark.skipif(not HAS_VLLM, reason="vLLM not installed")
 def test_top_k_per_row_decode():
+    baseline = _vllm_top_k_per_row_decode if HAS_VLLM else _torch_top_k_per_row_decode
     bench = TopKPerRowDecodeBenchmark(
         op_name="top_k_per_row_decode",
-        torch_op=_vllm_top_k_per_row_decode,
+        torch_op=baseline,
         gems_op=top_k_per_row_decode,
         dtypes=[torch.float32],
     )
