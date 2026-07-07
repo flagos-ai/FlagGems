@@ -5,7 +5,8 @@ permissions:
 
 on:
   workflow_call:
-  workflow_dispatch: 
+  workflow_dispatch:
+
 
 jobs:
   test:
