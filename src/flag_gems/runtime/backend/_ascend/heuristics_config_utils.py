@@ -61,6 +61,22 @@ def exponential_heur_num_warps(args):
         return 16
 
 
+def log_normal_heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    else:
+        return 1024
+
+
+def log_normal_heur_num_warps(args):
+    if args["N"] <= 512:
+        return 4
+    elif args["N"] <= 1024:
+        return 8
+    else:
+        return 16
+
+
 def gather_heur_block_m(args):
     return min(4, triton.next_power_of_2(triton.cdiv(args["N"], 2048)))
 
@@ -251,6 +267,10 @@ HEURISTICS_CONFIGS = {
     "exponential_": {
         "BLOCK": exponential_heur_block,
         "num_warps": exponential_heur_num_warps,
+    },
+    "log_normal_": {
+        "BLOCK": log_normal_heur_block,
+        "num_warps": log_normal_heur_num_warps,
     },
     "gather": {
         "BLOCK_M": gather_heur_block_m,
