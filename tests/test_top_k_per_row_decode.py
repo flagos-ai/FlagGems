@@ -5,8 +5,6 @@ Uses value-based comparison (sorted selected values must match) to handle
 non-deterministic tie-breaking between implementations.
 """
 
-from importlib import import_module
-
 import pytest
 import torch
 
@@ -21,18 +19,6 @@ pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(),
     reason="CUDA device required",
 )
-
-
-@pytest.mark.top_k_per_row_decode
-def test_top_k_per_row_decode_split_config_uses_medium_vocab_path():
-    decode_op = import_module("flag_gems.fused.top_k_per_row_decode")
-
-    assert decode_op._get_decode_split_blocks(1, 32768, 1024) == 1
-    assert decode_op._get_decode_split_blocks(16, 65536, 1024) == 1
-    assert decode_op._get_decode_split_blocks(1, 129280, 512) == 10
-    assert decode_op._get_decode_split_blocks(16, 129280, 1024) == 10
-    assert decode_op._get_decode_split_blocks(64, 129280, 1024) == 4
-    assert decode_op._get_decode_split_blocks(1, 262144, 512) == 10
 
 
 # --- Shape configuration with QUICK_MODE support ---
@@ -157,6 +143,27 @@ def test_top_k_per_row_decode_partial_seqlen(vocab_size, top_k, seq_len):
 
     logits, next_n, seq_lens, indices, num_rows, s0, s1, k = _make_inputs(
         batch_size, vocab_size, top_k, seq_len=seq_len
+    )
+    logits_ref = logits.clone()
+    indices_ref = torch.zeros_like(indices)
+
+    top_k_per_row_decode(logits, next_n, seq_lens, indices, num_rows, s0, s1, k)
+    ref_fn(logits_ref, next_n, seq_lens, indices_ref, num_rows, s0, s1, k)
+
+    assert check_topk_values_match(logits, indices, indices_ref, top_k)
+
+
+@pytest.mark.top_k_per_row_decode
+def test_top_k_per_row_decode_medium_vocab_many_rows_split_correctness():
+    """Covers the 4-block medium-vocab split/merge path."""
+    torch.manual_seed(789)
+    batch_size = 64
+    vocab_size = 129280
+    top_k = 512
+    ref_fn = _vllm_top_k_per_row_decode if HAS_VLLM else _torch_topk_ref
+
+    logits, next_n, seq_lens, indices, num_rows, s0, s1, k = _make_inputs(
+        batch_size, vocab_size, top_k
     )
     logits_ref = logits.clone()
     indices_ref = torch.zeros_like(indices)
