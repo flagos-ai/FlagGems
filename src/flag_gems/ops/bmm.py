@@ -677,14 +677,14 @@ def bmm_fp8_w8a8_block_scale_kernel(
 
 
 def _get_bmm_fp8_w8a8_config(M, N, K, block_k):
-    if K < block_k:
+    if K <= 64:
         return 64, 16, 64, 2, 4, 2
     if M <= 64 and N <= 64:
-        return 128, 32, 128, 2, 8, 3
+        return 16, 32, 128, 1, 8, 3
     if M <= 128 and N <= 128:
         return 32, 16, 128, 2, 4, 2
     if M <= 256 and N <= 256:
-        return 64, 32, 128, 8, 4, 2
+        return 128, 16, 128, 1, 8, 3
     if M >= 2048 and N >= 2048:
         return 256, 32, 128, 2, 8, 3
     if M >= 1024 and N >= 1024:
@@ -695,14 +695,14 @@ def _get_bmm_fp8_w8a8_config(M, N, K, block_k):
 
 
 def _get_bmm_fp8_w8a8_packed_scale_config(M, N, K, block_k):
-    if K < block_k:
+    if K <= 64:
         return 64, 16, 64, 2, 4, 2
     if M <= 64 and N <= 64:
-        return 128, 32, 128, 2, 8, 3
+        return 128, 32, 128, 8, 4, 3
     if M <= 128 and N <= 128:
         return 32, 16, 128, 2, 4, 2
     if M <= 256 and N <= 256:
-        return 64, 32, 128, 8, 4, 2
+        return 128, 16, 128, 1, 4, 3
     if M >= 2048 and N >= 2048:
         return 256, 32, 128, 2, 8, 3
     if M >= 512 and N >= 512:
@@ -711,12 +711,16 @@ def _get_bmm_fp8_w8a8_packed_scale_config(M, N, K, block_k):
 
 
 def _get_bmm_fp8_w8a8_block_scale_config(M, N, K, block_k):
-    if K < block_k:
+    if K <= 64:
+        if M <= 64:
+            return 64, 32, 64, 1, 8, 3
         return 64, 16, 64, 2, 4, 2
     if M <= 64 and N <= 64:
-        return 128, 32, 128, 2, 8, 3
+        return 32, 32, 64, 4, 8, 3
     if M <= 128 and N <= 128:
         return 32, 16, 128, 2, 4, 2
+    if M <= 256 and N <= 256:
+        return 128, 16, 128, 1, 4, 2
     if M >= 2048 and N >= 2048:
         return 256, 32, 128, 2, 4, 2
     if M >= 1024 and N >= 1024:
@@ -747,6 +751,8 @@ def bmm_fp8_w8a8(
     _, _, N = B.shape
     num_k_blocks = triton.cdiv(K, block_k)
     num_n_blocks = triton.cdiv(N, block_n)
+    launch_block_k = K if K < block_k else block_k
+    launch_block_n = N if N < block_n else block_n
     assert A_scale.shape == (batch, M, num_k_blocks)
     assert B_scale.shape == (batch, num_k_blocks, num_n_blocks)
 
@@ -764,10 +770,10 @@ def bmm_fp8_w8a8(
         )
 
     tile_m, tile_n, tile_k, group_m, num_warps, num_stages = _get_bmm_fp8_w8a8_config(
-        M, N, K, block_k
+        M, N, K, launch_block_k
     )
-    assert block_k % tile_k == 0, "block_k must be divisible by TILE_K"
-    assert block_n % tile_n == 0, "block_n must be divisible by TILE_N"
+    assert launch_block_k % tile_k == 0, "block_k must be divisible by TILE_K"
+    assert launch_block_n % tile_n == 0, "block_n must be divisible by TILE_N"
 
     with torch_device_fn.device(A.device):
         bmm_fp8_w8a8_kernel[grid_fn](
@@ -780,8 +786,8 @@ def bmm_fp8_w8a8(
             N,
             K,
             NUM_K_TILES=triton.cdiv(K, tile_k),
-            BLOCK_K=block_k,
-            BLOCK_N=block_n,
+            BLOCK_K=launch_block_k,
+            BLOCK_N=launch_block_n,
             stride_ab=A.stride(0),
             stride_am=A.stride(1),
             stride_ak=A.stride(2),
@@ -827,6 +833,8 @@ def bmm_fp8_w8a8_packed_scale(
     _, _, N = B.shape
     num_k_blocks = triton.cdiv(K, block_k)
     num_n_blocks = triton.cdiv(N, block_n)
+    launch_block_k = K if K < block_k else block_k
+    launch_block_n = N if N < block_n else block_n
     assert scale.shape == (batch, M, num_k_blocks, num_n_blocks)
 
     if out is None:
@@ -849,9 +857,9 @@ def bmm_fp8_w8a8_packed_scale(
         group_m,
         num_warps,
         num_stages,
-    ) = _get_bmm_fp8_w8a8_packed_scale_config(M, N, K, block_k)
-    assert block_k % tile_k == 0, "block_k must be divisible by TILE_K"
-    assert block_n % tile_n == 0, "block_n must be divisible by TILE_N"
+    ) = _get_bmm_fp8_w8a8_packed_scale_config(M, N, K, launch_block_k)
+    assert launch_block_k % tile_k == 0, "block_k must be divisible by TILE_K"
+    assert launch_block_n % tile_n == 0, "block_n must be divisible by TILE_N"
 
     with torch_device_fn.device(A.device):
         bmm_fp8_w8a8_packed_scale_kernel[grid_fn](
@@ -863,8 +871,8 @@ def bmm_fp8_w8a8_packed_scale(
             N,
             K,
             NUM_K_TILES=triton.cdiv(K, tile_k),
-            BLOCK_K=block_k,
-            BLOCK_N=block_n,
+            BLOCK_K=launch_block_k,
+            BLOCK_N=launch_block_n,
             stride_ab=A.stride(0),
             stride_am=A.stride(1),
             stride_ak=A.stride(2),
@@ -910,6 +918,9 @@ def bmm_fp8_w8a8_block_scale(
     num_m_blocks = triton.cdiv(M, block_m)
     num_k_blocks = triton.cdiv(K, block_k)
     num_n_blocks = triton.cdiv(N, block_n)
+    launch_block_m = M if M < block_m else block_m
+    launch_block_k = K if K < block_k else block_k
+    launch_block_n = N if N < block_n else block_n
     assert A_scale.shape == (batch, num_m_blocks, num_k_blocks)
     assert B_scale.shape == (batch, num_k_blocks, num_n_blocks)
 
@@ -933,10 +944,10 @@ def bmm_fp8_w8a8_block_scale(
         group_m,
         num_warps,
         num_stages,
-    ) = _get_bmm_fp8_w8a8_block_scale_config(M, N, K, block_k)
-    assert block_m % tile_m == 0 or tile_m % block_m == 0
-    assert block_k % tile_k == 0, "block_k must be divisible by TILE_K"
-    assert block_n % tile_n == 0, "block_n must be divisible by TILE_N"
+    ) = _get_bmm_fp8_w8a8_block_scale_config(M, N, K, launch_block_k)
+    assert launch_block_m % tile_m == 0 or tile_m % launch_block_m == 0
+    assert launch_block_k % tile_k == 0, "block_k must be divisible by TILE_K"
+    assert launch_block_n % tile_n == 0, "block_n must be divisible by TILE_N"
 
     with torch_device_fn.device(A.device):
         bmm_fp8_w8a8_block_scale_kernel[grid_fn](
@@ -949,9 +960,9 @@ def bmm_fp8_w8a8_block_scale(
             N,
             K,
             NUM_K_TILES=triton.cdiv(K, tile_k),
-            BLOCK_M=block_m,
-            BLOCK_K=block_k,
-            BLOCK_N=block_n,
+            BLOCK_M=launch_block_m,
+            BLOCK_K=launch_block_k,
+            BLOCK_N=launch_block_n,
             stride_ab=A.stride(0),
             stride_am=A.stride(1),
             stride_ak=A.stride(2),
