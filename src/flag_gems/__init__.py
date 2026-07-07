@@ -224,6 +224,7 @@ _FULL_CONFIG = (
     ("bmm", bmm),
     ("bmm.out", bmm_out),
     ("broadcast_to", broadcast_to),
+    ("bucketize.Tensor", bucketize),
     ("cat", cat),
     ("cat.out", cat_out),
     ("cauchy", cauchy),
