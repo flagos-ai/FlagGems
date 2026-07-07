@@ -8142,6 +8142,20 @@ ops:
       - Reduction
     stages:
       - stable: '4.0'
+  - id: transpose
+    description: |
+      Returns a view of the original tensor with its two dimensions swapped.
+      This is a zero-copy view operation that swaps the sizes and strides of
+      the two specified dimensions.
+    for:
+      - transpose.int
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.1'
   - id: tril
     description: |
       Returns the lower triangular part of an input matrix (or a batch of matrices) and
