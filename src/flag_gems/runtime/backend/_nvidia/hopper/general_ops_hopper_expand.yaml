@@ -149,3 +149,57 @@ mv:
       stride_an: default
       stride_am: default
       dtype: default
+fused_marlin_moe_mxfp4:
+  - config:
+    param_map:
+      META:
+        BLOCK_SIZE_N: block_size_n
+        GROUP_SIZE_M: group_size_m
+      num_stages: stages
+      num_warps: warps
+    block_size_n:
+      - 64
+      - 128
+      - 256
+    group_size_m:
+      - 1
+      - 2
+      - 4
+      - 8
+      - 16
+    stages:
+      - 2
+      - 3
+      - 4
+    warps:
+      - 2
+      - 4
+      - 8
+  - strategy:
+      N: align32
+      K: align32
+      BLOCK_SIZE_M: align32
+      SWAP_AB: default
+w8a8_block_fp8_bmm:
+  - config:
+    param_map:
+      META:
+        TILE_ORDER: tile_order
+      num_stages: stages
+      num_warps: warps
+    tile_order:
+      - 0
+      - 1
+    stages:
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+    warps:
+      - 4
+  - strategy:
+      B: default
+      M_aligned: align32
+      N: align32
+      K: align32
