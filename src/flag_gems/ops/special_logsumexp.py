@@ -57,12 +57,16 @@ def logsumexp_kernel_non_inner(
         inp_offset = pid_m * N * K + n_offsets[:, None] * K + k_offsets
         mask = (n_offsets[:, None] < N) & (k_offsets < K)
         input_ptrs = input_ptr + inp_offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
         # Numerical stability: subtract max (across N dimension, axis=0)
         m = tl.max(inp, axis=0)  # shape: (TILE_K,)
-        e = tl.exp(inp - m)
+        # Guard the all-negative-inf case: -inf - (-inf) = nan would
+        # otherwise poison the reduction.
+        safe_m = tl.where(m == float("-inf"), tl.zeros_like(m), m)
+        e = tl.exp(inp - safe_m)
         z = tl.sum(e, axis=0)  # shape: (TILE_K,)
-        out = m + tl.log(z)  # shape: (TILE_K,)
+        out = safe_m + tl.log(z)  # shape: (TILE_K,)
+        out = tl.where(m == float("-inf"), m, out)
         # Output offset: (M, K) - reduced along N
         out_offset = pid_m * K + k_offsets
         output_ptrs = output_ptr + out_offset
@@ -117,11 +121,15 @@ def logsumexp_kernel_inner(
         inp_offset = pid_m * N + n_offsets
         input_ptrs = input_ptr + inp_offset
         mask = n_offsets < N
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
         m = tl.max(inp, 0)
-        e = tl.exp(inp - m)
+        # Guard the all-negative-inf case: -inf - (-inf) = nan would
+        # otherwise poison the reduction.
+        safe_m = tl.where(m == float("-inf"), 0.0, m)
+        e = tl.exp(inp - safe_m)
         z = tl.sum(e, 0)
-        out = m + tl.log(z)
+        out = safe_m + tl.log(z)
+        out = tl.where(m == float("-inf"), m, out)
         # Output offset: (M,) - reduced along N
         output_ptrs = output_ptr + pid_m
         tl.store(output_ptrs, out)
