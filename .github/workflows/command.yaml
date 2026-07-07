@@ -118,21 +118,10 @@ jobs:
           echo "checking out ${{ needs.preprocess.outputs.pull }}"
           gh pr checkout ${{ needs.preprocess.outputs.pull }}
 
-      - id: setup-flaggems
-        shell: bash
-        run: |
-          ./setup.sh ${BACKEND}
-          if [ "${BACKEND}" == "nvidia-cuda133" ]; then
-            source .venv/bin/activate
-            uv pip install vllm==0.21.0 --torch-backend=cu130
-          fi
-
-      - id: check-gpu
-        shell: bash
-        run: |
-          source .venv/bin/activate
-          source tools/env.sh ${BACKEND}
-          bash tools/gpu_check_${VENDOR}.sh
+      - uses: ./.github/actions/setup-flaggems
+        with:
+          vendor: ${{ env.BACKEND }}
+          gpu_check_script: tools/gpu_check_${{ env.VENDOR }}.sh
 
       - id: run-tests
         shell: bash
@@ -142,6 +131,7 @@ jobs:
           source .venv/bin/activate
           source tools/env.sh ${BACKEND}
           tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+            --gpus "${AVAILABLE_GPUS}" \
             --dump-output \
             --output-dir results_new
 
@@ -154,6 +144,7 @@ jobs:
           else
             git checkout master
             tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+              --gpus "${AVAILABLE_GPUS}" \
               --dump-output \
               --output-dir results_old
 
