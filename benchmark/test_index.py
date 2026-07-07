@@ -40,6 +40,21 @@ class IndexAccBenchmark(base.GenericBenchmark):
                     (2, 8),
                 ),
             ),
+            # Non-leading adjacent tensor indices.  These cover advanced
+            # indexing patterns such as x[:, idx, :] and x[:, idx1, idx2, ...].
+            ((1, 8192, 512), (None, (65536,), None)),
+            ((1, 4096, 512), (None, (128, 256), None)),
+            ((2, 4096, 128), (None, (64, 256), None)),
+            ((1, 4096, 2048), (None, (65536,), (65536,))),
+            ((1, 1024, 1024), (None, (128, 1), (1, 256))),
+            ((2, 1024, 1024), (None, (64, 256), (64, 256))),
+            ((1, 2048, 2048, 64), (None, (32768,), (32768,), None)),
+            ((2, 1024, 512, 64), (None, (128, 1), (1, 128), None)),
+            ((1, 512, 512, 16, 8), (None, (128, 256), (128, 256), None, None)),
+            (
+                (1, 256, 256, 64, 32),
+                (None, (64, 128), (64, 128), (64, 128), None),
+            ),
         )
         self.shapes = INDEX_SHAPE
         return None
@@ -47,9 +62,12 @@ class IndexAccBenchmark(base.GenericBenchmark):
 
 def gen_indices(input_shape, indices_shape, accumulate):
     indices = []
-    for i, shape in enumerate(indices_shape):
+    for dim, shape in enumerate(indices_shape):
+        if shape is None:
+            indices.append(None)
+            continue
         index = np.random.choice(
-            np.arange(input_shape[i]), size=shape, replace=accumulate
+            np.arange(input_shape[dim]), size=shape, replace=accumulate
         )
         indices.append(torch.tensor(index, device=flag_gems.device))
 
