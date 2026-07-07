@@ -97,9 +97,19 @@ def test_transpose_same_dim(shape, dim0, dim1, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_transpose_non_contiguous(shape, dtype):
     # Verify transpose works correctly on a non-contiguous input.
+    # Build the non-contiguous slice on both the test device and the reference
+    # device so the two inputs share the same memory layout. Calling
+    # ``to_reference`` *after* slicing would densify the CPU copy (cross-device
+    # ``.to("cpu")`` materializes a contiguous tensor), which would make the
+    # stride comparison below compare mismatched layouts.
     base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp = base[::2] if shape[0] > 1 else base
-    ref_inp = utils.to_reference(inp)
+    ref_base = utils.to_reference(base)
+    if shape[0] > 1:
+        inp = base[::2]
+        ref_inp = ref_base[::2]
+    else:
+        inp = base
+        ref_inp = ref_base
 
     ref_out = torch.ops.aten.transpose.int(ref_inp, 0, -1)
     with flag_gems.use_gems():
