@@ -31,7 +31,6 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 
 _LAYOUT_2D_TILE = 0
 _LAYOUT_SUFFIX_LOOP = 1
-_LAYOUT_ROW_TILE = 2
 
 
 @triton.jit
@@ -149,8 +148,8 @@ def _adjacent_index_candidate_configs(index_len, suffix_size, indices_len, prefi
     """Return a small shape-aware candidate set for libtuner.
 
     M is the flattened broadcasted index size and N is the contiguous suffix.
-    Layout 0 uses a 2D MxN tile, layout 1 groups wide suffix tiles, and layout
-    2 keeps small suffix rows together for Ascend lowering stability.
+    Layout 0 uses a 2D MxN tile; layout 1 groups wide suffix tiles to keep the
+    launch grid within Ascend limits.
     """
 
     max_grid_axis = 65535
@@ -159,12 +158,9 @@ def _adjacent_index_candidate_configs(index_len, suffix_size, indices_len, prefi
     if suffix_size < 64:
         block_s = _small_suffix_block_s(suffix_size)
         block_m = 16 if indices_len > 1 else 32
-        raw = ((block_m, block_s, _LAYOUT_ROW_TILE),)
+        raw = ((block_m, block_s, _LAYOUT_2D_TILE),)
     elif suffix_size == 64:
-        raw = (
-            (4, 64, _LAYOUT_2D_TILE),
-            (32, 64, _LAYOUT_ROW_TILE),
-        )
+        raw = ((4, 64, _LAYOUT_2D_TILE),)
     elif suffix_size < 256:
         block_s = 64 if suffix_size <= 64 else 128
         raw = (
@@ -327,7 +323,6 @@ def _write_adjacent_index_code(
         code.writeline("pid_s = tl.program_id(axis=2)")
         code.newline()
         # Layout 0: one program owns a BLOCK_M x BLOCK_S tile.
-        # Layout 2: one program owns BLOCK_M rows and vectorizes a small suffix.
         # Layout 1: one program loops over grouped suffix tiles.
         code.writeline(f"if LAYOUT == {_LAYOUT_2D_TILE}:")
         with code.indent():
@@ -369,53 +364,6 @@ def _write_adjacent_index_code(
             )
             code.writeline("cur_value = tl.load(input_ptr + src_offsets, mask=mask)")
             code.writeline("tl.store(out_ptr + out_offsets, cur_value, mask=mask)")
-        code.writeline(f"elif LAYOUT == {_LAYOUT_ROW_TILE}:")
-        with code.indent():
-            code.writeline("for index_i in range(0, BLOCK_M):")
-            with code.indent():
-                code.writeline("index_offset = pid_m * BLOCK_M + index_i")
-                code.writeline("index_mask = index_offset < M")
-                code.writeline(
-                    "suffix_offsets = pid_s * BLOCK_S + tl.arange(0, BLOCK_S)"
-                )
-                for i, dim in enumerate(indexed_dims):
-                    code.writeline(
-                        f"raw{i} = tl.load(indices{i}_ptr + index_offset, mask=index_mask, other=0)"
-                    )
-                    code.writeline(
-                        f"idx{i} = tl.where(raw{i} < 0, raw{i} + {dim}, raw{i})"
-                    )
-                code.newline()
-                linear_terms = [
-                    f"idx{i} * {indexed_strides[i]}" for i in range(indices_len)
-                ]
-                valid_terms = [
-                    f"(idx{i} >= 0) & (idx{i} < {indexed_dims[i]})"
-                    for i in range(indices_len)
-                ]
-                code.writeline(f"linear_index = {' + '.join(linear_terms)}")
-                code.writeline(f"valid_index = {' & '.join(valid_terms)}")
-                code.newline()
-                code.writeline("src_offsets = (")
-                with code.indent():
-                    code.writeline(
-                        f"(pid_p * {indexed_volume} + linear_index) * {suffix_size}"
-                    )
-                    code.writeline("+ suffix_offsets")
-                code.writeline(")")
-                code.writeline("out_offsets = (")
-                with code.indent():
-                    code.writeline(f"(pid_p * M + index_offset) * {suffix_size}")
-                    code.writeline("+ suffix_offsets")
-                code.writeline(")")
-                code.writeline(
-                    "mask = index_mask & valid_index & "
-                    f"(suffix_offsets < {suffix_size})"
-                )
-                code.writeline(
-                    "cur_value = tl.load(input_ptr + src_offsets, mask=mask)"
-                )
-                code.writeline("tl.store(out_ptr + out_offsets, cur_value, mask=mask)")
         code.writeline("else:")
         with code.indent():
             code.writeline("for index_i in range(0, BLOCK_M):")
@@ -606,9 +554,11 @@ def index(inp, indices):
         raise ValueError("at least one index must be provided")
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
 

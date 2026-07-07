@@ -40,20 +40,16 @@ class IndexAccBenchmark(base.GenericBenchmark):
                     (2, 8),
                 ),
             ),
-            # Non-leading adjacent tensor indices.  These cover advanced
-            # indexing patterns such as x[:, idx, :] and x[:, idx1, idx2, ...].
-            ((1, 8192, 512), (None, (65536,), None)),
-            ((1, 4096, 512), (None, (128, 256), None)),
-            ((2, 4096, 128), (None, (64, 256), None)),
-            ((1, 4096, 2048), (None, (65536,), (65536,))),
-            ((1, 1024, 1024), (None, (128, 1), (1, 256))),
-            ((2, 1024, 1024), (None, (64, 256), (64, 256))),
-            ((1, 2048, 2048, 64), (None, (32768,), (32768,), None)),
-            ((2, 1024, 512, 64), (None, (128, 1), (1, 128), None)),
-            ((1, 512, 512, 16, 8), (None, (128, 256), (128, 256), None, None)),
+            # Non-leading adjacent tensor indices. These cover patterns such
+            # as x[:, idx, :] and x[:, idx0, idx1, ...] without adding the
+            # larger model-scale stress cases to the shared benchmark.
+            ((1, 4096, 512), (None, (32768,), None)),
+            ((4, 512, 128), (None, (4096,), None)),
+            ((2, 256, 256, 64), (None, (4096,), (4096,), None)),
+            ((2, 128, 128, 128), (None, (2048,), (2048,), (2048,))),
             (
-                (1, 256, 256, 64, 32),
-                (None, (64, 128), (64, 128), (64, 128), None),
+                (1, 128, 128, 64, 8),
+                (None, (2048,), (2048,), (2048,), None),
             ),
         )
         self.shapes = INDEX_SHAPE

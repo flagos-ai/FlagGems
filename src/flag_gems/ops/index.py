@@ -19,14 +19,10 @@ from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
 
-from flag_gems.runtime import device as runtime_device
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 logger = logging.getLogger(__name__)
-
-_LAYOUT_2D_TILE = 0
-_LAYOUT_SUFFIX_LOOP = 1
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
@@ -59,19 +55,6 @@ def _volume(shape):
     return value
 
 
-def _current_backend(inp):
-    # Keep generated-code and tuning caches separated across backends.
-    vendor = getattr(runtime_device, "vendor_name", "")
-    if vendor:
-        return vendor.lower()
-    device_type = getattr(getattr(inp, "device", None), "type", "")
-    if device_type == "npu":
-        return "ascend"
-    if device_type in ("cuda", "hip"):
-        return device_type
-    return device_type or "unknown"
-
-
 def _bucket(value, step):
     value = int(value)
     if value <= 0:
@@ -97,68 +80,54 @@ def _index_candidate_configs(
 ):
     """Return a small shape-aware candidate set for libtuner.
 
-    The adjacent-index kernel is tiled over flattened index elements M and
-    contiguous suffix elements N. Layout 0 uses a direct 2D tile; layout 1
-    groups suffix tiles per program for very wide suffixes.
+    The common adjacent-index kernel is tiled over flattened index elements M
+    and contiguous suffix elements N. Backend-specific layouts belong in
+    vendor overrides.
     """
 
     index_len = int(tensor_indices[0].numel())
-    prefix_size = _volume(inp.shape[:start_dim])
     if suffix_size is None:
         suffix_size = _volume(inp.shape[start_dim + indices_len :])
 
-    # The generated kernel tiles two dynamic axes: flattened index elements (M)
-    # and contiguous suffix columns (N). Candidate order is based on shape only;
-    # backend differences are left to libtuner/cache instead of hard-coded here.
     if suffix_size <= 64:
-        raw = ((4, 64, _LAYOUT_2D_TILE),)
+        raw = ((4, 64),)
     elif suffix_size >= 256:
         raw = (
-            (8, 128, _LAYOUT_2D_TILE),
-            (16, 128, _LAYOUT_2D_TILE),
-            (8, 256, _LAYOUT_2D_TILE),
+            (8, 128),
+            (16, 128),
+            (8, 256),
         )
     else:
         block_n = max(64, _next_power_of_2(suffix_size))
         raw = (
-            (8, block_n, _LAYOUT_2D_TILE),
-            (16, block_n, _LAYOUT_2D_TILE),
+            (8, block_n),
+            (16, block_n),
         )
 
-    max_grid_axis = 65535
     max_tile_elems = 8192
     max_block_n = max(64, _bucket(suffix_size, 64) * 2)
-    use_suffix_loop = _should_use_suffix_loop(index_len, suffix_size, prefix_size)
     max_configs = 2
 
     configs = []
     seen = set()
-    for block_m, block_n, layout in raw:
-        # Filter candidates using launch-grid and tile-size constraints that are
-        # common across the supported Triton backends.
+    for block_m, block_n in raw:
         if index_len <= block_m // 2 and block_m > 4:
             continue
         if block_n > max_block_n:
             continue
         if block_m * block_n > max_tile_elems:
             continue
-        grid_m = (index_len + block_m - 1) // block_m
-        grid_n = (suffix_size + block_n - 1) // block_n
-        if grid_m > max_grid_axis or grid_n > max_grid_axis:
-            continue
         if suffix_size <= block_n // 4 and block_n > 64:
             continue
         if indices_len > 1 and block_m > 16:
             continue
-        key = (block_m, block_n, layout)
+        key = (block_m, block_n)
         if key not in seen:
             seen.add(key)
             configs.append(
                 {
                     "BLOCK_SIZE0": block_m,
                     "BLOCK_SIZE1": block_n,
-                    "LAYOUT": layout,
-                    "SUFFIX_TILES_PER_PROGRAM": 1,
                     "num_warps": 4,
                     "num_stages": 2,
                 }
@@ -166,64 +135,14 @@ def _index_candidate_configs(
             if len(configs) >= max_configs:
                 break
 
-    # Add a second layout candidate for very wide suffixes. It groups suffix
-    # tiles per program and lets libtuner decide whether that is better.
-    if use_suffix_loop:
-        block_m, block_n, suffix_tiles_per_program = _suffix_loop_config(
-            index_len, suffix_size, prefix_size
-        )
-        configs.append(
-            {
-                "BLOCK_SIZE0": block_m,
-                "BLOCK_SIZE1": block_n,
-                "LAYOUT": _LAYOUT_SUFFIX_LOOP,
-                "SUFFIX_TILES_PER_PROGRAM": suffix_tiles_per_program,
-                "num_warps": 4,
-                "num_stages": 2,
-            }
-        )
-
     return configs or [
         {
             "BLOCK_SIZE0": 4,
             "BLOCK_SIZE1": max(64, min(512, _bucket(suffix_size, 64))),
-            "LAYOUT": _LAYOUT_2D_TILE,
-            "SUFFIX_TILES_PER_PROGRAM": 1,
             "num_warps": 4,
             "num_stages": 2,
         }
     ]
-
-
-def _suffix_loop_config(index_len, suffix_size, prefix_size):
-    block_m = 32
-    block_n = 8 * 1024
-    index_blocks = (int(index_len) + block_m - 1) // block_m
-    suffix_tiles = (int(suffix_size) + block_n - 1) // block_n
-    base_programs = int(prefix_size) * index_blocks
-
-    if base_programs >= 8:
-        suffix_groups = 1
-    elif base_programs >= 4:
-        suffix_groups = 2
-    else:
-        suffix_groups = 4
-
-    suffix_groups = min(suffix_tiles, suffix_groups)
-    suffix_tiles_per_program = (suffix_tiles + suffix_groups - 1) // suffix_groups
-    return block_m, block_n, suffix_tiles_per_program
-
-
-def _should_use_suffix_loop(index_len, suffix_size, prefix_size):
-    block_m = 32
-    block_n = 8 * 1024
-    index_blocks = (int(index_len) + block_m - 1) // block_m
-    suffix_tiles = (int(suffix_size) + block_n - 1) // block_n
-    base_programs = int(prefix_size) * index_blocks
-
-    # Use the loop layout only when the suffix axis would otherwise create a
-    # very wide launch grid and the index/prefix grid is still small.
-    return suffix_tiles >= 8 and base_programs <= 16
 
 
 def _write_index_configs(code: IndentedBuffer, configs):
@@ -512,8 +431,6 @@ def generate_index_linearized_kernel(
             "N,",
             "BLOCK_SIZE0: tl.constexpr,",
             "BLOCK_SIZE1: tl.constexpr,",
-            "LAYOUT: tl.constexpr,",
-            "SUFFIX_TILES_PER_PROGRAM: tl.constexpr,",
         ]
         code.writelines(args)
     code.writeline("):")
@@ -524,113 +441,50 @@ def generate_index_linearized_kernel(
         code.writeline("pid_n = tl.program_id(axis=2)")
         code.newline()
 
-        # Layout 0: one program owns a BLOCK_SIZE0 x BLOCK_SIZE1 tile.
-        # Layout 1: one program loops over several suffix tiles to reduce grid width.
-        code.writeline(f"if LAYOUT == {_LAYOUT_2D_TILE}:")
+        code.writeline(
+            "index_offsets = pid_m * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)"
+        )
+        code.writeline(
+            "suffix_offsets = pid_n * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)"
+        )
+        code.writeline("index_mask = index_offsets < M")
+        code.newline()
+
+        for i, dim in enumerate(indexed_dims):
+            code.writeline(
+                f"raw{i} = tl.load(indices{i}_ptr + index_offsets, mask=index_mask, other=0)"
+            )
+            code.writeline(f"idx{i} = tl.where(raw{i} < 0, raw{i} + {dim}, raw{i})")
+        code.newline()
+
+        linear_terms = [f"idx{i} * {indexed_strides[i]}" for i in range(indices_len)]
+        valid_terms = [
+            f"(idx{i} >= 0) & (idx{i} < {indexed_dims[i]})" for i in range(indices_len)
+        ]
+        code.writeline(f"linear_index = {' + '.join(linear_terms)}")
+        code.writeline(f"valid_index = {' & '.join(valid_terms)}")
+        code.newline()
+
+        code.writeline("src_offsets = (")
         with code.indent():
             code.writeline(
-                "index_offsets = pid_m * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)"
+                f"(pid_p * {indexed_volume} + linear_index[:, None]) * {suffix_size}"
             )
-            code.writeline(
-                "suffix_offsets = pid_n * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)"
-            )
-            code.writeline("index_mask = index_offsets < M")
-            code.newline()
-
-            for i, dim in enumerate(indexed_dims):
-                code.writeline(
-                    f"raw{i} = tl.load(indices{i}_ptr + index_offsets, mask=index_mask, other=0)"
-                )
-                code.writeline(f"idx{i} = tl.where(raw{i} < 0, raw{i} + {dim}, raw{i})")
-            code.newline()
-
-            linear_terms = [
-                f"idx{i} * {indexed_strides[i]}" for i in range(indices_len)
-            ]
-            valid_terms = [
-                f"(idx{i} >= 0) & (idx{i} < {indexed_dims[i]})"
-                for i in range(indices_len)
-            ]
-            code.writeline(f"linear_index = {' + '.join(linear_terms)}")
-            code.writeline(f"valid_index = {' & '.join(valid_terms)}")
-            code.newline()
-
-            code.writeline("src_offsets = (")
-            with code.indent():
-                code.writeline(
-                    f"(pid_p * {indexed_volume} + linear_index[:, None]) * {suffix_size}"
-                )
-                code.writeline("+ suffix_offsets[None, :]")
-            code.writeline(")")
-            code.writeline("out_offsets = (")
-            with code.indent():
-                code.writeline(f"(pid_p * M + index_offsets[:, None]) * {suffix_size}")
-                code.writeline("+ suffix_offsets[None, :]")
-            code.writeline(")")
-            code.writeline(
-                "mask = index_mask[:, None] & valid_index[:, None] & "
-                f"(suffix_offsets[None, :] < {suffix_size})"
-            )
-            code.newline()
-
-            code.writeline("cur_value = tl.load(input_ptr + src_offsets, mask=mask)")
-            code.writeline("tl.store(out_ptr + out_offsets, cur_value, mask=mask)")
-
-        code.writeline("else:")
+            code.writeline("+ suffix_offsets[None, :]")
+        code.writeline(")")
+        code.writeline("out_offsets = (")
         with code.indent():
-            code.writeline("for index_i in range(0, BLOCK_SIZE0):")
-            with code.indent():
-                code.writeline("index_offset = pid_m * BLOCK_SIZE0 + index_i")
-                code.writeline("index_mask = index_offset < M")
-                for i, dim in enumerate(indexed_dims):
-                    code.writeline(
-                        f"raw{i} = tl.load(indices{i}_ptr + index_offset, mask=index_mask, other=0)"
-                    )
-                    code.writeline(
-                        f"idx{i} = tl.where(raw{i} < 0, raw{i} + {dim}, raw{i})"
-                    )
-                code.newline()
+            code.writeline(f"(pid_p * M + index_offsets[:, None]) * {suffix_size}")
+            code.writeline("+ suffix_offsets[None, :]")
+        code.writeline(")")
+        code.writeline(
+            "mask = index_mask[:, None] & valid_index[:, None] & "
+            f"(suffix_offsets[None, :] < {suffix_size})"
+        )
+        code.newline()
 
-                linear_terms = [
-                    f"idx{i} * {indexed_strides[i]}" for i in range(indices_len)
-                ]
-                valid_terms = [
-                    f"(idx{i} >= 0) & (idx{i} < {indexed_dims[i]})"
-                    for i in range(indices_len)
-                ]
-                code.writeline(f"linear_index = {' + '.join(linear_terms)}")
-                code.writeline(f"valid_index = {' & '.join(valid_terms)}")
-                code.newline()
-
-                code.writeline("for suffix_tile in range(0, SUFFIX_TILES_PER_PROGRAM):")
-                with code.indent():
-                    code.writeline(
-                        "suffix_offsets = "
-                        "(pid_n * SUFFIX_TILES_PER_PROGRAM + suffix_tile) "
-                        "* BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)"
-                    )
-                    code.writeline("src_offsets = (")
-                    with code.indent():
-                        code.writeline(
-                            f"(pid_p * {indexed_volume} + linear_index) * {suffix_size}"
-                        )
-                        code.writeline("+ suffix_offsets")
-                    code.writeline(")")
-                    code.writeline("out_offsets = (")
-                    with code.indent():
-                        code.writeline(f"(pid_p * M + index_offset) * {suffix_size}")
-                        code.writeline("+ suffix_offsets")
-                    code.writeline(")")
-                    code.writeline(
-                        "mask = index_mask & valid_index & "
-                        f"(suffix_offsets < {suffix_size})"
-                    )
-                    code.writeline(
-                        "cur_value = tl.load(input_ptr + src_offsets, mask=mask)"
-                    )
-                    code.writeline(
-                        "tl.store(out_ptr + out_offsets, cur_value, mask=mask)"
-                    )
+        code.writeline("cur_value = tl.load(input_ptr + src_offsets, mask=mask)")
+        code.writeline("tl.store(out_ptr + out_offsets, cur_value, mask=mask)")
 
     code.newline()
     code.newline()
@@ -659,11 +513,7 @@ def generate_index_linearized_wrapper(
         with code.indent():
             code.writeline("P,")
             code.writeline("triton.cdiv(M, meta['BLOCK_SIZE0']),")
-            code.writeline(
-                "triton.cdiv(triton.cdiv(N, meta['BLOCK_SIZE1']), meta['SUFFIX_TILES_PER_PROGRAM'])"
-            )
-            code.writeline(f"if meta['LAYOUT'] == {_LAYOUT_SUFFIX_LOOP}")
-            code.writeline("else triton.cdiv(N, meta['BLOCK_SIZE1']),")
+            code.writeline("triton.cdiv(N, meta['BLOCK_SIZE1']),")
         code.writeline(")")
         code.newline()
         code.writeline(f"{kernel_name}[grid](")
@@ -761,7 +611,7 @@ class LinearizedAdjacentIndexFunction:
         return (
             f"inp_shape_{inp_shape}_start_dim_{start_dim}_"
             f"indices_len_{indices_len}_"
-            f"backend_{_current_backend(inp)}_dtype_{str(inp.dtype).replace('.', '_')}_"
+            f"dtype_{str(inp.dtype).replace('.', '_')}_"
             f"m_{index_bucket}_n_{suffix_bucket}"
         )
 
