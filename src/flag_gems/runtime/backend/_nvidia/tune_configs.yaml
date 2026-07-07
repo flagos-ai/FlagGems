@@ -140,6 +140,22 @@ log_softmax:
       BLOCK_M: 32
       BLOCK_N: 512
     num_warps: 8
+renorm_:
+  - META:
+      BLOCK_SIZE: 4096
+    num_warps: 1
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 1
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 1
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 1
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 1
 mm:
   - META:
       BLOCK_M: 64
