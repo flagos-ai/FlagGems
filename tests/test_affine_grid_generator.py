@@ -33,9 +33,13 @@ def test_affine_grid_generator(shape, dtype, align_corners):
     theta = torch.randn((N, 2, 3), dtype=dtype, device=flag_gems.device)
     size = [N, 3, H, W]
 
-    ref_theta = utils.to_reference(theta)
-
-    ref_out = torch.affine_grid_generator(ref_theta, size, align_corners)
+    # Use CPU reference because PyTorch's CUDA implementation of
+    # affine_grid_generator has known float32 precision issues that
+    # differ from both the documented formula and the CPU implementation.
+    # See: https://github.com/flagos-ai/FlagGems/issues/4577
+    ref_out = torch.affine_grid_generator(theta.cpu(), size, align_corners)
+    if not cfg.TO_CPU:
+        ref_out = ref_out.to(flag_gems.device)
     with flag_gems.use_gems():
         res_out = torch.affine_grid_generator(theta, size, align_corners)
 
