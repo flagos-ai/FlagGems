@@ -63,6 +63,13 @@ case $BACKEND in
       export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH
     fi
     ;;
+  sunrise)
+    export LD_LIBRARY_PATH=/usr/local/tangrt/targets/linux-x86_64/lib:$LD_LIBRARY_PATH
+    if [ -z "${USE_TRITON}" ]; then
+      SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
+      export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH
+    fi
+    ;;
   thead)
     # The envsetup.sh is provided by the PPU SDK
     source /usr/local/PPU_SDK/envsetup.sh
