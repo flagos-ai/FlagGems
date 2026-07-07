@@ -4567,6 +4567,50 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: xlogy_tensor_scalar
+    description: A variant of `xlogy` where `other` is a scalar.
+    for:
+      - xlogy.Scalar_Other
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: xlogy_tensor_scalar_out
+    description: A variant of `xlogy` where `other` is a scalar and the output is assigned to an `out` tensor.
+    for:
+      - xlogy.OutScalar_Other
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: xlogy_scalar_tensor
+    description: A variant of `xlogy` where `input` is a scalar.
+    for:
+      - xlogy.Scalar_Self
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: xlogy_scalar_tensor_out
+    description: A variant of `xlogy` where `input` is a scalar and the output is assigned to an `out` tensor.
+    for:
+      - xlogy.OutScalar_Self
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
   - id: logaddexp
     description: Computes the element-wise logarithm of the sum of the exponentials of two input tensors.
     for:

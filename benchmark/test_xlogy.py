@@ -38,3 +38,70 @@ def test_xlogy_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+def xlogy_tensor_scalar_input_fn(shape, dtype, device):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    yield inp, 3.5
+
+
+@pytest.mark.xlogy_tensor_scalar
+def test_xlogy_tensor_scalar():
+    bench = base.GenericBenchmark(
+        op_name="xlogy_tensor_scalar",
+        torch_op=torch.xlogy,
+        input_fn=xlogy_tensor_scalar_input_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+def xlogy_tensor_scalar_out_input_fn(shape, dtype, device):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    out = torch.empty(shape, dtype=dtype, device=device)
+    yield inp, 3.5, {"out": out}
+
+
+@pytest.mark.xlogy_tensor_scalar_out
+def test_xlogy_tensor_scalar_out():
+    bench = base.GenericBenchmark(
+        op_name="xlogy_tensor_scalar_out",
+        torch_op=torch.xlogy,
+        input_fn=xlogy_tensor_scalar_out_input_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+def xlogy_scalar_tensor_input_fn(shape, dtype, device):
+    # keep ``other`` positive so ``log`` stays finite
+    inp = torch.rand(shape, dtype=dtype, device=device) * 5.0 + 0.01
+    yield 2.0, inp
+
+
+@pytest.mark.xlogy_scalar_tensor
+def test_xlogy_scalar_tensor():
+    bench = base.GenericBenchmark(
+        op_name="xlogy_scalar_tensor",
+        torch_op=torch.xlogy,
+        input_fn=xlogy_scalar_tensor_input_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+def xlogy_scalar_tensor_out_input_fn(shape, dtype, device):
+    inp = torch.rand(shape, dtype=dtype, device=device) * 5.0 + 0.01
+    out = torch.empty(shape, dtype=dtype, device=device)
+    yield 2.0, inp, {"out": out}
+
+
+@pytest.mark.xlogy_scalar_tensor_out
+def test_xlogy_scalar_tensor_out():
+    bench = base.GenericBenchmark(
+        op_name="xlogy_scalar_tensor_out",
+        torch_op=torch.xlogy,
+        input_fn=xlogy_scalar_tensor_out_input_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
