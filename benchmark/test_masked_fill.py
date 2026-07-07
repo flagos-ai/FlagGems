@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, utils
 
 
@@ -13,6 +15,9 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.masked_fill
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_masked_fill():
     bench = base.GenericBenchmark(
         op_name="masked_fill", input_fn=_input_fn, torch_op=torch.masked_fill
@@ -21,6 +26,9 @@ def test_masked_fill():
 
 
 @pytest.mark.masked_fill_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_masked_fill_inplace():
     bench = base.GenericBenchmark(
         op_name="masked_fill_",
@@ -33,6 +41,9 @@ def test_masked_fill_inplace():
 
 
 @pytest.mark.masked_fill_scalar
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_masked_fill_scalar():
     bench = base.GenericBenchmark(
         op_name="masked_fill_scalar", input_fn=_input_fn, torch_op=torch.masked_fill
@@ -41,6 +52,9 @@ def test_masked_fill_scalar():
 
 
 @pytest.mark.masked_fill_scalar_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_masked_fill_scalar_inplace():
     bench = base.GenericBenchmark(
         op_name="masked_fill_scalar_",
