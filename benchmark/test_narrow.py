@@ -1,28 +1,18 @@
 import pytest
 import torch
 
-import flag_gems
 from flag_gems.utils import shape_utils
 
 from . import base, consts, utils
 
 
-class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
+class NarrowBenchmark(base.GenericBenchmark2DOnly):
     def set_more_metrics(self):
         return ["gbps"]
 
     def set_more_shapes(self):
-        # Speed Up Benchmark Test, Big Shape Will Cause Timeout
-        if flag_gems.vendor_name == "kunlunxin":
-            return []
-
-        shapes = super().set_more_shapes()
-        shapes = [
-            shape
-            for shape in shapes
-            if len(shape) == 2 and shape[0] > 16 and shape[1] > 16
-        ]
-        return shapes
+        # narrow slices along dim 0; enumerate 2D shapes explicitly
+        return [(10000, 256), (10000, 4096), (10000, 65536)]
 
 
 def narrow_input_fn(shape, cur_dtype, device):
@@ -43,7 +33,7 @@ def narrow_gbps(bench_fn_args, latency):
 
 @pytest.mark.narrow
 def test_narrow():
-    bench = TensorSelectBenchmark(
+    bench = NarrowBenchmark(
         op_name="narrow",
         torch_op=torch.narrow,
         input_fn=narrow_input_fn,
