@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # Configuration parameters
-mem_threshold=30000     # Maximum memory usage limit (MB)
-sleep_time=120             # Wait time (seconds), default is 2 minutes
+mem_threshold=30000     # Minimum free memory required (MB)
+sleep_time=120          # Wait time between retries (seconds)
+max_wait=600           # Maximum total wait time (seconds)
 
 export KUIPER_HOME=/home/secure/runtime/kuiper
 export PATH=$KUIPER_HOME/bin:$PATH
@@ -18,42 +19,44 @@ fi
 
 echo "Detected $gpu_count TsingMicro card(s)."
 
+waited_time=0
 while true; do
     memory_usage=$(tsm_smi | awk '{if ($2=="|") {print $9} else if ($4=="|" && $11!="|") {print $11} }')
     memory_total=$(tsm_smi | awk '{if ($2=="|") {print $11} else if ($4=="|" && $11!="|") {print $13} }')
 
-    # Check if tsm_smi command was successful
     if [ $? -ne 0 ]; then
-        echo "Failed to query GPU memory information. Please check if tsm_smi is working correctly."
+        echo "Failed to query GPU memory information."
         exit 1
     fi
 
-    # Convert query results to arrays
     IFS=$'\n' read -d '' -r -a usage_array <<< "$memory_usage"
     IFS=$'\n' read -d '' -r -a total_array <<< "$memory_total"
 
-    need_wait=false
+    available_gpus=()
 
-    # Check the available memory for each GPU
     printf " GPU  Total (MiB)  Used (MiB)  Free (MiB)\n"
     for ((i=0; i<$gpu_count; i++)); do
-        # trim 'M' from number
         total_i=${total_array[$i]%?}
         used_i=${usage_array[$i]%?}
         free_i=$((total_i - used_i))
 
         printf "%4d%'13d%'12d%'12d\n" $i ${total_i} ${used_i} ${free_i}
-        if [ $free_i -lt $mem_threshold ]; then
-            need_wait=true
-            break
+        if [ $free_i -ge $mem_threshold ]; then
+            available_gpus+=($i)
         fi
     done
 
-    if [ "$need_wait" = false ]; then
-        echo "All GPUs have sufficient memory."
+    if [ ${#available_gpus[@]} -gt 0 ]; then
+        AVAILABLE_GPUS=$(IFS=,; echo "${available_gpus[*]}")
+        echo "Available GPUs: ${AVAILABLE_GPUS}"
         break
     fi
 
-    echo "GPU memory is insufficient, waiting for $sleep_time seconds before retrying..."
+    echo "No GPU has sufficient memory, waiting for $sleep_time seconds..."
     sleep $sleep_time
+    waited_time=$((waited_time + sleep_time))
+    if [ $waited_time -ge $max_wait ]; then
+        echo "Error: Timed out waiting for available GPU."
+        exit 1
+    fi
 done
