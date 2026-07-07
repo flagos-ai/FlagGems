@@ -47,6 +47,9 @@ def index_add_input_fn(shape, dtype, device):
 
 
 @pytest.mark.index_add
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_add():
     bench = TensorSelectBenchmark(
         op_name="index_add",
@@ -71,6 +74,9 @@ def index_add__input_fn(shape, dtype, device):
 
 
 @pytest.mark.index_add_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_add_():
     bench = TensorSelectBenchmark(
         op_name="index_add_",

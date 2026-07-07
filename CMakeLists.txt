@@ -40,10 +40,10 @@ endif()
 # ==============================================================================
 # Backend Selection
 # ==============================================================================
-set(FLAGGEMS_BACKEND "CUDA" CACHE STRING "Target backend: CUDA, IX, MUSA, NPU, GCU")
-set_property(CACHE FLAGGEMS_BACKEND PROPERTY STRINGS "CUDA" "IX" "MUSA" "NPU" "GCU")
+set(FLAGGEMS_BACKEND "CUDA" CACHE STRING "Target backend: CUDA, IX, MUSA, NPU, GCU, HCU")
+set_property(CACHE FLAGGEMS_BACKEND PROPERTY STRINGS "CUDA" "IX" "MUSA" "NPU" "GCU" "HCU")
 
-if(NOT FLAGGEMS_BACKEND MATCHES "^(CUDA|IX|MUSA|NPU|GCU)$")
+if(NOT FLAGGEMS_BACKEND MATCHES "^(CUDA|IX|MUSA|NPU|GCU|HCU)$")
     message(FATAL_ERROR "Invalid FLAGGEMS_BACKEND: ${FLAGGEMS_BACKEND}")
 endif()
 message(STATUS "Building FlagGems with backend: ${FLAGGEMS_BACKEND}")
@@ -51,7 +51,8 @@ message(STATUS "Building FlagGems with backend: ${FLAGGEMS_BACKEND}")
 # NPU, MUSA and GCU do not need CUDA language
 if(FLAGGEMS_BACKEND STREQUAL "NPU"
    OR FLAGGEMS_BACKEND STREQUAL "MUSA"
-   OR FLAGGEMS_BACKEND STREQUAL "GCU")
+   OR FLAGGEMS_BACKEND STREQUAL "GCU"
+   OR FLAGGEMS_BACKEND STREQUAL "HCU")
     project(FlagGems LANGUAGES CXX VERSION 0.1.0)
 else()
     project(FlagGems LANGUAGES CUDA CXX VERSION 0.1.0)
@@ -68,6 +69,8 @@ elseif(FLAGGEMS_BACKEND STREQUAL "MUSA")
     add_compile_definitions(FLAGGEMS_USE_MUSA)
 elseif(FLAGGEMS_BACKEND STREQUAL "GCU")
     add_compile_definitions(FLAGGEMS_USE_GCU)
+elseif(FLAGGEMS_BACKEND STREQUAL "HCU")
+    add_compile_definitions(FLAGGEMS_USE_HCU)
 endif()
 
 message(STATUS "Building flag gems with C extensions")
@@ -85,6 +88,8 @@ elseif(FLAGGEMS_BACKEND STREQUAL "MUSA")
     include(BackendMUSA)
 elseif(FLAGGEMS_BACKEND STREQUAL "GCU")
     include(BackendGCU)
+elseif(FLAGGEMS_BACKEND STREQUAL "HCU")
+    include(BackendHCU)
 endif()
 
 # torch
@@ -96,8 +101,9 @@ else()
   set(TRITON_JIT_INSTALL ON) # install triton jit
   set(BACKEND ${FLAGGEMS_BACKEND} CACHE STRING "Backend for TritonJIT" FORCE)
   FetchContent_Declare(TritonJIT
-    GIT_REPOSITORY https://github.com/flagos-ai/libtriton_jit
-    GIT_TAG master
+    URL https://resource.flagos.net/repository/flagos-filestore/libtriton_jit/libtriton_jit-0.2.0-rc0.1.tar.gz
+    # GIT_REPOSITORY https://github.com/flagos-ai/libtriton_jit
+    # GIT_TAG master
     # SOURCE_DIR <your local source dir of libtriton_jit>
   )
   FetchContent_MakeAvailable(TritonJIT)
