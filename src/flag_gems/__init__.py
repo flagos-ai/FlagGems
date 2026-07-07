@@ -534,6 +534,8 @@ _FULL_CONFIG = (
     ("nll_loss_nd_forward", nll_loss_nd_forward),
     ("nonzero", nonzero),
     ("nonzero_numpy", nonzero_numpy),
+    ("norm.Scalar", norm_Scalar),
+    ("norm.ScalarOpt_dim", norm_ScalarOpt_dim),
     ("normal.Tensor_Tensor", normal_tensor_tensor),
     ("normal.Tensor_float", normal_tensor_float),
     ("normal.float_Tensor", normal_float_tensor),

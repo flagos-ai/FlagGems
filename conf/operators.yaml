@@ -5549,6 +5549,17 @@ ops:
       - Tensor
     stages:
       - alpha: '5.3'
+  - id: norm
+    description: Computes a vector norm over all elements or along selected dimensions.
+    for:
+      - norm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: normal_
     description: Random sampling operator (normal_).
     for:
