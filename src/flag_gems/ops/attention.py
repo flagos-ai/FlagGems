@@ -9,7 +9,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.config import use_c_extension
-from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
+from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_fa3, mha_varlan_fwd_opt
 from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
@@ -1285,11 +1285,12 @@ def flash_attn_varlen_func(
             logsumexp of each row of the matrix QK^T * scaling (e.g., log of the softmax
             normalization factor).
     """
-    if fa_version != 2:
-        raise RuntimeError("Only FA2 is implemented.")
+    if fa_version not in (2, 3):
+        raise RuntimeError(f"fa_version {fa_version} is not supported. Use 2 or 3.")
     if num_splits > 0:
         raise RuntimeError("num_splits > 0 is not implemented in GEMS.")
     if use_c_extension:
+        assert fa_version == 2, "FA3 varlen is not supported in C extension"
         logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC(C EXTENSION)")
         with torch_device_fn.device(q.device):
             out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
@@ -1333,12 +1334,17 @@ def flash_attn_varlen_func(
         assert (
             cu_seqlens_k is None or seqused_k is None
         ), "cu_seqlens_k and seqused_k cannot be provided at the same time"
-        assert (
-            block_table is None or seqused_k is not None
-        ), "seqused_k must be provided if block_table is provided"
+        if block_table is not None:
+            if fa_version == 3:
+                assert (
+                    seqused_k is not None or cu_seqlens_k is not None
+                ), "seqused_k or cu_seqlens_k must be provided if block_table is provided"
+            else:
+                assert (
+                    seqused_k is not None
+                ), "seqused_k must be provided if block_table is provided"
         if softmax_scale is None:
             softmax_scale = q.shape[-1] ** (-0.5)
-        # custom op does not support non-tuple input
         if window_size is None:
             real_window_size = (-1, -1)
         else:
@@ -1352,31 +1358,59 @@ def flash_attn_varlen_func(
         max_seqlen_k = (
             max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
         )
-        out, q, k, v, softmax_lse, *_ = mha_varlan_fwd(
-            q,
-            k,
-            v,
-            out,
-            cu_seqlens_q,
-            # cu_seqlens_k not used since we use seqused_k, but flash_api.cpp
-            # still wants it so we pass all zeros
-            dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
-            seqused_k,
-            None,
-            block_table,
-            alibi_slopes,
-            max_seqlen_q,
-            max_seqlen_k,
-            dropout_p,
-            softmax_scale,
-            False,
-            causal,
-            real_window_size[0],
-            real_window_size[1],
-            softcap,
-            return_softmax_lse and dropout_p > 0,
-            None,
-        )
+
+        if fa_version == 3:
+            assert alibi_slopes is None, "alibi_slopes is not supported in FA3."
+            logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC FA3")
+            out, q, k, v, softmax_lse, *_ = mha_varlan_fwd_fa3(
+                q,
+                k,
+                v,
+                out,
+                cu_seqlens_q,
+                dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
+                seqused_k,
+                None,           # leftpad_k
+                block_table,
+                max_seqlen_q,
+                max_seqlen_k,
+                softmax_scale,
+                causal,
+                real_window_size[0],
+                real_window_size[1],
+                softcap,
+                False,          # return_softmax
+                None,           # gen
+                q_descale=q_descale,
+                k_descale=k_descale,
+                v_descale=v_descale,
+            )
+        else:
+            out, q, k, v, softmax_lse, *_ = mha_varlan_fwd(
+                q,
+                k,
+                v,
+                out,
+                cu_seqlens_q,
+                # cu_seqlens_k not used since we use seqused_k, but flash_api.cpp
+                # still wants it so we pass all zeros
+                dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
+                seqused_k,
+                None,
+                block_table,
+                alibi_slopes,
+                max_seqlen_q,
+                max_seqlen_k,
+                dropout_p,
+                softmax_scale,
+                False,
+                causal,
+                real_window_size[0],
+                real_window_size[1],
+                softcap,
+                return_softmax_lse and dropout_p > 0,
+                None,
+            )
 
     return (out, softmax_lse) if return_softmax_lse else out
 

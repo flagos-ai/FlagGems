@@ -1,3 +1,4 @@
+import torch
 import triton
 import triton.language as tl
 
@@ -172,6 +173,87 @@ def apply_mask(
             S = tl.where(col_idx[None, :] >= max_seqlen_k, float("-inf"), S)
 
     return S
+
+
+@triton.jit
+def load_q_tile_pack_gqa(
+    q_ptr,
+    q_offset,
+    q_row_stride,
+    q_head_stride,
+    m_block,
+    hid,
+    q_len,
+    d,
+    h_hk_ratio: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    packed_rows = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+    token_idx = packed_rows // h_hk_ratio
+    q_heads = hid * h_hk_ratio + (packed_rows % h_hk_ratio)
+    d_offs = tl.arange(0, BLOCK_K)
+    q_ptrs = (
+        q_ptr
+        + q_offset
+        + token_idx[:, None] * q_row_stride
+        + q_heads[:, None] * q_head_stride
+        + d_offs[None, :]
+    )
+    q_packed_len = q_len * h_hk_ratio
+    mask = (packed_rows[:, None] < q_packed_len) & (d_offs[None, :] < d)
+    return tl.load(q_ptrs, mask=mask, other=0.0)
+
+
+@triton.jit
+def store_o_tile_pack_gqa(
+    o_ptr,
+    o_offset,
+    o_row_stride,
+    o_head_stride,
+    m_block,
+    hid,
+    q_len,
+    d,
+    h_hk_ratio: tl.constexpr,
+    out,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    packed_rows = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+    token_idx = packed_rows // h_hk_ratio
+    q_heads = hid * h_hk_ratio + (packed_rows % h_hk_ratio)
+    d_offs = tl.arange(0, BLOCK_K)
+    o_ptrs = (
+        o_ptr
+        + o_offset
+        + token_idx[:, None] * o_row_stride
+        + q_heads[:, None] * o_head_stride
+        + d_offs[None, :]
+    )
+    q_packed_len = q_len * h_hk_ratio
+    mask = (packed_rows[:, None] < q_packed_len) & (d_offs[None, :] < d)
+    tl.store(o_ptrs, out, mask=mask)
+
+
+@triton.jit
+def store_lse_tile_pack_gqa(
+    softmax_lse_ptr,
+    total_q,
+    lse_offset,
+    m_block,
+    hid,
+    q_len,
+    h_hk_ratio: tl.constexpr,
+    lse,
+    BLOCK_M: tl.constexpr,
+):
+    packed_rows = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+    token_idx = packed_rows // h_hk_ratio
+    q_heads = hid * h_hk_ratio + (packed_rows % h_hk_ratio)
+    lse_ptrs = softmax_lse_ptr + q_heads * total_q + lse_offset + token_idx
+    mask = packed_rows < q_len * h_hk_ratio
+    tl.store(lse_ptrs, lse, mask=mask)
 
 
 @triton.jit
@@ -1645,3 +1727,404 @@ def flash_varlen_fwd_kernel(
         lse,
         mask=lse_row_offset < (lse_offset + q_len),
     )
+
+
+
+# ---------------------------------------------------------------------------
+# FA3 varlen forward kernel (Hopper, packGQA)
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# FA3 varlen forward kernel (gluon launch path)
+#
+# Same algorithm as flash_varlen_fwd_fa3_kernel.  Differs only in TMA policy:
+#   - non-paged Hopper uses tl.make_tensor_descriptor even with cu_seqlens_k
+#   - warp_specialize is disabled when K bounds are runtime-derived, because
+#     TaskIdPropagation cannot track loop-body descriptor bases
+# ---------------------------------------------------------------------------
+
+
+@libentry()
+@triton.jit(
+    do_not_specialize=[
+        "q_batch_stride",
+        "k_batch_stride",
+        "v_batch_stride",
+        "o_batch_stride",
+        "b",
+        "bk",
+        "seqlen_q",
+        "seqlen_k",
+        "seqlen_q_rounded",
+        "seqlen_k_rounded",
+        "total_q",
+        "qk_descale",
+        "v_descale",
+    ]
+)
+def flash_varlen_fwd_fa3_kernel(
+    q_ptr,
+    k_ptr,
+    v_ptr,
+    o_ptr,
+    p_ptr,
+    softmax_lse_ptr,
+    q_row_stride,
+    k_row_stride,
+    v_row_stride,
+    q_head_stride,
+    k_head_stride,
+    v_head_stride,
+    o_row_stride,
+    o_head_stride,
+    q_batch_stride,
+    k_batch_stride,
+    v_batch_stride,
+    o_batch_stride,
+    is_cu_seqlens_q: tl.constexpr,
+    cu_seqlens_q_ptr,
+    is_cu_seqlens_k: tl.constexpr,
+    cu_seqlens_k_ptr,
+    is_seqused_k: tl.constexpr,
+    seqused_k_ptr,
+    # sizes
+    b,
+    bk,
+    h: tl.constexpr,
+    hk: tl.constexpr,
+    h_hk_ratio: tl.constexpr,
+    seqlen_q,
+    seqlen_k,
+    seqlen_q_rounded,
+    seqlen_k_rounded,
+    d: tl.constexpr,
+    d_rounded: tl.constexpr,
+    # scaling factors
+    is_softcap: tl.constexpr,
+    softcap: tl.constexpr,
+    scale_softmax: tl.constexpr,
+    scale_softmax_log2: tl.constexpr,
+    # dropout (unsupported in FA3, kept for fwd_params compat)
+    is_dropout: tl.constexpr,
+    p_dropout: tl.constexpr,
+    rp_dropout: tl.constexpr,
+    p_dropout_in_uint8_t: tl.constexpr,
+    philox_args,
+    return_softmax: tl.constexpr,
+    # causal / swa
+    is_causal: tl.constexpr,
+    is_local: tl.constexpr,
+    window_size_left: tl.constexpr,
+    window_size_right: tl.constexpr,
+    seqlenq_ngroups_swapped: tl.constexpr,
+    is_paged: tl.constexpr,
+    # alibi slot (not used in FA3, kept for fwd_params compat)
+    is_alibi: tl.constexpr,
+    alibi_slopes_ptr,
+    alibi_slopes_batch_stride: tl.constexpr,
+    # block table
+    total_q,
+    page_table_ptr,
+    page_table_batch_stride: tl.constexpr,
+    block_size: tl.constexpr,
+    k_page_stride,
+    # FA3-specific
+    HAS_DESCALE: tl.constexpr,
+    qk_descale,
+    v_descale,
+    IS_HOPPER: tl.constexpr,
+    PACK_GQA: tl.constexpr,
+    # tile sizes
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    num_warps: tl.constexpr,
+    num_stages: tl.constexpr,
+):
+    m_block = tl.program_id(0)
+    bid     = tl.program_id(1)
+    hid     = tl.program_id(2)
+    if is_cu_seqlens_q:
+        q_eos = tl.load(cu_seqlens_q_ptr + bid + 1).to(tl.int32)
+        q_bos = tl.load(cu_seqlens_q_ptr + bid).to(tl.int32)
+        q_len = q_eos - q_bos
+        q_offset   = q_bos * q_row_stride
+        o_offset   = q_bos * o_row_stride
+        lse_offset = q_bos
+    else:
+        q_len      = seqlen_q
+        q_offset   = bid * q_batch_stride
+        o_offset   = bid * o_batch_stride
+        lse_offset = bid * seqlen_q
+
+    if is_cu_seqlens_k:
+        k_eos = tl.load(cu_seqlens_k_ptr + bid + 1).to(tl.int32)
+        k_bos = tl.load(cu_seqlens_k_ptr + bid).to(tl.int32)
+        k_len_cache = k_eos - k_bos
+    else:
+        k_bos       = 0
+        k_len_cache = seqlen_k
+
+    if is_seqused_k:
+        k_len = tl.load(seqused_k_ptr + bid).to(tl.int32)
+    else:
+        k_len = k_len_cache
+
+    q_packed_len = q_len * h_hk_ratio
+    if PACK_GQA:
+        if m_block * BLOCK_M >= q_packed_len:
+            return
+    else:
+        if m_block * BLOCK_M >= q_len:
+            return
+
+    is_even_mn: tl.constexpr = False
+
+    use_hopper_tma: tl.constexpr = IS_HOPPER and not is_paged
+    use_hopper_tma_qo: tl.constexpr = use_hopper_tma and not PACK_GQA
+    use_warp_specialize: tl.constexpr = (
+        use_hopper_tma and not is_cu_seqlens_k and not is_seqused_k
+    )
+
+    if PACK_GQA:
+        q_row_start = (m_block * BLOCK_M) // h_hk_ratio
+        q_row_bound = tl.minimum((m_block + 1) * BLOCK_M, q_packed_len) // h_hk_ratio
+    else:
+        q_row_start = m_block * BLOCK_M
+        q_row_bound = (m_block + 1) * BLOCK_M
+
+    if is_local:
+        n_block_min = tl.maximum(
+            0,
+            (q_row_start + k_len - q_len - window_size_left) // BLOCK_N,
+        )
+    else:
+        n_block_min = 0
+
+    n_block_max = tl.cdiv(k_len, BLOCK_N)
+    if is_causal or is_local:
+        n_block_max = tl.minimum(
+            n_block_max,
+            tl.cdiv(
+                q_row_bound + k_len - q_len + window_size_right,
+                BLOCK_N,
+            ),
+        )
+
+    if PACK_GQA:
+        kv_hid = hid
+    else:
+        kv_hid = hid // h_hk_ratio
+    q_row_offset = hid * q_head_stride if not PACK_GQA else 0
+    k_row_offset = kv_hid * k_head_stride
+
+    if is_paged:
+        page_table_ptr += bid * page_table_batch_stride
+    k_ptr_base = k_ptr + k_row_offset
+    v_ptr_base = v_ptr + k_row_offset
+
+    if PACK_GQA:
+        bQ = load_q_tile_pack_gqa(
+            q_ptr, q_offset, q_row_stride, q_head_stride,
+            m_block, hid, q_len, d, h_hk_ratio, BLOCK_M, BLOCK_K,
+        )
+    elif use_hopper_tma_qo:
+        desc_q = tl.make_tensor_descriptor(
+            q_ptr + q_offset + q_row_offset,
+            shape=[q_len, d],
+            strides=[q_row_stride, 1],
+            block_shape=[BLOCK_M, BLOCK_K],
+        )
+        bQ = desc_q.load([m_block * BLOCK_M, 0])
+    else:
+        gQ = tl.make_block_ptr(
+            base=q_ptr + q_offset + q_row_offset,
+            shape=(q_len, d),
+            strides=(q_row_stride, 1),
+            offsets=(m_block * BLOCK_M, 0),
+            block_shape=(BLOCK_M, BLOCK_K),
+            order=(1, 0),
+        )
+        bQ = tl.load(gQ, boundary_check=(0, 1))
+
+    acc_    = tl.zeros((BLOCK_M, BLOCK_K), dtype=tl.float32)
+    rowmax_ = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
+    rowsum_ = tl.zeros([BLOCK_M], dtype=tl.float32)
+
+    row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+    if PACK_GQA:
+        mask_row_idx = row_idx // h_hk_ratio
+    else:
+        mask_row_idx = row_idx
+
+    if not is_causal and not is_local:
+        n_masking_steps = 1
+    elif is_even_mn:
+        n_masking_steps = tl.cdiv(BLOCK_M, BLOCK_N)
+    else:
+        n_masking_steps = tl.cdiv(BLOCK_M, BLOCK_N) + 1
+    n_masking_steps = tl.minimum(n_block_max - n_block_min, n_masking_steps)
+
+    if use_hopper_tma:
+        k_ptr_seq = k_ptr_base + k_bos * k_row_stride
+        v_ptr_seq = v_ptr_base + k_bos * k_row_stride
+        desc_k = tl.make_tensor_descriptor(
+            k_ptr_seq,
+            shape=[k_len, d],
+            strides=[k_row_stride, 1],
+            block_shape=[BLOCK_N, BLOCK_K],
+        )
+        desc_v = tl.make_tensor_descriptor(
+            v_ptr_seq,
+            shape=[k_len, d],
+            strides=[v_row_stride, 1],
+            block_shape=[BLOCK_N, BLOCK_K],
+        )
+
+    n_block = n_block_max - 1
+    for step in tl.range(0, n_masking_steps):
+        col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
+        if is_paged:
+            bK, bV = load_from_kvcache(
+                col_idx, k_len, page_table_ptr, k_ptr_base, v_ptr_base,
+                block_size, d, k_row_stride,
+                BLOCK_K=BLOCK_K, k_page_stride=k_page_stride, boundary_check=True,
+            )
+        else:
+            start_n = n_block * BLOCK_N
+            if use_hopper_tma:
+                bK = tl.trans(desc_k.load([start_n, 0]))
+                bV = desc_v.load([start_n, 0])
+            else:
+                k_ptr_seq = k_ptr_base + k_bos * k_row_stride
+                v_ptr_seq = v_ptr_base + k_bos * k_row_stride
+                gK = tl.make_block_ptr(
+                    base=k_ptr_seq, shape=(k_len, d),
+                    strides=(k_row_stride, 1), offsets=(start_n, 0),
+                    block_shape=(BLOCK_N, BLOCK_K), order=(0, 1),
+                )
+                gV = tl.make_block_ptr(
+                    base=v_ptr_seq, shape=(k_len, d),
+                    strides=(v_row_stride, 1), offsets=(start_n, 0),
+                    block_shape=(BLOCK_N, BLOCK_K), order=(0, 1),
+                )
+                bK = tl.trans(tl.load(gK, boundary_check=(0, 1)))
+                bV = tl.load(gV, boundary_check=(0, 1))
+
+        S = tl.dot(bQ, bK, out_dtype=tl.float32)
+        if HAS_DESCALE:
+            S *= qk_descale
+        S = apply_softcap(S, softcap, is_softcap)
+        S = apply_mask(
+            S, col_idx, mask_row_idx, q_len, k_len,
+            window_size_left, window_size_right,
+            is_even_mn=False, is_causal=is_causal, is_local=is_local,
+        )
+        acc_, P, rowmax_, rowsum_ = softmax_rescale(
+            acc_, S, rowmax_, rowsum_,
+            softmax_scale_log2e=scale_softmax_log2, is_border=True,
+        )
+        P = P.to(q_ptr.type.element_ty)
+        acc_ = tl.dot(P, bV, acc_)
+        if HAS_DESCALE:
+            acc_ *= v_descale
+        n_block -= 1
+
+    for n_block in tl.range(
+        n_block_max - n_masking_steps - 1, n_block_min - 1, step=-1,
+        num_stages=num_stages,
+        warp_specialize=use_warp_specialize,
+    ):
+        col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
+        if is_paged:
+            bK, bV = load_from_kvcache(
+                col_idx, k_len, page_table_ptr, k_ptr_base, v_ptr_base,
+                block_size, d, k_row_stride,
+                BLOCK_K=BLOCK_K, k_page_stride=k_page_stride,
+            )
+        else:
+            start_n = n_block * BLOCK_N
+            if use_hopper_tma:
+                bK = tl.trans(desc_k.load([start_n, 0]))
+                bV = desc_v.load([start_n, 0])
+            else:
+                k_ptr_seq = k_ptr_base + k_bos * k_row_stride
+                v_ptr_seq = v_ptr_base + k_bos * k_row_stride
+                gK = tl.make_block_ptr(
+                    base=k_ptr_seq, shape=(k_len, d),
+                    strides=(k_row_stride, 1), offsets=(start_n, 0),
+                    block_shape=(BLOCK_N, BLOCK_K), order=(0, 1),
+                )
+                gV = tl.make_block_ptr(
+                    base=v_ptr_seq, shape=(k_len, d),
+                    strides=(v_row_stride, 1), offsets=(start_n, 0),
+                    block_shape=(BLOCK_N, BLOCK_K), order=(0, 1),
+                )
+                bK = tl.trans(tl.load(gK))
+                bV = tl.load(gV)
+
+        S = tl.dot(bQ, bK, out_dtype=tl.float32)
+        if HAS_DESCALE:
+            S *= qk_descale
+        S = apply_softcap(S, softcap, is_softcap)
+        S = apply_mask(
+            S, col_idx, mask_row_idx, q_len, k_len,
+            window_size_left, window_size_right,
+            is_even_mn=True, is_causal=False, is_local=is_local,
+        )
+        acc_, P, rowmax_, rowsum_ = softmax_rescale(
+            acc_, S, rowmax_, rowsum_,
+            softmax_scale_log2e=scale_softmax_log2, is_border=is_local,
+        )
+        P = P.to(q_ptr.type.element_ty)
+        acc_ = tl.dot(P, bV, acc_)
+        if HAS_DESCALE:
+            acc_ *= v_descale
+
+    lse = tl.where(
+        rowsum_ == 0 | (rowsum_ != rowsum_),
+        float("inf"),
+        rowmax_ * scale_softmax + tl.log(rowsum_),
+    )
+    inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
+    acc_ *= inv_sum[:, None]
+    out = acc_.to(o_ptr.type.element_ty)
+
+    if PACK_GQA:
+        store_o_tile_pack_gqa(
+            o_ptr, o_offset, o_row_stride, o_head_stride,
+            m_block, hid, q_len, d, h_hk_ratio, out, BLOCK_M, BLOCK_K,
+        )
+        store_lse_tile_pack_gqa(
+            softmax_lse_ptr, total_q, lse_offset,
+            m_block, hid, q_len, h_hk_ratio, lse, BLOCK_M,
+        )
+    else:
+        o_row_offset = hid * o_head_stride
+        if use_hopper_tma_qo:
+            desc_o = tl.make_tensor_descriptor(
+                o_ptr + o_offset + o_row_offset,
+                shape=[q_len, d],
+                strides=[o_row_stride, 1],
+                block_shape=[BLOCK_M, BLOCK_K],
+            )
+            desc_o.store([m_block * BLOCK_M, 0], out)
+        else:
+            gO = tl.make_block_ptr(
+                base=o_ptr + o_offset + o_row_offset,
+                shape=(q_len, d),
+                strides=(o_row_stride, 1),
+                offsets=(m_block * BLOCK_M, 0),
+                block_shape=(BLOCK_M, BLOCK_K),
+                order=(1, 0),
+            )
+            tl.store(gO, out, boundary_check=(0, 1))
+
+        softmax_lse_ptr += hid * total_q
+        lse_row_offset = lse_offset + m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+        tl.store(
+            softmax_lse_ptr + lse_row_offset,
+            lse,
+            mask=lse_row_offset < (lse_offset + q_len),
+        )
