@@ -35,7 +35,7 @@ class SparseSemiStructuredAddmmBenchmark(base.Benchmark):
 def test_sparse_semi_structured_addmm():
     bench = SparseSemiStructuredAddmmBenchmark(
         op_name="sparse_semi_structured_addmm",
-        torch_op=flag_gems._sparse_semi_structured_addmm,
+        torch_op=torch.ops._sparse_semi_structured_addmm,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
