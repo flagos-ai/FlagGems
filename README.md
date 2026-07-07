@@ -19,3 +19,6 @@ Flaggems127-fantasy
 
 ## 进迭分支
 Flaggems127-spacemit
+
+## 智源分支
+FlagGems127+50
