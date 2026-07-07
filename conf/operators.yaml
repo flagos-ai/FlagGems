@@ -480,6 +480,30 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: and_scalar
+    description: |
+      Computes the bitwise AND operation through the tensor dunder method with a scalar operand.
+    for:
+      - __and__.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: and_tensor
+    description: |
+      Computes the bitwise AND operation through the tensor dunder method with tensor operands.
+    for:
+      - __and__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
   - id: angle
     description: Computes the element-wise angle (in radians) of the given `input` tensor.
     for:
@@ -993,20 +1017,6 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: bf16_paged_mqa_logits
-    description: |
-      Compute multi-head weighted ReLU attention logits on paged BF16
-      KV cache. Uses shape-specialized Triton kernels for H=32 and H=64
-      with zero-constexpr dispatch for decode-phase inference.
-    for:
-      - bf16_paged_mqa_logits
-    labels:
-      - fused
-      - KernelGen
-    kind:
-      - NeuralNetwork
-    stages:
-      - alpha: '5.4'
   - id: bernoulli
     description: |
       Draws binary random numbers (0 or 1) from a Bernoulli distribution with per-element probabilities.
@@ -1031,6 +1041,20 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: bf16_paged_mqa_logits
+    description: |
+      Compute multi-head weighted ReLU attention logits on paged BF16
+      KV cache. Uses shape-specialized Triton kernels for H=32 and H=64
+      with zero-constexpr dispatch for decode-phase inference.
+    for:
+      - bf16_paged_mqa_logits
+    labels:
+      - fused
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: bincount
     description: Count the frequency of each value in an array of non-negative integers.
     for:
@@ -3038,21 +3062,6 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
-  - id: fp8_fp4_mqa_logits
-    description: |
-      Compute weighted MQA logits with FP8 quantized Q and K tensors.
-      Uses head-batched tiled dot products with K reuse for high throughput
-      on DeepSeek V4 sparse attention indexer workloads.
-    for:
-      - vllm.utils.deep_gemm.fp8_fp4_mqa_logits
-    labels:
-      - fused
-      - vLLM
-      - KernelGen
-    kind:
-      - NeuralNetwork
-    stages:
-      - alpha: '5.1'
   - id: fp8_fp4_mega_moe
     description: |
       Functional Triton fallback for local FP8 x FP4 MegaMoE. It consumes
@@ -3070,6 +3079,21 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: fp8_fp4_mqa_logits
+    description: |
+      Compute weighted MQA logits with FP8 quantized Q and K tensors.
+      Uses head-batched tiled dot products with K reuse for high throughput
+      on DeepSeek V4 sparse attention indexer workloads.
+    for:
+      - vllm.utils.deep_gemm.fp8_fp4_mqa_logits
+    labels:
+      - fused
+      - vLLM
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: fp8_fp4_paged_mqa_logits
     description: |
       Compute paged multi-query attention logits from FP8 queries against

@@ -57,6 +57,8 @@ else
     | tar xz -C "$HOME/.local/bin" 2>/dev/null \
     || { curl -LsSf https://astral.sh/uv/install.sh | sh; }
   export PATH="$HOME/.local/bin:$PATH"
+  # Persist PATH for subsequent GitHub Actions steps
+  [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   command -v uv &>/dev/null || { printf "uv installation"; fail; }
   printf "Installed $(uv --version)"
   ok
@@ -144,8 +146,12 @@ fi
 # ── Install FlagGems ──────────────────────────────────────────
 # Use --no-build-isolation so the build process reuses the build tools
 # already installed in the current venv.
-# Fetch tags for setuptools-scm version detection (shallow clones lack them).
-git fetch --tags --quiet 2>/dev/null || true
+# Fetch tags and deepen history for setuptools-scm version detection.
+# Shallow clones (CI default) lack tag reachability.
+git fetch --tags --unshallow --quiet 2>/dev/null \
+  || git fetch --tags --depth=500 --quiet 2>/dev/null \
+  || git fetch --tags --quiet 2>/dev/null \
+  || true
 printf "Installing FlagGems [${BACKEND}] ..."
 uv pip install --no-build-isolation ".[${BACKEND}]" \
   --default-index "${FLAGOS_PYPI}" \

@@ -46,6 +46,8 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    ("__and__.Scalar", bitwise_and_scalar),
+    ("__and__.Tensor", bitwise_and_tensor),
     ("__ilshift__.Tensor", __ilshift__),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
@@ -665,11 +667,13 @@ _FULL_CONFIG = (
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special_chebyshev_polynomial_w", special_chebyshev_polynomial_w),
     ("special_chebyshev_polynomial_w_out", special_chebyshev_polynomial_w_out),
+    ("special_gammainc", special_gammainc),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_i0e", special_i0e),
     ("special_i0e_out", special_i0e_out),
     ("special_i1", special_i1),
     ("special_i1_out", special_i1_out),
+    ("special_log_softmax", special_log_softmax),
     ("special_shifted_chebyshev_polynomial_u", special_shifted_chebyshev_polynomial_u),
     (
         "special_shifted_chebyshev_polynomial_u_",
