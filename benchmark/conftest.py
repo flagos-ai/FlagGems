@@ -1,9 +1,11 @@
 import json
 import logging
 import os
+from datetime import datetime
 
 import pytest
 import torch
+import yaml
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
@@ -29,6 +31,7 @@ class BenchConfig:
         self.bench_level = BenchLevel.COMPREHENSIVE
         self.warm_up = DEFAULT_WARMUP_COUNT
         self.repetition = DEFAULT_ITER_COUNT
+        self.no_torch = False
         self.record_log = False
         self.user_desired_dtypes = None
         self.user_desired_metrics = None
@@ -37,6 +40,11 @@ class BenchConfig:
 
 
 Config = BenchConfig()
+Benchmark_Results = []
+
+
+def record_benchmark_result(result):
+    Benchmark_Results.append(json.loads(result.to_json()))
 
 
 def pytest_addoption(parser):
@@ -71,6 +79,13 @@ def pytest_addoption(parser):
         "--iter",
         default=DEFAULT_ITER_COUNT,
         help="Number of reps for each benchmark run.",
+    )
+
+    parser.addoption(
+        "--no-torch",
+        action="store_true",
+        default=False,
+        help="Disable torch baseline benchmark and only collect FlagGems latency.",
     )
 
     parser.addoption(
@@ -137,6 +152,8 @@ def pytest_configure(config):
 
     iter_value = config.getoption("--iter")
     Config.repetition = int(iter_value)
+
+    Config.no_torch = config.getoption("--no-torch")
 
     types_str = config.getoption("--dtypes")
     dtypes = [getattr(torch, dtype) for dtype in types_str] if types_str else types_str
@@ -230,3 +247,28 @@ def extract_and_log_op_attributes(request):
 
     if Config.record_log and op_attributes:
         logging.info(json.dumps(op_attributes, indent=2))
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if not Benchmark_Results:
+        return
+
+    payload = {
+        "metadata": {
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "warmup": Config.warm_up,
+            "iter": Config.repetition,
+            "no_torch": Config.no_torch,
+            "level": Config.bench_level.value,
+            "mode": "cpu" if Config.cpu_mode else device,
+            "shape_file": Config.shape_file,
+        },
+        "results": Benchmark_Results,
+    }
+    repo_root = os.path.dirname(os.path.dirname(__file__))
+    json_path = os.path.join(repo_root, "benchmark_v22_results.json")
+    yaml_path = os.path.join(repo_root, "benchmark_v22_results.yaml")
+    with open(json_path, "w", encoding="utf-8") as json_file:
+        json.dump(payload, json_file, indent=2)
+    with open(yaml_path, "w", encoding="utf-8") as yaml_file:
+        yaml.safe_dump(payload, yaml_file, sort_keys=False)

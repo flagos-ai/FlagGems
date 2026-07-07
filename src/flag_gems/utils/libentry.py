@@ -197,7 +197,7 @@ class LibEntry(triton.KernelInterface):
         return tuple(spec_key + dns_key + const_args)
 
     def run(self, *args, **kwargs):
-        grid = kwargs["grid"]
+        # grid = kwargs["grid"]
 
         # collect all the arguments
         spec_args = []  # specialize arguments
@@ -274,17 +274,12 @@ class LibEntry(triton.KernelInterface):
 
         kernel, constexprs = cache[entry_key]
 
-        if callable(grid):
-            # collect all arguments to the grid fn，ie:
-            # 1. args,
-            # 2. kwargs,
-            # 3. all all other captured arguments in CompiledKernel from Autotunner & Heuristics
-            # when kwargs & captured args conflict, captured args have higher priority
-            meta = {**dict(zip(self.arg_names, args)), **kwargs, **constexprs}
-            grid = grid(meta)
-        grid = grid + (1, 1)
-
-        kernel[grid[0:3]](*k_args)
+        # In Triton 3.5.0+, the compiled kernel launch API changed and requires
+        # additional internal arguments (packed_metadata, launch_metadata, etc.).
+        # Directly calling kernel[grid](*k_args) no longer works for cached kernels.
+        # Instead, we go through the normal JIT run path which handles all internal
+        # arguments correctly, while still benefiting from Triton's internal compilation cache.
+        self.fn.run(*args, **kwargs)
         return kernel, constexprs
 
 
