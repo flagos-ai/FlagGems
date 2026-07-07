@@ -49,3 +49,4 @@ def test_unsqueeze_(shape, dtype, dim):
         res_out = inp.unsqueeze_(dim)
 
     utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(inp, ref_inp)
