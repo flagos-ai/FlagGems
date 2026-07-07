@@ -46,11 +46,15 @@ RADIX_BITS_FINAL = 8
 RADIX_SIZE_FINAL = 1 << RADIX_BITS_FINAL
 
 
-def _get_decode_split_blocks(num_rows, vocab_size, top_k):
+def _get_decode_split_blocks(num_rows, vocab_size, top_k, stride1):
     if vocab_size >= SPLIT_WORK_THRESHOLD:
         return MULTIPLE_BLOCKS_PER_ROW_CONFIG
+    # The medium-vocab split path is only enabled for contiguous rows
+    # (stride1 == 1). For strided rows the multi-block kernel would offset by
+    # an unscaled row_start, so keep those on the safe single-block path.
     if (
-        vocab_size >= MEDIUM_VOCAB_SPLIT_WORK_THRESHOLD
+        stride1 == 1
+        and vocab_size >= MEDIUM_VOCAB_SPLIT_WORK_THRESHOLD
         and top_k >= MEDIUM_VOCAB_SPLIT_TOPK_THRESHOLD
     ):
         if num_rows >= MEDIUM_VOCAB_MANY_ROWS_THRESHOLD:
@@ -1244,7 +1248,7 @@ def top_k_per_row_decode(
     use_radix_final = vocab_size >= SORTING_ALGORITHM_THRESHOLD
     if HAS_TLE:
         topkp = triton.next_power_of_2(top_k)
-        split_blocks = _get_decode_split_blocks(num_rows, vocab_size, top_k)
+        split_blocks = _get_decode_split_blocks(num_rows, vocab_size, top_k, stride1)
         if split_blocks == 1:
             tle_top_k_per_row_decode[(num_rows,)](
                 logits,
