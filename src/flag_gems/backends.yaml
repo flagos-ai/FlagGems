@@ -125,8 +125,6 @@ backends:
       - torch_xray==2.0.4
       - xformers==0.0.29+1e7a8ec.d20260114
       - xmlir==1.0.0.1
-    post_install:
-      - uninstall: pytest-repeat
 
   metax:
     python: "3.12"

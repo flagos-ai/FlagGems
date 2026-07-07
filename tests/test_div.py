@@ -43,6 +43,100 @@ def test_div_tensor_tensor_(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+def _make_nonzero_float_tensor(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    return torch.where(inp >= 0, inp + 0.1, inp - 0.1)
+
+
+def _make_nonzero_int_tensor(shape, dtype):
+    inp = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    return torch.where(inp == 0, 1, inp)
+
+
+# div.Tensor_mode with rounding_mode keyword
+@pytest.mark.div_tensor_mode
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_tensor_mode_float(shape, rounding_mode, dtype):
+    if rounding_mode == "trunc" and dtype != torch.float32:
+        pytest.skip("tl.math.div_rz only supports float32/float64")
+
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = _make_nonzero_float_tensor(shape, dtype)
+    ref_inp1 = utils.to_reference(inp1, False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode=rounding_mode)
+    with flag_gems.use_gems():
+        res_out = torch.div(inp1, inp2, rounding_mode=rounding_mode)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.div_tensor_mode
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_div_tensor_mode_int(shape, rounding_mode, dtype):
+    inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    inp2 = _make_nonzero_int_tensor(shape, dtype)
+    ref_inp1 = utils.to_reference(inp1, False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode=rounding_mode)
+    with flag_gems.use_gems():
+        res_out = torch.div(inp1, inp2, rounding_mode=rounding_mode)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+# div_.Tensor_mode with rounding_mode keyword
+@pytest.mark.div_tensor_mode_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_tensor_mode_float_(shape, rounding_mode, dtype):
+    if rounding_mode == "trunc" and dtype != torch.float32:
+        pytest.skip("tl.math.div_rz only supports float32/float64")
+
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = _make_nonzero_float_tensor(shape, dtype)
+    ref_inp1 = utils.to_reference(inp1.clone(), False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = ref_inp1.div_(ref_inp2, rounding_mode=rounding_mode)
+    with flag_gems.use_gems():
+        res_out = inp1.div_(inp2, rounding_mode=rounding_mode)
+
+    assert res_out is inp1
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.div_tensor_mode_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_div_tensor_mode_int_(shape, rounding_mode, dtype):
+    inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    inp2 = _make_nonzero_int_tensor(shape, dtype)
+    ref_inp1 = utils.to_reference(inp1.clone(), False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = ref_inp1.div_(ref_inp2, rounding_mode=rounding_mode)
+    with flag_gems.use_gems():
+        res_out = inp1.div_(inp2, rounding_mode=rounding_mode)
+
+    assert res_out is inp1
+    utils.gems_assert_equal(res_out, ref_out)
+
+
 # div.Tensor with true_divide
 @pytest.mark.div_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
