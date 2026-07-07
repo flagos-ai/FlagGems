@@ -16,7 +16,9 @@ except ImportError:
 from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
+from ..utils.limits import get_dtype_max, get_dtype_min
 
+logger = logging.getLogger(__name__)
 _MIN_FLOAT32_VAL = tl.constexpr(torch.finfo(torch.float32).min)
 _MAX_FLOAT32_VAL = tl.constexpr(torch.finfo(torch.float32).max)
 _MIN_FLOAT16_VAL = tl.constexpr(torch.finfo(torch.float16).min)
