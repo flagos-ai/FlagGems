@@ -109,6 +109,7 @@ from flag_gems.ops.bitwise_or import (
 from flag_gems.ops.bitwise_right_shift import bitwise_right_shift, bitwise_right_shift_
 from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.broadcast_to import broadcast_to
+from flag_gems.ops.bucketize import bucketize
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.cdist_backward import _cdist_backward
@@ -312,6 +313,7 @@ from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
+from flag_gems.ops.mish import mish, mish_
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
@@ -668,6 +670,7 @@ __all__ = [
     "bmm",
     "bmm_out",
     "broadcast_to",
+    "bucketize",
     "cat",
     "cat_out",
     "cauchy",
@@ -928,6 +931,8 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
+    "mish",
+    "mish_",
     "mm",
     "mm_out",
     "mode",
