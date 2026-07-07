@@ -17,7 +17,7 @@ else:
     FLOAT_DTYPES = utils.ALL_FLOAT_DTYPES
     DIM_LIST = [0, 1, [0, 1], [1, 0]]
     KEEP_DIM = [True, False]
-    ORD_LIST = [2, float("inf"), -float("inf"), 0, 1]
+    ORD_LIST = [2, float("inf"), -float("inf"), 0, 1, -2]
 
 
 def _get_reduce_dim(shape, dim):
