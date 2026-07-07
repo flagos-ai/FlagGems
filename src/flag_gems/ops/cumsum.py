@@ -218,7 +218,14 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     for i in range(dim):
         M *= shape[i]
     inp = inp.contiguous()
-    K = inp.numel() // M // N
+
+    # torch.cumsum only enforces the out= dtype when an explicit dtype= is
+    # given (otherwise out may keep its own dtype). Check it up front, before
+    # dtype is defaulted, and even for empty inputs — matching torch.
+    if out is not None and dtype is not None and out.dtype != dtype:
+        raise RuntimeError(
+            f"Expected out tensor to have dtype {dtype}, but got {out.dtype} instead"
+        )
 
     if dtype is None:
         dtype = inp.dtype
@@ -226,6 +233,16 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
             dtype = torch.int64
     if out is None:
         out = torch.empty_like(inp, dtype=dtype)
+    elif out.shape != inp.shape:
+        # cumsum is shape-preserving, so resize a stale out to the input shape.
+        out.resize_(inp.shape)
+
+    # Empty input: nothing to scan. out now has the right (empty) shape, so
+    # return before the div-by-zero below when a leading/scanned dim is 0.
+    if inp.numel() == 0:
+        return out
+
+    K = inp.numel() // M // N
 
     compute_dtype = out.dtype
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
