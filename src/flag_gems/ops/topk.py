@@ -5,24 +5,34 @@ import torch
 import triton
 import triton.language as tl
 import triton.language.core as core
-from triton.language.standard import _log2, zeros_like
 
-from ..runtime import torch_device_fn
-from ..utils import libentry
-from ..utils import triton_lang_extension as tle
+try:
+    # TODO: Triton 2.1 does not implement _log2.
+    # Remove the try-catch block once all vendors upgrade to a newer version of Triton.
+    from triton.language.standard import _log2, zeros_like
+except ImportError:
+    pass
 
-_MIN_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).min
-_MAX_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).max
-_MIN_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).min
-_MAX_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).max
-_MIN_BFLOAT16_VAL: tl.constexpr = torch.finfo(torch.bfloat16).min
-_MAX_BFLOAT16_VAL: tl.constexpr = torch.finfo(torch.bfloat16).max
-_MIN_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).min
-_MAX_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).max
-_MIN_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).min
-_MAX_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).max
-_MIN_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).min
-_MAX_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).max
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils.limits import get_dtype_max, get_dtype_min
+
+logger = logging.getLogger(__name__)
+_MIN_FLOAT32_VAL = tl.constexpr(torch.finfo(torch.float32).min)
+_MAX_FLOAT32_VAL = tl.constexpr(torch.finfo(torch.float32).max)
+_MIN_FLOAT16_VAL = tl.constexpr(torch.finfo(torch.float16).min)
+_MAX_FLOAT16_VAL = tl.constexpr(torch.finfo(torch.float16).max)
+_MIN_BFLOAT16_VAL = tl.constexpr(torch.finfo(torch.bfloat16).min)
+_MAX_BFLOAT16_VAL = tl.constexpr(torch.finfo(torch.bfloat16).max)
+_MIN_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).min)
+_MAX_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).max)
+_MIN_INT16_VAL = tl.constexpr(torch.iinfo(torch.int16).min)
+_MAX_INT16_VAL = tl.constexpr(torch.iinfo(torch.int16).max)
+_MIN_INT32_VAL = tl.constexpr(torch.iinfo(torch.int32).min)
+_MAX_INT32_VAL = tl.constexpr(torch.iinfo(torch.int32).max)
+_MIN_INT64_VAL = tl.constexpr(torch.iinfo(torch.int64).min)
+_MAX_INT64_VAL = tl.constexpr(torch.iinfo(torch.int64).max)
 
 
 @triton.jit
@@ -52,21 +62,10 @@ def _get_iinfo_val(
     dtype,
     return_max,
 ):
-    if dtype is tl.int16:
-        if return_max:
-            return _MAX_INT16_VAL
-        else:
-            return _MIN_INT16_VAL
-    elif dtype is tl.int32:
-        if return_max:
-            return _MAX_INT32_VAL
-        else:
-            return _MIN_INT32_VAL
-    elif dtype is tl.int64:
-        if return_max:
-            return _MAX_INT64_VAL
-        else:
-            return _MIN_INT64_VAL
+    if return_max:
+        return get_dtype_max(dtype)
+    else:
+        return get_dtype_min(dtype)
 
 
 @libentry()
@@ -268,13 +267,23 @@ def topk_stage2_kernel(
 
 
 def topk(x, k, dim=-1, largest=True, sorted=True):
-    logging.debug("GEMS TOPK")
+    logger.debug("GEMS TOPK")
     # If dim equals to last dim, we set it to -1.
     if dim < 0:
         dim = dim + x.ndim
 
     assert dim == x.ndim - 1, "Currently only support topk in last dimension"
-    assert sorted, "Currently only support sorted == True"
+    # assert sorted, "Currently only support sorted == True"
+
+    # Early return for k=0 to avoid Triton kernel compilation error.
+    # Triton's tl.arange(0, BLOCK_SIZE) requires BLOCK_SIZE > 0.
+    # When k=0, stage2_elem_cnt becomes 0, leading to BLOCK_SIZE=0.
+    if k == 0:
+        out_shape = list(x.shape[:-1]) + [0]
+        return (
+            torch.empty(out_shape, device=x.device, dtype=x.dtype),
+            torch.empty(out_shape, device=x.device, dtype=torch.int64),
+        )
 
     descending = True
     if not largest:

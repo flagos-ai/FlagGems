@@ -1,0 +1,114 @@
+fill_:
+  shapes:
+    - [67108864]
+    - [8, 16, 75]
+    - [256, 16, 75]
+    - [8]
+    - [256]
+    - [0, 3584]
+
+mm:  # batch size from  1 to 8192, and B stride is always column major # [B stride]: (1, 3584)
+  shapes:
+    - [1, 1, 152064, 3584]
+    - [1, 2, 152064, 3584]
+    - [1, 3, 152064, 3584]
+    - [1, 5, 152064, 3584]
+    - [1, 6, 152064, 3584]
+    - [1, 7, 152064, 3584]
+    - [1, 8, 152064, 3584]
+    - [1, 256, 152064, 3584]
+    # batch size = 8
+    - [1, 8, 3584, 18944]
+    - [1, 8, 3584, 3584]
+    - [1, 8, 37888, 3584]
+    # batch size = 98
+    - [1, 98, 3584, 18944]
+    - [1, 98, 3584, 3584]
+    - [1, 98, 37888, 3584]
+    # batch size = 256
+    - [1, 256, 3584, 18944]
+    - [1, 256, 3584, 3584]
+    - [1, 256, 37888, 3584]
+    # batch size = 8192
+    - [1, 8192, 3584, 18944]
+    - [1, 8192, 3584, 3584]
+    - [1, 8192, 37888, 3584]
+  shape_desc: "B, M, N, K" # shapes are defined as (B, M, N, K)
+
+
+addmm:  #  B stride is always column major # [B stride]: (1, 3584)
+  shapes:
+    - [1, 4, 4608, 3584]
+    - [1, 6, 4608, 3584]
+    - [1, 7, 4608, 3584]
+    - [1, 8, 4608, 3584]
+    - [1, 16, 4608, 3584]
+    - [1, 32, 4608, 3584]
+    - [1, 64, 4608, 3584]
+    - [1, 68, 4608, 3584]
+    - [1, 98, 4608, 3584]
+    - [1, 113, 4608, 3584]
+    - [1, 256, 4608, 3584]
+    - [1, 8192, 4608, 3584]
+  shape_desc: "B, M, N, K" # shapes are defined as (B, M, N, K)
+
+fused_add_rms_norm:
+  shapes:
+    - [4, 3584]
+    - [8, 3584]
+    - [16, 3584]
+    - [32, 3584]
+    - [64, 3584]
+    - [113, 3584]
+    - [256, 3584]
+    - [8192, 3584]
+
+sort:
+  shapes:
+    - [4, 152064]
+
+
+# TODO: to be added
+# silu_and_mul:  # need broadcast
+#   shapes:
+#     - [22, 18944]  # with [22, 37888]
+#     - [22, 37888]
+
+# contiguous:
+# rotary_embedding:
+#   shapes:
+#     - []
+# to:
+#   shapes:
+#     - [4]
+#     - [4, 1]
+#     - [4, 152064]
+#     - [4, 152]
+
+# div: true_divide_ & true_divi
+# sub:
+# softmax:
+# masked_fill:
+# argmax:
+# scatter:
+# rms_norm:
+# le:
+# index:
+# exponential_:
+# embedding:
+# cumsum:
+# resolve_neg:
+# resolve_conj:
+# ones:
+# zeros:
+# full:
+# lt:（scalar and lt）
+# where:
+# mul:
+# gather:
+# arange:
+# sin:
+# reciprocal:
+# pow
+# cos:
+# cat:

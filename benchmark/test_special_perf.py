@@ -1,5 +1,3 @@
-import random
-
 import pytest
 import torch
 
@@ -35,26 +33,14 @@ def resolve_conj_input_fn(shape, dtype, device):
     yield x.conj(),
 
 
-special_operations = [
-    # Sorting Operations
-    ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
-    # Complex Operations
-    ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
-    ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
-]
-
-
 @pytest.mark.parametrize(
     "op_name, torch_op, dtypes, input_fn",
     [
-        pytest.param(
-            op,
-            fn,
-            dtypes,
-            input_fn,
-            marks=getattr(pytest.mark, op, None),
-        )
-        for op, fn, dtypes, input_fn in special_operations
+        # Sorting Operations
+        pytest.param("topk", torch.topk, FLOAT_DTYPES, topk_input_fn, marks=pytest.mark.topk),
+        # Complex Operations
+        pytest.param("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn, marks=pytest.mark.resolve_neg),
+        pytest.param("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn, marks=pytest.mark.resolve_conj),
     ],
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
@@ -88,6 +74,7 @@ def test_isin_perf():
 
 
 @pytest.mark.unique
+@pytest.mark.unique2
 def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
@@ -138,12 +125,13 @@ def test_multinomial_with_replacement():
 
 
 @pytest.mark.pad
+@pytest.mark.constant_pad_nd
 def test_perf_pad():
     def padding_input_fn(shape, dtype, device):
         input = torch.randn(shape, device=device, dtype=dtype)
         rank = input.ndim
-        pad_params = [random.randint(0, 10) for _ in range(rank * 2)]
-        pad_value = float(torch.randint(0, 1024, [1]))
+        pad_params = [1, 2] * rank
+        pad_value = 1.0
         yield input, {
             "pad": pad_params,
             "mode": "constant",
@@ -306,7 +294,7 @@ def test_perf_conv2d():
 def test_perf_diag():
     def diag_input_fn(shape, dtype, device):
         input = generate_tensor_input(shape, dtype, device)
-        diagonal = random.randint(-4, 4)
+        diagonal = 0
         yield input, {
             "diagonal": diagonal,
         },
@@ -356,4 +344,150 @@ def test_perf_diagonal_backward():
         is_backward=True,
     )
 
+    bench.run()
+
+
+class FixedShapeBenchmark(GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [tuple(shape) for shape in self.DEFAULT_SHAPES]
+        self.shape_desc = self.DEFAULT_SHAPE_DESC
+
+
+class SmallTensorBenchmark(FixedShapeBenchmark):
+    DEFAULT_SHAPES = [(2, 3), (128, 256), (512, 512)]
+    DEFAULT_SHAPE_DESC = "M, N"
+
+
+@pytest.mark.lift_fresh_copy
+def test_perf_lift_fresh_copy():
+    def lift_fresh_copy_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield inp,
+
+    bench = SmallTensorBenchmark(
+        input_fn=lift_fresh_copy_input_fn,
+        op_name="lift_fresh_copy",
+        torch_op=torch.ops.aten.lift_fresh_copy,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class LossBenchmark(FixedShapeBenchmark):
+    DEFAULT_SHAPES = [(2, 3), (128, 256), (1024, 256)]
+    DEFAULT_SHAPE_DESC = "M, N"
+
+
+@pytest.mark.margin_ranking_loss
+def test_perf_margin_ranking_loss():
+    def margin_ranking_loss_input_fn(shape, dtype, device):
+        input1 = torch.randn(shape, dtype=dtype, device=device)
+        input2 = torch.randn(shape, dtype=dtype, device=device)
+        target = (
+            torch.randint(0, 2, shape, device=device, dtype=torch.int8) * 2 - 1
+        ).to(dtype)
+        yield input1, input2, target, 0.5, 1
+
+    bench = LossBenchmark(
+        input_fn=margin_ranking_loss_input_fn,
+        op_name="margin_ranking_loss",
+        torch_op=torch.ops.aten.margin_ranking_loss,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.soft_margin_loss
+def test_perf_soft_margin_loss():
+    def soft_margin_loss_input_fn(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        target = (torch.randint(0, 2, shape, device=device).to(dtype) * 2) - 1
+        yield inp, target, 1
+
+    bench = LossBenchmark(
+        input_fn=soft_margin_loss_input_fn,
+        op_name="soft_margin_loss",
+        torch_op=torch.ops.aten.soft_margin_loss,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class ReflectionPad1DBenchmark(FixedShapeBenchmark):
+    DEFAULT_SHAPES = [(3, 33), (2, 4, 64), (8, 16, 256)]
+    DEFAULT_SHAPE_DESC = "(N), C, W"
+
+
+@pytest.mark.reflection_pad1d
+def test_perf_reflection_pad1d():
+    def reflection_pad1d_input_fn(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        yield inp, (1, 1)
+
+    bench = ReflectionPad1DBenchmark(
+        input_fn=reflection_pad1d_input_fn,
+        op_name="reflection_pad1d",
+        torch_op=torch.ops.aten.reflection_pad1d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class ReflectionPad2DBenchmark(FixedShapeBenchmark):
+    DEFAULT_SHAPES = [(3, 33, 33), (2, 4, 32, 64), (8, 16, 64, 64)]
+    DEFAULT_SHAPE_DESC = "(N), C, H, W"
+
+
+@pytest.mark.reflection_pad2d
+def test_perf_reflection_pad2d():
+    def reflection_pad2d_input_fn(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        yield inp, (1, 1, 1, 1)
+
+    bench = ReflectionPad2DBenchmark(
+        input_fn=reflection_pad2d_input_fn,
+        op_name="reflection_pad2d",
+        torch_op=torch.ops.aten.reflection_pad2d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class ReplicationPad1DBenchmark(FixedShapeBenchmark):
+    DEFAULT_SHAPES = [(2, 3, 7), (4, 16, 64), (32, 256)]
+    DEFAULT_SHAPE_DESC = "(N), C, W"
+
+
+@pytest.mark.replication_pad1d
+def test_perf_replication_pad1d():
+    def replication_pad1d_input_fn(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        yield inp, (1, 2)
+
+    bench = ReplicationPad1DBenchmark(
+        input_fn=replication_pad1d_input_fn,
+        op_name="replication_pad1d",
+        torch_op=torch.ops.aten.replication_pad1d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class PixelUnshuffleBenchmark(FixedShapeBenchmark):
+    DEFAULT_SHAPES = [(1, 3, 8, 8), (2, 4, 12, 6), (4, 16, 64, 48)]
+    DEFAULT_SHAPE_DESC = "N, C, H, W"
+
+
+@pytest.mark.pixel_unshuffle
+def test_perf_pixel_unshuffle():
+    def pixel_unshuffle_input_fn(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        yield inp, 2
+
+    bench = PixelUnshuffleBenchmark(
+        input_fn=pixel_unshuffle_input_fn,
+        op_name="pixel_unshuffle",
+        torch_op=torch.ops.aten.pixel_unshuffle,
+        dtypes=FLOAT_DTYPES,
+    )
     bench.run()

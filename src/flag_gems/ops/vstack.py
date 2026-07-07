@@ -4,15 +4,17 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import libentry
-from ..utils import triton_lang_extension as tle
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as tle
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("vstack"),
+    configs=runtime.get_tuned_config("vstack"),
     key=[
         "max_tile_elems",
     ],
@@ -62,7 +64,7 @@ def vstack_kernel(
 
 
 def vstack(tensors: list):
-    logging.debug("GEMS VSTACK")
+    logger.debug("GEMS VSTACK")
 
     tensors = torch.atleast_2d(tensors)
     num_tensors = len(tensors)

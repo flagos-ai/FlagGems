@@ -3,7 +3,9 @@ import logging
 import torch
 import triton
 
-from ..utils import pointwise_dynamic
+from flag_gems.utils import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
@@ -29,7 +31,7 @@ def sub_func_scalar_tensor(x, y, alpha):
 
 
 def sub(A, B, *, alpha=1):
-    logging.debug("GEMS SUB")
+    logger.debug("GEMS SUB")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return sub_func(A, B, alpha)
     elif isinstance(A, torch.Tensor):
@@ -39,3 +41,11 @@ def sub(A, B, *, alpha=1):
     else:
         # Both scalar
         return torch.tensor(A - B * alpha)
+
+
+def sub_(A, B, *, alpha=1):
+    logger.debug("GEMS SUB_")
+    if isinstance(B, torch.Tensor):
+        return sub_func(A, B, alpha, out0=A)
+    else:
+        return sub_func_tensor_scalar(A, B, alpha, out0=A)

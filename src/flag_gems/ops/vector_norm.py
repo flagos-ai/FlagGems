@@ -5,16 +5,17 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import dim_compress, libentry, tl_extra_shim
-from ..utils import triton_lang_extension as tle
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import dim_compress, libentry, tl_extra_shim
+from flag_gems.utils import triton_lang_extension as tle
 
 pow = tl_extra_shim.pow
+logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -62,7 +63,7 @@ def l2_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -110,7 +111,7 @@ def max_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -158,7 +159,7 @@ def min_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -206,7 +207,7 @@ def l0_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit(do_not_specialize=["ord"])
 def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -253,9 +254,12 @@ def l1_norm_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
-    logging.debug("GEMS VECTOR NORM")
+    logger.debug("GEMS VECTOR NORM")
     if dtype is not None:
-        dtype = torch.dtype(dtype)
+        if isinstance(dtype, str):
+            dtype = getattr(torch, dtype)
+        elif not isinstance(dtype, torch.dtype):
+            dtype = torch.float32
     else:
         dtype = x.dtype
     if dtype not in [torch.float16, torch.float32, torch.bfloat16]:

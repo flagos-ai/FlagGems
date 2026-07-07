@@ -1,4 +1,3 @@
-import random
 from typing import Generator
 
 import pytest
@@ -47,26 +46,27 @@ class UnaryReductionBenchmark(Benchmark):
                 yield inp,
 
 
-forward_operations = [
-    ("all", torch.all, FLOAT_DTYPES),
-    ("amax", torch.amax, FLOAT_DTYPES),
-    ("any", torch.any, FLOAT_DTYPES),
-    ("argmax", torch.argmax, FLOAT_DTYPES),
-    ("max", torch.max, FLOAT_DTYPES),
-    ("mean", torch.mean, FLOAT_DTYPES),
-    ("min", torch.min, FLOAT_DTYPES),
-    ("prod", torch.prod, FLOAT_DTYPES),
-    ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
-    ("sum", torch.sum, FLOAT_DTYPES),
-    ("var_mean", torch.var_mean, FLOAT_DTYPES),
-]
-
-
 @pytest.mark.parametrize(
     "op_name, torch_op, dtypes",
     [
-        pytest.param(name, op, dtype, marks=getattr(pytest.mark, name, None))
-        for name, op, dtype in forward_operations
+        pytest.param("all", torch.all, FLOAT_DTYPES, marks=pytest.mark.all),
+        pytest.param("all_dim", torch.all, FLOAT_DTYPES, marks=pytest.mark.all_dim),
+        pytest.param("amax", torch.amax, FLOAT_DTYPES, marks=pytest.mark.amax),
+        pytest.param("any", torch.any, FLOAT_DTYPES, marks=pytest.mark.any),
+        pytest.param("any_dim", torch.any, FLOAT_DTYPES, marks=pytest.mark.any_dim),
+        pytest.param("argmax", torch.argmax, FLOAT_DTYPES, marks=pytest.mark.argmax),
+        pytest.param("max", torch.max, FLOAT_DTYPES, marks=pytest.mark.max),
+        pytest.param("max_dim", torch.max, FLOAT_DTYPES, marks=pytest.mark.max_dim),
+        pytest.param("mean", torch.mean, FLOAT_DTYPES, marks=pytest.mark.mean),
+        pytest.param("mean_dim", torch.mean, FLOAT_DTYPES, marks=pytest.mark.mean_dim),
+        pytest.param("min", torch.min, FLOAT_DTYPES, marks=pytest.mark.min),
+        pytest.param("min_dim", torch.min, FLOAT_DTYPES, marks=pytest.mark.min_dim),
+        pytest.param("prod", torch.prod, FLOAT_DTYPES, marks=pytest.mark.prod),
+        pytest.param("prod_dim", torch.prod, FLOAT_DTYPES, marks=pytest.mark.prod_dim),
+        pytest.param("softmax", torch.nn.functional.softmax, FLOAT_DTYPES, marks=pytest.mark.softmax),
+        pytest.param("sum", torch.sum, FLOAT_DTYPES, marks=pytest.mark.sum),
+        pytest.param("sum_dim", torch.sum, FLOAT_DTYPES, marks=pytest.mark.sum_dim),
+        pytest.param("var_mean", torch.var_mean, FLOAT_DTYPES, marks=pytest.mark.var_mean),
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
@@ -74,18 +74,10 @@ def test_general_reduction_perf(op_name, torch_op, dtypes):
     bench.run()
 
 
-backward_operations = [
-    ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
-]
-
-
 @pytest.mark.parametrize(
     "op_name, torch_op, dtypes",
     [
-        pytest.param(
-            name, op, dtype, marks=getattr(pytest.mark, name + "_backward", None)
-        )
-        for name, op, dtype in backward_operations
+        pytest.param("softmax", torch.nn.functional.softmax, FLOAT_DTYPES, marks=pytest.mark.softmax_backward),
     ],
 )
 def test_general_reduction_backward_perf(op_name, torch_op, dtypes):
@@ -139,7 +131,7 @@ def cumsum_input_fn(shape, cur_dtype, device):
             torch.nn.functional.cross_entropy,
             cross_entropy_loss_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.CrossEntropyLoss,
+            marks=[pytest.mark.CrossEntropyLoss, pytest.mark.cross_entropy_loss],
         ),
         pytest.param(
             "cumsum",
@@ -168,7 +160,7 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
 def test_perf_count_nonzero():
     def count_nonzero_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
-        dim = random.choice([None, 0, 1])
+        dim = 0
 
         yield inp, dim
 

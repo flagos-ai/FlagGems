@@ -7,6 +7,13 @@ from .attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
 from .performance_utils import Benchmark, generate_tensor_input
 
 
+def _bench_marks(name, doc_mark=None):
+    marks = getattr(pytest.mark, name)
+    if doc_mark:
+        return [marks, getattr(pytest.mark, doc_mark)]
+    return marks
+
+
 class BinaryPointwiseBenchmark(Benchmark):
     """
     Base class for benchmarking binary pointwise operations.
@@ -38,38 +45,52 @@ class BinaryPointwiseBenchmark(Benchmark):
             name,
             op,
             dtype,
-            marks=getattr(pytest.mark, name, None),
+            marks=_bench_marks(name, doc_mark),
         )
-        for name, op, dtype in [
+        for name, op, dtype, doc_mark in [
             # Arithmetic operations
-            ("add", torch.add, FLOAT_DTYPES),
-            ("div", torch.div, FLOAT_DTYPES),
-            ("mul", torch.mul, FLOAT_DTYPES),
-            ("pow", torch.pow, FLOAT_DTYPES),
-            ("sub", torch.sub, FLOAT_DTYPES),
-            ("floor_divide", torch.floor_divide, INT_DTYPES),
-            ("remainder", torch.remainder, INT_DTYPES),
-            ("rsub", torch.rsub, FLOAT_DTYPES),
-            ("logical_or", torch.logical_or, INT_DTYPES + BOOL_DTYPES),
-            ("logical_and", torch.logical_and, INT_DTYPES + BOOL_DTYPES),
-            ("logical_xor", torch.logical_xor, INT_DTYPES + BOOL_DTYPES),
+            ("add", torch.add, FLOAT_DTYPES, "add_tensor"),
+            ("div", torch.div, FLOAT_DTYPES, "true_divide"),
+            ("mul", torch.mul, FLOAT_DTYPES, None),
+            ("pow", torch.pow, FLOAT_DTYPES, "pow_tensor_tensor"),
+            ("sub", torch.sub, FLOAT_DTYPES, None),
+            ("floor_divide", torch.floor_divide, INT_DTYPES, None),
+            ("remainder", torch.remainder, INT_DTYPES, None),
+            ("rsub", torch.rsub, FLOAT_DTYPES, None),
+            ("logical_or", torch.logical_or, INT_DTYPES + BOOL_DTYPES, None),
+            ("logical_and", torch.logical_and, INT_DTYPES + BOOL_DTYPES, None),
+            ("logical_xor", torch.logical_xor, INT_DTYPES + BOOL_DTYPES, None),
             # Comparison operations
-            ("eq", torch.eq, FLOAT_DTYPES),
-            ("ge", torch.ge, FLOAT_DTYPES),
-            ("gt", torch.gt, FLOAT_DTYPES),
-            ("le", torch.le, FLOAT_DTYPES),
-            ("lt", torch.lt, FLOAT_DTYPES),
-            ("ne", torch.ne, FLOAT_DTYPES),
+            ("eq", torch.eq, FLOAT_DTYPES, None),
+            ("ge", torch.ge, FLOAT_DTYPES, None),
+            ("gt", torch.gt, FLOAT_DTYPES, None),
+            ("le", torch.le, FLOAT_DTYPES, None),
+            ("lt", torch.lt, FLOAT_DTYPES, None),
+            ("ne", torch.ne, FLOAT_DTYPES, None),
             # Minimum and maximum operations
-            ("maximum", torch.maximum, FLOAT_DTYPES),
-            ("minimum", torch.minimum, FLOAT_DTYPES),
+            ("fmin", torch.fmin, FLOAT_DTYPES, None),
+            ("maximum", torch.maximum, FLOAT_DTYPES, None),
+            ("minimum", torch.minimum, FLOAT_DTYPES, None),
+            # Other numerical operations
+            ("hypot", torch.hypot, FLOAT_DTYPES, None),
+            ("logaddexp", torch.logaddexp, FLOAT_DTYPES, None),
             # Bitwise operations
-            ("bitwise_and", torch.bitwise_and, INT_DTYPES + BOOL_DTYPES),
-            ("bitwise_or", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
-            ("or_", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
+            (
+                "bitwise_and",
+                torch.bitwise_and,
+                INT_DTYPES + BOOL_DTYPES,
+                "bitwise_and_tensor",
+            ),
+            (
+                "bitwise_or",
+                torch.bitwise_or,
+                INT_DTYPES + BOOL_DTYPES,
+                "bitwise_or_tensor",
+            ),
+            ("or_", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES, "bitwise_or_tensor"),
             # Numerical Checks
-            ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES),
-            ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),
+            ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES, None),
+            ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES, None),
         ]
     ],
 )

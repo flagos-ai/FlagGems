@@ -8,6 +8,7 @@ import torch
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
 BOOL_DTYPES = [torch.bool]
+COMPLEX_DTYPES = [torch.complex64]
 
 DEFAULT_WARMUP_COUNT = 1000
 DEFAULT_ITER_COUNT = 100
@@ -50,6 +51,32 @@ def llama_shapes():
     return [(bs, n, k, None) for bs, (k, n) in itertools.product(BS, KN)]
 
 
+def model_shapes():
+    # batch sizes * seq lengths
+    BS = [1, 2, 3, 4, 8, 98, 256, 8192]
+    # attn: wqkv, wo; ffn: w13, w2
+    NK = [
+        # extract from llama3-8b
+        (1024, 4096),
+        (128256, 4096),
+        (14336, 4096),
+        (4096, 14336),
+        (4096, 4096),
+        (6144, 4096),
+        (28672, 4096),
+        # extract from qwen2.5-7b
+        (3584, 3584),
+        (18944, 3584),
+        (3584, 18944),
+        (152064, 3584),
+        (37888, 3584),
+        (512, 3584),
+        (4608, 3584),
+    ]
+
+    return [(4, bs, n, k) for bs, (n, k) in itertools.product(BS, NK)]
+
+
 @dataclass
 class BenchmarkMetrics:
     # Legacy shape information for backward compatibility
@@ -71,6 +98,8 @@ class BenchmarkMetrics:
     tflops: Optional[float] = None
     # Utilization (not implemented yet)
     utilization: Optional[float] = None
+    # Speedup compared to base data
+    compared_speedup: Optional[float] = None
     # Error message
     error_msg: Optional[str] = None
 
@@ -129,6 +158,12 @@ def get_recommended_shapes(
         # TODO: handle situation that list as the basic element in shape.
         return _shapes_sort(op_specified_shapes)
     return _shapes_sort(DEFAULT_SHAPES)
+
+
+class BenchMode(Enum):
+    KERNEL = "kernel"
+    OPERATOR = "operator"
+    WRAPPER = "wrapper"
 
 
 class BenchLevel(Enum):

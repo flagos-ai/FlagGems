@@ -54,32 +54,26 @@ def arange_input_fn(shape, dtype, device):
 
 
 # Define operations and their corresponding input functions
-tensor_constructor_operations = [
-    # generic tensor constructor
-    ("rand", torch.rand, generic_constructor_input_fn),
-    ("randn", torch.randn, generic_constructor_input_fn),
-    ("ones", torch.ones, generic_constructor_input_fn),
-    ("zeros", torch.zeros, generic_constructor_input_fn),
-    # generic tensor-like constructor
-    ("rand_like", torch.rand_like, unary_input_fn),
-    ("randn_like", torch.randn_like, unary_input_fn),
-    ("ones_like", torch.ones_like, unary_input_fn),
-    ("zeros_like", torch.zeros_like, unary_input_fn),
-    # tensor constructor with given value
-    ("fill", torch.fill, fill_input_fn),
-    ("masked_fill", torch.masked_fill, masked_fill_input_fn),
-    ("full", torch.full, full_input_fn),
-    ("full_like", torch.full_like, full_like_input_fn),
-    # arange
-    ("arange", torch.arange, arange_input_fn),
-]
-
-
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn",
     [
-        pytest.param(op, fn, input_fn, marks=getattr(pytest.mark, op, None))
-        for op, fn, input_fn in tensor_constructor_operations
+        # generic tensor constructor
+        pytest.param("rand", torch.rand, generic_constructor_input_fn, marks=pytest.mark.rand),
+        pytest.param("randn", torch.randn, generic_constructor_input_fn, marks=pytest.mark.randn),
+        pytest.param("ones", torch.ones, generic_constructor_input_fn, marks=pytest.mark.ones),
+        pytest.param("zeros", torch.zeros, generic_constructor_input_fn, marks=pytest.mark.zeros),
+        # generic tensor-like constructor
+        pytest.param("rand_like", torch.rand_like, unary_input_fn, marks=pytest.mark.rand_like),
+        pytest.param("randn_like", torch.randn_like, unary_input_fn, marks=pytest.mark.randn_like),
+        pytest.param("ones_like", torch.ones_like, unary_input_fn, marks=pytest.mark.ones_like),
+        pytest.param("zeros_like", torch.zeros_like, unary_input_fn, marks=pytest.mark.zeros_like),
+        # tensor constructor with given value
+        pytest.param("fill", torch.fill, fill_input_fn, marks=[pytest.mark.fill, pytest.mark.fill_scalar]),
+        pytest.param("masked_fill", torch.masked_fill, masked_fill_input_fn, marks=pytest.mark.masked_fill),
+        pytest.param("full", torch.full, full_input_fn, marks=pytest.mark.full),
+        pytest.param("full_like", torch.full_like, full_like_input_fn, marks=pytest.mark.full_like),
+        # arange
+        pytest.param("arange", torch.arange, arange_input_fn, marks=pytest.mark.arange),
     ],
 )
 def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):

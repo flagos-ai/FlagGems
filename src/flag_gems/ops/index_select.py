@@ -4,26 +4,15 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import dim_compress, libentry
-from ..utils import triton_lang_extension as tle
+from flag_gems import runtime
+from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import triton_lang_extension as tle
 
-
-def heur_block_m(args):
-    return min(4, triton.next_power_of_2(triton.cdiv(256, args["N"])))
-
-
-def heur_block_n(args):
-    m = min(triton.next_power_of_2(triton.cdiv(args["N"], 16)), 512)
-    return max(m, 16)
+logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.heuristics(
-    {
-        "BLOCK_M": heur_block_m,
-        "BLOCK_N": heur_block_n,
-    }
-)
+@triton.heuristics(runtime.get_heuristic_config("index_select"))
 @triton.jit
 def index_select_kernel(
     inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
@@ -37,18 +26,22 @@ def index_select_kernel(
     out_mask = rows_mask and (cols_offsets < index_len)
 
     indices = tl.load(index + cols_offsets, mask=(cols_offsets < index_len), other=0)
+    valid_lower_bound = indices >= 0
+    valid_upper_bound = indices < N
+    index_valid_mask = valid_lower_bound & valid_upper_bound
+
     inp_off = rows_offsets * N + indices[None, :]
     out_off = rows_offsets * index_len + cols_offsets[None, :]
 
-    selected = tl.load(inp + inp_off, mask=rows_mask, other=0.0)
-    tl.store(out + out_off, selected, mask=out_mask)
+    final_mask = out_mask & index_valid_mask
+    selected = tl.load(inp + inp_off, mask=final_mask, other=0.0)
+    tl.store(out + out_off, selected, mask=final_mask)
 
 
 def index_select(inp, dim, index):
-    logging.debug("GEMS INDEX SELECT")
+    logger.debug("GEMS INDEX SELECT")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
-    assert ((i >= 0 and i < inp.size(dim)) for i in index), "Index out of range"
 
     if index.ndim == 0:
         index = index.unsqueeze(0)
@@ -72,6 +65,7 @@ def index_select(inp, dim, index):
     if dim != out.ndim - 1:
         order = [i for i in range(out.ndim - 1)]
         order.insert(dim, out.ndim - 1)
-        return out.permute(order)
+        out = out.permute(order).contiguous()
+        return out.reshape(out.shape)
     else:
         return out

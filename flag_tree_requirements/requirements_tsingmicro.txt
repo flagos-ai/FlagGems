@@ -1,0 +1,2 @@
+RES="--index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple"
+flagtree==0.5.0+tsingmicro3.3 $RES

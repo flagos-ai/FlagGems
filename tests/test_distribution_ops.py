@@ -5,16 +5,23 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES
+from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES, to_reference
 
 device = flag_gems.device
 
 
+@pytest.mark.normal_tensor_tensor
 @pytest.mark.normal
 @pytest.mark.parametrize("float", ["none", "mean", "std"])
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_normal(float, shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
+    if flag_gems.vendor_name in ["metax", "iluvatar", "kunlunxin"]:
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
     loc = (
         3.0
         if float == "mean"
@@ -31,8 +38,32 @@ def test_accuracy_normal(float, shape, dtype):
     )
     with flag_gems.use_gems():
         res_out = torch.normal(loc, scale)
-    mean = torch.mean(res_out)
-    std = torch.std(res_out)
+    ref_out = to_reference(res_out)
+    mean = torch.mean(ref_out)
+    std = torch.std(ref_out)
+    assert torch.abs(mean - 3.0) < 0.1
+    assert torch.abs(std - 10.0) < 0.1
+
+
+@pytest.mark.inplace
+@pytest.mark.normal_
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_normal_(shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
+    if flag_gems.vendor_name in ["metax", "iluvatar"]:
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
+    loc = 3.0
+    scale = 10.0
+    res_out = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_out.normal_(loc, scale)
+    ref_out = to_reference(res_out)
+    mean = torch.mean(ref_out)
+    std = torch.std(ref_out)
     assert torch.abs(mean - 3.0) < 0.1
     assert torch.abs(std - 10.0) < 0.1
 
@@ -56,6 +87,25 @@ def test_accuracy_exponential_(shape, dtype):
     with flag_gems.use_gems():
         x.exponential_()
     assert x.min() > 0
+
+
+@pytest.mark.exponential_
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_fast_exponential_(shape, dtype):
+    x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
+    lambd = 1.0
+    mean_tol = 0.05
+    var_tol = 0.05
+    with flag_gems.use_gems():
+        x.exponential_()
+    x_res = to_reference(x)
+    mean_res = torch.mean(x_res.to(torch.float32)).to(dtype)
+    var_res = torch.var(x_res.to(torch.float32)).to(dtype)
+    mean_ref = 1.0 / lambd
+    var_ref = 1.0 / (lambd**2)
+    assert torch.abs(mean_res - mean_ref) < mean_tol
+    assert torch.abs(var_res - var_ref) < var_tol
 
 
 @pytest.mark.multinomial

@@ -4,9 +4,11 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
-from ..utils import dim_compress, libentry
-from ..utils import triton_lang_extension as tle
+from flag_gems import runtime
+from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import triton_lang_extension as tle
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -23,7 +25,7 @@ def count_nonzero_kernel_1(x_ptr, out_ptr, numel, BLOCK_SIZE: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("count_nonzero"), key=["numel"])
+@triton.autotune(configs=runtime.get_tuned_config("count_nonzero"), key=["numel"])
 @triton.jit
 def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
     pid_x = tle.program_id(0)
@@ -41,7 +43,7 @@ def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("count_nonzero"), key=["numel"])
+@triton.autotune(configs=runtime.get_tuned_config("count_nonzero"), key=["numel"])
 @triton.jit
 def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
     pid_x = tle.program_id(0)
@@ -72,7 +74,7 @@ def count_nonzero_combin_kernel(
 
 
 def count_nonzero(x, dim=None):
-    logging.debug("GEMS COUNT NONZERO")
+    logger.debug("GEMS COUNT NONZERO")
     if dim is not None:
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         shape = x.shape

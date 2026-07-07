@@ -3,7 +3,9 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic
+from flag_gems.utils import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
@@ -13,5 +15,10 @@ def reciprocal_func(x):
 
 
 def reciprocal(A):
-    logging.debug("GEMS RECIPROCAL")
+    logger.debug("GEMS RECIPROCAL")
     return reciprocal_func(A)
+
+
+def reciprocal_(A):
+    logger.debug("GEMS RECIPROCAL_")
+    return reciprocal_func(A, out0=A)

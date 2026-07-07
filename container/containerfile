@@ -1,0 +1,13 @@
+ARG BASE_IMAGE_VERSION=latest
+ARG BASE_IMAGE=harbor.baai.ac.cn/flagbase/flagbase-nvidia
+FROM ${BASE_IMAGE}:${BASE_IMAGE_VERSION}
+#
+ARG VENDOR=requirements_nvidia.txt
+# workdir
+WORKDIR /workspace
+COPY . /workspace/FlagGems
+WORKDIR /workspace/FlagGems
+
+# build
+RUN pip install -r flag_tree_requirements/${VENDOR} --break-system-packages
+RUN pip install --no-build-isolation . --break-system-packages

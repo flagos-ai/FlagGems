@@ -1,5 +1,6 @@
 import gc
-import logging
+import importlib
+import os
 import time
 from typing import Any, Generator, List, Optional, Tuple
 
@@ -12,6 +13,7 @@ import flag_gems
 
 from .attri_util import (
     BOOL_DTYPES,
+    COMPLEX_DTYPES,
     DEFAULT_METRICS,
     DEFAULT_SHAPES,
     FLOAT_DTYPES,
@@ -19,15 +21,48 @@ from .attri_util import (
     BenchLevel,
     BenchmarkMetrics,
     BenchmarkResult,
+    BenchMode,
     OperationAttribute,
     check_metric_dependencies,
 )
-from .conftest import Config
+from .conftest import Config, emit_record_logger, record_benchmark_result
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
 device = flag_gems.device
-torch_backend_device.matmul.allow_tf32 = False
+vendor_name = flag_gems.vendor_name
+if device == "musa":
+    torch.backends.mudnn.allow_tf32 = False
+elif device == "npu":
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+else:
+    torch_backend_device.matmul.allow_tf32 = False
+
+
+def SkipVersion(module_name, skip_pattern):
+    if importlib.util.find_spec(module_name) is None:
+        return True
+    cmp = skip_pattern[0]
+    assert cmp in ("=", "<", ">"), f"Invalid comparison operator: {cmp}"
+    try:
+        M, N = skip_pattern[1:].split(".")
+        M, N = int(M), int(N)
+    except Exception:
+        raise ValueError("Cannot parse version number from skip_pattern.")
+
+    try:
+        version = importlib.metadata.version(module_name)
+        major, minor = map(int, version.split(".")[:2])
+    except Exception:
+        raise ImportError(f"Cannot determine version of module: {module_name}")
+
+    if cmp == "=":
+        return major == M and minor == N
+    elif cmp == "<":
+        return (major, minor) < (M, N)
+    else:
+        return (major, minor) > (M, N)
 
 
 class Benchmark:
@@ -47,14 +82,16 @@ class Benchmark:
         torch_op,
         dtypes=None,
         is_backward=False,
+        is_inplace=False,
         **kwargs,
     ):
         self.op_name = op_name
-        if is_backward:
-            self.op_name += " backward"
+        if is_backward and self.op_name.find("_backward") == -1:
+            self.op_name += "_backward"
         self.torch_op = torch_op
         self.gems_op = None
         self.is_backward = is_backward
+        self.is_inplace = is_inplace
         self._input_iter = None
 
         # Theoretical supported dtypes, metrics for the operation.
@@ -101,6 +138,12 @@ class Benchmark:
             for metric in self.set_more_metrics():
                 if metric not in self.to_bench_metrics:
                     self.to_bench_metrics.append(metric)
+        if Config.no_torch:
+            self.to_bench_metrics = [
+                metric
+                for metric in self.to_bench_metrics
+                if metric not in {"latency_base", "speedup", "tflops"}
+            ]
 
     def set_more_metrics(self):
         """Base method (optional to override in subclasses). Returns additional shapes if applicable."""
@@ -153,6 +196,15 @@ class Benchmark:
                         self.shapes = self.DEFAULT_SHAPES
 
             self.shapes = [tuple(shape) for shape in self.shapes]
+            if vendor_name == "kunlunxin":
+                if self.op_name in ["isin", "nonzero"]:
+                    # isin oom  # nonzero oot
+                    import math
+
+                    self.shapes = [
+                        shape for shape in self.shapes if math.prod(shape) < 1024 * 1024
+                    ]
+
             # merge shapes from subclass If subclass has `set_more_shapes`, call it to merge shapes
             if (
                 hasattr(self, "set_more_shapes")
@@ -162,9 +214,21 @@ class Benchmark:
             ):
                 # Merge shapes using subclass-specific logic
                 additional_shapes = self.set_more_shapes()
+                if vendor_name == "kunlunxin":
+                    if self.op_name in ["cummax"]:
+                        additional_shapes = []
+
                 # self.shapes = additional_shapes
                 if additional_shapes:
                     self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
+                if vendor_name == "enflame":
+                    if self.op_name in ["isin"]:
+                        # isin shapelimit
+                        import math
+
+                        self.shapes = [
+                            shape for shape in self.shapes if math.prod(shape) < 2**28
+                        ]
         except yaml.YAMLError as e:
             raise ValueError(
                 f"Shape file '{shape_file_path}' is not a valid YAML file. Error: {e}"
@@ -197,9 +261,19 @@ class Benchmark:
 
     def init_user_config(self):
         # TODO: device setting
-        self.cpu_mode = Config.cpu_mode
+        self.mode = Config.mode
         self.set_dtypes(Config.user_desired_dtypes)
         self.set_metrics(Config.user_desired_metrics)
+        if vendor_name == "kunlunxin":
+            Config.shape_file = os.path.join(
+                os.path.dirname(__file__),
+                "../src/flag_gems/runtime/backend/_kunlunxin/core_shapes.yaml",
+            )  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
+        elif vendor_name == "enflame":
+            Config.shape_file = os.path.join(
+                os.path.dirname(__file__),
+                "../src/flag_gems/runtime/backend/_enflame/core_shapes.yaml",
+            )
         self.set_shapes(Config.shape_file)
 
     def set_gems(self, gems_op):
@@ -210,8 +284,12 @@ class Benchmark:
         if self.is_backward:
             out = fn()
             dout = torch.randn_like(out)
-            fn = lambda: out.backward(dout, retain_graph=True)
-        if Config.cpu_mode:
+            # fn = lambda: out.backward(dout, retain_graph=True)
+            xs = list(filter(lambda x: torch.is_tensor(x) and x.requires_grad, args))
+            fn = lambda: torch.autograd.grad(
+                (out,), xs, grad_outputs=(dout,), retain_graph=True
+            )
+        if Config.mode == BenchMode.OPERATOR:
             for i in range(Config.warm_up):
                 fn()
             torch_device_fn.synchronize()
@@ -221,13 +299,30 @@ class Benchmark:
             torch_device_fn.synchronize()
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
-        else:
-            latency = triton.testing.do_bench(
+        elif Config.mode == BenchMode.KERNEL:
+            do_bench = (
+                triton.musa_testing.do_bench
+                if device == "musa"
+                else triton.testing.do_bench
+            )
+            latency = do_bench(
                 fn,
                 warmup=Config.warm_up,
                 rep=Config.repetition,
                 return_mode="median",
+                grad_to_none=xs if self.is_backward else None,
             )
+        elif Config.mode == BenchMode.WRAPPER:
+            for i in range(Config.warm_up):
+                fn()
+            torch_device_fn.synchronize()
+            start = time.time()
+            for i in range(Config.repetition):
+                fn()
+            end = time.time()
+            latency = (end - start) / Config.repetition * 1000
+        else:
+            raise ValueError("Undefined Value of Benchmark Mode.")
         # average latency in ms
         return latency
 
@@ -270,6 +365,7 @@ class Benchmark:
                 or isinstance(item, (int, float))
                 or item is None
                 or isinstance(item, (list, tuple))
+                or isinstance(item, torch.dtype)
             ):
                 args.append(item)
             elif isinstance(item, dict):
@@ -294,7 +390,7 @@ class Benchmark:
                 shape_desc=self.shape_desc,
             )
             print(attri)
-            logging.info(attri.to_dict())
+            emit_record_logger(attri.to_dict())
             return
         self.init_user_config()
         for dtype in self.to_bench_dtypes:
@@ -314,16 +410,24 @@ class Benchmark:
                                 self.gems_op, *args, **kwargs
                             )
                         else:
-                            with flag_gems.use_gems():
-                                metric.latency = self.get_latency(
-                                    self.torch_op, *args, **kwargs
-                                )
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_ in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
                     if "speedup" in self.to_bench_metrics:
                         metric.speedup = metric.latency_base / metric.latency
                     if "gbps" in self.to_bench_metrics:
-                        metric.gbps_base = self.get_gbps(
-                            args, latency=metric.latency_base
-                        )
+                        if not Config.no_torch:
+                            metric.gbps_base = self.get_gbps(
+                                args, latency=metric.latency_base
+                            )
                         metric.gbps = self.get_gbps(args, latency=metric.latency)
                     if "tflops" in self.to_bench_metrics:
                         metric.tflops = (
@@ -343,11 +447,12 @@ class Benchmark:
                 level=Config.bench_level.value,
                 op_name=self.op_name,
                 dtype=str(dtype),
-                mode="cpu" if Config.cpu_mode else device,
+                mode=Config.mode.value,
                 result=metrics,
             )
             print(result)
-            logging.info(result.to_json())
+            record_benchmark_result(result)
+            emit_record_logger(result.to_json())
 
 
 class GenericBenchmark(Benchmark):
@@ -410,6 +515,19 @@ class GenericBenchmarkExcluse3D(GenericBenchmarkFilterShapes):
         super().__init__(exclude_dims=3, *args, **kwargs)
 
 
+class GenericBenchmark4DOnly(GenericBenchmarkFilterShapes):
+    """
+    4d shapes only
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(exclude_dims=None, *args, **kwargs)
+
+    def set_more_shapes(self):
+        shapes = super().set_more_shapes()
+        return [shape for shape in shapes if len(shape) == 4]
+
+
 class GenericBenchmark2DOnly(GenericBenchmarkFilterShapes):
     """
     2d shapes only
@@ -432,10 +550,12 @@ def generate_tensor_input(shape, dtype, device):
             torch.iinfo(dtype).max,
             shape,
             dtype=dtype,
-            device=device,
-        )
+            device="cpu",
+        ).to(device)
     elif dtype in BOOL_DTYPES:
-        return torch.randint(0, 2, size=shape, dtype=dtype, device=device)
+        return torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(device)
+    elif dtype in COMPLEX_DTYPES:
+        return torch.randn(shape, dtype=dtype, device=device)
 
 
 def binary_input_fn(shape, cur_dtype, device):

@@ -1,9 +1,12 @@
+import concurrent.futures
+import multiprocessing
+
 import pytest
 import torch
 import triton
 
 import flag_gems
-from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import get_device_properties
 from flag_gems.utils.pointwise_dynamic import (
     CodeGenConfig,
     FunctionSchema,
@@ -11,8 +14,14 @@ from flag_gems.utils.pointwise_dynamic import (
 )
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
+MAX_GRID_SIZES = (65535, 65535, 65535)
+MAX_GRID_SIZE_X = MAX_GRID_SIZES[0]
+
 USE_BLOCK_POINTER = [True, False]
 triton_version_less_than3 = int(triton.__version__[0]) < 3
+
+if flag_gems.vendor_name == "kunlunxin":
+    pytestmark = pytest.mark.skip("Test Files for Operators Not Pending Testing")
 
 
 def test_function_schema_with_non_tensor_input():
@@ -144,7 +153,7 @@ def test_function_schema_multiple_outputs():
 def test_dynamic_function_without_non_tensor_args(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=False,
@@ -170,7 +179,7 @@ def test_dynamic_function_without_non_tensor_args(use_block_pointer):
 def test_dynamic_function_with_non_tensor_args(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=False,
@@ -200,7 +209,7 @@ def test_dynamic_function_with_non_tensor_args(use_block_pointer):
 def test_dynamic_function_with_multiple_outputs(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=False,
@@ -232,7 +241,7 @@ def test_dynamic_function_with_multiple_outputs(use_block_pointer):
 def test_dynamic_function_with_broadcasting(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=True,  # [misaligned address]
@@ -263,7 +272,7 @@ def test_dynamic_function_with_broadcasting(use_block_pointer):
 def test_dynamic_function_with_broadcasting2(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=True,  # [misaligned address]
@@ -292,7 +301,7 @@ def test_dynamic_function_with_broadcasting2(use_block_pointer):
 def test_dynamic_function_with_predefined_out(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=False,
@@ -321,7 +330,7 @@ def test_dynamic_function_with_predefined_out(use_block_pointer):
 def test_dynamic_function_with_some_predefined_out1(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=False,
@@ -352,7 +361,7 @@ def test_dynamic_function_with_some_predefined_out1(use_block_pointer):
 def test_dynamic_function_with_some_predefined_out2(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=False,
@@ -383,7 +392,7 @@ def test_dynamic_function_with_some_predefined_out2(use_block_pointer):
 def test_dynamic_function_with_bool_input_and_output(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=False,
@@ -410,7 +419,7 @@ def test_dynamic_function_with_bool_input_and_output(use_block_pointer):
 def test_dynamic_function_manual_instantiation(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=False,
@@ -440,7 +449,7 @@ def test_dynamic_function_manual_instantiation(use_block_pointer):
 def test_dynamic_function_with_nd_buffer(use_1d_tile, use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=use_1d_tile,
@@ -467,11 +476,124 @@ def test_dynamic_function_with_nd_buffer(use_1d_tile, use_block_pointer):
     torch.testing.assert_close(out1, alpha * x - y)
 
 
+# Cambricon add.
+@pytest.mark.skipif(flag_gems.vendor_name != "cambricon", reason="Only for cambricon")
+@pytest.mark.parametrize("use_1d_tile", [True, False])
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_nd_buffer_out_permute(use_1d_tile, use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=MAX_GRID_SIZES,
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=use_1d_tile,
+    )
+
+    @pointwise_dynamic(
+        num_inputs=3,
+        is_tensor=[True, True, False],
+        promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+        config=config,
+    )
+    @triton.jit
+    def axpyaxmy(x, y, alpha):
+        return alpha * x + y, alpha * x - y
+
+    M, N, K = 40, 60, 80
+    x = torch.randn([M, N, K], device="cuda")[::2, ::2, ::2]
+    y = torch.randn([M // 2, N // 2, K // 2], device="cuda")
+    alpha = 2.0
+    o = torch.empty([M // 2, K // 2, N // 2], device="cuda").permute(0, 2, 1)
+    o2 = torch.empty([K // 2, M // 2, N // 2], device="cuda").permute(1, 2, 0)
+    print(o.stride(), o2.stride())
+    out0, out1 = axpyaxmy(x, y, alpha, out0=o, out1=o2)
+    assert out0 is o and out1 is o2
+    torch.testing.assert_close(out0, alpha * x + y)
+    torch.testing.assert_close(out1, alpha * x - y)
+
+
+@pytest.mark.skipif(flag_gems.vendor_name != "cambricon", reason="Only for cambricon")
+@pytest.mark.parametrize("use_1d_tile", [True, False])
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_nd_buffer_broadcast(use_1d_tile, use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=MAX_GRID_SIZES,
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=use_1d_tile,
+    )
+
+    @pointwise_dynamic(
+        num_inputs=3,
+        is_tensor=[True, True, False],
+        promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+        config=config,
+    )
+    @triton.jit
+    def axpyaxmy(x, y, alpha):
+        return alpha * x + y, alpha * x - y
+
+    M, N, K = 40, 60, 80
+    x = torch.randn([M, N, 2], device="cuda")[::2, ::2, ::2]
+    y = torch.randn([1, K // 2, M // 2], device="cuda").permute(2, 0, 1)
+    alpha = 2.0
+    o = torch.empty([M // 2, N // 2, K // 2], device="cuda")
+    out0, out1 = axpyaxmy(x, y, alpha, out0=o)
+    assert out0 is o
+    torch.testing.assert_close(out0, alpha * x + y)
+    torch.testing.assert_close(out1, alpha * x - y)
+
+
+@pytest.mark.skipif(flag_gems.vendor_name != "cambricon", reason="Only for cambricon")
+@pytest.mark.parametrize("use_1d_tile", [True, False])
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_nd_buffer_expand(use_1d_tile, use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=MAX_GRID_SIZES,
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=use_1d_tile,
+    )
+
+    @pointwise_dynamic(
+        num_inputs=3,
+        is_tensor=[True, True, False],
+        promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+        config=config,
+    )
+    @triton.jit
+    def axpyaxmy(x, y, alpha):
+        return alpha * x + y, alpha * x - y
+
+    M, N, K = 40, 60, 80
+    x = (
+        torch.randn([1, K // 2, N // 2], device="cuda")
+        .permute(0, 2, 1)
+        .expand([M // 2, N // 2, K // 2])
+    )
+    y = (
+        torch.randn([1, K // 2, M // 2], device="cuda")
+        .permute(2, 0, 1)
+        .expand([M // 2, N // 2, K // 2])
+    )
+    alpha = 2.0
+    o = torch.empty([M // 2, N // 2, K // 2], device="cuda")
+    out0, out1 = axpyaxmy(x, y, alpha, out0=o)
+    assert out0 is o
+    torch.testing.assert_close(out0, alpha * x + y)
+    torch.testing.assert_close(out1, alpha * x - y)
+
+
+# Cambricon add end.
+
+
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
 def test_dynamic_function_with_different_stride_order(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=False,
@@ -504,7 +626,7 @@ def test_dynamic_function_manual_instantiation_mixing_strided_buffer_and_tensor(
 ):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=False,
@@ -539,7 +661,7 @@ def test_dynamic_function_manual_instantiation_does_not_support_broadcasting1(
     # manually instantiated overload does not support broadcasting of operands
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=False,
@@ -573,7 +695,7 @@ def test_dynamic_function_manual_instantiation_does_not_support_broadcasting2(
     # manually instantiated overload does not support broadcasting of operands
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=False,
@@ -607,7 +729,7 @@ def test_dynamic_function_manual_instantiation_does_not_allocate_output(
     # manually instantiated overload does not support broadcasting of operands
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=False,
@@ -659,14 +781,14 @@ def test_dynamic_function_gsl(use_block_pointer):
 
 
 @pytest.mark.skipif(
-    torch_device_fn.get_device_properties(0).total_memory < (80 * 1024**3),
+    get_device_properties(0).total_memory < (80 * 1024**3),
     reason="This test requires a lot of memory.",
 )
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
 def test_dynamic_function_int64_index(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 1, 1),
+        max_grid_size=(MAX_GRID_SIZE_X, 1, 1),
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=False,
@@ -688,7 +810,7 @@ def test_dynamic_function_int64_index(use_block_pointer):
 def test_dynamic_function_0d_task(use_1d_tile, use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
-        max_grid_size=(65536, 65536, 65536),
+        max_grid_size=MAX_GRID_SIZES,
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
         prefer_1d_tile=use_1d_tile,
@@ -710,6 +832,7 @@ def test_dynamic_function_0d_task(use_1d_tile, use_block_pointer):
 
 @pytest.mark.parametrize("use_1d_tile", [True, False])
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="AssertionError")
 def test_dynamic_function_zero_sized_task_unary(use_1d_tile, use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
@@ -732,6 +855,7 @@ def test_dynamic_function_zero_sized_task_unary(use_1d_tile, use_block_pointer):
 
 @pytest.mark.parametrize("use_1d_tile", [True, False])
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="AssertionError")
 def test_dynamic_function_zero_sized_task_binary(use_1d_tile, use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
@@ -753,3 +877,68 @@ def test_dynamic_function_zero_sized_task_binary(use_1d_tile, use_block_pointer)
     y = torch.randn_like(x)
     out = f(x, y)
     torch.testing.assert_close(out, x * 2.0 + y)
+
+
+def f_for_concurrency_test(x, alpha, use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=MAX_GRID_SIZES,
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
+    @pointwise_dynamic(
+        num_inputs=3,
+        is_tensor=[True, True, False],
+        promotion_methods=[(0, 1, "DEFAULT")],
+        config=config,
+    )
+    @triton.jit
+    def axpy(x, y, alpha):
+        return alpha * x + y
+
+    y = torch.zeros_like(x)
+    out = axpy(x, y, alpha)
+    return out
+
+
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_multithread(use_block_pointer):
+    shape = [128]
+    alpha = 2.0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        inputs = [torch.randn(shape, device=flag_gems.device) for _ in range(32)]
+        expected_outs = [item * alpha for item in inputs]
+        outs = []
+        for item in inputs:
+            out_future = executor.submit(
+                f_for_concurrency_test, item, alpha, use_block_pointer
+            )
+            outs.append(out_future)
+        outs = [item.result() for item in outs]
+
+    for out, expected_out in zip(outs, expected_outs):
+        torch.testing.assert_close(out, expected_out)
+
+
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_multiprocess(use_block_pointer):
+    shape = [128]
+    alpha = 2.0
+    ctx = multiprocessing.get_context("spawn")
+    with concurrent.futures.ProcessPoolExecutor(
+        max_workers=8, mp_context=ctx
+    ) as executor:
+        inputs = [torch.randn(shape, device=flag_gems.device) for _ in range(32)]
+        expected_outs = [item * alpha for item in inputs]
+        outs = []
+        for item in inputs:
+            out_future = executor.submit(
+                f_for_concurrency_test, item, alpha, use_block_pointer
+            )
+            outs.append(out_future)
+        outs = [item.result() for item in outs]
+
+        for out, expected_out in zip(outs, expected_outs):
+            torch.testing.assert_close(out, expected_out)

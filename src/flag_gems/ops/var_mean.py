@@ -4,10 +4,12 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import dim_compress, libentry
-from ..utils import triton_lang_extension as tle
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import triton_lang_extension as tle
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -22,7 +24,7 @@ def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("var_mean"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_tuned_config("var_mean"), key=["M", "N"])
 @triton.jit(do_not_specialize=["correction"])
 def var_mean_welford_kernel(
     X,
@@ -98,16 +100,8 @@ def var_mean_kernel_1(
     tl.store(Count, count)
 
 
-def heur_block_n(args):
-    return triton.next_power_of_2(args["BLOCK_NUM"])
-
-
 @libentry()
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-    }
-)
+@triton.heuristics(runtime.get_heuristic_config("var_mean"))
 @triton.jit(do_not_specialize=["correction"])
 def var_mean_kernel_2(
     Acc,
@@ -137,7 +131,7 @@ def var_mean_kernel_2(
 
 
 def var_mean(x, dim=None, *, correction=None, keepdim=False):
-    logging.debug("GEMS VAR MEAN")
+    logger.debug("GEMS VAR MEAN")
     if correction is None:
         correction = 1.0
 

@@ -2,6 +2,8 @@ import math
 
 import torch
 
+import flag_gems
+
 
 class TypedPtr:
     """This is a minimal requirement for a type to be treated as a tensor in triton jit
@@ -15,6 +17,9 @@ class TypedPtr:
 
     def data_ptr(self) -> int:
         return self.ptr
+
+    def untyped_storage(self):
+        return self
 
     @classmethod
     def from_tensor(cls, tensor: torch.Tensor, offset: int = 0):
@@ -47,10 +52,24 @@ class StridedBuffer:
     ):
         self._base = base
         self.dtype = dtype or base.dtype
+        self.offset = offset
+
         if offset == 0:
             self._data_ptr = self._base.data_ptr()
         else:
-            offset = self.dtype.itemsize * offset
+            # TODO[kunlunxin]: we will upgrade torch version in 2025.04
+            if flag_gems.vendor_name == "kunlunxin":
+
+                def get_dtype_bytes(dtype):
+                    if dtype.is_floating_point:
+                        return int(torch.finfo(dtype).bits / 8)
+                    else:
+                        return int(torch.iinfo(dtype).bits / 8)
+
+                offset = get_dtype_bytes(self.dtype) * offset
+            else:
+                offset = self.dtype.itemsize * offset
+
             self._data_ptr = self._base.data_ptr() + offset
         self.shape = tuple(shape if shape is not None else self._base.shape)
         self._strides = tuple(strides if strides is not None else self._base.stride())
@@ -77,3 +96,28 @@ class StridedBuffer:
 
     def data_ptr(self):
         return self._data_ptr
+
+    def untyped_storage(self):
+        return self._base.untyped_storage()
+
+    def clone(self):
+        return StridedBuffer(
+            self._base.clone(),
+            shape=self.shape,
+            strides=self._strides,
+            dtype=self.dtype,
+            offset=self.offset,
+        )
+
+    def copy_(self, src):
+        if isinstance(src, StridedBuffer):
+            self._base.copy_(src._base)
+            self._strides = src._strides
+            self.shape = src.shape
+            self.dtype = src.dtype
+            self.device = src.device
+            self.offset = src.offset
+        else:
+            src_buffer = StridedBuffer(src)
+            self.copy_(src_buffer)
+        return self

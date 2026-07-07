@@ -1,14 +1,14 @@
 import json
 import logging
 import os
+from datetime import datetime
 
 import pytest
 import torch
+import yaml
 
 import flag_gems
-from flag_gems.runtime import torch_device_fn
-
-from .attri_util import (
+from benchmark.attri_util import (
     ALL_AVAILABLE_METRICS,
     BOOL_DTYPES,
     DEFAULT_ITER_COUNT,
@@ -16,19 +16,42 @@ from .attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
     BenchLevel,
+    BenchMode,
     OperationAttribute,
     get_recommended_shapes,
 )
+from flag_gems.runtime import torch_device_fn
 
 device = flag_gems.device
+vendor_name = flag_gems.vendor_name
+recordLogger = logging.getLogger("flag_gems_benchmark")
+recordLogger.propagate = False
+
+
+def emit_record_logger(message: str) -> None:
+    if recordLogger.handlers:
+        handler = recordLogger.handlers[0]
+        if getattr(handler, "stream", None) is None:
+            handler.acquire()
+            try:
+                handler.stream = handler._open()
+            finally:
+                handler.release()
+    recordLogger.info(message)
 
 
 class BenchConfig:
     def __init__(self):
-        self.cpu_mode = False
+        self.mode = BenchMode.KERNEL
         self.bench_level = BenchLevel.COMPREHENSIVE
         self.warm_up = DEFAULT_WARMUP_COUNT
         self.repetition = DEFAULT_ITER_COUNT
+        if (
+            vendor_name == "kunlunxin"
+        ):  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
+            self.warm_up = 1
+            self.repetition = 1
+        self.no_torch = False
         self.record_log = False
         self.user_desired_dtypes = None
         self.user_desired_metrics = None
@@ -37,18 +60,25 @@ class BenchConfig:
 
 
 Config = BenchConfig()
+Benchmark_Results = []
+
+
+def record_benchmark_result(result):
+    Benchmark_Results.append(json.loads(result.to_json()))
 
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--mode",
+        (
+            "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
+        ),  # TODO: fix pytest-* common --mode args
         action="store",
-        default=device,
+        default="kernel",
         required=False,
-        choices=[device, "cpu"],
+        choices=["kernel", "operator", "wrapper"],
         help=(
-            "Specify how to measure latency, "
-            f"'cpu' for CPU-side measurement or {device} for GPU-side measurement."
+            "Specify how to measure latency, 'kernel' for device kernel, "
+            "'operator' for end2end operator or 'wrapper' for runtime wrapper."
         ),
     )
 
@@ -71,6 +101,13 @@ def pytest_addoption(parser):
         "--iter",
         default=DEFAULT_ITER_COUNT,
         help="Number of reps for each benchmark run.",
+    )
+
+    parser.addoption(
+        "--no-torch",
+        action="store_true",
+        default=False,
+        help="Disable torch baseline benchmark and only collect FlagGems latency.",
     )
 
     parser.addoption(
@@ -123,9 +160,11 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    global Config
-    mode_value = config.getoption("--mode")
-    Config.cpu_mode = mode_value == "cpu"
+    global Config  # noqa: F824
+    mode_value = config.getoption(
+        "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
+    )
+    Config.mode = BenchMode(mode_value)
 
     Config.query = config.getoption("--query")
 
@@ -137,6 +176,8 @@ def pytest_configure(config):
 
     iter_value = config.getoption("--iter")
     Config.repetition = int(iter_value)
+
+    Config.no_torch = config.getoption("--no-torch")
 
     types_str = config.getoption("--dtypes")
     dtypes = [getattr(torch, dtype) for dtype in types_str] if types_str else types_str
@@ -155,12 +196,23 @@ def pytest_configure(config):
             for arg in config.invocation_params.args
         ]
 
-        logging.basicConfig(
-            filename="result_{}.log".format("_".join(cmd_args)).replace("_-", "-"),
-            filemode="w",
-            level=logging.INFO,
-            format="[%(levelname)s] %(message)s",
-        )
+        log_file = "result_{}.log".format("_".join(cmd_args)).replace("_-", "-")
+
+        for h in list(recordLogger.handlers):
+            recordLogger.removeHandler(h)
+            try:
+                h.close()
+            except Exception as e:
+                import warnings
+
+                warnings.warn(f"Failed to close handler: {e}")
+
+        handler = logging.FileHandler(log_file, mode="w", encoding="utf-8", delay=False)
+        handler.setLevel(logging.INFO)
+        handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+        recordLogger.addHandler(handler)
+        recordLogger.setLevel(logging.INFO)
+        emit_record_logger("Benchmark record logger enabled")
 
 
 BUILTIN_MARKS = {
@@ -227,6 +279,30 @@ def extract_and_log_op_attributes(request):
         pytest.skip("Skipping benchmark due to the query parameter.")
 
     yield
-
     if Config.record_log and op_attributes:
-        logging.info(json.dumps(op_attributes, indent=2))
+        emit_record_logger(json.dumps(op_attributes, indent=2))
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if not Benchmark_Results:
+        return
+
+    payload = {
+        "metadata": {
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "warmup": Config.warm_up,
+            "iter": Config.repetition,
+            "no_torch": Config.no_torch,
+            "level": Config.bench_level.value,
+            "mode": Config.mode.value,
+            "shape_file": Config.shape_file,
+        },
+        "results": Benchmark_Results,
+    }
+    repo_root = os.path.dirname(os.path.dirname(__file__))
+    json_path = os.path.join(repo_root, "benchmark_v500_results.json")
+    yaml_path = os.path.join(repo_root, "benchmark_v500_results.yaml")
+    with open(json_path, "w", encoding="utf-8") as json_file:
+        json.dump(payload, json_file, indent=2)
+    with open(yaml_path, "w", encoding="utf-8") as yaml_file:
+        yaml.safe_dump(payload, yaml_file, sort_keys=False)

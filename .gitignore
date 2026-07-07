@@ -7,10 +7,25 @@ bin-release/
 # Other files and folders
 .settings/
 __pycache__/
+.vscode/
+
+# Python venv directory
+.venv
 
 # Distribution files
 build/
 *.egg-info/
+.eggs/
+dist/
+
+# scikit-build-core
+.skbuild-info.json
+CMakeInit.txt
+
+# An auxiliary product of unittests
+/*.json
+tests/*.json
+
 
 # Executables
 *.swf
