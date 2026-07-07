@@ -15,7 +15,6 @@ from flag_gems.ops.flash_kernel import (
     flash_varlen_fwd_fa3_kernel,
     flash_varlen_fwd_kernel,
 )
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 
@@ -997,8 +996,10 @@ def mha_varlan_fwd_fa3(
     assert _is_hopper(), "FA3 varlen requires Hopper GPU (sm_90+)"
     q_device = q.device
     q_dtype = q.dtype
-    assert q_dtype in (torch.float16, torch.bfloat16), \
-        "FlashAttention FA3 only supports fp16 and bf16"
+    assert q_dtype in (
+        torch.float16,
+        torch.bfloat16,
+    ), "FlashAttention FA3 only supports fp16 and bf16"
     assert q_dtype == k.dtype and q_dtype == v.dtype
     assert q.stride(-1) == 1 and k.stride(-1) == 1 and v.stride(-1) == 1
     assert cu_seqlens_q.dtype == torch.int32 and cu_seqlens_q.is_contiguous()
@@ -1039,8 +1040,9 @@ def mha_varlan_fwd_fa3(
 
     assert softcap == 0.0, "softcap is not supported in FA3"
     assert not is_local, "sliding window is not supported in FA3"
-    assert q_descale is None and k_descale is None and v_descale is None, \
-        "FP8 descale is not supported in FA3"
+    assert (
+        q_descale is None and k_descale is None and v_descale is None
+    ), "FP8 descale is not supported in FA3"
     if is_paged:
         assert seqused_k is not None, "paged FA3 varlen requires seqused_k"
     else:

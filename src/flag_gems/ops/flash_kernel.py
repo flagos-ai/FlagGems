@@ -1729,7 +1729,6 @@ def flash_varlen_fwd_kernel(
     )
 
 
-
 # ---------------------------------------------------------------------------
 # FA3 varlen forward kernel (Hopper Triton path, libtuner)
 # ---------------------------------------------------------------------------
@@ -1886,19 +1885,19 @@ def flash_varlen_fwd_fa3_kernel(
     num_stages: tl.constexpr,
 ):
     m_block = tl.program_id(0)
-    bid     = tl.program_id(1)
-    hid     = tl.program_id(2)
+    bid = tl.program_id(1)
+    hid = tl.program_id(2)
     if is_cu_seqlens_q:
         q_eos = tl.load(cu_seqlens_q_ptr + bid + 1).to(tl.int32)
         q_bos = tl.load(cu_seqlens_q_ptr + bid).to(tl.int32)
         q_len = q_eos - q_bos
-        q_offset   = q_bos * q_row_stride
-        o_offset   = q_bos * o_row_stride
+        q_offset = q_bos * q_row_stride
+        o_offset = q_bos * o_row_stride
         lse_offset = q_bos
     else:
-        q_len      = seqlen_q
-        q_offset   = bid * q_batch_stride
-        o_offset   = bid * o_batch_stride
+        q_len = seqlen_q
+        q_offset = bid * q_batch_stride
+        o_offset = bid * o_batch_stride
         lse_offset = bid * seqlen_q
 
     if is_cu_seqlens_k:
@@ -1906,7 +1905,7 @@ def flash_varlen_fwd_fa3_kernel(
         k_bos = tl.load(cu_seqlens_k_ptr + bid).to(tl.int32)
         k_len_cache = k_eos - k_bos
     else:
-        k_bos       = 0
+        k_bos = 0
         k_len_cache = seqlen_k
 
     if is_seqused_k:
@@ -1969,8 +1968,17 @@ def flash_varlen_fwd_fa3_kernel(
 
     if PACK_GQA:
         bQ = load_q_tile_pack_gqa(
-            q_ptr, q_offset, q_row_stride, q_head_stride,
-            m_block, hid, q_len, d, h_hk_ratio, BLOCK_M, BLOCK_K,
+            q_ptr,
+            q_offset,
+            q_row_stride,
+            q_head_stride,
+            m_block,
+            hid,
+            q_len,
+            d,
+            h_hk_ratio,
+            BLOCK_M,
+            BLOCK_K,
         )
     elif use_hopper_tma_qo:
         desc_q = tl.make_tensor_descriptor(
@@ -1991,7 +1999,7 @@ def flash_varlen_fwd_fa3_kernel(
         )
         bQ = tl.load(gQ, boundary_check=(0, 1))
 
-    acc_    = tl.zeros((BLOCK_M, BLOCK_K), dtype=tl.float32)
+    acc_ = tl.zeros((BLOCK_M, BLOCK_K), dtype=tl.float32)
     rowmax_ = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
     rowsum_ = tl.zeros([BLOCK_M], dtype=tl.float32)
 
@@ -2030,9 +2038,17 @@ def flash_varlen_fwd_fa3_kernel(
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         if is_paged:
             bK, bV = load_from_kvcache(
-                col_idx, k_len, page_table_ptr, k_ptr_base, v_ptr_base,
-                block_size, d, k_row_stride,
-                BLOCK_K=BLOCK_K, k_page_stride=k_page_stride, boundary_check=True,
+                col_idx,
+                k_len,
+                page_table_ptr,
+                k_ptr_base,
+                v_ptr_base,
+                block_size,
+                d,
+                k_row_stride,
+                BLOCK_K=BLOCK_K,
+                k_page_stride=k_page_stride,
+                boundary_check=True,
             )
         else:
             start_n = n_block * BLOCK_N
@@ -2043,14 +2059,20 @@ def flash_varlen_fwd_fa3_kernel(
                 k_ptr_seq = k_ptr_base + k_bos * k_row_stride
                 v_ptr_seq = v_ptr_base + k_bos * k_row_stride
                 gK = tl.make_block_ptr(
-                    base=k_ptr_seq, shape=(k_len, d),
-                    strides=(k_row_stride, 1), offsets=(start_n, 0),
-                    block_shape=(BLOCK_N, BLOCK_K), order=(0, 1),
+                    base=k_ptr_seq,
+                    shape=(k_len, d),
+                    strides=(k_row_stride, 1),
+                    offsets=(start_n, 0),
+                    block_shape=(BLOCK_N, BLOCK_K),
+                    order=(0, 1),
                 )
                 gV = tl.make_block_ptr(
-                    base=v_ptr_seq, shape=(k_len, d),
-                    strides=(v_row_stride, 1), offsets=(start_n, 0),
-                    block_shape=(BLOCK_N, BLOCK_K), order=(0, 1),
+                    base=v_ptr_seq,
+                    shape=(k_len, d),
+                    strides=(v_row_stride, 1),
+                    offsets=(start_n, 0),
+                    block_shape=(BLOCK_N, BLOCK_K),
+                    order=(0, 1),
                 )
                 bK = tl.trans(tl.load(gK, boundary_check=(0, 1)))
                 bV = tl.load(gV, boundary_check=(0, 1))
@@ -2060,13 +2082,24 @@ def flash_varlen_fwd_fa3_kernel(
             S *= qk_descale
         S = apply_softcap(S, softcap, is_softcap)
         S = apply_mask(
-            S, col_idx, mask_row_idx, q_len, k_len,
-            window_size_left, window_size_right,
-            is_even_mn=False, is_causal=is_causal, is_local=is_local,
+            S,
+            col_idx,
+            mask_row_idx,
+            q_len,
+            k_len,
+            window_size_left,
+            window_size_right,
+            is_even_mn=False,
+            is_causal=is_causal,
+            is_local=is_local,
         )
         acc_, P, rowmax_, rowsum_ = softmax_rescale(
-            acc_, S, rowmax_, rowsum_,
-            softmax_scale_log2e=scale_softmax_log2, is_border=True,
+            acc_,
+            S,
+            rowmax_,
+            rowsum_,
+            softmax_scale_log2e=scale_softmax_log2,
+            is_border=True,
         )
         P = P.to(q_ptr.type.element_ty)
         acc_ = tl.dot(P, bV, acc_)
@@ -2075,16 +2108,25 @@ def flash_varlen_fwd_fa3_kernel(
         n_block -= 1
 
     for n_block in tl.range(
-        n_block_max - n_masking_steps - 1, n_block_min - 1, step=-1,
+        n_block_max - n_masking_steps - 1,
+        n_block_min - 1,
+        step=-1,
         num_stages=num_stages,
         warp_specialize=use_warp_specialize,
     ):
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         if is_paged:
             bK, bV = load_from_kvcache(
-                col_idx, k_len, page_table_ptr, k_ptr_base, v_ptr_base,
-                block_size, d, k_row_stride,
-                BLOCK_K=BLOCK_K, k_page_stride=k_page_stride,
+                col_idx,
+                k_len,
+                page_table_ptr,
+                k_ptr_base,
+                v_ptr_base,
+                block_size,
+                d,
+                k_row_stride,
+                BLOCK_K=BLOCK_K,
+                k_page_stride=k_page_stride,
             )
         else:
             start_n = n_block * BLOCK_N
@@ -2095,14 +2137,20 @@ def flash_varlen_fwd_fa3_kernel(
                 k_ptr_seq = k_ptr_base + k_bos * k_row_stride
                 v_ptr_seq = v_ptr_base + k_bos * k_row_stride
                 gK = tl.make_block_ptr(
-                    base=k_ptr_seq, shape=(k_len, d),
-                    strides=(k_row_stride, 1), offsets=(start_n, 0),
-                    block_shape=(BLOCK_N, BLOCK_K), order=(0, 1),
+                    base=k_ptr_seq,
+                    shape=(k_len, d),
+                    strides=(k_row_stride, 1),
+                    offsets=(start_n, 0),
+                    block_shape=(BLOCK_N, BLOCK_K),
+                    order=(0, 1),
                 )
                 gV = tl.make_block_ptr(
-                    base=v_ptr_seq, shape=(k_len, d),
-                    strides=(v_row_stride, 1), offsets=(start_n, 0),
-                    block_shape=(BLOCK_N, BLOCK_K), order=(0, 1),
+                    base=v_ptr_seq,
+                    shape=(k_len, d),
+                    strides=(v_row_stride, 1),
+                    offsets=(start_n, 0),
+                    block_shape=(BLOCK_N, BLOCK_K),
+                    order=(0, 1),
                 )
                 bK = tl.trans(tl.load(gK))
                 bV = tl.load(gV)
@@ -2112,13 +2160,24 @@ def flash_varlen_fwd_fa3_kernel(
             S *= qk_descale
         S = apply_softcap(S, softcap, is_softcap)
         S = apply_mask(
-            S, col_idx, mask_row_idx, q_len, k_len,
-            window_size_left, window_size_right,
-            is_even_mn=True, is_causal=False, is_local=is_local,
+            S,
+            col_idx,
+            mask_row_idx,
+            q_len,
+            k_len,
+            window_size_left,
+            window_size_right,
+            is_even_mn=True,
+            is_causal=False,
+            is_local=is_local,
         )
         acc_, P, rowmax_, rowsum_ = softmax_rescale(
-            acc_, S, rowmax_, rowsum_,
-            softmax_scale_log2e=scale_softmax_log2, is_border=is_local,
+            acc_,
+            S,
+            rowmax_,
+            rowsum_,
+            softmax_scale_log2e=scale_softmax_log2,
+            is_border=is_local,
         )
         P = P.to(q_ptr.type.element_ty)
         acc_ = tl.dot(P, bV, acc_)
@@ -2136,12 +2195,29 @@ def flash_varlen_fwd_fa3_kernel(
 
     if PACK_GQA:
         store_o_tile_pack_gqa(
-            o_ptr, o_offset, o_row_stride, o_head_stride,
-            m_block, hid, q_len, d, h_hk_ratio, out, BLOCK_M, BLOCK_K,
+            o_ptr,
+            o_offset,
+            o_row_stride,
+            o_head_stride,
+            m_block,
+            hid,
+            q_len,
+            d,
+            h_hk_ratio,
+            out,
+            BLOCK_M,
+            BLOCK_K,
         )
         store_lse_tile_pack_gqa(
-            softmax_lse_ptr, total_q, lse_offset,
-            m_block, hid, q_len, h_hk_ratio, lse, BLOCK_M,
+            softmax_lse_ptr,
+            total_q,
+            lse_offset,
+            m_block,
+            hid,
+            q_len,
+            h_hk_ratio,
+            lse,
+            BLOCK_M,
         )
     else:
         o_row_offset = hid * o_head_stride

@@ -265,9 +265,12 @@ class FlashAttnVarlenFa3Benchmark(base.Benchmark):
         scale = head_size**-0.5
 
         with torch.device(device):
-            query = torch.randn(
-                cu_q[-1], num_query_heads, head_size, dtype=dtype, device=device
-            ) * 0.5
+            query = (
+                torch.randn(
+                    cu_q[-1], num_query_heads, head_size, dtype=dtype, device=device
+                )
+                * 0.5
+            )
             out = torch.empty_like(query)
             cu_query_lens = torch.tensor(cu_q, dtype=torch.int32, device=device)
 
@@ -291,23 +294,29 @@ class FlashAttnVarlenFa3Benchmark(base.Benchmark):
                 for req_idx, n_blocks in enumerate(blocks_per_req):
                     block_tables[req_idx, :n_blocks] = perm[offset : offset + n_blocks]
                     offset += n_blocks
-                key_cache = torch.randn(
-                    num_physical_blocks,
-                    block_size,
-                    num_kv_heads,
-                    head_size,
-                    dtype=dtype,
-                    device=device,
-                ) * 0.5
+                key_cache = (
+                    torch.randn(
+                        num_physical_blocks,
+                        block_size,
+                        num_kv_heads,
+                        head_size,
+                        dtype=dtype,
+                        device=device,
+                    )
+                    * 0.5
+                )
                 value_cache = torch.randn_like(key_cache)
                 seqused_k = torch.tensor(
                     [k for _, k in seq_lens], dtype=torch.int32, device=device
                 )
                 cu_seqlens_k = None
             else:
-                key_cache = torch.randn(
-                    cu_k[-1], num_kv_heads, head_size, dtype=dtype, device=device
-                ) * 0.5
+                key_cache = (
+                    torch.randn(
+                        cu_k[-1], num_kv_heads, head_size, dtype=dtype, device=device
+                    )
+                    * 0.5
+                )
                 value_cache = torch.randn_like(key_cache)
                 cu_seqlens_k = torch.tensor(cu_k, dtype=torch.int32, device=device)
                 seqused_k = None
@@ -344,7 +353,9 @@ class FlashAttnVarlenFa3Benchmark(base.Benchmark):
 def test_flash_attn_varlen_fa3_func(monkeypatch):
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")
 
-    from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func as _vllm_fa
+    from vllm.vllm_flash_attn.flash_attn_interface import (
+        flash_attn_varlen_func as _vllm_fa,
+    )
 
     def vllm_fa3(*args, **kwargs):
         kwargs.pop("fa_version", None)

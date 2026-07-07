@@ -9,7 +9,12 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.config import use_c_extension
-from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_fa3, mha_varlan_fwd_opt
+from flag_gems.ops.flash_api import (
+    mha_fwd,
+    mha_varlan_fwd,
+    mha_varlan_fwd_fa3,
+    mha_varlan_fwd_opt,
+)
 from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
@@ -1370,7 +1375,7 @@ def flash_attn_varlen_func(
                 cu_seqlens_q,
                 dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
                 seqused_k,
-                None,           # leftpad_k
+                None,  # leftpad_k
                 block_table,
                 max_seqlen_q,
                 max_seqlen_k,
@@ -1379,8 +1384,8 @@ def flash_attn_varlen_func(
                 real_window_size[0],
                 real_window_size[1],
                 softcap,
-                False,          # return_softmax
-                None,           # gen
+                False,  # return_softmax
+                None,  # gen
                 q_descale=q_descale,
                 k_descale=k_descale,
                 v_descale=v_descale,

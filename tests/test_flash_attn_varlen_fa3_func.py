@@ -101,9 +101,7 @@ def test_flash_attn_varlen_fa3_func(
         max_kv_len = max(kv_lens)
         scale = head_size**-0.5
 
-        query = torch.randn(
-            sum(query_lens), num_query_heads, head_size, dtype=dtype
-        )
+        query = torch.randn(sum(query_lens), num_query_heads, head_size, dtype=dtype)
         key_cache = torch.randn(
             num_blocks, block_size, num_kv_heads, head_size, dtype=dtype
         )
@@ -180,9 +178,7 @@ def test_flash_attn_varlen_fa3_func_decode(
         max_kv_len = max(kv_lens)
         scale = head_size**-0.5
 
-        query = torch.randn(
-            sum(query_lens), num_query_heads, head_size, dtype=dtype
-        )
+        query = torch.randn(sum(query_lens), num_query_heads, head_size, dtype=dtype)
         key_cache = torch.randn(
             num_blocks, block_size, num_kv_heads, head_size, dtype=dtype
         )
