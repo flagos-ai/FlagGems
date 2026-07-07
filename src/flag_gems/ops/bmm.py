@@ -685,6 +685,26 @@ def _get_bmm_fp8_w8a8_config(M, N, K, block_k):
         return 32, 16, 128, 2, 4, 2
     if M <= 256 and N <= 256:
         return 64, 32, 128, 8, 4, 2
+    if M >= 2048 and N >= 2048:
+        return 256, 32, 128, 2, 8, 3
+    if M >= 1024 and N >= 1024:
+        return 128, 32, 128, 2, 4, 2
+    if M >= 512 and N >= 512:
+        return 128, 32, 128, 8, 4, 2
+    return 64, 16, 128, 2, 4, 2
+
+
+def _get_bmm_fp8_w8a8_packed_scale_config(M, N, K, block_k):
+    if K < block_k:
+        return 64, 16, 64, 2, 4, 2
+    if M <= 64 and N <= 64:
+        return 128, 32, 128, 2, 8, 3
+    if M <= 128 and N <= 128:
+        return 32, 16, 128, 2, 4, 2
+    if M <= 256 and N <= 256:
+        return 64, 32, 128, 8, 4, 2
+    if M >= 2048 and N >= 2048:
+        return 256, 32, 128, 2, 8, 3
     if M >= 512 and N >= 512:
         return 128, 32, 128, 2, 4, 2
     return 64, 16, 128, 2, 4, 2
@@ -697,8 +717,12 @@ def _get_bmm_fp8_w8a8_block_scale_config(M, N, K, block_k):
         return 128, 32, 128, 2, 8, 3
     if M <= 128 and N <= 128:
         return 32, 16, 128, 2, 4, 2
+    if M >= 2048 and N >= 2048:
+        return 256, 32, 128, 2, 4, 2
+    if M >= 1024 and N >= 1024:
+        return 256, 32, 128, 1, 4, 2
     if M >= 512 and N >= 512:
-        return 128, 32, 128, 2, 4, 2
+        return 128, 32, 128, 8, 4, 3
     return 64, 16, 128, 2, 4, 2
 
 
@@ -818,9 +842,14 @@ def bmm_fp8_w8a8_packed_scale(
             batch,
         )
 
-    tile_m, tile_n, tile_k, group_m, num_warps, num_stages = _get_bmm_fp8_w8a8_config(
-        M, N, K, block_k
-    )
+    (
+        tile_m,
+        tile_n,
+        tile_k,
+        group_m,
+        num_warps,
+        num_stages,
+    ) = _get_bmm_fp8_w8a8_packed_scale_config(M, N, K, block_k)
     assert block_k % tile_k == 0, "block_k must be divisible by TILE_K"
     assert block_n % tile_n == 0, "block_n must be divisible by TILE_N"
 
