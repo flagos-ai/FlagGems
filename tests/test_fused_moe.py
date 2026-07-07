@@ -4,8 +4,8 @@ import torch
 import flag_gems
 from flag_gems.runtime import torch_device_fn
 
-from . import conftest as cfg
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 try:
     from vllm.model_executor.layers.fused_moe.fused_moe import (

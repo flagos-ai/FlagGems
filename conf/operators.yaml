@@ -1279,6 +1279,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: bucketize
+    description: Returns the indices of the buckets to which each input value belongs.
+    for:
+      - bucketize.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cat
     description: Concatenates the given sequence of tensors in tensors in the given dimension.
     for:
