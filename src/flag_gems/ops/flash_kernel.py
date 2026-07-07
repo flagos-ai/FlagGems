@@ -3,7 +3,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import libentry, tl_extra_shim
+from flag_gems.utils import libentry, libtuner, tl_extra_shim
 
 
 @triton.jit
@@ -1731,21 +1731,64 @@ def flash_varlen_fwd_kernel(
 
 
 # ---------------------------------------------------------------------------
-# FA3 varlen forward kernel (Hopper, packGQA)
+# FA3 varlen forward kernel (Hopper Triton path, libtuner)
 # ---------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
-# FA3 varlen forward kernel (gluon launch path)
-#
-# Same algorithm as flash_varlen_fwd_fa3_kernel.  Differs only in TMA policy:
-#   - non-paged Hopper uses tl.make_tensor_descriptor even with cu_seqlens_k
-#   - warp_specialize is disabled when K bounds are runtime-derived, because
-#     TaskIdPropagation cannot track loop-body descriptor bases
-# ---------------------------------------------------------------------------
+def fa3_varlen_heur_block_k(args):
+    return triton.next_power_of_2(args["d"])
+
+
+def fa3_varlen_pack_gqa_heur(args):
+    """Mirror flash_api._get_pack_gqa_fa3 / _should_pack_gqa_kernel(varlen_q=True)."""
+    num_heads = args["h"]
+    num_heads_k = args["hk"]
+    if num_heads == num_heads_k:
+        return False
+    if args["is_paged"]:
+        return True
+    # varlen non-paged GQA: _should_pack_gqa_kernel returns True when varlen_q=True
+    return True
+
+
+def _fa3_varlen_target_block_m(nargs):
+    total_q = nargs["total_q"]
+    batch_size = nargs["b"]
+    num_heads = nargs["h"]
+    total_rows = total_q * num_heads
+    num_sms = runtime.torch_device_fn.get_device_properties(
+        runtime.device
+    ).multi_processor_count
+    avg_rows_per_cta = min(total_q / max(batch_size, 1), total_rows / num_sms)
+    if avg_rows_per_cta > 64:
+        return 128
+    if avg_rows_per_cta > 32:
+        return 64
+    if avg_rows_per_cta > 16:
+        return 32
+    return 16
+
+
+def prune_fa3_varlen_configs(configs, nargs, **kwargs):
+    target_bm = _fa3_varlen_target_block_m(nargs)
+    pruned = [cfg for cfg in configs if cfg.kwargs["BLOCK_M"] == target_bm]
+    return pruned or configs
 
 
 @libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("attention_fa3_varlen"),
+    key=["d", "seqlen_q", "is_paged"],
+    prune_configs_by={"early_config_prune": prune_fa3_varlen_configs},
+)
+@triton.heuristics(
+    values={
+        "BLOCK_K": fa3_varlen_heur_block_k,
+        "PACK_GQA": fa3_varlen_pack_gqa_heur,
+        "HAS_DESCALE": lambda args: False,
+        "IS_HOPPER": lambda args: True,
+    }
+)
 @triton.jit(
     do_not_specialize=[
         "q_batch_stride",

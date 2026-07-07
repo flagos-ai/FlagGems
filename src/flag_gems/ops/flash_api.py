@@ -1136,61 +1136,38 @@ def mha_varlan_fwd_fa3(
 
         args_tuple = tuple(getattr(params, slot) for slot in params.__slots__)
 
-        total_rows = total_q * num_heads
-        num_sms = torch_device_fn.get_device_properties(
-            flag_gems.device
-        ).multi_processor_count
-        avg_rows_per_cta = min(total_q / batch_size, total_rows / num_sms)
-        if avg_rows_per_cta > 64:
-            varlen_fwd_config_str = "mha_block_128"
-        elif avg_rows_per_cta > 32:
-            varlen_fwd_config_str = "mha_block_64"
-        elif avg_rows_per_cta > 16:
-            varlen_fwd_config_str = "mha_block_32"
-        else:
-            varlen_fwd_config_str = "mha_block_16"
-
-        cfg = runtime.get_heuristic_config(varlen_fwd_config_str)
-        block_m = cfg["BLOCK_M"](args_tuple)
         h_hk_ratio = num_heads // num_heads_k
-        pack_gqa = _get_pack_gqa_fa3(
-            num_heads,
-            num_heads_k,
-            max_seqlen_q,
-            block_m,
-            is_paged=is_paged,
-        )
-        if pack_gqa:
-            grid = lambda args, _hh=h_hk_ratio, _bs=batch_size, _hk=num_heads_k: (
-                triton.cdiv(max_seqlen_q * _hh, args["BLOCK_M"]),
-                _bs,
-                _hk,
+
+        def grid(meta):
+            block_m = meta["BLOCK_M"]
+            pack_gqa = _get_pack_gqa_fa3(
+                num_heads,
+                num_heads_k,
+                max_seqlen_q,
+                block_m,
+                is_paged=is_paged,
             )
-        else:
-            grid = lambda args, _bs=batch_size, _nh=num_heads: (
-                triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
-                _bs,
-                _nh,
+            if pack_gqa:
+                return (
+                    triton.cdiv(max_seqlen_q * h_hk_ratio, block_m),
+                    batch_size,
+                    num_heads_k,
+                )
+            return (
+                triton.cdiv(max_seqlen_q, block_m),
+                batch_size,
+                num_heads,
             )
-        kernel = flash_varlen_fwd_fa3_kernel[grid]
-        cfg_params = {
-            "BLOCK_M": block_m,
-            "BLOCK_N": cfg["BLOCK_N"](args_tuple),
-            "BLOCK_K": triton.next_power_of_2(head_size),
-            "num_warps": cfg["num_warps"](args_tuple),
-            "num_stages": cfg["num_stages"](args_tuple),
-            "HAS_DESCALE": False,
-            "qk_descale": 1.0,
-            "v_descale": 1.0,
-            "IS_HOPPER": True,
-            "PACK_GQA": pack_gqa,
-        }
 
         def _alloc_fn(size: int, align: int, _stream):
             return torch.empty(size, dtype=torch.int8, device=q_device)
 
         triton.set_allocator(_alloc_fn)
-        kernel(*args_tuple, **cfg_params)
+        flash_varlen_fwd_fa3_kernel[grid](
+            *args_tuple,
+            qk_descale=1.0,
+            v_descale=1.0,
+        )
 
         unused = None
     return out, q, k, v, lse, None, unused, None
