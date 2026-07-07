@@ -9,6 +9,7 @@ from flag_gems import runtime
 from flag_gems.config import aten_patch_list, resolve_user_setting
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
+from flag_gems.fused.Paged_Attention import Paged_Attention  # noqa: F401
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
