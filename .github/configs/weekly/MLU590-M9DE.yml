@@ -32,6 +32,11 @@ container_options: >-
 # GPUs to test for this backends
 test_gpus: "0,1,2,3,4,5,6,7"
 
+# Extra environment variables injected only into the "Run weekly tests" step
+test_env:
+  HOME: /root
+  DOCKER_CONFIG: /github/home/.docker
+
 # GPU availability check script for this backend
 gpu_check_script: tools/gpu_check_cambricon.sh
 

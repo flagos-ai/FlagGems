@@ -109,11 +109,16 @@ jobs:
 
       - name: Install FlagGems dependencies
         env:
+          HOME: /root
+          DOCKER_CONFIG: /github/home/.docker
           PIP_CACHE_DIR: /root/.cache/pip
         shell: bash --login -e -o pipefail {0}
         run: pip install .
 
       - name: Check GPU availability
+        env:
+          HOME: /root
+          DOCKER_CONFIG: /github/home/.docker
         shell: bash --login -e -o pipefail {0}
         run: bash ${{ matrix.gpu_check_script }}
 
