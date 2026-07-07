@@ -26,6 +26,6 @@ def full_like(
     size = x.size()
     out = torch.empty(size, device=device, dtype=dtype)
     if isinstance(fill_value, torch.Tensor):
-        return full_func(out, fill_value)
+        return full_func(out, fill_value, out0=out)
     else:
-        return full_func_scalar(out, fill_value)
+        return full_func_scalar(out, fill_value, out0=out)

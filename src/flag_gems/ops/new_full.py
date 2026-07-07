@@ -26,6 +26,6 @@ def new_full(
     fill_value = check_dtype(fill_value, dtype, device)
     out = torch.empty(size, device=device, dtype=dtype)
     if isinstance(fill_value, torch.Tensor):
-        return full_func(out, fill_value)
+        return full_func(out, fill_value, out0=out)
     else:
-        return full_func_scalar(out, fill_value)
+        return full_func_scalar(out, fill_value, out0=out)
