@@ -200,13 +200,6 @@ backends:
       LD_LIBRARY_PATH: "${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}"
       USE_TORCH_XLA: "0"
       TORCH_COMPILE_DISABLE: "1"
-    # TODO: Move this to base image
-    pre_install: |
-      FILESTORE=https://resource.flagos.net/repository/flagos-filestore/tsingmicro
-      curl -o /tmp/tx8.tar.gz ${FILESTORE}/tx8_depends_dev_20260507_104051.tar.gz \
-        && tar xf /tmp/tx8.tar.gz -C /usr/local && rm /tmp/tx8.tar.gz
-      curl -o /tmp/llvm.tar.gz ${FILESTORE}/llvm-a66376b0-ubuntu-x64.tgz \
-        && tar xf /tmp/llvm.tar.gz -C /usr/local && rm /tmp/llvm.tar.gz
     deps:
       - torch==2.7.0+cpu
       - torchvision==0.22.0+cpu
