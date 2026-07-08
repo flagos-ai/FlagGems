@@ -1,4 +1,12 @@
+# (c) Copyright, 2026, FlagOS contributors
+#
+# This file is supposed to be used for native installation (bare metal or
+# virtual machines), including GitHub CI workflows. For package installation
+# inside a container, we have baked the environment variables into the
+# container file.
+
 BACKEND=$1
+
 echo "Setting up environment variable for backend $BACKEND"
 
 # Vendor env scripts append to these variables without guarding against unset.
