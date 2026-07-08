@@ -6,8 +6,6 @@ import triton
 import triton.language as tl
 import triton.language.core as core
 
-import flag_gems
-
 try:
     # TODO: Triton 2.1 does not implement _log2.
     # Remove the try-catch block once all vendors upgrade to a newer version of Triton.
@@ -544,7 +542,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         HAS_TLE
         and sorted
         and descending
-        and x.device.type == flag_gems.device
+        and x.is_cuda
         and x.dtype in (torch.float16, torch.float32, torch.bfloat16)
         and k >= 8
         and topk_elem_cnt > 128
