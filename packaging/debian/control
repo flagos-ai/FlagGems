@@ -33,7 +33,7 @@ X-Build-Environment: This package is built in a container that provides
 # until the cmake-only split (Phase 2) lands.
 
 Package: python3-flag-gems
-Architecture: amd64
+Architecture: all
 Depends: python3:any,
          ${shlibs:Depends},
          ${misc:Depends},
