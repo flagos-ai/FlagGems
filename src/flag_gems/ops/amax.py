@@ -194,7 +194,11 @@ def amax(inp, dim=None, keepdim=False):
 
     if isinstance(dim, int):
         dim = [dim]
-    assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
+    if not all(-inp.ndim <= i < inp.ndim for i in dim):
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of "
+            f"[{-inp.ndim}, {inp.ndim - 1}])"
+        )
     dtype = inp.dtype
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
@@ -206,18 +210,27 @@ def amax(inp, dim=None, keepdim=False):
         # outer dim, where the copy used to dominate the runtime.
         d = dim[0]
         N = inp.shape[d]
+        if N == 0:
+            # Reducing over an empty dimension has no identity, same as torch.
+            raise IndexError("amax(): cannot reduce over a zero-size dimension")
         M = reduce(lambda x, y: x * y, shape[:d], 1)
-        inp = inp.contiguous()
-        K = inp.numel() // M // N
+        K = reduce(lambda x, y: x * y, shape[d + 1 :], 1)
         shape[d] = 1
         out = torch.empty(shape, dtype=dtype, device=inp.device)
+        if M == 0 or K == 0:
+            # Some other dimension is empty: the output is a valid empty tensor
+            # and there is nothing to launch. Matches torch.
+            if not keepdim:
+                out = out.squeeze(dim=d)
+            return out
+        inp = inp.contiguous()
         with torch_device_fn.device(inp.device):
-            if K > 1:
-                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
-                amax_dim_kernel_non_inner[grid](out, inp, M, N, K)
-            else:
+            if K == 1:
                 grid = (M, 1, 1)
                 amax_dim_kernel_inner[grid](out, inp, M, N)
+            else:
+                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+                amax_dim_kernel_non_inner[grid](out, inp, M, N, K)
         if not keepdim:
             out = out.squeeze(dim=d)
         return out
