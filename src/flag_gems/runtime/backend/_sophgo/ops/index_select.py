@@ -5,12 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
-
-logger = logging.getLogger(__name__)
 
 
 def index_select_dim0_block_index(index_len, c_dim):
@@ -30,57 +26,8 @@ def index_select_dim0_block_c(c_dim):
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("index_select"))
 @triton.jit
-def index_select_kernel(
-    inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
-):
-    pid_x = tle.program_id(axis=0)
-    pid_y = tle.program_id(axis=1)
-    rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    rows_mask = rows_offsets < M
-    cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)
-
-    out_mask = rows_mask and (cols_offsets < index_len)
-
-    indices = tl.load(index + cols_offsets, mask=(cols_offsets < index_len), other=0)
-    inp_off = rows_offsets * N + indices[None, :]
-    out_off = rows_offsets * index_len + cols_offsets[None, :]
-
-    selected = tl.load(inp + inp_off, mask=rows_mask, other=0.0)
-    tl.store(out + out_off, selected, mask=out_mask)
-
-
-@libentry()
-@triton.jit
-def _index_select_dim0_kernel(
-    inp,
-    out,
-    M,
-    index,
-    index_len,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid_m = tle.program_id(0)
-    pid_n = tle.program_id(1)
-    row_offsets = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    row_mask = row_offsets < index_len
-    idx = tl.load(index + row_offsets, mask=row_mask, other=0)
-    col_offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    col_mask = col_offsets < M
-
-    inp_off = idx[:, None] * M + col_offsets[None, :]
-    out_off = row_offsets[:, None] * M + col_offsets[None, :]
-    mask = row_mask[:, None] & col_mask[None, :]
-
-    val = tl.load(inp + inp_off, mask=mask, other=0.0)
-    tl.store(out + out_off, val, mask=mask)
-
-
-@libentry()
-@triton.jit
-def index_select_dim0_fast_kernel(
+def index_select_dim0_kernel(
     inp,
     out,
     index,
@@ -107,39 +54,6 @@ def index_select_dim0_fast_kernel(
     tl.store(out_ptrs, values, mask=mask)
 
 
-@libentry()
-@triton.jit
-def _index_select_inner_2d_kernel(
-    inp,
-    out,
-    before_size,
-    N,
-    after_size,
-    index,
-    index_len,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid_m = tle.program_id(0)
-    pid_n = tle.program_id(1)
-    row_offsets = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    row_mask = row_offsets < (before_size * index_len)
-    col_offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    col_mask = col_offsets < after_size
-
-    b = row_offsets // index_len
-    i = row_offsets % index_len
-    idx = tl.load(index + i, mask=row_mask, other=0)
-    inp_row = b * N + idx
-
-    inp_off = inp_row[:, None] * after_size + col_offsets[None, :]
-    out_off = row_offsets[:, None] * after_size + col_offsets[None, :]
-    mask = row_mask[:, None] & col_mask[None, :]
-
-    val = tl.load(inp + inp_off, mask=mask, other=0.0)
-    tl.store(out + out_off, val, mask=mask)
-
-
 def _generic_index_select(inp, dim, index):
     from flag_gems.ops.index_select import index_select as generic_index_select
 
@@ -147,7 +61,7 @@ def _generic_index_select(inp, dim, index):
 
 
 def index_select(inp, dim, index):
-    logger.debug("GEMS SOPHGO INDEX_SELECT")
+    logging.debug("GEMS SOPHGO INDEX_SELECT")
 
     if torch.is_grad_enabled() and inp.requires_grad:
         return _generic_index_select(inp, dim, index)
@@ -158,90 +72,42 @@ def index_select(inp, dim, index):
     if index.ndim == 0:
         index = index.unsqueeze(0)
     dim = dim % inp.ndim
-    inp_shape = list(inp.shape)
-    index_len = index.numel()
 
+    if dim != 0:
+        return _generic_index_select(inp, dim, index)
+
+    # Preserve the narrow dim0 fast path for the historical 2D hotspot, but
+    # avoid applying it to higher-rank shapes where the migrated implementation
+    # is no longer numerically stable under the new pytest coverage.
+    if inp.ndim != 2 or not inp.is_contiguous():
+        return _generic_index_select(inp, dim, index)
+
+    index_len = index.numel()
     if index_len == 0:
-        out_shape = inp_shape[:dim] + [0] + inp_shape[dim + 1 :]
+        out_shape = list(inp.shape)
+        out_shape[0] = 0
         return torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
 
-    if dim == 0 and inp.ndim == 2 and inp.is_contiguous():
-        index = index.contiguous()
-        c_dim = math.prod(inp.shape[1:])
-        inp_2d = inp.reshape(inp.shape[0], c_dim)
-        out_2d = torch.empty((index_len, c_dim), dtype=inp.dtype, device=inp.device)
+    inp = inp.contiguous()
+    index = index.contiguous()
+    c_dim = math.prod(inp.shape[1:])
 
-        block_index = index_select_dim0_block_index(index_len, c_dim)
-        block_c = index_select_dim0_block_c(c_dim)
-        grid = (triton.cdiv(index_len, block_index), triton.cdiv(c_dim, block_c))
+    inp_2d = inp.reshape(inp.shape[0], c_dim)
+    out_2d = torch.empty((index_len, c_dim), dtype=inp.dtype, device=inp.device)
 
-        with torch_device_fn.device(inp.device):
-            index_select_dim0_fast_kernel[grid](
-                inp_2d,
-                out_2d,
-                index,
-                index_len,
-                c_dim,
-                BLOCK_INDEX=block_index,
-                BLOCK_C=block_c,
-            )
-        return out_2d.reshape(index_len, *inp.shape[1:])
+    block_index = index_select_dim0_block_index(index_len, c_dim)
+    block_c = index_select_dim0_block_c(c_dim)
+    grid = (triton.cdiv(index_len, block_index), triton.cdiv(c_dim, block_c))
 
-    N = inp_shape[dim]
-    M = inp.numel() // N
-
-    if dim == 0:
-        inp_2d = inp.reshape(N, M)
-        out_2d = torch.empty((index_len, M), dtype=inp.dtype, device=inp.device)
-        grid = lambda meta: (
-            triton.cdiv(index_len, meta["BLOCK_M"]),
-            triton.cdiv(M, meta["BLOCK_N"]),
-        )
-        _index_select_dim0_kernel[grid](
+    with torch_device_fn.device(inp.device):
+        index_select_dim0_kernel[grid](
             inp_2d,
             out_2d,
-            M,
             index,
             index_len,
-            BLOCK_M=32,
-            BLOCK_N=64,
+            c_dim,
+            BLOCK_INDEX=block_index,
+            BLOCK_C=block_c,
         )
-        out_shape = [index_len] + inp_shape[1:]
-        return out_2d.reshape(out_shape)
-    elif dim == inp.ndim - 1:
-        inp_2d = inp.reshape(M, N)
-        out_2d = torch.empty((M, index_len), dtype=inp.dtype, device=inp.device)
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            triton.cdiv(index_len, meta["BLOCK_N"]),
-        )
-        index_select_kernel[grid](inp_2d, out_2d, M, N, index, index_len)
-        out_shape = inp_shape[:-1] + [index_len]
-        return out_2d.reshape(out_shape)
-    else:
-        before_size = 1
-        for d in range(0, dim):
-            before_size *= inp_shape[d]
-        after_size = 1
-        for d in range(dim + 1, inp.ndim):
-            after_size *= inp_shape[d]
-        inp_2d = inp.reshape(before_size * N, after_size)
-        out_rows = before_size * index_len
-        out_2d = torch.empty((out_rows, after_size), dtype=inp.dtype, device=inp.device)
-        grid = lambda meta: (
-            triton.cdiv(out_rows, meta["BLOCK_M"]),
-            triton.cdiv(after_size, meta["BLOCK_N"]),
-        )
-        _index_select_inner_2d_kernel[grid](
-            inp_2d,
-            out_2d,
-            before_size,
-            N,
-            after_size,
-            index,
-            index_len,
-            BLOCK_M=32,
-            BLOCK_N=64,
-        )
-        out_shape = inp_shape[:dim] + [index_len] + inp_shape[dim + 1 :]
-        return out_2d.reshape(out_shape)
+
+    return out_2d.reshape(index_len, *inp.shape[1:])

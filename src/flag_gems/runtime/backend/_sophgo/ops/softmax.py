@@ -4,152 +4,90 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-from ..utils.shape_utils import safe_permute_contiguous
-
-logger = logging.getLogger(__name__)
+from flag_gems.ops.softmax import softmax as generic_softmax
 
 
+def softmax_inner_tile_n(args):
+    return triton.next_power_of_2(args["N"])
+
+
+def softmax_inner_tile_m(args):
+    return max(1, 512 // args["TILE_N"])
+
+
+def softmax_inner_num_warps(args):
+    return 4
+
+
+@triton.heuristics(
+    values={
+        "TILE_N": softmax_inner_tile_n,
+        "TILE_M": softmax_inner_tile_m,
+        "num_warps": softmax_inner_num_warps,
+    }
+)
 @triton.jit
-def prev_multiple_of(a, b):
-    # the largest x<a that x%b ==0
-    return tl.cdiv(a, b) * b - b
-
-
-@libentry()
-@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
-@triton.jit
-def softmax_kernel_inner(
+def softmax_kernel_inner_multirow(
     output_ptr,
     input_ptr,
     M,
     N,
+    TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
-    ONE_TILE_PER_CTA: tl.constexpr,
 ):
     pid_m = tle.program_id(0)
-    if ONE_TILE_PER_CTA:
-        n_offsets = tl.arange(0, TILE_N)
-        offset = pid_m * N + n_offsets
-        input_ptrs = input_ptr + offset
-        mask = n_offsets < N
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(
-            output_ptr.dtype.element_ty
-        )
-        m = tl.max(inp, 0)
-        e = tl.exp(inp - m)
-        z = tl.sum(e, 0)
-        out = e / z
-        output_ptrs = output_ptr + offset
-        tl.store(output_ptrs, out, mask=mask)
-    else:
-        m = tl.full([TILE_N], value=float("-inf"), dtype=tl.float32)
-        z = tl.full([TILE_N], value=0.0, dtype=tl.float32)
-        input_ptr += pid_m * N
-        output_ptr += pid_m * N
+    m_offsets = pid_m * TILE_M + tl.arange(0, TILE_M)
+    n_offsets = tl.arange(0, TILE_N)
+    row_mask = m_offsets < M
+    offsets = m_offsets[:, None] * N + n_offsets[None, :]
+    mask = row_mask[:, None] & (n_offsets[None, :] < N)
 
-        previous_multiple = prev_multiple_of(N, TILE_N)
-        for start_n in range(0, previous_multiple, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)
-            inp = tl.load(input_ptr + n_offsets)
-            m_new = tl.maximum(m, inp)
-            # it is possible that there are -inf's in the input
-            all_neg_inf = m_new == float("-inf")
-            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
-            m = m_new
-        # specialize the last iteration
-        for start_n in range(previous_multiple, N, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)
-            mask = n_offsets < N
-            inp = tl.load(input_ptr + n_offsets, mask=mask, other=-float("inf"))
-            m_new = tl.maximum(m, inp)
-            all_neg_inf = m_new == float("-inf")
-            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
-            m = m_new
-
-        m_reduced = tl.max(m, 0)
-        z = tl.sum(z * tl.exp(m - m_reduced), 0)
-        m = m_reduced
-
-        previous_multiple = prev_multiple_of(N, TILE_N)
-        # specialize the first iteration
-        for start_n in range(0, TILE_N, TILE_N):
-            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
-            mask = n_offsets < N
-            inp = tl.load(
-                input_ptr + n_offsets,
-                mask=mask,
-                other=-float("inf"),
-                eviction_policy="evict_first",
-            )
-            o = tl.exp(inp - m) / z
-            tl.store(output_ptr + n_offsets, o, mask=mask)
-        for start_n in range(TILE_N, N, TILE_N):
-            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
-            inp = tl.load(input_ptr + n_offsets, eviction_policy="evict_first")
-            o = tl.exp(inp - m) / z
-            tl.store(output_ptr + n_offsets, o)
+    inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf")).to(tl.float32)
+    m = tl.max(inp, axis=1)
+    safe_m = tl.where(row_mask, m, 0.0)
+    e = tl.exp(inp - safe_m[:, None])
+    e = tl.where(mask, e, 0.0)
+    z = tl.sum(e, axis=1)
+    z = tl.where(row_mask, z, 1.0)
+    out = e / z[:, None]
+    tl.store(output_ptr + offsets, out, mask=mask)
 
 
 def softmax(self, dim, half_to_float=False):
-    logger.debug("GEMS SOPHGO SOFTMAX")
+    logging.debug("GEMS SOFTMAX (SOPHGO)")
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
     dim = dim % self.ndim
+
     M = 1
     N = self.shape[dim]
     for i in range(dim):
-        M *= self.shape[i]  # pre_dim
-    self = self.contiguous()
-    if half_to_float:
-        dtype = torch.float32
-    else:
-        dtype = self.dtype
-    out = torch.empty_like(self, dtype=dtype)
-    K = self.numel() // M // N  # post_dim
+        M *= self.shape[i]
+    K = self.numel() // M // N
 
-    with torch_device_fn.device(self.device):
-        if K > 1:
-            # When K > 1, use transpose strategy to avoid w_stride limit:
-            # The hardware DMA w_stride register is limited to 128 / dtype_size.
-            # When the softmax dimension is not the last dimension, the stride
-            # between consecutive N elements is K, which can exceed the limit.
-            # By transposing (M, N, K) -> (M, K, N), we make N contiguous
-            # (stride = 1), avoiding the w_stride issue.
-            original_shape = self.shape
-            reshaped = self.view(M, N, K)
-            # safe_permute_contiguous handles pseudo-3D (M==1 etc.) by
-            # squeezing unit dims before transpose, so every DMA w_stride
-            # stays within the 128-byte HW limit.
-            transposed = safe_permute_contiguous(
-                reshaped, [0, 2, 1]
-            )  # (M, K, N)
-            out_transposed = torch.empty_like(transposed, dtype=dtype)
+    if K != 1 or N > 128:
+        # The generic softmax path currently depends on CUDA-derived heuristics
+        # in the new migration environment. Keep the validated narrow fast path
+        # below, and use a device-side decomposition for broader cases.
+        input_tensor = self.to(torch.float32) if half_to_float else self
+        max_vals = torch.amax(input_tensor, dim=dim, keepdim=True)
+        exp_vals = torch.exp(input_tensor - max_vals)
+        denom = torch.sum(exp_vals, dim=dim, keepdim=True)
+        return exp_vals / denom
 
-            M_trans = M * K
-            N_trans = N
+    input_tensor = self.contiguous()
+    out_dtype = torch.float32 if half_to_float else input_tensor.dtype
+    out = torch.empty_like(input_tensor, dtype=out_dtype)
 
-            grid = (M_trans, 1, 1)
-            softmax_kernel_inner[grid](
-                out_transposed,
-                transposed,
-                M_trans,
-                N_trans,
-            )
-
-            out = safe_permute_contiguous(
-                out_transposed, [0, 2, 1]
-            ).view(original_shape)
-        else:
-            grid = (M, 1, 1)
-            softmax_kernel_inner[grid](
-                out,
-                self,
-                M,
-                N,
-            )
+    grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
+    with torch_device_fn.device(input_tensor.device):
+        softmax_kernel_inner_multirow[grid](
+            out,
+            input_tensor,
+            M,
+            N,
+        )
     return out

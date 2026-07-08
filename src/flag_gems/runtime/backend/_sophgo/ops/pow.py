@@ -100,6 +100,39 @@ def sophgo_pow_func_tensor_scalar(x, exponent):
     return result
 
 
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
+@triton.jit
+def sophgo_pow_square(x, exponent):
+    x_f32 = x.to(tl.float32)
+    return x_f32 * x_f32
+
+
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
+@triton.jit
+def sophgo_pow_cubic(x, exponent):
+    x_f32 = x.to(tl.float32)
+    return x_f32 * x_f32 * x_f32
+
+
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
+@triton.jit
+def sophgo_pow_sqrt(x, exponent):
+    return tl.sqrt(x.to(tl.float32))
+
+
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
+@triton.jit
+def sophgo_pow_inv(x, exponent):
+    return 1.0 / x.to(tl.float32)
+
+
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
+@triton.jit
+def sophgo_pow_inv_square(x, exponent):
+    inv = 1.0 / x.to(tl.float32)
+    return inv * inv
+
+
 PRECISE_EXP_THRESHOLD = 50
 
 
@@ -137,6 +170,17 @@ def sophgo_pow_precise(x, int_exp, frac_exp):
 def pow_tensor_scalar(A, exponent):
     logger.debug("SOPHGO POW_TENSOR_SCALAR")
     (A_f,), orig = _reshape_if_needed((A,))
+
+    if exponent == 2.0:
+        return _reshape_back(sophgo_pow_square(A_f, exponent), orig)
+    if exponent == 3.0:
+        return _reshape_back(sophgo_pow_cubic(A_f, exponent), orig)
+    if exponent == 0.5:
+        return _reshape_back(sophgo_pow_sqrt(A_f, exponent), orig)
+    if exponent == -1.0:
+        return _reshape_back(sophgo_pow_inv(A_f, exponent), orig)
+    if exponent == -2.0:
+        return _reshape_back(sophgo_pow_inv_square(A_f, exponent), orig)
 
     if abs(exponent) >= PRECISE_EXP_THRESHOLD:
         frac, integer = math.modf(exponent)

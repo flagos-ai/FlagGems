@@ -102,6 +102,7 @@ from .tile import tile
 from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2
+from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
 from .vdot import vdot
@@ -109,6 +110,7 @@ from .vector_norm import vector_norm
 from .vstack import vstack
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
+from .zeros import zeros
 
 __all__ = [
     "abs",
@@ -251,6 +253,7 @@ __all__ = [
     "triu",
     "uniform_",
     "_unique2",
+    "_upsample_bicubic2d_aa",
     "upsample_nearest2d",
     "var_mean",
     "vdot",
@@ -262,4 +265,5 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "zeros",
 ]

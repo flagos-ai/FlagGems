@@ -2,9 +2,11 @@ import logging
 
 import torch
 import triton
+import triton.language as tl
 from torch import Tensor
 
-from flag_gems.utils import pointwise_dynamic
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, pointwise_dynamic
 
 from .dot import dot
 
@@ -25,6 +27,55 @@ def complex_mult_conj_real_part(a_real, a_imag, b_real, b_imag):
 @triton.jit
 def complex_mult_conj_imag_part(a_real, a_imag, b_real, b_imag):
     return a_real * b_imag - a_imag * b_real
+
+
+def vdot_block_size(n):
+    if n >= 1024:
+        return 1024
+    if n >= 256:
+        return 256
+    return triton.next_power_of_2(max(1, n))
+
+
+@libentry()
+@triton.jit
+def vdot_sum_reduce_kernel(
+    x_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.arange(0, BLOCK_SIZE)
+    acc = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+
+    for off in range(0, n_elements, BLOCK_SIZE):
+        idx = off + offsets
+        mask = idx < n_elements
+        x = tl.load(x_ptr + idx, mask=mask, other=0.0).to(tl.float32)
+        acc += x
+
+    total = tl.sum(acc[None, :], axis=1)
+    out_idx = tl.arange(0, 1)
+    tl.store(out_ptr + out_idx, total, mask=out_idx < 1)
+
+
+def vector_sum(x):
+    assert x.dim() == 1, "Input must be 1D tensor"
+
+    n_elements = x.shape[0]
+    x = x.contiguous()
+    out = torch.empty((1,), dtype=torch.float32, device=x.device)
+    block_size = vdot_block_size(n_elements)
+
+    with torch_device_fn.device(x.device):
+        vdot_sum_reduce_kernel[(1, 1, 1)](
+            x,
+            out,
+            n_elements,
+            BLOCK_SIZE=block_size,
+        )
+
+    return out[0]
 
 
 def vdot(input: Tensor, other: Tensor):
@@ -81,10 +132,9 @@ def vdot(input: Tensor, other: Tensor):
         prod_real = complex_mult_conj_real_part(inp_real, inp_imag, oth_real, oth_imag)
         prod_imag = complex_mult_conj_imag_part(inp_real, inp_imag, oth_real, oth_imag)
 
-        # Sum real and imaginary parts separately (using dot operator)
-        ones = torch.ones_like(prod_real)
-        sum_real = dot(prod_real, ones)
-        sum_imag = dot(prod_imag, ones)
+        # Sum real and imaginary parts without constructing extra ones tensors.
+        sum_real = vector_sum(prod_real)
+        sum_imag = vector_sum(prod_imag)
 
         # Combine into complex result
         result_real_imag = torch.stack([sum_real, sum_imag], dim=-1).cpu()
