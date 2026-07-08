@@ -1,5 +1,4 @@
 import itertools
-import os
 from dataclasses import asdict, dataclass, fields
 from enum import Enum
 from typing import List, Optional, Tuple
@@ -212,23 +211,11 @@ class BenchmarkResult:
             f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
             f"level={self.level})\n"
         )
-        if (
-            self.op_name == "mm"
-            and os.environ.get("FLAGGEMS_BENCH_MM_COMPARE_BF16_TRITON", "0").lower()
-            not in {"0", "false", "off", "no"}
-        ):
-            base_label = "BF16 Triton (ms)"
-            gems_label = "FP8+Fallback (ms)"
-            speedup_label = "FP8/BF16 Speedup"
-        else:
-            base_label = "Torch Latency (ms)"
-            gems_label = "Gems Latency (ms)"
-            speedup_label = "Gems Speedup"
         col_names = [
             f"{'Status':<10}",
-            f"{base_label:>20}",
-            f"{gems_label:>20}",
-            f"{speedup_label:>20}",
+            f"{'Torch Latency (ms)':>20}",
+            f"{'Gems Latency (ms)':>20}",
+            f"{'Gems Speedup':>20}",
         ]
         if self.result[0].tflops and self.result[0].tflops != 0.0:
             col_names.append(f"{'TFLOPS':>20}")

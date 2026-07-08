@@ -1,5 +1,4 @@
 import concurrent.futures
-import contextlib
 import fcntl
 import gc
 import math
@@ -67,8 +66,6 @@ except Exception:
 PARALLEL_WORKER_ENV = "FLAGGEMS_BENCH_PARALLEL_WORKER"
 PARALLEL_RESULT_FILE_ENV = "FLAGGEMS_BENCH_RESULT_FILE"
 torch_device_object = flag_gems.runtime.backend.gen_torch_device_object()
-MM_COMPARE_BF16_TRITON_ENV = "FLAGGEMS_BENCH_MM_COMPARE_BF16_TRITON"
-MM_FORCE_BF16_TRITON_ENV = "FLAGGEMS_BENCH_MM_FORCE_BF16_TRITON"
 DEEPGEMM_N_MULTIPLE = 64
 DEEPGEMM_K_MULTIPLE = 128
 
@@ -473,39 +470,6 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
         return 2 * m * n * k
 
 
-def _env_flag(name: str, default: bool = False) -> bool:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    return value.lower() not in {"0", "false", "off", "no"}
-
-
-@contextlib.contextmanager
-def _force_mm_bf16_triton_path():
-    old_force_env = os.environ.get(MM_FORCE_BF16_TRITON_ENV)
-    os.environ[MM_FORCE_BF16_TRITON_ENV] = "1"
-
-    hopper_mm = None
-    old_should_fallback = None
-    try:
-        from flag_gems.runtime.backend._nvidia.hopper.ops import mm as hopper_mm
-
-        old_should_fallback = getattr(hopper_mm, "_should_fallback_bf16_mm", None)
-
-        def _always_bf16_triton(a, b, M, N, K):
-            return a.dtype is torch.bfloat16 and b.dtype is torch.bfloat16
-
-        hopper_mm._should_fallback_bf16_mm = _always_bf16_triton
-        yield
-    finally:
-        if hopper_mm is not None and old_should_fallback is not None:
-            hopper_mm._should_fallback_bf16_mm = old_should_fallback
-        if old_force_env is None:
-            os.environ.pop(MM_FORCE_BF16_TRITON_ENV, None)
-        else:
-            os.environ[MM_FORCE_BF16_TRITON_ENV] = old_force_env
-
-
 # ============================================================================
 # Parallel benchmark infrastructure
 # ============================================================================
@@ -655,48 +619,26 @@ class ParallelBenchmarkMixin:
         )
         sys.stderr.flush()
 
-    def _compare_mm_fp8_fallback_vs_bf16_triton(self) -> bool:
-        return self.op_name == "mm" and _env_flag(MM_COMPARE_BF16_TRITON_ENV)
-
-    def _get_gems_latency(self, *args, **kwargs):
-        if self.gems_op:
-            return self.get_latency(self.gems_op, *args, **kwargs)
-        if self.op_name == "zero_":
-            with flag_gems.use_gems():
-                return self.get_latency(self.torch_op, *args, **kwargs)
-        with flag_gems.use_gems(exclude=["zero_"]):
-            return self.get_latency(self.torch_op, *args, **kwargs)
-
-    def _build_mm_compare_metric(self, metric, *args, **kwargs):
-        if "latency_base" in self.to_bench_metrics:
-            with _force_mm_bf16_triton_path():
-                metric.latency_base = self._get_gems_latency(*args, **kwargs)
-        if "latency" in self.to_bench_metrics:
-            metric.latency = self._get_gems_latency(*args, **kwargs)
-        if "speedup" in self.to_bench_metrics:
-            metric.speedup = metric.latency_base / metric.latency
-        if "gbps" in self.to_bench_metrics:
-            metric.gbps_base = self.get_gbps(args, latency=metric.latency_base)
-            metric.gbps = self.get_gbps(args, latency=metric.latency)
-        if "tflops" in self.to_bench_metrics:
-            metric.tflops = (
-                self.get_tflops(self.torch_op, *args, **kwargs)
-                / metric.latency
-                / 1e12
-                * 1e3
-            )
-        return metric
-
     def _build_metric_from_input(self, input_item):
         metric = BenchmarkMetrics()
         args, kwargs = self.unpack_to_args_kwargs(input_item)
         metric.shape_detail = self.record_shapes(*args, **kwargs)
-        if self._compare_mm_fp8_fallback_vs_bf16_triton():
-            return self._build_mm_compare_metric(metric, *args, **kwargs)
         if "latency_base" in self.to_bench_metrics:
             metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
         if "latency" in self.to_bench_metrics:
-            metric.latency = self._get_gems_latency(*args, **kwargs)
+            if self.gems_op:
+                metric.latency = self.get_latency(self.gems_op, *args, **kwargs)
+            else:
+                if self.op_name == "zero_":
+                    with flag_gems.use_gems():
+                        metric.latency = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                else:
+                    with flag_gems.use_gems(exclude=["zero_"]):
+                        metric.latency = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
         if "speedup" in self.to_bench_metrics:
             metric.speedup = metric.latency_base / metric.latency
         if "gbps" in self.to_bench_metrics:
