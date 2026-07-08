@@ -5,6 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.ops.topk import (
     _MAX_INT32_VAL,
     _MIN_INT32_VAL,
@@ -626,7 +627,7 @@ def topk_fp8_w8a16(
         and num_groups == 1
         and descending
         and sorted
-        and x_fp8.is_cuda
+        and x_fp8.device.type == flag_gems.device
         and k >= 8
         and topk_elem_cnt > 128
         and topk_elem_cnt <= 65535
