@@ -2269,6 +2269,28 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: divide
+    description: Triton implementation of element-wise division (alias of div, supports rounding_mode=None/"trunc"/"floor").
+    for:
+      - divide
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: divide_
+    description: The in-place version of `divide()`.
+    for:
+      - divide_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dot
     description: Computes the dot product of two 1D tensors.
     for:
