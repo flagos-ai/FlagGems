@@ -19,7 +19,15 @@ from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
-__version__ = "5.4.0dev"
+try:
+    from flag_gems._version import version as __version__
+except ImportError:
+    try:
+        from importlib.metadata import version as _meta_version
+
+        __version__ = _meta_version("flag-gems")
+    except Exception:
+        __version__ = "unknown"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 backend_info = runtime.device
@@ -38,6 +46,8 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    ("__and__.Scalar", bitwise_and_scalar),
+    ("__and__.Tensor", bitwise_and_tensor),
     ("__ilshift__.Tensor", __ilshift__),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
@@ -101,6 +111,7 @@ _FULL_CONFIG = (
     ("_softmax_backward_data", softmax_backward),
     ("_softmax_backward_data.out", softmax_backward_out),
     ("_sparse_semi_structured_mm", _sparse_semi_structured_mm),
+    ("_thnn_fused_lstm_cell", _thnn_fused_lstm_cell),
     ("_thnn_fused_lstm_cell_backward_impl", _thnn_fused_lstm_cell_backward_impl),
     (
         "_to_copy",
@@ -110,6 +121,7 @@ _FULL_CONFIG = (
     ("_unique2", _unique2),
     ("_unsafe_masked_index", _unsafe_masked_index),
     ("_unsafe_masked_index_put_accumulate", _unsafe_masked_index_put_accumulate),
+    ("_unsafe_view", _unsafe_view),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
     ("_upsample_bilinear2d_aa", _upsample_bilinear2d_aa),
@@ -159,6 +171,8 @@ _FULL_CONFIG = (
     ("arange", arange),
     ("arange.start", arange_start),
     ("arange.start_step", arange_start),
+    ("arccos", arccos),
+    ("arccos_", arccos_),
     ("arcsin", arcsin),
     ("arcsin.out", arcsin),
     ("arcsin_", arcsin_),
@@ -210,6 +224,7 @@ _FULL_CONFIG = (
     ("bmm", bmm),
     ("bmm.out", bmm_out),
     ("broadcast_to", broadcast_to),
+    ("bucketize.Tensor", bucketize),
     ("cat", cat),
     ("cat.out", cat_out),
     ("cauchy", cauchy),
@@ -411,6 +426,8 @@ _FULL_CONFIG = (
     ("lerp.Tensor", lerp_tensor),
     ("lerp_.Scalar", lerp_scalar_),
     ("lerp_.Tensor", lerp_tensor_),
+    ("less.Scalar", lt_scalar),
+    ("less.Tensor", lt),
     ("less_equal.Scalar", less_equal_scalar),
     ("less_equal.Tensor", less_equal),
     ("lgamma", lgamma),
@@ -446,6 +463,8 @@ _FULL_CONFIG = (
     ("logsumexp", logsumexp),
     ("lt.Scalar", lt_scalar),
     ("lt.Tensor", lt),
+    ("lt_.Scalar", lt_scalar_),
+    ("lt_.Tensor", lt_),
     ("margin_ranking_loss", margin_ranking_loss),
     ("masked_fill.Scalar", masked_fill),
     ("masked_fill.Tensor", masked_fill),
@@ -454,6 +473,7 @@ _FULL_CONFIG = (
     ("masked_scatter", masked_scatter),
     ("masked_scatter_", masked_scatter_),
     ("masked_select", masked_select),
+    ("matmuladd", matmuladd),
     ("max", max),
     ("max.dim", max_dim),
     ("max_pool2d_backward", max_pool2d_backward),
@@ -471,6 +491,8 @@ _FULL_CONFIG = (
     ("min", min),
     ("min.dim", min_dim),
     ("minimum", minimum),
+    ("mish", mish),
+    ("mish_", mish_),
     ("mm", mm),
     ("mm.out", mm_out),
     ("mode", mode),
@@ -479,12 +501,16 @@ _FULL_CONFIG = (
     ("mul.Tensor", mul),
     ("mul_.Tensor", mul_),
     ("multinomial", multinomial),
+    ("multiply_", multiply_),
+    ("multiply_.Scalar", multiply_),
+    ("multiply_.Tensor", multiply_),
     ("mv", mv),
     ("nan_to_num", nan_to_num),
     ("nanmedian", nanmedian),
     ("nanmedian.dim", nanmedian_dim),
     ("nanmedian.dim_values", nanmedian_dim_values),
     ("nanmedian.out", nanmedian_out),
+    ("narrow_copy", narrow_copy),
     ("native_batch_norm", batch_norm),
     ("native_batch_norm_backward", batch_norm_backward),
     ("native_dropout", dropout),
@@ -635,14 +661,16 @@ _FULL_CONFIG = (
     ("softshrink.out", softshrink_out),
     ("sort", sort),
     ("sort.stable", sort_stable),
-    ("special.gammainc", special_gammainc),
-    ("special.log_softmax", special_log_softmax),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
+    ("special_chebyshev_polynomial_w", special_chebyshev_polynomial_w),
+    ("special_chebyshev_polynomial_w_out", special_chebyshev_polynomial_w_out),
+    ("special_gammainc", special_gammainc),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_i0e", special_i0e),
-    ("special_i0e.out", special_i0e_out),
+    ("special_i0e_out", special_i0e_out),
     ("special_i1", special_i1),
-    ("special_i1.out", special_i1_out),
+    ("special_i1_out", special_i1_out),
+    ("special_log_softmax", special_log_softmax),
     ("special_shifted_chebyshev_polynomial_u", special_shifted_chebyshev_polynomial_u),
     (
         "special_shifted_chebyshev_polynomial_u_",
