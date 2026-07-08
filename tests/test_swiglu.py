@@ -5,6 +5,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+vendor_name = flag_gems.vendor_name
+
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
@@ -36,6 +38,11 @@ VALID_POINTWISE_SHAPES = filter_valid_shapes(utils.SWIGLU_SPECIAL_SHAPES)
 @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin",
+    reason="Kunlunxin TE swiglu signature differs (no 'quantizer' kwarg); "
+    "FlagGems kernel also fails to compile on XPU (xpu3-elfconv error)",
+)
 def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
     torch.manual_seed(42)
     device = flag_gems.device

@@ -5,6 +5,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+vendor_name = flag_gems.vendor_name
+
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
@@ -17,6 +19,11 @@ except ImportError:
 @pytest.mark.parametrize("shape", utils.GLU_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.skipif(TE_OP is None, reason="'reglu' not found in TransformerEngine")
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin",
+    reason="Kunlunxin TE API signature differs from upstream NVIDIA TE (requires fp8_tensor/otype); "
+    "FlagGems kernel also fails to compile on XPU (xpu3-elfconv error)",
+)
 def test_reglu(shape, dtype):
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
