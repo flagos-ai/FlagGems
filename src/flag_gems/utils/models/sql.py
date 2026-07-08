@@ -40,7 +40,7 @@ class SQLPersistantModel(PersistantModel):
         values: Mapping[str, Union[Any, Type]] = {},
     ) -> Type[Base]:
         annotations: Dict[str, Type] = {
-            k: sqlalchemy.orm.Mapped[v if isinstance(v, type) else type(v)]
+            k: sqlalchemy.orm.Mapped[v if isinstance(v, Type) else type(v)]
             for k, v in chain(keys.items(), values.items())
         }
         cols: Dict[str, sqlalchemy.orm.MappedColumn] = {
@@ -190,8 +190,10 @@ class SQLPersistantModel(PersistantModel):
         )
         if ConfigCls is not None:
             with RollbackSession(self.engine) as session:
-                obj: Base = ConfigCls(**key_dict, **config)
-                session.merge(obj)
+                existing: Optional[Base] = session.get(ConfigCls, key_dict)
+                if existing is not None:
+                    return
+                session.add(ConfigCls(**key_dict, **config))
                 session.commit()
 
     def put_benchmark(
@@ -217,6 +219,11 @@ class SQLPersistantModel(PersistantModel):
         )
         if BenchmarkCls is not None:
             with RollbackSession(self.engine) as session:
-                obj: Base = BenchmarkCls(**key_dict, **config, **benchmark)
-                session.merge(obj)
+                benchmark_key_dict: Dict[str, Union[bool, int, float, str]] = (
+                    key_dict | config
+                )
+                existing: Optional[Base] = session.get(BenchmarkCls, benchmark_key_dict)
+                if existing is not None:
+                    return
+                session.add(BenchmarkCls(**benchmark_key_dict, **benchmark))
                 session.commit()
