@@ -5,6 +5,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+vendor_name = flag_gems.vendor_name
+
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
@@ -17,6 +19,11 @@ except ImportError:
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine is required")
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin",
+    reason="Kunlunxin TE API signature differs from upstream NVIDIA TE (requires fp8_tensor/otype); "
+    "FlagGems kernel also fails to compile on XPU (xpu3-elfconv error)",
+)
 def test_geglu(shape, dtype):
     if len(shape) == 0:
         # GEGLU does not support 0-dim scalar tensors.
