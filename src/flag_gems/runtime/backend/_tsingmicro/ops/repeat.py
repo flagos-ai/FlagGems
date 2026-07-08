@@ -18,16 +18,16 @@ def _compute_output_numel(x, sizes):
 
 
 def repeat(inp, sizes):
-    original_precision_priority = os.environ.get("PRECISION_PRIORITY", None)
+    original_precision_priority = os.environ.get("PRECISION_MODE", None)
 
     out_numel = _compute_output_numel(inp, sizes)
     if out_numel > _F32_PRECISION_NUMEL_THRESHOLD:
-        os.environ["PRECISION_PRIORITY"] = "1"
+        os.environ["PRECISION_MODE"] = "1"
 
     try:
         return _original_repeat(inp, sizes)
     finally:
         if original_precision_priority is not None:
-            os.environ["PRECISION_PRIORITY"] = original_precision_priority
+            os.environ["PRECISION_MODE"] = original_precision_priority
         else:
-            os.environ.pop("PRECISION_PRIORITY", None)
+            os.environ.pop("PRECISION_MODE", None)

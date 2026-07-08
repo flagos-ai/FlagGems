@@ -136,10 +136,10 @@ SMALL_HEAD_DIM_CONFIGS = [
     triton.Config(
         {"BLOCK_M": BM, "BLOCK_N": BN, "PRE_LOAD_V": 0}, num_stages=s, num_warps=w
     )
-    for BM in [64, 128]
-    for BN in [16, 32]
-    for s in [2, 3, 4]
-    for w in [4, 8]
+    for BM in [64, 128, 256]
+    for BN in [16, 32, 64, 128]
+    for s in [1]  # disable the num_stage as gather-scatter async bug
+    for w in [4]
 ]
 configs += SMALL_HEAD_DIM_CONFIGS
 
@@ -192,7 +192,10 @@ def _attn_fwd(
     HAS_ATTN_MASK: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
 ):
-    tl.static_assert(BLOCK_N <= HEAD_DIM)
+    tl.static_assert(
+        BLOCK_N <= HEAD_DIM,
+        f"Constraint violated: block_n={BLOCK_N} > head_dim={HEAD_DIM}",
+    )
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
     batch_id = off_hz // q_head_num
@@ -949,14 +952,14 @@ def scaled_dot_product_attention_backward(
         D_HEAD=BLOCK_DMODEL,  #
     )
 
-    max_block_n1 = (
-        max([cfg.kwargs["BLOCK_N1"] for cfg in config_backward])
-        if config_backward
-        else 128
+    grid = lambda meta: (
+        max(
+            triton.cdiv(Q_CTX, meta.get("BLOCK_N1", 128)),
+            triton.cdiv(Q_CTX, meta.get("BLOCK_M2", 128)),
+        ),
+        1,
+        BATCH * Q_HEAD,
     )
-    grid = (triton.cdiv(Q_CTX, max_block_n1), 1, BATCH * Q_HEAD)
-    # logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
-    # logger.info(f"{M.shape=}")
 
     _attn_bwd[grid](
         query,

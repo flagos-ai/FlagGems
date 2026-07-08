@@ -258,8 +258,13 @@ def keep(cfg):
     BM = cfg.kwargs["BLOCK_M"]
     BN = cfg.kwargs["BLOCK_N"]
     w = cfg.num_warps
+    s = cfg.num_stages
 
-    return (BM, BN, w) in ((128, 32, 4), (128, 128, 8))
+    return (BM, BN, w, s) in (
+        (128, 32, 4, 1),
+        (128, 128, 4, 1),
+        (256, 128, 4, 1),
+    )
 
 
 def prune_fwd_configs(configs, nargs, **kwargs):

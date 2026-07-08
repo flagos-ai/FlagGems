@@ -26,6 +26,7 @@ from .div import (
     true_divide_,
     true_divide_out,
 )
+from .embedding import embedding, embedding_backward
 from .fill import fill_scalar, fill_scalar_, fill_scalar_out, fill_tensor, fill_tensor_
 from .flash_api import mha_fwd, mha_varlan_fwd
 from .hstack import hstack
@@ -36,6 +37,7 @@ from .kron import kron
 from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
+from .max import max, max_dim
 from .mean import mean, mean_dim
 from .mm import mm, mm_out
 from .mse_loss import mse_loss
@@ -89,6 +91,8 @@ __all__ = [
     "cumsum_out",
     "div_mode",
     "div_mode_",
+    "embedding",
+    "embedding_backward",
     "fill_scalar",
     "fill_scalar_",
     "fill_scalar_out",
@@ -107,6 +111,8 @@ __all__ = [
     "masked_select",
     "matmul_bf16",
     "matmul_int8",
+    "max",
+    "max_dim",
     "mean",
     "mean_dim",
     "mha_fwd",
@@ -133,6 +139,8 @@ __all__ = [
     "remainder_",
     "repeat",
     "rms_norm",
+    "rms_norm_backward",
+    "rms_norm_forward",
     "rsqrt",
     "rsqrt_",
     "ScaleDotProductAttention",

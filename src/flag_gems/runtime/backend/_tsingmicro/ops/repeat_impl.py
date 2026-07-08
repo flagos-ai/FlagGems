@@ -216,7 +216,7 @@ def _gen_index_decomp(code: IndentedBuffer, rank: int, flat_start_expr: str) -> 
     - Decompose flat_base with scalar i64 div/rem (once per tile, not 512×)
     - Re-compose per-lane indices with cheap vector arithmetic on small values
       (each intermediate value is bounded by the corresponding dim size + tile_size,
-       well within f32 precision even in PRECISION_PRIORITY=0 mode)
+       well within f32 precision even in PRECISION_MODE=0 mode)
     """
     code.writeline(f"flat_base = {flat_start_expr}")
     code.writeline("mask = flat_base + lane < num_tasks")
