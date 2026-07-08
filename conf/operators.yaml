@@ -699,6 +699,31 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.4'
+  - id: arctan2
+    description: Computes the element-wise arctangent of `input` / `other`. Alias for `atan2`.
+    for:
+      - arctan2
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: arctan2_
+    description: |
+      The in-place version of `arctan2()`.
+      Computes the element-wise arc tangent of `input/other(y/x)`,
+      returning angles in radians between `-PI` and `PI` and stores the result in `input`.
+    for:
+      - arctan2_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: arctanh_
     description: |
       Computes the element-wise inverse hyperbolic tangent of a given input tensor.
