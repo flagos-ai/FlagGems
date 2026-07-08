@@ -7549,6 +7549,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_entr
+    description: "Computes the entropy function element-wise: entr(x) = -x * ln(x) for x > 0, 0 for x == 0, -inf for x < 0."
+    for:
+      - special_entr
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_gammainc
     description: |
       Computes the regularized lower incomplete gamma function P(a, x) element-wise.
