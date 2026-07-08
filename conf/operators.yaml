@@ -5959,7 +5959,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.4'
   - id: special_i0_out
     description: |
       A variant of special_i0() with output saved to provided out.
@@ -5971,7 +5971,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.1'
+      - alpha: '5.4'
   - id: special_i0e
     description: |
       Computes the exponentially scaled zeroth order modified Bessel function
