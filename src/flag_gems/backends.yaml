@@ -140,7 +140,9 @@ backends:
     triton: triton==3.0.0+metax3.7.2.0
     flagtree: flagtree==3.1.0+metax3.7.2.0
     runtime_env:
-      LD_LIBRARY_PATH: "/flagos/lib/python3.12/site-packages/triton/backends/metax/lib:${LD_LIBRARY_PATH}"
+      MACA_PATH: /opt/maca
+      LD_LIBRARY_PATH: $MACA_PATH/lib:$MACA_PATH/mxgpu_llvm/lib:$LD_LIBRARY_PATH
+
     deps:
       - torch==2.8.0+metax3.7.2.0
       - torchaudio==2.4.1+metax3.7.2.0
@@ -172,11 +174,13 @@ backends:
     python: "3.10"
     triton: triton==3.4.0.6+gite4f6d6e4
     # flagtree==0.4.0+sunrise3.4 — requires GLIBC_2.39, unavailable on current system
+    runtime_env:
+      LD_LIBRARY_PATH: /usr/local/tangrt/targets/linux-x86_64/lib
     deps:
       - torch==2.11.0+cpu
       - torchaudio==2.11.0+cpu
       - torchvision==0.26.0+cpu
-      - torch-ptpu==0.2.1+gaf2c267.torch2.11
+      - torch-ptpu==0.2.3+torch2.11
 
   thead:
     python: "3.12"
@@ -196,6 +200,7 @@ backends:
       LD_LIBRARY_PATH: "${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}"
       USE_TORCH_XLA: "0"
       TORCH_COMPILE_DISABLE: "1"
+    # TODO: Move this to base image
     pre_install: |
       FILESTORE=https://resource.flagos.net/repository/flagos-filestore/tsingmicro
       curl -o /tmp/tx8.tar.gz ${FILESTORE}/tx8_depends_dev_20260507_104051.tar.gz \
