@@ -392,7 +392,8 @@ from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
 from flag_gems.ops.remainder import remainder, remainder_
-from flag_gems.ops.renorm import renorm, renorm_
+from flag_gems.ops.renorm import renorm
+from flag_gems.ops.renorm_ import renorm_
 from flag_gems.ops.repeat import repeat
 from flag_gems.ops.repeat_interleave import (
     repeat_interleave_self_int,
