@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -36,11 +37,9 @@ def masked_scatter_single_pass_kernel(
 def mask_part_sum_kernel(
     mask_ptr,
     part_sums_ptr,
-    counter_ptr,
     N,
     num_blocks,
     num_blocks_per_row,
-    NP_BLOCK: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     row_id = tl.program_id(0)
@@ -62,19 +61,6 @@ def mask_part_sum_kernel(
 
     part_sum = tl.sum(acc, axis=0)
     tl.store(part_sums_ptr + row_id, part_sum)
-
-    count = tl.atomic_add(counter_ptr, 1, sem="acq_rel")
-    np = tl.num_programs(0)
-
-    if count == np - 1:
-        mask = tl.arange(0, NP_BLOCK) < np
-        part_sums = tl.load(part_sums_ptr + tl.arange(0, NP_BLOCK), mask=mask)
-        final_sum = tl.sum(part_sums, axis=0)
-        pre_sums = tl.cumsum(part_sums, axis=0)
-        tl.store(
-            part_sums_ptr + tl.arange(0, NP_BLOCK), pre_sums - part_sums, mask=mask
-        )
-        tl.store(part_sums_ptr + np, final_sum)
 
 
 @libentry()
@@ -146,24 +132,24 @@ def masked_scatter_impl(inp, mask, source, N):
     np = min(n_blocks, np)
     n_blocks_per_row = triton.cdiv(n_blocks, np)
     np = triton.cdiv(n_blocks, n_blocks_per_row)
-    NP_BLOCK = triton.next_power_of_2(np)
 
     with torch_device_fn.device(inp.device):
         dtype = torch.int32 if N < 2**31 else torch.int64
-        part_sums = torch.empty(np + 1, dtype=dtype, device=mask.device)
-        barrier = torch.zeros([], dtype=torch.int, device=mask.device)
+        part_sums = torch.empty(np, dtype=dtype, device=mask.device)
 
         mask_part_sum_kernel[(np,)](
             mask,
             part_sums,
-            barrier,
             N,
             n_blocks,
             n_blocks_per_row,
-            NP_BLOCK=NP_BLOCK,
             BLOCK_SIZE=BLOCK_SIZE,
             num_warps=num_warps,
         )
+        counts_cpu = part_sums.cpu().to(torch.int64)
+        prefix_sum = torch.zeros(np, dtype=torch.int64)
+        torch.cumsum(counts_cpu[:-1], dim=0, out=prefix_sum[1:])
+        part_sums = prefix_sum.to(mask.device)
 
         masked_scatter_kernel[(np,)](
             inp,
@@ -181,7 +167,7 @@ def masked_scatter_impl(inp, mask, source, N):
 
 
 def masked_scatter(inp, mask, source):
-    logger.debug("GEMS MASKED SCATTER")
+    logger.debug("GEMS_KUNLUNXIN MASKED_SCATTER")
 
     assert broadcastable(
         inp.shape, mask.shape
@@ -199,13 +185,21 @@ def masked_scatter(inp, mask, source):
 
     N = out.numel()
 
-    masked_scatter_impl(out, mask, source, N)
+    os.environ["TRITONXPU_OTHER_SIM"] = "1"
+    os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+    try:
+        masked_scatter_impl(out, mask, source, N)
+    finally:
+        if "TRITONXPU_OTHER_SIM" in os.environ:
+            del os.environ["TRITONXPU_OTHER_SIM"]
+        if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+            del os.environ["TRITONXPU_STORE_MASK_SIM"]
 
     return out
 
 
 def masked_scatter_(inp, mask, source):
-    logger.debug("GEMS MASKED SCATTER_")
+    logger.debug("GEMS_KUNLUNXIN MASKED_SCATTER_")
 
     assert broadcastable(inp.shape, mask.shape)
     _, mask = torch.broadcast_tensors(inp, mask)
@@ -219,6 +213,14 @@ def masked_scatter_(inp, mask, source):
     source = source if source.is_contiguous() else source.contiguous()
 
     N = inp.numel()
-    masked_scatter_impl(inp, mask, source, N)
+    os.environ["TRITONXPU_OTHER_SIM"] = "1"
+    os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+    try:
+        masked_scatter_impl(inp, mask, source, N)
+    finally:
+        if "TRITONXPU_OTHER_SIM" in os.environ:
+            del os.environ["TRITONXPU_OTHER_SIM"]
+        if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+            del os.environ["TRITONXPU_STORE_MASK_SIM"]
 
     return inp

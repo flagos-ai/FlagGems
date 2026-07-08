@@ -1,6 +1,8 @@
-from backend_utils import VendorInfoBase  # noqa: E402
+from backend_utils import VendorDescriptor  # noqa: E402
 
-vendor_info = VendorInfoBase(vendor_name="arm", device_name="cpu", device_query_cmd="")
+vendor_info = VendorDescriptor(
+    vendor_name="arm", device_name="cpu", device_query_cmd=""
+)
 
 # Ops listed here are excluded from the ARM customized registry.
 # Auto-generated from upstream _FULL_CONFIG (456 funcs) - _arm/ops/__all__ (63 funcs)

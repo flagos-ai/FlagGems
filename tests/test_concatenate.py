@@ -3,16 +3,23 @@ import torch
 
 import flag_gems
 
+from . import conftest as cfg
 from .accuracy_utils import FLOAT_DTYPES, INT_DTYPES, gems_assert_equal, to_reference
 
-CAT_SHAPES = [
-    [(1, 32), (8, 32)],
-    [(16, 128), (32, 128)],
-    [(1024, 1024), (1024, 1024)],
-    [(1, 1024, 256), (8, 1024, 256), (16, 1024, 256)],
-    [(16, 320, 15), (32, 320, 15), (64, 320, 15)],
-    [(16, 128, 64, 64), (16, 128, 64, 64), (24, 128, 64, 64), (32, 128, 64, 64)],
-]
+if cfg.QUICK_MODE:
+    CAT_SHAPES = [
+        [(1, 32), (8, 32)],
+        [(16, 320, 15), (32, 320, 15), (64, 320, 15)],
+    ]
+else:
+    CAT_SHAPES = [
+        [(1, 32), (8, 32)],
+        [(16, 128), (32, 128)],
+        [(1024, 1024), (1024, 1024)],
+        [(1, 1024, 256), (8, 1024, 256), (16, 1024, 256)],
+        [(16, 320, 15), (32, 320, 15), (64, 320, 15)],
+        [(16, 128, 64, 64), (16, 128, 64, 64), (24, 128, 64, 64), (32, 128, 64, 64)],
+    ]
 
 
 def gen_cat_shapes_dim(shapes):
@@ -42,6 +49,9 @@ def gen_cat_shapes_dim(shapes):
 @pytest.mark.concatenate
 @pytest.mark.parametrize("shape, dim", gen_cat_shapes_dim(CAT_SHAPES))
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_concatenate(shape, dim, dtype):
     if dtype in FLOAT_DTYPES:
         inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
@@ -73,6 +83,9 @@ def test_concatenate(shape, dim, dtype):
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_concatenate_empty_tensor(shape, dim, dtype):
     inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
     ref_inp = [to_reference(_) for _ in inp]

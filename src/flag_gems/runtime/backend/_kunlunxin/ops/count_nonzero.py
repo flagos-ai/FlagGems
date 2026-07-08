@@ -8,7 +8,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 cluster_num = 12
 core_num = 64
@@ -104,7 +104,7 @@ def reduce_partial_counts(
 
 
 def count_nonzero(x, dim=None):
-    logger.debug("GEMS_KUNLUNXIN COUNT NONZERO")
+    logger.debug("GEMS_KUNLUNXIN COUNT_NONZERO")
 
     if dim is not None:
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"

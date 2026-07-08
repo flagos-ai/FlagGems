@@ -9,7 +9,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt
 
 
@@ -331,7 +331,7 @@ def batch_norm(
     momentum=0.1,
     eps=1e-05,
 ):
-    logger.debug("GEMS_KUNLUNXIN BATCHNORM FORWARD")
+    logger.debug("GEMS_KUNLUNXIN BATCH_NORM")
 
     input_3d_i = make_3d_for_bn(input)
     m, n, k = input_3d_i.shape
@@ -383,7 +383,7 @@ def batch_norm_backward(
     eps=1e-05,
     output_mask=None,
 ):
-    logger.debug("GEMS_KUNLUNXIN BATCHNORM BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN BATCH_NORM_BACKWARD")
     input_3d_i = make_3d_for_bn(input)
     m, n, k = input_3d_i.shape
     input_3d_f = input_3d_i.permute(0, 2, 1).reshape(-1, n)

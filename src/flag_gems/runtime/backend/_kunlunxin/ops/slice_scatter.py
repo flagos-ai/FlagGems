@@ -6,11 +6,11 @@ from _kunlunxin.ops.copy import copy_slice
 
 from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
-    logger.debug("GEMS SLICE_SCATTER")
+    logger.debug("GEMS_KUNLUNXIN SLICE_SCATTER")
     assert src.device == inp.device, "inp and src reside on different devices."
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert step > 0, "slice step must be positive"

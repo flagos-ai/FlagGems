@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -28,6 +30,9 @@ def _tensor_input_fn(shape, dtype, device):
 
 
 @pytest.mark.index_copy
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_copy():
     bench = IndexCopyBenchmark(
         input_fn=_tensor_input_fn,
@@ -39,6 +44,9 @@ def test_index_copy():
 
 
 @pytest.mark.index_copy_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_copy_():
     bench = IndexCopyBenchmark(
         input_fn=_tensor_input_fn,

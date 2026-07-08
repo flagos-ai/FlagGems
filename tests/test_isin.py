@@ -11,7 +11,12 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
 @pytest.mark.parametrize("assume_unique", [False, True])
 @pytest.mark.parametrize("invert", [False, True])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_accuracy_isin(shape, dtype, assume_unique, invert):
+    if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+        pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -65,7 +70,12 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
 @pytest.mark.parametrize("assume_unique", [False, True])
 @pytest.mark.parametrize("invert", [False, True])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+    if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+        pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
     inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
 
     if assume_unique:
@@ -91,7 +101,12 @@ def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
 @pytest.mark.parametrize("assume_unique", [False, True])
 @pytest.mark.parametrize("invert", [False, True])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_accuracy_isin_tensor_scalar(shape, dtype, assume_unique, invert):
+    if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+        pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
     inp1 = torch.randint(-100, 100, shape, device=flag_gems.device).to(dtype)
 
     if assume_unique:

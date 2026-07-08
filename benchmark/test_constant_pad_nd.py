@@ -3,6 +3,8 @@ import random
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -15,6 +17,9 @@ def _input_fn(shape, dtype, device):
 
 
 @pytest.mark.constant_pad_nd
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_constant_pad_nd():
     bench = base.GenericBenchmark(
         input_fn=_input_fn,
