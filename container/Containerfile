@@ -1,0 +1,107 @@
+# ============================================================
+# FlagGems — unified container image
+#
+# A single Containerfile for all backends. Backend-specific
+# settings are passed as --build-arg by container/build.py,
+# which reads container/configs.yaml and backends.yaml.
+# ============================================================
+
+ARG BASE_IMAGE
+ARG EXTRA_PYPI="https://mirrors.aliyun.com/pypi/simple"
+ARG INCLUDE_TESTS=true
+
+# ── Internal build arguments (set by build.py) ────────────────
+ARG PYTHON_VERSION=3.12
+ARG FLAGOS_PYPI=""
+ARG EXTRAS_GROUP=""
+ARG POST_INSTALL=""
+ARG PRE_INSTALL=""
+
+
+# ════════════════════════════════════════════════════════════════
+#  Stage 1 — builder
+# ════════════════════════════════════════════════════════════════
+FROM ${BASE_IMAGE} AS builder
+
+ARG PYTHON_VERSION
+ARG FLAGOS_PYPI
+ARG EXTRA_PYPI
+ARG EXTRAS_GROUP
+ARG POST_INSTALL
+ARG INCLUDE_TESTS
+ARG DEBIAN_FRONTEND=noninteractive
+
+# ── Install uv ────────────────────────────────────────────────
+RUN curl -LsSf https://astral.sh/uv/install.sh \
+    | env UV_INSTALL_DIR=/usr/local/bin sh
+
+# ── Create virtual environment ─────────────────────────────────
+RUN uv venv /flagos --python ${PYTHON_VERSION} --relocatable
+ENV VIRTUAL_ENV=/flagos \
+    PATH="/flagos/bin:${PATH}"
+
+# ── Python build dependencies ─────────────────────────────────
+RUN uv pip install --no-cache-dir \
+        "setuptools>=64.0,<80.0" \
+        "scikit-build-core==0.12.2" \
+        "pybind11==3.0.3" \
+        "cmake>=3.20,<4.0" \
+        "ninja==1.13.0" \
+        "pip"
+
+# ── Build FlagGems ─────────────────────────────────────────────
+WORKDIR /build
+COPY . /build/FlagGems
+WORKDIR /build/FlagGems
+
+RUN uv pip install --no-cache-dir ".[$EXTRAS_GROUP]" \
+      --default-index ${FLAGOS_PYPI} \
+      --index ${EXTRA_PYPI} \
+      --trusted-host resource.flagos.net \
+      --trusted-host mirrors.aliyun.com
+
+# ── Post-install (e.g. triton_ascend) ──────────────────────────
+RUN if [ -n "${POST_INSTALL}" ]; then \
+      sh -c "${POST_INSTALL}"; \
+    fi
+
+# ── Test dependencies ──────────────────────────────────────────
+RUN uv pip install --no-cache-dir ".[test]" \
+      --index ${EXTRA_PYPI} \
+      --trusted-host mirrors.aliyun.com
+
+# ── Copy test suite ───────────────────────────────────────────
+RUN mkdir -p /app && \
+    if [ "${INCLUDE_TESTS}" = "true" ]; then \
+      cp -r /build/FlagGems/tests /app/tests \
+      && cp -r /build/FlagGems/benchmark /app/benchmark \
+      && cp /build/FlagGems/pytest.ini /app; \
+    fi
+
+
+# ════════════════════════════════════════════════════════════════
+#  Stage 2 — runtime
+# ════════════════════════════════════════════════════════════════
+FROM ${BASE_IMAGE} AS runtime
+
+ARG PRE_INSTALL
+ARG DEBIAN_FRONTEND=noninteractive
+
+# ── Pre-install (e.g. SDK tarballs) ────────────────────────────
+RUN if [ -n "${PRE_INSTALL}" ]; then \
+      sh -c "${PRE_INSTALL}"; \
+    fi
+
+# ── Copy uv and venv from builder ─────────────────────────────
+COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
+COPY --from=builder /root/.local/share/uv /root/.local/share/uv
+COPY --from=builder /flagos /flagos
+
+# ── Copy tests and benchmarks ─────────────────────────────────
+COPY --from=builder /app /app
+
+ENV VIRTUAL_ENV=/flagos \
+    PATH="/flagos/bin:${PATH}"
+
+WORKDIR /app
+ENTRYPOINT ["bash"]
