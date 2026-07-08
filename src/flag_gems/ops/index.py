@@ -19,6 +19,7 @@ from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
 
+from flag_gems import runtime
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
@@ -78,71 +79,90 @@ def _shape_bucket(index_len, suffix_size):
 def _index_candidate_configs(
     inp, start_dim, indices_len, tensor_indices, suffix_size=None
 ):
-    """Return a small shape-aware candidate set for libtuner.
-
-    The common adjacent-index kernel is tiled over flattened index elements M
-    and contiguous suffix elements N. Backend-specific layouts belong in
-    vendor overrides.
-    """
+    """Select adjacent-index candidates from backend YAML configs."""
 
     index_len = int(tensor_indices[0].numel())
     if suffix_size is None:
         suffix_size = _volume(inp.shape[start_dim + indices_len :])
 
-    if suffix_size <= 64:
-        raw = ((4, 64),)
-    elif suffix_size >= 256:
-        raw = (
-            (8, 128),
-            (16, 128),
-            (8, 256),
-        )
-    else:
-        block_n = max(64, _next_power_of_2(suffix_size))
-        raw = (
-            (8, block_n),
-            (16, block_n),
-        )
-
     max_tile_elems = 8192
     max_block_n = max(64, _bucket(suffix_size, 64) * 2)
+    mid_block_n = max(64, _next_power_of_2(suffix_size))
+    fallback_block_n = max(64, min(512, _bucket(suffix_size, 64)))
     max_configs = 2
+    tuned_configs = runtime.get_tuned_config("index_adjacent")
 
-    configs = []
-    seen = set()
-    for block_m, block_n in raw:
+    def valid(block_m, block_n):
         if index_len <= block_m // 2 and block_m > 4:
-            continue
+            return False
         if block_n > max_block_n:
-            continue
+            return False
         if block_m * block_n > max_tile_elems:
-            continue
+            return False
+        if suffix_size != 1 and block_n == 1:
+            return False
         if suffix_size <= block_n // 4 and block_n > 64:
-            continue
-        if indices_len > 1 and block_m > 16:
-            continue
-        key = (block_m, block_n)
-        if key not in seen:
-            seen.add(key)
-            configs.append(
-                {
-                    "BLOCK_SIZE0": block_m,
-                    "BLOCK_SIZE1": block_n,
-                    "num_warps": 4,
-                    "num_stages": 2,
-                }
-            )
-            if len(configs) >= max_configs:
-                break
+            return False
+        if suffix_size != 1 and indices_len > 1 and block_m > 16:
+            return False
+        return True
 
-    return configs or [
-        {
-            "BLOCK_SIZE0": 4,
-            "BLOCK_SIZE1": max(64, min(512, _bucket(suffix_size, 64))),
-            "num_warps": 4,
-            "num_stages": 2,
-        }
-    ]
+    def take(predicate, limit=max_configs):
+        selected = []
+        for config in tuned_configs:
+            meta = config.kwargs
+            block_m = int(meta["BLOCK_SIZE0"])
+            block_n = int(meta["BLOCK_SIZE1"])
+            if valid(block_m, block_n) and predicate(block_m, block_n):
+                selected.append(config)
+                if len(selected) >= limit:
+                    break
+        return selected
+
+    if suffix_size == 1:
+        if index_len <= 16:
+            target_m = {8, 16}
+        elif index_len <= 128:
+            target_m = {16, 32}
+        elif index_len <= 256:
+            target_m = {32, 64}
+        else:
+            target_m = {64, 128}
+        selected = take(lambda block_m, block_n: block_n == 1 and block_m in target_m)
+        if selected:
+            return selected
+
+    if start_dim == 0 and indices_len == 1 and suffix_size >= 1024:
+        selected = take(
+            lambda block_m, block_n: block_m <= 4 and block_n >= 1024,
+            limit=3,
+        )
+        if selected:
+            return selected
+
+    selected = []
+    fallback = None
+    for config in tuned_configs:
+        meta = config.kwargs
+        block_m = int(meta["BLOCK_SIZE0"])
+        block_n = int(meta["BLOCK_SIZE1"])
+        if not valid(block_m, block_n):
+            continue
+        if block_m == 4 and block_n == fallback_block_n:
+            fallback = config
+        if suffix_size <= 64:
+            if block_m == 4 and block_n == fallback_block_n:
+                return [config]
+            continue
+        if suffix_size < 256:
+            if block_m > 4 and block_n == mid_block_n:
+                selected.append(config)
+        elif block_m > 4:
+            selected.append(config)
+        if len(selected) >= max_configs:
+            return selected
+
+    return selected or ([fallback] if fallback is not None else [])
 
 
 def _write_index_configs(code: IndentedBuffer, configs):
@@ -152,16 +172,11 @@ def _write_index_configs(code: IndentedBuffer, configs):
     code.writeline("configs=[")
     with code.indent():
         for config in configs:
-            meta = {
-                key: value
-                for key, value in config.items()
-                if key not in ("num_warps", "num_stages")
-            }
             code.writeline(
                 "triton.Config("
-                f"{meta!r}, "
-                f"num_warps={config['num_warps']}, "
-                f"num_stages={config['num_stages']}"
+                f"{config.kwargs!r}, "
+                f"num_warps={config.num_warps}, "
+                f"num_stages={config.num_stages}"
                 "),"
             )
     code.writeline("],")
@@ -631,13 +646,25 @@ def _are_adjacent_tensor_indices(tensor_index_dims):
     )
 
 
-def _can_use_linearized_adjacent_index(inp, indices):
+def _linearized_adjacent_index_configs(inp, indices):
+    """Return configs for the adjacent-index path, or [] when not enabled.
+
+    The adjacent-index kernel is backend opt-in: a backend must provide
+    `index_adjacent` configs before this common path is selected. Backends
+    without those configs keep using the original generated index path below.
+    """
+
     tensor_index_dims = _tensor_index_dims(indices)
-    return (
-        tensor_index_dims
-        and inp.is_contiguous()
-        and _are_adjacent_tensor_indices(tensor_index_dims)
-    )
+    if (
+        not tensor_index_dims
+        or not inp.is_contiguous()
+        or not _are_adjacent_tensor_indices(tensor_index_dims)
+    ):
+        return []
+
+    start_dim = tensor_index_dims[0]
+    tensor_indices = [indices[dim] for dim in tensor_index_dims]
+    return _index_candidate_configs(inp, start_dim, len(tensor_indices), tensor_indices)
 
 
 def _run_linearized_adjacent_index(inp, indices):
@@ -759,9 +786,14 @@ def index(inp, indices):
         has_contiguous_subspace = True
 
     # Adjacent tensor indices on contiguous input, e.g. x[idx, :] or
-    # x[:, idx0, idx1, :], can be linearized in place. This preserves
-    # PyTorch's output order and avoids the transpose-to-front path below.
-    if has_contiguous_subspace and _can_use_linearized_adjacent_index(inp, indices):
+    # x[:, idx0, idx1, :], can be linearized in place. Only use this path when
+    # the current backend provides tuned configs for the new kernel.
+    adjacent_index_configs = (
+        _linearized_adjacent_index_configs(inp, indices)
+        if has_contiguous_subspace
+        else []
+    )
+    if adjacent_index_configs:
         return _run_linearized_adjacent_index(inp, indices)
 
     # Transpose if not contiguous OR starts with None (and has tensor indices)

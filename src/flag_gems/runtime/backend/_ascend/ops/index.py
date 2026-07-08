@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
@@ -134,23 +135,39 @@ def _small_suffix_block_s(suffix_size):
 
 
 def _adjacent_index_config(block_m, block_s, layout, suffix_tiles_per_program):
-    return {
-        "BLOCK_M": block_m,
-        "BLOCK_S": block_s,
-        "LAYOUT": layout,
-        "SUFFIX_TILES_PER_PROGRAM": suffix_tiles_per_program,
-        "num_warps": 4,
-        "num_stages": 2,
-    }
+    return triton.Config(
+        {
+            "BLOCK_M": block_m,
+            "BLOCK_S": block_s,
+            "LAYOUT": layout,
+            "SUFFIX_TILES_PER_PROGRAM": suffix_tiles_per_program,
+        },
+        num_warps=4,
+        num_stages=2,
+    )
+
+
+def _find_adjacent_index_config(
+    configs,
+    block_m,
+    block_s,
+    layout,
+    suffix_tiles_per_program=1,
+):
+    for config in configs:
+        meta = config.kwargs
+        if (
+            int(meta["BLOCK_M"]) == block_m
+            and int(meta["BLOCK_S"]) == block_s
+            and int(meta["LAYOUT"]) == layout
+            and int(meta["SUFFIX_TILES_PER_PROGRAM"]) == suffix_tiles_per_program
+        ):
+            return config
+    return None
 
 
 def _adjacent_index_candidate_configs(index_len, suffix_size, indices_len, prefix_size):
-    """Return a small shape-aware candidate set for libtuner.
-
-    M is the flattened broadcasted index size and N is the contiguous suffix.
-    Layout 0 uses a 2D MxN tile; layout 1 groups wide suffix tiles to keep the
-    launch grid within Ascend limits.
-    """
+    """Select Ascend adjacent-index candidates from backend YAML configs."""
 
     max_grid_axis = 65535
     max_tile_elems = 4096 if suffix_size >= 256 else 8192
@@ -185,6 +202,7 @@ def _adjacent_index_candidate_configs(index_len, suffix_size, indices_len, prefi
     max_configs = 2
     configs = []
     seen = set()
+    tuned_configs = runtime.get_tuned_config("index_adjacent_ascend")
 
     for block_m, block_s, layout in raw:
         if block_m < min_block_m:
@@ -200,8 +218,11 @@ def _adjacent_index_candidate_configs(index_len, suffix_size, indices_len, prefi
         key = (layout, block_m, block_s, 1)
         if key in seen:
             continue
+        config = _find_adjacent_index_config(tuned_configs, block_m, block_s, layout, 1)
+        if config is None:
+            config = _adjacent_index_config(block_m, block_s, layout, 1)
         seen.add(key)
-        configs.append(_adjacent_index_config(block_m, block_s, layout, 1))
+        configs.append(config)
         if len(configs) >= max_configs:
             break
 
@@ -209,18 +230,28 @@ def _adjacent_index_candidate_configs(index_len, suffix_size, indices_len, prefi
         block_m, block_s, suffix_tiles_per_program = _adjacent_suffix_loop_config(
             index_len, suffix_size, prefix_size
         )
-        configs.append(
-            _adjacent_index_config(
+        config = _find_adjacent_index_config(
+            tuned_configs,
+            block_m,
+            block_s,
+            _LAYOUT_SUFFIX_LOOP,
+            suffix_tiles_per_program,
+        )
+        if config is None:
+            config = _adjacent_index_config(
                 block_m, block_s, _LAYOUT_SUFFIX_LOOP, suffix_tiles_per_program
             )
-        )
+        configs.append(config)
 
     if configs:
         return configs
 
     block_m = max(16, min(256, min_block_m))
     block_s = max(1, min(int(suffix_size), max_tile_elems // block_m))
-    return [_adjacent_index_config(block_m, block_s, _LAYOUT_2D_TILE, 1)]
+    config = _find_adjacent_index_config(
+        tuned_configs, block_m, block_s, _LAYOUT_2D_TILE, 1
+    )
+    return [config or _adjacent_index_config(block_m, block_s, _LAYOUT_2D_TILE, 1)]
 
 
 def _adjacent_suffix_loop_config(index_len, suffix_size, prefix_size):
@@ -255,16 +286,11 @@ def _write_adjacent_index_configs(code, configs):
     code.writeline("configs=[")
     with code.indent():
         for config in configs:
-            meta = {
-                key: value
-                for key, value in config.items()
-                if key not in ("num_warps", "num_stages")
-            }
             code.writeline(
                 "triton.Config("
-                f"{meta!r}, "
-                f"num_warps={config['num_warps']}, "
-                f"num_stages={config['num_stages']}"
+                f"{config.kwargs!r}, "
+                f"num_warps={config.num_warps}, "
+                f"num_stages={config.num_stages}"
                 "),"
             )
     code.writeline("],")
@@ -513,8 +539,12 @@ def _tensor_index_dims_are_adjacent(tensor_index_dims):
 def _can_use_linearized_adjacent_index(inp, indices):
     # Keep this condition aligned with flag_gems.ops.index.index.
     tensor_index_dims = _tensor_index_dims(indices)
+    # The Ascend specialized kernel is currently validated for floating payloads;
+    # integer tensors keep the upstream redispatch path for exact semantics.
+    supported_dtype = inp.dtype in (torch.float16, torch.bfloat16, torch.float32)
     return (
-        tensor_index_dims
+        supported_dtype
+        and tensor_index_dims
         and inp.is_contiguous()
         and _tensor_index_dims_are_adjacent(tensor_index_dims)
     )
