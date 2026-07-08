@@ -131,7 +131,7 @@ class TopKFp8W8A16Benchmark(base.Benchmark):
 )
 def test_topk_fp8_w8a16():
     bench = TopKFp8W8A16Benchmark(
-        op_name="topk_fp8_w8a16",
+        op_name="topk",
         torch_op=_torch_topk_bf16_baseline,
         dtypes=[torch.bfloat16],
     )
