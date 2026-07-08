@@ -122,7 +122,7 @@ class BlasBenchmark(Benchmark):
         total_flops = 0
         # shape(m,k)(k,n)
         # total_flops mxnx2k
-        if self.op_name == "mm":
+        if self.op_name in ("mm", "mm_w8a8"):
             total_flops = args[0].shape[0] * args[0].shape[1] * args[1].shape[1] * 2
         # shape(m,n)(n,p)
         # total_flops mxpx(2n+1)
@@ -726,6 +726,7 @@ class ParallelBenchmarkMixin:
 
             if self.op_name in {
                 "mm",
+                "mm_w8a8",
                 "addmm",
                 "bmm",
                 "baddbmm",
@@ -746,6 +747,7 @@ class ParallelBenchmarkMixin:
 
                 if self.op_name in {
                     "mm",
+                    "mm_w8a8",
                     "bmm",
                     "w8a8_block_fp8_matmul",
                     "router_gemm",
@@ -992,6 +994,24 @@ class ParallelBlasBenchmark(ParallelBenchmarkMixin, BlasBenchmark):
         if Config.bench_level == BenchLevel.COMPREHENSIVE:
             return 2
         return 1
+
+
+class ParallelMmW8A8Benchmark(ParallelBlasBenchmark):
+    SHAPE_CONFIG_KEYS = ("mm",)
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        if not shape_file_path or not os.path.isfile(shape_file_path):
+            return
+        with open(shape_file_path, "r", encoding="utf-8") as shape_file:
+            yaml_config = yaml.safe_load(shape_file) or {}
+        if "mm" not in yaml_config:
+            return
+        self.shapes = [
+            tuple(shape)
+            for shape in yaml_config["mm"].get("shapes", self.DEFAULT_SHAPES)
+        ]
+        self.shape_desc = yaml_config["mm"].get("shape_desc", self.shape_desc)
 
 
 class ParallelBaddbmmBenchmark(ParallelBenchmarkMixin, BaddbmmBenchmark):
@@ -1406,6 +1426,13 @@ class ParallelSparseAttentionBenchmark(ParallelBenchmarkMixin, Benchmark):
             marks=pytest.mark.mm,
         ),
         pytest.param(
+            "mm_w8a8",
+            torch.Tensor.mm,
+            mm_input_fn,
+            ParallelMmW8A8Benchmark,
+            marks=pytest.mark.mm_w8a8,
+        ),
+        pytest.param(
             "baddbmm",
             torch.baddbmm,
             baddbmm_input_fn,
@@ -1421,6 +1448,8 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
         torch_op=torch_op,
         dtypes=FLOAT_DTYPES,
     )
+    if op_name == "mm_w8a8":
+        bench.set_gems(flag_gems.mm_w8a8)
     bench.run()
 
 
