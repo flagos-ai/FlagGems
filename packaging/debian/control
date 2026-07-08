@@ -34,6 +34,7 @@ X-Build-Environment: This package is built in a container that provides
 
 Package: python3-flag-gems
 Architecture: all
+Provides: python3-flaggems
 Depends: python3:any,
          ${shlibs:Depends},
          ${misc:Depends},
