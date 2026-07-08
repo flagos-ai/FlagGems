@@ -7497,6 +7497,7 @@ ops:
       - DSA
     stages:
       - beta: '5.0'
+      - alpha: '5.3'
   - id: sparse_semi_structured_mm
     description: >
       Performs a sparse semi-structured matrix multiplication of a dense matrix
