@@ -58,11 +58,13 @@ mm_splitk:
       num_stages: stages
       num_warps: warps
     block_m:
+      - 8
       - 16
       - 64
       - 128
     block_n:
       - 16
+      - 32
       - 64
       - 128
     block_k:
@@ -72,6 +74,8 @@ mm_splitk:
     split_k:
       - 4
       - 8
+      - 16
+      - 32
     group_m:
       - 16
       - 32
@@ -82,6 +86,9 @@ mm_splitk:
     warps:
       - 2
       - 4
+      - 5
+      - 6
+      - 8
   - strategy:
      M: default
      N: default
