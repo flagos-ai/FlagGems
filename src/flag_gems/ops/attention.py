@@ -6,15 +6,29 @@ import torch
 import torch.nn.functional as F
 import triton
 import triton.language as tl
+from packaging.version import Version as _Version
 
 from flag_gems import runtime
 from flag_gems.config import use_c_extension
 from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
-from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
+
+
+# Filter function for autotune configs used by scaled_dot_product_attention.
+# Keeps the two (BLOCK_M, BLOCK_N, num_warps) combinations known to work well,
+# plus any configs in must_keep (e.g., small head_dim configs).
+def keep(cfg, must_keep=None):
+    BM = cfg.kwargs["BLOCK_M"]
+    BN = cfg.kwargs["BLOCK_N"]
+    w = cfg.num_warps
+
+    # we always keep configurations in `must_keep`
+    return (BM, BN, w) in ((128, 32, 4), (128, 128, 8)) or (
+        must_keep and cfg in must_keep
+    )
 
 
 # Modified from Triton tutorial: https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
@@ -519,11 +533,66 @@ def _attn_bwd_dq(
 
 config_backward = runtime.get_tuned_config("attention_bwd")
 
+# Small head-dim configs for the backward kernel.
+# When BLOCK_DMODEL <= 32, the standard configs (BLOCK_N1=128, warps=4) can
+# exceed shared memory capacity on some hardware/Triton versions due to the
+# large shared memory footprint of tl.dot operands staged for pipelining.
+# These configs use BLOCK_N1=64 which halves the shared memory requirement
+# for the key/value tiles in the dK/dV section.
+SMALL_HEAD_DIM_BWD_CONFIGS = [
+    triton.Config(
+        {"BLOCK_M1": BM1, "BLOCK_N1": BN1, "BLOCK_M2": BM2, "BLOCK_N2": BN2},
+        num_stages=s,
+        num_warps=w,
+    )
+    for (BM1, BN1, BM2, BN2) in [
+        (32, 64, 64, 32),
+    ]
+    for s in [2, 3, 4]
+    for w in [4, 8]
+]
+config_backward = config_backward + SMALL_HEAD_DIM_BWD_CONFIGS
+
+
+def _prune_bwd_configs(configs, named_args, **kwargs):
+    """Filter backward configs based on BLOCK_DMODEL to avoid illegal memory access.
+
+    For small head dimensions (BLOCK_DMODEL <= 32):
+    - Configs with BLOCK_N1 > 64 cause shared/local memory overflow because the
+      tl.dot operands (BLOCK_N1 x BLOCK_DMODEL) staged by pipelining exceed the
+      available shared memory budget.
+    - Configs with BLOCK_M1 > 32 cause illegal memory access because the
+      intermediate dot product tile (BLOCK_N1 x BLOCK_M1) becomes too large,
+      leading to register spills or out-of-bounds accesses.
+
+    NOTE: Only registered for Triton >= 3.6.0 and < 3.8.0. See: triton/issues/10573.
+    """
+    BLOCK_DMODEL = kwargs.get("BLOCK_DMODEL", named_args.get("BLOCK_DMODEL", 128))
+    if BLOCK_DMODEL <= 32:
+        pruned = [
+            c
+            for c in configs
+            if c.kwargs["BLOCK_N1"] <= 64 and c.kwargs["BLOCK_M1"] <= 32
+        ]
+        return pruned if pruned else configs
+    return configs
+
+
+# Only register the prune callback for the affected Triton versions (>= 3.6.0, < 3.8.0).
+# Outside that range the bug does not exist, so all configs remain eligible.
+
+_bwd_prune_configs = (
+    {"early_config_prune": _prune_bwd_configs}
+    if _Version("3.6.0") <= _Version(triton.__version__) < _Version("3.8.0")
+    else {}
+)
+
 
 @libentry()
 @libtuner(
     configs=config_backward,
     key=["KV_CTX", "BLOCK_DMODEL"],
+    prune_configs_by=_bwd_prune_configs,
 )
 @triton.jit
 def _attn_bwd(
@@ -587,9 +656,13 @@ def _attn_bwd(
     # load scales
     offs_k = tl.arange(0, BLOCK_DMODEL)
 
-    # dK/dV: only execute when this pid covers a valid KV block
-    start_n = pid * BLOCK_N1
-    if start_n < KV_CTX:
+    # Grid dim 0 = NUM_KV_BLOCKS + NUM_Q_BLOCKS.
+    # pid in [0, NUM_KV_BLOCKS) handles dK/dV.
+    # pid in [NUM_KV_BLOCKS, grid_dim_0) handles dQ.
+    NUM_KV_BLOCKS = tl.cdiv(KV_CTX, BLOCK_N1)
+    if pid < NUM_KV_BLOCKS:
+        # ============ dK/dV section ============
+        start_n = pid * BLOCK_N1
         dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
         dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
 
@@ -683,9 +756,9 @@ def _attn_bwd(
         dk_ptrs = DK + offs_n[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
         tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
 
-    # dQ: only execute when this pid covers a valid Q block
-    start_m = pid * BLOCK_M2
-    if start_m < Q_CTX:
+    else:
+        # ============ dQ section ============
+        start_m = (pid - NUM_KV_BLOCKS) * BLOCK_M2
         offs_m = start_m + tl.arange(0, BLOCK_M2)
         offs_m_mask = offs_m < Q_CTX
         query = tl.load(
@@ -960,20 +1033,14 @@ def scaled_dot_product_attention_backward(
         D_HEAD=BLOCK_DMODEL,  #
     )
 
+    # Grid dim 0 = NUM_KV_BLOCKS + NUM_Q_BLOCKS.
+    # pid in [0, NUM_KV_BLOCKS) computes dK/dV.
+    # pid in [NUM_KV_BLOCKS, grid_dim_0) computes dQ.
     grid = lambda meta: (
-        max(
-            triton.cdiv(
-                KV_CTX, meta["BLOCK_N1"]
-            ),  # _attn_bwd_dq traverse the key-value sequence
-            triton.cdiv(
-                Q_CTX, meta["BLOCK_M2"]
-            ),  # _attn_bwd_dkdv traverse the query sequence
-        ),
+        triton.cdiv(KV_CTX, meta["BLOCK_N1"]) + triton.cdiv(Q_CTX, meta["BLOCK_M2"]),
         1,
         BATCH * Q_HEAD,
     )
-    # logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
-    # logger.info(f"{M.shape=}")
 
     _attn_bwd[grid](
         query,
@@ -1000,10 +1067,6 @@ def scaled_dot_product_attention_backward(
         KV_CTX,  #
         KV_HEAD,  #
         GROUP_HEAD=group_head,  #
-        # BLOCK_M1=BLOCK_M1,
-        # BLOCK_N1=BLOCK_N1,  #
-        # BLOCK_M2=BLOCK_M2,
-        # BLOCK_N2=BLOCK_N2,  #
         BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  #
         BLOCK_DMODEL=BLOCK_DMODEL,  #
         IS_CAUSAL=is_causal,  #
