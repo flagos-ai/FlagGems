@@ -259,7 +259,6 @@ _FULL_CONFIG = (
     ("diagonal_backward", diagonal_backward),
     ("diagonal_copy", diagonal_copy),
     ("diff", diff),
-    ("digamma", special_psi),
     ("digamma_", digamma_),
     ("div.Scalar", true_divide),
     ("div.Scalar_mode", div_mode),
