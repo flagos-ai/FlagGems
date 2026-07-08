@@ -114,10 +114,16 @@ jobs:
           for f in /root/.bash_profile /root/.profile /root/.bashrc; do
             [ -f "$f" ] && cp -f "$f" "$HOME/" || true
           done
+          # .bashrc may have interactive guards ([ -z "$PS1" ] or case $-)
+          # that prevent conda init from running in non-interactive CI shells.
+          # Extract conda-related lines and append to .bash_profile instead,
+          # which is sourced by login shells without any interactive check.
+          if [ -f /root/.bashrc ]; then
+            grep -E '(conda\.sh|conda activate)' /root/.bashrc >> "$HOME/.bash_profile" || true
+          fi
 
       - name: Install FlagGems dependencies
-        env:
-          PIP_CACHE_DIR: /root/.cache/pip
+        env: ${{ fromJSON(matrix.test_env) }}
         shell: bash --login -e -o pipefail {0}
         run: pip install .
 

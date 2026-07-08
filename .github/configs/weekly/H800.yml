@@ -34,6 +34,10 @@ container_options: >-
 # GPUs to test for this backends
 test_gpus: "0,1,2,3,4,5,6,7"
 
+# Extra environment variables injected only into the "Run weekly tests" step
+test_env:
+  PIP_CACHE_DIR: /root/.cache/pip
+
 # GPU availability check script for this backend
 gpu_check_script: tools/gpu_check_nvidia.sh
 
