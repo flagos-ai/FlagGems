@@ -251,8 +251,6 @@ def grouped_topk(
     if scoring_func not in (0, 1):
         raise ValueError("scoring_func must be 0 (none) or 1 (sigmoid)")
 
-    if bias.dtype != scores.dtype:
-        bias = bias.to(scores.dtype)
     if bias.ndim != 1:
         bias = bias.flatten()
     if len(bias) != num_experts:
@@ -262,26 +260,18 @@ def grouped_topk(
 
     num_experts_per_group = num_experts // n_group
 
-    if scores.dtype == torch.float32:
-        INPUT_DTYPE = tl.float32
-    elif scores.dtype == torch.float16:
-        INPUT_DTYPE = tl.float16
-    elif scores.dtype == torch.bfloat16:
-        INPUT_DTYPE = tl.bfloat16
-    else:
-        raise ValueError(f"Unsupported dtype: {scores.dtype}")
+    scores_f32 = scores.float()
+    bias_f32 = bias.float()
 
     if scoring_func == 1:
-        from flag_gems.ops.tanh import tanh as gems_tanh
-
-        scores_processed = 0.5 * gems_tanh(0.5 * scores) + 0.5
+        scores_processed = torch.sigmoid(scores_f32)
     else:
-        scores_processed = scores
+        scores_processed = scores_f32
 
     group_scores = torch.empty(
         (num_tokens, n_group),
         device=scores.device,
-        dtype=scores.dtype,
+        dtype=torch.float32,
     )
 
     topk_values = torch.empty(
@@ -301,14 +291,14 @@ def grouped_topk(
 
     topk_with_k2_triton[grid1](
         scores_processed,
-        bias,
+        bias_f32,
         group_scores,
         num_experts_per_group,
         n_group,
         scores_processed.stride(0),
         group_scores.stride(0),
         BLOCK_SIZE=BLOCK1,
-        INPUT_DTYPE=INPUT_DTYPE,
+        INPUT_DTYPE=tl.float32,
     )
 
     BLOCK_GROUP = triton.next_power_of_2(n_group)
@@ -320,7 +310,7 @@ def grouped_topk(
         group_scores,
         topk_values,
         topk_indices,
-        bias,
+        bias_f32,
         num_tokens,
         n_group,
         topk_group,
@@ -336,7 +326,7 @@ def grouped_topk(
         TOPK=topk,
         BLOCK_GROUP=BLOCK_GROUP,
         BLOCK_EXPERT=BLOCK_EXPERT,
-        INPUT_DTYPE=INPUT_DTYPE,
+        INPUT_DTYPE=tl.float32,
         renormalize=int(renormalize),
     )
 
