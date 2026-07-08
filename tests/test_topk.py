@@ -6,7 +6,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.topk import topk_fp8_w8a16
+from flag_gems.ops.topk_w8a16 import topk_fp8_w8a16
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
