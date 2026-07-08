@@ -625,7 +625,11 @@ def test_arange(start, step, end, dtype, device, pin_memory):
         )
         with flag_gems.use_gems():
             res_out = torch.arange(
-                start, end, step, dtype=dtype, device=flag_gems.device,
+                start,
+                end,
+                step,
+                dtype=dtype,
+                device=flag_gems.device,
                 pin_memory=pin_memory,
             )
     else:
@@ -996,7 +1000,7 @@ def test_accuracy_repeat_interleave_self_int(shape, dim, dtype):
 
     ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
     with flag_gems.use_gems():
-        res_out = torch.repeat_interleave(ref_inp, repeats, dim)
+        res_out = torch.repeat_interleave(inp, repeats, dim)
     gems_assert_equal(res_out, ref_out)
 
 
@@ -1012,7 +1016,7 @@ def test_accuracy_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
 
     ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
     with flag_gems.use_gems():
-        res_out = torch.repeat_interleave(ref_inp, repeats, dim)
+        res_out = torch.repeat_interleave(inp, repeats, dim)
     gems_assert_equal(res_out, ref_out)
 
 
