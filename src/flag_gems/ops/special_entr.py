@@ -12,28 +12,16 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def special_entr_func(x):
-    # entr(x) = -x * ln(x) for x > 0
-    # entr(x) = 0 for x == 0
-    # entr(x) = -inf for x < 0
-    # entr(nan) = nan
     zero = tl.zeros([], tl.float32)
     neg_inf = tl.zeros([], tl.float32) + float("-inf")
     x_fp32 = x.to(tl.float32)
 
-    # Compute -x * log(x) for x > 0
     entr_positive = -x_fp32 * tl.log(x_fp32)
 
-    # For x < 0, result is -inf (log of negative is nan, so entr is -inf)
-    # For x == 0, result is 0
-    result = tl.where(x_fp32 > zero, entr_positive, neg_inf)
+    result = tl.where(x_fp32 < zero, neg_inf, entr_positive)
 
-    # Handle x == 0 case: set result to 0 if x is exactly 0
-    # Note: x_fp32 == zero would be False for very small values, which is correct
     result = tl.where(x_fp32 == zero, zero, result)
 
-    # Handle nan: if x is nan, propagate nan
-    is_nan = x_fp32 != x_fp32
-    result = tl.where(is_nan, x_fp32, result)
     return result
 
 
