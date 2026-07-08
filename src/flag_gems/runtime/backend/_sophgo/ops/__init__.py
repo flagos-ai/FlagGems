@@ -5,6 +5,13 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .batch_norm import batch_norm
 from .bitwise_not import bitwise_not, bitwise_not_
+from .bitwise_or import (
+    bitwise_or_scalar,
+    bitwise_or_scalar_,
+    bitwise_or_scalar_tensor,
+    bitwise_or_tensor,
+    bitwise_or_tensor_,
+)
 from .bmm import bmm
 from .cat import cat
 from .clamp import clamp, clamp_
@@ -23,10 +30,14 @@ from .dropout import dropout, native_dropout
 from .eq import eq, eq_scalar
 from .erf import erf, erf_
 from .exp import exp, exp_
+from .embedding import embedding, embedding_backward
 from .exponential_ import exponential_
+from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .full import full
 from .gelu import gelu, gelu_
+from .ge import ge, ge_scalar
+from .gt import gt, gt_scalar
 from .groupnorm import group_norm
 from .hstack import hstack
 from .index_add import index_add
@@ -47,6 +58,7 @@ from .logical_and import logical_and
 from .logical_not import logical_not
 from .logical_or import logical_or
 from .logical_xor import logical_xor
+from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .mean import mean, mean_dim
 from .min import min, min_dim
@@ -111,6 +123,17 @@ from .vstack import vstack
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zeros import zeros
+from .div import (
+    div_mode,
+    div_mode_,
+    floor_divide,
+    floor_divide_,
+    remainder,
+    remainder_,
+    true_divide,
+    true_divide_,
+)
+
 
 __all__ = [
     "abs",
@@ -128,6 +151,11 @@ __all__ = [
     "batch_norm",
     "bitwise_not",
     "bitwise_not_",
+    "bitwise_or_scalar",
+    "bitwise_or_scalar_",
+    "bitwise_or_scalar_tensor",
+    "bitwise_or_tensor",
+    "bitwise_or_tensor_",
     "bmm",
     "cat",
     "clamp",
@@ -151,11 +179,21 @@ __all__ = [
     "erf_",
     "exp",
     "exp_",
+    "embedding",
+    "embedding_backward",
     "exponential_",
+    "fill_scalar",
+    "fill_scalar_",
+    "fill_tensor",
+    "fill_tensor_",
     "flip",
     "full",
     "gelu",
     "gelu_",
+    "ge",
+    "ge_scalar",
+    "gt",
+    "gt_scalar",
     "group_norm",
     "hstack",
     "index_add",
@@ -181,6 +219,8 @@ __all__ = [
     "logical_not",
     "logical_or",
     "logical_xor",
+    "masked_fill",
+    "masked_fill_",
     "masked_select",
     "mean",
     "mean_dim",
@@ -266,4 +306,12 @@ __all__ = [
     "where_self",
     "where_self_out",
     "zeros",
+    "div_mode",
+    "div_mode_",
+    "floor_divide",
+    "floor_divide_",
+    "remainder",
+    "remainder_",
+    "true_divide",
+    "true_divide_",
 ]
