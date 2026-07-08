@@ -105,20 +105,23 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Fix git safe directory
+        shell: bash
         run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Copy root profile to GitHub Actions home
+        shell: bash
+        run: |
+          for f in /root/.bash_profile /root/.profile /root/.bashrc; do
+            [ -f "$f" ] && cp -f "$f" "$HOME/" || true
+          done
 
       - name: Install FlagGems dependencies
         env:
-          HOME: /root
-          DOCKER_CONFIG: /github/home/.docker
           PIP_CACHE_DIR: /root/.cache/pip
         shell: bash --login -e -o pipefail {0}
         run: pip install .
 
       - name: Check GPU availability
-        env:
-          HOME: /root
-          DOCKER_CONFIG: /github/home/.docker
         shell: bash --login -e -o pipefail {0}
         run: bash ${{ matrix.gpu_check_script }}
 
@@ -147,6 +150,7 @@ jobs:
             --output "${OUTPUT_DIR}"
 
       - name: Package results
+        shell: bash
         run: |
           ARCHIVE="${{ runner.temp }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
@@ -159,6 +163,7 @@ jobs:
       #     path: ${{ env.ARCHIVE }}
 
       - name: Publish results to op-monitor
+        shell: bash
         run: |
           curl -X POST "${{ needs.prepare.outputs.api }}" \
             -H "X-API-Key: ${{ needs.prepare.outputs.api_key }}" \

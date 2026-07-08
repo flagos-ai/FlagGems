@@ -11,7 +11,7 @@ runner_labels: c550-flaggems-weekly
 use_container: true
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flaggems/metax-flaggems-test-c550:20260701
+container_image: harbor.baai.ac.cn/flaggems/metax-flaggems-test-c550-flagtree0.6.1a2_metax3.6:202607071028
 
 # Container volumes to mount for this backends
 container_volumes:
@@ -40,8 +40,7 @@ test_gpus: "0,1,2,3,4,5,6,7"
 # Extra environment variables injected only into the "Run weekly tests" step
 test_env:
   MACA_DIRECT_DISPATCH: 1
-  HOME: /root
-  DOCKER_CONFIG: /github/home/.docker
+  FLAGTREE_BACKEND: metax
 
 # GPU availability check script for this backend
 gpu_check_script: tools/gpu_check_metax.sh

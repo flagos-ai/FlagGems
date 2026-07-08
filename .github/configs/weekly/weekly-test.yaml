@@ -12,7 +12,7 @@ backends:
   BW1000:
     enabled: true
   MTT-S5000:
-    enabled: true
+    enabled: false
   BI-V150:
     enabled: true
   PPU-ZW810E:
