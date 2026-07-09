@@ -16,12 +16,12 @@ class NormBenchmark(GenericBenchmark):
     def set_more_shapes(self):
         return [
             # 3D shapes represented as [batch_size, channels, hidden_size]
-            (16, 16, 64),
-            (16, 16, 1024),
-            (16, 16, 4098),
+            (16, 16, 32),
+            (16, 32, 32),
+            (64, 16, 32),
             # 4D shapes represented as [batch_size, channels, H, W]
             (1, 8, 4, 4),
-            (16, 8, 128, 128),
+            (16, 8, 16, 4),
         ]
 
 

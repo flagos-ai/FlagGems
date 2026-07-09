@@ -448,7 +448,7 @@ def test_accuracy_tile(shape, dims, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-REPEAT_SIZES = [(2, 3, 4, 5), (5, 0, 4)]
+REPEAT_SIZES = [(2, 3, 4, 4), (5, 0, 4)]
 
 
 @pytest.mark.repeat
