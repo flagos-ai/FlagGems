@@ -11,6 +11,104 @@ from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 logger = logging.getLogger(__name__)
 
+_CPP_INDEX_FILL_SCALAR_INPLACE = None
+_CPP_INDEX_FILL_LOOKED_UP = False
+
+
+def _get_cpp_index_fill_scalar_inplace():
+    global _CPP_INDEX_FILL_SCALAR_INPLACE, _CPP_INDEX_FILL_LOOKED_UP
+    if _CPP_INDEX_FILL_LOOKED_UP:
+        return _CPP_INDEX_FILL_SCALAR_INPLACE
+    _CPP_INDEX_FILL_LOOKED_UP = True
+    try:
+        from flag_gems.config import c_operators
+    except ImportError:
+        c_operators = None
+    if c_operators is not None:
+        _CPP_INDEX_FILL_SCALAR_INPLACE = getattr(
+            c_operators, "index_fill_scalar_", None
+        )
+    return _CPP_INDEX_FILL_SCALAR_INPLACE
+
+
+_CPP_INDEX_FILL_ENABLED = os.environ.get(
+    "FLAG_GEMS_INDEX_FILL_CPP_LAUNCHER", "1"
+).lower() not in ("", "0", "false", "off", "none", "disable", "disabled")
+
+
+def _cpp_index_fill_enabled():
+    return _CPP_INDEX_FILL_ENABLED
+
+
+def _index_fill_bounds_check_disabled():
+    return os.environ.get("FLAG_GEMS_INDEX_FILL_BOUNDS_CHECK", "none").lower() in (
+        "",
+        "0",
+        "false",
+        "off",
+        "none",
+        "disable",
+        "disabled",
+    )
+
+
+def _is_supported_cpp_scalar(value):
+    return type(value) in (bool, int, float)
+
+
+def _should_use_cpp_index_fill(out, dim, index, value):
+    if not _is_supported_cpp_scalar(value) or not out.is_contiguous():
+        return False
+
+    dim_size = out.size(dim)
+    inner_size = 1
+    for size in out.shape[dim + 1 :]:
+        inner_size *= size
+    outer_size = out.numel() // (dim_size * inner_size)
+
+    # For many tiny rows, the Python path is better once index becomes large.
+    if inner_size <= 4 and outer_size > 1 and dim_size > 8192:
+        return index.numel() * 16 <= dim_size
+    return True
+
+
+def _try_cpp_index_fill_scalar_(out, dim, index, value):
+    if (
+        not _cpp_index_fill_enabled()
+        or not _should_use_cpp_index_fill(out, dim, index, value)
+    ):
+        return None
+    cpp_func = _get_cpp_index_fill_scalar_inplace()
+    if cpp_func is None:
+        return None
+    return cpp_func(out, dim, index, value)
+
+
+def _try_cpp_index_fill_scalar_fast_(out, dim, index, value):
+    if (
+        not _CPP_INDEX_FILL_ENABLED
+        or not _index_fill_bounds_check_disabled()
+        or not _is_supported_cpp_scalar(value)
+        or not torch.is_tensor(index)
+        or out.ndim == 0
+        or not out.is_contiguous()
+        or dim < -out.ndim
+        or dim >= out.ndim
+        or index.dtype != torch.long
+        or index.device != out.device
+        or index.ndim > 1
+    ):
+        return None
+
+    dim = dim % out.ndim
+    if not _should_use_cpp_index_fill(out, dim, index, value):
+        return None
+    cpp_func = _get_cpp_index_fill_scalar_inplace()
+    if cpp_func is None:
+        return None
+    return cpp_func(out, dim, index, value)
+
+
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
@@ -99,10 +197,69 @@ def generate_index_fill_kernel(
     return code
 
 
+def generate_contiguous_index_fill_kernel(
+    kernel_name: str,
+    code: IndentedBuffer,
+) -> IndentedBuffer:
+    code.writeline("@libentry()")
+    code.writeline("@triton.jit")
+    code.writeline(f"def {kernel_name}(")
+    with code.indent():
+        code.writeline("out,")
+        code.writeline("index,")
+        code.writeline("value,")
+        code.writeline("outer_index_len,")
+        code.writeline("index_len,")
+        code.writeline("dim_size,")
+        code.writeline("inner_size,")
+        code.writeline("VALUE_IS_TENSOR: tl.constexpr,")
+        code.writeline("BLOCK_M: tl.constexpr,")
+        code.writeline("BLOCK_N: tl.constexpr,")
+    code.writeline("):")
+
+    with code.indent():
+        code.writeline("pid_m = tl.program_id(axis=0)")
+        code.writeline("pid_n = tl.program_id(axis=1)")
+        code.writeline("m_offsets = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)")
+        code.writeline("inner_offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)")
+        code.writeline("m_mask = m_offsets < outer_index_len")
+        code.writeline("index_coord = m_offsets % index_len")
+        code.writeline("outer_coord = m_offsets // index_len")
+        code.writeline(
+            "raw_index = tl.load(index + index_coord, mask=m_mask, other=0).to(tl.int64)"
+        )
+        code.writeline(
+            "valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)"
+        )
+        code.writeline(
+            "normalized_index = tl.where(raw_index < 0, raw_index + dim_size, raw_index)"
+        )
+        code.writeline("out_offsets = outer_coord[:, None] * dim_size * inner_size")
+        code.writeline("out_offsets += normalized_index[:, None] * inner_size")
+        code.writeline("out_offsets += inner_offsets[None, :]")
+        code.writeline(
+            "store_mask = m_mask[:, None] & (inner_offsets[None, :] < inner_size)"
+        )
+        code.writeline("store_mask = store_mask & valid_index[:, None]")
+        code.writeline("if VALUE_IS_TENSOR:")
+        with code.indent():
+            code.writeline("fill_value = tl.load(value)")
+        code.writeline("else:")
+        with code.indent():
+            code.writeline("fill_value = value")
+        code.writeline("tl.store(out + out_offsets, fill_value, mask=store_mask)")
+
+    code.newline()
+    code.newline()
+    return code
+
+
 def generate_destination_passing_wrapper(
     rank: int,
+    dim: int,
     wrapper_name: str,
     kernel_name: str,
+    contiguous_kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
     wrapper_signature = (
@@ -113,7 +270,43 @@ def generate_destination_passing_wrapper(
     with code.indent():
         code.writeline("out_shapes = list(out.shape)")
         code.writeline("out_strides = list(out.stride())")
-        code.writeline("BLOCK_SIZE = 128")
+        code.writeline("BLOCK_SIZE = 512")
+        code.writeline("if out.is_contiguous():")
+        with code.indent():
+            code.writeline("inner_size = 1")
+            for i in range(dim + 1, rank):
+                code.writeline(f"inner_size *= out_shapes[{i}]")
+            code.writeline("block_n = 1")
+            code.writeline("block_m = BLOCK_SIZE")
+            code.writeline("if inner_size > 1:")
+            with code.indent():
+                code.writeline("block_n = min(64, triton.next_power_of_2(inner_size))")
+                code.writeline("if inner_size <= 4:")
+                with code.indent():
+                    code.writeline("block_m = BLOCK_SIZE")
+                code.writeline("else:")
+                with code.indent():
+                    code.writeline("block_m = max(1, BLOCK_SIZE // block_n)")
+            code.writeline("outer_index_len = N // inner_size")
+            code.writeline("grid = (")
+            with code.indent():
+                code.writeline("triton.cdiv(outer_index_len, block_m),")
+                code.writeline("triton.cdiv(inner_size, block_n),")
+            code.writeline(")")
+            code.writeline(f"{contiguous_kernel_name}[grid](")
+            with code.indent():
+                code.writeline("out,")
+                code.writeline("index,")
+                code.writeline("value,")
+                code.writeline("outer_index_len,")
+                code.writeline("index_len,")
+                code.writeline("dim_size,")
+                code.writeline("inner_size,")
+                code.writeline("VALUE_IS_TENSOR=value_is_tensor,")
+                code.writeline("BLOCK_M=block_m,")
+                code.writeline("BLOCK_N=block_n,")
+            code.writeline(")")
+            code.writeline("return out")
         code.writeline("grid = (triton.cdiv(N, BLOCK_SIZE),)")
         code.writeline(f"{kernel_name}[grid](")
         with code.indent():
@@ -142,10 +335,19 @@ def generate_code(
     out = inputs[0]
     dim = inputs[1]
     rank = out.ndim
+    contiguous_kernel_name = "_index_fill_contiguous_jit_function"
 
     code = generate_imports(code)
     code = generate_index_fill_kernel(rank, dim, kernel_name, code)
-    code = generate_destination_passing_wrapper(rank, wrapper_name, kernel_name, code)
+    code = generate_contiguous_index_fill_kernel(contiguous_kernel_name, code)
+    code = generate_destination_passing_wrapper(
+        rank,
+        dim,
+        wrapper_name,
+        kernel_name,
+        contiguous_kernel_name,
+        code,
+    )
     return code
 
 
@@ -280,6 +482,9 @@ def index_fill_scalar(inp, dim, index, value):
     logger.debug("GEMS INDEX_FILL SCALAR")
     dim, index = _prepare_index(inp, dim, index)
     out = _native_clone(inp)
+    cpp_out = _try_cpp_index_fill_scalar_(out, dim, index, value)
+    if cpp_out is not None:
+        return cpp_out
     return _index_fill_impl(out, dim, index, value, False)
 
 
@@ -297,6 +502,9 @@ def index_fill_scalar_out(inp, dim, index, value, *, out):
     if tuple(out.shape) != tuple(inp.shape):
         out.resize_(inp.shape)
     _native_copy_(out, inp)
+    cpp_out = _try_cpp_index_fill_scalar_(out, dim, index, value)
+    if cpp_out is not None:
+        return cpp_out
     return _index_fill_impl(out, dim, index, value, False)
 
 
@@ -312,7 +520,13 @@ def index_fill_tensor_out(inp, dim, index, value, *, out):
 
 def index_fill_scalar_(inp, dim, index, value):
     logger.debug("GEMS INDEX_FILL_ SCALAR")
+    cpp_out = _try_cpp_index_fill_scalar_fast_(inp, dim, index, value)
+    if cpp_out is not None:
+        return cpp_out
     dim, index = _prepare_index(inp, dim, index)
+    cpp_out = _try_cpp_index_fill_scalar_(inp, dim, index, value)
+    if cpp_out is not None:
+        return cpp_out
     return _index_fill_impl(inp, dim, index, value, False)
 
 
