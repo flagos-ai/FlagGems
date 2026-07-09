@@ -4894,6 +4894,16 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: matmul_bias_activation
+    description: Fused matrix multiplication with bias addition and ReLU activation.
+    for:
+      - matmul_bias_activation
+    labels:
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: matmuladd
     description: Computes matrix multiplication followed by bias addition.
     for:
@@ -4903,16 +4913,6 @@ ops:
       - KernelGen
     kind:
       - Math
-    stages:
-      - alpha: '5.4'
-  - id: matmul_bias_activation
-    description: Fused matrix multiplication with bias addition and ReLU activation.
-    for:
-      - matmul_bias_activation
-    labels:
-      - KernelGen
-    kind:
-      - BLAS
     stages:
       - alpha: '5.4'
   - id: max
