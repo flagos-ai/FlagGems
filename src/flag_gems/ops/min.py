@@ -8,7 +8,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry, libtuner
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_max
 
@@ -96,6 +96,128 @@ def min_kernel(
     tl.store(out_index_ptrs, argmin_values, mask=mask1)
 
 
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.jit
+def min_dim_kernel_non_inner(
+    inp,
+    out_value,
+    out_index,
+    M,
+    N,
+    K,
+    TILE_K: tl.constexpr,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    # Split the input into (M, N, K) and reduce over N with a strided read,
+    # avoiding the dim_compress copy. Ties resolve to the lowest index,
+    # matching torch.
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
+    k_offset = pid_k * TILE_K + tl.arange(0, TILE_K)
+
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
+        inp.dtype.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = inp.dtype.element_ty
+
+    max_value = get_dtype_max(cdtype)
+
+    if ONE_TILE_PER_CTA:
+        n_offset = tl.arange(0, TILE_N)
+        offset = pid_m * N * K + n_offset[:, None] * K + k_offset
+        mask = k_offset < K and n_offset[:, None] < N
+        inp_vals = tl.load(inp + offset, mask=mask, other=max_value)
+        local_min, local_argmin = tl.min(
+            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+        )
+        offset_index = pid_m * K + k_offset
+        mask1 = k_offset < K
+        tl.store(out_value + offset_index, local_min, mask=mask1)
+        tl.store(out_index + offset_index, local_argmin, mask=mask1)
+    else:
+        min_values = tl.full([TILE_K], dtype=cdtype, value=max_value)
+        argmin_values = tl.full([TILE_K], dtype=tl.int64, value=0)
+        for start_n in range(0, N, TILE_N):
+            n_offset = start_n + tl.arange(0, TILE_N)
+            offset = pid_m * N * K + n_offset[:, None] * K + k_offset
+            mask = k_offset < K and n_offset[:, None] < N
+            inp_vals = tl.load(inp + offset, mask=mask, other=max_value)
+            local_min, local_argmin = tl.min(
+                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+            )
+            update = local_min < min_values
+            min_values = tl.where(update, local_min, min_values)
+            argmin_values = tl.where(update, start_n + local_argmin, argmin_values)
+        offset_index = pid_m * K + k_offset
+        mask1 = k_offset < K
+        tl.store(out_value + offset_index, min_values, mask=mask1)
+        tl.store(out_index + offset_index, argmin_values, mask=mask1)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
+@triton.jit
+def min_dim_kernel_inner(
+    inp,
+    out_value,
+    out_index,
+    M,
+    N,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = ext.program_id(0)
+    dtype = inp.type.element_ty
+    max_value = get_dtype_max(dtype)
+
+    if ONE_TILE_PER_CTA:
+        n_offset = tl.arange(0, TILE_N)
+        offset = pid_m * N + n_offset
+        mask = n_offset < N
+        inp_vals = tl.load(inp + offset, mask=mask, other=max_value)
+        local_min, local_argmin = tl.min(
+            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+        )
+        tl.store(out_value + pid_m, local_min)
+        tl.store(out_index + pid_m, local_argmin)
+    else:
+        min_values = max_value
+        argmin_values = 0
+        loop_time = N // TILE_N
+        remainder = N % TILE_N
+        for start_n in range(0, loop_time):
+            n_offset = start_n * TILE_N + tl.arange(0, TILE_N)
+            offset = pid_m * N + n_offset
+            inp_vals = tl.load(inp + offset)
+            local_min, local_argmin = tl.min(
+                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+            )
+            update = local_min < min_values
+            min_values = tl.where(update, local_min, min_values)
+            argmin_values = tl.where(
+                update, start_n * TILE_N + local_argmin, argmin_values
+            )
+        if remainder:
+            n_offset = loop_time * TILE_N + tl.arange(0, TILE_N)
+            offset = pid_m * N + n_offset
+            mask = n_offset < N
+            inp_vals = tl.load(inp + offset, mask=mask, other=max_value)
+            local_min, local_argmin = tl.min(
+                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+            )
+            update = local_min < min_values
+            min_values = tl.where(update, local_min, min_values)
+            argmin_values = tl.where(
+                update, loop_time * TILE_N + local_argmin, argmin_values
+            )
+        tl.store(out_value + pid_m, min_values)
+        tl.store(out_index + pid_m, argmin_values)
+
+
 def min(inp):
     logger.debug("GEMS MIN")
     M = inp.numel()
@@ -118,10 +240,20 @@ def min_dim(inp, dim=None, keepdim=False):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = list(inp.shape)
     dim = dim % inp.ndim
-    inp = dim_compress(inp, dim)
+
+    # Single-dim reduction: split into (M, N, K) and reduce over N with a
+    # strided kernel, avoiding the dim_compress copy. K == 1 means the reduced
+    # dim is innermost (contiguous); K > 1 means it is a middle or outer dim,
+    # where the copy used to dominate the runtime.
     N = shape[dim]
+    if N == 0:
+        # Reducing over an empty dimension has no minimum; torch raises here.
+        raise IndexError(
+            "min(): Expected reduction dim to have non-zero size."
+        )
+    M = math.prod(shape[:dim])
+    K = math.prod(shape[dim + 1 :])
     shape[dim] = 1
-    M = inp.numel() // N
 
     out_value = torch.empty(shape, dtype=inp.dtype, device=inp.device)
     out_index = torch.empty(shape, dtype=torch.int64, device=inp.device)
@@ -130,9 +262,14 @@ def min_dim(inp, dim=None, keepdim=False):
         out_value = torch.squeeze(out_value, dim)
         out_index = torch.squeeze(out_index, dim)
 
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    inp = inp.contiguous()
     with torch_device_fn.device(inp.device):
-        min_kernel[grid](inp, out_value, out_index, M, N)
+        if K == 1:
+            grid = lambda meta: (M, 1, 1)
+            min_dim_kernel_inner[grid](inp, out_value, out_index, M, N)
+        else:
+            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+            min_dim_kernel_non_inner[grid](inp, out_value, out_index, M, N, K)
     Min_out = namedtuple("min", ["values", "indices"])
     out = Min_out(values=out_value, indices=out_index)
     return out
