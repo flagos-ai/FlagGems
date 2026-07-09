@@ -288,9 +288,7 @@ def var(x, dim=None, *, correction=None, keepdim=False):
             # Not enough elements for the requested correction: variance is
             # undefined, so return NaN like torch.
             final_shape = shape if keepdim else shape[:dim0] + shape[dim0 + 1 :]
-            return torch.full(
-                final_shape, float("nan"), device=x.device, dtype=x.dtype
-            )
+            return torch.full(final_shape, float("nan"), device=x.device, dtype=x.dtype)
 
         out = torch.empty(shape, dtype=x.dtype, device=x.device)
         if M * N * K == 0:
