@@ -52,7 +52,7 @@ def _choose_block(N_total):
 
 
 def tanh(self):
-    logger.debug("GEMS_ENFLAME TANH")
+    logger.debug("GEMS TANH FORWARD")
     inp = self.contiguous()
     N_total = inp.numel()
     out = torch.empty_like(inp)
@@ -76,13 +76,13 @@ def tanh(self):
 
 
 def tanh_backward(grad_output, output):
-    logger.debug("GEMS_ENFLAME TANH_BACKWARD")
+    logger.debug("GEMS TANH BACKWARD")
     in_grad = tanh_backward_kernel(output, grad_output)
     return in_grad
 
 
 def tanh_(A):
-    logger.debug("GEMS_ENFLAME TANH_")
+    logger.debug("GEMS TANH_ FORWARD")
     inp = A.contiguous()
     N_total = inp.numel()
 

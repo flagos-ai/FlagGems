@@ -3,6 +3,7 @@ __all__ = []
 from .abs import abs, abs_
 from .add import add, add_
 from .addmm import addmm
+from .addmv import addmv, addmv_out
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .angle import angle
@@ -35,11 +36,17 @@ from .bitwise_xor import (
     bitwise_xor_tensor_,
 )
 from .bmm import bmm, bmm_out
-from .cat import cat
+from .cat import cat, cat_out
+from .ceil import ceil, ceil_, ceil_out
+from .celu import celu, celu_
+from .clip import clip, clip_
+from .clamp_min import clamp_min, clamp_min_
+from .conj_physical import conj_physical
+from .cosh import cosh, cosh_, cosh_out
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
 from .contiguous import contiguous
 from .copy import copy, copy_
-from .cos import cos
+from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .cummax import cummax
 from .cummin import cummin
@@ -62,13 +69,16 @@ from .elu import elu
 from .embedding import embedding
 from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
-from .exp import exp, exp_
+from .exp import exp, exp_, exp_out
+from .exp2 import exp2, exp2_
+from .expm1 import expm1, expm1_, expm1_out
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
-from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
+from .fill import fill_scalar, fill_scalar_, fill_scalar_out, fill_tensor, fill_tensor_, fill_tensor_out
 from .flip import flip
 from .full import full
+from .full_like import full_like
 from .gather import gather
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
@@ -76,7 +86,7 @@ from .glu import glu
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .index import index
-from .index_put import index_put, index_put_
+from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
@@ -86,8 +96,11 @@ from .isnan import isnan
 from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
+from .linear import linear
 from .linspace import linspace
 from .log import log
+from .log10 import log10, log10_, log10_out
+from .logaddexp import logaddexp
 from .log_sigmoid import log_sigmoid
 from .log_softmax import log_softmax
 from .logical_and import logical_and
@@ -111,6 +124,7 @@ from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .nllloss import nll_loss_backward, nll_loss_forward
 from .nonzero import nonzero
+from .nonzero_numpy import nonzero_numpy
 from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .ones import ones  # noqa: F401
 from .ones_like import ones_like
@@ -149,6 +163,8 @@ from .sin import sin, sin_
 from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward
+from .softplus import softplus
+from .sqrt import sqrt, sqrt_
 from .sort import sort, sort_stable
 from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
@@ -260,10 +276,19 @@ __all__ = [
     "erf_",
     "exp",
     "exp_",
+    "exp_out",
+    "exp2",
+    "exp2_",
+    "expm1",
+    "expm1_",
+    "expm1_out",
     "fill_scalar",
     "fill_scalar_",
     "fill_tensor",
     "fill_tensor_",
+    "fill_scalar_out",
+    "fill_tensor_out",
+    "full_like",
     "flip",
     "ge",
     "ge_scalar",
@@ -284,6 +309,10 @@ __all__ = [
     "lerp_scalar_",
     "log_sigmoid",
     "log",
+    "log10",
+    "log10_",
+    "log10_out",
+    "logaddexp",
     "logical_and",
     "logical_not",
     "logical_or",
@@ -299,6 +328,7 @@ __all__ = [
     "ne",
     "neg",
     "neg_",
+    "nonzero_numpy",
     "normal_tensor_tensor",
     "normal_tensor_float",
     "normal_float_tensor",
@@ -373,6 +403,7 @@ __all__ = [
     "cumsum",
     "cumsum_out",
     "nonzero",
+    "nonzero_numpy",
     "uniform_",
     "cummin",
     "simple_unique_flat",
@@ -380,6 +411,7 @@ __all__ = [
     "sorted_indices_unique_flat",
     "dropout",
     "cummax",
+    "_index_put_impl_",
     "index_put",
     "index_put_",
     "vstack",
@@ -407,4 +439,9 @@ __all__ = [
     "softmax",
     "softmax_backward",
     "replication_pad3d",
+    "softplus",
+    "sqrt",
+    "sqrt_",
+    "addmv",
+    "addmv_out",
 ]

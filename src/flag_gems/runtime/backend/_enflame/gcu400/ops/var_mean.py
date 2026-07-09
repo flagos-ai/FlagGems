@@ -104,7 +104,7 @@ def var_mean_global_kernel_2(
 
 
 def var_mean(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS_ENFLAME VAR_MEAN")
+    logger.debug("GEMS VAR MEAN GCU400")
     if correction is None:
         correction = 1.0
 

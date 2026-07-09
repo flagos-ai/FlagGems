@@ -116,12 +116,12 @@ def round_func(input, decimals=0):
 
 
 def round(input, decimals=0):
-    logger.debug("GEMS_ENFLAME ROUND")
+    logger.debug("GEMS ROUND GCU400")
     return round_func(input, decimals=decimals)
 
 
 def round_out(input, *, decimals=0, out=None):
-    logger.debug("GEMS_ENFLAME ROUND_OUT")
+    logger.debug("GEMS ROUND_OUT GCU400")
     if out is None:
         return round_func(input, decimals=decimals)
     if not isinstance(input, torch.Tensor):
@@ -140,7 +140,7 @@ def round_out(input, *, decimals=0, out=None):
 
 
 def round_(input, *, decimals=0):
-    logger.debug("GEMS_ENFLAME ROUND_")
+    logger.debug("GEMS ROUND_ GCU400")
     if not isinstance(input, torch.Tensor):
         raise TypeError("round expects a torch.Tensor.")
     if input.is_complex():

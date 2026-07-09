@@ -50,7 +50,7 @@ def full_func_scalar(out, fill_value):
 
 
 def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS_ENFLAME FULL")
+    logger.debug("GEMS FULL")
     if device is None:
         device = torch.device("cpu")
     if dtype is None:

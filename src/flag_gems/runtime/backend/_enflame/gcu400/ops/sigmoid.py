@@ -52,7 +52,7 @@ def _choose_block(N_total):
 
 
 def sigmoid(self):
-    logger.debug("GEMS_ENFLAME SIGMOID")
+    logger.debug("GEMS SIGMOID FORWARD")
     inp = self.contiguous()
     N_total = inp.numel()
     out = torch.empty_like(inp)
@@ -76,13 +76,13 @@ def sigmoid(self):
 
 
 def sigmoid_backward(grad_output, output):
-    logger.debug("GEMS_ENFLAME SIGMOID_BACKWARD")
+    logger.debug("GEMS SIGMOID BACKWARD")
     grad_input = sigmoid_backward_kernel(grad_output, output)
     return grad_input
 
 
 def sigmoid_(A):
-    logger.debug("GEMS_ENFLAME SIGMOID_")
+    logger.debug("GEMS SIGMOID_ FORWARD")
     inp = A.contiguous()
     N_total = inp.numel()
 

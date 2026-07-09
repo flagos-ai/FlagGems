@@ -53,7 +53,7 @@ from .bitwise_xor import (
     bitwise_xor_tensor_,
 )
 from .bmm import bmm, bmm_out
-from .cat import cat
+from .cat import cat, cat_out
 from .ceil import ceil, ceil_
 from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
@@ -114,9 +114,11 @@ from .isfinite import isfinite
 from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
+from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
+from .linear import linear
 from .lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from .linspace import linspace
 from .log import log
@@ -162,6 +164,7 @@ from .pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
+from .prelu import prelu
 from .quantile import quantile
 from .randn import randn
 from .randn_like import randn_like
@@ -549,4 +552,7 @@ __all__ = [
     "_upsample_nearest_exact1d_out",
     "_upsample_nearest_exact1d_vec",
     "_saft_softmax",
+    "layer_norm",
+    "layer_norm_backward",
+    "linear",
 ]

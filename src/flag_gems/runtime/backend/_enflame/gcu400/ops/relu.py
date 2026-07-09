@@ -21,12 +21,12 @@ def relu_backward(x, dy):
 
 
 def relu(self):
-    logger.debug("GEMS_ENFLAME RELU")
+    logger.debug("GEMS RELU FORWARD")
     output = relu_forward(self)
     return output
 
 
 def relu_(A):
-    logger.debug("GEMS_ENFLAME RELU_")
+    logger.debug("GEMS RELU_ FORWARD")
     out = relu_forward(A, out0=A)
     return out

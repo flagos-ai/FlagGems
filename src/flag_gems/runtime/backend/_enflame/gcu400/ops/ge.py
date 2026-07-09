@@ -15,7 +15,7 @@ def ge_func(x, y):
 
 
 def ge(A, B):
-    logger.debug("GEMS_ENFLAME GE")
+    logger.debug("GEMS GE")
     return ge_func(A, B)
 
 
@@ -26,5 +26,5 @@ def ge_func_scalar(x, y):
 
 
 def ge_scalar(A, B):
-    logger.debug("GEMS_ENFLAME GE_SCALAR")
+    logger.debug("GEMS GE SCALAR")
     return ge_func_scalar(A, B)

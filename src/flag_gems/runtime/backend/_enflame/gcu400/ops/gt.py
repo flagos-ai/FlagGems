@@ -15,7 +15,7 @@ def gt_func(x, y):
 
 
 def gt(A, B):
-    logger.debug("GEMS_ENFLAME GT")
+    logger.debug("GEMS GT")
     return gt_func(A, B)
 
 
@@ -26,5 +26,5 @@ def gt_func_scalar(x, y):
 
 
 def gt_scalar(A, B):
-    logger.debug("GEMS_ENFLAME GT_SCALAR")
+    logger.debug("GEMS GT SCALAR")
     return gt_func_scalar(A, B)

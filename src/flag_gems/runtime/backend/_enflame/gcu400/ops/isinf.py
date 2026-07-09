@@ -19,5 +19,5 @@ def isinf_func(x):
 
 
 def isinf(A):
-    logger.debug("GEMS_ENFLAME ISINF")
+    logger.debug("GEMS ISINF")
     return isinf_func(A)

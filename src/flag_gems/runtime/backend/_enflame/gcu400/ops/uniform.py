@@ -52,7 +52,7 @@ def uniform_kernel_gcu400(
 
 
 def uniform_(self, from_=0.0, to=1.0, *, generator=None):
-    logger.debug("GEMS_ENFLAME UNIFORM_")
+    logger.debug("GEMS UNIFORM GCU400")
     N = volume(self.shape)
     dtype = self.dtype
 

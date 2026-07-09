@@ -16,10 +16,10 @@ def erf_func(x):
 
 
 def erf(x):
-    logger.debug("GEMS_ENFLAME ERF")
+    logger.debug("GEMS ERF")
     return erf_func(x)
 
 
 def erf_(x):
-    logger.debug("GEMS_ENFLAME ERF_")
+    logger.debug("GEMS ERF_")
     return erf_func(x, out0=x)

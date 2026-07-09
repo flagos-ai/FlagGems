@@ -21,6 +21,6 @@ def minimum_kernel(X, Y):
 
 
 def minimum(X, Y):
-    logger.debug("GEMS_ENFLAME MINIMUM")
+    logger.debug("GEMS MINIMUM")
     assert X.device.type == device and Y.device.type == device
     return minimum_kernel(X, Y)

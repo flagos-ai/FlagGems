@@ -15,10 +15,10 @@ def reciprocal_func(x):
 
 
 def reciprocal(A):
-    logger.debug("GEMS_ENFLAME RECIPROCAL")
+    logger.debug("GEMS RECIPROCAL")
     return reciprocal_func(A)
 
 
 def reciprocal_(A):
-    logger.debug("GEMS_ENFLAME RECIPROCAL_")
+    logger.debug("GEMS RECIPROCAL_")
     return reciprocal_func(A, out0=A)

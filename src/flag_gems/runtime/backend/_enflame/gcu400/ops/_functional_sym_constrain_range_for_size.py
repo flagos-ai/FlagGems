@@ -31,7 +31,7 @@ def _functional_sym_constrain_range_for_size_kernel(
 
 
 def _functional_sym_constrain_range_for_size(*args, **kwargs):
-    logger.debug("GEMS_ENFLAME FUNCTIONAL_SYM_CONSTRAIN_RANGE_FOR_SIZE")
+    logger.debug("GEMS _FUNCTIONAL_SYM_CONSTRAIN_RANGE_FOR_SIZE GCU400")
     tensor_arg = None
     for a in args:
         if isinstance(a, torch.Tensor):

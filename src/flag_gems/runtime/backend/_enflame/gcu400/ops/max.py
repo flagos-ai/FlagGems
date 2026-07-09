@@ -174,7 +174,7 @@ def max_kernel_non_inner(
 
 
 def max(inp):
-    logger.debug("GEMS_ENFLAME MAX")
+    logger.debug("GEMS MAX")
 
     inp = inp.contiguous()
     M = inp.numel()
@@ -204,7 +204,7 @@ def max(inp):
 
 
 def max_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_ENFLAME MAX_DIM")
+    logger.debug("GEMS MAX DIM")
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape

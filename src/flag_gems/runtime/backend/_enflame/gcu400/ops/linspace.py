@@ -28,7 +28,7 @@ def linspace_kernel(
 def linspace(
     start, end, steps, *, dtype=None, layout=None, device=None, pin_memory=None
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME LINSPACE")
+    logger.debug("GEMS LINSPACE")
     assert steps >= 1, "steps must be >= 1"
 
     out = torch.empty(

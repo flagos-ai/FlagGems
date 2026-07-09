@@ -15,11 +15,11 @@ def sin_func(x):
 
 
 def sin(A):
-    logger.debug("GEMS_ENFLAME SIN")
+    logger.debug("GEMS SIN")
     return sin_func(A)
 
 
 def sin_(A):
-    logger.debug("GEMS_ENFLAME SIN_")
+    logger.debug("GEMS SIN_")
     sin_func(A, out0=A)
     return A

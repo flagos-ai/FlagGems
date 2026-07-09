@@ -54,7 +54,7 @@ def _launch_leaky_relu(input_ptr, output_ptr, n_elements, negative_slope):
 
 
 def leaky_relu(A, negative_slope=0.01):
-    logger.debug("GEMS_ENFLAME LEAKY_RELU")
+    logger.debug("GEMS LEAKY_RELU GCU400")
     if not A.is_contiguous():
         A = A.contiguous()
     output = torch.empty_like(A)
@@ -63,7 +63,7 @@ def leaky_relu(A, negative_slope=0.01):
 
 
 def leaky_relu_(A, negative_slope=0.01):
-    logger.debug("GEMS_ENFLAME LEAKY_RELU_")
+    logger.debug("GEMS LEAKY_RELU_ GCU400")
     if not A.is_contiguous():
         raise RuntimeError(
             "leaky_relu_ requires a contiguous tensor for in-place operation"
@@ -73,7 +73,7 @@ def leaky_relu_(A, negative_slope=0.01):
 
 
 def leaky_relu_out(A, negative_slope=0.01, *, out=None):
-    logger.debug("GEMS_ENFLAME LEAKY_RELU_OUT")
+    logger.debug("GEMS LEAKY_RELU_OUT GCU400")
     if out is None:
         return leaky_relu(A, negative_slope)
     if not A.is_contiguous():

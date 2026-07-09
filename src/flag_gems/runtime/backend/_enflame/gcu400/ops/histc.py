@@ -42,7 +42,7 @@ def histc_kernel_simple(
 
 
 def histc(inp, bins=100, min=0, max=0):
-    logger.debug("GEMS_ENFLAME HISTC")
+    logger.debug("GEMS HISTC GCU400")
     inp = inp.contiguous()
 
     min_val = float(min)
