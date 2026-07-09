@@ -30,11 +30,10 @@ class UnaryReductionBenchmark(Benchmark):
 
     def set_more_shapes(self):
         more_shapes_1d = [
-            (1025 * 1024,),
-            (1024 * 1024 * 1024,),
+            (65535,),
         ]
-        more_shapes_2d = [(1024, 2**i) for i in range(0, 21, 4)]
-        more_shapes_3d = [(64, 2**i, 64) for i in range(0, 15, 4)]
+        more_shapes_2d = [(1024, 1), (1024, 16), (1024, 256), (1024, 512)]
+        more_shapes_3d = [(64, 1, 32), (64, 256, 32), (64, 512, 32)]
         return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
     def get_input_iter(self, cur_dtype) -> Generator:
@@ -63,10 +62,17 @@ class UnaryReductionBenchmark(Benchmark):
         pytest.param("min_dim", torch.min, FLOAT_DTYPES, marks=pytest.mark.min_dim),
         pytest.param("prod", torch.prod, FLOAT_DTYPES, marks=pytest.mark.prod),
         pytest.param("prod_dim", torch.prod, FLOAT_DTYPES, marks=pytest.mark.prod_dim),
-        pytest.param("softmax", torch.nn.functional.softmax, FLOAT_DTYPES, marks=pytest.mark.softmax),
+        pytest.param(
+            "softmax",
+            torch.nn.functional.softmax,
+            FLOAT_DTYPES,
+            marks=pytest.mark.softmax,
+        ),
         pytest.param("sum", torch.sum, FLOAT_DTYPES, marks=pytest.mark.sum),
         pytest.param("sum_dim", torch.sum, FLOAT_DTYPES, marks=pytest.mark.sum_dim),
-        pytest.param("var_mean", torch.var_mean, FLOAT_DTYPES, marks=pytest.mark.var_mean),
+        pytest.param(
+            "var_mean", torch.var_mean, FLOAT_DTYPES, marks=pytest.mark.var_mean
+        ),
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
@@ -77,7 +83,12 @@ def test_general_reduction_perf(op_name, torch_op, dtypes):
 @pytest.mark.parametrize(
     "op_name, torch_op, dtypes",
     [
-        pytest.param("softmax", torch.nn.functional.softmax, FLOAT_DTYPES, marks=pytest.mark.softmax_backward),
+        pytest.param(
+            "softmax",
+            torch.nn.functional.softmax,
+            FLOAT_DTYPES,
+            marks=pytest.mark.softmax_backward,
+        ),
     ],
 )
 def test_general_reduction_backward_perf(op_name, torch_op, dtypes):

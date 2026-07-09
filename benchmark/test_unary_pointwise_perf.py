@@ -19,8 +19,8 @@ class UnaryPointwiseBenchmark(Benchmark):
         self.input_fn = input_fn
 
     def set_more_shapes(self):
-        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-        sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+        special_shapes_2d = [(1024, 1), (1024, 16), (1024, 256), (1024, 512)]
+        sp_shapes_3d = [(64, 64, 1), (64, 64, 16), (64, 64, 32)]
         return special_shapes_2d + sp_shapes_3d
 
     def get_input_iter(self, cur_dtype) -> Generator:
@@ -189,8 +189,8 @@ def test_perf_prelu():
             (128, 256),
             (512, 512),
             (4, 8, 16),
-            (2, 32, 16, 16),
-            (2, 128, 64, 64),
+            (2, 32, 16, 4),
+            (2, 128, 16, 4),
         ]
         DEFAULT_SHAPE_DESC = "N, C, *"
 

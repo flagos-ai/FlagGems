@@ -8,15 +8,14 @@ import flag_gems
 from .attri_util import DEFAULT_METRICS
 from .performance_utils import Benchmark
 
-
 W8A8_BLOCK_FP8_MNK_SHAPES = [
-    (64, 128, 128),
-    (128, 256, 512),
-    (1, 4096, 7168),
-    (16, 4096, 7168),
-    (64, 4096, 7168),
-    (83, 7748, 3884),
-    (84, 7168, 3884),
+    (64, 128, 32),
+    (128, 256, 32),
+    (1, 512, 32),
+    (16, 512, 32),
+    (64, 512, 32),
+    (83, 512, 32),
+    (84, 512, 32),
 ]
 
 W8A8_BLOCK_FP8_BLOCK_SIZE = [128, 128]
@@ -64,9 +63,7 @@ def torch_w8a8_block_fp8_matmul_ref(
     B_fp32 = B.to(torch.float32)
 
     A_scale = (
-        As.reshape(M, -1)
-        .to(torch.float32)
-        .repeat_interleave(block_k, dim=-1)[:, :K]
+        As.reshape(M, -1).to(torch.float32).repeat_interleave(block_k, dim=-1)[:, :K]
     )
     B_scale = (
         Bs.to(torch.float32)

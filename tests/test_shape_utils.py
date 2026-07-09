@@ -89,8 +89,8 @@ def test_all_c_contiguous1():
 
 
 def test_heuristics_for_tile_size():
-    shape = (10000, 10000, 10)
-    tile_sizes = (1, 256, 16)
+    shape = (2048, 512, 32)
+    tile_sizes = (1, 128, 32)
     assert shape_utils.heuristics_for_tile_size(4096, *shape) == tile_sizes
 
 

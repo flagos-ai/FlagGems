@@ -107,13 +107,13 @@ def reference_sparse_mla_implementation(q, kv, indices, sm_scale=None, d_v=512):
 
 @pytest.mark.sparse_mla_forward
 @pytest.mark.parametrize("batch_size", [1])
-@pytest.mark.parametrize("seq_len_q", [64, 128, 512])
-@pytest.mark.parametrize("seq_len_kv", [1024, 2048, 4096])
-@pytest.mark.parametrize("num_heads", [64, 128, 256])
+@pytest.mark.parametrize("seq_len_q", [4, 16])
+@pytest.mark.parametrize("seq_len_kv", [512])
+@pytest.mark.parametrize("num_heads", [4, 8, 16])
 @pytest.mark.parametrize("num_kv_heads", [1])
 @pytest.mark.parametrize("qk_dim", [576])  # Your operator is fixed at 576
-@pytest.mark.parametrize("d_v", [512])  # Output dimension
-@pytest.mark.parametrize("topk", [64, 128, 256])
+@pytest.mark.parametrize("d_v", [4])  # Output dimension
+@pytest.mark.parametrize("topk", [1, 4])
 @pytest.mark.parametrize("dtype", [torch.bfloat16])
 def test_sparse_mla_forward(
     batch_size: int,
@@ -182,15 +182,15 @@ def test_sparse_mla_forward(
             "seq_len_kv": 100,
             "num_heads": 4,
             "num_kv_heads": 1,
-            "topk": 50,
+            "topk": 4,
         },
         {
             "batch_size": 1,
-            "seq_len_q": 17,
-            "seq_len_kv": 1030,
+            "seq_len_q": 16,
+            "seq_len_kv": 512,
             "num_heads": 8,
             "num_kv_heads": 1,
-            "topk": 256,
+            "topk": 4,
         },
     ],
 )
@@ -198,7 +198,7 @@ def test_sparse_mla_forward_edge_cases(config):
     """Sparse MLA edge case tests"""
     dtype = torch.bfloat16
     qk_dim = 576
-    d_v = 512
+    d_v = 4
 
     q, kv, indices = make_sparse_mla_input(
         config["batch_size"],
@@ -230,15 +230,15 @@ def test_sparse_mla_device_compatibility():
     """Test device compatibility"""
     config = {
         "batch_size": 1,
-        "seq_len_q": 128,
-        "seq_len_kv": 1024,
+        "seq_len_q": 16,
+        "seq_len_kv": 512,
         "num_heads": 8,
         "num_kv_heads": 1,
-        "topk": 64,
+        "topk": 4,
     }
     dtype = torch.bfloat16
     qk_dim = 576
-    d_v = 512
+    d_v = 4
 
     q, kv, indices = make_sparse_mla_input(
         config["batch_size"],

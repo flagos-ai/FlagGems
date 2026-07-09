@@ -15,63 +15,45 @@ DEFAULT_ITER_COUNT = 100
 
 # LEGACY_SHAPES are maintained for legacy benchmark SIZE settings and may be removed in the future.
 # Do not reference this elsewhere.
-LEGACY_SHAPES = [i * 64 for i in range(1, 22, 5)]
+LEGACY_SHAPES = [64, 384, 512]
 LEGACY_NON_BLAS_SHAPES = [(1024, shape) for shape in LEGACY_SHAPES]
-LEGACY_BLAS_SHAPES = [(16, shape, shape, shape) for shape in LEGACY_SHAPES]
+LEGACY_BLAS_SHAPES = [(16, shape, 128, 32) for shape in LEGACY_SHAPES]
 
 # Default shapes settings
 DEFAULT_SHAPES = [
-    (1024 * 1024 * 1024,),  # from perf
+    (65535,),  # from perf
     (64, 64),
-    (4096, 4096),
-    (64, 512, 512),
-    (1024, 1024, 1024),  # from perf
+    (4096, 512),
+    (64, 512, 32),
+    (1024, 512, 32),  # from perf
 ]
 
 
 # This function is adapted from: https://github.com/pytorch-labs/tritonbench/blob/main/tritonbench/utils/triton_op.py
 def llama_shapes():
     # batch sizes * seq lengths
-    BS = [2**i for i in range(0, 17)]
+    BS = [2**i for i in range(0, 11)]
     # attn: wqkv, wo; ffn: w13, w2
     KN = [
-        (4096, 12288),
-        (4096, 4096),
-        (4096, 22016),
-        (11008, 4096),
-        (8192, 1280),
-        (1024, 8192),
-        (8192, 7168),
-        (3584, 8192),
-        (16384, 2304),
-        (2048, 16384),
-        (16384, 13312),
-        (6656, 16384),
+        (512, 512),
+        (512, 256),
+        (256, 512),
+        (128, 512),
     ]
     return [(bs, n, k, None) for bs, (k, n) in itertools.product(BS, KN)]
 
 
 def model_shapes():
     # batch sizes * seq lengths
-    BS = [1, 2, 3, 4, 8, 98, 256, 8192]
+    BS = [1, 2, 3, 4, 8, 98, 256, 512]
     # attn: wqkv, wo; ffn: w13, w2
     NK = [
         # extract from llama3-8b
-        (1024, 4096),
-        (128256, 4096),
-        (14336, 4096),
-        (4096, 14336),
-        (4096, 4096),
-        (6144, 4096),
-        (28672, 4096),
-        # extract from qwen2.5-7b
-        (3584, 3584),
-        (18944, 3584),
-        (3584, 18944),
-        (152064, 3584),
-        (37888, 3584),
-        (512, 3584),
-        (4608, 3584),
+        (1, 4),
+        (2, 4),
+        (4, 4),
+        (8, 4),
+        (16, 4),
     ]
 
     return [(4, bs, n, k) for bs, (n, k) in itertools.product(BS, NK)]

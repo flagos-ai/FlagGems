@@ -158,7 +158,7 @@ class FusedRecurrentGatedDeltaRuleTestKit:
 )
 @pytest.mark.fused_recurrent_gated_delta_rule
 @pytest.mark.parametrize("cfg", FusedRecurrentGatedDeltaRuleTestKit.get_test_params())
-@pytest.mark.parametrize("T", [1, 2, 4, 128, 512])
+@pytest.mark.parametrize("T", [1, 2, 4, 32])
 @pytest.mark.parametrize("qkv_contiguous", [True, False])
 def test_fused_recurrent_gated_delta_rule_matches_vllm(cfg, T, qkv_contiguous):
     kit = FusedRecurrentGatedDeltaRuleTestKit

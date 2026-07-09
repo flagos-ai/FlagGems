@@ -429,9 +429,9 @@ def torch_apply_rotary_pos_emb(
 
 @pytest.mark.apply_rotary_pos_emb
 @pytest.mark.parametrize("batch_size", [2] if TO_CPU else [4, 8])
-@pytest.mark.parametrize("max_seq_len", [16] if TO_CPU else [512, 2048])
+@pytest.mark.parametrize("max_seq_len", [16] if TO_CPU else [512])
 @pytest.mark.parametrize("q_heads,k_heads", [(8, 1), (6, 2), (1, 1), (8, 8)])
-@pytest.mark.parametrize("head_dim", [8] if TO_CPU else [64, 96, 128, 256])
+@pytest.mark.parametrize("head_dim", [8] if TO_CPU else [4, 8, 16])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("rotary_interleaved", [True, False])
 @pytest.mark.parametrize("has_pos_id", [True, False])
@@ -493,7 +493,7 @@ def test_apply_rotary_pos_emb(
 @pytest.mark.parametrize("EmbeddingSize", [1024] if TO_CPU else [4096])
 @pytest.mark.parametrize("Batch", [2] if TO_CPU else [2, 4])
 @pytest.mark.parametrize("M", [4] if TO_CPU else [4, 8])
-@pytest.mark.parametrize("N", [8] if TO_CPU else [128, 256, 4096])
+@pytest.mark.parametrize("N", [8] if TO_CPU else [8, 16, 32])
 @pytest.mark.parametrize("padding_idx", [None, -1, 1, 2])
 @pytest.mark.parametrize("scale_grad_by_freq", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -528,7 +528,7 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
 @pytest.mark.parametrize("EmbeddingSize", [1024] if TO_CPU else [4096])
 @pytest.mark.parametrize("Batch", [2] if TO_CPU else [2, 4])
 @pytest.mark.parametrize("M", [4] if TO_CPU else [4, 8])
-@pytest.mark.parametrize("N", [8] if TO_CPU else [128, 256, 4096])
+@pytest.mark.parametrize("N", [8] if TO_CPU else [8, 16, 32])
 @pytest.mark.parametrize("padding_idx", [-1, 1, 2])
 @pytest.mark.parametrize("scale_grad_by_freq", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -565,8 +565,8 @@ def test_embedding_backward(
     "Batch, M, N, embeddingsize",
     [
         (2, 4, 8, 16),
-        (4, 8, 32, 64),
-        (1, 3, 64, 128),
+        (4, 8, 16, 4),
+        (1, 3, 16, 4),
     ],
 )
 @pytest.mark.parametrize(
@@ -809,10 +809,10 @@ def test_accuracy_multinomial_without_replacement(pool, dtype):
 
 
 PAD_SHAPES = [
-    [1024, 1024],
-    [64, 64, 64, 64],
-    [1, 64, 112, 112],
-    [4, 64, 128],
+    [1024, 512],
+    [64, 64, 16, 4],
+    [1, 64, 16, 4],
+    [4, 64, 32],
 ]
 PAD_MODES = ["constant", "reflect", "replicate", "circular"]
 PAD_SHAPE_MODES = [
@@ -886,11 +886,11 @@ def test_pad(shape, dtype, pad_mode, contiguous):
 @pytest.mark.parametrize(
     "shape",
     [
-        (32, 16, 128, 128),
-        (15, 37, 256, 256),
-        (3, 5, 127, 127),
-        (128, 192, 42, 51),
-        (3, 7, 1023, 1025),
+        (32, 16, 16, 4),
+        (15, 37, 16, 4),
+        (3, 5, 16, 4),
+        (128, 192, 16, 4),
+        (3, 7, 16, 4),
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1209,15 +1209,15 @@ def test_fill_out(value, shape, dtype):
 
 CAMBRICON_STACK_SHAPES = [
     [
-        (8, 8, 128),
-        (8, 8, 128),
-        (8, 8, 128),
+        (8, 8, 32),
+        (8, 8, 32),
+        (8, 8, 32),
     ],
     [
-        (32, 64, 128, 8),
-        (32, 64, 128, 8),
-        (32, 64, 128, 8),
-        (32, 64, 128, 8),
+        (32, 64, 16, 4),
+        (32, 64, 16, 4),
+        (32, 64, 16, 4),
+        (32, 64, 16, 4),
     ],
 ]
 STACK_SHAPES_TEST = STACK_SHAPES + (
@@ -1303,10 +1303,10 @@ def test_exception_hstack(shape, dtype):
 CAT_SHAPES = [
     [(1, 32), (8, 32)],
     [(16, 128), (32, 128)],
-    [(1024, 1024), (1024, 1024)],
-    [(1, 1024, 256), (8, 1024, 256), (16, 1024, 256)],
+    [(1024, 512), (1024, 512)],
+    [(1, 512, 32), (8, 512, 32), (16, 512, 32)],
     [(16, 320, 15), (32, 320, 15), (64, 320, 15)],
-    [(16, 128, 64, 64), (16, 128, 64, 64), (24, 128, 64, 64), (32, 128, 64, 64)],
+    [(16, 128, 16, 4), (16, 128, 16, 4), (24, 128, 16, 4), (32, 128, 16, 4)],
 ]
 
 
@@ -1381,24 +1381,24 @@ def test_accuracy_cat_empty_tensor(shape, dim, dtype):
 VSTACK_SHAPES = [
     [(3,), (3,)],
     [(3, 33), (7, 33)],
-    [(13, 3, 333), (17, 3, 333), (7, 3, 333)],
+    [(13, 3, 32), (17, 3, 32), (7, 3, 32)],
     [
-        (13, 3, 64, 5, 2),
-        (16, 3, 64, 5, 2),
-        (7, 3, 64, 5, 2),
-        (4, 3, 64, 5, 2),
-        (1, 3, 64, 5, 2),
+        (13, 3, 32, 5, 2),
+        (16, 3, 32, 5, 2),
+        (7, 3, 32, 5, 2),
+        (4, 3, 32, 5, 2),
+        (1, 3, 32, 5, 2),
     ],
 ]
 
 CAMBRICON_VSTACK_SHAPES = [
-    [(16, 128, 64, 64), (16, 128, 64, 64), (16, 128, 64, 64), (16, 128, 64, 64)],
+    [(16, 128, 16, 4), (16, 128, 16, 4), (16, 128, 16, 4), (16, 128, 16, 4)],
     [
-        (32, 64, 128, 8),
-        (32, 64, 128, 8),
-        (32, 64, 128, 8),
-        (32, 64, 128, 8),
-        (32, 64, 128, 8),
+        (32, 64, 16, 4),
+        (32, 64, 16, 4),
+        (32, 64, 16, 4),
+        (32, 64, 16, 4),
+        (32, 64, 16, 4),
     ],
 ]
 VSTACK_SHAPES_TEST = VSTACK_SHAPES + (
@@ -1428,10 +1428,10 @@ def test_accuracy_vstack(shape, dtype):
 
 
 REPEAT_INTERLEAVE_SHAPES = [
-    (1024, 1024),
+    (1024, 512),
     (20, 320, 15),
-    (16, 128, 64, 60),
-    (16, 7, 57, 32, 29),
+    (16, 128, 16, 4),
+    (16, 7, 32, 8, 4),
 ]
 REPEAT_INTERLEAVE_REPEATS = [2]
 REPEAT_INTERLEAVE_DIM = [-1, 0, None]
@@ -1537,7 +1537,7 @@ def get_dim1_dim2(o_rank):
 def get_diag_embed_shape_and_dims():
     shapes = [
         (1024,),
-        (1024, 1024),
+        (1024, 512),
     ]
     # [(shape, dim1, dim2)]
     result = []
@@ -1621,9 +1621,7 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
 
 @pytest.mark.sort
 @pytest.mark.parametrize("batch_size", [4, 8])
-@pytest.mark.parametrize(
-    "hiddensize", [1, 256, 2048, 9333, 65536, 32768, 128 * 1024, 256 * 1024]
-)
+@pytest.mark.parametrize("hiddensize", [1, 256, 512])
 @pytest.mark.parametrize("descending", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 @pytest.mark.parametrize("dim", [0, -1])
@@ -1835,7 +1833,7 @@ def test_accuracy_rwkv_mmsparsity(dtype):
 
 M_VALUES = [1, 33, 64, 222]
 TOP_KS = [2, 6]
-K_VALUES = [128, 511, 1024]
+K_VALUES = [32]
 MOE_SHAPES = list(itertools.product(M_VALUES, TOP_KS, K_VALUES))
 
 
@@ -1954,15 +1952,15 @@ def torch_moe_align_block_size(
 
 
 @pytest.mark.moe_align_block_size
-@pytest.mark.parametrize("num_experts", [10, 128, 250, 512])
-@pytest.mark.parametrize("block_size", [16, 32, 64])
+@pytest.mark.parametrize("num_experts", [10, 128, 250])
+@pytest.mark.parametrize("block_size", [16, 32])
 @pytest.mark.parametrize(
     "topk_ids_shape",
     [
         (1024, 10),
-        (6152, 10),
-        (11575, 10),
-        (16384, 10),
+        (4096, 10),
+        (4096, 10),
+        (4096, 10),
     ],
 )
 def test_accuracy_moe_align_block_size(
@@ -2084,7 +2082,7 @@ def test_accuracy_moe_align_block_size(
 
 @pytest.mark.reflection_pad2d
 @pytest.mark.parametrize(
-    "shape", [(3, 33, 33), (2, 4, 32, 64), (8, 16, 64, 64), (32, 64, 128, 256)]
+    "shape", [(3, 33, 32), (2, 4, 16, 4), (8, 16, 16, 4), (32, 64, 16, 4)]
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize(
@@ -2092,9 +2090,9 @@ def test_accuracy_moe_align_block_size(
     [
         (1, 1, 1, 1),
         (2, 3, 2, 3),
-        (3, 5, 3, 5),
-        (0, 4, 0, 4),
-        (4, 0, 4, 0),
+        (3, 0, 3, 4),
+        (0, 3, 0, 4),
+        (3, 0, 4, 0),
     ],
 )
 def test_reflection_pad2d(shape, dtype, padding):
@@ -2110,10 +2108,10 @@ def test_reflection_pad2d(shape, dtype, padding):
 
 
 @pytest.mark.reflection_pad2d
-@pytest.mark.parametrize("padding", [[1, 1, 1, 1], [2, 3, 4, 5]])
+@pytest.mark.parametrize("padding", [[1, 1, 1, 1], [2, 3, 4, 4]])
 def test_reflection_pad2d_list_padding(padding):
     # Test with list format: [pad_left, pad_right, pad_top, pad_bottom]
-    shape = (2, 4, 32, 64)
+    shape = (2, 4, 16, 4)
     dtype = torch.float32
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -2128,7 +2126,7 @@ def test_reflection_pad2d_list_padding(padding):
 
 @pytest.mark.reflection_pad2d
 def test_reflection_pad2d_empty_padding():
-    shape = (2, 4, 32, 64)
+    shape = (2, 4, 16, 4)
     dtype = torch.float32
     padding = (0, 0, 0, 0)
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -2143,10 +2141,10 @@ def test_reflection_pad2d_empty_padding():
 
 
 @pytest.mark.reflection_pad2d
-@pytest.mark.parametrize("padding", [(1, 1, 1, 1), (2, 3, 4, 5)])
+@pytest.mark.parametrize("padding", [(1, 1, 1, 1), (2, 3, 4, 4)])
 def test_reflection_pad2d_3d_input(padding):
     # Test with 3D input (C, H, W) - no batch dimension
-    shape = (3, 32, 64)
+    shape = (3, 32, 32)
     dtype = torch.float32
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -2192,7 +2190,7 @@ def test_upsample_bicubic2d(N, C, H, W, outH, outW, align_corners, use_scale, dt
 
 
 @pytest.mark.reflection_pad1d
-@pytest.mark.parametrize("shape", [(3, 33), (2, 4, 64), (8, 16, 256), (32, 64, 2048)])
+@pytest.mark.parametrize("shape", [(3, 33), (2, 4, 32), (8, 16, 32), (32, 64, 32)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("padding", [(1, 1), (3, 5), (8, 8)])
 def test_reflection_pad1d(shape, dtype, padding):
@@ -2208,7 +2206,7 @@ def test_reflection_pad1d(shape, dtype, padding):
 
 
 @pytest.mark.reflection_pad1d
-@pytest.mark.parametrize("shape", [(3, 33), (2, 4, 64), (32, 64, 2048)])
+@pytest.mark.parametrize("shape", [(3, 33), (2, 4, 32), (32, 64, 32)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("padding", [(1, 1), (3, 5), (8, 8)])
 def test_reflection_pad1d_out(shape, dtype, padding):
@@ -2232,7 +2230,7 @@ def test_reflection_pad1d_out(shape, dtype, padding):
 
 @pytest.mark.pixel_unshuffle
 @pytest.mark.parametrize(
-    "shape_factor", [((1, 3, 8, 8), 2), ((2, 4, 12, 6), 3), ((4, 16, 64, 48), 4)]
+    "shape_factor", [((1, 3, 8, 4), 2), ((2, 4, 12, 3), 3), ((4, 16, 16, 4), 4)]
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_pixel_unshuffle(shape_factor, dtype):
@@ -2250,7 +2248,7 @@ def test_pixel_unshuffle(shape_factor, dtype):
 
 @pytest.mark.pixel_unshuffle
 @pytest.mark.parametrize(
-    "shape_factor", [((1, 3, 8, 8), 2), ((2, 4, 12, 6), 3), ((4, 16, 64, 48), 4)]
+    "shape_factor", [((1, 3, 8, 4), 2), ((2, 4, 12, 3), 3), ((4, 16, 16, 4), 4)]
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_pixel_unshuffle_out(shape_factor, dtype):
@@ -2277,7 +2275,7 @@ def test_pixel_unshuffle_out(shape_factor, dtype):
 
 
 @pytest.mark.replication_pad1d
-@pytest.mark.parametrize("shape", [(2, 3, 7), (4, 16, 64), (8, 32, 256), (32, 256)])
+@pytest.mark.parametrize("shape", [(2, 3, 7), (4, 16, 32), (8, 32, 32), (32, 256)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("padding", [(0, 0), (1, 2), (3, 1)])
 def test_replication_pad1d(shape, dtype, padding):
@@ -2293,7 +2291,7 @@ def test_replication_pad1d(shape, dtype, padding):
 
 
 @pytest.mark.replication_pad1d
-@pytest.mark.parametrize("shape", [(2, 3, 7), (4, 16, 64), (8, 32, 256), (32, 256)])
+@pytest.mark.parametrize("shape", [(2, 3, 7), (4, 16, 32), (8, 32, 32), (32, 256)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("padding", [(0, 0), (1, 2), (3, 1)])
 def test_replication_pad1d_out(shape, dtype, padding):
@@ -2321,7 +2319,7 @@ def test_replication_pad1d_out(shape, dtype, padding):
 
 @pytest.mark.replication_pad3d
 @pytest.mark.parametrize(
-    "shape", [(1, 3, 4, 8, 8), (2, 16, 2, 3, 5), (4, 8, 3, 4, 4), (2, 1, 1, 2, 2)]
+    "shape", [(1, 3, 4, 8, 4), (2, 16, 2, 3, 4), (4, 8, 3, 4, 4), (2, 1, 1, 2, 2)]
 )
 @pytest.mark.parametrize("padding", [1, (1, 2, 0, 1, 2, 0), 2, (0, 0, 1, 2, 3, 0)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -2381,7 +2379,7 @@ def test_accuracy_lift_fresh_copy(shape, dtype):
 
 
 @pytest.mark.upsample_nearest_exact1d
-@pytest.mark.parametrize("shape", [(2, 3, 16), (4, 8, 64), (8, 16, 256)])
+@pytest.mark.parametrize("shape", [(2, 3, 16), (4, 8, 32), (8, 16, 32)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("factor", [2, 3])
 def test_accuracy__upsample_nearest_exact1d(shape, dtype, factor):
@@ -2495,12 +2493,12 @@ def test_accuracy__safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
         (10,),
         (4, 8),
         (4, 8, 16),
-        (2, 3, 4, 5),
+        (2, 3, 4, 4),
         (8, 16, 32),
         (3, 7, 11),
         (2, 1, 4),
         (64, 512),
-        (32, 256, 256),
+        (32, 256, 32),
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

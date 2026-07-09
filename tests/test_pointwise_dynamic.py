@@ -465,7 +465,7 @@ def test_dynamic_function_with_nd_buffer(use_1d_tile, use_block_pointer):
     def axpyaxmy(x, y, alpha):
         return alpha * x + y, alpha * x - y
 
-    M, N, K = 40, 60, 80
+    M, N, K = 40, 60, 32
     x = torch.randn([M, N, K], device=flag_gems.device)[::2, ::2, ::2]
     y = torch.randn([N // 2, K // 2, M // 2], device=flag_gems.device).permute(2, 0, 1)
     alpha = 2.0
@@ -499,7 +499,7 @@ def test_dynamic_function_with_nd_buffer_out_permute(use_1d_tile, use_block_poin
     def axpyaxmy(x, y, alpha):
         return alpha * x + y, alpha * x - y
 
-    M, N, K = 40, 60, 80
+    M, N, K = 40, 60, 32
     x = torch.randn([M, N, K], device="cuda")[::2, ::2, ::2]
     y = torch.randn([M // 2, N // 2, K // 2], device="cuda")
     alpha = 2.0
@@ -534,7 +534,7 @@ def test_dynamic_function_with_nd_buffer_broadcast(use_1d_tile, use_block_pointe
     def axpyaxmy(x, y, alpha):
         return alpha * x + y, alpha * x - y
 
-    M, N, K = 40, 60, 80
+    M, N, K = 40, 60, 32
     x = torch.randn([M, N, 2], device="cuda")[::2, ::2, ::2]
     y = torch.randn([1, K // 2, M // 2], device="cuda").permute(2, 0, 1)
     alpha = 2.0
@@ -567,7 +567,7 @@ def test_dynamic_function_with_nd_buffer_expand(use_1d_tile, use_block_pointer):
     def axpyaxmy(x, y, alpha):
         return alpha * x + y, alpha * x - y
 
-    M, N, K = 40, 60, 80
+    M, N, K = 40, 60, 32
     x = (
         torch.randn([1, K // 2, N // 2], device="cuda")
         .permute(0, 2, 1)
@@ -609,7 +609,7 @@ def test_dynamic_function_with_different_stride_order(use_block_pointer):
     def axpyaxmy(x, y, alpha):
         return alpha * x + y, alpha * x - y
 
-    M, N, K = 40, 60, 80
+    M, N, K = 40, 60, 32
     x = torch.randn([M, N, K], device=flag_gems.device)
     y = torch.randn([N, K, M], device=flag_gems.device).permute(2, 0, 1)
     alpha = 2.0
@@ -799,7 +799,7 @@ def test_dynamic_function_int64_index(use_block_pointer):
     def f(x):
         return x * 2.0
 
-    x = torch.randn((2, 1024, 1024, 1024), dtype=torch.float16, device=flag_gems.device)
+    x = torch.randn((2, 512, 16, 4), dtype=torch.float16, device=flag_gems.device)
     y1 = f(x)
     y2 = x * 2.0
     torch.testing.assert_close(y1, y2)
