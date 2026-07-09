@@ -363,8 +363,26 @@ def _is_bool_dtype(dtype):
     return dtype is torch.bool
 
 
-def _is_triton_3_0():
-    return triton.__version__.split("+", 1)[0].startswith("3.0.")
+def _triton_version_lt(major, minor):
+    version = triton.__version__.split("+", 1)[0]
+    parts = version.split(".")
+    try:
+        current = (int(parts[0]), int(parts[1]))
+    except (IndexError, ValueError):
+        return False
+    return current < (major, minor)
+
+
+def _needs_runtime_meta_for_constexpr_tuple():
+    if _triton_version_lt(3, 3):
+        return True
+    try:
+        import triton.language.core as tl_core
+
+        frontend_tuple = getattr(tl_core, "tuple", None)
+        return frontend_tuple is None or not hasattr(frontend_tuple, "__getitem__")
+    except Exception:
+        return False
 
 
 def _broadcast_shape(a_t, b_t):
@@ -499,7 +517,7 @@ def _launch_generic(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride,
     b_stride = b_stride or (0,)
     out_stride = out_stride or (0,)
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    if _is_triton_3_0():
+    if _needs_runtime_meta_for_constexpr_tuple():
         meta = torch.tensor(
             shape + a_stride + b_stride + out_stride,
             device=output.device,
@@ -632,7 +650,7 @@ def _launch_complex_generic(
     out_r_stride = out_r_stride or (0,)
     out_i_stride = out_i_stride or (0,)
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    if _is_triton_3_0():
+    if _needs_runtime_meta_for_constexpr_tuple():
         meta = torch.tensor(
             shape
             + strides[0]
@@ -705,7 +723,7 @@ def mul_complex_broadcast_func(a, b, out=None):
 
 
 def mul(A, B, *, out=None):
-    logger.debug("GEMS_NVIDIA MUL")
+    logger.debug("GEMS_METAX MUL")
     if isinstance(A, torch.Tensor) or isinstance(B, torch.Tensor):
         if (
             (isinstance(A, torch.Tensor) and A.is_complex())
@@ -719,7 +737,7 @@ def mul(A, B, *, out=None):
 
 
 def mul_(A, B):
-    logger.debug("GEMS_NVIDIA MUL_")
+    logger.debug("GEMS_METAX MUL_")
     if not isinstance(A, torch.Tensor):
         raise TypeError("mul_ expects the first argument to be a tensor")
     dtype = _result_dtype(A, B)
