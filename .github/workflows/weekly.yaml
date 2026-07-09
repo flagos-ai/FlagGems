@@ -15,8 +15,8 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Monday 04:00 Beijing time = Sunday 20:00 UTC
-    - cron: '0 20 * * 0'
+    # Monday 02:00 Beijing time = Sunday 18:00 UTC
+    - cron: '0 18 * * 0'
 
 jobs:
   prepare:
@@ -130,28 +130,28 @@ jobs:
         run: bash ${{ matrix.gpu_check_script }}
 
       # Run weekly tests for all operator stages
-      # - name: Run weekly tests
-      #   env: ${{ fromJSON(matrix.test_env) }}
-      #   shell: bash --login -e -o pipefail {0}
-      #   run: |
-      #     python3 tools/run_tests.py \
-      #       --gpus "${{ matrix.test_gpus }}" \
-      #       --stages all \
-      #       --dump-output \
-      #       --output "${OUTPUT_DIR}"
-
-      # Run weekly tests for selected operators (abs, sum, add)
-      # This is a smoke test to quickly verify the weekly testing pipeline
-      # and the backend environment.
       - name: Run weekly tests
         env: ${{ fromJSON(matrix.test_env) }}
         shell: bash --login -e -o pipefail {0}
         run: |
           python3 tools/run_tests.py \
             --gpus "${{ matrix.test_gpus }}" \
-            --ops abs,sum,add \
+            --stages all \
             --dump-output \
             --output "${OUTPUT_DIR}"
+
+      # Run weekly tests for selected operators (abs, sum, add)
+      # This is a smoke test to quickly verify the weekly testing pipeline
+      # and the backend environment.
+      # - name: Run weekly tests
+      #   env: ${{ fromJSON(matrix.test_env) }}
+      #   shell: bash --login -e -o pipefail {0}
+      #   run: |
+      #     python3 tools/run_tests.py \
+      #       --gpus "${{ matrix.test_gpus }}" \
+      #       --ops abs,sum,add \
+      #       --dump-output \
+      #       --output "${OUTPUT_DIR}"
 
       - name: Package results
         shell: bash
@@ -238,28 +238,28 @@ jobs:
         run: bash ${{ matrix.gpu_check_script }}
 
       # Run weekly tests for all operator stages
-      # - name: Run weekly tests
-      #   shell: bash
-      #   env: ${{ fromJSON(matrix.test_env) }}
-      #   run: |
-      #     python3 tools/run_tests.py \
-      #       --gpus "${{ matrix.test_gpus }}" \
-      #       --stages all \
-      #       --dump-output \
-      #       --output "${OUTPUT_DIR}"
-
-      # Run weekly tests for selected operators (abs, sum, add)
-      # This is a smoke test to quickly verify the weekly testing pipeline
-      # and the backend environment.
       - name: Run weekly tests
         shell: bash
         env: ${{ fromJSON(matrix.test_env) }}
         run: |
           python3 tools/run_tests.py \
             --gpus "${{ matrix.test_gpus }}" \
-            --ops abs,sum,add \
+            --stages all \
             --dump-output \
             --output "${OUTPUT_DIR}"
+
+      # Run weekly tests for selected operators (abs, sum, add)
+      # This is a smoke test to quickly verify the weekly testing pipeline
+      # and the backend environment.
+      # - name: Run weekly tests
+      #   shell: bash
+      #   env: ${{ fromJSON(matrix.test_env) }}
+      #   run: |
+      #     python3 tools/run_tests.py \
+      #       --gpus "${{ matrix.test_gpus }}" \
+      #       --ops abs,sum,add \
+      #       --dump-output \
+      #       --output "${OUTPUT_DIR}"
 
       - name: Package results
         shell: bash
