@@ -41,6 +41,12 @@ DEFAULT_STRATEGIES = {
         "align32",
         "default",
     ],
+    "fused_marlin_moe_mxfp4_gemm_silu": [
+        "align32",
+        "align32",
+        "align32",
+        "default",
+    ],
     "gemv": ["align32", "align32", "align32", "default"],
     "mm": ["align32", "align32", "align32", "align32", "align32"],
     "mm_sqmma": ["align32", "align32", "align32", "default"],
@@ -92,7 +98,13 @@ OP_KEY_ORDERS = {
     "fused_marlin_moe_mxfp4": [
         "N",
         "K",
-        "AUTOTUNE_WORKLOAD_KEY",
+        "EM_BUCKET",
+        "BLOCK_SIZE_M",
+        "SWAP_AB",
+    ],
+    "fused_marlin_moe_mxfp4_gemm_silu": [
+        "N",
+        "K",
         "BLOCK_SIZE_M",
         "SWAP_AB",
     ],

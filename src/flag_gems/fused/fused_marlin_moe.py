@@ -30,6 +30,7 @@ import triton
 import triton.language as tl
 from torch.utils.weak import WeakTensorKeyDictionary
 
+from flag_gems import runtime
 from flag_gems.fused.fused_moe import (
     MoEActivation,
     _get_config_dtype_str,
@@ -65,7 +66,6 @@ _QUANT_TYPE_INT8 = {QUANT_TYPE_UINT8B128}
 _QUANT_TYPE_FP4 = {QUANT_TYPE_FP4_E2M1}
 _SUPPORTED_QUANT_TYPES = _QUANT_TYPE_INT4 | _QUANT_TYPE_INT8 | _QUANT_TYPE_FP4
 _FULL_HOPPER_MIN_SM_COUNT = 100
-_HOPPER_MAX_REGISTERS_PER_THREAD = 255
 
 
 @functools.lru_cache(maxsize=1)
@@ -1349,92 +1349,10 @@ def fused_moe_w4a16_gptq(
     return out_hidden_states
 
 
-def _mxfp4_autotune_configs():
-    cfgs = []
-    for bn in (16, 32, 64):
-        for w in (2, 4):
-            for s in (4, 5, 6):
-                cfgs.append(
-                    triton.Config(
-                        {"BLOCK_SIZE_N": bn, "GROUP_SIZE_M": 1},
-                        num_warps=w,
-                        num_stages=s,
-                        maxnreg=_HOPPER_MAX_REGISTERS_PER_THREAD,
-                    )
-                )
-    for maxnreg in (96, 64):
-        for bn, stages in ((32, 4), (32, 5), (64, 4)):
-            cfgs.append(
-                triton.Config(
-                    {"BLOCK_SIZE_N": bn, "GROUP_SIZE_M": 1},
-                    num_warps=2,
-                    num_stages=stages,
-                    maxnreg=maxnreg,
-                )
-            )
-    for bn in (128, 256):
-        for gm in (1, 4):
-            for w in (4, 8):
-                for s in (2, 3, 4):
-                    cfgs.append(
-                        triton.Config(
-                            {"BLOCK_SIZE_N": bn, "GROUP_SIZE_M": gm},
-                            num_warps=w,
-                            num_stages=s,
-                            maxnreg=_HOPPER_MAX_REGISTERS_PER_THREAD,
-                        )
-                    )
-    return cfgs
-
-
-def _mxfp4_fused_gemm1_silu_autotune_configs():
-    return [
-        triton.Config(
-            {"BLOCK_SIZE_N": 32, "GROUP_SIZE_M": 1}, num_warps=2, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 32, "GROUP_SIZE_M": 1},
-            num_warps=2,
-            num_stages=4,
-            maxnreg=96,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 32, "GROUP_SIZE_M": 1},
-            num_warps=2,
-            num_stages=4,
-            maxnreg=64,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 32, "GROUP_SIZE_M": 1}, num_warps=2, num_stages=5
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 32, "GROUP_SIZE_M": 1}, num_warps=4, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 64, "GROUP_SIZE_M": 1}, num_warps=4, num_stages=3
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 64, "GROUP_SIZE_M": 1}, num_warps=4, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 128, "GROUP_SIZE_M": 1}, num_warps=4, num_stages=3
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 128, "GROUP_SIZE_M": 1}, num_warps=4, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 128, "GROUP_SIZE_M": 4}, num_warps=4, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 256, "GROUP_SIZE_M": 4}, num_warps=8, num_stages=3
-        ),
-    ]
-
-
 @libentry()
 @libtuner(
-    configs=_mxfp4_autotune_configs(),
-    key=["N", "K", "AUTOTUNE_WORKLOAD_KEY", "BLOCK_SIZE_M", "SWAP_AB"],
+    configs=runtime.get_tuned_config("fused_marlin_moe_mxfp4"),
+    key=["N", "K", "EM_BUCKET", "BLOCK_SIZE_M", "SWAP_AB"],
     strategy=["align32", "align32", "align32", "align32", "default"],
     flagtune_op_name="fused_marlin_moe_mxfp4",
     flagtune_expand_op_name="fused_marlin_moe_mxfp4",
@@ -1472,7 +1390,7 @@ def _mxfp4_moe_gemm_kernel(
     top_k: tl.constexpr,
     compute_type: tl.constexpr,
     SWAP_AB: tl.constexpr,
-    AUTOTUNE_WORKLOAD_KEY: tl.constexpr,
+    EM_BUCKET: tl.constexpr,
 ):
     BLOCK_SIZE_K_PACK: tl.constexpr = BLOCK_SIZE_K // 8
 
@@ -1586,9 +1504,13 @@ def _mxfp4_moe_gemm_kernel(
     tl.store(c_ptrs, accumulator, mask=c_mask)
 
 
-@triton.autotune(
-    configs=_mxfp4_fused_gemm1_silu_autotune_configs(),
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("fused_marlin_moe_mxfp4_gemm_silu"),
     key=["N", "K", "BLOCK_SIZE_M", "SWAP_AB"],
+    strategy=["align32", "align32", "align32", "default"],
+    flagtune_op_name="fused_marlin_moe_mxfp4_gemm_silu",
+    flagtune_expand_op_name="fused_marlin_moe_mxfp4_gemm_silu",
 )
 @triton.jit
 def _mxfp4_moe_gemm_silu_kernel(
@@ -1808,7 +1730,7 @@ def _invoke_mxfp4_moe_gemm(
     EM = sorted_token_ids.size(0)
     if M_a < block_m:
         EM = min(EM, M_a * top_k * block_m)
-    autotune_workload_key = 0 if M_a == 1 else EM
+    em_bucket = 0 if M_a == 1 else EM
 
     if C.ndim == 3:
         stride_cm = C.stride(1)
@@ -1851,7 +1773,7 @@ def _invoke_mxfp4_moe_gemm(
         top_k=top_k,
         compute_type=compute_type,
         SWAP_AB=swap_ab,
-        AUTOTUNE_WORKLOAD_KEY=autotune_workload_key,
+        EM_BUCKET=em_bucket,
     )
 
 

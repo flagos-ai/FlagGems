@@ -8,6 +8,8 @@ import triton
 from . import backend, common
 from .backend.device_finder import DeviceDetector
 
+_TRITON_CONFIG_PARAMETERS = inspect.signature(triton.Config).parameters
+
 
 class TunedConfigLoader(object):
     _instance = None
@@ -79,9 +81,14 @@ class TunedConfigLoader(object):
         }
         if (
             self.device.vendor_name == "hygon"
-            and "num_ldmatrixes" in inspect.signature(triton.Config).parameters
+            and "num_ldmatrixes" in _TRITON_CONFIG_PARAMETERS
         ):
             kwargs["num_ldmatrixes"] = current_config["num_ldmatrixes"]
+        if (
+            "maxnreg" in _TRITON_CONFIG_PARAMETERS
+            and single_config.get("maxnreg") is not None
+        ):
+            kwargs["maxnreg"] = single_config["maxnreg"]
         return triton.Config(single_config["META"], **kwargs)
 
     def _build_configs_by_op(self, op_name, ranges, pre_hook=None):
@@ -248,7 +255,11 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "fused_marlin_moe_mxfp4":
+        if op_name in (
+            "fused_marlin_moe_mxfp4",
+            "fused_marlin_moe_mxfp4_gemm_silu",
+        ):
+            maxnreg_values = ranges.get("maxnreg", [None])
             return [
                 triton.Config(
                     {
@@ -258,11 +269,18 @@ class TunedConfigLoader(object):
                     num_stages=s,
                     num_warps=w,
                     pre_hook=pre_hook,
+                    **(
+                        {"maxnreg": maxnreg}
+                        if maxnreg is not None
+                        and "maxnreg" in _TRITON_CONFIG_PARAMETERS
+                        else {}
+                    ),
                 )
                 for block_size_n in ranges["BLOCK_SIZE_N"]
                 for group_size_m in ranges["GROUP_SIZE_M"]
                 for s in ranges["s"]
                 for w in ranges["w"]
+                for maxnreg in maxnreg_values
             ]
 
         if op_name == "w8a8_block_fp8_bmm":
@@ -475,6 +493,12 @@ class TunedConfigLoader(object):
                 "fused_marlin_moe_mxfp4",
                 expand_yaml_path=self._get_expand_config_path("fused_marlin_moe_mxfp4"),
             ),
+            "fused_marlin_moe_mxfp4_gemm_silu": self._build_single_expand_spec(
+                "fused_marlin_moe_mxfp4_gemm_silu",
+                expand_yaml_path=self._get_expand_config_path(
+                    "fused_marlin_moe_mxfp4_gemm_silu"
+                ),
+            ),
             "gemv": self._build_single_expand_spec("gemv"),
             "mm": self._build_single_expand_spec(
                 "mm", expand_yaml_path=self._get_expand_config_path("mm")
@@ -568,14 +592,17 @@ class TunedConfigLoader(object):
             current_step = cur_state.get("current_step")
 
             if current_step == final_step:
-                all_configs.append(
-                    triton.Config(
-                        cur_config["META"],
-                        num_warps=cur_config["num_warps"],
-                        num_stages=cur_config["num_stages"],
-                        num_ctas=cur_config["num_ctas"],
-                    )
-                )
+                kwargs = {
+                    "num_warps": cur_config["num_warps"],
+                    "num_stages": cur_config["num_stages"],
+                    "num_ctas": cur_config["num_ctas"],
+                }
+                if (
+                    "maxnreg" in _TRITON_CONFIG_PARAMETERS
+                    and cur_config.get("maxnreg") is not None
+                ):
+                    kwargs["maxnreg"] = cur_config["maxnreg"]
+                all_configs.append(triton.Config(cur_config["META"], **kwargs))
             else:
                 cur_entry = iteration_plan[current_step]
                 cur_key = cur_entry["key"]
@@ -671,8 +698,16 @@ class TunedConfigLoader(object):
 
             for mapped_key in meta_map.values():
                 ranges[mapped_key.upper()] = gen_config[mapped_key]
-            ranges["s"] = gen_config[param_map.get("num_stages")]
-            ranges["w"] = gen_config[param_map.get("num_warps")]
+            ranges["s"] = self._resolve_iteration_values(
+                gen_config, param_map.get("num_stages")
+            )
+            ranges["w"] = self._resolve_iteration_values(
+                gen_config, param_map.get("num_warps")
+            )
+            if "maxnreg" in param_map:
+                ranges["maxnreg"] = self._resolve_iteration_values(
+                    gen_config, param_map["maxnreg"]
+                )
 
             return {
                 "ranges": ranges,
