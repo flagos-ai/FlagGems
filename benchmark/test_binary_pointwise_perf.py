@@ -22,8 +22,8 @@ class BinaryPointwiseBenchmark(Benchmark):
     DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
 
     def set_more_shapes(self):
-        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-        shapes_3d = [(64, 64, 2**i) for i in range(0, 20, 4)]
+        special_shapes_2d = [(1024, 1), (1024, 16), (1024, 256), (1024, 512)]
+        shapes_3d = [(64, 64, 1), (64, 64, 16), (64, 64, 32)]
         return special_shapes_2d + shapes_3d
 
     def get_input_iter(self, cur_dtype) -> Generator:

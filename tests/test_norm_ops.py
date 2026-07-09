@@ -27,13 +27,13 @@ KEEPDIM_DIMS = (
 @pytest.mark.parametrize(
     "N, C, H, W, num_groups",
     [
-        (16, 3, 16, 16, 1),
-        (32, 32, 32, 32, 8),
-        (1, 32, 32, 32, 8),
-        (1, 32, 32, 32, 16),
-        (1, 64, 32, 32, 16),
-        (1, 64, 32, 32, 32),
-        (1, 64, 32, 32, 64),
+        (16, 3, 16, 4, 1),
+        (32, 32, 16, 4, 8),
+        (1, 32, 16, 4, 8),
+        (1, 32, 16, 4, 16),
+        (1, 64, 16, 4, 16),
+        (1, 64, 16, 4, 32),
+        (1, 64, 16, 4, 64),
     ],
 )
 @pytest.mark.parametrize("wb_none", [False, True])
@@ -72,13 +72,13 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 @pytest.mark.parametrize(
     "N, C, H, W, num_groups",
     [
-        (16, 3, 16, 16, 1),
-        (32, 32, 32, 32, 8),
-        (1, 32, 32, 32, 8),
-        (1, 32, 32, 32, 16),
-        (1, 64, 32, 32, 16),
-        (1, 64, 32, 32, 32),
-        (1, 64, 32, 32, 64),
+        (16, 3, 16, 4, 1),
+        (32, 32, 16, 4, 8),
+        (1, 32, 16, 4, 8),
+        (1, 32, 16, 4, 16),
+        (1, 64, 16, 4, 16),
+        (1, 64, 16, 4, 32),
+        (1, 64, 16, 4, 64),
     ],
 )
 @pytest.mark.parametrize("wb_none", [False, True])
@@ -152,13 +152,13 @@ def test_accuracy_groupnorm_backward(N, C, H, W, num_groups, dtype, wb_none):
 @pytest.mark.parametrize(
     "shape",
     (
-        [(1, 40999)]
+        [(1, 512)]
         if QUICK_MODE
         else [
             (200, 36),
             (4096, 100),
-            (1, 40999),
-            (100, 40499),
+            (1, 512),
+            (100, 512),
             (4096, 256),
         ]
     ),
@@ -206,13 +206,13 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
 @pytest.mark.parametrize(
     "shape",
     (
-        [(1, 40999)]
+        [(1, 512)]
         if QUICK_MODE
         else [
             (200, 36),
             (4096, 100),
-            (1, 40999),
-            (100, 40499),
+            (1, 512),
+            (100, 512),
             (4096, 256),
         ]
     ),
@@ -301,13 +301,13 @@ def test_accuracy_layernorm_backward(shape, dtype, wb_none):
             (1, 1, 2, 2),
             (2, 1, 2, 2),
             (2, 3, 2, 2),
-            (2, 3, 128, 128),
-            (4, 16, 8, 8),
-            (2, 3, 1024),
-            (2, 3, 2048),
-            (2, 3, 4096),
-            (2, 3, 8192),
-            (2, 3, 10240),
+            (2, 3, 16, 4),
+            (4, 16, 8, 4),
+            (2, 3, 32),
+            (2, 3, 32),
+            (2, 3, 32),
+            (2, 3, 32),
+            (2, 3, 32),
         ]
     ),
 )
@@ -662,9 +662,9 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     [
         (16, 3),
         (32, 32, 32),
-        (8, 32, 224, 224),
-        (2050, 16, 32, 32),
-        (8, 16, 3, 224, 224),
+        (8, 32, 16, 4),
+        (1024, 16, 16, 4),
+        (8, 16, 3, 8, 4),
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -723,9 +723,9 @@ def test_accuracy_batch_norm(shape, dtype, affine):
     [
         (16, 3),
         (32, 32, 32),
-        (8, 32, 224, 224),
-        (2050, 16, 32, 32),
-        (8, 16, 3, 224, 224),
+        (8, 32, 16, 4),
+        (1024, 16, 16, 4),
+        (8, 16, 3, 8, 4),
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

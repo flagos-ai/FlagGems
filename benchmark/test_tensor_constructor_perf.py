@@ -58,20 +58,51 @@ def arange_input_fn(shape, dtype, device):
     "op_name, torch_op, input_fn",
     [
         # generic tensor constructor
-        pytest.param("rand", torch.rand, generic_constructor_input_fn, marks=pytest.mark.rand),
-        pytest.param("randn", torch.randn, generic_constructor_input_fn, marks=pytest.mark.randn),
-        pytest.param("ones", torch.ones, generic_constructor_input_fn, marks=pytest.mark.ones),
-        pytest.param("zeros", torch.zeros, generic_constructor_input_fn, marks=pytest.mark.zeros),
+        pytest.param(
+            "rand", torch.rand, generic_constructor_input_fn, marks=pytest.mark.rand
+        ),
+        pytest.param(
+            "randn", torch.randn, generic_constructor_input_fn, marks=pytest.mark.randn
+        ),
+        pytest.param(
+            "ones", torch.ones, generic_constructor_input_fn, marks=pytest.mark.ones
+        ),
+        pytest.param(
+            "zeros", torch.zeros, generic_constructor_input_fn, marks=pytest.mark.zeros
+        ),
         # generic tensor-like constructor
-        pytest.param("rand_like", torch.rand_like, unary_input_fn, marks=pytest.mark.rand_like),
-        pytest.param("randn_like", torch.randn_like, unary_input_fn, marks=pytest.mark.randn_like),
-        pytest.param("ones_like", torch.ones_like, unary_input_fn, marks=pytest.mark.ones_like),
-        pytest.param("zeros_like", torch.zeros_like, unary_input_fn, marks=pytest.mark.zeros_like),
+        pytest.param(
+            "rand_like", torch.rand_like, unary_input_fn, marks=pytest.mark.rand_like
+        ),
+        pytest.param(
+            "randn_like", torch.randn_like, unary_input_fn, marks=pytest.mark.randn_like
+        ),
+        pytest.param(
+            "ones_like", torch.ones_like, unary_input_fn, marks=pytest.mark.ones_like
+        ),
+        pytest.param(
+            "zeros_like", torch.zeros_like, unary_input_fn, marks=pytest.mark.zeros_like
+        ),
         # tensor constructor with given value
-        pytest.param("fill", torch.fill, fill_input_fn, marks=[pytest.mark.fill, pytest.mark.fill_scalar]),
-        pytest.param("masked_fill", torch.masked_fill, masked_fill_input_fn, marks=pytest.mark.masked_fill),
+        pytest.param(
+            "fill",
+            torch.fill,
+            fill_input_fn,
+            marks=[pytest.mark.fill, pytest.mark.fill_scalar],
+        ),
+        pytest.param(
+            "masked_fill",
+            torch.masked_fill,
+            masked_fill_input_fn,
+            marks=pytest.mark.masked_fill,
+        ),
         pytest.param("full", torch.full, full_input_fn, marks=pytest.mark.full),
-        pytest.param("full_like", torch.full_like, full_like_input_fn, marks=pytest.mark.full_like),
+        pytest.param(
+            "full_like",
+            torch.full_like,
+            full_like_input_fn,
+            marks=pytest.mark.full_like,
+        ),
         # arange
         pytest.param("arange", torch.arange, arange_input_fn, marks=pytest.mark.arange),
     ],

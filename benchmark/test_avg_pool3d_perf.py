@@ -7,10 +7,10 @@ from .performance_utils import Config, GenericBenchmark, generate_tensor_input
 
 class AvgPool3dBenchmark(GenericBenchmark):
     DEFAULT_SHAPES = [
-        (4, 3, 16, 56, 56),
-        (8, 64, 8, 28, 28),
-        (16, 128, 4, 14, 14),
-        (32, 256, 4, 7, 7),
+        (4, 3, 16, 8, 4),
+        (8, 64, 8, 8, 4),
+        (16, 128, 4, 8, 4),
+        (32, 256, 4, 7, 4),
     ]
     DEFAULT_SHAPE_DESC = "N, C, D, H, W"
 

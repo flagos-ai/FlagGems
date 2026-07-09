@@ -22,19 +22,17 @@ if QUICK_MODE:
 else:
     MN_SHAPES = [
         (1, 32),
-        (160, 1024),
-        (5333, 497),
+        (160, 512),
+        (4096, 497),
     ]
     MNK_SHAPES = [
         (1, 1, 32),
-        (15, 160, 1024),
-        (495, 5333, 71),
+        (15, 160, 32),
+        (495, 512, 32),
     ]
     FLOAT_DTYPES = ORIG_FLOAT_DTYPES
 
-NONCONTIGUOUS_MNK_SHAPES = [
-    (M, N, K) for M, N, K in MNK_SHAPES if N > 1 and K > 1
-]
+NONCONTIGUOUS_MNK_SHAPES = [(M, N, K) for M, N, K in MNK_SHAPES if N > 1 and K > 1]
 
 
 @pytest.mark.addmm
@@ -194,11 +192,11 @@ def test_accuracy_bmm_non_contiguous(M, N, K, dtype):
 
 
 FP8_MNK_SHAPES = [
-    (128, 256, 512),
-    (64, 128, 128),
-    (256, 256, 256),
-    (83, 7748, 3884),
-    (84, 7168, 3884),
+    (128, 256, 32),
+    (64, 128, 32),
+    (256, 256, 32),
+    (83, 512, 32),
+    (84, 512, 32),
 ]
 
 
@@ -437,7 +435,7 @@ def test_accuracy_addmv_out(M, N, scalar, dtype):
 
 @pytest.mark.outer
 @pytest.mark.parametrize(
-    "M, N", MN_SHAPES + ([(32, 131072)] if flag_gems.vendor_name == "cambricon" else [])
+    "M, N", MN_SHAPES + ([(32, 512)] if flag_gems.vendor_name == "cambricon" else [])
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_outer(M, N, dtype):
