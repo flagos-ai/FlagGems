@@ -14,7 +14,6 @@ from .isin import isin
 from .log_softmax import log_softmax, log_softmax_backward
 from .masked_fill import masked_fill, masked_fill_
 from .matmul_bf16 import matmul_bf16
-from .matmul_bias_activation import matmul_bias_activation
 from .matmul_int8 import matmul_int8
 from .min import min, min_dim
 from .mm import mm, mm_out
@@ -53,7 +52,6 @@ __all__ = [
     "log_softmax",
     "log_softmax_backward",
     "matmul_bf16",
-    "matmul_bias_activation",
     "matmul_int8",
     "masked_fill",
     "masked_fill_",

@@ -392,7 +392,6 @@ _FULL_CONFIG = (
     ("masked_scatter", masked_scatter),
     ("masked_scatter_", masked_scatter_),
     ("masked_select", masked_select),
-    ("matmul_bias_activation", matmul_bias_activation),
     ("max", max),
     ("max.dim", max_dim),
     ("max_pool2d_backward", max_pool2d_backward),

@@ -46,6 +46,7 @@ from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.grouped_topk import grouped_topk
 from flag_gems.fused.indexer_k_quant_and_cache import indexer_k_quant_and_cache
 from flag_gems.fused.instance_norm import instance_norm
+from flag_gems.fused.matmul_bias_activation import matmul_bias_activation
 from flag_gems.fused.mhc import (
     hc_head_fused_kernel,
     hc_head_fused_kernel_ref,
@@ -124,6 +125,7 @@ __all__ = [
     "inplace_fused_experts",
     "instance_norm",
     "invoke_fused_moe_triton_kernel",
+    "matmul_bias_activation",
     "mhc_bwd",
     "mhc_bwd_ref",
     "mhc_post",
