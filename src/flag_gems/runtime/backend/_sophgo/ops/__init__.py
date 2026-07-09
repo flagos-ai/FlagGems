@@ -50,6 +50,7 @@ from .isinf import isinf
 from .isnan import isnan
 from .kron import kron
 from .layernorm import layer_norm
+from .le import le, le_scalar
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .linspace import linspace
 from .log import log, log_
@@ -58,6 +59,7 @@ from .logical_and import logical_and
 from .logical_not import logical_not
 from .logical_or import logical_or
 from .logical_xor import logical_xor
+from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .mean import mean, mean_dim
@@ -66,6 +68,7 @@ from .mm import mm, mm_out
 from .mul import mul, mul_
 from .multinomial import multinomial
 from .nan_to_num import nan_to_num
+from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .nllloss import nll_loss2d_forward, nll_loss_forward
 from .nonzero import nonzero
@@ -207,6 +210,8 @@ __all__ = [
     "isnan",
     "kron",
     "layer_norm",
+    "le",
+    "le_scalar",
     "lerp_scalar",
     "lerp_scalar_",
     "lerp_tensor",
@@ -219,6 +224,8 @@ __all__ = [
     "logical_not",
     "logical_or",
     "logical_xor",
+    "lt",
+    "lt_scalar",
     "masked_fill",
     "masked_fill_",
     "masked_select",
@@ -233,6 +240,8 @@ __all__ = [
     "multinomial",
     "nan_to_num",
     "native_dropout",
+    "ne",
+    "ne_scalar",
     "neg",
     "neg_",
     "nll_loss2d_forward",
