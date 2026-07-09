@@ -11,9 +11,12 @@ try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
     TE_AVAILABLE = True
+    TE_SCALED_SOFTMAX_FORWARD = getattr(tex, "scaled_softmax_forward", None)
+    TE_SCALED_SOFTMAX_BACKWARD = getattr(tex, "scaled_softmax_backward", None)
 except ImportError:
     TE_AVAILABLE = False
-    pass
+    TE_SCALED_SOFTMAX_FORWARD = None
+    TE_SCALED_SOFTMAX_BACKWARD = None
 
 
 class ScaledSoftmaxBenchmark(base.GenericBenchmark):
@@ -47,11 +50,15 @@ def scaled_softmax_forward_input_fn(shape, dtype, device):
 
 @pytest.mark.scaled_softmax_forward
 @pytest.mark.skipif(TE_AVAILABLE is False, reason="TransformerEngine is not available")
+@pytest.mark.skipif(
+    TE_SCALED_SOFTMAX_FORWARD is None,
+    reason="'scaled_softmax_forward' not found in TransformerEngine",
+)
 def test_scaled_softmax_forward():
     bench = ScaledSoftmaxBenchmark(
         input_fn=scaled_softmax_forward_input_fn,
         op_name="scaled_softmax_forward",
-        torch_op=tex.scaled_softmax_forward,
+        torch_op=TE_SCALED_SOFTMAX_FORWARD,
         dtypes=[torch.float16, torch.bfloat16],
     )
     bench.set_gems(flag_gems.scaled_softmax_forward)
@@ -68,11 +75,15 @@ def scaled_softmax_backward_input_fn(shape, dtype, device):
 
 @pytest.mark.scaled_softmax_backward
 @pytest.mark.skipif(TE_AVAILABLE is False, reason="TransformerEngine is not available")
+@pytest.mark.skipif(
+    TE_SCALED_SOFTMAX_BACKWARD is None,
+    reason="'scaled_softmax_backward' not found in TransformerEngine",
+)
 def test_perf_scaled_softmax_backward():
     bench = ScaledSoftmaxBenchmark(
         input_fn=scaled_softmax_backward_input_fn,
         op_name="scaled_softmax_backward",
-        torch_op=tex.scaled_softmax_backward,
+        torch_op=TE_SCALED_SOFTMAX_BACKWARD,
         dtypes=[torch.float16, torch.bfloat16],
     )
 

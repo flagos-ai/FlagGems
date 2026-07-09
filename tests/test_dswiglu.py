@@ -8,9 +8,9 @@ from . import accuracy_utils as utils
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
-    TE_AVAILABLE = True
+    TE_OP = getattr(tex, "dswiglu", None)
 except ImportError:
-    TE_AVAILABLE = False
+    TE_OP = None
 
 
 def generate_input(
@@ -33,7 +33,7 @@ VALID_POINTWISE_SHAPES = filter_valid_shapes(utils.SWIGLU_SPECIAL_SHAPES)
 
 
 @pytest.mark.dswiglu
-@pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine is required")
+@pytest.mark.skipif(TE_OP is None, reason="'dswiglu' not found in TransformerEngine")
 @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_dswiglu(shape: tuple[int, ...], dtype: torch.dtype):
@@ -46,7 +46,7 @@ def test_dswiglu(shape: tuple[int, ...], dtype: torch.dtype):
     grad_shape[-1] = grad_shape[-1] // 2
     grad_output = generate_input(tuple(grad_shape), dtype, device)
 
-    te_grad_input = tex.dswiglu(grad_output, input_tensor, quantizer=None).to(device)
+    te_grad_input = TE_OP(grad_output, input_tensor, quantizer=None).to(device)
     te_grad_input = utils.to_reference(te_grad_input)
 
     with flag_gems.use_gems():

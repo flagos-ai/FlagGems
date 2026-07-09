@@ -11,9 +11,9 @@ from . import base, consts
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
-    TE_OP = getattr(tex, "geglu")
+    TE_OP = getattr(tex, "geglu", None)
     TE_AVAILABLE = True
-    GEMS_OP = getattr(flag_gems, "geglu")
+    GEMS_OP = getattr(flag_gems, "geglu", None)
 except ImportError:
     TE_AVAILABLE = False
     TE_OP = None

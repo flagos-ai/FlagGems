@@ -11,9 +11,9 @@ from . import base, consts
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
-    TE_OP = getattr(tex, "swiglu")
+    TE_OP = getattr(tex, "swiglu", None)
     TE_AVAILABLE = True
-    GEMS_OP = getattr(flag_gems, "swiglu")
+    GEMS_OP = getattr(flag_gems, "swiglu", None)
 except ImportError:
     TE_AVAILABLE = False
     TE_OP = None
@@ -22,7 +22,7 @@ except ImportError:
 
 @pytest.mark.swiglu
 @pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine not installed")
-@pytest.mark.skipif(TE_OP is None, reason="'swilu' not found in TransformerEngine")
+@pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
 @pytest.mark.skipif(GEMS_OP is None, reason="'swiglu' not found in FlagGems")
 def test_swiglu():
     bench = base.TexGluForwardBenchmark(

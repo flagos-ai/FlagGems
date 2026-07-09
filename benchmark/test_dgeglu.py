@@ -11,7 +11,7 @@ from . import base, consts
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
-    TE_OP = getattr(tex, "dgeglu")
+    TE_OP = getattr(tex, "dgeglu", None)
     TE_AVAILABLE = True
 except ImportError:
     TE_AVAILABLE = False
