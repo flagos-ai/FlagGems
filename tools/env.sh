@@ -1,4 +1,12 @@
+# (c) Copyright, 2026, FlagOS contributors
+#
+# This file is supposed to be used for native installation (bare metal or
+# virtual machines), including GitHub CI workflows. For package installation
+# inside a container, we have baked the environment variables into the
+# container file.
+
 BACKEND=$1
+
 echo "Setting up environment variable for backend $BACKEND"
 
 # Vendor env scripts append to these variables without guarding against unset.
@@ -48,10 +56,6 @@ case $BACKEND in
     export MACA_PATH=/opt/maca
     export LD_LIBRARY_PATH=$MACA_PATH/lib:$LD_LIBRARY_PATH
     export LD_LIBRARY_PATH=$MACA_PATH/mxgpu_llvm/lib:$LD_LIBRARY_PATH
-    if [ -z "${USE_TRITON}" ]; then
-      SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.12/site-packages
-      export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/backends/metax/lib:$LD_LIBRARY_PATH
-    fi
     ;;
   nvidia|nvidia-cuda128|nvidia-cuda133)
     export PATH=/usr/local/cuda/bin:$PATH
@@ -62,6 +66,13 @@ case $BACKEND in
     export PATH=$MUSA_HOME/bin:$PATH
     export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH
     export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib:$LD_LIBRARY_PATH
+    if [ -z "${USE_TRITON}" ]; then
+      SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
+      export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH
+    fi
+    ;;
+  sunrise)
+    export LD_LIBRARY_PATH=/usr/local/tangrt/targets/linux-x86_64/lib:$LD_LIBRARY_PATH
     if [ -z "${USE_TRITON}" ]; then
       SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
       export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH

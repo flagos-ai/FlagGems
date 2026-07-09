@@ -199,6 +199,7 @@ def moe_align_block_size_stage4(
         token_cnt = tl.load(tokens_cnts_ptr + off_t + expert_id)
         rank_post_pad = token_cnt + tl.load(cumsum_ptr + expert_id)
         tl.store(sorted_token_ids_ptr + rank_post_pad, i)
+        tl.debug_barrier()  # 解决随机bug
         tl.store(tokens_cnts_ptr + off_t + expert_id, token_cnt + 1)
 
 
