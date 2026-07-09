@@ -95,7 +95,7 @@ case $BACKEND in
     export USE_TORCH_XLA=0
     # Torch compiler is not supported on TsingMicro, and in particular,
     # it is not used for inference scenario
-    export TORCH_COMPILE_DIABLE=1
+    export TORCH_COMPILE_DISABLE=1
 
     # if [ -n "${USE_TRITON}" ]; then
     #   export PYTHONPATH=$SITE_PACKAGES/triton/backends/tsingmicro/llvm/python_packages/mlir_core
