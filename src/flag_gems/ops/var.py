@@ -284,14 +284,16 @@ def var(x, dim=None, *, correction=None, keepdim=False):
             K *= size
         shape[dim0] = 1
 
-        if M * N * K > 0 and (N - correction <= 0):
-            # Not enough elements for the requested correction: variance is
-            # undefined, so return NaN like torch.
-            final_shape = shape if keepdim else shape[:dim0] + shape[dim0 + 1 :]
-            return torch.full(final_shape, float("nan"), device=x.device, dtype=x.dtype)
-
         out = torch.empty(shape, dtype=x.dtype, device=x.device)
-        if M * N * K == 0:
+        if M == 0 or K == 0:
+            # A spectator dimension is empty: the output is a valid empty
+            # tensor and there is nothing to reduce. Matches torch.
+            return out.squeeze(dim=dim0) if not keepdim else out
+        if N - correction <= 0:
+            # Not enough elements for the requested correction (this also
+            # covers an empty reduction dim, N == 0): variance is undefined,
+            # so fill with NaN like torch.
+            out.fill_(float("nan"))
             return out.squeeze(dim=dim0) if not keepdim else out
 
         x_contiguous = x.contiguous()
