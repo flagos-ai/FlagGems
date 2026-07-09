@@ -8,7 +8,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry, libtuner
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_min
 
@@ -94,6 +94,128 @@ def max_kernel(
     tl.store(out_index_ptrs, result_index, mask=mask1)
 
 
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.jit
+def max_dim_kernel_non_inner(
+    inp,
+    out_value,
+    out_index,
+    M,
+    N,
+    K,
+    TILE_K: tl.constexpr,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    # Split the input into (M, N, K) and reduce over N with a strided read,
+    # avoiding the dim_compress copy. Mirrors argmax_kernel_non_inner but also
+    # stores the max value. Ties resolve to the lowest index, matching torch.
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
+    k_offset = pid_k * TILE_K + tl.arange(0, TILE_K)
+
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
+        inp.dtype.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = inp.dtype.element_ty
+
+    min_value = get_dtype_min(cdtype)
+
+    if ONE_TILE_PER_CTA:
+        n_offset = tl.arange(0, TILE_N)
+        offset = pid_m * N * K + n_offset[:, None] * K + k_offset
+        mask = k_offset < K and n_offset[:, None] < N
+        inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
+        local_max, local_argmax = tl.max(
+            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+        )
+        offset_index = pid_m * K + k_offset
+        mask1 = k_offset < K
+        tl.store(out_value + offset_index, local_max, mask=mask1)
+        tl.store(out_index + offset_index, local_argmax, mask=mask1)
+    else:
+        max_values = tl.full([TILE_K], dtype=cdtype, value=min_value)
+        argmax_values = tl.full([TILE_K], dtype=tl.int64, value=0)
+        for start_n in range(0, N, TILE_N):
+            n_offset = start_n + tl.arange(0, TILE_N)
+            offset = pid_m * N * K + n_offset[:, None] * K + k_offset
+            mask = k_offset < K and n_offset[:, None] < N
+            inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
+            local_max, local_argmax = tl.max(
+                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+            )
+            update = local_max > max_values
+            max_values = tl.where(update, local_max, max_values)
+            argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
+        offset_index = pid_m * K + k_offset
+        mask1 = k_offset < K
+        tl.store(out_value + offset_index, max_values, mask=mask1)
+        tl.store(out_index + offset_index, argmax_values, mask=mask1)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
+@triton.jit
+def max_dim_kernel_inner(
+    inp,
+    out_value,
+    out_index,
+    M,
+    N,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = ext.program_id(0)
+    dtype = inp.type.element_ty
+    min_value = get_dtype_min(dtype)
+
+    if ONE_TILE_PER_CTA:
+        n_offset = tl.arange(0, TILE_N)
+        offset = pid_m * N + n_offset
+        mask = n_offset < N
+        inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
+        local_max, local_argmax = tl.max(
+            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+        )
+        tl.store(out_value + pid_m, local_max)
+        tl.store(out_index + pid_m, local_argmax)
+    else:
+        max_values = min_value
+        argmax_values = 0
+        loop_time = N // TILE_N
+        remainder = N % TILE_N
+        for start_n in range(0, loop_time):
+            n_offset = start_n * TILE_N + tl.arange(0, TILE_N)
+            offset = pid_m * N + n_offset
+            inp_vals = tl.load(inp + offset)
+            local_max, local_argmax = tl.max(
+                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+            )
+            update = local_max > max_values
+            max_values = tl.where(update, local_max, max_values)
+            argmax_values = tl.where(
+                update, start_n * TILE_N + local_argmax, argmax_values
+            )
+        if remainder:
+            n_offset = loop_time * TILE_N + tl.arange(0, TILE_N)
+            offset = pid_m * N + n_offset
+            mask = n_offset < N
+            inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
+            local_max, local_argmax = tl.max(
+                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+            )
+            update = local_max > max_values
+            max_values = tl.where(update, local_max, max_values)
+            argmax_values = tl.where(
+                update, loop_time * TILE_N + local_argmax, argmax_values
+            )
+        tl.store(out_value + pid_m, max_values)
+        tl.store(out_index + pid_m, argmax_values)
+
+
 def max(inp):
     logger.debug("GEMS MAX")
     inp = inp.contiguous()
@@ -117,10 +239,18 @@ def max_dim(inp, dim=None, keepdim=False):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = list(inp.shape)
     dim = dim % inp.ndim
-    inp = dim_compress(inp, dim)
+
+    # Single-dim reduction: split into (M, N, K) and reduce over N with a
+    # strided kernel, avoiding the dim_compress copy. K == 1 means the reduced
+    # dim is innermost (contiguous); K > 1 means it is a middle or outer dim,
+    # where the copy used to dominate the runtime.
     N = shape[dim]
+    if N == 0:
+        # Reducing over an empty dimension has no maximum; torch raises here.
+        raise IndexError("max(): Expected reduction dim to have non-zero size.")
+    M = math.prod(shape[:dim])
+    K = math.prod(shape[dim + 1 :])
     shape[dim] = 1
-    M = inp.numel() // N
 
     out_value = torch.empty(shape, dtype=inp.dtype, device=inp.device)
     out_index = torch.empty(shape, dtype=torch.int64, device=inp.device)
@@ -129,9 +259,14 @@ def max_dim(inp, dim=None, keepdim=False):
         out_value = torch.squeeze(out_value, dim)
         out_index = torch.squeeze(out_index, dim)
 
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    inp = inp.contiguous()
     with torch_device_fn.device(inp.device):
-        max_kernel[grid](inp, out_value, out_index, M, N)
+        if K == 1:
+            grid = lambda meta: (M, 1, 1)
+            max_dim_kernel_inner[grid](inp, out_value, out_index, M, N)
+        else:
+            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+            max_dim_kernel_non_inner[grid](inp, out_value, out_index, M, N, K)
     Max_out = namedtuple("max", ["values", "indices"])
     out = Max_out(values=out_value, indices=out_index)
     return out
