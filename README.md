@@ -5,7 +5,7 @@ FlagGems127 算子库
 fork from：https://github.com/flagos-ai/FlagGems/tree/v2.2#
 原始代码的版权归flagos-ai所有。
 
-## 默认分支 
+## 默认分支
 Flaggems127-base-v2.2，代码与 v2.2 版本保持一致，为智源的原始版本。
 
 ## 算能分支

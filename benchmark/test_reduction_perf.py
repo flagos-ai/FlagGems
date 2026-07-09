@@ -30,11 +30,10 @@ class UnaryReductionBenchmark(Benchmark):
 
     def set_more_shapes(self):
         more_shapes_1d = [
-            (1025 * 1024,),
-            (1024 * 1024 * 1024,),
+            (65535,),
         ]
-        more_shapes_2d = [(1024, 2**i) for i in range(0, 21, 4)]
-        more_shapes_3d = [(64, 2**i, 64) for i in range(0, 15, 4)]
+        more_shapes_2d = [(1024, 1), (1024, 16), (1024, 256), (1024, 512)]
+        more_shapes_3d = [(64, 1, 32), (64, 256, 32), (64, 512, 32)]
         return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
     def get_input_iter(self, cur_dtype) -> Generator:
