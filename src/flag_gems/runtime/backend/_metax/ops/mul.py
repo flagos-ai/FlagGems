@@ -174,6 +174,52 @@ def mul_generic_nd_kernel(
     flagtune_expand_op_name="mul",
 )
 @triton.jit
+def mul_generic_nd_runtime_meta_kernel(
+    a_ptr,
+    b_ptr,
+    out_ptr,
+    meta_ptr,
+    n_elements,
+    NDIM: tl.constexpr,
+    dtype: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    IS_BOOL: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    linear = offsets
+    a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+
+    for dim in tl.static_range(NDIM - 1, -1, -1):
+        shape_dim = tl.load(meta_ptr + dim)
+        a_stride_dim = tl.load(meta_ptr + NDIM + dim)
+        b_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
+        out_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
+        idx = linear % shape_dim
+        linear = linear // shape_dim
+        a_offsets += idx * a_stride_dim
+        b_offsets += idx * b_stride_dim
+        out_offsets += idx * out_stride_dim
+
+    a = tl.load(a_ptr + a_offsets, mask=mask)
+    b = tl.load(b_ptr + b_offsets, mask=mask)
+    out = a & b if IS_BOOL else a * b
+    tl.store(out_ptr + out_offsets, out, mask=mask)
+
+
+@libentry()
+@libtuner(
+    configs=mul_broadcast_get_configs(),
+    key=["n_elements", "dtype"],
+    strategy=["align32", "default"],
+    warmup=5,
+    rep=5,
+    flagtune_op_name="mul",
+    flagtune_expand_op_name="mul",
+)
+@triton.jit
 def mul_complex_generic_nd_kernel(
     ar_ptr,
     ai_ptr,
@@ -224,6 +270,68 @@ def mul_complex_generic_nd_kernel(
     tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
 
 
+@libentry()
+@libtuner(
+    configs=mul_broadcast_get_configs(),
+    key=["n_elements", "dtype"],
+    strategy=["align32", "default"],
+    warmup=5,
+    rep=5,
+    flagtune_op_name="mul",
+    flagtune_expand_op_name="mul",
+)
+@triton.jit
+def mul_complex_generic_nd_runtime_meta_kernel(
+    ar_ptr,
+    ai_ptr,
+    br_ptr,
+    bi_ptr,
+    out_r_ptr,
+    out_i_ptr,
+    meta_ptr,
+    n_elements,
+    NDIM: tl.constexpr,
+    dtype: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    linear = offsets
+    ar_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    ai_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    br_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    bi_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    out_r_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    out_i_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+
+    for dim in tl.static_range(NDIM - 1, -1, -1):
+        shape_dim = tl.load(meta_ptr + dim)
+        ar_stride_dim = tl.load(meta_ptr + NDIM + dim)
+        ai_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
+        br_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
+        bi_stride_dim = tl.load(meta_ptr + 4 * NDIM + dim)
+        out_r_stride_dim = tl.load(meta_ptr + 5 * NDIM + dim)
+        out_i_stride_dim = tl.load(meta_ptr + 6 * NDIM + dim)
+        idx = linear % shape_dim
+        linear = linear // shape_dim
+        ar_offsets += idx * ar_stride_dim
+        ai_offsets += idx * ai_stride_dim
+        br_offsets += idx * br_stride_dim
+        bi_offsets += idx * bi_stride_dim
+        out_r_offsets += idx * out_r_stride_dim
+        out_i_offsets += idx * out_i_stride_dim
+
+    ar = tl.load(ar_ptr + ar_offsets, mask=mask, other=0.0)
+    ai = tl.load(ai_ptr + ai_offsets, mask=mask, other=0.0)
+    br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
+    bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
+
+    out_r = ar * br - ai * bi
+    out_i = ar * bi + ai * br
+    tl.store(out_r_ptr + out_r_offsets, out_r, mask=mask)
+    tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
+
+
 def _is_tensor_or_number(value) -> bool:
     return isinstance(value, torch.Tensor) or isinstance(value, Number)
 
@@ -253,6 +361,10 @@ def _dtype_name(dtype):
 
 def _is_bool_dtype(dtype):
     return dtype is torch.bool
+
+
+def _is_triton_3_0():
+    return triton.__version__.split("+", 1)[0].startswith("3.0.")
 
 
 def _broadcast_shape(a_t, b_t):
@@ -387,6 +499,25 @@ def _launch_generic(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride,
     b_stride = b_stride or (0,)
     out_stride = out_stride or (0,)
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    if _is_triton_3_0():
+        meta = torch.tensor(
+            shape + a_stride + b_stride + out_stride,
+            device=output.device,
+            dtype=torch.int64,
+        )
+        with torch_device_fn.device(output.device):
+            mul_generic_nd_runtime_meta_kernel[grid](
+                a_t,
+                b_t,
+                output,
+                meta,
+                n_elements,
+                NDIM=ndim,
+                dtype=_dtype_name(dtype),
+                IS_BOOL=_is_bool_dtype(dtype),
+            )
+        return output
+
     with torch_device_fn.device(output.device):
         mul_generic_nd_kernel[grid](
             a_t,
@@ -501,6 +632,33 @@ def _launch_complex_generic(
     out_r_stride = out_r_stride or (0,)
     out_i_stride = out_i_stride or (0,)
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    if _is_triton_3_0():
+        meta = torch.tensor(
+            shape
+            + strides[0]
+            + strides[1]
+            + strides[2]
+            + strides[3]
+            + out_r_stride
+            + out_i_stride,
+            device=output.device,
+            dtype=torch.int64,
+        )
+        with torch_device_fn.device(output.device):
+            mul_complex_generic_nd_runtime_meta_kernel[grid](
+                ar,
+                ai,
+                br,
+                bi,
+                out_r,
+                out_i,
+                meta,
+                n_elements,
+                NDIM=ndim,
+                dtype=_dtype_name(dtype),
+            )
+        return output
+
     with torch_device_fn.device(output.device):
         mul_complex_generic_nd_kernel[grid](
             ar,
