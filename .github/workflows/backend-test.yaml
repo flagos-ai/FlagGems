@@ -69,5 +69,4 @@ jobs:
           CHANGED_FILES: ${{ inputs.changed_files }}
         run: |
           source .venv/bin/activate
-          source tools/env.sh ${{ inputs.vendor }}
           tools/test-op.sh ${{ inputs.pr_id }}
