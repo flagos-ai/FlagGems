@@ -4,7 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, libtuner
 
 
 def _prune_configs(configs, named_args, **kwargs):
@@ -14,6 +16,8 @@ def _prune_configs(configs, named_args, **kwargs):
     for cfg in configs:
         BLOCK = cfg.kwargs.get("BLOCK", 1024)
         TPP = cfg.kwargs.get("TPP", 1)
+        if BLOCK * TPP > 1024:
+            continue
         if BLOCK > topk * 4:
             continue
         if num_tokens <= 64 and TPP >= 8:
@@ -28,39 +32,15 @@ def _prune_configs(configs, named_args, **kwargs):
     return pruned
 
 
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK": 16, "TPP": 8}, num_warps=4),
-        triton.Config({"BLOCK": 16, "TPP": 4}, num_warps=2),
-        triton.Config({"BLOCK": 16, "TPP": 2}, num_warps=2),
-        triton.Config({"BLOCK": 16, "TPP": 1}, num_warps=2),
-        triton.Config({"BLOCK": 32, "TPP": 8}, num_warps=8),
-        triton.Config({"BLOCK": 32, "TPP": 4}, num_warps=4),
-        triton.Config({"BLOCK": 32, "TPP": 2}, num_warps=2),
-        triton.Config({"BLOCK": 32, "TPP": 1}, num_warps=2),
-        triton.Config({"BLOCK": 64, "TPP": 8}, num_warps=8),
-        triton.Config({"BLOCK": 64, "TPP": 4}, num_warps=8),
-        triton.Config({"BLOCK": 64, "TPP": 4}, num_warps=4, num_stages=2),
-        triton.Config({"BLOCK": 64, "TPP": 2}, num_warps=4),
-        triton.Config({"BLOCK": 64, "TPP": 1}, num_warps=2),
-        triton.Config({"BLOCK": 128, "TPP": 4}, num_warps=8),
-        triton.Config({"BLOCK": 128, "TPP": 2}, num_warps=4, num_stages=2),
-        triton.Config({"BLOCK": 128, "TPP": 2}, num_warps=4),
-        triton.Config({"BLOCK": 128, "TPP": 1}, num_warps=4),
-        triton.Config({"BLOCK": 128, "TPP": 1}, num_warps=2),
-        triton.Config({"BLOCK": 256, "TPP": 4}, num_warps=8),
-        triton.Config({"BLOCK": 256, "TPP": 2}, num_warps=8),
-        triton.Config({"BLOCK": 256, "TPP": 2}, num_warps=4),
-        triton.Config({"BLOCK": 256, "TPP": 1}, num_warps=4),
-        triton.Config({"BLOCK": 256, "TPP": 1}, num_warps=2),
-        triton.Config({"BLOCK": 512, "TPP": 2}, num_warps=8),
-        triton.Config({"BLOCK": 512, "TPP": 1}, num_warps=4),
-        triton.Config({"BLOCK": 1024, "TPP": 1}, num_warps=8),
-        triton.Config({"BLOCK": 1024, "TPP": 1}, num_warps=4),
-    ],
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("compute_global_topk_indices_and_lens"),
     key=["topk", "num_tokens"],
+    strategy=["log", "log"],
     prune_configs_by={"early_config_prune": _prune_configs},
     reset_to_zero=["lens_ptr"],
+    flagtune_op_name="compute_global_topk_indices_and_lens",
+    flagtune_expand_op_name="compute_global_topk_indices_and_lens",
 )
 @triton.jit
 def _compute_global_topk_indices_and_lens_kernel(
