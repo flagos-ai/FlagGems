@@ -659,6 +659,7 @@ _FULL_CONFIG = (
     ("soft_margin_loss", soft_margin_loss),
     ("soft_margin_loss_backward", soft_margin_loss_backward),
     ("softplus", softplus),
+    ("softplus_backward", softplus_backward),
     ("softshrink", softshrink),
     ("softshrink.out", softshrink_out),
     ("sort", sort),

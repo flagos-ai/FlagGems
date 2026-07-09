@@ -17,3 +17,17 @@ def test_softplus():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.softplus_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_softplus_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="softplus_backward",
+        torch_op=torch.nn.functional.softplus,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()

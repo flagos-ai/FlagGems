@@ -7443,6 +7443,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.0'
+  - id: softplus_backward
+    description: The backward version of `softplus()`.
+    for:
+      - softplus_backward
+    labels:
+      - aten
+      - Activation
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: softshrink
     description: |
       Applies the soft shrinkage function element-wise to an input tensor.
