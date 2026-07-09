@@ -91,7 +91,7 @@ uv pip install -q \
   "pybind11==3.0.3" \
   "cmake>=3.20,<4" \
   "ninja==1.13.0" \
-  "PyYAML>=6.0" \
+  "PyYAML==6.0.3" \
   --index "${MIRROR}" \
   || fail
 ok
@@ -228,4 +228,31 @@ printf "Installing test dependencies ..."
 uv pip install -q ".[test]" --index "${MIRROR}" || fail
 ok
 
+# ── Write env into .venv/bin/activate ────────────────────────
+# So that `source .venv/bin/activate` sets up the full environment.
+printf "Writing environment to .venv/bin/activate ..."
+python3 -c "
+import yaml
+
+cfg = yaml.safe_load(open('${BACKENDS_YAML}'))
+b = cfg['backends']['${BACKEND}']
+
+lines = []
+lines.append('')
+lines.append('# --- FlagGems environment (${BACKEND}) ---')
+
+for k, v in b.get('env', {}).items():
+    lines.append(f'export {k}={v}')
+
+for script in b.get('env_source', []):
+    lines.append(f'[ -f {script} ] && source {script}')
+
+lines.append('# --- end FlagGems environment ---')
+
+with open('.venv/bin/activate', 'a') as f:
+    f.write('\n'.join(lines) + '\n')
+" || fail
+ok
+
 printf "\n${GREEN}FlagGems setup complete for ${BACKEND}${NC}\n"
+printf "Run: ${GREEN}source .venv/bin/activate${NC}\n"

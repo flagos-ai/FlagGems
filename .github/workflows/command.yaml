@@ -129,7 +129,6 @@ jobs:
           EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
         run: |
           source .venv/bin/activate
-          source tools/env.sh ${BACKEND}
           tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
             --gpus "${AVAILABLE_GPUS}" \
             --dump-output \
