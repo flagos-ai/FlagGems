@@ -58,14 +58,6 @@ DEFAULT_STRATEGIES = {
         "align32",
         "default",
     ],
-    "mm_w8a8_general_tma": [
-        "align32",
-        "align32",
-        "align32",
-        "align32",
-        "align32",
-        "default",
-    ],
     "mv": ["align32", "align32"],
     "mul": ["align32", "default"],
     "mul_broadcast_2d": ["align32", "default", "default"],
@@ -94,9 +86,6 @@ DEFAULT_STRATEGIES = {
     ],
     "w8a8_block_fp8_bmm": ["default", "align32", "align32", "align32"],
     "mm_splitk": ["align32", "align32", "align32", "align32", "align32"],
-    "mm_w8a8_splitk": ["align32", "align32", "align32", "align32", "align32"],
-    "mm_w8a8_gemv": ["default", "default", "default", "default"],
-    "mm_w8a8_skinny": ["mm_w8a8_tma_m", "align32", "align32", "align32", "default"],
 }
 
 OP_KEY_ORDERS = {
@@ -123,7 +112,6 @@ OP_KEY_ORDERS = {
     "mm": ["M", "N", "K", "stride_am", "stride_bk"],
     "mm_sqmma": ["M", "N", "K", "dtype"],
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    "mm_w8a8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mv": ["M", "N"],
     "mul": ["n_elements", "dtype"],
     "mul_broadcast_2d": ["n_elements", "n_cols", "dtype"],
@@ -133,9 +121,6 @@ OP_KEY_ORDERS = {
     "w8a8_block_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "w8a8_block_fp8_bmm": ["B", "M_aligned", "N", "K"],
     "mm_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
-    "mm_w8a8_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
-    "mm_w8a8_gemv": ["M", "K", "stride_am", "stride_bk"],
-    "mm_w8a8_skinny": ["M", "N", "K", "stride_am", "stride_bk"],
 }
 
 

@@ -31,6 +31,13 @@ W8A8_BLOCK_FP8_MNK_SHAPES = [
 W8A8_BLOCK_FP8_BLOCK_SIZE = [128, 128]
 
 
+def vllm_w8a8_triton_block_scaled_mm_ignore_out(
+    A, B, As, Bs, block_size, output_dtype, *, out=None
+):
+    del out
+    return vllm_w8a8_triton_block_scaled_mm(A, B, As, Bs, block_size, output_dtype)
+
+
 def rand_fp8_tensor(shape, device, dtype):
     finfo = torch.finfo(dtype)
     return (
@@ -84,8 +91,13 @@ class W8A8BlockFP8MatmulBenchmark(base.Benchmark):
                 )
                 + 0.005
             ).contiguous()
+            output = torch.empty((m, n), dtype=torch.float16, device=self.device)
 
-            yield A, B, As, Bs, self.block_size[:], torch.float16
+            yield A, B, As, Bs, self.block_size[:], torch.float16, {"out": output}
+
+    def record_shapes(self, *args, **kwargs):
+        kwargs.pop("out", None)
+        return super().record_shapes(*args, **kwargs)
 
     def get_tflops(self, op, *args, **kwargs):
         A, B = args[0], args[1]
@@ -107,7 +119,7 @@ def test_perf_w8a8_block_fp8_matmul():
 
     bench = W8A8BlockFP8MatmulBenchmark(
         op_name="w8a8_block_fp8_matmul",
-        torch_op=vllm_w8a8_triton_block_scaled_mm,
+        torch_op=vllm_w8a8_triton_block_scaled_mm_ignore_out,
         gems_op=flag_gems.w8a8_block_fp8_matmul,
         dtypes=consts.FP8_DTYPES,
     )
