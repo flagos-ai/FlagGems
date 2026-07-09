@@ -17,7 +17,6 @@ def topk_with_k2_triton(
     stride_scores_token,
     stride_group_scores_token,
     BLOCK_SIZE: tl.constexpr,
-    INPUT_DTYPE: tl.constexpr,
 ):
     pid = tl.program_id(0)
 
@@ -40,11 +39,9 @@ def topk_with_k2_triton(
         bias_ptr + bias_offset + lane,
         mask=mask,
         other=0.0,
-    )
+    ).to(tl.float32)
 
-    x = x + b
-
-    x_f32 = x.to(tl.float32)
+    x_f32 = x + b
 
     max1 = tl.max(x_f32, axis=0)
     is_max1 = (x_f32 == max1) & mask
@@ -60,7 +57,7 @@ def topk_with_k2_triton(
     group_scores_offset = token_id * stride_group_scores_token + group_id
     tl.store(
         group_scores_ptr + group_scores_offset,
-        (max1 + max2).to(INPUT_DTYPE),
+        max1 + max2,
     )
 
 
@@ -86,7 +83,6 @@ def group_idx_and_topk_triton(
     TOPK: tl.constexpr,
     BLOCK_GROUP: tl.constexpr,
     BLOCK_EXPERT: tl.constexpr,
-    INPUT_DTYPE: tl.constexpr,
     renormalize: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -167,13 +163,13 @@ def group_idx_and_topk_triton(
         bias_ptr + expert_offsets,
         mask=valid_expert,
         other=0.0,
-    )
+    ).to(tl.float32)
 
     selection_scores_native = scored + expert_bias
 
     selection_scores = tl.where(
         expert_selected,
-        selection_scores_native.to(tl.float32),
+        selection_scores_native,
         neg_inf,
     )
 
@@ -192,7 +188,7 @@ def group_idx_and_topk_triton(
             scores_ptr + pid * stride_scores_token + selected_idx,
             mask=selected_idx < num_experts,
             other=neg_inf,
-        ).to(tl.float32)
+        )
 
         topk_vals = tl.where(pos_range == i, selected_score, topk_vals)
         topk_idx = tl.where(pos_range == i, selected_idx.to(tl.int32), topk_idx)
@@ -251,8 +247,6 @@ def grouped_topk(
     if scoring_func not in (0, 1):
         raise ValueError("scoring_func must be 0 (none) or 1 (sigmoid)")
 
-    if bias.dtype != scores.dtype:
-        bias = bias.to(scores.dtype)
     if bias.ndim != 1:
         bias = bias.flatten()
     if len(bias) != num_experts:
@@ -262,26 +256,20 @@ def grouped_topk(
 
     num_experts_per_group = num_experts // n_group
 
-    if scores.dtype == torch.float32:
-        INPUT_DTYPE = tl.float32
-    elif scores.dtype == torch.float16:
-        INPUT_DTYPE = tl.float16
-    elif scores.dtype == torch.bfloat16:
-        INPUT_DTYPE = tl.bfloat16
-    else:
+    if scores.dtype not in (torch.float32, torch.float16, torch.bfloat16):
         raise ValueError(f"Unsupported dtype: {scores.dtype}")
 
     if scoring_func == 1:
         from flag_gems.ops.tanh import tanh as gems_tanh
 
-        scores_processed = 0.5 * gems_tanh(0.5 * scores) + 0.5
+        scores_processed = 0.5 * gems_tanh(0.5 * scores.float()) + 0.5
     else:
-        scores_processed = scores
+        scores_processed = scores.float()
 
     group_scores = torch.empty(
         (num_tokens, n_group),
         device=scores.device,
-        dtype=scores.dtype,
+        dtype=torch.float32,
     )
 
     topk_values = torch.empty(
@@ -308,7 +296,6 @@ def grouped_topk(
         scores_processed.stride(0),
         group_scores.stride(0),
         BLOCK_SIZE=BLOCK1,
-        INPUT_DTYPE=INPUT_DTYPE,
     )
 
     BLOCK_GROUP = triton.next_power_of_2(n_group)
@@ -336,7 +323,6 @@ def grouped_topk(
         TOPK=topk,
         BLOCK_GROUP=BLOCK_GROUP,
         BLOCK_EXPERT=BLOCK_EXPERT,
-        INPUT_DTYPE=INPUT_DTYPE,
         renormalize=int(renormalize),
     )
 
