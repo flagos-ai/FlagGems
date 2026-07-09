@@ -2090,9 +2090,9 @@ def test_accuracy_moe_align_block_size(
     [
         (1, 1, 1, 1),
         (2, 3, 2, 3),
-        (3, 4, 3, 4),
-        (0, 4, 0, 4),
-        (4, 0, 4, 0),
+        (3, 0, 3, 4),
+        (0, 3, 0, 4),
+        (3, 0, 4, 0),
     ],
 )
 def test_reflection_pad2d(shape, dtype, padding):

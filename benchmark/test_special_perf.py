@@ -264,7 +264,14 @@ class ConvBenchmark(GenericBenchmark):
         return None
 
 
-@pytest.mark.conv2d
+@pytest.mark.conv2d(
+    recommended_shapes=[
+        (16, 16, 8, 4, 16, 2, 2, 1, 0, 1),
+        (8, 16, 9, 4, 16, 3, 3, 1, 1, 1),
+        (4, 16, 7, 4, 32, 2, 2, 1, 0, 1),
+    ],
+    shape_desc="N, C, H, W, K, R, S, stride, padding, groups",
+)
 def test_perf_conv2d():
     def conv2d_input_fn(shape, dtype, device):
         (

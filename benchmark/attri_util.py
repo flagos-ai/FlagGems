@@ -17,7 +17,7 @@ DEFAULT_ITER_COUNT = 100
 # Do not reference this elsewhere.
 LEGACY_SHAPES = [64, 384, 512]
 LEGACY_NON_BLAS_SHAPES = [(1024, shape) for shape in LEGACY_SHAPES]
-LEGACY_BLAS_SHAPES = [(16, shape, 16, 4) for shape in LEGACY_SHAPES]
+LEGACY_BLAS_SHAPES = [(16, shape, 128, 32) for shape in LEGACY_SHAPES]
 
 # Default shapes settings
 DEFAULT_SHAPES = [

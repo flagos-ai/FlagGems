@@ -82,9 +82,9 @@ def test_perf_skip_rmsnorm():
         x = x + residual
         variance = x.pow(2).mean(-1, keepdim=True)
         hidden_states = x * torch.rsqrt(variance + eps)
-        return weight * hidden_states
+        return weight * hidden_states, x
 
-    gems_op = flag_gems.skip_rms_norm
+    gems_op = flag_gems.fused_add_rms_norm
 
     bench = GenericBenchmarkExcluse1D(
         input_fn=skip_rmsnorm_input_fn,
