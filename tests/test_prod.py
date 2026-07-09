@@ -55,7 +55,7 @@ def test_prod_dim_int(shape, dim, keepdim, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.prod_dim_int
+@pytest.mark.prod
 @pytest.mark.parametrize(
     "shape, dim",
     [
@@ -66,7 +66,7 @@ def test_prod_dim_int(shape, dim, keepdim, dtype):
     ],
 )
 @pytest.mark.parametrize("keepdim", [False, True])
-def test_prod_dim_int_large(shape, dim, keepdim):
+def test_prod_dim_multi_tile(shape, dim, keepdim):
     # Values near 1 keep the product finite over large reduction sizes.
     inp = torch.rand(shape, dtype=torch.float32, device=flag_gems.device) * 0.4 + 0.8
     ref_inp = utils.to_reference(inp, True)
