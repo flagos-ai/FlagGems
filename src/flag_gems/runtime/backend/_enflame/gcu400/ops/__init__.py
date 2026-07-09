@@ -555,4 +555,6 @@ __all__ = [
     "layer_norm",
     "layer_norm_backward",
     "linear",
+    "cat_out",
+    "prelu",
 ]

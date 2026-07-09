@@ -8,7 +8,7 @@ if arch_version == 300:
     from .gcu300.flash_mla import flash_mla
     from .gcu300.fused_add_rms_norm import fused_add_rms_norm
     from .gcu300.gelu_and_mul import gelu_and_mul
-    from .gcu300.moe_align_block_size import (
+    from .gcu300.moe_align_block_size import (  # noqa: F401
         moe_align_block_size,
         moe_align_block_size_triton,
     )

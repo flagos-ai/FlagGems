@@ -1,6 +1,6 @@
 import logging
 
-import torch
+import torch  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
