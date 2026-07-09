@@ -130,7 +130,7 @@ def _complex_sub(A, B, alpha):
 
 
 def sub(A, B, *, alpha=1):
-    logger.debug("GEMS SUB")
+    logger.debug("GEMS_SUNRISE SUB")
     A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
         A, complex
     )
@@ -150,7 +150,7 @@ def sub(A, B, *, alpha=1):
 
 
 def sub_(A, B, *, alpha=1):
-    logger.debug("GEMS SUB_")
+    logger.debug("GEMS_SUNRISE SUB_")
     if isinstance(B, torch.Tensor):
         return sub_func(A, B, alpha, out0=A)
     else:

@@ -429,7 +429,7 @@ def cummin(
     *,
     out: Union[Tensor, Tuple[Tensor, ...], List[Tensor], None] = None,
 ) -> torch.return_types.cummin:
-    logger.debug("GEMS cummin")
+    logger.debug("GEMS_ENFLAME CUMMIN")
     assert dim >= -input.ndim and dim < input.ndim, "Invalid dim"
     shape = input.shape
     dim = dim % input.ndim
