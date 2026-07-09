@@ -31,9 +31,6 @@ backends:
     cmake_backend: CUDA
     triton: triton==3.6.0
     flagtree: flagtree==0.6.0
-    runtime_env:
-      NVIDIA_VISIBLE_DEVICES: "all"
-      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
     deps:
       - torch==2.10.0+cu128
       - torchaudio==2.10.0+cu128
@@ -44,9 +41,6 @@ backends:
     cmake_backend: CUDA
     triton: triton==3.6.0
     flagtree: flagtree==0.6.0
-    runtime_env:
-      NVIDIA_VISIBLE_DEVICES: "all"
-      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
     deps:
       - torch==2.11.0+cu130
       - torchaudio==2.11.0+cu130
@@ -139,10 +133,6 @@ backends:
     python: "3.12"
     triton: triton==3.0.0+metax3.7.2.0
     flagtree: flagtree==3.1.0+metax3.7.2.0
-    runtime_env:
-      MACA_PATH: /opt/maca
-      LD_LIBRARY_PATH: $MACA_PATH/lib:$MACA_PATH/mxgpu_llvm/lib:$LD_LIBRARY_PATH
-
     deps:
       - torch==2.8.0+metax3.7.2.0
       - torchaudio==2.4.1+metax3.7.2.0
@@ -154,11 +144,6 @@ backends:
     cmake_backend: MUSA
     triton: triton==3.6.0+git89458660
     flagtree: flagtree==0.6.0+mthreads3.6
-    runtime_env:
-      MUSA_HOME: "/usr/local/musa"
-      MTHREADS_VISIBLE_DEVICES: "all"
-      LD_LIBRARY_PATH: "${VIRTUAL_ENV}/lib:${MUSA_HOME}/lib:${LD_LIBRARY_PATH}"
-      GEMS_VENDOR: "mthreads"
     deps:
       - torch==2.9.0+musa.4.3.6
       - torch_musa==2.9.0
@@ -174,8 +159,6 @@ backends:
     python: "3.10"
     triton: triton==3.4.0.6+gite4f6d6e4
     # flagtree==0.4.0+sunrise3.4 — requires GLIBC_2.39, unavailable on current system
-    runtime_env:
-      LD_LIBRARY_PATH: /usr/local/tangrt/targets/linux-x86_64/lib
     deps:
       - torch==2.11.0+cpu
       - torchaudio==2.11.0+cpu
@@ -192,14 +175,6 @@ backends:
     python: "3.10"
     triton: triton==3.3.0+gitfe2a28fa
     flagtree: flagtree==0.5.0.post20260612+git705a4064
-    runtime_env:
-      TX8_DEPS_ROOT: "/usr/local/tx8_deps"
-      LLVM_SYSPATH: "/usr/local/llvm"
-      LLVM_BINARY_DIR: "${LLVM_SYSPATH}/bin"
-      PYTHONPATH: "${LLVM_SYSPATH}/python_packages/mlir_core"
-      LD_LIBRARY_PATH: "${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}"
-      USE_TORCH_XLA: "0"
-      TORCH_COMPILE_DISABLE: "1"
     deps:
       - torch==2.7.0+cpu
       - torchvision==0.22.0+cpu
