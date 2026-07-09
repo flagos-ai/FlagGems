@@ -45,7 +45,7 @@ jobs:
           echo "PR_NUMBER=${PULL_NUMBER}" >> $GITHUB_OUTPUT
 
           # Detect if operator exists before
-          num=$(grep -rP "pytest\.mark\.${{ needs.preprocess.outputs.op }}\b" tests | wc -l)
+          num=$(grep -rP "pytest\.mark\.${op}\b" tests | wc -l)
           if [ "$num" -eq "0" ]; then
             echo "EXISTING_OP=0" >> $GITHUB_OUTPUT
           else
@@ -63,9 +63,14 @@ jobs:
           RUNNER_LABEL: ${{ needs.preprocess.outputs.runner }}
         run: |
           case "${RUNNER_LABEL}" in
-            h20|a100|h100)
+            h20)
               VENDOR="nvidia"
-              BACKEND="nvidia"
+              BACKEND="nvidia-cuda133"
+              ;;
+            a100|h100)
+              # TODO: verify CUDA version on a100/h100, then set correct backend
+              VENDOR="nvidia"
+              BACKEND="nvidia-cuda133"
               ;;
             cann850)
               VENDOR="ascend"
@@ -113,20 +118,10 @@ jobs:
           echo "checking out ${{ needs.preprocess.outputs.pull }}"
           gh pr checkout ${{ needs.preprocess.outputs.pull }}
 
-      - id: setup-flaggems
-        shell: bash
-        run: |
-          ./setup.sh ${BACKEND}
-          if [ "${BACKEND}" == "nvidia" ]; then
-            source .venv/bin/activate
-            uv pip install vllm==0.21.0 --torch-backend=cu130
-          fi
-
-      - id: check-gpu
-        shell: bash
-        run: |
-          source tools/env.sh ${BACKEND}
-          bash tools/gpu_check_${VENDOR}.sh
+      - uses: ./.github/actions/setup-flaggems
+        with:
+          vendor: ${{ env.BACKEND }}
+          gpu_check_script: tools/gpu_check_${{ env.VENDOR }}.sh
 
       - id: run-tests
         shell: bash
@@ -134,8 +129,8 @@ jobs:
           EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
         run: |
           source .venv/bin/activate
-          source tools/env.sh ${BACKEND}
           tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+            --gpus "${AVAILABLE_GPUS}" \
             --dump-output \
             --output-dir results_new
 
@@ -148,6 +143,7 @@ jobs:
           else
             git checkout master
             tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+              --gpus "${AVAILABLE_GPUS}" \
               --dump-output \
               --output-dir results_old
 
@@ -166,7 +162,7 @@ jobs:
       - id: upload-results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          name: ondemand-test
+          name: ${{ needs.preprocess.outputs.op }}-${{ env.BACKEND }}
           path: results/
 
       - id: attach-result-link
@@ -180,3 +176,19 @@ jobs:
           message-path: report.md
           message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           allow-repeats: True
+
+      - id: failure-report
+        if: failure()
+        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59  # 3.12.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          message: |
+            ## ❌ On-demand test failed
+
+            **Operator:** `${{ needs.preprocess.outputs.op }}`
+            **Runner:** `${{ needs.preprocess.outputs.runner }}`
+            **Backend:** ${{ env.BACKEND }}
+
+            The test failed to complete. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
+          message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}

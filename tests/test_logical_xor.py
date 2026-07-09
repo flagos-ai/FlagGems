@@ -12,6 +12,9 @@ from . import accuracy_utils as utils
     "dtype",
     utils.ALL_FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BOOL_TYPES,
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_logical_xor(shape, dtype):
     if dtype in utils.ALL_FLOAT_DTYPES:
         inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)

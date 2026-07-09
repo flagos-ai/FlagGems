@@ -4,7 +4,7 @@ import torch
 
 from flag_gems.utils.shape_utils import has_internal_overlapping
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 def select_scatter(inp, src, dim, index):
