@@ -132,6 +132,117 @@ def var_kernel_2(
     tl.store(Var, var)
 
 
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
+@triton.jit(do_not_specialize=["correction"])
+def _var_dim_kernel_inner(
+    Out,
+    X,
+    M,
+    N,
+    correction,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+
+    # Pass 1: compute mean
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)
+        mask = n_offsets < N
+        x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
+        mean = tl.sum(x, axis=0) / N
+    else:
+        sum_acc = tl.zeros((TILE_N,), dtype=tl.float32)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            mask = n_offsets < N
+            x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
+            sum_acc += x
+        mean = tl.sum(sum_acc, axis=0) / N
+
+    # Pass 2: compute sum of squared deviations
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)
+        mask = n_offsets < N
+        x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
+        diff = x - mean
+        sq_sum = tl.sum(tl.where(mask, diff * diff, 0.0), axis=0)
+    else:
+        sq_acc = tl.zeros((TILE_N,), dtype=tl.float32)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            mask = n_offsets < N
+            x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
+            diff = x - mean
+            sq_acc += tl.where(mask, diff * diff, 0.0)
+        sq_sum = tl.sum(sq_acc, axis=0)
+
+    denom = N - correction
+    var = sq_sum / tl.maximum(denom, 1e-12)
+    tl.store(Out + pid_m, var.to(Out.dtype.element_ty), mask=pid_m < M)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.jit(do_not_specialize=["correction"])
+def _var_dim_kernel_non_inner(
+    Out,
+    X,
+    M,
+    N,
+    K,
+    correction,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
+
+    # Pass 1: compute mean
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)[:, None]
+        mask = (n_offsets < N) & (k_offsets < K)
+        offsets = pid_m * N * K + n_offsets * K + k_offsets
+        x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
+        mean = tl.sum(x, axis=0, keep_dims=True) / N
+    else:
+        sum_acc = tl.zeros((TILE_N, TILE_K), dtype=tl.float32)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
+            mask = (n_offsets < N) & (k_offsets < K)
+            offsets = pid_m * N * K + n_offsets * K + k_offsets
+            x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
+            sum_acc += x
+        mean = tl.sum(sum_acc, axis=0, keep_dims=True) / N
+
+    # Pass 2: compute sum of squared deviations
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)[:, None]
+        mask = (n_offsets < N) & (k_offsets < K)
+        offsets = pid_m * N * K + n_offsets * K + k_offsets
+        x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
+        diff = x - mean
+        sq_sum = tl.sum(tl.where(mask, diff * diff, 0.0), axis=0, keep_dims=True)
+    else:
+        sq_acc = tl.zeros((TILE_N, TILE_K), dtype=tl.float32)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
+            mask = (n_offsets < N) & (k_offsets < K)
+            offsets = pid_m * N * K + n_offsets * K + k_offsets
+            x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
+            diff = x - mean
+            sq_acc += tl.where(mask, diff * diff, 0.0)
+        sq_sum = tl.sum(sq_acc, axis=0, keep_dims=True)
+
+    denom = N - correction
+    var = sq_sum / tl.maximum(denom, 1e-12)
+    out_offsets = pid_m * K + k_offsets
+    tl.store(Out + out_offsets, var.to(Out.dtype.element_ty), mask=k_offsets < K)
+
+
 def var(x, dim=None, *, correction=None, keepdim=False):
     logger.debug("GEMS VAR")
     if correction is None:
@@ -151,21 +262,63 @@ def var(x, dim=None, *, correction=None, keepdim=False):
         with torch_device_fn.device(x.device):
             var_kernel_1[(BLOCK_NUM,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
             var_kernel_2[(1,)](acc, average, count, var, N, correction, BLOCK_NUM)
-    else:
-        shape = list(x.shape)
-        dim = [d % x.ndim for d in dim]
-        x = dim_compress(x, dim)
-        N = 1
-        for i in dim:
-            N *= shape[i]
-            shape[i] = 1
-        M = x.numel() // N
-        var = torch.empty(shape, dtype=x.dtype, device=x.device)
+        if not keepdim:
+            var = var.squeeze(dim=dim)
+        return var
 
-        BLOCK_N = 1024
-        grid = (M,)
+    shape = list(x.shape)
+    dim = [d % x.ndim for d in dim]
+
+    if len(dim) == 1:
+        # Single-dim reduction: split into (M, N, K) and reduce over N with a
+        # strided kernel, avoiding the dim_compress copy. K == 1 means the
+        # reduced dim is innermost (contiguous); K > 1 means it is a middle or
+        # outer dim, where the copy used to dominate the runtime.
+        dim0 = dim[0]
+        N = shape[dim0]
+        M = 1
+        for size in shape[:dim0]:
+            M *= size
+        K = 1
+        for size in shape[dim0 + 1 :]:
+            K *= size
+        shape[dim0] = 1
+
+        if M * N * K > 0 and (N - correction <= 0):
+            # Not enough elements for the requested correction: variance is
+            # undefined, so return NaN like torch.
+            final_shape = shape if keepdim else shape[:dim0] + shape[dim0 + 1 :]
+            return torch.full(
+                final_shape, float("nan"), device=x.device, dtype=x.dtype
+            )
+
+        out = torch.empty(shape, dtype=x.dtype, device=x.device)
+        if M * N * K == 0:
+            return out.squeeze(dim=dim0) if not keepdim else out
+
+        x_contiguous = x.contiguous()
         with torch_device_fn.device(x.device):
-            var_welford_kernel[grid](x, var, M, N, correction, BLOCK_N=BLOCK_N)
+            if K > 1:
+                grid = lambda META: (M, triton.cdiv(K, META["TILE_K"]), 1)
+                _var_dim_kernel_non_inner[grid](out, x_contiguous, M, N, K, correction)
+            else:
+                grid = (M, 1, 1)
+                _var_dim_kernel_inner[grid](out, x_contiguous, M, N, correction)
+        return out.squeeze(dim=dim0) if not keepdim else out
+
+    # Multi-dim reduction keeps the original dim_compress path.
+    x = dim_compress(x, dim)
+    N = 1
+    for i in dim:
+        N *= shape[i]
+        shape[i] = 1
+    M = x.numel() // N
+    var = torch.empty(shape, dtype=x.dtype, device=x.device)
+
+    BLOCK_N = 1024
+    grid = (M,)
+    with torch_device_fn.device(x.device):
+        var_welford_kernel[grid](x, var, M, N, correction, BLOCK_N=BLOCK_N)
 
     if not keepdim:
         var = var.squeeze(dim=dim)
