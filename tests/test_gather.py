@@ -81,3 +81,49 @@ def test_gather(inp_shape, dim, dtype):
 
     res_in_grad = utils.to_reference(res_in_grad)
     utils.gems_assert_equal(res_in_grad, ref_in_grad)
+
+
+def _make_gather_backward_index(inp_shape, dim, duplicate_indices):
+    index_shape = list(inp_shape)
+    index_shape[dim] = max(1, inp_shape[dim] // 2)
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
+
+    m, n, o = index_shape
+    if duplicate_indices:
+        index.fill_(0)
+        return index
+
+    index_size_dim = index_shape[dim]
+    size_dim = inp_shape[dim]
+    for i in range(1 if dim == 0 else m):
+        for j in range(1 if dim == 1 else n):
+            for k in range(1 if dim == 2 else o):
+                ii = [i, j, k]
+                ii[dim] = slice(0, index_size_dim)
+                index[tuple(ii)] = torch.randperm(size_dim, device=flag_gems.device)[
+                    :index_size_dim
+                ]
+    return index
+
+
+@pytest.mark.gather_backward
+@pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
+@pytest.mark.parametrize("dim", [0, 1, 2])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("duplicate_indices", [False, True])
+def test_gather_backward(inp_shape, dim, dtype, duplicate_indices):
+    inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+    index = _make_gather_backward_index(inp_shape, dim, duplicate_indices)
+    grad = torch.ones(index.shape, dtype=dtype, device=flag_gems.device)
+
+    ref_grad = utils.to_reference(grad)
+    ref_inp = utils.to_reference(inp)
+    ref_index = utils.to_reference(index)
+    ref_out = torch.ops.aten.gather_backward.default(
+        ref_grad, ref_inp, dim, ref_index, False
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.gather_backward.default(grad, inp, dim, index, False)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
