@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 def celu_func(x, alpha):
     x_fp32 = x.to(tl.float32)
     alpha_fp32 = alpha.to(tl.float32)
-    return tl.where(x_fp32 > 0, x_fp32, alpha_fp32 * (tl.exp(x_fp32 / alpha_fp32) - 1.0)).to(x.dtype)
+    return tl.where(
+        x_fp32 > 0, x_fp32, alpha_fp32 * (tl.exp(x_fp32 / alpha_fp32) - 1.0)
+    ).to(x.dtype)
 
 
 def celu(A, alpha=1.0):

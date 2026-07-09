@@ -16,6 +16,7 @@ def heuristics_for_tile_size(max_tile_size, *sizes):
         max_tile_size = max(1, max_tile_size // tile_size)
     return tuple(tile_sizes)
 
+
 def heuristics_for_tile_size_notDMA(max_tile_size, *sizes):
     ndim = len(sizes)
     tile_sizes = [0 for _ in range(ndim)]

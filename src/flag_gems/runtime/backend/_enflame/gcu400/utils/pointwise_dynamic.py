@@ -858,7 +858,9 @@ class WrapperGenerator:
                     code.writeline(f"in{i}_stride_order = (0,)")
             for i in range(schema.num_output_tensors()):
                 code.writeline(f"out{i}_strides = out{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s <= 0 for s in out{i}_strides)")
+                code.writeline(
+                    f"FlagOfNotUseDMA |= any(s <= 0 for s in out{i}_strides)"
+                )
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "
@@ -938,7 +940,9 @@ class WrapperGenerator:
                 )
             for i in range(schema.num_output_tensors()):
                 code.writeline(f"out{i}_strides = out{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s <= 0 for s in out{i}_strides)")
+                code.writeline(
+                    f"FlagOfNotUseDMA |= any(s <= 0 for s in out{i}_strides)"
+                )
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "

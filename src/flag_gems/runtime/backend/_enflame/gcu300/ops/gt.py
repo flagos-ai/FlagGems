@@ -10,7 +10,10 @@ logger = logging.getLogger(__name__)
 
 
 def _is_float64_scalar(*args):
-    return any(isinstance(a, torch.Tensor) and a.dtype == torch.float64 and a.ndim == 0 for a in args)
+    return any(
+        isinstance(a, torch.Tensor) and a.dtype == torch.float64 and a.ndim == 0
+        for a in args
+    )
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
@@ -21,10 +24,10 @@ def gt_func(x, y):
 
 def gt(A, B):
     logger.debug("GEMS_ENFLAME GT")
-    if isinstance(A, torch.Tensor) and A.dtype==torch.int64:
-        A=A.to(torch.int32)
-    if isinstance(B, torch.Tensor) and B.dtype==torch.int64:
-        B=B.to(torch.int32)
+    if isinstance(A, torch.Tensor) and A.dtype == torch.int64:
+        A = A.to(torch.int32)
+    if isinstance(B, torch.Tensor) and B.dtype == torch.int64:
+        B = B.to(torch.int32)
     if _is_float64_scalar(A, B):
         dev = A.device if isinstance(A, torch.Tensor) else B.device
         A_cpu = A.cpu() if isinstance(A, torch.Tensor) else A
@@ -42,10 +45,10 @@ def gt_func_scalar(x, y):
 def gt_scalar(A, B):
     if A.dtype == torch.float64 and A.ndim == 0:
         return torch.gt(A.cpu(), B).to(A.device)
-    if isinstance(A, torch.Tensor) and A.dtype==torch.int64:
-        A=A.to(torch.int32)
-    if isinstance(B, torch.Tensor) and B.dtype==torch.int64:
-        B=B.to(torch.int32)
+    if isinstance(A, torch.Tensor) and A.dtype == torch.int64:
+        A = A.to(torch.int32)
+    if isinstance(B, torch.Tensor) and B.dtype == torch.int64:
+        B = B.to(torch.int32)
     logger.debug("GEMS_ENFLAME GT_SCALAR")
     res = gt_func_scalar(A, B)
-    return res  
+    return res

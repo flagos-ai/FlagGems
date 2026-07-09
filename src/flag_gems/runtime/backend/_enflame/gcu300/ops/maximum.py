@@ -13,7 +13,10 @@ device = device.name
 
 
 def _is_float64_scalar(*args):
-    return any(isinstance(a, torch.Tensor) and a.dtype == torch.float64 and a.ndim == 0 for a in args)
+    return any(
+        isinstance(a, torch.Tensor) and a.dtype == torch.float64 and a.ndim == 0
+        for a in args
+    )
 
 
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])

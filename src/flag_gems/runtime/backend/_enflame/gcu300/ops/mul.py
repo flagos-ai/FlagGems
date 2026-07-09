@@ -9,7 +9,10 @@ logger = logging.getLogger(__name__)
 
 
 def _is_float64_scalar(*args):
-    return any(isinstance(a, torch.Tensor) and a.dtype == torch.float64 and a.ndim == 0 for a in args)
+    return any(
+        isinstance(a, torch.Tensor) and a.dtype == torch.float64 and a.ndim == 0
+        for a in args
+    )
 
 
 def _to_compute_dtype(result_dtype):

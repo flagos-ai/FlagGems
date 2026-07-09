@@ -966,4 +966,3 @@ linear:
       BLOCK_SIZE_K: 32
     num_stages: 4
     num_warps: 4
-

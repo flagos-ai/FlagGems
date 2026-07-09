@@ -116,7 +116,7 @@ def to_copy(
         raise NotImplementedError(
             "float64 tensors are not supported in FlagGems to_copy yet."
         )
-    
+
     if target_device != x.device or (
         x.device.type == "cpu" and target_device.type == "cpu"
     ):

@@ -118,8 +118,8 @@ from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
-from .linear import linear
 from .lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
+from .linear import linear
 from .linspace import linspace
 from .log import log
 from .log_sigmoid import log_sigmoid
