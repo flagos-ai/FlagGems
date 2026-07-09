@@ -38,7 +38,6 @@ logger = logging.getLogger(__name__)
 
 DEVICE_COUNT = runtime.device.device_count
 
-
 version = triton.__version__.split(".")
 major_version, minor_version = eval(version[0]), eval(version[1])
 
