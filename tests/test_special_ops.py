@@ -426,20 +426,26 @@ def test_pad(shape, dtype, pad_mode, contiguous):
     ref_x = to_reference(x)
 
     rank = x.ndim
-    pad_params = list(
-        torch.randint(0, 10, (rank * 2,), dtype=torch.int32, device="cpu")
-        if pad_mode == "constant"
-        else torch.randint(0, 10, (rank,), dtype=torch.int32, device="cpu")
-    )
+    if pad_mode == "constant":
+        num_pad = rank * 2
+    else:
+        # Non-constant modes only pad trailing spatial dims; keep values valid
+        # after the non-contiguous slice shrinks small dimensions.
+        num_pad = max(rank // 2, 1) * 2
+    pad_params = torch.randint(0, 10, (num_pad,), dtype=torch.int32, device="cpu")
     pad_value = float(torch.randint(0, 1024, (1,), dtype=torch.int32, device="cpu"))
 
     if pad_mode != "constant":
-        pad_params = [(pad_val + 2 - 1) // 2 * 2 for pad_val in pad_params]
+        min_dim_size = min(x.shape[-(num_pad // 2) :])
+        max_pad = min_dim_size - 1 if pad_mode == "reflect" else min_dim_size
+        for i in range(num_pad // 2):
+            pad_params[2 * i] = int(pad_params[2 * i]) % max(max_pad, 1)
+            pad_params[2 * i + 1] = int(pad_params[2 * i + 1]) % max(max_pad, 1)
         pad_value = None
 
-    ref_pad_params = [to_reference(pad_param) for pad_param in pad_params]
+    pad_params = [int(pad_params[i]) for i in range(pad_params.shape[0])]
 
-    ref_out = torch.nn.functional.pad(ref_x, ref_pad_params, pad_mode, pad_value)
+    ref_out = torch.nn.functional.pad(ref_x, pad_params, pad_mode, pad_value)
     with flag_gems.use_gems():
         res_out = torch.nn.functional.pad(x, pad_params, pad_mode, pad_value)
 
