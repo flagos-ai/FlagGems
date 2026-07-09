@@ -6,6 +6,23 @@
 
 namespace py = pybind11;
 
+namespace {
+
+c10::Scalar py_object_to_scalar(const py::object &value) {
+  if (py::isinstance<py::bool_>(value)) {
+    return c10::Scalar(value.cast<bool>());
+  }
+  if (py::isinstance<py::int_>(value)) {
+    return c10::Scalar(value.cast<int64_t>());
+  }
+  if (py::isinstance<py::float_>(value)) {
+    return c10::Scalar(value.cast<double>());
+  }
+  throw py::type_error("index_fill_scalar_ value must be a bool, int, or float scalar");
+}
+
+}  // namespace
+
 // TODO: use pytorch's argparse utilities to generate CPython bindings, since it is more efficient than
 // bindings provided by torch library, since it is in a boxed fashion
 PYBIND11_MODULE(c_operators, m) {
@@ -125,6 +142,13 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
   m.def("copy_", &flag_gems::copy_);
   m.def("to_copy", &flag_gems::to_copy);
+  m.def(
+      "index_fill_scalar_",
+      [](at::Tensor &input, int64_t dim, const at::Tensor &index, py::object value)
+          -> at::Tensor & {
+        c10::Scalar scalar = py_object_to_scalar(value);
+        return flag_gems::index_fill_scalar_(input, dim, index, scalar);
+      });
   m.def("fp8_matmul",
         &flag_gems::fp8_matmul,
         py::arg("a"),

@@ -256,5 +256,9 @@ at::Tensor to_copy(const at::Tensor &self,
                    c10::optional<at::MemoryFormat> memory_format = c10::nullopt);
 
 at::Tensor &copy_(at::Tensor &dst, const at::Tensor &src, bool non_blocking = false);
+at::Tensor &index_fill_scalar_(at::Tensor &input,
+                               int64_t dim,
+                               const at::Tensor &index,
+                               const c10::Scalar &value);
 
 }  // namespace flag_gems
