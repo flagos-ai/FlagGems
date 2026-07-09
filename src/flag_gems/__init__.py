@@ -13,6 +13,7 @@ from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_lo
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.ops import range as range_op
+from flag_gems.ops.linalg_vecdot import linalg_vecdot
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
@@ -46,8 +47,6 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
-    ("__and__.Scalar", bitwise_and_scalar),
-    ("__and__.Tensor", bitwise_and_tensor),
     ("__ilshift__.Tensor", __ilshift__),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
@@ -179,8 +178,6 @@ _FULL_CONFIG = (
     ("arcsinh", arcsinh),
     ("arcsinh.out", arcsinh_out),
     ("arcsinh_", arcsinh_),
-    ("arctan", arctan),
-    ("arctan_", arctan_),
     ("arctanh_", arctanh_),
     ("argmax", argmax),
     ("argmin", argmin),
@@ -226,7 +223,6 @@ _FULL_CONFIG = (
     ("bmm", bmm),
     ("bmm.out", bmm_out),
     ("broadcast_to", broadcast_to),
-    ("bucketize.Tensor", bucketize),
     ("cat", cat),
     ("cat.out", cat_out),
     ("cauchy", cauchy),
@@ -250,7 +246,6 @@ _FULL_CONFIG = (
     ("col2im", col2im),
     ("concat", concat),
     ("concatenate", concatenate),
-    ("conj_physical", conj_physical),
     ("constant_pad_nd", constant_pad_nd),
     # ("contiguous", contiguous),
     ("conv1d", conv1d),
@@ -475,7 +470,6 @@ _FULL_CONFIG = (
     ("masked_scatter", masked_scatter),
     ("masked_scatter_", masked_scatter_),
     ("masked_select", masked_select),
-    ("matmuladd", matmuladd),
     ("max", max),
     ("max.dim", max_dim),
     ("max_pool2d_backward", max_pool2d_backward),
@@ -602,7 +596,6 @@ _FULL_CONFIG = (
     ("replication_pad3d", replication_pad3d),
     ("resize", resize),
     ("resize_", resize_),
-    ("resolve_conj", resolve_conj),
     ("resolve_neg", resolve_neg),
     ("rms_norm", rms_norm),
     ("rnn_relu", rnn_relu),
@@ -663,16 +656,16 @@ _FULL_CONFIG = (
     ("softshrink.out", softshrink_out),
     ("sort", sort),
     ("sort.stable", sort_stable),
+    ("special_gammainc", special_gammainc),
+    ("special_log_softmax", special_log_softmax),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special_chebyshev_polynomial_w", special_chebyshev_polynomial_w),
     ("special_chebyshev_polynomial_w_out", special_chebyshev_polynomial_w_out),
-    ("special_gammainc", special_gammainc),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_i0e", special_i0e),
     ("special_i0e_out", special_i0e_out),
     ("special_i1", special_i1),
     ("special_i1_out", special_i1_out),
-    ("special_log_softmax", special_log_softmax),
     ("special_shifted_chebyshev_polynomial_u", special_shifted_chebyshev_polynomial_u),
     (
         "special_shifted_chebyshev_polynomial_u_",
@@ -927,6 +920,7 @@ def all_registered_keys():
 
 __all__ = [
     "all_registered_keys",
+    "linalg_vecdot",
     "all_registered_ops",
     "enable",
     "flagtune",
