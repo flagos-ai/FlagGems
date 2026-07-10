@@ -467,7 +467,7 @@ def _supports_fused_atomic(input_dtype, out_dtype):
 
 
 def bincount(input, weights=None, minlength=0):
-    logger.debug("GEMS BINCOUNT")
+    logger.debug("GEMS_SUNRISE BINCOUNT")
 
     assert input.dim() == 1, "input must be a 1-D tensor"
     assert minlength >= 0, "minlength must be non-negative"

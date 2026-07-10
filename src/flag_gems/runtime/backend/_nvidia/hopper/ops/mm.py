@@ -14,7 +14,7 @@ from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.device_info import get_device_capability, get_sm_count
 from flag_gems.utils.triton_version_utils import HAS_TLE, HAS_TLE_DEVICE_MESH
 
-logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.mm")
+logger = logging.getLogger(__name__)
 CACHE_USAGE_THRESHOLD = 0.8
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "mm_hopper_expand.yaml")
@@ -296,7 +296,8 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     ]
     if not filtered_configs:
         logger.warning(
-            "No mm_general_tma config fits shared memory limit (%s bytes); falling back to unfiltered configs.",
+            "GEMS_NVIDIA No mm_general_tma config fits shared memory limit (%s bytes); "
+            "falling back to unfiltered configs.",
             shared_mem_limit,
         )
         return configs
@@ -376,6 +377,44 @@ def mm_kernel_general_host_tma(
     c_desc.store([offset_am, offset_bn], c)
 
 
+def _sync_mm_host_tma_descriptor_block_shapes(args, kwargs):
+    if len(args) < 3:
+        return
+    block_m = kwargs.get("BLOCK_M")
+    block_n = kwargs.get("BLOCK_N")
+    block_k = kwargs.get("BLOCK_K")
+    a_row_major = kwargs.get("A_ROW_MAJOR")
+    b_row_major = kwargs.get("B_ROW_MAJOR")
+    if None in (block_m, block_n, block_k, a_row_major, b_row_major):
+        return
+
+    a_desc, b_desc, c_desc = args[:3]
+    if not all(hasattr(desc, "block_shape") for desc in (a_desc, b_desc, c_desc)):
+        return
+
+    a_desc.block_shape = [block_m, block_k] if a_row_major else [block_k, block_m]
+    b_desc.block_shape = [block_k, block_n] if b_row_major else [block_n, block_k]
+    c_desc.block_shape = [block_m, block_n]
+
+
+def _install_mm_host_tma_descriptor_block_shape_guard():
+    jit_fn = mm_kernel_general_host_tma.fn.fn
+    if getattr(jit_fn, "_flag_gems_mm_tma_block_shape_guard", False):
+        return
+
+    original_run = jit_fn.run
+
+    def run_with_descriptor_block_shapes(*args, **kwargs):
+        _sync_mm_host_tma_descriptor_block_shapes(args, kwargs)
+        return original_run(*args, **kwargs)
+
+    jit_fn.run = run_with_descriptor_block_shapes
+    jit_fn._flag_gems_mm_tma_block_shape_guard = True
+
+
+_install_mm_host_tma_descriptor_block_shape_guard()
+
+
 def get_higher_dtype(a, b):
     _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
 
@@ -395,8 +434,8 @@ def get_higher_dtype(a, b):
 def general_mm(a, b, c, M, N, K, op_name="mm"):
     # TODO: Remove this debug message
     logger.debug(
-        "GEMS MM-hopper, [op]: %s, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s",
+        "GEMS_NVIDIA MM_HOPPER, [op]: %s, [mm scenario]: general, [shape info]: "
+        "[-, %s, %s, %s](batch, M, N, K), [A column-major]: %s, [B column-major]: %s",
         op_name,
         M,
         N,
@@ -551,7 +590,7 @@ def gemv_kernel(
 def gemv_mm(a, b, c, M, K):
     """Optimized matrix-vector multiplication for N=1 case"""
     logger.debug(
-        "GEMS MM-hopper, [mm scenario]: gemv (N=1), [shape info]: [%s, %s, 1](M, K, N)",
+        "GEMS_NVIDIA MM_HOPPER, [mm scenario]: gemv (N=1), [shape info]: [%s, %s, 1](M, K, N)",
         M,
         K,
     )
@@ -648,7 +687,7 @@ def mm_kernel_splitk(
 
 def splitk_mm(a, b, c, M, N, K, op_name="mm"):
     logger.debug(
-        "GEMS MM-hopper, [op]: %s, [mm scenario]: splitk, [shape info]: [-, %s, %s, %s](batch, M, N, K)",
+        "GEMS_NVIDIA MM_HOPPER, [op]: %s, [mm scenario]: splitk, [shape info]: [-, %s, %s, %s](batch, M, N, K)",
         op_name,
         M,
         N,
@@ -916,6 +955,7 @@ def cluster_remote_mm_scenario(a, b, c, M, N, K):
 
 def cluster_remote_mm(a, b, c, M, N, K):
     logger.debug(
+        "GEMS_NVIDIA M=%s N=%s K=%s a_col_major=%s b_col_major=%s",
         M,
         N,
         K,
