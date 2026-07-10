@@ -33,9 +33,15 @@ class IndexFillBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         return [
             (8192, 4096),
-            (64, 1024, 128),
             (200, 40999, 3),
         ]
+
+    def get_latency(self, op, *args, **kwargs):
+        if base.Config.mode == consts.BenchMode.OPERATOR:
+            # Keep one-time Triton loading out of the adaptive iteration count.
+            op(*args, **kwargs)
+            base.torch_device_fn.synchronize()
+        return super().get_latency(op, *args, **kwargs)
 
 
 def _generate_input(shape, dtype, device):

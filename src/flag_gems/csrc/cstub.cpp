@@ -143,6 +143,15 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("copy_", &flag_gems::copy_);
   m.def("to_copy", &flag_gems::to_copy);
   m.def(
+      "index_fill_scalar",
+      [](const at::Tensor &input,
+         int64_t dim,
+         const at::Tensor &index,
+         py::object value) {
+        c10::Scalar scalar = py_object_to_scalar(value);
+        return flag_gems::index_fill_scalar(input, dim, index, scalar);
+      });
+  m.def(
       "index_fill_scalar_",
       [](at::Tensor &input, int64_t dim, const at::Tensor &index, py::object value)
           -> at::Tensor & {
