@@ -49,3 +49,35 @@ def test_var_mean(shape, dim, correction, keepdim, dtype):
 
     utils.gems_assert_close(res_mean, ref_mean, dtype)
     utils.gems_assert_close(res_var, ref_var, dtype)
+
+
+@pytest.mark.var_mean
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        ((4, 8, 4096), 1),  # non-inner, multi-N-tile
+        ((4, 4096, 8), 1),  # non-inner, multi-N-tile with small K
+        ((8, 4096), 1),  # inner, multi-N-tile
+        ((4096, 8), 0),  # non-inner, large M
+        ((4096, 4096), 0),  # non-inner, multi-N-tile and multi-K-tile
+    ],
+)
+@pytest.mark.parametrize("correction", [0, 1])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_var_mean_dim_multi_tile(shape, dim, correction, keepdim, dtype):
+    # Larger shapes that exercise the multi-tile reduction loops in the inner
+    # and non-inner kernels, which the small default shapes do not reach.
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_var, ref_mean = torch.var_mean(
+        ref_inp, dim, correction=correction, keepdim=keepdim
+    )
+    with flag_gems.use_gems():
+        res_var, res_mean = torch.var_mean(
+            inp, dim, correction=correction, keepdim=keepdim
+        )
+
+    utils.gems_assert_close(res_var, ref_var, dtype)
+    utils.gems_assert_close(res_mean, ref_mean, dtype)
