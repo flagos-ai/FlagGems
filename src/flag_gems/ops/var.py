@@ -179,7 +179,7 @@ def _var_dim_kernel_inner(
         sq_sum = tl.sum(sq_acc, axis=0)
 
     denom = N - correction
-    var = sq_sum / tl.maximum(denom, 1e-12)
+    var = sq_sum / tl.maximum(denom, 0.0)
     tl.store(Out + pid_m, var.to(Out.dtype.element_ty), mask=pid_m < M)
 
 
@@ -238,7 +238,7 @@ def _var_dim_kernel_non_inner(
         sq_sum = tl.sum(sq_acc, axis=0, keep_dims=True)
 
     denom = N - correction
-    var = sq_sum / tl.maximum(denom, 1e-12)
+    var = sq_sum / tl.maximum(denom, 0.0)
     out_offsets = pid_m * K + k_offsets
     tl.store(Out + out_offsets, var.to(Out.dtype.element_ty), mask=k_offsets < K)
 
@@ -289,10 +289,10 @@ def var(x, dim=None, *, correction=None, keepdim=False):
             # A spectator dimension is empty: the output is a valid empty
             # tensor and there is nothing to reduce. Matches torch.
             return out.squeeze(dim=dim0) if not keepdim else out
-        if N - correction <= 0:
-            # Not enough elements for the requested correction (this also
-            # covers an empty reduction dim, N == 0): variance is undefined,
-            # so fill with NaN like torch.
+        if N == 0:
+            # Reducing over an empty dim: variance is 0/0, i.e. NaN, like torch.
+            # (A correction >= N with N > 0 is handled in the kernel, which
+            # clamps the divisor at 0 and yields +inf, also matching torch.)
             out.fill_(float("nan"))
             return out.squeeze(dim=dim0) if not keepdim else out
 
