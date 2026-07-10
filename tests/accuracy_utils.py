@@ -41,7 +41,7 @@ sizes_one = [1]
 sizes_pow_2 = [2**d for d in range(4, 11, 2)]
 sizes_noalign = [d + 17 for d in sizes_pow_2]
 sizes_1d = sizes_one + sizes_pow_2 + sizes_noalign
-sizes_2d_nc = [1] if QUICK_MODE else [1, 16, 64, 512]
+sizes_2d_nc = [1] if QUICK_MODE else [1, 16, 64, 1000]
 sizes_2d_nr = [1] if QUICK_MODE else [1, 5, 1024]
 
 UT_SHAPES_1D = list((n,) for n in sizes_1d)
@@ -49,17 +49,17 @@ UT_SHAPES_2D = list(itertools.product(sizes_2d_nr, sizes_2d_nc))
 POINTWISE_SHAPES = (
     [(2, 19, 7)]
     if QUICK_MODE
-    else [(), (1,), (1024, 512), (20, 320, 15), (16, 128, 16, 4), (16, 7, 32, 8, 4)]
+    else [(), (1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 60), (16, 7, 57, 32, 29)]
 )
 SPECIAL_SHAPES = (
     [(2, 19, 7)]
     if QUICK_MODE
-    else [(1,), (1024, 512), (20, 320, 15), (16, 128, 16, 4), (16, 7, 32, 8, 4)]
+    else [(1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 1280), (16, 7, 57, 32, 29)]
 )
 DISTRIBUTION_SHAPES = [(20, 320, 15)]
-REDUCTION_SHAPES = [(2, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 512, 3)]
+REDUCTION_SHAPES = [(2, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 40999, 3)]
 REDUCTION_SMALL_SHAPES = (
-    [(1, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 512, 3)]
+    [(1, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 2560, 3)]
 )
 STACK_SHAPES = [
     [(16,), (16,)],
@@ -69,28 +69,28 @@ STACK_SHAPES = [
 CONTIGUOUS_SHAPE_STRIDES_1D = [
     ((1,), (1,)),
     ((1024,), (1,)),
-    ((65535,), (1,)),
+    ((1000000,), (1,)),
 ]
 DILATED_SHAPE_STRIDES_1D = [
     ((1,), (2,)),
     ((1024,), (2,)),
-    ((65535,), (2,)),
+    ((1000000,), (2,)),
 ]
 CONTIGUOUS_SHAPE_STRIDES_2D = [
-    ((1, 512), (512, 1)),
-    ((4096, 128), (128, 1)),
+    ((1, 1024), (1024, 1)),
+    ((10000, 128), (128, 1)),
 ]
 TRANSPOSED_SHAPE_STRIDES_2D = [
-    ((512, 1), (1, 512)),
-    ((128, 512), (1, 128)),
+    ((1024, 1), (1, 1024)),
+    ((128, 10000), (1, 128)),
 ]
 CONTIGUOUS_SHAPE_STRIDES_3D = [
     ((20, 320, 15), (4800, 15, 1)),
-    ((200, 512, 3), (1536, 3, 1)),
+    ((200, 40999, 3), (122997, 3, 1)),
 ]
 TRANSPOSED_SHAPE_STRIDES_3D = [
     ((320, 20, 15), (15, 4800, 1)),
-    ((3, 512, 32), (1, 3, 1536)),
+    ((3, 40999, 200), (1, 3, 122997)),
 ]
 SHAPE_STRIDES = (
     CONTIGUOUS_SHAPE_STRIDES_1D
@@ -101,14 +101,14 @@ SHAPE_STRIDES = (
     + TRANSPOSED_SHAPE_STRIDES_3D
 )
 
-IRREGULAR_SHAPE_STRIDES = [((10, 10, 10, 8, 4), (1, 3200, 23, 320, 80))]
+IRREGULAR_SHAPE_STRIDES = [((10, 10, 10, 10, 10), (1, 10000, 23, 399, 1024))]
 
 UPSAMPLE_SHAPES = [
-    (32, 16, 16, 4),
-    (15, 37, 16, 4),
-    (3, 5, 16, 4),
-    (128, 192, 16, 4),
-    (3, 7, 16, 4),
+    (32, 16, 128, 128),
+    (15, 37, 256, 256),
+    (3, 5, 127, 127),
+    (128, 192, 42, 51),
+    (3, 7, 1023, 1025),
 ]
 
 

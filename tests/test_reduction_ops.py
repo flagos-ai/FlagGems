@@ -183,7 +183,9 @@ def test_accuracy_cross_entropy_loss_probabilities(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
-CUMSUM_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 512, 32)]
+CUMSUM_SHAPES = (
+    [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+)
 
 
 @pytest.mark.cumsum
@@ -204,7 +206,9 @@ def test_accuracy_cumsum(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
 
-CUMMIN_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 512, 32)]
+CUMMIN_SHAPES = (
+    [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+)
 
 
 @pytest.mark.cummin
@@ -297,7 +301,7 @@ def test_accuracy_log_softmax(shape, dtype):
 # TODO: failed at (1, 2) (200, 40999, 3)
 @pytest.mark.softmax
 @pytest.mark.parametrize(
-    "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 512, 3)]
+    "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -320,7 +324,7 @@ def test_accuracy_softmax(shape, dtype, dim):
 
 @pytest.mark.softmax
 @pytest.mark.parametrize(
-    "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 512, 3)]
+    "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -503,7 +507,7 @@ def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
 @pytest.mark.gather
 @pytest.mark.parametrize(
     "inp_shape",
-    [(32, 8, 4)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16), (128, 32, 32)],
+    [(32, 8, 4)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16), (128, 32, 256)],
 )
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -706,8 +710,8 @@ def test_accuracy_masked_select(shape, dtype, threshold):
 SHAPE_CONV1D = [
     ((32, 2, 4), (17, 2, 2)),
     ((32, 15, 6), (17, 15, 2)),
-    ((32, 16, 32), (32, 16, 8)),
-    ((64, 64, 32), (128, 64, 7)),
+    ((32, 16, 1024), (1024, 16, 8)),
+    ((64, 64, 64), (128, 64, 7)),
     ((32, 12, 9), (17, 12, 3)),
     ((32, 6, 6), (64, 6, 2)),
 ]
@@ -735,18 +739,18 @@ def test_accuracy_conv1d(shape, kernel, stride, padding, dtype):
 
 
 SHAPE_CONV2D = [
-    ((32, 8, 8, 4), (32, 8, 2, 2), 1),
+    ((32, 8, 8, 8), (32, 8, 2, 2), 1),
     ((18, 16, 4, 4), (16, 16, 2, 2), 1),
     ((9, 16, 4, 4), (128, 4, 2, 2), 4),
-    ((32, 16, 8, 4), (32, 4, 4, 4), 4),
+    ((32, 16, 8, 8), (32, 4, 4, 4), 4),
     ((18, 16, 4, 4), (16, 8, 2, 2), 2),
     ((9, 16, 4, 4), (128, 8, 2, 2), 2),
-    ((32, 8, 8, 4), (32, 8, 3, 3), 1),
-    ((18, 16, 5, 4), (16, 16, 3, 3), 1),
-    ((9, 16, 7, 4), (128, 4, 3, 3), 4),
-    ((32, 16, 9, 4), (32, 4, 5, 4), 4),
-    ((18, 16, 11, 4), (16, 8, 3, 3), 2),
-    ((9, 16, 6, 4), (128, 8, 3, 3), 2),
+    ((32, 8, 8, 8), (32, 8, 3, 3), 1),
+    ((18, 16, 5, 5), (16, 16, 3, 3), 1),
+    ((9, 16, 7, 7), (128, 4, 3, 3), 4),
+    ((32, 16, 9, 9), (32, 4, 5, 5), 4),
+    ((18, 16, 11, 11), (16, 8, 3, 3), 2),
+    ((9, 16, 6, 6), (128, 8, 3, 3), 2),
     # depthwise shape
     # ((32, 4, 8, 8), (32, 1, 2, 2), 4),
     # ((18, 16, 4, 4), (16, 1, 2, 2), 16),
@@ -806,18 +810,18 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation
 
 
 SHAPE_DEPTHWISE = [
-    ((32, 4, 8, 4), (32, 1, 2, 2), (2, 2)),
+    ((32, 4, 8, 8), (32, 1, 2, 2), (2, 2)),
     ((18, 16, 4, 4), (16, 1, 2, 2), (2, 2)),
     ((9, 32, 4, 4), (128, 1, 2, 2), (2, 2)),
-    ((32, 16, 8, 4), (32, 1, 4, 4), (4, 4)),
+    ((32, 16, 8, 8), (32, 1, 4, 4), (4, 4)),
     ((18, 8, 4, 4), (16, 1, 2, 2), (2, 2)),
     ((9, 4, 4, 4), (128, 1, 2, 2), (2, 2)),
-    ((32, 4, 8, 4), (32, 1, 3, 3), (3, 3)),
-    ((18, 16, 13, 4), (16, 1, 5, 4), (5, 4)),
-    ((9, 32, 8, 4), (128, 1, 3, 3), (3, 3)),
-    ((32, 16, 9, 4), (32, 1, 5, 4), (5, 4)),
-    ((18, 8, 7, 4), (16, 1, 3, 3), (3, 3)),
-    ((9, 4, 6, 4), (128, 1, 3, 3), (3, 3)),
+    ((32, 4, 8, 8), (32, 1, 3, 3), (3, 3)),
+    ((18, 16, 13, 13), (16, 1, 5, 5), (5, 5)),
+    ((9, 32, 8, 8), (128, 1, 3, 3), (3, 3)),
+    ((32, 16, 9, 9), (32, 1, 5, 5), (5, 5)),
+    ((18, 8, 7, 7), (16, 1, 3, 3), (3, 3)),
+    ((9, 4, 6, 6), (128, 1, 3, 3), (3, 3)),
 ]
 
 

@@ -14,30 +14,38 @@ DEFAULT_ITER_COUNT = 100
 
 # LEGACY_SHAPES are maintained for legacy benchmark SIZE settings and may be removed in the future.
 # Do not reference this elsewhere.
-LEGACY_SHAPES = [64, 384, 512]
+LEGACY_SHAPES = [i * 64 for i in range(1, 22, 5)]
 LEGACY_NON_BLAS_SHAPES = [(1024, shape) for shape in LEGACY_SHAPES]
-LEGACY_BLAS_SHAPES = [(16, shape, 128, 32) for shape in LEGACY_SHAPES]
+LEGACY_BLAS_SHAPES = [(16, shape, shape, shape) for shape in LEGACY_SHAPES]
 
 # Default shapes settings
 DEFAULT_SHAPES = [
-    (65535,),  # from perf
+    (1024 * 1024 * 1024,),  # from perf
     (64, 64),
-    (4096, 512),
-    (64, 512, 32),
-    (1024, 512, 32),  # from perf
+    (4096, 4096),
+    (64, 512, 512),
+    (1024, 1024, 1024),  # from perf
 ]
 
 
 # This function is adapted from: https://github.com/pytorch-labs/tritonbench/blob/main/tritonbench/utils/triton_op.py
 def llama_shapes():
     # batch sizes * seq lengths
-    BS = [2**i for i in range(0, 11)]
+    BS = [2**i for i in range(0, 17)]
     # attn: wqkv, wo; ffn: w13, w2
     KN = [
-        (512, 512),
-        (512, 256),
-        (256, 512),
-        (128, 512),
+        (4096, 12288),
+        (4096, 4096),
+        (4096, 22016),
+        (11008, 4096),
+        (8192, 1280),
+        (1024, 8192),
+        (8192, 7168),
+        (3584, 8192),
+        (16384, 2304),
+        (2048, 16384),
+        (16384, 13312),
+        (6656, 16384),
     ]
     return [(bs, n, k, None) for bs, (k, n) in itertools.product(BS, KN)]
 

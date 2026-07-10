@@ -29,12 +29,18 @@ class BlasBenchmark(Benchmark):
                 yield from self.input_fn(1, m, n, k, cur_dtype, self.device)
 
     def set_more_shapes(self):
-        split_k_shapes = [(1, m, 128, 32) for m in [16 * i for i in range(1, 5)]]
+        split_k_shapes = [
+            (1, m, m, k)
+            for m in [16 * i for i in range(1, 5)]
+            for k in [4096 * i for i in range(1, 9)]
+        ]
         # 'mv' operations only involve M and N dimensions.
         # Shapes with large K values are not suitable for these two operations.
         if self.op_name not in ["mv"]:
             # B=1 or 4, M= 13, N= 2 , K=2^6..2^15
-            large_k_shapes = list(itertools.product([1, 4], [64], [128], [32]))
+            large_k_shapes = list(
+                itertools.product([1, 4], [13], [2], [2**i for i in range(6, 15)])
+            )
             return large_k_shapes + split_k_shapes
         return split_k_shapes
 
