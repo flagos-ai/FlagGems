@@ -114,6 +114,7 @@ def assert_nonzero_static_matches(shape, dtype, nnz_ratio, size, fill_value):
             expected_cuda = torch.nonzero_static(
                 x_gpu, size=size, fill_value=fill_value
             )
+            expected_cuda = utils.to_reference(expected_cuda)
             utils.gems_assert_equal(actual, expected_cuda)
         except RuntimeError:
             pass
