@@ -45,8 +45,7 @@ UV_VERSION="0.11.22"
 UV_MIRROR="https://resource.flagos.net/repository/flagos-filestore/utils"
 
 printf "Checking uv ..."
-export HOME=$(eval echo ~"$(whoami)")
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="${HOME}/.local/bin:$PATH"
 if command -v uv &>/dev/null; then
   printf " $(uv --version)"
   ok
