@@ -20,6 +20,18 @@ except ImportError:
     GEMS_OP = None
 
 
+def te_swiglu_op(input_tensor, quantizer=None):
+    # TransformerEngine's swiglu requires a 2-D input on some backends (e.g. musa),
+    # while FlagGems supports arbitrary shapes by flattening to 2-D internally.
+    # Collapse the leading dims before calling tex.swiglu and restore the output
+    # shape so the comparison stays valid across vendors.
+    shape = input_tensor.shape
+    last_dim = shape[-1]
+    ref_input = input_tensor.view(-1, last_dim)
+    out = TE_OP(ref_input, quantizer)
+    return out.view(*shape[:-1], last_dim // 2)
+
+
 @pytest.mark.swiglu
 @pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine not installed")
 @pytest.mark.skipif(TE_OP is None, reason="'swilu' not found in TransformerEngine")
@@ -27,7 +39,7 @@ except ImportError:
 def test_swiglu():
     bench = base.TexGluForwardBenchmark(
         op_name="swiglu",
-        torch_op=TE_OP,
+        torch_op=te_swiglu_op,
         gems_op=GEMS_OP,
         dtypes=consts.FLOAT_DTYPES,
     )

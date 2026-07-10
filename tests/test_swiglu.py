@@ -42,7 +42,15 @@ def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
 
     input_tensor = generate_input(shape, dtype, device)
 
-    te_forward = tex.swiglu(input_tensor, quantizer=None).to(device)
+    # TransformerEngine's swiglu requires a 2-D input on some backends (e.g. musa),
+    # while FlagGems supports arbitrary shapes by flattening to 2-D internally.
+    # Reshape the reference input to 2-D and restore the original output shape so
+    # the comparison stays valid across vendors.
+    last_dim = shape[-1]
+    H = last_dim // 2
+    ref_input = input_tensor.view(-1, last_dim)
+    te_forward = tex.swiglu(ref_input, quantizer=None).to(device)
+    te_forward = te_forward.view(*shape[:-1], H)
     te_forward = utils.to_reference(te_forward)
 
     with flag_gems.use_gems():
