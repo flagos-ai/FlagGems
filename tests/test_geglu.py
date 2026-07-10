@@ -20,8 +20,12 @@ except ImportError:
 def test_geglu(shape, dtype):
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_out = tex.geglu(input_tensor, None)
-    ref_out = utils.to_reference(ref_out)
+    H = shape[-1] // 2
+    M = input_tensor.numel() // (2 * H)
+    # TransformerEngine's geglu only accepts 2D input; flatten to 2D for the
+    # reference and reshape the result back to the expected output shape.
+    ref_out = tex.geglu(input_tensor.reshape(M, 2 * H), None)
+    ref_out = utils.to_reference(ref_out).reshape(*shape[:-1], H)
 
     with flag_gems.use_gems():
         res_out = flag_gems.geglu(input_tensor)
