@@ -4,6 +4,7 @@ import torch
 import flag_gems
 from flag_gems.ops.nonzero_static import nonzero_static
 
+from . import accuracy_utils as utils
 
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(),
@@ -11,6 +12,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+# Cover bool, integer, float, and bf16 dispatch without exploding runtime.
 DTYPES = [
     torch.bool,
     torch.int32,
@@ -18,6 +20,7 @@ DTYPES = [
     torch.float32,
     torch.bfloat16,
 ]
+COMPLEX_DTYPES = [torch.complex64, torch.complex128]  # complex dtype coverage
 
 CASES = [
     ((), torch.float32, 1.0, 4, -1),
@@ -99,18 +102,19 @@ def assert_nonzero_static_matches(shape, dtype, nnz_ratio, size, fill_value):
     x_gpu = x_cpu.cuda()
 
     actual = nonzero_static(x_gpu, size=size, fill_value=fill_value)
-    expected = expected_nonzero_static(x_cpu, size, fill_value).cuda()
+    ref_x = utils.to_reference(x_gpu)
+    expected = expected_nonzero_static(ref_x, size, fill_value)
 
     assert actual.dtype == torch.int64
     assert tuple(actual.shape) == (size, x_gpu.dim())
-    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    utils.gems_assert_equal(actual, expected)
 
     if hasattr(torch, "nonzero_static"):
         try:
             expected_cuda = torch.nonzero_static(
                 x_gpu, size=size, fill_value=fill_value
             )
-            torch.testing.assert_close(actual, expected_cuda, rtol=0, atol=0)
+            utils.gems_assert_equal(actual, expected_cuda)
         except RuntimeError:
             pass
 
@@ -134,7 +138,7 @@ def test_nonzero_static_targeted_paths(shape, dtype, nnz_ratio, size, fill_value
 
 
 @pytest.mark.nonzero_static
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
 def test_nonzero_static_complex(dtype):
     x_cpu = torch.zeros((3, 4), dtype=dtype)
     x_cpu[0, 1] = 1 + 0j
@@ -142,9 +146,10 @@ def test_nonzero_static_complex(dtype):
     x_gpu = x_cpu.cuda()
 
     actual = nonzero_static(x_gpu, size=4, fill_value=9)
-    expected = expected_nonzero_static(x_cpu, size=4, fill_value=9).cuda()
+    ref_x = utils.to_reference(x_gpu)
+    expected = expected_nonzero_static(ref_x, size=4, fill_value=9)
 
-    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    utils.gems_assert_equal(actual, expected)
 
 
 @pytest.mark.nonzero_static
@@ -153,13 +158,13 @@ def test_nonzero_static_non_contiguous_transpose():
     x_cpu_base = make_input((16, 32), torch.float32, 0.2, "cpu")
     x_gpu_base = x_cpu_base.cuda()
 
-    x_cpu_view = x_cpu_base.t()
     x_gpu_view = x_gpu_base.t()
 
     actual = nonzero_static(x_gpu_view, size=128, fill_value=-1)
-    expected = expected_nonzero_static(x_cpu_view, size=128, fill_value=-1).cuda()
+    ref_view = utils.to_reference(x_gpu_view)
+    expected = expected_nonzero_static(ref_view, size=128, fill_value=-1)
 
-    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    utils.gems_assert_equal(actual, expected)
 
 
 @pytest.mark.nonzero_static
@@ -168,13 +173,13 @@ def test_nonzero_static_non_contiguous_slice():
     x_cpu_base = make_input((16, 32), torch.float32, 0.2, "cpu")
     x_gpu_base = x_cpu_base.cuda()
 
-    x_cpu_view = x_cpu_base[:, ::2]
     x_gpu_view = x_gpu_base[:, ::2]
 
     actual = nonzero_static(x_gpu_view, size=128, fill_value=7)
-    expected = expected_nonzero_static(x_cpu_view, size=128, fill_value=7).cuda()
+    ref_view = utils.to_reference(x_gpu_view)
+    expected = expected_nonzero_static(ref_view, size=128, fill_value=7)
 
-    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    utils.gems_assert_equal(actual, expected)
 
 
 @pytest.mark.nonzero_static
@@ -219,5 +224,6 @@ def test_nonzero_static_registered_with_use_gems():
     with flag_gems.use_gems(include=["nonzero_static"]):
         actual = torch.nonzero_static(x_gpu, size=16, fill_value=-1)
 
-    expected = expected_nonzero_static(x_cpu, size=16, fill_value=-1).cuda()
-    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    ref_x = utils.to_reference(x_gpu)
+    expected = expected_nonzero_static(ref_x, size=16, fill_value=-1)
+    utils.gems_assert_equal(actual, expected)

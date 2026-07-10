@@ -7,8 +7,7 @@ from flag_gems.ops.nonzero_static import nonzero_static
 
 from . import base
 
-
-BENCH_DTYPES = [torch.float16, torch.bfloat16]
+BENCH_DTYPES = [torch.float16, torch.bfloat16]  # target report uses fp16 and bf16
 BENCH_CASES = [
     ((1024,), 0.0, 128, -1),
     ((1024,), 0.1, 128, -1),
