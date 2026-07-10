@@ -2,6 +2,10 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.fused.moe_align_block_size import (
+    moe_align_block_size_singleton,
+    moe_align_block_size_small_grouped,
+)
 
 from . import accuracy_utils as utils
 
@@ -315,3 +319,47 @@ def test_accuracy_moe_align_block_size_triton(num_experts, block_size, topk_ids_
     utils.gems_assert_close(
         num_tokens_post_pad, utils.to_reference(num_tokens_post_pad_ref), dtype=dtype
     )
+
+
+@pytest.mark.moe_align_block_size
+@pytest.mark.parametrize("fast_path", ["singleton", "small_grouped"])
+def test_accuracy_moe_align_block_size_fast_paths(fast_path):
+    device = flag_gems.device
+    block_size = 8
+    num_experts = 8
+
+    if fast_path == "singleton":
+        topk_ids = torch.tensor([[1, 3]], dtype=torch.int32, device=device)
+        actual = moe_align_block_size_singleton(topk_ids, block_size)
+    else:
+        topk_ids = torch.tensor(
+            [[0, 1], [1, 2], [2, 3], [3, 0]],
+            dtype=torch.int32,
+            device=device,
+        )
+        actual = moe_align_block_size_small_grouped(topk_ids, num_experts, block_size)
+
+    max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
+    expected = (
+        torch.empty(max_num_tokens_padded, dtype=torch.int32, device=device),
+        torch.empty(
+            max_num_tokens_padded // block_size,
+            dtype=torch.int32,
+            device=device,
+        ),
+        torch.empty(1, dtype=torch.int32, device=device),
+    )
+    torch_moe_align_block_size(
+        topk_ids,
+        num_experts,
+        block_size,
+        expected[0],
+        expected[1],
+        expected[2],
+    )
+
+    num_tokens = actual[2].item()
+    num_blocks = num_tokens // block_size
+    torch.testing.assert_close(actual[0][:num_tokens], expected[0][:num_tokens])
+    torch.testing.assert_close(actual[1][:num_blocks], expected[1][:num_blocks])
+    torch.testing.assert_close(actual[2], expected[2])

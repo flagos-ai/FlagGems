@@ -2,6 +2,11 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.fused.moe_align_block_size import (
+    moe_align_block_size,
+    moe_align_block_size_singleton,
+    moe_align_block_size_small_grouped,
+)
 
 from . import base
 
@@ -68,6 +73,34 @@ class MoeAlignBlockSizeBenchmark(base.GenericBenchmark4DOnly):
         return []
 
 
+def _fast_path_input_fn(shape, dtype, device):
+    fast_path, num_experts, block_size, num_tokens, topk = shape
+    num_routes = num_tokens * topk
+    topk_ids = (torch.arange(num_routes, device=device) % 4).to(torch.int32)
+    yield topk_ids.reshape(num_tokens, topk), num_experts, block_size, fast_path
+
+
+def _standard_align(topk_ids, num_experts, block_size, _fast_path):
+    return moe_align_block_size(topk_ids, block_size, num_experts)
+
+
+def _fast_align(topk_ids, num_experts, block_size, fast_path):
+    if fast_path == "singleton":
+        return moe_align_block_size_singleton(topk_ids, block_size)
+    return moe_align_block_size_small_grouped(topk_ids, num_experts, block_size)
+
+
+class MoeAlignBlockSizeFastPathBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            ("singleton", 8, 8, 1, 2),
+            ("small_grouped", 8, 8, 4, 2),
+        ]
+
+    def set_more_shapes(self):
+        return []
+
+
 @pytest.mark.moe_align_block_size_triton
 @pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
 def test_moe_align_block_size_triton():
@@ -82,4 +115,21 @@ def test_moe_align_block_size_triton():
     )
 
     bench.set_gems(gems_op)
+    bench.run()
+
+
+@pytest.mark.moe_align_block_size_triton
+def test_moe_align_block_size_fast_paths():
+    bench = MoeAlignBlockSizeFastPathBenchmark(
+        op_name="moe_align_block_size_fast_paths",
+        input_fn=_fast_path_input_fn,
+        torch_op=_standard_align,
+        dtypes=[torch.int32],
+    )
+    bench.set_gems(_fast_align)
+    print(
+        "Column mapping: Torch Latency = standard FlagGems alignment; "
+        "Gems Latency = singleton/small_grouped fast path "
+        "(selected path shown in Size Detail)"
+    )
     bench.run()
