@@ -81,3 +81,34 @@ def test_var_mean_dim_multi_tile(shape, dim, correction, keepdim, dtype):
 
     utils.gems_assert_close(res_var, ref_var, dtype)
     utils.gems_assert_close(res_mean, ref_mean, dtype)
+
+
+@pytest.mark.var_mean
+@pytest.mark.parametrize(
+    "shape, dim, kind",
+    [
+        ((4, 0, 5), 1, "empty_reduce"),  # N == 0: both outputs NaN
+        ((2, 0, 3), 1, "empty_reduce"),  # N == 0, keepdim variants below
+        ((0, 5), 1, "empty_spectator"),  # M == 0: empty output
+        ((5, 0), 0, "empty_spectator"),  # K == 0: empty output
+        ((0, 4, 5), 1, "empty_spectator"),
+        ((4, 5, 0), 1, "empty_spectator"),
+    ],
+)
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_var_mean_dim_empty(shape, dim, kind, keepdim, dtype):
+    # Exercise the empty-dimension branches of the single-dim path: an empty
+    # reduction dim (N == 0) returns NaN for both outputs, an empty spectator
+    # dim returns empty outputs. Both match torch.
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_var, ref_mean = torch.var_mean(ref_inp, dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_var, res_mean = torch.var_mean(inp, dim, keepdim=keepdim)
+
+    assert res_var.shape == ref_var.shape
+    assert res_mean.shape == ref_mean.shape
+    assert torch.equal(res_var.isnan(), ref_var.isnan())
+    assert torch.equal(res_mean.isnan(), ref_mean.isnan())

@@ -74,3 +74,27 @@ def test_count_nonzero_dim_multi_tile(shape, dim, dtype):
         res_out = torch.count_nonzero(inp, dim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.count_nonzero
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        ((4, 0, 5), 1),  # N == 0: count is 0
+        ((0, 5), 1),  # M == 0: empty output
+        ((5, 0), 0),  # K == 0: empty output
+        ((0, 4, 5), 1),
+        ((4, 5, 0), 1),
+    ],
+)
+def test_count_nonzero_dim_empty(shape, dim):
+    # Exercise the empty-dimension branches: an empty reduction dim counts to
+    # 0, an empty spectator dim gives an empty output. Both match torch.
+    inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_out = torch.count_nonzero(ref_inp, dim)
+    with flag_gems.use_gems():
+        res_out = torch.count_nonzero(inp, dim)
+
+    utils.gems_assert_equal(res_out, ref_out)
