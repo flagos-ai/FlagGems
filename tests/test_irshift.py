@@ -14,7 +14,7 @@ INPLACE_BITWISE_SHAPES = [
 ]
 
 
-@pytest.mark.irshift__
+@pytest.mark.irshift
 @pytest.mark.parametrize("shapes", INPLACE_BITWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES + [torch.uint8])
 def test_irshift(shapes, dtype):
