@@ -115,15 +115,30 @@ def _torch_ref_fn(
 def _gems_op(q, kc, vc, bt, slens, cu, scale, max_qlen):
     """FlagGems Triton kernel wrapper matching get_input_iter signature."""
     return unified_attention(
-        q, kc, vc, bt, slens, cu, max_qlen,
-        softmax_scale=scale, causal=True,
+        q,
+        kc,
+        vc,
+        bt,
+        slens,
+        cu,
+        max_qlen,
+        softmax_scale=scale,
+        causal=True,
     )
 
 
 def _torch_op(q, kc, vc, bt, slens, cu, scale, max_qlen):
     """PyTorch reference wrapper matching get_input_iter signature."""
     return _torch_ref_fn(
-        q, kc, vc, bt, slens, cu, scale, max_qlen, causal=True,
+        q,
+        kc,
+        vc,
+        bt,
+        slens,
+        cu,
+        scale,
+        max_qlen,
+        causal=True,
     )
 
 
