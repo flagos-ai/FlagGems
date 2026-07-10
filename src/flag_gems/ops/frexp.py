@@ -91,10 +91,8 @@ def frexp(A):
     # Therefore, it cannot correctly preserve the precision and range
     # of float64 inputs.
     if A.dtype == torch.float64:
-        raise RuntimeError(
-            "FlagGems frexp currently does not support float64"
-        )
-
+         raise RuntimeError("FlagGems frexp currently does not support float64")
+        
     # Preallocate the outputs explicitly because frexp returns tensors
     # with different dtypes:
     # - mantissa: same dtype as the input
