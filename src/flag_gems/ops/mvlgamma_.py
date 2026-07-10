@@ -10,7 +10,24 @@ from flag_gems.utils import tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
-_lgamma = tl_extra_shim.lgamma
+
+@triton.jit
+def _fallback_lgamma(x):
+    z = x - 1.0
+    a = 0.9999999999998099
+    a += 676.5203681218851 / (z + 1.0)
+    a += -1259.1392167224028 / (z + 2.0)
+    a += 771.3234287776531 / (z + 3.0)
+    a += -176.6150291621406 / (z + 4.0)
+    a += 12.507343278686905 / (z + 5.0)
+    a += -0.13857109526572012 / (z + 6.0)
+    a += 9.984369578019572e-6 / (z + 7.0)
+    a += 1.5056327351493116e-7 / (z + 8.0)
+    t = z + 7.5
+    return 0.9189385332046727 + (z + 0.5) * tl.log(t) - t + tl.log(a)
+
+
+_lgamma = getattr(tl_extra_shim, "lgamma", _fallback_lgamma)
 
 
 @triton.jit
