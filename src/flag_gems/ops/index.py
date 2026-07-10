@@ -649,9 +649,8 @@ def _are_adjacent_tensor_indices(tensor_index_dims):
 def _linearized_adjacent_index_configs(inp, indices):
     """Return configs for the adjacent-index path, or [] when not enabled.
 
-    The adjacent-index kernel is backend opt-in: a backend must provide
-    `index_adjacent` configs before this common path is selected. Backends
-    without those configs keep using the original generated index path below.
+    Backend-local `index_adjacent` configs are preferred. When they are absent,
+    FlagGems follows its default tuning-config fallback.
     """
 
     tensor_index_dims = _tensor_index_dims(indices)
@@ -786,8 +785,8 @@ def index(inp, indices):
         has_contiguous_subspace = True
 
     # Adjacent tensor indices on contiguous input, e.g. x[idx, :] or
-    # x[:, idx0, idx1, :], can be linearized in place. Only use this path when
-    # the current backend provides tuned configs for the new kernel.
+    # x[:, idx0, idx1, :], can be linearized in place when the resolved
+    # backend/default config pool contains a shape-compatible candidate.
     adjacent_index_configs = (
         _linearized_adjacent_index_configs(inp, indices)
         if has_contiguous_subspace
