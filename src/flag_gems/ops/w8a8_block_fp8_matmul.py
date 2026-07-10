@@ -60,7 +60,6 @@ def w8a8_block_fp8_matmul_kernel(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
-    SINGLE_K_BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
@@ -83,28 +82,17 @@ def w8a8_block_fp8_matmul_kernel(
     Bs_ptrs = Bs + offs_bsn * stride_Bs_n
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    if SINGLE_K_BLOCK:
-        a = tl.load(a_ptrs, mask=offs_k[None, :] < K, other=0.0)
-        b = tl.load(b_ptrs, mask=offs_k[:, None] < K, other=0.0)
-        a_s = tl.load(As_ptrs)
-        b_s = tl.load(Bs_ptrs)
-        accumulator += tl.dot(a, b) * a_s[:, None] * b_s[None, :]
-    else:
-        for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-            a = tl.load(
-                a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0
-            )
-            b = tl.load(
-                b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0
-            )
+    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
+        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
 
-            k_start = k * BLOCK_SIZE_K
-            offs_ks = k_start // group_k
-            a_s = tl.load(As_ptrs + offs_ks * stride_As_k)
-            b_s = tl.load(Bs_ptrs + offs_ks * stride_Bs_k)
-            accumulator += tl.dot(a, b) * a_s[:, None] * b_s[None, :]
-            a_ptrs += BLOCK_SIZE_K * stride_ak
-            b_ptrs += BLOCK_SIZE_K * stride_bk
+        k_start = k * BLOCK_SIZE_K
+        offs_ks = k_start // group_k
+        a_s = tl.load(As_ptrs + offs_ks * stride_As_k)
+        b_s = tl.load(Bs_ptrs + offs_ks * stride_Bs_k)
+        accumulator += tl.dot(a, b) * a_s[:, None] * b_s[None, :]
+        a_ptrs += BLOCK_SIZE_K * stride_ak
+        b_ptrs += BLOCK_SIZE_K * stride_bk
 
     if C.dtype.element_ty == tl.bfloat16:
         c = accumulator.to(tl.bfloat16)
@@ -175,8 +163,6 @@ def w8a8_block_fp8_matmul(
     Bs: torch.Tensor,
     block_size: List[int],
     output_dtype: torch.dtype = torch.bfloat16,
-    *,
-    out: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     assert len(block_size) == 2
     block_n, block_k = block_size[0], block_size[1]
@@ -192,13 +178,7 @@ def w8a8_block_fp8_matmul(
     assert triton.cdiv(K, block_k) == Bs.shape[1]
 
     C_shape = A.shape[:-1] + (N,)
-    if out is None:
-        C = A.new_empty(C_shape, dtype=output_dtype)
-    else:
-        assert out.shape == C_shape
-        assert out.device == A.device
-        assert out.dtype == output_dtype
-        C = out
+    C = A.new_empty(C_shape, dtype=output_dtype)
 
     configs = get_w8a8_block_fp8_configs(N, K, block_n, block_k)
     if configs:
@@ -232,7 +212,6 @@ def w8a8_block_fp8_matmul(
         As.stride(-1),
         Bs.stride(1),
         Bs.stride(0),
-        SINGLE_K_BLOCK=K <= config["BLOCK_SIZE_K"] and K <= block_k,
         **config,
     )
 

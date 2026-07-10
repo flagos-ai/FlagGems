@@ -11,6 +11,7 @@ from typing import Generator
 
 import pytest
 import torch
+import triton
 import yaml
 
 import flag_gems
@@ -122,7 +123,7 @@ class BlasBenchmark(Benchmark):
         total_flops = 0
         # shape(m,k)(k,n)
         # total_flops mxnx2k
-        if self.op_name == "mm":
+        if self.op_name in ("mm", "mm_w8a8"):
             total_flops = args[0].shape[0] * args[0].shape[1] * args[1].shape[1] * 2
         # shape(m,n)(n,p)
         # total_flops mxpx(2n+1)
@@ -411,13 +412,6 @@ W8A8_BLOCK_FP8_MNK_SHAPES = [
 W8A8_BLOCK_FP8_BLOCK_SIZE = [128, 128]
 
 
-def vllm_w8a8_triton_block_scaled_mm_ignore_out(
-    A, B, As, Bs, block_size, output_dtype, *, out=None
-):
-    del out
-    return vllm_w8a8_triton_block_scaled_mm(A, B, As, Bs, block_size, output_dtype)
-
-
 def rand_fp8_tensor(shape, device, dtype):
     finfo = torch.finfo(dtype)
     return (
@@ -468,13 +462,7 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
                 + 0.005
             ).contiguous()
 
-            output = torch.empty((m, n), dtype=torch.float16, device=self.device)
-
-            yield A, B, As, Bs, self.block_size[:], torch.float16, {"out": output}
-
-    def record_shapes(self, *args, **kwargs):
-        kwargs.pop("out", None)
-        return super().record_shapes(*args, **kwargs)
+            yield A, B, As, Bs, self.block_size[:], torch.float16
 
     def get_tflops(self, op, *args, **kwargs):
         A, B = args[0], args[1]
@@ -739,6 +727,7 @@ class ParallelBenchmarkMixin:
 
             if self.op_name in {
                 "mm",
+                "mm_w8a8",
                 "addmm",
                 "bmm",
                 "baddbmm",
@@ -759,6 +748,7 @@ class ParallelBenchmarkMixin:
 
                 if self.op_name in {
                     "mm",
+                    "mm_w8a8",
                     "bmm",
                     "w8a8_block_fp8_matmul",
                     "router_gemm",
@@ -1007,6 +997,74 @@ class ParallelBlasBenchmark(ParallelBenchmarkMixin, BlasBenchmark):
         return 1
 
 
+
+_MM_W8A8_OUT_CACHE = {}
+_MM_W8A8_OUT_CACHE_MAX_ENTRIES = int(
+    os.environ.get("FLAGGEMS_BENCH_MM_W8A8_OUT_CACHE_MAX", "8")
+)
+
+
+def _mm_w8a8_output_dtype(a):
+    output_dtype = os.environ.get("FLAGGEMS_MM_W8A8_OUTPUT_DTYPE", "bf16").lower()
+    if output_dtype in ("bf16", "bfloat16"):
+        return torch.bfloat16
+    if output_dtype in ("fp8", "float8"):
+        fp8_e4m3 = getattr(torch, "float8_e4m3fn", None)
+        fp8_e5m2 = getattr(torch, "float8_e5m2", None)
+        if a.dtype in (fp8_e4m3, fp8_e5m2):
+            return a.dtype
+        if fp8_e4m3 is not None:
+            return fp8_e4m3
+    return torch.bfloat16
+
+
+def _mm_w8a8_out_cached(a, b):
+    out_dtype = _mm_w8a8_output_dtype(a)
+    device_index = a.device.index if a.device.index is not None else -1
+    key = (device_index, a.shape[0], b.shape[1], out_dtype)
+    out = _MM_W8A8_OUT_CACHE.get(key)
+    if out is None or out.device != a.device:
+        out = torch.empty((a.shape[0], b.shape[1]), device=a.device, dtype=out_dtype)
+        _MM_W8A8_OUT_CACHE[key] = out
+        while len(_MM_W8A8_OUT_CACHE) > _MM_W8A8_OUT_CACHE_MAX_ENTRIES:
+            _MM_W8A8_OUT_CACHE.pop(next(iter(_MM_W8A8_OUT_CACHE)))
+    else:
+        _MM_W8A8_OUT_CACHE.pop(key)
+        _MM_W8A8_OUT_CACHE[key] = out
+    return flag_gems.mm_w8a8_out(a, b, out=out)
+
+
+class ParallelMmW8A8Benchmark(ParallelBlasBenchmark):
+    SHAPE_CONFIG_KEYS = ("mm",)
+
+    def get_latency(self, op, *args, **kwargs):
+        if op is not self.torch_op:
+            # Populate prequantization, descriptor, output, and autotune caches
+            # before CUDA Graph capture so replay measures the FP8 GEMM only.
+            for _ in range(2):
+                op(*args, **kwargs)
+            torch.cuda.synchronize()
+        return triton.testing.do_bench_cudagraph(
+            lambda: op(*args, **kwargs),
+            rep=Config.repetition,
+            return_mode="median",
+        )
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        if not shape_file_path or not os.path.isfile(shape_file_path):
+            return
+        with open(shape_file_path, "r", encoding="utf-8") as shape_file:
+            yaml_config = yaml.safe_load(shape_file) or {}
+        if "mm" not in yaml_config:
+            return
+        self.shapes = [
+            tuple(shape)
+            for shape in yaml_config["mm"].get("shapes", self.DEFAULT_SHAPES)
+        ]
+        self.shape_desc = yaml_config["mm"].get("shape_desc", self.shape_desc)
+
+
 class ParallelBaddbmmBenchmark(ParallelBenchmarkMixin, BaddbmmBenchmark):
     def get_parallel_metric_group_size(self, shape):
         if Config.bench_level == BenchLevel.COMPREHENSIVE:
@@ -1130,9 +1188,7 @@ class ParallelW8A8BlockFP8MatmulBenchmark(
         return BlasBenchmark.set_more_shapes(self)
 
     def should_forward_parallel_dtype(self, dtype_name):
-        if Config.user_desired_dtypes is None and dtype_name.startswith(
-            ("fp8", "float8")
-        ):
+        if Config.user_desired_dtypes is None and dtype_name.startswith("fp8"):
             return False
         return True
 
@@ -1239,9 +1295,6 @@ class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark)
                 is_sfa=False,
             ).squeeze(0)
             output = torch.empty((m, n), dtype=self.output_dtype, device=self.device)
-            gems_output = torch.empty(
-                (m, n), dtype=self.output_dtype, device=self.device
-            )
 
             yield (
                 A,
@@ -1256,7 +1309,6 @@ class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark)
                 Bs,
                 self.block_size[:],
                 self.output_dtype,
-                {"out": gems_output},
             )
 
     def _build_metric_from_input(self, input_item):
@@ -1425,6 +1477,13 @@ class ParallelSparseAttentionBenchmark(ParallelBenchmarkMixin, Benchmark):
             marks=pytest.mark.mm,
         ),
         pytest.param(
+            "mm_w8a8",
+            torch.Tensor.mm,
+            mm_input_fn,
+            ParallelMmW8A8Benchmark,
+            marks=pytest.mark.mm_w8a8,
+        ),
+        pytest.param(
             "baddbmm",
             torch.baddbmm,
             baddbmm_input_fn,
@@ -1440,6 +1499,8 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
         torch_op=torch_op,
         dtypes=FLOAT_DTYPES,
     )
+    if op_name == "mm_w8a8":
+        bench.set_gems(_mm_w8a8_out_cached)
     bench.run()
 
 
@@ -1454,7 +1515,7 @@ def test_perf_w8a8_block_fp8_matmul():
 
     bench = ParallelW8A8BlockFP8MatmulBenchmark(
         op_name="w8a8_block_fp8_matmul",
-        torch_op=vllm_w8a8_triton_block_scaled_mm_ignore_out,
+        torch_op=vllm_w8a8_triton_block_scaled_mm,
         dtypes=consts.FP8_DTYPES,
     )
     bench.set_gems(flag_gems.w8a8_block_fp8_matmul)
