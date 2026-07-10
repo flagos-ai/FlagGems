@@ -47,7 +47,7 @@ def moe_align_block_size_stage1_tle(
 
     offsets_expert = pid * block_size_expert + tl.arange(0, block_size_expert)
     mask_expert = offsets_expert < numel_expert_ids
-    tl.store(expert_ids_ptr + offsets_expert, 0, mask=mask_expert)
+    tl.store(expert_ids_ptr + offsets_expert, -1, mask=mask_expert)
 
     start_idx = pid * tokens_per_thread
     off_c = (pid + 1) * num_experts
@@ -102,7 +102,7 @@ def moe_align_block_size_stage1(
 
     offsets_expert = pid * block_size_expert + tl.arange(0, block_size_expert)
     mask_expert = offsets_expert < numel_expert_ids
-    tl.store(expert_ids_ptr + offsets_expert, 0, mask=mask_expert)
+    tl.store(expert_ids_ptr + offsets_expert, -1, mask=mask_expert)
 
     start_idx = pid * tokens_per_thread
 
