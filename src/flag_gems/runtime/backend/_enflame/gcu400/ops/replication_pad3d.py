@@ -83,7 +83,7 @@ def replicationpad3d_kernel(
 
 
 def replication_pad3d(x, padding):
-    logger.debug("GEMS Replication_Pad3d")
+    logger.debug("GEMS_ENFLAME Replication_Pad3d")
     if isinstance(padding, int):
         pad_l = pad_r = pad_t = pad_b = pad_f = pad_ba = padding
     else:

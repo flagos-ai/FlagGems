@@ -135,7 +135,7 @@ def linear(input, weight, bias=None):
     Returns:
         Output tensor of shape (*, out_features)
     """
-    logger.debug("GEMS LINEAR")
+    logger.debug("GEMS_ENFLAME LINEAR")
 
     input_dim = input.dim()
     if input_dim == 1:

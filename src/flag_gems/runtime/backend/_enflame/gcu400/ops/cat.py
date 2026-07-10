@@ -251,7 +251,7 @@ def cat_out(
     *,
     out: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS CAT_OUT")
+    logger.debug("GEMS_ENFLAME CAT_OUT")
     A = list(A)
     if _should_use_uint8_view_path(A):
         mode, payload, original_dtype = _cat_build_working_list_uint8_view(A, dim)
@@ -307,7 +307,7 @@ def cat_out(
 def cat(
     A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
-    logger.debug("GEMS CAT")
+    logger.debug("GEMS_ENFLAME CAT")
     A = list(A)
     if _should_use_uint8_view_path(A):
         mode, payload, original_dtype = _cat_build_working_list_uint8_view(A, dim)
