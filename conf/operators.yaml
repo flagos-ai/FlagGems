@@ -3787,7 +3787,7 @@ ops:
   - id: irshift
     description: Triton kernel implementation for __irshift__.
     for:
-      - __irshift__
+      - __irshift__.Tensor
     labels:
       - aten
       - KernelGen
