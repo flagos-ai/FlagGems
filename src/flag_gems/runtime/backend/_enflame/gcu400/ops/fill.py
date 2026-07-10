@@ -61,7 +61,7 @@ def fill_tensor_(self, value):
 
 
 def fill_scalar_(self, value=0):
-    logger.debug("GEMS_ENFLAME FILL_SCALAR_")
+    logging.debug("GEMS_ENFLAME FILL_SCALAR_")
     with torch_device_fn.device(self.device):
         fill_scalar_func(self, value, out0=self)
     return self

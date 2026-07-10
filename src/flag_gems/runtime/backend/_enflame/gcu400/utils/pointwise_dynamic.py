@@ -839,7 +839,7 @@ class WrapperGenerator:
             code.writeline("FlagOfNotUseDMA = False")
             for i in range(schema.num_input_tensors()):
                 code.writeline(f"in{i}_strides = in{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s < 0 for s in in{i}_strides)")
+                code.writeline(f"FlagOfNotUseDMA |= any(s <= 0 for s in in{i}_strides)")
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "
@@ -858,7 +858,9 @@ class WrapperGenerator:
                     code.writeline(f"in{i}_stride_order = (0,)")
             for i in range(schema.num_output_tensors()):
                 code.writeline(f"out{i}_strides = out{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s < 0 for s in out{i}_strides)")
+                code.writeline(
+                    f"FlagOfNotUseDMA |= any(s <= 0 for s in out{i}_strides)"
+                )
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "
@@ -883,7 +885,7 @@ class WrapperGenerator:
                 code.writeline("if FlagOfNotUseDMA:")
                 with code.indent():
                     code.writeline(
-                        f"tile_sizes = heuristics_for_tile_size({max_tile_size // 8}, *shape)"
+                        f"tile_sizes = heuristics_for_tile_size_notDMA({max_tile_size // 8}, *shape)"
                     )
                 code.writeline("else:")
                 with code.indent():
@@ -925,7 +927,7 @@ class WrapperGenerator:
             code.writeline("FlagOfNotUseDMA = False")
             for i in range(schema.num_input_tensors()):
                 code.writeline(f"in{i}_strides = in{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s < 0 for s in in{i}_strides)")
+                code.writeline(f"FlagOfNotUseDMA |= any(s <= 0 for s in in{i}_strides)")
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "
@@ -938,7 +940,9 @@ class WrapperGenerator:
                 )
             for i in range(schema.num_output_tensors()):
                 code.writeline(f"out{i}_strides = out{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s < 0 for s in out{i}_strides)")
+                code.writeline(
+                    f"FlagOfNotUseDMA |= any(s <= 0 for s in out{i}_strides)"
+                )
                 code.writeline(
                     f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all("
                     f"(max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) "
@@ -955,7 +959,7 @@ class WrapperGenerator:
                 code.writeline("if FlagOfNotUseDMA:")
                 with code.indent():
                     code.writeline(
-                        f"tile_sizes = heuristics_for_tile_size({max_tile_size // 8}, num_tasks)"
+                        f"tile_sizes = heuristics_for_tile_size_notDMA({max_tile_size // 8}, num_tasks)"
                     )
                 code.writeline("else:")
                 with code.indent():
@@ -1218,6 +1222,7 @@ class ModuleGenerator:
             "from flag_gems.runtime.backend._enflame.gcu400.utils.shape_utils import ("
         )
         code.writeline("    heuristics_for_tile_size,")
+        code.writeline("    heuristics_for_tile_size_notDMA,")
         code.writeline("    heuristics_for_num_warps,")
         code.writeline(")")
 

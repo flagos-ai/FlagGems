@@ -387,7 +387,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
 
     if len(dim) == 1:
         inp = x
-        mean_dim_idx = dim[0]
+        mean_dim_idx = dim[0] % inp.ndim
         shape = list(x.shape)
         if shape[mean_dim_idx] == 1:
             if not keepdim:

@@ -411,6 +411,10 @@ def scan_then_fan(inp, out, A, B, C, dtype):
 
 def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    if inp.dtype == torch.bool:
+        inp = inp.to(torch.int32)
+        if dtype is None:
+            dtype = torch.int32
     if inp.dtype == torch.int64:
         inp = inp.to(torch.int32)
     if dtype == torch.int64:
