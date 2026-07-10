@@ -47,11 +47,19 @@ def bincount_weighted_input_fn(shape, dtype, device):
 
 @pytest.mark.bincount
 def test_bincount_weighted():
+    # Native torch.bincount on mthreads does not upcast fp16/bfloat16 weights
+    # (raises "expected scalar type Float but found Half"), so the baseline
+    # can only be measured for float32 on this backend.
+    if flag_gems.vendor_name == "mthreads":
+        dtypes = [torch.float32]
+    else:
+        dtypes = consts.FLOAT_DTYPES
+
     bench = base.GenericBenchmark(
         input_fn=bincount_weighted_input_fn,
         op_name="bincount_weighted",
         torch_op=torch.bincount,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=dtypes,
     )
     bench.set_gems(flag_gems.bincount)
     bench.run()
