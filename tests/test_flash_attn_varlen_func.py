@@ -320,7 +320,6 @@ def test_flash_attn_varlen_func(
 
 
 @pytest.mark.flash_attn_varlen_func
-@pytest.mark.flash_attn_varlen_func_noncontig
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2815: Not supported")
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2816: Not working")
 @pytest.mark.parametrize("dtype", NONCONTIG_DTYPES)
