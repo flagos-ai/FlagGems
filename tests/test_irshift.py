@@ -43,7 +43,7 @@ def test_irshift(shapes, dtype):
 
 @pytest.mark.irshift
 @pytest.mark.parametrize("dtype", [torch.int8, torch.int16, torch.int32, torch.int64])
-def test_irshift__edge_cases(dtype):
+def test_irshift_edge_cases(dtype):
     # Signed values cover negative-number right shift behavior.
     # Shift values cover zero shift and relatively large shifts.
     res_a = torch.tensor(
