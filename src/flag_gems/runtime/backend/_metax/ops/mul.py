@@ -84,12 +84,12 @@ def mul_scalar_kernel(
 @libentry()
 @libtuner(
     configs=mul_broadcast_get_configs(),
-    key=["n_elements", "dtype"],
-    strategy=["align32", "default"],
+    key=["n_elements", "n_cols", "dtype"],
+    strategy=["align32", "default", "default"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",
-    flagtune_expand_op_name="mul",
+    flagtune_expand_op_name="mul_broadcast_2d",
 )
 @triton.jit
 def mul_broadcast_2d_kernel(
