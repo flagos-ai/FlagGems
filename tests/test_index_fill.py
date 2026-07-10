@@ -1,3 +1,7 @@
+import os
+import subprocess
+import sys
+
 import pytest
 import torch
 
@@ -169,6 +173,29 @@ def test_index_fill_noncontiguous_view():
     utils.gems_assert_equal(res_base, ref_base)
 
 
+@pytest.mark.index_fill
+@pytest.mark.index_fill_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_index_fill_contiguous_inner3_fast_path(dtype):
+    inp = _make_input((4, 17, 3), dtype)
+    index = torch.tensor([0, 1, 8, -1], dtype=torch.long, device=flag_gems.device)
+    value = _scalar_value(dtype)
+
+    ref_inp = utils.to_reference(inp, False)
+    ref_index = utils.to_reference(index, False)
+    ref_out = ref_inp.index_fill(1, ref_index, value)
+
+    with flag_gems.use_gems(include=INDEX_FILL_OPS):
+        res_out = inp.index_fill(1, index, value)
+        inplace = inp.clone()
+        res_inplace = inplace.index_fill_(1, index, value)
+
+    assert res_out is not inp
+    assert res_inplace is inplace
+    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(inplace, ref_out)
+
+
 @pytest.mark.index_fill_out
 @pytest.mark.parametrize("dtype", INDEX_FILL_DTYPES)
 def test_index_fill_scalar_out(dtype):
@@ -233,6 +260,70 @@ def test_index_fill_invalid_index_ndim():
         IndexError, match="Index is supposed to be a vector"
     ):
         inp.index_fill_(1, index, -1.0)
+
+
+@pytest.mark.index_fill
+@pytest.mark.index_fill_
+@pytest.mark.skipif(
+    flag_gems.device != "cuda", reason="CUDA device assert behavior is backend-specific"
+)
+@pytest.mark.parametrize("op_name", ("index_fill", "index_fill_"))
+@pytest.mark.parametrize(
+    "execution_path", ("cpp", "python_contiguous", "python_strided")
+)
+def test_index_fill_out_of_range_index_device_assert(op_name, execution_path):
+    if execution_path == "python_strided":
+        input_setup = (
+            "inp = torch.zeros((3, 4), device=flag_gems.device).t()\n"
+            "dim = 1\n"
+            "index_value = 3"
+        )
+    else:
+        input_setup = (
+            "inp = torch.zeros((3, 4), device=flag_gems.device)\n"
+            "dim = 1\n"
+            "index_value = 4"
+        )
+    operation = (
+        "inp = inp.index_fill(dim, index, 1.0)"
+        if op_name == "index_fill"
+        else "inp.index_fill_(dim, index, 1.0)"
+    )
+
+    child_code = f"""
+import torch
+import flag_gems
+from flag_gems.runtime import torch_device_fn
+
+{input_setup}
+index = torch.tensor([index_value], dtype=torch.long, device=flag_gems.device)
+ops = {INDEX_FILL_OPS!r}
+try:
+    with flag_gems.use_gems(include=ops):
+        {operation}
+        torch_device_fn.synchronize()
+except Exception as exc:
+    print(type(exc).__name__)
+    print(exc)
+    raise SystemExit(0)
+raise SystemExit(1)
+"""
+    env = os.environ.copy()
+    env.pop("FLAG_GEMS_INDEX_FILL_BOUNDS_CHECK", None)
+    if execution_path != "cpp":
+        env["FLAG_GEMS_INDEX_FILL_CPP_LAUNCHER"] = "0"
+
+    result = subprocess.run(
+        [sys.executable, "-c", child_code],
+        cwd=os.path.dirname(os.path.dirname(__file__)),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "device-side assert" in output or "index out of bounds" in output
 
 
 @pytest.mark.index_fill_
