@@ -18,7 +18,7 @@ export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 export LIBRARY_PATH="${LIBRARY_PATH:-}"
 
 case $BACKEND in
-  ascend-cann850|ascend-cann900)
+  ascend|ascend-cann850|ascend-cann900)
     # This script is provided by the Huawei Ascend CANN toolkit installation.
     if [ -f /usr/local/Ascend/ascend-toolkit/set_env.sh ]; then
       source /usr/local/Ascend/ascend-toolkit/set_env.sh
@@ -61,7 +61,7 @@ case $BACKEND in
     export PATH=/usr/local/cuda/bin:$PATH
     export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
     ;;
-  mthreads)
+  mthreads|mthreads-436|mthreads-520)
     export MUSA_HOME=/usr/local/musa
     export PATH=$MUSA_HOME/bin:$PATH
     export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH
