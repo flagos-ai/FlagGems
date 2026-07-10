@@ -102,13 +102,11 @@ def test_var_mean_dim_empty(shape, dim, kind, keepdim, dtype):
     # reduction dim (N == 0) returns NaN for both outputs, an empty spectator
     # dim returns empty outputs. Both match torch.
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = utils.to_reference(inp, False)
 
     ref_var, ref_mean = torch.var_mean(ref_inp, dim, keepdim=keepdim)
     with flag_gems.use_gems():
         res_var, res_mean = torch.var_mean(inp, dim, keepdim=keepdim)
 
-    assert res_var.shape == ref_var.shape
-    assert res_mean.shape == ref_mean.shape
-    assert torch.equal(res_var.isnan(), ref_var.isnan())
-    assert torch.equal(res_mean.isnan(), ref_mean.isnan())
+    utils.gems_assert_equal(res_var, ref_var, equal_nan=True)
+    utils.gems_assert_equal(res_mean, ref_mean, equal_nan=True)
