@@ -16,6 +16,7 @@ export C_INCLUDE_PATH="${C_INCLUDE_PATH:-}"
 export CPLUS_INCLUDE_PATH="${CPLUS_INCLUDE_PATH:-}"
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 export LIBRARY_PATH="${LIBRARY_PATH:-}"
+export PYTHONPATH="${PYTHONPATH:-}"
 
 case $BACKEND in
   ascend|ascend-cann850|ascend-cann900)
