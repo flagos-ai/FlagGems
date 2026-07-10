@@ -8,8 +8,6 @@ import triton
 from . import backend, common
 from .backend.device_finder import DeviceDetector
 
-_TRITON_CONFIG_PARAMETERS = inspect.signature(triton.Config).parameters
-
 
 class TunedConfigLoader(object):
     _instance = None
@@ -81,11 +79,11 @@ class TunedConfigLoader(object):
         }
         if (
             self.device.vendor_name == "hygon"
-            and "num_ldmatrixes" in _TRITON_CONFIG_PARAMETERS
+            and "num_ldmatrixes" in inspect.signature(triton.Config).parameters
         ):
             kwargs["num_ldmatrixes"] = current_config["num_ldmatrixes"]
         if (
-            "maxnreg" in _TRITON_CONFIG_PARAMETERS
+            "maxnreg" in inspect.signature(triton.Config).parameters
             and single_config.get("maxnreg") is not None
         ):
             kwargs["maxnreg"] = single_config["maxnreg"]
@@ -272,7 +270,7 @@ class TunedConfigLoader(object):
                     **(
                         {"maxnreg": maxnreg}
                         if maxnreg is not None
-                        and "maxnreg" in _TRITON_CONFIG_PARAMETERS
+                        and "maxnreg" in inspect.signature(triton.Config).parameters
                         else {}
                     ),
                 )
@@ -598,7 +596,7 @@ class TunedConfigLoader(object):
                     "num_ctas": cur_config["num_ctas"],
                 }
                 if (
-                    "maxnreg" in _TRITON_CONFIG_PARAMETERS
+                    "maxnreg" in inspect.signature(triton.Config).parameters
                     and cur_config.get("maxnreg") is not None
                 ):
                     kwargs["maxnreg"] = cur_config["maxnreg"]

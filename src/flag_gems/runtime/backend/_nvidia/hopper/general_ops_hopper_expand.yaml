@@ -157,6 +157,7 @@ fused_marlin_moe_mxfp4:
         GROUP_SIZE_M: group_size_m
       num_stages: stages
       num_warps: warps
+      maxnreg: maxnreg
     block_size_n:
       - 64
       - 128
@@ -175,6 +176,10 @@ fused_marlin_moe_mxfp4:
       - 2
       - 4
       - 8
+    maxnreg:
+      - 64
+      - 96
+      - 255
   - strategy:
       N: align32
       K: align32
