@@ -1,5 +1,5 @@
 from flag_gems.ops.__ilshift__ import __ilshift__
-from flag_gems.ops._add_relu import _add_relu, add_relu
+from flag_gems.ops._add_relu import _add_relu
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
@@ -585,7 +585,6 @@ __all__ = [
     "adaptive_max_pool3d_backward",
     "add",
     "add_",
-    "add_relu",
     "addcdiv",
     "addcdiv_",
     "addcdiv_out",

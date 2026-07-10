@@ -30,6 +30,3 @@ def _add_relu(A, B):
         return add_relu_func(A, B)
     else:
         return torch.tensor(max(0, A + B))
-
-
-add_relu = _add_relu
