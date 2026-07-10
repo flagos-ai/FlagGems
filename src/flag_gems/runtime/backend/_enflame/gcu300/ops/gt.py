@@ -50,5 +50,4 @@ def gt_scalar(A, B):
     if isinstance(B, torch.Tensor) and B.dtype == torch.int64:
         B = B.to(torch.int32)
     logger.debug("GEMS_ENFLAME GT_SCALAR")
-    res = gt_func_scalar(A, B)
-    return res
+    return gt_func_scalar(A, B)

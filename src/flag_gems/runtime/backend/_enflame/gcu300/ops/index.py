@@ -432,7 +432,6 @@ def index(inp, indices):
 
     # Step 7: Handle empty tensor case
     if inp.numel() == 0:
-        print(f"222out.stride:{out.stride()}")
         return out.contiguous()
 
     # Step 8: Extract only tensor indices for kernel
