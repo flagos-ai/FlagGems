@@ -17,7 +17,7 @@ INPLACE_BITWISE_SHAPES = [
 @pytest.mark.irshift__
 @pytest.mark.parametrize("shapes", INPLACE_BITWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES + [torch.uint8])
-def test_irshift__(shapes, dtype):
+def test_irshift(shapes, dtype):
     shape_a, shape_b = shapes
 
     res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(
