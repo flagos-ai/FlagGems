@@ -112,6 +112,21 @@ def _torch_ref_fn(
     return torch.cat(outputs, dim=0)
 
 
+def _gems_op(q, kc, vc, bt, slens, cu, scale, max_qlen):
+    """FlagGems Triton kernel wrapper matching get_input_iter signature."""
+    return unified_attention(
+        q, kc, vc, bt, slens, cu, max_qlen,
+        softmax_scale=scale, causal=True,
+    )
+
+
+def _torch_op(q, kc, vc, bt, slens, cu, scale, max_qlen):
+    """PyTorch reference wrapper matching get_input_iter signature."""
+    return _torch_ref_fn(
+        q, kc, vc, bt, slens, cu, scale, max_qlen, causal=True,
+    )
+
+
 class UnifiedAttentionBenchmark(base.Benchmark):
     """Benchmark for unified paged attention kernel."""
 
@@ -126,49 +141,15 @@ class UnifiedAttentionBenchmark(base.Benchmark):
             q, kc, vc, bt, slens, cu, scale, max_qlen = _build_inputs(
                 num_seqs, qlen, kvlen, n_qh, n_kvh, hd, dtype
             )
-            # Yield a tuple that matches what gems_op and torch_op expect.
-            # Both ops take the same args so we pack them together.
             yield (q, kc, vc, bt, slens, cu, scale, max_qlen)
-
-    def get_gems_op(self):
-        def gems_fn(q, kc, vc, bt, slens, cu, scale, max_qlen):
-            return unified_attention(
-                q,
-                kc,
-                vc,
-                bt,
-                slens,
-                cu,
-                max_qlen,
-                softmax_scale=scale,
-                causal=True,
-            )
-
-        return gems_fn
-
-    def get_torch_op(self):
-        def torch_fn(q, kc, vc, bt, slens, cu, scale, max_qlen):
-            return _torch_ref_fn(
-                q,
-                kc,
-                vc,
-                bt,
-                slens,
-                cu,
-                scale,
-                max_qlen,
-                causal=True,
-            )
-
-        return torch_fn
 
 
 @pytest.mark.unified_attention
 def test_unified_attention():
     bench = UnifiedAttentionBenchmark(
         op_name="unified_attention",
-        torch_op=None,  # provided via get_torch_op()
-        gems_op=None,  # provided via get_gems_op()
+        torch_op=_torch_op,
+        gems_op=_gems_op,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
