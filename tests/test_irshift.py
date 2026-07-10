@@ -41,7 +41,7 @@ def test_irshift(shapes, dtype):
     utils.gems_assert_close(res_a, ref_a, dtype)
 
 
-@pytest.mark.irshift__
+@pytest.mark.irshift
 @pytest.mark.parametrize("dtype", [torch.int8, torch.int16, torch.int32, torch.int64])
 def test_irshift__edge_cases(dtype):
     # Signed values cover negative-number right shift behavior.
