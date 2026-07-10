@@ -5285,7 +5285,7 @@ ops:
     stages:
       - stable: '2.0'
   - id: mvlgamma_
-    description: Triton kernel implementation for mvlgamma_.
+    description: Computes the multivariate log-gamma function in-place for each element of the input tensor.
     for:
       - mvlgamma_
     labels:
