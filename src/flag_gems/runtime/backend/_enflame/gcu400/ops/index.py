@@ -246,7 +246,7 @@ _index_func = IndexFunction()
 
 
 def index(inp, indices):
-    logger.debug("GEMS_ENFLAME INDEX GCU400")
+    logger.debug("GEMS_ENFLAME INDEX")
     original_indices = list(indices)
     indices = list(indices)
 
