@@ -62,6 +62,7 @@ from flag_gems.ops.arccos import arccos, arccos_
 from flag_gems.ops.arcsin import arcsin, arcsin_, arcsin_out
 from flag_gems.ops.arcsinh import arcsinh, arcsinh_out
 from flag_gems.ops.arcsinh_ import arcsinh_
+from flag_gems.ops.arctan_ import arctan, arctan_
 from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
@@ -109,6 +110,7 @@ from flag_gems.ops.bitwise_or import (
 from flag_gems.ops.bitwise_right_shift import bitwise_right_shift, bitwise_right_shift_
 from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.broadcast_to import broadcast_to
+from flag_gems.ops.bucketize import bucketize
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.cdist_backward import _cdist_backward
@@ -313,6 +315,7 @@ from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
+from flag_gems.ops.mish import mish, mish_
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
@@ -391,7 +394,8 @@ from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
 from flag_gems.ops.remainder import remainder, remainder_
-from flag_gems.ops.renorm import renorm, renorm_
+from flag_gems.ops.renorm import renorm
+from flag_gems.ops.renorm_ import renorm_
 from flag_gems.ops.repeat import repeat
 from flag_gems.ops.repeat_interleave import (
     repeat_interleave_self_int,
@@ -623,6 +627,8 @@ __all__ = [
     "arcsinh",
     "arcsinh_",
     "arcsinh_out",
+    "arctan",
+    "arctan_",
     "arctanh_",
     "argmax",
     "argmin",
@@ -669,6 +675,7 @@ __all__ = [
     "bmm",
     "bmm_out",
     "broadcast_to",
+    "bucketize",
     "cat",
     "cat_out",
     "cauchy",
@@ -930,6 +937,8 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
+    "mish",
+    "mish_",
     "mm",
     "mm_out",
     "mode",

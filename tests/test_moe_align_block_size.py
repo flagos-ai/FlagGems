@@ -63,7 +63,9 @@ def torch_moe_align_block_size(
 
     # max_num_blocks = (max_num_tokens_padded + block_size - 1) // block_size
     max_num_blocks = max_num_tokens_padded // block_size
-    expert_ids = torch.zeros(max_num_blocks, dtype=torch.int32, device=topk_ids.device)
+    expert_ids = torch.full(
+        (max_num_blocks,), -1, dtype=torch.int32, device=topk_ids.device
+    )
 
     current_pos = 0
     current_block = 0

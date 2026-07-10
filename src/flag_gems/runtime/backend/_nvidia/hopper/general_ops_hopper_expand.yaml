@@ -203,3 +203,41 @@ w8a8_block_fp8_bmm:
       M_aligned: align32
       N: align32
       K: align32
+compute_global_topk_indices_and_lens:
+  - config:
+    param_map:
+      META:
+        BLOCK: block
+        TPP: tpp
+      num_stages: stages
+      num_warps: warps
+    block:
+      - 16
+      - 32
+      - 64
+      - 128
+      - 256
+      - 512
+      - 1024
+    tpp:
+      - 1
+      - 2
+      - 4
+      - 8
+    stages:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+    warps:
+      - 1
+      - 2
+      - 4
+      - 8
+      - 16
+      - 32
+  - strategy:
+      topk: log
+      num_tokens: log

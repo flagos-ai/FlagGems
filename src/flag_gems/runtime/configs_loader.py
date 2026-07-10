@@ -278,6 +278,24 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name == "compute_global_topk_indices_and_lens":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK": block,
+                        "TPP": tpp,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block in ranges["BLOCK"]
+                for tpp in ranges["TPP"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+                if block * tpp <= 1024
+            ]
+
         if op_name == "w8a8_block_fp8_general":
             return [
                 triton.Config(
@@ -323,7 +341,7 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "mul":
+        if op_name in ("mul", "mul_broadcast_2d"):
             return [
                 triton.Config(
                     {"BLOCK_SIZE": block_size},
@@ -471,6 +489,11 @@ class TunedConfigLoader(object):
             "mul": self._build_single_expand_spec(
                 "mul", expand_yaml_path=self._get_expand_config_path("mul")
             ),
+            "mul_broadcast_2d": self._build_single_expand_spec(
+                "mul_broadcast_2d",
+                expand_yaml_path=self._get_expand_config_path("mul"),
+                yaml_op_name="mul",
+            ),
             "w8a8_block_fp8_general": self._build_single_expand_spec(
                 "w8a8_block_fp8_general"
             ),
@@ -486,6 +509,12 @@ class TunedConfigLoader(object):
             ),
             "mm_splitk": self._build_single_expand_spec("mm_splitk"),
             "sparse_attention": self._build_single_expand_spec("sparse_attention"),
+            "compute_global_topk_indices_and_lens": self._build_single_expand_spec(
+                "compute_global_topk_indices_and_lens",
+                expand_yaml_path=self._get_expand_config_path(
+                    "compute_global_topk_indices_and_lens"
+                ),
+            ),
         }
 
     def load_all(self):

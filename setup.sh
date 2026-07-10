@@ -57,6 +57,8 @@ else
     | tar xz -C "$HOME/.local/bin" 2>/dev/null \
     || { curl -LsSf https://astral.sh/uv/install.sh | sh; }
   export PATH="$HOME/.local/bin:$PATH"
+  # Persist PATH for subsequent GitHub Actions steps
+  [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   command -v uv &>/dev/null || { printf "uv installation"; fail; }
   printf "Installed $(uv --version)"
   ok
@@ -89,7 +91,7 @@ uv pip install -q \
   "pybind11==3.0.3" \
   "cmake>=3.20,<4" \
   "ninja==1.13.0" \
-  "PyYAML>=6.0" \
+  "PyYAML==6.0.3" \
   --index "${MIRROR}" \
   || fail
 ok
@@ -144,8 +146,12 @@ fi
 # ── Install FlagGems ──────────────────────────────────────────
 # Use --no-build-isolation so the build process reuses the build tools
 # already installed in the current venv.
-# Fetch tags for setuptools-scm version detection (shallow clones lack them).
-git fetch --tags --quiet 2>/dev/null || true
+# Fetch tags and deepen history for setuptools-scm version detection.
+# Shallow clones (CI default) lack tag reachability.
+git fetch --tags --unshallow --quiet 2>/dev/null \
+  || git fetch --tags --depth=500 --quiet 2>/dev/null \
+  || git fetch --tags --quiet 2>/dev/null \
+  || true
 printf "Installing FlagGems [${BACKEND}] ..."
 uv pip install --no-build-isolation ".[${BACKEND}]" \
   --default-index "${FLAGOS_PYPI}" \
@@ -222,4 +228,31 @@ printf "Installing test dependencies ..."
 uv pip install -q ".[test]" --index "${MIRROR}" || fail
 ok
 
+# ── Write env into .venv/bin/activate ────────────────────────
+# So that `source .venv/bin/activate` sets up the full environment.
+printf "Writing environment to .venv/bin/activate ..."
+python3 -c "
+import yaml
+
+cfg = yaml.safe_load(open('${BACKENDS_YAML}'))
+b = cfg['backends']['${BACKEND}']
+
+lines = []
+lines.append('')
+lines.append('# --- FlagGems environment (${BACKEND}) ---')
+
+for k, v in b.get('env', {}).items():
+    lines.append(f'export {k}={v}')
+
+for script in b.get('env_source', []):
+    lines.append(f'[ -f {script} ] && source {script}')
+
+lines.append('# --- end FlagGems environment ---')
+
+with open('.venv/bin/activate', 'a') as f:
+    f.write('\n'.join(lines) + '\n')
+" || fail
+ok
+
 printf "\n${GREEN}FlagGems setup complete for ${BACKEND}${NC}\n"
+printf "Run: ${GREEN}source .venv/bin/activate${NC}\n"
