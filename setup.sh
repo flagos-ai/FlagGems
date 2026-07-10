@@ -160,7 +160,7 @@ ok
 
 # ── Compiler selection ───────────────────────────────────────
 # COMPILER controls which Triton-compatible compiler to use:
-#   COMPILER=flagtree → use FlagTree (default when available)
+#   COMPILER=flagtree → use FlagTree (error if unavailable)
 #   COMPILER=triton   → use vendor Triton
 #   unset             → auto: FlagTree if available, otherwise Triton
 COMPILER="${COMPILER:-}"
@@ -169,28 +169,19 @@ if [ -z "${COMPILER}" ]; then
   if [ -n "${FLAGTREE_PKGS}" ]; then
     COMPILER=flagtree
   else
+    printf "WARNING: FlagTree is not available for ${BACKEND}, falling back to Triton.\n"
     COMPILER=triton
   fi
 fi
 
 if [ "${COMPILER}" = "flagtree" ]; then
   if [ -n "${FLAGTREE_PKGS}" ]; then
-    # FlagTree installs into site-packages/triton, so any existing
-    # triton-prefixed packages must be removed first.
-    TRITON_INSTALLED=$(uv pip list 2>/dev/null | awk '{print $1}' | grep -i '^triton' || true)
-    if [ -n "${TRITON_INSTALLED}" ]; then
-      printf "Replacing Triton with FlagTree ..."
-      # echo "${TRITON_INSTALLED}" | xargs uv pip uninstall -q 2>/dev/null || true
-      uv pip uninstall "${TRITON_INSTALLED}"
-      ok
-    fi
     printf "Installing FlagTree ..."
-    uv pip uninstall ${FLAGTREE_PKGS}
     uv pip install -q ${FLAGTREE_PKGS} --default-index "${FLAGOS_PYPI}" || fail
     ok
   else
-    printf "FlagTree not available for ${BACKEND}, using Triton\n"
-    COMPILER=triton
+    echo "Error: COMPILER=flagtree but FlagTree is not available for '${BACKEND}'."
+    exit 1
   fi
 fi
 
@@ -198,6 +189,9 @@ if [ "${COMPILER}" = "triton" ] && [ -n "${TRITON_PKGS}" ]; then
   printf "Installing Triton ..."
   uv pip install -q ${TRITON_PKGS} --default-index "${FLAGOS_PYPI}" || fail
   ok
+elif [ "${COMPILER}" = "triton" ] && [ -z "${TRITON_PKGS}" ]; then
+  echo "Error: COMPILER=triton but no triton packages configured for '${BACKEND}'"
+  exit 1
 fi
 
 if [ "${COMPILER}" != "flagtree" ] && [ "${COMPILER}" != "triton" ]; then
