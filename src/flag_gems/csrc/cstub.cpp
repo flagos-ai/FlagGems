@@ -1,3 +1,4 @@
+#include <c10/util/SmallVector.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include "torch/python.h"
@@ -110,6 +111,27 @@ PYBIND11_MODULE(c_operators, m) {
       [](const std::vector<at::Tensor> &tensors, int64_t dim) { return flag_gems::cat(tensors, dim); },
       py::arg("tensors"),
       py::arg("dim") = 0);
+  m.def(
+      "unsafe_split",
+      [](const at::Tensor &self, int64_t split_size, int64_t dim) {
+        return flag_gems::unsafe_split(self, c10::SymInt(split_size), dim);
+      },
+      py::arg("self"),
+      py::arg("split_size"),
+      py::arg("dim") = 0);
+  m.def(
+      "unsafe_split_with_sizes",
+      [](const at::Tensor &self, const std::vector<int64_t> &split_sizes, int64_t dim) {
+        c10::SmallVector<c10::SymInt, 8> sym_split_sizes;
+        sym_split_sizes.reserve(split_sizes.size());
+        for (const int64_t split_size : split_sizes) {
+          sym_split_sizes.emplace_back(split_size);
+        }
+        return flag_gems::unsafe_split_with_sizes(self, sym_split_sizes, dim);
+      },
+      py::arg("self"),
+      py::arg("split_sizes"),
+      py::arg("dim") = 0);
   m.def("bmm", &flag_gems::bmm);
   m.def("embedding", &flag_gems::embedding);
   m.def("embedding_backward", &flag_gems::embedding_backward);
@@ -202,6 +224,8 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("topk(Tensor x, SymInt k, int dim, bool largest, bool sorted) -> (Tensor, Tensor)");
   m.def("contiguous(Tensor(a) self, *, MemoryFormat memory_format=contiguous_format) -> Tensor(a)");
   m.def("cat(Tensor[] tensors, int dim=0) -> Tensor");
+  m.def("unsafe_split(Tensor self, SymInt split_size, int dim=0) -> Tensor[]");
+  m.def("unsafe_split_with_sizes(Tensor self, SymInt[] split_sizes, int dim=0) -> Tensor[]");
   m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
   m.def(
       "embedding(Tensor weight, Tensor indices, SymInt padding_idx=-1, bool scale_grad_by_freq=False, bool "
@@ -335,6 +359,8 @@ TORCH_LIBRARY_IMPL(flag_gems, FLAGGEMS_DISPATCH_KEY, m) {
   m.impl("topk", TORCH_FN(topk));
   m.impl("contiguous", TORCH_FN(contiguous));
   m.impl("cat", TORCH_FN(cat));
+  m.impl("unsafe_split", TORCH_FN(unsafe_split));
+  m.impl("unsafe_split_with_sizes", TORCH_FN(unsafe_split_with_sizes));
 
   m.impl("embedding", TORCH_FN(embedding));
   m.impl("embedding_backward", TORCH_FN(embedding_backward));

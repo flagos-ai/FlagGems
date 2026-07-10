@@ -483,6 +483,7 @@ from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
+from flag_gems.ops.unsafe_split import unsafe_split, unsafe_split_with_sizes
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -1107,6 +1108,8 @@ __all__ = [
     "unfold_backward",
     "unfold_copy",
     "uniform_",
+    "unsafe_split",
+    "unsafe_split_with_sizes",
     "unique_consecutive",
     "unique_dim",
     "upsample_bicubic2d",
