@@ -1329,6 +1329,48 @@ index_put:
   - 1024
   - 2048
   - 4096
+
+index_add_contiguous_suffix_flat:
+- META:
+    BLOCK_SIZE: 128
+- META:
+    BLOCK_SIZE: 256
+- META:
+    BLOCK_SIZE: 512
+
+index_add_contiguous_suffix_fp16_flat:
+- META:
+    BLOCK_SIZE: 128
+
+index_add_contiguous_suffix_tile:
+- META:
+    BLOCK_M: 2
+    BLOCK_N: 64
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 64
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 32
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 128
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 128
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 256
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 256
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 512
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 512
+
 kron:
   - gen: true
     param_map:

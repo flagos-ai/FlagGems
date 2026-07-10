@@ -25,6 +25,7 @@ from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .gelu import gelu, gelu_
 from .hadamard_transform import hadamard_transform
+from .index_add import index_add, index_add_
 from .isin import isin
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
@@ -61,6 +62,8 @@ __all__ = [
     "gelu",
     "gelu_",
     "hadamard_transform",
+    "index_add",
+    "index_add_",
     "isin",
     "matmul_bf16",
     "matmul_int8",
