@@ -199,6 +199,7 @@ def moe_align_block_size_stage4(
         token_cnt = tl.load(tokens_cnts_ptr + off_t + expert_id)
         rank_post_pad = token_cnt + tl.load(cumsum_ptr + expert_id)
         tl.store(sorted_token_ids_ptr + rank_post_pad, i)
+        tl.debug_barrier()  # 解决随机bug
         tl.store(tokens_cnts_ptr + off_t + expert_id, token_cnt + 1)
 
 
@@ -301,7 +302,7 @@ def moe_align_block_size(
     expert_map: Optional[torch.Tensor] = None,
     pad_sorted_ids: bool = False,
 ) -> "tuple[torch.Tensor, torch.Tensor, torch.Tensor]":
-    logger.debug("GEMS MOE ALIGN BLOCK SIZE")
+    logger.debug("GEMS_TSINGMICRO MOE_ALIGN_BLOCK_SIZE")
     max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
     if pad_sorted_ids:
         max_num_tokens_padded = round_up(max_num_tokens_padded, block_size)

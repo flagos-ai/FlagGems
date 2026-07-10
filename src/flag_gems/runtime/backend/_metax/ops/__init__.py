@@ -12,12 +12,14 @@ from .index import index
 from .index_put import index_put, index_put_
 from .index_select import index_select
 from .isin import isin
+from .layernorm import layer_norm, layer_norm_backward
 from .log_softmax import log_softmax, log_softmax_backward
 from .masked_fill import masked_fill, masked_fill_
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .min import min, min_dim
 from .mm import mm, mm_out
+from .mul import mul, mul_
 from .nonzero import nonzero
 from .ones import ones
 from .ones_like import ones_like
@@ -52,6 +54,8 @@ __all__ = [
     "index_put_",
     "index_select",
     "isin",
+    "layer_norm",
+    "layer_norm_backward",
     "log_softmax",
     "log_softmax_backward",
     "matmul_bf16",
@@ -62,6 +66,8 @@ __all__ = [
     "min",
     "mm",
     "mm_out",
+    "mul",
+    "mul_",
     "nonzero",
     "ones",
     "ones_like",
