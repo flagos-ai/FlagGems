@@ -44,6 +44,7 @@ class TunedConfigLoader(object):
                 "num_stages": 2,
                 "num_warps": 4,
                 "num_ctas": 1,
+                "maxnreg": None,
             }
             if self.device.vendor_name == "hygon":
                 self.triton_config_default["num_ldmatrixes"] = 0
@@ -76,17 +77,13 @@ class TunedConfigLoader(object):
             "num_warps": current_config["num_warps"],
             "num_stages": current_config["num_stages"],
             "num_ctas": current_config["num_ctas"],
+            "maxnreg": current_config["maxnreg"],
         }
         if (
             self.device.vendor_name == "hygon"
             and "num_ldmatrixes" in inspect.signature(triton.Config).parameters
         ):
             kwargs["num_ldmatrixes"] = current_config["num_ldmatrixes"]
-        if (
-            "maxnreg" in inspect.signature(triton.Config).parameters
-            and single_config.get("maxnreg") is not None
-        ):
-            kwargs["maxnreg"] = single_config["maxnreg"]
         return triton.Config(single_config["META"], **kwargs)
 
     def _build_configs_by_op(self, op_name, ranges, pre_hook=None):
@@ -266,13 +263,8 @@ class TunedConfigLoader(object):
                     },
                     num_stages=s,
                     num_warps=w,
+                    maxnreg=maxnreg,
                     pre_hook=pre_hook,
-                    **(
-                        {"maxnreg": maxnreg}
-                        if maxnreg is not None
-                        and "maxnreg" in inspect.signature(triton.Config).parameters
-                        else {}
-                    ),
                 )
                 for block_size_n in ranges["BLOCK_SIZE_N"]
                 for group_size_m in ranges["GROUP_SIZE_M"]
@@ -590,17 +582,15 @@ class TunedConfigLoader(object):
             current_step = cur_state.get("current_step")
 
             if current_step == final_step:
-                kwargs = {
-                    "num_warps": cur_config["num_warps"],
-                    "num_stages": cur_config["num_stages"],
-                    "num_ctas": cur_config["num_ctas"],
-                }
-                if (
-                    "maxnreg" in inspect.signature(triton.Config).parameters
-                    and cur_config.get("maxnreg") is not None
-                ):
-                    kwargs["maxnreg"] = cur_config["maxnreg"]
-                all_configs.append(triton.Config(cur_config["META"], **kwargs))
+                all_configs.append(
+                    triton.Config(
+                        cur_config["META"],
+                        num_warps=cur_config["num_warps"],
+                        num_stages=cur_config["num_stages"],
+                        num_ctas=cur_config["num_ctas"],
+                        maxnreg=cur_config["maxnreg"],
+                    )
+                )
             else:
                 cur_entry = iteration_plan[current_step]
                 cur_key = cur_entry["key"]
@@ -696,16 +686,10 @@ class TunedConfigLoader(object):
 
             for mapped_key in meta_map.values():
                 ranges[mapped_key.upper()] = gen_config[mapped_key]
-            ranges["s"] = self._resolve_iteration_values(
-                gen_config, param_map.get("num_stages")
-            )
-            ranges["w"] = self._resolve_iteration_values(
-                gen_config, param_map.get("num_warps")
-            )
+            ranges["s"] = gen_config[param_map.get("num_stages")]
+            ranges["w"] = gen_config[param_map.get("num_warps")]
             if "maxnreg" in param_map:
-                ranges["maxnreg"] = self._resolve_iteration_values(
-                    gen_config, param_map["maxnreg"]
-                )
+                ranges["maxnreg"] = gen_config[param_map["maxnreg"]]
 
             return {
                 "ranges": ranges,
