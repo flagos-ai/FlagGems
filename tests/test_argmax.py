@@ -53,3 +53,32 @@ def test_argmax(shape, dim, keepdim, dtype):
         res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.argmax
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        ((4, 2, 8), 1),  # tightest padding ratio, non-inner
+        ((4, 3, 8), 1),  # non-power-of-2 N, non-inner
+        ((4, 101, 8), 1),  # non-power-of-2 N, non-inner (K>1)
+        ((8, 65, 4), 1),  # non-power-of-2 N, non-inner
+        ((4, 127, 4), 1),  # non-power-of-2 N, non-inner
+        ((37, 101, 53), 1),  # non-power-of-2 N, non-inner
+        ((3, 5, 100, 7), 2),  # 4D, non-power-of-2 N, varied K
+    ],
+)
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_argmax_non_power_of_2_non_inner(shape, dim, keepdim, dtype):
+    # A non-inner reduction (K > 1) whose reduced dim N <= 128 and is not a
+    # power of 2 used to crash: the tile heuristic returned N directly as
+    # TILE_N, and tl.arange requires a power-of-2 length.
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
+
+    utils.gems_assert_equal(res_out, ref_out)
