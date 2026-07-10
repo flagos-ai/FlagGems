@@ -21,14 +21,14 @@ def clamp_min_scalar_func(x, min_val):
 
 
 def clamp_min(A, min_val):
-    logger.debug("GEMS CLAMP_MIN")
+    logger.debug("GEMS_ENFLAME CLAMP_MIN")
     if isinstance(min_val, (int, float)):
         return clamp_min_scalar_func(A, min_val)
     return clamp_min_func(A, min_val)
 
 
 def clamp_min_(A, min_val):
-    logger.debug("GEMS CLAMP_MIN_")
+    logger.debug("GEMS_ENFLAME CLAMP_MIN_")
     if isinstance(min_val, (int, float)):
         clamp_min_scalar_func(A, min_val, out0=A)
     else:

@@ -58,7 +58,7 @@ def _launch_sqrt(inp, out, N_total):
 
 
 def sqrt(A):
-    logger.debug("GEMS SQRT GCU300")
+    logger.debug("GEMS_ENFLAME SQRT GCU300")
     inp = A.contiguous()
     N_total = inp.numel()
     out = torch.empty_like(inp)
@@ -67,7 +67,7 @@ def sqrt(A):
 
 
 def sqrt_(A):
-    logger.debug("GEMS SQRT_ GCU300")
+    logger.debug("GEMS_ENFLAME SQRT_ GCU300")
     inp = A.contiguous()
     N_total = inp.numel()
     _launch_sqrt(inp, A, N_total)

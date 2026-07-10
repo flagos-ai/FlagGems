@@ -19,11 +19,11 @@ def celu_func(x, alpha):
 
 
 def celu(A, alpha=1.0):
-    logger.debug("GEMS CELU")
+    logger.debug("GEMS_ENFLAME CELU")
     return celu_func(A, alpha)
 
 
 def celu_(A, alpha=1.0):
-    logger.debug("GEMS CELU_")
+    logger.debug("GEMS_ENFLAME CELU_")
     celu_func(A, alpha, out0=A)
     return A

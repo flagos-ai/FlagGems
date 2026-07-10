@@ -15,15 +15,15 @@ def log10_func(x):
 
 
 def log10(A):
-    logger.debug("GEMS LOG10")
+    logger.debug("GEMS_ENFLAME LOG10")
     return log10_func(A)
 
 
 def log10_(A):
-    logger.debug("GEMS LOG10_")
+    logger.debug("GEMS_ENFLAME LOG10_")
     return log10_func(A, out0=A)
 
 
 def log10_out(A, out):
-    logger.debug("GEMS LOG10_OUT")
+    logger.debug("GEMS_ENFLAME LOG10_OUT")
     return log10_func(A, out0=out)

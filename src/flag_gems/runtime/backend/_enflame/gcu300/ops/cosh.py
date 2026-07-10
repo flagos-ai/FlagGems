@@ -16,18 +16,18 @@ def cosh_func(x):
 
 
 def cosh(A):
-    logger.debug("GEMS COSH")
+    logger.debug("GEMS_ENFLAME COSH")
     return cosh_func(A)
 
 
 def cosh_(A):
-    logger.debug("GEMS COSH_")
+    logger.debug("GEMS_ENFLAME COSH_")
     cosh_func(A, out0=A)
     return A
 
 
 def cosh_out(A, *, out=None):
-    logger.debug("GEMS COSH_OUT")
+    logger.debug("GEMS_ENFLAME COSH_OUT")
     if out is None:
         return cosh_func(A)
     cosh_func(A, out0=out)

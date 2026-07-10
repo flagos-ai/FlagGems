@@ -15,15 +15,15 @@ def expm1_func(x):
 
 
 def expm1(A):
-    logger.debug("GEMS EXPM1")
+    logger.debug("GEMS_ENFLAME EXPM1")
     return expm1_func(A)
 
 
 def expm1_(A):
-    logger.debug("GEMS EXPM1_")
+    logger.debug("GEMS_ENFLAME EXPM1_")
     return expm1_func(A, out0=A)
 
 
 def expm1_out(A, out):
-    logger.debug("GEMS EXPM1_OUT")
+    logger.debug("GEMS_ENFLAME EXPM1_OUT")
     return expm1_func(A, out0=out)

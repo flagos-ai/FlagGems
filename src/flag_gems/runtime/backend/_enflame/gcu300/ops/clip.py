@@ -21,7 +21,7 @@ def clip_func(x, min_val, max_val):
 
 
 def clip(A, min_val=None, max_val=None):
-    logger.debug("GEMS CLIP")
+    logger.debug("GEMS_ENFLAME CLIP")
     if min_val is None and max_val is None:
         return A.clone()
     if min_val is None:
@@ -36,7 +36,7 @@ def clip(A, min_val=None, max_val=None):
 
 
 def clip_(A, min_val=None, max_val=None):
-    logger.debug("GEMS CLIP_")
+    logger.debug("GEMS_ENFLAME CLIP_")
     if min_val is None and max_val is None:
         return A
     if min_val is None:

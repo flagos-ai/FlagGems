@@ -74,7 +74,7 @@ def fill_tensor_(self, value):
 
 
 def fill_scalar_(self, value=0):
-    logging.debug("GEMS FILL_SCALAR_")
+    logging.debug("GEMS_ENFLAME FILL_SCALAR_")
     return_type = self.dtype
     if return_type == torch.int64:
         self = self.to(torch.int32)

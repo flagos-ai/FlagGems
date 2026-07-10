@@ -15,12 +15,12 @@ def ceil_func(x):
 
 
 def ceil(A):
-    logger.debug("GEMS CEIL")
+    logger.debug("GEMS_ENFLAME CEIL")
     return ceil_func(A)
 
 
 def ceil_out(A, *, out=None):
-    logger.debug("GEMS CEIL_OUT")
+    logger.debug("GEMS_ENFLAME CEIL_OUT")
     if out is None:
         return ceil_func(A)
     ceil_func(A, out0=out)
@@ -28,6 +28,6 @@ def ceil_out(A, *, out=None):
 
 
 def ceil_(A):
-    logger.debug("GEMS CEIL_")
+    logger.debug("GEMS_ENFLAME CEIL_")
     ceil_func(A, out0=A)
     return A
