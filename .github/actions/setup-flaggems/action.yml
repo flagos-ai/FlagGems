@@ -48,7 +48,7 @@ runs:
       if: inputs.gpu_check_script != ''
       shell: bash
       run: |
-        source tools/env.sh ${{ inputs.vendor }}
+        source .venv/bin/activate
         GPU_OUTPUT=$(bash ${{ inputs.gpu_check_script }})
         echo "$GPU_OUTPUT"
         AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')

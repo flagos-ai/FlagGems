@@ -158,7 +158,7 @@ def moe_align_block_size_tle_atomic_fused_coop(
         tl.store(sorted_token_ids_ptr + offs, numel, mask=offs < numel_sorted_token_ids)
     for base in range(pid * BLOCK_TOKENS, numel_expert_ids, NUM_BLOCKS * BLOCK_TOKENS):
         offs = base + token_offsets
-        tl.store(expert_ids_ptr + offs, 0, mask=offs < numel_expert_ids)
+        tl.store(expert_ids_ptr + offs, -1, mask=offs < numel_expert_ids)
     if pid == 0:
         tl.store(cumsum_ptr + expert_offsets, 0, mask=expert_mask)
     tle.distributed_barrier(mesh)
@@ -288,7 +288,7 @@ def moe_align_block_size_tle_cluster_fused(
     ):
         offs = base + init_offsets
         mask = offs < numel_expert_ids
-        tl.store(expert_ids_ptr + offs, 0, mask=mask)
+        tl.store(expert_ids_ptr + offs, -1, mask=mask)
 
     local_counts = tle.gpu.alloc(
         [BLOCK_EXPERT],
@@ -409,7 +409,7 @@ def moe_align_block_size_stage1(
 
     offsets_expert = pid * block_size_expert + tl.arange(0, block_size_expert)
     mask_expert = offsets_expert < numel_expert_ids
-    tl.store(expert_ids_ptr + offsets_expert, 0, mask=mask_expert)
+    tl.store(expert_ids_ptr + offsets_expert, -1, mask=mask_expert)
 
     start_idx = pid * tokens_per_thread
 
