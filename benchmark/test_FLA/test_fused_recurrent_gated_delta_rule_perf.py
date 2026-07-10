@@ -102,7 +102,7 @@ class FusedRecurrentGatedDeltaRuleBenchmark(Benchmark):
     def _build_inputs(self, T: int, dtype: torch.dtype):
         device = flag_gems.device
         B = 1
-        H, HV, K, V = 16, 32, 32, 4
+        H, HV, K, V = 16, 32, 128, 128
         tp_size = 4
         key_dim = H * K
         value_dim = HV * V

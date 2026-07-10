@@ -272,7 +272,7 @@ def test_accuracy_max_dim(shape, dim, keepdim, dtype):
     flag_gems.vendor_name == "aipu",
     reason="Big shape run slowly.",
 )
-@pytest.mark.parametrize("shape", [(4, 512, 4)])
+@pytest.mark.parametrize("shape", [(4, 1048577, 4)])
 @pytest.mark.parametrize("keepdim, dim", [(True, 1), (False, 1)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
 def test_accuracy_max_dim_big_shape(shape, dim, keepdim, dtype):
@@ -326,8 +326,8 @@ def test_accuracy_mean_dim(shape, dim, keepdim, dtype):
 # grid-Y limit of 65535, which used to trigger "Triton Error [CUDA]: invalid
 # argument" before the mean_heur_tile_k grid-overflow fix.
 MEAN_LARGE_K_SHAPES = [
-    (1, 8, 16, 4),
-    (1, 4, 16, 4),
+    (1, 8, 256, 256),  # dim=1 → M=1, N=8, K=65536 (just over limit)
+    (1, 4, 512, 512),  # dim=1 → M=1, N=4, K=262144 (well over limit)
 ]
 
 
@@ -459,7 +459,7 @@ def test_accuracy_sum_without_dim(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
 
 
-INCLUDE_0_SHAPES = [(1, 0, 16, 4), (1024, 1, 16, 0), (200, 10, 0, 3)]
+INCLUDE_0_SHAPES = [(1, 0, 128, 512), (4096, 1, 256, 0), (200, 10, 0, 3)]
 
 
 @pytest.mark.sum_dim
@@ -486,7 +486,7 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
 
 
-QUANTILE_SHAPES = REDUCTION_SMALL_SHAPES + [(10, 64, 32), (4096, 1)]
+QUANTILE_SHAPES = REDUCTION_SMALL_SHAPES + [(10, 64, 196), (65535, 1)]
 QUANTILE_FLOAT_DTYPES = [torch.float32]
 QUANTILE_Q = (
     [(0.2, 0.5, 0.8)]

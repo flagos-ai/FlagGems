@@ -298,32 +298,32 @@ def gems_flash_fwd(
 @pytest.mark.parametrize(
     "batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len, head_size, enable_gqa",
     [
-        (4, 8, 8, 16, 4, 4, False),
-        (4, 8, 8, 16, 4, 4, False),
-        (4, 8, 8, 16, 4, 4, False),
-        (4, 8, 8, 16, 4, 4, False),
-        (4, 8, 8, 16, 4, 4, False),
-        (4, 8, 8, 16, 4, 4, False),
+        (4, 8, 8, 1024, 1024, 64, False),
+        (4, 8, 8, 1024, 1024, 128, False),
+        (4, 8, 8, 2048, 256, 64, False),
+        (4, 8, 8, 2048, 256, 128, False),
+        (4, 8, 8, 17, 1030, 64, False),
+        (4, 8, 8, 17, 1030, 128, False),
         # adopted from FlagAttention `test_attention_fwd`:
-        (2, 4, 4, 16, 4, 4, False),
-        (2, 4, 4, 16, 4, 4, False),
-        (2, 4, 4, 16, 4, 4, False),
-        (2, 4, 4, 16, 4, 4, False),
-        (2, 4, 4, 16, 4, 4, False),
-        (2, 4, 4, 16, 4, 4, False),
-        (2, 4, 4, 16, 4, 4, False),
-        (1, 2, 2, 16, 4, 4, False),
-        (1, 2, 2, 16, 4, 4, False),
+        (2, 4, 4, 512, 612, 128, False),
+        (2, 4, 4, 1024, 1034, 64, False),
+        (2, 4, 4, 2048, 2048, 32, False),
+        (2, 4, 4, 4096, 4096, 16, False),
+        (2, 4, 4, 4001, 4001, 32, False),
+        (2, 4, 4, 4001, 4096, 64, False),
+        (2, 4, 4, 4096, 4000, 128, False),
+        (1, 2, 2, 8192, 8202, 16, False),
+        (1, 2, 2, 8192, 8192, 32, False),
         # test for mqa/gqa
-        (2, 4, 2, 16, 4, 4, True),
-        (2, 4, 1, 16, 4, 4, True),
-        (2, 4, 2, 16, 4, 4, True),
-        (2, 4, 1, 16, 4, 4, True),
-        (2, 4, 2, 16, 4, 4, True),
-        (2, 4, 1, 16, 4, 4, True),
-        (2, 4, 2, 16, 4, 4, True),
-        (1, 2, 1, 16, 4, 4, True),
-        (1, 2, 1, 16, 4, 4, True),
+        (2, 4, 2, 512, 612, 128, True),
+        (2, 4, 1, 1024, 1034, 64, True),
+        (2, 4, 2, 2048, 2048, 32, True),
+        (2, 4, 1, 4096, 4096, 16, True),
+        (2, 4, 2, 4001, 4001, 32, True),
+        (2, 4, 1, 4001, 4096, 64, True),
+        (2, 4, 2, 4096, 4000, 128, True),
+        (1, 2, 1, 8192, 8202, 16, True),
+        (1, 2, 1, 8192, 8192, 32, True),
     ],
 )
 @pytest.mark.parametrize("is_causal", [False, True])
@@ -400,32 +400,32 @@ def test_sdpa_legacy(
 @pytest.mark.parametrize(
     "batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len, head_size, enable_gqa",
     [
-        (4, 8, 8, 16, 4, 4, False),
-        (4, 8, 8, 16, 4, 4, False),
-        (4, 8, 8, 16, 4, 4, False),
-        (4, 8, 8, 16, 4, 4, False),
-        (4, 8, 8, 16, 4, 4, False),
-        (4, 8, 8, 16, 4, 4, False),
+        (4, 8, 8, 1024, 1024, 64, False),
+        (4, 8, 8, 1024, 1024, 128, False),
+        (4, 8, 8, 2048, 256, 64, False),
+        (4, 8, 8, 2048, 256, 128, False),
+        (4, 8, 8, 17, 1030, 64, False),
+        (4, 8, 8, 17, 1030, 128, False),
         # adopted from FlagAttention `test_attention_fwd`:
-        (2, 4, 4, 16, 4, 4, False),
-        (2, 4, 4, 16, 4, 4, False),
-        (2, 4, 4, 16, 4, 4, False),
-        (2, 4, 4, 16, 4, 4, False),
-        (2, 4, 4, 16, 4, 4, False),
-        (2, 4, 4, 16, 4, 4, False),
-        (2, 4, 4, 16, 4, 4, False),
-        (1, 2, 2, 16, 4, 4, False),
-        (1, 2, 2, 16, 4, 4, False),
+        (2, 4, 4, 512, 612, 128, False),
+        (2, 4, 4, 1024, 1034, 64, False),
+        (2, 4, 4, 2048, 2048, 32, False),
+        (2, 4, 4, 4096, 4096, 16, False),
+        (2, 4, 4, 4001, 4001, 32, False),
+        (2, 4, 4, 4001, 4096, 64, False),
+        (2, 4, 4, 4096, 4000, 128, False),
+        (1, 2, 2, 8192, 8202, 16, False),
+        (1, 2, 2, 8192, 8192, 32, False),
         # test for mqa/gqa
-        (2, 4, 2, 16, 4, 4, True),
-        (2, 4, 1, 16, 4, 4, True),
-        (2, 4, 2, 16, 4, 4, True),
-        (2, 4, 1, 16, 4, 4, True),
-        (2, 4, 2, 16, 4, 4, True),
-        (2, 4, 1, 16, 4, 4, True),
-        (2, 4, 2, 16, 4, 4, True),
-        (1, 2, 1, 16, 4, 4, True),
-        (1, 2, 1, 16, 4, 4, True),
+        (2, 4, 2, 512, 612, 128, True),
+        (2, 4, 1, 1024, 1034, 64, True),
+        (2, 4, 2, 2048, 2048, 32, True),
+        (2, 4, 1, 4096, 4096, 16, True),
+        (2, 4, 2, 4001, 4001, 32, True),
+        (2, 4, 1, 4001, 4096, 64, True),
+        (2, 4, 2, 4096, 4000, 128, True),
+        (1, 2, 1, 8192, 8202, 16, True),
+        (1, 2, 1, 8192, 8192, 32, True),
     ],
 )
 @pytest.mark.parametrize("is_causal", [False, True])
@@ -508,10 +508,10 @@ def test_sdpa_legacy_backward(
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
     [
-        (4, 8, 16, 4),
+        (4, 8, 1024, 1024),
     ],
 )
-@pytest.mark.parametrize("head_size", [4])
+@pytest.mark.parametrize("head_size", [64, 128, 192, 256])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_sdpa_square_qk_even_mn(
@@ -541,9 +541,9 @@ def test_sdpa_square_qk_even_mn(
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
-    [(1, 1, 16, 4), (4, 8, 16, 4), (4, 8, 16, 4)],
+    [(1, 1, 128, 2048), (4, 8, 1024, 128), (4, 8, 17, 1030)],
 )
-@pytest.mark.parametrize("head_size", [4])
+@pytest.mark.parametrize("head_size", [64, 128, 192, 256])
 @pytest.mark.parametrize("is_causal", [False])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_sdpa_nonsquare_qk(
@@ -582,9 +582,9 @@ def test_sdpa_nonsquare_qk(
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
-    [(1, 1, 16, 4), (4, 8, 16, 4), (4, 8, 16, 4)],
+    [(1, 1, 128, 2048), (4, 8, 1024, 128), (4, 8, 17, 1030)],
 )
-@pytest.mark.parametrize("head_size", [4])
+@pytest.mark.parametrize("head_size", [64, 128, 192, 256])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_flash_fwd_nonsquare_qk(
@@ -619,9 +619,9 @@ def test_flash_fwd_nonsquare_qk(
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
-    [(4, 8, 2, 8, 4), (4, 4, 4, 1, 4)],
+    [(4, 8, 2, 1024, 1024), (4, 4, 4, 1, 519)],
 )
-@pytest.mark.parametrize("head_size", [4])
+@pytest.mark.parametrize("head_size", [128, 192])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("alibi", [True])
@@ -697,9 +697,9 @@ def test_flash_fwd_gqa_alibi_softcap(
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
-    [(1, 4, 1, 1, 4), (4, 4, 4, 1, 4)],
+    [(1, 4, 1, 1, 1024), (4, 4, 4, 1, 519)],
 )
-@pytest.mark.parametrize("head_size", [4])
+@pytest.mark.parametrize("head_size", [128, 192])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("alibi", [False, True])
@@ -775,9 +775,9 @@ def test_flash_splitkv(
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
-    [(1, 1, 16, 4), (8, 32, 16, 4), (8, 32, 16, 4), (8, 32, 16, 4)],
+    [(1, 1, 128, 2048), (8, 32, 1024, 1024), (8, 32, 1024, 128), (8, 32, 17, 1030)],
 )
-@pytest.mark.parametrize("head_size", [4])
+@pytest.mark.parametrize("head_size", [128, 192])
 @pytest.mark.parametrize(
     ["window_size_left", "window_size_right"], [(256, 0), (128, 128)]
 )
@@ -919,15 +919,15 @@ def ref_paged_attn(
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.flash_attn_varlen_func
-@pytest.mark.parametrize("seq_lens", [[(1, 512), (5, 18), (129, 463)]])
+@pytest.mark.parametrize("seq_lens", [[(1, 1328), (5, 18), (129, 463)]])
 @pytest.mark.parametrize("num_heads", [(4, 4), (8, 2), (16, 2)])
-@pytest.mark.parametrize("head_size", [4])
+@pytest.mark.parametrize("head_size", [128, 192, 256])
 @pytest.mark.parametrize("block_size", [32])
 @pytest.mark.parametrize("sliding_window", [None])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("alibi", [False, True])
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
-@pytest.mark.parametrize("num_blocks", [1024])
+@pytest.mark.parametrize("num_blocks", [32768, 2048])
 @torch.inference_mode()
 def test_flash_attn_varlen_func(
     seq_lens: List[Tuple[int, int]],
@@ -1058,9 +1058,9 @@ def test_flash_attn_varlen_func(
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.flash_attn_varlen_func
-@pytest.mark.parametrize("seq_lens", [[(1, 512), (1, 18), (1, 463)]])
+@pytest.mark.parametrize("seq_lens", [[(1, 1328), (1, 18), (1, 463)]])
 @pytest.mark.parametrize("num_heads", [(8, 2)])
-@pytest.mark.parametrize("head_size", [4])
+@pytest.mark.parametrize("head_size", [128])
 @pytest.mark.parametrize("block_size", [32])
 @pytest.mark.parametrize("sliding_window", [None])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
@@ -1335,9 +1335,9 @@ def create_kv_caches_with_random(
 @pytest.mark.reshape_and_cache
 @pytest.mark.parametrize("num_tokens", [42])
 @pytest.mark.parametrize("num_heads", [8])
-@pytest.mark.parametrize("head_size", [4])
+@pytest.mark.parametrize("head_size", [64, 80, 120, 256])
 @pytest.mark.parametrize("block_size", [8, 16, 32])
-@pytest.mark.parametrize("num_blocks", [1024])
+@pytest.mark.parametrize("num_blocks", [1024, 10000])
 @pytest.mark.parametrize("dtype", [torch.half, torch.bfloat16, torch.float])
 @pytest.mark.parametrize("kv_cache_dtype", ["auto"])
 @pytest.mark.parametrize("seed", [2025])
@@ -1412,10 +1412,10 @@ def test_reshape_and_cache(
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
     [
-        (1, 1, 16, 4),
+        (1, 1, 1024, 1024),
     ],
 )
-@pytest.mark.parametrize("head_size", [4])
+@pytest.mark.parametrize("head_size", [128])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_flash_fwd_dropout(
@@ -1470,9 +1470,9 @@ def create_kv_caches_with_random_flash(
 @pytest.mark.reshape_and_cache_flash
 @pytest.mark.parametrize("num_tokens", [42])
 @pytest.mark.parametrize("num_heads", [8])
-@pytest.mark.parametrize("head_size", [4])
+@pytest.mark.parametrize("head_size", [64, 80, 120, 256])
 @pytest.mark.parametrize("block_size", [8, 16, 32])
-@pytest.mark.parametrize("num_blocks", [1024])
+@pytest.mark.parametrize("num_blocks", [1024, 10000])
 @pytest.mark.parametrize("dtype", [torch.half, torch.bfloat16, torch.float])
 @pytest.mark.parametrize("kv_cache_dtype", ["auto"])
 @pytest.mark.parametrize("seed", [2025])
@@ -1553,7 +1553,7 @@ def test_reshape_and_cache_flash(
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.flash_mla
-@pytest.mark.parametrize("seqlen", [512])
+@pytest.mark.parametrize("seqlen", [1024, 2048, 4096, 8192])
 @pytest.mark.parametrize(
     "dtype",
     [
@@ -1695,8 +1695,8 @@ def test_flash_mla(seqlen, dtype):
 
 @pytest.mark.get_scheduler_metadata
 @pytest.mark.parametrize("batch_size", [1, 8, 256, 512])
-@pytest.mark.parametrize("max_seqlen_k", [512])
-@pytest.mark.parametrize("headdim", [16, 32])
+@pytest.mark.parametrize("max_seqlen_k", [512, 2048])
+@pytest.mark.parametrize("headdim", [64, 128])
 @pytest.mark.parametrize("num_splits_static", [0, 4])
 @pytest.mark.parametrize("seed", [42])
 @pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")

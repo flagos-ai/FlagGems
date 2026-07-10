@@ -201,7 +201,7 @@ def test_accuracy_full_like(shape, dtype, xdtype, fill_value):
 
 # @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.randperm
-@pytest.mark.parametrize("n", [123, 12345, 65535])
+@pytest.mark.parametrize("n", [123, 12345, 123456])
 @pytest.mark.parametrize("dtype", ALL_INT_DTYPES)
 def test_accuracy_randperm(n, dtype):
     if n > torch.iinfo(torch.int16).max and dtype == torch.int16:
@@ -223,12 +223,12 @@ def test_accuracy_randperm(n, dtype):
 @pytest.mark.parametrize(
     "shape",
     [
-        (256, 512),
+        (256, 1024),
         (1024, 256),
-        (4096, 512),
-        (4096, 512),
+        (8192, 4096),
+        (4096, 8192),
     ]
-    + [(min(2**d, 4096), min(2**d, 512)) for d in range(7, 13)],
+    + [(2**d, 2**d) for d in range(7, 13)],
 )
 @pytest.mark.parametrize("dtype", ALL_INT_DTYPES + ALL_FLOAT_DTYPES + BOOL_TYPES)
 def test_accuracy_eye(shape, dtype):
@@ -316,7 +316,7 @@ def test_accuracy_one_hot():
 
     x_empty = torch.empty([4, 0], dtype=torch.long, device=device)
     t = gems_one_hot(x_empty, 100)
-    expected = torch.empty([4, 0, 32], dtype=torch.long, device=expected_device)
+    expected = torch.empty([4, 0, 100], dtype=torch.long, device=expected_device)
     gems_assert_equal(t, expected)
 
     if dev_type not in ("cuda", "xla", "mps"):
@@ -341,7 +341,7 @@ def test_accuracy_one_hot():
     [
         (0, 10, 1),
         (0, 100, 1),
-        (0, 512, 1),
+        (0, 1000, 1),
         (5, 50, 3),
         (0, 10, 2),
         (0.0, 5.0, 0.5),

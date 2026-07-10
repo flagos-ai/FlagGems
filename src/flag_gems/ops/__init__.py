@@ -152,8 +152,8 @@ from flag_gems.ops.isclose import allclose, isclose
 from flag_gems.ops.isfinite import isfinite
 from flag_gems.ops.isin import isin
 from flag_gems.ops.isinf import isinf
-from flag_gems.ops.isnan import isnan
 from flag_gems.ops.isneginf import isneginf, isneginf_out
+from flag_gems.ops.isnan import isnan
 from flag_gems.ops.kron import kron
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.le import le, le_scalar
@@ -161,8 +161,8 @@ from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tens
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
-from flag_gems.ops.log1p_ import log1p_
 from flag_gems.ops.log10 import log10, log10_, log10_out
+from flag_gems.ops.log1p_ import log1p_
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import log_softmax, log_softmax_backward
 from flag_gems.ops.logaddexp import logaddexp, logaddexp_out
@@ -261,8 +261,8 @@ from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.selu import selu
 from flag_gems.ops.selu_ import selu_
 from flag_gems.ops.sgn_ import sgn_
-from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.signbit import signbit, signbit_out
+from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.sinh_ import sinh_

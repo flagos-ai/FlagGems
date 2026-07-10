@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+
 _ROOT = Path(__file__).resolve().parent
 _SRC_PATH = _ROOT / "src"
 _SRC = str(_SRC_PATH)

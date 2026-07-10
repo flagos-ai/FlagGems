@@ -37,24 +37,10 @@ def resolve_conj_input_fn(shape, dtype, device):
     "op_name, torch_op, dtypes, input_fn",
     [
         # Sorting Operations
-        pytest.param(
-            "topk", torch.topk, FLOAT_DTYPES, topk_input_fn, marks=pytest.mark.topk
-        ),
+        pytest.param("topk", torch.topk, FLOAT_DTYPES, topk_input_fn, marks=pytest.mark.topk),
         # Complex Operations
-        pytest.param(
-            "resolve_neg",
-            torch.resolve_neg,
-            [torch.cfloat],
-            resolve_neg_input_fn,
-            marks=pytest.mark.resolve_neg,
-        ),
-        pytest.param(
-            "resolve_conj",
-            torch.resolve_conj,
-            [torch.cfloat],
-            resolve_conj_input_fn,
-            marks=pytest.mark.resolve_conj,
-        ),
+        pytest.param("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn, marks=pytest.mark.resolve_neg),
+        pytest.param("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn, marks=pytest.mark.resolve_conj),
     ],
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
@@ -264,14 +250,7 @@ class ConvBenchmark(GenericBenchmark):
         return None
 
 
-@pytest.mark.conv2d(
-    recommended_shapes=[
-        (16, 16, 8, 4, 16, 2, 2, 1, 0, 1),
-        (8, 16, 9, 4, 16, 3, 3, 1, 1, 1),
-        (4, 16, 7, 4, 32, 2, 2, 1, 0, 1),
-    ],
-    shape_desc="N, C, H, W, K, R, S, stride, padding, groups",
-)
+@pytest.mark.conv2d
 def test_perf_conv2d():
     def conv2d_input_fn(shape, dtype, device):
         (
@@ -435,7 +414,7 @@ def test_perf_soft_margin_loss():
 
 
 class ReflectionPad1DBenchmark(FixedShapeBenchmark):
-    DEFAULT_SHAPES = [(3, 33), (2, 4, 32), (8, 16, 32)]
+    DEFAULT_SHAPES = [(3, 33), (2, 4, 64), (8, 16, 256)]
     DEFAULT_SHAPE_DESC = "(N), C, W"
 
 
@@ -455,7 +434,7 @@ def test_perf_reflection_pad1d():
 
 
 class ReflectionPad2DBenchmark(FixedShapeBenchmark):
-    DEFAULT_SHAPES = [(3, 33, 32), (2, 4, 16, 4), (8, 16, 16, 4)]
+    DEFAULT_SHAPES = [(3, 33, 33), (2, 4, 32, 64), (8, 16, 64, 64)]
     DEFAULT_SHAPE_DESC = "(N), C, H, W"
 
 
@@ -475,7 +454,7 @@ def test_perf_reflection_pad2d():
 
 
 class ReplicationPad1DBenchmark(FixedShapeBenchmark):
-    DEFAULT_SHAPES = [(2, 3, 7), (4, 16, 32), (32, 256)]
+    DEFAULT_SHAPES = [(2, 3, 7), (4, 16, 64), (32, 256)]
     DEFAULT_SHAPE_DESC = "(N), C, W"
 
 
@@ -495,7 +474,7 @@ def test_perf_replication_pad1d():
 
 
 class PixelUnshuffleBenchmark(FixedShapeBenchmark):
-    DEFAULT_SHAPES = [(1, 3, 8, 4), (2, 4, 12, 4), (4, 16, 16, 4)]
+    DEFAULT_SHAPES = [(1, 3, 8, 8), (2, 4, 12, 6), (4, 16, 64, 48)]
     DEFAULT_SHAPE_DESC = "N, C, H, W"
 
 

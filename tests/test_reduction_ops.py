@@ -277,14 +277,14 @@ def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction, weight):
 
 
 NLLLOSS2D_SHAPES = (
-    [(2, 4, 4, 4)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 512, 32)]
+    [(2, 4, 4, 8)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
 )
 
 
 @pytest.mark.nll_loss2d
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("weight", [True, False])
-@pytest.mark.parametrize("shape", [(2, 4, 4, 4)])
+@pytest.mark.parametrize("shape", [(2, 4, 4, 8)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("ignore_index", [1, 200, -100])
 def test_accuracy_nll_loss2d(shape, dtype, ignore_index, reduction, weight):
@@ -327,9 +327,9 @@ def test_accuracy_nll_loss2d(shape, dtype, ignore_index, reduction, weight):
 
 
 NLL_LOSS_ND_SHAPES = (
-    [(2, 3, 4, 4)]
+    [(2, 3, 4, 5)]
     if QUICK_MODE
-    else [(2, 32), (16, 50, 32), (4, 3, 5, 4), (2, 10, 8, 8, 4)]
+    else [(2, 32), (16, 50, 128), (4, 3, 5, 5), (2, 10, 8, 16, 16)]
 )
 
 
@@ -380,7 +380,9 @@ def test_accuracy_nll_loss_nd(shape, dtype, ignore_index, reduction, weight):
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
-CUMSUM_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 512, 32)]
+CUMSUM_SHAPES = (
+    [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+)
 
 
 @pytest.mark.cumsum
@@ -417,7 +419,9 @@ def test_accuracy_cumsum(shape, dtype):
     gems_assert_close(res_out, ref_out, check_dtype, reduce_dim=shape[dim])
 
 
-CUMMIN_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 512, 32)]
+CUMMIN_SHAPES = (
+    [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+)
 
 
 @pytest.mark.skipif(
@@ -483,7 +487,9 @@ def test_accuracy_cummin_with_nan(shape, dtype, nan_ratio):
     gems_assert_equal(res_out.indices, ref_out.indices)
 
 
-CUMMAX_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 512, 32)]
+CUMMAX_SHAPES = (
+    [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+)
 
 
 @pytest.mark.skipif(
@@ -627,7 +633,9 @@ def test_accuracy_log_softmax_backward(shape, dtype, dim):
 @pytest.mark.softmax
 @pytest.mark.parametrize(
     "shape",
-    [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 512, 3), (1, 0, 16, 4)],
+    [(1, 256)]
+    if QUICK_MODE
+    else [(1, 256), (4096, 256), (200, 2560, 3), (1, 0, 128, 512)],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -646,7 +654,7 @@ def test_accuracy_softmax(shape, dtype, dim, neg_inf):
 
 @pytest.mark.softmax
 @pytest.mark.parametrize(
-    "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 512, 3)]
+    "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -1020,7 +1028,7 @@ TRACE_SHAPES = [
     (256, 128),
     (0, 10),  # empty diagonal
     (10, 0),  # empty diagonal
-    (1500, 512),  # Larger shape
+    (1500, 1200),  # Larger shape
 ]
 
 
@@ -1059,7 +1067,7 @@ def test_accuracy_trace(shape, dtype):
 @pytest.mark.gather
 @pytest.mark.parametrize(
     "inp_shape",
-    [(32, 8, 4)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16), (128, 32, 32)],
+    [(32, 8, 4)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16), (128, 32, 256)],
 )
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1152,12 +1160,12 @@ def test_accuracy_select_scatter_with_self_overlapping_input():
 
 SLICE_BACKWARD_SHAPES = [
     (128, 256),
-    (1024, 512),
-    (512, 512, 32),
-    (16, 512, 32),
-    (8, 512, 32),
-    (4, 32, 16, 4),
-    (32, 256, 16, 4),
+    (1024, 1024),
+    (512, 1024, 512),
+    (16, 8192, 4096),
+    (8, 4096, 11008),
+    (4, 32, 4096, 128),
+    (32, 256, 256, 128),
 ]
 
 
@@ -1393,21 +1401,21 @@ def test_accuracy_masked_select(shape, dtype, threshold):
 
 AVGPOOL2D_CONFIGS = [
     # 3x3 kernel, stride 2, padding 1
-    ((4, 3, 16, 4), 3, 2, 1, False, True, None),
+    ((4, 3, 32, 32), 3, 2, 1, False, True, None),
     # Test count_include_pad=False
-    ((4, 3, 16, 4), 3, 2, 1, False, False, None),
+    ((4, 3, 32, 32), 3, 2, 1, False, False, None),
     # Non-square kernel and stride
-    ((8, 16, 16, 4), (3, 3), (1, 2), 1, False, True, None),
+    ((8, 16, 28, 28), (3, 5), (1, 2), 1, False, True, None),
     # Test ceil_mode
-    ((2, 4, 15, 4), 3, 2, 1, True, True, None),
+    ((2, 4, 15, 15), 3, 2, 1, True, True, None),
     # Test divisor_override
-    ((1, 1, 7, 4), 2, 1, 0, False, True, 1),
+    ((1, 1, 7, 7), 2, 1, 0, False, True, 1),
     # Larger case from a typical CNN
-    ((1, 64, 16, 4), 3, 2, 1, False, True, None),
+    ((1, 64, 56, 56), 3, 2, 1, False, True, None),
     # No padding, count_include_pad=False
-    ((2, 8, 16, 4), 2, 2, 0, False, False, None),
+    ((2, 8, 16, 16), 2, 2, 0, False, False, None),
     # Non-square padding
-    ((2, 8, 16, 4), 2, 2, (1, 0), False, True, None),
+    ((2, 8, 16, 20), 2, 2, (1, 0), False, True, None),
 ]
 
 
@@ -1510,19 +1518,19 @@ def test_accuracy_avg_pool2d_backward(
 
 MAXPOOL2D_CONFIGS = [
     # Classic case: 3x3 kernel, stride 2, padding 1
-    ((4, 3, 16, 4), 3, 2, 1, 1, False),
+    ((4, 3, 32, 32), 3, 2, 1, 1, False),
     # Non-square kernel and stride
-    ((8, 16, 16, 4), (3, 3), (1, 2), 1, 1, False),
+    ((8, 16, 28, 28), (3, 5), (1, 2), 1, 1, False),
     # Test ceil_mode
-    ((2, 4, 15, 4), 3, 2, 1, 1, True),
+    ((2, 4, 15, 15), 3, 2, 1, 1, True),
     # Test dilation
-    ((1, 1, 7, 4), 2, 1, 0, 2, False),
+    ((1, 1, 7, 7), 2, 1, 0, 2, False),
     # Larger case from ResNet
-    ((1, 64, 16, 4), 3, 2, 1, 1, False),
+    ((1, 64, 56, 56), 3, 2, 1, 1, False),
     # No padding
-    ((2, 8, 16, 4), 2, 2, 0, 1, False),
+    ((2, 8, 16, 16), 2, 2, 0, 1, False),
     # Non-square padding
-    ((2, 8, 16, 4), 2, 2, (1, 0), 1, False),
+    ((2, 8, 16, 20), 2, 2, (1, 0), 1, False),
 ]
 
 
@@ -1602,20 +1610,20 @@ def test_accuracy_max_pool2d_backward(
 
 
 INDEX_PUT_SHAPE_ACC_FALSE = (
-    ((65535,), ((65535,),), (65535,), False),
+    ((2**28,), ((2**16,),), (2**16,), False),
     ((32, 32), ((8,), (8,)), (8,), False),
     ((32, 32), ((8,), (2, 8)), (8,), False),
     ((32, 32), ((2, 8),), (32,), False),
-    ((512, 512, 32), ((128,), (128,), (128,)), (128,), False),
-    ((512, 512, 32), ((2, 128), (128,), (128,)), (128,), False),
-    ((512, 512, 32), ((2, 128),), (512,), False),
+    ((512, 512, 512), ((128,), (128,), (128,)), (128,), False),
+    ((512, 512, 512), ((2, 128), (128,), (128,)), (128,), False),
+    ((512, 512, 512), ((2, 128),), (512,), False),
     (
-        (64, 64, 32),
+        (64, 64, 64),
         (
             (2, 8),
             (2, 8),
         ),
-        (2, 8, 32),
+        (2, 8, 64),
         False,
     ),
     ((100,), ((100,),), (100,), True),
@@ -1625,15 +1633,15 @@ INDEX_PUT_SHAPE_ACC_FALSE = (
 
 INDEX_ACC_SHAPE = (
     # Original test cases
-    ((65535,), ((65535,),)),
+    ((2**28,), ((2**16,),)),
     ((32, 32), ((8,), (8,))),
     ((32, 32), ((8,), (2, 8))),
     ((32, 32), ((2, 8),)),
-    ((512, 512, 32), ((128,), (128,), (128,))),
-    ((512, 512, 32), ((2, 128), (128,), (128,))),
-    ((512, 512, 32), ((2, 128),)),
+    ((512, 512, 512), ((128,), (128,), (128,))),
+    ((512, 512, 512), ((2, 128), (128,), (128,))),
+    ((512, 512, 512), ((2, 128),)),
     (
-        (64, 64, 32),
+        (64, 64, 64),
         (
             (2, 8),
             (2, 8),
@@ -1739,10 +1747,10 @@ def test_index_put_acc_false(input_shape, indices_shape, values_shape, is_bool, 
 
 
 INDEX_PUT_SHAPE_ACC_TRUE = (
-    ((65535,), ((65535,),), (65535,), False),
+    ((2**28,), ((2**16,),), (2**16,), False),
     ((32, 32), ((8,), (8,)), (8,), False),
-    ((512, 512, 32), ((128,), (128,), (128,)), (128,), False),
-    ((64, 64, 32), ((2, 8), (2, 8), (2, 8)), (2, 8), False),
+    ((512, 512, 512), ((128,), (128,), (128,)), (128,), False),
+    ((64, 64, 64), ((2, 8), (2, 8), (2, 8)), (2, 8), False),
     ((32, 32), ((32, 32),), (32 * 32,), True),
 )
 
@@ -1907,18 +1915,18 @@ def test_index_put__error_all_none(dtype):
 # Format: (input_shape, indices_config)
 # 0 in indices_config means a Tensor, 1 in indices_config means None
 MIXED_INDEX_SHAPES = [
-    ((1024, 512), (0, 1)),
-    ((1024, 512), (1, 0)),
+    ((1024, 1024), (0, 1)),
+    ((1024, 1024), (1, 0)),
     ((32, 32, 32), (0, 0, 1)),
     ((32, 32, 32), (0, 1, 0)),
     ((32, 32, 32), (1, 0, 0)),
-    ((64, 64, 32), (1, 0, 1)),
-    ((12, 12, 12, 4), (1, 0, 0, 0)),
-    ((12, 12, 12, 4), (0, 1, 0, 0)),
-    ((16, 16, 16, 4), (1, 0, 0, 1)),
-    ((16, 16, 16, 4), (0, 1, 1, 0)),
-    ((8, 8, 8, 4), (0, 1, 1, 1)),
-    ((8, 8, 8, 4), (1, 1, 0, 1)),
+    ((64, 64, 64), (1, 0, 1)),
+    ((12, 12, 12, 12), (1, 0, 0, 0)),
+    ((12, 12, 12, 12), (0, 1, 0, 0)),
+    ((16, 16, 16, 16), (1, 0, 0, 1)),
+    ((16, 16, 16, 16), (0, 1, 1, 0)),
+    ((8, 8, 8, 8), (0, 1, 1, 1)),
+    ((8, 8, 8, 8), (1, 1, 0, 1)),
 ]
 
 
@@ -2012,27 +2020,27 @@ def test_index_with_none_basic_indexing(input_shape, index_pos, dtype):
     # 0 in indices_idx means a Tensor
     # 1 in indices_idx means None
     [
-        ((1024, 512), (0, 1)),
+        ((1024, 1024), (0, 1)),
         ((16, 16, 16), (1, 0, 0)),
         ((16, 16, 16), (0, 1, 0)),
         ((32, 32, 32), (0, 0, 1)),
         ((32, 32, 32), (1, 1, 0)),
-        ((64, 64, 32), (1, 0, 1)),
-        ((64, 64, 32), (0, 1, 1)),
-        ((12, 12, 12, 4), (1, 0, 0, 0)),
-        ((12, 12, 12, 4), (0, 1, 0, 0)),
-        ((10, 10, 10, 4), (0, 0, 1, 0)),
-        ((10, 10, 10, 4), (0, 0, 0, 1)),
-        ((10, 10, 10, 4), (1, 1, 0, 0)),
-        ((10, 10, 10, 4), (1, 0, 1, 0)),
-        ((16, 16, 16, 4), (1, 0, 0, 1)),
-        ((16, 16, 16, 4), (0, 1, 1, 0)),
-        ((32, 32, 16, 4), (0, 1, 0, 1)),
-        ((32, 32, 16, 4), (0, 0, 1, 1)),
-        ((8, 8, 8, 4), (0, 1, 1, 1)),
-        ((8, 8, 8, 4), (1, 0, 1, 1)),
-        ((8, 8, 8, 4), (1, 1, 0, 1)),
-        ((8, 8, 8, 4), (1, 1, 1, 0)),
+        ((64, 64, 64), (1, 0, 1)),
+        ((64, 64, 64), (0, 1, 1)),
+        ((12, 12, 12, 12), (1, 0, 0, 0)),
+        ((12, 12, 12, 12), (0, 1, 0, 0)),
+        ((10, 10, 10, 10), (0, 0, 1, 0)),
+        ((10, 10, 10, 10), (0, 0, 0, 1)),
+        ((10, 10, 10, 10), (1, 1, 0, 0)),
+        ((10, 10, 10, 10), (1, 0, 1, 0)),
+        ((16, 16, 16, 16), (1, 0, 0, 1)),
+        ((16, 16, 16, 16), (0, 1, 1, 0)),
+        ((32, 32, 32, 32), (0, 1, 0, 1)),
+        ((32, 32, 32, 32), (0, 0, 1, 1)),
+        ((8, 8, 8, 8), (0, 1, 1, 1)),
+        ((8, 8, 8, 8), (1, 0, 1, 1)),
+        ((8, 8, 8, 8), (1, 1, 0, 1)),
+        ((8, 8, 8, 8), (1, 1, 1, 0)),
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.int64])
@@ -2282,8 +2290,8 @@ def test_accuracy_std(shape, dim, correction, keepdim, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("batch_size", [1])
 @pytest.mark.parametrize("attn_heads", [2] if QUICK_MODE else [2, 4, 8, 16, 32])
-@pytest.mark.parametrize("query_seq_len", [4, 16])
-@pytest.mark.parametrize("key_seq_len", [1, 4])
+@pytest.mark.parametrize("query_seq_len", [64, 128])
+@pytest.mark.parametrize("key_seq_len", [128, 256, 512, 1024])
 @pytest.mark.parametrize("scale_factor", [0.1])
 def test_accuracy_scaled_softmax_forward(
     batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype
@@ -2310,8 +2318,8 @@ def test_accuracy_scaled_softmax_forward(
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("batch_size", [1])
 @pytest.mark.parametrize("attn_heads", [2] if QUICK_MODE else [2, 4, 8, 16, 32])
-@pytest.mark.parametrize("query_seq_len", [4, 16])
-@pytest.mark.parametrize("key_seq_len", [1, 4])
+@pytest.mark.parametrize("query_seq_len", [64, 128])
+@pytest.mark.parametrize("key_seq_len", [128, 256, 512, 1024])
 @pytest.mark.parametrize("scale_factor", [0.1])
 def test_accuracy_scaled_softmax_backward(
     batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype
@@ -2382,7 +2390,7 @@ def test_accuracy_masked_scatter_(shape, dtype, threshold):
     gems_assert_equal(inp, ref_inp)
 
 
-BINCOUNT_SHAPES = [(16,), (4096,), (65535,)]
+BINCOUNT_SHAPES = [(16,), (4096,), (100000,)]
 NUM_CLASSES_LIST = [10, 256]
 
 

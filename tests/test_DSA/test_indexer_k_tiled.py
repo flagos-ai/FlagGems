@@ -142,10 +142,10 @@ def reference_lighting_indexer_implementation(q, kv, weights, ks, ke):
 
 
 @pytest.mark.lighting_indexer_forward
-@pytest.mark.parametrize("seq_len_q", [512])
-@pytest.mark.parametrize("seq_len_kv", [512])
-@pytest.mark.parametrize("num_heads", [16, 32])
-@pytest.mark.parametrize("qk_dim", [32])
+@pytest.mark.parametrize("seq_len_q", [1024, 2048, 4096])
+@pytest.mark.parametrize("seq_len_kv", [2048, 4096, 8192])
+@pytest.mark.parametrize("num_heads", [16, 32, 64])
+@pytest.mark.parametrize("qk_dim", [32, 64, 128])
 @pytest.mark.parametrize("dtype", [torch.bfloat16])
 def test_lighting_indexer_forward(
     seq_len_q: int, seq_len_kv: int, num_heads: int, qk_dim: int, dtype: torch.dtype

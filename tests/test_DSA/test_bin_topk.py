@@ -136,8 +136,8 @@ def debug_topk_results(actual, expected, inputs, test_name=""):
 
 @pytest.mark.bucket_sort_topk_forward
 @pytest.mark.parametrize("batch_size", [1, 4, 16])
-@pytest.mark.parametrize("seq_len", [256, 512])
-@pytest.mark.parametrize("topk", [16, 64])
+@pytest.mark.parametrize("seq_len", [256, 1024, 8192])
+@pytest.mark.parametrize("topk", [16, 64, 256])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_bucket_sort_topk_forward(
     batch_size: int, seq_len: int, topk: int, dtype: torch.dtype
@@ -203,12 +203,12 @@ def test_bucket_sort_topk_edge_cases(config):
     "config",
     [
         # Large-scale tests - using your original test parameters
-        {"batch_size": 64, "seq_len": 512, "topk": 64},
-        {"batch_size": 32, "seq_len": 512, "topk": 64},
+        {"batch_size": 64, "seq_len": 32768, "topk": 2048},
+        {"batch_size": 32, "seq_len": 65536, "topk": 4096},
         {
             "batch_size": 96,
-            "seq_len": 512,
-            "topk": 64,
+            "seq_len": 32768,
+            "topk": 2048,
         },  # Your original test parameters
     ],
 )
@@ -237,7 +237,7 @@ def test_bucket_sort_topk_large_scale(config):
 def test_bucket_sort_topk_variable_length():
     """Test variable length sequence processing"""
     batch_size = 4
-    max_seq_len = 512
+    max_seq_len = 1024
     topk = 64
     dtype = torch.float32
 
@@ -246,7 +246,7 @@ def test_bucket_sort_topk_variable_length():
     starts = torch.zeros(batch_size, dtype=torch.int32, device=device)
 
     # Each batch uses different sequence length
-    ends = torch.tensor([100, 256, 400, 512], dtype=torch.int32, device=device)
+    ends = torch.tensor([100, 500, 800, 1024], dtype=torch.int32, device=device)
 
     # Reference implementation
     ref_indices = reference_topk_implementation(
@@ -265,8 +265,8 @@ def test_bucket_sort_topk_variable_length():
 def test_bucket_sort_topk_correctness():
     """Correctness test - using your original test logic"""
     batch_size = 96
-    seq_len = 4096
-    topk = 64
+    seq_len = 32768
+    topk = 2048
 
     # torch.manual_seed(1)
     inputs = torch.randn(batch_size, seq_len, dtype=torch.float32, device=device)
