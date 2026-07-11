@@ -1499,6 +1499,8 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
         dtypes=FLOAT_DTYPES,
     )
     if op_name == "mm_w8a8":
+        if not hasattr(flag_gems, "mm_w8a8_out"):
+            pytest.skip("mm_w8a8 benchmark requires the Hopper W8A8 backend")
         bench.set_gems(_mm_w8a8_out_cached)
     bench.run()
 
