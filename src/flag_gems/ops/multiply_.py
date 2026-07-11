@@ -3,7 +3,7 @@ import logging
 
 import torch
 
-from flag_gems.ops.mul import mul_func, mul_func_scalar
+from flag_gems.ops.mul import mul_
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +14,6 @@ def multiply_(A, B):
     This is an alias for mul_ that follows the PyTorch multiply_ API.
     """
     logger.debug("GEMS MULTIPLY_")
-    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        if B.device != A.device:
-            B = B.to(A.device)
-        return mul_func(A, B, out0=A)
-    elif isinstance(A, torch.Tensor):
-        return mul_func_scalar(A, B, out0=A)
-    else:
+    if not isinstance(A, torch.Tensor):
         raise ValueError("Unreachable.")
+    return mul_(A, B)
