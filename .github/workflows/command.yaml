@@ -76,8 +76,11 @@ jobs:
               # profile (cuda133 requires a newer driver). Note: nvcc is not on
               # PATH in this node's container (cuda at /usr/local/cuda-12.9);
               # C++ extension builds may need PATH/CUDA_HOME set.
+              # This node's container glibc is too old for FlagTree
+              # (needs GLIBC 2.38), so use upstream Triton instead.
               VENDOR="nvidia"
               BACKEND="nvidia-cuda128"
+              echo "COMPILER=triton" >> $GITHUB_ENV
               ;;
             cann850)
               VENDOR="ascend"
