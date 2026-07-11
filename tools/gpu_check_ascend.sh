@@ -6,9 +6,19 @@ sleep_time=120          # Wait time between retries (seconds)
 max_wait=600           # Maximum total wait time (seconds)
 
 # Get the number of NPU chips from npu-smi info output
-npu_smi_output=$(npu-smi info)
+# npu-smi may fail on first invocation (driver init), retry a few times.
+for attempt in 1 2 3; do
+    npu_smi_output=$(npu-smi info 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$npu_smi_output" ]; then
+        break
+    fi
+    if [ $attempt -lt 3 ]; then
+        echo "npu-smi not ready, retrying in 5s... (attempt $attempt/3)"
+        sleep 5
+    fi
+done
 
-if [ $? -ne 0 ]; then
+if [ -z "$npu_smi_output" ]; then
     echo "Failed to run npu-smi. Please check if npu-smi is installed and working correctly."
     exit 1
 fi
