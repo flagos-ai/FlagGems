@@ -120,9 +120,10 @@ post_uninstall = []
 for item in b.get('post_install', []):
     if isinstance(item, dict) and 'uninstall' in item:
         post_uninstall.append(item['uninstall'])
-    else:
+    elif isinstance(item, str):
         post_install.append(item)
-print(f'POST_INSTALL=\"{\" \".join(post_install)}\"')
+# Use | as separator to handle commands with spaces
+print(f'POST_INSTALL=\"{\"|\".join(post_install)}\"')
 print(f'POST_UNINSTALL=\"{\" \".join(post_uninstall)}\"')
 ")
 
@@ -201,9 +202,12 @@ fi
 
 # ── Vendor-specific post-install ──────────────────────────────
 if [ -n "${POST_INSTALL}" ]; then
-  for pkg in ${POST_INSTALL}; do
-    printf "Post-install: ${pkg} ..."
-    uv pip install -q "${pkg}" --default-index "${FLAGOS_PYPI}" || fail
+  IFS='|' read -ra POST_CMDS <<< "${POST_INSTALL}"
+  for cmd in "${POST_CMDS[@]}"; do
+    cmd=$(echo "$cmd" | xargs)  # trim whitespace
+    [ -z "$cmd" ] && continue
+    printf "Post-install: ${cmd} ..."
+    eval "${cmd}" || fail
     ok
   done
 fi

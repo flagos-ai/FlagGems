@@ -80,7 +80,7 @@ backends:
       - /usr/local/Ascend/ascend-toolkit/set_env.sh
       - /usr/local/Ascend/toolbox/set_env.sh
     post_install:
-      - triton_ascend==3.2.1
+      - uv pip install --no-cache-dir --default-index ${FLAGOS_PYPI} --index ${MIRROR} triton_ascend==3.2.1
     deps:
       - torch==2.10.0+cpu
       - torch-npu==2.10.0
