@@ -11,136 +11,57 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
-# ── dense comparison kernels (specialised for 16/32/64 classes) ──────────────
+# ── scatter kernel: zero-init output, then write only the "1" positions ───────
 
 
 @libentry()
 @triton.jit
-def one_hot_kernel_16(
-    input_ptr,
-    output_ptr,
-    num_elements,
-    actual_classes,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = ext.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < num_elements
-
-    indices = tl.load(input_ptr + offsets, mask=mask, other=0)
-    out_base = offsets * actual_classes
-
-    class_offsets = tl.arange(0, 16)
-    out_offsets = out_base[:, None] + class_offsets[None, :]
-    values = tl.where(indices[:, None] == class_offsets[None, :], 1, 0)
-    valid_classes = class_offsets < actual_classes
-    combined_mask = mask[:, None] & valid_classes[None, :]
-    tl.store(output_ptr + out_offsets, values, mask=combined_mask)
-
-
-@libentry()
-@triton.jit
-def one_hot_kernel_32(
-    input_ptr,
-    output_ptr,
-    num_elements,
-    actual_classes,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = ext.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < num_elements
-
-    indices = tl.load(input_ptr + offsets, mask=mask, other=0)
-    out_base = offsets * actual_classes
-
-    class_offsets = tl.arange(0, 32)
-    out_offsets = out_base[:, None] + class_offsets[None, :]
-    values = tl.where(indices[:, None] == class_offsets[None, :], 1, 0)
-    valid_classes = class_offsets < actual_classes
-    combined_mask = mask[:, None] & valid_classes[None, :]
-    tl.store(output_ptr + out_offsets, values, mask=combined_mask)
-
-
-@libentry()
-@triton.jit
-def one_hot_kernel_64(
-    input_ptr,
-    output_ptr,
-    num_elements,
-    actual_classes,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = ext.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < num_elements
-
-    indices = tl.load(input_ptr + offsets, mask=mask, other=0)
-    out_base = offsets * actual_classes
-
-    class_offsets = tl.arange(0, 64)
-    out_offsets = out_base[:, None] + class_offsets[None, :]
-    values = tl.where(indices[:, None] == class_offsets[None, :], 1, 0)
-    valid_classes = class_offsets < actual_classes
-    combined_mask = mask[:, None] & valid_classes[None, :]
-    tl.store(output_ptr + out_offsets, values, mask=combined_mask)
-
-
-# ── scatter kernel: only write the "1" positions (output must be zeroed first) ──
-
-
-@libentry()
-@triton.jit
-def one_hot_set_one_kernel(
+def one_hot_scatter_kernel(
     input_ptr,
     output_ptr,
     num_elements,
     num_classes,
     BLOCK_SIZE: tl.constexpr,
 ):
+    """Scatter one-hot kernel.
+
+    For each input element computes ``row * num_classes + index`` and stores a
+    single ``1`` at that position.  The output buffer must be zero-initialized
+    before this kernel is launched.
+
+    This approach is always used regardless of ``num_classes`` because the
+    tiny per-element overhead of the scatter write (1 extra store per row)
+    is vastly outweighed by eliminating the broadcast-comparison cost of the
+    dense alternative on MTHREADS hardware.
+    """
     pid = ext.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < num_elements
 
     indices = tl.load(input_ptr + offsets, mask=mask, other=0)
-    out_offsets = offsets * num_classes + indices
+    safe_indices = tl.maximum(tl.minimum(indices, num_classes - 1), 0)
+    out_offsets = offsets * num_classes + safe_indices
     tl.store(output_ptr + out_offsets, 1, mask=mask)
 
 
-# ── block-size helpers ─────────────────────────────────────────────────────────
-
-
-def _dense_block_size(num_elements: int, num_classes: int) -> int:
-    """Pick a BLOCK_SIZE for dense kernels.
-
-    The kernel writes ``BLOCK_SIZE * num_classes`` values per block.  We cap
-    the per-block output to ~32 kB so that it stays L1-resident.
-    """
-    if num_elements <= 512:
-        base = 64
-    elif num_elements <= 4096:
-        base = 128
-    elif num_elements <= 32768:
-        base = 256
-    else:
-        base = 512
-    max_rows = max(32, (32 * 1024) // (num_classes * 8))
-    max_rows = 1 << (max_rows.bit_length() - 1)
-    return min(base, max_rows)
+# ── block-size helper ──────────────────────────────────────────────────────────
 
 
 def _scatter_block_size(num_elements: int) -> int:
-    """Pick a BLOCK_SIZE for the scatter-only kernel."""
-    if num_elements <= 1024:
+    """Pick an optimal BLOCK_SIZE for the scatter kernel.
+
+    On small inputs more grid blocks exploit multi-processor parallelism
+    (192 KB shared memory per SM removes register-pressure concerns).
+    On large inputs a bigger block amortises launch overhead.
+    """
+    if num_elements <= 4096:
         return 256
-    elif num_elements <= 16384:
+    elif num_elements <= 32768:
         return 512
-    else:
+    elif num_elements <= 262144:
         return 1024
+    else:
+        return 2048
 
 
 # ── main entry point ───────────────────────────────────────────────────────────
@@ -162,19 +83,22 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
         shape = (*tensor.shape, num_classes)
         return torch.empty(shape, device=tensor.device, dtype=torch.int64)
 
-    # Fused validation: minimise device syncs.
+    # Infer / validate num_classes (single device → host sync).
     if num_classes == -1:
-        maxv = int(tensor.max().item())
-        num_classes = maxv + 1
-        if (tensor < 0).any():
-            raise RuntimeError("Class values must be non-negative.")
-    else:
-        invalid = (tensor < 0) | (tensor >= num_classes)
-        if invalid.any():
+        # Use aminmax when available (one kernel for both min & max, PyTorch ≥ 1.11).
+        try:
+            amin, amax = tensor.aminmax()
+            if int(amin.item()) < 0:
+                raise RuntimeError("Class values must be non-negative.")
+            num_classes = int(amax.item()) + 1
+        except AttributeError:
+            maxv = int(tensor.max().item())
+            num_classes = maxv + 1
             if (tensor < 0).any():
                 raise RuntimeError("Class values must be non-negative.")
-            else:
-                raise RuntimeError("Class values must be smaller than num_classes.")
+    else:
+        if (tensor >= num_classes).any():
+            raise RuntimeError("Class values must be smaller than num_classes.")
 
     if num_classes < 1:
         raise RuntimeError("num_classes should be positive")
@@ -188,60 +112,22 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
     num_elements = flat_input.numel()
 
     with torch_device_fn.device(tensor.device):
-        if num_classes <= 16:
-            out = torch.empty(
-                num_elements * num_classes, device=tensor.device, dtype=torch.int64
-            )
-            BLOCK_SIZE = _dense_block_size(num_elements, num_classes)
-            grid = lambda meta: (triton.cdiv(num_elements, meta["BLOCK_SIZE"]),)
-            one_hot_kernel_16[grid](
-                flat_input,
-                out,
-                num_elements,
-                num_classes,
-                BLOCK_SIZE=BLOCK_SIZE,
-            )
-        elif num_classes <= 32:
-            out = torch.empty(
-                num_elements * num_classes, device=tensor.device, dtype=torch.int64
-            )
-            BLOCK_SIZE = _dense_block_size(num_elements, num_classes)
-            grid = lambda meta: (triton.cdiv(num_elements, meta["BLOCK_SIZE"]),)
-            one_hot_kernel_32[grid](
-                flat_input,
-                out,
-                num_elements,
-                num_classes,
-                BLOCK_SIZE=BLOCK_SIZE,
-            )
-        elif num_classes <= 64:
-            out = torch.empty(
-                num_elements * num_classes, device=tensor.device, dtype=torch.int64
-            )
-            BLOCK_SIZE = _dense_block_size(num_elements, num_classes)
-            grid = lambda meta: (triton.cdiv(num_elements, meta["BLOCK_SIZE"]),)
-            one_hot_kernel_64[grid](
-                flat_input,
-                out,
-                num_elements,
-                num_classes,
-                BLOCK_SIZE=BLOCK_SIZE,
-            )
-        else:
-            # For large num_classes use a scatter approach:
-            #   torch.zeros  → fast device memset
-            #   one_hot_set_one_kernel → write only the "1" positions
-            out = torch.zeros(
-                num_elements * num_classes, device=tensor.device, dtype=torch.int64
-            )
-            BLOCK_SIZE = _scatter_block_size(num_elements)
-            grid = lambda meta: (triton.cdiv(num_elements, meta["BLOCK_SIZE"]),)
-            one_hot_set_one_kernel[grid](
-                flat_input,
-                out,
-                num_elements,
-                num_classes,
-                BLOCK_SIZE=BLOCK_SIZE,
-            )
+        # Scatter approach: zero-init then write only the "1" positions.
+        # This avoids the expensive broadcast comparison in dense kernels
+        # and is consistently faster on MTHREADS hardware.
+        out = torch.zeros(
+            num_elements * num_classes,
+            device=tensor.device,
+            dtype=torch.int64,
+        )
+        BLOCK_SIZE = _scatter_block_size(num_elements)
+        grid = lambda meta: (triton.cdiv(num_elements, meta["BLOCK_SIZE"]),)
+        one_hot_scatter_kernel[grid](
+            flat_input,
+            out,
+            num_elements,
+            num_classes,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
 
     return out.view(*tensor.shape, num_classes)
