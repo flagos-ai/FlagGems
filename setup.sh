@@ -238,7 +238,7 @@ for k, v in b.get('env', {}).items():
     lines.append(f'export {k}={v}')
 
 for script in b.get('env_source', []):
-    lines.append(f'[ -f {script} ] && source {script}')
+    lines.append(f'[ -f {script} ] && source {script} || true')
 
 lines.append('# --- end FlagGems environment ---')
 
