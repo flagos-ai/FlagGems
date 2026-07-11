@@ -79,9 +79,8 @@ backends:
     env_source:
       - /usr/local/Ascend/ascend-toolkit/set_env.sh
       - /usr/local/Ascend/toolbox/set_env.sh
-    post_install: >-
-      uv pip install --no-cache-dir --index ${FLAGOS_PYPI}
-      "triton_ascend==3.2.1"
+    post_install:
+      - triton_ascend==3.2.1
     deps:
       - torch==2.10.0+cpu
       - torch-npu==2.10.0
