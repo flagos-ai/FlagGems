@@ -67,10 +67,17 @@ jobs:
               VENDOR="nvidia"
               BACKEND="nvidia-cuda133"
               ;;
-            a100|h100)
-              # TODO: verify CUDA version on a100/h100, then set correct backend
+            a100)
               VENDOR="nvidia"
               BACKEND="nvidia-cuda133"
+              ;;
+            h100)
+              # Driver 535.183.06 supports up to CUDA 12.9, so use the 12.8
+              # profile (cuda133 requires a newer driver). Note: nvcc is not on
+              # PATH in this node's container (cuda at /usr/local/cuda-12.9);
+              # C++ extension builds may need PATH/CUDA_HOME set.
+              VENDOR="nvidia"
+              BACKEND="nvidia-cuda128"
               ;;
             cann850)
               VENDOR="ascend"
