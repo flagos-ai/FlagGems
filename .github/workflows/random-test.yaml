@@ -93,7 +93,6 @@ jobs:
         shell: bash
         run: |
           source .venv/bin/activate
-          source tools/env.sh ${BACKEND}
           tools/run_tests.py --ops ${{ inputs.operators }} --gpus ${{ inputs.gpus }}
 
       - name: Upload results
