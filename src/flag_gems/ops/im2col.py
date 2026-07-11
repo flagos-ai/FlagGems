@@ -131,7 +131,6 @@ def im2col_kernel(
 
 
 def _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW):
-    assert x.is_cuda and out.is_cuda, "Inputs must be CUDA tensors"
     x = x.contiguous()
     out = out.contiguous()
 
@@ -193,3 +192,30 @@ def im2col(input, kernel_size, dilation=1, padding=0, stride=1):
 
     _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW)
     return out if input.ndim == 4 else out.squeeze(0)
+
+
+def im2col_out(input, kernel_size, dilation=1, padding=0, stride=1, out=None):
+    logger.debug("GEMS IM2COL_OUT")
+    x = input
+    if x.ndim == 3:
+        x = x.unsqueeze(0)
+    if x.ndim != 4:
+        raise ValueError("im2col_out expects input of shape (N, C, H, W) or (C, H, W)")
+    kH, kW = _parse_2tuple(kernel_size, "kernel_size")
+    dH, dW = _parse_2tuple(dilation, "dilation")
+    pH, pW = _parse_2tuple(padding, "padding")
+    sH, sW = _parse_2tuple(stride, "stride")
+
+    N, C, H, W = x.shape
+    outH, outW = _compute_output_dims(H, W, kH, kW, dH, dW, pH, pW, sH, sW)
+    rows_total = C * kH * kW
+    L = outH * outW
+
+    if out is None:
+        out = torch.empty((N, rows_total, L), device=x.device, dtype=x.dtype)
+
+    if L == 0 or rows_total == 0 or N == 0:
+        return out
+
+    _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW)
+    return out

@@ -522,6 +522,7 @@ _FULL_CONFIG = (
     ("igamma_", igamma_),
     ("igammac_", igammac_),
     ("im2col", im2col),
+    ("im2col.out", im2col_out),
     ("index.Tensor", index),
     ("index_add", index_add),
     ("index_add_", index_add_),
