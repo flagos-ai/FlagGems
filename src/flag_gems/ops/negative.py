@@ -34,7 +34,6 @@ def negative_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def _launch_negative(x: torch.Tensor, out: torch.Tensor):
-    assert x.is_cuda and out.is_cuda, "Tensors must be on CUDA device"
     assert x.dtype == out.dtype, "Input and output must have the same dtype"
     assert (
         x.numel() == out.numel()
