@@ -5,24 +5,10 @@ mem_threshold=30000     # Minimum free memory required (MB)
 sleep_time=120          # Wait time between retries (seconds)
 max_wait=600           # Maximum total wait time (seconds)
 
-# Debug: environment info
-echo "[DEBUG] PATH=$PATH"
-echo "[DEBUG] USER=$(whoami)"
-echo "[DEBUG] HOME=$HOME"
-echo "[DEBUG] which npu-smi: $(which npu-smi 2>&1)"
-echo "[DEBUG] npu-smi version:"
-npu-smi -v 2>&1 || true
-echo ""
-
 # Get the number of NPU chips from npu-smi info output
-echo "[DEBUG] Running: npu-smi info"
 npu_smi_output=$(npu-smi info 2>&1)
-npu_smi_rc=$?
-echo "[DEBUG] npu-smi info exit code: $npu_smi_rc"
 
-if [ $npu_smi_rc -ne 0 ]; then
-    echo "[DEBUG] npu-smi info output:"
-    echo "$npu_smi_output"
+if [ $? -ne 0 ]; then
     echo "Failed to run npu-smi. Please check if npu-smi is installed and working correctly."
     exit 1
 fi
