@@ -92,7 +92,13 @@ def _tma_safe(t: torch.Tensor) -> torch.Tensor:
     gapped views are left untouched -- copying them would be wasteful and could change
     the dispatched kernel. ``.contiguous()`` is a no-op for a stride-contiguous tensor,
     so a misaligned base is fixed with ``.clone()``. See issue #2489.
+
+    Broadcast views (a zero stride, from ``expand``) are left alone too: ``general_mm``
+    already copies them itself (#2616), and materializing one here would make it
+    contiguous and hence eligible for kernels ``mm`` does not currently dispatch it to.
     """
+    if 0 in t.stride():
+        return t
     if t.data_ptr() % 16 == 0 and (
         t.is_contiguous() or t.t().is_contiguous() or _is_tma_stride_aligned(t)
     ):
