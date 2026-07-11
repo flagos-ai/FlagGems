@@ -55,6 +55,6 @@ def test_im2col_out(shape, dtype, kernel_size, dilation, padding, stride):
     ref_out = torch.ops.aten.im2col(ref_x, kernel_size, dilation, padding, stride)
     out = torch.empty_like(ref_out, device=flag_gems.device)
     with flag_gems.use_gems():
-        torch.ops.aten.im2col(x, kernel_size, dilation, padding, stride, out=out)
+        torch.ops.aten.im2col.out(x, kernel_size, dilation, padding, stride, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype=dtype)
