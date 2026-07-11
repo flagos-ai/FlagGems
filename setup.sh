@@ -199,11 +199,11 @@ if [ "${COMPILER}" != "flagtree" ] && [ "${COMPILER}" != "triton" ]; then
   exit 1
 fi
 
-# ── Vendor-specific post-install ──────────────────────────────
-if [ -n "${POST_INSTALL}" ]; then
+# ── Vendor-specific post-install (triton mode only) ──────────
+if [ -n "${POST_INSTALL}" ] && [ "${COMPILER}" = "triton" ]; then
   for pkg in ${POST_INSTALL}; do
     printf "Post-install: ${pkg} ..."
-    uv pip install -q "${pkg}" --default-index "${FLAGOS_PYPI}" || fail
+    uv pip install -q "${pkg}" --default-index "${FLAGOS_PYPI}" --index "${MIRROR}" || fail
     ok
   done
 fi
