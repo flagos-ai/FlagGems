@@ -80,6 +80,10 @@ jobs:
               VENDOR="ascend"
               BACKEND="ascend-cann900"
               ;;
+            mthreads)
+              VENDOR="mthreads"
+              BACKEND="mthreads-musa520"
+              ;;
             *)
               VENDOR="${RUNNER_LABEL}"
               BACKEND="${RUNNER_LABEL}"
@@ -118,7 +122,7 @@ jobs:
 
       - uses: ./.github/actions/setup-flaggems
         with:
-          vendor: ${{ env.BACKEND }}
+          backend: ${{ env.BACKEND }}
           gpu_check_script: tools/gpu_check_${{ env.VENDOR }}.sh
 
       - id: run-tests
