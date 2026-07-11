@@ -1,0 +1,39 @@
+name: "probe node"
+
+# Manually probe a self-hosted runner's environment (driver / CUDA / OS) so we
+# can pick the correct backend profile for it (e.g. nvidia-cuda133 vs
+# nvidia-cuda128). Needs only bash on the runner.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Self-hosted runner label to probe (e.g. h100, a100, h20)"
+        required: true
+        default: "h100"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Probe node environment
+        shell: bash
+        run: |
+          {
+            echo "## Node probe: \`${{ inputs.runner }}\`"
+            echo '```'
+            echo "uname:   $(uname -a)"
+            echo "python3: $(python3 --version 2>&1)"
+            echo
+            echo "=== nvidia-smi ==="
+            nvidia-smi 2>&1 || echo "nvidia-smi: not found"
+            echo
+            echo "=== nvcc --version ==="
+            nvcc --version 2>&1 || echo "nvcc: not found"
+            echo
+            echo "=== /usr/local/cuda* ==="
+            ls -d /usr/local/cuda* 2>/dev/null || echo "no /usr/local/cuda*"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
