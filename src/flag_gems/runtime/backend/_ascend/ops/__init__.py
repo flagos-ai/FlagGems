@@ -51,6 +51,14 @@ from .hadamard_transform import hadamard_transform
 from .hstack import hstack
 from .index import index
 from .index_add import index_add, index_add_
+from .index_fill import (
+    index_fill_scalar,
+    index_fill_scalar_,
+    index_fill_scalar_out,
+    index_fill_tensor,
+    index_fill_tensor_,
+    index_fill_tensor_out,
+)
 from .index_select import index_select
 from .isin import isin
 from .linspace import linspace
@@ -149,6 +157,12 @@ __all__ = [
     "index",
     "index_add",
     "index_add_",
+    "index_fill_scalar",
+    "index_fill_scalar_",
+    "index_fill_scalar_out",
+    "index_fill_tensor",
+    "index_fill_tensor_",
+    "index_fill_tensor_out",
     "index_select",
     "isin",
     "linspace",

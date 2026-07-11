@@ -25,6 +25,11 @@ INDEX_FILL_OPS = [
     "index_fill_tensor_",
     "index_fill_tensor_out",
 ]
+INDEX_FILL_OOB_PATHS = (
+    ("cpp", "python_contiguous", "python_strided")
+    if flag_gems.device == "cuda"
+    else ("python_contiguous", "python_strided")
+)
 
 
 def _make_input(shape, dtype):
@@ -265,11 +270,12 @@ def test_index_fill_invalid_index_ndim():
 @pytest.mark.index_fill
 @pytest.mark.index_fill_
 @pytest.mark.skipif(
-    flag_gems.device != "cuda", reason="CUDA device assert behavior is backend-specific"
+    flag_gems.device not in ("cuda", "npu"),
+    reason="out-of-range behavior is backend-specific",
 )
 @pytest.mark.parametrize("op_name", ("index_fill", "index_fill_"))
 @pytest.mark.parametrize(
-    "execution_path", ("cpp", "python_contiguous", "python_strided")
+    "execution_path", INDEX_FILL_OOB_PATHS
 )
 def test_index_fill_out_of_range_index_device_assert(op_name, execution_path):
     if execution_path == "python_strided":
@@ -323,7 +329,11 @@ raise SystemExit(1)
     )
     output = result.stdout + result.stderr
     assert result.returncode == 0, output
-    assert "device-side assert" in output or "index out of bounds" in output
+    assert (
+        "device-side assert" in output
+        or "index out of bounds" in output
+        or "index out of range" in output
+    )
 
 
 @pytest.mark.index_fill_

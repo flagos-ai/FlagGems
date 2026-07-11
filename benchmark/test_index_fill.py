@@ -41,9 +41,8 @@ class IndexFillBenchmark(base.GenericBenchmark):
 
     def get_latency(self, op, *args, **kwargs):
         if base.Config.mode == consts.BenchMode.OPERATOR:
-            # Keep lazy module loading out of the five-call adaptive estimate.
-            for _ in range(5):
-                op(*self._clone_inplace_args(args), **kwargs)
+            # Keep one-time Triton loading out of the adaptive iteration count.
+            op(*self._clone_inplace_args(args), **kwargs)
             base.torch_device_fn.synchronize()
         return super().get_latency(op, *self._clone_inplace_args(args), **kwargs)
 
@@ -123,8 +122,17 @@ def index_fill_input_fn(shape, dtype, device):
         yield inp, dim, index, _scalar_value(dtype)
 
 
+def _skip_unrepresentative_ascend_torch_baseline():
+    if base.vendor_name == "ascend" and base.device == "npu":
+        pytest.skip(
+            "torch_npu index_fill extracts every NPU index element on the host; "
+            "use test_index_fill_npu_reference.py for the direct ACLNN comparison"
+        )
+
+
 @pytest.mark.index_fill
 def test_index_fill():
+    _skip_unrepresentative_ascend_torch_baseline()
     bench = IndexFillBenchmark(
         op_name="index_fill",
         input_fn=index_fill_input_fn,
@@ -137,6 +145,7 @@ def test_index_fill():
 
 @pytest.mark.index_fill_
 def test_index_fill_():
+    _skip_unrepresentative_ascend_torch_baseline()
     bench = IndexFillBenchmark(
         op_name="index_fill_",
         input_fn=index_fill_input_fn,
