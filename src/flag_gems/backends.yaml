@@ -77,8 +77,8 @@ backends:
     flagtree: flagtree==0.6.0+ascend3.5
     env_source:
       - /usr/local/Ascend/cann/set_env.sh
-    post_install:
-      - uv pip install --no-cache-dir --default-index ${FLAGOS_PYPI} --index ${MIRROR} triton_ascend==3.2.1
+    triton_post_install:
+      - triton_ascend==3.2.1
     deps:
       - torch==2.10.0+cpu
       - torch-npu==2.10.0
