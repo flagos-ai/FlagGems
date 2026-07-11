@@ -997,7 +997,6 @@ class ParallelBlasBenchmark(ParallelBenchmarkMixin, BlasBenchmark):
         return 1
 
 
-
 _MM_W8A8_OUT_CACHE = {}
 _MM_W8A8_OUT_CACHE_MAX_ENTRIES = int(
     os.environ.get("FLAGGEMS_BENCH_MM_W8A8_OUT_CACHE_MAX", "8")

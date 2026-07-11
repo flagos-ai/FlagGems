@@ -13,9 +13,9 @@ from flag_gems import runtime
 from flag_gems.ops.mm_streamk import streamk_mm
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils.libentry import LibTuner
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.device_info import get_device_capability, get_sm_count
+from flag_gems.utils.libentry import LibTuner
 from flag_gems.utils.triton_version_utils import HAS_TLE, HAS_TLE_DEVICE_MESH
 
 from .mm import mm as _bf16_mm
@@ -62,21 +62,21 @@ _FP8_CACHE_B_BY_SHAPE = os.environ.get("FLAGGEMS_FP8_CACHE_B_BY_SHAPE", "0") != 
 # prequantize_and_register_a_fp8). Callers should register A once before the
 # inference / benchmark timed loop so repeated mm_w8a8() avoids a.to(fp8) launches.
 _MM_PREQUANTIZE_A = os.environ.get("FLAGGEMS_MM_PREQUANTIZE_FP8", "0") != "0"
-_MM_FP8_OUTPUT_DTYPE = os.environ.get(
-    "FLAGGEMS_MM_W8A8_OUTPUT_DTYPE", "bf16"
-).lower()
+_MM_FP8_OUTPUT_DTYPE = os.environ.get("FLAGGEMS_MM_W8A8_OUTPUT_DTYPE", "bf16").lower()
 _MM_BF16_TRITON_FALLBACK = (
-    os.environ.get('FLAGGEMS_MM_W8A8_BF16_TRITON_FALLBACK', '1') != '0'
+    os.environ.get("FLAGGEMS_MM_W8A8_BF16_TRITON_FALLBACK", "1") != "0"
 )
 _MM_BF16_TRITON_FALLBACK_GENERALIZE = (
-    os.environ.get('FLAGGEMS_MM_W8A8_BF16_TRITON_FALLBACK_GENERALIZE', '1') != '0'
+    os.environ.get("FLAGGEMS_MM_W8A8_BF16_TRITON_FALLBACK_GENERALIZE", "1") != "0"
 )
 _MM_BLOCK_FP8_SCALE = os.environ.get("FLAGGEMS_MM_W8A8_BLOCK_FP8_SCALE", "1") != "0"
 _MM_BLOCK_FP8_GROUP_K = int(os.environ.get("FLAGGEMS_MM_W8A8_BLOCK_FP8_GROUP_K", "128"))
 _MM_BLOCK_FP8_GROUP_N = int(os.environ.get("FLAGGEMS_MM_W8A8_BLOCK_FP8_GROUP_N", "128"))
 
 # Optional inference-only pocket prune; never force during USE_FLAGTUNE expand search.
-_MM_PREFER_SHAPE_CONFIG = os.environ.get("FLAGGEMS_MM_W8A8_PREFER_SHAPE_CONFIG", "0") != "0"
+_MM_PREFER_SHAPE_CONFIG = (
+    os.environ.get("FLAGGEMS_MM_W8A8_PREFER_SHAPE_CONFIG", "0") != "0"
+)
 # Hopper skinny GEMM: small M + wide N decode/lm_head shapes (on by default).
 _MM_SKINNY_GEMM_ENABLED = os.environ.get("FLAGGEMS_MM_W8A8_SKINNY_GEMM", "1") != "0"
 _MM_SKINNY_MAX_M = int(os.environ.get("FLAGGEMS_MM_W8A8_SKINNY_MAX_M", "32"))
@@ -103,6 +103,7 @@ def _mm_tma_m_strategy(m: int) -> int:
     if m <= 64:
         return m
     return math.ceil(m / 32) * 32
+
 
 # TMA TensorDescriptor cache. Avoid the ~423K x 2 redundant
 # cuTensorMapEncodeTiled calls observed in mm_low_speedup_nsys when the same
@@ -355,7 +356,6 @@ def _tma_config_is_ncu_dominated_bad(
     block_n = cfg.kwargs["BLOCK_N"]
     block_k = cfg.kwargs["BLOCK_K"]
     stages = cfg.num_stages
-    warps = cfg.num_warps
     grid = _mm_grid_blocks(M, N, block_m, block_n)
     smem = _estimate_tma_shared_memory_bytes(block_m, block_n, block_k, stages)
 
@@ -429,10 +429,7 @@ def _prune_mm_tma_autotune_configs(configs, named_args, **kwargs):
     ]
     if not (K == 7168 and N == 64):
         shared_ok = [cfg for cfg in shared_ok if cfg.kwargs["BLOCK_M"] >= 16]
-    if (
-        _MM_PREFER_SHAPE_CONFIG
-        and os.environ.get("USE_FLAGTUNE") != "1"
-    ):
+    if _MM_PREFER_SHAPE_CONFIG and os.environ.get("USE_FLAGTUNE") != "1":
         shape_preferred = _prefer_mm_tma_shape_configs(shared_ok, M, N, K, sm_target)
         if shape_preferred:
             return shape_preferred
@@ -456,9 +453,7 @@ def _prune_gemv_autotune_configs(configs, named_args, **kwargs):
     pruned = [
         c
         for c in configs
-        if c.kwargs.get("BLOCK_M", 0) <= 32
-        and c.num_warps <= 4
-        and c.num_stages <= 4
+        if c.kwargs.get("BLOCK_M", 0) <= 32 and c.num_warps <= 4 and c.num_stages <= 4
     ]
     if M <= 8:
         tight = [c for c in pruned if c.kwargs.get("BLOCK_M", 0) <= 8]
@@ -531,21 +526,25 @@ def is_tma_compatible(a, b, N, K):
         bool: True if compatible with TMA's alignment requirements
     """
     return (
-        a.dtype in (torch.float16, torch.bfloat16)
-        and b.dtype in (torch.float16, torch.bfloat16)
-        and N % 8 == 0
-        and K % 8 == 0
-    ) or (
-        a.dtype in (torch.float32,)
-        and b.dtype in (torch.float32,)
-        and N % 4 == 0
-        and K % 4 == 0
-    ) or (
-        # For fp8(1 byte/element), 16-byte alignment means N/K must be multiples of 16.
-        a.dtype in _FP8_DTYPES
-        and b.dtype == a.dtype
-        and N % 16 == 0
-        and K % 16 == 0
+        (
+            a.dtype in (torch.float16, torch.bfloat16)
+            and b.dtype in (torch.float16, torch.bfloat16)
+            and N % 8 == 0
+            and K % 8 == 0
+        )
+        or (
+            a.dtype in (torch.float32,)
+            and b.dtype in (torch.float32,)
+            and N % 4 == 0
+            and K % 4 == 0
+        )
+        or (
+            # For fp8(1 byte/element), 16-byte alignment means N/K must be multiples of 16.
+            a.dtype in _FP8_DTYPES
+            and b.dtype == a.dtype
+            and N % 16 == 0
+            and K % 16 == 0
+        )
     )
 
 
@@ -832,7 +831,6 @@ def mm_kernel_general_host_tma_jit(
     c_desc.store([offset_am, offset_bn], c)
 
 
-
 _MM_HOST_TMA_CONFIGS = matmul_get_configs()
 mm_kernel_general_host_tma = _wrap_mm_host_tma_kernel(
     runtime.ops_get_configs(
@@ -890,7 +888,9 @@ def _install_mm_host_tma_descriptor_block_shape_guard(tma_kernel):
 
 
 _install_mm_host_tma_descriptor_block_shape_guard(mm_kernel_general_host_tma)
-_install_mm_host_tma_descriptor_block_shape_guard(mm_kernel_general_host_tma_default_tune)
+_install_mm_host_tma_descriptor_block_shape_guard(
+    mm_kernel_general_host_tma_default_tune
+)
 
 
 def _block_scaled_tma_configs(pre_hook):
@@ -1176,10 +1176,7 @@ def _pick_mm_host_tma_kernel(
     if N == 64 or N >= 8192 or K in (512, 4096):
         return mm_kernel_general_host_tma_default_tune
 
-    if (
-        not _MM_EXPAND_PICK_DEFAULT_N256_N1024
-        or N not in _MM_EXPAND_NARROW_N
-    ):
+    if not _MM_EXPAND_PICK_DEFAULT_N256_N1024 or N not in _MM_EXPAND_NARROW_N:
         return mm_kernel_general_host_tma
 
     key = _mm_host_tma_autotune_key(M, N, K, stride_am, stride_bk, dtype_str)
@@ -1212,7 +1209,6 @@ def _pick_mm_host_tma_kernel(
         if use_default
         else mm_kernel_general_host_tma
     )
-
 
 
 def _fp8_mm_output_dtype(input_dtype: torch.dtype) -> torch.dtype:
@@ -1263,10 +1259,9 @@ def general_mm(a, b, c, M, N, K):
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
-    if (
-        hasattr(triton.tools.tensor_descriptor, "TensorDescriptor")
-        and is_tma_compatible(a, b, N, K)
-    ):
+    if hasattr(
+        triton.tools.tensor_descriptor, "TensorDescriptor"
+    ) and is_tma_compatible(a, b, N, K):
         a_row_major = a.stride(1) == 1
         b_row_major = b.stride(1) == 1
         dummy_block = [1, 1]
@@ -1399,9 +1394,9 @@ def general_mm(a, b, c, M, N, K):
         triton.Config({"BLOCK_M": 32, "BLOCK_K": 256}, num_warps=4, num_stages=2),
     ],
     key=["M", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("mm_w8a8_gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
+    strategy=runtime.get_expand_config(
+        "mm_w8a8_gemv", yaml_path=EXPAND_CONFIG_FILENAME
+    )["strategy"]
     if os.environ.get("USE_FLAGTUNE") == "1"
     else ["align32", "align32", "align32", "default"],
     warmup=10,
@@ -1483,13 +1478,15 @@ def gemv_mm(a, b, c, M, K):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs("mm_w8a8_skinny", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME)
+    configs=runtime.ops_get_configs(
+        "mm_w8a8_skinny", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
+    )
     if os.environ.get("USE_FLAGTUNE") == "1"
     else matmul_skinny_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("mm_w8a8_skinny", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
+    strategy=runtime.get_expand_config(
+        "mm_w8a8_skinny", yaml_path=EXPAND_CONFIG_FILENAME
+    )["strategy"]
     if os.environ.get("USE_FLAGTUNE") == "1"
     else ["mm_w8a8_tma_m", "align32", "align32", "align32", "default"],
     warmup=10,
@@ -1590,7 +1587,6 @@ def skinny_mm(a, b, c, M, N, K):
     return c
 
 
-
 def skinny_scenario(a, b, M, N, K):
     """Route launch-bound decode lm_head shapes to the skinny kernel."""
     if not _MM_SKINNY_GEMM_ENABLED:
@@ -1608,12 +1604,16 @@ def skinny_scenario(a, b, M, N, K):
         return False
     if a.stride(1) != 1 or b.stride(1) != 1:
         return False
-    return a.dtype in (
-        torch.float16,
-        torch.bfloat16,
-        torch.float32,
-        *_FP8_DTYPES,
-    ) and b.dtype == a.dtype
+    return (
+        a.dtype
+        in (
+            torch.float16,
+            torch.bfloat16,
+            torch.float32,
+            *_FP8_DTYPES,
+        )
+        and b.dtype == a.dtype
+    )
 
 
 def streamk_scenario(a, b, M, N, K):
@@ -2068,17 +2068,15 @@ def block_scaled_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
     )
     use_flagtune = runtime.flagtune_enabled("mm_w8a8")
 
-    if hasattr(triton.tools.tensor_descriptor, "TensorDescriptor") and is_tma_compatible(
-        a, b, N, K
-    ):
+    if hasattr(
+        triton.tools.tensor_descriptor, "TensorDescriptor"
+    ) and is_tma_compatible(a, b, N, K):
         with torch_device_fn.device(a.device):
             if M < 2048 and N < 2048 and K >= 4096 and c.dtype not in _FP8_DTYPES:
                 return _block_scaled_splitk_tma_mm(
                     a, b, c, a_s, b_s, M, N, K, group_n, group_k
                 )
-            return _block_scaled_tma_mm(
-                a, b, c, a_s, b_s, M, N, K, group_n, group_k
-            )
+            return _block_scaled_tma_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k)
 
     raise RuntimeError("Hopper mm_w8a8 FP8 path requires TMA tensor descriptors")
 
@@ -2594,7 +2592,9 @@ def prequantize_mm_inputs_for_inference(
     return a_fp8, b_fp8
 
 
-def _get_prefetched_a_fp8(a: torch.Tensor, target_dtype: torch.dtype) -> Optional[torch.Tensor]:
+def _get_prefetched_a_fp8(
+    a: torch.Tensor, target_dtype: torch.dtype
+) -> Optional[torch.Tensor]:
     key = _make_fp8_cache_key(a, target_dtype, by_shape=_FP8_CACHE_A_BY_SHAPE)
     cached = _FP8_A_PREFETCH_CACHE.get(key)
     if cached is not None:
@@ -2914,8 +2914,6 @@ def _dispatch_block_scaled_mm(
     return run()
 
 
-
-
 _MM_BF16_TRITON_FALLBACK_SHAPES = frozenset(
     {
         (1, 1024, 2048),
@@ -3039,7 +3037,13 @@ def _should_fallback_bf16_mm_by_rule(M: int, N: int, K: int) -> bool:
         if N == 256:
             return 1 <= M <= 432 or 464 <= M <= 480
         if N == 512:
-            return 1 <= M <= 192 or M == 216 or M == 232 or 272 <= M <= 288 or 368 <= M <= 384
+            return (
+                1 <= M <= 192
+                or M == 216
+                or M == 232
+                or 272 <= M <= 288
+                or 368 <= M <= 384
+            )
         if N == 2560:
             return 1 <= M <= 48 or 72 <= M <= 96 or 136 <= M <= 160
 
@@ -3058,9 +3062,11 @@ def _should_fallback_bf16_mm(
         return False
     if a.dtype is not torch.bfloat16 or b.dtype is not torch.bfloat16:
         return False
-    return (M, N, K) in _MM_BF16_TRITON_FALLBACK_SHAPES or _should_fallback_bf16_mm_by_rule(
-        M, N, K
-    )
+    return (
+        M,
+        N,
+        K,
+    ) in _MM_BF16_TRITON_FALLBACK_SHAPES or _should_fallback_bf16_mm_by_rule(M, N, K)
 
 
 def _bf16_triton_mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
@@ -3100,8 +3106,10 @@ def _dispatch_mm(
     elif skinny_scenario(a, b, M, N, K):
         scenario = "skinny"
         run = lambda: skinny_mm(a, b, c, M, N, K)
-    elif HAS_TLE and BLOCK_CLUSTER_MESH is not None and cluster_remote_mm_scenario(
-        a, b, c, M, N, K
+    elif (
+        HAS_TLE
+        and BLOCK_CLUSTER_MESH is not None
+        and cluster_remote_mm_scenario(a, b, c, M, N, K)
     ):
         return cluster_remote_mm(a, b, c, M, N, K)
     elif streamk_scenario(a, b, M, N, K):

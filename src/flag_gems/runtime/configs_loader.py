@@ -544,7 +544,9 @@ class TunedConfigLoader(object):
                 expand_yaml_path=self._get_expand_config_path("w8a8_block_fp8_bmm"),
             ),
             "mm_splitk": self._build_single_expand_spec("mm_splitk"),
-            "mm_w8a8_general_tma": self._build_single_expand_spec("mm_w8a8_general_tma"),
+            "mm_w8a8_general_tma": self._build_single_expand_spec(
+                "mm_w8a8_general_tma"
+            ),
             "mm_w8a8_splitk": self._build_single_expand_spec("mm_w8a8_splitk"),
             "mm_w8a8_block_scaled": self._build_single_expand_spec(
                 "mm_w8a8_block_scaled"
