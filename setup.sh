@@ -115,16 +115,11 @@ if isinstance(tr, list):
     tr = ' '.join(tr)
 print(f'TRITON_PKGS=\"{tr}\"')
 
-post_install = []
-post_uninstall = []
-for item in b.get('post_install', []):
-    if isinstance(item, dict) and 'uninstall' in item:
-        post_uninstall.append(item['uninstall'])
-    elif isinstance(item, str):
-        post_install.append(item)
-# Use | as separator to handle commands with spaces
-print(f'POST_INSTALL=\"{\"|\".join(post_install)}\"')
-print(f'POST_UNINSTALL=\"{\" \".join(post_uninstall)}\"')
+triton_post = []
+for item in b.get('triton_post_install', []):
+    if isinstance(item, str):
+        triton_post.append(item)
+print(f'TRITON_POST_INSTALL=\"{\" \".join(triton_post)}\"')
 ")
 
 # ── C++ extensions ───────────────────────────────────────────
@@ -200,22 +195,11 @@ if [ "${COMPILER}" != "flagtree" ] && [ "${COMPILER}" != "triton" ]; then
   exit 1
 fi
 
-# ── Vendor-specific post-install ──────────────────────────────
-if [ -n "${POST_INSTALL}" ]; then
-  IFS='|' read -ra POST_CMDS <<< "${POST_INSTALL}"
-  for cmd in "${POST_CMDS[@]}"; do
-    cmd=$(echo "$cmd" | xargs)  # trim whitespace
-    [ -z "$cmd" ] && continue
-    printf "Post-install: ${cmd} ..."
-    eval "${cmd}" || fail
-    ok
-  done
-fi
-
-if [ -n "${POST_UNINSTALL}" ]; then
-  for pkg in ${POST_UNINSTALL}; do
-    printf "Post-uninstall: ${pkg} ..."
-    uv pip uninstall -q "${pkg}" 2>/dev/null || true
+# ── Triton-specific post-install ──────────────────────────────
+if [ -n "${TRITON_POST_INSTALL}" ] && [ "${COMPILER}" = "triton" ]; then
+  for pkg in ${TRITON_POST_INSTALL}; do
+    printf "Triton post-install: ${pkg} ..."
+    uv pip install -q "${pkg}" --default-index "${FLAGOS_PYPI}" --index "${MIRROR}" || fail
     ok
   done
 fi
