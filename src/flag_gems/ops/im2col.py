@@ -218,11 +218,12 @@ def im2col_out(input, kernel_size, dilation=1, padding=0, stride=1, out=None):
     if out is None:
         out = torch.empty((N, rows_total, L), device=x.device, dtype=x.dtype)
     else:
-        # Match the native aten im2col.out semantics: the out tensor is resized
-        # to (N, rows_total, L) regardless of the shape it was passed in with.
-        # Some torch versions do not pre-resize a registered python out kernel's
-        # out argument, so an empty/mis-shaped out would otherwise be written
-        # out of bounds.
+        # Ensure `out` has enough storage before the kernel writes into it. Some
+        # torch versions do not pre-resize a registered python out kernel's out
+        # argument, so an empty/mis-shaped out would otherwise be written out of
+        # bounds. The dispatcher still decides the final user-visible shape (it
+        # differs by torch version for 3D inputs), which does not affect the
+        # rows_total * L elements we lay out contiguously here.
         out.resize_((N, rows_total, L))
 
     if L == 0 or rows_total == 0 or N == 0:

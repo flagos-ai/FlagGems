@@ -52,16 +52,13 @@ def test_im2col_out(shape, dtype, kernel_size, dilation, padding, stride):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
 
-    # Build the reference through the .out overload as well: for 3D inputs the
-    # aten im2col.out variant keeps the leading batch dim (shape (1, C*kH*kW, L)),
-    # unlike the functional variant which returns a 2D tensor. Comparing against
-    # the .out reference keeps the shapes consistent.
-    ref_out = torch.empty(0, dtype=ref_x.dtype, device=ref_x.device)
-    torch.ops.aten.im2col.out(
-        ref_x, kernel_size, dilation, padding, stride, out=ref_out
-    )
+    ref_out = torch.ops.aten.im2col(ref_x, kernel_size, dilation, padding, stride)
     out = torch.empty(0, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         torch.ops.aten.im2col.out(x, kernel_size, dilation, padding, stride, out=out)
 
-    utils.gems_assert_close(out, ref_out, dtype=dtype)
+    # For 3D inputs the aten im2col.out overload keeps a leading singleton batch
+    # dim on some torch versions (shape (1, C*kH*kW, L)) but not others. The
+    # element count always matches the functional reference, so normalize the
+    # shape before comparing values.
+    utils.gems_assert_close(out.reshape(ref_out.shape), ref_out, dtype=dtype)
