@@ -16,45 +16,18 @@
 import logging
 
 import torch
-import triton
-import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
 
-@triton.jit
-def narrow_kernel(
-    out_ptr,
-    inp_ptr,
-    total_elements,
-    dim_size,
-    dim_prod_post,
-    start,
-    length,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    block_start = pid * BLOCK_SIZE
-    offsets = tl.arange(0, BLOCK_SIZE)
-    idx = (block_start + offsets).to(tl.int64)
-    mask = idx < total_elements
-
-    # Map from output flat index to input flat index.
-    # Output shape equals input shape except the narrowed dim has size = length.
-    pre_idx = idx // (length * dim_prod_post)
-    dim_idx = (idx // dim_prod_post) % length
-    post_idx = idx % dim_prod_post
-
-    inp_dim_idx = dim_idx + start
-    inp_idx = (
-        pre_idx * dim_size * dim_prod_post + inp_dim_idx * dim_prod_post + post_idx
-    )
-
-    inp_data = tl.load(inp_ptr + inp_idx, mask=mask)
-    tl.store(out_ptr + idx, inp_data, mask=mask)
-
-
 def narrow(inp, dim, start, length):
+    """Narrow a tensor along a dimension.
+
+    `torch.narrow` is a view operation: the returned tensor shares storage with
+    the input. We therefore implement it as a zero-copy view via
+    `torch.as_strided` (adjusting only the size along `dim` and the storage
+    offset) rather than copying data with a kernel.
+    """
     logger.debug("GEMS NARROW")
     assert (
         dim >= -inp.ndim and dim < inp.ndim
@@ -73,36 +46,9 @@ def narrow(inp, dim, start, length):
         dim
     ), f"Invalid narrow range: start={start}, length={length}, dim_size={inp.size(dim)}"
 
-    out_shape = list(inp.shape)
-    out_shape[dim] = length
-    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
+    size = list(inp.shape)
+    size[dim] = length
+    stride = list(inp.stride())
+    storage_offset = inp.storage_offset() + start * inp.stride(dim)
 
-    if out.numel() == 0:
-        return out
-
-    # Make input contiguous for simple linear indexing.
-    inp = inp.contiguous()
-
-    total_elements = out.numel()
-    dim_size = inp.size(dim)
-
-    dim_prod_post = 1
-    for d in range(dim + 1, inp.ndim):
-        dim_prod_post *= inp.size(d)
-
-    # BLOCK_SIZE 1024 balances occupancy and launch overhead for elementwise copy.
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(total_elements, BLOCK_SIZE),)
-
-    narrow_kernel[grid](
-        out,
-        inp,
-        total_elements,
-        dim_size,
-        dim_prod_post,
-        start,
-        length,
-        BLOCK_SIZE=BLOCK_SIZE,
-    )
-
-    return out
+    return torch.as_strided(inp, size, stride, storage_offset)

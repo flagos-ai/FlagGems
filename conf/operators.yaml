@@ -5345,12 +5345,13 @@ ops:
     stages:
       - beta: '5.4'
   - id: narrow
-    description: Returns a new tensor that is a narrowed version of the input tensor along the given dimension.
+    description: Pure layout operation (narrow); returns a zero-copy view sharing storage with the input.
     for:
       - narrow
     labels:
       - aten
       - KernelGen
+      - skip_precision_check
     kind:
       - Tensor
     stages:

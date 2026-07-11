@@ -26,6 +26,11 @@ def test_narrow(shape, dtype):
                     with flag_gems.use_gems():
                         res_out = torch.narrow(inp, dim, start, length)
                     utils.gems_assert_equal(res_out, ref_out)
+                    # narrow is a view op: output must share storage with input.
+                    assert (
+                        res_out.untyped_storage().data_ptr()
+                        == inp.untyped_storage().data_ptr()
+                    )
 
 
 @pytest.mark.narrow
