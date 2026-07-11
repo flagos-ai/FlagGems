@@ -52,3 +52,13 @@ def test_silu_backward():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.silu_out
+def test_silu_out():
+    bench = base.UnaryPointwiseOutBenchmark(
+        op_name="silu_out",
+        torch_op=torch.ops.aten.silu.out,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

@@ -7239,6 +7239,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: silu_out
+    description: |
+      A variant of `silu` that supports an output tensor to receive the result.
+    for:
+      - silu.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: sin
     description: |
       Returns a new tensor with the sine of the elements in the `input` tensor,
