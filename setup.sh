@@ -56,12 +56,12 @@ else
   curl -sSf "${UV_MIRROR}/uv-${ARCH}-${UV_VERSION}-linux-gnu.tar.gz" \
     | tar xz -C "$HOME/.local/bin" 2>/dev/null \
     || { curl -LsSf https://astral.sh/uv/install.sh | sh; }
-  # Persist PATH for subsequent GitHub Actions steps
-  [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   command -v uv &>/dev/null || { printf "uv installation"; fail; }
   printf "Installed $(uv --version)"
   ok
 fi
+# Persist PATH for subsequent GitHub Actions steps
+[ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
 # ── Install Python via uv ────────────────────────────────────
 printf "Installing Python ${PYTHON_VERSION} ..."
