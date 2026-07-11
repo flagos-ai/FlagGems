@@ -563,7 +563,6 @@ class TunedConfigLoader(object):
                     "compute_global_topk_indices_and_lens"
                 ),
             ),
-            "mm_skinny": self._build_single_expand_spec("mm_skinny"),
         }
 
     def load_all(self):
