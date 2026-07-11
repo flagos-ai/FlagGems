@@ -68,13 +68,13 @@ def im2col_kernel(
     outW,
     rows_total,  # C * kH * kW
     L,  # outH * outW
-    num_row_tiles,  # ceil_div(rows_total, BLOCK_M)
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
     pid0 = tl.program_id(0)
     pid1 = tl.program_id(1)
 
+    num_row_tiles = tl.cdiv(rows_total, BLOCK_M)
     n = pid0 // num_row_tiles
     row_tile = pid0 % num_row_tiles
 
@@ -142,9 +142,14 @@ def _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW):
     if rows_total == 0 or L == 0 or N == 0:
         return  # Nothing to do
 
-    num_row_tiles = triton.cdiv(rows_total, 64)  # BLOCK_M default
-    num_col_tiles = triton.cdiv(L, 128)  # BLOCK_N default
-    grid = (N * num_row_tiles, num_col_tiles)
+    # BLOCK_M / BLOCK_N are chosen by autotune, so the grid and num_row_tiles
+    # must be derived from the selected meta-parameters. Using fixed block sizes
+    # here would under- or over-cover the output whenever autotune picks a
+    # different tiling (e.g. BLOCK_N=32 would leave half of L unwritten).
+    def grid(meta):
+        num_row_tiles = triton.cdiv(rows_total, meta["BLOCK_M"])
+        num_col_tiles = triton.cdiv(L, meta["BLOCK_N"])
+        return (N * num_row_tiles, num_col_tiles)
 
     im2col_kernel[grid](
         x,
@@ -165,7 +170,6 @@ def _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW):
         outW,
         rows_total,
         L,
-        num_row_tiles,
     )
 
 
