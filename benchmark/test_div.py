@@ -1,11 +1,16 @@
 import pytest
 import torch
 
-from . import base, consts
+import flag_gems
+
+from . import base, consts, utils
 
 
 # TODO(0x45f): Fix OOM when dtypes includes COMPLEX_DTYPES (Issue #2693).
 @pytest.mark.div_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_div():
     bench = base.BinaryPointwiseBenchmark(
         op_name="div_tensor",
@@ -16,11 +21,96 @@ def test_div():
 
 
 @pytest.mark.div_tensor_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_div_inplace():
     bench = base.BinaryPointwiseBenchmark(
         op_name="div_tensor_",
         torch_op=lambda a, b: a.div_(b),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
+    )
+    bench.run()
+
+
+def _div_tensor_mode_input_fn(shape, dtype, device):
+    inp1 = utils.generate_tensor_input(shape, dtype, device)
+    inp2 = utils.generate_tensor_input(shape, dtype, device)
+    if dtype in consts.FLOAT_DTYPES:
+        inp2 = torch.where(inp2 >= 0, inp2 + 0.1, inp2 - 0.1)
+    else:
+        inp2 = torch.where(inp2 == 0, 1, inp2)
+    yield inp1, inp2
+
+
+@pytest.mark.div_tensor_mode
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
+def test_div_tensor_mode(rounding_mode):
+    dtypes = [torch.float32] if rounding_mode == "trunc" else consts.FLOAT_DTYPES
+    bench = base.GenericBenchmark(
+        op_name="div_tensor_mode",
+        input_fn=_div_tensor_mode_input_fn,
+        torch_op=lambda a, b: torch.div(a, b, rounding_mode=rounding_mode),
+        dtypes=dtypes,
+    )
+    bench.run()
+
+
+@pytest.mark.div_tensor_mode_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
+def test_div_tensor_mode_inplace(rounding_mode):
+    dtypes = [torch.float32] if rounding_mode == "trunc" else consts.FLOAT_DTYPES
+    bench = base.GenericBenchmark(
+        op_name="div_tensor_mode_",
+        input_fn=_div_tensor_mode_input_fn,
+        torch_op=lambda a, b: a.div_(b, rounding_mode=rounding_mode),
+        dtypes=dtypes,
+        is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.div_scalar_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_div_scalar_inplace():
+    def input_fn(shape, dtype, device):
+        inp = utils.generate_tensor_input(shape, dtype, device)
+        yield inp, 0.001
+
+    bench = base.GenericBenchmark(
+        op_name="div_scalar_",
+        input_fn=input_fn,
+        torch_op=lambda a, b: a.div_(b),
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.div_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_div_out():
+    def input_fn(shape, dtype, device):
+        inp1 = utils.generate_tensor_input(shape, dtype, device)
+        inp2 = utils.generate_tensor_input(shape, dtype, device)
+        out = torch.empty_like(inp1)
+        yield inp1, inp2, {"out": out}
+
+    bench = base.GenericBenchmark(
+        op_name="div_out",
+        input_fn=input_fn,
+        torch_op=torch.div,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
 @pytest.mark.all
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_all():
     bench = base.UnaryReductionBenchmark(
         op_name="all", torch_op=torch.all, dtypes=consts.FLOAT_DTYPES
@@ -13,6 +18,9 @@ def test_all():
 
 
 @pytest.mark.all_dim
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_all_dim():
     bench = base.UnaryReductionBenchmark(
         op_name="all_dim", torch_op=torch.all, dtypes=consts.FLOAT_DTYPES
