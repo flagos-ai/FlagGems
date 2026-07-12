@@ -23,12 +23,13 @@ jobs:
         run: |
           source .venv/bin/activate
           export PATH="/home/secure/.local/bin:/usr/local/cuda/bin:$PATH"
-          export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DCMAKE_BUILD_TYPE=Release"
-          uv pip install -v -e . --no-build-isolation
+          tools/set_cpp_vendor.sh cuda
+          export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=CUDA -DCMAKE_BUILD_TYPE=Release"
+          uv pip install -v -e ./cpp --no-build-isolation
       - shell: bash
         run: |
           source .venv/bin/activate
           export PATH="/home/.local/bin:/usr/local/cuda/bin:$PATH"
-          cd build/cpython-*/ctests
+          cd cpp/build/cpython-*/ctests
           export FLAGGEMS_SOURCE_DIR=$(python -c "import os;import flag_gems;print(os.path.dirname(flag_gems.__file__))")
           ctest -V

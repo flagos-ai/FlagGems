@@ -7,14 +7,7 @@ ops/cpp:
   - changed-files:
       - any-glob-to-any-file:
           - '.clang-format'
-          - 'CMakeLists.txt'
-          - 'build/**'
-          - 'cmake/**'
-          - 'ctests/**'
-          - 'include/**'
-          - 'lib/**'
-          - 'src/flag_gems/csrc/**'
-          - 'triton_src/**'
+          - 'cpp/**'
 
 ci/cd:
   - changed-files:

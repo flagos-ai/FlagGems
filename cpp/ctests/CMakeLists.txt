@@ -131,8 +131,8 @@ target_link_libraries(test_triton_copy
 add_test(NAME test_triton_copy COMMAND test_triton_copy)
 
 # Set FLAGGEMS_SOURCE_DIR for all tests that load Triton kernels at runtime.
-# Compute it from the project source directory.
-set(_FLAGGEMS_SRC_DIR "${CMAKE_SOURCE_DIR}/src/flag_gems")
+# The Python sources live in the parent repo (cpp/ is one level below repo root).
+set(_FLAGGEMS_SRC_DIR "${CMAKE_SOURCE_DIR}/../src/flag_gems")
 get_property(_all_tests DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY TESTS)
 foreach(_t IN LISTS _all_tests)
   set_tests_properties(${_t} PROPERTIES
