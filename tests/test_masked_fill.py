@@ -10,17 +10,16 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
-@pytest.mark.parametrize(
-    "value",
-    [
-        torch.tensor(1024, device=flag_gems.device),
-        torch.scalar_tensor(1024, device=flag_gems.device),
-        1024,
-    ],
-)
-def test_masked_fill(shape, dtype, threshold, value):
+@pytest.mark.parametrize("value_type", ["tensor", "scalar_tensor", "scalar"])
+def test_masked_fill(shape, dtype, threshold, value_type):
     inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.randn(shape, dtype=dtype, device=flag_gems.device) < threshold
+    if value_type == "tensor":
+        value = torch.tensor(1024, device=flag_gems.device)
+    elif value_type == "scalar_tensor":
+        value = torch.scalar_tensor(1024, device=flag_gems.device)
+    else:
+        value = 1024
 
     ref_inp = utils.to_reference(inp)
     ref_mask = utils.to_reference(mask)
@@ -38,17 +37,16 @@ def test_masked_fill(shape, dtype, threshold, value):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
-@pytest.mark.parametrize(
-    "value",
-    [
-        torch.tensor(1024, device=flag_gems.device),
-        torch.scalar_tensor(1024, device=flag_gems.device),
-        1024,
-    ],
-)
-def test_masked_fill_(shape, dtype, threshold, value):
+@pytest.mark.parametrize("value_type", ["tensor", "scalar_tensor", "scalar"])
+def test_masked_fill_(shape, dtype, threshold, value_type):
     inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.randn(shape, dtype=dtype, device=flag_gems.device) < threshold
+    if value_type == "tensor":
+        value = torch.tensor(1024, device=flag_gems.device)
+    elif value_type == "scalar_tensor":
+        value = torch.scalar_tensor(1024, device=flag_gems.device)
+    else:
+        value = 1024
 
     ref_inp = utils.to_reference(inp)
     ref_mask = utils.to_reference(mask)
