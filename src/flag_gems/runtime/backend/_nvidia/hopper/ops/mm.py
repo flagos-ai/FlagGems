@@ -90,9 +90,9 @@ def _tma_safe(t: torch.Tensor) -> torch.Tensor:
     -> 65 * 2B = 130B), a clean transpose whose M is not a multiple of 16 bytes, or any
     view with an unaligned base (odd ``storage_offset``, e.g. ``weight[:, 1:]``) makes
     the descriptor illegal ("strides/base must be 16-byte aligned"). A fresh contiguous
-    buffer fixes all three: its outer stride is K (resp. N), which ``is_tma_compatible``
-    has already established is a multiple of 16 bytes, and the allocation is aligned.
-    See issue #2489.
+    buffer fixes all three: for a non-empty operand its outer stride is K (resp. N),
+    which ``is_tma_compatible`` has already established is a multiple of 16 bytes, and
+    the allocation is aligned. See issue #2489.
 
     Neither ``.contiguous()`` nor ``.clone()`` can be used here: both are stride-preserving
     for an operand that is already stride-contiguous, which includes a misaligned base and
