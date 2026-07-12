@@ -252,6 +252,7 @@ class LibTuner(triton.runtime.Autotuner):
         strategy=None,
         flagtune_op_name=None,
         flagtune_expand_op_name=None,
+        flagtune_op_id=None,
         flagtune_yaml_path=None,
         flagtune_pre_hook=None,
     ):
@@ -339,6 +340,7 @@ class LibTuner(triton.runtime.Autotuner):
         self._flagtune_warned = False
         self._flagtune_op_name = flagtune_op_name
         self._flagtune_expand_op_name = flagtune_expand_op_name or flagtune_op_name
+        self._flagtune_op_id = flagtune_op_id
         self._flagtune_yaml_path = flagtune_yaml_path
         self._flagtune_pre_hook = flagtune_pre_hook
 
@@ -595,18 +597,54 @@ class LibTuner(triton.runtime.Autotuner):
 
 _FLAGTUNE_PROPOSER_POOL: Dict[str, Any] = {}
 _FLAGTUNE_OP_INFO_POOL: Dict[str, Any] = {}
+_FLAGTUNE_AVAILABILITY: Optional[Tuple[bool, Optional[BaseException]]] = None
+_FLAGTUNE_UNAVAILABLE_WARNED = False
+_FLAGTUNE_FALLBACK_WARNED: set = set()
 
 
-def _ensure_flagtune_proposer(op_id: str, operator_id: str):
+def _flagtune_available() -> Tuple[bool, Optional[BaseException]]:
+    global _FLAGTUNE_AVAILABILITY
+    if _FLAGTUNE_AVAILABILITY is None:
+        try:
+            from triton.flagtune.predict import make_config_proposer  # noqa: F401
+            from triton.flagtune.registry import get  # noqa: F401
+            from triton.flagtune.registry import resolve_operator_id  # noqa: F401
+
+            _FLAGTUNE_AVAILABILITY = (True, None)
+        except Exception as exc:
+            _FLAGTUNE_AVAILABILITY = (False, exc)
+    return _FLAGTUNE_AVAILABILITY
+
+
+def _warn_flagtune_unavailable_once(exc: Optional[BaseException]) -> None:
+    global _FLAGTUNE_UNAVAILABLE_WARNED
+    if _FLAGTUNE_UNAVAILABLE_WARNED:
+        return
+    logger.warning(
+        "FlagTune requested but triton.flagtune is unavailable: %s; using default policy.",
+        exc,
+    )
+    _FLAGTUNE_UNAVAILABLE_WARNED = True
+
+
+def _warn_flagtune_fallback_once(reason: str, message: str, *args) -> None:
+    if reason in _FLAGTUNE_FALLBACK_WARNED:
+        return
+    logger.warning(message, *args)
+    _FLAGTUNE_FALLBACK_WARNED.add(reason)
+
+
+def _ensure_flagtune_proposer(op_id: str):
     """Lazily load flagtune proposer and operator_info.
 
     op_id:       FlagTree-format operator identifier, e.g. "flaggems/mm_general_tma"
-    operator_id: FlagTree registry internal operator_id, e.g. "mm_general_tma"
     """
     if op_id not in _FLAGTUNE_PROPOSER_POOL:
         from triton.flagtune.predict import make_config_proposer
         from triton.flagtune.registry import get as _get_op_info
+        from triton.flagtune.registry import resolve_operator_id
 
+        operator_id = resolve_operator_id(op_id)
         _FLAGTUNE_PROPOSER_POOL[op_id] = make_config_proposer({"op_id": op_id})
         _FLAGTUNE_OP_INFO_POOL[op_id] = _get_op_info(operator_id)
 
@@ -665,19 +703,33 @@ def flagtune_policy(
         4. Call proposer: XGBoost predict -> benchmark seeds -> GA iterate
         5. Convert results back to (best_config, timings)
 
-    Falls back to default policy if any step fails.
+    Falls back to default policy if any step fails.  USE_FLAGTUNE is the
+    legacy FlagGems switch for expanded-config search, so when it is enabled
+    this policy deliberately keeps using the LibTuner default route.
     """
     expand_name = self._flagtune_expand_op_name or self._flagtune_op_name
     if expand_name is None:
         return LibTuner.get("default").policy(
             self, bench_fn, configs, args, kwargs
         )
-    op_id = f"flaggems/{expand_name}"
+    if runtime.flagtune_enabled(self._flagtune_op_name):
+        return LibTuner.get("default").policy(
+            self, bench_fn, configs, args, kwargs
+        )
+    available, exc = _flagtune_available()
+    if not available:
+        _warn_flagtune_unavailable_once(exc)
+        return LibTuner.get("default").policy(
+            self, bench_fn, configs, args, kwargs
+        )
+
+    op_id = self._flagtune_op_id or f"flaggems/{expand_name}"
 
     try:
-        proposer, op_info = _ensure_flagtune_proposer(op_id, expand_name)
+        proposer, op_info = _ensure_flagtune_proposer(op_id)
     except Exception as exc:
-        logger.warning(
+        _warn_flagtune_fallback_once(
+            f"init:{op_id}",
             "FlagTune proposer init failed for op_id=%s: %s; falling back to default.",
             op_id, exc,
         )
@@ -687,7 +739,8 @@ def flagtune_policy(
 
     extract = getattr(op_info, "extract_shape", None)
     if extract is None:
-        logger.warning(
+        _warn_flagtune_fallback_once(
+            f"extract:{op_id}",
             "No extract_shape for op_id=%s; falling back to default.", op_id
         )
         return LibTuner.get("default").policy(
@@ -706,7 +759,8 @@ def flagtune_policy(
     try:
         result_dicts = proposer(adapter, shape, initial, meta)
     except Exception as exc:
-        logger.warning(
+        _warn_flagtune_fallback_once(
+            f"run:{op_id}:{shape}",
             "FlagTune proposer failed for op_id=%s shape=%s: %s; falling back to default.",
             op_id, shape, exc,
         )
@@ -715,7 +769,8 @@ def flagtune_policy(
         )
 
     if not result_dicts:
-        logger.warning(
+        _warn_flagtune_fallback_once(
+            f"empty:{op_id}",
             "FlagTune proposer returned empty for op_id=%s; falling back to default.",
             op_id,
         )
@@ -729,7 +784,8 @@ def flagtune_policy(
     if validate_fn is not None:
         valid_dicts = [r for r in result_dicts if validate_fn(shape, r)]
         if not valid_dicts:
-            logger.warning(
+            _warn_flagtune_fallback_once(
+                f"invalid:{op_id}:{shape}",
                 "FlagTune proposer results all invalid for op_id=%s shape=%s; falling back to default.",
                 op_id, shape,
             )
@@ -744,13 +800,27 @@ def flagtune_policy(
 
     for d in result_dicts:
         cfg = to_config(d)
-        lat = float(bench_fn(cfg)[0])
+        if cfg.pre_hook is None and self._flagtune_pre_hook is not None:
+            # FlagTune creates fresh Config objects, so it must carry the same
+            # TMA pre-hook as expanded FlagGems configs. Without it, the
+            # TensorDescriptor block_shape can stay stale while BLOCK_* changes,
+            # which makes tl.dot infer a shape different from the accumulator.
+            cfg.pre_hook = self._flagtune_pre_hook
+        try:
+            lat = float(bench_fn(cfg)[0])
+        except Exception:
+            continue
         timings[cfg] = lat
         if lat < best_latency:
             best_latency = lat
             best_config = cfg
 
     if best_config is None:
+        _warn_flagtune_fallback_once(
+            f"bench:{op_id}:{shape}",
+            "FlagTune proposer results all failed benchmark for op_id=%s shape=%s; falling back to default.",
+            op_id, shape,
+        )
         return LibTuner.get("default").policy(
             self, bench_fn, configs, args, kwargs
         )
@@ -851,6 +921,7 @@ def libtuner(
     policy: Union[str, Type[LibTuner]] = "default",
     flagtune_op_name=None,
     flagtune_expand_op_name=None,
+    flagtune_op_id=None,
     flagtune_yaml_path=None,
     flagtune_pre_hook=None,
 ):
@@ -888,6 +959,7 @@ def libtuner(
             strategy=strategy,
             flagtune_op_name=flagtune_op_name,
             flagtune_expand_op_name=flagtune_expand_op_name,
+            flagtune_op_id=flagtune_op_id,
             flagtune_yaml_path=flagtune_yaml_path,
             flagtune_pre_hook=flagtune_pre_hook,
         )

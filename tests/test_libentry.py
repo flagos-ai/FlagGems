@@ -26,10 +26,11 @@ import triton
 from triton import language as tl
 
 import flag_gems
+import flag_gems.utils.libentry as libentry_mod
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.code_cache import config_cache_dir
-from flag_gems.utils.libentry import libcache, major_version, minor_version
+from flag_gems.utils.libentry import LibTuner, libcache, major_version, minor_version
 
 
 # not_raises is copied from https://gist.github.com/oisinmulvihill/45c14271fad7794a4a52516ecb784e69
@@ -357,6 +358,92 @@ def test_hash_changes_when_dependency_modified():
         f"Expected different hashes when sub-function changes, "
         f"but got same hash: {original_hash}"
     )
+
+
+def test_flagtree_policy_is_bypassed_when_use_flagtune_is_enabled(monkeypatch):
+    configs = [
+        triton.Config({"BLOCK": 4}),
+        triton.Config({"BLOCK": 2}),
+    ]
+    called = False
+
+    class FakeTuner:
+        _flagtune_expand_op_name = "mm_general_tma"
+        _flagtune_op_name = "mm"
+        _flagtune_op_id = "flaggems/mm_general_tma"
+        _flagtune_pre_hook = None
+
+    def fail_if_called(_op_id):
+        nonlocal called
+        called = True
+        raise AssertionError("FlagTree proposer should not be used")
+
+    monkeypatch.setenv("USE_FLAGTUNE", "1")
+    monkeypatch.setattr(libentry_mod, "_ensure_flagtune_proposer", fail_if_called)
+
+    best_config, timings = LibTuner.get("flagtune").policy(
+        FakeTuner(),
+        lambda cfg: [cfg.kwargs["BLOCK"]],
+        configs,
+        (),
+        {},
+    )
+
+    assert best_config.kwargs["BLOCK"] == 2
+    assert len(timings) == 2
+    assert called is False
+
+
+def test_flagtree_policy_is_default_when_use_flagtune_is_disabled(monkeypatch):
+    class FakeParamSpace:
+        all_field_names = ["BLOCK"]
+
+    class FakeOpInfo:
+        param_space = FakeParamSpace()
+
+        @staticmethod
+        def extract_shape(_nargs):
+            return {"M": 16, "N": 16, "K": 16}
+
+        @staticmethod
+        def to_config(config_dict):
+            return triton.Config({"BLOCK": int(config_dict["BLOCK"])})
+
+    class FakeTuner:
+        _flagtune_expand_op_name = "mm_general_tma"
+        _flagtune_op_name = "mm"
+        _flagtune_op_id = "flaggems/mm_general_tma"
+        _flagtune_pre_hook = None
+        nargs = {"M": 16, "N": 16, "K": 16}
+
+    proposer_called = False
+
+    def fake_proposer(_bench, _shape, _initial, _meta):
+        nonlocal proposer_called
+        proposer_called = True
+        return [{"BLOCK": 1}]
+
+    monkeypatch.delenv("USE_FLAGTUNE", raising=False)
+    monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.setattr(libentry_mod, "_include_ops", None)
+    monkeypatch.setattr(libentry_mod, "_flagtune_available", lambda: (True, None))
+    monkeypatch.setattr(
+        libentry_mod,
+        "_ensure_flagtune_proposer",
+        lambda _op_id: (fake_proposer, FakeOpInfo()),
+    )
+
+    best_config, timings = LibTuner.get("flagtune").policy(
+        FakeTuner(),
+        lambda cfg: [cfg.kwargs["BLOCK"]],
+        [triton.Config({"BLOCK": 8})],
+        (),
+        {},
+    )
+
+    assert proposer_called is True
+    assert best_config.kwargs["BLOCK"] == 1
+    assert list(timings.values()) == [1.0]
 
 
 @pytest.mark.skipif(
