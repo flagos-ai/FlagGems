@@ -204,6 +204,52 @@ def test_mm_clean_transpose_unaligned_m(dtype):
 
 @pytest.mark.mm
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mm_transpose_single_row(dtype):
+    """#2489 for an M == 1 operand: ``x.t()`` of a (K, 1) input is (1, K) with stride
+    (1, 1), and a size-1 dim never constrains contiguity -- so ``is_contiguous()`` is
+    True and both ``.contiguous()`` and ``.clone()`` preserve the stride. The descriptor
+    would still get a 1-element (2-byte) outer stride.
+    """
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")
+    torch.manual_seed(0)
+    M, N, K = 1, 64, 64
+    a = torch.randn((K, M), dtype=dtype, device=flag_gems.device).t()
+    b = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    assert a.stride() == (1, 1) and a.is_contiguous()
+
+    ref_out = torch.mm(utils.to_reference(a, True), utils.to_reference(b, True))
+    with flag_gems.use_gems():
+        res_out = torch.mm(a, b)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mm_out_column_major(dtype):
+    """A column-major ``out``: unlike an operand, ``c`` is fed to the descriptor
+    untransposed, so TMA needs its innermost stride to be 1. A transposed ``out`` view
+    has stride (1, M) and must be routed through an aligned row-major buffer.
+    """
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")
+    torch.manual_seed(0)
+    M, N, K = 64, 64, 64
+    a = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    b = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    out = torch.empty((N, M), dtype=dtype, device=flag_gems.device).t()
+    assert out.stride() == (1, N)
+
+    ref_out = torch.mm(utils.to_reference(a, True), utils.to_reference(b, True))
+    with flag_gems.use_gems():
+        torch.mm(a, b, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("layout", ["unaligned_base", "gapped_stride"])
 def test_mm_out_unaligned_output(dtype, layout):
     """#2489 for the *output*: ``general_mm`` builds ``c_desc`` from the caller's ``out``,

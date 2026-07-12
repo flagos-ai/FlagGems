@@ -89,18 +89,23 @@ def _tma_safe(t: torch.Tensor) -> torch.Tensor:
     A gapped view with an unaligned outer stride (e.g. ``as_strided((M, K), (65, 1))``
     -> 65 * 2B = 130B), a clean transpose whose M is not a multiple of 16 bytes, or any
     view with an unaligned base (odd ``storage_offset``, e.g. ``weight[:, 1:]``) makes
-    the descriptor illegal ("strides/base must be 16-byte aligned"). Copying to
-    contiguous fixes all three: the outer stride becomes K (resp. N), which
-    ``is_tma_compatible`` has already established is a multiple of 16 bytes, and the
-    fresh allocation is aligned. ``.contiguous()`` is a no-op for a stride-contiguous
-    tensor, so a misaligned base is fixed with ``.clone()``. See issue #2489.
+    the descriptor illegal ("strides/base must be 16-byte aligned"). A fresh contiguous
+    buffer fixes all three: its outer stride is K (resp. N), which ``is_tma_compatible``
+    has already established is a multiple of 16 bytes, and the allocation is aligned.
+    See issue #2489.
 
-    Only called on the TMA path, so operands bound for any other kernel keep their
-    layout -- and with it the kernel ``mm`` dispatches them to.
+    Neither ``.contiguous()`` nor ``.clone()`` can be used here: both are stride-preserving
+    for an operand that is already stride-contiguous, which includes a misaligned base and
+    -- because a size-1 dim never constrains contiguity -- an ``(1, K)`` operand strided
+    ``(1, 1)``, as ``x.t()`` of a ``(K, 1)`` input produces. ``empty_like`` + ``copy_``
+    normalizes the strides unconditionally.
+
+    Only called on the TMA path, so operands bound for any other kernel keep their layout
+    -- and with it the kernel ``mm`` dispatches them to.
     """
     if _is_tma_safe(t):
         return t
-    return t.contiguous() if not t.is_contiguous() else t.clone()
+    return torch.empty_like(t, memory_format=torch.contiguous_format).copy_(t)
 
 
 def is_tma_compatible(a, b, N, K):
@@ -501,10 +506,12 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
         a = _tma_safe(a)
         b = _tma_safe(b)
         # `c` may be a caller-supplied `out` view; compute into an aligned buffer and
-        # write back, since the result has to land in the caller's storage.
+        # write back, since the result has to land in the caller's storage. Unlike an
+        # operand, `c` is always fed to the descriptor untransposed, so it additionally
+        # has to be row-major -- TMA cannot express a non-unit innermost stride.
         c_tma = (
             c
-            if _is_tma_safe(c)
+            if c.stride(1) == 1 and _is_tma_safe(c)
             else torch.empty_like(c, memory_format=torch.contiguous_format)
         )
         a_row_major = a.stride(1) == 1
