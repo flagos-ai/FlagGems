@@ -1,0 +1,72 @@
+---
+name: Backend Test
+
+on:
+  workflow_call:
+    inputs:
+      backend:
+        description: 'FlagGems backend label (e.g. nvidia-cuda133, mthreads-musa520, ascend-cann900)'
+        required: true
+        type: string
+      runner_label:
+        description: 'GitHub Actions runner label'
+        required: true
+        type: string
+      gpu_check_script:
+        description: 'Path to GPU check script (leave empty to skip)'
+        required: false
+        type: string
+        default: ''
+      changed_files:
+        description: 'List of changed files in a PR'
+        required: false
+        type: string
+        default: ''
+      pr_id:
+        description: 'ID of the PR'
+        required: false
+        type: string
+        default: ''
+      test_script:
+        description: "Temporary parameter for alpha-ops test"
+        required: false
+        type: string
+        default: ''
+    secrets:
+      RUNNER_SSH_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ inputs.runner_label }}
+    concurrency:
+      group: >-
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
+      - uses: ./.github/actions/setup-flaggems
+        with:
+          backend: ${{ inputs.backend }}
+          gpu_check_script: ${{ inputs.gpu_check_script }}
+
+      - name: Test alpha ops
+        if: ${{ inputs.test_script != '' }}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        shell: bash
+        run: |
+          bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
+      - name: Run backend tests
+        if: ${{ inputs.test_script == '' }}
+        shell: bash
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        run: |
+          source .venv/bin/activate
+          tools/test-op.sh ${{ inputs.pr_id }}

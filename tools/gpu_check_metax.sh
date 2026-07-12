@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# Configuration parameters
+mem_threshold=30000     # Minimum free memory required (MB)
+sleep_time=120          # Wait time between retries (seconds)
+max_wait=600           # Maximum total wait time (seconds)
+
+gpu_count=$(mx-smi | awk '/Attached/ {print $4}' 2>/dev/null)
+
+if [ $? -ne 0 ]; then
+    echo "Failed to run mx-smi. Please check if mx-smi is installed and working correctly."
+    exit 1
+fi
+
+if [ "$gpu_count" -eq 0 ]; then
+    echo "No MetaX GPUs detected. Please ensure you have MetaX GPUs installed and properly configured."
+    exit 1
+fi
+
+echo "Detected $gpu_count MetaX GPU chip(s)."
+
+waited_time=0
+while true; do
+    memory_info=$(mx-smi | awk '/MiB[[:space:]]| A/ { print $9 }')
+    readarray -t lines <<< "$memory_info"
+    available_gpus=()
+    i=0
+
+    printf " GPU  Total (MiB)  Used (MiB)  Free (MiB)\n"
+    for line in "${lines[@]}"; do
+        used_i=$(echo "$line" | awk -F'/' '{print $1}')
+        total_i=$(echo "$line" | awk -F'/' '{ print $2}')
+
+        if [ -z "$used_i" ] || [ -z "$total_i" ]; then
+            continue
+        fi
+
+        free_i=$((total_i - used_i))
+
+        printf "%4d%'13d%'12d%'12d\n" $i ${total_i} ${used_i} ${free_i}
+        if [ $free_i -ge $mem_threshold ]; then
+            available_gpus+=($i)
+        fi
+        i=$((i + 1))
+    done
+
+    if [ ${#available_gpus[@]} -gt 0 ]; then
+        AVAILABLE_GPUS=$(IFS=,; echo "${available_gpus[*]}")
+        echo "Available GPUs: ${AVAILABLE_GPUS}"
+        break
+    fi
+
+    echo "No GPU has sufficient memory, waiting for $sleep_time seconds..."
+    sleep $sleep_time
+    waited_time=$((waited_time + sleep_time))
+    if [ $waited_time -ge $max_wait ]; then
+        echo "Error: Timed out waiting for available GPU."
+        exit 1
+    fi
+done

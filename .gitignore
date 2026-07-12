@@ -1,0 +1,42 @@
+# Build and Release Folders
+bin-debug/
+bin-release/
+[Oo]bj/
+[Bb]in/
+
+# Other files and folders
+.settings/
+__pycache__/
+.vscode/
+.DS_Store
+.claude/
+
+# Python venv directory
+.venv
+
+# Distribution files
+build/
+*.egg-info/
+.eggs/
+dist/
+
+# scikit-build-core
+.skbuild-info.json
+CMakeInit.txt
+
+# Auto-generated version file (setuptools-scm)
+src/flag_gems/_version.py
+
+# An auxiliary product of unittests
+/*.json
+tests/*.json
+
+
+# Executables
+*.swf
+*.air
+*.ipa
+*.apk
+
+# Generated benchmark data (lives in gh-pages only)
+docs/benchmark/

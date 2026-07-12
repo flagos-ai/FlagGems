@@ -1,0 +1,6 @@
+[run]
+source = src/flag_gems
+omit =
+    "*/.flaggems/*"
+    "*/usr/lib/*"
+parallel = true
