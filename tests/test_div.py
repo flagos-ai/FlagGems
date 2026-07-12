@@ -404,3 +404,123 @@ def test_div_out_scalar_tensor(shape, scalar, dtype):
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
+
+
+# ---------------------------------------------------------------------------
+# div_mode / div_mode_
+# Covers aten: div.Tensor_mode, div.Scalar_mode, div_.Tensor_mode,
+#              div_.Scalar_mode (and their divide.* aliases)
+# ---------------------------------------------------------------------------
+
+ROUNDING_MODES = ["trunc", "floor"]
+
+
+@pytest.mark.div_mode
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("rounding_mode", ROUNDING_MODES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_mode_tensor(shape, rounding_mode, dtype):
+    # div.Tensor_mode: div_mode(Tensor, Tensor, rounding_mode=...)
+    if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
+        pytest.skip(
+            "trunc_divide uses libdevice.div_rn which only supports float32/float64"
+        )
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # avoid divide-by-zero for floor/trunc modes
+    inp2 = inp2 + torch.sign(inp2).clamp(min=1) * 1e-3
+    ref_inp1 = utils.to_reference(inp1, False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = torch.ops.aten.div.Tensor_mode(
+        ref_inp1, ref_inp2, rounding_mode=rounding_mode
+    )
+    res_out = flag_gems.ops.div_mode(inp1, inp2, rounding_mode=rounding_mode)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.div_mode
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("rounding_mode", ROUNDING_MODES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_mode_scalar(shape, scalar, rounding_mode, dtype):
+    # div.Scalar_mode: div_mode(Tensor, scalar, rounding_mode=...)
+    if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
+        pytest.skip(
+            "trunc_divide uses libdevice.div_rn which only supports float32/float64"
+        )
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+    # For trunc mode, use Tensor_mode reference with the scalar cast to the
+    # input dtype. aten's CUDA Scalar_mode path uses approximate division
+    # internally, producing off-by-one results near integer boundaries that
+    # differ from both CPU and f64 references. Casting the scalar to the same
+    # dtype gives the correct IEEE 754 result that our kernel matches.
+    if rounding_mode == "trunc" and isinstance(scalar, float):
+        scalar_tensor = torch.tensor(scalar, dtype=dtype, device=flag_gems.device)
+        ref_out = torch.ops.aten.div.Tensor_mode(
+            ref_inp, scalar_tensor, rounding_mode=rounding_mode
+        )
+    else:
+        ref_out = torch.ops.aten.div.Scalar_mode(
+            ref_inp, scalar, rounding_mode=rounding_mode
+        )
+    res_out = flag_gems.ops.div_mode(inp, scalar, rounding_mode=rounding_mode)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.div_mode_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("rounding_mode", ROUNDING_MODES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_mode_tensor_(shape, rounding_mode, dtype):
+    # div_.Tensor_mode: div_mode_(Tensor, Tensor, rounding_mode=...)
+    if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
+        pytest.skip(
+            "trunc_divide uses libdevice.div_rn which only supports float32/float64"
+        )
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = inp2 + torch.sign(inp2).clamp(min=1) * 1e-3
+    ref_inp1 = utils.to_reference(inp1.clone(), False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = torch.ops.aten.div_.Tensor_mode(
+        ref_inp1, ref_inp2, rounding_mode=rounding_mode
+    )
+    res_out = flag_gems.ops.div_mode_(inp1, inp2, rounding_mode=rounding_mode)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.div_mode_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("rounding_mode", ROUNDING_MODES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_mode_scalar_(shape, scalar, rounding_mode, dtype):
+    # div_.Scalar_mode: div_mode_(Tensor, scalar, rounding_mode=...)
+    if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
+        pytest.skip(
+            "trunc_divide uses libdevice.div_rn which only supports float32/float64"
+        )
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone(), False)
+    # Same workaround as test_div_mode_scalar: use Tensor_mode reference for
+    # float scalars in trunc mode to avoid aten CUDA's approximate-division
+    # inaccuracy on the Scalar_mode path.
+    if rounding_mode == "trunc" and isinstance(scalar, float):
+        scalar_tensor = torch.tensor(scalar, dtype=dtype, device=flag_gems.device)
+        ref_out = torch.ops.aten.div.Tensor_mode(
+            ref_inp, scalar_tensor, rounding_mode=rounding_mode
+        )
+    else:
+        ref_out = torch.ops.aten.div_.Scalar_mode(
+            ref_inp, scalar, rounding_mode=rounding_mode
+        )
+    res_out = flag_gems.ops.div_mode_(inp, scalar, rounding_mode=rounding_mode)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
