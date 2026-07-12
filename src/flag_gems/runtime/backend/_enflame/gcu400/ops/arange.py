@@ -49,7 +49,7 @@ def arange_int_func(
 def arange_start(
     start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None
 ):
-    logger.debug("GEMS ARANGE")
+    logger.debug("GEMS_ENFLAME ARANGE")
     if dtype is None:
         dtype = torch.int64
 
@@ -73,7 +73,7 @@ def arange_start(
 
     BLOCK_SIZE = 1024
     if size > 65536:
-        BLOCK_SIZE = 65536
+        BLOCK_SIZE = 16384
     elif size > 1024:
         BLOCK_SIZE = min(triton.next_power_of_2(size), 8192)
 

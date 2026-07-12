@@ -40,6 +40,30 @@ else:
         pass
 
 
+def get_iter_count(fn):
+    if Config.mode == consts.BenchMode.OPERATOR:
+        torch_device_fn.synchronize()
+        start = time.time()
+        for _ in range(5):
+            fn()
+        torch_device_fn.synchronize()
+        end = time.time()
+        latency = (end - start) / 5 * 1000
+    elif Config.mode == consts.BenchMode.WRAPPER:
+        torch_device_fn.synchronize()
+        start = time.time()
+        for _ in range(5):
+            fn()
+        end = time.time()
+        torch_device_fn.synchronize()
+        latency = (end - start) / 5 * 1000
+    else:
+        raise ValueError("Unsupport Benchmark Mode.")
+    return max(1, int(Config.warm_up / latency)), max(
+        1, int(Config.repetition / latency)
+    )
+
+
 class Benchmark:
     device: str = device
     DEFAULT_METRICS = consts.DEFAULT_METRICS
@@ -257,15 +281,16 @@ class Benchmark:
                 (out,), xs, grad_outputs=(dout,), retain_graph=True
             )
         if Config.mode == consts.BenchMode.OPERATOR:
-            for i in range(Config.warm_up):
+            n_warm, n_rep = get_iter_count(fn)
+            for i in range(n_warm):
                 fn()
             torch_device_fn.synchronize()
             start = time.time()
-            for i in range(Config.repetition):
+            for i in range(n_rep):
                 fn()
             torch_device_fn.synchronize()
             end = time.time()
-            latency = (end - start) / Config.repetition * 1000
+            latency = (end - start) / n_rep * 1000
         elif Config.mode == consts.BenchMode.KERNEL:
             do_bench = triton.testing.do_bench
             latency = do_bench(
@@ -276,14 +301,23 @@ class Benchmark:
                 grad_to_none=xs if self.is_backward else None,
             )
         elif Config.mode == consts.BenchMode.WRAPPER:
-            for i in range(Config.warm_up):
+            n_warm, n_rep = get_iter_count(fn)
+            for i in range(n_warm):
                 fn()
             torch_device_fn.synchronize()
             start = time.time()
-            for i in range(Config.repetition):
+            for i in range(n_rep):
                 fn()
             end = time.time()
-            latency = (end - start) / Config.repetition * 1000
+            latency = (end - start) / n_rep * 1000
+        elif Config.mode == consts.BenchMode.CUDAGRAPH:
+            do_bench_cudagraph = triton.testing.do_bench_cudagraph
+            latency = do_bench_cudagraph(
+                fn,
+                rep=Config.repetition,
+                return_mode="median",
+                grad_to_none=xs if self.is_backward else None,
+            )
         else:
             raise ValueError("Undefined Value of Benchmark Mode.")
         # average latency in ms
