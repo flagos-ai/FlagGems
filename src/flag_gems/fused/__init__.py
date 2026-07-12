@@ -29,6 +29,10 @@ from flag_gems.fused.FLA import (
 from flag_gems.fused.flash_mla import flash_mla
 from flag_gems.fused.flash_mla_with_kvcache import flash_mla_with_kvcache
 from flag_gems.fused.flashmla_sparse import flash_mla_sparse_fwd
+from flag_gems.fused.fp8_fp4_mega_moe import (
+    fp8_fp4_mega_moe,
+    fp8_fp4_mega_moe_torch_ref,
+)
 from flag_gems.fused.fp8_fp4_mqa_logits import fp8_fp4_mqa_logits
 from flag_gems.fused.fp8_fp4_paged_mqa_logits import fp8_fp4_paged_mqa_logits
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
@@ -83,6 +87,9 @@ from flag_gems.fused.silu_and_mul_with_clamp import (
 )
 from flag_gems.fused.skip_layernorm import skip_layer_norm
 from flag_gems.fused.sparse_attention import sparse_attn_triton
+from flag_gems.fused.stage_deepseek_v4_mega_moe_inputs import (
+    stage_deepseek_v4_mega_moe_inputs,
+)
 from flag_gems.fused.swiglu import dswiglu, swiglu
 from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
 from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
@@ -117,6 +124,8 @@ __all__ = [
     "flash_mla",
     "flash_mla_sparse_fwd",
     "flash_mla_with_kvcache",
+    "fp8_fp4_mega_moe",
+    "fp8_fp4_mega_moe_torch_ref",
     "fp8_fp4_mqa_logits",
     "fp8_fp4_paged_mqa_logits",
     "fused_add_rms_norm",
@@ -160,6 +169,7 @@ __all__ = [
     "sinkhorn_forward",
     "skip_layer_norm",
     "sparse_attn_triton",
+    "stage_deepseek_v4_mega_moe_inputs",
     "swiglu",
     "top_k_per_row_decode",
     "top_k_per_row_prefill",

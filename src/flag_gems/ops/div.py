@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.pointwise_dynamic import ComplexMode
-from flag_gems.utils.triton_lang_extension import div_rn, div_rz, fmod, trunc
+from flag_gems.utils.triton_lang_extension import div_rn, fmod, trunc
 
 logger = logging.getLogger(__name__)
 
@@ -108,19 +108,23 @@ def true_divide_(A, B):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func(x, y):
-    return trunc(div_rz(x, y))
+    # Use IEEE 754 RNE division (div_rn) then trunc, matching PyTorch's
+    # trunc_divide semantics.  div_rz (RTZ) and Triton's default f32 `/`
+    # (fdiv.approx) both give wrong results when the exact quotient falls
+    # just below an integer boundary.
+    return trunc(div_rn(x, y))
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y):
-    return trunc(div_rz(x, tl.cast(y, x.dtype)))
+    return trunc(div_rn(x, tl.cast(y, x.dtype)))
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y):
-    return trunc(div_rz(tl.cast(x, y.dtype), y))
+    return trunc(div_rn(tl.cast(x, y.dtype), y))
 
 
 # Integer truncation division: Triton's // on integers is C-style (truncates toward zero)
