@@ -46,6 +46,34 @@ def test_router_gemm_accuracy(M, N, K, in_dtype):
 
 
 @pytest.mark.router_gemm
+@pytest.mark.parametrize("pad", [1, 8])
+def test_router_gemm_unaligned_stride(pad):
+    """#2489 reaches router_gemm too: it calls the same general_mm, whose TMA descriptor
+    needs a 16-byte-aligned outer stride.
+
+    K is kept < 4096 so that router_gemm does not take the splitk path -- the shapes in
+    ROUTER_SHAPES all have K >= 4096 and therefore never reach general_mm at all. An
+    unaligned row stride (pad=1, 2049 * 2B = 4098B) is copied; an aligned one (pad=8)
+    stays on the fast path and must remain correct.
+    """
+    M, N, K = 128, 256, 2048
+    torch.manual_seed(0)
+    stride0 = K + pad
+    base = torch.randn(M * stride0 + K, dtype=torch.bfloat16, device=flag_gems.device)
+    x = torch.as_strided(base, (M, K), (stride0, 1))
+    weight = torch.randn((N, K), dtype=torch.bfloat16, device=flag_gems.device)
+
+    ref_out = torch.mm(
+        utils.to_reference(x.contiguous(), True),
+        utils.to_reference(weight, True).t(),
+    )
+    with flag_gems.use_gems():
+        res_out = flag_gems.router_gemm(x, weight)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32, reduce_dim=K)
+
+
+@pytest.mark.router_gemm
 @pytest.mark.parametrize("M, N, K", [(16, 256, 7168)])
 def test_router_gemm_output_dtype(M, N, K):
     """Verify output dtype is fp32 (MoE router gate requirement)."""
