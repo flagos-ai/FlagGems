@@ -59,6 +59,7 @@ from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .cummax import cummax
 from .cummin import cummin
+from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
@@ -319,6 +320,7 @@ __all__ = [
     "count_nonzero",
     "cummax",
     "cummin",
+    "cumprod",
     "cumprod_",
     "cumsum",
     "cumsum_out",
