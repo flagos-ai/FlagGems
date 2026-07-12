@@ -90,8 +90,8 @@ def test_mm_broadcast_stride_zero(dtype):
 
 # issue #2489: unaligned-stride or unaligned-base operands hit the Hopper host-TMA
 # descriptor, which requires 16-byte-aligned strides and base. Both sizes exercise
-# that path; the larger one covers bigger block sizes. N is kept < 256 so the cases
-# stay on the standard host-TMA path (not the experimental cluster kernel).
+# that path; the larger one covers bigger block sizes. M, N and K are all multiples
+# of 8 so that is_tma_compatible() holds and a descriptor is actually built.
 _UNALIGNED_MNK = [(64, 64, 64), (256, 128, 256)]
 
 
@@ -170,6 +170,64 @@ def test_mm_out_unaligned_stride(dtype):
     ref_out = torch.mm(
         utils.to_reference(a.contiguous(), True), utils.to_reference(b, True)
     )
+    with flag_gems.use_gems():
+        torch.mm(a, b, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mm_clean_transpose_unaligned_m(dtype):
+    """#2489 for a *clean* transpose whose M is not 16-byte aligned.
+
+    ``torch.mm(x.t(), w)`` (e.g. ``grad_w = x.t() @ grad_out``) makes ``a`` column-major,
+    and ``general_mm`` then builds its descriptor from ``a.T.stride() == (M, 1)`` -- so
+    the outer stride is M, which ``is_tma_compatible`` never validates (it only checks N
+    and K). M = 495 is not a multiple of 8 (fp16/bf16) or 4 (fp32), so the descriptor is
+    illegal until the operand is copied.
+    """
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")
+    torch.manual_seed(0)
+    M, N, K = 495, 256, 64  # N, K aligned -> TMA is used; M is not
+    a = torch.randn((K, M), dtype=dtype, device=flag_gems.device).t()
+    b = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    assert a.stride() == (1, M) and a.t().is_contiguous()
+
+    ref_out = torch.mm(utils.to_reference(a, True), utils.to_reference(b, True))
+    with flag_gems.use_gems():
+        res_out = torch.mm(a, b)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("layout", ["unaligned_base", "gapped_stride"])
+def test_mm_out_unaligned_output(dtype, layout):
+    """#2489 for the *output*: ``general_mm`` builds ``c_desc`` from the caller's ``out``,
+    so an unaligned ``out`` view is just as illegal as an unaligned operand. The result
+    has to land in the caller's storage, so it is computed into an aligned buffer and
+    copied back.
+    """
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")
+    torch.manual_seed(0)
+    M, N, K = 64, 64, 64
+    a = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    b = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+
+    if layout == "unaligned_base":
+        base = torch.empty(M * N + 16, dtype=dtype, device=flag_gems.device)
+        out = torch.as_strided(base, (M, N), (N, 1), storage_offset=1)
+        assert out.is_contiguous() and out.data_ptr() % 16 != 0
+    else:
+        base = torch.empty(M * (N + 1), dtype=dtype, device=flag_gems.device)
+        out = torch.as_strided(base, (M, N), (N + 1, 1))
+        assert (N + 1) * out.element_size() % 16 != 0
+
+    ref_out = torch.mm(utils.to_reference(a, True), utils.to_reference(b, True))
     with flag_gems.use_gems():
         torch.mm(a, b, out=out)
 
