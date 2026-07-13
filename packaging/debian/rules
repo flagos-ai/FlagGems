@@ -32,6 +32,10 @@ override_dh_auto_install:
 	mkdir -p $(PYDIR); \
 	python3 -m pip install --no-deps --no-compile --no-index \
 		--target=$(PYDIR) "$$wheel"
+	# Some upstream .py sources carry a stray executable bit (they are
+	# modules, not scripts — no shebang). Lintian flags each one as
+	# executable-not-elf-or-script; normalize here until fixed upstream.
+	find $(PYDIR) -name '*.py' -perm /111 -exec chmod a-x {} +
 	# Guard against scikit-build-core / setuptools.package-data drift:
 	# the runtime needs YAML configs under flag_gems/runtime/backend/ —
 	# without them, vendor backends fail at first use with FileNotFoundError.
