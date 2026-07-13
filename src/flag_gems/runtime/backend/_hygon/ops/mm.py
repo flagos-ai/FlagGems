@@ -18,6 +18,22 @@ def prev_multiple_of(a, b):
     return tl.cdiv(a, b) * b - b
 
 
+@triton.jit
+def dot_fp64(
+    a,
+    b,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
+    for k in tl.static_range(0, BLOCK_K):
+        a_k = a[:, k].to(tl.float64)
+        b_k = b[k, :].to(tl.float64)
+        acc += a_k[:, None] * b_k[None, :]
+    return acc
+
+
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mm"),
@@ -99,7 +115,7 @@ def mm_kernel(
             b = b.to(c_ptr.dtype.element_ty)
 
         if IS_FP64:
-            accumulator += tl.dot(a, b, allow_tf32=False)
+            accumulator += dot_fp64(a, b, BLOCK_M, BLOCK_N, BLOCK_K)
         else:
             accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
@@ -125,7 +141,7 @@ def mm_kernel(
         b = b.to(c_ptr.dtype.element_ty)
 
     if IS_FP64:
-        accumulator += tl.dot(a, b, allow_tf32=False)
+        accumulator += dot_fp64(a, b, BLOCK_M, BLOCK_N, BLOCK_K)
     else:
         accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
