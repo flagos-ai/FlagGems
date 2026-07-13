@@ -20,7 +20,7 @@ def bitwise_xor_tensor(A, B):
 
 
 def bitwise_xor_tensor_(A, B):
-    logger.debug("GEMS BITWISE_XOR_")
+    logger.debug("GEMS BITWISE_XOR_TENSOR_")
     return bitwise_xor_func(A, B, out0=A)
 
 
