@@ -85,6 +85,22 @@ DEFAULT_STRATEGIES = {
         "default",
     ],
     "w8a8_block_fp8_bmm": ["default", "align32", "align32", "align32"],
+    "w8a8_block_fp8_bmm_general": [
+        "default",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+    ],
+    "w8a8_block_fp8_bmm_splitk": [
+        "default",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+    ],
     "mm_splitk": ["align32", "align32", "align32", "align32", "align32"],
 }
 
@@ -120,6 +136,8 @@ OP_KEY_ORDERS = {
     "w8a8_block_fp8_general_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
     "w8a8_block_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "w8a8_block_fp8_bmm": ["B", "M_aligned", "N", "K"],
+    "w8a8_block_fp8_bmm_general": ["B", "M", "N", "K", "stride_xm", "stride_yk"],
+    "w8a8_block_fp8_bmm_splitk": ["B", "M", "N", "K", "stride_xm", "stride_yk"],
     "mm_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
 }
 
