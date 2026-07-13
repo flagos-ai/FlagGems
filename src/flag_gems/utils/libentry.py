@@ -540,21 +540,23 @@ class LibTuner(triton.runtime.Autotuner):
                 bench_end = time.time()
                 self.bench_time = bench_end - bench_start
                 self.cache[key] = best_config
+                config = best_config
                 full_nargs = {
                     **self.nargs,
                     **kwargs,
-                    **self.cache[key].all_kwargs(),
+                    **config.all_kwargs(),
                 }
                 self.pre_hook(full_nargs, reset_only=True)
                 self.configs_timings = timings
-            config = self.cache[key]
-            if config.pre_hook is None:
-                cached_kwargs = config.all_kwargs()
-                for original_config in self.configs:
-                    if original_config.all_kwargs() == cached_kwargs:
-                        # Use the original config which has the pre_hook
-                        config = original_config
-                        break
+            else:
+                config = self.cache[key]
+                if config.pre_hook is None:
+                    cached_kwargs = config.all_kwargs()
+                    for original_config in self.configs:
+                        if original_config.all_kwargs() == cached_kwargs:
+                            # Use the original config which has the pre_hook
+                            config = original_config
+                            break
         else:
             config = self.configs[0]
         self.best_config = config

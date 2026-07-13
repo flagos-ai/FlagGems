@@ -190,9 +190,8 @@ class SQLPersistantModel(PersistantModel):
         )
         if ConfigCls is not None:
             with RollbackSession(self.engine) as session:
-                existing: Optional[Base] = session.get(ConfigCls, key_dict)
-                if existing is not None:
-                    return
+                session.query(ConfigCls).filter_by(**key_dict).delete()
+                session.flush()
                 session.add(ConfigCls(**key_dict, **config))
                 session.commit()
 
