@@ -340,7 +340,7 @@ def softmax_out(self, dim, half_to_float=False, *, out):
 
 
 def softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS_ASCEND SOFTMAX BACKWARD")
+    logger.debug("GEMS_ASCEND SOFTMAX_BACKWARD")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
@@ -366,7 +366,7 @@ def softmax_backward(grad_output, output, dim, input_dtype):
 
 
 def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
-    logger.debug("GEMS_ASCEND SOFTMAX BACKWARD_OUT")
+    logger.debug("GEMS_ASCEND SOFTMAX_BACKWARD_OUT")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
