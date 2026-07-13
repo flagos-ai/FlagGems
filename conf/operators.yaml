@@ -7701,6 +7701,7 @@ ops:
       - Math
     stages:
       - beta: '5.0'
+      - stable: '5.3'
   - id: special_log_softmax
     description: |
       Applies the log of the softmax function along a given dimension.
