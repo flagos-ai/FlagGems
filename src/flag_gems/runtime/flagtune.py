@@ -166,6 +166,11 @@ register_flagtune_op(
     description="MXFP4 fused Marlin MoE GEMM",
 )
 register_flagtune_op(
+    "fused_marlin_moe_mxfp4_gemm_silu",
+    default=False,
+    description="MXFP4 fused Marlin MoE GEMM with SiLU",
+)
+register_flagtune_op(
     "mul",
     default=False,
     description="elementwise multiplication",

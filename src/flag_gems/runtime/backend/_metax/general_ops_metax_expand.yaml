@@ -29,5 +29,6 @@ mul:
       - 8
       - 16
   - strategy:
-     n_elements: align32
-     dtype: default
+      n_elements: align32
+      n_cols: default
+      dtype: default
