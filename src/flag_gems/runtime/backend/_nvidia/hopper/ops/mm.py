@@ -902,7 +902,12 @@ def _run_cluster_remote(
     M, K = a.shape
     N = b.shape[1]
     dot_k = _select_remote_dot_k(bk)
-    use_mask = (M % bm != 0) or (N % bn != 0) or (K % bk != 0) or (triton.cdiv(N, bn) % TLE_CLUSTER_SIZE != 0)
+    use_mask = (
+        (M % bm != 0)
+        or (N % bn != 0)
+        or (K % bk != 0)
+        or (triton.cdiv(N, bn) % TLE_CLUSTER_SIZE != 0)
+    )
     a_slots = TLE_REMOTE_A_SLOTS
     use_nv_mma_smem_layout = (bk == 32) or (bk == 64 and num_stages <= 2)
     _cluster_remote_gemm_kernel[_grid_cluster_remote(M, N, bm, bn)](
