@@ -8,14 +8,14 @@ from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 from .randn import randn_kernel
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 UNROLL = 4
 
 
 def randn_like(
     x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
 ):
-    logger.debug("GEMS RANDN_LIKE")
+    logger.debug("GEMS_KUNLUNXIN RANDN_LIKE")
     if device is None:
         device = x.device.index
     if dtype is None:

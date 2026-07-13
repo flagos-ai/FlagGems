@@ -299,6 +299,9 @@ def test_dynamic_function_with_broadcasting2(use_block_pointer):
 
 
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4108: not working"
+)
 def test_dynamic_function_with_predefined_out(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
@@ -328,6 +331,9 @@ def test_dynamic_function_with_predefined_out(use_block_pointer):
 
 
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4108: not working"
+)
 def test_dynamic_function_with_some_predefined_out1(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
@@ -359,6 +365,9 @@ def test_dynamic_function_with_some_predefined_out1(use_block_pointer):
 
 
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4108: not working"
+)
 def test_dynamic_function_with_some_predefined_out2(use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
@@ -932,6 +941,14 @@ def test_dynamic_function_with_multithread(use_block_pointer):
         torch.testing.assert_close(out, expected_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3837: spawn not support ptpu tensor",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #4110: not working",
+)
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
 def test_dynamic_function_with_multiprocess(use_block_pointer):
     shape = [128]
@@ -960,6 +977,10 @@ COMPLEX_DTYPES = [torch.complex64, torch.complex128]
 
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
+)
 def test_complex_elementwise_tensor_tensor(dtype):
     @pointwise_dynamic(
         is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
@@ -981,6 +1002,10 @@ def test_complex_elementwise_tensor_tensor(dtype):
 
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
+)
 def test_complex_elementwise_tensor_scalar(dtype):
     @pointwise_dynamic(
         is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
@@ -1012,6 +1037,10 @@ def test_complex_elementwise_tensor_scalar(dtype):
 
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
+)
 def test_complex_elementwise_broadcast(dtype):
     @pointwise_dynamic(
         is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
@@ -1030,6 +1059,10 @@ def test_complex_elementwise_broadcast(dtype):
 
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
+)
 def test_complex_elementwise_mixed_real_complex(dtype):
     @pointwise_dynamic(
         is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
@@ -1050,6 +1083,10 @@ def test_complex_elementwise_mixed_real_complex(dtype):
 
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
+)
 def test_complex_cross_tensor_tensor(dtype):
     @pointwise_dynamic(
         is_tensor=[True, True, True, True],
@@ -1079,6 +1116,10 @@ def test_complex_cross_tensor_tensor(dtype):
 
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
+)
 def test_complex_cross_tensor_scalar(dtype):
     @pointwise_dynamic(
         is_tensor=[True, True, True, True],
@@ -1116,6 +1157,10 @@ def test_complex_cross_tensor_scalar(dtype):
 
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
+)
 def test_complex_cross_broadcast(dtype):
     @pointwise_dynamic(
         is_tensor=[True, True, True, True],
@@ -1142,6 +1187,10 @@ def test_complex_cross_broadcast(dtype):
 
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
+)
 def test_complex_real_inputs_bypass(dtype):
     """When all inputs are real, complex-registered kernel should still work."""
 

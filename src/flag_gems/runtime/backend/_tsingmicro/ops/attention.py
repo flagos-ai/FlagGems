@@ -136,10 +136,10 @@ SMALL_HEAD_DIM_CONFIGS = [
     triton.Config(
         {"BLOCK_M": BM, "BLOCK_N": BN, "PRE_LOAD_V": 0}, num_stages=s, num_warps=w
     )
-    for BM in [64, 128]
-    for BN in [16, 32]
-    for s in [2, 3, 4]
-    for w in [4, 8]
+    for BM in [64, 128, 256]
+    for BN in [16, 32, 64, 128]
+    for s in [1]  # disable the num_stage as gather-scatter async bug
+    for w in [4]
 ]
 configs += SMALL_HEAD_DIM_CONFIGS
 
@@ -192,7 +192,10 @@ def _attn_fwd(
     HAS_ATTN_MASK: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
 ):
-    tl.static_assert(BLOCK_N <= HEAD_DIM)
+    tl.static_assert(
+        BLOCK_N <= HEAD_DIM,
+        f"Constraint violated: block_n={BLOCK_N} > head_dim={HEAD_DIM}",
+    )
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
     batch_id = off_hz // q_head_num
@@ -769,7 +772,7 @@ def scaled_dot_product_attention_forward(
     scale=None,
     enable_gqa=False,
 ):
-    logger.debug("GEMS SCALED DOT PRODUCT ATTENTION FORWARD")
+    logger.debug("GEMS_TSINGMICRO SCALED_DOT_PRODUCT_ATTENTION")
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
@@ -876,7 +879,7 @@ def scaled_dot_product_attention_backward(
     scale=None,
     enable_gqa=False,
 ):
-    logger.debug("GEMS SCALED DOT PRODUCT ATTENTION BACKWARD")
+    logger.debug("GEMS_TSINGMICRO SCALED_DOT_PRODUCT_ATTENTION_BACKWARD")
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
@@ -949,14 +952,14 @@ def scaled_dot_product_attention_backward(
         D_HEAD=BLOCK_DMODEL,  #
     )
 
-    max_block_n1 = (
-        max([cfg.kwargs["BLOCK_N1"] for cfg in config_backward])
-        if config_backward
-        else 128
+    grid = lambda meta: (
+        max(
+            triton.cdiv(Q_CTX, meta.get("BLOCK_N1", 128)),
+            triton.cdiv(Q_CTX, meta.get("BLOCK_M2", 128)),
+        ),
+        1,
+        BATCH * Q_HEAD,
     )
-    grid = (triton.cdiv(Q_CTX, max_block_n1), 1, BATCH * Q_HEAD)
-    # logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
-    # logger.info(f"{M.shape=}")
 
     _attn_bwd[grid](
         query,
@@ -1094,7 +1097,7 @@ def flash_attention_forward(
     alibi_slopes=None,
     disable_splitkv=False,
 ):
-    logger.debug("GEMS FLASH_ATTENTION_FORWARD")
+    logger.debug("GEMS_TSINGMICRO FLASH_ATTENTION_FORWARD")
     assert (
         cumulative_sequence_length_q is None and cumulative_sequence_length_k is None
     ), "varlen is not supported yet."
@@ -1271,7 +1274,7 @@ def flash_attn_varlen_func(
     if num_splits > 0:
         raise RuntimeError("num_splits > 0 is not implemented in GEMS.")
     if use_c_extension:
-        logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC(C EXTENSION)")
+        logger.debug("GEMS_TSINGMICRO FLASH_ATTN_VARLEN_FUNC")
         with torch_device_fn.device(q.device):
             out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
                 q,
@@ -1307,7 +1310,7 @@ def flash_attn_varlen_func(
             )
         return (out_cpp, softmax_lse) if return_softmax_lse else out_cpp
     else:
-        logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC")
+        logger.debug("GEMS_TSINGMICRO FLASH_ATTN_VARLEN_FUNC")
         assert (
             cu_seqlens_k is not None or seqused_k is not None
         ), "cu_seqlens_k or seqused_k must be provided"

@@ -8,7 +8,7 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
@@ -262,7 +262,7 @@ _index_func = IndexFunction()
 
 
 def index(inp, indices):
-    logger.debug("GEMS INDEX")
+    logger.debug("GEMS_METAX INDEX")
     original_indices = list(indices)  # Save original indices for later checks
     indices = list(indices)
 

@@ -10,7 +10,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -336,7 +336,7 @@ def weight_bias_backward_kernel(
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
-    logger.debug("GEMS LAYERNORM FORWARD")
+    logger.debug("GEMS_SUNRISE LAYER_NORM")
 
     N = math.prod(normalized_shape)
     M = input.numel() // N
@@ -410,7 +410,7 @@ def layer_norm_backward(
     bias=None,
     output_mask=None,
 ):
-    logger.debug("GEMS LAYERNORM BACKWARD")
+    logger.debug("GEMS_SUNRISE LAYER_NORM_BACKWARD")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()

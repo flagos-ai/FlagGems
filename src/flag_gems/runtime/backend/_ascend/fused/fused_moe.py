@@ -31,7 +31,7 @@ from flag_gems.runtime.backend._ascend.fused.moe_align_block_size import (
 from flag_gems.runtime.backend._ascend.fused.moe_sum import moe_sum
 from flag_gems.utils import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 # OCP MX quantization helpers (requires amd-quark)
 
@@ -142,7 +142,11 @@ def _get_device_name() -> str:
     # Fallback mapping for devices whose tuning profiles are equivalent.
     fallback = fallback_mapping.get(name)
     if fallback and fallback in embedded_configs:
-        logger.info("Device %s not in config table, falling back to %s", name, fallback)
+        logger.info(
+            "GEMS_ASCEND Device %s not in config table, falling back to %s",
+            name,
+            fallback,
+        )
         return fallback
     return name
 
@@ -165,7 +169,7 @@ def get_moe_configs(
     device_table = embedded_configs.get(device_name)
     if device_table is None:
         logger.warning(
-            "No embedded MoE configs for device %s. Will use default config.",
+            "GEMS_ASCEND No embedded MoE configs for device %s. Will use default config.",
             device_name,
         )
         return None
@@ -175,10 +179,14 @@ def get_moe_configs(
     key = f"{E},{N},{dtype},{_block_n},{_block_k}"
     configs = device_table.get(key)
     if configs is not None:
-        logger.info("Using embedded MoE config for device=%s, key=%s", device_name, key)
+        logger.info(
+            "GEMS_ASCEND Using embedded MoE config for device=%s, key=%s",
+            device_name,
+            key,
+        )
         return configs
     logger.warning(
-        "No embedded MoE config for device=%s, key=%s. Will use default config.",
+        "GEMS_ASCEND No embedded MoE config for device=%s, key=%s. Will use default config.",
         device_name,
         key,
     )
@@ -1413,7 +1421,7 @@ def fused_experts_impl(
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ASCEND FUSED MOE")
+    logger.debug("GEMS_ASCEND FUSED_MOE")
     if hasattr(activation, "value"):
         activation = activation.value
     assert (

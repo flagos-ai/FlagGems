@@ -11,7 +11,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.type_utils import get_accumulator_dtype
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 Tensor = torch.Tensor
 
 
@@ -546,7 +546,7 @@ class InstanceNorm(torch.autograd.Function):
         eps=1e-05,
         cudnn_enable=False,
     ):
-        logger.debug("GEMS_KUNLUNXIN INSTANCENORM FORWARD")
+        logger.debug("GEMS_KUNLUNXIN INSTANCE_NORM")
         assert len(x.shape) in [
             3,
             4,
@@ -658,7 +658,7 @@ class InstanceNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_KUNLUNXIN INSTANCENORM BACKWARD")
+        logger.debug("GEMS_KUNLUNXIN INSTANCE_NORM_BACKWARD")
         out_grad = out_grad.contiguous()
         x, weight, mean, rstd = ctx.saved_tensors
         M = ctx.M

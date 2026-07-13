@@ -12,7 +12,7 @@ from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -111,7 +111,7 @@ def sum_kernel(
 
 
 def sum(inp, *, dtype=None):
-    logger.debug("GEMS SUM")
+    logger.debug("GEMS_KUNLUNXIN SUM")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -134,7 +134,7 @@ def sum(inp, *, dtype=None):
 
 
 def sum_out(inp, *, dtype=None, out):
-    logger.debug("GEMS SUM_OUT")
+    logger.debug("GEMS_KUNLUNXIN SUM_OUT")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -155,7 +155,7 @@ def sum_out(inp, *, dtype=None, out):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS SUM DIM")
+    logger.debug("GEMS_KUNLUNXIN SUM_DIM")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
@@ -204,7 +204,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
 
 def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
-    logger.debug("GEMS SUM_DIM_OUT")
+    logger.debug("GEMS_KUNLUNXIN SUM_DIM_OUT")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:

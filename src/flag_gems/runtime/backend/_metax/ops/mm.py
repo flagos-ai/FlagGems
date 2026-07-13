@@ -10,7 +10,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -156,7 +156,7 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
-    logger.debug("METAX GEMS MM")
+    logger.debug("GEMS_METAX MM")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -172,8 +172,8 @@ def mm(a, b):
     c = torch.empty((M, N), device=device, dtype=c_dtype)
     dot_out_dtype = tl.float32
     logger.debug(
-        "METAX GEMS MM, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s",
+        "GEMS_METAX MM, [mm scenario]: general, [shape info]: "
+        "[-, %s, %s, %s](batch, M, N, K), [A column-major]: %s, [B column-major]: %s",
         M,
         N,
         K,
@@ -206,7 +206,7 @@ def mm(a, b):
 
 
 def mm_out(a, b, *, out):
-    logger.debug("METAX GEMS MM_OUT")
+    logger.debug("GEMS_METAX MM_OUT")
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
@@ -220,8 +220,8 @@ def mm_out(a, b, *, out):
     c = out
     dot_out_dtype = tl.float32
     logger.debug(
-        "METAX GEMS MM, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s",
+        "GEMS_METAX MM, [mm scenario]: general, [shape info]: "
+        "[-, %s, %s, %s](batch, M, N, K), [A column-major]: %s, [B column-major]: %s",
         M,
         N,
         K,

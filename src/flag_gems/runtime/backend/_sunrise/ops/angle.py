@@ -9,7 +9,7 @@ from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
 atan2 = tl_extra_shim.atan2
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")])
@@ -35,7 +35,7 @@ def angle_float_and_int(real):
 
 
 def angle(input_tensor: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS ANGLE")
+    logger.debug("GEMS_SUNRISE ANGLE")
     if input_tensor.dtype == torch.complex32 or input_tensor.dtype == torch.complex64:
         device = input_tensor.device
         input_tensor = input_tensor.to(device="cpu")

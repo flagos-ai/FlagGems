@@ -7,7 +7,7 @@ import triton
 from ..utils.codegen_config_utils import CodeGenConfig
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
@@ -67,7 +67,7 @@ def _expand_like(src: torch.Tensor, target_shape: torch.Size) -> torch.Tensor:
 def copy(
     template: torch.Tensor, src: torch.Tensor, *, non_blocking: Optional[bool] = False
 ):
-    logger.debug("GEMS COPY (functional)")
+    logger.debug("GEMS_KUNLUNXIN COPY")
     out = torch.empty_strided(
         template.size(), template.stride(), dtype=template.dtype, device=template.device
     )
@@ -113,7 +113,7 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
             _FALLBACK_KEYSET, dst, src, non_blocking
         )
 
-    logger.debug("GEMS COPY_")
+    logger.debug("GEMS_KUNLUNXIN COPY_")
 
     try:
         broadcast_shape = torch.broadcast_shapes(dst.shape, src.shape)

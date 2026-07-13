@@ -13,7 +13,7 @@ from flag_gems.utils.shape_utils import (
     restride_dim,
 )
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -319,7 +319,7 @@ _scatter_func = ScatterFunction()
 
 
 def scatter(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER")
+    logger.debug("GEMS_KUNLUNXIN SCATTER")
     if dim < 0:
         dim += inp.ndim
     out = inp.clone()
@@ -356,7 +356,7 @@ def scatter(inp, dim, index, src, reduce=None):
 
 
 def scatter_(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER_")
+    logger.debug("GEMS_KUNLUNXIN SCATTER_")
     if dim < 0:
         dim += inp.ndim
     out = inp

@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -63,7 +63,7 @@ def addr_kernel(
 
 
 def addr(input, vec1, vec2, *, beta=1, alpha=1):
-    logger.debug("GEMS ADDR")
+    logger.debug("GEMS_KUNLUNXIN ADDR")
     if vec1.dim() != 1 or vec2.dim() != 1:
         raise ValueError("addr: expected 1-D vectors")
 

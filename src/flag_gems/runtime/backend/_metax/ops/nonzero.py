@@ -8,7 +8,7 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -181,7 +181,7 @@ _nonzero_func = NonzeroFunction()
 
 
 def nonzero(inp, *, as_tuple=False):
-    logger.debug("METAX GEMS NONZERO")
+    logger.debug("GEMS_METAX NONZERO")
 
     assert len(inp.shape) > 0, "Invalid input shape, input dimension must > 0"
     inp_ndim = inp.ndim

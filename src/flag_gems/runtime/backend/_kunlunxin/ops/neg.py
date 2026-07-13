@@ -5,7 +5,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 config_ = CodeGenConfig(
     512,
@@ -26,10 +26,10 @@ def neg_func(x):
 
 
 def neg(A):
-    logger.debug("GEMS NEG")
+    logger.debug("GEMS_KUNLUNXIN NEG")
     return neg_func(A)
 
 
 def neg_(A):
-    logger.debug("GEMS NEG_")
+    logger.debug("GEMS_KUNLUNXIN NEG_")
     return neg_func(A, out0=A)

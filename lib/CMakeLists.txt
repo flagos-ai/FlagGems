@@ -8,6 +8,7 @@ add_library(operators
             max.cpp
             mm.cpp
             rms_norm.cpp
+            gemma_rms_norm.cpp
             fused_add_rms_norm.cpp
             rotary_embedding.cpp
             topk.cpp
@@ -60,6 +61,12 @@ elseif(FLAGGEMS_BACKEND STREQUAL "GCU")
     target_link_libraries(operators
       PUBLIC Torch::Torch
       PRIVATE TritonJIT::triton_jit)
+elseif(FLAGGEMS_BACKEND STREQUAL HCU)
+    target_link_hcu_libraries(operators)
+    target_link_libraries(operators
+      PUBLIC Torch::Torch
+      PRIVATE TritonJIT::triton_jit)
+    target_compile_options(operators PRIVATE -std=c++20)
 endif()
 target_compile_definitions(operators PRIVATE BACKEND_${FLAGGEMS_BACKEND})
 

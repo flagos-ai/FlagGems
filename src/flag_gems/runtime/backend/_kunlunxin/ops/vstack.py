@@ -9,7 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def heur_block_size(args):
@@ -75,7 +75,7 @@ def vstack_kernel(
 
 
 def vstack(tensors: list):
-    logger.debug("GEMS VSTACK")
+    logger.debug("GEMS_KUNLUNXIN VSTACK")
 
     tensors = torch.atleast_2d(tensors)
     num_tensors = len(tensors)

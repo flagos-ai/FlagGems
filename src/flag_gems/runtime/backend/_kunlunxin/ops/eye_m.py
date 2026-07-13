@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 device_ = device
 
 
@@ -39,7 +39,7 @@ def eye_m(n, m, *, dtype=None, layout=torch.strided, device=None, pin_memory=Non
     """
     Triton-based implementation of torch.eye_m(n, m), using 2D tiles to split the matrix into blocks.
     """
-    logger.debug("GEMS EYE_M")
+    logger.debug("GEMS_KUNLUNXIN EYE_M")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

@@ -8,7 +8,7 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -90,14 +90,13 @@ def generate_index_add_kernel(
             code.writeline(
                 "add_on = tl.load(src + src_offset, mask=mask, other=0) * alpha"
             )
-            # code.writeline(
-            #     "tl.atomic_add(out + input_idx, add_on, mask=input_mask, sem='relaxed')"
-            # )
-            # TODO: tl.atomic_add doesn't support bfloat16! The following method may be unsafe.
             code.writeline("cur_out = tl.load(out + input_idx, mask=input_mask)")
             code.writeline(
                 "tl.store(out + input_idx, cur_out + add_on, mask=input_mask)"
             )
+            # TODO: tl.atomic_add doesn't support bfloat16! The following method may be unsafe.
+            # code.writeline("cur_out = tl.load(out + input_idx, mask=input_mask)")
+            # code.writeline("tl.store(out + input_idx, cur_out + add_on, mask=input_mask)")
 
         code.newline()
         code.newline()
@@ -220,7 +219,7 @@ _index_add_func = IndexAddFunction()
 
 
 def index_add(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS INDEX ADD")
+    logger.debug("GEMS_SUNRISE INDEX_ADD")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
     ), "0 <= index < self.size(dim)"
@@ -261,7 +260,7 @@ def index_add(inp, dim, index, src, alpha=1):
 
 
 def index_add_(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS INDEX ADD_")
+    logger.debug("GEMS_SUNRISE INDEX_ADD_")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
     ), "0 <= index < self.size(dim)"

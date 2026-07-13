@@ -5,7 +5,9 @@ import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+import flag_gems
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -19,7 +21,7 @@ def _copy_kernel(in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def lift_fresh_copy(*args, **kwargs):
-    logger.debug("GEMS LIFT_FRESH_COPY")
+    logger.debug("GEMS_SUNRISE LIFT_FRESH_COPY")
     # Attempt to find the input tensor from args/kwargs
     x = None
     if len(args) > 0 and isinstance(args[0], torch.Tensor):
@@ -34,8 +36,10 @@ def lift_fresh_copy(*args, **kwargs):
     if x is None:
         raise ValueError("lift_fresh_copy expects a Tensor argument")
 
-    if not x.is_ptpu:
-        raise ValueError("lift_fresh_copy Triton kernel requires a PTPU tensor")
+    if x.device.type != flag_gems.device:
+        raise ValueError(
+            f"lift_fresh_copy Triton kernel requires a {flag_gems.device} tensor"
+        )
 
     x_contig = x.contiguous()
     out = torch.empty_like(x_contig, memory_format=torch.contiguous_format)
@@ -48,19 +52,21 @@ def lift_fresh_copy(*args, **kwargs):
 
 
 def lift_fresh_copy_out(x: torch.Tensor, out: torch.Tensor = None):
-    logger.debug("GEMS LIFT_FRESH_COPY_OUT")
+    logger.debug("GEMS_SUNRISE LIFT_FRESH_COPY_OUT")
     if x is None or not isinstance(x, torch.Tensor):
         raise ValueError("lift_fresh_copy_out expects 'x' to be a Tensor")
-    if not x.is_ptpu:
-        raise ValueError("lift_fresh_copy_out Triton kernel requires PTPU tensors")
+    if x.device.type != flag_gems.device:
+        raise ValueError(
+            f"lift_fresh_copy_out Triton kernel requires {flag_gems.device} tensors"
+        )
 
     x_contig = x.contiguous()
 
     if out is None:
         out = torch.empty_like(x_contig, memory_format=torch.contiguous_format)
     else:
-        if not out.is_ptpu:
-            raise ValueError("Output tensor 'out' must be on PTPU")
+        if out.device.type != flag_gems.device:
+            raise ValueError(f"Output tensor 'out' must be on {flag_gems.device}")
         if out.dtype != x_contig.dtype:
             raise ValueError("Output tensor 'out' must have the same dtype as input")
         # Resize to match input shape and ensure contiguous layout
