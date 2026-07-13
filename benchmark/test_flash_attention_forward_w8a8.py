@@ -71,12 +71,8 @@ def _quantize_per_block_fp8(x, fp8_dtype, block_size=128):
 
 def _quantize_qkv_w8a8(q, k, v):
     fp8_dtype = _get_fp8_dtype()
-    q_fp8, q_descale = _quantize_per_block_fp8(
-        _apply_incoherent_qk(q), fp8_dtype
-    )
-    k_fp8, k_descale = _quantize_per_block_fp8(
-        _apply_incoherent_qk(k), fp8_dtype
-    )
+    q_fp8, q_descale = _quantize_per_block_fp8(_apply_incoherent_qk(q), fp8_dtype)
+    k_fp8, k_descale = _quantize_per_block_fp8(_apply_incoherent_qk(k), fp8_dtype)
     v_fp8, v_descale = _quantize_per_block_fp8(v, fp8_dtype)
     return (
         q_fp8,

@@ -1,7 +1,6 @@
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.utils import libentry, tl_extra_shim
 
 
@@ -248,7 +247,9 @@ def fa3_load_dense_descales(
 
 
 @triton.jit
-def fa3_fp8_pv_dot(P, V, acc, v_descale, fp8_p_max: tl.constexpr, fp8_dtype: tl.constexpr):
+def fa3_fp8_pv_dot(
+    P, V, acc, v_descale, fp8_p_max: tl.constexpr, fp8_dtype: tl.constexpr
+):
     p_descale = 1.0 / fp8_p_max
     P_fp8 = (P * fp8_p_max).to(fp8_dtype)
     pv = tl.dot(P_fp8, V, out_dtype=tl.float32)
@@ -305,6 +306,8 @@ def is_even_mn_spec_args(args):
             ):
                 return True
     return False
+
+
 def fwd_configs_w8a8():
     # W8A8 change: use a dedicated config space for FP8 QK.  The original FA2
     # configs were picked for fp16/bf16 QK, while FP8 often benefits from trying
@@ -313,10 +316,8 @@ def fwd_configs_w8a8():
     return [
         # D64 candidates: small shapes often prefer smaller M, while long-S
         # QK-heavy cases can benefit from larger N.
-        
         triton.Config({"BLOCK_M": 128, "BLOCK_N": 32}, num_warps=4, num_stages=2),
         triton.Config({"BLOCK_M": 128, "BLOCK_N": 128}, num_warps=8, num_stages=2),
-
         triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=4, num_stages=2),
         triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=4, num_stages=3),
         triton.Config({"BLOCK_M": 128, "BLOCK_N": 128}, num_warps=4, num_stages=2),
@@ -330,7 +331,6 @@ def fwd_configs_w8a8():
         triton.Config({"BLOCK_M": 128, "BLOCK_N": 128}, num_warps=4, num_stages=2),
         triton.Config({"BLOCK_M": 128, "BLOCK_N": 128}, num_warps=8, num_stages=2),
         triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=8, num_stages=3),
-
         triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=4, num_stages=2),
         triton.Config({"BLOCK_M": 64, "BLOCK_N": 256}, num_warps=4, num_stages=2),
     ]
@@ -353,8 +353,8 @@ def prune_fwd_configs_w8a8(configs, nargs, **kwargs):
         # configs that are known to have poor register/occupancy balance.
         if d <= 64:
             if (BM, BN, w, s) in {
-                (128,32,4,2),
-                (128,128,8,2),
+                (128, 32, 4, 2),
+                (128, 128, 8, 2),
                 (128, 64, 4, 2),
                 (128, 64, 4, 3),
                 (128, 128, 4, 2),
@@ -370,7 +370,6 @@ def prune_fwd_configs_w8a8(configs, nargs, **kwargs):
                 (128, 128, 4, 2),
                 (128, 128, 8, 2),
                 (64, 128, 8, 3),
-
             }:
                 out.append(cfg)
 
@@ -387,8 +386,6 @@ def flash_fwd_kernel_heur_block_k(args):
     prune_configs_by={"early_config_prune": prune_fwd_configs_w8a8},
     key=["b", "h", "seqlen_q", "seqlen_k", "d", "is_dropout"],
 )
-
-
 @triton.heuristics(
     values={
         "BLOCK_K": flash_fwd_kernel_heur_block_k,
@@ -498,7 +495,7 @@ def flash_fwd_kernel(
 ):
     m_block = tl.program_id(0)
     bh = tl.program_id(1)
-    #改动：D128 split-D 路径把输出维拆成两个 D64 CTA；D64 或未启用时只有一个 CTA。
+    # 改动：D128 split-D 路径把输出维拆成两个 D64 CTA；D64 或未启用时只有一个 CTA。
     d_split = tl.program_id(2)
     d_start = d_split * BLOCK_D
     hid = bh % h
@@ -571,8 +568,8 @@ def flash_fwd_kernel(
         )
         p_bp0 = p_ptr + p_offset
 
-    #改动：PV accumulator 改为 [BLOCK_M, BLOCK_D]，D128 时 BLOCK_D=64，
-    #避免单 CTA 同时持有 [BM,128] 的 acc/pv，降低寄存器压力。
+    # 改动：PV accumulator 改为 [BLOCK_M, BLOCK_D]，D128 时 BLOCK_D=64，
+    # 避免单 CTA 同时持有 [BM,128] 的 acc/pv，降低寄存器压力。
     acc_ = tl.zeros((BLOCK_M, BLOCK_D), dtype=tl.float32)
     rowmax_ = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
     rowsum_ = tl.zeros([BLOCK_M], dtype=tl.float32)
@@ -588,7 +585,7 @@ def flash_fwd_kernel(
     k_offset = (
         tl.arange(0, BLOCK_N)[None, :] * k_row_stride + tl.arange(0, BLOCK_K)[:, None]
     )
-    #改动：V 只加载当前 D split 对应的 64 维切片；QK 仍用完整 BLOCK_K=128。
+    # 改动：V 只加载当前 D split 对应的 64 维切片；QK 仍用完整 BLOCK_K=128。
     v_d = d_start + tl.arange(0, BLOCK_D)
     v_dmask = v_d < d
     v_offset = tl.arange(0, BLOCK_N)[:, None] * k_row_stride + v_d[None, :]
@@ -709,11 +706,11 @@ def flash_fwd_kernel(
                         BLOCK_N=BLOCK_N,
                     )
                     if IS_EVEN_MN:
-                        #改动：split-D 两个 CTA 的 softmax tile 相同，只让第 0 个 D split 写调试用 P。
+                        # 改动：split-D 两个 CTA 的 softmax tile 相同，只让第 0 个 D split 写调试用 P。
                         tl.store(p_bp0 + col_start, P_drop, mask=d_split == 0)
                     else:
                         kvmask = col_idx < seqlen_k
-                        #改动：split-D 两个 CTA 的 softmax tile 相同，只让第 0 个 D split 写调试用 P。
+                        # 改动：split-D 两个 CTA 的 softmax tile 相同，只让第 0 个 D split 写调试用 P。
                         tl.store(
                             p_bp0 + col_start,
                             P_drop,
@@ -751,7 +748,9 @@ def flash_fwd_kernel(
                         mask=kvmask[:, None] & v_dmask[None, :],
                         cache_modifier=".cg",
                     )
-            acc_ = fa3_fp8_pv_dot(P, V, acc_, v_descale, fp8_p_max, v_ptr.type.element_ty)
+            acc_ = fa3_fp8_pv_dot(
+                P, V, acc_, v_descale, fp8_p_max, v_ptr.type.element_ty
+            )
 
     for col_start in tl.range(
         col_min, col_max - masking_cols, step=BLOCK_N, num_stages=num_stages
@@ -847,11 +846,11 @@ def flash_fwd_kernel(
                     BLOCK_N=BLOCK_N,
                 )
                 if IS_EVEN_MN:
-                    #改动：split-D 两个 CTA 的 softmax tile 相同，只让第 0 个 D split 写调试用 P。
+                    # 改动：split-D 两个 CTA 的 softmax tile 相同，只让第 0 个 D split 写调试用 P。
                     tl.store(p_bp0 + col_start, P_drop, mask=d_split == 0)
                 else:
                     kvmask = col_idx < seqlen_k
-                    #改动：split-D 两个 CTA 的 softmax tile 相同，只让第 0 个 D split 写调试用 P。
+                    # 改动：split-D 两个 CTA 的 softmax tile 相同，只让第 0 个 D split 写调试用 P。
                     tl.store(
                         p_bp0 + col_start,
                         P_drop,
@@ -904,7 +903,7 @@ def flash_fwd_kernel(
     o_batch_stride = tl.multiple_of(o_batch_stride, d * h)
     o_ptr += bid * o_batch_stride
     o_ptr += hid * o_head_stride
-    #改动：split-D CTA 只写回自己负责的 D64 输出片段。
+    # 改动：split-D CTA 只写回自己负责的 D64 输出片段。
     o_cols = d_start + tl.arange(0, BLOCK_D)
     o_dmask = o_cols < d
     o_offset = row_idx[:, None] * o_row_stride + o_cols[None, :]
@@ -912,13 +911,15 @@ def flash_fwd_kernel(
     if IS_EVEN_MN & (d == BLOCK_K) & (not SPLIT_D):
         tl.store(o_ptr + o_offset, out)
     else:
-        tl.store(o_ptr + o_offset, out, mask=(row_idx[:, None] < seqlen_q) & o_dmask[None, :])
+        tl.store(
+            o_ptr + o_offset, out, mask=(row_idx[:, None] < seqlen_q) & o_dmask[None, :]
+        )
 
     # Write back lse
     p_lse = softmax_lse_ptr + (bid * h + hid) * seqlen_q
     row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
 
-    #改动：split-D 两个 CTA 会得到相同 LSE，只让第 0 个 D split 写，避免重复写同一地址。
+    # 改动：split-D 两个 CTA 会得到相同 LSE，只让第 0 个 D split 写，避免重复写同一地址。
     lse_write_mask = d_split == 0
     if IS_EVEN_MN:
         tl.store(p_lse + row_idx, lse, mask=lse_write_mask)
@@ -1187,7 +1188,9 @@ def flash_fwd_splitkv_kernel(
                         other=0.0,
                     )
             # W8A8 FA3 change: split-KV PV uses an in-kernel FP8 P tile and FP8 V.
-            acc_ = fa3_fp8_pv_dot(P, V, acc_, v_descale, fp8_p_max, v_ptr.type.element_ty)
+            acc_ = fa3_fp8_pv_dot(
+                P, V, acc_, v_descale, fp8_p_max, v_ptr.type.element_ty
+            )
     else:
         for n_block in tl.range(split_block_min, min(split_block_max, n_block_max)):
             kv_off = n_block * BLOCK_N * k_row_stride
@@ -1292,7 +1295,9 @@ def flash_fwd_splitkv_kernel(
                         other=0.0,
                     )
             # W8A8 FA3 change: masked split-KV PV runs as FP8 P * FP8 V.
-            acc_ = fa3_fp8_pv_dot(P, V, acc_, v_descale, fp8_p_max, v_ptr.type.element_ty)
+            acc_ = fa3_fp8_pv_dot(
+                P, V, acc_, v_descale, fp8_p_max, v_ptr.type.element_ty
+            )
 
     # LSE
     lse = tl.where(
@@ -1574,7 +1579,7 @@ def flash_varlen_fwd_kernel(
 ):
     m_block = tl.program_id(0)
     bid = tl.program_id(1)
-    #改动：varlen 的 grid 只有 3 维，把 head 和 D split 合并到 program_id(2)。
+    # 改动：varlen 的 grid 只有 3 维，把 head 和 D split 合并到 program_id(2)。
     hd = tl.program_id(2)
     hid = hd % h
     d_split = hd // h
@@ -1658,7 +1663,7 @@ def flash_varlen_fwd_kernel(
     )
     bQ = tl.load(gQ.advance([m_block * BLOCK_M, 0]), boundary_check=(0, 1))
 
-    #改动：varlen PV accumulator 也按 BLOCK_D 切分，D128 时每个 CTA 只持有 D64。
+    # 改动：varlen PV accumulator 也按 BLOCK_D 切分，D128 时每个 CTA 只持有 D64。
     acc_ = tl.zeros((BLOCK_M, BLOCK_D), dtype=tl.float32)
     rowmax_ = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
     rowsum_ = tl.zeros([BLOCK_M], dtype=tl.float32)
@@ -1712,7 +1717,7 @@ def flash_varlen_fwd_kernel(
                 base=v_ptr_seq,
                 shape=(k_len, d),
                 strides=(k_row_stride, 1),
-                #改动：非 paged varlen 的 V 只取当前 D split 对应的切片。
+                # 改动：非 paged varlen 的 V 只取当前 D split 对应的切片。
                 offsets=(start_n, d_start),
                 block_shape=(BLOCK_N, BLOCK_D),
                 order=(0, 1),
@@ -1828,7 +1833,7 @@ def flash_varlen_fwd_kernel(
                 base=v_ptr_seq,
                 shape=(k_len, d),
                 strides=(k_row_stride, 1),
-                #改动：非 paged varlen 的 V 只取当前 D split 对应的切片。
+                # 改动：非 paged varlen 的 V 只取当前 D split 对应的切片。
                 offsets=(start_n, d_start),
                 block_shape=(BLOCK_N, BLOCK_D),
                 order=(0, 1),
@@ -1929,7 +1934,7 @@ def flash_varlen_fwd_kernel(
         base=o_ptr + o_offset + o_row_offset,
         shape=(q_len, d),
         strides=(o_row_stride, 1),
-        #改动：varlen split-D CTA 只写当前 D64 输出切片。
+        # 改动：varlen split-D CTA 只写当前 D64 输出切片。
         offsets=(0, d_start),
         block_shape=(BLOCK_M, BLOCK_D),
         order=(1, 0),
@@ -1940,7 +1945,7 @@ def flash_varlen_fwd_kernel(
     # lse shape: [h, total_q]
     softmax_lse_ptr += hid * total_q
     lse_row_offset = lse_offset + m_block * BLOCK_M + tl.arange(0, BLOCK_M)
-    #改动：varlen split-D 两个 CTA 的 LSE 相同，只让第 0 个 D split 写回。
+    # 改动：varlen split-D 两个 CTA 的 LSE 相同，只让第 0 个 D split 写回。
     tl.store(
         softmax_lse_ptr + lse_row_offset,
         lse,

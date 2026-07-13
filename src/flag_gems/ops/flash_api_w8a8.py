@@ -50,7 +50,9 @@ def _empty_descale(device):
 def _default_dense_descale(batch_size, num_heads, nblocks, device):
     # W8A8 FA3 change: missing descale means the caller already baked the scale
     # into the FP8 numeric values; use per-block 1.0 scales for compatibility.
-    return torch.ones((batch_size, num_heads, nblocks), dtype=torch.float32, device=device)
+    return torch.ones(
+        (batch_size, num_heads, nblocks), dtype=torch.float32, device=device
+    )
 
 
 def _normalize_dense_descale(descale, batch_size, num_heads, nblocks, device, name):
@@ -67,12 +69,21 @@ def _normalize_dense_descale(descale, batch_size, num_heads, nblocks, device, na
             descale = descale.reshape(1, 1, 1).expand(batch_size, num_heads, nblocks)
         else:
             assert descale.numel() == num_heads, f"{name} 1D scale must have H elements"
-            descale = descale.reshape(1, num_heads, 1).expand(batch_size, num_heads, nblocks)
+            descale = descale.reshape(1, num_heads, 1).expand(
+                batch_size, num_heads, nblocks
+            )
     elif descale.ndim == 2:
-        assert descale.shape == (batch_size, num_heads), f"{name} 2D scale must be [B, H]"
+        assert descale.shape == (
+            batch_size,
+            num_heads,
+        ), f"{name} 2D scale must be [B, H]"
         descale = descale[:, :, None].expand(batch_size, num_heads, nblocks)
     else:
-        assert descale.shape == (batch_size, num_heads, nblocks), f"{name} must be [B, H, nblocks]"
+        assert descale.shape == (
+            batch_size,
+            num_heads,
+            nblocks,
+        ), f"{name} must be [B, H, nblocks]"
     return descale.contiguous()
 
 
@@ -357,8 +368,10 @@ def mha_varlan_fwd(
     # W8A8 FA3 change: varlen forward also consumes FP8 Q/K/V and uses explicit
     # descale tensors, matching the dense kernel contract.
     assert q_dtype in _FP8_DTYPES, "W8A8 FA3 FlashAttention expects q to be fp8"
-    assert k.dtype == q_dtype, "W8A8 FA3 FlashAttention expects q and k to use the same fp8 dtype"
-    assert v.dtype == q_dtype, "W8A8 FA3 FlashAttention expects v to be fp8"
+    assert (
+        k.dtype == q_dtype
+    ), "W8A8 FA3 FlashAttention expects q and k to use the same fp8 dtype"
+    assert v_dtype == q_dtype, "W8A8 FA3 FlashAttention expects v to be fp8"
     assert q.stride(-1) == 1, "Input tensor must have contiguous last dimension"
     assert k.stride(-1) == 1, "Input tensor must have contiguous last dimension"
     assert v.stride(-1) == 1, "Input tensor must have contiguous last dimension"
@@ -550,9 +563,15 @@ def mha_varlan_fwd(
         k_nblocks = triton.cdiv(max_seqlen_k, 128)
         # W8A8 FA3 change: varlen kernels use [B, H, block] descales indexed by
         # request id and local block id.  Paged KV uses the same logical blocks.
-        q_descale = _normalize_dense_descale(q_descale, batch_size, num_heads, q_nblocks, q_device, "q_descale")
-        k_descale = _normalize_dense_descale(k_descale, batch_size, num_heads_k, k_nblocks, q_device, "k_descale")
-        v_descale = _normalize_dense_descale(v_descale, batch_size, num_heads_k, k_nblocks, q_device, "v_descale")
+        q_descale = _normalize_dense_descale(
+            q_descale, batch_size, num_heads, q_nblocks, q_device, "q_descale"
+        )
+        k_descale = _normalize_dense_descale(
+            k_descale, batch_size, num_heads_k, k_nblocks, q_device, "k_descale"
+        )
+        v_descale = _normalize_dense_descale(
+            v_descale, batch_size, num_heads_k, k_nblocks, q_device, "v_descale"
+        )
 
         params = fwd_params(
             q,  # q_ptr,
@@ -639,7 +658,7 @@ def mha_varlan_fwd(
             params.k_ptr = k.view(k.shape[0], k.shape[1], -1)
             params.v_ptr = v.view(v.shape[0], v.shape[1], -1)
         logger.debug("kernel: flash_varlen_fwd")
-        #改动：D128 非 paged varlen 也启用 2-way split-D；paged cache loader 暂保持原 D 维完整加载。
+        # 改动：D128 非 paged varlen 也启用 2-way split-D；paged cache loader 暂保持原 D 维完整加载。
         use_varlen_split_d = head_size == 128 and not is_paged
         grid = lambda args: (
             triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
@@ -675,7 +694,7 @@ def mha_varlan_fwd(
             "BLOCK_M": cfg["BLOCK_M"](args),
             "BLOCK_N": cfg["BLOCK_N"](args),
             "BLOCK_K": triton.next_power_of_2(head_size),
-            #改动：QK 仍使用完整 BLOCK_K；PV/output 在 D128 split-D 时使用 BLOCK_D=64。
+            # 改动：QK 仍使用完整 BLOCK_K；PV/output 在 D128 split-D 时使用 BLOCK_D=64。
             "BLOCK_D": 64 if use_varlen_split_d else triton.next_power_of_2(head_size),
             "SPLIT_D": use_varlen_split_d,
             "num_warps": cfg["num_warps"](args),
@@ -736,8 +755,10 @@ def mha_varlan_fwd_opt(
     # W8A8 FA3 change: optimized varlen path uses FP8 Q/K/V and per-block
     # descales just like FA3 FP8 forward.
     assert q_dtype in _FP8_DTYPES, "W8A8 FA3 FlashAttention expects q to be fp8"
-    assert k.dtype == q_dtype, "W8A8 FA3 FlashAttention expects q and k to use the same fp8 dtype"
-    assert v.dtype == q_dtype, "W8A8 FA3 FlashAttention expects v to be fp8"
+    assert (
+        k.dtype == q_dtype
+    ), "W8A8 FA3 FlashAttention expects q and k to use the same fp8 dtype"
+    assert v_dtype == q_dtype, "W8A8 FA3 FlashAttention expects v to be fp8"
     assert q.stride(-1) == 1, "Input tensor must have contiguous last dimension"
     assert k.stride(-1) == 1, "Input tensor must have contiguous last dimension"
     assert v.stride(-1) == 1, "Input tensor must have contiguous last dimension"
@@ -750,7 +771,7 @@ def mha_varlan_fwd_opt(
 
     is_paged = page_table is not None
     if not is_paged:
-        page_table = torch.emtpty((0, 0), device=q_device, dtype=torch.int32)
+        page_table = torch.empty((0, 0), device=q_device, dtype=torch.int32)
 
     # q shape: [total_q_tokens, num_heads, head_size]
     # k shape:
@@ -934,9 +955,15 @@ def mha_varlan_fwd_opt(
         k_nblocks = triton.cdiv(max_seqlen_k, 128)
         # W8A8 FA3 change: normalize optional FA3 descales for the optimized
         # varlen path before packing the common fwd_params object.
-        q_descale = _normalize_dense_descale(q_descale, batch_size, num_heads, q_nblocks, q_device, "q_descale")
-        k_descale = _normalize_dense_descale(k_descale, batch_size, num_heads_k, k_nblocks, q_device, "k_descale")
-        v_descale = _normalize_dense_descale(v_descale, batch_size, num_heads_k, k_nblocks, q_device, "v_descale")
+        q_descale = _normalize_dense_descale(
+            q_descale, batch_size, num_heads, q_nblocks, q_device, "q_descale"
+        )
+        k_descale = _normalize_dense_descale(
+            k_descale, batch_size, num_heads_k, k_nblocks, q_device, "k_descale"
+        )
+        v_descale = _normalize_dense_descale(
+            v_descale, batch_size, num_heads_k, k_nblocks, q_device, "v_descale"
+        )
 
         params = fwd_params(
             q,  # q_ptr,
@@ -1023,7 +1050,7 @@ def mha_varlan_fwd_opt(
             params.k_ptr = k.view(k.shape[0], k.shape[1], -1)
             params.v_ptr = v.view(v.shape[0], v.shape[1], -1)
         logger.debug("kernel: flash_varlen_fwd")
-        #改动：D128 非 paged varlen 也启用 2-way split-D；paged cache loader 暂保持原 D 维完整加载。
+        # 改动：D128 非 paged varlen 也启用 2-way split-D；paged cache loader 暂保持原 D 维完整加载。
         use_varlen_split_d = head_size == 128 and not is_paged
         grid = lambda args: (
             triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
@@ -1059,7 +1086,7 @@ def mha_varlan_fwd_opt(
             "BLOCK_M": cfg["BLOCK_M"](args),
             "BLOCK_N": cfg["BLOCK_N"](args),
             "BLOCK_K": triton.next_power_of_2(head_size),
-            #改动：QK 仍使用完整 BLOCK_K；PV/output 在 D128 split-D 时使用 BLOCK_D=64。
+            # 改动：QK 仍使用完整 BLOCK_K；PV/output 在 D128 split-D 时使用 BLOCK_D=64。
             "BLOCK_D": 64 if use_varlen_split_d else triton.next_power_of_2(head_size),
             "SPLIT_D": use_varlen_split_d,
             "num_warps": cfg["num_warps"](args),
@@ -1112,8 +1139,10 @@ def mha_fwd(
     # W8A8 FA3 change: dense forward now follows FA3 FP8 mode: Q/K/V are FP8
     # tensors and the output keeps the caller's high-precision output dtype.
     assert q_dtype in _FP8_DTYPES, "W8A8 FA3 FlashAttention expects q to be fp8"
-    assert k.dtype == q_dtype, "W8A8 FA3 FlashAttention expects q and k to use the same fp8 dtype"
-    assert v.dtype == q_dtype, "W8A8 FA3 FlashAttention expects v to be fp8"
+    assert (
+        k.dtype == q_dtype
+    ), "W8A8 FA3 FlashAttention expects q and k to use the same fp8 dtype"
+    assert v_dtype == q_dtype, "W8A8 FA3 FlashAttention expects v to be fp8"
     assert q.stride(-1) == 1, "Input tensor must have contiguous last dimension"
     assert k.stride(-1) == 1, "Input tensor must have contiguous last dimension"
     assert v.stride(-1) == 1, "Input tensor must have contiguous last dimension"
@@ -1235,9 +1264,15 @@ def mha_fwd(
         # W8A8 FA3 change: per-block descale tensors are part of the kernel
         # contract.  Benchmarks pass real block scales; default 1.0 keeps manual
         # FP8 casts runnable while making the scale path visible.
-        q_descale = _normalize_dense_descale(q_descale, batch_size, num_heads, q_nblocks, q_device, "q_descale")
-        k_descale = _normalize_dense_descale(k_descale, batch_size, num_heads_k, k_nblocks, q_device, "k_descale")
-        v_descale = _normalize_dense_descale(v_descale, batch_size, num_heads_k, k_nblocks, q_device, "v_descale")
+        q_descale = _normalize_dense_descale(
+            q_descale, batch_size, num_heads, q_nblocks, q_device, "q_descale"
+        )
+        k_descale = _normalize_dense_descale(
+            k_descale, batch_size, num_heads_k, k_nblocks, q_device, "k_descale"
+        )
+        v_descale = _normalize_dense_descale(
+            v_descale, batch_size, num_heads_k, k_nblocks, q_device, "v_descale"
+        )
 
         M_LOG2E = 1.4426950408889634074
         if softcap > 0.0:
@@ -1276,11 +1311,11 @@ def mha_fwd(
             num_sms = torch_device_fn.get_device_properties(
                 "cuda"
             ).multi_processor_count
-            #改动：D128 使用 split-D dense kernel，把输出维拆成两个 D64 CTA，
-            #以降低 flash_fwd_kernel 的寄存器压力；splitkv 路径暂不启用 split-D。
-            #use_split_d = D == 128
+            # 改动：D128 使用 split-D dense kernel，把输出维拆成两个 D64 CTA，
+            # 以降低 flash_fwd_kernel 的寄存器压力；splitkv 路径暂不启用 split-D。
+            # use_split_d = D == 128
             use_split_d = D == 128
-            #改动：短序列 splitkv 的 combine/临时张量开销通常大于收益，S512 强制走 dense。
+            # 改动：短序列 splitkv 的 combine/临时张量开销通常大于收益，S512 强制走 dense。
             disable_splitkv1 = disable_splitkv or seqlen_q <= 512
 
             # Try bh parallel
@@ -1290,7 +1325,12 @@ def mha_fwd(
             #     return kernel, default_args, None, None
 
             # Try splitkv
-            if (not use_split_d) and not is_dropout and not is_local and not disable_splitkv1:
+            if (
+                (not use_split_d)
+                and not is_dropout
+                and not is_local
+                and not disable_splitkv1
+            ):
                 BM = block_m_splitkv_heuristic(D)
                 n_tasks = B * H * triton.cdiv(seqlen_q, BM)
                 BN = block_n_splitkv_heuristic(D)
@@ -1353,8 +1393,8 @@ def mha_fwd(
                 2 if use_split_d else 1,
             )
             kernel = flash_fwd_kernel[grid]
-            #改动：D128 split-D 时 BLOCK_K 仍为完整 head_dim=128 供 QK 使用，
-            #BLOCK_D=64 只用于 PV 和输出写回；D64/非 split-D 则保持原 BLOCK_K。
+            # 改动：D128 split-D 时 BLOCK_K 仍为完整 head_dim=128 供 QK 使用，
+            # BLOCK_D=64 只用于 PV 和输出写回；D64/非 split-D 则保持原 BLOCK_K。
             extra_args = {
                 "BLOCK_D": 64 if use_split_d else triton.next_power_of_2(D),
                 "SPLIT_D": use_split_d,
