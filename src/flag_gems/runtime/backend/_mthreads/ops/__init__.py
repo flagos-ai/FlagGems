@@ -9,6 +9,7 @@ from .batch_norm import batch_norm, batch_norm_backward
 from .celu import celu
 from .conv2d import conv2d
 from .dropout import dropout, dropout_backward
+from .fill import fill_tensor, fill_tensor_, fill_tensor_out
 from .gather import gather, gather_backward
 from .index_add import index_add, index_add_
 from .index_put import _index_put_impl_, index_put, index_put_
@@ -66,6 +67,9 @@ __all__ = [
     "conv2d",
     "dropout",
     "dropout_backward",
+    "fill_tensor",
+    "fill_tensor_",
+    "fill_tensor_out",
     "gather",
     "gather_backward",
     "index_add",
