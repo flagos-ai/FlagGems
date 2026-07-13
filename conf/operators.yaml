@@ -4895,6 +4895,19 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.4'
+  - id: nansum
+    description: |
+      Returns the sum of all elements in the `input` tensor, treating `NaN` values as zero.
+      Supports global reduction and reduction along specified dimensions.
+    for:
+      - nansum
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
   - id: ne
     description: Computes that `input` is not equal to `other` element-wise.
     for:
