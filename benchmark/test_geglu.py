@@ -20,6 +20,18 @@ except ImportError:
     GEMS_OP = None
 
 
+def te_geglu_op(input_tensor, quantizer=None):
+    # TransformerEngine's geglu only accepts 2-D input on some backends (e.g. musa),
+    # while FlagGems supports arbitrary shapes by flattening to 2-D internally.
+    # Flatten to 2-D for the reference and reshape the result back to the expected
+    # output shape so the comparison stays valid across vendors.
+    shape = input_tensor.shape
+    last_dim = shape[-1]
+    ref_input = input_tensor.reshape(-1, last_dim)
+    out = TE_OP(ref_input, quantizer)
+    return out.reshape(*shape[:-1], last_dim // 2)
+
+
 @pytest.mark.geglu
 @pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine not installed")
 @pytest.mark.skipif(TE_OP is None, reason="'geglu' not found in TransformerEngine")
@@ -27,7 +39,7 @@ except ImportError:
 def test_geglu():
     bench = base.TexGluForwardBenchmark(
         op_name="geglu",
-        torch_op=TE_OP,
+        torch_op=te_geglu_op,
         gems_op=GEMS_OP,
         dtypes=consts.FLOAT_DTYPES,
     )
