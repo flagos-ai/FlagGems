@@ -3,7 +3,7 @@ from typing import List, Tuple, Union
 
 import torch
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 def cat(

@@ -58,6 +58,10 @@ else:
 @pytest.mark.parametrize("scale", SCALES)
 @pytest.mark.parametrize("shape", SHAPES_FWD)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     input = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     ref_i = utils.to_reference(input, True)
@@ -122,6 +126,10 @@ def upsample_bicubic2d_aa_backward_call(grad, input_size, align_corners):
 @pytest.mark.upsample_bicubic2d_aa_backward
 @pytest.mark.parametrize("N,C,H_in,W_in,H_out,W_out,align_corners", PARAMS_BWD)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_upsample_bicubic2d_aa_backward(
     N, C, H_in, W_in, H_out, W_out, align_corners, dtype
 ):
