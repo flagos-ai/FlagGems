@@ -10,3 +10,14 @@ def test_deg2rad():
         op_name="deg2rad", torch_op=torch.deg2rad, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
+
+
+@pytest.mark.deg2rad_
+def test_deg2rad_():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="deg2rad_",
+        torch_op=torch.deg2rad_,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()
