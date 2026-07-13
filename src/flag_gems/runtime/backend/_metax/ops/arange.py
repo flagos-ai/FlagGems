@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -27,7 +27,7 @@ def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
 def arange_start(
     start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None
 ):
-    logger.debug("METAX GEMS ARANGE")
+    logger.debug("GEMS_METAX ARANGE")
     if dtype is torch.int64:
         sgn = (step > 0) - (step < 0)
         size = (end - start + step - sgn) // step

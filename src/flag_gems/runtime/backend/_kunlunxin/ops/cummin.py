@@ -13,7 +13,7 @@ from flag_gems.utils.limits import get_dtype_max
 
 Tensor = torch.Tensor
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -431,7 +431,7 @@ def cummin(
     *,
     out: Union[Tensor, Tuple[Tensor, ...], List[Tensor], None] = None,
 ) -> torch.return_types.cummin:
-    logger.debug("GEMS_KUNLUNXIN cummin")
+    logger.debug("GEMS_KUNLUNXIN CUMMIN")
     assert dim >= -input.ndim and dim < input.ndim, "Invalid dim"
     shape = input.shape
     dim = dim % input.ndim

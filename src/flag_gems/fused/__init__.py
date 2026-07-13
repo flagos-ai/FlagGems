@@ -1,4 +1,8 @@
+from flag_gems.fused.act_quant import act_quant_triton
+from flag_gems.fused.add_rms_norm import add_rms_norm
 from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
+from flag_gems.fused.beam_search_score import beam_search_score, beam_search_score_
+from flag_gems.fused.bf16_paged_mqa_logits import bf16_paged_mqa_logits
 from flag_gems.fused.bincount import bincount
 from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
@@ -23,11 +27,22 @@ from flag_gems.fused.FLA import (
     fused_recurrent_gated_delta_rule_fwd,
 )
 from flag_gems.fused.flash_mla import flash_mla
+from flag_gems.fused.flash_mla_with_kvcache import flash_mla_with_kvcache
 from flag_gems.fused.flashmla_sparse import flash_mla_sparse_fwd
+from flag_gems.fused.fp8_fp4_mega_moe import (
+    fp8_fp4_mega_moe,
+    fp8_fp4_mega_moe_torch_ref,
+)
+from flag_gems.fused.fp8_fp4_mqa_logits import fp8_fp4_mqa_logits
+from flag_gems.fused.fp8_fp4_paged_mqa_logits import fp8_fp4_paged_mqa_logits
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
+from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_insert import (
+    fused_deepseek_v4_qnorm_rope_kv_rope_insert,
+)
 from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import (
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
 )
+from flag_gems.fused.fused_indexer_q_rope_quant import fused_indexer_q_rope_quant
 from flag_gems.fused.fused_inv_rope_fp8_quant import fused_inv_rope_fp8_quant
 from flag_gems.fused.fused_moe import (
     dispatch_fused_moe_kernel,
@@ -41,6 +56,8 @@ from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.grouped_topk import grouped_topk
 from flag_gems.fused.indexer_k_quant_and_cache import indexer_k_quant_and_cache
 from flag_gems.fused.instance_norm import instance_norm
+from flag_gems.fused.matmul_bias_activation import matmul_bias_activation
+from flag_gems.fused.matmuladd import matmuladd
 from flag_gems.fused.mhc import (
     hc_head_fused_kernel,
     hc_head_fused_kernel_ref,
@@ -55,6 +72,7 @@ from flag_gems.fused.moe_align_block_size import (
     moe_align_block_size_triton,
 )
 from flag_gems.fused.moe_sum import moe_sum
+from flag_gems.fused.mrope import mrope
 from flag_gems.fused.outer import outer
 from flag_gems.fused.pack_seq import pack_seq_triton
 from flag_gems.fused.reglu import dreglu, reglu
@@ -70,6 +88,9 @@ from flag_gems.fused.silu_and_mul_with_clamp import (
 )
 from flag_gems.fused.skip_layernorm import skip_layer_norm
 from flag_gems.fused.sparse_attention import sparse_attn_triton
+from flag_gems.fused.stage_deepseek_v4_mega_moe_inputs import (
+    stage_deepseek_v4_mega_moe_inputs,
+)
 from flag_gems.fused.swiglu import dswiglu, swiglu
 from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
 from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
@@ -79,8 +100,13 @@ from flag_gems.fused.unpack_seq import unpack_seq_triton
 from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
+    "add_rms_norm",
+    "act_quant_triton",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
+    "beam_search_score",
+    "beam_search_score_",
+    "bf16_paged_mqa_logits",
     "bincount",
     "bucket_sort_topk",
     "chunk_gated_delta_rule",
@@ -98,9 +124,16 @@ __all__ = [
     "dswiglu",
     "flash_mla",
     "flash_mla_sparse_fwd",
+    "flash_mla_with_kvcache",
+    "fp8_fp4_mega_moe",
+    "fp8_fp4_mega_moe_torch_ref",
+    "fp8_fp4_mqa_logits",
+    "fp8_fp4_paged_mqa_logits",
     "fused_add_rms_norm",
+    "fused_deepseek_v4_qnorm_rope_kv_rope_insert",
     "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     "fused_experts_impl",
+    "fused_indexer_q_rope_quant",
     "fused_inv_rope_fp8_quant",
     "fused_q_kv_rmsnorm",
     "fused_recurrent_gated_delta_rule_fwd",
@@ -113,6 +146,8 @@ __all__ = [
     "inplace_fused_experts",
     "instance_norm",
     "invoke_fused_moe_triton_kernel",
+    "matmul_bias_activation",
+    "matmuladd",
     "mhc_bwd",
     "mhc_bwd_ref",
     "mhc_post",
@@ -120,6 +155,7 @@ __all__ = [
     "moe_align_block_size",
     "moe_align_block_size_triton",
     "moe_sum",
+    "mrope",
     "outer",
     "outplace_fused_experts",
     "pack_seq_triton",
@@ -135,6 +171,7 @@ __all__ = [
     "sinkhorn_forward",
     "skip_layer_norm",
     "sparse_attn_triton",
+    "stage_deepseek_v4_mega_moe_inputs",
     "swiglu",
     "top_k_per_row_decode",
     "top_k_per_row_prefill",

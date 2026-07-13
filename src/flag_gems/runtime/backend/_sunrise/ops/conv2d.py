@@ -9,7 +9,7 @@ import flag_gems
 from flag_gems import runtime
 from flag_gems.utils import libentry
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def conv2d_output_size(
@@ -340,7 +340,7 @@ def conv2d_backward_kernel_weight(
 class Conv2d(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, weight, bias, stride, padding, dilation, groups):
-        logger.debug("GEMS CONV2D")
+        logger.debug("GEMS_SUNRISE CONV2D")
         assert weight.ndim == 4, "Weights must be 4D, received shape {weight.shape}"
         assert (
             bias is None or bias.ndim == 1
@@ -440,7 +440,7 @@ class Conv2d(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS CONV2D VJP")
+        logger.debug("GEMS_SUNRISE CONV2D_VJP")
         (weight, input, bias) = ctx.saved_tensors
         # (out_c equals origin cout divide groups)
         out_c, weight_c, weight_height, weight_width = ctx.weight_info
@@ -578,7 +578,11 @@ class Conv2d(torch.autograd.Function):
             dilation_width,
         )
         if bias is not None:
-            bias_grad = out_grad.sum(dim=(0, 2, 3))
+            if out_grad.dtype in (torch.float16, torch.bfloat16):
+                # [sunrise fix] Fallback to high precision.
+                bias_grad = out_grad.float().sum(dim=(0, 2, 3)).to(dtype=bias.dtype)
+            else:
+                bias_grad = out_grad.sum(dim=(0, 2, 3))
         else:
             bias_grad = None
         return (

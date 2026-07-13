@@ -10,7 +10,7 @@ from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import restride_dim
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -187,7 +187,12 @@ _gather_func = GatherFunction()
 
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
-    logger.debug("GEMS GATHER")
+    logger.debug("GEMS_SUNRISE GATHER")
+    if inp.ndim != index.ndim:
+        raise IndexError(
+            f"self and index must have the same number of dimensions, "
+            f"got self.ndim = {inp.ndim} and index.ndim = {index.ndim}"
+        )
     if out is None:
         out = torch.empty_like(index, dtype=inp.dtype, device=inp.device)
     dim_stride = inp.stride(dim)
@@ -198,6 +203,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logger.debug("GEMS GATHER BACKWARD")
+    logger.debug("GEMS_SUNRISE GATHER_BACKWARD")
     result = grad.new_zeros(self.shape)
     return scatter_(result, dim, index, grad, reduce="add")

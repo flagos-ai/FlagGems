@@ -22,12 +22,7 @@ def test_glu(shape, dtype):
 
         ref_out = torch.nn.functional.glu(ref_inp, dim=dim)
         with flag_gems.use_gems():
-            if flag_gems.vendor_name == "tsingmicro":
-                res_out = torch.nn.functional.glu(
-                    res_inp.to(device=flag_gems.device), dim=dim
-                )
-            else:
-                res_out = torch.nn.functional.glu(res_inp, dim=dim)
+            res_out = torch.nn.functional.glu(res_inp, dim=dim)
         utils.gems_assert_close(res_out, ref_out, dtype)
 
 

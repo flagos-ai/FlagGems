@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Per-bin scalar-sequential kernels

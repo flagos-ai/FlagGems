@@ -12,9 +12,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
-logger = logging.getLogger(
-    "flag_gems.runtime.backend._nvidia.hopper.ops.w8a8_block_fp8_matmul"
-)
+logger = logging.getLogger(__name__)
 CACHE_USAGE_THRESHOLD = 0.8
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(
@@ -35,7 +33,7 @@ def get_w8a8_block_fp8_hopper_configs(N: int, K: int) -> Optional[Dict[int, Any]
     if os.path.exists(cfg_file):
         with open(cfg_file) as f:
             logger.info(
-                "Using config from %s for W8A8 block FP8 kernel.",
+                "GEMS_NVIDIA Using config from %s for W8A8 block FP8 kernel.",
                 cfg_file,
             )
             dev_data = yaml.safe_load(f).get(device_name, {})
@@ -58,8 +56,8 @@ def get_w8a8_block_fp8_hopper_configs(N: int, K: int) -> Optional[Dict[int, Any]
             return result
 
     logger.warning(
-        "Using default W8A8 Block FP8 kernel config. Performance might "
-        "be sub-optimal! Config file not found at %s",
+        "GEMS_NVIDIA Using default W8A8 Block FP8 kernel config. Performance might be sub-optimal! "
+        "Config file not found at %s",
         cfg_file,
     )
     return None
@@ -107,21 +105,15 @@ def _get_fixed_matmul_meta(M: int, N: int, K: int, block_n: int, block_k: int):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general",
-        pre_hook=None,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else _get_placeholder_tuner_configs(pre_hook=None),
+    configs=_get_placeholder_tuner_configs(pre_hook=None),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=5,
+    flagtune_op_name="w8a8_block_fp8_matmul",
+    flagtune_expand_op_name="w8a8_block_fp8_general",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=None,
 )
 @triton.jit
 def w8a8_block_fp8_matmul_kernel_general(
@@ -199,20 +191,15 @@ def w8a8_block_fp8_matmul_kernel_general(
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "w8a8_block_fp8_general_splitk",
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else _get_placeholder_tuner_configs(pre_hook=None),
+    configs=_get_placeholder_tuner_configs(pre_hook=None),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "w8a8_block_fp8_general_splitk", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=5,
+    flagtune_op_name="w8a8_block_fp8_matmul",
+    flagtune_expand_op_name="w8a8_block_fp8_general_splitk",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=None,
 )
 @triton.jit
 def w8a8_block_fp8_matmul_kernel_splitk(
@@ -302,7 +289,8 @@ def w8a8_block_fp8_matmul_kernel_splitk(
 
 def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
     logger.debug(
-        "GEMS w8a8_block_fp8_matmul-hopper, [scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "GEMS_NVIDIA W8A8_BLOCK_FP8_MATMUL_HOPPER, [scenario]: general, "
+        "[shape info]: [-, %s, %s, %s](batch, M, N, K), "
         "[A column-major]: %s, [B column-major]: %s",
         M,
         N,
@@ -311,7 +299,10 @@ def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
         b.stride(0) == 1,
     )
 
-    use_flagtune = os.environ.get("USE_FLAGTUNE") == "1"
+    # Default W8A8 keeps the existing fixed-meta path. When explicitly included
+    # in flag_gems.flagtune(...), launch through LibTuner so expanded configs
+    # are selected by the same registry-driven mechanism used by mm.
+    use_flagtune = runtime.flagtune_enabled("w8a8_block_fp8_matmul")
 
     # Split-K path for small-N, large-K shapes
     if M < 2048 and N < 2112 and K >= 4096:

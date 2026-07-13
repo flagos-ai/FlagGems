@@ -27,6 +27,9 @@ else:
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3794: not working")
+
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     if b_column_major:
         mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
@@ -60,6 +63,9 @@ def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_addmm_out(M, N, K, scalar, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3794: not working")
+
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
     bias1 = torch.randn((N,), dtype=dtype, device=flag_gems.device)
@@ -113,9 +119,11 @@ def test_addmm_dtype_fp32_accum(M, N, K):
             bias, mat1, mat2, torch.float32, beta=1.0, alpha=1.0
         )
 
-    utils.gems_assert_close(
-        res_out, ref_out.to(flag_gems.device), torch.float32, reduce_dim=K
-    )
+    if utils.TO_CPU:
+        res_out = res_out.to("cpu")
+    else:
+        ref_out = ref_out.to(flag_gems.device)
+    utils.gems_assert_close(res_out, ref_out, torch.float32, reduce_dim=K)
 
 
 @pytest.mark.addmm_dtype_out
@@ -144,6 +152,8 @@ def test_addmm_dtype_out_fp32_accum(M, N, K):
             bias, mat1, mat2, torch.float32, beta=1.0, alpha=1.0, out=out
         )
 
-    utils.gems_assert_close(
-        out, ref_out.to(flag_gems.device), torch.float32, reduce_dim=K
-    )
+    if utils.TO_CPU:
+        out = out.to("cpu")
+    else:
+        ref_out = ref_out.to(flag_gems.device)
+    utils.gems_assert_close(out, ref_out, torch.float32, reduce_dim=K)

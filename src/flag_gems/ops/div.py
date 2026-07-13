@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.pointwise_dynamic import ComplexMode
-from flag_gems.utils.triton_lang_extension import div_rn, div_rz, fmod, trunc
+from flag_gems.utils.triton_lang_extension import div_rn, fmod, trunc
 
 logger = logging.getLogger(__name__)
 
@@ -108,19 +108,23 @@ def true_divide_(A, B):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func(x, y):
-    return trunc(div_rz(x, y))
+    # Use IEEE 754 RNE division (div_rn) then trunc, matching PyTorch's
+    # trunc_divide semantics.  div_rz (RTZ) and Triton's default f32 `/`
+    # (fdiv.approx) both give wrong results when the exact quotient falls
+    # just below an integer boundary.
+    return trunc(div_rn(x, y))
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y):
-    return trunc(div_rz(x, tl.cast(y, x.dtype)))
+    return trunc(div_rn(x, tl.cast(y, x.dtype)))
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y):
-    return trunc(div_rz(tl.cast(x, y.dtype), y))
+    return trunc(div_rn(tl.cast(x, y.dtype), y))
 
 
 # Integer truncation division: Triton's // on integers is C-style (truncates toward zero)
@@ -208,13 +212,18 @@ def _int_floordiv(x, y):
 # https://github.com/pytorch/pytorch/blob/d6d9183456cd07ca0b361a194b98c2fb196e7c36/c10/util/generic_math.h#L23
 @triton.jit
 def _float_floordiv(x, y):
+    # Cast to float32 for fmod/div_rn which only support fp32/fp64 on CUDA
+    orig_dtype = x.dtype
+    x_fp32 = x.to(tl.float32)
+    y_fp32 = y.to(tl.float32)
+
     # NOTE: fmod's sign is the same as the dividend
-    remainder = fmod(x, y)
+    remainder = fmod(x_fp32, y_fp32)
     imperfect = remainder != 0.0
-    different_sign = (x < 0) ^ (y < 0)
+    different_sign = (x_fp32 < 0) ^ (y_fp32 < 0)
 
     # NOTE: we have to use div_rn explicitly here
-    q = div_rn(x - remainder, y)
+    q = div_rn(x_fp32 - remainder, y_fp32)
     q = tl.where(imperfect & different_sign, q - 1, q)
 
     floor_q = tl.math.floor(q)
@@ -224,10 +233,10 @@ def _float_floordiv(x, y):
     q_is_zeros = q == 0.0
     floor_q = tl.where(q_is_zeros, tl.where(different_sign, -0.0, 0.0), floor_q)
 
-    is_div_by_zero = y == 0.0
-    float_division = x / y
+    is_div_by_zero = y_fp32 == 0.0
+    float_division = x_fp32 / y_fp32
     out = tl.where(is_div_by_zero, float_division, floor_q)
-    return out
+    return out.to(orig_dtype)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
@@ -302,50 +311,3 @@ def div_mode_(A, B, rounding_mode=None):
     else:
         msg = f"div expected rounding_mode to be one of None, 'trunc', or 'floor' but found {rounding_mode}."
         raise ValueError(msg)
-
-
-@triton.jit
-def _remainder(x, y):
-    r = x % y
-    c1 = r != 0
-    c2 = (x < 0) ^ (y < 0)
-    return tl.where(c1 & c2, r + y, r)
-
-
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
-@triton.jit
-def rem_tt(x, y):
-    return _remainder(x, y)
-
-
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
-@triton.jit
-def rem_ts(x, y):
-    return _remainder(x, y)
-
-
-@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
-@triton.jit
-def rem_st(x, y):
-    return _remainder(x, y)
-
-
-def remainder(A, B):
-    logger.debug("GEMS REMAINDER")
-    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        return rem_tt(A, B)
-    elif isinstance(A, torch.Tensor):
-        return rem_ts(A, B)
-    elif isinstance(B, torch.Tensor):
-        return rem_st(A, B)
-    else:
-        # Both scalar
-        return torch.tensor(A % B)
-
-
-def remainder_(A, B):
-    logger.debug("GEMS REMAINDER_")
-    if isinstance(B, torch.Tensor):
-        return rem_tt(A, B, out0=A)
-    else:
-        return rem_ts(A, B, out0=A)

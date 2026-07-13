@@ -10,7 +10,7 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 eps: tl.constexpr = [
     2.220446049250313e-16,
     1.1920928955078125e-07,
@@ -226,7 +226,7 @@ def transform_exponential_bfloat16(u):
 
 
 def exponential_(x, lambd: float = 1.0, *, generator=None):
-    logger.debug("METAX GEMS EXPONENTIAL_")
+    logger.debug("GEMS_METAX EXPONENTIAL_")
     dtype = x.dtype
     device = x.device
     inplace = x.is_contiguous()

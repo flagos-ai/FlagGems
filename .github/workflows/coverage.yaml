@@ -21,7 +21,7 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           ref: gh-pages
 
@@ -102,7 +102,7 @@ jobs:
 
       - id: push-change
         if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
-        uses: ad-m/github-push-action@fdfe7e83ff42edf5d49846b69f3c78d806169d51  # v1.2.0
+        uses: ad-m/github-push-action@881a6320fdb16eb5318c5054f31c218aec2b324c  # v1.3.0
         with:
           branch: gh-pages
           github_token: ${{ secrets.GITHUB_TOKEN }}

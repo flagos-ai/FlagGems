@@ -174,14 +174,14 @@ def max_kernel_non_inner(
 
 
 def max(inp):
-    logger.debug("GEMS MAX")
+    logger.debug("GEMS_ENFLAME MAX")
 
     inp = inp.contiguous()
     M = inp.numel()
     dtype = inp.dtype
 
     if M <= 10 * 1024 * 1024:
-        bsize = 65536
+        bsize = 16384
         num_programs = min(triton.cdiv(M, bsize), 48)
         block_mid = triton.next_power_of_2(num_programs)
         mid = torch.empty((num_programs,), dtype=dtype, device=inp.device)
@@ -204,7 +204,7 @@ def max(inp):
 
 
 def max_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS MAX DIM")
+    logger.debug("GEMS_ENFLAME MAX_DIM")
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape

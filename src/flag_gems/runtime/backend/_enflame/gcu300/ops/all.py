@@ -93,7 +93,7 @@ def all_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def all(inp):
-    logger.debug("GEMS ALL")
+    logger.debug("GEMS_ENFLAME ALL")
     n_elements = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     mid_size = triton.cdiv(n_elements, block_size)
@@ -110,7 +110,7 @@ def all(inp):
 
 
 def all_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ALL DIM")
+    logger.debug("GEMS_ENFLAME ALL_DIM")
     shape = list(inp.shape)
     if dim is None:
         out = all(inp)
@@ -135,7 +135,7 @@ def all_dim(inp, dim=None, keepdim=False):
 
 
 def all_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ALL DIMS")
+    logger.debug("GEMS_ENFLAME ALL_DIMS")
 
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)

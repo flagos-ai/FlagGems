@@ -6,7 +6,7 @@ import triton.language as tl
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.pointwise_dynamic import CodeGenConfig
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 MAX_GRID_SIZES = (65535, 65535, 65535)
 config = CodeGenConfig(
@@ -25,11 +25,11 @@ def logical_or_func(x, y):
 
 
 def logical_or(A, B):
-    logger.debug("GEMS LOGICAL_OR")
+    logger.debug("GEMS_SUNRISE LOGICAL_OR")
     return logical_or_func(A, B)
 
 
 def logical_or_(A, B):
-    logger.debug("GEMS LOGICAL_OR_")
+    logger.debug("GEMS_SUNRISE LOGICAL_OR_")
     logical_or_func(A, B, out0=A)
     return A

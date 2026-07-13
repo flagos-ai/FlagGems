@@ -12,7 +12,7 @@ from flag_gems.utils import triton_lang_extension as ext
 
 from .mm import mm
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def heur_block_n(args):
@@ -72,7 +72,7 @@ def mv_kernel(
 
 
 def mv(inp, vec):
-    logger.debug("GEMS MV")
+    logger.debug("GEMS_KUNLUNXIN MV")
     assert inp.shape[1] == vec.shape[0], "incompatible dimensions"
     N, M = inp.shape
     # TODO: fix autotune config has no item
@@ -105,7 +105,7 @@ def mv(inp, vec):
 
 
 def mv_cluster(inp, vec):
-    logger.debug("GEMS MV")
+    logger.debug("GEMS_KUNLUNXIN MV")
     assert inp.shape[1] == vec.shape[0], "incompatible dimensions"
     N, M = inp.shape
     out = torch.empty((N,), device=inp.device, dtype=inp.dtype)

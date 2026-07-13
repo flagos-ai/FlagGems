@@ -10,7 +10,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.shape_utils import volume
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 device_ = device
 
 
@@ -30,7 +30,7 @@ def ones_kernel(
 
 
 def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("METAX GEMS ONES")
+    logger.debug("GEMS_METAX ONES")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

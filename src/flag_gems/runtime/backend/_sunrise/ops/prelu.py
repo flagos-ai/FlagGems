@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +40,7 @@ def prelu_kernel(
 
 
 def prelu(*args, **kwargs):
-    logger.debug("GEMS PRELU")
+    logger.debug("GEMS_SUNRISE PRELU")
     # Extract inputs
     if len(args) >= 2:
         x, weight = args[0], args[1]
@@ -48,8 +50,8 @@ def prelu(*args, **kwargs):
     if x is None or weight is None:
         raise ValueError("prelu expects (input, weight) as arguments.")
 
-    if not (x.is_ptpu and weight.is_ptpu):
-        raise AssertionError("Tensors must be PTPU tensors.")
+    if x.device.type != flag_gems.device or weight.device.type != flag_gems.device:
+        raise AssertionError(f"Tensors must be {flag_gems.device} tensors.")
 
     # Ensure dtype match
     if weight.dtype != x.dtype:

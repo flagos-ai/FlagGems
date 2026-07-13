@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.pointwise_dynamic import CodeGenConfig
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 MAX_GRID_SIZES = (65535, 65535, 65535)
 config = CodeGenConfig(
@@ -28,7 +28,7 @@ def where_inner(condition, self, other):
 
 
 def where_self_out(condition, self, other, out=None):
-    logger.debug("GEMS WHERE_SELF_OUT")
+    logger.debug("GEMS_SUNRISE WHERE_SELF_OUT")
     result_type = torch.result_type(self, other)
     if out is not None:
         assert (
@@ -78,15 +78,15 @@ def where_self_out(condition, self, other, out=None):
 
 
 def where_self(condition, self, other):
-    logger.debug("GEMS WHERE_SELF")
+    logger.debug("GEMS_SUNRISE WHERE_SELF")
     return where_self_out(condition, self, other)
 
 
 def where_scalar_self(condition, self, other):
-    logger.debug("GEMS WHERE_SCALAR_SELF")
+    logger.debug("GEMS_SUNRISE WHERE_SCALAR_SELF")
     return where_self_out(condition, self, other)
 
 
 def where_scalar_other(condition, self, other):
-    logger.debug("GEMS WHERE_SCALAR_OTHER")
+    logger.debug("GEMS_SUNRISE WHERE_SCALAR_OTHER")
     return where_self_out(condition, self, other)

@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -34,7 +34,7 @@ def _safe_softmax_kernel(
 
 
 def _safe_softmax(x: torch.Tensor, dim: int = -1, dtype: torch.dtype = None):
-    logger.debug("GEMS _SAFE_SOFTMAX")
+    logger.debug("GEMS_SUNRISE SAFE_SOFTMAX")
     assert x.is_ptpu, "Input tensor must be on PTPU device"
     assert x.ndim >= 1, "Input tensor must have at least 1 dimension"
 

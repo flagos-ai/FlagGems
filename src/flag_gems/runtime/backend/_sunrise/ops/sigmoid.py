@@ -6,7 +6,7 @@ import triton.language as tl
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 from flag_gems.utils.pointwise_dynamic import CodeGenConfig
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 exp2 = tl_extra_shim.exp2
 
 
@@ -39,18 +39,18 @@ def sigmoid_backward_kernel(dy, y):
 
 
 def sigmoid(self):
-    logger.debug("GEMS SIGMOID FORWARD")
+    logger.debug("GEMS_SUNRISE SIGMOID")
     output = sigmoid_forward(self)
     return output
 
 
 def sigmoid_backward(grad_output, output):
-    logger.debug("GEMS SIGMOID BACKWARD")
+    logger.debug("GEMS_SUNRISE SIGMOID_BACKWARD")
     grad_input = sigmoid_backward_kernel(grad_output, output)
     return grad_input
 
 
 def sigmoid_(A):
-    logger.debug("GEMS SIGMOID_ FORWARD")
+    logger.debug("GEMS_SUNRISE SIGMOID_")
     out = sigmoid_forward(A, out0=A)
     return out

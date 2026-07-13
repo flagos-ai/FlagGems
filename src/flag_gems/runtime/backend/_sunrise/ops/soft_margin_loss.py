@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,9 +73,9 @@ def _normalize_reduction(reduction):
 
 
 def _check_tensors(input: torch.Tensor, target: torch.Tensor):
-    if not (input.is_ptpu and target.is_ptpu):
+    if input.device.type != flag_gems.device or target.device.type != flag_gems.device:
         raise AssertionError(
-            "soft_margin_loss: input and target must be PTPU tensors for Triton kernel."
+            f"soft_margin_loss: input and target must be {flag_gems.device} tensors for Triton kernel."
         )
     if input.device != target.device:
         raise AssertionError(
@@ -91,7 +93,7 @@ def _check_tensors(input: torch.Tensor, target: torch.Tensor):
 
 
 def soft_margin_loss(input: torch.Tensor, target: torch.Tensor, reduction="mean"):
-    logger.debug("GEMS SOFT_MARGIN_LOSS")
+    logger.debug("GEMS_SUNRISE SOFT_MARGIN_LOSS")
     input, target = _check_tensors(input, target)
     red = _normalize_reduction(reduction)
     n_elements = input.numel()
@@ -138,7 +140,7 @@ def soft_margin_loss_out(
     reduction="mean",
     out: torch.Tensor = None,
 ):
-    logger.debug("GEMS SOFT_MARGIN_LOSS_OUT")
+    logger.debug("GEMS_SUNRISE SOFT_MARGIN_LOSS_OUT")
     input, target = _check_tensors(input, target)
     red = _normalize_reduction(reduction)
     n_elements = input.numel()
@@ -150,8 +152,10 @@ def soft_margin_loss_out(
         else:
             out = torch.empty((), device=input.device, dtype=input.dtype)
     else:
-        if not out.is_ptpu:
-            raise AssertionError("soft_margin_loss_out: out must be a PTPU tensor.")
+        if out.device.type != flag_gems.device:
+            raise AssertionError(
+                f"soft_margin_loss_out: out must be a {flag_gems.device} tensor."
+            )
         if red == 0:
             if out.numel() != n_elements:
                 raise AssertionError(
