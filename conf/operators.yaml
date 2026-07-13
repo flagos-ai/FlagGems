@@ -2573,7 +2573,7 @@ ops:
     stages:
       - stable: '2.2'
   - id: erfc
-    description: Triton kernel implementation for erfc.
+    description: Computes the complementary error function element-wise using a Triton kernel.
     for:
       - erfc
     labels:
