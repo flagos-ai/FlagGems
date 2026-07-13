@@ -1,6 +1,7 @@
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
+from .batch_norm import batch_norm, batch_norm_backward
 from .bmm import bmm
 from .exponential_ import exponential_
 from .full import full
@@ -11,6 +12,7 @@ from .index import index
 from .index_put import index_put, index_put_
 from .index_select import index_select
 from .isin import isin
+from .layernorm import layer_norm, layer_norm_backward
 from .log_sigmoid_forward import log_sigmoid_forward
 from .log_softmax import log_softmax, log_softmax_backward
 from .masked_fill import masked_fill, masked_fill_
@@ -39,6 +41,8 @@ __all__ = [
     "amax",
     "arange",
     "arange_start",
+    "batch_norm",
+    "batch_norm_backward",
     "bmm",
     "exponential_",
     "full",
@@ -50,6 +54,8 @@ __all__ = [
     "index_put_",
     "index_select",
     "isin",
+    "layer_norm",
+    "layer_norm_backward",
     "log_sigmoid_forward",
     "log_softmax",
     "log_softmax_backward",

@@ -6,7 +6,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 config_ = CodeGenConfig(
     512,
@@ -27,10 +27,10 @@ def exp2_func(x):
 
 
 def exp2(A):
-    logger.debug("GEMS EXP")
+    logger.debug("GEMS_KUNLUNXIN EXP")
     return exp2_func(A)
 
 
 def exp2_(A):
-    logger.debug("GEMS EXP_")
+    logger.debug("GEMS_KUNLUNXIN EXP_")
     return exp2_func(A, out0=A)

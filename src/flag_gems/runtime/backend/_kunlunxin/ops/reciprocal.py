@@ -6,7 +6,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 config_ = CodeGenConfig(
     512,
@@ -27,10 +27,10 @@ def reciprocal_func(x):
 
 
 def reciprocal(A):
-    logger.debug("GEMS RECIPROCAL")
+    logger.debug("GEMS_KUNLUNXIN RECIPROCAL")
     return reciprocal_func(A)
 
 
 def reciprocal_(A):
-    logger.debug("GEMS RECIPROCAL_")
+    logger.debug("GEMS_KUNLUNXIN RECIPROCAL_")
     return reciprocal_func(A, out0=A)

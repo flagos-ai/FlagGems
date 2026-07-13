@@ -9,7 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.shape_utils import volume
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.jit(do_not_specialize=["fill_value_or_ptr"])
@@ -59,7 +59,7 @@ def check_dtype(fill_value, dtype, device):
 
 
 def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS FULL")
+    logger.debug("GEMS_KUNLUNXIN FULL")
     if size == [0]:
         out = torch.empty(size, device=device, dtype=dtype)
         return out

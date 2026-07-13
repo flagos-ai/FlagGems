@@ -8,7 +8,7 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
@@ -292,7 +292,7 @@ _index_put_func = IndexPutFunction()
 
 
 def index_put(inp, indices, values, accumulate=False):
-    logger.debug("GEMS INDEX PUT")
+    logger.debug("GEMS_KUNLUNXIN INDEX_PUT")
 
     indices = list(indices)
     if len(indices) == 1 and indices[0].dtype == torch.bool:
@@ -390,7 +390,7 @@ def index_put(inp, indices, values, accumulate=False):
 
 
 def index_put_(inp, indices, values, accumulate=False):
-    logger.debug("GEMS INDEX PUT_")
+    logger.debug("GEMS_KUNLUNXIN INDEX_PUT_")
 
     indices = list(indices)
     if len(indices) == 1 and indices[0].dtype == torch.bool:

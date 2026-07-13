@@ -11,7 +11,7 @@ from flag_gems.utils.random_utils import (
 )
 from flag_gems.utils.shape_utils import volume
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 try:
     pair_uniform_to_normal = tl.pair_uniform_to_normal
 except AttributeError:
@@ -64,7 +64,7 @@ UNROLL = 4
 
 
 def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS RANDN")
+    logger.debug("GEMS_KUNLUNXIN RANDN")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

@@ -61,7 +61,7 @@ def gelu_backward_tanh(x, dy):
 class Gelu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A, approximate):
-        logger.debug("GEMS GELU FORWARD")
+        logger.debug("GEMS_NVIDIA GELU_FORWARD")
         if approximate == "tanh":
             out = gelu_tanh(A)
         else:
@@ -72,7 +72,7 @@ class Gelu(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS GELU BACKWARD")
+        logger.debug("GEMS_NVIDIA GELU_BACKWARD")
         (inp,) = ctx.saved_tensors
         approximate = ctx.approximate
         if approximate == "tanh":

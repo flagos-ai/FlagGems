@@ -11,7 +11,7 @@ from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -92,7 +92,7 @@ def amax_kernel(
 
 
 def amax(inp, dim=None, keepdim=False):
-    logger.debug("GEMS AMAX")
+    logger.debug("GEMS_KUNLUNXIN AMAX")
     if dim is None or len(dim) == 0:
         M = inp.numel()
         # block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))

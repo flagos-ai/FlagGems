@@ -13,7 +13,7 @@ from flag_gems.utils.libentry import libentry
 from .any import reduce_any
 from .unique import _unique2
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 def launch_arg(BLOCK_M, BLOCK_N, N, num_warps):

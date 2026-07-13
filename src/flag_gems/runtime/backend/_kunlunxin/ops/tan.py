@@ -8,7 +8,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 config_ = CodeGenConfig(
     512,
@@ -29,11 +29,11 @@ def tan_func(x):
 
 
 def tan(A):
-    logger.debug("GEMS TAN")
+    logger.debug("GEMS_KUNLUNXIN TAN")
     return tan_func(A)
 
 
 def tan_(A):
-    logger.debug("GEMS TAN_")
+    logger.debug("GEMS_KUNLUNXIN TAN_")
     tan_func(A, out0=A)
     return A

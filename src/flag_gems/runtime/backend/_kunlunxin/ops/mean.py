@@ -12,7 +12,7 @@ from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -36,7 +36,7 @@ def mean_scalar_kernel(inp, out, M, BLOCK_SIZE: tl.constexpr):
 
 
 def mean(inp, *, dtype=None):
-    logger.debug("GEMS MEAN")
+    logger.debug("GEMS_KUNLUNXIN MEAN")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -97,7 +97,7 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
-    logger.debug("GEMS MEAN DIM")
+    logger.debug("GEMS_KUNLUNXIN MEAN_DIM")
 
     if dtype is None:
         dtype = x.dtype

@@ -10,7 +10,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def heur_m_block_size(args):
@@ -106,7 +106,7 @@ INT32_MAX = torch.iinfo(torch.int32).max
 
 
 def triu(A, diagonal=0):
-    logger.debug("GEMS TRIU")
+    logger.debug("GEMS_KUNLUNXIN TRIU")
     A = A.contiguous()
     out = torch.empty_like(A)
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
