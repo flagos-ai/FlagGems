@@ -65,8 +65,7 @@ backends:
     triton: triton-ascend==3.2.0
     flagtree: flagtree==0.6.0+ascend3.2
     env_source:
-      - /usr/local/Ascend/ascend-toolkit/set_env.sh
-      - /usr/local/Ascend/toolbox/set_env.sh
+      - /usr/local/Ascend/cann/set_env.sh
     deps:
       - torch==2.9.0+cpu
       - torch-npu==2.9.0
@@ -77,11 +76,9 @@ backends:
     triton: triton==3.5.0
     flagtree: flagtree==0.6.0+ascend3.5
     env_source:
-      - /usr/local/Ascend/ascend-toolkit/set_env.sh
-      - /usr/local/Ascend/toolbox/set_env.sh
-    post_install: >-
-      uv pip install --no-cache-dir --index ${FLAGOS_PYPI}
-      "triton_ascend==3.2.1"
+      - /usr/local/Ascend/cann/set_env.sh
+    triton_post_install:
+      - triton_ascend==3.2.1
     deps:
       - torch==2.10.0+cpu
       - torch-npu==2.10.0
@@ -172,7 +169,7 @@ backends:
       - torchvision==0.15.1+metax3.7.2.0
       - flash_attn==2.6.3+metax3.7.2.0torch2.8
 
-  mthreads:
+  mthreads-musa436:
     python: "3.10"
     cmake_backend: MUSA
     triton: triton==3.6.0+git89458660
@@ -184,6 +181,20 @@ backends:
     deps:
       - torch==2.9.0+musa.4.3.6
       - torch_musa==2.9.0
+      - mkl==2024.0.0
+
+  mthreads-musa520:
+    python: "3.10"
+    cmake_backend: MUSA
+    triton: triton==3.6.0
+    flagtree: flagtree==0.6.0+mthreads3.6
+    env:
+      MUSA_HOME: /usr/local/musa
+      PATH: $MUSA_HOME/bin:$PATH
+      LD_LIBRARY_PATH: $VIRTUAL_ENV/lib:$MUSA_HOME/lib:$LD_LIBRARY_PATH
+    deps:
+      - torch==2.9.0+musa5.2.0
+      - torch_musa==2.9.1
       - mkl==2024.0.0
 
   spacemit:

@@ -2033,9 +2033,31 @@ ops:
     stages:
       - beta: '5.0'
   - id: deg2rad
-    description: "deg2rad operator"
+    description: Converts angles from degrees to radians.
     for:
       - deg2rad
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: deg2rad_
+    description: In-place version of deg2rad.
+    for:
+      - deg2rad_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: deg2rad_out
+    description: Out-of-place variant of deg2rad with pre-allocated output tensor.
+    for:
+      - deg2rad.out
     labels:
       - aten
       - KernelGen
@@ -2180,6 +2202,36 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: div_mode
+    description: |
+      Divides each element of the `input` by the corresponding element of `other`.
+      An optional `rounding_mode` can be specified.
+    for:
+      - div.Scalar_mode
+      - div.Tensor_mode
+      - divide.Scalar_mode
+      - divide.Tensor_mode
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+  - id: div_mode_
+    description: The in-place version of `div_mode()`.
+    for:
+      - div_.Scalar_mode
+      - div_.Tensor_mode
+      - divide_.Scalar_mode
+      - divide_.Tensor_mode
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
   - id: div_out
     description: This is an variant of `div()` with an `out` argument.
     for:
@@ -2214,32 +2266,6 @@ ops:
       - Math
     stages:
       - stable: '2.1'
-  - id: div_scalar_mode
-    description: |
-      Divides each element of the `input` by the corresponding element of `other`.
-      An optional `rounding_mode` can be specified.
-    for:
-      - div.Scalar_mode
-      - divide.Scalar_mode
-    labels:
-      - aten
-      - pointwise
-    kind:
-      - Math
-    stages:
-      - stable: '1.0'
-  - id: div_scalar_mode_
-    description: The in-place version of `div_mode()`.
-    for:
-      - div_.Scalar_mode
-      - divide_.Scalar_mode
-    labels:
-      - aten
-      - pointwise
-    kind:
-      - Math
-    stages:
-      - stable: '2.2'
   - id: div_tensor
     description: |
       Divides each element of the input `input` by the corresponding element of `other`.
@@ -2268,32 +2294,6 @@ ops:
       - Math
     stages:
       - stable: '2.1'
-  - id: div_tensor_mode
-    description: |
-      Divides each element of the `input` by the corresponding element of `other`.
-      An optional `rounding_mode` can be specified.
-    for:
-      - div.Tensor_mode
-      - divide.Tensor_mode
-    labels:
-      - aten
-      - pointwise
-    kind:
-      - Math
-    stages:
-      - stable: '1.0'
-  - id: div_tensor_mode_
-    description: The in-place version of `div_mode()`.
-    for:
-      - div_.Tensor_mode
-      - divide_.Tensor_mode
-    labels:
-      - aten
-      - pointwise
-    kind:
-      - Math
-    stages:
-      - stable: '2.2'
   - id: dot
     description: Computes the dot product of two 1D tensors.
     for:
@@ -4894,6 +4894,16 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: matmul_bias_activation
+    description: Fused matrix multiplication with bias addition and ReLU activation.
+    for:
+      - matmul_bias_activation
+    labels:
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: matmuladd
     description: Computes matrix multiplication followed by bias addition.
     for:
@@ -7443,6 +7453,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.0'
+  - id: softplus_backward
+    description: The backward version of `softplus()`.
+    for:
+      - softplus_backward
+    labels:
+      - aten
+      - Activation
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: softshrink
     description: |
       Applies the soft shrinkage function element-wise to an input tensor.
