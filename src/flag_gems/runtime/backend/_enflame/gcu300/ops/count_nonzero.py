@@ -103,9 +103,11 @@ def count_nonzero_combin_kernel(
 
 
 def count_nonzero(x, dim=None):
-    logger.debug("GEMS COUNT NONZERO")
+    logger.debug("GEMS_ENFLAME COUNT_NONZERO")
     if dim is not None:
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
+        if dim < 0:
+            dim += x.ndim
         shape = x.shape
         BLOCK_SIZE = 2048
         numel = x.numel()

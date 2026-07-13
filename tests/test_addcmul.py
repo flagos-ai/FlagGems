@@ -7,11 +7,28 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    ADDCMUL_BROADCAST_SHAPES = [
+        ((128, 256), (128, 256), (128, 256), (1,)),
+    ]
+else:
+    ADDCMUL_BROADCAST_SHAPES = [
+        ((1, 256, 1, 1), (1, 256, 56, 56), (1, 256, 56, 56), (1, 256, 1, 1)),
+        ((1, 3), (2, 1), (2, 3), (1, 1)),
+        ((4, 1, 16), (1, 8, 1), (4, 8, 16), (4, 1, 1)),
+        ((128, 256), (128, 256), (128, 256), (1,)),
+    ]
 
 
 @pytest.mark.addcmul
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_addcmul(shape, dtype):
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     t1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -33,14 +50,13 @@ def test_addcmul(shape, dtype):
 @pytest.mark.addcmul_out
 @pytest.mark.parametrize(
     "inp_shape, t1_shape, t2_shape, out_shape",
-    [
-        ((1, 256, 1, 1), (1, 256, 56, 56), (1, 256, 56, 56), (1, 256, 1, 1)),
-        ((1, 3), (2, 1), (2, 3), (1, 1)),
-        ((4, 1, 16), (1, 8, 1), (4, 8, 16), (4, 1, 1)),
-        ((128, 256), (128, 256), (128, 256), (1,)),
-    ],
+    ADDCMUL_BROADCAST_SHAPES,
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_addcmul_out_broadcast(inp_shape, t1_shape, t2_shape, out_shape, dtype):
     res_inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     t1 = torch.randn(t1_shape, dtype=dtype, device=flag_gems.device)
