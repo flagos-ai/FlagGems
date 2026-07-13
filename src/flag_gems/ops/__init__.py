@@ -156,7 +156,7 @@ from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
 from flag_gems.ops.diagonal_copy import diagonal_copy
 from flag_gems.ops.diff import diff
-from flag_gems.ops.digamma_ import digamma_
+from flag_gems.ops.digamma_ import digamma, digamma_
 from flag_gems.ops.div import (
     div_mode,
     div_mode_,
@@ -335,6 +335,7 @@ from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.negative import negative
 from flag_gems.ops.new_full import new_full
+from flag_gems.ops.new_ones import new_ones
 from flag_gems.ops.nextafter_ import nextafter_
 from flag_gems.ops.nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward
 from flag_gems.ops.nllloss import (
@@ -463,7 +464,7 @@ from flag_gems.ops.softmax import (
     softmax_backward_out,
     softmax_out,
 )
-from flag_gems.ops.softplus import softplus
+from flag_gems.ops.softplus import softplus, softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
@@ -733,6 +734,7 @@ __all__ = [
     "diagonal_backward",
     "diagonal_copy",
     "diff",
+    "digamma",
     "digamma_",
     "div_mode",
     "div_mode_",
@@ -961,6 +963,7 @@ __all__ = [
     "neg_",
     "negative",
     "new_full",
+    "new_ones",
     "nextafter_",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
@@ -1105,6 +1108,7 @@ __all__ = [
     "softmax_backward_out",
     "softmax_out",
     "softplus",
+    "softplus_backward",
     "softshrink",
     "softshrink_out",
     "sort",
