@@ -150,7 +150,7 @@ from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
-from flag_gems.ops.deg2rad import deg2rad
+from flag_gems.ops.deg2rad import deg2rad, deg2rad_, deg2rad_out
 from flag_gems.ops.dequantize import dequantize
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
@@ -464,7 +464,7 @@ from flag_gems.ops.softmax import (
     softmax_backward_out,
     softmax_out,
 )
-from flag_gems.ops.softplus import softplus
+from flag_gems.ops.softplus import softplus, softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
@@ -727,6 +727,8 @@ __all__ = [
     "cumsum",
     "cumsum_out",
     "deg2rad",
+    "deg2rad_",
+    "deg2rad_out",
     "dequantize",
     "diag",
     "diag_embed",
@@ -1105,6 +1107,7 @@ __all__ = [
     "softmax_backward_out",
     "softmax_out",
     "softplus",
+    "softplus_backward",
     "softshrink",
     "softshrink_out",
     "sort",

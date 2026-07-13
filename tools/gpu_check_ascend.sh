@@ -6,7 +6,7 @@ sleep_time=120          # Wait time between retries (seconds)
 max_wait=600           # Maximum total wait time (seconds)
 
 # Get the number of NPU chips from npu-smi info output
-npu_smi_output=$(npu-smi info)
+npu_smi_output=$(npu-smi info 2>&1)
 
 if [ $? -ne 0 ]; then
     echo "Failed to run npu-smi. Please check if npu-smi is installed and working correctly."
