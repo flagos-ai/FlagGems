@@ -76,10 +76,18 @@ def _fallback_erfinv(x):
     return tl.where(x >= 0.0, y, -y)
 
 
+@triton.jit
+def _fallback_floor(x):
+    trunc = x.to(tl.int32).to(x.dtype)
+    needs_adjust = (x < 0.0) & (x != trunc)
+    return tl.where(needs_adjust, trunc - 1.0, trunc)
+
+
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
     "tanh": _fallback_tanh,
     "erfinv": _fallback_erfinv,
+    "floor": _fallback_floor,
 }
 
 
@@ -115,6 +123,7 @@ tl_extra_shim = _patch_missing_symbols(
         "fast_tanh",
         "finitef",
         "fmod",
+        "floor",
         "gelu_none",
         "gelu_tanh",
         "isfinited",
