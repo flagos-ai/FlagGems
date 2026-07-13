@@ -131,3 +131,24 @@ def test_index_add_inplace_contiguous_suffix(shape, dim, dtype):
         inp.index_add_(dim, index, src, alpha=alpha)
 
     utils.gems_assert_equal(inp, ref_inp)
+
+
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+def test_index_add_invalid_index(inplace):
+    shape = (2, 4, 8)
+    dim = 1
+    inp = torch.zeros(shape, device=flag_gems.device)
+    src = torch.ones((2, 2, 8), device=flag_gems.device)
+    index = torch.tensor([0, shape[dim]], device=flag_gems.device)
+
+    with flag_gems.use_gems(), pytest.raises(
+        AssertionError, match=r"0 <= index < self\.size\(dim\)"
+    ):
+        if inplace:
+            inp.index_add_(dim, index, src)
+        else:
+            torch.index_add(inp, dim, index, src)
+
+    utils.gems_assert_equal(inp, torch.zeros_like(inp))

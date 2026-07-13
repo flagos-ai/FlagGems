@@ -24,6 +24,10 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
+
 
 @libentry()
 @triton.jit
@@ -163,6 +167,16 @@ def _volume(shape):
     return value
 
 
+def _assert_index_in_bounds(index, upper_bound):
+    # Validate before scatter so an in-place call leaves its input unchanged on error.
+    lower, upper = torch.ops.aten.aminmax.default.redispatch(
+        _FALLBACK_KEYSET, index, dim=None, keepdim=False
+    )
+    assert (
+        lower.item() >= 0 and upper.item() < upper_bound
+    ), "0 <= index < self.size(dim)"
+
+
 def _can_use_contiguous_suffix_path(inp, dim, index, src):
     if src.numel() == 0:
         return False
@@ -280,6 +294,7 @@ def index_add(inp, dim, index, src, alpha=1):
 
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
     if _can_use_contiguous_suffix_path(inp, normalized_dim, index, src):
+        _assert_index_in_bounds(index, inp.size(dim))
         out = inp.clone()
         if _run_contiguous_suffix_path(out, normalized_dim, index, src, alpha):
             return out
@@ -332,6 +347,7 @@ def index_add_(inp, dim, index, src, alpha=1):
 
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
     if _can_use_contiguous_suffix_path(inp, normalized_dim, index, src):
+        _assert_index_in_bounds(index, inp.size(dim))
         if _run_contiguous_suffix_path(inp, normalized_dim, index, src, alpha):
             return inp
 
