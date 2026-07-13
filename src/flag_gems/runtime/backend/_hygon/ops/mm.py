@@ -18,22 +18,6 @@ def prev_multiple_of(a, b):
     return tl.cdiv(a, b) * b - b
 
 
-@triton.jit
-def dot_fp64(
-    a,
-    b,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-):
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
-    for k in tl.static_range(0, BLOCK_K):
-        a_k = a[:, k].to(tl.float64)
-        b_k = b[k, :].to(tl.float64)
-        acc += a_k[:, None] * b_k[None, :]
-    return acc
-
-
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mm"),
@@ -103,20 +87,26 @@ def mm_kernel(
     for start_k in range(0, prev_k_mult, BLOCK_K):
         rk = start_k + offs_k
 
-        a = tl.load(
-            a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak)
-        )
-        b = tl.load(
-            b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn)
-        )
-
-        if a.dtype != b.dtype:
-            a = a.to(c_ptr.dtype.element_ty)
-            b = b.to(c_ptr.dtype.element_ty)
-
         if IS_FP64:
-            accumulator += dot_fp64(a, b, BLOCK_M, BLOCK_N, BLOCK_K)
+            for k in tl.static_range(0, BLOCK_K):
+                cur_k = start_k + k
+                a_k = tl.load(a_ptr + offs_am_cont * stride_am + cur_k * stride_ak).to(
+                    tl.float64
+                )
+                b_k = tl.load(b_ptr + cur_k * stride_bk + offs_bn_cont * stride_bn).to(
+                    tl.float64
+                )
+                accumulator += a_k[:, None] * b_k[None, :]
         else:
+            a = tl.load(
+                a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak)
+            )
+            b = tl.load(
+                b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn)
+            )
+            if a.dtype != b.dtype:
+                a = a.to(c_ptr.dtype.element_ty)
+                b = b.to(c_ptr.dtype.element_ty)
             accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     # --------------------------
@@ -125,24 +115,35 @@ def mm_kernel(
     rk = prev_k_mult + offs_k
     mask_k = rk < K
 
-    a = tl.load(
-        a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak),
-        mask=mask_k[None, :],
-        other=0.0,
-    )
-    b = tl.load(
-        b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn),
-        mask=mask_k[:, None],
-        other=0.0,
-    )
-
-    if a.dtype != b.dtype:
-        a = a.to(c_ptr.dtype.element_ty)
-        b = b.to(c_ptr.dtype.element_ty)
-
     if IS_FP64:
-        accumulator += dot_fp64(a, b, BLOCK_M, BLOCK_N, BLOCK_K)
+        for k in tl.static_range(0, BLOCK_K):
+            cur_k = prev_k_mult + k
+            mask = cur_k < K
+            a_k = tl.load(
+                a_ptr + offs_am_cont * stride_am + cur_k * stride_ak,
+                mask=mask,
+                other=0.0,
+            ).to(tl.float64)
+            b_k = tl.load(
+                b_ptr + cur_k * stride_bk + offs_bn_cont * stride_bn,
+                mask=mask,
+                other=0.0,
+            ).to(tl.float64)
+            accumulator += a_k[:, None] * b_k[None, :]
     else:
+        a = tl.load(
+            a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak),
+            mask=mask_k[None, :],
+            other=0.0,
+        )
+        b = tl.load(
+            b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn),
+            mask=mask_k[:, None],
+            other=0.0,
+        )
+        if a.dtype != b.dtype:
+            a = a.to(c_ptr.dtype.element_ty)
+            b = b.to(c_ptr.dtype.element_ty)
         accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     # cast to output dtype
