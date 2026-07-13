@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 import triton.runtime.driver as driver
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 def get_npu_properties():
