@@ -7591,7 +7591,7 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
- - id: sym_size
+  - id: sym_size
     description: |
       Returns the size of the input tensor as a list of integers.
       This is a metadata operation with no computation and is used for
