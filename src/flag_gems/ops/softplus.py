@@ -18,7 +18,26 @@ def softplus_forward(x, beta, threshold):
     return out
 
 
+@pointwise_dynamic(
+    is_tensor=[True, True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
+@triton.jit
+def softplus_backward_kernel(grad_output, x, beta, threshold):
+    x_fp = x.to(tl.float32)
+    z = x_fp * beta
+    # d/dx softplus(x) = sigmoid(beta * x) when z <= threshold, else 1
+    dydx = tl.where(z > threshold, 1.0, tl.sigmoid(z))
+    dx = (grad_output * dydx).to(x.dtype)
+    return dx
+
+
 def softplus(self, beta=1.0, threshold=20.0):
     logger.debug("GEMS SOFTPLUS FORWARD")
     output = softplus_forward(self, beta, threshold)
     return output
+
+
+def softplus_backward(grad_output, self, beta=1.0, threshold=20.0):
+    logger.debug("GEMS SOFTPLUS BACKWARD")
+    grad_input = softplus_backward_kernel(grad_output, self, beta, threshold)
+    return grad_input
