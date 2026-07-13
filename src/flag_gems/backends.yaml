@@ -228,13 +228,16 @@ backends:
     triton: triton==3.3.0+gitfe2a28fa
     flagtree: flagtree==0.5.0.post20260612+git705a4064
     env:
-      TX8_DEPS_ROOT: /opt/tx8_deps
-      LLVM_SYSPATH: /opt/llvm
+      KUIPER_PATH: /usr/local/kuiper
+      TX8_DEPS_ROOT: /usr/local/tx8_deps
+      PATH: /usr/local/kuiper/bin:${PATH}
+      LLVM_SYSPATH: /usr/local/llvm
       LLVM_BINARY_DIR: ${LLVM_SYSPATH}/bin
       PYTHONPATH: ${LLVM_SYSPATH}/python_packages/mlir_core
       LD_LIBRARY_PATH: /usr/local/kuiper/lib:/usr/local/kuiper/tsm8-profiler/lib:${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}
       USE_TORCH_XLA: "0"
       TORCH_COMPILE_DISABLE: "1"
+
     deps:
       - torch==2.7.0+cpu
       - torchvision==0.22.0+cpu
