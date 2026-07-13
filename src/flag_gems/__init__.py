@@ -530,6 +530,7 @@ _FULL_CONFIG = (
     ("neg_", neg_),
     ("negative", negative),
     ("new_full", new_full),
+    ("new_ones", new_ones),
     ("nextafter_", nextafter_),
     ("nll_loss2d_backward", nll_loss2d_backward),
     ("nll_loss2d_forward", nll_loss2d_forward),
