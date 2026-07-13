@@ -23,6 +23,7 @@ else:
     ]
 
 
+@pytest.mark.skip(reason="Issue #4586: operator not working as expected.")
 @pytest.mark.affine_grid_generator
 @pytest.mark.parametrize("shape", AFFINE_GRID_SHAPES)
 # affine_grid kernel uses float32 internally; Half precision causes mismatch

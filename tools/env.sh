@@ -1,4 +1,12 @@
+# (c) Copyright, 2026, FlagOS contributors
+#
+# This file is supposed to be used for native installation (bare metal or
+# virtual machines), including GitHub CI workflows. For package installation
+# inside a container, we have baked the environment variables into the
+# container file.
+
 BACKEND=$1
+
 echo "Setting up environment variable for backend $BACKEND"
 
 # Vendor env scripts append to these variables without guarding against unset.
@@ -8,15 +16,13 @@ export C_INCLUDE_PATH="${C_INCLUDE_PATH:-}"
 export CPLUS_INCLUDE_PATH="${CPLUS_INCLUDE_PATH:-}"
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 export LIBRARY_PATH="${LIBRARY_PATH:-}"
+export PYTHONPATH="${PYTHONPATH:-}"
 
 case $BACKEND in
-  ascend-cann850|ascend-cann900)
+  ascend|ascend-cann850|ascend-cann900)
     # This script is provided by the Huawei Ascend CANN toolkit installation.
-    if [ -f /usr/local/Ascend/ascend-toolkit/set_env.sh ]; then
-      source /usr/local/Ascend/ascend-toolkit/set_env.sh
-    fi
-    if [ -f /usr/local/Ascend/toolbox/set_env.sh ]; then
-      source /usr/local/Ascend/toolbox/set_env.sh
+    if [ -f /usr/local/Ascend/cann/set_env.sh ]; then
+      source /usr/local/Ascend/cann/set_env.sh || true
     fi
 
     # TODO: Check if this is necessary
@@ -40,22 +46,6 @@ case $BACKEND in
     export COREX_ROOT=/usr/local/corex
     export PATH=$COREX_ROOT/bin:$PATH
     export LD_LIBRARY_PATH=$COREX_ROOT/lib:$LD_LIBRARY_PATH
-    # Iluvatar's triton (3.1.0+corex) links libtriton.so directly against
-    # libpython3.10.so.1.0, unlike upstream triton and other vendor forks
-    # which use -undefined dynamic_lookup or bundle their own copy.
-    # When Python is uv-managed, the shared lib lives outside standard
-    # search paths, so we must add it explicitly.
-    if command -v python &>/dev/null; then
-      PYTHON_LIBDIR=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))" 2>/dev/null) || true
-      if [ -n "$PYTHON_LIBDIR" ]; then
-        export LD_LIBRARY_PATH=$PYTHON_LIBDIR:$LD_LIBRARY_PATH
-      fi
-    fi
-    # Iluvatar's libtriton.so has the plugin search path hardcoded to
-    # /usr/local/lib/python3.10/site-packages/triton/_C at compile time.
-    # Add the venv's triton/_C to LD_LIBRARY_PATH so the plugin is found.
-    SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
-    export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH
     ;;
   kunlunxin)
     export LD_LIBRARY_PATH=/xcudart/lib:/usr/local/cuda/lib64
@@ -64,20 +54,23 @@ case $BACKEND in
     export MACA_PATH=/opt/maca
     export LD_LIBRARY_PATH=$MACA_PATH/lib:$LD_LIBRARY_PATH
     export LD_LIBRARY_PATH=$MACA_PATH/mxgpu_llvm/lib:$LD_LIBRARY_PATH
-    if [ -z "${USE_TRITON}" ]; then
-      SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.12/site-packages
-      export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/backends/metax/lib:$LD_LIBRARY_PATH
-    fi
     ;;
   nvidia|nvidia-cuda128|nvidia-cuda133)
     export PATH=/usr/local/cuda/bin:$PATH
     export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
     ;;
-  mthreads)
+  mthreads|mthreads-436|mthreads-520)
     export MUSA_HOME=/usr/local/musa
     export PATH=$MUSA_HOME/bin:$PATH
     export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH
     export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib:$LD_LIBRARY_PATH
+    if [ -z "${USE_TRITON}" ]; then
+      SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
+      export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH
+    fi
+    ;;
+  sunrise)
+    export LD_LIBRARY_PATH=/usr/local/tangrt/targets/linux-x86_64/lib:$LD_LIBRARY_PATH
     if [ -z "${USE_TRITON}" ]; then
       SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
       export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH
@@ -95,6 +88,12 @@ case $BACKEND in
     export LD_LIBRARY_PATH=/usr/local/kuiper/lib:$LD_LIBRARY_PATH
     export LD_LIBRARY_PATH=/usr/local/kuiper/tsm8-profiler/lib:$LD_LIBRARY_PATH
     export LD_LIBRARY_PATH=${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}
+
+    # Torch XLA is not used in TsingMicro, and it may lead to LLVM error
+    export USE_TORCH_XLA=0
+    # Torch compiler is not supported on TsingMicro, and in particular,
+    # it is not used for inference scenario
+    export TORCH_COMPILE_DISABLE=1
 
     # if [ -n "${USE_TRITON}" ]; then
     #   export PYTHONPATH=$SITE_PACKAGES/triton/backends/tsingmicro/llvm/python_packages/mlir_core
