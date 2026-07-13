@@ -8,6 +8,16 @@ from .argmin import argmin
 from .batch_norm import batch_norm, batch_norm_backward
 from .celu import celu
 from .conv2d import conv2d
+from .div import (
+    div_mode,
+    div_mode_,
+    floor_divide,
+    floor_divide_,
+    true_divide,
+    true_divide_,
+    trunc_divide,
+    trunc_divide_,
+)
 from .dropout import dropout, dropout_backward
 from .gather import gather, gather_backward
 from .index_add import index_add, index_add_
@@ -64,8 +74,16 @@ __all__ = [
     "celu",
     # "celu_",
     "conv2d",
+    "div_mode",
+    "div_mode_",
     "dropout",
     "dropout_backward",
+    "floor_divide",
+    "floor_divide_",
+    "true_divide",
+    "true_divide_",
+    "trunc_divide",
+    "trunc_divide_",
     "gather",
     "gather_backward",
     "index_add",
