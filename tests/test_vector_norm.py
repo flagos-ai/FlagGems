@@ -43,3 +43,46 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
         res_out = torch.linalg.vector_norm(inp, ord, dim, keepdim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.linalg_vector_norm
+@pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+@pytest.mark.parametrize("ord", ORD_LIST)
+@pytest.mark.parametrize("keepdim", KEEP_DIM)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_linalg_vector_norm(shape, ord, dim, keepdim, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
+    if flag_gems.vendor_name == "tsingmicro" and dtype in (
+        torch.float16,
+        torch.float32,
+    ):
+        pytest.skip("Issue #3796: not working")
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    # Exercise the aten-facing entry point torch.linalg.vector_norm directly.
+    ref_out = torch.linalg.vector_norm(ref_inp, ord, dim, keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.linalg.vector_norm(inp, ord, dim, keepdim)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.linalg_vector_norm
+@pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_linalg_vector_norm_flatten(shape, dtype):
+    # dim=None flattens the whole tensor before computing the norm.
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.linalg.vector_norm(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.linalg.vector_norm(inp)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
