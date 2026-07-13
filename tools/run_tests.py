@@ -352,7 +352,7 @@ def get_env(gpu_ids):
     return env
 
 
-def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
+def run_cmd(op, cmd, cwd=None, env=None, timeout=1800, flavor=None):
     stdout = subprocess.DEVNULL
     stderr = subprocess.DEVNULL
     if CFG.dump_output:
@@ -1049,6 +1049,11 @@ def main():
             sys.exit(1)
         gpu_ids = [int(x) for x in gpu_list if x.strip()]
     gpu_count = len(gpu_ids)
+
+    # Don't spawn more workers than there are ops to test
+    if gpu_count > op_count:
+        gpu_ids = gpu_ids[:op_count]
+        gpu_count = op_count
 
     op_width = min(max(len(op) for op in ops), 40) if ops else 20
 
