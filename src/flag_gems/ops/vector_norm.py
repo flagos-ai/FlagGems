@@ -23,13 +23,18 @@ def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     Out = Out + pid
     row_mask = pid < M
 
-    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    inp_dtype = X.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=acc_dtype)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
-        a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        a = tl.load(X + cols, mask, other=0.0).to(acc_dtype)
         _sum += a * a
     sum = tl.sum(_sum, axis=1)
 
@@ -46,7 +51,12 @@ def l2_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
     Mid = Mid + pid
     mask = offset < M
 
-    x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
+    inp_dtype = X.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    x = tl.load(X, mask=mask, other=0.0).to(acc_dtype)
     mid = tl.sum(x * x)
     tl.store(Mid, mid)
 
@@ -57,7 +67,12 @@ def l2_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     Mid = Mid + offset
     mask = offset < MID_SIZE
-    mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
+    inp_dtype = Mid.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    mid = tl.load(Mid, mask=mask, other=0.0).to(acc_dtype)
     out = tl.sqrt(tl.sum(mid))
     tl.store(Out, out)
 
@@ -71,13 +86,18 @@ def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     Out = Out + pid
     row_mask = pid < M
 
-    _max = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    inp_dtype = X.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    _max = tl.zeros([BLOCK_M, BLOCK_N], dtype=acc_dtype)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
-        a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        a = tl.load(X + cols, mask, other=0.0).to(acc_dtype)
         _max = tl.maximum(tl.abs(a), _max)
 
     max = tl.max(_max, axis=1)
@@ -94,7 +114,12 @@ def max_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
     Mid = Mid + pid
     mask = offset < M
 
-    x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
+    inp_dtype = X.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    x = tl.load(X, mask=mask, other=0.0).to(acc_dtype)
     mid = tl.max(tl.abs(x))
     tl.store(Mid, mid)
 
@@ -105,7 +130,12 @@ def max_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     Mid = Mid + offset
     mask = offset < MID_SIZE
-    mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
+    inp_dtype = Mid.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    mid = tl.load(Mid, mask=mask, other=0.0).to(acc_dtype)
     out = tl.max(mid)
     tl.store(Out, out)
 
@@ -119,13 +149,18 @@ def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     Out = Out + pid
     row_mask = pid < M
 
-    _min = tl.full([BLOCK_M, BLOCK_N], value=float("inf"), dtype=tl.float32)
+    inp_dtype = X.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    _min = tl.full([BLOCK_M, BLOCK_N], value=float("inf"), dtype=acc_dtype)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
-        a = tl.load(X + cols, mask, other=float("inf")).to(tl.float32)
+        a = tl.load(X + cols, mask, other=float("inf")).to(acc_dtype)
         _min = tl.minimum(tl.abs(a), _min)
 
     min = tl.min(_min, axis=1)
@@ -142,7 +177,12 @@ def min_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
     Mid = Mid + pid
     mask = offset < M
 
-    x = tl.load(X, mask=mask, other=float("inf")).to(tl.float32)
+    inp_dtype = X.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    x = tl.load(X, mask=mask, other=float("inf")).to(acc_dtype)
     mid = tl.min(tl.abs(x))
     tl.store(Mid, mid)
 
@@ -153,7 +193,12 @@ def min_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     Mid = Mid + offset
     mask = offset < MID_SIZE
-    mid = tl.load(Mid, mask=mask, other=float("inf")).to(tl.float32)
+    inp_dtype = Mid.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    mid = tl.load(Mid, mask=mask, other=float("inf")).to(acc_dtype)
     out = tl.min(mid)
     tl.store(Out, out)
 
@@ -167,14 +212,20 @@ def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     Out = Out + pid
     row_mask = pid < M
 
-    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    inp_dtype = X.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=acc_dtype)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
-        a = tl.load(X + cols, mask, other=0).to(tl.float32)
-        _sum += tl.where(a != 0, 1, 0)
+        a = tl.load(X + cols, mask, other=0).to(acc_dtype)
+        cnt = (a != 0).to(acc_dtype)
+        _sum += cnt
     sum = tl.sum(_sum, axis=1)
     out = sum[:, None]
     tl.store(Out, out, row_mask)
@@ -189,8 +240,13 @@ def l0_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
     Mid = Mid + pid
     mask = offset < M
 
-    x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
-    cnt = (x != 0).to(tl.float32)
+    inp_dtype = X.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    x = tl.load(X, mask=mask, other=0.0).to(acc_dtype)
+    cnt = (x != 0).to(acc_dtype)
     mid = tl.sum(cnt)
     tl.store(Mid, mid)
 
@@ -201,7 +257,12 @@ def l0_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     Mid = Mid + offset
     mask = offset < MID_SIZE
-    mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
+    inp_dtype = Mid.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    mid = tl.load(Mid, mask=mask, other=0.0).to(acc_dtype)
     out = tl.sum(mid)
     tl.store(Out, out)
 
@@ -215,13 +276,18 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
     Out = Out + pid
     row_mask = pid < M
 
-    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    inp_dtype = X.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=acc_dtype)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
-        a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        a = tl.load(X + cols, mask, other=0.0).to(acc_dtype)
         _sum += pow(tl.abs(a), ord)
     sum = tl.sum(_sum, axis=1)
     out = pow(sum, 1 / ord)[:, None]
@@ -237,7 +303,12 @@ def l1_norm_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr):
     Mid = Mid + pid
     mask = offset < M
 
-    x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
+    inp_dtype = X.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    x = tl.load(X, mask=mask, other=0.0).to(acc_dtype)
     mid = tl.sum(pow(tl.abs(x), ord))
     tl.store(Mid, mid)
 
@@ -248,7 +319,12 @@ def l1_norm_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     Mid = Mid + offset
     mask = offset < MID_SIZE
-    mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
+    inp_dtype = Mid.type.element_ty
+    if inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+    else:
+        acc_dtype = tl.float32
+    mid = tl.load(Mid, mask=mask, other=0.0).to(acc_dtype)
     out = pow(tl.sum(mid), 1 / ord)
     tl.store(Out, out)
 
@@ -262,7 +338,7 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             dtype = torch.float32
     else:
         dtype = x.dtype
-    if dtype not in [torch.float16, torch.float32, torch.bfloat16]:
+    if dtype not in [torch.float16, torch.float32, torch.bfloat16, torch.float64]:
         raise NotImplementedError(f"vector_norm not implemented for {dtype}")
 
     with torch_device_fn.device(x.device):
