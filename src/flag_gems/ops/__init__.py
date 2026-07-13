@@ -62,6 +62,7 @@ from flag_gems.ops.arccos import arccos, arccos_
 from flag_gems.ops.arcsin import arcsin, arcsin_, arcsin_out
 from flag_gems.ops.arcsinh import arcsinh, arcsinh_out
 from flag_gems.ops.arcsinh_ import arcsinh_
+from flag_gems.ops.arctan_ import arctan, arctan_
 from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
@@ -109,6 +110,7 @@ from flag_gems.ops.bitwise_or import (
 from flag_gems.ops.bitwise_right_shift import bitwise_right_shift, bitwise_right_shift_
 from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.broadcast_to import broadcast_to
+from flag_gems.ops.bucketize import bucketize
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.cdist_backward import _cdist_backward
@@ -147,14 +149,14 @@ from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
-from flag_gems.ops.deg2rad import deg2rad
+from flag_gems.ops.deg2rad import deg2rad, deg2rad_, deg2rad_out
 from flag_gems.ops.dequantize import dequantize
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
 from flag_gems.ops.diagonal_copy import diagonal_copy
 from flag_gems.ops.diff import diff
-from flag_gems.ops.digamma_ import digamma_
+from flag_gems.ops.digamma_ import digamma, digamma_
 from flag_gems.ops.div import (
     div_mode,
     div_mode_,
@@ -313,6 +315,7 @@ from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
+from flag_gems.ops.mish import mish, mish_
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
@@ -321,6 +324,7 @@ from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.multiply_ import multiply_
 from flag_gems.ops.mv import mv
+from flag_gems.ops.mvlgamma_ import mvlgamma_
 from flag_gems.ops.nan_to_num import nan_to_num
 from flag_gems.ops.nanmedian import (
     nanmedian,
@@ -333,6 +337,7 @@ from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.negative import negative
 from flag_gems.ops.new_full import new_full
+from flag_gems.ops.new_ones import new_ones
 from flag_gems.ops.nextafter_ import nextafter_
 from flag_gems.ops.nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward
 from flag_gems.ops.nllloss import (
@@ -391,7 +396,8 @@ from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
 from flag_gems.ops.remainder import remainder, remainder_
-from flag_gems.ops.renorm import renorm, renorm_
+from flag_gems.ops.renorm import renorm
+from flag_gems.ops.renorm_ import renorm_
 from flag_gems.ops.repeat import repeat
 from flag_gems.ops.repeat_interleave import (
     repeat_interleave_self_int,
@@ -460,7 +466,7 @@ from flag_gems.ops.softmax import (
     softmax_backward_out,
     softmax_out,
 )
-from flag_gems.ops.softplus import softplus
+from flag_gems.ops.softplus import softplus, softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
@@ -623,6 +629,8 @@ __all__ = [
     "arcsinh",
     "arcsinh_",
     "arcsinh_out",
+    "arctan",
+    "arctan_",
     "arctanh_",
     "argmax",
     "argmin",
@@ -669,6 +677,7 @@ __all__ = [
     "bmm",
     "bmm_out",
     "broadcast_to",
+    "bucketize",
     "cat",
     "cat_out",
     "cauchy",
@@ -719,12 +728,15 @@ __all__ = [
     "cumsum",
     "cumsum_out",
     "deg2rad",
+    "deg2rad_",
+    "deg2rad_out",
     "dequantize",
     "diag",
     "diag_embed",
     "diagonal_backward",
     "diagonal_copy",
     "diff",
+    "digamma",
     "digamma_",
     "div_mode",
     "div_mode_",
@@ -930,6 +942,8 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
+    "mish",
+    "mish_",
     "mm",
     "mm_out",
     "mode",
@@ -940,6 +954,7 @@ __all__ = [
     "multinomial",
     "multiply_",
     "mv",
+    "mvlgamma_",
     "nan_to_num",
     "nanmedian",
     "nanmedian_dim",
@@ -952,6 +967,7 @@ __all__ = [
     "neg_",
     "negative",
     "new_full",
+    "new_ones",
     "nextafter_",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
@@ -1096,6 +1112,7 @@ __all__ = [
     "softmax_backward_out",
     "softmax_out",
     "softplus",
+    "softplus_backward",
     "softshrink",
     "softshrink_out",
     "sort",
