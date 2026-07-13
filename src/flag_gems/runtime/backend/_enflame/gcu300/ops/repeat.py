@@ -458,7 +458,9 @@ def generate_repeat_kernel(
             code.writeline(f"{stride_args}, # strides for in0")
 
             # strides for outputs
-            stride_args = ", ".join(f"out0_stride{j}: tl.constexpr" for j in range(rank))
+            stride_args = ", ".join(
+                f"out0_stride{j}: tl.constexpr" for j in range(rank)
+            )
             code.writeline(f"{stride_args}, # strides for out0")
 
             # task space, used to reconstruct multi index
@@ -628,7 +630,9 @@ def gcu_generate_repeat_kernel(
             code.writeline(f"{stride_args}, # strides for in0")
 
             # strides for outputs
-            stride_args = ", ".join(f"out0_stride{j}: tl.constexpr" for j in range(rank))
+            stride_args = ", ".join(
+                f"out0_stride{j}: tl.constexpr" for j in range(rank)
+            )
             code.writeline(f"{stride_args}, # strides for out0")
 
             # task space, used to reconstruct multi index

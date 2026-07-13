@@ -3,6 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+
 from flag_gems.utils.shape_utils import restride_dim
 
 logger = logging.getLogger(
@@ -25,10 +26,12 @@ logger = logging.getLogger(
 # ---------------------------------------------------------------------------
 @triton.jit
 def _scatter_add_2d_dim1_kernel(
-    out_ptr,       # [B, V] output (flattened)
-    index_ptr,     # [B, N] indices
-    src_ptr,       # [B, N] source values
-    B: int, V: int, N: int,
+    out_ptr,  # [B, V] output (flattened)
+    index_ptr,  # [B, N] indices
+    src_ptr,  # [B, N] source values
+    B: int,
+    V: int,
+    N: int,
     stride_o0: int,
     stride_i0: int,
     stride_s0: int,
@@ -113,8 +116,12 @@ def scatter_add_2d_dim1(inp, index, src):
     grid = (24,) if B * V > 24 else (B * V,)
 
     _scatter_add_2d_dim1_kernel[grid](
-        out, index, src,
-        B, V, N,
+        out,
+        index,
+        src,
+        B,
+        V,
+        N,
         out.stride(0),
         index.stride(0),
         src.stride(0),
