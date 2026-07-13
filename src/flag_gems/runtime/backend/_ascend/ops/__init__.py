@@ -55,6 +55,7 @@ from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
 from .polar import polar
+from .polygamma import polygamma_
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -162,6 +163,7 @@ __all__ = [
     "ones_like",
     "outer",
     "polar",
+    "polygamma_",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_scalar_",
