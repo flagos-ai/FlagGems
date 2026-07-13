@@ -129,6 +129,7 @@ tl_extra_shim = _patch_missing_symbols(
         "isfinited",
         "isinf",
         "isnan",
+        "lgamma",
         "log",
         "pow",
         "rint",
