@@ -42,6 +42,7 @@ def mm_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
+    IS_FP64: tl.constexpr = False,
 ):
     pid = ext.program_id(0)
 
@@ -75,7 +76,10 @@ def mm_kernel(
     prev_k_mult = tl.cdiv(K, BLOCK_K) * BLOCK_K - BLOCK_K
 
     # accumulator
-    accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    if IS_FP64:
+        accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
+    else:
+        accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
     # --------------------------
     # main K loop
@@ -94,7 +98,10 @@ def mm_kernel(
             a = a.to(c_ptr.dtype.element_ty)
             b = b.to(c_ptr.dtype.element_ty)
 
-        accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+        if IS_FP64:
+            accumulator += tl.dot(a, b, allow_tf32=False)
+        else:
+            accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     # --------------------------
     # loop peel
@@ -105,17 +112,22 @@ def mm_kernel(
     a = tl.load(
         a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak),
         mask=mask_k[None, :],
+        other=0.0,
     )
     b = tl.load(
         b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn),
         mask=mask_k[:, None],
+        other=0.0,
     )
 
     if a.dtype != b.dtype:
         a = a.to(c_ptr.dtype.element_ty)
         b = b.to(c_ptr.dtype.element_ty)
 
-    accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+    if IS_FP64:
+        accumulator += tl.dot(a, b, allow_tf32=False)
+    else:
+        accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     # cast to output dtype
     accumulator = accumulator.to(c_ptr.dtype.element_ty)
@@ -133,7 +145,7 @@ def mm_kernel(
     tl.store(c_ptr, accumulator, mask=mask_store)
 
 
-_ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
+_ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
 
 
 def get_higher_dtype(a, b):
@@ -184,6 +196,7 @@ def mm(a, b):
             c.stride(0),
             c.stride(1),
             GROUP_M=8,
+            IS_FP64=a.dtype == torch.float64,
         )
     return c
 
@@ -220,5 +233,6 @@ def mm_out(a, b, *, out):
             c.stride(0),
             c.stride(1),
             GROUP_M=8,
+            IS_FP64=a.dtype == torch.float64,
         )
     return c
