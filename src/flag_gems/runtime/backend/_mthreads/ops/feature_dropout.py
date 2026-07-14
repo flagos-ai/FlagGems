@@ -125,7 +125,7 @@ def feature_dropout(input, p, train=True):
     Returns:
         Output tensor of same shape as input
     """
-    logger.debug("GEMS MTHREADS FEATURE_DROPOUT")
+    logger.debug("GEMS_MTHREADS FEATURE_DROPOUT")
 
     if not train or p == 0:
         return input.clone()
@@ -202,7 +202,7 @@ def feature_dropout_(input, p, train=True):
     """
     In-place version of feature_dropout.
     """
-    logger.debug("GEMS MTHREADS FEATURE_DROPOUT_")
+    logger.debug("GEMS_MTHREADS FEATURE_DROPOUT_")
     if not train or p == 0:
         return input
     if p == 1:
