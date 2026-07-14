@@ -58,25 +58,13 @@ device_ = device
 logger = logging.getLogger(__name__)
 
 
-# @triton.heuristics(runtime.get_heuristic_config("randn"))
-configs = [
-    triton.Config({"BLOCK": 256}, num_warps=8, num_stages=2),
-    triton.Config({"BLOCK": 512}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK": 512}, num_warps=8, num_stages=3),
-    triton.Config({"BLOCK": 1024}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK": 1024}, num_warps=8, num_stages=3),
-    triton.Config({"BLOCK": 1024}, num_warps=8, num_stages=4),
-]
-
-
-@triton.autotune(configs=configs, key=["N"])
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def randn_kernel(
     out_ptr,
     N,
     philox_seed,
     philox_offset,
-    BLOCK: tl.constexpr,
+    BLOCK: tl.constexpr = 512,
 ):
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)

@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
 @pytest.mark.any
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_any():
     bench = base.UnaryReductionBenchmark(
         op_name="any",
@@ -15,6 +20,9 @@ def test_any():
 
 
 @pytest.mark.any_dim
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_any_dim():
     bench = base.UnaryReductionBenchmark(
         op_name="any_dim",
@@ -33,6 +41,9 @@ def any_dims_input_fn(shape, dtype, device):
 
 
 @pytest.mark.any_dims
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_any_dims():
     bench = base.GenericBenchmarkExcluse1D(
         op_name="any_dims",

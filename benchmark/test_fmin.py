@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
 @pytest.mark.fmin
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_fmin():
     bench = base.BinaryPointwiseBenchmark(
         op_name="fmin",
@@ -22,6 +27,9 @@ def fmin_out_input_fn(shape, dtype, device):
 
 
 @pytest.mark.fmin_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_fmin_out():
     bench = base.GenericBenchmark(
         op_name="fmin_out",
