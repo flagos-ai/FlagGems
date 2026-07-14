@@ -8787,6 +8787,30 @@ ops:
     stages:
       - alpha: '2.1'
       - stable: '2.2'
+  - id: xlogy
+    description: |
+      Computes element-wise `x * log(y)` with the convention that the result is
+      `0` whenever `x == 0` (even for `y == 0`, `y < 0`, or `y == NaN`).
+    for:
+      - xlogy.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
+  - id: xlogy_out
+    description: A variant of `xlogy` that writes its result into a pre-allocated `out` tensor.
+    for:
+      - xlogy.OutTensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.0'
   - id: zero
     description: Fills tensor with zeros.
     for:
