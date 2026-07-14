@@ -8,5 +8,5 @@ logger = logging.getLogger(__name__)
 
 
 def __lshift__(self, other):
-    logger.debug("GEMS __lshift__")
+    logger.debug("GEMS __LSHIFT__")
     return bitwise_left_shift(self, other)
