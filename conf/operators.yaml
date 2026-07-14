@@ -5342,6 +5342,17 @@ ops:
       - BLAS
     stages:
       - stable: '2.0'
+  - id: mvlgamma_
+    description: Computes the multivariate log-gamma function in-place for each element of the input tensor.
+    for:
+      - mvlgamma_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: nan_to_num
     description: |
       Replaces `NaN`, positive infinity, and negative infinity values in `input`
@@ -5482,6 +5493,19 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: new_ones
+    description: |
+      Returns a Tensor of size `size` filled with 1, with the
+      same `torch.dtype` and `torch.device` as the input tensor.
+    for:
+      - new_ones
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: nextafter_
     description: |
       Returns the next representable floating-point value from `input` toward
@@ -7121,6 +7145,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: scalar_tensor
+    description: |
+      Creates a 0-dimensional (scalar) tensor from a Python numeric value.
+      The tensor's dtype can be specified, otherwise inferred from the input value.
+    for:
+      - scalar_tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: sigmoid
     description: Computes the expit (also known as the logistic sigmoid function) of the elements of `input`.
     for:
@@ -7760,6 +7796,19 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_logsumexp
+    description: |
+      Computes the natural logarithm of the sum of exponentials of each row
+      of the input tensor in the given dimension `dim`.
+    for:
+      - special.logsumexp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
     stages:
       - alpha: '5.4'
   - id: split_with_sizes_copy
