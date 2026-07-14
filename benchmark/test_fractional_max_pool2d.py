@@ -69,7 +69,6 @@ def test_fractional_max_pool2d_backward():
         op_name="fractional_max_pool2d_backward",
         torch_op=torch_fractional_max_pool2d_backward_wrapper,
         dtypes=consts.FLOAT_DTYPES,
-        is_backward=False,
     )
     bench.set_gems(flag_gems.fractional_max_pool2d_backward)
     bench.run()
