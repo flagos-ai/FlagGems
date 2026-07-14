@@ -15,10 +15,14 @@ def exp_func(x):
 
 
 def exp(A):
-    logger.debug("GEMS EXP")
+    logger.debug("GEMS_ENFLAME EXP")
     return exp_func(A)
 
 
 def exp_(A):
-    logger.debug("GEMS EXP_")
+    logger.debug("GEMS_ENFLAME EXP_")
     return exp_func(A, out0=A)
+
+
+def exp_out(A, out):
+    return exp_func(A, out0=out)
