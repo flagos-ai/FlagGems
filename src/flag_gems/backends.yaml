@@ -65,8 +65,7 @@ backends:
     triton: triton-ascend==3.2.0
     flagtree: flagtree==0.6.0+ascend3.2
     env_source:
-      - /usr/local/Ascend/ascend-toolkit/set_env.sh
-      - /usr/local/Ascend/toolbox/set_env.sh
+      - /usr/local/Ascend/cann/set_env.sh
     deps:
       - torch==2.9.0+cpu
       - torch-npu==2.9.0
@@ -77,11 +76,9 @@ backends:
     triton: triton==3.5.0
     flagtree: flagtree==0.6.0+ascend3.5
     env_source:
-      - /usr/local/Ascend/ascend-toolkit/set_env.sh
-      - /usr/local/Ascend/toolbox/set_env.sh
-    post_install: >-
-      uv pip install --no-cache-dir --index ${FLAGOS_PYPI}
-      "triton_ascend==3.2.1"
+      - /usr/local/Ascend/cann/set_env.sh
+    triton_post_install:
+      - triton_ascend==3.2.1
     deps:
       - torch==2.10.0+cpu
       - torch-npu==2.10.0
@@ -141,7 +138,8 @@ backends:
     triton: triton==3.0.0+a48aedef
     flagtree: flagtree==0.5.1+xpu3.0
     env:
-      LD_LIBRARY_PATH: /xcudart/lib:/usr/local/cuda/lib64
+      PATH: /usr/local/xpu/bin:$PATH
+      LD_LIBRARY_PATH: /usr/local/xcudart/lib:/usr/local/xpu/lib:/usr/local/cuda/lib64
     deps:
       - apex==0.1
       - benchflow==1.0.0
@@ -231,13 +229,16 @@ backends:
     triton: triton==3.3.0+gitfe2a28fa
     flagtree: flagtree==0.5.0.post20260612+git705a4064
     env:
-      TX8_DEPS_ROOT: /opt/tx8_deps
-      LLVM_SYSPATH: /opt/llvm
+      KUIPER_PATH: /usr/local/kuiper
+      TX8_DEPS_ROOT: /usr/local/tx8_deps
+      PATH: /usr/local/kuiper/bin:${PATH}
+      LLVM_SYSPATH: /usr/local/llvm
       LLVM_BINARY_DIR: ${LLVM_SYSPATH}/bin
       PYTHONPATH: ${LLVM_SYSPATH}/python_packages/mlir_core
       LD_LIBRARY_PATH: /usr/local/kuiper/lib:/usr/local/kuiper/tsm8-profiler/lib:${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}
       USE_TORCH_XLA: "0"
       TORCH_COMPILE_DISABLE: "1"
+
     deps:
       - torch==2.7.0+cpu
       - torchvision==0.22.0+cpu

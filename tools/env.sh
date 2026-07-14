@@ -16,15 +16,13 @@ export C_INCLUDE_PATH="${C_INCLUDE_PATH:-}"
 export CPLUS_INCLUDE_PATH="${CPLUS_INCLUDE_PATH:-}"
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 export LIBRARY_PATH="${LIBRARY_PATH:-}"
+export PYTHONPATH="${PYTHONPATH:-}"
 
 case $BACKEND in
   ascend|ascend-cann850|ascend-cann900)
     # This script is provided by the Huawei Ascend CANN toolkit installation.
-    if [ -f /usr/local/Ascend/ascend-toolkit/set_env.sh ]; then
-      source /usr/local/Ascend/ascend-toolkit/set_env.sh
-    fi
-    if [ -f /usr/local/Ascend/toolbox/set_env.sh ]; then
-      source /usr/local/Ascend/toolbox/set_env.sh
+    if [ -f /usr/local/Ascend/cann/set_env.sh ]; then
+      source /usr/local/Ascend/cann/set_env.sh || true
     fi
 
     # TODO: Check if this is necessary

@@ -2033,9 +2033,31 @@ ops:
     stages:
       - beta: '5.0'
   - id: deg2rad
-    description: "deg2rad operator"
+    description: Converts angles from degrees to radians.
     for:
       - deg2rad
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: deg2rad_
+    description: In-place version of deg2rad.
+    for:
+      - deg2rad_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: deg2rad_out
+    description: Out-of-place variant of deg2rad with pre-allocated output tensor.
+    for:
+      - deg2rad.out
     labels:
       - aten
       - KernelGen
@@ -2152,6 +2174,18 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: digamma
+    description: |
+      Computes the digamma function, which is the logarithmic derivative of the Gamma function.
+    for:
+      - digamma
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: digamma_
     description: |
       Computes the in-place digamma function, which is the logarithmic derivative of the Gamma function.
@@ -4883,6 +4917,16 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: matmul_bias_activation
+    description: Fused matrix multiplication with bias addition and ReLU activation.
+    for:
+      - matmul_bias_activation
+    labels:
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: matmuladd
     description: Computes matrix multiplication followed by bias addition.
     for:
@@ -5309,6 +5353,17 @@ ops:
       - BLAS
     stages:
       - stable: '2.0'
+  - id: mvlgamma_
+    description: Computes the multivariate log-gamma function in-place for each element of the input tensor.
+    for:
+      - mvlgamma_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: nan_to_num
     description: |
       Replaces `NaN`, positive infinity, and negative infinity values in `input`
@@ -5449,6 +5504,19 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: new_ones
+    description: |
+      Returns a Tensor of size `size` filled with 1, with the
+      same `torch.dtype` and `torch.device` as the input tensor.
+    for:
+      - new_ones
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: nextafter_
     description: |
       Returns the next representable floating-point value from `input` toward
@@ -7432,6 +7500,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.0'
+  - id: softplus_backward
+    description: The backward version of `softplus()`.
+    for:
+      - softplus_backward
+    labels:
+      - aten
+      - Activation
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: softshrink
     description: |
       Applies the soft shrinkage function element-wise to an input tensor.

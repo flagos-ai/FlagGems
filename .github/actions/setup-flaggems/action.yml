@@ -2,8 +2,8 @@ name: "Setup FlagGems"
 description: "Run setup.sh for a vendor and optionally check GPU availability"
 
 inputs:
-  vendor:
-    description: "FlagGems backend name (e.g. nvidia-cuda133, mthreads, ascend-cann900)"
+  backend:
+    description: "FlagGems backend label (e.g. nvidia-cuda133, mthreads-musa520, ascend-cann900)"
     required: true
   gpu_check_script:
     description: "Path to GPU check script (leave empty to skip)"
@@ -15,10 +15,10 @@ runs:
   steps:
     - name: Setup FlagGems
       shell: bash
-      run: ./setup.sh ${{ inputs.vendor }}
+      run: ./setup.sh ${{ inputs.backend }}
 
     - name: Install vllm (nvidia only)
-      if: startsWith(inputs.vendor, 'nvidia')
+      if: startsWith(inputs.backend, 'nvidia')
       shell: bash
       env:
         VLLM_VERSION: "0.21.0"
