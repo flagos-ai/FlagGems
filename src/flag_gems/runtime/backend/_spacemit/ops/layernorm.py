@@ -10,6 +10,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils.type_utils import get_accumulator_dtype
 
+logger = logging.getLogger(__name__)
+
 pow = tl_extra_shim.pow
 
 
@@ -248,7 +250,7 @@ def weight_bias_backward_kernel(
 class LayerNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
-        logging.debug("GEMS_SPACEMIT LAYERNORM_FORWARD")
+        logger.debug("GEMS_SPACEMIT LAYERNORM_FORWARD")
         # dim = x.ndim - len(normalized_shape)
         # M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
@@ -281,7 +283,7 @@ class LayerNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad, mean_grad, rstd_grad):
-        logging.debug("GEMS_SPACEMIT LAYERNORM_BACKWARD")
+        logger.debug("GEMS_SPACEMIT LAYERNORM_BACKWARD")
         out_grad = out_grad.contiguous()
         (x, weight, bias, mean, rstd) = ctx.saved_tensors
         M = ctx.M
