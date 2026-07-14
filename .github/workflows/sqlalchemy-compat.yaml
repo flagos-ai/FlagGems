@@ -1,0 +1,50 @@
+name: sqlalchemy-compat
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "src/flag_gems/utils/models/**"
+      - "tests/test_sql_persistent_model.py"
+      - ".github/workflows/sqlalchemy-compat.yaml"
+      - "pyproject.toml"
+  pull_request:
+    branches:
+      - master
+    paths:
+      - "src/flag_gems/utils/models/**"
+      - "tests/test_sql_persistent_model.py"
+      - ".github/workflows/sqlalchemy-compat.yaml"
+      - "pyproject.toml"
+
+jobs:
+  sql-model-test:
+    permissions:
+      contents: read
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.sqlalchemy }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1.4 floor matches the python3-sqlalchemy shipped by LTS distros
+        sqlalchemy: ["sqlalchemy>=1.4.31,<1.5", "sqlalchemy>=2.0,<2.1"]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.11'
+      - name: Install dependencies (CPU-only)
+        run: |
+          pip install torch==2.7.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install triton==3.3.1 packaging PyYAML numpy typing_extensions pytest "${{ matrix.sqlalchemy }}"
+      - name: Run SQL persistent model tests
+        env:
+          # skip hardware probing on the CPU-only runner
+          GEMS_VENDOR: nvidia
+          PYTHONPATH: src
+        run: |
+          python -c "import sqlalchemy; print('sqlalchemy', sqlalchemy.__version__)"
+          pytest -q tests/test_sql_persistent_model.py
