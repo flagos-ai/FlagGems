@@ -7725,6 +7725,20 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_log_ndtr
+    description: |
+      Computes the log of the standard normal cumulative distribution function
+      log(Phi(x)) for each element of `input`, where Phi is the CDF of the
+      standard normal distribution.
+    for:
+      - special_log_ndtr
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_log_softmax
     description: |
       Applies the log of the softmax function along a given dimension.
