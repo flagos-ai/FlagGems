@@ -70,10 +70,36 @@ at::Tensor& index_fill_scalar_(at::Tensor& input,
   backend::StreamType stream = backend::getCurrentStream();
   backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
-  if (outer_size > 1 && inner_size == 1) {
-    constexpr int64_t BLOCK_M = 1024;
+  if (outer_size == 1 && inner_size == 1) {
+    constexpr int64_t BLOCK = 512;
     const unsigned int grid_x =
-        static_cast<unsigned int>((outer_index_len + BLOCK_M - 1) / BLOCK_M);
+        static_cast<unsigned int>((index_len + BLOCK - 1) / BLOCK);
+
+    static const TritonJITFunction& one_dim_kernel =
+        TritonJITFunction::get_instance(
+            (utils::get_triton_src_path() / "index_fill.py").string(),
+            "index_fill_contiguous_scalar_1d_kernel");
+
+    one_dim_kernel(raw_stream,
+                   grid_x,
+                   1,
+                   1,
+                   4,
+                   0,
+                   input,
+                   index,
+                   value,
+                   index_len,
+                   dim_size,
+                   BLOCK);
+    return input;
+  }
+
+  if (outer_size > 1 && inner_size == 1) {
+    const int64_t block_m = index_len <= 16 ? 512 : 1024;
+    const unsigned int grid_x =
+        static_cast<unsigned int>(
+            (outer_index_len + block_m - 1) / block_m);
 
     static const TritonJITFunction& inner1_kernel =
         TritonJITFunction::get_instance(
@@ -92,7 +118,7 @@ at::Tensor& index_fill_scalar_(at::Tensor& input,
                   outer_index_len,
                   index_len,
                   dim_size,
-                  BLOCK_M);
+                  block_m);
     return input;
   }
 
@@ -227,6 +253,27 @@ at::Tensor index_fill_scalar(const at::Tensor& input,
                              int64_t dim,
                              const at::Tensor& index,
                              const c10::Scalar& value) {
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+  if (input.is_contiguous()) {
+    c10::DeviceGuard guard(input.device());
+    at::Tensor output = at::empty_like(input);
+    if (input.nbytes() > 0) {
+      backend::StreamType stream = backend::getCurrentStream();
+      backend::RawStreamType raw_stream = backend::getRawStream(stream);
+      CUresult status = cuMemcpyDtoDAsync(
+          reinterpret_cast<CUdeviceptr>(output.data_ptr()),
+          reinterpret_cast<CUdeviceptr>(input.data_ptr()),
+          input.nbytes(),
+          raw_stream);
+      TORCH_CHECK(status == CUDA_SUCCESS,
+                  "index_fill device-to-device copy failed with CUDA error ",
+                  static_cast<int>(status));
+    }
+    index_fill_scalar_(output, dim, index, value);
+    return output;
+  }
+#endif
+
   at::Tensor output = input.clone();
   index_fill_scalar_(output, dim, index, value);
   return output;

@@ -1,4 +1,5 @@
 # ruff: noqa: F405
+import os
 import warnings
 
 import torch
@@ -6,7 +7,7 @@ from packaging import version
 
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
-from flag_gems.config import aten_patch_list, resolve_user_setting
+from flag_gems.config import aten_patch_list, c_operators, resolve_user_setting
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
@@ -35,6 +36,24 @@ aten_lib = torch.library.Library("aten", "IMPL")
 
 # Register all ops in the current backend with SpecOpRegistrar to support architecture-specialized implementations
 SpecOpRegistrar(registry=globals(), vendor=vendor_name).apply()
+
+_index_fill_cpp_registration_enabled = os.environ.get(
+    "FLAG_GEMS_INDEX_FILL_CPP_LAUNCHER", "1"
+).lower() not in ("", "0", "false", "off", "none", "disable", "disabled")
+if (
+    vendor_name == "nvidia"
+    and c_operators is not None
+    and _index_fill_cpp_registration_enabled
+):
+    _index_fill_scalar_impl = getattr(
+        c_operators, "index_fill_scalar", index_fill_scalar
+    )
+    _index_fill_scalar_inplace_impl = getattr(
+        c_operators, "index_fill_scalar_", index_fill_scalar_
+    )
+else:
+    _index_fill_scalar_impl = index_fill_scalar
+    _index_fill_scalar_inplace_impl = index_fill_scalar_
 
 registrar = GeneralOpRegistrar
 current_work_registrar = None
@@ -401,11 +420,11 @@ _FULL_CONFIG = (
     ("index_add_", index_add_),
     ("index_copy", index_copy),
     ("index_copy_", index_copy_),
-    ("index_fill.int_Scalar", index_fill_scalar),
+    ("index_fill.int_Scalar", _index_fill_scalar_impl),
     ("index_fill.int_Tensor", index_fill_tensor),
     ("index_fill.int_Scalar_out", index_fill_scalar_out),
     ("index_fill.int_Tensor_out", index_fill_tensor_out),
-    ("index_fill_.int_Scalar", index_fill_scalar_),
+    ("index_fill_.int_Scalar", _index_fill_scalar_inplace_impl),
     ("index_fill_.int_Tensor", index_fill_tensor_),
     ("index_put", index_put),
     ("index_put_", index_put_),
@@ -780,6 +799,7 @@ def enable(
     record=False,
     once=False,
     path=None,
+    cpp_patched_ops=None,
 ):
     """Register all FlagGems ops except those explicitly excluded.
 
@@ -802,11 +822,13 @@ def enable(
     """
     global current_work_registrar
     exclude_ops = resolve_user_setting(unused, "exclude")
+    active_cpp_patched_ops = set(aten_patch_list)
+    active_cpp_patched_ops.update(cpp_patched_ops or [])
     current_work_registrar = registrar(
         _FULL_CONFIG,
         user_include_ops=[],
         user_exclude_ops=exclude_ops,
-        cpp_patched_ops=list(set(aten_patch_list)),
+        cpp_patched_ops=list(active_cpp_patched_ops),
         lib=lib,
     )
     setup_flaggems_logging(path=path, record=record, once=once)
@@ -819,6 +841,7 @@ def only_enable(
     record=False,
     once=False,
     path=None,
+    cpp_patched_ops=None,
 ):
     """Register only the specified FlagGems ops and skip the rest.
 
@@ -856,11 +879,13 @@ def only_enable(
         return
 
     global current_work_registrar
+    active_cpp_patched_ops = set(aten_patch_list)
+    active_cpp_patched_ops.update(cpp_patched_ops or [])
     current_work_registrar = registrar(
         _FULL_CONFIG,
         user_include_ops=include_ops,
         user_exclude_ops=[],
-        cpp_patched_ops=list(set(aten_patch_list)),
+        cpp_patched_ops=list(active_cpp_patched_ops),
         full_config_by_func=FULL_CONFIG_BY_FUNC,
         lib=lib,
     )
@@ -881,8 +906,42 @@ class use_gems:
         self.record = record
         self.once = once
         self.path = path
+        self._index_fill_cpp_registration = None
+        self._cpp_patched_ops = []
+
+    def _enable_index_fill_cpp_registration(self):
+        if not _index_fill_cpp_registration_enabled or c_operators is None:
+            return
+
+        registration = getattr(c_operators, "IndexFillAtenRegistration", None)
+        if registration is None:
+            return
+
+        selection_names = {
+            "index_fill",
+            "index_fill_",
+            "index_fill_scalar",
+            "index_fill_scalar_",
+            "index_fill.int_Scalar",
+            "index_fill_.int_Scalar",
+        }
+        if self.include:
+            selected = set(resolve_user_setting(self.include, "include"))
+            if not selected.intersection(selection_names):
+                return
+        elif self.exclude:
+            excluded = set(resolve_user_setting(self.exclude, "exclude"))
+            if excluded.intersection(selection_names):
+                return
+
+        self._index_fill_cpp_registration = registration()
+        self._cpp_patched_ops = [
+            "index_fill.int_Scalar",
+            "index_fill_.int_Scalar",
+        ]
 
     def __enter__(self):
+        self._enable_index_fill_cpp_registration()
         if self.include:
             only_enable(
                 lib=self.lib,
@@ -891,6 +950,7 @@ class use_gems:
                 record=self.record,
                 once=self.once,
                 path=self.path,
+                cpp_patched_ops=self._cpp_patched_ops,
             )
         else:
             enable(
@@ -900,16 +960,19 @@ class use_gems:
                 record=self.record,
                 once=self.once,
                 path=self.path,
+                cpp_patched_ops=self._cpp_patched_ops,
             )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         global current_work_registrar
         if torch.__version__ >= "2.5":
             self.lib._destroy()
+        self._index_fill_cpp_registration = None
         del self.lib
         del self.exclude
         del self.include
         del self.registrar
+        del self._cpp_patched_ops
         del current_work_registrar
         if self.record:
             teardown_flaggems_logging()

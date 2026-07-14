@@ -1,3 +1,6 @@
+#include <cstdlib>
+#include <memory>
+#include <string>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include "torch/python.h"
@@ -20,6 +23,107 @@ c10::Scalar py_object_to_scalar(const py::object &value) {
   }
   throw py::type_error("index_fill_scalar_ value must be a bool, int, or float scalar");
 }
+
+py::object scalar_to_py_object(const c10::Scalar &value) {
+  switch (value.type()) {
+    case c10::ScalarType::Bool:
+      return py::bool_(value.toBool());
+    case c10::ScalarType::Long:
+      return py::int_(value.toLong());
+    case c10::ScalarType::UInt64:
+      return py::int_(value.toUInt64());
+    case c10::ScalarType::Double:
+      return py::float_(value.toDouble());
+    default:
+      throw py::type_error(
+          "index_fill_scalar_ value must be a bool, int, or float scalar");
+  }
+}
+
+bool index_fill_uses_device_bounds_check() {
+  const char *mode_env = std::getenv("FLAG_GEMS_INDEX_FILL_BOUNDS_CHECK");
+  if (mode_env == nullptr) return true;
+
+  const std::string mode(mode_env);
+  return mode.empty() || mode == "0" || mode == "false" || mode == "off" ||
+         mode == "device" || mode == "default" || mode == "none" ||
+         mode == "disable" || mode == "disabled";
+}
+
+at::Tensor index_fill_scalar_dispatch(const at::Tensor &input,
+                                      int64_t dim,
+                                      const at::Tensor &index,
+                                      py::object value) {
+  if (input.is_contiguous() && index_fill_uses_device_bounds_check()) {
+    return flag_gems::index_fill_scalar(
+        input, dim, index, py_object_to_scalar(value));
+  }
+
+  return py::module_::import("flag_gems.ops.index_fill")
+      .attr("index_fill_scalar")(input, dim, index, value)
+      .cast<at::Tensor>();
+}
+
+at::Tensor &index_fill_scalar_dispatch_(at::Tensor &input,
+                                        int64_t dim,
+                                        const at::Tensor &index,
+                                        py::object value) {
+  if (input.is_contiguous() && index_fill_uses_device_bounds_check()) {
+    return flag_gems::index_fill_scalar_(
+        input, dim, index, py_object_to_scalar(value));
+  }
+
+  py::module_::import("flag_gems.ops.index_fill")
+      .attr("index_fill_scalar_")(input, dim, index, value);
+  return input;
+}
+
+at::Tensor index_fill_scalar_aten_dispatch(const at::Tensor &input,
+                                           int64_t dim,
+                                           const at::Tensor &index,
+                                           const c10::Scalar &value) {
+  if (input.is_contiguous() && index_fill_uses_device_bounds_check()) {
+    return flag_gems::index_fill_scalar(input, dim, index, value);
+  }
+
+  py::gil_scoped_acquire gil;
+  return index_fill_scalar_dispatch(
+      input, dim, index, scalar_to_py_object(value));
+}
+
+at::Tensor &index_fill_scalar_aten_dispatch_(at::Tensor &input,
+                                             int64_t dim,
+                                             const at::Tensor &index,
+                                             const c10::Scalar &value) {
+  if (input.is_contiguous() && index_fill_uses_device_bounds_check()) {
+    return flag_gems::index_fill_scalar_(input, dim, index, value);
+  }
+
+  py::gil_scoped_acquire gil;
+  return index_fill_scalar_dispatch_(
+      input, dim, index, scalar_to_py_object(value));
+}
+
+#if defined(FLAGGEMS_USE_CUDA)
+class IndexFillAtenRegistration {
+ public:
+  IndexFillAtenRegistration()
+      : library_(std::make_unique<torch::Library>(
+            torch::Library::IMPL,
+            "aten",
+            c10::DispatchKey::CUDA,
+            __FILE__,
+            __LINE__)) {
+    library_->impl("index_fill.int_Scalar",
+                   TORCH_FN(index_fill_scalar_aten_dispatch));
+    library_->impl("index_fill_.int_Scalar",
+                   TORCH_FN(index_fill_scalar_aten_dispatch_));
+  }
+
+ private:
+  std::unique_ptr<torch::Library> library_;
+};
+#endif
 
 }  // namespace
 
@@ -143,7 +247,7 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("copy_", &flag_gems::copy_);
   m.def("to_copy", &flag_gems::to_copy);
   m.def(
-      "index_fill_scalar",
+      "index_fill_scalar_raw",
       [](const at::Tensor &input,
          int64_t dim,
          const at::Tensor &index,
@@ -152,12 +256,18 @@ PYBIND11_MODULE(c_operators, m) {
         return flag_gems::index_fill_scalar(input, dim, index, scalar);
       });
   m.def(
-      "index_fill_scalar_",
+      "index_fill_scalar_raw_",
       [](at::Tensor &input, int64_t dim, const at::Tensor &index, py::object value)
           -> at::Tensor & {
         c10::Scalar scalar = py_object_to_scalar(value);
         return flag_gems::index_fill_scalar_(input, dim, index, scalar);
       });
+  m.def("index_fill_scalar", &index_fill_scalar_dispatch);
+  m.def("index_fill_scalar_", &index_fill_scalar_dispatch_);
+#if defined(FLAGGEMS_USE_CUDA)
+  py::class_<IndexFillAtenRegistration>(m, "IndexFillAtenRegistration")
+      .def(py::init<>());
+#endif
   m.def("fp8_matmul",
         &flag_gems::fp8_matmul,
         py::arg("a"),

@@ -30,9 +30,15 @@ def _get_cpp_index_fill_scalar_inplace():
     except ImportError:
         c_operators = None
     if c_operators is not None:
-        _CPP_INDEX_FILL_SCALAR = getattr(c_operators, "index_fill_scalar", None)
+        _CPP_INDEX_FILL_SCALAR = getattr(
+            c_operators,
+            "index_fill_scalar_raw",
+            getattr(c_operators, "index_fill_scalar", None),
+        )
         _CPP_INDEX_FILL_SCALAR_INPLACE = getattr(
-            c_operators, "index_fill_scalar_", None
+            c_operators,
+            "index_fill_scalar_raw_",
+            getattr(c_operators, "index_fill_scalar_", None),
         )
     return _CPP_INDEX_FILL_SCALAR_INPLACE
 
