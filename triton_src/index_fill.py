@@ -38,6 +38,26 @@ def index_fill_contiguous_scalar_kernel(
 
 
 @triton.jit(debug=True)
+def index_fill_contiguous_scalar_1d_kernel(
+    out,
+    index,
+    value,
+    index_len,
+    dim_size,
+    BLOCK: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < index_len
+
+    raw_index = tl.load(index + offsets, mask=mask, other=0).to(tl.int64)
+    valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
+    tl.device_assert(valid_index, "index out of bounds", mask=mask)
+    normalized_index = tl.where(raw_index < 0, raw_index + dim_size, raw_index)
+
+    tl.store(out + normalized_index, value, mask=mask & valid_index)
+
+
+@triton.jit(debug=True)
 def index_fill_contiguous_scalar_inner1_kernel(
     out,
     index,

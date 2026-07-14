@@ -3,8 +3,6 @@ import math
 import pytest
 import torch
 
-from flag_gems.ops import index_fill_scalar, index_fill_scalar_
-
 from . import base, consts
 
 INDEX_RATIOS = ("1/16", "1/2", "full")
@@ -36,12 +34,18 @@ class IndexFillBenchmark(base.GenericBenchmark):
             (200, 40999, 3),
         ]
 
+    def _clone_inplace_args(self, args):
+        if not self.is_inplace:
+            return args
+        return (args[0].clone(), *args[1:])
+
     def get_latency(self, op, *args, **kwargs):
         if base.Config.mode == consts.BenchMode.OPERATOR:
-            # Keep one-time Triton loading out of the adaptive iteration count.
-            op(*args, **kwargs)
+            # Keep lazy module loading out of the five-call adaptive estimate.
+            for _ in range(5):
+                op(*self._clone_inplace_args(args), **kwargs)
             base.torch_device_fn.synchronize()
-        return super().get_latency(op, *args, **kwargs)
+        return super().get_latency(op, *self._clone_inplace_args(args), **kwargs)
 
 
 def _generate_input(shape, dtype, device):
@@ -125,7 +129,6 @@ def test_index_fill():
         op_name="index_fill",
         input_fn=index_fill_input_fn,
         torch_op=torch.index_fill,
-        gems_op=index_fill_scalar,
         dtypes=INDEX_FILL_DTYPES,
         get_gbps=_out_of_place_gbps,
     )
@@ -138,7 +141,6 @@ def test_index_fill_():
         op_name="index_fill_",
         input_fn=index_fill_input_fn,
         torch_op=torch.Tensor.index_fill_,
-        gems_op=index_fill_scalar_,
         dtypes=INDEX_FILL_DTYPES,
         is_inplace=True,
         get_gbps=_inplace_gbps,
