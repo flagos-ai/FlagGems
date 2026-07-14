@@ -21,8 +21,7 @@ def test_lshift(shape, dtype):
 
     # Reference: using bitwise_left_shift which is equivalent to __lshift__
     ref_out = torch.bitwise_left_shift(ref_inp1, ref_inp2)
-    # FlagGems: using << operator which dispatches to aten.__lshift__
     with flag_gems.use_gems():
-        res_out = inp1 << inp2
+        res_out = torch.ops.aten.__lshift__(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
