@@ -632,6 +632,7 @@ _FULL_CONFIG = (
     ("scatter_reduce.two", scatter_reduce),
     ("scatter_reduce.two_out", scatter_reduce_out),
     ("scatter_reduce_.two", scatter_reduce_),
+    ("scalar_tensor", scalar_tensor),
     ("searchsorted.Scalar", searchsorted_scalar),
     ("searchsorted.Scalar_out", searchsorted_scalar_out),
     ("searchsorted.Tensor", searchsorted),
@@ -678,6 +679,7 @@ _FULL_CONFIG = (
     ("special_i0e_out", special_i0e_out),
     ("special_i1", special_i1),
     ("special_i1_out", special_i1_out),
+    ("special_logsumexp", special_logsumexp),
     ("special_log_softmax", special_log_softmax),
     ("special_shifted_chebyshev_polynomial_u", special_shifted_chebyshev_polynomial_u),
     (
