@@ -18,8 +18,7 @@ def test_special_airy_ai(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.special.airy_ai(inp)
 
-    # Use much looser tolerance for this special function due to approximation complexity
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=5e-1)
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
 
 
 @pytest.mark.special_airy_ai_out
@@ -38,6 +37,5 @@ def test_special_airy_ai_out(shape, dtype):
     with flag_gems.use_gems():
         act_out = torch.special.airy_ai(inp, out=out_act)
 
-    # Use much looser tolerance for this special function due to approximation complexity
-    utils.gems_assert_close(act_out, ref_out, dtype, atol=5e-1)
-    utils.gems_assert_close(out_act, ref_out, dtype, atol=5e-1)
+    utils.gems_assert_close(act_out, ref_out, dtype, atol=1e-3)
+    utils.gems_assert_close(out_act, ref_out, dtype, atol=1e-3)
