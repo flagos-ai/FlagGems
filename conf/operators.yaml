@@ -7167,6 +7167,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: scalar_tensor
+    description: |
+      Creates a 0-dimensional (scalar) tensor from a Python numeric value.
+      The tensor's dtype can be specified, otherwise inferred from the input value.
+    for:
+      - scalar_tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: sigmoid
     description: Computes the expit (also known as the logistic sigmoid function) of the elements of `input`.
     for:
