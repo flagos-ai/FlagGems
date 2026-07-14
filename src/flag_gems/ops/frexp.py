@@ -19,23 +19,21 @@ logger = logging.getLogger(__name__)
     num_outputs=2,
 )
 @triton.jit
-def frexp_func(x):
-    """
-    Decompose each input value into a mantissa and an integral exponent.
-
-    For finite nonzero values:
-
-        x = mantissa * 2 ** exponent
-
-    where the absolute value of mantissa is in the range [0.5, 1.0).
-
-    Special cases:
-    - frexp(+0.0) returns (+0.0, 0)
-    - frexp(-0.0) returns (-0.0, 0)
-    - frexp(+inf) returns (+inf, 0)
-    - frexp(-inf) returns (-inf, 0)
-    - frexp(nan) returns (nan, 0)
-    """
+def _frexp_func(x):
+    # Decompose each input value into a mantissa and an integral exponent.
+    #
+    # For finite nonzero values:
+    #
+    #     x = mantissa * 2 ** exponent
+    #
+    # where the absolute value of mantissa is in the range [0.5, 1.0).
+    #
+    # Special cases:
+    # - frexp(+0.0) returns (+0.0, 0)
+    # - frexp(-0.0) returns (-0.0, 0)
+    # - frexp(+inf) returns (+inf, 0)
+    # - frexp(-inf) returns (-inf, 0)
+    # - frexp(nan) returns (nan, 0)
 
     # Perform the computation in float32 for float16, bfloat16, and
     # float32 inputs.
@@ -100,7 +98,7 @@ def frexp(A):
     mantissa = torch.empty_like(A)
     exponent = torch.empty_like(A, dtype=torch.int32)
 
-    return frexp_func(
+    return _frexp_func(
         A,
         out0=mantissa,
         out1=exponent,
