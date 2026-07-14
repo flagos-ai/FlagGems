@@ -17,8 +17,8 @@ def test_conj(shape, dtype):
     inp = torch.complex(real, imag).to(dtype)
     ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.conj(ref_inp)
+    ref_out = torch._conj(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.conj(inp)
+        res_out = torch._conj(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
