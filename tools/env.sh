@@ -16,15 +16,13 @@ export C_INCLUDE_PATH="${C_INCLUDE_PATH:-}"
 export CPLUS_INCLUDE_PATH="${CPLUS_INCLUDE_PATH:-}"
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 export LIBRARY_PATH="${LIBRARY_PATH:-}"
+export PYTHONPATH="${PYTHONPATH:-}"
 
 case $BACKEND in
-  ascend-cann850|ascend-cann900)
+  ascend|ascend-cann850|ascend-cann900)
     # This script is provided by the Huawei Ascend CANN toolkit installation.
-    if [ -f /usr/local/Ascend/ascend-toolkit/set_env.sh ]; then
-      source /usr/local/Ascend/ascend-toolkit/set_env.sh
-    fi
-    if [ -f /usr/local/Ascend/toolbox/set_env.sh ]; then
-      source /usr/local/Ascend/toolbox/set_env.sh
+    if [ -f /usr/local/Ascend/cann/set_env.sh ]; then
+      source /usr/local/Ascend/cann/set_env.sh || true
     fi
 
     # TODO: Check if this is necessary
@@ -61,7 +59,7 @@ case $BACKEND in
     export PATH=/usr/local/cuda/bin:$PATH
     export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
     ;;
-  mthreads)
+  mthreads|mthreads-436|mthreads-520)
     export MUSA_HOME=/usr/local/musa
     export PATH=$MUSA_HOME/bin:$PATH
     export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH
@@ -95,7 +93,7 @@ case $BACKEND in
     export USE_TORCH_XLA=0
     # Torch compiler is not supported on TsingMicro, and in particular,
     # it is not used for inference scenario
-    export TORCH_COMPILE_DIABLE=1
+    export TORCH_COMPILE_DISABLE=1
 
     # if [ -n "${USE_TRITON}" ]; then
     #   export PYTHONPATH=$SITE_PACKAGES/triton/backends/tsingmicro/llvm/python_packages/mlir_core
