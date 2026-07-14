@@ -13,15 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-from functools import lru_cache
 
-import torch
 import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
 _pow = tl_extra_shim.pow
+_lgamma = tl_extra_shim.lgamma
 logger = logging.getLogger(__name__)
 
 if hasattr(tl_extra_shim, "fast_dividef"):
@@ -110,14 +109,18 @@ def trigamma_func(x):
     is_tensor=[True, False, False], promotion_methods=[(0, "INT_TO_FLOAT")]
 )
 @triton.jit
-def polygamma_zeta_func(x, s, scale):
+def polygamma_zeta_func(x, s, sign):
     # polygamma(n, x) = (-1)^(n+1) * n! * zeta(n + 1, x) for n >= 2, with
-    # s = n + 1 and scale = (-1)^(n+1) * n!. The Hurwitz zeta function is
-    # evaluated in float32 with the Cephes Euler-Maclaurin algorithm, the
-    # same one PyTorch's CPU/CUDA kernels use.
+    # s = n + 1 and sign = (-1)^(n+1). The Hurwitz zeta function is evaluated
+    # in float32 with the Cephes Euler-Maclaurin algorithm, the same one
+    # PyTorch's CPU/CUDA kernels use.
     q = x.to(tl.float32)
     s = s.to(tl.float32)
-    scale = scale.to(tl.float32)
+    # scale = (-1)^(n+1) * n! = sign * exp(lgamma(n + 1)) = sign * exp(lgamma(s)),
+    # computed in float32 on-device (matches torch's kernels; an exact factorial
+    # would drift beyond float32 tolerance for n >= ~8). Done here in Triton
+    # rather than via a torch call in the wrapper.
+    scale = sign.to(tl.float32) * tl.exp(_lgamma(s))
 
     # Direct sum: zeta(s, q) = sum_k (q + k)^(-s), 9 mandatory terms plus
     # predicated extra terms while q + k <= 9. Seven extra rounds make the
@@ -194,17 +197,10 @@ def polygamma_zeta_func(x, s, scale):
     return scale * total
 
 
-@lru_cache(maxsize=None)
-def _polygamma_zeta_args(n, device):
-    # scale = (-1)^(n+1) * n!, with n! computed as exp(lgamma(n + 1)) in
-    # float32 on the device, exactly like torch's kernels: lgamma's few-ulp
-    # error is amplified by exp, so an exact factorial would drift from the
-    # torch reference beyond float32 tolerance for n >= ~8
-    factorial = torch.lgamma(
-        torch.tensor(n + 1.0, dtype=torch.float32, device=device)
-    ).exp_()
-    sign = 1.0 if n % 2 == 1 else -1.0
-    return float(n + 1), sign * factorial.item()
+def _polygamma_zeta_args(n):
+    # s = n + 1, sign = (-1)^(n+1). The n! factor is folded into the kernel
+    # (see polygamma_zeta_func) so no torch call is needed here.
+    return float(n + 1), 1.0 if n % 2 == 1 else -1.0
 
 
 def polygamma(n, A):
@@ -215,8 +211,8 @@ def polygamma(n, A):
         return digamma_func(A)
     if n == 1:
         return trigamma_func(A)
-    s, scale = _polygamma_zeta_args(n, A.device)
-    return polygamma_zeta_func(A, s, scale)
+    s, sign = _polygamma_zeta_args(n)
+    return polygamma_zeta_func(A, s, sign)
 
 
 def polygamma_(A, n):
@@ -228,8 +224,8 @@ def polygamma_(A, n):
     elif n == 1:
         trigamma_func(A, out0=A)
     else:
-        s, scale = _polygamma_zeta_args(n, A.device)
-        polygamma_zeta_func(A, s, scale, out0=A)
+        s, sign = _polygamma_zeta_args(n)
+        polygamma_zeta_func(A, s, sign, out0=A)
     return A
 
 
@@ -242,6 +238,6 @@ def polygamma_out(n, A, out):
     elif n == 1:
         trigamma_func(A, out0=out)
     else:
-        s, scale = _polygamma_zeta_args(n, A.device)
-        polygamma_zeta_func(A, s, scale, out0=out)
+        s, sign = _polygamma_zeta_args(n)
+        polygamma_zeta_func(A, s, sign, out0=out)
     return out
