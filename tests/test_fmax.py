@@ -22,7 +22,7 @@ def test_fmax(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.fmax
+@pytest.mark.fmax_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_fmax_out(shape, dtype):
