@@ -28,6 +28,12 @@ if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
     PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
   target_compile_definitions(test_triton_fill PRIVATE FLAGGEMS_POINTWISE_DYNAMIC)
   add_test(NAME test_triton_fill COMMAND test_triton_fill)
+
+  add_executable(test_triton_type_promotion test_triton_type_promotion.cpp)
+  target_link_libraries(test_triton_type_promotion
+    PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+  target_compile_definitions(test_triton_type_promotion PRIVATE FLAGGEMS_POINTWISE_DYNAMIC)
+  add_test(NAME test_triton_type_promotion COMMAND test_triton_type_promotion)
 endif()
 
 add_executable(test_triton_reduction test_triton_reduction.cpp)
