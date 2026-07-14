@@ -6,7 +6,7 @@ import flag_gems
 from . import base, consts
 
 
-@pytest.mark.trunc_
+@pytest.mark.trunc
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
