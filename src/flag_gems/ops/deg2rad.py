@@ -108,5 +108,5 @@ def deg2rad_(A):
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     scale = math.pi / 180.0
-    deg2rad__kernel[grid](A.view(-1), n_elements, scale, BLOCK_SIZE=1024)
+    deg2rad_kernel[grid](A.view(-1), n_elements, scale, BLOCK_SIZE=1024)
     return A
