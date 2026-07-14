@@ -1,7 +1,7 @@
-# Base image built from container/flaggems-nvidia-* (runtime stage).
-# Accepts the pre-built image name via the IMAGE build arg so callers can
-# pin it to a specific tag without editing this file.
-ARG IMAGE=flaggems-nvidia:12.8
+# Base image produced by build-infra (see .devcontainer/build-infra/runtime/Containerfile).
+# Naming convention: flagos-runtime-{vendor}-{backend}:latest
+# Override this arg to pin to a specific registry or tag without editing this file.
+ARG IMAGE=flagos-runtime-nvidia-cuda12.8:latest
 
 FROM ${IMAGE}
 

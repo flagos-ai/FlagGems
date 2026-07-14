@@ -43,7 +43,9 @@ When you open this repo in VS Code, it will prompt you to select a configuration
 1. Create a new directory under `.devcontainer/<backend>/`.
 2. Copy the structure from an existing backend (e.g., `nvidia/`).
 3. Update `flaggems.env` with the appropriate `FLAGGEMS_BACKEND` and `CMAKE_ARGS`.
-4. Update `Dockerfile` to use the correct base image and pip index URL.
+4. Update `Dockerfile`: set the default `IMAGE` arg to the runtime image produced by
+   [`build-infra`](.devcontainer/build-infra) — naming convention
+   `flagos-runtime-{vendor}-{backend}:latest` (see `.devcontainer/build-infra/configs.yaml`).
 5. Update `devcontainer.json` with the correct device mounts and container name.
 
 ## Backend-to-CMake Mapping

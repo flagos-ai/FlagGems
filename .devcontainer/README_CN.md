@@ -40,7 +40,9 @@
 1. 在 `.devcontainer/<backend>/` 下创建新目录。
 2. 参考已有后端（如 `nvidia/`）复制目录结构。
 3. 修改 `flaggems.env`，填写对应的 `FLAGGEMS_BACKEND` 和 `CMAKE_ARGS`。
-4. 修改 `Dockerfile`，使用正确的基础镜像和 pip 源地址。
+4. 修改 `Dockerfile`：将默认的 `IMAGE` 构建参数设置为由
+   [`build-infra`](.devcontainer/build-infra) 构建的 runtime 镜像，
+   命名规则为 `flagos-runtime-{vendor}-{backend}:latest`（见 `.devcontainer/build-infra/configs.yaml`）。
 5. 修改 `devcontainer.json`，配置正确的设备挂载和容器名称。
 
 ## 后端与 CMake 变量对照

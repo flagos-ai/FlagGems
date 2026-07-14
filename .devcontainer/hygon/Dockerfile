@@ -1,7 +1,7 @@
-# Base image built from container/flaggems-hygon-* (runtime stage).
-# Accepts the pre-built image name via the IMAGE build arg so callers can
-# pin it to a specific tag without editing this file.
-ARG IMAGE=flaggems-hygon:26.04
+# Base image produced by build-infra (see .devcontainer/build-infra/runtime/Containerfile).
+# Naming convention: flagos-runtime-{vendor}-{backend}:latest
+# Override this arg to pin to a specific registry or tag without editing this file.
+ARG IMAGE=flagos-runtime-hygon-dtk26.04:latest
 
 FROM ${IMAGE}
 

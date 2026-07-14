@@ -4,9 +4,11 @@
     "context": "../../",
     "dockerfile": "./Dockerfile",
     "args": {
-      // Pre-built image produced by container/flaggems-hygon-26.04 (runtime stage).
-      // Override this arg to use a different tag.
-      "IMAGE": "flaggems-hygon:26.04",
+      // Image produced by build-infra (see .devcontainer/build-infra/runtime/Containerfile).
+      // Naming: flagos-runtime-{vendor}-{backend}:latest (see .devcontainer/build-infra/configs.yaml).
+      // Override to use a different backend or registry, e.g.:
+      //   "IMAGE": "myregistry/flagos-runtime-hygon-dtk26.04:latest"
+      "IMAGE": "flagos-runtime-hygon-dtk26.04:latest",
       "USERNAME": "vscode"
     }
   },

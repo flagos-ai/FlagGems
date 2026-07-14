@@ -4,10 +4,11 @@
     "context": "../../",
     "dockerfile": "./Dockerfile",
     "args": {
-      // Pre-built image produced by container/flaggems-nvidia-12.8 (runtime stage).
-      // Override this arg to use a different tag, e.g.:
-      //   "IMAGE": "flaggems-nvidia:13.3"
-      "IMAGE": "flaggems-nvidia:12.8",
+      // Image produced by build-infra (see .devcontainer/build-infra/runtime/Containerfile).
+      // Naming: flagos-runtime-{vendor}-{backend}:latest (see .devcontainer/build-infra/configs.yaml).
+      // Override to use a different backend or registry, e.g.:
+      //   "IMAGE": "flagos-runtime-nvidia-cuda13.3:latest"
+      "IMAGE": "flagos-runtime-nvidia-cuda12.8:latest",
       "USERNAME": "vscode"
     }
   },
