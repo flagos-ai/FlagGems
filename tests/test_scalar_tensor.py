@@ -15,7 +15,6 @@ device = flag_gems.device
 )
 @pytest.mark.parametrize("fill_value", [0.01, 2, 0, -1, True, False])
 def test_scalar_tensor(dtype, fill_value):
-    # with dtype
     ref_out = torch.scalar_tensor(
         fill_value, dtype=dtype, device="cpu" if cfg.TO_CPU else device
     )
