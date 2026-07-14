@@ -8,6 +8,11 @@ from . import base, consts
 INDEX_RATIOS = ("1/16", "1/2", "full")
 INDEX_FILL_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 MIN_SELECTED_NUMEL = 16 * 1024
+DIM0_INDEX_LENGTHS = {
+    (4096, 256): (8, 256, 2048),
+    (4096, 4096): (512, 2048, 4096),
+    (8192, 4096): (512, 4096, 8192),
+}
 
 
 class IndexFillBenchmark(base.GenericBenchmark):
@@ -53,8 +58,8 @@ def _generate_input(shape, dtype, device):
     return torch.randint(-10, 10, shape, dtype=dtype, device=device)
 
 
-def _dim_for_shape(shape):
-    return 0 if len(shape) == 1 else 1
+def _dims_for_shape(shape):
+    return (0,) if len(shape) == 1 else (0, 1)
 
 
 def _index_len(dim_size, ratio):
@@ -80,20 +85,18 @@ def _scalar_value(dtype):
 
 
 def _base_inputs(shape, dtype, device):
-    dim = _dim_for_shape(shape)
-    dim_size = shape[dim]
-    seen_index_lens = set()
-    for ratio in INDEX_RATIOS:
-        index_len = _index_len(dim_size, ratio)
-        if index_len in seen_index_lens:
-            continue
-        seen_index_lens.add(index_len)
-        selected_numel = math.prod(shape) // dim_size * index_len
-        if selected_numel < MIN_SELECTED_NUMEL:
-            continue
-        inp = _generate_input(shape, dtype, device)
-        index = _make_index(dim_size, index_len, device)
-        yield inp, dim, index
+    for dim in _dims_for_shape(shape):
+        dim_size = shape[dim]
+        index_lengths = DIM0_INDEX_LENGTHS.get(tuple(shape), ()) if dim == 0 else ()
+        if not index_lengths:
+            index_lengths = tuple(_index_len(dim_size, ratio) for ratio in INDEX_RATIOS)
+        for index_len in dict.fromkeys(index_lengths):
+            selected_numel = math.prod(shape) // dim_size * index_len
+            if selected_numel < MIN_SELECTED_NUMEL and dim != 0:
+                continue
+            inp = _generate_input(shape, dtype, device)
+            index = _make_index(dim_size, index_len, device)
+            yield inp, dim, index
 
 
 def _selected_numel(inp, dim, index):

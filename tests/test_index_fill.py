@@ -16,7 +16,17 @@ INDEX_FILL_SHAPES = (
 )
 DIM_LIST = [1] if QUICK_MODE else [0, -1]
 INDEX_CASES = ["normal", "negative", "scalar"]
-INDEX_FILL_DTYPES = utils.FLOAT_DTYPES + utils.INT_DTYPES + utils.BOOL_TYPES
+_INDEX_FILL_DTYPES = utils.FLOAT_DTYPES + utils.INT_DTYPES + utils.BOOL_TYPES
+INDEX_FILL_DTYPES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.device == "npu" and dtype == torch.int16,
+            reason="torch_npu/ACLNN does not support int16 index_fill reference",
+        ),
+    )
+    for dtype in _INDEX_FILL_DTYPES
+]
 INDEX_FILL_OPS = [
     "index_fill_scalar",
     "index_fill_scalar_",
@@ -64,6 +74,213 @@ def _to_ref_value(value):
         return utils.to_reference(value, False)
     return value
 
+
+@pytest.mark.index_fill
+@pytest.mark.skipif(
+    flag_gems.device != "npu",
+    reason="Ascend bounds-check dispatch is only used on NPU",
+)
+@pytest.mark.parametrize(
+    ("index_numel", "expected_host_check"),
+    ((512, True), (2048, True), (4096, True), (8192, False)),
+)
+def test_index_fill_ascend_host_bounds_check_threshold(
+    index_numel, expected_host_check
+):
+    from flag_gems.runtime.backend._ascend.ops import index_fill as ascend_index_fill
+
+    index = torch.empty(index_numel, dtype=torch.long, device=flag_gems.device)
+    assert (
+        ascend_index_fill._should_use_ascend_host_index_check(index)
+        is expected_host_check
+    )
+
+
+@pytest.mark.index_fill
+@pytest.mark.skipif(
+    flag_gems.device != "npu",
+    reason="Ascend bounds-check cache is only used on NPU",
+)
+def test_index_fill_ascend_bounds_check_cache_revalidates_mutated_index(monkeypatch):
+    from flag_gems.runtime.backend._ascend.ops import index_fill as ascend_index_fill
+
+    inp = torch.empty((4, 8), dtype=torch.float16, device=flag_gems.device)
+    index = torch.tensor([0, -1], dtype=torch.long, device=flag_gems.device)
+    original_aminmax = ascend_index_fill.torch.aminmax
+    calls = 0
+
+    def counted_aminmax(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_aminmax(*args, **kwargs)
+
+    ascend_index_fill._ascend_index_validation_cache.clear()
+    monkeypatch.setattr(ascend_index_fill.torch, "aminmax", counted_aminmax)
+
+    dim, prepared, bounds_checked, has_negative, _ = (
+        ascend_index_fill._prepare_ascend_index(inp, 0, index)
+    )
+    assert (dim, prepared is index, bounds_checked, has_negative) == (
+        0,
+        True,
+        True,
+        True,
+    )
+    ascend_index_fill._prepare_ascend_index(inp, 0, index)
+    assert calls == 1
+
+    index.copy_(torch.tensor([0, 4], dtype=torch.long, device=flag_gems.device))
+    with pytest.raises(IndexError, match="index out of range in self"):
+        ascend_index_fill._prepare_ascend_index(inp, 0, index)
+    assert calls == 2
+    ascend_index_fill._ascend_index_validation_cache.clear()
+
+
+@pytest.mark.index_fill
+@pytest.mark.skipif(
+    flag_gems.device != "npu",
+    reason="Ascend membership cache is only used on NPU",
+)
+def test_index_fill_ascend_membership_cache_revalidates_mutated_index():
+    from flag_gems.runtime.backend._ascend.ops import index_fill as ascend_index_fill
+
+    out = torch.empty((1024, 4096), dtype=torch.float16, device=flag_gems.device)
+    index = torch.tensor([0, 2, 7], dtype=torch.long, device=flag_gems.device)
+
+    ascend_index_fill._ascend_membership_cache.clear()
+    ascend_index_fill._ascend_membership_cache_bytes = 0
+    first = ascend_index_fill._build_contiguous_membership_mask(
+        out, index, has_negative=False, dim_size=4096
+    )
+    second = ascend_index_fill._build_contiguous_membership_mask(
+        out, index, has_negative=False, dim_size=4096
+    )
+    assert second is first
+
+    index.copy_(torch.tensor([1, 3, 9], dtype=torch.long, device=flag_gems.device))
+    third = ascend_index_fill._build_contiguous_membership_mask(
+        out, index, has_negative=False, dim_size=4096
+    )
+    assert third is not first
+    expected = torch.tensor([0, 1, 0, 1, 0, 0, 0, 0, 0, 1])
+    assert torch.equal(third.cpu()[:10], expected)
+    ascend_index_fill._ascend_membership_cache.clear()
+    ascend_index_fill._ascend_membership_cache_bytes = 0
+
+
+@pytest.mark.index_fill
+@pytest.mark.skipif(
+    flag_gems.device != "npu",
+    reason="Ascend transpose-fill dispatch is only used on NPU",
+)
+@pytest.mark.parametrize(
+    ("index_numel", "expected_transpose_fill"),
+    ((512, False), (1024, True)),
+)
+def test_index_fill_ascend_transpose_fill_program_threshold(
+    index_numel, expected_transpose_fill
+):
+    from flag_gems.runtime.backend._ascend.ops import index_fill as ascend_index_fill
+
+    inp = torch.empty((200, 40999, 3), dtype=torch.float16, device=flag_gems.device)
+    index = torch.empty(index_numel, dtype=torch.long, device=flag_gems.device)
+    assert (
+        ascend_index_fill._can_use_contiguous_high_density_transpose_fill(
+            inp, 1, index, value_is_tensor=False, bounds_checked=True
+        )
+        is expected_transpose_fill
+    )
+
+
+@pytest.mark.index_fill
+@pytest.mark.skipif(
+    flag_gems.device != "npu",
+    reason="Ascend transpose-fill dispatch is only used on NPU",
+)
+@pytest.mark.parametrize(
+    ("index_numel", "expected_transpose_fill"),
+    ((2047, False), (2048, True)),
+)
+def test_index_fill_ascend_transpose_fill_high_density_inner1(
+    index_numel, expected_transpose_fill
+):
+    from flag_gems.runtime.backend._ascend.ops import index_fill as ascend_index_fill
+
+    inp = torch.empty(
+        (4096, 4096), dtype=torch.float16, device=flag_gems.device
+    )
+    index = torch.empty(index_numel, dtype=torch.long, device=flag_gems.device)
+    assert (
+        ascend_index_fill._can_use_contiguous_high_density_transpose_fill(
+            inp, 1, index, value_is_tensor=False, bounds_checked=True
+        )
+        is expected_transpose_fill
+    )
+
+
+@pytest.mark.index_fill
+@pytest.mark.skipif(
+    flag_gems.device != "npu",
+    reason="Ascend transpose-fill dispatch is only used on NPU",
+)
+@pytest.mark.parametrize(
+    ("index_numel", "expected_transpose_fill"),
+    ((128, False), (256, True)),
+)
+def test_index_fill_ascend_transpose_fill_small_full_dim(
+    index_numel, expected_transpose_fill
+):
+    from flag_gems.runtime.backend._ascend.ops import index_fill as ascend_index_fill
+
+    inp = torch.empty(
+        (4096, 256), dtype=torch.float16, device=flag_gems.device
+    )
+    index = torch.empty(index_numel, dtype=torch.long, device=flag_gems.device)
+    assert (
+        ascend_index_fill._can_use_contiguous_high_density_transpose_fill(
+            inp, 1, index, value_is_tensor=False, bounds_checked=True
+        )
+        is expected_transpose_fill
+    )
+
+
+@pytest.mark.index_fill
+@pytest.mark.skipif(
+    flag_gems.device != "npu",
+    reason="Ascend full-coverage fill dispatch is only used on NPU",
+)
+@pytest.mark.parametrize("dtype", (torch.float16, torch.bfloat16, torch.float32))
+def test_index_fill_ascend_full_coverage_fill_and_duplicate_fallback(dtype):
+    from flag_gems.runtime.backend._ascend.ops import index_fill as ascend_index_fill
+
+    shape = (16, 64, 3)
+    value = 3.14159
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    index = torch.randperm(shape[1], device=flag_gems.device)
+    index[::7] -= shape[1]
+
+    ref_inp = utils.to_reference(inp, False)
+    ref_index = utils.to_reference(index, False)
+    ref_out = ref_inp.index_fill(1, ref_index, value)
+    actual = ascend_index_fill.index_fill_scalar(inp, 1, index, value)
+    utils.gems_assert_equal(actual, ref_out)
+
+    inplace = inp.clone()
+    ref_inplace = utils.to_reference(inplace, False)
+    ref_inplace.index_fill_(1, ref_index, value)
+    ascend_index_fill.index_fill_scalar_(inplace, 1, index, value)
+    utils.gems_assert_equal(inplace, ref_inplace)
+
+    duplicate = torch.randint(
+        0, shape[1] // 2, (shape[1],), device=flag_gems.device
+    )
+    ref_duplicate = ref_inp.index_fill(
+        1, utils.to_reference(duplicate, False), value
+    )
+    duplicate_actual = ascend_index_fill.index_fill_scalar(
+        inp, 1, duplicate, value
+    )
+    utils.gems_assert_equal(duplicate_actual, ref_duplicate)
 
 @pytest.mark.index_fill
 @pytest.mark.parametrize("shape", INDEX_FILL_SHAPES)
@@ -198,6 +415,212 @@ def test_index_fill_contiguous_inner3_fast_path(dtype):
     assert res_out is not inp
     assert res_inplace is inplace
     utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(inplace, ref_out)
+
+
+@pytest.mark.index_fill
+@pytest.mark.index_fill_
+@pytest.mark.skipif(
+    flag_gems.device != "npu",
+    reason="Ascend high-density transpose fill is only used on NPU",
+)
+@pytest.mark.parametrize("dtype", (torch.float16, torch.bfloat16, torch.float32))
+def test_index_fill_high_density_inner1_transpose_path(dtype):
+    inp = _make_input((256, 4096), dtype)
+    index = torch.cat(
+        (
+            torch.tensor([-1, -1], dtype=torch.long, device=flag_gems.device),
+            torch.arange(2046, dtype=torch.long, device=flag_gems.device),
+        )
+    )
+    value = _scalar_value(dtype)
+
+    ref_inp = utils.to_reference(inp, False)
+    ref_index = utils.to_reference(index, False)
+    ref_out = ref_inp.index_fill(1, ref_index, value)
+
+    with flag_gems.use_gems(include=INDEX_FILL_OPS):
+        actual = inp.index_fill(1, index, value)
+        inplace = inp.clone()
+        result = inplace.index_fill_(1, index, value)
+
+    assert actual is not inp
+    assert result is inplace
+    utils.gems_assert_equal(actual, ref_out)
+    utils.gems_assert_equal(inplace, ref_out)
+
+
+@pytest.mark.index_fill
+@pytest.mark.index_fill_
+@pytest.mark.skipif(
+    flag_gems.device != "npu",
+    reason="Ascend small full-dim transpose fill is only used on NPU",
+)
+@pytest.mark.parametrize("dtype", (torch.float16, torch.bfloat16, torch.float32))
+def test_index_fill_small_full_dim_transpose_path(dtype):
+    inp = _make_input((4096, 256), dtype)
+    index = torch.cat(
+        (
+            torch.tensor([-1, -1], dtype=torch.long, device=flag_gems.device),
+            torch.arange(254, dtype=torch.long, device=flag_gems.device),
+        )
+    )
+    value = _scalar_value(dtype)
+
+    ref_inp = utils.to_reference(inp, False)
+    ref_index = utils.to_reference(index, False)
+    ref_out = ref_inp.index_fill(1, ref_index, value)
+
+    with flag_gems.use_gems(include=INDEX_FILL_OPS):
+        actual = inp.index_fill(1, index, value)
+        inplace = inp.clone()
+        result = inplace.index_fill_(1, index, value)
+
+    assert actual is not inp
+    assert result is inplace
+    utils.gems_assert_equal(actual, ref_out)
+    utils.gems_assert_equal(inplace, ref_out)
+
+
+@pytest.mark.index_fill
+@pytest.mark.parametrize("value_is_tensor", [False, True])
+def test_index_fill_large_contiguous_membership_functional(value_is_tensor):
+    inp = _make_input((1024, 1024), torch.float16)
+    index = torch.arange(16, dtype=torch.long, device=flag_gems.device)
+    value = (
+        torch.tensor(-3.5, dtype=inp.dtype, device=flag_gems.device)
+        if value_is_tensor
+        else -3.5
+    )
+
+    ref_inp = utils.to_reference(inp, False)
+    ref_index = utils.to_reference(index, False)
+    ref_value = _to_ref_value(value)
+    ref_out = ref_inp.index_fill(1, ref_index, ref_value)
+
+    with flag_gems.use_gems(include=INDEX_FILL_OPS):
+        actual = inp.index_fill(1, index, value)
+
+    assert actual is not inp
+    utils.gems_assert_equal(actual, ref_out)
+
+@pytest.mark.index_fill
+@pytest.mark.index_fill_
+def test_index_fill_large_contiguous_membership_duplicate_index():
+    inp = _make_input((1024, 1024), torch.float16)
+    base_index = torch.arange(127, dtype=torch.long, device=flag_gems.device)
+    index = torch.cat(
+        (
+            base_index,
+            base_index,
+            torch.tensor([-1], dtype=torch.long, device=flag_gems.device),
+        )
+    )
+    value = -3.5
+
+    ref_inp = utils.to_reference(inp, False)
+    ref_index = utils.to_reference(index, False)
+    ref_out = ref_inp.index_fill(1, ref_index, value)
+
+    with flag_gems.use_gems(include=INDEX_FILL_OPS):
+        actual = inp.index_fill(1, index, value)
+        inplace = inp.clone()
+        inplace.index_fill_(1, index, value)
+
+    utils.gems_assert_equal(actual, ref_out)
+    utils.gems_assert_equal(inplace, ref_out)
+
+
+@pytest.mark.index_fill
+@pytest.mark.index_fill_
+@pytest.mark.parametrize("shape", ((64, 257), (32, 17, 3)))
+@pytest.mark.parametrize("dtype", (torch.float16, torch.bfloat16, torch.float32))
+@pytest.mark.parametrize("value_is_tensor", (False, True))
+def test_index_fill_dim0_row_path_negative_duplicate(shape, dtype, value_is_tensor):
+    inp = _make_input(shape, dtype)
+    index = torch.tensor([0, 7, 7, -1, 31], dtype=torch.long, device=flag_gems.device)
+    value = (
+        torch.tensor(-3.5, dtype=dtype, device=flag_gems.device)
+        if value_is_tensor
+        else -3.5
+    )
+
+    ref_inp = utils.to_reference(inp, False)
+    ref_index = utils.to_reference(index, False)
+    ref_value = _to_ref_value(value)
+    ref_out = ref_inp.index_fill(0, ref_index, ref_value)
+
+    with flag_gems.use_gems(include=INDEX_FILL_OPS):
+        actual = inp.index_fill(0, index, value)
+        inplace = inp.clone()
+        inplace.index_fill_(0, index, value)
+
+    utils.gems_assert_equal(actual, ref_out)
+    utils.gems_assert_equal(inplace, ref_out)
+
+
+
+@pytest.mark.index_fill
+@pytest.mark.index_fill_
+@pytest.mark.parametrize("dtype", (torch.float16, torch.bfloat16, torch.float32))
+@pytest.mark.parametrize(
+    "shape",
+    (
+        (32, 64, 2),
+        (9, 37, 2),
+        (5, 37, 2, 1),
+        (32, 64, 3),
+        (9, 37, 3),
+        (5, 37, 3, 1),
+        (32, 64, 4),
+        (9, 37, 4),
+        (5, 37, 2, 2),
+    ),
+)
+def test_index_fill_small_inner_blocked_updates(dtype, shape):
+    inp = _make_input(shape, dtype)
+    base_index = torch.arange(30, dtype=torch.long, device=flag_gems.device)
+    index = torch.cat(
+        (
+            base_index,
+            base_index[:1],
+            torch.tensor([-1], dtype=torch.long, device=flag_gems.device),
+        )
+    )
+    value = _scalar_value(dtype)
+
+    ref_inp = utils.to_reference(inp, False)
+    ref_index = utils.to_reference(index, False)
+    ref_out = ref_inp.index_fill(1, ref_index, value)
+
+    with flag_gems.use_gems(include=INDEX_FILL_OPS):
+        actual = inp.index_fill(1, index, value)
+        inplace = inp.clone()
+        inplace.index_fill_(1, index, value)
+
+    utils.gems_assert_equal(actual, ref_out)
+    utils.gems_assert_equal(inplace, ref_out)
+
+
+@pytest.mark.index_fill
+@pytest.mark.index_fill_
+@pytest.mark.parametrize("dtype", (torch.float16, torch.bfloat16, torch.float32))
+@pytest.mark.parametrize("index_value", (0, -1))
+def test_index_fill_single_index_small_inner_updates(dtype, index_value):
+    inp = _make_input((32, 64), dtype)
+    index = torch.tensor([index_value], dtype=torch.long, device=flag_gems.device)
+    value = _scalar_value(dtype)
+
+    ref_inp = utils.to_reference(inp, False)
+    ref_index = utils.to_reference(index, False)
+    ref_out = ref_inp.index_fill(1, ref_index, value)
+
+    with flag_gems.use_gems(include=INDEX_FILL_OPS):
+        actual = inp.index_fill(1, index, value)
+        inplace = inp.clone()
+        inplace.index_fill_(1, index, value)
+
+    utils.gems_assert_equal(actual, ref_out)
     utils.gems_assert_equal(inplace, ref_out)
 
 
