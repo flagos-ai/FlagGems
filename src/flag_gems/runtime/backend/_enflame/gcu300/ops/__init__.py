@@ -163,6 +163,7 @@ from .repeat_interleave import (
 from .replication_pad3d import replication_pad3d
 from .rsqrt import rsqrt, rsqrt_
 from .scatter import scatter, scatter_
+from .scatter_add_ import scatter_add_
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
@@ -466,4 +467,5 @@ __all__ = [
     "cosh_",
     "cosh_out",
     "linear",
+    "scatter_add_",
 ]
