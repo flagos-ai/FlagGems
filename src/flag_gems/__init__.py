@@ -22,7 +22,12 @@ from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 try:
     from flag_gems._version import version as __version__
 except ImportError:
-    __version__ = "unknown"
+    try:
+        from importlib.metadata import version as _meta_version
+
+        __version__ = _meta_version("flag-gems")
+    except Exception:
+        __version__ = "unknown"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 backend_info = runtime.device
@@ -41,6 +46,8 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    ("__and__.Scalar", bitwise_and_scalar),
+    ("__and__.Tensor", bitwise_and_tensor),
     ("__ilshift__.Tensor", __ilshift__),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
@@ -165,12 +172,16 @@ _FULL_CONFIG = (
     ("arange", arange),
     ("arange.start", arange_start),
     ("arange.start_step", arange_start),
+    ("arccos", arccos),
+    ("arccos_", arccos_),
     ("arcsin", arcsin),
     ("arcsin.out", arcsin),
     ("arcsin_", arcsin_),
     ("arcsinh", arcsinh),
     ("arcsinh.out", arcsinh_out),
     ("arcsinh_", arcsinh_),
+    ("arctan", arctan),
+    ("arctan_", arctan_),
     ("arctanh_", arctanh_),
     ("argmax", argmax),
     ("argmin", argmin),
@@ -216,6 +227,7 @@ _FULL_CONFIG = (
     ("bmm", bmm),
     ("bmm.out", bmm_out),
     ("broadcast_to", broadcast_to),
+    ("bucketize.Tensor", bucketize),
     ("cat", cat),
     ("cat.out", cat_out),
     ("cauchy", cauchy),
@@ -273,6 +285,8 @@ _FULL_CONFIG = (
     ("cumsum", cumsum),
     ("cumsum.out", cumsum_out),
     ("deg2rad", deg2rad),
+    ("deg2rad.out", deg2rad_out),
+    ("deg2rad_", deg2rad_),
     ("dequantize", dequantize),
     ("dequantize.self", dequantize),
     ("diag", diag),
@@ -280,6 +294,7 @@ _FULL_CONFIG = (
     ("diagonal_backward", diagonal_backward),
     ("diagonal_copy", diagonal_copy),
     ("diff", diff),
+    ("digamma", digamma),
     ("digamma_", digamma_),
     ("div.Scalar", true_divide),
     ("div.Scalar_mode", div_mode),
@@ -417,6 +432,8 @@ _FULL_CONFIG = (
     ("lerp.Tensor", lerp_tensor),
     ("lerp_.Scalar", lerp_scalar_),
     ("lerp_.Tensor", lerp_tensor_),
+    ("less.Scalar", lt_scalar),
+    ("less.Tensor", lt),
     ("less_equal.Scalar", less_equal_scalar),
     ("less_equal.Tensor", less_equal),
     ("lgamma", lgamma),
@@ -452,6 +469,8 @@ _FULL_CONFIG = (
     ("logsumexp", logsumexp),
     ("lt.Scalar", lt_scalar),
     ("lt.Tensor", lt),
+    ("lt_.Scalar", lt_scalar_),
+    ("lt_.Tensor", lt_),
     ("margin_ranking_loss", margin_ranking_loss),
     ("masked_fill.Scalar", masked_fill),
     ("masked_fill.Tensor", masked_fill),
@@ -460,6 +479,7 @@ _FULL_CONFIG = (
     ("masked_scatter", masked_scatter),
     ("masked_scatter_", masked_scatter_),
     ("masked_select", masked_select),
+    ("matmuladd", matmuladd),
     ("max", max),
     ("max.dim", max_dim),
     ("max_pool2d_backward", max_pool2d_backward),
@@ -477,6 +497,8 @@ _FULL_CONFIG = (
     ("min", min),
     ("min.dim", min_dim),
     ("minimum", minimum),
+    ("mish", mish),
+    ("mish_", mish_),
     ("mm", mm),
     ("mm.out", mm_out),
     ("mode", mode),
@@ -489,6 +511,7 @@ _FULL_CONFIG = (
     ("multiply_.Scalar", multiply_),
     ("multiply_.Tensor", multiply_),
     ("mv", mv),
+    ("mvlgamma_", mvlgamma_),
     ("nan_to_num", nan_to_num),
     ("nanmedian", nanmedian),
     ("nanmedian.dim", nanmedian_dim),
@@ -509,6 +532,7 @@ _FULL_CONFIG = (
     ("neg_", neg_),
     ("negative", negative),
     ("new_full", new_full),
+    ("new_ones", new_ones),
     ("nextafter_", nextafter_),
     ("nll_loss2d_backward", nll_loss2d_backward),
     ("nll_loss2d_forward", nll_loss2d_forward),
@@ -609,6 +633,7 @@ _FULL_CONFIG = (
     ("scatter_reduce.two", scatter_reduce),
     ("scatter_reduce.two_out", scatter_reduce_out),
     ("scatter_reduce_.two", scatter_reduce_),
+    ("scalar_tensor", scalar_tensor),
     ("searchsorted.Scalar", searchsorted_scalar),
     ("searchsorted.Scalar_out", searchsorted_scalar_out),
     ("searchsorted.Tensor", searchsorted),
@@ -641,20 +666,21 @@ _FULL_CONFIG = (
     ("soft_margin_loss", soft_margin_loss),
     ("soft_margin_loss_backward", soft_margin_loss_backward),
     ("softplus", softplus),
+    ("softplus_backward", softplus_backward),
     ("softshrink", softshrink),
     ("softshrink.out", softshrink_out),
     ("sort", sort),
     ("sort.stable", sort_stable),
-    ("special.gammainc", special_gammainc),
-    ("special.log_softmax", special_log_softmax),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
-    ("special.chebyshev_polynomial_w", special_chebyshev_polynomial_w),
-    ("special.chebyshev_polynomial_w.out", special_chebyshev_polynomial_w_out),
+    ("special_chebyshev_polynomial_w", special_chebyshev_polynomial_w),
+    ("special_chebyshev_polynomial_w_out", special_chebyshev_polynomial_w_out),
+    ("special_gammainc", special_gammainc),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_i0e", special_i0e),
-    ("special_i0e.out", special_i0e_out),
+    ("special_i0e_out", special_i0e_out),
     ("special_i1", special_i1),
-    ("special_i1.out", special_i1_out),
+    ("special_i1_out", special_i1_out),
+    ("special_log_softmax", special_log_softmax),
     ("special_shifted_chebyshev_polynomial_u", special_shifted_chebyshev_polynomial_u),
     (
         "special_shifted_chebyshev_polynomial_u_",
@@ -700,6 +726,7 @@ _FULL_CONFIG = (
     ("true_divide.Tensor", true_divide),
     ("true_divide_.Scalar", true_divide_),
     ("true_divide_.Tensor", true_divide_),
+    ("true_divide.out", true_divide_out),
     ("trunc", trunc),
     ("trunc_", trunc_),
     ("unbind_copy", unbind_copy),
