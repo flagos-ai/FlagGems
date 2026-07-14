@@ -21,3 +21,13 @@ def test_deg2rad_():
         is_inplace=True,
     )
     bench.run()
+
+
+@pytest.mark.deg2rad_out
+def test_deg2rad_out():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="deg2rad_out",
+        torch_op=lambda x: torch.deg2rad(x, out=x),
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
