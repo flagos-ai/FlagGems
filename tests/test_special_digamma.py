@@ -25,7 +25,7 @@ def test_special_digamma_large(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_special_digamma_small_positive(shape, dtype):
-    """Test x in (0, 0.5) (reflection formula path)."""
+    """Test x in (0.05, 0.45) (reflection formula path)."""
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 0.4 + 0.05
     ref_inp = utils.to_reference(inp)
 
@@ -40,9 +40,18 @@ def test_special_digamma_small_positive(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_special_digamma_negative(shape, dtype):
-    """Test negative values (reflection formula + cot path)."""
-    # Avoid integers where digamma has poles
-    inp = -(torch.rand(shape, dtype=dtype, device=flag_gems.device) * 4.5 + 0.25)
+    """Test negative values (reflection formula + cot path).
+
+    Digamma has poles at non-positive integers. Near these poles, both the
+    reference and kernel suffer from float32 catastrophic cancellation in
+    pi*cot(pi*x). We restrict inputs to fractional parts in [0.1, 0.9] to
+    avoid pole neighborhoods while still exercising the reflection path.
+    """
+    # Generate values in (-4.9, -0.1) with fractional part in [0.1, 0.9]
+    # This avoids the neighborhood of poles at -1, -2, -3, -4
+    base = torch.randint(0, 4, shape, device=flag_gems.device).float()
+    frac = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 0.8 + 0.1
+    inp = -(base + frac.float()).to(dtype)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.special.digamma(ref_inp)
