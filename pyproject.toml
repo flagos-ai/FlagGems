@@ -2,7 +2,10 @@
 # The cmake and ninja packages are not supposed to be listed in build-system.requires.
 # The version expectation is "cmake>=3.20,<4.0", "ninja==1.13.0".
 # They must be installed separately for `--no-build-isolation` to work.
-requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3", "setuptools-scm>=8"]
+# setuptools is capped below 77: from 77.0 onward it adopts PEP 639 and emits
+# `License-File`, which bumps the wheel to Metadata-Version 2.4. Some package
+# indexes (e.g. Nexus) reject 2.4; <77 keeps the pure-Python wheel at 2.2.
+requires = ["setuptools>=64.0,<77", "scikit-build-core==0.12.2", "pybind11==3.0.3", "setuptools-scm>=8"]
 
 build-backend = "scikit_build_core.build"
 
