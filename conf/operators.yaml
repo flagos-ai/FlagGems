@@ -4404,6 +4404,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_tensorsolve
+    description: Triton kernel implementation for linalg_tensorsolve.
+    for:
+      - linalg_tensorsolve
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linear
     description: |
       Applies a linear transformation to the incoming data: y = x @ W^T + b.
