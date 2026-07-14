@@ -4616,7 +4616,7 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
-  - id: lshift__
+  - id: lshift
     description: Magic method wrapper for __lshift__ (<< operator), delegates to bitwise_left_shift.
     for:
       - __lshift__
