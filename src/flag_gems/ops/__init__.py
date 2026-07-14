@@ -57,6 +57,7 @@ from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops._upsample_nearest_exact2d_backward import (
     _upsample_nearest_exact2d_backward,
 )
+from flag_gems.ops._upsample_nearest_exact3d import _upsample_nearest_exact3d
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
@@ -650,6 +651,7 @@ __all__ = [
     "_upsample_bilinear2d_aa",
     "_upsample_nearest_exact1d",
     "_upsample_nearest_exact2d_backward",
+    "_upsample_nearest_exact3d",
     "abs",
     "abs_",
     "absolute",
@@ -1166,6 +1168,7 @@ __all__ = [
     "rsqrt_",
     "rsub_scalar",
     "rsub_tensor",
+    "scalar_tensor",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
@@ -1224,7 +1227,6 @@ __all__ = [
     "softplus_backward",
     "softshrink",
     "softshrink_out",
-    "scalar_tensor",
     "sort",
     "sort_stable",
     "special_airy_ai",
