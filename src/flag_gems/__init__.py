@@ -439,6 +439,7 @@ _FULL_CONFIG = (
     ("lgamma_", lgamma_),
     ("lift_fresh_copy", lift_fresh_copy),
     ("linalg_cholesky", linalg_cholesky),
+    ("linalg_eig", linalg_eig),
     ("linalg_vector_norm", vector_norm),
     ("linear", linear),
     ("linspace", linspace),

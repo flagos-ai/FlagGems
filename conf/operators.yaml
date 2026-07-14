@@ -4393,6 +4393,17 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: linalg_eig
+    description: Triton kernel for 2x2 matrix eigenvalue decomposition (linalg_eig).
+    for:
+      - linalg_eig
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linalg_eigvals
     description: Computes the eigenvalues of a square matrix.
     for:
