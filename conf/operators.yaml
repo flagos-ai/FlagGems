@@ -4616,6 +4616,17 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: lshift__
+    description: Magic method wrapper for __lshift__ (<< operator), delegates to bitwise_left_shift.
+    for:
+      - __lshift__
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: lt
     description: Computes that `input` is less than `other` element-wise.
     for:
