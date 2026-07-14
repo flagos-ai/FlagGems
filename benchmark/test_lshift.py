@@ -4,7 +4,7 @@ import torch
 from . import base, consts
 
 
-@pytest.mark.lshift__
+@pytest.mark.lshift
 def test_lshift():
     bench = base.BinaryPointwiseBenchmark(
         op_name="lshift__",
