@@ -631,6 +631,7 @@ _FULL_CONFIG = (
     ("scatter_reduce.two", scatter_reduce),
     ("scatter_reduce.two_out", scatter_reduce_out),
     ("scatter_reduce_.two", scatter_reduce_),
+    ("scalar_tensor", scalar_tensor),
     ("searchsorted.Scalar", searchsorted_scalar),
     ("searchsorted.Scalar_out", searchsorted_scalar_out),
     ("searchsorted.Tensor", searchsorted),
