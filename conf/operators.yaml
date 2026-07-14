@@ -699,6 +699,31 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.4'
+  - id: arctan
+    description: |
+      Returns a new tensor with the element-wise inverse tangent (arctangent) of the input tensor.
+    for:
+      - arctan
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: arctan_
+    description: |
+      Computes the element-wise inverse tangent (arctangent) of a given input tensor.
+      This is an in-place version.
+    for:
+      - arctan_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: arctanh_
     description: |
       Computes the element-wise inverse hyperbolic tangent of a given input tensor.
@@ -1017,20 +1042,6 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: bf16_paged_mqa_logits
-    description: |
-      Compute multi-head weighted ReLU attention logits on paged BF16
-      KV cache. Uses shape-specialized Triton kernels for H=32 and H=64
-      with zero-constexpr dispatch for decode-phase inference.
-    for:
-      - bf16_paged_mqa_logits
-    labels:
-      - fused
-      - KernelGen
-    kind:
-      - NeuralNetwork
-    stages:
-      - alpha: '5.4'
   - id: bernoulli
     description: |
       Draws binary random numbers (0 or 1) from a Bernoulli distribution with per-element probabilities.
@@ -1055,6 +1066,20 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: bf16_paged_mqa_logits
+    description: |
+      Compute multi-head weighted ReLU attention logits on paged BF16
+      KV cache. Uses shape-specialized Triton kernels for H=32 and H=64
+      with zero-constexpr dispatch for decode-phase inference.
+    for:
+      - bf16_paged_mqa_logits
+    labels:
+      - fused
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: bincount
     description: Count the frequency of each value in an array of non-negative integers.
     for:
@@ -1279,6 +1304,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: bucketize
+    description: Returns the indices of the buckets to which each input value belongs.
+    for:
+      - bucketize.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cat
     description: Concatenates the given sequence of tensors in tensors in the given dimension.
     for:
@@ -1997,9 +2033,31 @@ ops:
     stages:
       - beta: '5.0'
   - id: deg2rad
-    description: "deg2rad operator"
+    description: Converts angles from degrees to radians.
     for:
       - deg2rad
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: deg2rad_
+    description: In-place version of deg2rad.
+    for:
+      - deg2rad_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: deg2rad_out
+    description: Out-of-place variant of deg2rad with pre-allocated output tensor.
+    for:
+      - deg2rad.out
     labels:
       - aten
       - KernelGen
@@ -2116,6 +2174,18 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: digamma
+    description: |
+      Computes the digamma function, which is the logarithmic derivative of the Gamma function.
+    for:
+      - digamma
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: digamma_
     description: |
       Computes the in-place digamma function, which is the logarithmic derivative of the Gamma function.
@@ -2144,6 +2214,36 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: div_mode
+    description: |
+      Divides each element of the `input` by the corresponding element of `other`.
+      An optional `rounding_mode` can be specified.
+    for:
+      - div.Scalar_mode
+      - div.Tensor_mode
+      - divide.Scalar_mode
+      - divide.Tensor_mode
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+  - id: div_mode_
+    description: The in-place version of `div_mode()`.
+    for:
+      - div_.Scalar_mode
+      - div_.Tensor_mode
+      - divide_.Scalar_mode
+      - divide_.Tensor_mode
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
   - id: div_out
     description: This is an variant of `div()` with an `out` argument.
     for:
@@ -2178,32 +2278,6 @@ ops:
       - Math
     stages:
       - stable: '2.1'
-  - id: div_scalar_mode
-    description: |
-      Divides each element of the `input` by the corresponding element of `other`.
-      An optional `rounding_mode` can be specified.
-    for:
-      - div.Scalar_mode
-      - divide.Scalar_mode
-    labels:
-      - aten
-      - pointwise
-    kind:
-      - Math
-    stages:
-      - stable: '1.0'
-  - id: div_scalar_mode_
-    description: The in-place version of `div_mode()`.
-    for:
-      - div_.Scalar_mode
-      - divide_.Scalar_mode
-    labels:
-      - aten
-      - pointwise
-    kind:
-      - Math
-    stages:
-      - stable: '2.2'
   - id: div_tensor
     description: |
       Divides each element of the input `input` by the corresponding element of `other`.
@@ -2232,32 +2306,6 @@ ops:
       - Math
     stages:
       - stable: '2.1'
-  - id: div_tensor_mode
-    description: |
-      Divides each element of the `input` by the corresponding element of `other`.
-      An optional `rounding_mode` can be specified.
-    for:
-      - div.Tensor_mode
-      - divide.Tensor_mode
-    labels:
-      - aten
-      - pointwise
-    kind:
-      - Math
-    stages:
-      - stable: '1.0'
-  - id: div_tensor_mode_
-    description: The in-place version of `div_mode()`.
-    for:
-      - div_.Tensor_mode
-      - divide_.Tensor_mode
-    labels:
-      - aten
-      - pointwise
-    kind:
-      - Math
-    stages:
-      - stable: '2.2'
   - id: dot
     description: Computes the dot product of two 1D tensors.
     for:
@@ -3083,21 +3131,6 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
-  - id: fp8_fp4_mqa_logits
-    description: |
-      Compute weighted MQA logits with FP8 quantized Q and K tensors.
-      Uses head-batched tiled dot products with K reuse for high throughput
-      on DeepSeek V4 sparse attention indexer workloads.
-    for:
-      - vllm.utils.deep_gemm.fp8_fp4_mqa_logits
-    labels:
-      - fused
-      - vLLM
-      - KernelGen
-    kind:
-      - NeuralNetwork
-    stages:
-      - alpha: '5.1'
   - id: fp8_fp4_mega_moe
     description: |
       Functional Triton fallback for local FP8 x FP4 MegaMoE. It consumes
@@ -3115,6 +3148,21 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: fp8_fp4_mqa_logits
+    description: |
+      Compute weighted MQA logits with FP8 quantized Q and K tensors.
+      Uses head-batched tiled dot products with K reuse for high throughput
+      on DeepSeek V4 sparse attention indexer workloads.
+    for:
+      - vllm.utils.deep_gemm.fp8_fp4_mqa_logits
+    labels:
+      - fused
+      - vLLM
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: fp8_fp4_paged_mqa_logits
     description: |
       Compute paged multi-query attention logits from FP8 queries against
@@ -4879,6 +4927,16 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: matmul_bias_activation
+    description: Fused matrix multiplication with bias addition and ReLU activation.
+    for:
+      - matmul_bias_activation
+    labels:
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: matmuladd
     description: Computes matrix multiplication followed by bias addition.
     for:
@@ -5305,6 +5363,17 @@ ops:
       - BLAS
     stages:
       - stable: '2.0'
+  - id: mvlgamma_
+    description: Computes the multivariate log-gamma function in-place for each element of the input tensor.
+    for:
+      - mvlgamma_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: nan_to_num
     description: |
       Replaces `NaN`, positive infinity, and negative infinity values in `input`
@@ -5445,6 +5514,19 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: new_ones
+    description: |
+      Returns a Tensor of size `size` filled with 1, with the
+      same `torch.dtype` and `torch.device` as the input tensor.
+    for:
+      - new_ones
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: nextafter_
     description: |
       Returns the next representable floating-point value from `input` toward
@@ -7084,6 +7166,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: scalar_tensor
+    description: |
+      Creates a 0-dimensional (scalar) tensor from a Python numeric value.
+      The tensor's dtype can be specified, otherwise inferred from the input value.
+    for:
+      - scalar_tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: sigmoid
     description: Computes the expit (also known as the logistic sigmoid function) of the elements of `input`.
     for:
@@ -7428,6 +7522,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.0'
+  - id: softplus_backward
+    description: The backward version of `softplus()`.
+    for:
+      - softplus_backward
+    labels:
+      - aten
+      - Activation
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: softshrink
     description: |
       Applies the soft shrinkage function element-wise to an input tensor.
@@ -7676,6 +7782,19 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_logsumexp
+    description: |
+      Computes the natural logarithm of the sum of exponentials of each row
+      of the input tensor in the given dimension `dim`.
+    for:
+      - special.logsumexp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
     stages:
       - alpha: '5.4'
   - id: split_with_sizes_copy

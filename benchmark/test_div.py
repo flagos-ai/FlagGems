@@ -44,18 +44,27 @@ def _div_tensor_mode_input_fn(shape, dtype, device):
     yield inp1, inp2
 
 
+def _div_scalar_mode_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    scalar = -2.5 if dtype in consts.FLOAT_DTYPES else -3
+    yield inp, scalar
+
+
+def _div_mode_dtypes(rounding_mode):
+    return [torch.float32] if rounding_mode == "trunc" else consts.FLOAT_DTYPES
+
+
 @pytest.mark.div_tensor_mode
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 @pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
 def test_div_tensor_mode(rounding_mode):
-    dtypes = [torch.float32] if rounding_mode == "trunc" else consts.FLOAT_DTYPES
     bench = base.GenericBenchmark(
         op_name="div_tensor_mode",
         input_fn=_div_tensor_mode_input_fn,
         torch_op=lambda a, b: torch.div(a, b, rounding_mode=rounding_mode),
-        dtypes=dtypes,
+        dtypes=_div_mode_dtypes(rounding_mode),
     )
     bench.run()
 
@@ -66,12 +75,42 @@ def test_div_tensor_mode(rounding_mode):
 )
 @pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
 def test_div_tensor_mode_inplace(rounding_mode):
-    dtypes = [torch.float32] if rounding_mode == "trunc" else consts.FLOAT_DTYPES
     bench = base.GenericBenchmark(
         op_name="div_tensor_mode_",
         input_fn=_div_tensor_mode_input_fn,
         torch_op=lambda a, b: a.div_(b, rounding_mode=rounding_mode),
-        dtypes=dtypes,
+        dtypes=_div_mode_dtypes(rounding_mode),
+        is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.div_scalar_mode
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
+def test_div_scalar_mode(rounding_mode):
+    bench = base.GenericBenchmark(
+        op_name="div_scalar_mode",
+        input_fn=_div_scalar_mode_input_fn,
+        torch_op=lambda a, b: torch.div(a, b, rounding_mode=rounding_mode),
+        dtypes=_div_mode_dtypes(rounding_mode),
+    )
+    bench.run()
+
+
+@pytest.mark.div_scalar_mode_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
+def test_div_scalar_mode_inplace(rounding_mode):
+    bench = base.GenericBenchmark(
+        op_name="div_scalar_mode_",
+        input_fn=_div_scalar_mode_input_fn,
+        torch_op=lambda a, b: a.div_(b, rounding_mode=rounding_mode),
+        dtypes=_div_mode_dtypes(rounding_mode),
         is_inplace=True,
     )
     bench.run()

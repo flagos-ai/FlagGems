@@ -135,6 +135,10 @@ def parse_single_accuracy():
         data2 = DATA["after"].get("result", {})
     else:
         data1 = DATA.get("result", {})
+        data2 = {}
+
+    if not data1 and not data2:
+        return ["### Accuracy Result", "", "*No accuracy data collected!*", ""]
 
     op = list(data1.keys())[0] if data1 else list(data2.keys())[0]
     op_data1 = data1.get(op, {}).get("accuracy", {})
@@ -216,15 +220,18 @@ def parse_single_performance():
     if ARGS.compare:
         data1 = DATA["before"].get("result", {})
         data2 = DATA["after"].get("result", {})
-        op = list(data1.keys())[0] if data1 else list(data2.keys())[0]
-        op_data2 = data2.get(op, {}).get("performance", {})
     else:
         data1 = DATA.get("result", {})
         data2 = {}
 
-    if not ARGS.compare:
-        op = list(data1.keys())[0]
+    if not data1 and not data2:
+        return ["### Performance Result", "", "*No performance data collected!*", ""]
+
+    op = list(data1.keys())[0] if data1 else list(data2.keys())[0]
     op_data1 = data1.get(op, {}).get("performance", {})
+    op_data2 = {}
+    if ARGS.compare:
+        op_data2 = data2.get(op, {}).get("performance", {})
 
     lines = []
     lines.append("### Performance Result")
