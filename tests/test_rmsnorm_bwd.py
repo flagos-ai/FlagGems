@@ -113,6 +113,7 @@ def test_rmsnorm_bwd(shape, dtype, zero_centered_gamma):
 
 @pytest.mark.rmsnorm_bwd
 @pytest.mark.skipif(not HAS_TE, reason="TransformerEngine not available")
+@pytest.mark.skipif(cfg.TO_CPU, reason="TransformerEngine not available on CPU")
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("zero_centered_gamma", [False, True])

@@ -106,6 +106,7 @@ def test_rmsnorm_fwd(shape, dtype, zero_centered_gamma, use_ln_out):
 
 @pytest.mark.rmsnorm_fwd
 @pytest.mark.skipif(not HAS_TE, reason="TransformerEngine not available")
+@pytest.mark.skipif(cfg.TO_CPU, reason="TransformerEngine not available on CPU")
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("zero_centered_gamma", [False, True])
