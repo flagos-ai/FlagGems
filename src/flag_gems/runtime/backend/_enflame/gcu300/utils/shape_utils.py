@@ -15,7 +15,7 @@
 import os
 
 import triton
-from .codegen_config_utils import get_heuristics_for_num_warps
+from _enflame.gcu300.utils.codegen_config_utils import get_heuristics_for_num_warps
 
 ENFLAME_GCU300_4SIPS = int(os.getenv("ENFLAME_GCU300_4SIPS", "0"))
 MMU_LIMIT = 512 * 1024 * 1024
