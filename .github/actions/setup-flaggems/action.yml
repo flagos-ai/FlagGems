@@ -47,13 +47,15 @@ runs:
     - name: Install transformer_engine (nvidia only)
       if: startsWith(inputs.backend, 'nvidia')
       shell: bash
+      env:
+        TE_VERSION: "2.16.1"
       run: |
         source .venv/bin/activate
         # Record Layer 1 state before transformer_engine install
         uv pip freeze | grep -iE '^(torch|triton|flag)' | sort > /tmp/layer1-snapshot-te.txt
 
         # Install transformer_engine[pytorch]
-        uv pip install --no-build-isolation "transformer_engine[pytorch]"
+        uv pip install --no-build-isolation "transformer_engine[pytorch]==${TE_VERSION}"
 
         # Verify Layer 1 packages were not modified
         uv pip freeze | grep -iE '^(torch|triton|flag)' | sort > /tmp/layer2-snapshot-te.txt
