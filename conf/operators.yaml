@@ -5627,7 +5627,6 @@ ops:
       - polygamma.out
     labels:
       - aten
-      - KernelGen
     kind:
       - Math
     stages:
@@ -5638,7 +5637,6 @@ ops:
       - polygamma_
     labels:
       - aten
-      - KernelGen
     kind:
       - Math
     stages:
