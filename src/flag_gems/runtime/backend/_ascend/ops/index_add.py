@@ -79,6 +79,7 @@ def _index_add_contiguous_suffix_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     ROW_BLOCKS_PER_PROGRAM: tl.constexpr,
+    ACCUMULATE_FP32: tl.constexpr,
 ):
     pid_row_group = tle.program_id(axis=0)
     pid_n = tle.program_id(axis=1)
@@ -109,6 +110,8 @@ def _index_add_contiguous_suffix_kernel(
             src_offsets = row * suffix_size + cols
             out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
             values = tl.load(src + src_offsets, mask=row_mask & col_mask, other=0.0)
+            if ACCUMULATE_FP32:
+                values = values.to(tl.float32)
             tl.atomic_add(
                 out + out_offsets,
                 values * alpha,
@@ -130,6 +133,7 @@ def _index_add_contiguous_suffix_flat_kernel(
     alpha,
     BLOCK_SIZE: tl.constexpr,
     BLOCKS_PER_PROGRAM: tl.constexpr,
+    ACCUMULATE_FP32: tl.constexpr,
 ):
     pid_group = tle.program_id(axis=0)
 
@@ -151,6 +155,8 @@ def _index_add_contiguous_suffix_flat_kernel(
         src_offsets = rows * suffix_size + cols
         out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
         values = tl.load(src + src_offsets, mask=mask, other=0.0)
+        if ACCUMULATE_FP32:
+            values = values.to(tl.float32)
         tl.atomic_add(out + out_offsets, values * alpha, mask=valid, sem="relaxed")
 
 
@@ -228,6 +234,9 @@ def _run_contiguous_suffix_flat_path(out, dim, index, src, alpha):
             alpha,
             BLOCK_SIZE=block_size,
             BLOCKS_PER_PROGRAM=blocks_per_program,
+            ACCUMULATE_FP32=(
+                out.dtype == torch.float32 and src.dtype == torch.bfloat16
+            ),
         )
     return True
 
@@ -276,6 +285,9 @@ def _run_contiguous_suffix_path(out, dim, index, src, alpha):
             BLOCK_M=block_m,
             BLOCK_N=block_n,
             ROW_BLOCKS_PER_PROGRAM=row_blocks_per_program,
+            ACCUMULATE_FP32=(
+                out.dtype == torch.float32 and src.dtype == torch.bfloat16
+            ),
         )
     return True
 
@@ -295,9 +307,10 @@ def index_add(inp, dim, index, src, alpha=1):
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
     if _can_use_contiguous_suffix_path(inp, normalized_dim, index, src):
         _assert_index_in_bounds(index, inp.size(dim))
-        out = inp.clone()
+        accumulate_fp32 = inp.dtype == torch.bfloat16
+        out = inp.float() if accumulate_fp32 else inp.clone()
         if _run_contiguous_suffix_path(out, normalized_dim, index, src, alpha):
-            return out
+            return out.to(inp.dtype) if accumulate_fp32 else out
 
     final_dim = inp.ndim - 1
     if dim != final_dim:
@@ -348,7 +361,11 @@ def index_add_(inp, dim, index, src, alpha=1):
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
     if _can_use_contiguous_suffix_path(inp, normalized_dim, index, src):
         _assert_index_in_bounds(index, inp.size(dim))
-        if _run_contiguous_suffix_path(inp, normalized_dim, index, src, alpha):
+        accumulate_fp32 = inp.dtype == torch.bfloat16
+        out = inp.float() if accumulate_fp32 else inp
+        if _run_contiguous_suffix_path(out, normalized_dim, index, src, alpha):
+            if accumulate_fp32:
+                inp.copy_(out)
             return inp
 
     final_dim = inp.ndim - 1

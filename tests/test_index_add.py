@@ -142,6 +142,7 @@ def test_index_add_invalid_index(inplace):
     inp = torch.zeros(shape, device=flag_gems.device)
     src = torch.ones((2, 2, 8), device=flag_gems.device)
     index = torch.tensor([0, shape[dim]], device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
 
     with flag_gems.use_gems(), pytest.raises(
         AssertionError, match=r"0 <= index < self\.size\(dim\)"
@@ -151,4 +152,4 @@ def test_index_add_invalid_index(inplace):
         else:
             torch.index_add(inp, dim, index, src)
 
-    utils.gems_assert_equal(inp, torch.zeros_like(inp))
+    utils.gems_assert_equal(inp, ref_inp)

@@ -284,6 +284,7 @@ def _index_add_contiguous_suffix_flat_kernel(
     suffix_size,
     alpha,
     BLOCK_SIZE: tl.constexpr,
+    ACCUMULATE_FP32: tl.constexpr,
 ):
     offsets = ext.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < total_count
@@ -298,6 +299,8 @@ def _index_add_contiguous_suffix_flat_kernel(
     src_offsets = rows * suffix_size + cols
     out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
     values = tl.load(src + src_offsets, mask=mask, other=0.0)
+    if ACCUMULATE_FP32:
+        values = values.to(tl.float32)
     tl.atomic_add(out + out_offsets, values * alpha, mask=valid, sem="relaxed")
 
 
@@ -359,6 +362,7 @@ def _index_add_contiguous_suffix_tile_kernel(
     alpha,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    ACCUMULATE_FP32: tl.constexpr,
 ):
     pid_m = ext.program_id(axis=0)
     pid_n = ext.program_id(axis=1)
@@ -377,6 +381,8 @@ def _index_add_contiguous_suffix_tile_kernel(
     src_offsets = rows * suffix_size + cols
     out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
     values = tl.load(src + src_offsets, mask=mask, other=0.0)
+    if ACCUMULATE_FP32:
+        values = values.to(tl.float32)
     tl.atomic_add(out + out_offsets, values * alpha, mask=valid, sem="relaxed")
 
 
@@ -387,22 +393,32 @@ def _run_contiguous_suffix_flat_path(
     row_count = _volume(src.shape[:dim]) * index.numel()
     total_count = row_count * suffix_size
     grid = lambda meta: (triton.cdiv(total_count, meta["BLOCK_SIZE"]),)
-    kernel = (
-        _index_add_contiguous_suffix_fp16_flat_kernel
-        if use_fp16_config
-        else _index_add_contiguous_suffix_flat_kernel
-    )
     with torch_device_fn.device(out.device):
-        kernel[grid](
-            out,
-            index,
-            src,
-            total_count,
-            index.numel(),
-            out.size(dim),
-            suffix_size,
-            alpha,
-        )
+        if use_fp16_config:
+            _index_add_contiguous_suffix_fp16_flat_kernel[grid](
+                out,
+                index,
+                src,
+                total_count,
+                index.numel(),
+                out.size(dim),
+                suffix_size,
+                alpha,
+            )
+        else:
+            _index_add_contiguous_suffix_flat_kernel[grid](
+                out,
+                index,
+                src,
+                total_count,
+                index.numel(),
+                out.size(dim),
+                suffix_size,
+                alpha,
+                ACCUMULATE_FP32=(
+                    out.dtype == torch.float32 and src.dtype == torch.bfloat16
+                ),
+            )
     return out
 
 
@@ -423,6 +439,9 @@ def _run_contiguous_suffix_tile_path(out, dim, index, src, alpha):
             out.size(dim),
             suffix_size,
             alpha,
+            ACCUMULATE_FP32=(
+                out.dtype == torch.float32 and src.dtype == torch.bfloat16
+            ),
         )
     return out
 
@@ -445,12 +464,13 @@ def index_add(inp, dim, index, src, alpha=1):
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
     if _can_use_contiguous_suffix_path(inp, normalized_dim, index, src):
         _assert_index_in_bounds(index, inp.size(dim))
-        out = inp.clone()
+        accumulate_fp32 = inp.dtype == torch.bfloat16
+        out = inp.float() if accumulate_fp32 else inp.clone()
         res = _run_contiguous_suffix_path(
             out, normalized_dim, index.contiguous(), src, alpha
         )
         if res is not None:
-            return res
+            return res.to(inp.dtype) if accumulate_fp32 else res
 
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
@@ -495,11 +515,15 @@ def index_add_(inp, dim, index, src, alpha=1):
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
     if _can_use_contiguous_suffix_path(inp, normalized_dim, index, src):
         _assert_index_in_bounds(index, inp.size(dim))
+        accumulate_fp32 = inp.dtype == torch.bfloat16
+        out = inp.float() if accumulate_fp32 else inp
         res = _run_contiguous_suffix_path(
-            inp, normalized_dim, index.contiguous(), src, alpha
+            out, normalized_dim, index.contiguous(), src, alpha
         )
         if res is not None:
-            return res
+            if accumulate_fp32:
+                inp.copy_(res)
+            return inp
 
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
