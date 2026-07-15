@@ -2,7 +2,8 @@
 import logging
 
 import flag_gems  # noqa: F401
-from flag_gems.ops.bitwise_left_shift import bitwise_left_shift
+from flag_gems.utils import pointwise_dynamic
+imort torch
 
 logger = logging.getLogger(__name__)
 
