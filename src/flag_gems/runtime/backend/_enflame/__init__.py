@@ -37,7 +37,8 @@ if arch_version == 300:
     CUSTOMIZED_UNUSED_OPS = (
         "concat",
         "concatenate",
-        "_to_copy" "to_copy",
+        "_to_copy",
+        "to_copy",
         "copy_",
         "__and__.Scalar",
         "__and__.Tensor",
