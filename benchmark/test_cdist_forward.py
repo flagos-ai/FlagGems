@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from flag_gems.ops._cdist_forward import _cdist_forward
+from flag_gems.ops.cdist import _cdist_forward
 
 from . import base
 
