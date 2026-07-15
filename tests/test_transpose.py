@@ -58,7 +58,7 @@ def test_transpose(shape, dim_pair, dtype):
     with flag_gems.use_gems():
         res_out = torch.ops.aten.transpose.int(inp, dim0, dim1)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_equal(res_out, ref_out)
     # transpose.int returns a view: verify shape/strides match aten.
     assert res_out.shape == ref_out.shape
     assert res_out.stride() == ref_out.stride()
@@ -84,7 +84,7 @@ def test_transpose_same_dim(shape, dim0, dim1, dtype):
     with flag_gems.use_gems():
         res_out = torch.ops.aten.transpose.int(inp, dim0, dim1)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_equal(res_out, ref_out)
     assert res_out.shape == ref_out.shape
     assert res_out.stride() == ref_out.stride()
 
@@ -115,7 +115,7 @@ def test_transpose_non_contiguous(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.ops.aten.transpose.int(inp, 0, -1)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_equal(res_out, ref_out)
     assert res_out.shape == ref_out.shape
     assert res_out.stride() == ref_out.stride()
 
