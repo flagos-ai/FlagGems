@@ -4404,6 +4404,18 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_slogdet
+    description: |
+      Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
+    for:
+      - linalg.slogdet
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linear
     description: |
       Applies a linear transformation to the incoming data: y = x @ W^T + b.
@@ -4571,6 +4583,94 @@ ops:
     stages:
       - alpha: '2.0'
       - stable: '3.0'
+  - id: logaddexp2
+    description: Computes the element-wise base-2 logarithm of the sum of base-2 exponentiations of two input tensors.
+    for:
+      - logaddexp2
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: logaddexp2_out
+    description: A variant of `logaddexp2` that allows the output to be assigned to an `out` tensor.
+    for:
+      - logaddexp2.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: xlogy
+    description: Computes `input * log(other)` element-wise, returning zero where `input` is zero (following PyTorch's `xlogy` semantics).
+    for:
+      - xlogy.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: xlogy_out
+    description: A variant of `xlogy` that allows the output to be assigned to an `out` tensor.
+    for:
+      - xlogy.OutTensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: xlogy_tensor_scalar
+    description: A variant of `xlogy` where `other` is a scalar.
+    for:
+      - xlogy.Scalar_Other
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: xlogy_tensor_scalar_out
+    description: A variant of `xlogy` where `other` is a scalar and the output is assigned to an `out` tensor.
+    for:
+      - xlogy.OutScalar_Other
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: xlogy_scalar_tensor
+    description: A variant of `xlogy` where `input` is a scalar.
+    for:
+      - xlogy.Scalar_Self
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
+  - id: xlogy_scalar_tensor_out
+    description: A variant of `xlogy` where `input` is a scalar and the output is assigned to an `out` tensor.
+    for:
+      - xlogy.OutScalar_Self
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - beta: '5.4'
   - id: logaddexp
     description: Computes the element-wise logarithm of the sum of the exponentials of two input tensors.
     for:
@@ -7145,6 +7245,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: scalar_tensor
+    description: |
+      Creates a 0-dimensional (scalar) tensor from a Python numeric value.
+      The tensor's dtype can be specified, otherwise inferred from the input value.
+    for:
+      - scalar_tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: sigmoid
     description: Computes the expit (also known as the logistic sigmoid function) of the elements of `input`.
     for:
@@ -7749,6 +7861,19 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_logsumexp
+    description: |
+      Computes the natural logarithm of the sum of exponentials of each row
+      of the input tensor in the given dimension `dim`.
+    for:
+      - special.logsumexp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
     stages:
       - alpha: '5.4'
   - id: split_with_sizes_copy
