@@ -22,9 +22,9 @@ from flag_gems.ops.topk import _get_finfo_val, _get_iinfo_val, argsort
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-logger = logging.getLogger(__name__)
+from ..utils.config_utils import MAX_GRID_DIM
 
-MAX_GRID_DIM = 16384
+logger = logging.getLogger(__name__)
 
 
 def unwrap_if_constexpr(o):
@@ -110,31 +110,15 @@ def convert_to_uint_preverse_order(x: tl.tensor, descending: tl.constexpr = Fals
 
 
 @triton.jit
-def extract_radix_key(
-    x: tl.tensor, bit_offset, bfe_mask, descending: tl.constexpr = False
-):
-    if x.dtype.is_int_signed():
-        num_bits: tl.constexpr = x.dtype.primitive_bitwidth
-        if descending:
-            flip_val: tl.constexpr = (1 << (num_bits - 1)) - 1
-        else:
-            flip_val: tl.constexpr = -(1 << (num_bits - 1))
-        mapped = x ^ tl.full((), value=flip_val, dtype=x.dtype)
-        return (mapped >> bit_offset) & bfe_mask
-    else:
-        mapped = convert_to_uint_preverse_order(x, descending)
-        return ((mapped >> bit_offset) & bfe_mask).to(tl.int32)
-
-
-@triton.jit
 def compute_global_hist_kernel(
     arr_ptr,
     out_ptr,
     num_passes,
     m,
     n,
-    tiles_n_per_cta,
     total_tasks,
+    num_ctas,
+    tiles_n_per_cta,
     TILE_N: tl.constexpr,
     TILE_R: tl.constexpr,
     num_bits_per_pass: tl.constexpr,
@@ -142,41 +126,233 @@ def compute_global_hist_kernel(
 ):
     # arr_ptr: (m, n)
     # out_ptr: (m, n_passes, r), where r = 2 ** k_bits is the number of bins
+    pid = tl.program_id(0)
+
     r: tl.constexpr = 2**num_bits_per_pass
     bfe_mask: tl.constexpr = (1 << num_bits_per_pass) - 1  # a.k.a. 2 ** k_bits - 1
     CTA_TILE_N: tl.constexpr = TILE_N * tiles_n_per_cta
 
-    pid_base = tl.program_id(0)
-    num_programs = tl.num_programs(0)
+    # Virtualize: each CTA loops over multiple (pid_m, pid_n) tasks
+    for task_id in range(pid, total_tasks, num_ctas):
+        pid_n = task_id // m
+        pid_m = task_id % m
 
-    for pid in range(pid_base, total_tasks, num_programs):
-        pid_n = pid // m
-        pid_m = pid % m
+        cta_n_start = CTA_TILE_N * pid_n
+        cta_n_end = tl.minimum(cta_n_start + CTA_TILE_N, n)
+
+        for p in range(0, num_passes):  # parallel
+            bit_offset = p * num_bits_per_pass
+            for r_start in range(0, r, TILE_R):  # parallel
+                bin_indices = r_start + tl.arange(0, TILE_R)
+                acc = tl.zeros((TILE_R, TILE_N), dtype=tl.int32)
+                for n_start in range(cta_n_start, cta_n_end, TILE_N):  # sequantial
+                    n_offsets = n_start + tl.arange(0, TILE_N)  # (TILE_N, )
+                    mask = n_offsets < cta_n_end
+                    arr = tl.load(arr_ptr + pid_m * n + n_offsets, mask=mask)
+                    arr = convert_to_uint_preverse_order(arr, descending)
+                    key = (arr >> bit_offset) & bfe_mask  # (TILE_N, )
+                    matches = tl.where(
+                        mask, (bin_indices[:, None] == key), False
+                    )  # (TILE_R, TILE_N)
+                    acc += matches
+                local_sum = tl.sum(acc, axis=1)
+                tl.atomic_add(
+                    out_ptr + pid_m * num_passes * r + p * r + bin_indices,
+                    local_sum,
+                    sem="relaxed",
+                )
+
+
+@triton.jit
+def compute_global_hist_kernel_all_cta(
+    arr_ptr,
+    out_ptr,
+    num_passes,
+    m,
+    n,
+    total_tasks,
+    num_ctas,
+    tiles_n_per_cta,
+    TILE_N: tl.constexpr,
+    TILE_R: tl.constexpr,
+    num_bits_per_pass: tl.constexpr,
+    descending: tl.constexpr,
+):
+    # GCU300-style: each CTA writes to its own scratch slot via tl.store.
+    # No atomic_add needed; results are reduced by add_global_hist_kernel.
+    # scratch layout: out_ptr[pid_n * m + pid_m, n_passes, r]
+    pid = tl.program_id(0)
+
+    r: tl.constexpr = 2**num_bits_per_pass
+    bfe_mask: tl.constexpr = (1 << num_bits_per_pass) - 1
+    CTA_TILE_N: tl.constexpr = TILE_N * tiles_n_per_cta
+
+    for task_id in range(pid, total_tasks, num_ctas):
+        pid_n = task_id // m
+        pid_m = task_id % m
 
         cta_n_start = CTA_TILE_N * pid_n
         cta_n_end = tl.minimum(cta_n_start + CTA_TILE_N, n)
 
         for p in range(0, num_passes):
             bit_offset = p * num_bits_per_pass
-            for bin_idx in range(0, r):
-                acc = tl.zeros((TILE_N,), dtype=tl.int64)
+            for r_start in range(0, r, TILE_R):
+                bin_indices = r_start + tl.arange(0, TILE_R)
+                acc = tl.zeros((TILE_R, TILE_N), dtype=tl.int32)
                 for n_start in range(cta_n_start, cta_n_end, TILE_N):
                     n_offsets = n_start + tl.arange(0, TILE_N)
                     mask = n_offsets < cta_n_end
                     arr = tl.load(arr_ptr + pid_m * n + n_offsets, mask=mask)
-                    key = extract_radix_key(arr, bit_offset, bfe_mask, descending)
-                    match_1d = tl.where(mask, key == bin_idx, False)
-                    acc += match_1d
-                local_count = tl.sum(acc, axis=0)
-                tl.atomic_add(
-                    out_ptr + pid_m * num_passes * r + p * r + bin_idx,
-                    local_count.to(tl.int32),
-                    sem="relaxed",
+                    arr = convert_to_uint_preverse_order(arr, descending)
+                    key = (arr >> bit_offset) & bfe_mask
+                    matches = tl.where(
+                        mask, (bin_indices[:, None] == key), False
+                    )
+                    acc += matches
+                local_sum = tl.sum(acc, axis=1)
+                tl.store(
+                    out_ptr
+                    + pid_n * (m * num_passes * r)
+                    + pid_m * (num_passes * r)
+                    + (p * r)
+                    + bin_indices,
+                    local_sum,
                 )
 
 
 @triton.jit
+def add_global_hist_kernel(
+    arr_ptr,
+    out_ptr,
+    grid_n,
+    m,
+    num_ctas,
+    num_passes: tl.constexpr,
+    num_bins: tl.constexpr,
+):
+    # Reduces scratch buffer from compute_global_hist_kernel_all_cta
+    # into the final global_hist shape (m, n_passes, num_bins).
+    pid = tl.program_id(0)
+
+    index = tl.arange(0, num_passes) * num_bins
+    passes_index = index[:, None]
+
+    index = tl.arange(0, num_bins)
+    bins_index = index[None, :]
+
+    for pid_m in range(pid, m, num_ctas):
+        acc = tl.zeros((num_passes, num_bins), dtype=tl.int32)
+        start = pid_m * (num_passes * num_bins)
+        for p in range(0, grid_n):
+            p_start = p * (m * num_passes * num_bins) + start
+            p_offset = p_start + passes_index + bins_index
+            arr = tl.load(arr_ptr + p_offset)
+            acc += arr
+        tl.store(out_ptr + start + passes_index + bins_index, acc)
+
+
+@triton.jit
 def sweep(
+    arr_ptr,
+    associate_arr_ptr,  # inputs: (key & value)
+    out_ptr,
+    associate_out_ptr,  # outputs: (key & value)
+    excumsum_bins_ptr,
+    status_ptr,  # aux input and status
+    n_passes,
+    pass_id,
+    bit_offset,
+    m,
+    N,
+    OUT_N,
+    TILE_N: tl.constexpr,
+    TILE_R: tl.constexpr,
+    k_bits: tl.constexpr,
+    descending: tl.constexpr,
+):
+    # r: num_bins = 2 ** k_bits
+    # OUT_N: grid_n = cdiv(N, TILE_N)
+
+    # arr_ptr: (m, N)
+    # out_ptr: (m, N)
+    # excumsum_bins_ptr: (m, n_passes, r)
+    # status_ptr: (m, r, OUT_N)
+
+    # grid: (m * grid_n, grid_r)  2D: each CTA handles exactly one (pid_m, pid_n)
+    # dim0 = (pid_n, pid_m)  combined, dim1 = bin groups
+
+    pid = tl.program_id(0)
+    pid_n = pid // m
+    pid_m = pid % m
+    pid_r = tl.program_id(1)
+
+    # bit masks
+    aggregate_mask: tl.constexpr = 1 << 30
+    inclusive_prefix_mask: tl.constexpr = 1 << 31
+    v_mask: tl.constexpr = (1 << 30) - 1
+    bfe_mask: tl.constexpr = (1 << k_bits) - 1  # a.k.a. 2 ** k_bits - 1
+
+    r: tl.constexpr = 2**k_bits
+    cta_r_start = pid_r * TILE_R
+    cta_r_end = tl.minimum(cta_r_start + TILE_R, r)
+
+    # cumsum for a bin_index
+    n_offsets = pid_n * TILE_N + tl.arange(0, TILE_N)  # (TILE_N, )
+    mask = n_offsets < N
+    arr = tl.load(arr_ptr + pid_m * N + n_offsets, mask=mask)
+    arr_u = convert_to_uint_preverse_order(arr, descending)
+    key = (arr_u >> bit_offset) & bfe_mask  # (TILE_N, )
+    # since triton can only use scalar as condition, loop by bin_index
+    # status must be pre zero-initialized, or else we have to initialize it
+    for bin_index in range(cta_r_start, cta_r_end):
+        matches = tl.where(mask, key == bin_index, False)  # (TILE_N, ) bool
+        # cta level cumsum per bin
+        # CAUTION: tl.sum in triton 3.2 does not promote type
+        local_sum = tl.sum(matches.to(tl.uint32), axis=0)
+        pack0 = aggregate_mask | local_sum
+        status_offset = pid_m * (r * OUT_N) + bin_index * OUT_N + pid_n
+        tl.store(status_ptr + status_offset, pack0, cache_modifier=".cg")
+
+        # decoupled lookback
+        exclusive_prefix = tl.zeros((), dtype=tl.uint32)
+        i_lookback = pid_n - 1
+        while i_lookback >= 0:
+            flag_offset_i = pid_m * (r * OUT_N) + bin_index * OUT_N + i_lookback
+            pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)  # uin32
+            while pack1 == 0:
+                pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)
+            exclusive_prefix += pack1 & v_mask
+            if (pack1 & aggregate_mask) == aggregate_mask:
+                i_lookback -= 1
+            else:
+                i_lookback = -1
+        pack2 = inclusive_prefix_mask | (exclusive_prefix + local_sum)
+        tl.store(status_ptr + status_offset, pack2, cache_modifier=".cg")
+
+        local_ex_cumsum = (
+            tl.cumsum(matches.to(tl.uint32), axis=0) - matches
+        )  # (TILE_N, )
+        ex_cumsum_in_bin = (
+            exclusive_prefix + local_ex_cumsum
+        )  # global ex_cumsum_in_bin (TILE_N, )
+
+        # ex_cumsum_bins (m, n_passes, r)
+        ex_cumsum_bins = tl.load(
+            excumsum_bins_ptr + pid_m * (n_passes * r) + pass_id * r + bin_index
+        )  # scalar
+        pos = ex_cumsum_bins + ex_cumsum_in_bin  # (TILE_N, )
+
+        # scatter
+        tl.store(out_ptr + pid_m * N + pos, arr, mask=matches)
+        if associate_arr_ptr is not None:
+            associate_arr = tl.load(
+                associate_arr_ptr + pid_m * N + n_offsets, mask=mask
+            )
+            tl.store(associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches)
+
+
+@triton.jit
+def sweep_3d(
     arr_ptr,
     associate_arr_ptr,  # inputs: (key & value)
     out_ptr,
@@ -195,29 +371,22 @@ def sweep(
     k_bits: tl.constexpr,
     descending: tl.constexpr,
 ):
-    # r: num_bins = 2 ** k_bits
-    # OUT_N: grid_n = cdiv(N, TILE_N)
-
-    # arr_ptr: (m, N)
-    # out_ptr: (m, N)
-    # excumsum_bins_ptr: (m, n_passes, r)
-    # flag_ptr: (m, r, OUT_N)
-
+    # 3D grid fallback for cases where m * grid_n > 65535.
     # grid: (grid_n, grid_r, grid_m)
-    # dim0 = N tiles (1:1, no virtualization — required by decoupled lookback)
+    # dim0 = N tiles (1:1, required by decoupled lookback)
     # dim1 = bin groups
     # dim2 = m batches (virtualized via loop)
+    # Uses blocking on m to ensure lookback correctness:
+    # all CTAs process the same m-block before moving to the next block.
 
-    pid_r = tl.program_id(1)
     pid_n = tl.program_id(0)
+    pid_r = tl.program_id(1)
 
-    # bit masks
     aggregate_mask: tl.constexpr = 1 << 30
     inclusive_prefix_mask: tl.constexpr = 1 << 31
     v_mask: tl.constexpr = (1 << 30) - 1
-    bfe_mask: tl.constexpr = (1 << k_bits) - 1  # a.k.a. 2 ** k_bits - 1
+    bfe_mask: tl.constexpr = (1 << k_bits) - 1
 
-    # initialize flag to zero-local sum is not ready
     r: tl.constexpr = 2**k_bits
     cta_r_start = pid_r * TILE_R
     cta_r_end = tl.minimum(cta_r_start + TILE_R, r)
@@ -226,29 +395,23 @@ def sweep(
     num_programs_m = tl.num_programs(2)
 
     for pid_m in range(pid_m_base, total_m_tasks, num_programs_m):
-        # cumsum for a bin_index
-        n_offsets = pid_n * TILE_N + tl.arange(0, TILE_N)  # (TILE_N, )
+        n_offsets = pid_n * TILE_N + tl.arange(0, TILE_N)
         mask = n_offsets < N
         arr = tl.load(arr_ptr + pid_m * N + n_offsets, mask=mask)
-        key = extract_radix_key(arr, bit_offset, bfe_mask, descending)
-
-        # since triton can only use scalar as condition, loop by bin_index
-        # status must be pre zero-initialized, or else we have to initialize it
+        arr_u = convert_to_uint_preverse_order(arr, descending)
+        key = (arr_u >> bit_offset) & bfe_mask
         for bin_index in range(cta_r_start, cta_r_end):
-            matches = tl.where(mask, key == bin_index, False)  # (TILE_N, ) bool
-            # cta level cumsum per bin
-            # CAUTION: tl.sum in triton 3.2 does not promote type
+            matches = tl.where(mask, key == bin_index, False)
             local_sum = tl.sum(matches.to(tl.uint32), axis=0)
             pack0 = aggregate_mask | local_sum
             status_offset = pid_m * (r * OUT_N) + bin_index * OUT_N + pid_n
             tl.store(status_ptr + status_offset, pack0, cache_modifier=".cg")
 
-            # decoupled lookback
             exclusive_prefix = tl.zeros((), dtype=tl.uint32)
             i_lookback = pid_n - 1
             while i_lookback >= 0:
                 flag_offset_i = pid_m * (r * OUT_N) + bin_index * OUT_N + i_lookback
-                pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)  # uin32
+                pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)
                 while pack1 == 0:
                     pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)
                 exclusive_prefix += pack1 & v_mask
@@ -257,23 +420,16 @@ def sweep(
                 else:
                     i_lookback = -1
             pack2 = inclusive_prefix_mask | (exclusive_prefix + local_sum)
-            # print("pack2", pack2)
             tl.store(status_ptr + status_offset, pack2, cache_modifier=".cg")
 
-            local_ex_cumsum = (
-                tl.cumsum(matches.to(tl.uint32), axis=0) - matches
-            )  # (TILE_N, )
-            ex_cumsum_in_bin = (
-                exclusive_prefix + local_ex_cumsum
-            )  # global ex_cumsum_in_bin (TILE_N, )
+            local_ex_cumsum = tl.cumsum(matches.to(tl.uint32), axis=0) - matches
+            ex_cumsum_in_bin = exclusive_prefix + local_ex_cumsum
 
-            # ex_cumsum_bins (m, n_passes, r)
             ex_cumsum_bins = tl.load(
                 excumsum_bins_ptr + pid_m * (n_passes * r) + pass_id * r + bin_index
-            )  # scalar
-            pos = ex_cumsum_bins + ex_cumsum_in_bin  # (TILE_N, )
+            )
+            pos = ex_cumsum_bins + ex_cumsum_in_bin
 
-            # scatter
             tl.store(out_ptr + pid_m * N + pos, arr, mask=matches)
             if associate_arr_ptr is not None:
                 associate_arr = tl.load(
@@ -291,68 +447,142 @@ def radix_sort(arr, k_bits=8, descending=False):
     dtype = arr.dtype
     num_bits = 1 if dtype == torch.bool else (arr.itemsize * 8)
 
-    TILE_N = 1024
+    TILE_N_HIST = 1024
     tiles_n_per_cta = 8
-    CTA_TILE_N = tiles_n_per_cta * TILE_N
+    CTA_TILE_N = tiles_n_per_cta * TILE_N_HIST
 
     num_bins = 2**k_bits
     n_passes = triton.cdiv(num_bits, k_bits)
-    TILE_R = 16
 
-    grid_n = triton.cdiv(n, CTA_TILE_N)
-    total_hist_tasks = m * grid_n
-    grid_for_global_hist = (min(total_hist_tasks, MAX_GRID_DIM), 1, 1)
+    TILE_R_SWEEP = 8
+    grid_r = triton.cdiv(num_bins, TILE_R_SWEEP)
+    TILE_N_SWEEP = 2048
+    grid_n_sweep = triton.cdiv(n, TILE_N_SWEEP)
+    # Expand TILE_N if grid_n exceeds the 65535 hardware limit
+    while grid_n_sweep > 65535:
+        TILE_N_SWEEP *= 2
+        grid_n_sweep = triton.cdiv(n, TILE_N_SWEEP)
+
+    total_grid_x = m * grid_n_sweep
 
     with torch_device_fn.device(arr.device):
-        global_hist = torch.zeros(
-            (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
-        )
-        compute_global_hist_kernel[grid_for_global_hist](
-            arr,
-            global_hist,
-            n_passes,
-            m,
-            n,
-            tiles_n_per_cta,
-            total_hist_tasks,
-            TILE_N,
-            TILE_R,
-            k_bits,
-            descending,
-        )
+        if (total_grid_x <= 65535 and n <= 65535) or grid_n_sweep == 1:
+            # --- Main path: atomic_add hist ---
+            # Enters here when:
+            # 1. total_grid_x <= 65535 and n <= 65535 (general case, 2D sweep)
+            # 2. grid_n_sweep == 1 (dim=0 after transpose, lookback trivial)
+            TILE_R_HIST = 16
+            grid_n_hist = triton.cdiv(n, CTA_TILE_N)
+            total_tasks = m * grid_n_hist
+            num_ctas_hist = min(total_tasks, 65535)
+
+            global_hist = torch.zeros(
+                (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
+            )
+            compute_global_hist_kernel[(num_ctas_hist, 1, 1)](
+                arr,
+                global_hist,
+                n_passes,
+                m,
+                n,
+                total_tasks,
+                num_ctas_hist,
+                tiles_n_per_cta,
+                TILE_N_HIST,
+                TILE_R_HIST,
+                k_bits,
+                descending,
+            )
+
+            if total_grid_x <= 65535:
+                # All CTAs fit in 2D grid, original sweep with 1:1 mapping
+                grid_for_sweep = (total_grid_x, grid_r)
+                sweep_kernel = sweep
+                sweep_extra_args = (TILE_N_SWEEP, TILE_R_SWEEP, k_bits, descending)
+            else:
+                # grid_n_sweep == 1 but m > 65535 (dim=0 with large hidden_size)
+                # Use 3D sweep with m virtualization; lookback is trivial since
+                # pid_n is always 0
+                grid_m = min(m, MAX_GRID_DIM)
+                grid_for_sweep = (grid_n_sweep, grid_r, grid_m)
+                sweep_kernel = sweep_3d
+                sweep_extra_args = (
+                    m,
+                    TILE_N_SWEEP,
+                    TILE_R_SWEEP,
+                    k_bits,
+                    descending,
+                )
+        else:
+            # --- Fallback: GCU300-style two-step hist (no atomic_add) + 3D sweep ---
+            # Triggered when total_grid_x > 65535 or n > 65535.
+            # Uses scratch + reduce for histogram (no atomic_add) and
+            # 3D grid with m virtualization in dim2 for sweep.
+            TILE_R_HIST = 16
+            grid_n_hist = triton.cdiv(n, CTA_TILE_N)
+            total_tasks = m * grid_n_hist
+            num_ctas_hist_all = min(total_tasks, MAX_GRID_DIM)
+
+            global_hist_all_cta = torch.zeros(
+                (m * grid_n_hist, n_passes, num_bins),
+                device=arr.device,
+                dtype=torch.int32,
+            )
+            compute_global_hist_kernel_all_cta[(num_ctas_hist_all, 1, 1)](
+                arr,
+                global_hist_all_cta,
+                n_passes,
+                m,
+                n,
+                total_tasks,
+                num_ctas_hist_all,
+                tiles_n_per_cta,
+                TILE_N_HIST,
+                TILE_R_HIST,
+                k_bits,
+                descending,
+            )
+
+            num_ctas_hist = min(m, MAX_GRID_DIM)
+            global_hist = torch.zeros(
+                (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
+            )
+            add_global_hist_kernel[(num_ctas_hist, 1, 1)](
+                global_hist_all_cta,
+                global_hist,
+                grid_n_hist,
+                m,
+                num_ctas_hist,
+                n_passes,
+                num_bins,
+            )
+
+            grid_m = min(m, MAX_GRID_DIM)
+            grid_for_sweep = (grid_n_sweep, grid_r, grid_m)
+            sweep_kernel = sweep_3d
+            sweep_extra_args = (m, TILE_N_SWEEP, TILE_R_SWEEP, k_bits, descending)
+
         ex_cumsum_bins = torch.cumsum(global_hist, -1) - global_hist
         ex_cumsum_bins = ex_cumsum_bins.to(torch.uint32)
 
         # sort
         arr_in = torch.clone(arr)
         indices_in = (
-            torch.arange(0, n, dtype=torch.int64, device=arr_in.device)
+            torch.arange(0, n, dtype=torch.int32, device=arr_in.device)
             .broadcast_to(arr.shape)
             .contiguous()
         )
         arr_out = torch.empty_like(arr)
         indices_out = torch.empty_like(indices_in)
 
-        TILE_R = 8
-        grid_r = triton.cdiv(num_bins, TILE_R)
-        MAX_GRID_DIM_0 = 65535
-        TILE_N = 1024
-        grid_n = triton.cdiv(n, TILE_N)
-        while grid_n > MAX_GRID_DIM_0:
-            TILE_N *= 2
-            grid_n = triton.cdiv(n, TILE_N)
-        MAX_GRID_DIM_2 = 255
-        grid_m = min(m, MAX_GRID_DIM_2)
-        grid_for_sweep = (grid_n, grid_r, grid_m)
-
         status = torch.empty(
-            (m, num_bins, grid_n), device=arr.device, dtype=torch.uint32
+            (m, num_bins, grid_n_sweep), device=arr.device, dtype=torch.uint32
         )
 
         for i in range(0, n_passes):
             bit_offset = i * k_bits
             status.zero_()
-            sweep[grid_for_sweep](
+            sweep_kernel[grid_for_sweep](
                 arr_in,
                 indices_in,
                 arr_out,
@@ -364,13 +594,10 @@ def radix_sort(arr, k_bits=8, descending=False):
                 bit_offset,
                 m,
                 n,
-                grid_n,
-                m,
-                TILE_N,
-                TILE_R,
-                k_bits,
-                descending,
+                grid_n_sweep,
+                *sweep_extra_args,
             )
+            # print(f"< sorted last {bit_offset + k_bits:>2d} bits: {arr_out}")
             arr_in, arr_out = arr_out, arr_in
             indices_in, indices_out = indices_out, indices_in
 
@@ -439,4 +666,4 @@ def sort_stable(inp, *, stable, dim=-1, descending=False):
     if dim != inp.ndim - 1:
         out = torch.movedim(out, -1, dim)
         out_index = torch.movedim(out_index, -1, dim)
-    return out, out_index
+    return out, out_index.to(torch.int64)
