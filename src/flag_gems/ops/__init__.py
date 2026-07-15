@@ -3,7 +3,6 @@ from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
-from flag_gems.ops._cdist_forward import _cdist_forward
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range import (
     _functional_sym_constrain_range,
@@ -109,7 +108,7 @@ from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.broadcast_to import broadcast_to
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
-from flag_gems.ops.cdist_backward import _cdist_backward
+from flag_gems.ops.cdist import _cdist_backward, _cdist_forward
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.channel_shuffle import channel_shuffle

@@ -2,7 +2,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops._cdist_forward import _cdist_forward
+from flag_gems.ops.cdist import _cdist_forward
 
 from . import accuracy_utils as utils
 
