@@ -2710,3 +2710,47 @@ w8a8_block_fp8_bmm_splitk:
       - 4
     stages:
       - 3
+
+
+rmsnorm_bwd_dx:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_ROW_SIZE: block_r
+        BLOCK_COL_SIZE: block_c
+      num_warps: warps
+    warps:
+      - 4
+      - 8
+      - 16
+    block_r:
+      - 1
+      - 2
+      - 4
+      - 8
+    block_c:
+      - 256
+      - 512
+      - 1024
+      - 2048
+
+rmsnorm_bwd_dgamma:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_ROW_SIZE: block_r
+        BLOCK_COL_SIZE: block_c
+      num_warps: warps
+    warps:
+      - 4
+      - 8
+      - 16
+    block_r:
+      - 32
+      - 64
+      - 128
+    block_c:
+      - 64
+      - 128
+      - 256
+      - 512

@@ -96,7 +96,7 @@ def test_rmsnorm_fwd(shape, dtype, zero_centered_gamma, use_ln_out):
     if use_ln_out:
         assert res_out.data_ptr() == ln_out.data_ptr()
     utils.gems_assert_close(res_out, ref_out, dtype)
-    utils.gems_assert_close(res_rsigma, ref_rsigma.to(flag_gems.device), torch.float32)
+    utils.gems_assert_close(res_rsigma, ref_rsigma, torch.float32)
 
 
 # =============================================================================
