@@ -45,24 +45,23 @@ UV_VERSION="0.11.22"
 UV_MIRROR="https://resource.flagos.net/repository/flagos-filestore/utils"
 
 printf "Checking uv ..."
+export PATH="${HOME}/.local/bin:$PATH"
 if command -v uv &>/dev/null; then
   printf " $(uv --version)"
   ok
 else
   printf " not found, installing ...\n"
-  export HOME=$(eval echo ~"$(whoami)")
   ARCH=$(uname -m)
   mkdir -p "$HOME/.local/bin"
   curl -sSf "${UV_MIRROR}/uv-${ARCH}-${UV_VERSION}-linux-gnu.tar.gz" \
     | tar xz -C "$HOME/.local/bin" 2>/dev/null \
     || { curl -LsSf https://astral.sh/uv/install.sh | sh; }
-  export PATH="$HOME/.local/bin:$PATH"
-  # Persist PATH for subsequent GitHub Actions steps
-  [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   command -v uv &>/dev/null || { printf "uv installation"; fail; }
   printf "Installed $(uv --version)"
   ok
 fi
+# Persist PATH for subsequent GitHub Actions steps
+[ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
 # ── Install Python via uv ────────────────────────────────────
 printf "Installing Python ${PYTHON_VERSION} ..."
@@ -91,7 +90,7 @@ uv pip install -q \
   "pybind11==3.0.3" \
   "cmake>=3.20,<4" \
   "ninja==1.13.0" \
-  "PyYAML>=6.0" \
+  "PyYAML==6.0.3" \
   --index "${MIRROR}" \
   || fail
 ok
@@ -116,15 +115,11 @@ if isinstance(tr, list):
     tr = ' '.join(tr)
 print(f'TRITON_PKGS=\"{tr}\"')
 
-post_install = []
-post_uninstall = []
-for item in b.get('post_install', []):
-    if isinstance(item, dict) and 'uninstall' in item:
-        post_uninstall.append(item['uninstall'])
-    else:
-        post_install.append(item)
-print(f'POST_INSTALL=\"{\" \".join(post_install)}\"')
-print(f'POST_UNINSTALL=\"{\" \".join(post_uninstall)}\"')
+triton_post = []
+for item in b.get('triton_post_install', []):
+    if isinstance(item, str):
+        triton_post.append(item)
+print(f'TRITON_POST_INSTALL=\"{\" \".join(triton_post)}\"')
 ")
 
 # ── C++ extensions ───────────────────────────────────────────
@@ -161,7 +156,7 @@ ok
 
 # ── Compiler selection ───────────────────────────────────────
 # COMPILER controls which Triton-compatible compiler to use:
-#   COMPILER=flagtree → use FlagTree (default when available)
+#   COMPILER=flagtree → use FlagTree (error if unavailable)
 #   COMPILER=triton   → use vendor Triton
 #   unset             → auto: FlagTree if available, otherwise Triton
 COMPILER="${COMPILER:-}"
@@ -170,28 +165,19 @@ if [ -z "${COMPILER}" ]; then
   if [ -n "${FLAGTREE_PKGS}" ]; then
     COMPILER=flagtree
   else
+    printf "WARNING: FlagTree is not available for ${BACKEND}, falling back to Triton.\n"
     COMPILER=triton
   fi
 fi
 
 if [ "${COMPILER}" = "flagtree" ]; then
   if [ -n "${FLAGTREE_PKGS}" ]; then
-    # FlagTree installs into site-packages/triton, so any existing
-    # triton-prefixed packages must be removed first.
-    TRITON_INSTALLED=$(uv pip list 2>/dev/null | awk '{print $1}' | grep -i '^triton' || true)
-    if [ -n "${TRITON_INSTALLED}" ]; then
-      printf "Replacing Triton with FlagTree ..."
-      # echo "${TRITON_INSTALLED}" | xargs uv pip uninstall -q 2>/dev/null || true
-      uv pip uninstall "${TRITON_INSTALLED}"
-      ok
-    fi
     printf "Installing FlagTree ..."
-    uv pip uninstall ${FLAGTREE_PKGS}
     uv pip install -q ${FLAGTREE_PKGS} --default-index "${FLAGOS_PYPI}" || fail
     ok
   else
-    printf "FlagTree not available for ${BACKEND}, using Triton\n"
-    COMPILER=triton
+    echo "Error: COMPILER=flagtree but FlagTree is not available for '${BACKEND}'."
+    exit 1
   fi
 fi
 
@@ -199,6 +185,9 @@ if [ "${COMPILER}" = "triton" ] && [ -n "${TRITON_PKGS}" ]; then
   printf "Installing Triton ..."
   uv pip install -q ${TRITON_PKGS} --default-index "${FLAGOS_PYPI}" || fail
   ok
+elif [ "${COMPILER}" = "triton" ] && [ -z "${TRITON_PKGS}" ]; then
+  echo "Error: COMPILER=triton but no triton packages configured for '${BACKEND}'"
+  exit 1
 fi
 
 if [ "${COMPILER}" != "flagtree" ] && [ "${COMPILER}" != "triton" ]; then
@@ -206,19 +195,11 @@ if [ "${COMPILER}" != "flagtree" ] && [ "${COMPILER}" != "triton" ]; then
   exit 1
 fi
 
-# ── Vendor-specific post-install ──────────────────────────────
-if [ -n "${POST_INSTALL}" ]; then
-  for pkg in ${POST_INSTALL}; do
-    printf "Post-install: ${pkg} ..."
-    uv pip install -q "${pkg}" --default-index "${FLAGOS_PYPI}" || fail
-    ok
-  done
-fi
-
-if [ -n "${POST_UNINSTALL}" ]; then
-  for pkg in ${POST_UNINSTALL}; do
-    printf "Post-uninstall: ${pkg} ..."
-    uv pip uninstall -q "${pkg}" 2>/dev/null || true
+# ── Triton-specific post-install ──────────────────────────────
+if [ -n "${TRITON_POST_INSTALL}" ] && [ "${COMPILER}" = "triton" ]; then
+  for pkg in ${TRITON_POST_INSTALL}; do
+    printf "Triton post-install: ${pkg} ..."
+    uv pip install -q "${pkg}" --default-index "${FLAGOS_PYPI}" --index "${MIRROR}" || fail
     ok
   done
 fi
@@ -228,4 +209,31 @@ printf "Installing test dependencies ..."
 uv pip install -q ".[test]" --index "${MIRROR}" || fail
 ok
 
+# ── Write env into .venv/bin/activate ────────────────────────
+# So that `source .venv/bin/activate` sets up the full environment.
+printf "Writing environment to .venv/bin/activate ..."
+python3 -c "
+import yaml
+
+cfg = yaml.safe_load(open('${BACKENDS_YAML}'))
+b = cfg['backends']['${BACKEND}']
+
+lines = []
+lines.append('')
+lines.append('# --- FlagGems environment (${BACKEND}) ---')
+
+for k, v in b.get('env', {}).items():
+    lines.append(f'export {k}={v}')
+
+for script in b.get('env_source', []):
+    lines.append(f'[ -f {script} ] && source {script} || true')
+
+lines.append('# --- end FlagGems environment ---')
+
+with open('.venv/bin/activate', 'a') as f:
+    f.write('\n'.join(lines) + '\n')
+" || fail
+ok
+
 printf "\n${GREEN}FlagGems setup complete for ${BACKEND}${NC}\n"
+printf "Run: ${GREEN}source .venv/bin/activate${NC}\n"
