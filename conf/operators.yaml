@@ -724,6 +724,18 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: arctanh
+    description: |
+      Computes the element-wise inverse hyperbolic tangent of a given input tensor.
+    for:
+      - arctanh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: arctanh_
     description: |
       Computes the element-wise inverse hyperbolic tangent of a given input tensor.
