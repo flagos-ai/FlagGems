@@ -18,9 +18,14 @@ on:
     # Monday 02:00 Beijing time = Sunday 18:00 UTC
     - cron: '0 18 * * 0'
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       date: ${{ steps.get-date.outputs.DATE }}
       matrix_container: ${{ steps.build-matrix.outputs.matrix_container }}
@@ -30,7 +35,6 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - id: get-date
-        shell: bash
         run: echo "DATE=$(date -u '+%Y-%m-%d')" >> "$GITHUB_OUTPUT"
 
       - id: build-matrix
@@ -86,7 +90,6 @@ jobs:
         continue-on-error: true
       - id: sleep-1
         if: steps.checkout-attempt-1.outcome == 'failure'
-        shell: bash
         run: sleep 30s
 
       - id: checkout-attempt-2
@@ -95,7 +98,6 @@ jobs:
         continue-on-error: true
       - id: sleep-2
         if: steps.checkout-attempt-2.outcome == 'failure'
-        shell: bash
         run: sleep 30s
 
       - id: checkout-attempt-3
@@ -103,11 +105,9 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Fix git safe directory
-        shell: bash
         run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
 
       - name: Copy root profile to GitHub Actions home
-        shell: bash
         run: |
           for f in /root/.bash_profile /root/.profile /root/.bashrc; do
             [ -f "$f" ] && cp -f "$f" "$HOME/" || true
@@ -131,9 +131,13 @@ jobs:
 
       # Run weekly tests for all operator stages
       - name: Run weekly tests
+        timeout-minutes: 720
         env: ${{ fromJSON(matrix.test_env) }}
         shell: bash --login -e -o pipefail {0}
         run: |
+          # remove cache to avoid potential issues with stale files
+          rm -rf ~/.triton/cache && rm -rf ~/.flaggems
+          # run tests with specified GPUs and output directory
           python3 tools/run_tests.py \
             --gpus "${{ matrix.test_gpus }}" \
             --stages all \
@@ -154,8 +158,10 @@ jobs:
       #       --output "${OUTPUT_DIR}"
 
       - name: Package results
-        shell: bash
         run: |
+          python3 tools/add_labels.py ${OUTPUT_DIR}
+          python3 tools/psum_text  -o  ${OUTPUT_DIR}/result.csv  ${OUTPUT_DIR}
+          python3 tools/psum_html  -o  ${OUTPUT_DIR}/result.html  ${OUTPUT_DIR}
           ARCHIVE="${{ runner.temp }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
@@ -167,7 +173,6 @@ jobs:
       #     path: ${{ env.ARCHIVE }}
 
       - name: Publish results to op-monitor
-        shell: bash
         run: |
           curl -X POST "${{ needs.prepare.outputs.api }}" \
             -H "X-API-Key: ${{ secrets.OPMON_UPLOAD_KEY }}" \
@@ -209,7 +214,6 @@ jobs:
         continue-on-error: true
       - id: sleep-1
         if: steps.checkout-attempt-1.outcome == 'failure'
-        shell: bash
         run: sleep 30s
 
       - id: checkout-attempt-2
@@ -218,7 +222,6 @@ jobs:
         continue-on-error: true
       - id: sleep-2
         if: steps.checkout-attempt-2.outcome == 'failure'
-        shell: bash
         run: sleep 30s
 
       - id: checkout-attempt-3
@@ -226,22 +229,22 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Fix git safe directory
-        shell: bash
         run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
 
       - name: Install FlagGems dependencies
-        shell: bash
         run: pip install ".[test]"
 
       - name: Check GPU availability
-        shell: bash
         run: bash ${{ matrix.gpu_check_script }}
 
-      # Run weekly tests for all operator stages
+      # Run weekly tests for all operator sta， timeout 720 minutes (12 hours)
       - name: Run weekly tests
-        shell: bash
+        timeout-minutes: 720
         env: ${{ fromJSON(matrix.test_env) }}
         run: |
+          # remove cache to avoid potential issues with stale files
+          rm -rf ~/.triton/cache && rm -rf ~/.flaggems
+          # run tests with specified GPUs and output directory
           python3 tools/run_tests.py \
             --gpus "${{ matrix.test_gpus }}" \
             --stages all \
@@ -252,7 +255,6 @@ jobs:
       # This is a smoke test to quickly verify the weekly testing pipeline
       # and the backend environment.
       # - name: Run weekly tests
-      #   shell: bash
       #   env: ${{ fromJSON(matrix.test_env) }}
       #   run: |
       #     python3 tools/run_tests.py \
@@ -262,8 +264,10 @@ jobs:
       #       --output "${OUTPUT_DIR}"
 
       - name: Package results
-        shell: bash
         run: |
+          python3 tools/add_labels.py ${OUTPUT_DIR}
+          python3 tools/psum_text  -o  ${OUTPUT_DIR}/result.csv  ${OUTPUT_DIR}
+          python3 tools/psum_html  -o  ${OUTPUT_DIR}/result.html  ${OUTPUT_DIR}
           ARCHIVE="${{ runner.temp }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
@@ -278,7 +282,6 @@ jobs:
       # due to potential network restrictions on self-hosted runners.
       #
       # - name: Publish results to op-monitor
-      #   shell: bash
       #   run: |
       #     curl -X POST "${{ needs.prepare.outputs.api }}" \
       #       -H "X-API-Key: ${{ secrets.OPMON_UPLOAD_KEY }}" \
