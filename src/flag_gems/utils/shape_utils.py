@@ -182,6 +182,7 @@ def all_c_contiguous(tensors: Sequence[torch.Tensor]) -> bool:
     return all(tensor.is_contiguous() for tensor in tensors)
 
 
+@functools.lru_cache(maxsize=1024)
 def heuristics_for_tile_size(max_tile_size, *sizes):
     ndim = len(sizes)
     tile_sizes = [0 for _ in range(ndim)]
