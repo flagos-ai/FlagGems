@@ -22,7 +22,6 @@ from typing_extensions import override
 from .model import PersistantModel
 from .session import RollbackSession
 
-
 # SQLAlchemy 2.0 introduced ``DeclarativeBase`` and ``mapped_column``; LTS
 # distributions (e.g. Ubuntu 22.04/24.04) still ship SQLAlchemy 1.4, so fall
 # back to the legacy declarative API when they are unavailable.

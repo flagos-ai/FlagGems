@@ -35,11 +35,13 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
-          python-version: '3.11'
+          python-version: '3.12'
       - name: Install dependencies (CPU-only)
         run: |
-          pip install torch==2.7.1 --index-url https://download.pytorch.org/whl/cpu
-          pip install triton==3.3.1 packaging PyYAML numpy typing_extensions pytest "${{ matrix.sqlalchemy }}"
+          # unpinned: triton 3.3.x raises "0 active drivers" at import on a
+          # GPU-less runner, recent triton defers driver initialization
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install triton packaging PyYAML numpy typing_extensions pytest "${{ matrix.sqlalchemy }}"
       - name: Run SQL persistent model tests
         env:
           # skip hardware probing on the CPU-only runner
