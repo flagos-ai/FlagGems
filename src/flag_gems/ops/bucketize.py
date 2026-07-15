@@ -113,7 +113,12 @@ def bucketize(input, boundaries, *, out_int32=False, right=False):
         num_warps=num_warps,
     )
 
-    # Reshape output back to original shape
-    output = output.reshape(input.shape)
+    # Reshape output back to original shape. Must reshape output_flat, not
+    # output: when input is non-contiguous, torch.empty_like(input) preserves
+    # that layout, so output.flatten() (a few lines above) can't return a
+    # view and allocates separate storage instead. The kernel writes into
+    # that separate storage via output_flat, so reshaping output here would
+    # return the original, still-uninitialized tensor.
+    output = output_flat.reshape(input.shape)
 
     return output
