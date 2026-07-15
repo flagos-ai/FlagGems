@@ -18,7 +18,7 @@ from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import torch
 import triton
-from _enflame.gcu400.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
+from .codegen_config_utils import CodeGenConfig, get_codegen_config
 from triton.runtime.jit import JITFunction
 
 from flag_gems.utils.code_cache import code_cache_dir

@@ -18,7 +18,7 @@ from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import torch
 import triton
-from _enflame.gcu300.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
+from .codegen_config_utils import CodeGenConfig, get_codegen_config
 from triton.runtime.jit import JITFunction
 
 from flag_gems.utils.code_cache import code_cache_dir
@@ -1509,6 +1509,12 @@ class PointwiseDynamicFunction:
             *arg_indices, method = schema._promotion_methods[i]
             promote_args = (args[j] for j in arg_indices)
             _, dtype = type_promotion(*promote_args, type_promotion=method)
+            # GCU300 does not support 64-bit data types; cap integer results
+            # that promotion would otherwise raise to int64 down to int32.
+            if dtype == torch.int64:
+                dtype = torch.int32
+            elif dtype == torch.uint64:
+                dtype = torch.uint32
             outputs_dtypes_for_allocation.append(dtype)
 
         tensors = out_tensors + in_tensors
