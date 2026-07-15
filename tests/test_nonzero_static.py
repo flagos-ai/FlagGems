@@ -2,7 +2,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.nonzero_static import nonzero_static
+from flag_gems.ops.nonzero_static import nonzero_static, nonzero_static_out
 
 from . import accuracy_utils as utils
 
@@ -74,25 +74,6 @@ def make_input(shape, dtype, nnz_ratio, device):
     return x
 
 
-def expected_nonzero_static(x, size, fill_value):
-    ndim = x.dim()
-    out = torch.empty((size, ndim), device=x.device, dtype=torch.long)
-
-    if size == 0 or ndim == 0:
-        return out
-
-    nz = torch.nonzero(x, as_tuple=False)
-    copy_len = min(size, nz.shape[0])
-
-    if copy_len > 0:
-        out[:copy_len].copy_(nz[:copy_len])
-
-    if copy_len < size:
-        out[copy_len:].fill_(fill_value)
-
-    return out
-
-
 def assert_nonzero_static_matches(shape, dtype, nnz_ratio, size, fill_value):
     if dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
         pytest.skip("bfloat16 is not supported on this CUDA device")
@@ -103,21 +84,12 @@ def assert_nonzero_static_matches(shape, dtype, nnz_ratio, size, fill_value):
 
     actual = nonzero_static(x_gpu, size=size, fill_value=fill_value)
     ref_x = utils.to_reference(x_gpu)
-    expected = expected_nonzero_static(ref_x, size, fill_value)
+    expected = torch.nonzero_static(ref_x, size=size, fill_value=fill_value)
+    expected = utils.to_reference(expected)
 
     assert actual.dtype == torch.int64
     assert tuple(actual.shape) == (size, x_gpu.dim())
     utils.gems_assert_equal(actual, expected)
-
-    if hasattr(torch, "nonzero_static"):
-        try:
-            expected_cuda = torch.nonzero_static(
-                x_gpu, size=size, fill_value=fill_value
-            )
-            expected_cuda = utils.to_reference(expected_cuda)
-            utils.gems_assert_equal(actual, expected_cuda)
-        except RuntimeError:
-            pass
 
 
 @pytest.mark.nonzero_static
@@ -148,7 +120,8 @@ def test_nonzero_static_complex(dtype):
 
     actual = nonzero_static(x_gpu, size=4, fill_value=9)
     ref_x = utils.to_reference(x_gpu)
-    expected = expected_nonzero_static(ref_x, size=4, fill_value=9)
+    expected = torch.nonzero_static(ref_x, size=4, fill_value=9)
+    expected = utils.to_reference(expected)
 
     utils.gems_assert_equal(actual, expected)
 
@@ -163,7 +136,8 @@ def test_nonzero_static_non_contiguous_transpose():
 
     actual = nonzero_static(x_gpu_view, size=128, fill_value=-1)
     ref_view = utils.to_reference(x_gpu_view)
-    expected = expected_nonzero_static(ref_view, size=128, fill_value=-1)
+    expected = torch.nonzero_static(ref_view, size=128, fill_value=-1)
+    expected = utils.to_reference(expected)
 
     utils.gems_assert_equal(actual, expected)
 
@@ -178,7 +152,8 @@ def test_nonzero_static_non_contiguous_slice():
 
     actual = nonzero_static(x_gpu_view, size=128, fill_value=7)
     ref_view = utils.to_reference(x_gpu_view)
-    expected = expected_nonzero_static(ref_view, size=128, fill_value=7)
+    expected = torch.nonzero_static(ref_view, size=128, fill_value=7)
+    expected = utils.to_reference(expected)
 
     utils.gems_assert_equal(actual, expected)
 
@@ -215,16 +190,53 @@ def test_nonzero_static_rejects_bool_fill_value():
 
 @pytest.mark.nonzero_static
 def test_nonzero_static_registered_with_use_gems():
-    if not hasattr(torch, "nonzero_static"):
-        pytest.skip("torch.nonzero_static is unavailable in this PyTorch build")
-
     torch.manual_seed(3)
     x_cpu = make_input((4, 5), torch.float32, 0.4, "cpu")
     x_gpu = x_cpu.cuda()
+    ref_x = utils.to_reference(x_gpu)
+    expected = torch.nonzero_static(ref_x, size=16, fill_value=-1)
+    expected = utils.to_reference(expected)
 
     with flag_gems.use_gems(include=["nonzero_static"]):
         actual = torch.nonzero_static(x_gpu, size=16, fill_value=-1)
 
+    utils.gems_assert_equal(actual, expected)
+
+
+@pytest.mark.nonzero_static
+def test_nonzero_static_out():
+    torch.manual_seed(4)
+    x_cpu = make_input((4, 5), torch.float32, 0.4, "cpu")
+    x_gpu = x_cpu.cuda()
     ref_x = utils.to_reference(x_gpu)
-    expected = expected_nonzero_static(ref_x, size=16, fill_value=-1)
+
+    expected_out = torch.empty((1, 1), device=ref_x.device, dtype=torch.int64)
+    expected = torch.nonzero_static(ref_x, size=16, fill_value=7, out=expected_out)
+    expected = utils.to_reference(expected)
+
+    actual_out = torch.empty((1, 1), device=x_gpu.device, dtype=torch.int64)
+    actual = nonzero_static_out(x_gpu, size=16, fill_value=7, out=actual_out)
+
+    assert actual is actual_out
+    assert actual.dtype == torch.int64
+    assert tuple(actual.shape) == (16, x_gpu.dim())
+    utils.gems_assert_equal(actual, expected)
+
+
+@pytest.mark.nonzero_static
+def test_nonzero_static_out_registered_with_use_gems():
+    torch.manual_seed(5)
+    x_cpu = make_input((4, 5), torch.float32, 0.4, "cpu")
+    x_gpu = x_cpu.cuda()
+    ref_x = utils.to_reference(x_gpu)
+
+    expected_out = torch.empty((1, 1), device=ref_x.device, dtype=torch.int64)
+    expected = torch.nonzero_static(ref_x, size=16, fill_value=-1, out=expected_out)
+    expected = utils.to_reference(expected)
+
+    actual_out = torch.empty((1, 1), device=x_gpu.device, dtype=torch.int64)
+    with flag_gems.use_gems(include=["nonzero_static_out"]):
+        actual = torch.nonzero_static(x_gpu, size=16, fill_value=-1, out=actual_out)
+
+    assert actual is actual_out
     utils.gems_assert_equal(actual, expected)

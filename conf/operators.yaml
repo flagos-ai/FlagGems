@@ -5168,7 +5168,6 @@ ops:
       - nonzero_static
     labels:
       - aten
-      - KernelGen
     kind:
       - Tensor
     stages:

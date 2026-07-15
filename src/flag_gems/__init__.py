@@ -495,8 +495,9 @@ _FULL_CONFIG = (
     (
         "nonzero_static",
         nonzero_static,
-        lambda: hasattr(torch.ops.aten, "nonzero_static"),
+        lambda: torch_ge("2.1"),
     ),
+    ("nonzero_static.out", nonzero_static_out, lambda: torch_ge("2.1")),
     ("normal.Tensor_Tensor", normal_tensor_tensor),
     ("normal.Tensor_float", normal_tensor_float),
     ("normal.float_Tensor", normal_float_tensor),
