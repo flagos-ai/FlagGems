@@ -25,6 +25,7 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start  # noqa: F401
 from .argmax import argmax
 from .argmin import argmin
+from .bincount import bincount
 from .bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_,
@@ -254,6 +255,7 @@ __all__ = [
     "add",
     "add_",
     "angle",
+    "bincount",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
     "bitwise_and_scalar_tensor",
