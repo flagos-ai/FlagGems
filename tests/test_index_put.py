@@ -327,3 +327,29 @@ def test_index_put_mixed_none_and_tensor(input_shape, indices_config, dtype):
 
     out = flag_gems.index_put(inp, indices, values, accumulate)
     utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.index_put_
+def test_index_put__large_tensor_int32_offset():
+    # Regression for #4153, scatter side (same root cause as the index test).
+    # In-place on a >2**31-element tensor; the post-state is checked directly
+    # to avoid materializing a multi-GiB reference copy.
+    stride0 = 2**17
+    crit = 2**31 // stride0  # 16384: crit * stride0 == 2**31 > INT32_MAX
+    n_rows = crit + 1
+
+    try:
+        inp = torch.zeros((n_rows, stride0), dtype=torch.int8, device=flag_gems.device)
+    except RuntimeError as e:
+        if "out of memory" in str(e).lower():
+            pytest.skip("needs >2 GiB device memory for a >2**31-element tensor")
+        raise
+
+    idx = torch.tensor([crit], dtype=torch.int32, device=flag_gems.device)
+    values = torch.full((1, stride0), 7, dtype=torch.int8, device=flag_gems.device)
+
+    flag_gems.index_put_(inp, [idx], values, accumulate=False)
+
+    expected = torch.full((stride0,), 7, dtype=torch.int8, device=flag_gems.device)
+    assert torch.equal(inp[crit], expected)  # critical row written correctly
+    assert inp.sum(dtype=torch.int64).item() == 7 * stride0  # no stray writes
