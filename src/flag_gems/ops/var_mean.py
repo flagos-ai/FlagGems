@@ -23,6 +23,19 @@ def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
     return mean, count, M
 
 
+@triton.jit
+def welford_combine(mean_x, count_x, M_x, mean_y, count_y, M_y):
+    # Numerically stable parallel-Welford (Chan) merge: the M2 update uses the
+    # difference of means, so it does not lose precision when the data mean is
+    # far from zero.
+    count = count_x + count_y
+    _count = tl.maximum(count, 1.0)
+    delta = mean_y - mean_x
+    mean = mean_x + delta * count_y / _count
+    M = M_x + M_y + delta * delta * count_x * count_y / _count
+    return mean, count, M
+
+
 @libentry()
 @triton.jit(do_not_specialize=["correction", "M", "N"])
 def var_mean_welford_kernel(
@@ -135,8 +148,8 @@ def _var_mean_dim_kernel_inner(
     TILE_N: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
-    # Two-pass mean/variance over the innermost reduced dim (K == 1), avoiding
-    # the dim_compress copy. Stores both the variance and the mean.
+    # Single-read mean/variance over the innermost reduced dim (K == 1),
+    # avoiding the dim_compress copy. Stores both the variance and the mean.
     pid_m = tl.program_id(0)
 
     if ONE_TILE_PER_CTA:
@@ -144,35 +157,35 @@ def _var_mean_dim_kernel_inner(
         mask = n_offsets < N
         x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
         mean = tl.sum(x, axis=0) / N
-    else:
-        sum_acc = tl.zeros((TILE_N,), dtype=tl.float32)
-        for start_n in range(0, N, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)
-            mask = n_offsets < N
-            x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
-            sum_acc += x
-        mean = tl.sum(sum_acc, axis=0) / N
-
-    if ONE_TILE_PER_CTA:
-        n_offsets = tl.arange(0, TILE_N)
-        mask = n_offsets < N
-        x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
         diff = x - mean
-        sq_sum = tl.sum(tl.where(mask, diff * diff, 0.0), axis=0)
+        m2 = tl.sum(tl.where(mask, diff * diff, 0.0), axis=0)
     else:
-        sq_acc = tl.zeros((TILE_N,), dtype=tl.float32)
+        # The old code read the whole row twice (once for the mean, once for the
+        # squared deviations), doubling global-memory traffic. Stream a per-lane
+        # running (count, mean, M2) in a single read, with no cross-lane
+        # reduction inside the loop, and merge the lanes once at the end with a
+        # numerically stable Chan combine. Welford yields the mean directly, so
+        # storing it costs nothing extra.
+        count_acc = tl.zeros((TILE_N,), dtype=tl.float32)
+        mean_acc = tl.zeros((TILE_N,), dtype=tl.float32)
+        m2_acc = tl.zeros((TILE_N,), dtype=tl.float32)
         for start_n in range(0, N, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)
             mask = n_offsets < N
             x = tl.load(X + pid_m * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
-            diff = x - mean
-            sq_acc += tl.where(mask, diff * diff, 0.0)
-        sq_sum = tl.sum(sq_acc, axis=0)
+            new_count = count_acc + mask.to(tl.float32)
+            delta = x - mean_acc
+            mean_acc += tl.where(mask, delta / tl.maximum(new_count, 1.0), 0.0)
+            m2_acc += tl.where(mask, delta * (x - mean_acc), 0.0)
+            count_acc = new_count
+        mean, _count, m2 = tl.reduce(
+            (mean_acc, count_acc, m2_acc), axis=0, combine_fn=welford_combine
+        )
 
     # torch clamps the divisor at 0, so denom <= 0 yields +inf (or nan when the
     # squared-deviation sum is also 0), matching torch.var_mean.
     denom = tl.maximum(N - correction, 0.0)
-    var = sq_sum / denom
+    var = m2 / denom
     tl.store(Var + pid_m, var.to(Var.dtype.element_ty), mask=pid_m < M)
     tl.store(Mean + pid_m, mean.to(Mean.dtype.element_ty), mask=pid_m < M)
 
@@ -202,36 +215,35 @@ def _var_mean_dim_kernel_non_inner(
         offsets = pid_m * N * K + n_offsets * K + k_offsets
         x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
         mean = tl.sum(x, axis=0, keep_dims=True) / N
-    else:
-        sum_acc = tl.zeros((TILE_N, TILE_K), dtype=tl.float32)
-        for start_n in range(0, N, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
-            mask = (n_offsets < N) & (k_offsets < K)
-            offsets = pid_m * N * K + n_offsets * K + k_offsets
-            x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
-            sum_acc += x
-        mean = tl.sum(sum_acc, axis=0, keep_dims=True) / N
-
-    if ONE_TILE_PER_CTA:
-        n_offsets = tl.arange(0, TILE_N)[:, None]
-        mask = (n_offsets < N) & (k_offsets < K)
-        offsets = pid_m * N * K + n_offsets * K + k_offsets
-        x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
         diff = x - mean
-        sq_sum = tl.sum(tl.where(mask, diff * diff, 0.0), axis=0, keep_dims=True)
+        m2 = tl.sum(tl.where(mask, diff * diff, 0.0), axis=0, keep_dims=True)
     else:
-        sq_acc = tl.zeros((TILE_N, TILE_K), dtype=tl.float32)
+        # Single-read Welford (see the inner kernel). Each (n_lane, k) slot
+        # streams a running (count, mean, M2) with no cross-lane reduction in
+        # the loop; the n lanes are merged once at the end with the stable Chan
+        # combine.
+        count_acc = tl.zeros((TILE_N, TILE_K), dtype=tl.float32)
+        mean_acc = tl.zeros((TILE_N, TILE_K), dtype=tl.float32)
+        m2_acc = tl.zeros((TILE_N, TILE_K), dtype=tl.float32)
         for start_n in range(0, N, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
             mask = (n_offsets < N) & (k_offsets < K)
             offsets = pid_m * N * K + n_offsets * K + k_offsets
             x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
-            diff = x - mean
-            sq_acc += tl.where(mask, diff * diff, 0.0)
-        sq_sum = tl.sum(sq_acc, axis=0, keep_dims=True)
+            new_count = count_acc + mask.to(tl.float32)
+            delta = x - mean_acc
+            mean_acc += tl.where(mask, delta / tl.maximum(new_count, 1.0), 0.0)
+            m2_acc += tl.where(mask, delta * (x - mean_acc), 0.0)
+            count_acc = new_count
+        mean, _count, m2 = tl.reduce(
+            (mean_acc, count_acc, m2_acc),
+            axis=0,
+            combine_fn=welford_combine,
+            keep_dims=True,
+        )
 
     denom = tl.maximum(N - correction, 0.0)
-    var = sq_sum / denom
+    var = m2 / denom
     out_offsets = pid_m * K + k_offsets
     tl.store(Var + out_offsets, var.to(Var.dtype.element_ty), mask=k_offsets < K)
     tl.store(Mean + out_offsets, mean.to(Mean.dtype.element_ty), mask=k_offsets < K)
