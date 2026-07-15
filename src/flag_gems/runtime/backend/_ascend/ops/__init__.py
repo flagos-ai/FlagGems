@@ -17,7 +17,6 @@ from .attention import (
 from .baddbmm import baddbmm
 from .bmm import bmm
 from .cat import cat, cat_out
-from .conj import conj
 from .count_nonzero import count_nonzero
 from .cummax import cummax
 from .cummin import cummin
@@ -108,7 +107,6 @@ __all__ = [
     "bmm",
     "cat",
     "cat_out",
-    "conj",
     "count_nonzero",
     "cummax",
     "cummin",
