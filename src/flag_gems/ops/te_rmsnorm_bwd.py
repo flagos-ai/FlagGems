@@ -261,7 +261,7 @@ def rmsnorm_bwd_dgamma_reduce_kernel(
     )
 
 
-def rmsnorm_bwd(
+def te_rmsnorm_bwd(
     dz: torch.Tensor,
     x: torch.Tensor,
     rsigma: torch.Tensor,

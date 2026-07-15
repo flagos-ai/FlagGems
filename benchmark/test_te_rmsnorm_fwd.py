@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from flag_gems.ops.rmsnorm_fwd import rmsnorm_fwd
+from flag_gems.ops.te_rmsnorm_fwd import te_rmsnorm_fwd as gems_te_rmsnorm_fwd
 
 from . import base, consts
 
@@ -44,7 +44,7 @@ def te_rmsnorm_fwd(inp, weight, eps=1e-5):
 
 
 def gems_rmsnorm_fwd(inp, weight, eps=1e-5):
-    result = rmsnorm_fwd(
+    result = gems_te_rmsnorm_fwd(
         inp,
         weight,
         eps,

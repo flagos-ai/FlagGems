@@ -2,7 +2,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.rmsnorm_fwd import rmsnorm_fwd
+from flag_gems.ops.te_rmsnorm_fwd import te_rmsnorm_fwd
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -82,7 +82,7 @@ def test_rmsnorm_fwd(shape, dtype, zero_centered_gamma, use_ln_out):
         ref_inp, ref_weight, eps, zero_centered_gamma=zero_centered_gamma
     )
 
-    res_out, _, res_rsigma = rmsnorm_fwd(
+    res_out, _, res_rsigma = te_rmsnorm_fwd(
         inp,
         weight,
         eps,
@@ -142,7 +142,7 @@ def test_rmsnorm_fwd_vs_te(shape, dtype, zero_centered_gamma, use_ln_out):
     te_out, _, te_rsigma = te_result
 
     # FlagGems implementation
-    res_out, _, res_rsigma = rmsnorm_fwd(
+    res_out, _, res_rsigma = te_rmsnorm_fwd(
         inp,
         weight,
         eps,

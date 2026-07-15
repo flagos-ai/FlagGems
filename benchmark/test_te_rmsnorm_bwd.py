@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from flag_gems.ops.rmsnorm_bwd import rmsnorm_bwd
+from flag_gems.ops.te_rmsnorm_bwd import te_rmsnorm_bwd as gems_te_rmsnorm_bwd
 
 from . import base, consts
 
@@ -42,7 +42,7 @@ def te_rmsnorm_bwd(dz, x, rsigma, weight, sm_margin=0, zero_centered_gamma=False
 
 
 def gems_rmsnorm_bwd(dz, x, rsigma, weight, sm_margin=0, zero_centered_gamma=False):
-    result = rmsnorm_bwd(dz, x, rsigma, weight, sm_margin, zero_centered_gamma)
+    result = gems_te_rmsnorm_bwd(dz, x, rsigma, weight, sm_margin, zero_centered_gamma)
     return result[0]
 
 

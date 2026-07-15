@@ -2,8 +2,8 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.rmsnorm_bwd import rmsnorm_bwd
-from flag_gems.ops.rmsnorm_fwd import rmsnorm_fwd
+from flag_gems.ops.te_rmsnorm_bwd import te_rmsnorm_bwd
+from flag_gems.ops.te_rmsnorm_fwd import te_rmsnorm_fwd
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -78,7 +78,7 @@ def test_rmsnorm_bwd(shape, dtype, zero_centered_gamma):
     dz = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     # Forward pass to get rsigma
-    out, _, rsigma = rmsnorm_fwd(
+    out, _, rsigma = te_rmsnorm_fwd(
         x,
         weight,
         eps,
@@ -98,7 +98,7 @@ def test_rmsnorm_bwd(shape, dtype, zero_centered_gamma):
     )
 
     # FlagGems backward
-    res_dx, res_dgamma = rmsnorm_bwd(
+    res_dx, res_dgamma = te_rmsnorm_bwd(
         dz, x, rsigma, weight, sm_margin=0, zero_centered_gamma=zero_centered_gamma
     )
 
@@ -148,7 +148,7 @@ def test_rmsnorm_bwd_vs_te(shape, dtype, zero_centered_gamma):
     te_dx, te_dgamma = te_bwd_result
 
     # FlagGems forward to get rsigma
-    gems_out, _, gems_rsigma = rmsnorm_fwd(
+    gems_out, _, gems_rsigma = te_rmsnorm_fwd(
         x,
         weight,
         eps,
@@ -160,7 +160,7 @@ def test_rmsnorm_bwd_vs_te(shape, dtype, zero_centered_gamma):
     )
 
     # FlagGems backward
-    res_dx, res_dgamma = rmsnorm_bwd(
+    res_dx, res_dgamma = te_rmsnorm_bwd(
         dz, x, gems_rsigma, weight, sm_margin=0, zero_centered_gamma=zero_centered_gamma
     )
 

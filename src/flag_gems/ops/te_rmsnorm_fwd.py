@@ -135,7 +135,7 @@ def rmsnorm_fwd_loop_kernel(
         tl.store(out_ptr + cols, y, mask=mask)
 
 
-def rmsnorm_fwd(
+def te_rmsnorm_fwd(
     input: torch.Tensor,
     weight: torch.Tensor,
     eps: float,

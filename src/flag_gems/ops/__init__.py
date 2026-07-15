@@ -409,8 +409,6 @@ from flag_gems.ops.resize import resize, resize_
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
-from flag_gems.ops.rmsnorm_bwd import rmsnorm_bwd
-from flag_gems.ops.rmsnorm_fwd import rmsnorm_fwd
 from flag_gems.ops.rnn_relu import rnn_relu
 from flag_gems.ops.roll import roll
 from flag_gems.ops.rot90 import rot90
@@ -498,6 +496,8 @@ from flag_gems.ops.sym_stride import sym_stride
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
+from flag_gems.ops.te_rmsnorm_bwd import te_rmsnorm_bwd
+from flag_gems.ops.te_rmsnorm_fwd import te_rmsnorm_fwd
 from flag_gems.ops.tensor_split import tensor_split
 from flag_gems.ops.threshold import threshold, threshold_backward
 from flag_gems.ops.threshold_ import threshold_
@@ -1046,8 +1046,8 @@ __all__ = [
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
-    "rmsnorm_bwd",
-    "rmsnorm_fwd",
+    "te_rmsnorm_bwd",
+    "te_rmsnorm_fwd",
     "rnn_relu",
     "roll",
     "rot90",
