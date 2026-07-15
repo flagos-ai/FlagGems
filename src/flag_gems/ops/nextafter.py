@@ -106,12 +106,11 @@ def nextafter_func(input, other):
 
 def nextafter(input, other, *, out=None):
     logger.debug("GEMS NEXTAFTER")
+    if out is not None:
+        return nextafter_func(input, other, out0=out)
     return nextafter_func(input, other)
 
 
-def nextafter_(input, other, *, out=None):
+def nextafter_(input, other):
     logger.debug("GEMS NEXTAFTER_")
-    if out is None:
-        return nextafter_func(input, other, out0=input)
-    nextafter_func(input, other, out0=out)
-    return out
+    return nextafter_func(input, other, out0=input)
