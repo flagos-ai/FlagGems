@@ -440,6 +440,7 @@ _FULL_CONFIG = (
     ("lift_fresh_copy", lift_fresh_copy),
     ("linalg_cholesky", linalg_cholesky),
     ("linalg_slogdet", linalg_slogdet),
+    ("linalg_svd", linalg_svd),
     ("linalg_vector_norm", vector_norm),
     ("linear", linear),
     ("linspace", linspace),

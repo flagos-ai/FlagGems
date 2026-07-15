@@ -4416,6 +4416,17 @@ ops:
       - LinearAlg
     stages:
       - alpha: '5.4'
+  - id: linalg_svd
+    description: Computes the singular value decomposition (SVD) of a matrix.
+    for:
+      - linalg_svd
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: linear
     description: |
       Applies a linear transformation to the incoming data: y = x @ W^T + b.
