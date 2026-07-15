@@ -5,7 +5,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 def _make_complex_tensor(shape, dtype, device):
     if "npu" in str(device) or "ascend" in str(device).lower():
         real_dtype = torch.float32 if dtype == torch.complex64 else torch.float16
@@ -18,14 +17,12 @@ def _make_complex_tensor(shape, dtype, device):
             return torch.view_as_complex(real)
     return torch.randn(shape, dtype=dtype, device=device)
 
-
 def _assert_complex_close(res, ref):
     """Compare complex tensors by real and imag parts separately."""
     ref = ref.to(res.device)
     real_match = torch.all(torch.isclose(res.real, ref.real))
     imag_match = torch.all(torch.isclose(res.imag, ref.imag))
     assert real_match and imag_match, "Complex tensor mismatch"
-
 
 @pytest.mark.conj
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
@@ -45,7 +42,6 @@ def test_conj_complex(shape, dtype):
         assert (
             inp.data_ptr() == res_out.data_ptr()
         ), "conj must return a view sharing the same underlying storage"
-
 
 @pytest.mark.conj
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
