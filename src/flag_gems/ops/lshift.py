@@ -3,7 +3,8 @@ import logging
 
 import flag_gems  # noqa: F401
 from flag_gems.utils import pointwise_dynamic
-imort torch
+
+import torch
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +17,8 @@ def lshift_kernel(a, b):
 
 def __lshift__(self, other):
     logger.debug("GEMS __LSHIFT__")
-    
+
     if not torch.is_tensor(other):
         other = torch.tensor(other, dtype=self.dtype, device=self.device)
-        
+
     return lshift_kernel(self, other)
