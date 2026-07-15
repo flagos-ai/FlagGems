@@ -2,8 +2,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.te_rmsnorm_bwd import te_rmsnorm_bwd
-from flag_gems.ops.te_rmsnorm_fwd import te_rmsnorm_fwd
+from flag_gems.ops.te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
