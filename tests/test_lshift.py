@@ -20,7 +20,7 @@ def test_lshift(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     # Reference: using bitwise_left_shift which is equivalent to __lshift__
-    ref_out = torch.bitwise_left_shift(ref_inp1, ref_inp2)
+    ref_out = 、ref_inp1 << ref_inp2
     with flag_gems.use_gems():
         res_out = inp1 << inp2
 
