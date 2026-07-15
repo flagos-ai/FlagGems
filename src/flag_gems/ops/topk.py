@@ -512,16 +512,32 @@ if HAS_TLE:
         tl.store(yi_ptrs, y_indices, mask=mask_k)
 
 
+# Measured launch overrides for the radix TLE top-k path, kept as data so they
+# are easy to inspect and extend as more shapes are tuned. Keyed by (dtype, k);
+# each value lists (min_topk_elem_cnt, (BLOCK_N, RADIX_BITS, num_warps)) rows,
+# and the row with the largest matching min_topk_elem_cnt is used, so row order
+# does not matter. The base heuristic applies when no row matches. These values
+# were tuned on A100; other architectures fall back to the heuristic until they
+# are tuned and given their own rows.
+_TOPK_RADIX_TLE_TUNED_CONFIGS = {
+    # A100: fp32 k=256 rows with >= 32768 elements are faster with a wider 8-bit
+    # radix pass over 1024-column tiles.
+    (torch.float32, 256): ((32768, (1024, 8, 8)),),
+}
+
+
 def _get_topk_radix_tle_config(x_dtype, topk_elem_cnt, k, k_pad):
+    # Base heuristic, used when no measured override applies.
     block_n_radix = max(k_pad, min(512, triton.next_power_of_2(topk_elem_cnt)))
     block_n_radix = min(block_n_radix, 1024)
     radix_bits = 4
     num_warps = 4
 
-    if x_dtype == torch.float32 and topk_elem_cnt >= 32768 and k == 256:
-        block_n_radix = 1024
-        radix_bits = 8
-        num_warps = 8
+    best_min = -1
+    for min_elem, config in _TOPK_RADIX_TLE_TUNED_CONFIGS.get((x_dtype, k), ()):
+        if min_elem <= topk_elem_cnt and min_elem > best_min:
+            best_min = min_elem
+            block_n_radix, radix_bits, num_warps = config
 
     return block_n_radix, radix_bits, num_warps
 
