@@ -1,0 +1,304 @@
+# Weekly full-range test workflow
+#
+# Runs every Monday at 04:00 Beijing time (UTC 20:00 Sunday) against all
+# operator stages on all enabled backends in parallel.
+#
+# Main config: .github/configs/weekly/weekly-test.yaml
+# Per-backend config: .github/configs/weekly/<NAME>.yml
+
+name: weekly
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    # Monday 02:00 Beijing time = Sunday 18:00 UTC
+    - cron: '0 18 * * 0'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      date: ${{ steps.get-date.outputs.DATE }}
+      matrix_container: ${{ steps.build-matrix.outputs.matrix_container }}
+      matrix_native: ${{ steps.build-matrix.outputs.matrix_native }}
+      api: ${{ steps.build-matrix.outputs.api }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - id: get-date
+        run: echo "DATE=$(date -u '+%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - id: build-matrix
+        shell: python3 {0}
+        run: |
+          import json
+          import os
+          import yaml
+
+          with open('.github/configs/weekly/weekly-test.yaml') as f:
+              main = yaml.safe_load(f)
+
+          container_include = []
+          native_include = []
+          for name, cfg in main['backends'].items():
+              if not cfg.get('enabled'):
+                  continue
+              with open(f'.github/configs/weekly/{name}.yml') as f:
+                  backend = yaml.safe_load(f)
+              backend['test_env'] = json.dumps(backend.get('test_env') or {})
+              if backend.get('use_container', True):
+                  container_include.append(backend)
+              else:
+                  native_include.append(backend)
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f"matrix_container={json.dumps({'include': container_include})}\n")
+              out.write(f"matrix_native={json.dumps({'include': native_include})}\n")
+              out.write(f"api={main['server']['api']}\n")
+
+  # Backends that run inside a container (use_container: true)
+  test-container:
+    name: test (${{ matrix.name }})
+    needs: prepare
+    if: ${{ fromJSON(needs.prepare.outputs.matrix_container).include[0] != null }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix_container) }}
+    concurrency:
+      group: weekly-test-${{ matrix.name }}
+      cancel-in-progress: true
+    runs-on: ${{ matrix.runner_labels }}
+    container:
+      image: ${{ matrix.container_image }}
+      options: ${{ matrix.container_options }}
+      volumes: ${{ matrix.container_volumes }}
+    env:
+      DATE: ${{ needs.prepare.outputs.date }}
+      OUTPUT_DIR: ${{ matrix.output_base_dir }}/${{ needs.prepare.outputs.date }}/logs_results_${{ needs.prepare.outputs.date }}
+    steps:
+      - id: checkout-attempt-1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        run: sleep 30s
+
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Fix git safe directory
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Copy root profile to GitHub Actions home
+        run: |
+          for f in /root/.bash_profile /root/.profile /root/.bashrc; do
+            [ -f "$f" ] && cp -f "$f" "$HOME/" || true
+          done
+          # .bashrc may have interactive guards ([ -z "$PS1" ] or case $-)
+          # that prevent conda init from running in non-interactive CI shells.
+          # Extract conda-related lines and append to .bash_profile instead,
+          # which is sourced by login shells without any interactive check.
+          if [ -f /root/.bashrc ]; then
+            grep -E '(conda\.sh|conda activate)' /root/.bashrc >> "$HOME/.bash_profile" || true
+          fi
+
+      - name: Install FlagGems dependencies
+        env: ${{ fromJSON(matrix.test_env) }}
+        shell: bash --login -e -o pipefail {0}
+        run: pip install ".[test]"
+
+      - name: Check GPU availability
+        shell: bash --login -e -o pipefail {0}
+        run: bash ${{ matrix.gpu_check_script }}
+
+      # Run weekly tests for all operator stages
+      - name: Run weekly tests
+        timeout-minutes: 720
+        env: ${{ fromJSON(matrix.test_env) }}
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          # remove cache to avoid potential issues with stale files
+          rm -rf ~/.triton/cache && rm -rf ~/.flaggems
+          # run tests with specified GPUs and output directory
+          python3 tools/run_tests.py \
+            --gpus "${{ matrix.test_gpus }}" \
+            --stages all \
+            --dump-output \
+            --output "${OUTPUT_DIR}"
+
+      # Run weekly tests for selected operators (abs, sum, add)
+      # This is a smoke test to quickly verify the weekly testing pipeline
+      # and the backend environment.
+      # - name: Run weekly tests
+      #   env: ${{ fromJSON(matrix.test_env) }}
+      #   shell: bash --login -e -o pipefail {0}
+      #   run: |
+      #     python3 tools/run_tests.py \
+      #       --gpus "${{ matrix.test_gpus }}" \
+      #       --ops abs,sum,add \
+      #       --dump-output \
+      #       --output "${OUTPUT_DIR}"
+
+      - name: Package results
+        run: |
+          python3 tools/add_labels.py ${OUTPUT_DIR}
+          python3 tools/psum_text  -o  ${OUTPUT_DIR}/result.csv  ${OUTPUT_DIR}
+          python3 tools/psum_html  -o  ${OUTPUT_DIR}/result.html  ${OUTPUT_DIR}
+          ARCHIVE="${{ runner.temp }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
+          tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      # - name: Upload artifact
+      #   uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      #   with:
+      #     name: weekly-${{ matrix.name }}-${{ needs.prepare.outputs.date }}
+      #     path: ${{ env.ARCHIVE }}
+
+      - name: Publish results to op-monitor
+        run: |
+          curl -X POST "${{ needs.prepare.outputs.api }}" \
+            -H "X-API-Key: ${{ secrets.OPMON_UPLOAD_KEY }}" \
+            -F "file=@${ARCHIVE}" \
+            -F "library_name=FlagGems" \
+            -F "backend_name=${{ matrix.name }}" \
+            -F "test_date=${DATE}"
+
+      - name: Send Feishu notification
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          CI_STATUS: ${{ job.status }}
+          PLATFORM: ${{ matrix.name }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
+        run: python3 .github/scripts/notify_feishu.py
+
+  # Backends that run natively on the runner (use_container: false)
+  test-native:
+    name: test (${{ matrix.name }})
+    needs: prepare
+    if: ${{ fromJSON(needs.prepare.outputs.matrix_native).include[0] != null }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix_native) }}
+    concurrency:
+      group: weekly-test-${{ matrix.name }}
+      cancel-in-progress: true
+    runs-on: ${{ matrix.runner_labels }}
+    env:
+      DATE: ${{ needs.prepare.outputs.date }}
+      OUTPUT_DIR: ${{ matrix.output_base_dir }}/${{ needs.prepare.outputs.date }}/logs_results_${{ needs.prepare.outputs.date }}
+    steps:
+      - id: checkout-attempt-1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        run: sleep 30s
+
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Fix git safe directory
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Install FlagGems dependencies
+        run: pip install ".[test]"
+
+      - name: Check GPU availability
+        run: bash ${{ matrix.gpu_check_script }}
+
+      # Run weekly tests for all operator sta， timeout 720 minutes (12 hours)
+      - name: Run weekly tests
+        timeout-minutes: 720
+        env: ${{ fromJSON(matrix.test_env) }}
+        run: |
+          # remove cache to avoid potential issues with stale files
+          rm -rf ~/.triton/cache && rm -rf ~/.flaggems
+          # run tests with specified GPUs and output directory
+          python3 tools/run_tests.py \
+            --gpus "${{ matrix.test_gpus }}" \
+            --stages all \
+            --dump-output \
+            --output "${OUTPUT_DIR}"
+
+      # Run weekly tests for selected operators (abs, sum, add)
+      # This is a smoke test to quickly verify the weekly testing pipeline
+      # and the backend environment.
+      # - name: Run weekly tests
+      #   env: ${{ fromJSON(matrix.test_env) }}
+      #   run: |
+      #     python3 tools/run_tests.py \
+      #       --gpus "${{ matrix.test_gpus }}" \
+      #       --ops abs,sum,add \
+      #       --dump-output \
+      #       --output "${OUTPUT_DIR}"
+
+      - name: Package results
+        run: |
+          python3 tools/add_labels.py ${OUTPUT_DIR}
+          python3 tools/psum_text  -o  ${OUTPUT_DIR}/result.csv  ${OUTPUT_DIR}
+          python3 tools/psum_html  -o  ${OUTPUT_DIR}/result.html  ${OUTPUT_DIR}
+          ARCHIVE="${{ runner.temp }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
+          tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: weekly-${{ matrix.name }}-${{ needs.prepare.outputs.date }}
+          path: ${{ env.ARCHIVE }}
+
+      # Disabled publishing results to op-monitor for native backends
+      # due to potential network restrictions on self-hosted runners.
+      #
+      # - name: Publish results to op-monitor
+      #   run: |
+      #     curl -X POST "${{ needs.prepare.outputs.api }}" \
+      #       -H "X-API-Key: ${{ secrets.OPMON_UPLOAD_KEY }}" \
+      #       -F "file=@${ARCHIVE}" \
+      #       -F "library_name=FlagGems" \
+      #       -F "backend_name=${{ matrix.name }}" \
+      #       -F "test_date=${DATE}"
+
+      - name: Send Feishu notification
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          CI_STATUS: ${{ job.status }}
+          PLATFORM: ${{ matrix.name }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
+        shell: bash
+        run: python3 .github/scripts/notify_feishu.py
