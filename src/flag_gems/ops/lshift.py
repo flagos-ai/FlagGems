@@ -7,6 +7,16 @@ from flag_gems.ops.bitwise_left_shift import bitwise_left_shift
 logger = logging.getLogger(__name__)
 
 
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def lshift_kernel(a, b):
+    return a << b
+
+
 def __lshift__(self, other):
     logger.debug("GEMS __LSHIFT__")
-    return bitwise_left_shift(self, other)
+    
+    if not torch.is_tensor(other):
+        other = torch.tensor(other, dtype=self.dtype, device=self.device)
+        
+    return lshift_kernel(self, other)
