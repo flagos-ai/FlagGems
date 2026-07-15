@@ -208,10 +208,9 @@ def test_nonzero_static_out():
     torch.manual_seed(4)
     x_cpu = make_input((4, 5), torch.float32, 0.4, "cpu")
     x_gpu = x_cpu.cuda()
-    ref_x = utils.to_reference(x_gpu)
 
-    expected_out = torch.empty((1, 1), device=ref_x.device, dtype=torch.int64)
-    expected = torch.nonzero_static(ref_x, size=16, fill_value=7, out=expected_out)
+    expected_out = torch.empty((1, 1), device=x_gpu.device, dtype=torch.int64)
+    expected = torch.nonzero_static(x_gpu, size=16, fill_value=7, out=expected_out)
     expected = utils.to_reference(expected)
 
     actual_out = torch.empty((1, 1), device=x_gpu.device, dtype=torch.int64)
@@ -219,7 +218,7 @@ def test_nonzero_static_out():
 
     assert actual is actual_out
     assert actual.dtype == torch.int64
-    assert tuple(actual.shape) == (16, x_gpu.dim())
+    assert tuple(actual.shape) == tuple(expected.shape)
     utils.gems_assert_equal(actual, expected)
 
 
@@ -228,10 +227,9 @@ def test_nonzero_static_out_registered_with_use_gems():
     torch.manual_seed(5)
     x_cpu = make_input((4, 5), torch.float32, 0.4, "cpu")
     x_gpu = x_cpu.cuda()
-    ref_x = utils.to_reference(x_gpu)
 
-    expected_out = torch.empty((1, 1), device=ref_x.device, dtype=torch.int64)
-    expected = torch.nonzero_static(ref_x, size=16, fill_value=-1, out=expected_out)
+    expected_out = torch.empty((1, 1), device=x_gpu.device, dtype=torch.int64)
+    expected = torch.nonzero_static(x_gpu, size=16, fill_value=-1, out=expected_out)
     expected = utils.to_reference(expected)
 
     actual_out = torch.empty((1, 1), device=x_gpu.device, dtype=torch.int64)
@@ -239,4 +237,5 @@ def test_nonzero_static_out_registered_with_use_gems():
         actual = torch.nonzero_static(x_gpu, size=16, fill_value=-1, out=actual_out)
 
     assert actual is actual_out
+    assert tuple(actual.shape) == tuple(expected.shape)
     utils.gems_assert_equal(actual, expected)

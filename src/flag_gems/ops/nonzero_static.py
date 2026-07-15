@@ -409,8 +409,8 @@ def _nonzero_static_write_generic_kernel(
     tl.store(out_ptr + tail_offsets, tail_vals, mask=tail_mask)
 
 
-def _prepare_nonzero_static_out(input, size, out):
-    expected_shape = (size, input.dim())
+def _prepare_nonzero_static_out(input, size, out, transpose):
+    expected_shape = (input.dim(), size) if transpose else (size, input.dim())
     if out.dtype != torch.int64:
         raise RuntimeError(
             f"Expected out tensor to have dtype torch.int64, but got {out.dtype} instead"
@@ -435,31 +435,34 @@ def nonzero_static_ref(
 
     ndim = x.dim()
     if out is None:
-        out = torch.empty((size, ndim), device=x.device, dtype=torch.long)
+        work_out = torch.empty((size, ndim), device=x.device, dtype=torch.long)
     else:
-        out = _prepare_nonzero_static_out(x, size, out)
+        out = _prepare_nonzero_static_out(x, size, out, transpose=False)
+        work_out = out
 
     if size == 0:
-        return out
+        return _finish_nonzero_static_out(out, work_out)
 
     if ndim == 0:
-        return out
+        return _finish_nonzero_static_out(out, work_out)
 
     nz = torch.nonzero(x, as_tuple=False)
     copy_len = min(size, nz.shape[0])
 
     if copy_len > 0:
-        out[:copy_len].copy_(nz[:copy_len])
+        work_out[:copy_len].copy_(nz[:copy_len])
 
     if copy_len < size:
-        out[copy_len:].fill_(fill_value)
+        work_out[copy_len:].fill_(fill_value)
 
-    return out
+    return _finish_nonzero_static_out(out, work_out)
 
 
-def _finish_nonzero_static_out(out, work_out):
-    if out is not work_out:
-        out.copy_(work_out)
+def _finish_nonzero_static_out(out, work_out, transpose=False):
+    if out is None:
+        return work_out
+    if transpose:
+        out.copy_(work_out.transpose(0, 1))
     return out
 
 
@@ -478,19 +481,16 @@ def _nonzero_static_impl(
         return nonzero_static_ref(input, size=size, fill_value=fill_value, out=out)
 
     if out is None:
-        out = torch.empty((size, ndim), device=input.device, dtype=torch.int64)
+        work_out = torch.empty((size, ndim), device=input.device, dtype=torch.int64)
     else:
-        out = _prepare_nonzero_static_out(input, size, out)
+        out = _prepare_nonzero_static_out(input, size, out, transpose=True)
+        work_out = torch.empty((size, ndim), device=input.device, dtype=torch.int64)
 
     if size == 0:
-        return out
+        return _finish_nonzero_static_out(out, work_out, transpose=out is not None)
 
     if ndim == 0:
-        return out
-
-    work_out = out
-    if not work_out.is_contiguous():
-        work_out = torch.empty((size, ndim), device=input.device, dtype=torch.int64)
+        return _finish_nonzero_static_out(out, work_out, transpose=out is not None)
 
     is_complex = input.is_complex()
     source = input.contiguous()
@@ -513,7 +513,7 @@ def _nonzero_static_impl(
                 fill_value,
                 BLOCK_SIZE=block_size,
             )
-        return _finish_nonzero_static_out(out, work_out)
+        return _finish_nonzero_static_out(out, work_out, transpose=out is not None)
 
     num_blocks = triton.cdiv(numel, block_size)
     use_generic_ndim = ndim > 4
@@ -556,7 +556,7 @@ def _nonzero_static_impl(
                     IS_COMPLEX=is_complex,
                     BLOCK_SIZE=single_block_size,
                 )
-        return _finish_nonzero_static_out(out, work_out)
+        return _finish_nonzero_static_out(out, work_out, transpose=out is not None)
 
     counts = torch.empty((num_blocks,), device=input.device, dtype=torch.int64)
 
@@ -594,7 +594,7 @@ def _nonzero_static_impl(
                 BLOCK_SIZE=block_size,
                 PREFIX_BLOCK_SIZE=prefix_block_size,
             )
-        return _finish_nonzero_static_out(out, work_out)
+        return _finish_nonzero_static_out(out, work_out, transpose=out is not None)
 
     prefix = torch.cumsum(counts, dim=0)
 
@@ -650,7 +650,7 @@ def _nonzero_static_impl(
                 BLOCK_SIZE=block_size,
             )
 
-    return _finish_nonzero_static_out(out, work_out)
+    return _finish_nonzero_static_out(out, work_out, transpose=out is not None)
 
 
 def nonzero_static(input: torch.Tensor, *, size: int, fill_value: int = -1):
