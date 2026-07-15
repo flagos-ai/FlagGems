@@ -40,7 +40,7 @@ def test_fmax_with_nan(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.fmax(inp1, inp2)
 
-    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
 
 
 @pytest.mark.fmax_out

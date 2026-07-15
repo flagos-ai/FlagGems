@@ -18,10 +18,13 @@ def fmax_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
     y = tl.load(y_ptr + offsets, mask=mask)
-    # fmax: if exactly one element is NaN, return the non-NaN element
-    # if both are NaN, return NaN
-    # tl.maximum follows this behavior for NaN
-    out = tl.maximum(x, y)
+    # fmax semantics: ignore NaN when possible
+    # - if one is NaN, return the other
+    # - if both are NaN, return NaN
+    x_nan = x != x
+    y_nan = y != y
+    # When x is NaN, use y; when y is NaN, use x; otherwise use maximum
+    out = tl.where(x_nan, y, tl.where(y_nan, x, tl.maximum(x, y)))
     tl.store(out_ptr + offsets, out, mask=mask)
 
 
