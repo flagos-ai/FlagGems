@@ -17,7 +17,7 @@
 # is autotuned for out-of-place; in-place and small N use a fixed config, since
 # autotune re-runs the kernel on the same buffer and would corrupt an aliased
 # in-place write. Non-contiguous / integer / mismatched-out inputs fall back to
-# the pointwise_dynamic kernels. Recipe follows PR #4621 (log_normal_).
+# the pointwise_dynamic kernels.
 import logging
 
 import torch
