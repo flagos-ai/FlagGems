@@ -132,6 +132,8 @@ from flag_gems.ops.concat import concat
 from flag_gems.ops.concatenate import concatenate
 from flag_gems.ops.conj_physical import conj_physical
 from flag_gems.ops.contiguous import contiguous
+from flag_gems.ops.causal_conv1d import causal_conv1d_update, causal_conv1d_fn
+from flag_gems.ops.dwconv2d_hwc import dwconv2d_hwc
 from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
@@ -269,7 +271,6 @@ from flag_gems.ops.less_equal import less_equal, less_equal_scalar
 from flag_gems.ops.lgamma_ import lgamma, lgamma_
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
-from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linear import linear
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
@@ -285,7 +286,6 @@ from flag_gems.ops.log_softmax import (
     log_softmax_out,
 )
 from flag_gems.ops.logaddexp import logaddexp, logaddexp_out
-from flag_gems.ops.logaddexp2 import logaddexp2, logaddexp2_out
 from flag_gems.ops.logical_and import logical_and, logical_and_
 from flag_gems.ops.logical_not import logical_not, logical_not_
 from flag_gems.ops.logical_or import logical_or, logical_or_
@@ -481,7 +481,6 @@ from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomia
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.special_log_softmax import special_log_softmax
-from flag_gems.ops.special_logsumexp import special_logsumexp
 from flag_gems.ops.special_shifted_chebyshev_polynomial_u import (
     special_shifted_chebyshev_polynomial_u,
     special_shifted_chebyshev_polynomial_u_,
@@ -542,14 +541,6 @@ from flag_gems.ops.where import (
     where_self,
     where_self_out,
 )
-from flag_gems.ops.xlogy import (
-    xlogy,
-    xlogy_out,
-    xlogy_scalar_tensor,
-    xlogy_scalar_tensor_out,
-    xlogy_tensor_scalar,
-    xlogy_tensor_scalar_out,
-)
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
@@ -562,6 +553,9 @@ __all__ = [
     "_assert_async",
     "_batch_norm_no_update",
     "_cdist_backward",
+    "causal_conv1d_update",
+    "causal_conv1d_fn",
+    "dwconv2d_hwc",
     "_conv_depthwise2d",
     "_euclidean_dist",
     "_functional_sym_constrain_range",
@@ -895,7 +889,6 @@ __all__ = [
     "lift_fresh_copy",
     "lift_fresh_copy_out",
     "linalg_cholesky",
-    "linalg_slogdet",
     "linear",
     "linspace",
     "log",
@@ -913,14 +906,6 @@ __all__ = [
     "log_softmax_out",
     "logaddexp",
     "logaddexp_out",
-    "logaddexp2",
-    "logaddexp2_out",
-    "xlogy",
-    "xlogy_out",
-    "xlogy_tensor_scalar",
-    "xlogy_tensor_scalar_out",
-    "xlogy_scalar_tensor",
-    "xlogy_scalar_tensor_out",
     "logical_and",
     "logical_and_",
     "logical_not",
@@ -1147,7 +1132,6 @@ __all__ = [
     "special_i1",
     "special_i1_out",
     "special_log_softmax",
-    "special_logsumexp",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",
     "split_with_sizes_copy",
