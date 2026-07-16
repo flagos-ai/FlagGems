@@ -13,9 +13,11 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
+from flag_gems.utils.triton_version_utils import _triton_version_at_least
 
 logger = logging.getLogger(__name__)
 
+_TRITON_SUPPORTS_BF16_ATOMIC_ADD = _triton_version_at_least(3, 4)
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
@@ -103,9 +105,7 @@ def generate_index_add_kernel(
             code.writeline(
                 "tl.atomic_add(out + input_idx, add_on, mask=input_mask, sem='relaxed')"
             )
-            # TODO: tl.atomic_add doesn't support bfloat16! The following method may be unsafe.
-            # code.writeline("cur_out = tl.load(out + input_idx, mask=input_mask)")
-            # code.writeline("tl.store(out + input_idx, cur_out + add_on, mask=input_mask)")
+            # Older Triton versions receive FP32 tensors from the wrapper.
 
         code.newline()
         code.newline()
@@ -464,7 +464,9 @@ def index_add(inp, dim, index, src, alpha=1):
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
     if _can_use_contiguous_suffix_path(inp, normalized_dim, index, src):
         _assert_index_in_bounds(index, inp.size(dim))
-        accumulate_fp32 = inp.dtype == torch.bfloat16
+        accumulate_fp32 = (
+            inp.dtype == torch.bfloat16 and not _TRITON_SUPPORTS_BF16_ATOMIC_ADD
+        )
         out = inp.float() if accumulate_fp32 else inp.clone()
         res = _run_contiguous_suffix_path(
             out, normalized_dim, index.contiguous(), src, alpha
@@ -486,18 +488,22 @@ def index_add(inp, dim, index, src, alpha=1):
         ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
 
-    out = inp.clone()
+    accumulate_fp32 = (
+        inp.dtype == torch.bfloat16 and not _TRITON_SUPPORTS_BF16_ATOMIC_ADD
+    )
+    out = inp.float() if accumulate_fp32 else inp.clone()
+    src_for_kernel = src.float() if accumulate_fp32 else src
 
     inp_stride_dim = inp.stride(dim)
-    src_shape_dim = src.size(dim)
+    src_shape_dim = src_for_kernel.size(dim)
     inp_shape_dim = inp.size(dim)
     delta = inp.size(dim) - src_shape_dim
-    N = src.numel()
+    N = src_for_kernel.numel()
 
     _index_add_func(
         out,
         index,
-        src,
+        src_for_kernel,
         dim,
         inp_stride_dim,
         inp_shape_dim,
@@ -507,7 +513,7 @@ def index_add(inp, dim, index, src, alpha=1):
         inp.numel(),
         alpha,
     )
-    return out
+    return out.to(inp.dtype) if accumulate_fp32 else out
 
 
 def index_add_(inp, dim, index, src, alpha=1):
@@ -515,7 +521,9 @@ def index_add_(inp, dim, index, src, alpha=1):
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
     if _can_use_contiguous_suffix_path(inp, normalized_dim, index, src):
         _assert_index_in_bounds(index, inp.size(dim))
-        accumulate_fp32 = inp.dtype == torch.bfloat16
+        accumulate_fp32 = (
+            inp.dtype == torch.bfloat16 and not _TRITON_SUPPORTS_BF16_ATOMIC_ADD
+        )
         out = inp.float() if accumulate_fp32 else inp
         res = _run_contiguous_suffix_path(
             out, normalized_dim, index.contiguous(), src, alpha
@@ -539,16 +547,22 @@ def index_add_(inp, dim, index, src, alpha=1):
         ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
 
+    accumulate_fp32 = (
+        inp.dtype == torch.bfloat16 and not _TRITON_SUPPORTS_BF16_ATOMIC_ADD
+    )
+    out = inp.float() if accumulate_fp32 else inp
+    src_for_kernel = src.float() if accumulate_fp32 else src
+
     inp_stride_dim = inp.stride(dim)
-    src_shape_dim = src.size(dim)
+    src_shape_dim = src_for_kernel.size(dim)
     inp_shape_dim = inp.size(dim)
     delta = inp.size(dim) - src_shape_dim
-    N = src.numel()
+    N = src_for_kernel.numel()
 
     _index_add_func(
-        inp,
+        out,
         index,
-        src,
+        src_for_kernel,
         dim,
         inp_stride_dim,
         inp_shape_dim,
@@ -558,4 +572,6 @@ def index_add_(inp, dim, index, src, alpha=1):
         inp.numel(),
         alpha,
     )
+    if accumulate_fp32:
+        inp.copy_(out)
     return inp
