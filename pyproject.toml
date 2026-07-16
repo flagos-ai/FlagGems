@@ -75,7 +75,7 @@ cambricon = [
 enflame = [
     "pyefml==1.9.10",
     "torch==2.10.0+cpu",
-    "torchaudio==2.10.0+cpu",
+    "torchaudio==2.11.0",
     "torchvision==0.25.0+cpu",
     "torch-gcu==2.10.0+3.7.20260408",
     "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323",
@@ -87,7 +87,7 @@ hygon = [
 
 iluvatar = [
     "torch==2.7.1+corex.4.4.0",
-    "torchaudio==2.7.1+corex.4.4.0",
+    "torchaudio==2.11.0",
     "torchvision==0.22.1+corex.4.4.0",
 ]
 
@@ -101,7 +101,7 @@ kunlunxin = [
     "psutil==6.1.0",
     "regex==2026.4.4",
     "torch==2.9.0+cu129",
-    "torchaudio==2.9.0+cu129",
+    "torchaudio==2.11.0",
     "torchvision==0.24.0+cu129",
     "torch_plugin==0.1.0",
     "torch_xray==2.0.4",
@@ -111,7 +111,7 @@ kunlunxin = [
 
 metax = [
     "torch==2.8.0+metax3.7.2.0",
-    "torchaudio==2.4.1+metax3.7.2.0",
+    "torchaudio==2.11.0",
     "torchvision==0.15.1+metax3.7.2.0",
     "flash_attn==2.6.3+metax3.7.2.0torch2.8",
 ]
@@ -130,13 +130,13 @@ mthreads-musa520 = [
 
 nvidia-cuda128 = [
     "torch==2.10.0+cu128",
-    "torchaudio==2.10.0+cu128",
+    "torchaudio==2.11.0",
     "torchvision==0.25.0+cu128",
 ]
 
 nvidia-cuda133 = [
     "torch==2.11.0+cu130",
-    "torchaudio==2.11.0+cu130",
+    "torchaudio==2.11.0",
     "torchvision==0.26.0+cu130",
 ]
 
@@ -146,7 +146,7 @@ spacemit = [
 
 sunrise = [
     "torch==2.11.0+cpu",
-    "torchaudio==2.11.0+cpu",
+    "torchaudio==2.11.0",
     "torchvision==0.26.0+cpu",
     "torch-ptpu==0.2.3+torch2.11",
 ]
@@ -159,7 +159,7 @@ thead = [
 tsingmicro = [
     "torch==2.7.0+cpu",
     "torchvision==0.22.0+cpu",
-    "torchaudio==2.7.0+cpu",
+    "torchaudio==2.11.0",
     "torch_txda==0.1.0+20260615.37ba6bbd",
     "txops==0.1.0+20260508.60287151",
 ]
