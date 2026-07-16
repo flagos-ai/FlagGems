@@ -450,6 +450,8 @@ _FULL_CONFIG = (
     ("less_equal.Tensor", less_equal),
     ("lgamma", lgamma),
     ("lgamma_", lgamma_),
+    ("lift", lift),
+    ("lift.out", lift_out),
     ("lift_fresh_copy", lift_fresh_copy),
     ("linalg_cholesky", linalg_cholesky),
     ("linalg_ldl_factor", ldl_factor),
