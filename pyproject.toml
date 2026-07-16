@@ -5,7 +5,7 @@
 # setuptools is capped below 77: from 77.0 onward it adopts PEP 639 and emits
 # `License-File`, which bumps the wheel to Metadata-Version 2.4. Some package
 # indexes (e.g. Nexus) reject 2.4; <77 keeps the pure-Python wheel at 2.2.
-requires = ["setuptools>=64.0,<77", "scikit-build-core==0.12.2", "pybind11==3.0.3", "setuptools-scm>=8"]
+requires = ["setuptools>=64.0,<77", "scikit-build-core==1.0.3", "pybind11==3.0.3", "setuptools-scm>=8"]
 
 build-backend = "scikit_build_core.build"
 
