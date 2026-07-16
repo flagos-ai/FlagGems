@@ -67,6 +67,24 @@ def test_copy_inplace_broadcast():
 
 
 @pytest.mark.copy_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_copy_inplace_expanded_scalar(dtype):
+    """An expanded scalar should use the Kunlunxin pointwise copy path."""
+    scalar = torch.tensor(0.5, dtype=dtype, device=flag_gems.device)
+    src = scalar.expand(16)
+    dst = torch.empty_like(src, memory_format=torch.contiguous_format)
+
+    ref_src = utils.to_reference(src)
+    ref_dst = torch.empty_like(ref_src)
+    ref_dst.copy_(ref_src)
+
+    with flag_gems.use_gems():
+        dst.copy_(src)
+
+    utils.gems_assert_equal(dst, ref_dst)
+
+
+@pytest.mark.copy_
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -107,10 +125,12 @@ def test_copy_inplace_float8_e8m0fnu(shape):
     src = src_uint8.view(torch.float8_e8m0fnu)
     ref_src = utils.to_reference(src)
 
-    ref_dst = utils.to_reference(
-        torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
+    # Kunlunxin cannot zero-initialize e8m0 tensors, but it supports an empty
+    # byte allocation viewed as e8m0.
+    ref_dst = torch.empty(shape, dtype=torch.float8_e8m0fnu, device="cpu")
+    res_dst = torch.empty(shape, dtype=torch.uint8, device=device).view(
+        torch.float8_e8m0fnu
     )
-    res_dst = torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
     ref_dst.copy_(ref_src)
 
     with flag_gems.use_gems():
