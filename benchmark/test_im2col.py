@@ -37,3 +37,13 @@ def test_im2col():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.im2col_out
+def test_im2col_out():
+    bench = Im2colBenchmark(
+        op_name="im2col_out",
+        torch_op=torch.ops.aten.im2col,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

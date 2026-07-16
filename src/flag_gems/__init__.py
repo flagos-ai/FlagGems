@@ -415,6 +415,7 @@ _FULL_CONFIG = (
     ("i0.out", i0_out),
     ("i0_", i0_),
     ("im2col", im2col),
+    ("im2col.out", im2col_out),
     ("index.Tensor", index),
     ("index_add", index_add),
     ("index_add_", index_add_),

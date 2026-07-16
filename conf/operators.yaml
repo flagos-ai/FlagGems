@@ -4035,6 +4035,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: im2col_out
+    description: Out-of-place variant of im2col with pre-allocated output tensor.
+    for:
+      - im2col.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: index
     description: |
       Extract, access or modify specific elements, slices, or subsets of data within a tensor.

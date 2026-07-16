@@ -257,7 +257,7 @@ from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
-from flag_gems.ops.im2col import im2col
+from flag_gems.ops.im2col import im2col, im2col_out
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
 from flag_gems.ops.index_copy_ import index_copy, index_copy_
@@ -893,6 +893,7 @@ __all__ = [
     "i0_",
     "i0_out",
     "im2col",
+    "im2col_out",
     "index",
     "index_add",
     "index_add_",
