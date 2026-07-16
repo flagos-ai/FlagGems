@@ -85,7 +85,7 @@ def moe_gate_top_k_routing(gate_logits: torch.Tensor, topk: int):
             - topk_weights: Weights for selected experts, shape [num_tokens, topk]
             - topk_indices: Indices of selected experts, shape [num_tokens, topk]
     """
-    logger.debug("GEMS moe_gate_top_k_routing")
+    logger.debug("GEMS MOE_GATE_TOP_K_ROUTING")
 
     if gate_logits.ndim != 2:
         raise ValueError(f"gate_logits must be 2D, got {gate_logits.ndim}D")
