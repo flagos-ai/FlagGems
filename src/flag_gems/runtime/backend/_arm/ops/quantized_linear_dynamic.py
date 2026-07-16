@@ -243,8 +243,7 @@ def _get_weight(W_prepack):
     else:
         weight_tiled = None
         logger.debug(
-            "FlagGems ARM: K=%d N=%d not divisible by BK=%d BN=%d; "
-            "tiled layout disabled for this layer",
+            "GEMS_ARM FlagGems ARM: K=%d N=%d not divisible by BK=%d BN=%d; tiled layout disabled for this layer",
             K,
             N,
             BK,
@@ -509,9 +508,9 @@ def register():
             allow_override=True,
         )
         logger.debug(
-            "FlagGems ARM: registered Triton-CPU i8mm (fused+tiled) for quantized::linear_dynamic"
+            "GEMS_ARM FlagGems ARM: registered Triton-CPU i8mm (fused+tiled) for quantized::linear_dynamic"
         )
     except Exception as e:
         logger.warning(
-            f"FlagGems ARM: failed to register quantized::linear_dynamic override: {e}"
+            f"GEMS_ARM failed to register quantized::linear_dynamic override: {e}"
         )
