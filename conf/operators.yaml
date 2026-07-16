@@ -1682,6 +1682,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: conj
+    description: |
+      Returns a view of the input tensor with the conjugate flag set.
+      For complex tensors, this is a zero-copy view sharing the same storage.
+    for:
+      - conj
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - stable: '2.2'
   - id: contiguous
     description: |
       Returns a contiguous in memory tensor containing the same data as `self` tensor.

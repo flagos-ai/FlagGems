@@ -250,6 +250,7 @@ _FULL_CONFIG = (
     ("col2im", col2im),
     ("concat", concat),
     ("concatenate", concatenate),
+    ("conj", conj),
     ("conj_physical", conj_physical),
     ("constant_pad_nd", constant_pad_nd),
     # ("contiguous", contiguous),
