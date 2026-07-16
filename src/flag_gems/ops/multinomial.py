@@ -66,8 +66,9 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
         # In case of with_replacement, sampling is approximated by selecing
         # the top k indices over sorted probabilities with an exponential pertubation
         # s = argmax( p / q ) where q ~ Exp(1)
-        q = torch.empty_like(prob).exponential_(1.0)
-        s = torch.div(prob, q, out=q)
+        prob_f32 = prob.to(torch.float32)
+        q = torch.empty_like(prob_f32).exponential_(1.0)
+        s = torch.log(prob_f32.clamp(min=1e-8)) - torch.log(q.clamp(min=1e-8))
         if n_samples == 1:
             return torch.argmax(s, dim=-1, keepdim=True).to(torch.int64)
         else:
