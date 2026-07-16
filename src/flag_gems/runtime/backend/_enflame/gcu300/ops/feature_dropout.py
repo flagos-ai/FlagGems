@@ -10,6 +10,8 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
+from ..utils.config_utils import MAX_GRID_DIM
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,39 +32,54 @@ def generate_feature_mask_kernel(
     Generate a feature dropout mask of shape (N, C).
     Each element is either 0 (dropped) or scale (kept).
     Each (n, c) pair gets its own random value.
+
+    Persistent grid over the flattened (N, C) tile space: the launch grid is
+    capped to the hardware grid.x limit (MAX_GRID_DIM), and each program
+    strides through multiple (n, c) tiles until all are covered. This avoids
+    the grid.y overflow (limit 255) and grid.x overflow (limit 65535) that
+    occur when N or C is large.
     """
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
 
-    pid_n = tl.program_id(0)
-    pid_c = tl.program_id(1)
+    tiles_n = (N + BLOCK_N - 1) // BLOCK_N
+    tiles_c = (C + BLOCK_C - 1) // BLOCK_C
+    num_tiles = tiles_n * tiles_c
 
-    n_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    c_offset = pid_c * BLOCK_C + tl.arange(0, BLOCK_C)
+    pid_start = tl.program_id(0)
+    pid_step = tl.num_programs(0)
 
-    n_mask = n_offset < N
-    c_mask = c_offset < C
+    c0_base = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+    c1_base = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
 
-    # Compute flat indices for random number generation
-    # flat_idx = n * C + c
-    flat_idx = n_offset[:, None] * C + c_offset[None, :]
+    for tile_id in tl.range(pid_start, num_tiles, pid_step):
+        pid_n = tile_id // tiles_c
+        pid_c = tile_id % tiles_c
 
-    # Generate random numbers using philox
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = flat_idx.to(tl.uint32)
-    c0 = c0 + i4
-    _O = c0 * 0
-    r0, _, _, _ = tl.philox(philox_seed, c0, c1, _O, _O)
-    rand_vals = uint_to_uniform_float(r0)
+        n_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        c_offset = pid_c * BLOCK_C + tl.arange(0, BLOCK_C)
 
-    # Create mask: scale if rand > p (keep), 0 if rand <= p (drop)
-    mask_vals = tl.where(rand_vals > p, scale, 0.0)
+        n_mask = n_offset < N
+        c_mask = c_offset < C
 
-    # Store mask
-    mask_offsets = n_offset[:, None] * C + c_offset[None, :]
-    mask_mask = n_mask[:, None] & c_mask[None, :]
-    tl.store(MASK + mask_offsets, mask_vals, mask=mask_mask)
+        # Compute flat indices for random number generation
+        # flat_idx = n * C + c
+        flat_idx = n_offset[:, None] * C + c_offset[None, :]
+
+        # Generate random numbers using philox
+        i4 = flat_idx.to(tl.uint32)
+        c0 = c0_base + i4
+        _O = c0 * 0
+        r0, _, _, _ = tl.philox(philox_seed, c0, c1_base, _O, _O)
+        rand_vals = uint_to_uniform_float(r0)
+
+        # Create mask: scale if rand > p (keep), 0 if rand <= p (drop)
+        mask_vals = tl.where(rand_vals > p, scale, 0.0)
+
+        # Store mask
+        mask_offsets = n_offset[:, None] * C + c_offset[None, :]
+        mask_mask = n_mask[:, None] & c_mask[None, :]
+        tl.store(MASK + mask_offsets, mask_vals, mask=mask_mask)
 
 
 @triton.jit
@@ -88,26 +105,32 @@ def apply_feature_mask_kernel(
     - c = (i // spatial_size) % C
     - mask_idx = n * C + c
     """
-    pid = tl.program_id(0)
-    offset = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offset < numel
+    pid_start = tl.program_id(0)
+    pid_step = tl.num_programs(0)
+    num_tiles = (numel + BLOCK - 1) // BLOCK
+    # Persistent grid: stride through multiple tiles so the launch grid
+    # (pid_step) can be capped to the hardware grid.x limit (MAX_GRID_DIM),
+    # while num_tiles (the true tile count) may exceed it.
+    for tile_id in tl.range(pid_start, num_tiles, pid_step):
+        offset = tile_id * BLOCK + tl.arange(0, BLOCK)
+        mask = offset < numel
 
-    # Compute batch and channel index for each element
-    channel_spatial_size = C * spatial_size
-    n_idx = offset // channel_spatial_size
-    c_idx = (offset % channel_spatial_size) // spatial_size
+        # Compute batch and channel index for each element
+        channel_spatial_size = C * spatial_size
+        n_idx = offset // channel_spatial_size
+        c_idx = (offset % channel_spatial_size) // spatial_size
 
-    # Compute mask index: n * C + c
-    mask_idx = n_idx * C + c_idx
+        # Compute mask index: n * C + c
+        mask_idx = n_idx * C + c_idx
 
-    # Load input and mask
-    x = tl.load(X + offset, mask=mask, other=0.0)
-    m = tl.load(MASK + mask_idx, mask=mask, other=0.0)
+        # Load input and mask
+        x = tl.load(X + offset, mask=mask, other=0.0)
+        m = tl.load(MASK + mask_idx, mask=mask, other=0.0)
 
-    # Apply mask
-    y = x * m
+        # Apply mask
+        y = x * m
 
-    tl.store(Y + offset, y, mask=mask)
+        tl.store(Y + offset, y, mask=mask)
 
 
 def feature_dropout(input, p, train=True):
@@ -162,7 +185,12 @@ def feature_dropout(input, p, train=True):
     # Generate mask
     BLOCK_N = min(triton.next_power_of_2(N), 64)
     BLOCK_C = min(triton.next_power_of_2(C), 64)
-    grid_mask = (triton.cdiv(N, BLOCK_N), triton.cdiv(C, BLOCK_C))
+    # Persistent grid over the flattened (N, C) tile space: cap the launch grid
+    # to the hardware grid.x limit (MAX_GRID_DIM). The kernel strides through
+    # multiple tiles per program, so a 2D grid is no longer needed (avoids the
+    # grid.y limit of 255) and large N or C no longer overflows grid.x either.
+    num_mask_tiles = triton.cdiv(N, BLOCK_N) * triton.cdiv(C, BLOCK_C)
+    grid_mask = (min(num_mask_tiles, MAX_GRID_DIM),)
 
     # Need N * C random numbers
     increment = triton.cdiv(N * C, 4) * 4
@@ -175,7 +203,9 @@ def feature_dropout(input, p, train=True):
 
     # Apply mask to input
     BLOCK = 1024
-    grid_apply = (triton.cdiv(numel, BLOCK),)
+    # Persistent grid: cap the launch grid to the hardware grid.x limit
+    # (MAX_GRID_DIM); the kernel strides through multiple tiles per program.
+    grid_apply = (min(triton.cdiv(numel, BLOCK), MAX_GRID_DIM),)
 
     with torch_device_fn.device(device):
         apply_feature_mask_kernel[grid_apply](

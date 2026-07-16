@@ -104,7 +104,7 @@ from .fill import (
 from .flip import flip
 from .full import full
 from .full_like import full_like
-from .gather import gather
+from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
 from .glu import glu
@@ -147,7 +147,12 @@ from .mv import mv
 from .nan_to_num import nan_to_num
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
-from .nllloss import nll_loss_backward, nll_loss_forward
+from .nllloss import (
+    nll_loss2d_backward,
+    nll_loss2d_forward,
+    nll_loss_backward,
+    nll_loss_forward,
+)
 from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
 from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
@@ -240,6 +245,7 @@ __all__ = [
     "argmin",
     "exponential_",
     "gather",
+    "gather_backward",
     "gt",
     "gt_scalar",
     "index_select",
@@ -463,6 +469,8 @@ __all__ = [
     "amax",
     "nll_loss_forward",
     "nll_loss_backward",
+    "nll_loss2d_forward",
+    "nll_loss2d_backward",
     "vector_norm",
     "tril",
     "tril_",
