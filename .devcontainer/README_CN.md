@@ -33,9 +33,7 @@
    [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) 扩展。
 2. 在 VS Code 中打开本仓库。
 3. 出现提示时选择 **在容器中重新打开（Reopen in Container）**，并选择对应的硬件后端。
-4. 首次启动时，`initializeCommand` 会执行 `build-image.sh`，通过
-   [build-infra](https://github.com/flagos-ai/build-infra) 在本地构建 runtime 镜像（耗时较长）。
-   镜像已存在时自动跳过构建。
+4. 首次启动时，VS Code 会自动从镜像仓库拉取预构建的 Dev Container 镜像（若本地不存在），拉取完成后即可直接进入开发环境。
 5. 容器启动后，`postCreateCommand` 以可编辑模式安装 FlagGems。
 
 ## 添加新后端
