@@ -1025,15 +1025,3 @@ linear:
       BLOCK_SIZE_K: 32
     num_stages: 4
     num_warps: 4
-  - META:
-      BLOCK_SIZE_M: 4096
-      BLOCK_SIZE_N: 4096
-      BLOCK_SIZE_K: 64
-    num_stages: 4
-    num_warps: 4
-  - META:
-      BLOCK_SIZE_M: 1024
-      BLOCK_SIZE_N: 4096
-      BLOCK_SIZE_K: 64
-    num_stages: 4
-    num_warps: 4
