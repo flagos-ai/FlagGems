@@ -451,6 +451,8 @@ _FULL_CONFIG = (
     ("log1p", log1p),
     ("log1p.out", log1p_out),
     ("log1p_", log1p_),
+    ("log2", log2),
+    ("log2_", log2_),
     ("log_normal_", log_normal_),
     ("log_sigmoid", log_sigmoid),
     ("logaddexp", logaddexp),
