@@ -630,7 +630,7 @@ _FULL_CONFIG = (
     ("sort.stable", sort_stable),
     ("special.gammainc", special_gammainc),
     ("special.log_softmax", special_log_softmax),
-    ("special.xlog1py", special_xlog1py),
+    ("special_xlog1py", special_xlog1py),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special_i0e", special_i0e),
