@@ -52,6 +52,7 @@ from .bitwise_xor import (
 )
 from .bmm import bmm, bmm_out
 from .cat import cat, cat_out
+from .cauchy import cauchy, cauchy_
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
@@ -273,6 +274,8 @@ __all__ = [
     "bitwise_xor_scalar_tensor",
     "bitwise_xor_tensor",
     "bitwise_xor_tensor_",
+    "cauchy",
+    "cauchy_"
     "clamp",
     "clamp_",
     "clamp_tensor",
