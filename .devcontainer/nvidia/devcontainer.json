@@ -36,16 +36,6 @@
   // Mount the full repo only after the container starts
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/FlagGems,type=bind,consistency=cached",
   "workspaceFolder": "/workspace/FlagGems",
-  "mounts": [
-      // Mount a large-capacity storage volume
-      //"source=/data,target=/data,type=bind",
-      //"source=/tmp,target=/host_tmp,type=bind",
-      // Mount the host home directory into the container at /home/host
-      // localEnv:HOME maps to the $HOME variable on Linux/Mac
-      //"source=${localEnv:HOME},target=/home/host,type=bind",
-      // Use a named data volume to persist the .claude folder
-      "source=claude-code-data,target=/home/vscode/.claude,type=volume"
-  ],
   "containerEnv": {
     "PIP_USER": "0" // <‑‑ disable implicit --user
   },
@@ -53,6 +43,9 @@
   // Use 'postCreateCommand' to run commands after the container is created.
   // Installs FlagGems in editable mode so source edits take effect immediately.
   "postCreateCommand": "bash .devcontainer/nvidia/scripts/install-dev-tools.sh",
+
+  // Build the base image before VS Code tries to pull it.
+  "initializeCommand": "bash .devcontainer/nvidia/scripts/build-image.sh",
 
   "customizations": {
     "vscode": {
@@ -65,7 +58,6 @@
 
   // Features to add to the dev container. More info: https://containers.dev/features.
   "features": {
-    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
     "ghcr.io/devcontainers/features/git:1": {}
   },
 

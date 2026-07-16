@@ -50,8 +50,6 @@
       "source=/opt/hyhal,target=/opt/hyhal,type=bind",
       //"source=/data,target=/data,type=bind",
       //"source=${localEnv:HOME},target=/home/host,type=bind",
-      // Use a named data volume to persist the .claude folder
-      "source=claude-code-data,target=/home/vscode/.claude,type=volume"
   ],
   "containerEnv": {
     "PIP_USER": "0" // <‑‑ disable implicit --user
@@ -60,6 +58,9 @@
   // Use 'postCreateCommand' to run commands after the container is created.
   // Installs FlagGems in editable mode so source edits take effect immediately.
   "postCreateCommand": "bash .devcontainer/hygon/scripts/install-dev-tools.sh",
+
+  // Build the base image before VS Code tries to pull it.
+  "initializeCommand": "bash .devcontainer/hygon/scripts/build-image.sh",
 
   "customizations": {
     "vscode": {
@@ -72,7 +73,6 @@
 
   // Features to add to the dev container. More info: https://containers.dev/features.
   "features": {
-    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
     "ghcr.io/devcontainers/features/git:1": {}
   },
 
