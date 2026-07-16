@@ -118,15 +118,15 @@ def masked_select_single_pass_kernel(
 
 @libentry()
 @triton.jit
-def masked_select_out_size(mask_ptr, out_size_ptr, N: tl.constexpr):
-    offsets = tl.arange(0, N)
-    mask = tl.load(mask_ptr + offsets)
+def masked_select_out_size(mask_ptr, out_size_ptr, N, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.arange(0, BLOCK_SIZE)
+    mask = tl.load(mask_ptr + offsets, mask=offsets < N, other=0)
     out_size = tl.sum(mask)
     tl.store(out_size_ptr, out_size)
 
 
 def masked_select(inp, mask):
-    logger.debug("GEMS MASKED SELECT")
+    logger.debug("GEMS_ENFLAME MASKED_SELECT")
 
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)
@@ -146,7 +146,7 @@ def masked_select(inp, mask):
     if N <= 4096:
         out_size = torch.zeros([1], dtype=torch.int, device=mask.device)
         with torch_device_fn.device(inp.device):
-            masked_select_out_size[(1,)](mask, out_size, N)
+            masked_select_out_size[(1,)](mask, out_size, N, BLOCK_SIZE=BLOCK_SIZE)
         out = torch.empty(out_size, dtype=inp.dtype, device=inp.device)
         with torch_device_fn.device(inp.device):
             masked_select_single_pass_kernel[(1,)](

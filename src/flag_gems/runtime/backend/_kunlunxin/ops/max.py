@@ -15,7 +15,7 @@ from flag_gems.utils.limits import get_dtype_min
 
 from ..utils.block_size_utils import get_block_size_1d
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
