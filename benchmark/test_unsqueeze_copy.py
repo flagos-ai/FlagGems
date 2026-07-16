@@ -1,67 +1,48 @@
 import pytest
 import torch
-import time
 
 import flag_gems
 
+from . import base, consts
 
-def benchmark(func, inp, dim, warmup=20, repeat=100):
 
-    for _ in range(warmup):
-        func(inp, dim)
+def unsqueeze_copy_input_fn(shape, dtype, device):
+    inp = torch.randn(
+        shape,
+        dtype=dtype,
+        device=device,
+    )
 
-    torch.npu.synchronize()
+    return [(inp, -1)]
 
-    start = time.time()
 
-    for _ in range(repeat):
-        func(inp, dim)
+class UnsqueezeCopyBenchmark(base.GenericBenchmark):
 
-    torch.npu.synchronize()
+    def set_shapes(self, shape_file_path=None):
+        # Only benchmark representative shapes.
+        # Avoid GenericBenchmark default shapes and huge extra shapes.
+        self.shapes = [
+            (1024,),
+            (1024, 1024),
+            (4096, 4096),
+            (32, 1024, 1024),
+        ]
 
-    end = time.time()
-
-    return (end - start) * 1000 / repeat
+    def set_more_shapes(self):
+        # Disable GenericBenchmark automatic extra shapes.
+        return []
 
 
 @pytest.mark.unsqueeze_copy
 def test_unsqueeze_copy():
 
-    shapes = [
-        (1024,),
-        (1024, 1024),
-        (4096, 4096),
-        (32, 1024, 1024),
-    ]
+    bench = UnsqueezeCopyBenchmark(
+        op_name="unsqueeze_copy",
+        torch_op=torch.ops.aten.unsqueeze_copy.default,
+        input_fn=unsqueeze_copy_input_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
 
-    dtype = torch.float16
+    bench.set_gems(flag_gems.unsqueeze_copy)
 
-    print("\nUnsqueeze_copy Performance (Ascend)")
-
-    for shape in shapes:
-
-        inp = torch.randn(
-            shape,
-            dtype=dtype,
-            device=flag_gems.device,
-        )
-
-        aten_time = benchmark(
-            torch.ops.aten.unsqueeze_copy.default,
-            inp,
-            -1,
-        )
-
-        gems_time = benchmark(
-            flag_gems.unsqueeze_copy,
-            inp,
-            -1,
-        )
-
-        speedup = aten_time / gems_time
-
-        print("=" * 60)
-        print(f"Shape: {shape}")
-        print(f"Aten: {aten_time:.6f} ms")
-        print(f"Gems: {gems_time:.6f} ms")
-        print(f"Speedup: {speedup:.3f}")
+    bench.run()
