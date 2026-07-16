@@ -97,7 +97,7 @@ kunlunxin = [
     "colorama==0.4.6",
     "flash_attn==2.4.2+7e2dd4d",
     "hydrax==0.1.0",
-    "hyperparameter==0.5.6",
+    "hyperparameter==0.6.0",
     "psutil==6.1.0",
     "regex==2026.4.4",
     "torch==2.9.0+cu129",
