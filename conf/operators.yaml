@@ -8372,6 +8372,19 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: underscore_linalg_svd
+    description: |
+      Computes the singular value decomposition (SVD) of a matrix; the private
+      primitive backing torch.linalg.svd and torch.linalg.svdvals.
+    for:
+      - _linalg_svd
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: unfold_backward
     description: |
       An operator for calculating the gradient of the `unfold` operation during backpropagation.
