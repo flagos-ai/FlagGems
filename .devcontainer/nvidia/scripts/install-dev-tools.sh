@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
+# Called by devcontainer.json postCreateCommand.
+# FLAGGEMS_DEVCONTAINER_BACKEND is set via containerEnv in devcontainer.json.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Load CUDA backend environment variables
-set -a
-# shellcheck source=../flaggems.env
-source "$SCRIPT_DIR/../flaggems.env"
-set +a
-
-# Run shared FlagGems installation logic
 bash "$SCRIPT_DIR/../../common/scripts/install-flaggems.sh"

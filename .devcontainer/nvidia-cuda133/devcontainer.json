@@ -1,5 +1,5 @@
 {
-  "name": "FlagGems - HYGON",
+  "name": "FlagGems - NVIDIA CUDA 13.3",
   "build": {
     "context": "../../",
     "dockerfile": "./Dockerfile",
@@ -7,28 +7,18 @@
       // Image produced by build-infra (see .devcontainer/build-infra/runtime/Containerfile).
       // Naming: flagos-runtime-{vendor}-{backend}:latest (see .devcontainer/build-infra/configs.yaml).
       // Override to use a different backend or registry, e.g.:
-      //   "IMAGE": "myregistry/flagos-runtime-hygon-dtk26.04:latest"
-      "IMAGE": "flagos-runtime-hygon-dtk26.04:latest",
+      //   "IMAGE": "flagos-runtime-nvidia-cuda13.3:latest"
+      "IMAGE": "flagos-runtime-nvidia-cuda13.3:latest",
       "USERNAME": "vscode"
     }
   },
   "runArgs": [
 	"--ulimit",
         "nofile=1048576:1048576",
-	"--device=/dev/kfd",
-        "--device=/dev/mkfd",
-        "--device=/dev/dri",
-        "--group-add=video",
+        "--gpus=all",
         "--net=host",
         "--ipc=host",
         "--privileged"
-  ],
-  // Corresponds to --cap-add=SYS_PTRACE and --security-opt seccomp=unconfined
-  "containerCapabilities": [
-      "SYS_PTRACE"
-  ],
-  "securityOpt": [
-      "seccomp=unconfined"
   ],
   // Maps --ulimit memlock=-1 and stack=67108864
   "hostRequirements": {
@@ -46,22 +36,17 @@
   // Mount the full repo only after the container starts
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/FlagGems,type=bind,consistency=cached",
   "workspaceFolder": "/workspace/FlagGems",
-  "mounts": [
-      "source=/opt/hyhal,target=/opt/hyhal,type=bind",
-      //"source=/data,target=/data,type=bind",
-      //"source=${localEnv:HOME},target=/home/host,type=bind",
-  ],
   "containerEnv": {
     "PIP_USER": "0", // <‑‑ disable implicit --user
-    "FLAGGEMS_DEVCONTAINER_BACKEND": "hygon"
+    "FLAGGEMS_DEVCONTAINER_BACKEND": "nvidia-cuda133"
   },
 
   // Use 'postCreateCommand' to run commands after the container is created.
   // Installs FlagGems in editable mode so source edits take effect immediately.
-  "postCreateCommand": "bash .devcontainer/hygon/scripts/install-dev-tools.sh",
+  "postCreateCommand": "bash .devcontainer/nvidia-cuda133/scripts/install-dev-tools.sh",
 
   // Build the base image before VS Code tries to pull it.
-  "initializeCommand": "bash .devcontainer/hygon/scripts/build-image.sh",
+  "initializeCommand": "bash .devcontainer/nvidia-cuda133/scripts/build-image.sh",
 
   "customizations": {
     "vscode": {

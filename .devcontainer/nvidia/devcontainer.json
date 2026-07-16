@@ -37,7 +37,8 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/FlagGems,type=bind,consistency=cached",
   "workspaceFolder": "/workspace/FlagGems",
   "containerEnv": {
-    "PIP_USER": "0" // <‑‑ disable implicit --user
+    "PIP_USER": "0", // <‑‑ disable implicit --user
+    "FLAGGEMS_DEVCONTAINER_BACKEND": "nvidia-cuda128"
   },
 
   // Use 'postCreateCommand' to run commands after the container is created.
