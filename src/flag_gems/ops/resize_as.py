@@ -54,21 +54,17 @@ def resize_as(
         )
 
     # Create output tensor with target shape
-    out = torch.empty_strided(
-        the_template.size(), the_template.stride(), dtype=self.dtype, device=self.device
-    )
+    out = torch.empty(the_template.size(), device=self.device, dtype=self.dtype)
 
-    # Expand source to match destination shape for broadcast
-    # Shapes are guaranteed to differ here (early return at line 45 handles
-    # the equal-shape case), so expand is always needed.
-    expanded = self.expand(the_template.shape)
+    # Reshape source to destination shape (numel already verified equal).
+    src = self.reshape(the_template.shape)
 
     # Handle empty tensors
-    if expanded.numel() == 0:
+    if self.numel() == 0:
         return out
 
-    overload = _resize_as_kernel.instantiate(expanded.ndim)
-    overload(expanded, out0=out)
+    overload = _resize_as_kernel.instantiate(src.ndim)
+    overload(src, out0=out)
     return out
 
 
