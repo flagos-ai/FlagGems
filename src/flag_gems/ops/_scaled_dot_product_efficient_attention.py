@@ -21,6 +21,15 @@ from flag_gems.ops.attention import scaled_dot_product_attention_forward
 
 logger = logging.getLogger(__name__)
 
+# Dropout is currently forced to 0.0 (see assert below), so the philox RNG
+# state returned to autograd is never consumed by the backward pass
+# (`_parse_philox` is only called when `is_dropout` is True). Returning GPU
+# tensors here would add two `cudaMalloc` calls per forward for no benefit.
+# Use cheap CPU constants; restore as GPU tensors carrying the real RNG
+# state once dropout is actually supported.
+_PHILOX_SEED = torch.tensor(0, dtype=torch.long)
+_PHILOX_OFFSET = torch.tensor(0, dtype=torch.long)
+
 
 def _scaled_dot_product_efficient_attention(
     query,
@@ -39,22 +48,32 @@ def _scaled_dot_product_efficient_attention(
         key: (batch, num_kv_heads, seq_len_kv, head_dim)
         value: (batch, num_kv_heads, seq_len_kv, head_dim)
         attn_bias: optional attention bias
-        compute_log_sumexp: whether to return log_sumexp for backward
+        compute_log_sumexp: currently ignored; the log_sumexp (``M``) is
+            always computed and returned by ``scaled_dot_product_attention_forward``.
+            A future optimization can plumb this flag into the forward kernel
+            to skip allocating ``M`` when the backward does not need it.
         dropout_p: dropout probability (currently must be 0.0)
         is_causal: whether to use causal masking
         scale: optional scale factor
 
     Returns:
         output: (batch, num_heads, seq_len_q, head_dim)
-        log_sumexp: (batch, num_heads, seq_len_q) if compute_log_sumexp is True
-        philox_seed: random seed for dropout
-        philox_offset: random offset for dropout
+        log_sumexp: (batch, num_heads, seq_len_q); always the valid ``M``
+            from the forward kernel (the ``compute_log_sumexp`` flag is
+            currently a no-op).
+        philox_seed: random seed for dropout (placeholder until dropout is supported)
+        philox_offset: random offset for dropout (placeholder until dropout is supported)
     """
     logger.debug("GEMS SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION")
 
     assert dropout_p == 0.0, "Currently only support dropout_p=0.0"
 
-    output, M = scaled_dot_product_attention_forward(
+    # ``M`` (log_sumexp) is unconditionally allocated and computed inside
+    # ``scaled_dot_product_attention_forward``, so there is nothing to gate
+    # on ``compute_log_sumexp`` here. Returning a separate dummy tensor when
+    # the flag is False would only add an extra GPU allocation for no benefit
+    # (and hand back uninitialized memory). Just return the real ``M``.
+    output, log_sumexp = scaled_dot_product_attention_forward(
         query,
         key,
         value,
@@ -65,17 +84,4 @@ def _scaled_dot_product_efficient_attention(
         enable_gqa=False,
     )
 
-    if compute_log_sumexp:
-        log_sumexp = M
-        philox_seed = torch.tensor(0, dtype=torch.long, device=query.device)
-        philox_offset = torch.tensor(0, dtype=torch.long, device=query.device)
-        return output, log_sumexp, philox_seed, philox_offset
-    else:
-        dummy_log_sumexp = torch.empty(
-            (query.shape[0], query.shape[1], query.shape[2]),
-            device=query.device,
-            dtype=torch.float32,
-        )
-        philox_seed = torch.tensor(0, dtype=torch.long, device=query.device)
-        philox_offset = torch.tensor(0, dtype=torch.long, device=query.device)
-        return output, dummy_log_sumexp, philox_seed, philox_offset
+    return output, log_sumexp, _PHILOX_SEED, _PHILOX_OFFSET
