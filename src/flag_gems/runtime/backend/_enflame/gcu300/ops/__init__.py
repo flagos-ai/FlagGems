@@ -83,7 +83,7 @@ from .div import (
 )
 from .dropout import dropout
 from .elu import elu
-from .embedding import embedding
+from .embedding import embedding, embedding_backward
 from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
 from .exp import exp, exp_, exp_out
@@ -231,6 +231,7 @@ __all__ = [
     "mv",
     "arange",
     "embedding",
+    "embedding_backward",
     "multinomial",
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
