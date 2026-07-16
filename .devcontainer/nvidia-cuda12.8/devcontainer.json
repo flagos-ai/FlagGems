@@ -43,10 +43,10 @@
 
   // Use 'postCreateCommand' to run commands after the container is created.
   // Installs FlagGems in editable mode so source edits take effect immediately.
-  "postCreateCommand": "bash .devcontainer/nvidia/scripts/install-dev-tools.sh",
+  "postCreateCommand": "bash .devcontainer/common/scripts/install-flaggems.sh",
 
   // Build the base image before VS Code tries to pull it.
-  "initializeCommand": "bash .devcontainer/nvidia/scripts/build-image.sh",
+  "initializeCommand": "bash .devcontainer/common/scripts/build-image.sh nvidia-cuda12.8",
 
   "customizations": {
     "vscode": {

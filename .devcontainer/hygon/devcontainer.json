@@ -58,10 +58,10 @@
 
   // Use 'postCreateCommand' to run commands after the container is created.
   // Installs FlagGems in editable mode so source edits take effect immediately.
-  "postCreateCommand": "bash .devcontainer/hygon/scripts/install-dev-tools.sh",
+  "postCreateCommand": "bash .devcontainer/common/scripts/install-flaggems.sh",
 
   // Build the base image before VS Code tries to pull it.
-  "initializeCommand": "bash .devcontainer/hygon/scripts/build-image.sh",
+  "initializeCommand": "bash .devcontainer/common/scripts/build-image.sh hygon-dtk26.04",
 
   "customizations": {
     "vscode": {
