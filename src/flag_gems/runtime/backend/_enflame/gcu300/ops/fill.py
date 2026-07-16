@@ -28,7 +28,7 @@ def fill_tensor_func(inp, value):
 
 
 def fill_scalar(input, value):
-    logger.debug("GEMS FILL (Dynamic)")
+    logger.debug("GEMS_ENFLAME FILL")
     return_type = input.dtype
     if return_type == torch.int64:
         input = input.to(torch.int32)
@@ -40,7 +40,7 @@ def fill_scalar(input, value):
 def fill_tensor(input, value):
     if not value.is_cuda:
         return fill_scalar(input, value.item())
-    logger.debug("GEMS FILL (Dynamic)")
+    logger.debug("GEMS_ENFLAME FILL")
     return_type = input.dtype
     if return_type == torch.int64:
         input = input.to(torch.int32)
@@ -58,7 +58,7 @@ def fill_tensor(input, value):
 def fill_tensor_(self, value):
     if not value.is_cuda:
         return fill_scalar_(self, value.item())
-    logger.debug("GEMS FILL_TENSOR_")
+    logger.debug("GEMS_ENFLAME FILL_TENSOR_")
     return_type = self.dtype
     if return_type == torch.int64:
         self = self.to(torch.int32)
@@ -74,10 +74,41 @@ def fill_tensor_(self, value):
 
 
 def fill_scalar_(self, value=0):
-    logging.debug("GEMS FILL_SCALAR_")
+    logging.debug("GEMS_ENFLAME FILL_SCALAR_")
     return_type = self.dtype
     if return_type == torch.int64:
         self = self.to(torch.int32)
     with torch_device_fn.device(self.device):
         fill_scalar_func(self, value, out0=self)
     return self.to(return_type)
+
+
+def fill_scalar_out(input, value, *, out=None):
+    logger.debug("GEMS_ENFLAME FILL_SCALAR_")
+    if out is None:
+        return fill_scalar(input, value)
+    return_type = input.dtype
+    if return_type == torch.int64:
+        input = input.to(torch.int32)
+    with torch_device_fn.device(input.device):
+        fill_scalar_func(input, value, out0=out)
+    return out
+
+
+def fill_tensor_out(input, value, *, out=None):
+    if out is None:
+        return fill_tensor(input, value)
+    if not value.is_cuda:
+        return fill_scalar_out(input, value.item(), out=out)
+    if value.ndim != 0:
+        raise RuntimeError(
+            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
+        )
+    return_type = input.dtype
+    if return_type == torch.int64:
+        input = input.to(torch.int32)
+    if value.dtype == torch.int64:
+        value = value.to(torch.int32)
+    with torch_device_fn.device(input.device):
+        fill_tensor_func(input, value, out0=out)
+    return out

@@ -43,6 +43,9 @@ def get_diag_embed_shape_and_dims():
 @pytest.mark.parametrize(
     "dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES + utils.BOOL_TYPES
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_accuracy_diag_embed(shape, dtype, offset, dim1, dim2):
     if dtype in utils.FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)

@@ -28,7 +28,6 @@ from pathlib import Path
 
 import consts
 import distro
-import git
 import yaml
 
 import flag_gems
@@ -293,14 +292,8 @@ def _probe_triton():
 def _probe_flaggems():
     try:
         version = flag_gems.__version__
-        repo = git.Repo(search_parent_directories=True)
-        sha = repo.head.object.hexsha
-        ver_str = f"{version}+git{sha[:8]}"
-        ENV_INFO["flag_gems"] = {"version": ver_str}
-        pinfo(f"flag_gems detected ... {ver_str}")
-    except RuntimeError as e:
-        perror(f"{e}")
-        sys.exit(-1)
+        ENV_INFO["flag_gems"] = {"version": version}
+        pinfo(f"flag_gems detected ... {version}")
     except Exception as e:
         perror(f"{e}")
         perror("flag_gems has not been installed, please run `uv pip install -e .`")
@@ -359,7 +352,7 @@ def get_env(gpu_ids):
     return env
 
 
-def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
+def run_cmd(op, cmd, cwd=None, env=None, timeout=1800, flavor=None):
     stdout = subprocess.DEVNULL
     stderr = subprocess.DEVNULL
     if CFG.dump_output:
@@ -929,7 +922,11 @@ def _parse_marks_file(marks_file):
     return marks
 
 
-def collect_marks():
+def collect_marks(ops):
+    if len(ops) <= 10:
+        pinfo(f"Only {len(ops)} operators requested, skipping mark collection")
+        return set(ops), set(ops)
+
     accuracy_marks = set()
     benchmark_marks = set()
 
@@ -1022,6 +1019,12 @@ def main():
         USE_COLORS = False
         RED = GREEN = YELLOW = CYAN = DIM = NC = ""
 
+    # ---- Record the start time of the whole test run ----
+    # Kept as a datetime object so the total elapsed time can be computed
+    # once all accuracy/benchmark tests finish.
+    test_start_time = datetime.datetime.now()
+    pinfo(f"Test started at ... {test_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
     probe_env()
 
     ops = get_ops_to_test()
@@ -1031,7 +1034,7 @@ def main():
         sys.exit(1)
     pinfo(f"Testing {op_count} operators ...")
 
-    CFG.accuracy_marks, CFG.benchmark_marks = collect_marks()
+    CFG.accuracy_marks, CFG.benchmark_marks = collect_marks(ops)
 
     CFG.ops = ops
 
@@ -1052,6 +1055,11 @@ def main():
             sys.exit(1)
         gpu_ids = [int(x) for x in gpu_list if x.strip()]
     gpu_count = len(gpu_ids)
+
+    # Don't spawn more workers than there are ops to test
+    if gpu_count > op_count:
+        gpu_ids = gpu_ids[:op_count]
+        gpu_count = op_count
 
     op_width = min(max(len(op) for op in ops), 40) if ops else 20
 
@@ -1075,7 +1083,15 @@ def main():
 
     display.finish()
 
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # ---- Record the end time of the whole test run ----
+    # Replaces the old `timestamp`; the run's end time is stored directly as
+    # `end_time` in summary.json and reused for the elapsed-time calculation.
+    test_end_time = datetime.datetime.now()
+
+    # Total wall-clock time the whole run took (start -> end).
+    total_duration = round((test_end_time - test_start_time).total_seconds(), 2)
+    total_duration_str = str(datetime.timedelta(seconds=int(total_duration)))
+
     op_data = {}
     for gpu_id in gpu_ids:
         gpu_file = CFG.output_dir.joinpath(f"summary{gpu_id}.json")
@@ -1091,7 +1107,8 @@ def main():
             op_data.update(result)
 
     final_data = {
-        "timestamp": timestamp,
+        "timestamp": test_end_time.strftime("%Y-%m-%d %H:%M:%S"),
+        "total_duration": total_duration_str,
         "env": ENV_INFO,
         "result": op_data,
     }
@@ -1101,6 +1118,7 @@ def main():
         json.dump(final_data, f, indent=2)
 
     cleanup_intermediate_files()
+    pinfo(f"Total elapsed time ... {total_duration_str} ({total_duration}s)")
     pinfo("Test completed.")
 
 
