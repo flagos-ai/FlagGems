@@ -1158,6 +1158,17 @@ ops:
       - Math
     stages:
       - stable: '4.0'
+  - id: bitwise_left_shift_
+    description: The in-place version of `bitwise_left_shift()`.
+    for:
+      - bitwise_left_shift_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: bitwise_not
     description: Computes the bitwise NOT of the given `input` tensor.
     for:
@@ -1908,6 +1919,17 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: copysign_
+    description: Triton kernel implementation for copysign_.
+    for:
+      - copysign_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.3'
   - id: copysign_out
     description: |
       A variant of `copysign` that allows the output to be saved into `out`.
@@ -5743,6 +5765,18 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.4'
+  - id: narrow
+    description: Pure layout operation (narrow); returns a zero-copy view sharing storage with the input.
+    for:
+      - narrow
+    labels:
+      - aten
+      - KernelGen
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: narrow_copy
     description: Triton kernel implementation for narrow_copy.
     for:

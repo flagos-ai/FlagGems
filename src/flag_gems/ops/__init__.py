@@ -101,7 +101,7 @@ from flag_gems.ops.bitwise_and import (
     bitwise_and_tensor,
     bitwise_and_tensor_,
 )
-from flag_gems.ops.bitwise_left_shift import bitwise_left_shift
+from flag_gems.ops.bitwise_left_shift import bitwise_left_shift, bitwise_left_shift_
 from flag_gems.ops.bitwise_not import bitwise_not, bitwise_not_
 from flag_gems.ops.bitwise_or import (
     bitwise_or_scalar,
@@ -150,6 +150,7 @@ from flag_gems.ops.conv_transpose1d import conv_transpose1d
 from flag_gems.ops.conv_transpose2d import conv_transpose2d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copysign import copysign, copysign_out
+from flag_gems.ops.copysign_ import copysign_
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
@@ -349,6 +350,7 @@ from flag_gems.ops.nanmedian import (
     nanmedian_dim_values,
     nanmedian_out,
 )
+from flag_gems.ops.narrow import narrow
 from flag_gems.ops.narrow_copy import narrow_copy
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
@@ -701,6 +703,7 @@ __all__ = [
     "bitwise_and_tensor",
     "bitwise_and_tensor_",
     "bitwise_left_shift",
+    "bitwise_left_shift_",
     "bitwise_not",
     "bitwise_not_",
     "bitwise_or_scalar",
@@ -753,6 +756,7 @@ __all__ = [
     "copy",
     "copy_",
     "copysign",
+    "copysign_",
     "copysign_out",
     "cos",
     "cos_",
@@ -1021,6 +1025,7 @@ __all__ = [
     "nanmedian_dim",
     "nanmedian_dim_values",
     "nanmedian_out",
+    "narrow",
     "narrow_copy",
     "ne",
     "ne_scalar",
