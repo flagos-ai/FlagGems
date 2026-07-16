@@ -28,3 +28,13 @@ def gt_func_scalar(x, y):
 def gt_scalar(A, B):
     logger.debug("GEMS GT SCALAR")
     return gt_func_scalar(A, B)
+
+
+def gt_tensor_(A, B):
+    logger.debug("GEMS GT_ TENSOR")
+    return gt_func(A, B, out0=A)
+
+
+def gt_scalar_(A, B):
+    logger.debug("GEMS GT_ SCALAR")
+    return gt_func_scalar(A, B, out0=A)
