@@ -4,21 +4,21 @@ import torch
 from . import base, consts
 
 
-@pytest.mark.sinh
-def test_sinh():
+@pytest.mark.log2
+def test_log2():
     bench = base.UnaryPointwiseBenchmark(
-        op_name="sinh",
-        torch_op=torch.sinh,
+        op_name="log2",
+        torch_op=torch.log2,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
-@pytest.mark.sinh_
-def test_sinh_inplace():
+@pytest.mark.log2_
+def test_log2_():
     bench = base.UnaryPointwiseBenchmark(
-        op_name="sinh_",
-        torch_op=lambda a: a.sinh_(),
+        op_name="log2_",
+        torch_op=torch.log2_,
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
