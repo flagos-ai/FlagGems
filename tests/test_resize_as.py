@@ -146,7 +146,9 @@ def test_resize_as_empty():
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_resize_as_non_contiguous(dtype):
     # Exercises reshape's copy path on a non-contiguous source (transpose).
-    inp = torch.randn(4, 3, dtype=dtype, device=flag_gems.device).T  # (3, 4) non-contiguous
+    inp = torch.randn(
+        4, 3, dtype=dtype, device=flag_gems.device
+    ).T  # (3, 4) non-contiguous
     template = torch.randn(2, 6, dtype=dtype, device=flag_gems.device)
 
     ref_inp = utils.to_reference(inp)
@@ -166,7 +168,9 @@ def test_resize_as_non_contiguous_template(dtype):
     # Exercises the output allocation path when the template is non-contiguous:
     # the result must follow the template's shape (not its strides).
     inp = torch.randn(2, 6, dtype=dtype, device=flag_gems.device)
-    template = torch.randn(3, 4, dtype=dtype, device=flag_gems.device).T  # (4, 3) non-contiguous
+    template = torch.randn(
+        3, 4, dtype=dtype, device=flag_gems.device
+    ).T  # (4, 3) non-contiguous
 
     ref_inp = utils.to_reference(inp)
     ref_template = utils.to_reference(template)
