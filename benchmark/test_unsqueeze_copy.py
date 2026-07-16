@@ -6,31 +6,57 @@ import flag_gems
 from . import base, consts
 
 
-def unsqueeze_copy_input_fn(shape, dtype, device):
+def unsqueeze_copy_input_fn(config, dtype, device):
+    shape, dim = config
+
     inp = torch.randn(
         shape,
         dtype=dtype,
         device=device,
     )
 
-    return [(inp, -1)]
+    yield inp, dim
 
 
-class UnsqueezeCopyBenchmark(base.GenericBenchmark):
+class UnsqueezeCopyBenchmark(base.Benchmark):
 
     def set_shapes(self, shape_file_path=None):
-        # Only benchmark representative shapes.
-        # Avoid GenericBenchmark default shapes and huge extra shapes.
         self.shapes = [
-            (1024,),
-            (1024, 1024),
-            (4096, 4096),
-            (32, 1024, 1024),
+            # 1D
+            ((1024,), 0),
+            ((1024,), -1),
+
+            # 2D
+            ((1024, 1024), 0),
+            ((1024, 1024), 1),
+            ((1024, 1024), -1),
+
+            ((4096, 4096), 0),
+            ((4096, 4096), -1),
+
+            # 3D
+            ((32, 1024, 1024), 0),
+            ((32, 1024, 1024), 1),
+            ((32, 1024, 1024), -1),
+
+            ((1024, 32, 1024), 1),
+
+            # 4D
+            ((8, 32, 128, 128), 1),
+            ((8, 32, 128, 128), 3),
+            ((8, 32, 128, 128), -1),
         ]
 
     def set_more_shapes(self):
-        # Disable GenericBenchmark automatic extra shapes.
         return []
+
+    def get_input_iter(self, dtype):
+        for config in self.shapes:
+            yield from unsqueeze_copy_input_fn(
+                config,
+                dtype,
+                self.device,
+            )
 
 
 @pytest.mark.unsqueeze_copy
