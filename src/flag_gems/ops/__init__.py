@@ -17,6 +17,7 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._masked_scale import _masked_scale
+from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
@@ -269,11 +270,13 @@ from flag_gems.ops.less_equal import less_equal, less_equal_scalar
 from flag_gems.ops.lgamma_ import lgamma, lgamma_
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
+from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linear import linear
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
 from flag_gems.ops.log1p import log1p, log1p_out
 from flag_gems.ops.log1p_ import log1p_
+from flag_gems.ops.log2 import log2, log2_
 from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log_normal_ import log_normal_
 from flag_gems.ops.log_sigmoid import log_sigmoid
@@ -284,6 +287,7 @@ from flag_gems.ops.log_softmax import (
     log_softmax_out,
 )
 from flag_gems.ops.logaddexp import logaddexp, logaddexp_out
+from flag_gems.ops.logaddexp2 import logaddexp2, logaddexp2_out
 from flag_gems.ops.logical_and import logical_and, logical_and_
 from flag_gems.ops.logical_not import logical_not, logical_not_
 from flag_gems.ops.logical_or import logical_or, logical_or_
@@ -323,6 +327,7 @@ from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.multiply_ import multiply_
 from flag_gems.ops.mv import mv
+from flag_gems.ops.mvlgamma_ import mvlgamma_
 from flag_gems.ops.nan_to_num import nan_to_num
 from flag_gems.ops.nanmedian import (
     nanmedian,
@@ -416,6 +421,7 @@ from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
 from flag_gems.ops.rrelu_with_noise_functional import rrelu_with_noise_functional
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.rsub import rsub_scalar, rsub_tensor
+from flag_gems.ops.scalar_tensor import scalar_tensor
 from flag_gems.ops.scaled_grouped_mm import scaled_grouped_mm
 from flag_gems.ops.scaled_mm import scaled_mm, scaled_mm_out
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
@@ -472,11 +478,17 @@ from flag_gems.ops.special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
     special_chebyshev_polynomial_w_out,
 )
+from flag_gems.ops.special_erfinv import (
+    special_erfinv,
+    special_erfinv_,
+    special_erfinv_out,
+)
 from flag_gems.ops.special_gammainc import special_gammainc
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.special_log_softmax import special_log_softmax
+from flag_gems.ops.special_logsumexp import special_logsumexp
 from flag_gems.ops.special_modified_bessel_i1 import special_modified_bessel_i1
 from flag_gems.ops.special_shifted_chebyshev_polynomial_u import (
     special_shifted_chebyshev_polynomial_u,
@@ -538,6 +550,14 @@ from flag_gems.ops.where import (
     where_self,
     where_self_out,
 )
+from flag_gems.ops.xlogy import (
+    xlogy,
+    xlogy_out,
+    xlogy_scalar_tensor,
+    xlogy_scalar_tensor_out,
+    xlogy_tensor_scalar,
+    xlogy_tensor_scalar_out,
+)
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
@@ -561,6 +581,7 @@ __all__ = [
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
     "_masked_scale",
+    "_pdist_backward",
     "_prelu_kernel_backward",
     "_resize_output",
     "_safe_softmax",
@@ -883,6 +904,7 @@ __all__ = [
     "lift_fresh_copy",
     "lift_fresh_copy_out",
     "linalg_cholesky",
+    "linalg_slogdet",
     "linear",
     "linspace",
     "log",
@@ -892,6 +914,8 @@ __all__ = [
     "log1p",
     "log1p_",
     "log1p_out",
+    "log2",
+    "log2_",
     "log_normal_",
     "log_sigmoid",
     "log_softmax",
@@ -900,6 +924,14 @@ __all__ = [
     "log_softmax_out",
     "logaddexp",
     "logaddexp_out",
+    "logaddexp2",
+    "logaddexp2_out",
+    "xlogy",
+    "xlogy_out",
+    "xlogy_tensor_scalar",
+    "xlogy_tensor_scalar_out",
+    "xlogy_scalar_tensor",
+    "xlogy_scalar_tensor_out",
     "logical_and",
     "logical_and_",
     "logical_not",
@@ -952,6 +984,7 @@ __all__ = [
     "multinomial",
     "multiply_",
     "mv",
+    "mvlgamma_",
     "nan_to_num",
     "nanmedian",
     "nanmedian_dim",
@@ -1112,11 +1145,15 @@ __all__ = [
     "softplus_backward",
     "softshrink",
     "softshrink_out",
+    "scalar_tensor",
     "sort",
     "sort_stable",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
+    "special_erfinv",
+    "special_erfinv_",
+    "special_erfinv_out",
     "special_gammainc",
     "special_hermite_polynomial_h",
     "special_i0e",
@@ -1124,6 +1161,7 @@ __all__ = [
     "special_i1",
     "special_i1_out",
     "special_log_softmax",
+    "special_logsumexp",
     "special_modified_bessel_i1",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",

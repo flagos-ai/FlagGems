@@ -83,11 +83,17 @@ def affine_grid_generator_kernel(
     W_float = W.to(tl.float32)
 
     if align_corners:
-        norm_x = 2.0 * w_float / (W_float - 1.0) - 1.0
-        norm_y = 2.0 * h_float / (H_float - 1.0) - 1.0
+        # Use step-based formula matching PyTorch's internal computation pattern,
+        # allowing Triton to generate FMA instructions for better precision.
+        step_x = 2.0 / (W_float - 1.0)
+        step_y = 2.0 / (H_float - 1.0)
+        norm_x = w_float * step_x - 1.0
+        norm_y = h_float * step_y - 1.0
     else:
-        norm_x = (2.0 * w_float + 1.0) / W_float - 1.0
-        norm_y = (2.0 * h_float + 1.0) / H_float - 1.0
+        step_x = 2.0 / W_float
+        step_y = 2.0 / H_float
+        norm_x = w_float * step_x + 1.0 / W_float - 1.0
+        norm_y = h_float * step_y + 1.0 / H_float - 1.0
 
     # Apply affine transformation
     # grid[n, h, w, 0] = theta[0,0] * norm_x + theta[0,1] * norm_y + theta[0,2]
