@@ -25,8 +25,8 @@ def abs(A):
 
 def abs_(A):
     logger.debug("GEMS_ENFLAME ABS_")
-    abs_func(A, out0=A)
     return_type = A.dtype
     if A.dtype == torch.int64:
         A = A.to(torch.int32)
+    abs_func(A, out0=A)
     return A.to(return_type)
