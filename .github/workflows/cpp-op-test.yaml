@@ -5,7 +5,7 @@ permissions:
 
 on:
   workflow_call:
-  workflow_dispatch: 
+  workflow_dispatch:
 
 jobs:
   test:
@@ -16,7 +16,7 @@ jobs:
       - uses: ./.github/actions/checkout-retry
       - uses: ./.github/actions/setup-flaggems
         with:
-          vendor: nvidia-cuda133
+          backend: nvidia-cuda133
           gpu_check_script: tools/gpu_check_nvidia.sh
 
       - shell: bash
