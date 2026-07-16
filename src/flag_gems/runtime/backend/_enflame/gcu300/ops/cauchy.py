@@ -99,7 +99,7 @@ def cauchy_(self, median=0, sigma=1, *, generator=None):
     Uses inverse transform sampling: X = median + sigma * tan(π * (U - 0.5))
     where U ~ Uniform(0, 1).
     """
-    logger.debug("GEMS CAUCHY_")
+    logger.debug("GEMS_ENFLAME CAUCHY_")
     shape = self.shape
     device = self.device
     N = volume(shape)
@@ -125,7 +125,7 @@ def cauchy(self, median=0, sigma=1, *, generator=None):
 
     Returns a new tensor with elements drawn from the Cauchy distribution.
     """
-    logger.debug("GEMS CAUCHY")
+    logger.debug("GEMS_ENFLAME CAUCHY")
     out = torch.empty_like(self)
     cauchy_(out, median, sigma, generator=generator)
     return out

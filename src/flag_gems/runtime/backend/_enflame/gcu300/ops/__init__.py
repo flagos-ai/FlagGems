@@ -58,6 +58,7 @@ from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
 from .clamp_min import clamp_min, clamp_min_
 from .clip import clip, clip_
+from .concatenate import concatenate
 from .conj_physical import conj_physical
 from .contiguous import contiguous
 from .copy import copy, copy_
@@ -91,6 +92,7 @@ from .expm1 import expm1, expm1_, expm1_out
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
+from .feature_dropout import feature_dropout, feature_dropout_
 from .fill import (
     fill_scalar,
     fill_scalar_,
@@ -280,6 +282,7 @@ __all__ = [
     "clamp_",
     "clamp_tensor",
     "clamp_tensor_",
+    "concatenate",
     "copy",
     "copy_",
     "cos",
@@ -309,6 +312,8 @@ __all__ = [
     "expm1",
     "expm1_",
     "expm1_out",
+    "feature_dropout",
+    "feature_dropout_",
     "fill_scalar",
     "fill_scalar_",
     "fill_tensor",
