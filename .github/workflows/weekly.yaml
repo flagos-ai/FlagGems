@@ -123,15 +123,31 @@ jobs:
       - name: Install FlagGems dependencies
         env: ${{ fromJSON(matrix.test_env) }}
         shell: bash --login -e -o pipefail {0}
-        run: pip install ".[test]"
+        run: pip install .
 
       - name: Check GPU availability
         shell: bash --login -e -o pipefail {0}
         run: bash ${{ matrix.gpu_check_script }}
 
-      # Run weekly tests for all operator stages
+      # # Run weekly tests for all operator stages
+      # - name: Run weekly tests
+      #   timeout-minutes: 720
+      #   env: ${{ fromJSON(matrix.test_env) }}
+      #   shell: bash --login -e -o pipefail {0}
+      #   run: |
+      #     # remove cache to avoid potential issues with stale files
+      #     rm -rf ~/.triton/cache && rm -rf ~/.flaggems
+      #     # run tests with specified GPUs and output directory
+      #     python3 tools/run_tests.py \
+      #       --gpus "${{ matrix.test_gpus }}" \
+      #       --stages all \
+      #       --dump-output \
+      #       --output "${OUTPUT_DIR}"
+
+      # Run weekly tests for selected operators (abs, sum, add)
+      # This is a smoke test to quickly verify the weekly testing pipeline
+      # and the backend environment.
       - name: Run weekly tests
-        timeout-minutes: 720
         env: ${{ fromJSON(matrix.test_env) }}
         shell: bash --login -e -o pipefail {0}
         run: |
@@ -140,22 +156,9 @@ jobs:
           # run tests with specified GPUs and output directory
           python3 tools/run_tests.py \
             --gpus "${{ matrix.test_gpus }}" \
-            --stages all \
+            --ops abs,sum,add \
             --dump-output \
             --output "${OUTPUT_DIR}"
-
-      # Run weekly tests for selected operators (abs, sum, add)
-      # This is a smoke test to quickly verify the weekly testing pipeline
-      # and the backend environment.
-      # - name: Run weekly tests
-      #   env: ${{ fromJSON(matrix.test_env) }}
-      #   shell: bash --login -e -o pipefail {0}
-      #   run: |
-      #     python3 tools/run_tests.py \
-      #       --gpus "${{ matrix.test_gpus }}" \
-      #       --ops abs,sum,add \
-      #       --dump-output \
-      #       --output "${OUTPUT_DIR}"
 
       - name: Package results
         run: |
@@ -232,14 +235,29 @@ jobs:
         run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
 
       - name: Install FlagGems dependencies
-        run: pip install ".[test]"
+        run: pip install .
 
       - name: Check GPU availability
         run: bash ${{ matrix.gpu_check_script }}
 
-      # Run weekly tests for all operator sta， timeout 720 minutes (12 hours)
+      # # Run weekly tests for all operator sta， timeout 720 minutes (12 hours)
+      # - name: Run weekly tests
+      #   timeout-minutes: 720
+      #   env: ${{ fromJSON(matrix.test_env) }}
+      #   run: |
+      #     # remove cache to avoid potential issues with stale files
+      #     rm -rf ~/.triton/cache && rm -rf ~/.flaggems
+      #     # run tests with specified GPUs and output directory
+      #     python3 tools/run_tests.py \
+      #       --gpus "${{ matrix.test_gpus }}" \
+      #       --stages all \
+      #       --dump-output \
+      #       --output "${OUTPUT_DIR}"
+
+      # Run weekly tests for selected operators (abs, sum, add)
+      # This is a smoke test to quickly verify the weekly testing pipeline
+      # and the backend environment.
       - name: Run weekly tests
-        timeout-minutes: 720
         env: ${{ fromJSON(matrix.test_env) }}
         run: |
           # remove cache to avoid potential issues with stale files
@@ -247,21 +265,9 @@ jobs:
           # run tests with specified GPUs and output directory
           python3 tools/run_tests.py \
             --gpus "${{ matrix.test_gpus }}" \
-            --stages all \
+            --ops abs,sum,add \
             --dump-output \
             --output "${OUTPUT_DIR}"
-
-      # Run weekly tests for selected operators (abs, sum, add)
-      # This is a smoke test to quickly verify the weekly testing pipeline
-      # and the backend environment.
-      # - name: Run weekly tests
-      #   env: ${{ fromJSON(matrix.test_env) }}
-      #   run: |
-      #     python3 tools/run_tests.py \
-      #       --gpus "${{ matrix.test_gpus }}" \
-      #       --ops abs,sum,add \
-      #       --dump-output \
-      #       --output "${OUTPUT_DIR}"
 
       - name: Package results
         run: |

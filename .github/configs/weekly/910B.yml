@@ -11,7 +11,7 @@ runner_labels: 910b-flaggems-weekly
 use_container: true
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flaggems/huawei-flaggems-test-910b4-1-flagtree-3-5:20260701
+container_image: harbor.baai.ac.cn/flaggems/huawei-flaggems-test-910b-flagtree0.6.0-ascend3.5:202607091608
 
 # Container volumes to mount for this backends
 container_volumes:

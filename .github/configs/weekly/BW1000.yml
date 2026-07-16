@@ -11,7 +11,7 @@ runner_labels: bw1000-flaggems-weekly
 use_container: true
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flaggems/hygon-flaggems-test-bw1000:20260701
+container_image: harbor.baai.ac.cn/flaggems/hygon-flaggems-test-bw1000-flagtree3.6:202607071012
 
 # Container volumes to mount for this backends
 container_volumes:
