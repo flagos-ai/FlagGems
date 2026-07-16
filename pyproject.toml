@@ -188,9 +188,9 @@ Documentation = "https://flagos-ai.github.io/FlagGems"
 [project.scripts]
 flaggems-setup = "flag_gems._setup:main"
 
-[tool.setuptools.packages.find]
-
-where = ["src"]
+# Package discovery (including shipping the tests/ and benchmark/ suites under
+# collision-safe names) is defined in setup.py, so it is intentionally omitted
+# here — declaring `packages` in both places is an error.
 
 [tool.setuptools.package-data]
 
