@@ -672,6 +672,7 @@ _FULL_CONFIG = (
     ("signbit", signbit),
     ("signbit.out", signbit_out),
     ("silu", silu),
+    ("silu.out", silu_out),
     ("silu_", silu_),
     ("silu_backward", silu_backward),
     ("sin", sin),
