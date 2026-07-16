@@ -16,19 +16,36 @@ import logging
 
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+config_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    isCloseVectorization=False,
+    kunlunAutoGrid=True,
+    unroll_num=8,
+)
 
-@pointwise_dynamic(is_tensor=[True, False, False], promotion_methods=[(0, "DEFAULT")])
+
+@pointwise_dynamic(
+    is_tensor=[True, False, False], promotion_methods=[(0, "DEFAULT")], config=config_
+)
 @triton.jit
 def threshold_kernel(self, threshold, value):
     return tl.where(self > threshold, self, value)
 
 
-@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(
+    is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")], config=config_
+)
 @triton.jit
 def threshold_backward_kernel(grad_output, self, threshold):
     return tl.where(self > threshold, grad_output, 0)
@@ -38,6 +55,12 @@ def threshold(self, threshold, value):
     logger.debug("GEMS_KUNLUNXIN THRESHOLD")
     output = threshold_kernel(self, threshold, value)
     return output
+
+
+def threshold_(self, threshold, value):
+    logger.debug("GEMS_KUNLUNXIN THRESHOLD_")
+    threshold_kernel(self, threshold, value, out0=self)
+    return self
 
 
 def threshold_backward(grad_output, self, threshold):

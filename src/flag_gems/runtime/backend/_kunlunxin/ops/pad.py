@@ -158,6 +158,14 @@ def generate_destination_passing_padding_wrapper(
         code.writeline(
             "BLOCK_SIZE = triton.next_power_of_2(triton.cdiv(out0.numel(), num_ctas))"
         )
+        # NOTE (kunlunxin/XPU): cap BLOCK_SIZE so it never becomes a giant
+        # constexpr tile. The original `next_power_of_2(cdiv(numel, 12))` produced
+        # e.g. `tensor<67108864>` (67M-element) tiles for the 655M/1G benchmark
+        # outputs, exploding the IR to ~1.1GB. The kernel already covers the whole
+        # output via `grid = cdiv(numel, BLOCK_SIZE)` + `mask=offset<out_elem_cnt`,
+        # so bounding the tile just uses more (smaller) programs with identical
+        # semantics for every mode.
+        code.writeline("BLOCK_SIZE = min(BLOCK_SIZE, 8192)")
         code.writeline("grid = (triton.cdiv(out0.numel(), BLOCK_SIZE), 1, 1)")
         code.newline()
 
@@ -473,6 +481,39 @@ class PadFunction:
 _pad_func = PadFunction()
 
 
+def _constant_pad_fast(self, pad, value):
+    """Fast path for `mode == "constant"` with non-negative pads.
+
+    The generated `_pad_func` kernel walks every output element and recovers its
+    multi-dim index with per-element `//` / `%` (divmod) against the output
+    strides, which is both compute-heavy and (with the unbounded tile) IR-heavy.
+    For constant padding the result is simply: an output prefilled with `value`,
+    with the input block copied into the interior. That is two pure-bandwidth
+    passes (fill + strided copy) and no index arithmetic, matching how torch
+    itself implements constant pad.
+    """
+    ndim = self.ndim
+    pad_pairs = len(pad) // 2
+
+    pad_before = [0 for _ in range(ndim)]
+    pad_after = [0 for _ in range(ndim)]
+    for i in range(pad_pairs):
+        pad_before[ndim - 1 - i] = pad[2 * i]
+        pad_after[ndim - 1 - i] = pad[2 * i + 1]
+
+    dst_shape = [self.shape[i] + pad_before[i] + pad_after[i] for i in range(ndim)]
+
+    out = torch.empty(dst_shape, device=self.device, dtype=self.dtype)
+    out.fill_(value)
+
+    # narrow the output down to the interior region that receives the input
+    interior = out
+    for d in range(ndim):
+        interior = interior.narrow(d, pad_before[d], self.shape[d])
+    interior.copy_(self)
+    return out
+
+
 def pad(self, pad, mode="constant", value=None):
     logger.debug("GEMS_KUNLUNXIN CONSTANT_PAD_ND")
 
@@ -499,6 +540,20 @@ def pad(self, pad, mode="constant", value=None):
             assert (
                 pad_l <= input_size and pad_r <= input_size
             ), "Padding value causes wrapping around more than once."
+
+    # Fast constant path: only for non-negative pads (negative pads crop, which
+    # the narrow/copy shortcut cannot express -> fall back to the general kernel).
+    #
+    # Rank guard (kunlunxin/XPU): the fast path fills the output then does a
+    # strided `copy_` into the interior view. For ndim >= 5 with a last-dim-only
+    # narrow (e.g. pad=[2,3] on a 5D tensor) the gems `copy_` kernel produces a
+    # handful of wrong elements for fp16/bf16 (a genuine gems copy_ bug that this
+    # strided pattern exposes; fp32 and ranks 1-4 are correct). All benchmark
+    # shapes are 1D-3D, so restricting the fast path to ndim <= 4 keeps every perf
+    # win while routing the buggy 5D case back to the correct generated kernel
+    # (matching the pre-existing baseline behaviour -> no test regression).
+    if mode == "constant" and self.ndim <= 4 and all(p >= 0 for p in pad):
+        return _constant_pad_fast(self, pad, float(value))
 
     out = _pad_func(self, pad, mode, float(value))
     return out

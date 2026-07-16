@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -239,27 +240,28 @@ def _tril_inplace_zero_strided_tile_kernel(
     tl.store(ptr + offs_n * STRIDE_N, 0.0, mask=mask & zero)
 
 
+@libentry()
 @triton.jit
 def _tril_strided_out_tile_kernel(
     in_ptr,
     out_ptr,
     diag,
-    M: tl.constexpr,
-    N: tl.constexpr,
-    B0: tl.constexpr,
-    B1: tl.constexpr,
-    B2: tl.constexpr,
-    B3: tl.constexpr,
-    B4: tl.constexpr,
-    B5: tl.constexpr,
-    S0: tl.constexpr,
-    S1: tl.constexpr,
-    S2: tl.constexpr,
-    S3: tl.constexpr,
-    S4: tl.constexpr,
-    S5: tl.constexpr,
-    STRIDE_M: tl.constexpr,
-    STRIDE_N: tl.constexpr,
+    M,
+    N,
+    B0,
+    B1,
+    B2,
+    B3,
+    B4,
+    B5,
+    S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    STRIDE_M,
+    STRIDE_N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):

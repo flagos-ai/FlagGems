@@ -92,7 +92,15 @@ def amax_kernel(
     out = out + rows
     row_mask = rows < M
 
-    _all = tl.full([BLOCK_M, BLOCK_N], value=-float("inf"), dtype=tl.float32)
+    # Keep only a [BLOCK_M, 1] running accumulator and reduce each [BLOCK_M,
+    # BLOCK_N] block along N *inside* the loop. The old code held a persisted
+    # [BLOCK_M, BLOCK_N] accumulator (`_all`) across all iterations; with the
+    # unbounded BLOCK_M=next_pow2(cdiv(M,12)) heuristic + BLOCK_N up to 8192 that
+    # is a giant 2D constexpr tile (IR shows tensor<512x4096>), which
+    # ConvertTritonXPUToLLVM materializes per element -> the 1.9GB IR dump. This
+    # per-iteration reduce mirrors the working min_dim/max_dim kernels: the live
+    # state is tiny ([BLOCK_M, 1]) and the loop collapses.
+    acc = tl.full([BLOCK_M, 1], value=-float("inf"), dtype=tl.float32)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
@@ -100,9 +108,9 @@ def amax_kernel(
 
         a = tl.load(inp + cols, mask, other=-float("inf")).to(tl.float32)
         a = tl.where(mask, a, -float("inf"))
-        _all = tl.maximum(_all, a)
-    all = tl.max(_all, axis=1)[:, None]
-    tl.store(out, all, row_mask)
+        blk = tl.max(a, axis=1)[:, None]
+        acc = tl.maximum(acc, blk)
+    tl.store(out, acc, row_mask)
 
 
 def amax(inp, dim=None, keepdim=False):

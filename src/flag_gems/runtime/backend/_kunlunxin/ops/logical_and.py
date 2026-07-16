@@ -50,3 +50,22 @@ def logical_and_func(x, y):
 def logical_and(A, B):
     logger.debug("GEMS_KUNLUNXIN LOGICAL_AND")
     return logical_and_func(A, B)
+
+
+# In-place variant. Without a kunlunxin override the ATen `logical_and_` falls
+# back to the generic op (`ops/logical_and.py`, default buffer_size_limit=2048,
+# no XPU tuning), which is catastrophic on XPU: every gm2lm/lm2gm is judged
+# discrete (offsetState=-1) so large shapes run at ~0.001-0.003 speedup
+# (60-1085ms). Reusing the same config_ as the out-of-place variant
+# (unroll_num=8, kunlunAutoGrid, 1d-tile, async closed) restores block-DMA
+# contiguous access. out0=A writes in place.
+@pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")], config=config_)
+@triton.jit
+def logical_and_func_(x, y):
+    return tl.where((x != 0) & (y != 0), 1, 0)
+
+
+def logical_and_(A, B):
+    logger.debug("GEMS_KUNLUNXIN LOGICAL_AND_")
+    logical_and_func_(A, B, out0=A)
+    return A

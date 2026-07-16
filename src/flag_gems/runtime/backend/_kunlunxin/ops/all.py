@@ -37,18 +37,38 @@ buf_len_per_core = 2048
 vector_size = 16
 
 
+# Tile budget = the current max tile (BLOCK_M=64 * BLOCK_N=512). We keep this
+# constant so the [BLOCK_M, BLOCK_N] tile never grows past the size that already
+# compiles cleanly (no XPU struct explosion), we only RESHAPE it.
+TILE_BUDGET = 64 * 512
+
+
+def _heur_n_raw(N):
+    # For N <= 8192 keep the historical cap of 512 (square / small-N shapes are
+    # already near the reduce-bandwidth ceiling with BLOCK_M=64, BLOCK_N=512).
+    # For very wide N, a 512-wide tile forces N/512 serial chunks (e.g. 128 for
+    # N=65536); widening BLOCK_N to 4096 cuts the loop count ~8x. Measured on XPU
+    # (proto): [1024,65536] 113 -> 165 GB/s (+46%) at the SAME tile budget.
+    if N <= 8192:
+        block_n = min(N, 512)
+    else:
+        block_n = min(triton.next_power_of_2(N), 4096)
+    return triton.next_power_of_2(max(block_n, 1))
+
+
 def heur_m_block_size(args):
     M = args["M"]
+    block_n = _heur_n_raw(args["N"])
     # For very small M, use minimum BLOCK_M of 1
     block_m = min(triton.cdiv(M, cluster_num), core_num)
+    # Keep BLOCK_M * BLOCK_N <= TILE_BUDGET: if BLOCK_N was widened for large N,
+    # shrink BLOCK_M so the tile stays the same size (constant compile footprint).
+    block_m = min(block_m, max(TILE_BUDGET // block_n, 1))
     return triton.next_power_of_2(max(block_m, 1))
 
 
 def heur_n_block_size(args):
-    N = args["N"]
-    # For very small N, use minimum BLOCK_N of 1
-    block_n = min(N, 512)
-    return triton.next_power_of_2(max(block_n, 1))
+    return _heur_n_raw(args["N"])
 
 
 @triton.jit

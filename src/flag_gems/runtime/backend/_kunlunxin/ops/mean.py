@@ -62,12 +62,37 @@ def mean(inp, *, dtype=None):
     return out
 
 
-def heur_m_block_size(args):
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
+# Persisted-accumulator tile budget. The old heuristics allowed
+# BLOCK_M=next_pow2(cdiv(M,12)) (unbounded) x BLOCK_N=min(next_pow2(N),8192),
+# so the persisted [BLOCK_M, BLOCK_N] accumulator became a giant 2D constexpr
+# tile (IR shows tensor<1024x8192xf32> = 8.4M elements). ConvertTritonXPUToLLVM
+# materializes it per element -> the 1.78GB IR dump. We keep the numerically
+# correct persisted-accumulator + single final reduce (the in-loop
+# tl.sum(a, axis=1) alternative miscompiles on XPU for fp16/bf16 -> wrong
+# results), but bound BLOCK_M x BLOCK_N to a fixed budget so the tile can never
+# explode. Under that fixed budget we RESHAPE the tile by N (the all_dim
+# lesson): large-N reductions want a wide/short tile (few loop trips, wide DMA)
+# while small/medium-N want a tall tile (more rows in flight). The wide path
+# raised fp16 [1024,65536]/[1024,1M] but a blanket-wide tile starved medium-M
+# shapes like [4096,4096] (BLOCK_M collapsed to 16), so we switch on N.
+_TILE_BUDGET = 32768
+_N_WIDE = 8192
+
+
+def _block_n(N):
+    if N > _N_WIDE:
+        return builtins.min(triton.next_power_of_2(N), 2048)  # wide for large N
+    return builtins.min(triton.next_power_of_2(N), 512)  # tall-friendly otherwise
 
 
 def heur_n_block_size(args):
-    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+    return _block_n(args["N"])
+
+
+def heur_m_block_size(args):
+    block_n = _block_n(args["N"])
+    block_m = triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
+    return builtins.min(block_m, builtins.max(_TILE_BUDGET // block_n, 1))
 
 
 @libentry()
@@ -96,7 +121,14 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
     Mean = Mean + pid
     row_mask = pid < M
 
-    # Compute mean
+    # Persisted [BLOCK_M, BLOCK_N] accumulator + a SINGLE reduce after the loop.
+    # Slot j accumulates cols j, j+BLOCK_N, j+2*BLOCK_N, ... (strided partials);
+    # tl.sum(_mean, axis=1) then combines them. This is numerically correct for
+    # any BLOCK_N. We deliberately do NOT reduce inside the loop
+    # (acc += tl.sum(a, axis=1)) because that pattern miscompiles on XPU for
+    # fp16/bf16 inputs (converted-tile in-loop axis=1 reduce returns garbage;
+    # verified: 97% mismatch at (200,40999,3)). The tile stays bounded because
+    # heur_m/heur_n cap BLOCK_M*BLOCK_N to _TILE_BUDGET, so no giant-tile IR.
     _mean = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
@@ -105,8 +137,7 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _mean += a
-    mean = tl.sum(_mean, axis=1) / N
-    mean = mean[:, None]
+    mean = tl.sum(_mean, axis=1)[:, None] / N
     tl.store(Mean, mean, row_mask)
 
 

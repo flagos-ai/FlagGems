@@ -89,14 +89,19 @@ def prod(inp, *, dtype=None):
 
 
 def heur_m_block_size(args):
-    # For large reduction dim N, assign one row per program (BLOCK_M=1): this
-    # maximizes grid parallelism and keeps the accumulator tile [1, BLOCK_N]
-    # small. For small N, pack many rows per program so the launch cost is
-    # amortized. The old unbounded BLOCK_M = next_pow2(cdiv(M, 12)) built giant
-    # [512, BLOCK_N] tiles with only ~8 programs -> catastrophic (see solution).
-    if args["N"] >= 2048:
-        return 1
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
+    # Bound the accumulator tile [BLOCK_M, BLOCK_N] to a fixed element budget so
+    # BLOCK_M can never explode with M. The old `next_pow2(cdiv(M, 12))` built
+    # multi-hundred-MB tiles with only ~8 programs when M was large and N small
+    # (e.g. (1024,1024,1024) reduce dim=1 -> BLOCK_M=131072, a 512MB tile ->
+    # 747ms catastrophe). A ~64K-element tile keeps per-program work high (few,
+    # large contiguous DMA passes) while capping SRAM, and caps BLOCK_M at
+    # next_pow2(M) so tiny-M rows are not over-allocated.
+    import builtins
+
+    M, N = args["M"], args["N"]
+    block_n = builtins.min(triton.next_power_of_2(N), 8192)
+    block_m = builtins.max(1, 65536 // block_n)
+    return builtins.min(block_m, triton.next_power_of_2(M))
 
 
 def heur_n_block_size(args):

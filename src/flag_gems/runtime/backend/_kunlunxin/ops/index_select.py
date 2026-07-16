@@ -75,13 +75,16 @@ def index_select_slice_kernel(
     o = pid // IDXL
     j = pid % IDXL
     idx = tl.load(index + j)
-    in_base = o * D * INNER + idx * INNER
-    out_base = pid * INNER
+    # Advance the base pointers once (embedding-style) so the per-iteration
+    # address expression is just `ptr + cols`; this lets OffsetAnalysis keep
+    # the contiguous block-DMA form and shaves the small-shape launch floor.
+    inp += o * D * INNER + idx * INNER
+    out += pid * INNER
     for c in range(0, INNER, BLOCK_I):
         cols = c + tl.arange(0, BLOCK_I)
         mask = cols < INNER
-        vals = tl.load(inp + in_base + cols, mask=mask, other=0)
-        tl.store(out + out_base + cols, vals, mask=mask)
+        vals = tl.load(inp + cols, mask=mask, other=0)
+        tl.store(out + cols, vals, mask=mask)
 
 
 def index_select(inp, dim, index):
@@ -107,10 +110,18 @@ def index_select(inp, dim, index):
         outer = math.prod(shape[:dim])
         dim_size = shape[dim]
         n_slices = outer * index_len
-        block_i = min(triton.next_power_of_2(inner), 4096)
+        block_i = min(triton.next_power_of_2(inner), 8192)
         grid = (n_slices,)
         index_select_slice_kernel[grid](
-            inp, out, index, dim_size, inner, index_len, BLOCK_I=block_i
+            inp,
+            out,
+            index,
+            dim_size,
+            inner,
+            index_len,
+            BLOCK_I=block_i,
+            num_warps=8,
+            buffer_size_limit=4096,
         )
         return out
 

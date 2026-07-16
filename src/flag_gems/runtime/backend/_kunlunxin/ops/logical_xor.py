@@ -49,3 +49,21 @@ def logical_xor_func(x, y):
 def logical_xor(A, B):
     logger.debug("GEMS_KUNLUNXIN LOGICAL_XOR")
     return logical_xor_func(A, B)
+
+
+# In-place variant. Without a kunlunxin override the ATen `logical_xor_` falls
+# back to the generic op (default buffer_size_limit=2048, no XPU tuning), which
+# is catastrophic on XPU: every gm2lm/lm2gm is judged discrete (offsetState=-1)
+# so large shapes run at ~0.001-0.005 speedup (60-1085ms). Reusing the same
+# config_ as the out-of-place variant (unroll_num=8, kunlunAutoGrid, 1d-tile,
+# async closed) restores block-DMA contiguous access. out0=A writes in place.
+@pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")], config=config_)
+@triton.jit
+def logical_xor_func_(x, y):
+    return tl.where((x != 0) ^ (y != 0), 1, 0)
+
+
+def logical_xor_(A, B):
+    logger.debug("GEMS_KUNLUNXIN LOGICAL_XOR_")
+    logical_xor_func_(A, B, out0=A)
+    return A

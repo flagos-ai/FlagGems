@@ -49,3 +49,14 @@ def logical_or_func(x, y):
 def logical_or(A, B):
     logger.debug("GEMS_KUNLUNXIN LOGICAL_OR")
     return logical_or_func(A, B)
+
+
+def logical_or_(A, B):
+    # In-place variant was NOT overridden -> fell back to the generic
+    # ops/logical_or.py path with the default pointwise_dynamic config (tile 512,
+    # buffer_size_limit=2048, no unroll/autoGrid) -> catastrophic (60-1090ms on
+    # large shapes, speedup ~0.001-0.4). Reuse the same tuned logical_or_func with
+    # out0=A (same recipe as bitwise_and_tensor_).
+    logger.debug("GEMS_KUNLUNXIN LOGICAL_OR_")
+    logical_or_func(A, B, out0=A)
+    return A

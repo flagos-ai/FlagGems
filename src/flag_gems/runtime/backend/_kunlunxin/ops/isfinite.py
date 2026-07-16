@@ -20,13 +20,27 @@ import triton.language as tl
 
 from flag_gems.utils import tl_extra_shim
 
+from ..utils.codegen_config_utils import CodeGenConfig
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 _finitef = tl_extra_shim.finitef
 
+_config = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    isCloseMemoryAsync=False,
+    kunlunAutoGrid=True,
+    unroll_num=8,
+)
 
-@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "ALWAYS_BOOL")])
+
+@pointwise_dynamic(
+    is_tensor=[True], promotion_methods=[(0, "ALWAYS_BOOL")], config=_config
+)
 @triton.jit
 def isfinite_func_f32(x):
     # Bitwise check: finite if exponent bits are not all 1s
@@ -36,7 +50,9 @@ def isfinite_func_f32(x):
     return (bits & exp_mask) != exp_mask
 
 
-@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "ALWAYS_BOOL")])
+@pointwise_dynamic(
+    is_tensor=[True], promotion_methods=[(0, "ALWAYS_BOOL")], config=_config
+)
 @triton.jit
 def isfinite_func_f16(x):
     # Bitwise check for float16: exponent mask 0x7C00
@@ -45,7 +61,9 @@ def isfinite_func_f16(x):
     return (bits & exp_mask) != exp_mask
 
 
-@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "ALWAYS_BOOL")])
+@pointwise_dynamic(
+    is_tensor=[True], promotion_methods=[(0, "ALWAYS_BOOL")], config=_config
+)
 @triton.jit
 def isfinite_func(x):
     return _finitef(x.to(tl.float32))

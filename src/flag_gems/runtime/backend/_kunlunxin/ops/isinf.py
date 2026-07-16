@@ -19,13 +19,25 @@ import triton.language as tl
 
 from flag_gems.utils import tl_extra_shim
 
+from ..utils.codegen_config_utils import CodeGenConfig
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 _isinf = tl_extra_shim.isinf
 
+_config = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    isCloseMemoryAsync=False,
+    kunlunAutoGrid=True,
+    unroll_num=8,
+)
 
-@pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
+
+@pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")], config=_config)
 @triton.jit
 def isinf_func(x):
     return _isinf(x.to(tl.float32))

@@ -63,8 +63,8 @@ def _input_fn(shape, dtype, device):
 
 
 def _get_gbps(bench_fn_args, latency):
-    inp, mask, src = bench_fn_args
-    io_amount = sum([shape_utils.size_in_bytes(item) for item in [inp, mask, src, inp]])
+    inp, src = bench_fn_args[0], bench_fn_args[1]
+    io_amount = sum([shape_utils.size_in_bytes(item) for item in [inp, src, inp]])
 
     return io_amount * 1e-9 / (latency * 1e-3)
 
