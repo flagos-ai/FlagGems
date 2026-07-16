@@ -1028,7 +1028,12 @@ class WrapperGenerator:
 
         for i in range(schema.num_output_tensors()):
             params.append(f"{self.output_name(i)}: Union[torch.Tensor, StridedBuffer]")
-        params.append("enable_i64: bool")
+        # enable_i64 defaults to False so that wrappers instantiated directly
+        # via `func.instantiate(ndim)(...)` (which bypasses prepare_args) still
+        # work. Such call sites already convert int64 -> int32 before calling,
+        # so ENABLE_I64=False is the correct flag for them. The normal
+        # __call__ path still passes enable_i64 explicitly.
+        params.append("enable_i64: bool = False")
         code.writeline(f"def {self.name}({_cs(params)}): ")
 
     def gen_docstring(self, code: IndentedBuffer):
