@@ -31,6 +31,16 @@ def test_sigmoid_inplace():
     bench.run()
 
 
+@pytest.mark.sigmoid_out
+def test_sigmoid_out():
+    bench = base.UnaryPointwiseOutBenchmark(
+        op_name="sigmoid_out",
+        torch_op=torch.ops.aten.sigmoid.out,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.sigmoid_backward
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

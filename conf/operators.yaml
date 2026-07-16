@@ -7519,6 +7519,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: sigmoid_out
+    description: |
+      A variant of `sigmoid` that supports an output tensor to receive the result.
+    for:
+      - sigmoid.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: signbit
     description: Tests if each element of `input` has its sign bit set or not.
     for:

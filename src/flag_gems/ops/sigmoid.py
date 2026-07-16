@@ -28,18 +28,23 @@ def sigmoid_backward_kernel(dy, y):
 
 
 def sigmoid(self):
-    logger.debug("GEMS SIGMOID FORWARD")
+    logger.debug("GEMS SIGMOID")
     output = sigmoid_forward(self)
     return output
 
 
 def sigmoid_backward(grad_output, output):
-    logger.debug("GEMS SIGMOID BACKWARD")
+    logger.debug("GEMS SIGMOID_BACKWARD")
     grad_input = sigmoid_backward_kernel(grad_output, output)
     return grad_input
 
 
 def sigmoid_(A):
-    logger.debug("GEMS SIGMOID_ FORWARD")
+    logger.debug("GEMS SIGMOID_")
     out = sigmoid_forward(A, out0=A)
     return out
+
+
+def sigmoid_out(self, *, out):
+    logger.debug("GEMS SIGMOID_OUT")
+    return sigmoid_forward(self, out0=out)
