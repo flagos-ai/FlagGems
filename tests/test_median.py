@@ -4,7 +4,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.median import median_dim as gems_median_dim
+from flag_gems import median_dim as gems_median_dim
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -36,7 +36,7 @@ MEDIAN_OPS = ["median", "median_out", "median_dim", "median_dim_values"]
 
 
 def _make_input(shape, dtype):
-    if dtype in utils.ALL_INT_DTYPES or dtype in (torch.int8, torch.uint8):
+    if not dtype.is_floating_point:
         numel = 1
         for size in shape:
             numel *= size

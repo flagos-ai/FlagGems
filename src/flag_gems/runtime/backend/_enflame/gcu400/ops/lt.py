@@ -15,7 +15,7 @@ def lt_func(x, y):
 
 
 def lt(A, B):
-    logger.debug("GEMS LT")
+    logger.debug("GEMS_ENFLAME LT")
     return lt_func(A, B)
 
 
@@ -26,5 +26,5 @@ def lt_func_scalar(x, y):
 
 
 def lt_scalar(A, B):
-    logger.debug("GEMS LT SCALAR")
+    logger.debug("GEMS_ENFLAME LT_SCALAR")
     return lt_func_scalar(A, B)
