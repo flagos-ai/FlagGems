@@ -35,8 +35,10 @@ When you open this repo in VS Code, it will prompt you to select a configuration
    [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension.
 2. Open this repository in VS Code.
 3. When prompted, select **Reopen in Container** and choose your hardware backend.
-4. The container builds automatically and runs `install-dev-tools.sh` on first start,
-   which installs FlagGems in editable mode.
+4. On first launch, `initializeCommand` runs `build-image.sh`, which uses
+   [build-infra](https://github.com/flagos-ai/build-infra) to build the runtime image locally (this takes a while).
+   Subsequent starts skip the build if the image is already present.
+5. Once the container starts, `postCreateCommand` installs FlagGems in editable mode.
 
 ## Adding a New Backend
 

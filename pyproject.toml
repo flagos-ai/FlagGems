@@ -1,7 +1,9 @@
 [build-system]
-# The cmake and ninja packages are not supposed to be listed in build-system.requires.
-# The version expectation is "cmake>=3.20,<4.0", "ninja==1.13.0".
-# They must be installed separately for `--no-build-isolation` to work.
+# cmake and ninja are NOT listed here because they must be pre-installed in the
+# active environment before `pip install --no-build-isolation` is called.
+# Their version constraints are declared in [tool.flaggems.no-isolation-deps]
+# so tooling (devcontainer setup scripts, CI) can read them programmatically.
+#
 # setuptools is capped below 77: from 77.0 onward it adopts PEP 639 and emits
 # `License-File`, which bumps the wheel to Metadata-Version 2.4. Some package
 # indexes (e.g. Nexus) reject 2.4; <77 keeps the pure-Python wheel at 2.2.
@@ -215,3 +217,13 @@ version_scheme = "no-guess-dev"
 # in other words, don't treat the first index with a matching package
 # as the best one.
 index-strategy = "unsafe-best-match"
+
+[tool.flaggems.no-isolation-deps]
+# Packages that must be installed in the active environment BEFORE running
+# `pip install --no-build-isolation`.  They are intentionally excluded from
+# [build-system].requires (see comment there) but are still required at build
+# time.  Scripts read this table to avoid hard-coding version constraints.
+deps = [
+    "cmake>=3.20,<4.0",
+    "ninja==1.13.0",
+]
