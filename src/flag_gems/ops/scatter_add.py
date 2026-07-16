@@ -7,6 +7,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+from flag_gems.utils import libentry
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import restride_dim
@@ -14,6 +16,97 @@ from flag_gems.utils.shape_utils import restride_dim
 from ..utils import dim_compress
 
 logger = logging.getLogger(__name__)
+
+
+def _heur_block_2d(args):
+    # Vendor-specific override for metax/iluvatar (larger blocks for occupancy)
+    if flag_gems.vendor_name in ["metax", "iluvatar"]:
+        return 256
+    # H20 has 78 SMs; smaller BLOCK for small N gives more parallelism,
+    # 128 for large N balances occupancy and register pressure.
+    N = args["N"]
+    if N <= 16384:
+        return 32
+    elif N <= 65536:
+        return 64
+    return 128
+
+
+def _heur_loop_2d(args):
+    # LOOP=1: scatter_add uses atomic_add; LOOP>1 serializes atomics within
+    # a program and increases contention, hurting throughput.
+    return 1
+
+
+@libentry()
+@triton.heuristics({"BLOCK": _heur_block_2d, "LOOP": _heur_loop_2d})
+@triton.jit(do_not_specialize=["N", "idx_ncols", "src_stride0", "out_ncols"])
+def scatter_add_2d_kernel(
+    src_ptr,
+    index_ptr,
+    out_ptr,
+    N,
+    idx_ncols,
+    src_stride0,
+    out_ncols,
+    DIM: tl.constexpr,
+    BLOCK: tl.constexpr,
+    LOOP: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    base_offsets = pid * BLOCK * LOOP + tl.arange(0, BLOCK)
+    for i in range(LOOP):
+        offsets = (base_offsets + i * BLOCK).to(tl.int64)
+        mask = offsets < N
+        row = offsets // idx_ncols
+        col = offsets % idx_ncols
+        idx_offsets = row * idx_ncols + col
+        src_offsets = row * src_stride0 + col
+        idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
+        if DIM == 0:
+            out_offsets = idx * out_ncols + col
+        else:
+            out_offsets = row * out_ncols + idx
+        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0)
+        tl.atomic_add(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
+
+
+@libentry()
+@triton.jit
+def _copy_contiguous_kernel(
+    src_ptr,
+    dst_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    tl.store(dst_ptr + offsets, tl.load(src_ptr + offsets, mask=mask), mask=mask)
+
+
+def _copy_contiguous(src: torch.Tensor, dst: torch.Tensor) -> None:
+    """Copy (and optionally cast) ``src`` into ``dst`` with a minimal Triton kernel.
+
+    Lean replacement for ``src.clone()`` / ``src.to(dst.dtype)`` used to
+    initialize the non-inplace ``scatter_add`` output.  ``src`` and ``dst`` must
+    share shape (and, for a same-dtype copy, strides / storage offset, i.e.
+    ``dst`` is obtained via ``torch.empty_like(src)``).  When the dtypes differ
+    the load/store performs an implicit cast, which is used to upcast fp16/bf16
+    inputs to fp32 (and back) without going through FlagGems' general ``copy_``.
+
+    Under ``use_gems``, ``clone()`` and ``to()`` route through FlagGems ``copy_``
+    (built on ``pointwise_dynamic``) and carry high dispatch overhead for small
+    tensors (~0.04 ms per call, ~8x slower than native).  This dedicated kernel
+    avoids that overhead while keeping the copy inside FlagGems/Triton (no
+    fallback to the native aten implementation).
+    """
+    n = src.numel()
+    if n == 0:
+        return
+    BLOCK_SIZE = 1024
+    grid = lambda meta: (triton.cdiv(n, BLOCK_SIZE),)
+    _copy_contiguous_kernel[grid](src, dst, n, BLOCK_SIZE=BLOCK_SIZE)
 
 
 @triton.jit
@@ -294,18 +387,43 @@ _scatter_func = ScatterFunction()
 
 def scatter_add_0(inp, dim, index, src):
     logger.debug("GEMS SCATTER_ADD_0")
+    N = index.numel()
     dtype_convert = False
-    if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
+    if (inp.dtype == torch.float16 or inp.dtype == torch.bfloat16) and N > 131072:
         out = inp.to(torch.float32)
         dtype_convert = True
     else:
         out = inp
 
+    # 2D fast path: specialized kernel with simple row/col decomposition.
+    # Only beneficial for small N where the simpler index arithmetic
+    # outweighs the N-dim kernel's better memory access pattern.
+    # Large N falls through to the N-dim generated kernel which is faster.
+    if inp.ndim == 2 and N <= 131072:
+        src_strided = src.as_strided(index.shape, src.stride())
+        dim_2d = dim % 2
+        idx_ncols = index.shape[1]
+        src_stride0 = src_strided.stride(0)
+        out_ncols = out.shape[1]
+        grid = lambda meta: (triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]),)
+        scatter_add_2d_kernel[grid](
+            src_strided,
+            index,
+            out,
+            N,
+            idx_ncols,
+            src_stride0,
+            out_ncols,
+            dim_2d,
+        )
+        if dtype_convert:
+            return inp.copy_(out.to(src.dtype))
+        return out
+
     src_strided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(inp, dim, index.shape)
     dim_size = inp.size(dim)
     dim_stride = inp.stride(dim)
-    N = index.numel()
 
     _scatter_func(
         src_strided,
@@ -346,7 +464,7 @@ def scatter_add_1(x, dim, index, src):
     grid = lambda meta: (triton.cdiv(all_elem, meta["BLOCK_SIZE"] * meta["LOOP"]),)
 
     dtype_convert = False
-    if x.dtype == torch.float16 or x.dtype == torch.bfloat16:
+    if (x.dtype == torch.float16 or x.dtype == torch.bfloat16) and all_elem > 131072:
         dtype_convert = True
         x = x.to(torch.float32)
 
@@ -360,7 +478,9 @@ def scatter_add_1(x, dim, index, src):
             return origin.copy_(x.to(src.dtype).permute(order))
         return x.permute(order)
     else:
-        return x.to(src.dtype)
+        if dtype_convert:
+            return origin.copy_(x.to(src.dtype))
+        return x
 
 
 def scatter_add_(x, dim, index, src):
@@ -392,5 +512,37 @@ def scatter_add_(x, dim, index, src):
 
 def scatter_add(inp, dim, index, src):
     logger.debug("GEMS SCATTER_ADD")
-    out = inp.clone()
+    # Non-inplace variant: produce out = inp (copied) then scatter-add src into it.
+    #
+    # The naive implementation ``out = inp.clone(); return scatter_add_(out, ...)``
+    # is slow under ``use_gems``: ``clone()`` (and the fp16/bf16 upcast that
+    # ``scatter_add_`` performs via ``inp.to(float32)`` for large N) route through
+    # FlagGems ``copy_``, which is built on ``pointwise_dynamic`` and carries high
+    # dispatch overhead for small tensors (~0.04 ms per call, ~8x slower than
+    # native).
+    #
+    # Instead we initialize the output with ``torch.empty_like`` + a minimal
+    # Triton copy kernel.  ``scatter_add_`` only upcasts fp16/bf16 to fp32 when
+    # the scatter is large (index.numel() > 131072, see scatter_add_0/_1); for
+    # that case we do the upcast up-front with the same lean kernel, run the
+    # scatter in fp32 (so ``scatter_add_`` skips its own slow ``.to()``), then
+    # cast back -- keeping accumulation precision without the slow round-trips.
+    # Everything stays inside FlagGems/Triton (no fallback to the native aten
+    # implementation).  Non-contiguous inputs are densified via ``clone()`` so
+    # the output layout matches PyTorch's (contiguous).
+    if not inp.is_contiguous():
+        out = inp.clone()
+        return scatter_add_(out, dim, index, src)
+
+    if inp.dtype in (torch.float16, torch.bfloat16) and index.numel() > 131072:
+        # Upcast inp -> fp32 with a lean kernel, scatter in fp32, cast back.
+        out_f32 = torch.empty(inp.shape, dtype=torch.float32, device=inp.device)
+        _copy_contiguous(inp, out_f32)
+        res_f32 = scatter_add_(out_f32, dim, index, src)
+        out = torch.empty_like(inp)
+        _copy_contiguous(res_f32, out)
+        return out
+
+    out = torch.empty_like(inp)
+    _copy_contiguous(inp, out)
     return scatter_add_(out, dim, index, src)
