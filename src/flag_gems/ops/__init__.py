@@ -271,6 +271,7 @@ from flag_gems.ops.less_equal import less_equal, less_equal_scalar
 from flag_gems.ops.lgamma_ import lgamma, lgamma_
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
+from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linear import linear
 from flag_gems.ops.linspace import linspace
@@ -889,6 +890,7 @@ __all__ = [
     "kthvalue",
     "layer_norm",
     "layer_norm_backward",
+    "ldl_factor",
     "le",
     "le_scalar",
     "leaky_relu",
