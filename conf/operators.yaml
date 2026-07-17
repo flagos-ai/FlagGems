@@ -6857,7 +6857,7 @@ ops:
   - id: special_log1p
     description: Computes log(1 + x) for each element of the input tensor.
     for:
-      - special.log1p
+      - special_log1p
     labels:
       - aten
       - KernelGen
