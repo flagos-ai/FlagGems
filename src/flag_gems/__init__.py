@@ -478,6 +478,8 @@ _FULL_CONFIG = (
     ("logaddexp.out", logaddexp_out),
     ("logaddexp2", logaddexp2),
     ("logaddexp2.out", logaddexp2_out),
+    ("logcumsumexp", logcumsumexp),
+    ("logcumsumexp.out", logcumsumexp_out),
     ("logical_and", logical_and),
     ("logical_and_", logical_and_),
     ("logical_not", logical_not),
