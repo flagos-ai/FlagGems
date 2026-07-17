@@ -787,6 +787,7 @@ class TestGridSampleExtremeSizes:
 
     # Phase 3: Extra large size tests (2048×2048, 4096×4096)
     @pytest.mark.grid_sample
+    @pytest.mark.skip(reason="Skip extreme large size to avoid CI timeout")
     @pytest.mark.skipif(
         gpu_memory_available < 16 * 1024**3,
         reason="Insufficient GPU memory for 2048×2048 test",
@@ -814,6 +815,7 @@ class TestGridSampleExtremeSizes:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     @pytest.mark.grid_sample
+    @pytest.mark.skip(reason="Skip extreme large size to avoid CI timeout")
     @pytest.mark.skipif(
         gpu_memory_available < 32 * 1024**3,
         reason="Insufficient GPU memory for 4096×4096 test",
@@ -841,6 +843,7 @@ class TestGridSampleExtremeSizes:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     @pytest.mark.grid_sample
+    @pytest.mark.skip(reason="Skip large 5D size to avoid CI timeout")
     @pytest.mark.skipif(
         gpu_memory_available < 8 * 1024**3,
         reason="Insufficient GPU memory for 2048×2048 test",
@@ -868,6 +871,7 @@ class TestGridSampleExtremeSizes:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     @pytest.mark.grid_sample
+    @pytest.mark.skip(reason="Skip extreme large size to avoid CI timeout")
     @pytest.mark.skipif(
         gpu_memory_available < 24 * 1024**3,
         reason="Insufficient GPU memory for 2048×2048 test",

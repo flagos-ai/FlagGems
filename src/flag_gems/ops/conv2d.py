@@ -369,6 +369,29 @@ class Conv2d(torch.autograd.Function):
 
         in_n, _, input_height, input_width = input.shape
         out_c, weight_c, weight_height, weight_width = weight.shape
+
+        # Triton tl.dot requires K >= 16. The K dimension in conv2d im2col matmul
+        # is BLOCK_CI which tiles over weight_c. When weight_c is very small (< 16),
+        # the Triton compiler may fail to compile. Pad input channels and weight
+        # channels to ensure weight_c >= 16.
+        _MIN_DOT_K = 16
+        if weight_c * weight_height * weight_width < _MIN_DOT_K:
+            pad_c = math.ceil(_MIN_DOT_K / (weight_height * weight_width)) - weight_c
+            if pad_c > 0:
+                if groups == 1:
+                    # Simple case: pad channel dim at the end
+                    input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, pad_c))
+                else:
+                    # For grouped conv, must pad each group's channels independently.
+                    # Reshape to (N, groups, weight_c, H, W), pad weight_c dim, reshape back.
+                    N, C, H, W = input.shape
+                    input = input.reshape(N, groups, weight_c, H, W)
+                    input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, pad_c))
+                    input = input.reshape(N, groups * (weight_c + pad_c), H, W)
+                # Pad weight: (out_c, weight_c, kH, kW) -> (out_c, weight_c+pad_c, kH, kW)
+                weight = torch.nn.functional.pad(weight, (0, 0, 0, 0, 0, pad_c))
+                weight_c = weight_c + pad_c
+
         out_height = conv2d_output_size(
             input_height, weight_height, stride_height, padding_height, dilation_height
         )

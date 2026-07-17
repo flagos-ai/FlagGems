@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base
 
 vendor_name = flag_gems.vendor_name
 
@@ -58,7 +58,10 @@ def test_weight_norm_interface_backward():
         op_name="weight_norm_interface_backward",
         input_fn=weight_norm_interface_backward_input_fn,
         torch_op=torch.ops.aten._weight_norm_interface_backward,
-        dtypes=consts.FLOAT_DTYPES,
+        # NOTE: torch.ops.aten._weight_norm_interface_backward only supports float32,
+        # using fp16/bf16 causes "expected scalar type Float but found Half" error.
+        # Original: dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float32],
     )
     bench.set_gems(flag_gems.weight_norm_interface_backward)
 

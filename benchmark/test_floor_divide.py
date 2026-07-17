@@ -83,3 +83,17 @@ def test_floor_divide_tensor():
         dtypes=[torch.float32] + consts.INT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.floor_divide_tensor_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_floor_divide_tensor_inplace():
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="floor_divide_tensor_",
+        torch_op=lambda a, b: a.floor_divide_(b),
+        dtypes=[torch.float32] + consts.INT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()
