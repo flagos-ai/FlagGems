@@ -1441,6 +1441,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: cdist_forward
+    description: |
+      Computes the batched pairwise distance (cdist) between two collections of row vectors,
+      supporting p=2.0 (L2 norm).
+    for:
+      - _cdist_forward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: ceil
     description: |
       Returns a new tensor with the ceil of the elements of `input`, the smallest integer greater than

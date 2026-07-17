@@ -123,7 +123,7 @@ from flag_gems.ops.broadcast_to import broadcast_to
 from flag_gems.ops.bucketize import bucketize
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
-from flag_gems.ops.cdist_backward import _cdist_backward
+from flag_gems.ops.cdist import _cdist_backward, _cdist_forward
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.channel_shuffle import channel_shuffle
@@ -589,6 +589,7 @@ __all__ = [
     "_assert_async",
     "_batch_norm_no_update",
     "_cdist_backward",
+    "_cdist_forward",
     "_conj",
     "_conv_depthwise2d",
     "_euclidean_dist",
