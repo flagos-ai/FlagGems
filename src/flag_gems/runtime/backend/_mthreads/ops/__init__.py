@@ -8,6 +8,7 @@ from .argmin import argmin
 from .batch_norm import batch_norm, batch_norm_backward
 from .celu import celu
 from .conv2d import conv2d
+from .cumprod import cumprod_
 from .dropout import dropout, dropout_backward
 from .gather import gather, gather_backward
 from .index_add import index_add, index_add_
@@ -24,6 +25,7 @@ from .log_softmax import (
 from .max import max, max_dim
 from .min import min, min_dim
 from .mode import mode
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .normal import normal_
 from .one_hot import one_hot
 from .ones import ones
@@ -41,6 +43,7 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .resolve_conj import resolve_conj
+from .scaled_grouped_mm import scaled_grouped_mm
 from .sort import sort, sort_stable
 from .tile import tile
 from .unique import _unique2
@@ -64,6 +67,7 @@ __all__ = [
     "celu",
     # "celu_",
     "conv2d",
+    "cumprod_",
     "dropout",
     "dropout_backward",
     "gather",
@@ -87,6 +91,10 @@ __all__ = [
     "min",
     "min_dim",
     "mode",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "normal_",
     "one_hot",
     "ones",
@@ -105,6 +113,7 @@ __all__ = [
     "resolve_conj",
     "sort",
     "sort_stable",
+    "scaled_grouped_mm",
     "tile",
     "_unique2",
     "w8a8_block_fp8_matmul",

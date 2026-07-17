@@ -98,6 +98,23 @@ def test_nanmedian(shape, dtype):
     _assert_nanmedian_values(res, ref, dtype)
 
 
+@pytest.mark.nanmedian
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "mthreads",
+    reason="MThreads regression for large flattened nanmedian",
+)
+def test_nanmedian_mthreads_large_flat(dtype):
+    inp = _make_input((1024, 1024), dtype)
+    ref_inp = utils.to_reference(inp)
+    ref = torch.nanmedian(ref_inp)
+
+    with flag_gems.use_gems():
+        res = torch.nanmedian(inp)
+
+    _assert_nanmedian_values(res, ref, dtype)
+
+
 @pytest.mark.nanmedian_dim
 @pytest.mark.parametrize(
     ("shape", "dim"),
