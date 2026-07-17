@@ -272,9 +272,7 @@ def grouped_topk(
         raise ValueError(f"Unsupported dtype: {scores.dtype}")
 
     if scoring_func == 1:
-        from flag_gems.ops.tanh import tanh as gems_tanh
-
-        scores_processed = 0.5 * gems_tanh(0.5 * scores) + 0.5
+        scores_processed = torch.sigmoid(scores.float()).to(scores.dtype)
     else:
         scores_processed = scores
 
