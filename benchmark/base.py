@@ -292,14 +292,22 @@ class Benchmark:
             end = time.time()
             latency = (end - start) / n_rep * 1000
         elif Config.mode == consts.BenchMode.KERNEL:
-            do_bench = triton.testing.do_bench
-            latency = do_bench(
-                fn,
-                warmup=Config.warm_up,
-                rep=Config.repetition,
-                return_mode="median",
-                grad_to_none=xs if self.is_backward else None,
-            )
+            if vendor_name == "ascend":
+                do_bench = triton.backends.ascend.testing.do_bench_npu
+                latency = do_bench(
+                    fn,
+                    warmup=Config.warm_up,
+                    active=Config.repetition,
+                )
+            else:
+                do_bench = triton.testing.do_bench
+                latency = do_bench(
+                    fn,
+                    warmup=Config.warm_up,
+                    rep=Config.repetition,
+                    return_mode="median",
+                    grad_to_none=xs if self.is_backward else None,
+                )
         elif Config.mode == consts.BenchMode.WRAPPER:
             n_warm, n_rep = get_iter_count(fn)
             for i in range(n_warm):
