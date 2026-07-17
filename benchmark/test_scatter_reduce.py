@@ -47,7 +47,7 @@ def scatter_input_fn_factory(reduce=None):
         if reduce is None:
             yield inp, dim, index, src
         else:
-            yield inp, dim, index, src, reduce
+            yield inp, dim, index, src, {"reduce": reduce}
 
     return inner
 
@@ -75,7 +75,7 @@ def scatter_inplace_input_fn_factory(reduce=None):
         if reduce is None:
             yield inp, dim, index, src
         else:
-            yield inp, dim, index, src, reduce
+            yield inp, dim, index, src, {"reduce": reduce}
 
     return inner
 
@@ -90,56 +90,71 @@ def gather_scatter_gbps(bench_fn_args, latency):
 
 
 @pytest.mark.scatter_reduce
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scatter_reduce_add():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce",
         torch_op=torch.scatter,
         input_fn=scatter_input_fn_factory("add"),
         get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
     )
     bench.run()
 
 
 @pytest.mark.scatter_reduce
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scatter_reduce_multiply():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce",
         torch_op=torch.scatter,
         input_fn=scatter_input_fn_factory("multiply"),
         get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
     )
     bench.run()
 
 
 @pytest.mark.scatter_reduce_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scatter_reduce_add_inplace():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce_",
         torch_op=torch.Tensor.scatter_,
         input_fn=scatter_inplace_input_fn_factory("add"),
         get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
         is_inplace=True,
     )
     bench.run()
 
 
 @pytest.mark.scatter_reduce_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scatter_reduce_multiply_inplace():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce_",
         torch_op=torch.Tensor.scatter_,
         input_fn=scatter_inplace_input_fn_factory("multiply"),
         get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
         is_inplace=True,
     )
     bench.run()
 
 
 @pytest.mark.scatter_reduce_two
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scatter_reduce_two_sum():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce.two",
@@ -152,6 +167,9 @@ def test_scatter_reduce_two_sum():
 
 
 @pytest.mark.scatter_reduce_two
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scatter_reduce_two_amax():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce.two",

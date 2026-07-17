@@ -766,7 +766,11 @@ def simple_unique_flat(
                 tile_size=triton.next_power_of_2(out_size),
                 num_warps=8,
             )
-    return data_out[:out_size], inverse_indices.to(torch.int64), counts
+    return (
+        data_out[:out_size],
+        inverse_indices.to(torch.int64) if inverse_indices is not None else None,
+        counts,
+    )
 
 
 def _unique2(

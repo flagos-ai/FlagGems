@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -53,20 +55,32 @@ def _run_index_reduce_benchmark(reduce):
 
 
 @pytest.mark.index_reduce_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_reduce_prod():
     _run_index_reduce_benchmark("prod")
 
 
 @pytest.mark.index_reduce_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_reduce_mean():
     _run_index_reduce_benchmark("mean")
 
 
 @pytest.mark.index_reduce_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_reduce_amax():
     _run_index_reduce_benchmark("amax")
 
 
 @pytest.mark.index_reduce_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_index_reduce_amin():
     _run_index_reduce_benchmark("amin")
