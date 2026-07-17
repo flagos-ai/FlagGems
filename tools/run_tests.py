@@ -73,6 +73,8 @@ def pwarn(msg, **kwargs):
 
 def ensure_dir(p):
     p.mkdir(parents=True, exist_ok=True)
+    # set directory permissions to 755/0o755 (drwxr-xr-x)
+    p.chmod(0o755)
 
 
 class LiveDisplay:
