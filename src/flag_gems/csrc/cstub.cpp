@@ -13,7 +13,7 @@ PYBIND11_MODULE(c_operators, m) {
   // add
   m.def(
       "add_tensor",
-      [](const at::Tensor &self, const at::Tensor &other, double alpha) {
+      [](const at::Tensor& self, const at::Tensor& other, double alpha) {
         return flag_gems::add_tensor(self, other, alpha);
       },
       py::arg("self"),
@@ -21,7 +21,7 @@ PYBIND11_MODULE(c_operators, m) {
       py::arg("alpha") = 1.0);
   m.def(
       "add_scalar",
-      [](const at::Tensor &self, const at::Scalar &other, double alpha) {
+      [](const at::Tensor& self, const at::Scalar& other, double alpha) {
         return flag_gems::add_scalar(self, other, alpha);
       },
       py::arg("self"),
@@ -29,7 +29,7 @@ PYBIND11_MODULE(c_operators, m) {
       py::arg("alpha") = 1.0);
   m.def(
       "add_tensor_inplace",
-      [](at::Tensor &self, const at::Tensor &other, double alpha) {
+      [](at::Tensor& self, const at::Tensor& other, double alpha) {
         return flag_gems::add_tensor_inplace(self, other, alpha);
       },
       py::arg("self"),
@@ -37,7 +37,7 @@ PYBIND11_MODULE(c_operators, m) {
       py::arg("alpha") = 1.0);
   m.def(
       "add_scalar_inplace",
-      [](at::Tensor &self, const at::Scalar &other, double alpha) {
+      [](at::Tensor& self, const at::Scalar& other, double alpha) {
         return flag_gems::add_scalar_inplace(self, other, alpha);
       },
       py::arg("self"),
@@ -75,10 +75,10 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("zeros", &flag_gems::zeros);
   m.def(
       "sum_dim",
-      [](const at::Tensor &self,
-         const std::optional<std::vector<int64_t>> &dim,
+      [](const at::Tensor& self,
+         const std::optional<std::vector<int64_t>>& dim,
          bool keepdim,
-         const std::optional<at::ScalarType> &dtype) {
+         const std::optional<at::ScalarType>& dtype) {
         at::OptionalIntArrayRef dim_ref =
             dim.has_value() ? at::OptionalIntArrayRef(*dim) : at::OptionalIntArrayRef();
         return flag_gems::sum_dim(self, dim_ref, keepdim, dtype);
@@ -100,14 +100,14 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("topk", &flag_gems::topk);
   m.def(
       "contiguous",
-      [](const at::Tensor &self, at::MemoryFormat memory_format) {
+      [](const at::Tensor& self, at::MemoryFormat memory_format) {
         return flag_gems::contiguous(self, memory_format);
       },
       py::arg("self"),
       py::arg("memory_format") = c10::MemoryFormat::Contiguous);
   m.def(
       "cat",
-      [](const std::vector<at::Tensor> &tensors, int64_t dim) { return flag_gems::cat(tensors, dim); },
+      [](const std::vector<at::Tensor>& tensors, int64_t dim) { return flag_gems::cat(tensors, dim); },
       py::arg("tensors"),
       py::arg("dim") = 0);
   m.def("bmm", &flag_gems::bmm);
@@ -263,15 +263,17 @@ TORCH_LIBRARY(flag_gems, m) {
 }
 
 // Define dispatch key based on backend
-// CUDA and IX use CUDA dispatch key (IX is CUDA-compatible)
-// NPU and MUSA use PrivateUse1 dispatch key
-#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+// CUDA, IX and MACA use CUDA dispatch key (IX/MACA are CUDA-compatible)
+// NPU, MUSA and GCU use PrivateUse1 dispatch key
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_HCU) || \
+    defined(FLAGGEMS_USE_MACA)
 #define FLAGGEMS_DISPATCH_KEY CUDA
 #elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_GCU)
 #define FLAGGEMS_DISPATCH_KEY PrivateUse1
 #else
 #error \
-    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, FLAGGEMS_USE_GCU"
+    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, "
+"FLAGGEMS_USE_GCU, FLAGGEMS_USE_HCU, FLAGGEMS_USE_MACA"
 #endif
 
 TORCH_LIBRARY_IMPL(flag_gems, FLAGGEMS_DISPATCH_KEY, m) {

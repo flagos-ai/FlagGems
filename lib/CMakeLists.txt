@@ -61,6 +61,17 @@ elseif(FLAGGEMS_BACKEND STREQUAL "GCU")
     target_link_libraries(operators
       PUBLIC Torch::Torch
       PRIVATE TritonJIT::triton_jit)
+elseif(FLAGGEMS_BACKEND STREQUAL HCU)
+    target_link_hcu_libraries(operators)
+    target_link_libraries(operators
+      PUBLIC Torch::Torch
+      PRIVATE TritonJIT::triton_jit)
+    target_compile_options(operators PRIVATE -std=c++20)
+elseif(FLAGGEMS_BACKEND STREQUAL "MACA")
+    target_link_maca_libraries(operators)
+    target_link_libraries(operators
+      PUBLIC Torch::Torch
+      PRIVATE TritonJIT::triton_jit)
 endif()
 target_compile_definitions(operators PRIVATE BACKEND_${FLAGGEMS_BACKEND})
 

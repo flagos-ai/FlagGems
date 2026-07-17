@@ -118,7 +118,7 @@ def _launch_replication_pad1d_kernel(input: torch.Tensor, padding, out: torch.Te
 
 
 def replication_pad1d(input: torch.Tensor, padding):
-    logger.debug("GEMS REPLICATION_PAD1D")
+    logger.debug("GEMS_ENFLAME REPLICATION_PAD1D")
     if isinstance(padding, torch.Tensor):
         padding = tuple(padding.tolist())
     left, right = int(padding[0]), int(padding[1])
@@ -144,7 +144,7 @@ def replication_pad1d(input: torch.Tensor, padding):
 
 
 def replication_pad1d_out(input: torch.Tensor, padding, out: torch.Tensor):
-    logger.debug("GEMS REPLICATION_PAD1D_OUT")
+    logger.debug("GEMS_ENFLAME REPLICATION_PAD1D_OUT")
     if isinstance(padding, torch.Tensor):
         padding = tuple(padding.tolist())
     left, right = int(padding[0]), int(padding[1])

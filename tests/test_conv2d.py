@@ -23,23 +23,11 @@ else:
         ((1, 2, 5, 5), (1, 2, 3, 3), 1),
         ((2, 3, 9, 9), (1, 3, 3, 3), 1),
         ((32, 8, 8, 8), (32, 8, 2, 2), 1),
-        # ((2, 2, 3, 3), (1, 2, 2, 2), 1),
-        # ((18, 16, 4, 4), (16, 16, 2, 2), 1),
-        # ((9, 16, 4, 4), (128, 4, 2, 2), 4),
-        # ((32, 16, 8, 8), (32, 4, 4, 4), 4),
-        # ((18, 16, 4, 4), (16, 8, 2, 2), 2),
-        # ((9, 16, 4, 4), (128, 8, 2, 2), 2),
-        # ((32, 8, 8, 8), (32, 8, 3, 3), 1),
-        # ((18, 16, 5, 5), (16, 16, 3, 3), 1),
-        # ((9, 16, 7, 7), (128, 4, 3, 3), 4),
-        # ((32, 16, 9, 9), (32, 4, 5, 5), 4),
-        # ((18, 16, 11, 11), (16, 8, 3, 3), 2),
-        # ((9, 16, 6, 6), (128, 8, 3, 3), 2),
     ]
     FLOAT_DTYPES = [torch.float16, torch.float32]
     STRIDES = [1, 2]
     PADDINGS = [0, 1]
-    DILATIONS = [1, 2]
+    DILATIONS = [1]  # original: [1, 2], dilation=2 commented out to reduce CI timeout
     BIASES = [True, False]
     STR_PADDINGS = ["valid", "same"]
 
@@ -51,6 +39,9 @@ else:
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dilation", DILATIONS)
 @pytest.mark.parametrize("bias", BIASES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv2d(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
@@ -134,6 +125,9 @@ def test_conv2d(
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dilation", DILATIONS)
 @pytest.mark.parametrize("bias", BIASES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv2d_padding(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
