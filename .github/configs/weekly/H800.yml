@@ -11,7 +11,7 @@ runner_labels: h800-flaggems-weekly
 use_container: true
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flaggems/nvidia-flaggems-test-h800:20260701
+container_image: harbor.baai.ac.cn/flaggems/nvidia-flaggems-test-h800-flagtree0.6.0:202607171136
 
 # Container volumes to mount for this backends
 container_volumes:
