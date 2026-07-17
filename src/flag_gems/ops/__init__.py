@@ -1,8 +1,10 @@
 from flag_gems.ops.__ilshift__ import __ilshift__
+from flag_gems.ops.__lshift__ import __lshift__
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
+from flag_gems.ops._conj import _conj
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range import (
     _functional_sym_constrain_range,
@@ -17,10 +19,12 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._masked_scale import _masked_scale
+from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
+from flag_gems.ops._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
     _thnn_fused_lstm_cell_backward_impl,
 )
@@ -28,6 +32,7 @@ from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._unsafe_masked_index_put_accumulate import (
     _unsafe_masked_index_put_accumulate,
 )
+from flag_gems.ops._unsafe_view import _unsafe_view
 from flag_gems.ops._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops._upsample_nearest_exact2d_backward import (
@@ -56,9 +61,11 @@ from flag_gems.ops.aminmax import aminmax
 from flag_gems.ops.angle import angle
 from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
+from flag_gems.ops.arccos import arccos, arccos_
 from flag_gems.ops.arcsin import arcsin, arcsin_, arcsin_out
 from flag_gems.ops.arcsinh import arcsinh, arcsinh_out
 from flag_gems.ops.arcsinh_ import arcsinh_
+from flag_gems.ops.arctan_ import arctan, arctan_
 from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
@@ -94,7 +101,7 @@ from flag_gems.ops.bitwise_and import (
     bitwise_and_tensor,
     bitwise_and_tensor_,
 )
-from flag_gems.ops.bitwise_left_shift import bitwise_left_shift
+from flag_gems.ops.bitwise_left_shift import bitwise_left_shift, bitwise_left_shift_
 from flag_gems.ops.bitwise_not import bitwise_not, bitwise_not_
 from flag_gems.ops.bitwise_or import (
     bitwise_or_scalar,
@@ -104,9 +111,17 @@ from flag_gems.ops.bitwise_or import (
     bitwise_or_tensor_,
 )
 from flag_gems.ops.bitwise_right_shift import bitwise_right_shift, bitwise_right_shift_
+from flag_gems.ops.bitwise_xor import (
+    bitwise_xor_scalar,
+    bitwise_xor_scalar_,
+    bitwise_xor_scalar_tensor,
+    bitwise_xor_tensor,
+    bitwise_xor_tensor_,
+)
 from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.broadcast_tensors import broadcast_tensors
 from flag_gems.ops.broadcast_to import broadcast_to
+from flag_gems.ops.bucketize import bucketize
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.cdist_backward import _cdist_backward
@@ -136,6 +151,7 @@ from flag_gems.ops.conv_transpose1d import conv_transpose1d
 from flag_gems.ops.conv_transpose2d import conv_transpose2d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copysign import copysign, copysign_out
+from flag_gems.ops.copysign_ import copysign_
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
@@ -145,14 +161,14 @@ from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
-from flag_gems.ops.deg2rad import deg2rad
+from flag_gems.ops.deg2rad import deg2rad, deg2rad_, deg2rad_out
 from flag_gems.ops.dequantize import dequantize
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
 from flag_gems.ops.diagonal_copy import diagonal_copy
 from flag_gems.ops.diff import diff
-from flag_gems.ops.digamma_ import digamma_
+from flag_gems.ops.digamma_ import digamma, digamma_
 from flag_gems.ops.div import (
     div_mode,
     div_mode_,
@@ -199,6 +215,7 @@ from flag_gems.ops.flash_attention_backward import (
 from flag_gems.ops.flip import flip
 from flag_gems.ops.floor import floor, floor_out
 from flag_gems.ops.floor_ import floor_
+from flag_gems.ops.fmax import fmax, fmax_out
 from flag_gems.ops.fmin import fmin, fmin_out
 from flag_gems.ops.fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from flag_gems.ops.fmod_ import fmod_
@@ -209,7 +226,9 @@ from flag_gems.ops.frac_ import frac, frac_
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
+from flag_gems.ops.gather_block_quantized import gather_block_quantized
 from flag_gems.ops.gcd import gcd, gcd_out
+from flag_gems.ops.gcd_ import gcd_  # noqa: F401
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
 from flag_gems.ops.geometric import geometric, geometric_
@@ -226,7 +245,7 @@ from flag_gems.ops.greater_equal import greater_equal_
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.group_gemm import group_mm
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
-from flag_gems.ops.gt import gt, gt_scalar
+from flag_gems.ops.gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from flag_gems.ops.hadamard_transform import (
     hadamard_transform,
     hadamard_transform_12N,
@@ -263,13 +282,18 @@ from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.less_equal import less_equal, less_equal_scalar
 from flag_gems.ops.lgamma_ import lgamma, lgamma_
+from flag_gems.ops.lift import lift, lift_out
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
+from flag_gems.ops.linalg_ldl_factor import ldl_factor
+from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linear import linear
+from flag_gems.ops.linear_backward import linear_backward
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
 from flag_gems.ops.log1p import log1p, log1p_out
 from flag_gems.ops.log1p_ import log1p_
+from flag_gems.ops.log2 import log2, log2_
 from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log_normal_ import log_normal_
 from flag_gems.ops.log_sigmoid import log_sigmoid
@@ -280,6 +304,8 @@ from flag_gems.ops.log_softmax import (
     log_softmax_out,
 )
 from flag_gems.ops.logaddexp import logaddexp, logaddexp_out
+from flag_gems.ops.logaddexp2 import logaddexp2, logaddexp2_out
+from flag_gems.ops.logcumsumexp import logcumsumexp, logcumsumexp_out
 from flag_gems.ops.logical_and import logical_and, logical_and_
 from flag_gems.ops.logical_not import logical_not, logical_not_
 from flag_gems.ops.logical_or import logical_or, logical_or_
@@ -290,6 +316,7 @@ from flag_gems.ops.logit_ import logit_
 from flag_gems.ops.logspace import logspace
 from flag_gems.ops.logsumexp import logsumexp
 from flag_gems.ops.lt import lt, lt_scalar
+from flag_gems.ops.lt_ import lt_, lt_scalar_
 from flag_gems.ops.margin_ranking_loss import margin_ranking_loss
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
@@ -309,13 +336,16 @@ from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
+from flag_gems.ops.mish import mish, mish_
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
+from flag_gems.ops.multiply_ import multiply_
 from flag_gems.ops.mv import mv
+from flag_gems.ops.mvlgamma_ import mvlgamma_
 from flag_gems.ops.nan_to_num import nan_to_num
 from flag_gems.ops.nanmedian import (
     nanmedian,
@@ -323,10 +353,13 @@ from flag_gems.ops.nanmedian import (
     nanmedian_dim_values,
     nanmedian_out,
 )
+from flag_gems.ops.narrow import narrow
+from flag_gems.ops.narrow_copy import narrow_copy
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.negative import negative
 from flag_gems.ops.new_full import new_full
+from flag_gems.ops.new_ones import new_ones
 from flag_gems.ops.nextafter_ import nextafter_
 from flag_gems.ops.nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward
 from flag_gems.ops.nllloss import (
@@ -385,7 +418,8 @@ from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
 from flag_gems.ops.remainder import remainder, remainder_
-from flag_gems.ops.renorm import renorm, renorm_
+from flag_gems.ops.renorm import renorm
+from flag_gems.ops.renorm_ import renorm_
 from flag_gems.ops.repeat import repeat
 from flag_gems.ops.repeat_interleave import (
     repeat_interleave_self_int,
@@ -406,6 +440,7 @@ from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
 from flag_gems.ops.rrelu_with_noise_functional import rrelu_with_noise_functional
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.rsub import rsub_scalar, rsub_tensor
+from flag_gems.ops.scalar_tensor import scalar_tensor
 from flag_gems.ops.scaled_grouped_mm import scaled_grouped_mm
 from flag_gems.ops.scaled_mm import scaled_mm, scaled_mm_out
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
@@ -438,7 +473,7 @@ from flag_gems.ops.signbit import signbit, signbit_out
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.sinc import sinc, sinc_
-from flag_gems.ops.sinh_ import sinh_
+from flag_gems.ops.sinh import sinh, sinh_
 from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_scatter import slice_scatter
 from flag_gems.ops.smooth_l1_loss import (
@@ -454,15 +489,26 @@ from flag_gems.ops.softmax import (
     softmax_backward_out,
     softmax_out,
 )
-from flag_gems.ops.softplus import softplus
+from flag_gems.ops.softplus import softplus, softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
+from flag_gems.ops.special_airy_ai import special_airy_ai, special_airy_ai_out
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
+from flag_gems.ops.special_chebyshev_polynomial_w import (
+    special_chebyshev_polynomial_w,
+    special_chebyshev_polynomial_w_out,
+)
+from flag_gems.ops.special_erfinv import (
+    special_erfinv,
+    special_erfinv_,
+    special_erfinv_out,
+)
 from flag_gems.ops.special_gammainc import special_gammainc
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.special_log_softmax import special_log_softmax
+from flag_gems.ops.special_logsumexp import special_logsumexp
 from flag_gems.ops.special_shifted_chebyshev_polynomial_u import (
     special_shifted_chebyshev_polynomial_u,
     special_shifted_chebyshev_polynomial_u_,
@@ -523,6 +569,14 @@ from flag_gems.ops.where import (
     where_self,
     where_self_out,
 )
+from flag_gems.ops.xlogy import (
+    xlogy,
+    xlogy_out,
+    xlogy_scalar_tensor,
+    xlogy_scalar_tensor_out,
+    xlogy_tensor_scalar,
+    xlogy_tensor_scalar_out,
+)
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
@@ -531,10 +585,12 @@ __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "__ilshift__",
+    "__lshift__",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_no_update",
     "_cdist_backward",
+    "_conj",
     "_conv_depthwise2d",
     "_euclidean_dist",
     "_functional_sym_constrain_range",
@@ -546,16 +602,19 @@ __all__ = [
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
     "_masked_scale",
+    "_pdist_backward",
     "_prelu_kernel_backward",
     "_resize_output",
     "_safe_softmax",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_sparse_semi_structured_mm",
+    "_thnn_fused_lstm_cell",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
     "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
+    "_unsafe_view",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_bilinear2d_aa",
@@ -603,12 +662,16 @@ __all__ = [
     "any_dims",
     "arange",
     "arange_start",
+    "arccos",
+    "arccos_",
     "arcsin",
     "arcsin_",
     "arcsin_out",
     "arcsinh",
     "arcsinh_",
     "arcsinh_out",
+    "arctan",
+    "arctan_",
     "arctanh_",
     "argmax",
     "argmin",
@@ -643,6 +706,7 @@ __all__ = [
     "bitwise_and_tensor",
     "bitwise_and_tensor_",
     "bitwise_left_shift",
+    "bitwise_left_shift_",
     "bitwise_not",
     "bitwise_not_",
     "bitwise_or_scalar",
@@ -652,10 +716,16 @@ __all__ = [
     "bitwise_or_tensor_",
     "bitwise_right_shift",
     "bitwise_right_shift_",
+    "bitwise_xor_scalar",
+    "bitwise_xor_scalar_",
+    "bitwise_xor_scalar_tensor",
+    "bitwise_xor_tensor",
+    "bitwise_xor_tensor_",
     "bmm",
     "bmm_out",
     "broadcast_tensors",
     "broadcast_to",
+    "bucketize",
     "cat",
     "cat_out",
     "cauchy",
@@ -690,6 +760,7 @@ __all__ = [
     "copy",
     "copy_",
     "copysign",
+    "copysign_",
     "copysign_out",
     "cos",
     "cos_",
@@ -706,12 +777,15 @@ __all__ = [
     "cumsum",
     "cumsum_out",
     "deg2rad",
+    "deg2rad_",
+    "deg2rad_out",
     "dequantize",
     "diag",
     "diag_embed",
     "diagonal_backward",
     "diagonal_copy",
     "diff",
+    "digamma",
     "digamma_",
     "div_mode",
     "div_mode_",
@@ -766,6 +840,8 @@ __all__ = [
     "floor_divide",
     "floor_divide_",
     "floor_out",
+    "fmax",
+    "fmax_out",
     "fmin",
     "fmin_out",
     "fmod_",
@@ -782,7 +858,9 @@ __all__ = [
     "full_like",
     "gather",
     "gather_backward",
+    "gather_block_quantized",
     "gcd",
+    "gcd_",
     "gcd_out",
     "ge",
     "ge_scalar",
@@ -806,6 +884,8 @@ __all__ = [
     "group_norm_backward",
     "gt",
     "gt_scalar",
+    "gt_scalar_",
+    "gt_tensor_",
     "hadamard_transform",
     "hadamard_transform_12N",
     "hadamard_transform_20N",
@@ -843,6 +923,7 @@ __all__ = [
     "kthvalue",
     "layer_norm",
     "layer_norm_backward",
+    "ldl_factor",
     "le",
     "le_scalar",
     "leaky_relu",
@@ -856,10 +937,14 @@ __all__ = [
     "less_equal_scalar",
     "lgamma",
     "lgamma_",
+    "lift",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
+    "lift_out",
     "linalg_cholesky",
+    "linalg_slogdet",
     "linear",
+    "linear_backward",
     "linspace",
     "log",
     "log10",
@@ -868,6 +953,8 @@ __all__ = [
     "log1p",
     "log1p_",
     "log1p_out",
+    "log2",
+    "log2_",
     "log_normal_",
     "log_sigmoid",
     "log_softmax",
@@ -876,6 +963,16 @@ __all__ = [
     "log_softmax_out",
     "logaddexp",
     "logaddexp_out",
+    "logaddexp2",
+    "logaddexp2_out",
+    "logcumsumexp",
+    "logcumsumexp_out",
+    "xlogy",
+    "xlogy_out",
+    "xlogy_tensor_scalar",
+    "xlogy_tensor_scalar_out",
+    "xlogy_scalar_tensor",
+    "xlogy_scalar_tensor_out",
     "logical_and",
     "logical_and_",
     "logical_not",
@@ -890,7 +987,9 @@ __all__ = [
     "logspace",
     "logsumexp",
     "lt",
+    "lt_",
     "lt_scalar",
+    "lt_scalar_",
     "margin_ranking_loss",
     "masked_fill",
     "masked_fill_",
@@ -914,6 +1013,8 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
+    "mish",
+    "mish_",
     "mm",
     "mm_out",
     "mode",
@@ -922,18 +1023,23 @@ __all__ = [
     "mul",
     "mul_",
     "multinomial",
+    "multiply_",
     "mv",
+    "mvlgamma_",
     "nan_to_num",
     "nanmedian",
     "nanmedian_dim",
     "nanmedian_dim_values",
     "nanmedian_out",
+    "narrow",
+    "narrow_copy",
     "ne",
     "ne_scalar",
     "neg",
     "neg_",
     "negative",
     "new_full",
+    "new_ones",
     "nextafter_",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
@@ -1064,6 +1170,7 @@ __all__ = [
     "sin_",
     "sinc",
     "sinc_",
+    "sinh",
     "sinh_",
     "slice_backward",
     "slice_scatter",
@@ -1078,11 +1185,20 @@ __all__ = [
     "softmax_backward_out",
     "softmax_out",
     "softplus",
+    "softplus_backward",
     "softshrink",
     "softshrink_out",
+    "scalar_tensor",
     "sort",
     "sort_stable",
+    "special_airy_ai",
+    "special_airy_ai_out",
     "special_chebyshev_polynomial_v",
+    "special_chebyshev_polynomial_w",
+    "special_chebyshev_polynomial_w_out",
+    "special_erfinv",
+    "special_erfinv_",
+    "special_erfinv_out",
     "special_gammainc",
     "special_hermite_polynomial_h",
     "special_i0e",
@@ -1090,6 +1206,7 @@ __all__ = [
     "special_i1",
     "special_i1_out",
     "special_log_softmax",
+    "special_logsumexp",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",
     "split_with_sizes_copy",
