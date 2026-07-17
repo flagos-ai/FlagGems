@@ -1,8 +1,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 # Sparse semi-structured addmm shapes
