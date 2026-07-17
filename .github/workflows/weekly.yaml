@@ -15,8 +15,8 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Monday 02:00 Beijing time = Sunday 18:00 UTC
-    - cron: '0 18 * * 0'
+    # Monday 00:10 Beijing time = Sunday 16:10 UTC
+    - cron: '10 16 * * 0'
 
 defaults:
   run:
@@ -116,11 +116,20 @@ jobs:
           # that prevent conda init / backend env setup from running in
           # non-interactive CI shells. Extract those lines (conda init,
           # `source .../set_env.sh`, FLAGTREE_BACKEND export, and the
-          # `. $HOME/.local/bin/env` sourcing) and append to .bash_profile
+          # `. /root/.local/bin/env` sourcing) and append to .bash_profile
           # instead, which is sourced by login shells without any
           # interactive check.
+          #
+          # huawei: set_env.sh
+          # mthreads: $HOME/.local/bin/env
+          # kunlunxin: conda.sh and conda activate
+          #
           if [ -f /root/.bashrc ]; then
-            grep -E '(conda\.sh|conda activate|set_env\.sh|FLAGTREE_BACKEND|\.local/bin/env)' /root/.bashrc >> "$HOME/.bash_profile" || true
+            # Pin $HOME -> /root: extracted lines use "$HOME/..." (e.g.
+            # . "$HOME/.local/bin/env"), but the login shell that sources
+            # .bash_profile has $HOME set to the GHA home, not /root.
+            grep -E '(conda\.sh|conda activate|set_env\.sh|\.local/bin/env)' /root/.bashrc \
+              | sed 's#\$HOME\/\.local#/root\/\.local#g' >> "$HOME/.bash_profile" || true
           fi
 
       - name: Install FlagGems dependencies
@@ -138,8 +147,6 @@ jobs:
       #   env: ${{ fromJSON(matrix.test_env) }}
       #   shell: bash --login -e -o pipefail {0}
       #   run: |
-      #     # remove cache to avoid potential issues with stale files
-      #     rm -rf ~/.triton/cache && rm -rf ~/.flaggems
       #     # run tests with specified GPUs and output directory
       #     printenv | grep -viE '^(https?_proxy|all_proxy)=' || true
       #     python3 tools/run_tests.py \
@@ -159,8 +166,6 @@ jobs:
         env: ${{ fromJSON(matrix.test_env) }}
         shell: bash --login -e -o pipefail {0}
         run: |
-          # remove cache to avoid potential issues with stale files
-          rm -rf ~/.triton/cache && rm -rf ~/.flaggems
           # run tests with specified GPUs and output directory
           # Print env for debugging; drop proxy vars (http(s)_proxy/all_proxy,
           # any case) since they may embed user:password that GitHub Actions
@@ -177,7 +182,6 @@ jobs:
           python3 tools/psum_html  -o  ${OUTPUT_DIR}/result.html  ${OUTPUT_DIR}
 
       - name: Package results
-        id: package-results
         run: |
           ARCHIVE="${{ runner.temp }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
@@ -264,7 +268,7 @@ jobs:
       #   timeout-minutes: 720
       #   env: ${{ fromJSON(matrix.test_env) }}
       #   run: |
-      #     # remove cache to avoid potential issues with stale files
+      #     #remove cache to avoid potential issues with stale files
       #     rm -rf ~/.triton/cache && rm -rf ~/.flaggems
       #     # run tests with specified GPUs and output directory
       #     python3 tools/run_tests.py \
