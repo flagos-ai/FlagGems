@@ -594,8 +594,8 @@ _FULL_CONFIG = (
     ("special_i1", special_i1),
     ("special_i1.out", special_i1_out),
     ("special.log_softmax", special_log_softmax),
-    ("special.scaled_modified_bessel_k1", special_scaled_modified_bessel_k1),
-    ("special.scaled_modified_bessel_k1.out", special_scaled_modified_bessel_k1_out),
+    ("special_scaled_modified_bessel_k1", special_scaled_modified_bessel_k1),
+    ("special_scaled_modified_bessel_k1.out", special_scaled_modified_bessel_k1_out),
     ("special_shifted_chebyshev_polynomial_u", special_shifted_chebyshev_polynomial_u),
     (
         "special_shifted_chebyshev_polynomial_u_",
