@@ -136,7 +136,10 @@ def test_copy_inplace_float8_e8m0fnu(shape):
     with flag_gems.use_gems():
         res_dst.copy_(src)
 
-    utils.gems_assert_equal(res_dst, ref_dst.to(res_dst.device),)
+    utils.gems_assert_equal(
+        res_dst, 
+        ref_dst.to(res_dst.device),
+    )
 
 
 @pytest.mark.copy_
