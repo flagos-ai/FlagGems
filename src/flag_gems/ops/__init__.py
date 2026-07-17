@@ -225,6 +225,7 @@ from flag_gems.ops.frac_ import frac, frac_
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
+from flag_gems.ops.gather_block_quantized import gather_block_quantized
 from flag_gems.ops.gcd import gcd, gcd_out
 from flag_gems.ops.gcd_ import gcd_  # noqa: F401
 from flag_gems.ops.ge import ge, ge_scalar
@@ -853,6 +854,7 @@ __all__ = [
     "full_like",
     "gather",
     "gather_backward",
+    "gather_block_quantized",
     "gcd",
     "gcd_",
     "gcd_out",

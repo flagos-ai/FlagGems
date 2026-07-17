@@ -431,6 +431,9 @@ HEURISTICS_CONFIGS = {
         "BLOCK_M": gather_heur_block_m,
         "BLOCK_N": gather_heur_block_n,
     },
+    "gather_block_quantized": {
+        "BLOCK_SIZE_N": gather_heur_block_n,
+    },
     "index_select": {
         "BLOCK_M": index_select_heur_block_m,
         "BLOCK_N": index_select_heur_block_n,
