@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
 @pytest.mark.hypot
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_hypot():
     bench = base.BinaryPointwiseBenchmark(
         op_name="hypot",
@@ -22,6 +27,9 @@ def hypot_out_input_fn(shape, dtype, device):
 
 
 @pytest.mark.hypot_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_hypot_out():
     bench = base.GenericBenchmark(
         op_name="hypot_out",

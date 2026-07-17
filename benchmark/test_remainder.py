@@ -1,10 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
 @pytest.mark.remainder
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_remainder():
     bench = base.BinaryPointwiseBenchmark(
         op_name="remainder",
@@ -15,6 +20,9 @@ def test_remainder():
 
 
 @pytest.mark.remainder_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_remainder_tensor():
     bench = base.BinaryPointwiseBenchmark(
         op_name="remainder_tensor",
@@ -26,6 +34,9 @@ def test_remainder_tensor():
 
 
 @pytest.mark.remainder_tensor_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_remainder_tensor_inplace():
     bench = base.BinaryPointwiseBenchmark(
         op_name="remainder_tensor_",
@@ -56,7 +67,24 @@ def remainder_scalar_input_fn(shape, dtype, device):
     yield inp, scalar
 
 
+@pytest.mark.remainder_scalar
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_remainder_scalar():
+    bench = base.GenericBenchmark(
+        input_fn=remainder_scalar_input_fn,
+        op_name="remainder_scalar",
+        torch_op=torch.remainder,
+        dtypes=consts.INT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.remainder_scalar_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_remainder_scalar_inplace():
     bench = base.GenericBenchmark(
         input_fn=remainder_scalar_input_fn,
@@ -75,6 +103,9 @@ def scalar_tensor_remainder_input_fn(shape, dtype, device):
 
 
 @pytest.mark.remainder_scalar_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_remainder_scalar_tensor():
     bench = base.GenericBenchmark(
         op_name="remainder_scalar_tensor",

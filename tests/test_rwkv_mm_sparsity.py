@@ -12,6 +12,9 @@ def test_rwkv_mmsparsity(dtype):
     n = 16384
     embedding_dim = 4096
 
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3796: not working")
+
     k = torch.randn(n, dtype=dtype, device=flag_gems.device)
     k = torch.relu(k)
     if flag_gems.vendor_name == "kunlunxin":

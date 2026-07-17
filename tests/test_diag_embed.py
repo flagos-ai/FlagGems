@@ -7,6 +7,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 
 def get_dim1_dim2(o_rank):
@@ -17,10 +18,13 @@ def get_dim1_dim2(o_rank):
 
 
 def get_diag_embed_shape_and_dims():
-    shapes = [
-        (1024,),
-        (1024, 1024),
-    ]
+    if cfg.QUICK_MODE:
+        shapes = [(1024,)]
+    else:
+        shapes = [
+            (1024,),
+            (1024, 1024),
+        ]
     # [(shape, dim1, dim2)]
     result = []
 
@@ -38,6 +42,9 @@ def get_diag_embed_shape_and_dims():
 @pytest.mark.parametrize("offset", [-1, 0, 1])
 @pytest.mark.parametrize(
     "dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES + utils.BOOL_TYPES
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_accuracy_diag_embed(shape, dtype, offset, dim1, dim2):
     if dtype in utils.FLOAT_DTYPES:

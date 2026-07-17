@@ -8,6 +8,10 @@ if arch_version == 300:
     from .gcu300.flash_mla import flash_mla
     from .gcu300.fused_add_rms_norm import fused_add_rms_norm
     from .gcu300.gelu_and_mul import gelu_and_mul
+    from .gcu300.moe_align_block_size import (  # noqa: F401
+        moe_align_block_size,
+        moe_align_block_size_triton,
+    )
     from .gcu300.rotary_embedding import apply_rotary_pos_emb  # noqa: F401
     from .gcu300.silu_and_mul import silu_and_mul
     from .gcu300.skip_layernorm import skip_layer_norm
@@ -21,6 +25,8 @@ if arch_version == 300:
         "skip_layer_norm",
         "fused_add_rms_norm",
         "concat_and_cache_mla",
+        "moe_align_block_size",
+        "moe_align_block_size_triton",
     ]
 elif arch_version == 400 or arch_version == 410:
     from .gcu400.bincount import bincount
@@ -33,6 +39,7 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.silu_and_mul import silu_and_mul
     from .gcu400.skip_layernorm import skip_layer_norm
     from .gcu400.sparse_attention import sparse_attn_triton
+    from .gcu400.sparse_mla import triton_sparse_mla_fwd_interface
 
     __all__ = [
         "apply_rotary_pos_emb",
@@ -47,4 +54,5 @@ elif arch_version == 400 or arch_version == 410:
         "rwkv_ka_fusion",
         "bincount",
         "sparse_attn_triton",
+        "triton_sparse_mla_fwd_interface",
     ]
