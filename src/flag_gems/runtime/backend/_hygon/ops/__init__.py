@@ -14,7 +14,7 @@ from .hadamard_transform import hadamard_transform
 from .isin import isin
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
-from .mm import mm
+from .mm import mm, mm_out
 from .mul import mul, mul_
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
 from .pow import (
@@ -53,6 +53,7 @@ __all__ = [
     "mul",
     "mul_",
     "mm",
+    "mm_out",
     "per_token_group_quant_fp8",
     "pow_scalar",
     "pow_tensor_scalar",

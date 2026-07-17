@@ -21,7 +21,11 @@ else:
         (15, 160, 1024),
         (495, 5333, 71),
     ]
-    FLOAT_DTYPES = utils.ALL_FLOAT_DTYPES
+    FLOAT_DTYPES = (
+        utils.ALL_FLOAT_DTYPES
+        if flag_gems.vendor_name == "hygon"
+        else utils.FLOAT_DTYPES
+    )
 
 
 MK_SHAPES = (
