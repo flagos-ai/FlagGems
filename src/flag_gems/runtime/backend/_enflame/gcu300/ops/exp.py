@@ -22,3 +22,7 @@ def exp(A):
 def exp_(A):
     logger.debug("GEMS_ENFLAME EXP_")
     return exp_func(A, out0=A)
+
+
+def exp_out(A, out):
+    return exp_func(A, out0=out)
