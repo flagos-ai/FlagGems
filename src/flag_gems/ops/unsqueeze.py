@@ -55,6 +55,18 @@ def unsqueeze(A: torch.Tensor, dim: int) -> torch.Tensor:
 
 
 def unsqueeze_(A: torch.Tensor, dim: int) -> torch.Tensor:
-    """In-place version of unsqueeze (zero-copy view operation)."""
+    """In-place version of unsqueeze (zero-copy view operation).
+
+    Mutates ``A`` itself: the new singleton dimension is inserted into
+    ``A``'s shape/strides in place, so the change is visible through ``A``
+    (and any alias of it), matching the semantics of
+    ``torch.Tensor.unsqueeze_``.
+
+    The unsqueezed view is built with :func:`unsqueeze` and rebound onto
+    ``A`` via ``Tensor.set_`` so the metadata mutation is applied to ``A``
+    in place, then ``A`` is returned.
+    """
     logger.debug("GEMS UNSQUEEZE_")
-    return unsqueeze(A, dim)
+    out = unsqueeze(A, dim)
+    A.set_(out)
+    return A
