@@ -137,7 +137,7 @@ def test_copy_inplace_float8_e8m0fnu(shape):
         res_dst.copy_(src)
 
     utils.gems_assert_equal(
-        res_dst, 
+        res_dst,
         ref_dst.to(res_dst.device),
     )
 
