@@ -11,7 +11,7 @@ from . import base, consts
 def test_special_log1p():
     bench = base.UnaryPointwiseBenchmark(
         op_name="special_log1p",
-        torch_op=torch.special.log1p,
+        torch_op=torch.ops.aten.special_log1p,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
