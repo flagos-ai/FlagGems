@@ -287,6 +287,7 @@ from flag_gems.ops.linalg_cholesky import linalg_cholesky
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linear import linear
+from flag_gems.ops.linear_backward import linear_backward
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
 from flag_gems.ops.log1p import log1p, log1p_out
@@ -940,6 +941,7 @@ __all__ = [
     "linalg_cholesky",
     "linalg_slogdet",
     "linear",
+    "linear_backward",
     "linspace",
     "log",
     "log10",

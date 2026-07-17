@@ -461,6 +461,7 @@ _FULL_CONFIG = (
     ("linalg_slogdet", linalg_slogdet),
     ("linalg_vector_norm", vector_norm),
     ("linear", linear),
+    ("linear_backward", linear_backward),
     ("linspace", linspace),
     ("log", log),
     ("log10", log10),
