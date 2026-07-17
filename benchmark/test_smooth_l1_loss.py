@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -22,6 +24,9 @@ class SmoothL1LossBenchmark(base.Benchmark):
 
 
 @pytest.mark.smooth_l1_loss
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_smooth_l1_loss():
     bench = SmoothL1LossBenchmark(
         op_name="smooth_l1_loss",
@@ -50,6 +55,9 @@ class SmoothL1LossBackwardBenchmark(base.Benchmark):
 
 
 @pytest.mark.smooth_l1_loss_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_smooth_l1_loss_backward():
     bench = SmoothL1LossBackwardBenchmark(
         op_name="smooth_l1_loss_backward",

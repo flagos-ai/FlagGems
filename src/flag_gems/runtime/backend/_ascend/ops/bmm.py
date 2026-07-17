@@ -10,7 +10,7 @@ from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 # avoid
@@ -70,21 +70,23 @@ def bmm_kernel(
     b_ptrs = B + offs_k[:, None] * N + offs_n[None, :]
     o_ptrs = O + offs_m[:, None] * N + offs_n[None, :]
 
+    mask_m = offs_m < M
+    mask_n = offs_n < N
+
     num_iters = tl.cdiv(K, TILE_K)
     o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
     for i in range(num_iters):
-        mask_a = offs_k[None, :] < K - i * TILE_K
-        mask_b = offs_k[:, None] < K - i * TILE_K
-        a = tl.load(a_ptrs, mask=mask_a)
-        b = tl.load(b_ptrs, mask=mask_b)
+        mask_k = offs_k < K - i * TILE_K
+        mask_a = mask_m[:, None] & mask_k[None, :]
+        mask_b = mask_k[:, None] & mask_n[None, :]
+        a = tl.load(a_ptrs, mask=mask_a, other=0.0)
+        b = tl.load(b_ptrs, mask=mask_b, other=0.0)
 
         a_ptrs += TILE_K
         b_ptrs += TILE_K * N
 
         o += tl.dot(a, b, allow_tf32=False)
 
-    mask_m = (pid_m * TILE_M + tl.arange(0, TILE_M)) < M
-    mask_n = (pid_n * TILE_N + tl.arange(0, TILE_N)) < N
     mask_c = mask_m[:, None] & mask_n[None, :]
     tl.store(o_ptrs, o, mask_c)
 

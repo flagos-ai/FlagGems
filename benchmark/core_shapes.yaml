@@ -135,6 +135,14 @@ softmax_backward:
     - [64, 512, 512]
     - [256, 1024, 1024]
 
+softmax_backward_out:
+  shapes:
+    - [1048576] # 1024 * 1024
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 1024, 1024]
+
 smooth_l1_loss:
   shapes:
     - [262144]
@@ -234,7 +242,7 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
-groupmm:
+grouped_mm:
   shapes:
     - [16, 512, 2048]
     - [16, 2560, 2048]
@@ -621,3 +629,66 @@ ReshapeAndCacheFlashBenchmark:
     - [21, 4, 80, 16, 10000]
     - [42, 8, 64, 8, 1024]
     - [42, 8, 80, 16, 10000]
+
+pixel_shuffle:
+  shapes:
+    - [1, 4, 2, 3, 2]
+    - [2, 9, 4, 4, 3]
+    - [4, 64, 32, 32, 2]
+    - [2, 128, 64, 64, 2]
+    - [1, 64, 16, 16, 4]
+    - [8, 36, 64, 64, 3]
+    - [1, 16, 128, 128, 2]
+  shape_desc: "N, C, H, W, upscale_factor"
+
+pixel_unshuffle:
+  shapes:
+    - [1, 3, 8, 8, 2]
+    - [2, 4, 12, 6, 3]
+    - [4, 16, 64, 48, 4]
+  shape_desc: "N, C, H, W, downscale_factor"
+
+repeat:
+  shapes:
+    - [536870912]  # 2^29, repeat [2] -> 2^30 < 2^31
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [512, 512, 512]
+
+tile:
+  shapes:
+    - [536870912]  # 2^29, tile [2] -> 2^30 < 2^31
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [512, 512, 512]
+
+hstack:
+  shapes:
+    - [536870912]  # 2^29, 3 tensors -> 1.5G total offset < 2^31
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [512, 512, 512]
+
+repeat_interleave_self_int:
+  shapes:
+    - [16, 256, 256]
+    - [128, 256, 256]
+    - [64, 64, 64, 64]
+  shape_desc: "M, N, K"
+
+repeat_interleave_self_tensor:
+  shapes:
+    - [16, 256, 256]
+    - [128, 256, 256]
+    - [64, 64, 64, 64]
+  shape_desc: "M, N, K"
+
+repeat_interleave_tensor:
+  shapes:
+    - [16, 256, 256]
+    - [128, 256, 256]
+    - [64, 64, 64, 64]
+  shape_desc: "M, N, K"
