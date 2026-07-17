@@ -284,7 +284,7 @@ _index_func = IndexFunction()
 
 
 def index(inp, indices):
-    logger.debug("GEMS INDEX")
+    logger.debug("GEMS_ENFLAME INDEX")
     original_indices = list(indices)  # Save original indices for later checks
     indices = list(indices)
 
@@ -432,7 +432,7 @@ def index(inp, indices):
 
     # Step 7: Handle empty tensor case
     if inp.numel() == 0:
-        return out
+        return out.contiguous()
 
     # Step 8: Extract only tensor indices for kernel
     tensor_indices = [idx for idx in indices if idx is not None]
@@ -453,5 +453,8 @@ def index(inp, indices):
         post_dims = list(range(index_rank + first_tensor_dim, out.ndim))
         new_order = pre_dims + broadcast_dims + post_dims
         out = out.permute(new_order)
+        result = torch.empty(out.shape, dtype=out.dtype, device=out.device)
+        result.copy_(out)
+        out = result
 
-    return out
+    return out.view(out.shape)

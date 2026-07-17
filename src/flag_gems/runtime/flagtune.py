@@ -166,9 +166,29 @@ register_flagtune_op(
     description="MXFP4 fused Marlin MoE GEMM",
 )
 register_flagtune_op(
+    "fused_marlin_moe_mxfp4_gemm_silu",
+    default=False,
+    description="MXFP4 fused Marlin MoE GEMM with SiLU",
+)
+register_flagtune_op(
+    "mul",
+    default=False,
+    description="elementwise multiplication",
+)
+register_flagtune_op(
+    "compute_global_topk_indices_and_lens",
+    default=False,
+    description="DeepSeekV4 global top-k index conversion and length computation",
+)
+register_flagtune_op(
     "w8a8_block_fp8_matmul",
     default=False,
     description="W8A8 block FP8 matrix multiplication",
+)
+register_flagtune_op(
+    "w8a8_block_fp8_bmm",
+    default=False,
+    description="W8A8 block FP8 batched matrix multiplication",
 )
 
 # DEFAULT_FLAGTUNE_INCLUDE and SUPPORTED_FLAGTUNE_OPS are provided by __getattr__.

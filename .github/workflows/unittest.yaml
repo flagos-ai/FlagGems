@@ -75,9 +75,9 @@ jobs:
             const labels = JSON.parse(${{ steps.get-labels.outputs.result }} || '[]');
             const filtered = backends.filter(b => b.enabled && labels.includes(b.label));
             const matrix = {
-              vendor: filtered.map(b => b.vendor),
+              backend: filtered.map(b => b.backend),
               include: filtered.map(b => ({
-                vendor: b.vendor,
+                backend: b.backend,
                 runner_label: b.runner_label,
                 gpu_check: b.gpu_check
               }))
@@ -139,13 +139,13 @@ jobs:
 
   backend-tests:
     needs: preprocess
-    if: fromJSON(needs.preprocess.outputs.backend_matrix).vendor[0] != null
+    if: fromJSON(needs.preprocess.outputs.backend_matrix).backend[0] != null
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.preprocess.outputs.backend_matrix) }}
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: ${{ matrix.vendor }}
+      backend: ${{ matrix.backend }}
       runner_label: ${{ matrix.runner_label }}
       gpu_check_script: ${{ matrix.gpu_check }}
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
@@ -160,7 +160,7 @@ jobs:
     if: contains(needs.preprocess.outputs.labels, 'ops/alpha')
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: nvidia
+      backend: nvidia-cuda133
       runner_label: h20
       gpu_check_script: tools/gpu_check_nvidia.sh
       test_script: tools/test-op-experimental.sh
