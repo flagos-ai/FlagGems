@@ -136,10 +136,10 @@ def test_copy_inplace_float8_e8m0fnu(shape):
     with flag_gems.use_gems():
         res_dst.copy_(src)
 
-    utils.gems_assert_equal(
-        res_dst,
-        ref_dst.to(res_dst.device),
-    )
+    # Same-dtype e8m0 copy is bitwise. Compare the backing bytes on CPU so the
+    # assertion works both in normal and quick-cpu modes without requiring
+    # float8 device comparison support.
+    utils.gems_assert_equal(res_dst.view(torch.uint8).cpu(), ref_dst.view(torch.uint8))
 
 
 @pytest.mark.copy_
