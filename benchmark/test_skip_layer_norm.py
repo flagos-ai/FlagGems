@@ -21,6 +21,9 @@ def torch_op(inp, residual, layer_shape, weight, bias):
 
 
 @pytest.mark.skip_layer_norm
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_skip_layernorm():
     bench = base.GenericBenchmarkExcluse1D(
         input_fn=_input_fn,

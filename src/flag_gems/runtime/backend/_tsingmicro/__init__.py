@@ -66,6 +66,23 @@ vendor_info = VendorDescriptor(
     int64_enabled=False,
 )
 
-CUSTOMIZED_UNUSED_OPS = ()
+CUSTOMIZED_UNUSED_OPS = (
+    "arange_start",
+    # "copy",
+    # "copy_",
+    "gcd",
+    "gcd_out",
+    "gelu",
+    "gelu_",
+    "index",
+    "sort",
+    "sort_stable",
+    "topk",
+    # "to_copy",
+    "tril",
+    "tril_",
+    "tril_out",
+    "unique_consecutive",
+)
 
 __all__ = ["*"]
