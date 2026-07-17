@@ -225,6 +225,7 @@ from flag_gems.ops.frac_ import frac, frac_
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
+from flag_gems.ops.gather_block_quantized import gather_block_quantized
 from flag_gems.ops.gcd import gcd, gcd_out
 from flag_gems.ops.gcd_ import gcd_  # noqa: F401
 from flag_gems.ops.ge import ge, ge_scalar
@@ -286,6 +287,7 @@ from flag_gems.ops.linalg_cholesky import linalg_cholesky
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linear import linear
+from flag_gems.ops.linear_backward import linear_backward
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
 from flag_gems.ops.log1p import log1p, log1p_out
@@ -302,6 +304,7 @@ from flag_gems.ops.log_softmax import (
 )
 from flag_gems.ops.logaddexp import logaddexp, logaddexp_out
 from flag_gems.ops.logaddexp2 import logaddexp2, logaddexp2_out
+from flag_gems.ops.logcumsumexp import logcumsumexp, logcumsumexp_out
 from flag_gems.ops.logical_and import logical_and, logical_and_
 from flag_gems.ops.logical_not import logical_not, logical_not_
 from flag_gems.ops.logical_or import logical_or, logical_or_
@@ -853,6 +856,7 @@ __all__ = [
     "full_like",
     "gather",
     "gather_backward",
+    "gather_block_quantized",
     "gcd",
     "gcd_",
     "gcd_out",
@@ -938,6 +942,7 @@ __all__ = [
     "linalg_cholesky",
     "linalg_slogdet",
     "linear",
+    "linear_backward",
     "linspace",
     "log",
     "log10",
@@ -958,6 +963,8 @@ __all__ = [
     "logaddexp_out",
     "logaddexp2",
     "logaddexp2_out",
+    "logcumsumexp",
+    "logcumsumexp_out",
     "xlogy",
     "xlogy_out",
     "xlogy_tensor_scalar",

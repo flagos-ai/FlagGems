@@ -3513,6 +3513,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: gather_block_quantized
+    description: Triton kernel implementation for gather_block_quantized.
+    for:
+      - gather_block_quantized
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: gcd
     description: Computes the element-wise greatest common divisor (GCD) of `input` and `other`.
     for:
@@ -4622,6 +4633,17 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: linear_backward
+    description: Triton kernel implementation for linear_backward.
+    for:
+      - linear_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linspace
     description: |
       Creates a one-dimensional tensor of size `steps` whose values are evenly spaced from `start` to `end`, inclusive.
@@ -4915,6 +4937,29 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: logcumsumexp
+    description: Triton kernel implementation for logcumsumexp.
+    for:
+      - logcumsumexp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: logcumsumexp_out
+    description: |
+      A variant of `logcumsumexp` that allows the output to be assigned to an `out` tensor.
+    for:
+      - logcumsumexp.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: logical_and
     description: |
       Computes the element-wise logical AND of the given `input` tensors.
