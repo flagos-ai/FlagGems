@@ -20,13 +20,16 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import dim_compress
+from flag_gems.utils import dim_compress, libentry
 
 logger = logging.getLogger(__name__)
 
 
+@libentry()
 @triton.autotune(
-    configs=runtime.get_tuned_config("index_select_backward"), key=["index_len"]
+    configs=runtime.get_tuned_config("index_select_backward"),
+    key=["index_len"],
+    restore_value=["out_ptr"],
 )
 @triton.jit
 def index_select_backward_kernel(
