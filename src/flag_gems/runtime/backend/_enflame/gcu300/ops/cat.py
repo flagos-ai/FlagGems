@@ -76,8 +76,8 @@ def cat_copy_func_kernel_4(
     BLOCK_X: tl.constexpr,
     ENABLE_I64: tl.constexpr,
 ):
-    pid_x = tl.program_id(0)
-    pid_y = tl.program_id(1)
+    pid_x = tl.program_id(0).to(tl.int64)
+    pid_y = tl.program_id(1).to(tl.int64)
 
     if pid_y == 0:
         in_ptr = in_ptr_a
