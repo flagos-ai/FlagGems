@@ -344,9 +344,16 @@ def get_env(gpu_ids):
         "cambricon": ["MLU_VISIBLE_DEVICES"],
         "kunlunxin": ["CUDA_VISIBLE_DEVICES"],
         "sunrise": ["TANG_VISIBLE_DEVICES"],
+        "enflame": ["TOPS_VISIBLE_DEVICES"],
     }
 
-    env_vars = vendor_env_map.get(vendor, ["CUDA_VISIBLE_DEVICES"])
+    env_vars = vendor_env_map.get(vendor, None)
+    # new vendor not in the map, fallback to CUDA_VISIBLE_DEVICES with a warning
+    if env_vars is None:
+        pwarn(
+            f"No vendor-specific device masking for '{vendor}', falling back to  CUDA_VISIBLE_DEVICES"
+        )
+        env_vars = ["CUDA_VISIBLE_DEVICES"]
     for var in env_vars:
         env[var] = gpu_ids
     return env
