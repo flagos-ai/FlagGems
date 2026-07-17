@@ -1,3 +1,6 @@
 [submodule "docs/themes/hugo-book"]
 	path = docs/themes/hugo-book
 	url = https://github.com/alex-shpak/hugo-book
+[submodule ".devcontainer/build-infra"]
+	path = .devcontainer/build-infra
+	url = https://gitcode.com/flagos-ai/build-infra

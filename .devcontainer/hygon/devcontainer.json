@@ -1,0 +1,84 @@
+{
+  "name": "FlagGems - HYGON",
+  "build": {
+    "context": "../../",
+    "dockerfile": "./Dockerfile",
+    "args": {
+      // Image produced by build-infra (see .devcontainer/build-infra/runtime/Containerfile).
+      // Naming: flagos-runtime-{vendor}-{backend}:latest (see .devcontainer/build-infra/configs.yaml).
+      // Override to use a different backend or registry, e.g.:
+      //   "IMAGE": "myregistry/flagos-runtime-hygon-dtk26.04:latest"
+      "IMAGE": "flagos-runtime-hygon-dtk26.04:latest",
+      "USERNAME": "vscode"
+    }
+  },
+  "runArgs": [
+	"--ulimit",
+        "nofile=1048576:1048576",
+	"--device=/dev/kfd",
+        "--device=/dev/mkfd",
+        "--device=/dev/dri",
+        "--group-add=video",
+        "--net=host",
+        "--ipc=host",
+        "--privileged"
+  ],
+  // Corresponds to --cap-add=SYS_PTRACE and --security-opt seccomp=unconfined
+  "containerCapabilities": [
+      "SYS_PTRACE"
+  ],
+  "securityOpt": [
+      "seccomp=unconfined"
+  ],
+  // Maps --ulimit memlock=-1 and stack=67108864
+  "hostRequirements": {
+      "ulimits": {
+          "memlock": {
+              "soft": -1,
+              "hard": -1
+          },
+          "stack": {
+              "soft": 67108864,
+              "hard": 67108864
+          }
+      }
+  },
+  // Mount the full repo only after the container starts
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/FlagGems,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace/FlagGems",
+  "mounts": [
+      "source=/opt/hyhal,target=/opt/hyhal,type=bind",
+      //"source=/data,target=/data,type=bind",
+      //"source=${localEnv:HOME},target=/home/host,type=bind",
+  ],
+  "containerEnv": {
+    "PIP_USER": "0", // <‑‑ disable implicit --user
+    "FLAGGEMS_DEVCONTAINER_BACKEND": "hygon"
+  },
+
+  // Use 'postCreateCommand' to run commands after the container is created.
+  // Installs FlagGems in editable mode so source edits take effect immediately.
+  "postCreateCommand": "bash .devcontainer/common/scripts/install-flaggems.sh",
+
+  // Build the base image before VS Code tries to pull it.
+  "initializeCommand": "bash .devcontainer/common/scripts/build-image.sh hygon-dtk26.04",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+          "streetsidesoftware.code-spell-checker",
+          "ms-python.python"
+      ]
+    }
+  },
+
+  // Features to add to the dev container. More info: https://containers.dev/features.
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+
+  // VSCode will automatically update the container user's UID/GID to match the host user
+  "updateRemoteUserUID": true,
+
+  "remoteUser": "vscode"
+}
