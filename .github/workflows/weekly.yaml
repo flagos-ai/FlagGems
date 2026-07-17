@@ -113,55 +113,72 @@ jobs:
             [ -f "$f" ] && cp -f "$f" "$HOME/" || true
           done
           # .bashrc may have interactive guards ([ -z "$PS1" ] or case $-)
-          # that prevent conda init from running in non-interactive CI shells.
-          # Extract conda-related lines and append to .bash_profile instead,
-          # which is sourced by login shells without any interactive check.
+          # that prevent conda init / backend env setup from running in
+          # non-interactive CI shells. Extract those lines (conda init,
+          # `source .../set_env.sh`, FLAGTREE_BACKEND export, and the
+          # `. $HOME/.local/bin/env` sourcing) and append to .bash_profile
+          # instead, which is sourced by login shells without any
+          # interactive check.
           if [ -f /root/.bashrc ]; then
-            grep -E '(conda\.sh|conda activate)' /root/.bashrc >> "$HOME/.bash_profile" || true
+            grep -E '(conda\.sh|conda activate|set_env\.sh|FLAGTREE_BACKEND|\.local/bin/env)' /root/.bashrc >> "$HOME/.bash_profile" || true
           fi
 
       - name: Install FlagGems dependencies
         env: ${{ fromJSON(matrix.test_env) }}
         shell: bash --login -e -o pipefail {0}
-        run: pip install ".[test]"
+        run: pip install .
 
       - name: Check GPU availability
         shell: bash --login -e -o pipefail {0}
         run: bash ${{ matrix.gpu_check_script }}
 
-      # Run weekly tests for all operator stages
+      # # Run weekly tests for all operator stages
+      # - name: Run weekly tests
+      #   timeout-minutes: 720
+      #   env: ${{ fromJSON(matrix.test_env) }}
+      #   shell: bash --login -e -o pipefail {0}
+      #   run: |
+      #     # remove cache to avoid potential issues with stale files
+      #     rm -rf ~/.triton/cache && rm -rf ~/.flaggems
+      #     # run tests with specified GPUs and output directory
+      #     printenv | grep -viE '^(https?_proxy|all_proxy)=' || true
+      #     python3 tools/run_tests.py \
+      #       --gpus "${{ matrix.test_gpus }}" \
+      #       --stages all \
+      #       --dump-output \
+      #       --output "${OUTPUT_DIR}"
+      #     #process the test results to generate summary files
+      #     python3 tools/add_labels.py ${OUTPUT_DIR}
+      #     python3 tools/psum_text  -o  ${OUTPUT_DIR}/result.csv  ${OUTPUT_DIR}
+      #     python3 tools/psum_html  -o  ${OUTPUT_DIR}/result.html  ${OUTPUT_DIR}
+
+      # Run weekly tests for selected operators (abs, sum, add)
+      # This is a smoke test to quickly verify the weekly testing pipeline
+      # and the backend environment.
       - name: Run weekly tests
-        timeout-minutes: 720
         env: ${{ fromJSON(matrix.test_env) }}
         shell: bash --login -e -o pipefail {0}
         run: |
           # remove cache to avoid potential issues with stale files
           rm -rf ~/.triton/cache && rm -rf ~/.flaggems
           # run tests with specified GPUs and output directory
+          # Print env for debugging; drop proxy vars (http(s)_proxy/all_proxy,
+          # any case) since they may embed user:password that GitHub Actions
+          # does not auto-mask for values from the container/runner env.
+          printenv | grep -viE '^(https?_proxy|all_proxy)=' || true
           python3 tools/run_tests.py \
             --gpus "${{ matrix.test_gpus }}" \
-            --stages all \
+            --ops abs,sum,add \
             --dump-output \
             --output "${OUTPUT_DIR}"
-
-      # Run weekly tests for selected operators (abs, sum, add)
-      # This is a smoke test to quickly verify the weekly testing pipeline
-      # and the backend environment.
-      # - name: Run weekly tests
-      #   env: ${{ fromJSON(matrix.test_env) }}
-      #   shell: bash --login -e -o pipefail {0}
-      #   run: |
-      #     python3 tools/run_tests.py \
-      #       --gpus "${{ matrix.test_gpus }}" \
-      #       --ops abs,sum,add \
-      #       --dump-output \
-      #       --output "${OUTPUT_DIR}"
-
-      - name: Package results
-        run: |
+          # process the test results to generate summary files
           python3 tools/add_labels.py ${OUTPUT_DIR}
           python3 tools/psum_text  -o  ${OUTPUT_DIR}/result.csv  ${OUTPUT_DIR}
           python3 tools/psum_html  -o  ${OUTPUT_DIR}/result.html  ${OUTPUT_DIR}
+
+      - name: Package results
+        id: package-results
+        run: |
           ARCHIVE="${{ runner.temp }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
@@ -173,7 +190,12 @@ jobs:
       #     path: ${{ env.ARCHIVE }}
 
       - name: Publish results to op-monitor
+        # Disabled publishing results to op-monitor for 910B/H800 backends due to network restrictions.
+        if: ${{ matrix.name != '910B' && matrix.name != 'H800' }}
+        timeout-minutes: 15
+        continue-on-error: true
         run: |
+          # Upload the results archive to the op-monitor server.
           curl -X POST "${{ needs.prepare.outputs.api }}" \
             -H "X-API-Key: ${{ secrets.OPMON_UPLOAD_KEY }}" \
             -F "file=@${ARCHIVE}" \
@@ -232,14 +254,33 @@ jobs:
         run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
 
       - name: Install FlagGems dependencies
-        run: pip install ".[test]"
+        run: pip install .
 
       - name: Check GPU availability
         run: bash ${{ matrix.gpu_check_script }}
 
-      # Run weekly tests for all operator sta， timeout 720 minutes (12 hours)
+      # # Run weekly tests for all operator sta， timeout 720 minutes (12 hours)
+      # - name: Run weekly tests
+      #   timeout-minutes: 720
+      #   env: ${{ fromJSON(matrix.test_env) }}
+      #   run: |
+      #     # remove cache to avoid potential issues with stale files
+      #     rm -rf ~/.triton/cache && rm -rf ~/.flaggems
+      #     # run tests with specified GPUs and output directory
+      #     python3 tools/run_tests.py \
+      #       --gpus "${{ matrix.test_gpus }}" \
+      #       --stages all \
+      #       --dump-output \
+      #       --output "${OUTPUT_DIR}"
+      #     #process the test results to generate summary files
+      #     python3 tools/add_labels.py ${OUTPUT_DIR}
+      #     python3 tools/psum_text  -o  ${OUTPUT_DIR}/result.csv  ${OUTPUT_DIR}
+      #     python3 tools/psum_html  -o  ${OUTPUT_DIR}/result.html  ${OUTPUT_DIR}
+
+      # Run weekly tests for selected operators (abs, sum, add)
+      # This is a smoke test to quickly verify the weekly testing pipeline
+      # and the backend environment.
       - name: Run weekly tests
-        timeout-minutes: 720
         env: ${{ fromJSON(matrix.test_env) }}
         run: |
           # remove cache to avoid potential issues with stale files
@@ -247,27 +288,16 @@ jobs:
           # run tests with specified GPUs and output directory
           python3 tools/run_tests.py \
             --gpus "${{ matrix.test_gpus }}" \
-            --stages all \
+            --ops abs,sum,add \
             --dump-output \
             --output "${OUTPUT_DIR}"
-
-      # Run weekly tests for selected operators (abs, sum, add)
-      # This is a smoke test to quickly verify the weekly testing pipeline
-      # and the backend environment.
-      # - name: Run weekly tests
-      #   env: ${{ fromJSON(matrix.test_env) }}
-      #   run: |
-      #     python3 tools/run_tests.py \
-      #       --gpus "${{ matrix.test_gpus }}" \
-      #       --ops abs,sum,add \
-      #       --dump-output \
-      #       --output "${OUTPUT_DIR}"
-
-      - name: Package results
-        run: |
+          # process the test results to generate summary files
           python3 tools/add_labels.py ${OUTPUT_DIR}
           python3 tools/psum_text  -o  ${OUTPUT_DIR}/result.csv  ${OUTPUT_DIR}
           python3 tools/psum_html  -o  ${OUTPUT_DIR}/result.html  ${OUTPUT_DIR}
+
+      - name: Package results
+        run: |
           ARCHIVE="${{ runner.temp }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"

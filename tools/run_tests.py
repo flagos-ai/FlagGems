@@ -73,6 +73,8 @@ def pwarn(msg, **kwargs):
 
 def ensure_dir(p):
     p.mkdir(parents=True, exist_ok=True)
+    # set directory permissions to 755/0o755 (drwxr-xr-x)
+    p.chmod(0o755)
 
 
 class LiveDisplay:
@@ -344,9 +346,16 @@ def get_env(gpu_ids):
         "cambricon": ["MLU_VISIBLE_DEVICES"],
         "kunlunxin": ["CUDA_VISIBLE_DEVICES"],
         "sunrise": ["TANG_VISIBLE_DEVICES"],
+        "enflame": ["TOPS_VISIBLE_DEVICES"],
     }
 
-    env_vars = vendor_env_map.get(vendor, ["CUDA_VISIBLE_DEVICES"])
+    env_vars = vendor_env_map.get(vendor, None)
+    # new vendor not in the map, fallback to CUDA_VISIBLE_DEVICES with a warning
+    if env_vars is None:
+        pwarn(
+            f"No vendor-specific device masking for '{vendor}', falling back to  CUDA_VISIBLE_DEVICES"
+        )
+        env_vars = ["CUDA_VISIBLE_DEVICES"]
     for var in env_vars:
         env[var] = gpu_ids
     return env
@@ -614,8 +623,6 @@ def run_benchmark_q(gpu_id, op):
 
     dur = time.time()
     cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
-    if ENV_INFO["flag_gems"]["vendor"] == "kunlunxin":
-        cmd += " --fg_mode operator"
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     dur = time.time() - dur
 
@@ -1019,6 +1026,12 @@ def main():
         USE_COLORS = False
         RED = GREEN = YELLOW = CYAN = DIM = NC = ""
 
+    # ---- Record the start time of the whole test run ----
+    # Kept as a datetime object so the total elapsed time can be computed
+    # once all accuracy/benchmark tests finish.
+    test_start_time = datetime.datetime.now()
+    pinfo(f"Test started at ... {test_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
     probe_env()
 
     ops = get_ops_to_test()
@@ -1077,7 +1090,15 @@ def main():
 
     display.finish()
 
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # ---- Record the end time of the whole test run ----
+    # Replaces the old `timestamp`; the run's end time is stored directly as
+    # `end_time` in summary.json and reused for the elapsed-time calculation.
+    test_end_time = datetime.datetime.now()
+
+    # Total wall-clock time the whole run took (start -> end).
+    total_duration = round((test_end_time - test_start_time).total_seconds(), 2)
+    total_duration_str = str(datetime.timedelta(seconds=int(total_duration)))
+
     op_data = {}
     for gpu_id in gpu_ids:
         gpu_file = CFG.output_dir.joinpath(f"summary{gpu_id}.json")
@@ -1093,7 +1114,8 @@ def main():
             op_data.update(result)
 
     final_data = {
-        "timestamp": timestamp,
+        "timestamp": test_end_time.strftime("%Y-%m-%d %H:%M:%S"),
+        "total_duration": total_duration_str,
         "env": ENV_INFO,
         "result": op_data,
     }
@@ -1103,6 +1125,7 @@ def main():
         json.dump(final_data, f, indent=2)
 
     cleanup_intermediate_files()
+    pinfo(f"Total elapsed time ... {total_duration_str} ({total_duration}s)")
     pinfo("Test completed.")
 
 
