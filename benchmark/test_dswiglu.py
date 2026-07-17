@@ -11,13 +11,13 @@ from . import base, consts
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
-    TE_OP = getattr(tex, "dswiglu")
+    TE_OP = getattr(tex, "dswiglu", None)
 except ImportError:
     TE_OP = None
 
 
 @pytest.mark.dswiglu
-@pytest.mark.skipif(TE_OP is None, reason="TransformerEngine not installed")
+@pytest.mark.skipif(TE_OP is None, reason="'dswiglu' not found in TransformerEngine")
 def test_dswiglu():
     bench = base.TexGluBackwardBenchmark(
         op_name="dswiglu",
