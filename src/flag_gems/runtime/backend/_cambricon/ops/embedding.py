@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -88,7 +88,7 @@ def embedding_grad_scale_kernel(
 
 
 def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
-    logger.debug("GEMS_CAMBRICON EMBEDDING FORWARD")
+    logger.debug("GEMS_CAMBRICON EMBEDDING")
     assert not sparse, "Currently do not support sparse format"
 
     indices = indices.contiguous()
@@ -113,7 +113,7 @@ def embedding_backward(
     scale_grad_by_freq=False,
     sparse=False,
 ):
-    logger.debug("GEMS_CAMBRICON EMBEDDING BACKWARD")
+    logger.debug("GEMS_CAMBRICON EMBEDDING_BACKWARD")
     assert not sparse, "Currently do not support sparse format"
 
     M = indices.numel()
@@ -122,9 +122,11 @@ def embedding_backward(
     grad_inputs = torch.zeros(
         (num_weights, grad_outputs.shape[-1]),
         device=grad_outputs.device,
-        dtype=torch.float32
-        if grad_outputs.dtype is torch.bfloat16
-        else grad_outputs.dtype,
+        dtype=(
+            torch.float32
+            if grad_outputs.dtype is torch.bfloat16
+            else grad_outputs.dtype
+        ),
     )
 
     if scale_grad_by_freq:
