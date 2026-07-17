@@ -54,11 +54,16 @@ def index_select_backward_kernel(
 
 def index_select_backward(grad, self_sizes, dim, index):
     """
-    Backward pass for index_select.
+    Backward of index_select.
 
-    Equivalent to scatter_add:
-        output = zeros(self_sizes)
-        output.scatter_add_(dim, index, grad)
+    `grad` is the gradient w.r.t. the output of index_select, of the same shape
+    as `self_sizes` except that the `dim` axis has length `index.numel()`.
+    Accumulates each slice of `grad` along `dim` into a zero tensor of shape
+    `self_sizes` at the offset given by `index`, i.e.
+
+        out[..., index[i], ...] += grad[..., i, ...]   (along `dim`)
+
+    Returns the gradient w.r.t. the original `self`, of shape `self_sizes`.
     """
     logger.debug("GEMS INDEX_SELECT_BACKWARD")
 

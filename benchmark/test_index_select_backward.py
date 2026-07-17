@@ -19,8 +19,7 @@ class IndexSelectBackwardBenchmark(base.GenericBenchmark):
             (16, 16, 64),
             (32, 32, 128),
         ]
-        self.shapes = INDEX_SELECT_BACKWARD_SHAPES
-        return None
+        return INDEX_SELECT_BACKWARD_SHAPES
 
     def set_more_metrics(self):
         return ["gbps"]
