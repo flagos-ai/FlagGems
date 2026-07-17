@@ -8036,10 +8036,10 @@ ops:
       - alpha: '5.4'
   - id: special_digamma
     description: |
-      Computes the digamma function (logarithmic derivative of the gamma function)
-      using reflection formula, recurrence relation, and asymptotic expansion.
+      Computes the digamma function (logarithmic derivative of the gamma function).
+      Alias for digamma; delegates to the digamma kernel.
     for:
-      - digamma
+      - special_digamma
     labels:
       - aten
       - pointwise
