@@ -113,6 +113,7 @@ from .gt import gt, gt_scalar
 from .index import index
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
+from .index_add import index_add, index_add_
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -249,6 +250,8 @@ __all__ = [
     "gt",
     "gt_scalar",
     "index_select",
+    "index_add",
+    "index_add_",
     "index",
     "isin",
     "max",
