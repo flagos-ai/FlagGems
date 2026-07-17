@@ -1233,9 +1233,9 @@ def main():
     CFG.ops = ops
 
     if OPTS.output_dir is None:
-        from datetime import datetime
-
-        output_dir = Path(f"logs_results_{datetime.now().strftime('%Y%m%d_%H%M')}")
+        output_dir = Path(
+            f"logs_results_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}"
+        )
     else:
         output_dir = Path(OPTS.output_dir)
     ensure_dir(output_dir)
