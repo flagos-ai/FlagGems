@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# Configuration parameters
+mem_threshold=30000     # Minimum free memory required (MB)
+sleep_time=120          # Wait time between retries (seconds)
+max_wait=600           # Maximum total wait time (seconds)
+
+# Check if ppu-smi exists
+if ! command -v ppu-smi &> /dev/null; then
+    echo "Error: ppu-smi command not found."
+    exit 1
+fi
+
+# Get the number of GPUs
+gpu_count=$(ppu-smi -L 2>/dev/null | grep -c "PPU-")
+
+if [ "$gpu_count" -eq 0 ]; then
+    echo "No T-Head PPU cards detected."
+    exit 1
+fi
+
+echo "Detected $gpu_count T-Head PPU card(s)."
+
+waited_time=0
+while true; do
+    available_gpus=()
+
+    printf " PPU  Total (MiB)  Used (MiB)  Free (MiB)\n"
+    for ((i=0; i<$gpu_count; i++)); do
+        mem_line=$(ppu-smi -i $i 2>/dev/null | grep -oP '\d+MiB\s*/\s*\d+MiB')
+
+        if [ -z "$mem_line" ]; then
+            echo "Warning: Failed to query PPU $i memory."
+            continue
+        fi
+
+        used_i=$(echo "$mem_line" | grep -oP '^\d+')
+        total_i=$(echo "$mem_line" | grep -oP '/\s*\K\d+')
+
+        if [ -z "$total_i" ] || [ -z "$used_i" ]; then
+             echo "Warning: Parse error for PPU $i. Raw: '$mem_line'"
+             continue
+        fi
+
+        free_i=$((total_i - used_i))
+
+        printf "%4d%'13d%'12d%'12d\n" $i ${total_i} ${used_i} ${free_i}
+
+        if [ $free_i -ge $mem_threshold ]; then
+            available_gpus+=($i)
+        fi
+    done
+
+    if [ ${#available_gpus[@]} -gt 0 ]; then
+        AVAILABLE_GPUS=$(IFS=,; echo "${available_gpus[*]}")
+        echo "Available GPUs: ${AVAILABLE_GPUS}"
+        break
+    fi
+
+    echo "No PPU has sufficient memory, waiting for $sleep_time seconds..."
+    sleep $sleep_time
+    waited_time=$((waited_time + sleep_time))
+    if [ $waited_time -ge $max_wait ]; then
+        echo "Error: Timed out waiting for available PPU."
+        exit 1
+    fi
+done

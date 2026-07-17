@@ -1,0 +1,110 @@
+# MULTIPLY operator test
+
+import os
+import sys
+
+import pytest
+import torch
+import triton  # noqa: F401
+
+import flag_gems
+from flag_gems.experimental_ops.multiply import multiply_out as gems_multiply_out
+from flag_gems.experimental_ops.multiply import multiply_Scalar as gems_multiply_Scalar
+from flag_gems.experimental_ops.multiply import multiply_Tensor as gems_multiply_Tensor
+
+# Add parent directory to path to import flag_gems
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+try:
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
+
+
+except ImportError:
+    # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
+
+    def gems_assert_close(res, ref, dtype, **kwargs):
+        # Simple fallback comparison
+        torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp):
+    """Move to CPU when TO_CPU is set, keep dtype/device otherwise."""
+    if inp is None:
+        return None
+    return inp.to("cpu") if TO_CPU else inp.clone()
+
+
+@pytest.mark.multiply
+@pytest.mark.parametrize(
+    "case",
+    [
+        ((2, 3), (2, 3)),
+        ((2, 3), (1,)),
+        ((128, 256), (128, 256)),
+        ((128, 256), (256,)),
+        ((512, 512), (1, 512)),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_multiply_tensor(case, dtype):
+    self_shape, other_shape = case
+    self = torch.randn(self_shape, device=flag_gems.device, dtype=dtype)
+    other = torch.randn(other_shape, device=flag_gems.device, dtype=dtype)
+
+    ref_self = to_reference(self)
+    ref_other = to_reference(other)
+
+    ref_out = torch.ops.aten.multiply(ref_self, ref_other)
+
+    with flag_gems.use_gems():
+        act_out = gems_multiply_Tensor(self, other)
+
+    gems_assert_close(act_out, ref_out, dtype=dtype)
+
+
+@pytest.mark.multiply
+@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("scalar", [0.0, 0.5, -1.25, 2.0])
+def test_multiply_scalar(shape, dtype, scalar):
+    self = torch.randn(shape, device=flag_gems.device, dtype=dtype)
+
+    ref_self = to_reference(self)
+    ref_out = torch.ops.aten.multiply(ref_self, scalar)
+
+    with flag_gems.use_gems():
+        act_out = gems_multiply_Scalar(self, scalar)
+
+    gems_assert_close(act_out, ref_out, dtype=dtype)
+
+
+@pytest.mark.multiply
+@pytest.mark.parametrize(
+    "case",
+    [
+        ((2, 3), (2, 3)),
+        ((2, 3), (1,)),
+        ((128, 256), (128, 256)),
+        ((128, 256), (256,)),
+        ((512, 512), (1, 512)),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_multiply_out(case, dtype):
+    self_shape, other_shape = case
+    self = torch.randn(self_shape, device=flag_gems.device, dtype=dtype)
+    other = torch.randn(other_shape, device=flag_gems.device, dtype=dtype)
+
+    b_self, b_other = torch.broadcast_tensors(self, other)
+    out_shape = b_self.shape
+
+    ref_self = to_reference(self)
+    ref_other = to_reference(other)
+    ref_out = torch.empty(out_shape, device=ref_self.device, dtype=ref_self.dtype)
+    torch.ops.aten.multiply.out(ref_self, ref_other, out=ref_out)
+
+    act_out = torch.empty(out_shape, device=self.device, dtype=dtype)
+    with flag_gems.use_gems():
+        gems_multiply_out(self, other, act_out)
+
+    gems_assert_close(act_out, ref_out, dtype=dtype)

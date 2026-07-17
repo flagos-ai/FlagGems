@@ -1,0 +1,102 @@
+---
+name: Random Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Label for selecting runners"
+        required: true
+        type: string
+      operators:
+        description: "Operators (comma separated names)"
+        required: true
+        type: string
+      gpus:
+        description: "GPUs (comma separated numbers)"
+        required: true
+        type: string
+permissions:
+  contents: read
+
+jobs:
+  check-permission:
+    runs-on: ubuntu-latest
+    outputs:
+      authorized: ${{ steps.makeDecision.outputs.continue }}
+    steps:
+      - id: checkUser
+        uses: tspascoal/get-user-teams-membership@b2546c5affc730fd8e3d8483ae9ad3621938c2f9  # v4.0.2
+        with:
+          username: ${{ github.actor }}
+          team: 'FlagGems'
+          GITHUB_TOKEN: ${{ secrets.TEAMMEMBER_TOKEN }}
+
+      - id: makeDecision
+        env:
+          IS_MEMBER: ${{ steps.checkUser.outputs.isTeamMember }}
+        run: |
+          if [[ "${IS_MEMBER}" == "false" ]]; then
+            echo "Unauthorized user: ${{ github.actor }}"
+            echo "continue=false" >> $GITHUB_OUTPUT
+          else
+            echo "continue=true" >> $GITHUB_OUTPUT
+          fi
+
+  test-operator:
+    needs: check-permission
+    if: needs.check-permission.outputs.authorized == 'true'
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Resolve vendor
+        id: resolve
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ inputs.runner }}
+        run: |
+          case "${RUNNER_LABEL}" in
+            h20)
+              VENDOR="nvidia"
+              BACKEND="nvidia-cuda133"
+              ;;
+            a100|h100)
+              VENDOR="nvidia"
+              BACKEND="nvidia-cuda133"
+              ;;
+            cann850)
+              VENDOR="ascend"
+              BACKEND="ascend-cann850"
+              ;;
+            cann9)
+              VENDOR="ascend"
+              BACKEND="ascend-cann900"
+              ;;
+            *)
+              VENDOR="${RUNNER_LABEL}"
+              BACKEND="${RUNNER_LABEL}"
+              ;;
+          esac
+          echo "VENDOR=${VENDOR}" >> $GITHUB_OUTPUT
+          echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
+          echo "BACKEND=${BACKEND}" >> $GITHUB_OUTPUT
+          echo "BACKEND=${BACKEND}" >> $GITHUB_ENV
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
+      - uses: ./.github/actions/setup-flaggems
+        with:
+          vendor: ${{ steps.resolve.outputs.BACKEND }}
+          gpu_check_script: tools/gpu_check_${{ steps.resolve.outputs.VENDOR }}.sh
+
+      - name: Run tests
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          tools/run_tests.py --ops ${{ inputs.operators }} --gpus ${{ inputs.gpus }}
+
+      - name: Upload results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: random-test
+          path: results/

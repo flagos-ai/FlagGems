@@ -1,0 +1,57 @@
+# op_black_list.yaml
+# Description: List of operators unsupported (FALSE) in the current environment
+# test based: 2026-03-11
+# Source: Operator Compatibility Test Table
+
+unsupported_operators:
+  - name: allclose
+    reason: "All dtypes failed"
+
+  - name: concat_and_cache_mla
+    reason: "All dtypes failed"
+
+  - name: copy_
+    reason: "All dtypes failed"
+
+  - name: cutlass_scaled_mm
+    reason: "All dtypes failed"
+
+  - name: geglu
+    reason: "All dtypes failed"
+
+  - name: grouped_topk
+    reason: "All dtypes failed"
+
+  - name: isclose
+    reason: "All dtypes failed"
+
+  - name: masked_scatter
+    reason: "All dtypes failed"
+
+  - name: masked_scatter_
+    reason: "All dtypes failed"
+
+  - name: nll_loss2d
+    reason: "Partial dtypes failed(BF16)"
+
+  - name: reciprocal_
+    reason: "All dtypes failed"
+
+  - name: scaled_dot_product_attention
+    reason: "All dtypes failed"
+
+  - name: scatter_add_
+    reason: "All dtypes failed"
+
+  - name: swiglu
+    reason: "All dtypes failed"
+
+  - name: trace
+    reason: "Partial dtypes failed(INT16/BOOL)"
+
+  - name: upsample_bicubic2d_aa
+    reason: "All dtypes failed"
+
+summary:
+  total_unsupported: 16
+  note: "This list is based on items explicitly marked as FALSE in the provided table. Certain operators (e.g., conv1d, index_add) have blank entries in some columns and are therefore excluded; their support status requires further verification."

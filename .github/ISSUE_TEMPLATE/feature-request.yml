@@ -1,0 +1,21 @@
+name: 🚀 Feature request
+description: Submit a proposal/request for a new FlagGems feature
+labels: [Feature]
+
+body:
+- type: textarea
+  attributes:
+    label: The feature, motivation and pitch
+    description: >
+      A clear description of the feature proposal and its motivation. If related to a specific problem or another issue, please provide details and links.
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Alternatives
+    description: >
+      A description of any alternative solutions or features you've considered, if any.
+- type: markdown
+  attributes:
+    value: >
+      Thanks for contributing 🎉!

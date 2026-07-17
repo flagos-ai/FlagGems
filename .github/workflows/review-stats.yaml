@@ -1,0 +1,30 @@
+name: "PR Analytics"
+on:
+  workflow_dispatch:
+    inputs:
+      report_date_start:
+        description: "Start date: (dd/MM/YYYY)"
+      report_date_end:
+        description: "End Date: (dd/MM/YYYY)"
+jobs:
+  create-report:
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      statuses: read
+    name: "Create report"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Run script for analytics"
+        uses: AlexSim93/pull-request-analytics-action@v4
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO_FOR_ISSUE: FlagGems
+          GITHUB_OWNER_FOR_ISSUE: flagos-ai
+          GITHUB_OWNERS_REPOS: flagos-ai/FlagGems
+          CORE_HOURS_START: "9:00"
+          CORE_HOURS_END: "23:00"
+          TIMEZONE: "Asia/Shanghai"
+          REPORT_DATE_START: ${{ inputs.report_date_start }}
+          REPORT_DATE_END: ${{ inputs.report_date_end }}
