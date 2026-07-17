@@ -16,12 +16,14 @@ class RepeatInterleaveBenchmark(base.GenericBenchmark):
     to prevent excessive memory usage.
     """
 
+    DEFAULT_SHAPES = [
+        (16, 256, 256),
+        (128, 256, 256),
+        (64, 64, 64, 64),
+    ]
+
     def set_more_shapes(self):
-        return [
-            (16, 256, 256),
-            (512, 512, 512),
-            (64, 64, 64, 64),
-        ]
+        return []
 
 
 # repeat_interleave.self_int(Tensor self, SymInt repeats,
@@ -61,7 +63,7 @@ def repeat_interleave_self_tensor_input_fn(shape, dtype, device):
     yield inp, repeats, dim
 
 
-@pytest.mark.skip(reason="This test case runs out of memory: issue #2674")
+# @pytest.mark.skip(reason="This test case runs out of memory: issue #2674")
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -89,7 +91,7 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
     yield repeats,
 
 
-@pytest.mark.skip(reason="This test case runs out of memory: issue #2674")
+# @pytest.mark.skip(reason="This test case runs out of memory: issue #2674")
 @pytest.mark.repeat_interleave_tensor
 def test_repeat_interleave_tensor():
     bench = RepeatInterleaveBenchmark(
