@@ -148,11 +148,7 @@ def test_cumprod_inplace_non_contiguous_tile_boundary(dtype):
 
 
 @pytest.mark.cumprod_
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "mthreads",
-    reason="MThreads regression for long INT16 scan lowering",
-)
-def test_cumprod_inplace_mthreads_long_int16():
+def test_cumprod_inplace_long_int16():
     inp = _make_input((2, 32769), torch.int16)
     ref_inp = _reference_input(inp)
     ref_out = torch.cumprod(ref_inp, dim=1).to(inp.dtype)
