@@ -15,7 +15,7 @@ def neg_func(x):
 
 
 def neg(A):
-    logger.debug("GEMS NEG")
+    logger.debug("GEMS_ENFLAME NEG")
     return_dtype = A.dtype
     if A.dtype == torch.int64:
         A = A.to(torch.int32)
@@ -23,7 +23,7 @@ def neg(A):
 
 
 def neg_(A):
-    logger.debug("GEMS NEG_")
+    logger.debug("GEMS_ENFLAME NEG_")
     return_dtype = A.dtype
     if A.dtype == torch.int64:
         A = A.to(torch.int32)

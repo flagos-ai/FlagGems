@@ -264,7 +264,7 @@ def _gather_2d_fast(inp, dim, index, out):
 
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
-    logger.debug("GEMS GATHER")
+    logger.debug("GEMS_ENFLAME GATHER")
     if inp.ndim != index.ndim:
         raise IndexError(
             f"self and index must have the same number of dimensions, "
@@ -285,7 +285,7 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logger.debug("GEMS GATHER BACKWARD")
+    logger.debug("GEMS_ENFLAME GATHER_BACKWARD")
     from .scatter import scatter_
 
     result = grad.new_zeros(self.shape)
