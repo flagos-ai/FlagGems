@@ -86,7 +86,7 @@ jobs:
       - uses: ./.github/actions/checkout-retry
       - uses: ./.github/actions/setup-flaggems
         with:
-          vendor: ${{ steps.resolve.outputs.BACKEND }}
+          backend: ${{ steps.resolve.outputs.BACKEND }}
           gpu_check_script: tools/gpu_check_${{ steps.resolve.outputs.VENDOR }}.sh
 
       - name: Run tests
