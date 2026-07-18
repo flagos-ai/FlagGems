@@ -1048,7 +1048,7 @@ def _parse_marks_file(marks_file):
                 for mark in item.get("marks", []):
                     marks.add(mark)
     except Exception as e:
-        pwarn(f"Failed to parse marks file {marks_file}: {e}")
+        pwarn(f"Failed to read or parse marks file {marks_file}: {e}")
     return marks
 
 
