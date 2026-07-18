@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import logging
 import os
@@ -73,8 +87,7 @@ class FlipKernelCode(IndentedBuffer):
 
     def __imports(self):
         """Generate imports for the kernel code."""
-        self.tpl(
-            """
+        self.tpl("""
 import math
 import torch
 import triton
@@ -86,8 +99,7 @@ TOTAL_CORE_NUM = _state.vendor_module.utils.TOTAL_CORE_NUM
 MAX_NRAM_SIZE = _state.vendor_module.utils.MAX_NRAM_SIZE
 
 
-        """
-        )
+        """)
 
     def __wrapper(self):
         """Generate wrapper function for the kernel code."""
