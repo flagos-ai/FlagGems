@@ -11,11 +11,64 @@ logger = logging.getLogger(__name__)
 
 _MAX_BLOCK_SIZE = 1024
 _OUTPUT_TILE = 8
+_SMALL_OUTPUT_TILE = 4
 
 
 @libentry()
 @triton.jit
-def _adaptive_avg_pool2d_tiled_kernel(
+def _adaptive_avg_pool2d_divisible_7x7_kernel(
+    inp,
+    out,
+    in_c,
+    in_h,
+    in_w,
+    in_stride_n,
+    in_stride_c,
+    in_stride_h,
+    in_stride_w,
+    POOL_H: tl.constexpr,
+    POOL_W: tl.constexpr,
+    ROWS_PER_BLOCK: tl.constexpr,
+    BLOCK_OUT: tl.constexpr,
+):
+    nc_idx = tl.program_id(0)
+    out_y = tl.program_id(1) * ROWS_PER_BLOCK + tl.arange(0, ROWS_PER_BLOCK)
+    out_x = tl.arange(0, BLOCK_OUT)
+    pool_y = tl.arange(0, POOL_H)
+    pool_x = tl.arange(0, POOL_W)
+
+    if POOL_H <= 4:
+        in_y = out_y[:, None, None, None] * POOL_H + pool_y[None, None, :, None]
+        in_x = out_x[None, :, None, None] * POOL_W + pool_x[None, None, None, :]
+        mask = (out_y[:, None, None, None] < 7) & (out_x[None, :, None, None] < 7)
+    else:
+        in_y = out_y[:, None, None, None] * POOL_H + pool_y[None, :, None, None]
+        in_x = out_x[None, None, :, None] * POOL_W + pool_x[None, None, None, :]
+        mask = (out_y[:, None, None, None] < 7) & (out_x[None, None, :, None] < 7)
+
+    channel = nc_idx % in_c
+    batch = nc_idx // in_c
+    base = inp + batch * in_stride_n + channel * in_stride_c
+    values = tl.load(
+        base + in_y * in_stride_h + in_x * in_stride_w,
+        mask=mask,
+        other=0.0,
+    ).to(tl.float32)
+    if POOL_H <= 4:
+        pooled = tl.sum(tl.sum(values, axis=3), axis=2) / (POOL_H * POOL_W)
+    else:
+        pooled = tl.sum(tl.sum(values, axis=3), axis=1) / (POOL_H * POOL_W)
+    out_offsets = nc_idx * 49 + out_y[:, None] * 7 + out_x[None, :]
+    tl.store(
+        out + out_offsets,
+        pooled,
+        mask=(out_y[:, None] < 7) & (out_x[None, :] < 7),
+    )
+
+
+@libentry()
+@triton.jit
+def _adaptive_avg_pool2d_small_tiled_kernel(
     inp,
     out,
     in_c,
@@ -29,16 +82,15 @@ def _adaptive_avg_pool2d_tiled_kernel(
     in_stride_w,
     MAX_WINDOW_H: tl.constexpr,
     MAX_WINDOW_W: tl.constexpr,
-    BLOCK_H: tl.constexpr,
-    BLOCK_W: tl.constexpr,
+    BLOCK_OUT: tl.constexpr,
 ):
     nc_idx = tl.program_id(0)
     tile_idx = tl.program_id(1)
-    width_tiles = tl.cdiv(out_w, BLOCK_W)
+    width_tiles = tl.cdiv(out_w, BLOCK_OUT)
     tile_y = tile_idx // width_tiles
     tile_x = tile_idx % width_tiles
-    out_y = tile_y * BLOCK_H + tl.arange(0, BLOCK_H)
-    out_x = tile_x * BLOCK_W + tl.arange(0, BLOCK_W)
+    out_y = tile_y * BLOCK_OUT + tl.arange(0, BLOCK_OUT)
+    out_x = tile_x * BLOCK_OUT + tl.arange(0, BLOCK_OUT)
     out_mask = (out_y[:, None] < out_h) & (out_x[None, :] < out_w)
 
     in_y_start = out_y[:, None] * in_h // out_h
@@ -50,14 +102,13 @@ def _adaptive_avg_pool2d_tiled_kernel(
     channel = nc_idx % in_c
     batch = nc_idx // in_c
     base = inp + batch * in_stride_n + channel * in_stride_c
-    acc = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.float32)
-    for linear in tl.range(0, MAX_WINDOW_H * MAX_WINDOW_W):
+    acc = tl.zeros((BLOCK_OUT, BLOCK_OUT), dtype=tl.float32)
+    for linear in tl.static_range(0, MAX_WINDOW_H * MAX_WINDOW_W):
         offset_y = linear // MAX_WINDOW_W
         offset_x = linear % MAX_WINDOW_W
         in_y = in_y_start + offset_y
-        y_mask = in_y < in_y_end
         in_x = in_x_start + offset_x
-        mask = out_mask & y_mask & (in_x < in_x_end)
+        mask = out_mask & (in_y < in_y_end) & (in_x < in_x_end)
         values = tl.load(
             base + in_y * in_stride_h + in_x * in_stride_w,
             mask=mask,
@@ -66,6 +117,63 @@ def _adaptive_avg_pool2d_tiled_kernel(
         acc += values
 
     out_offsets = nc_idx * out_h * out_w + out_y[:, None] * out_w + out_x[None, :]
+    tl.store(out + out_offsets, acc / window_area, mask=out_mask)
+
+
+@libentry()
+@triton.jit
+def _adaptive_avg_pool2d_row_kernel(
+    inp,
+    out,
+    in_c,
+    in_h,
+    in_w,
+    out_h,
+    out_w,
+    in_stride_n,
+    in_stride_c,
+    in_stride_h,
+    in_stride_w,
+    MAX_WINDOW_H: tl.constexpr,
+    BLOCK_WINDOW_W: tl.constexpr,
+    BLOCK_OUT: tl.constexpr,
+):
+    width_tiles = tl.cdiv(out_w, BLOCK_OUT)
+    pid = tl.program_id(0)
+    tile_x = pid % width_tiles
+    out_y = (pid // width_tiles) % out_h
+    nc_idx = pid // (width_tiles * out_h)
+
+    out_x = tile_x * BLOCK_OUT + tl.arange(0, BLOCK_OUT)
+    out_mask = out_x < out_w
+    in_y_start = out_y * in_h // out_h
+    in_y_end = ((out_y + 1) * in_h + out_h - 1) // out_h
+    in_x_start = out_x * in_w // out_w
+    in_x_end = ((out_x + 1) * in_w + out_w - 1) // out_w
+    window_w = in_x_end - in_x_start
+    window_area = (in_y_end - in_y_start) * window_w
+
+    channel = nc_idx % in_c
+    batch = nc_idx // in_c
+    base = inp + batch * in_stride_n + channel * in_stride_c
+    window_offsets = tl.arange(0, BLOCK_WINDOW_W)
+    acc = tl.zeros((BLOCK_OUT,), dtype=tl.float32)
+    for offset_y in tl.static_range(0, MAX_WINDOW_H):
+        in_y = in_y_start + offset_y
+        in_x = in_x_start[:, None] + window_offsets[None, :]
+        mask = (
+            out_mask[:, None]
+            & (in_y < in_y_end)
+            & (window_offsets[None, :] < window_w[:, None])
+        )
+        values = tl.load(
+            base + in_y * in_stride_h + in_x * in_stride_w,
+            mask=mask,
+            other=0.0,
+        ).to(tl.float32)
+        acc += tl.sum(values, axis=1)
+
+    out_offsets = nc_idx * out_h * out_w + out_y * out_w + out_x
     tl.store(out + out_offsets, acc / window_area, mask=out_mask)
 
 
@@ -153,27 +261,77 @@ def adaptive_avg_pool2d(inp: torch.Tensor, output_size):
     num_warps = 1 if block_size <= 128 else 4
 
     with torch_device_fn.device(inp.device):
-        if max_window_area <= 4096 and out_h * out_w >= 16:
-            grid = (
-                in_n * in_c,
-                triton.cdiv(out_h, _OUTPUT_TILE) * triton.cdiv(out_w, _OUTPUT_TILE),
-            )
-            _adaptive_avg_pool2d_tiled_kernel[grid](
+        divisible_7x7 = (
+            out_h == 7
+            and out_w == 7
+            and in_h % 7 == 0
+            and in_w % 7 == 0
+            and max_window_h <= 8
+            and max_window_w <= 8
+        )
+        if divisible_7x7:
+            pool_h = in_h // 7
+            pool_w = in_w // 7
+            rows_per_block = 4 if pool_h <= 4 else 2
+            grid = (in_n * in_c, triton.cdiv(7, rows_per_block))
+            _adaptive_avg_pool2d_divisible_7x7_kernel[grid](
                 inp,
                 out,
                 in_c,
                 in_h,
                 in_w,
-                out_h,
-                out_w,
                 *inp.stride(),
-                max_window_h,
-                max_window_w,
+                pool_h,
+                pool_w,
+                rows_per_block,
                 _OUTPUT_TILE,
-                _OUTPUT_TILE,
-                num_warps=4,
-                num_stages=1,
+                num_warps=2 if pool_h <= 4 else 8,
+                num_stages=2 if pool_h <= 4 else 1,
             )
+        elif (
+            max_window_area <= 4096
+            and max_window_w <= _MAX_BLOCK_SIZE
+            and out_h * out_w >= 16
+        ):
+            if max_window_w <= 8:
+                grid = (
+                    in_n * in_c,
+                    triton.cdiv(out_h, _SMALL_OUTPUT_TILE)
+                    * triton.cdiv(out_w, _SMALL_OUTPUT_TILE),
+                )
+                _adaptive_avg_pool2d_small_tiled_kernel[grid](
+                    inp,
+                    out,
+                    in_c,
+                    in_h,
+                    in_w,
+                    out_h,
+                    out_w,
+                    *inp.stride(),
+                    max_window_h,
+                    max_window_w,
+                    _SMALL_OUTPUT_TILE,
+                    num_warps=2 if max_window_area <= 25 else 4,
+                    num_stages=1,
+                )
+            else:
+                block_window_w = triton.next_power_of_2(max_window_w)
+                grid = (in_n * in_c * out_h * triton.cdiv(out_w, _OUTPUT_TILE),)
+                _adaptive_avg_pool2d_row_kernel[grid](
+                    inp,
+                    out,
+                    in_c,
+                    in_h,
+                    in_w,
+                    out_h,
+                    out_w,
+                    *inp.stride(),
+                    max_window_h,
+                    block_window_w,
+                    _OUTPUT_TILE,
+                    num_warps=8 if block_window_w >= 64 else 4,
+                    num_stages=1,
+                )
         else:
             _adaptive_avg_pool2d_kernel[(out.numel(),)](
                 inp,

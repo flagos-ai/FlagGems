@@ -17,6 +17,7 @@ from flag_gems.ops.nanmedian import (
     nanmedian_radix_select_kernel,
     nanmedian_select_kernel,
 )
+from flag_gems.ops.topk import _get_iinfo_val
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -25,6 +26,81 @@ from .sort import sort as mthreads_sort
 logger = logging.getLogger(__name__)
 
 _SORT_BLOCK_N = 1024
+_SMALL_SORT_LIMIT = 128
+_FLAT_SINGLE_RADIX_LIMIT = 8192
+
+
+@libentry()
+@triton.jit
+def _nanmedian_small_dim_kernel(
+    inp,
+    out_values,
+    out_indices,
+    N: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    row = tl.program_id(0).to(tl.int64)
+    columns = tl.arange(0, BLOCK_N)
+    mask = columns < N
+    values = tl.load(inp + row * N + columns, mask=mask, other=0)
+
+    if inp.dtype.element_ty.is_floating():
+        high = float("inf")
+        valid = mask & (values == values)
+        valid_count = tl.sum(valid.to(tl.int32), axis=0)
+        sortable = tl.where(valid, values, high)
+    else:
+        high = _get_iinfo_val(inp.dtype.element_ty, return_max=True)
+        valid = mask
+        valid_count = N
+        sortable = tl.where(mask, values, high)
+
+    ordered = tl.sort(sortable, descending=False)
+    rank = tl.where(valid_count > 0, (valid_count - 1) // 2, 0)
+    selected = tl.sum(
+        tl.where(columns == rank, ordered, tl.zeros_like(ordered)), axis=0
+    )
+    first_index = tl.argmax((valid & (values == selected)).to(tl.int32), axis=0)
+
+    if inp.dtype.element_ty.is_floating():
+        all_nan = valid_count == 0
+        selected = tl.where(all_nan, float("nan"), selected)
+        first_index = tl.where(all_nan, 0, first_index)
+
+    tl.store(out_values + row, selected)
+    tl.store(out_indices + row, first_index.to(tl.int64))
+
+
+@libentry()
+@triton.jit
+def _nanmedian_small_flat_kernel(
+    inp,
+    out,
+    N: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    columns = tl.arange(0, BLOCK_N)
+    mask = columns < N
+    values = tl.load(inp + columns, mask=mask, other=0)
+
+    if inp.dtype.element_ty.is_floating():
+        high = float("inf")
+        valid = mask & (values == values)
+        valid_count = tl.sum(valid.to(tl.int32), axis=0)
+        sortable = tl.where(valid, values, high)
+    else:
+        high = _get_iinfo_val(inp.dtype.element_ty, return_max=True)
+        valid_count = N
+        sortable = tl.where(mask, values, high)
+
+    ordered = tl.sort(sortable, descending=False)
+    rank = tl.where(valid_count > 0, (valid_count - 1) // 2, 0)
+    selected = tl.sum(
+        tl.where(columns == rank, ordered, tl.zeros_like(ordered)), axis=0
+    )
+    if inp.dtype.element_ty.is_floating():
+        selected = tl.where(valid_count == 0, float("nan"), selected)
+    tl.store(out, selected)
 
 
 @libentry()
@@ -195,7 +271,19 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
         if indices_contiguous
         else torch.empty((M,), dtype=indices.dtype, device=indices.device)
     )
-    if N <= MAX_BLOCK_N and inp.dtype is not torch.float64:
+    if N <= _SMALL_SORT_LIMIT and inp.dtype is not torch.float64:
+        block_n = triton.next_power_of_2(N)
+        with torch_device_fn.device(inp.device):
+            _nanmedian_small_dim_kernel[(M,)](
+                rows,
+                flat_values,
+                flat_indices,
+                N,
+                block_n,
+                num_warps=4 if block_n <= 64 else 8,
+                num_stages=1,
+            )
+    elif N <= MAX_BLOCK_N and inp.dtype is not torch.float64:
         block_n = triton.next_power_of_2(N)
         with torch_device_fn.device(inp.device):
             nanmedian_select_kernel[(M,)](
@@ -252,14 +340,53 @@ def _nanmedian_flat_impl(inp, out=None):
             return out
         return result
 
+    flat = inp.reshape(-1)
+    N = flat.numel()
+    if N <= _SMALL_SORT_LIMIT and inp.dtype is not torch.float64:
+        result = (
+            torch.empty((), dtype=inp.dtype, device=inp.device) if out is None else out
+        )
+        block_n = triton.next_power_of_2(N)
+        with torch_device_fn.device(inp.device):
+            _nanmedian_small_flat_kernel[(1,)](
+                flat,
+                result,
+                N,
+                block_n,
+                num_warps=4 if block_n <= 64 else 8,
+                num_stages=1,
+            )
+        return result
+
     if (
-        inp.numel() > MAX_BLOCK_N
-        and inp.numel() <= INT32_MAX
+        N > MAX_BLOCK_N
+        and N <= _FLAT_SINGLE_RADIX_LIMIT
         and inp.dtype in RADIX_SELECT_DTYPES
     ):
+        values = (
+            torch.empty((), dtype=inp.dtype, device=inp.device) if out is None else out
+        )
+        indices = torch.empty((), dtype=torch.long, device=inp.device)
+        block_n = 1024 if N > 1024 else triton.next_power_of_2(N)
+        with torch_device_fn.device(inp.device):
+            nanmedian_radix_select_kernel[(1,)](
+                flat,
+                values,
+                indices,
+                1,
+                N,
+                block_n,
+                4,
+                False,
+                True,
+                num_warps=8,
+                num_stages=1,
+            )
+        return values
+
+    if N > MAX_BLOCK_N and N <= INT32_MAX and inp.dtype in RADIX_SELECT_DTYPES:
         return _nanmedian_cuda_flat_radix_select(inp, out=out)
 
-    flat = inp.reshape(-1)
     if out is None:
         return _nanmedian_dim_impl(flat, 0, False).values
 
