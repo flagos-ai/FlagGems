@@ -20,12 +20,13 @@ repos:
   - id: end-of-file-fixer
   - id: trailing-whitespace
   - id: flake8
-    args: ["--ignore=F405,E731,W503,E203,E704", --max-line-length=120]
+    args: ["--ignore=F405,E731,W503,E203,E701,E704", --max-line-length=120]
     # F405 : Name may be undefined, or defined from star imports: module
     # E731 : Do not assign a lambda expression, use a def
     # W503 : Line break before binary operator
     # E203 : Whitespace before ':'
-    # E704 : multiple statements on one line.
+    # E701 : Multiple statements on one line.
+    # E704 : Multiple statements on one line.
 
 - repo: https://github.com/pre-commit/mirrors-clang-format
   rev: v13.0.0
