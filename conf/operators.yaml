@@ -8775,10 +8775,10 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
-- id: meshgrid
-  description: "Creates coordinate grids from 1D tensors."
-  for: "aten::meshgrid"
-  labels: []
-  kind: "pointwise"
-  stages:
-    - beta: 5.0.0
+  - id: meshgrid
+    description: "Creates coordinate grids from 1D tensors."
+    for: "aten::meshgrid"
+    labels: []
+    kind: "pointwise"
+    stages:
+      - beta: 5.0.0
