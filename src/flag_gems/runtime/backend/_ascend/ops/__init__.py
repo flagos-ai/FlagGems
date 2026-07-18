@@ -51,6 +51,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .multinomial import multinomial
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
@@ -157,6 +158,10 @@ __all__ = [
     "mm",
     "mm_out",
     "multinomial",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "normed_cumsum",
     "ones",
     "ones_like",

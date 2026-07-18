@@ -6,6 +6,7 @@ import torch
 
 import flag_gems
 
+from . import conftest as cfg
 from .accuracy_utils import (
     FLOAT_DTYPES,
     UPSAMPLE_SHAPES_1D,
@@ -144,6 +145,10 @@ def upsample_linear1d_backward_call(grad, input_size, align_corners):
 
 
 @pytest.mark.upsample_linear1d_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads" and not cfg.TO_CPU,
+    reason="MUSA native backward differs from the CPU reference; run with --ref cpu",
+)
 @pytest.mark.parametrize(
     "shape",
     [
@@ -228,6 +233,10 @@ def test_upsample_linear1d_backward(
 @pytest.mark.skipif(
     flag_gems.vendor_name != "mthreads",
     reason="MThreads explicit scale-factor regression",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads" and not cfg.TO_CPU,
+    reason="MUSA native backward differs from the CPU reference; run with --ref cpu",
 )
 @pytest.mark.parametrize("layout", ["contiguous", "non_contiguous"])
 def test_upsample_linear1d_backward_explicit_scale(layout):

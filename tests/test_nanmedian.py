@@ -258,11 +258,14 @@ def test_nanmedian_dim_values_non_contiguous_out():
     _assert_nanmedian_indices_valid(
         inp, out_values, out_indices, 1, False, torch.float32
     )
+    # Interleaved slots outside the out views must retain their sentinel values.
     utils.gems_assert_equal(
-        values_storage[1::2], torch.full((4,), -1.0, dtype=torch.float32)
+        values_storage[1::2],
+        utils.to_reference(torch.full_like(values_storage[1::2], -1.0)),
     )
     utils.gems_assert_equal(
-        indices_storage[1::2], torch.full((4,), -1, dtype=torch.long)
+        indices_storage[1::2],
+        utils.to_reference(torch.full_like(indices_storage[1::2], -1)),
     )
 
 
