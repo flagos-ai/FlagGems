@@ -42,7 +42,7 @@ jobs:
       api: ${{ steps.build-matrix.outputs.api }}
       ops: ${{ steps.build-matrix.outputs.ops }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - id: get-date
         run: echo "DATE=$(date -u '+%Y-%m-%d')" >> "$GITHUB_OUTPUT"
@@ -113,7 +113,7 @@ jobs:
       OUTPUT_DIR: ${{ matrix.output_base_dir }}/${{ needs.prepare.outputs.date }}/logs_results_${{ needs.prepare.outputs.date }}
     steps:
       - id: checkout-attempt-1
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         continue-on-error: true
       - id: sleep-1
         if: steps.checkout-attempt-1.outcome == 'failure'
@@ -121,7 +121,7 @@ jobs:
 
       - id: checkout-attempt-2
         if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         continue-on-error: true
       - id: sleep-2
         if: steps.checkout-attempt-2.outcome == 'failure'
@@ -129,7 +129,7 @@ jobs:
 
       - id: checkout-attempt-3
         if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Fix git safe directory
         run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
@@ -304,7 +304,7 @@ jobs:
       OUTPUT_DIR: ${{ matrix.output_base_dir }}/${{ needs.prepare.outputs.date }}/logs_results_${{ needs.prepare.outputs.date }}
     steps:
       - id: checkout-attempt-1
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         continue-on-error: true
       - id: sleep-1
         if: steps.checkout-attempt-1.outcome == 'failure'
@@ -312,7 +312,7 @@ jobs:
 
       - id: checkout-attempt-2
         if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         continue-on-error: true
       - id: sleep-2
         if: steps.checkout-attempt-2.outcome == 'failure'
@@ -320,7 +320,7 @@ jobs:
 
       - id: checkout-attempt-3
         if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Fix git safe directory
         run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
