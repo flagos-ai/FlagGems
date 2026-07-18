@@ -261,6 +261,41 @@ def test_index_1d_special_case(dtype):
 
 
 @pytest.mark.index
+@pytest.mark.parametrize(
+    "input_shape, indices_shape",
+    [
+        ((32,), ((8,),)),
+        ((32, 32), ((8,), (8,))),
+        ((32, 32), ((2, 8), (8,))),
+        ((64, 64, 64), ((4,), (4,), (4,))),
+    ],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_index_negative_indices(input_shape, indices_shape, dtype):
+    """Test index with negative indices, which PyTorch wraps to index + dim_size."""
+    inp = torch.randn(
+        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+    indices = []
+    for i, shape in enumerate(indices_shape):
+        if isinstance(shape, int):
+            shape = (shape,)
+        # mix valid negative and positive indices
+        neg = np.random.choice(np.arange(-input_shape[i], 0), size=shape, replace=True)
+        pos = np.random.choice(np.arange(input_shape[i]), size=shape, replace=True)
+        mask = np.random.rand(*shape) < 0.5
+        index = np.where(mask, neg, pos)
+        indices.append(torch.tensor(index, device=flag_gems.device))
+
+    ref_inp = utils.to_reference(inp)
+    ref_indices = [utils.to_reference(index) for index in indices]
+    ref_out = torch.ops.aten.index(ref_inp, ref_indices)
+    out = flag_gems.index(inp, indices)
+
+    utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

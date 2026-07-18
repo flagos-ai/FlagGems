@@ -129,6 +129,9 @@ def generate_index_kernel(
             code.writeline(
                 f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
             )
+            code.writeline(
+                f"cur_index{i} = tl.where(cur_index{i} < 0, cur_index{i} + input_shape{i}, cur_index{i})"
+            )
         code.newline()
         index_mask = [
             f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
