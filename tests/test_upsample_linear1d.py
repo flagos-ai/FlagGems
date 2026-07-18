@@ -222,3 +222,41 @@ def test_upsample_linear1d_backward(
         reduce_dim = (out_w + input_w - 1) // input_w
 
     gems_assert_close(res_out, ref_out, dtype, atol=atol, reduce_dim=reduce_dim)
+
+
+@pytest.mark.upsample_linear1d_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "mthreads",
+    reason="MThreads explicit scale-factor regression",
+)
+@pytest.mark.parametrize("layout", ["contiguous", "non_contiguous"])
+def test_upsample_linear1d_backward_explicit_scale(layout):
+    input_size = [1, 1, 5]
+    output_size = [7]
+    grad = torch.randn(
+        (1, 1, output_size[0] * 2),
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+    if layout == "non_contiguous":
+        grad = grad[..., ::2]
+    else:
+        grad = grad[..., : output_size[0]].contiguous()
+
+    ref_out = torch.ops.aten.upsample_linear1d_backward(
+        to_reference(grad),
+        output_size,
+        input_size,
+        False,
+        1.5,
+    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.upsample_linear1d_backward(
+            grad,
+            output_size,
+            input_size,
+            False,
+            1.5,
+        )
+
+    gems_assert_close(res_out, ref_out, torch.float32, atol=1e-4)

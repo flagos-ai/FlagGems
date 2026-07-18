@@ -234,6 +234,38 @@ def test_nanmedian_dim_values_large_int(dtype):
     _assert_nanmedian_indices_valid(inp, out_values, out_indices, 1, False, dtype)
 
 
+@pytest.mark.nanmedian_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "mthreads",
+    reason="MThreads non-contiguous nanmedian out regression",
+)
+def test_nanmedian_dim_values_non_contiguous_out():
+    inp = _make_input((4, 1031), torch.float32)
+    ref = torch.nanmedian(utils.to_reference(inp), dim=1)
+    values_storage = torch.full(
+        (8,), -1.0, dtype=torch.float32, device=flag_gems.device
+    )
+    indices_storage = torch.full((8,), -1, dtype=torch.long, device=flag_gems.device)
+    out_values = values_storage[::2]
+    out_indices = indices_storage[::2]
+
+    with flag_gems.use_gems():
+        res = torch.nanmedian(inp, dim=1, out=(out_values, out_indices))
+
+    assert res.values is out_values
+    assert res.indices is out_indices
+    _assert_nanmedian_values(out_values, ref.values, torch.float32)
+    _assert_nanmedian_indices_valid(
+        inp, out_values, out_indices, 1, False, torch.float32
+    )
+    utils.gems_assert_equal(
+        values_storage[1::2], torch.full((4,), -1.0, dtype=torch.float32)
+    )
+    utils.gems_assert_equal(
+        indices_storage[1::2], torch.full((4,), -1, dtype=torch.long)
+    )
+
+
 @pytest.mark.nanmedian
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.uint8])
 def test_nanmedian_empty(dtype):

@@ -1,5 +1,6 @@
 from torch_musa import current_device, get_device_capability
 
+from .adaptive_avg_pool2d import adaptive_avg_pool2d
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .any import any, any_dim, any_dims
@@ -44,14 +45,17 @@ from .repeat_interleave import (
 )
 from .resolve_conj import resolve_conj
 from .scaled_grouped_mm import scaled_grouped_mm
+from .scatter import scatter, scatter_
 from .sort import sort, sort_stable
 from .tile import tile
 from .unique import _unique2
+from .upsample_linear1d_backward import upsample_linear1d_backward
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "adaptive_avg_pool2d",
     "amax",
     "all",
     "all_dim",
@@ -114,8 +118,11 @@ __all__ = [
     "sort",
     "sort_stable",
     "scaled_grouped_mm",
+    "scatter",
+    "scatter_",
     "tile",
     "_unique2",
+    "upsample_linear1d_backward",
     "w8a8_block_fp8_matmul",
     "zero_",
     "zeros",

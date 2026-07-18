@@ -6,11 +6,15 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.nanmedian import (
+    INT32_MAX,
     MAX_BLOCK_N,
+    RADIX_SELECT_DTYPES,
     NanMedian,
     _check_supported_dtype,
     _empty_flat_value,
+    _nanmedian_cuda_flat_radix_select,
     _normalize_dim,
+    nanmedian_radix_select_kernel,
     nanmedian_select_kernel,
 )
 from flag_gems.runtime import torch_device_fn
@@ -179,8 +183,18 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
         return NanMedian(values=values, indices=indices)
 
     rows = torch.movedim(inp, dim, -1).contiguous().reshape(M, N)
-    flat_values = values.reshape(M)
-    flat_indices = indices.reshape(M)
+    values_contiguous = values.is_contiguous()
+    indices_contiguous = indices.is_contiguous()
+    flat_values = (
+        values.reshape(M)
+        if values_contiguous
+        else torch.empty((M,), dtype=values.dtype, device=values.device)
+    )
+    flat_indices = (
+        indices.reshape(M)
+        if indices_contiguous
+        else torch.empty((M,), dtype=indices.dtype, device=indices.device)
+    )
     if N <= MAX_BLOCK_N and inp.dtype is not torch.float64:
         block_n = triton.next_power_of_2(N)
         with torch_device_fn.device(inp.device):
@@ -195,8 +209,34 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
                 num_warps=4,
                 num_stages=1,
             )
+    elif inp.dtype in RADIX_SELECT_DTYPES and N <= INT32_MAX:
+        if N <= 1024:
+            block_n = triton.next_power_of_2(N)
+        elif N <= 8192:
+            block_n = 1024
+        else:
+            block_n = 4096
+        with torch_device_fn.device(inp.device):
+            nanmedian_radix_select_kernel[(M,)](
+                rows,
+                flat_values,
+                flat_indices,
+                M,
+                N,
+                block_n,
+                4,
+                False,
+                True,
+                num_warps=8,
+                num_stages=1,
+            )
     else:
         _large_nanmedian(rows, flat_values, flat_indices)
+
+    if not values_contiguous:
+        values.copy_(flat_values.reshape(values.shape))
+    if not indices_contiguous:
+        indices.copy_(flat_indices.reshape(indices.shape))
 
     if out is None and not keepdim:
         values = torch.squeeze(values, dim)
@@ -211,6 +251,13 @@ def _nanmedian_flat_impl(inp, out=None):
             out.copy_(result)
             return out
         return result
+
+    if (
+        inp.numel() > MAX_BLOCK_N
+        and inp.numel() <= INT32_MAX
+        and inp.dtype in RADIX_SELECT_DTYPES
+    ):
+        return _nanmedian_cuda_flat_radix_select(inp, out=out)
 
     flat = inp.reshape(-1)
     if out is None:
