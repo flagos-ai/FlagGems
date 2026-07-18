@@ -4117,6 +4117,34 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: index_fill
+    description: |
+      Fills elements of the input tensor with a scalar or 0-dimensional tensor value
+      at positions selected by `index` along the given `dim`.
+    for:
+      - index_fill.int_Scalar
+      - index_fill.int_Tensor
+      - index_fill.int_Scalar_out
+      - index_fill.int_Tensor_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.5'
+  - id: index_fill_
+    description: The in-place version of `index_fill()`.
+    for:
+      - index_fill_.int_Scalar
+      - index_fill_.int_Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.5'
   - id: index_put
     description: |
       Puts values from the tensor `values` into the tensor `input` using the indices specified

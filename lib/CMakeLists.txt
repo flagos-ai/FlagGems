@@ -29,7 +29,8 @@ add_library(operators
             copy.cpp
             accuracy_utils.cpp
             fp8_matmul.cpp
-            fp8_matmul_direct.cpp)
+            fp8_matmul_direct.cpp
+            index_fill.cpp)
 
 if (TRITON_GE_3P5)
   target_compile_definitions(operators PRIVATE TRITON_GE_3P5)
