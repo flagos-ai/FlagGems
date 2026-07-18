@@ -59,7 +59,7 @@ classifiers = [
 
 dependencies = [
     "packaging==26.0",
-    "PyYAML==6.0.1",
+    "PyYAML==6.0.3",
     "sqlalchemy==2.0.48",
     "numpy==1.26.4",
 ]
