@@ -27,6 +27,7 @@ container_volumes:
 # Container options for this backends
 container_options: >-
   --pid=host
+  --ipc=host
   --privileged
   --device=/dev/davinci0
   --device=/dev/davinci1
