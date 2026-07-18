@@ -8016,6 +8016,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: sparse_semi_structured_addmm
+    description: |
+      Performs a matrix multiplication of the sparse semi-structured
+      (2:4 sparsity) matrices mat1 and mat2 with input added.
+    for:
+      - _sparse_semi_structured_addmm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: sparse_semi_structured_mm
     description: >
       Performs a sparse semi-structured matrix multiplication of a dense matrix
