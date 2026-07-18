@@ -15,7 +15,7 @@ config_ = CodeGenConfig(
     True,
     prefer_1d_tile=True,
     buffer_size_limit=4096,
-    isCloseVectorization=True,
+    isCloseVectorization=False,
     kunlunAutoGrid=True,
     unroll_num=8,
 )

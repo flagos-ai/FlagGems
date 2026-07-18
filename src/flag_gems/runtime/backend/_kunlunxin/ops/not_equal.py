@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 # `harness/perf_ir_3/ir-not_equal-dev6.log`). Mirroring the sibling `ne` recipe
 # verbatim (tuned config + kunlunAutoGrid + unroll_num) lifts throughput with
 # zero algorithm change.
+#
+# `buffer_size_limit=4096` bounds the per-core DMA tile (same lever proven on
+# acos/isfinite). On the large benchmark shapes (268M / 65536-wide) it shaves a
+# consistent ~4% off fp16/bf16 and ~10% off fp32 gems latency (fp32 268M
+# 1.853->1.661ms, fp32 65536-wide 4.474->4.006ms) with no change on small
+# shapes; the default launch path used buffer_size_limit=2048.
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -27,6 +33,7 @@ config_ = CodeGenConfig(
     isCloseMemoryAsync=False,
     kunlunAutoGrid=True,
     unroll_num=8,
+    buffer_size_limit=4096,
 )
 
 

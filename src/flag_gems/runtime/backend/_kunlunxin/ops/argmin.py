@@ -40,8 +40,8 @@ torch_dtype_to_tl_dtype_and_max_value = {
 # buffer_size Limit"). Such N is handled by the two-stage reduction below.
 MAX_TILE_N = 8192
 # Chunk width / row-tile for the two-stage large-N path (measured fastest on XPU).
-STAGE_BLOCK_N = 4096
-STAGE_BLOCK_M = 16
+STAGE_BLOCK_N = 2048
+STAGE_BLOCK_M = 32
 # For a contiguous inner reduce (K == 1), route N at or above this width to the
 # constexpr two-stage path even when it would fit a single tile: the runtime-N/K
 # single-tile kernel degrades to discrete access and is far slower here. Below

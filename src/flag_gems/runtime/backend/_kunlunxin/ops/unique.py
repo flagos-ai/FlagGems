@@ -1559,9 +1559,11 @@ def _unique2(
         )
         return (
             data_out,
-            inverse_indices
-            if inverse_indices is None
-            else inverse_indices.view_as(in0),
+            (
+                inverse_indices
+                if inverse_indices is None
+                else inverse_indices.view_as(in0)
+            ),
             counts,
         )
 

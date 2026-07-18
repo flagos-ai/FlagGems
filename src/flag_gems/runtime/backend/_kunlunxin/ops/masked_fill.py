@@ -31,8 +31,15 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 # 1.97-4.0GB and the benchmark stalls). It also paid an extra full-tensor
 # expand_mask.to(torch.int) copy (4x bytes of the bool mask). Route through the
 # tuned pointwise_dynamic path instead (bounded tiles + autoGrid + unroll8 +
-# libentry caching; vec stays OPEN because it is memory-bound, same recipe as
-# neg/view_copy), and feed the bool mask straight into tl.where.
+# libentry caching), and feed the bool mask straight into tl.where.
+#
+# isCloseVectorization=True (NOT the neg/view_copy OPEN recipe): unlike a pure
+# unary copy, tl.where mixes an i1/i8 mask with f16/f32 data + a scalar. With
+# vectorization OPEN the compiler cannot cleanly vectorize the mixed-type
+# where and the large-shape path collapses to ~195 GB/s. Closing vectorization
+# lets it emit efficient block DMA -> measured 1.8-2.1x on all large shapes
+# ([4096,4096] fp16 0.415->0.232ms, [10000,65536] 15.6->8.0ms, bf16 256M
+# 7.02->3.40ms) with bit-identical output and no regression on small shapes.
 _config = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -40,7 +47,7 @@ _config = CodeGenConfig(
     True,
     prefer_1d_tile=True,
     buffer_size_limit=4096,
-    isCloseVectorization=False,
+    isCloseVectorization=True,
     kunlunAutoGrid=True,
     unroll_num=8,
 )

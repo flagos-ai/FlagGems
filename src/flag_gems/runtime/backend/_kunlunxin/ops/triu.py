@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-import builtins
 import logging
 
 import torch
@@ -38,6 +36,15 @@ logger = logging.getLogger(__name__)
 # A pure masked scalar store (`tl.store(ptr, 0.0, mask=...)`) is MISCOMPILED here
 # (it ignores the per-lane predicate and zeros the whole block), so we always use
 # the load + `tl.where` + store form, which is verified correct.
+#
+# The flat kernel's cost is dominated by the per-element integer div/mod used to
+# recover (row, col) from the flat offset (~112 GB/s, ~4x below pure bandwidth).
+# For large N we instead launch one program PER ROW (grid = batch*M): `row` is
+# recovered once per program via `pid % M` (one mod per program, not per element)
+# and each row streams its N columns as contiguous blocks. Isolation on this XPU:
+# [4096,4096] 0.72ms -> 0.52ms, [10000,65536] 27.8ms -> 15.2ms. But for small N
+# the row grid is launch-bound (e.g. [100,65536,100] N=100 blows up to 391ms), so
+# we gate on N and keep the flat kernel for small last dims.
 
 
 @triton.jit
@@ -95,9 +102,39 @@ def _check_input(A):
     assert A.dim() >= 2, "Input tensor must have at least 2 dimensions"
 
 
+@triton.jit
+def _triu_row_kernel(
+    in_ptr,
+    out_ptr,
+    M,
+    N,
+    diag,
+    BLOCK_N: tl.constexpr,
+):
+    # One program per row (grid = batch*M). `row = pid % M` is a single mod PER
+    # PROGRAM, replacing the flat kernel's per-element div/mod. Each row streams
+    # its N columns as contiguous BLOCK_N chunks (block DMA), keeping the entries
+    # with col >= row + diag and zeroing the rest.
+    pid = tl.program_id(0)
+    row = pid % M
+    base = pid * N
+    for c0 in range(0, N, BLOCK_N):
+        cols = c0 + tl.arange(0, BLOCK_N)
+        m = cols < N
+        keep = cols >= row + diag
+        x = tl.load(in_ptr + base + cols, mask=m, other=0.0)
+        tl.store(out_ptr + base + cols, tl.where(keep, x, 0.0), mask=m)
+
+
 # Large flat tiles hide the div/where compute better than small ones on this XPU
 # (measured: BLOCK 1024 -> 8192 roughly halves latency on [4096,4096]).
 _BLOCK_SIZE = 8192
+
+# Route to the per-row kernel when the last dim is at least this wide. Below it
+# the flat kernel wins (row grid becomes launch-bound); at/above it the per-row
+# kernel wins by dropping the per-element div/mod. [1024,1024] flat wins,
+# [4096,4096] row wins, so the crossover sits between them.
+_ROW_N_THRESHOLD = 2048
 
 
 def _launch_flat(input_c, out, diagonal, total=None):
@@ -105,6 +142,16 @@ def _launch_flat(input_c, out, diagonal, total=None):
     MN = M * N
     if total is None:
         total = input_c.numel()
+    if N >= _ROW_N_THRESHOLD:
+        # Large N: one program per row (avoids per-element div/mod). `total` may
+        # be a top-row prefix (band_hi * N) -> that many rows; row = pid % M.
+        num_rows = total // N
+        block_n = min(triton.next_power_of_2(N), _BLOCK_SIZE)
+        with torch_device_fn.device(input_c.device):
+            _triu_row_kernel[(num_rows,)](
+                input_c, out, M, N, diagonal, block_n, num_warps=8
+            )
+        return
     grid = (triton.cdiv(total, _BLOCK_SIZE),)
     with torch_device_fn.device(input_c.device):
         if total <= MN:

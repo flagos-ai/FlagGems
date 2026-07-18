@@ -72,27 +72,40 @@ def fused_add_rmsnorm_kernel(
     N,  # number of columns in X
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,  # whether N is not a multiple of BLOCK_SIZE
 ):
     pid = ext.program_id(0)
     X += pid * x_stride_r
     R += pid * r_stride_r
 
-    mask = tl.arange(0, BLOCK_SIZE) < N
+    # NOTE (kunlunxin/XPU): when N == BLOCK_SIZE (power-of-2 normalized dim, e.g.
+    # N=1024/4096) the `cols < N` mask is trivially all-true, but keeping the
+    # masked tl.load/tl.store still forces the XPU slow masked-memory path
+    # (~1.06x fp32 but up to ~2x fp16/bf16 slower, byte-identical output). Take an
+    # unmasked fast path when N is divisible by BLOCK_SIZE, mirroring rms_norm's
+    # tile kernel. Same numeric result (all lanes valid), pure memory-path opt.
     cols = tl.arange(0, BLOCK_SIZE)
-    x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-    r = tl.load(R + cols * r_stride_c, mask, other=0.0).to(tl.float32)
-
-    x += r
-    # write back to residual
-    tl.store(R + cols * r_stride_c, x, mask=mask)
-
-    var = tl.sum(x * x / N, axis=0)
-    rrms = 1 / tl.sqrt(var + eps)
-
-    w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
-    y = (x * rrms).to(X.dtype.element_ty) * w
-    # write back to input
-    tl.store(X + cols * x_stride_c, y, mask=mask)
+    if NEED_MASK:
+        mask = cols < N
+        x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+        r = tl.load(R + cols * r_stride_c, mask, other=0.0).to(tl.float32)
+        x += r
+        tl.store(R + cols * r_stride_c, x, mask=mask)
+        var = tl.sum(x * x / N, axis=0)
+        rrms = 1 / tl.sqrt(var + eps)
+        w = tl.load(W + cols, mask=mask, other=0.0)
+        y = (x * rrms).to(X.dtype.element_ty) * w
+        tl.store(X + cols * x_stride_c, y, mask=mask)
+    else:
+        x = tl.load(X + cols * x_stride_c).to(tl.float32)
+        r = tl.load(R + cols * r_stride_c).to(tl.float32)
+        x += r
+        tl.store(R + cols * r_stride_c, x.to(R.dtype.element_ty))
+        var = tl.sum(x * x / N, axis=0)
+        rrms = 1 / tl.sqrt(var + eps)
+        w = tl.load(W + cols)
+        y = (x * rrms).to(X.dtype.element_ty) * w
+        tl.store(X + cols * x_stride_c, y)
 
 
 @libentry()
@@ -108,40 +121,52 @@ def fused_add_rmsnorm_kernel_tile(
     N,  # number of columns in X
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,  # whether N is not a multiple of BLOCK_SIZE
 ):
     pid = tl.program_id(0)
     X += pid * x_stride_r
     R += pid * r_stride_r
 
-    # var = tl.sum(x * x / N, axis=0)
-    # rrms = 1 / tl.sqrt(var + eps)
-
+    # Same masked-vs-unmasked XPU story as rms_norm's tile kernel: when N is a
+    # multiple of BLOCK_SIZE (e.g. N=65536, BLOCK_SIZE=8192) every `cols < N` mask
+    # is all-true, but the masked memory path is ~1.6x (fp16) / ~2x (bf16) slower
+    # with byte-identical output. Take an unmasked fast path when divisible.
     _var_base = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
     for off in range(0, N, BLOCK_SIZE):
         cols = off + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        r = tl.load(R + cols, mask, other=0.0).to(tl.float32)
+        if NEED_MASK:
+            mask = cols < N
+            x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+            r = tl.load(R + cols, mask, other=0.0).to(tl.float32)
+        else:
+            x = tl.load(X + cols).to(tl.float32)
+            r = tl.load(R + cols).to(tl.float32)
         x += r
         _var_base += x * x / N
     var = tl.sum(_var_base)
     rrms = 1 / tl.sqrt(var + eps)
 
-    # w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
-    # y = (x * rrms).to(Y.dtype.element_ty) * w
-    # tl.store(Y + cols * y_stride_c, y, mask=mask)
-
     for off in range(0, N, BLOCK_SIZE):
         cols = off + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        r = tl.load(R + cols, mask, other=0.0).to(tl.float32)
-        x += r
-        w = tl.load(W + cols, mask, other=0.0)
-        y = (x * rrms).to(X.dtype.element_ty) * w
-        # write back to residual and input
-        tl.store(R + cols * r_stride_c, x, mask=mask)
-        tl.store(X + cols * x_stride_c, y, mask=mask)
+        if NEED_MASK:
+            mask = cols < N
+            x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+            r = tl.load(R + cols, mask, other=0.0).to(tl.float32)
+            x += r
+            w = tl.load(W + cols, mask, other=0.0)
+            y = (x * rrms).to(X.dtype.element_ty) * w
+            # write back to residual and input
+            tl.store(R + cols * r_stride_c, x, mask=mask)
+            tl.store(X + cols * x_stride_c, y, mask=mask)
+        else:
+            x = tl.load(X + cols).to(tl.float32)
+            r = tl.load(R + cols).to(tl.float32)
+            x += r
+            w = tl.load(W + cols)
+            y = (x * rrms).to(X.dtype.element_ty) * w
+            # write back to residual and input
+            tl.store(R + cols * r_stride_c, x.to(R.dtype.element_ty))
+            tl.store(X + cols * x_stride_c, y)
 
 
 @libentry()
@@ -205,8 +230,9 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
 
     with torch_device_fn.device(x.device):
         if N > 64 * 128:
+            need_mask = (N % BLOCK_SIZE) != 0
             fused_add_rmsnorm_kernel_tile[M,](
-                x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
+                x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE, need_mask
             )
         elif N <= MULTIROW_N and M >= MULTIROW_M:
             # Small N + many rows: the per-row kernel is launch-bound, so batch
@@ -230,7 +256,8 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
                 isCloseVectorization=True,
             )
         else:
+            need_mask = (N % BLOCK_SIZE) != 0
             fused_add_rmsnorm_kernel[M,](
-                x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
+                x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE, need_mask
             )
     return x, residual

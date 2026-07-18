@@ -43,6 +43,21 @@ vector_size = 16
 TILE_BUDGET = 64 * 512
 
 
+# Large flat torch.all(inp) reductions reshape to a [M, K] grid and reduce via the
+# wider all_kernel_dim (axis=1) path, which is ~1.75x the flat all_kernel_1 at 1G.
+# The reshape wins only above ~8M elements (below that the extra launch dominates).
+_GLOBAL_2D_MIN = 1 << 23
+
+
+def _pick_2d_cols(n):
+    # Largest power-of-2 column width in [8192, 65536] that divides n, so the flat
+    # buffer can be view()'d as a dense [n // K, K] grid with no copy. 0 = no clean fit.
+    for K in (65536, 32768, 16384, 8192):
+        if n % K == 0:
+            return K
+    return 0
+
+
 def _heur_n_raw(N):
     # For N <= 8192 keep the historical cap of 512 (square / small-N shapes are
     # already near the reduce-bandwidth ceiling with BLOCK_M=64, BLOCK_N=512).
@@ -153,6 +168,26 @@ def all_kernel_dim(
 def all(inp):
     logger.debug("GEMS_KUNLUNXIN ALL")
     n_elements = inp.numel()
+
+    # Fast path for large flat reductions. The 1D all_kernel_1 (flat BLOCK_SIZE tile +
+    # axis=0 reduce) tops out ~115-230 GB/s on XPU. Viewing the contiguous buffer as a
+    # [M, K] grid and reducing along axis=1 via all_kernel_dim coalesces far better
+    # (measured ~1.75x at 1G, crossover ~8M elements). Falls back to the flat path when
+    # the buffer is small, non-contiguous, or has no clean power-of-2 column width.
+    if n_elements >= _GLOBAL_2D_MIN and inp.is_contiguous():
+        K = _pick_2d_cols(n_elements)
+        if K:
+            M = n_elements // K
+            inp2d = inp.view(M, K)
+            mid = torch.empty((M,), dtype=torch.bool, device=inp.device)
+            out = torch.empty([], dtype=torch.bool, device=inp.device)
+            block_mid = triton.next_power_of_2(M)
+            grid = lambda meta: (max(triton.cdiv(M, meta["BLOCK_M"]), 1),)
+            with torch_device_fn.device(inp.device):
+                all_kernel_dim[grid](inp2d, mid, M, K, buffer_size_limit=2048)
+                all_kernel_2[(1, 1, 1)](mid, out, M, block_mid, buffer_size_limit=2048)
+            return out
+
     block_size = get_block_size_1d(n_elements, inp.element_size())
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
@@ -226,7 +261,11 @@ def all_dims(inp, dim=None, keepdim=False):
         all_kernel_dim[grid](inp, out, M, N, buffer_size_limit=2048)
 
     if not keepdim:
-        for d in sorted(dim):
+        # Squeeze reduced axes from highest to lowest. Removing a low axis first
+        # shifts the positions of the remaining (still size-1) reduced axes, so a
+        # later `squeeze(dim=d)` would target the wrong axis and silently leave a
+        # leading size-1 dim (e.g. dim=[1,0] on (7,4,11,1) gave [1,11,1] vs [11,1]).
+        for d in sorted(dim, reverse=True):
             if out.ndim > 0:
                 out = out.squeeze(dim=d)
     return out

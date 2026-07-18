@@ -73,3 +73,12 @@ def addcmul_out(inp, tensor1, tensor2, *, value=1.0, out):
         out.resize_(broadcast_shape)
     addcmul_forward(inp, tensor1, tensor2, value, out0=out)
     return out
+
+
+def addcmul_(inp, tensor1, tensor2, *, value=1.0):
+    # In-place variant: reuse the same tuned kernel writing back into inp.
+    # Without this override addcmul_ falls back to the generic untuned kernel
+    # (tile<256>, no unroll) -> ~0.001-0.002x torch on large shapes.
+    logger.debug("GEMS_KUNLUNXIN ADDCMUL_")
+    addcmul_forward(inp, tensor1, tensor2, value, out0=inp)
+    return inp

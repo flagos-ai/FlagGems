@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-import builtins
 import logging
 
 import torch
@@ -155,31 +153,63 @@ def log_softmax_kernel_multirow(
 
 # ------------------------  backward -------------------------------
 # log_softmax backward:  scale = sum(out_grad over N); in_grad = out_grad - exp(out)*scale
-# per-row program (grid=(M,)) + bounded 1D TILE_N (heuristic "softmax_inner").
-# A 2D [TILE_M, TILE_N] tile blows uni_sram for large N (e.g. N=40999), so we
-# reduce one row per program with 1D tiles, exactly like the forward kernel.@libentry()
-@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
+#
+# XPU dispatch (measured on P800): the old code sent all N<=8192 to the 2D
+# [TILE_M, N] multirow tile. That tile does an axis=1 reduce that is pathological
+# on XPU for medium N: as N grows TILE_M shrinks (=8192//N), the 2D reduce stops
+# amortizing and gems latency explodes (N=4096 -> 14.7ms / sp 0.016, N=256 ->
+# 3.0ms). Per-row 1D-reduce kernels (grid=(M,), base pointer pre-offset by pid*N
+# so the offset tensor is pid-independent and stays block-DMA) are 8-17x faster
+# for N>=512: N=4096 14.7->0.85ms, N=65536 43.7->19ms. But per-row is launch
+# starved for tiny N (N=256 3.0->6.1ms), where the multirow row-packing still
+# wins. So: N<=256 multirow, 256<N<=4096 single-pass per-row (out_grad cached in
+# regs, one load), N>4096 two-pass per-row multi-tile (out_grad reloaded to avoid
+# holding og+o simultaneously -> no reg spill on the wide tile).
+BWD_MULTIROW_MAX_N = 256
+BWD_SINGLE_TILE_MAX_N = 4096
+BWD_MT_TILE_N = 8192
+
+
+# single-pass per-row: N fits one TILE_N tile, out_grad cached in registers.
+@libentry()
 @triton.jit
-def log_softmax_backward_kernel_inner(
+def log_softmax_backward_kernel_perrow(
     out_ptr,
     out_grad_ptr,
     in_grad_ptr,
     M,
     N,
     TILE_N: tl.constexpr,
-    ONE_TILE_PER_CTA: tl.constexpr,
 ):
     pid_m = ext.program_id(0)
-    if ONE_TILE_PER_CTA:
+    if pid_m < M:
+        out_ptr += pid_m * N
+        out_grad_ptr += pid_m * N
+        in_grad_ptr += pid_m * N
         n_offsets = tl.arange(0, TILE_N)
-        offset = pid_m * N + n_offsets
         mask = n_offsets < N
-        out_grad = tl.load(out_grad_ptr + offset, mask=mask, other=0.0).to(tl.float32)
-        scale = tl.sum(out_grad, 0)
-        out = tl.load(out_ptr + offset, mask=mask).to(tl.float32)
-        in_grad = out_grad - tl.exp(out) * scale
-        tl.store(in_grad_ptr + offset, in_grad, mask=mask)
-    else:
+        og = tl.load(out_grad_ptr + n_offsets, mask=mask, other=0.0).to(tl.float32)
+        scale = tl.sum(og, 0)
+        o = tl.load(out_ptr + n_offsets, mask=mask).to(tl.float32)
+        ig = og - tl.exp(o) * scale
+        tl.store(in_grad_ptr + n_offsets, ig, mask=mask)
+
+
+# two-pass per-row multi-tile: N>TILE_N, out_grad reloaded so the wide tile only
+# ever holds one tensor at a time (avoids the reg spill that makes a single wide
+# single-pass tile slow, e.g. N=8192 fp32 24.5ms single-pass vs 3.2ms two-pass).
+@libentry()
+@triton.jit
+def log_softmax_backward_kernel_perrow_mt(
+    out_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    M,
+    N,
+    TILE_N: tl.constexpr,
+):
+    pid_m = ext.program_id(0)
+    if pid_m < M:
         out_ptr += pid_m * N
         out_grad_ptr += pid_m * N
         in_grad_ptr += pid_m * N
@@ -199,12 +229,8 @@ def log_softmax_backward_kernel_inner(
 
         for start_n in range(0, previous_multiple, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)
-            og = tl.load(out_grad_ptr + n_offsets, eviction_policy="evict_first").to(
-                tl.float32
-            )
-            o = tl.load(out_ptr + n_offsets, eviction_policy="evict_first").to(
-                tl.float32
-            )
+            og = tl.load(out_grad_ptr + n_offsets).to(tl.float32)
+            o = tl.load(out_ptr + n_offsets).to(tl.float32)
             ig = og - tl.exp(o) * scale
             tl.store(in_grad_ptr + n_offsets, ig)
         for start_n in range(previous_multiple, N, TILE_N):
@@ -265,7 +291,8 @@ def _forward_launch(out, inp, M, N):
 
 
 def _backward_launch(output, grad_output, in_grad, M, N):
-    if N <= MULTIROW_MAX_N:
+    if N <= BWD_MULTIROW_MAX_N:
+        # tiny N: pack TILE_M rows per program (per-row is launch starved here).
         tile_m = _multirow_tile_m(N)
         grid = (triton.cdiv(M, tile_m), 1, 1)
         log_softmax_backward_kernel_multirow[grid](
@@ -278,17 +305,31 @@ def _backward_launch(output, grad_output, in_grad, M, N):
             buffer_size_limit=2048,
             num_warps=8,
         )
-    else:
+    elif N <= BWD_SINGLE_TILE_MAX_N:
+        # medium N: one row per program, out_grad cached in a single TILE_N tile.
         grid = (M, 1, 1)
-        log_softmax_backward_kernel_inner[grid](
+        log_softmax_backward_kernel_perrow[grid](
             output,
             grad_output,
             in_grad,
             M,
             N,
+            TILE_N=triton.next_power_of_2(N),
             buffer_size_limit=2048,
-            isCloseVectorization=True,
-            is_use_mask_zero=True,
+            num_warps=8,
+        )
+    else:
+        # large N: one row per program, two-pass multi-tile over N.
+        grid = (M, 1, 1)
+        log_softmax_backward_kernel_perrow_mt[grid](
+            output,
+            grad_output,
+            in_grad,
+            M,
+            N,
+            TILE_N=BWD_MT_TILE_N,
+            buffer_size_limit=2048,
+            num_warps=8,
         )
 
 

@@ -55,10 +55,13 @@ def group_norm_reduce_kernel(
     X,
     Mean,
     Rstd,
+    MeanOut,
+    RstdOut,
     group_size,
     HW,
     eps,
     BLOCK_HW_SIZE: tl.constexpr,
+    WRITE_OUT: tl.constexpr,
 ):
     pid = ext.program_id(0)
     num_elements = group_size * HW
@@ -75,8 +78,20 @@ def group_norm_reduce_kernel(
 
     mean = tl.sum(sum_acc) / num_elements
     var = tl.sum(sumsq_acc) / num_elements - mean * mean
+    rstd = rsqrt(var + eps)
+    # Mean/Rstd are the fp32 SCRATCH the normalize kernel reloads at full
+    # precision. When the input is fp16/bf16 the returned mean/rstd must be in
+    # the input dtype, so we ALSO write MeanOut/RstdOut here (auto-cast on
+    # store). That avoids two extra `.to(dtype)` copy kernels after the launch
+    # -- on the XPU those dispatch to a gems copy op (~0.085ms launch each),
+    # which was the ~0.19ms fp16/bf16 latency floor. For fp32 the scratch IS
+    # the output tensor (same dtype), so WRITE_OUT is False and we skip the
+    # redundant second store.
     tl.store(Mean + pid, mean)
-    tl.store(Rstd + pid, rsqrt(var + eps))
+    tl.store(Rstd + pid, rstd)
+    if WRITE_OUT:
+        tl.store(MeanOut + pid, mean)
+        tl.store(RstdOut + pid, rstd)
 
 
 @libentry()
@@ -290,12 +305,22 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
     bias = None if bias is None else bias.contiguous()
 
     y = torch.empty_like(input)
-    # Mean/Rstd are kept in fp32 SCRATCH so the normalize kernel reads them at
-    # full precision. Splitting reduce/normalize into two kernels round-trips
-    # mean/rstd through memory; storing them in a low-precision (fp16/bf16)
-    # buffer here loses enough bits to fail gems_assert_close on fp16/bf16.
-    mean_f32 = torch.empty((N, group), dtype=torch.float32, device=input.device)
-    rstd_f32 = torch.empty((N, group), dtype=torch.float32, device=input.device)
+    # Returned mean/rstd are in the input dtype (matches the generic op).
+    # The normalize kernel needs FULL-PRECISION mean/rstd on reload: storing
+    # them in a low-precision (fp16/bf16) buffer loses enough bits to fail
+    # gems_assert_close. So we keep an fp32 SCRATCH pair for the normalize
+    # reload and let the reduce kernel also write the input-dtype outputs
+    # directly (see kernel comment). For fp32 input the scratch aliases the
+    # output tensors (no extra allocation, the double store is harmless).
+    mean = torch.empty((N, group), dtype=input.dtype, device=input.device)
+    rstd = torch.empty((N, group), dtype=input.dtype, device=input.device)
+    if input.dtype == torch.float32:
+        mean_f32, rstd_f32 = mean, rstd
+        write_out = False
+    else:
+        mean_f32 = torch.empty((N, group), dtype=torch.float32, device=input.device)
+        rstd_f32 = torch.empty((N, group), dtype=torch.float32, device=input.device)
+        write_out = True
 
     grid = (N * group,)
     block_hw = min(triton.next_power_of_2(HxW), 1024)
@@ -307,10 +332,13 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
             input,
             mean_f32,
             rstd_f32,
+            mean,
+            rstd,
             group_size,
             HxW,
             eps,
             BLOCK_HW_SIZE=block_hw,
+            WRITE_OUT=write_out,
         )
         group_norm_normalize_kernel[grid](
             input,
@@ -329,9 +357,6 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
             del os.environ["TRITONXPU_OTHER_SIM"]
         if "TRITONXPU_STORE_MASK_SIM" in os.environ:
             del os.environ["TRITONXPU_STORE_MASK_SIM"]
-
-    mean = mean_f32.to(input.dtype)
-    rstd = rstd_f32.to(input.dtype)
 
     return y, mean, rstd
 

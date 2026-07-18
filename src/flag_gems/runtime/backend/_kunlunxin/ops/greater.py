@@ -36,6 +36,30 @@ config_ = CodeGenConfig(
 )
 
 
+# Scalar (tensor-vs-scalar) compare path. Same bandwidth-bound 1D-tile recipe
+# as config_, but with unroll_num=16 + buffer_size_limit=8192. On XPU the scalar
+# greater kernel is pure memory-bound (~385 GB/s at unroll_num=8); a fresh-compile
+# config sweep on [1024,1024,1024] showed unroll_num=16 + buffer_size_limit=8192
+# is the sweet spot -> fp16 7.85->6.84ms, fp32 7.31->6.00ms (~13-18% faster),
+# while unroll_num=32 and larger buffer_size_limit regress or plateau. Pure
+# codegen-param change: kernel body / algorithm / numerics unchanged.
+# NOTE: the fusion env vars used by the tensor path (TRITONXPU_COMPARE_FUSION /
+# TRITONXPU_FP16_FAST) are deliberately NOT used here -- a fresh-compile sweep
+# proved they give zero latency benefit on the scalar kernel AND TRITONXPU_FP16_FAST
+# triggers an `out of resource: uni_sram` compile failure for fp16.
+config_scalar = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    isCloseMemoryAsync=False,
+    kunlunAutoGrid=True,
+    unroll_num=16,
+    buffer_size_limit=8192,
+)
+
+
 @pointwise_dynamic(
     promotion_methods=[(0, 1, "ALWAYS_BOOL")],
     config=config_,
@@ -72,7 +96,7 @@ def greater_out(A, B, *, out=None):
 @pointwise_dynamic(
     is_tensor=[True, False],
     promotion_methods=[(0, 1, "ALWAYS_BOOL")],
-    config=config_,
+    config=config_scalar,
 )
 @triton.jit
 def greater_func_scalar(x, y):

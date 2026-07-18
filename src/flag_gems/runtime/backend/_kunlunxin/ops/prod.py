@@ -20,7 +20,7 @@ import triton.language as tl
 
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
@@ -147,25 +147,80 @@ def prod_kernel(
     tl.store(out, result, row_mask)
 
 
+@libentry()
+@triton.jit
+def prod_kernel_kn(
+    out,
+    inp,
+    M,
+    N,
+    K,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+):
+    # Middle-dim reduce (K>1) WITHOUT dim_compress transpose. View inp as
+    # [M, N, K] (contiguous). A [TILE_K, TILE_N] tile puts K on axis0 (rows) and
+    # the reduce target N on axis1 (cols) so we can use XPU's ONLY supported
+    # `tl.reduce(axis=1)` -- axis=0 2D reduce is a dead end on this toolchain
+    # (compile fail or numerically wrong). dim_compress would permute N to the
+    # innermost then `.contiguous()` on a non-contiguous permuted tensor, which
+    # under use_gems dispatches to the generic strided copy_ (~300x slower =
+    # the "transpose wall"); this KN layout avoids that copy entirely.
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
+    k_off = pid_k * TILE_K + tl.arange(0, TILE_K)[:, None]
+    acc = tl.full([TILE_K, TILE_N], value=1.0, dtype=tl.float32)
+    for start_n in range(0, N, TILE_N):
+        n_off = start_n + tl.arange(0, TILE_N)[None, :]
+        off = pid_m * N * K + n_off * K + k_off
+        mask = (k_off < K) & (n_off < N)
+        v = tl.load(inp + off, mask=mask, other=1.0).to(tl.float32)
+        acc *= v
+    result = tl.reduce(acc, axis=1, combine_fn=reduce_mul, keep_dims=True)
+    out_off = pid_m * K + k_off
+    tl.store(out + out_off, result, mask=k_off < K)
+
+
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS_KUNLUNXIN PROD_DIM")
+    import builtins
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = list(inp.shape)
     dim = dim % inp.ndim
-    inp = dim_compress(inp, dim)
-    N = shape[dim]
-    shape[dim] = 1
-    M = inp.numel() // N
 
+    N = shape[dim]
+    M = 1
+    for s in shape[:dim]:
+        M *= s
+    K = 1
+    for s in shape[dim + 1 :]:
+        K *= s
+
+    out_shape = shape.copy()
+    out_shape[dim] = 1
     if dtype is None:
         dtype = inp.dtype
-    out = torch.empty(shape, dtype=dtype, device=inp.device)
+
+    inp = inp.contiguous()
+    out = torch.empty(out_shape, dtype=dtype, device=inp.device)
+
+    with torch_device_fn.device(inp.device):
+        if K == 1:
+            # Innermost reduce: rows are contiguous, the 2D block kernel with
+            # pre-offset base pointer gives clean block DMA.
+            grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+            prod_kernel[grid](inp, out, M, N, buffer_size_limit=2048)
+        else:
+            # Middle-dim reduce: no-transpose KN kernel (see prod_kernel_kn).
+            tile_n = builtins.min(triton.next_power_of_2(N), 2048)
+            tile_k = builtins.min(triton.next_power_of_2(K), 64)
+            grid = (M, triton.cdiv(K, tile_k), 1)
+            prod_kernel_kn[grid](
+                out, inp, M, N, K, tile_n, tile_k, buffer_size_limit=2048
+            )
+
     if not keepdim:
         out = torch.squeeze(out, dim)
-
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    with torch_device_fn.device(inp.device):
-        prod_kernel[grid](inp, out, M, N, buffer_size_limit=2048)
 
     return out

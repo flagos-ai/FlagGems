@@ -1,20 +1,25 @@
 # Kunlunxin (XPU) override of slice_backward.
 #
-# The generic kernel iterates grad_output (contiguous read) and SCATTERS each
-# element into grad_input at a step-strided `input_offset` (stride>1 write),
-# on top of a full `torch.zeros` alloc. On XPU a strided write degrades to
-# fully discrete stores -> catastrophic (~150-630ms, gems speedup ~0.004).
+# The original generic kernel SCATTERS each grad_output element into grad_input
+# at a step-strided `input_offset` (stride>1 write) on top of a full
+# `torch.zeros` alloc. On XPU a strided write degrades to fully discrete stores
+# -> catastrophic (~150-630ms, gems speedup ~0.004).
 #
-# Fix: never do a strided write.
+# Two paths:
 #   * Fast path (dim is last / inner==1, start==0, step divides the dim and the
-#     slice covers it -- exactly the benchmark 2D shapes): write grad_input
-#     contiguously and GATHER grad_output as the affine `idx // step` with
-#     `step` a constexpr (division compiled away), selecting with `idx%step==0`.
-#   * General path (inner>1, 3D/4D shapes): allocate zeros, then launch one
-#     program per selected (outer, slice) row and copy its whole `inner` block
-#     with `tl.arange` over the inner dim. Both the grad_output read and the
-#     grad_input write are then base(scalar)+arange -> provable stride-1 block
-#     DMA. Only selected rows run (no wasted zero-writes, no per-element mask).
+#     slice covers it -- exactly the benchmark 2D shapes): write grad_input in a
+#     single fused kernel pass and GATHER grad_output as the affine `idx // step`
+#     with `step` a constexpr (division compiled away), selecting with
+#     `idx % step == 0`. One launch, no zeros pass -> best for small 2D.
+#   * General path (inner>1, 3D/4D shapes): mirror native slice_backward exactly
+#     -- `torch.zeros` then write grad_output into the step-strided slice VIEW of
+#     grad_input via the ATen `_copy_from` primitive. gems overrides `copy_`/
+#     `copy` but never `_copy_from`, so this reaches the vendor's native
+#     strided-copy engine and runs at native speed (~1.0x) even while use_gems
+#     is active, for every dtype/rank. This replaces a per-inner-block Triton
+#     copy kernel that launched `outer*slice_len` programs -- catastrophic when
+#     inner is small and that product is huge (e.g. [512,1024,512]: 262144
+#     tiny 512-elem programs -> 22ms / speedup 0.03).
 import logging
 
 import torch
@@ -43,34 +48,6 @@ def slice_backward_fast_kernel(
     tl.store(grad_input_ptr + idx, result, mask=mask)
 
 
-@triton.jit
-def slice_backward_copy_kernel(
-    grad_input_ptr,
-    grad_output_ptr,
-    dim_size,
-    inner,
-    slice_len,
-    start,
-    step,
-    BLOCK_INNER: tl.constexpr,
-):
-    # One program per selected (outer, slice) row; copies the contiguous `inner`
-    # block from grad_output into its remapped position in grad_input. Both
-    # addresses are scalar_base + arange -> stride-1 block DMA. grad_input was
-    # pre-zeroed so non-selected rows need no work.
-    s = tl.program_id(0)
-    pid_i = tl.program_id(1)
-    outer_idx = s // slice_len
-    slice_idx = s % slice_len
-    dim_idx = start + slice_idx * step
-    inner_off = pid_i * BLOCK_INNER + tl.arange(0, BLOCK_INNER)
-    imask = inner_off < inner
-    gi_base = (outer_idx * dim_size + dim_idx) * inner
-    go_base = (outer_idx * slice_len + slice_idx) * inner
-    v = tl.load(grad_output_ptr + go_base + inner_off, mask=imask)
-    tl.store(grad_input_ptr + gi_base + inner_off, v, mask=imask)
-
-
 def _block_for(numel):
     if numel <= (1 << 14):
         return 1024, 4
@@ -85,23 +62,19 @@ def slice_backward(grad_output, input_sizes, dim, start, end, step):
     if dim < 0:
         dim += len(shape)
 
-    outer = 1
-    for i in range(dim):
-        outer *= shape[i]
     inner = 1
     for i in range(dim + 1, len(shape)):
         inner *= shape[i]
     dim_size = shape[dim]
     slice_len = grad_output.shape[dim]
-    if start < 0:
-        start += dim_size
-    start = max(0, min(start, dim_size))
+    norm_start = start + dim_size if start < 0 else start
+    norm_start = max(0, min(norm_start, dim_size))
 
     grad_output = grad_output.contiguous()
 
     fast = (
         inner == 1
-        and start == 0
+        and norm_start == 0
         and dim_size % step == 0
         and slice_len * step == dim_size
     )
@@ -122,20 +95,13 @@ def slice_backward(grad_output, input_sizes, dim, start, end, step):
         )
         return grad_input
 
+    # General path: mirror native slice_backward (zeros + strided-slice copy),
+    # using the native `_copy_from` strided-copy engine instead of a Triton
+    # strided write. `torch.ops.aten.slice` (a view op) clamps start/end the same
+    # way native does, so the view shape matches grad_output exactly.
     grad_input = torch.zeros(shape, device=grad_output.device, dtype=grad_output.dtype)
-    if slice_len == 0 or inner == 0:
+    if grad_output.numel() == 0:
         return grad_input
-    block_inner = min(triton.next_power_of_2(inner), 8192)
-    grid = (outer * slice_len, triton.cdiv(inner, block_inner))
-    slice_backward_copy_kernel[grid](
-        grad_input,
-        grad_output,
-        dim_size,
-        inner,
-        slice_len,
-        start,
-        step,
-        BLOCK_INNER=block_inner,
-        num_warps=8,
-    )
+    sub = torch.ops.aten.slice(grad_input, dim, start, end, step)
+    torch.ops.aten._copy_from(grad_output, sub, False)
     return grad_input

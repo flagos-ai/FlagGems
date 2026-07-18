@@ -96,6 +96,21 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
     # M; that unbounded tile hung the XPU watchdog ("wait for noc idle timeout" /
     # kl3ChannelCheckErrors 721) under do_bench.
     block_size = get_block_size_1d(M, inp.element_size() * 2)
+
+    # kernel_2 reduces all `mid_size` block partials in ONE tl.sum tile. On XPU,
+    # with buffer_size_limit=2048 a 1D tl.sum is only complete up to 32768 lanes;
+    # beyond that it silently drops the tail. For fp32 the get_block_size_1d cap
+    # is 16384, so at M ~ 6.5e8 (benchmark's [10000, 65536]) mid_size hits 40000
+    # -> block_mid = next_pow2(40000) = 65536 and the final reduction drops ~82%
+    # of the partials (verified: sum 7232 vs 40000), i.e. the previous result was
+    # silently WRONG. Grow the first-stage block just enough to keep
+    # mid_size <= 32768 so the second stage stays inside the correctness ceiling.
+    # This only ever enlarges the block for that huge-M/fp32 case; every other
+    # benchmark shape already satisfies the bound, so their (small, fast to
+    # compile) blocks are untouched.
+    MAX_MID = 32768
+    if triton.cdiv(M, block_size) > MAX_MID:
+        block_size = triton.next_power_of_2(triton.cdiv(M, MAX_MID))
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 

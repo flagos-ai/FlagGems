@@ -37,10 +37,13 @@ from .angle import angle
 from .any import any, any_dim, any_dims
 from .apply_repetition_penalties import apply_repetition_penalties
 from .arange import arange, arange_start
+from .arccos import arccos, arccos_
+from .arcsin import arcsin, arcsin_, arcsin_out
 from .arctan import arctan, arctan_
 from .argmax import argmax
 from .argmin import argmin
 from .as_strided_copy import as_strided_copy, as_strided_copy_out
+from .asin import asin, asin_
 from .atan import atan, atan_
 from .attention import (
     ScaleDotProductAttention,
@@ -129,6 +132,7 @@ from .expm1 import expm1, expm1_, expm1_out
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
+from .feature_dropout import feature_dropout, feature_dropout_
 from .fill import (
     fill_scalar,
     fill_scalar_,
@@ -173,6 +177,7 @@ from .log import log
 from .log1p import log1p, log1p_
 from .log_sigmoid import log_sigmoid
 from .log_softmax import log_softmax, log_softmax_backward
+from .logaddexp2 import logaddexp2, logaddexp2_out
 from .logical_and import logical_and, logical_and_
 from .logical_not import logical_not, logical_not_
 from .logical_or import logical_or, logical_or_
@@ -199,6 +204,7 @@ from .multiply_ import multiply_
 from .mv import mv, mv_cluster
 from .nan_to_num import nan_to_num
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
+from .narrow_copy import narrow_copy
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .negative import negative
@@ -223,6 +229,7 @@ from .ones import ones
 from .ones_like import ones_like
 from .pad import constant_pad_nd, pad
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
+from .permute_copy import permute_copy
 from .pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from .polar import polar
 from .pow import (
@@ -252,9 +259,11 @@ from .repeat_interleave import (
     repeat_interleave_self_tensor,
     repeat_interleave_tensor,
 )
+from .resize import resize, resize_
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
+from .rnn_relu import rnn_relu
 from .rot90 import rot90
 from .round import round, round_, round_out
 from .rsqrt import rsqrt, rsqrt_
@@ -279,6 +288,7 @@ from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .special_log_softmax import special_log_softmax
+from .special_logsumexp import special_logsumexp
 from .sqrt import sqrt, sqrt_
 from .stack import stack
 from .std import std
@@ -301,6 +311,7 @@ from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
+from .upsample_trilinear3d import upsample_trilinear3d
 from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
@@ -333,6 +344,7 @@ __all__ = [
     "soft_margin_loss_out",
     "soft_margin_loss_backward",
     "special_log_softmax",
+    "special_logsumexp",
     "softshrink",
     "softshrink_out",
     "_unique2",
@@ -370,12 +382,19 @@ __all__ = [
     "any_dims",
     "arange",
     "arange_start",
+    "arccos",
+    "arccos_",
+    "arcsin",
+    "arcsin_",
+    "arcsin_out",
     "arctan",
     "arctan_",
     "argmax",
     "argmin",
     "as_strided_copy",
     "as_strided_copy_out",
+    "asin",
+    "asin_",
     "atan",
     "atan_",
     "avg_pool2d",
@@ -468,6 +487,8 @@ __all__ = [
     "exponential_",
     "eye",
     "eye_m",
+    "feature_dropout",
+    "feature_dropout_",
     "fill_scalar",
     "fill_scalar_",
     "fill_scalar_out",
@@ -540,6 +561,8 @@ __all__ = [
     "log_sigmoid",
     "log_softmax",
     "log_softmax_backward",
+    "logaddexp2",
+    "logaddexp2_out",
     "logsumexp",
     "logical_and",
     "logical_and_",
@@ -581,6 +604,7 @@ __all__ = [
     "mv",
     "mv_cluster",
     "nan_to_num",
+    "narrow_copy",
     "nanmedian",
     "nanmedian_dim",
     "nanmedian_dim_values",
@@ -611,6 +635,7 @@ __all__ = [
     "per_token_group_quant_fp8",
     "pixel_unshuffle",
     "pixel_unshuffle_out",
+    "permute_copy",
     "polar",
     "pow_scalar",
     "pow_tensor_scalar",
@@ -643,6 +668,8 @@ __all__ = [
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
+    "resize",
+    "resize_",
     "resolve_conj",
     "resolve_neg",
     "rot90",
@@ -652,6 +679,7 @@ __all__ = [
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
+    "rnn_relu",
     "rsqrt",
     "rsqrt_",
     "rsub",
@@ -727,6 +755,7 @@ __all__ = [
     "upsample_linear1d",
     "upsample_nearest1d",
     "upsample_nearest2d",
+    "upsample_trilinear3d",
     "var_mean",
     "vdot",
     "vector_norm",

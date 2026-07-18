@@ -489,8 +489,17 @@ def _constant_pad_fast(self, pad, value):
     strides, which is both compute-heavy and (with the unbounded tile) IR-heavy.
     For constant padding the result is simply: an output prefilled with `value`,
     with the input block copied into the interior. That is two pure-bandwidth
-    passes (fill + strided copy) and no index arithmetic, matching how torch
+    passes (fill + interior copy) and no index arithmetic, matching how torch
     itself implements constant pad.
+
+    The interior is a *strided* narrow view of the output. Writing into it with
+    the gems `copy_` (`interior.copy_(self)`) is catastrophic on kunlunxin: the
+    gems triton `_copy_kernel` degrades to fully discrete access for a strided
+    fp16/bf16 destination (~83x slower than native, e.g. 21.6ms vs 0.26ms for a
+    [64,512,512] pad), and its CompositeExplicitAutograd fallback is just as slow.
+    We instead invoke the ATen `_copy_from` primitive directly: gems overrides
+    only `copy_`/`copy`, never `_copy_from`, so this reaches the vendor's native
+    strided-copy engine (fast for every dtype) even while `use_gems` is active.
     """
     ndim = self.ndim
     pad_pairs = len(pad) // 2
@@ -510,7 +519,9 @@ def _constant_pad_fast(self, pad, value):
     interior = out
     for d in range(ndim):
         interior = interior.narrow(d, pad_before[d], self.shape[d])
-    interior.copy_(self)
+    # Native strided copy (bypasses the slow gems strided copy_). `_copy_from`
+    # copies `self` into `interior` and handles non-contiguous src correctly.
+    torch.ops.aten._copy_from(self, interior, False)
     return out
 
 
@@ -544,15 +555,12 @@ def pad(self, pad, mode="constant", value=None):
     # Fast constant path: only for non-negative pads (negative pads crop, which
     # the narrow/copy shortcut cannot express -> fall back to the general kernel).
     #
-    # Rank guard (kunlunxin/XPU): the fast path fills the output then does a
-    # strided `copy_` into the interior view. For ndim >= 5 with a last-dim-only
-    # narrow (e.g. pad=[2,3] on a 5D tensor) the gems `copy_` kernel produces a
-    # handful of wrong elements for fp16/bf16 (a genuine gems copy_ bug that this
-    # strided pattern exposes; fp32 and ranks 1-4 are correct). All benchmark
-    # shapes are 1D-3D, so restricting the fast path to ndim <= 4 keeps every perf
-    # win while routing the buggy 5D case back to the correct generated kernel
-    # (matching the pre-existing baseline behaviour -> no test regression).
-    if mode == "constant" and self.ndim <= 4 and all(p >= 0 for p in pad):
+    # This path fills the output then writes the input into a strided interior
+    # view via the ATen `_copy_from` primitive (native strided copy). Because it
+    # no longer relies on the gems `copy_` (whose triton kernel is both slow and,
+    # for a last-dim-only narrow on ndim >= 5 fp16/bf16, buggy), there is no rank
+    # restriction: `_copy_from` is correct and fast for every rank and dtype.
+    if mode == "constant" and all(p >= 0 for p in pad):
         return _constant_pad_fast(self, pad, float(value))
 
     out = _pad_func(self, pad, mode, float(value))

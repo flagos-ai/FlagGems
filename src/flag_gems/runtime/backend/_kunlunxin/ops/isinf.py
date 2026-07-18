@@ -25,6 +25,15 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 logger = logging.getLogger(__name__)
 _isinf = tl_extra_shim.isinf
 
+# NOTE (kunlunxin/XPU): isinf lowers to the extern/libdevice call
+# `xpu::isinf(f32)` (tt.extern_elementwise, symbol _ZN3xpu5isinfEf). On large
+# shapes the op is bandwidth-bound and this CodeGenConfig (kunlunAutoGrid +
+# 1d-tile + unroll) beats the DEFAULT pointwise config (0.58 vs 0.43 avg
+# speedup). unroll_num was tuned on the extern call: 8 -> 0.579, 16 -> 0.612,
+# 32 -> 0.510 (>=32 over-unrolls the extern call and scalarizes it, same failure
+# mode as erf's buffer/unroll tuned config). unroll_num=16 lowers the large-shape
+# gems latency ~10% ([4096,4096] 0.148->0.133ms, [1024,65536] 0.550->0.492ms)
+# with no small-shape regression. Do NOT raise it further.
 _config = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -33,7 +42,7 @@ _config = CodeGenConfig(
     prefer_1d_tile=True,
     isCloseMemoryAsync=False,
     kunlunAutoGrid=True,
-    unroll_num=8,
+    unroll_num=16,
 )
 
 

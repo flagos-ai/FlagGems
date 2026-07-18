@@ -31,11 +31,18 @@ def safe_softmax_kernel_inner(
 ):
     pid_m = ext.program_id(0)
     if ONE_TILE_PER_CTA:
+        # Pre-offset the base pointers so the inner `ptr + n_offsets` access is a
+        # scalar-base + stride-1 arange that OffsetAnalysis proves contiguous
+        # (block DMA). The old inline `pid_m * N + n_offsets` addressing blocked
+        # the analysis -> discrete scalar gather (~1-3 GB/s, e.g. [4096,4096] took
+        # ~37ms). Pre-offsetting drops it to ~1.1ms (~35x). Same fix as softmax.py.
+        input_ptr += pid_m * N
+        output_ptr += pid_m * N
         n_offsets = tl.arange(0, TILE_N)
-        offset = pid_m * N + n_offsets
-        input_ptrs = input_ptr + offset
         mask = n_offsets < N
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
+        inp = tl.load(input_ptr + n_offsets, mask=mask, other=-float("inf")).to(
+            tl.float32
+        )
         m = tl.max(inp, 0)
         # a whole row of -inf -> softmax must be 0, not nan
         all_neg_inf = m == float("-inf")
@@ -43,8 +50,7 @@ def safe_softmax_kernel_inner(
         z = tl.sum(e, 0)
         out = e / z
         out = tl.where(all_neg_inf, 0.0, out).to(output_ptr.dtype.element_ty)
-        output_ptrs = output_ptr + offset
-        tl.store(output_ptrs, out, mask=mask)
+        tl.store(output_ptr + n_offsets, out, mask=mask)
     else:
         m = tl.full([TILE_N], value=float("-inf"), dtype=tl.float32)
         z = tl.full([TILE_N], value=0.0, dtype=tl.float32)
@@ -75,27 +81,29 @@ def safe_softmax_kernel_inner(
         z = tl.sum(z * tl.exp(m - m_reduced), 0)
         m = m_reduced
 
+        # Normalize pass. Iterate ASCENDING so each `input_ptr + n_offsets` load
+        # and `output_ptr + n_offsets` store is a scalar-base + stride-1 arange
+        # (block DMA). The old code walked the tiles DESCENDING
+        # (`previous_multiple - start_n`, with evict_first) as a cache-locality
+        # trick, but on this XPU the backward walk defeats OffsetAnalysis/prefetch
+        # -> discrete access (~1-3 GB/s). Ascending drops it ~35x. Same fix as
+        # softmax.py.
         previous_multiple = prev_multiple_of(N, TILE_N)
-        for start_n in range(0, TILE_N, TILE_N):
-            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
-            mask = n_offsets < N
-            inp = tl.load(
-                input_ptr + n_offsets,
-                mask=mask,
-                other=-float("inf"),
-                eviction_policy="evict_first",
-            ).to(tl.float32)
+        for start_n in range(0, previous_multiple, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            inp = tl.load(input_ptr + n_offsets).to(tl.float32)
             o = tl.exp(inp - m) / z
             o = tl.where(row_all_neg_inf, 0.0, o).to(output_ptr.dtype.element_ty)
-            tl.store(output_ptr + n_offsets, o, mask=mask)
-        for start_n in range(TILE_N, N, TILE_N):
-            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
-            inp = tl.load(input_ptr + n_offsets, eviction_policy="evict_first").to(
+            tl.store(output_ptr + n_offsets, o)
+        for start_n in range(previous_multiple, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            mask = n_offsets < N
+            inp = tl.load(input_ptr + n_offsets, mask=mask, other=-float("inf")).to(
                 tl.float32
             )
             o = tl.exp(inp - m) / z
             o = tl.where(row_all_neg_inf, 0.0, o).to(output_ptr.dtype.element_ty)
-            tl.store(output_ptr + n_offsets, o)
+            tl.store(output_ptr + n_offsets, o, mask=mask)
 
 
 def _safe_softmax(x: torch.Tensor, dim: int = -1, dtype: torch.dtype = None):
@@ -166,7 +174,6 @@ def _safe_softmax(x: torch.Tensor, dim: int = -1, dtype: torch.dtype = None):
                 M,
                 N,
                 buffer_size_limit=2048,
-                isCloseVectorization=True,
                 is_use_mask_zero=True,
             )
 
