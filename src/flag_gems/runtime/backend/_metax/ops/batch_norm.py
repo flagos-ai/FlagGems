@@ -376,7 +376,7 @@ class BatchNorm(torch.autograd.Function):
     def backward(ctx, grad_out, save_mean, save_invstd):
         logger.debug("GEMS_METAX BATCHNORM_BACKWARD")
 
-        (input, weight, bias, mean, inv_std) = ctx.saved_tensors
+        input, weight, bias, mean, inv_std = ctx.saved_tensors
         batch_dim = ctx.batch_dim
         spatial_dim = ctx.spatial_dim
 

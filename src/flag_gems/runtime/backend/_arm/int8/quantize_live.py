@@ -30,6 +30,7 @@ Example:
     m = AutoModelForCausalLM.from_pretrained("...", dtype=torch.bfloat16)
     n = quantize_and_replace_linears(m, skip={"lm_head"})
 """
+
 import logging
 from typing import Iterable, Optional, Tuple
 

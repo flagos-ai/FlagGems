@@ -299,7 +299,7 @@ class LayerNorm(torch.autograd.Function):
     def backward(ctx, out_grad, mean_grad, rstd_grad):
         logger.debug("GEMS_SPACEMIT LAYERNORM_BACKWARD")
         out_grad = out_grad.contiguous()
-        (x, weight, bias, mean, rstd) = ctx.saved_tensors
+        x, weight, bias, mean, rstd = ctx.saved_tensors
         M = ctx.M
         N = ctx.N
 

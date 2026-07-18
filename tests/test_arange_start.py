@@ -30,9 +30,11 @@ device = flag_gems.device
 @pytest.mark.parametrize("end", [128] if cfg.QUICK_MODE else [128, 256, 1024])
 @pytest.mark.parametrize(
     "dtype",
-    [torch.float32]
-    if cfg.QUICK_MODE
-    else utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + [None],
+    (
+        [torch.float32]
+        if cfg.QUICK_MODE
+        else utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + [None]
+    ),
 )
 @pytest.mark.parametrize(
     "device", [flag_gems.device] if cfg.QUICK_MODE else [flag_gems.device, None]

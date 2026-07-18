@@ -33,6 +33,7 @@ Skips fusion when:
 - shape is non-decode (T>1)
 - dtype is not BF16
 """
+
 import logging
 
 import torch

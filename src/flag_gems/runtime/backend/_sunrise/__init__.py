@@ -322,9 +322,11 @@ def _install_pointwise_dynamic_complex_patch():
                     return out
                 if isinstance(result, tuple):
                     return tuple(
-                        item.to(ptpu_tensor.device)
-                        if isinstance(item, torch.Tensor)
-                        else item
+                        (
+                            item.to(ptpu_tensor.device)
+                            if isinstance(item, torch.Tensor)
+                            else item
+                        )
                         for item in result
                     )
                 if isinstance(result, torch.Tensor):

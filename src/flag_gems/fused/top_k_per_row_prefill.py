@@ -14,8 +14,8 @@
 
 """Triton top_k_per_row_prefill for DeepSeek V4 prefill-phase topk selection.
 
-   Implement based on file python/tutorials/tle/deepseek_v32/01-topk_selector.py from repo
-   https://github.com/flagos-ai/FlagTree.git, align with vLLM implementation.
+Implement based on file python/tutorials/tle/deepseek_v32/01-topk_selector.py from repo
+https://github.com/flagos-ai/FlagTree.git, align with vLLM implementation.
 
 """
 

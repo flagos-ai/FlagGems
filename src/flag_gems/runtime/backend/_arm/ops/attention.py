@@ -25,6 +25,7 @@ Performance (M=512, D=128, H=16, OMP=6, CIX P1 CD8180):
 Decode path (M < BLOCK_M=32) falls back to ATen: tl.dot requires M>=4.
 Non-BF16 inputs or attn_mask also fall back to ATen.
 """
+
 import ctypes
 import logging
 import os

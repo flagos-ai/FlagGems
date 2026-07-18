@@ -416,9 +416,9 @@ def fp8_fp4_mega_moe(
             BLOCK_H=block_h,
             BLOCK_I=block_i,
             SCALE_IS_UE8M0=scale_is_ue8m0,
-            ACTIVATION_CLAMP=-1.0
-            if activation_clamp is None
-            else float(activation_clamp),
+            ACTIVATION_CLAMP=(
+                -1.0 if activation_clamp is None else float(activation_clamp)
+            ),
         )
     return out
 

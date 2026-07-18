@@ -277,9 +277,11 @@ def _assert_conv_transpose2d_matches(
 @pytest.mark.parametrize(
     "input_shape, weight_shape, use_bias, stride, padding, output_padding, groups, "
     "dilation, dtype",
-    SUPPORTED_CONV_TRANSPOSE2D_CASES[:2]
-    if cfg.QUICK_MODE
-    else SUPPORTED_CONV_TRANSPOSE2D_CASES,
+    (
+        SUPPORTED_CONV_TRANSPOSE2D_CASES[:2]
+        if cfg.QUICK_MODE
+        else SUPPORTED_CONV_TRANSPOSE2D_CASES
+    ),
 )
 def test_accuracy_conv_transpose2d_supported(
     monkeypatch,
@@ -311,9 +313,11 @@ def test_accuracy_conv_transpose2d_supported(
 @pytest.mark.parametrize(
     "input_shape, weight_shape, use_bias, stride, padding, output_padding, groups, "
     "dilation, dtype",
-    ADDITIONAL_CONV_TRANSPOSE2D_CASES[:2]
-    if cfg.QUICK_MODE
-    else ADDITIONAL_CONV_TRANSPOSE2D_CASES,
+    (
+        ADDITIONAL_CONV_TRANSPOSE2D_CASES[:2]
+        if cfg.QUICK_MODE
+        else ADDITIONAL_CONV_TRANSPOSE2D_CASES
+    ),
 )
 def test_accuracy_conv_transpose2d_extended_parameters(
     monkeypatch,

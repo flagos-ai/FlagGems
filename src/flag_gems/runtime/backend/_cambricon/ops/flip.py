@@ -87,8 +87,7 @@ class FlipKernelCode(IndentedBuffer):
 
     def __imports(self):
         """Generate imports for the kernel code."""
-        self.tpl(
-            """
+        self.tpl("""
 import math
 import torch
 import triton
@@ -100,8 +99,7 @@ TOTAL_CORE_NUM = _state.vendor_module.utils.TOTAL_CORE_NUM
 MAX_NRAM_SIZE = _state.vendor_module.utils.MAX_NRAM_SIZE
 
 
-        """
-        )
+        """)
 
     def __wrapper(self):
         """Generate wrapper function for the kernel code."""

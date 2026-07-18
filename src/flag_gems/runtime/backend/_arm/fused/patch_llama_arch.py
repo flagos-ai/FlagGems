@@ -22,6 +22,7 @@ Llama interfaces are nearly identical to Qwen3 for the three op-density patches:
 This file reuses the kernels from patch_qwen3_* and just retargets Llama's
 modeling module.
 """
+
 import logging
 
 from flag_gems.runtime.backend._arm.fused.patch_qwen3_layer_norm import (

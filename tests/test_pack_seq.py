@@ -133,9 +133,11 @@ def test_pack_seq_accuracy_3d(N, H, D, lengths_list, dtype):
 @pytest.mark.pack_seq_triton
 @pytest.mark.parametrize(
     "N, H, D, lengths_list",
-    [(6, 8, 4, [3, 3])]
-    if cfg.QUICK_MODE
-    else [(20, 8, 16, [10, 10]), (15, 4, 8, [5, 7, 3])],
+    (
+        [(6, 8, 4, [3, 3])]
+        if cfg.QUICK_MODE
+        else [(20, 8, 16, [10, 10]), (15, 4, 8, [5, 7, 3])]
+    ),
 )
 def test_pack_seq_shape_consistency(N, H, D, lengths_list):
     lengths = torch.tensor(lengths_list, dtype=torch.int32, device=flag_gems.device)

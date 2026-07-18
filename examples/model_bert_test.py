@@ -65,7 +65,5 @@ def test_accuracy_bert(prompt, dtype):
             eps=1e-6,
         )
         succeed = score >= 0.99
-    assert (
-        succeed
-    ), f"BERT_{dtype} FAIL with maxdiff {maxdiff} and score {score}\nREF: \
+    assert succeed, f"BERT_{dtype} FAIL with maxdiff {maxdiff} and score {score}\nREF: \
         {ref_outputs}\nRES: {res_outputs}"

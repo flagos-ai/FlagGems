@@ -453,9 +453,11 @@ def pow_tensor_tensor(A, exponent):
         return torch.from_numpy(
             np.power(
                 A.detach().numpy(),
-                float(exponent)
-                if not isinstance(exponent, torch.Tensor)
-                else exponent.detach().numpy(),
+                (
+                    float(exponent)
+                    if not isinstance(exponent, torch.Tensor)
+                    else exponent.detach().numpy()
+                ),
             )
         )
     _maybe_prewarm_pow_kernels()

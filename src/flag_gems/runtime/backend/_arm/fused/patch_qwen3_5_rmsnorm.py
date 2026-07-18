@@ -31,6 +31,7 @@ the right result.
 Decode (M=1, BF16) hits the fast path. Other shapes / dtypes fall back
 to the original forward.
 """
+
 import logging
 import types
 

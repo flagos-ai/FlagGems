@@ -83,8 +83,7 @@ class VstackKernelCode(IndentedBuffer):
 
     def __imports(self):
         """Generate imports for the kernel code."""
-        self.tpl(
-            """
+        self.tpl("""
 import math
 import torch
 import triton
@@ -94,8 +93,7 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.runtime.backend import _state
 TOTAL_CORE_NUM = vendor_module.TOTAL_CORE_NUM
 MAX_NRAM_SIZE = vendor_module.MAX_NRAM_SIZE
-        """
-        )
+        """)
 
     def __wrapper(self):
         """Generate wrapper function for the kernel code."""

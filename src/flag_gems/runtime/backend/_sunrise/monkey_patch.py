@@ -463,9 +463,11 @@ def _patch_torch_creation_function(name, aten_op):
             return _finalize_cpu_result(
                 result,
                 kwargs.get("out"),
-                torch.device(device)
-                if not isinstance(device, torch.device)
-                else device,
+                (
+                    torch.device(device)
+                    if not isinstance(device, torch.device)
+                    else device
+                ),
             )
 
     setattr(torch, name, creation_with_ptpu_cpu_fallback)
@@ -1434,12 +1436,14 @@ def _patch_torch_einsum_low_precision_reference():
                 t.dtype in low_precision_dtypes for t in tensors
             ):
                 cpu_operands = tuple(
-                    _to_cpu_if_ptpu(operand)
-                    if isinstance(operand, torch.Tensor)
-                    else (
-                        [_to_cpu_if_ptpu(item) for item in operand]
-                        if isinstance(operand, (list, tuple))
-                        else operand
+                    (
+                        _to_cpu_if_ptpu(operand)
+                        if isinstance(operand, torch.Tensor)
+                        else (
+                            [_to_cpu_if_ptpu(item) for item in operand]
+                            if isinstance(operand, (list, tuple))
+                            else operand
+                        )
                     )
                     for operand in operands
                 )

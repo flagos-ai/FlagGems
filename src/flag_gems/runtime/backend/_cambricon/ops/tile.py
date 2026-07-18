@@ -462,9 +462,7 @@ _tile_func = TileFunction()
 
 @libentry()
 @libtuner(
-    configs=[
-        triton.Config({"BLOCK_C": 2**n}, num_stages=3) for n in range(10, 17, 2)
-    ],
+    configs=[triton.Config({"BLOCK_C": 2**n}, num_stages=3) for n in range(10, 17, 2)],
     key=["C"],
     strategy=["log"],
 )

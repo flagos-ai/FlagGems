@@ -24,7 +24,6 @@ Benchmarks (CIX P1 CD8180, BF16, OMP=8):
   28 layers × savings = 1.2ms/tok
 """
 
-
 import torch
 import torch.nn.functional as F
 import triton

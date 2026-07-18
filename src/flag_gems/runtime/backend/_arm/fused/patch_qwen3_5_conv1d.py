@@ -26,6 +26,7 @@ NEON OMP loop.
 
 Decode (T=1, kernel_size=4, BF16) only — other shapes fall back to torch.
 """
+
 import logging
 
 import torch

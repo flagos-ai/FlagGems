@@ -422,16 +422,12 @@ class KernelGenerator:
             with code.indent():
                 code.writeline("configs=[")
                 with code.indent():
-                    code.writeline(
-                        """
+                    code.writeline("""
         triton.Config({'tile_size0': 1, 'tile_size1': 1, 'tile_size2': 1024}, num_stages=3, num_warps=1),
-                        """
-                    )
-                    code.writeline(
-                        """
+                        """)
+                    code.writeline("""
         triton.Config({'tile_size0': 1, 'tile_size1': 1, 'tile_size2': 2048}, num_stages=3, num_warps=1),
-                        """
-                    )
+                        """)
                 code.writeline("],")
                 if num_non_tensor_args > 0:
                     code.writeline(
@@ -455,16 +451,12 @@ class KernelGenerator:
             with code.indent():
                 code.writeline("configs=[")
                 with code.indent():
-                    code.writeline(
-                        """
+                    code.writeline("""
         triton.Config({'tile_size0': 1,'tile_size1': 1,'tile_size2': 1,'tile_size3': 1024},num_stages=3,num_warps=1),
-                        """
-                    )
-                    code.writeline(
-                        """
+                        """)
+                    code.writeline("""
         triton.Config({'tile_size0': 1,'tile_size1': 1,'tile_size2': 1,'tile_size3': 2048},num_stages=3,num_warps=1),
-                        """
-                    )
+                        """)
                 code.writeline("],")
                 if num_non_tensor_args > 0:
                     code.writeline(

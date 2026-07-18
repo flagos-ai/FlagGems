@@ -233,7 +233,7 @@ class GroupNorm(torch.autograd.Function):
     def backward(ctx, y_grad, mean_grad, rstd_grad):
         logger.debug("GEMS_METAX GROUPNORM_BACKWARD")
         y_grad = y_grad.contiguous()
-        (x, weight, bias, mean, rstd) = ctx.saved_tensors
+        x, weight, bias, mean, rstd = ctx.saved_tensors
         num_groups = ctx.num_groups
         group_size = ctx.group_size
         N = ctx.N

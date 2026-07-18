@@ -25,6 +25,7 @@ Other shapes (prefill, M>1, non-BF16, with attn_mask) fall through to
 the original ATen SDPA without recursion (we capture the original
 function pointer at patch time).
 """
+
 import logging
 
 import torch

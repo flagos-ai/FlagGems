@@ -187,12 +187,10 @@ class LibCache(object):
         self.model: PersistantModel = SQLPersistantModel(self.db_url)
 
     @overload
-    def __getitem__(self, key: str) -> ConfigCache:
-        ...
+    def __getitem__(self, key: str) -> ConfigCache: ...
 
     @overload
-    def __getitem__(self, key: Tuple[Union[int, float, str]]) -> BenchmarkCache:
-        ...
+    def __getitem__(self, key: Tuple[Union[int, float, str]]) -> BenchmarkCache: ...
 
     def __getitem__(
         self, key: Union[str, Tuple[Union[int, float, str], ...]]

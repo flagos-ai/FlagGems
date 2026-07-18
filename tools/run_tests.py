@@ -102,6 +102,7 @@ Examples
   # Show help
   python run_tests.py -h
 """
+
 import argparse
 import datetime
 import json

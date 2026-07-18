@@ -120,7 +120,9 @@ def verify_unique_result(
                     f"  triton counts 总和 {triton_sum} != 输入元素数 {expected_sum}"
                 )
             if torch_sum != expected_sum:
-                errors.append(f"  torch counts 总和 {torch_sum} != 输入元素数 {expected_sum}")
+                errors.append(
+                    f"  torch counts 总和 {torch_sum} != 输入元素数 {expected_sum}"
+                )
 
     return errors
 

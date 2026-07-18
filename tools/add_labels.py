@@ -26,6 +26,7 @@ summary.json. The script reads conf/operators.yaml relative to the project root,
 builds a mapping of op_id -> labels, and injects the "labels" field into each
 operator entry in summary.json.
 """
+
 import argparse
 import json
 import sys

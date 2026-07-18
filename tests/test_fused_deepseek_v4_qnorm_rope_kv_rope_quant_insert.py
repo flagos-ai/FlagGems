@@ -192,9 +192,9 @@ def torch_quantize_and_insert_k_cache(
     encoded_scale = exponent + 127.0
     encoded_scale = torch.clamp(encoded_scale, min=0.0, max=255.0).to(torch.uint8)
     scale_range = torch.arange(NUM_QUANT_BLOCKS, dtype=torch.int64, device=k.device)
-    k_cache[
-        block_id[:, None], scale_off[:, None] + scale_range[None, :]
-    ] = encoded_scale
+    k_cache[block_id[:, None], scale_off[:, None] + scale_range[None, :]] = (
+        encoded_scale
+    )
     k_cache[block_id, scale_pad_off] = 0
 
 

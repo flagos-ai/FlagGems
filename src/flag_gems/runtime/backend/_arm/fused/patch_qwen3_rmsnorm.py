@@ -24,6 +24,7 @@ Each Qwen3 decode token does ~113 RMSNorm calls:
 
 This patch targets the input/q/k/final norms (~85 calls/token).
 """
+
 import logging
 
 import torch

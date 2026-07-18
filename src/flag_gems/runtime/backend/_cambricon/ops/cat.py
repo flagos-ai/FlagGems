@@ -143,19 +143,15 @@ class CatKernelGenerator(IndentedBuffer):
             self.writeline("configs=[")
             with self.indent():
                 if self.MODE == 0:
-                    self.writeline(
-                        """
+                    self.writeline("""
         triton.Config({'BLOCK_LOW': 2 ** i}, num_stages=1, num_warps=1) for i in range(7, 12)
-                        """
-                    )
+                        """)
                 elif self.MODE == 1:
-                    self.writeline(
-                        """
+                    self.writeline("""
         triton.Config({'BLOCK_HIGH': i, 'BLOCK_LOW': 2 ** j}, num_stages=1, num_warps=1)
         for i in [6, 11, 22]
         for j in range(8, 12)
-                        """
-                    )
+                        """)
                 self.writeline("],")
             self.writeline("key=['high_num', 'out_cat_num'],")
             self.writeline("strategy=['log', 'log'],")

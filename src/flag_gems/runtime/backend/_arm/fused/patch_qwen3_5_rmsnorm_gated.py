@@ -28,6 +28,7 @@ Reference formula:
 Decode (BF16, [M, D] last-dim contiguous, M aligned). Other shapes /
 dtypes fall back to the original forward.
 """
+
 import logging
 import types
 
