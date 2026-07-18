@@ -28,6 +28,8 @@ try:
 except ImportError:
     HAS_VLLM_FUSED_MOE = False
 
+print(HAS_VLLM_FUSED_MOE)
+
 
 class FusedMoEBenchmark(base.Benchmark):
     """
