@@ -1,0 +1,54 @@
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+
+# Cholesky decomposition supports float32 and float64 on NVIDIA GPU via cuSOLVER
+CHOLESKY_DTYPES = [torch.float32, torch.float64]
+
+
+@pytest.mark.cholesky
+@pytest.mark.parametrize("shape", utils.UT_SHAPES_2D)
+@pytest.mark.parametrize("dtype", CHOLESKY_DTYPES)
+def test_cholesky(shape, dtype):
+    # Create a symmetric positive-definite matrix
+    # A = A @ A.T + I ensures positive definiteness
+    n = shape[0]
+    A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # Make it symmetric positive definite
+    A = (
+        A @ A.transpose(-2, -1)
+        + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+    )
+
+    ref_inp = utils.to_reference(A)
+
+    # Use torch.linalg.cholesky which supports more dtypes
+    ref_out = torch.linalg.cholesky(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cholesky(A)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.cholesky
+@pytest.mark.parametrize("shape", utils.UT_SHAPES_2D)
+@pytest.mark.parametrize("dtype", CHOLESKY_DTYPES)
+def test_cholesky_upper(shape, dtype):
+    # Create a symmetric positive-definite matrix
+    n = shape[0]
+    A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    A = (
+        A @ A.transpose(-2, -1)
+        + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+    )
+
+    ref_inp = utils.to_reference(A)
+
+    ref_out = torch.linalg.cholesky(ref_inp, upper=True)
+    with flag_gems.use_gems():
+        res_out = torch.cholesky(A, upper=True)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
