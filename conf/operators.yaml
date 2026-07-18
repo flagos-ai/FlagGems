@@ -7383,6 +7383,18 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+ - id: linalg_matrix_power
+    description: |
+      Computes the n-th power of a square matrix using binary exponentiation.
+    for:
+      - linalg_matrix_power
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
 - id: linalg_matrix_sqrth
   description: Computes the principal square root of a symmetric or Hermitian positive-definite
     matrix.
