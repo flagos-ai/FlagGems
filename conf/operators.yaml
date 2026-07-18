@@ -5633,6 +5633,18 @@ ops:
     stages:
       - beta: '4.0'
       - stable: '4.2'
+  - id: moe_gate_top_k_routing
+    description: |
+      Applies softmax to MoE gate logits and selects the top-k experts for each token.
+    for:
+      - moe_gate_top_k_routing
+    labels:
+      - KernelGen
+      - fused
+    kind:
+      - MoE
+    stages:
+      - alpha: '5.4'
   - id: moe_sum
     description: |
       An implementation of Mixture of Experts (MoE) with sum-based aggregation
