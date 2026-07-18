@@ -155,7 +155,7 @@ message(STATUS "Detected Triton version: ${TRITON_VERSION}")
 
 # --------------------------- subdirectories ---------------------------
 add_subdirectory(lib)
-add_subdirectory(src/flag_gems/csrc)
+add_subdirectory(csrc)
 if(FLAGGEMS_BUILD_CTESTS)
   enable_testing()
   add_subdirectory(ctests)

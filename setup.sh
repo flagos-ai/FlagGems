@@ -125,12 +125,13 @@ print(f'TRITON_POST_INSTALL=\"{\" \".join(triton_post)}\"')
 # ── C++ extensions ───────────────────────────────────────────
 # Set ENABLE_CPP=1 to build C++ wrapped operators.
 # Default: OFF (C++ extensions require vendor SDK and toolchain).
+# The main package is pure Python; when ENABLE_CPP=1 the native extension is
+# built and installed separately from the cpp/ subdirectory (see below).
 if [ "${ENABLE_CPP:-0}" = "1" ]; then
   if [ -z "${CMAKE_BACKEND}" ]; then
     echo "Error: ENABLE_CPP=1 but backend '${BACKEND}' does not support C++ extensions"
     exit 1
   fi
-  export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=${CMAKE_BACKEND}"
   printf "C++ extensions: ON (${CMAKE_BACKEND})"
   ok
 else
@@ -153,6 +154,22 @@ uv pip install --no-build-isolation ".[${BACKEND}]" \
   --index "${MIRROR}" \
   || fail
 ok
+
+# ── Install C++ wrapped operators (optional) ─────────────────
+# The native extension is a separate distribution (flag-gems-cpp-<vendor>) that
+# installs its .so files into the flag_gems/ namespace. Build it from cpp/ with
+# the vendor name injected into cpp/pyproject.toml.
+if [ "${ENABLE_CPP:-0}" = "1" ]; then
+  vendor_lc="$(echo "${CMAKE_BACKEND}" | tr '[:upper:]' '[:lower:]')"
+  tools/set_cpp_vendor.sh "${vendor_lc}" || fail
+  printf "Installing FlagGems C++ extensions [${CMAKE_BACKEND}] ..."
+  CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=${CMAKE_BACKEND}" \
+    uv pip install --no-build-isolation ./cpp \
+    --default-index "${FLAGOS_PYPI}" \
+    --index "${MIRROR}" \
+    || fail
+  ok
+fi
 
 # ── Compiler selection ───────────────────────────────────────
 # COMPILER controls which Triton-compatible compiler to use:

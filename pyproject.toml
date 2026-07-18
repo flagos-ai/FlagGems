@@ -1,13 +1,10 @@
 [build-system]
-# The cmake and ninja packages are not supposed to be listed in build-system.requires.
-# The version expectation is "cmake>=3.20,<4.0", "ninja==1.13.0".
-# They must be installed separately for `--no-build-isolation` to work.
 # setuptools is capped below 77: from 77.0 onward it adopts PEP 639 and emits
 # `License-File`, which bumps the wheel to Metadata-Version 2.4. Some package
 # indexes (e.g. Nexus) reject 2.4; <77 keeps the pure-Python wheel at 2.2.
-requires = ["setuptools>=64.0,<77", "scikit-build-core==0.12.2", "pybind11==3.0.3", "setuptools-scm>=8"]
+requires = ["setuptools>=64.0,<77", "setuptools-scm>=8"]
 
-build-backend = "scikit_build_core.build"
+build-backend = "setuptools.build_meta"
 
 [project]
 
@@ -179,6 +176,15 @@ example = [
     "transformers>=4.40.2",
 ]
 
+# C++ wrapped operators, distributed as per-vendor native extension packages.
+# `pip install flag-gems[cpp-cuda]` pulls in the matching native wheel, which
+# drops its .so files into the flag_gems/ namespace.
+cpp-cuda = ["flag-gems-cpp-cuda"]
+cpp-musa = ["flag-gems-cpp-musa"]
+cpp-npu = ["flag-gems-cpp-npu"]
+cpp-gcu = ["flag-gems-cpp-gcu"]
+cpp-ix = ["flag-gems-cpp-ix"]
+
 [project.urls]
 
 Repository = "https://github.com/flagos-ai/FlagGems"
@@ -196,14 +202,6 @@ where = ["src"]
 
 "flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
-
-[tool.scikit-build]
-
-build.verbose = true
-logging.level = "INFO"
-wheel.install-dir = "flag_gems"
-build-dir = "build/{cache_tag}"
-metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
 
 [tool.setuptools_scm]
 write_to = "src/flag_gems/_version.py"

@@ -1,0 +1,44 @@
+[build-system]
+# cmake and ninja are intentionally omitted here; for --no-build-isolation
+# builds they must already be present in the venv (cmake>=3.20,<4.0, ninja).
+requires = ["scikit-build-core==0.12.2", "pybind11==3.0.3", "setuptools-scm>=8"]
+
+build-backend = "scikit_build_core.build"
+
+[project]
+
+# The vendor suffix is injected at build time (see tools/set_cpp_vendor.sh and
+# setup.sh): __VENDOR__ is replaced with cuda / musa / npu / gcu / ix so that
+# each backend produces its own distribution, e.g. flag-gems-cpp-cuda.
+name = "flag-gems-cpp-__VENDOR__"
+
+dynamic = ["version"]
+
+description = "FlagGems C++ wrapped operators (native extension)."
+requires-python = ">=3.10.0"
+license = { text = "Apache Software License" }
+
+# The native package drops its .so files into the flag_gems/ namespace, so it
+# must be paired with the exact same version of the pure-Python main package.
+# torch is pinned to a compatible family at build/release time.
+dependencies = [
+    "flag-gems",
+]
+
+[tool.scikit-build]
+
+build.verbose = true
+logging.level = "INFO"
+# Install the extension modules under the flag_gems/ package namespace.
+wheel.install-dir = "flag_gems"
+build-dir = "build/{cache_tag}"
+metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
+
+[tool.scikit-build.cmake.define]
+FLAGGEMS_BUILD_C_EXTENSIONS = "ON"
+
+[tool.setuptools_scm]
+# Version is derived from the parent repository so the native package stays in
+# lockstep with the main flag-gems package (same commit, same version).
+root = ".."
+version_scheme = "no-guess-dev"

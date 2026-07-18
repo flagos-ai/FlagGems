@@ -45,13 +45,6 @@ jobs:
             /opt/python/cp38-cp38/bin/python -m pip install --upgrade pip setuptools wheel build
           "
 
-      - name: Patch pyproject.toml to use setuptools backend
-        run: |
-          docker exec -t $CONTAINER bash -c "
-            set -e
-            sed -i 's/build-backend = \"scikit_build_core.build\"/build-backend = \"setuptools.build_meta\"/' pyproject.toml
-          "
-
       - name: Build wheel for Python 3.8
         run: |
           docker exec -t $CONTAINER bash -c "
