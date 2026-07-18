@@ -3790,6 +3790,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.3'
+  - id: grid_sampler_2d
+    description: Triton kernel implementation for grid_sampler_2d.
+    for:
+      - grid_sampler_2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: group_norm
     description: An internal IR for applying Group Normalization for last certain number of dimensions.
     for:
