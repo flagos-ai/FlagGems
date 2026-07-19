@@ -6,8 +6,7 @@ FROM ${BASE_IMAGE}:${BASE_IMAGE_VERSION}
 RUN dnf install -y \
     rpm-build rpmdevtools pyproject-rpm-macros \
     python3-devel python3-setuptools python3-wheel python3-pip \
-    python3-pybind11 python3-scikit-build-core \
-    gcc gcc-c++ cmake ninja-build \
+    python3-setuptools_scm \
     && dnf clean all
 
 RUN rpmdev-setuptree
@@ -15,12 +14,10 @@ RUN rpmdev-setuptree
 # Narrow COPY: only the paths the rpm source tarball actually needs.
 # Mirrors the Dockerfile.deb wheel-builder COPY list, so packaging-only edits
 # (docs, .github, notebooks) don't bust the rpm build cache.
-COPY CMakeLists.txt pyproject.toml setup.sh LICENSE README.md /workspace/FlagGems/
-COPY cmake /workspace/FlagGems/cmake
-COPY include /workspace/FlagGems/include
-COPY lib /workspace/FlagGems/lib
+COPY pyproject.toml setup.py LICENSE README.md /workspace/FlagGems/
 COPY src /workspace/FlagGems/src
-COPY conf /workspace/FlagGems/conf
+COPY tests /workspace/FlagGems/tests
+COPY benchmark /workspace/FlagGems/benchmark
 COPY packaging/rpm/specs /workspace/FlagGems/packaging/rpm/specs
 
 RUN SPEC_VERSION=$(grep '^Version:' /workspace/FlagGems/packaging/rpm/specs/flag-gems.spec | awk '{print $2}') && \

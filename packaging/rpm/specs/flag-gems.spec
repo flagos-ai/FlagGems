@@ -4,28 +4,25 @@
 # C++ extension split (libflaggems + libflaggems-dev) deferred to Phase 2.
 
 Name:           python3-flag-gems
-Version:        5.0.2
+Version:        5.3.0
 Release:        1%{?dist}
 Summary:        FlagGems — GPU operator library for FlagOS (Phase 1, Python-only)
 
 License:        Apache-2.0
 URL:            https://github.com/flagos-ai/FlagGems
 Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz#/flag-gems-%{version}.tar.gz
-# scikit-build-core tags this wheel linux_x86_64 even when
-# FLAGGEMS_BUILD_C_EXTENSIONS=OFF, so the rpm is x86_64-only. Use
-# ExclusiveArch (not BuildArch) so rpmbuild refuses to start on a
-# non-x86_64 host instead of silently producing a mislabeled rpm.
-ExclusiveArch:  x86_64
+# The upstream build backend is plain setuptools.build_meta since the
+# scikit-build retirement; the Phase 1 wheel is py3-none-any, so the
+# rpm is noarch (matches Architecture: all on the deb side).
+BuildArch:      noarch
 BuildRequires:  python3-devel
 BuildRequires:  python3-setuptools >= 64
 BuildRequires:  python3-wheel
 BuildRequires:  python3-pip
-BuildRequires:  python3-pybind11
 BuildRequires:  pyproject-rpm-macros
-# scikit-build-core for the pyproject build-backend
-BuildRequires:  python3-scikit-build-core
-BuildRequires:  cmake
-BuildRequires:  ninja-build
+# setuptools-scm resolves the version (no .git in the source tarball,
+# hence the SETUPTOOLS_SCM_PRETEND_VERSION export in %%build)
+BuildRequires:  python3-setuptools_scm >= 8
 
 # Filter the auto-generated Requires for: torch + numpy/pyyaml/sqlalchemy/packaging.
 # Reason: torch: distro version is CPU-only. numpy/pyyaml/sqlalchemy/packaging: distro has them but FlagGems pyproject uses == pins that distro versions do not match; we Require them below without a version constraint instead.
@@ -57,15 +54,18 @@ and headers into libflaggems-dev.
 %prep
 %autosetup -n flag-gems-%{version}
 
-# FLAGGEMS_BUILD_C_EXTENSIONS defaults OFF in CMakeLists.txt:32;
-# %%pyproject_wheel does not override it. The resulting wheel is
-# pure-Python (no liboperators.so), aligning with Phase 1 scope.
+# The C++ operators runtime lives in the separate cpp/ tree (its own
+# flag-gems-cpp wheel upstream); this Phase 1 rpm builds the pure-Python
+# wheel only, aligning with Phase 1 scope.
 %build
+# The source tarball carries no .git metadata; pin the scm version.
+export SETUPTOOLS_SCM_PRETEND_VERSION=%{version}
 %pyproject_wheel
 
 %install
 %pyproject_install
-%pyproject_save_files flag_gems
+export SETUPTOOLS_SCM_PRETEND_VERSION=%{version}
+%pyproject_save_files flag_gems flaggems_tests flaggems_benchmark
 
 %check
 # Smoke find_spec test — verifies module lands at expected sitelib path.
@@ -83,5 +83,10 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONSAFEPATH=1 \
 %license LICENSE
 
 %changelog
+* Mon Jul 20 2026 FlagOS Contributors <contact@flagos.io> - 5.3.0-1
+- Update to 5.3.0; follow upstream switch to the setuptools build backend
+  (noarch wheel, drop scikit-build/pybind11/cmake/ninja build deps).
+- Package the bundled flaggems_tests and flaggems_benchmark suites.
+
 * Thu May 21 2026 FlagOS Contributors <contact@flagos.io> - 5.0.2-1
 - Initial RPM packaging (Phase 1, Python-only, no C++ extension).

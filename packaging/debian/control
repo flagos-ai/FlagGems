@@ -46,6 +46,8 @@ Depends: python3:any,
 # is CPU-only and unsuitable for GPU workloads; users install matching
 # CUDA torch via pip — see packaging/INSTALL.md.
 Recommends: python3-flagtree-nvidia
+# The bundled operator test suite (flaggems_tests) needs pytest to run.
+Suggests: python3-pytest
 Description: FlagGems GPU operator library (Python module)
  FlagGems is a GPU operator library written in Triton, providing a
  drop-in replacement for many torch.* operations with custom-tuned

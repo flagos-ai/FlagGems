@@ -20,19 +20,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wget curl ca-certificates \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Build deps mirrored from FlagGems setup.sh + tools/setup_nvidia.sh
-# (authoritative). We use --no-build-isolation, so every build-system.requires
-# entry plus the CUDA-flavoured torch must be pinned here explicitly.
+# Build deps mirror pyproject [build-system] requires (authoritative):
+# setuptools>=64,<77 (PEP 639 / Metadata 2.4 cap) + setuptools-scm. The
+# upstream backend is plain setuptools.build_meta since the scikit-build
+# retirement, so the wheel build no longer needs torch, pybind11, cmake
+# or ninja. We use --no-build-isolation, so pin them here explicitly.
 RUN pip3 install --no-cache-dir --upgrade pip && \
     pip3 install --no-cache-dir \
-        "setuptools>=64.0" \
-        "scikit-build-core==0.12.2" \
-        "pybind11==3.0.3" \
-        "cmake>=3.20,<4" \
-        "ninja==1.13.0" && \
-    pip3 install --no-cache-dir \
-        --index-url https://download.pytorch.org/whl/cu128 \
-        torch==2.9.0+cu128
+        "setuptools>=64.0,<77" \
+        "setuptools-scm>=8" \
+        wheel
 
 # Phase 1 (FLAGGEMS_BUILD_C_EXTENSIONS=OFF, pure-Python wheel) does not
 # need libtriton-jit at build time. Phase 2 will reintroduce a
@@ -42,15 +39,21 @@ RUN pip3 install --no-cache-dir --upgrade pip && \
 
 WORKDIR /src
 # Narrow COPY: only paths the wheel build needs (skip packaging/, docs/, etc.
-# so packaging-only edits don't bust the wheel cache).
-COPY CMakeLists.txt pyproject.toml LICENSE README.md /src/
-COPY cmake /src/cmake
-COPY include /src/include
-COPY lib /src/lib
+# so packaging-only edits don't bust the wheel cache). setup.py maps
+# tests/ -> flaggems_tests and benchmark/ -> flaggems_benchmark into the
+# wheel unconditionally, so both directories must be present here.
+COPY pyproject.toml setup.py LICENSE README.md /src/
 COPY src /src/src
-COPY conf /src/conf
+COPY tests /src/tests
+COPY benchmark /src/benchmark
 
-RUN cd /src && pip3 wheel . --no-build-isolation -w /wheels -v && \
+# setuptools-scm cannot see .git inside the build context; pin the
+# version explicitly (keep in sync with packaging/debian/changelog).
+ARG FLAGGEMS_VERSION=5.3.0
+
+RUN cd /src && \
+    SETUPTOOLS_SCM_PRETEND_VERSION=${FLAGGEMS_VERSION} \
+    pip3 wheel . --no-build-isolation -w /wheels -v && \
     ls -lh /wheels/ && \
     test -n "$(ls /wheels/flag_gems-*.whl 2>/dev/null)"
 

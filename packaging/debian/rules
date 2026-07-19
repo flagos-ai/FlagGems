@@ -43,7 +43,7 @@ override_dh_auto_install:
 	@yaml_count=$$(find $(PYDIR)/flag_gems/runtime -name '*.yaml' 2>/dev/null | wc -l); \
 	if [ "$$yaml_count" -lt 20 ]; then \
 		echo "ERROR: only $$yaml_count YAML config files under $(PYDIR)/flag_gems/runtime/; expected ~32." >&2; \
-		echo "       Check pyproject.toml [tool.scikit-build] / CMakeLists install rules — they may have drifted." >&2; \
+		echo "       Check pyproject.toml [tool.setuptools.package-data] rules — they may have drifted." >&2; \
 		exit 1; \
 	fi; \
 	echo "Found $$yaml_count YAML runtime configs (sanity OK)"
