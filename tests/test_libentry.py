@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import multiprocessing
 import os
 import signal
@@ -26,11 +27,13 @@ import triton
 from triton import language as tl
 
 import flag_gems
-import flag_gems.utils.libentry as libentry_mod
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.code_cache import config_cache_dir
 from flag_gems.utils.libentry import LibTuner, libcache, major_version, minor_version
+
+libentry_mod = importlib.import_module("flag_gems.utils.libentry")
+flagtune_runtime_mod = importlib.import_module("flag_gems.runtime.flagtune")
 
 
 # not_raises is copied from https://gist.github.com/oisinmulvihill/45c14271fad7794a4a52516ecb784e69
@@ -425,7 +428,7 @@ def test_flagtree_policy_is_default_when_use_flagtune_is_disabled(monkeypatch):
 
     monkeypatch.delenv("USE_FLAGTUNE", raising=False)
     monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
-    monkeypatch.setattr(libentry_mod, "_include_ops", None)
+    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
     monkeypatch.setattr(libentry_mod, "_flagtune_available", lambda: (True, None))
     monkeypatch.setattr(
         libentry_mod,
