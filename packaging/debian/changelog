@@ -1,3 +1,15 @@
+flag-gems (5.3.0-1) unstable; urgency=medium
+
+  * New upstream release 5.3.0.
+  * Follow the upstream build-backend switch to setuptools.build_meta:
+    drop torch/pybind11/cmake/ninja from the wheel-builder stage and pin
+    the version for setuptools-scm.
+  * Ship the operator test and benchmark suites (flaggems_tests,
+    flaggems_benchmark) now included in the upstream wheel; Suggests
+    python3-pytest for running them.
+
+ -- FlagOS Contributors <contact@flagos.io>  Mon, 20 Jul 2026 10:00:00 +0800
+
 flag-gems (5.0.2-1) unstable; urgency=medium
 
   * Initial Debian packaging (Phase 1: bundled python3-flag-gems only).
