@@ -3983,6 +3983,30 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: huber_loss_backward
+    description: Compute the gradient of Huber loss with respect to the input tensor.
+    for:
+      - huber_loss_backward
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: huber_loss_backward_out
+    description: Variant of `huber_loss_backward` that writes the gradient into a pre-allocated tensor.
+    for:
+      - huber_loss_backward.out
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: hypot
     description: |
       Given the legs of a right triangle, return its hypotenuse.
