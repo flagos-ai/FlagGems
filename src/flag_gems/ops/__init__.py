@@ -440,6 +440,8 @@ from flag_gems.ops.repeat_interleave import (
     repeat_interleave_tensor,
 )
 from flag_gems.ops.replication_pad1d import replication_pad1d, replication_pad1d_out
+from flag_gems.ops.replication_pad2d import replication_pad2d, replication_pad2d_out
+from flag_gems.ops.replication_pad2d_backward import replication_pad2d_backward
 from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.resize import resize, resize_
 from flag_gems.ops.resolve_conj import resolve_conj
@@ -1121,6 +1123,9 @@ __all__ = [
     "repeat_interleave_tensor",
     "replication_pad1d",
     "replication_pad1d_out",
+    "replication_pad2d",
+    "replication_pad2d_backward",
+    "replication_pad2d_out",
     "replication_pad3d",
     "resize",
     "resize_",
