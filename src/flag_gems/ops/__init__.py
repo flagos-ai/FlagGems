@@ -1,5 +1,3 @@
-from meshgrid import meshgrid
-
 from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
@@ -541,6 +539,8 @@ from flag_gems.ops.where import (
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
+
+from .meshgrid import meshgrid
 
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
