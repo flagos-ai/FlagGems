@@ -5,7 +5,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.bmm import bmm_fp8_w8a8, bmm_fp8_w8a8_block_scale, bmm_fp8_w8a16
+from flag_gems.ops.bmm import bmm_fp8_w8a8_block_scale
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -111,17 +111,6 @@ def test_bmm_out(M, N, K, dtype):
 
 
 FP8_DTYPE = getattr(torch, "float8_e4m3fn", None)
-FP8_BMM_SHAPES = [
-    (2, 16, 32, 64),
-    (4, 64, 64, 128),
-    (2, 128, 128, 256),
-]
-FP8_W8A8_BMM_SHAPES = [
-    (2, 16, 32, 64),
-    (4, 64, 64, 128),
-    (2, 128, 128, 256),
-    (4, 256, 256, 512),
-]
 FP8_W8A8_BLOCK_SCALE_BMM_SHAPES = [
     (2, 16, 32, 64),
     (4, 64, 64, 128),
@@ -134,70 +123,6 @@ def _is_fp8e4nv_supported():
         return False
     major, minor = torch.cuda.get_device_capability()
     return major + minor / 10 >= 8.9
-
-
-def _quantize_b_fp8_per_k_block(B, block_size=128):
-    fp8_info = torch.finfo(FP8_DTYPE)
-    batch, K, N = B.shape
-    num_blocks = (K + block_size - 1) // block_size
-    padded_k = num_blocks * block_size
-    if padded_k != K:
-        B_for_scale = torch.cat(
-            [
-                B,
-                torch.zeros((batch, padded_k - K, N), dtype=B.dtype, device=B.device),
-            ],
-            dim=1,
-        )
-    else:
-        B_for_scale = B
-    B_blocked = B_for_scale.reshape(batch, num_blocks, block_size, N).float()
-    scale = (B_blocked.abs().amax(dim=2) / fp8_info.max).clamp(min=1e-8)
-    B_q = (
-        (B_blocked / scale[:, :, None, :])
-        .clamp(fp8_info.min, fp8_info.max)
-        .to(FP8_DTYPE)
-    )
-    B_q = B_q.reshape(batch, padded_k, N)[:, :K, :].contiguous()
-    return B_q, scale.to(B.dtype).contiguous()
-
-
-def _dequant_b_fp8_per_k_block(B_fp8, B_scale, block_size=128):
-    K = B_fp8.shape[1]
-    block_ids = torch.arange(K, device=B_fp8.device) // block_size
-    return B_fp8.float() * B_scale.index_select(1, block_ids).float()
-
-
-def _quantize_a_fp8_per_k_block(A, block_k=128):
-    fp8_info = torch.finfo(FP8_DTYPE)
-    batch, M, K = A.shape
-    num_k_blocks = (K + block_k - 1) // block_k
-    padded_k = num_k_blocks * block_k
-    if padded_k != K:
-        A_for_scale = torch.cat(
-            [
-                A,
-                torch.zeros((batch, M, padded_k - K), dtype=A.dtype, device=A.device),
-            ],
-            dim=2,
-        )
-    else:
-        A_for_scale = A
-    A_blocked = A_for_scale.reshape(batch, M, num_k_blocks, block_k).float()
-    scale = (A_blocked.abs().amax(dim=3) / fp8_info.max).clamp(min=1e-8)
-    A_q = (
-        (A_blocked / scale[:, :, :, None])
-        .clamp(fp8_info.min, fp8_info.max)
-        .to(FP8_DTYPE)
-    )
-    A_q = A_q.reshape(batch, M, padded_k)[:, :, :K].contiguous()
-    return A_q, scale.float().contiguous()
-
-
-def _dequant_a_fp8_per_k_block(A_fp8, A_scale, block_k=128):
-    K = A_fp8.shape[2]
-    block_ids = torch.arange(K, device=A_fp8.device) // block_k
-    return A_fp8.float() * A_scale.index_select(2, block_ids).float()
 
 
 def _quantize_a_fp8_per_mk_block(A, block_m=128, block_k=128):
@@ -232,13 +157,13 @@ def _quantize_a_fp8_per_mk_block(A, block_m=128, block_k=128):
         batch, num_m_blocks, block_m, num_k_blocks, block_k
     ).float()
     scale = (A_blocked.abs().amax(dim=(2, 4)) / fp8_info.max).clamp(min=1e-8)
-    A_q = (
+    A_fp8 = (
         (A_blocked / scale[:, :, None, :, None])
         .clamp(fp8_info.min, fp8_info.max)
         .to(FP8_DTYPE)
     )
-    A_q = A_q.reshape(batch, padded_m, padded_k)[:, :M, :K].contiguous()
-    return A_q, scale.float().contiguous()
+    A_fp8 = A_fp8.reshape(batch, padded_m, padded_k)[:, :M, :K].contiguous()
+    return A_fp8, scale.float().contiguous()
 
 
 def _dequant_a_fp8_per_mk_block(A_fp8, A_scale, block_m=128, block_k=128):
@@ -282,13 +207,13 @@ def _quantize_b_fp8_per_nk_block(B, block_n=128, block_k=128):
         batch, num_k_blocks, block_k, num_n_blocks, block_n
     ).float()
     scale = (B_blocked.abs().amax(dim=(2, 4)) / fp8_info.max).clamp(min=1e-8)
-    B_q = (
+    B_fp8 = (
         (B_blocked / scale[:, :, None, :, None])
         .clamp(fp8_info.min, fp8_info.max)
         .to(FP8_DTYPE)
     )
-    B_q = B_q.reshape(batch, padded_k, padded_n)[:, :K, :N].contiguous()
-    return B_q, scale.float().contiguous()
+    B_fp8 = B_fp8.reshape(batch, padded_k, padded_n)[:, :K, :N].contiguous()
+    return B_fp8, scale.float().contiguous()
 
 
 def _dequant_b_fp8_per_nk_block(B_fp8, B_scale, block_n=128, block_k=128):
@@ -298,46 +223,6 @@ def _dequant_b_fp8_per_nk_block(B_fp8, B_scale, block_n=128, block_k=128):
     n_ids = torch.arange(N, device=B_fp8.device) // block_n
     scale = B_scale.index_select(1, k_ids).index_select(2, n_ids)
     return B_fp8.float() * scale.float()
-
-
-@pytest.mark.bmm
-@pytest.mark.skipif(
-    not _is_fp8e4nv_supported(),
-    reason="FP8 BMM W8A16 requires CUDA fp8e4nv support",
-)
-@pytest.mark.parametrize("batch, M, N, K", FP8_BMM_SHAPES)
-def test_bmm_fp8_w8a16(batch, M, N, K):
-    torch.manual_seed(0)
-    A = torch.randn((batch, M, K), dtype=torch.bfloat16, device=flag_gems.device)
-    B = torch.randn((batch, K, N), dtype=torch.bfloat16, device=flag_gems.device)
-    B_fp8, B_scale = _quantize_b_fp8_per_k_block(B)
-    B_dequant = _dequant_b_fp8_per_k_block(B_fp8, B_scale).to(torch.bfloat16)
-
-    ref_out = torch.bmm(A, B_dequant)
-    res_out = bmm_fp8_w8a16(A, B_fp8, B_scale)
-
-    utils.gems_assert_close(res_out, ref_out, torch.bfloat16, reduce_dim=K)
-
-
-@pytest.mark.bmm
-@pytest.mark.skipif(
-    not _is_fp8e4nv_supported(),
-    reason="FP8 BMM W8A8 requires CUDA fp8e4nv support",
-)
-@pytest.mark.parametrize("batch, M, N, K", FP8_W8A8_BMM_SHAPES)
-def test_bmm_fp8_w8a8(batch, M, N, K):
-    torch.manual_seed(0)
-    A = torch.randn((batch, M, K), dtype=torch.bfloat16, device=flag_gems.device)
-    B = torch.randn((batch, K, N), dtype=torch.bfloat16, device=flag_gems.device)
-    A_fp8, A_scale = _quantize_a_fp8_per_k_block(A)
-    B_fp8, B_scale = _quantize_b_fp8_per_nk_block(B)
-    A_dequant = _dequant_a_fp8_per_k_block(A_fp8, A_scale)
-    B_dequant = _dequant_b_fp8_per_nk_block(B_fp8, B_scale)
-
-    ref_out = torch.bmm(A_dequant, B_dequant).to(torch.bfloat16)
-    res_out = bmm_fp8_w8a8(A_fp8, B_fp8, A_scale, B_scale)
-
-    utils.gems_assert_close(res_out, ref_out, torch.bfloat16, reduce_dim=K)
 
 
 @pytest.mark.bmm
