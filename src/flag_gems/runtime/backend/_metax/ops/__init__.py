@@ -27,6 +27,7 @@ from .index_put import index_put, index_put_
 from .index_select import index_select
 from .isin import isin
 from .layernorm import layer_norm, layer_norm_backward
+from .log_sigmoid_forward import log_sigmoid_forward
 from .log_softmax import log_softmax, log_softmax_backward
 from .masked_fill import masked_fill, masked_fill_
 from .matmul_bf16 import matmul_bf16
@@ -69,6 +70,7 @@ __all__ = [
     "isin",
     "layer_norm",
     "layer_norm_backward",
+    "log_sigmoid_forward",
     "log_softmax",
     "log_softmax_backward",
     "matmul_bf16",
