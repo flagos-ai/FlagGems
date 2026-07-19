@@ -1,8 +1,8 @@
 import pytest
 import torch
 
-from flag_gems.ops.bmm import bmm_fp8_w8a8_block_scale
 from flag_gems.ops.bmm import bmm_out as triton_bmm_out
+from flag_gems.ops.bmm_w8a8 import bmm_fp8_w8a8_block_scale
 
 from . import base, consts
 

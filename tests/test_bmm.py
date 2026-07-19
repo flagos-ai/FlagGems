@@ -5,7 +5,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.bmm import bmm_fp8_w8a8_block_scale
+from flag_gems.ops.bmm_w8a8 import bmm_fp8_w8a8_block_scale
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
