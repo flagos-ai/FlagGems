@@ -81,6 +81,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONSAFEPATH=1 \
 
 %files -f %{pyproject_files}
 %license LICENSE
+%{_bindir}/flaggems-setup
 
 %changelog
 * Mon Jul 20 2026 FlagOS Contributors <contact@flagos.io> - 5.3.0-1
