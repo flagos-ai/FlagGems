@@ -1,3 +1,4 @@
+import csv
 import importlib.util
 import sqlite3
 import sys
@@ -176,3 +177,44 @@ def test_summarize_config_cache_counts_benchmark_rows(tmp_path):
 
     assert summary.config_cache_db_bytes > 0
     assert summary.benchmark_cache_rows == 3
+
+
+def test_write_by_shape_csv_matches_default_and_expanded_semantics(tmp_path):
+    mod = load_module()
+    common = {
+        "shape": "1, 8, 31040, 4096",
+        "shape_key": "1,8,31040,4096",
+        "count": 7,
+        "status": "ok",
+        "cold_wall_source": "first_call_wall_clock",
+        "hot_latency_source": "pytest_do_bench",
+    }
+    rows = [
+        {
+            **common,
+            "method": "default",
+            "cold_gems_ms": 2.0,
+            "hot_gems_ms": 0.5,
+            "torch_ms": 0.4,
+        },
+        {
+            **common,
+            "method": "expanded",
+            "cold_gems_ms": 10.0,
+            "hot_gems_ms": 0.45,
+            "torch_ms": 0.41,
+        },
+    ]
+    output = tmp_path / "tuning_latency_compare_by_shape.csv"
+
+    mod.write_by_shape_csv(output, rows)
+
+    with output.open(newline="", encoding="utf-8") as handle:
+        result = list(csv.DictReader(handle))
+    assert len(result) == 1
+    assert result[0]["shape"] == common["shape"]
+    assert result[0]["shape_key"] == common["shape_key"]
+    assert float(result[0]["default_tuning_ms"]) == 2.0
+    assert float(result[0]["expanded_tuning_ms"]) == 10.0
+    assert float(result[0]["default_vs_expanded_tuning_speedup"]) == 5.0
+    assert float(result[0]["default_perf_pct_of_expanded_hot"]) == 90.0

@@ -1,12 +1,31 @@
 #!/usr/bin/env python3
-"""Benchmark Hopper mm FlagTune policies on model-derived shapes.
+"""Directly microbenchmark Hopper MM configuration-selection policies.
 
-This script compares:
-  1. default LibTuner policy over the default config list,
-  2. FlagTune XGB-only top-k selection,
-  3. FlagTune XGB+GA policy.
+This low-level diagnostic benchmark unwraps the LibTuner attached to the
+FlagGems Hopper MM/GEMV kernels and evaluates three policy paths for every
+selected model-derived shape:
 
-It is intended to run on H800 with FlagGems and FlagTree on PYTHONPATH.
+1. ``default`` exhaustively benchmarks the kernel's built-in config list.
+2. ``flagtune_xgb_only`` asks the FlagTree model for its top-k configs and
+   benchmarks only those valid predictions.
+3. The historical ``flagtune_xgb_ga`` output label calls the configured tuner
+   policy with ``USE_FLAGTUNE=1`` and the expanded configs. With the current
+   FlagGems legacy-switch semantics, that flag deliberately selects exhaustive
+   expanded-space search rather than the FlagTree proposer. The old label is
+   retained for output compatibility; use the end-to-end workflow for the
+   canonical ``default`` versus ``expanded`` comparison.
+
+The input must be a FlagTune shape YAML whose ``mm.shapes`` entries contain
+``B, M, N, K, Count``. Shapes are sorted by ``Count`` before ``--start-shape``
+and ``--max-shapes`` are applied. The script writes one CSV row and one JSONL
+record per shape/policy pair, including tuning time, final latency, benchmark
+count, selected config, and optional comparison with an existing benchmark DB.
+
+Run this script in an environment where the intended FlagGems and FlagTree
+sources are importable (normally through ``PYTHONPATH``) and a Hopper-class
+CUDA GPU is visible. This is a policy-level diagnostic, not the complete
+cold-cache/hot-cache workflow. For the reproducible end-to-end comparison and
+per-shape aggregation, use ``run_tuning_latency_compare.sh`` instead.
 """
 
 from __future__ import annotations

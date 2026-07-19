@@ -1,13 +1,35 @@
 #!/usr/bin/env python3
-"""Compare cold-cache tuning cost and hot-cache inference latency.
+"""Compare FlagGems default-policy and expanded-space tuning end to end.
 
-For each method this script runs the same shape file twice against an isolated
-FlagGems cache directory:
+The benchmark intentionally separates two concepts that share the FlagTune
+name:
 
-* cold pass: clear ``config_cache`` and measure the first Gems call with
-  wall-clock timing, so LibTuner/FlagTree tuning is included.
-* hot pass: keep the cache from the cold pass and reuse FlagGems' pytest
-  benchmark to measure cached inference latency.
+* ``default`` unsets the legacy FlagGems ``USE_FLAGTUNE`` switch. The kernel
+  keeps its default config list and its ``flagtune`` LibTuner policy invokes
+  the FlagTree XGBoost+GA proposer.
+* ``expanded`` sets ``USE_FLAGTUNE=1``. FlagGems replaces the config list with
+  the expanded parameter space and the policy deliberately uses LibTuner's
+  default exhaustive search instead of the FlagTree proposer.
+
+Each method receives an isolated ``FLAGGEMS_CACHE_DIR`` and runs two phases:
+
+1. The cold phase removes that method's config cache, distributes shapes over
+   the requested visible GPUs, synchronizes the device, and wall-clock times
+   the first Gems MM call. This measurement includes configuration selection,
+   compilation, benchmarking, and cache population.
+2. The hot phase preserves the populated cache and invokes the existing
+   FlagGems pytest performance benchmark to measure cached operator latency.
+
+The script merges cold/hot records into ``tuning_latency_compare.csv`` and
+JSONL, writes a Markdown report and manifest, and pivots the two methods into
+``tuning_latency_compare_by_shape.csv``. The one-row-per-shape report contains
+the tuning-time ratio and cached-latency comparison used by the higher-level
+benchmark workflow.
+
+For normal use, run ``run_tuning_latency_compare.sh``. That wrapper performs
+environment checks, fixes the method set to ``default,expanded``, places both
+results and caches under ``<project_root>/flagtune-benchmark-output/``, captures
+the invocation, and verifies that all aggregate artifacts were produced.
 """
 
 from __future__ import annotations
@@ -34,6 +56,16 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_MODEL = "Qwen3.5-397B-A17B-p1024d1024"
 DEFAULT_CACHE_ROOT = Path("/tmp/flaggems_tuning_latency")
 SUPPORTED_METHODS = ("default", "expanded")
+METHOD_DESCRIPTIONS = {
+    "default": (
+        "USE_FLAGTUNE unset: keep the default config list and use the "
+        "FlagTree XGBoost+GA proposer policy."
+    ),
+    "expanded": (
+        "USE_FLAGTUNE=1: switch to the expanded config space and exhaustively "
+        "benchmark it with the LibTuner default policy."
+    ),
+}
 
 DATA_LINE_RE = re.compile(
     r"^(?P<status>SUCCESS|FAILED)\s+"
@@ -821,6 +853,85 @@ def write_jsonl(path: Path, rows: Sequence[Dict[str, Any]]) -> None:
             handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def write_by_shape_csv(path: Path, rows: Sequence[Dict[str, Any]]) -> None:
+    """Pivot default/expanded rows into the one-row-per-shape report."""
+    required_methods = set(SUPPORTED_METHODS)
+    shape_order: List[str] = []
+    grouped: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for row in rows:
+        shape_key = str(row["shape_key"])
+        shape = str(row["shape"])
+        if shape.replace(" ", "") != shape_key:
+            raise ValueError(
+                f"shape/shape_key mismatch: shape={shape!r}, shape_key={shape_key!r}"
+            )
+        if shape_key not in grouped:
+            grouped[shape_key] = {}
+            shape_order.append(shape_key)
+        method = str(row["method"])
+        if method in grouped[shape_key]:
+            raise ValueError(f"duplicate method={method!r} for shape_key={shape_key!r}")
+        grouped[shape_key][method] = row
+
+    fieldnames = [
+        "shape",
+        "shape_key",
+        "count",
+        "default_tuning_ms",
+        "expanded_tuning_ms",
+        "default_vs_expanded_tuning_speedup",
+        "default_hot_ms",
+        "expanded_hot_ms",
+        "default_perf_pct_of_expanded_hot",
+        "default_torch_ms",
+        "expanded_torch_ms",
+        "cold_wall_source",
+        "hot_latency_source",
+    ]
+
+    def csv_float(value: Optional[float]) -> str:
+        return "" if value is None else f"{float(value):.6f}"
+
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for shape_key in shape_order:
+            method_rows = grouped[shape_key]
+            missing = required_methods - set(method_rows)
+            if missing:
+                raise ValueError(
+                    f"shape_key={shape_key!r} is missing methods: {sorted(missing)}"
+                )
+            default = method_rows["default"]
+            expanded = method_rows["expanded"]
+            default_tuning = default.get("cold_gems_ms")
+            expanded_tuning = expanded.get("cold_gems_ms")
+            default_hot = default.get("hot_gems_ms")
+            expanded_hot = expanded.get("hot_gems_ms")
+            hot_ratio = safe_ratio(expanded_hot, default_hot)
+            writer.writerow(
+                {
+                    "shape": default["shape"],
+                    "shape_key": shape_key,
+                    "count": default["count"],
+                    "default_tuning_ms": csv_float(default_tuning),
+                    "expanded_tuning_ms": csv_float(expanded_tuning),
+                    "default_vs_expanded_tuning_speedup": csv_float(
+                        safe_ratio(expanded_tuning, default_tuning)
+                    ),
+                    "default_hot_ms": csv_float(default_hot),
+                    "expanded_hot_ms": csv_float(expanded_hot),
+                    "default_perf_pct_of_expanded_hot": csv_float(
+                        hot_ratio * 100.0 if hot_ratio is not None else None
+                    ),
+                    "default_torch_ms": csv_float(default.get("torch_ms")),
+                    "expanded_torch_ms": csv_float(expanded.get("torch_ms")),
+                    "cold_wall_source": default.get("cold_wall_source"),
+                    "hot_latency_source": default.get("hot_latency_source"),
+                }
+            )
+
+
 def mean(values: Iterable[Optional[float]]) -> Optional[float]:
     materialized = [value for value in values if value is not None]
     if not materialized:
@@ -839,6 +950,9 @@ def write_markdown(path: Path, rows: Sequence[Dict[str, Any]], methods: Sequence
     lines.append("# FlagGems Tuning/Latency Compare")
     lines.append("")
     lines.append("Cold cache Gems time is measured by wall-clock timing the first Gems call; hot cache Gems time is measured by the pytest do_bench latency path.")
+    lines.append("")
+    lines.append("- `default`: " + METHOD_DESCRIPTIONS["default"])
+    lines.append("- `expanded`: " + METHOD_DESCRIPTIONS["expanded"])
     lines.append("")
     lines.append("## Method Summary")
     lines.append("")
@@ -958,6 +1072,9 @@ def main() -> int:
         "shape_yaml": str(shape_yaml),
         "selected_shape_yaml": str(filtered_shape_yaml),
         "methods": methods,
+        "method_descriptions": {
+            method: METHOD_DESCRIPTIONS[method] for method in methods
+        },
         "cache_root": str(cache_root),
         "cold_warmup": args.cold_warmup,
         "cold_iter": args.cold_iter,
@@ -1035,12 +1152,17 @@ def main() -> int:
     csv_path = output_dir / "tuning_latency_compare.csv"
     jsonl_path = output_dir / "tuning_latency_compare.jsonl"
     md_path = output_dir / "tuning_latency_compare.md"
+    by_shape_csv_path = output_dir / "tuning_latency_compare_by_shape.csv"
     write_csv(csv_path, all_rows)
     write_jsonl(jsonl_path, all_rows)
     write_markdown(md_path, all_rows, methods)
+    if set(SUPPORTED_METHODS).issubset(methods):
+        write_by_shape_csv(by_shape_csv_path, all_rows)
     print(f"[DONE] wrote {csv_path}")
     print(f"[DONE] wrote {jsonl_path}")
     print(f"[DONE] wrote {md_path}")
+    if set(SUPPORTED_METHODS).issubset(methods):
+        print(f"[DONE] wrote {by_shape_csv_path}")
     return 0 if all(row["status"] == "ok" for row in all_rows) else 1
 
 
