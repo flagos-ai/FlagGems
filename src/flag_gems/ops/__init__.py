@@ -292,6 +292,7 @@ from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
+from flag_gems.ops.lgamma import lgamma, lgamma_
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.less_equal import less_equal, less_equal_scalar
 from flag_gems.ops.lgamma_ import lgamma, lgamma_
@@ -941,6 +942,8 @@ __all__ = [
     "leaky_relu",
     "leaky_relu_",
     "leaky_relu_out",
+    "lgamma",
+    "lgamma_",
     "lerp_scalar",
     "lerp_scalar_",
     "lerp_tensor",
