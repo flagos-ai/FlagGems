@@ -97,6 +97,11 @@ def test_div_tensor_mode_float(shape, rounding_mode, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="xdnn does not implement integer div with rounding_mode on Kunlunxin (XPU); "
+    "reference path itself fails (xdnn_pytorch_wrapper/div.cpp:199)",
+)
 def test_div_tensor_mode_int(shape, rounding_mode, dtype):
     inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
         flag_gems.device
@@ -134,6 +139,11 @@ def test_div_tensor_mode_float_(shape, rounding_mode, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="xdnn does not implement integer div with rounding_mode on Kunlunxin (XPU); "
+    "reference path itself fails (xdnn_pytorch_wrapper/div.cpp:199)",
+)
 def test_div_tensor_mode_int_(shape, rounding_mode, dtype):
     inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
         flag_gems.device
@@ -284,6 +294,14 @@ def test_div_scalar_(shape, scalar, dtype):
 def test_div_scalar_tensor(shape, scalar, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float16:
         pytest.skip("Issue #3796: not working")
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.float16,
+        torch.bfloat16,
+    ):
+        pytest.skip(
+            "reference torch.div(scalar, low-precision-float tensor) fails on Kunlunxin (XPU); "
+            "xdnn expects Float but got Half/BFloat16"
+        )
 
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -328,6 +346,11 @@ def test_div_scalar_scalar(dtype):
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="xdnn does not implement complex/complex div on Kunlunxin (XPU); "
+    "reference path itself fails (xdnn_pytorch_wrapper/div.cpp:88)",
+)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_div_complex_complex(shape, complex_dtype):
@@ -354,6 +377,11 @@ def test_div_complex_complex(shape, complex_dtype):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3897: TX81 does not support complex32 dtype",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="xdnn does not implement complex/float div on Kunlunxin (XPU); "
+    "reference path itself fails (xdnn_pytorch_wrapper/div.cpp:88)",
 )
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
@@ -390,6 +418,11 @@ def test_div_complex_float_tensor(shape, complex_dtype):
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="xdnn does not implement int->complex cast on Kunlunxin (XPU); "
+    "reference path itself fails (xdnn_pytorch_wrapper/cast.cpp:162)",
+)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_div_tensor_int(shape, complex_dtype):
@@ -414,6 +447,11 @@ def test_div_tensor_int(shape, complex_dtype):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3897: TX81 does not support complex32 dtype",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="xdnn does not implement complex<->float cast on Kunlunxin (XPU); "
+    "reference path itself fails (xdnn_pytorch_wrapper/cast.cpp:162)",
 )
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
@@ -475,6 +513,14 @@ def test_div_out_tensor_scalar(shape, scalar, dtype):
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_div_out_scalar_tensor(shape, scalar, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.float16,
+        torch.bfloat16,
+    ):
+        pytest.skip(
+            "reference torch.div(scalar, low-precision-float tensor, out=...) fails on Kunlunxin (XPU); "
+            "xdnn expects Float but got Half/BFloat16"
+        )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
 
