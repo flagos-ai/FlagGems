@@ -19,6 +19,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -144,15 +146,23 @@ def broadcast_to(x, size):
 
     # Create device arrays for shapes/strides with padding for MAX_DIMS
     pad_len = STATIC_MAX - out_ndim
-    out_shape_arr = torch.tensor(
-        out_shape + [1] * pad_len, dtype=torch.int64, device=x.device
-    )
-    out_cumprod_arr = torch.tensor(
-        out_cumprod_right + [1] * pad_len, dtype=torch.int64, device=x.device
-    )
-    in_stride_arr = torch.tensor(
-        in_stride_eff + [0] * pad_len, dtype=torch.int64, device=x.device
-    )
+
+    # torch.tensor(..., device=cuda) first allocates on CPU then copies to CUDA.
+    # This implicit unpinned CPU->CUDA copy is illegal during CUDA graph capture
+    # (triggered by models with attention_bias=True or mlp_bias=True that route
+    # through addmm -> broadcast_to).
+    # Fix: allocate on CPU with pin_memory=True, then transfer non-blocking.
+    # The device.type guard avoids calling pin_memory() on CPU-only tensors.
+
+    def _to_device(data, device):
+        t = torch.tensor(data, dtype=torch.int64, device="cpu")
+        if device.type == flag_gems.device:
+            t = t.pin_memory()
+        return t.to(device, non_blocking=True)
+
+    out_shape_arr = _to_device(out_shape + [1] * pad_len, x.device)
+    out_cumprod_arr = _to_device(out_cumprod_right + [1] * pad_len, x.device)
+    in_stride_arr = _to_device(in_stride_eff + [0] * pad_len, x.device)
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
