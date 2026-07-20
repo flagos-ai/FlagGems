@@ -132,6 +132,20 @@ def fused_add_rms_norm_fast_kernel(
         tl.store(mx_ptr[:, None] + cols[None, :], y, mask=mask)
 
 
+def _next_pow2(n):
+    """Smallest power of 2 >= n (n >= 1)."""
+    return 1 << (n - 1).bit_length()
+
+
+def _m_block(M, max_m_block=64):
+    """Power-of-2 M_BLOCK for tl.arange(0, M_BLOCK).
+
+    Rounding up (next_pow2) gives larger tiles and fewer loop iterations;
+    any rows past the actual per-program count are masked by row_mask.
+    """
+    return max(1, _next_pow2(min(triton.cdiv(M, TOTAL_CORE_NUM), max_m_block)))
+
+
 def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     """
     This function performs fused residual addition and RMS normalization **in-place**.
@@ -155,13 +169,13 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     with torch_device_fn.device(x.device):
         if N <= 4096:
             BLOCK_SIZE = triton.next_power_of_2(N)
-            M_BLOCK = min(triton.cdiv(M, TOTAL_CORE_NUM), 64)
+            M_BLOCK = _m_block(M)
             fused_add_rms_norm_fast_kernel[TOTAL_CORE_NUM,](
                 x, residual, weight, eps, x.stride(dim - 1), M, N, BLOCK_SIZE, M_BLOCK
             )
         else:
             BLOCK_SIZE = 4096
-            M_BLOCK = min(triton.cdiv(M, TOTAL_CORE_NUM), 64)
+            M_BLOCK = _m_block(M)
             fused_add_rms_norm_kernel[TOTAL_CORE_NUM,](
                 x, residual, weight, eps, x.stride(dim - 1), M, N, BLOCK_SIZE, M_BLOCK
             )
