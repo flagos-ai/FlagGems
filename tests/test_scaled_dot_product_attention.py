@@ -382,9 +382,6 @@ NON_POWER_OF_2_HEAD_DIMS = [
     80,  # between 64 and 128
     96,  # between 64 and 128
     112,  # between 64 and 128
-    160,  # between 128 and 256
-    192,  # between 128 and 256
-    224,  # between 128 and 256
 ]
 
 if QUICK_MODE:
