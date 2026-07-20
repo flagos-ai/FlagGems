@@ -1,14 +1,32 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 # 2D/3D shapes covering small to medium width; pad1d operates on last dim
-REFLECTION_PAD1D_SHAPES = [(2, 3), (1, 5), (4, 10), (1, 8, 16)]
-# Asymmetric and symmetric padding combinations
-REFLECTION_PAD1D_PADDING = [(1, 1), (0, 2), (2, 1), (1, 2)]
+if cfg.QUICK_MODE:
+    REFLECTION_PAD1D_SHAPES = [(2, 3), (1, 8, 16)]
+    REFLECTION_PAD1D_PADDING = [(1, 1), (0, 2)]
+else:
+    REFLECTION_PAD1D_SHAPES = [(2, 3), (1, 5), (4, 10), (1, 8, 16)]
+    REFLECTION_PAD1D_PADDING = [(1, 1), (0, 2), (2, 1), (1, 2)]
 
 
 @pytest.mark.reflection_pad1d_backward
