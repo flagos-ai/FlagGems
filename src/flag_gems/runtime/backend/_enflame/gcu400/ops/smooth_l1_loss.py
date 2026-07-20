@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -260,7 +274,7 @@ def smooth_l1_loss(
     reduction=1,
     beta: float = 1.0,
 ) -> torch.Tensor:
-    logger.debug("GEMS SMOOTH_L1_LOSS GCU400")
+    logger.debug("GEMS_ENFLAME SMOOTH_L1_LOSS")
     reduction = _normalize_reduction(reduction)
     input, target = _check_input(input, target, float(beta))
     if reduction == 0:
@@ -276,7 +290,7 @@ def smooth_l1_loss_out(
     *,
     out: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS SMOOTH_L1_LOSS OUT GCU400")
+    logger.debug("GEMS_ENFLAME SMOOTH_L1_LOSS_OUT")
     reduction = _normalize_reduction(reduction)
     input, target = _check_input(input, target, float(beta))
     if reduction == 0:
@@ -291,7 +305,7 @@ def smooth_l1_loss_backward(
     reduction,
     beta: float,
 ) -> torch.Tensor:
-    logger.debug("GEMS SMOOTH_L1_LOSS BACKWARD GCU400")
+    logger.debug("GEMS_ENFLAME SMOOTH_L1_LOSS_BACKWARD")
     reduction = _normalize_reduction(reduction)
     grad_output, input, target, reduction_elements = _check_backward_input(
         grad_output, input, target, float(beta)

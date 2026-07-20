@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import json
 import logging
 import os
@@ -62,11 +76,15 @@ class BenchConfig:
     def __init__(self):
         self.mode = consts.BenchMode.KERNEL
         self.bench_level = consts.BenchLevel.COMPREHENSIVE
-        self.warm_up = consts.DEFAULT_WARMUP_COUNT
-        self.repetition = consts.DEFAULT_ITER_COUNT
+        self.warm_up = consts.DEFAULT_WARMUP_TIME
+        self.repetition = consts.DEFAULT_ITER_TIME
 
         # Speed Up Benchmark Test, Big Shape Will Cause Timeout
         if vendor_name == "kunlunxin":
+            self.warm_up = 1
+            self.repetition = 1
+
+        if vendor_name == "tsingmicro":
             self.warm_up = 1
             self.repetition = 1
 
@@ -87,10 +105,11 @@ def pytest_addoption(parser):
         action="store",
         default="kernel",
         required=False,
-        choices=["kernel", "operator", "wrapper"],
+        choices=[mode.value for mode in consts.BenchMode],
         help=(
             "Specify how to measure latency, 'kernel' for device kernel, "
-            "'operator' for end2end operator or 'wrapper' for runtime wrapper."
+            "'operator' for end2end operator, 'wrapper' for runtime wrapper, "
+            "or 'cudagraph' for CUDA Graph captured execution."
         ),
     )
 
@@ -105,14 +124,14 @@ def pytest_addoption(parser):
 
     parser.addoption(
         "--warmup",
-        default=consts.DEFAULT_WARMUP_COUNT,
-        help="Number of warmup runs before benchmark run.",
+        default=consts.DEFAULT_WARMUP_TIME,
+        help="Time(ms) of warmup runs before benchmark run.",
     )
 
     parser.addoption(
         "--iter",
-        default=consts.DEFAULT_ITER_COUNT,
-        help="Number of reps for each benchmark run.",
+        default=consts.DEFAULT_ITER_TIME,
+        help="Time(ms) of reps for each benchmark run.",
     )
 
     parser.addoption(

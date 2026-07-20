@@ -190,8 +190,3 @@ def special_gammainc(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = No
             )
     _launch_gammainc(out, a, x)
     return out
-
-
-def special_gammainc_out(a: torch.Tensor, x: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS SPECIAL_GAMMAINC_OUT")
-    return special_gammainc(a, x, out=out)
