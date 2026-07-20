@@ -405,5 +405,5 @@ def _chunk_cat_impl(
 
 def chunk_cat(tensors: List[torch.Tensor], dim: int, num_chunks: int) -> torch.Tensor:
     """_chunk_cat operator."""
-    logger.debug("GEMS _chunk_cat")
+    logger.debug("GEMS _CHUNK_CAT")
     return _chunk_cat_impl(tensors, dim, num_chunks)
