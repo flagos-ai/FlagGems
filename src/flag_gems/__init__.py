@@ -392,6 +392,7 @@ _FULL_CONFIG = (
     ("fmod_.Tensor", fmod_tensor_),
     ("frac", frac),
     ("frac_", frac_),
+    ("frexp", frexp),
     ("full", full),
     ("full_like", full_like),
     ("gather", gather),
