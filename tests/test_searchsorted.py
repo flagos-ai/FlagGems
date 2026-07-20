@@ -1,16 +1,34 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 SEARCHSORTED_DTYPES = list(
     dict.fromkeys(
         utils.ALL_FLOAT_DTYPES + utils.ALL_INT_DTYPES + [torch.int8, torch.uint8]
     )
 )
-SIDE_CASES = [(False, None), (True, None), (False, "left"), (False, "right")]
+if cfg.QUICK_MODE:
+    SIDE_CASES = [(False, None), (False, "right")]
+else:
+    SIDE_CASES = [(False, None), (True, None), (False, "left"), (False, "right")]
 
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name == "ascend" and not utils.TO_CPU,

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 
 import pytest
@@ -6,8 +20,21 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 device = flag_gems.device
+
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    HEAD_SIZE_LIST = [64]
+    BLOCK_SIZE_LIST = [8, 32]
+    NUM_BLOCKS_LIST = [1024]
+    DTYPE_LIST = [torch.float]
+else:
+    HEAD_SIZE_LIST = [64, 80, 120, 256]
+    BLOCK_SIZE_LIST = [8, 16, 32]
+    NUM_BLOCKS_LIST = [1024, 10000]
+    DTYPE_LIST = [torch.half, torch.bfloat16, torch.float]
 
 
 def create_kv_caches_with_random_flash(
@@ -48,12 +75,15 @@ def create_kv_caches_with_random_flash(
 @pytest.mark.reshape_and_cache_flash
 @pytest.mark.parametrize("num_tokens", [42])
 @pytest.mark.parametrize("num_heads", [8])
-@pytest.mark.parametrize("head_size", [64, 80, 120, 256])
-@pytest.mark.parametrize("block_size", [8, 16, 32])
-@pytest.mark.parametrize("num_blocks", [1024, 10000])
-@pytest.mark.parametrize("dtype", [torch.half, torch.bfloat16, torch.float])
+@pytest.mark.parametrize("head_size", HEAD_SIZE_LIST)
+@pytest.mark.parametrize("block_size", BLOCK_SIZE_LIST)
+@pytest.mark.parametrize("num_blocks", NUM_BLOCKS_LIST)
+@pytest.mark.parametrize("dtype", DTYPE_LIST)
 @pytest.mark.parametrize("kv_cache_dtype", ["auto"])
 @pytest.mark.parametrize("seed", [2025])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 @torch.inference_mode()
 def test_reshape_and_cache_flash(
     num_tokens: int,

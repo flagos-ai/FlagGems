@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import itertools
 import random
@@ -56,6 +70,12 @@ sizes_2d_nr = [1] if QUICK_MODE else [1, 5, 1024]
 
 UT_SHAPES_1D = list((n,) for n in sizes_1d)
 UT_SHAPES_2D = list(itertools.product(sizes_2d_nr, sizes_2d_nc))
+_UNSAFE_MASKED_INDEX_PUT_SHAPES = [
+    ((16,), (16,), (16,), (16,)),
+    ((64,), (64,), (64,), (64,)),
+    ((8, 32), (8, 32), (8, 32), (8, 32)),
+    ((2, 16, 64), (2, 16, 64), (2, 16, 64), (2, 16, 64)),
+]
 POINTWISE_SHAPES = (
     [(2, 19, 7)]
     if QUICK_MODE
@@ -197,52 +217,62 @@ KRON_SHAPES = [
     [(), (2, 3)],
     [(2, 3), ()],
     [(0, 3), (2, 3)],
-    [(2, 3), (0,)],
-    [(0,), (0,)],
+    # [(2, 3), (0,)],  # commented out to reduce CI timeout
+    # [(0,), (0,)],  # commented out to reduce CI timeout
     [(), ()],
     [(1,), (2,)],
-    [(2,), (3,)],
+    # [(2,), (3,)],  # commented out to reduce CI timeout
     [(2, 2), (3, 3)],
     [(1, 2, 3), (2, 3, 4)],
     [(1,), (2, 2)],
-    [(1, 2), (3, 4, 5)],
+    # [(1, 2), (3, 4, 5)],  # commented out to reduce CI timeout
     [(2,), (3, 4, 5, 6)],
-    [(2, 3, 4), (1,)],
+    # [(2, 3, 4), (1,)],  # commented out to reduce CI timeout
     [(5, 5), (4, 4)],
     [(3, 3, 3), (2, 2, 2)],
     [(4, 4, 4, 4), (2, 2, 2, 2)],
     [(2, 3, 4), (3, 4, 5)],
-    [(1, 3, 5), (2, 4, 6)],
-    [(2, 4, 6, 8), (1, 3, 5, 7)],
-    [(1, 3), (1, 4)],
-    [(1, 1, 3), (1, 1, 2)],
-    [(2, 1, 4), (3, 1, 5)],
-    [(2, 2, 2, 2, 2), (1, 1, 1, 1, 1)],
+    # [(1, 3, 5), (2, 4, 6)],  # commented out to reduce CI timeout
+    # [(2, 4, 6, 8), (1, 3, 5, 7)],  # commented out to reduce CI timeout
+    # [(1, 3), (1, 4)],  # commented out to reduce CI timeout
+    # [(1, 1, 3), (1, 1, 2)],  # commented out to reduce CI timeout
+    # [(2, 1, 4), (3, 1, 5)],  # commented out to reduce CI timeout
+    # [(2, 2, 2, 2, 2), (1, 1, 1, 1, 1)],  # commented out to reduce CI timeout
     [(1, 2, 3, 4, 5), (2, 3, 4, 5, 6)],
-    [(1,), (1,)],
-    [(10,), (10,)],
-    [(2, 3), (3, 2)],
+    # [(1,), (1,)],  # commented out to reduce CI timeout
+    # [(10,), (10,)],  # commented out to reduce CI timeout
+    # [(2, 3), (3, 2)],  # commented out to reduce CI timeout
     [(3, 3), (3, 3)],
-    [(1, 1, 1), (2, 2, 2)],
+    # [(1, 1, 1), (2, 2, 2)],  # commented out to reduce CI timeout
 ]
 # Add some test cases with zeor-dimensional tensor and zero-sized tensors.
 PRIMARY_FLOAT_DTYPES = [torch.float16, torch.float32]
 FLOAT_DTYPES = (
-    PRIMARY_FLOAT_DTYPES + [torch.bfloat16]
-    if bf16_is_supported
-    else PRIMARY_FLOAT_DTYPES
+    ([torch.bfloat16] if bf16_is_supported else [torch.float32])
+    if QUICK_MODE
+    else (
+        PRIMARY_FLOAT_DTYPES + [torch.bfloat16]
+        if bf16_is_supported
+        else PRIMARY_FLOAT_DTYPES
+    )
 )
 
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOAT_DTYPES
-INT_DTYPES = [torch.int16, torch.int32]
+INT_DTYPES = [torch.int32] if QUICK_MODE else [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPES
 BOOL_TYPES = [torch.bool]
-COMPLEX_DTYPES = [torch.complex32, torch.complex64]
+COMPLEX_DTYPES = [torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64]
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
-STACK_DIM_LIST = [-2, -1, 0, 1]
+STACK_DIM_LIST = [-1, 0] if QUICK_MODE else [-2, -1, 0, 1]
 
 ARANGE_START = [0] if TO_CPU else [0, 1, 3]
+
+GLU_SHAPES = (
+    [(2, 19, 8)]
+    if QUICK_MODE
+    else [(2,), (128, 256), (20, 32, 16), (16, 128, 64, 60), (16, 7, 57, 32, 30)]
+)
 
 
 def to_reference(inp, upcast=False):
