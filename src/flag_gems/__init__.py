@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # ruff: noqa: F405
 import warnings
 
@@ -66,6 +80,7 @@ _FULL_CONFIG = (
     ("_conj", _conj),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_efficient_attention_backward", efficient_attention_backward),
+    ("_embedding_bag_dense_backward", _embedding_bag_dense_backward),
     ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_backward", flash_attention_backward),
     ("_flash_attention_forward", flash_attention_forward),
@@ -90,6 +105,7 @@ _FULL_CONFIG = (
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
     ("_masked_scale", _masked_scale),
     ("_pdist_backward", _pdist_backward),
+    ("_prelu_kernel", _prelu_kernel),
     ("_prelu_kernel_backward", _prelu_kernel_backward),
     ("_resize_output", _resize_output),
     ("_safe_softmax", _safe_softmax),
@@ -104,6 +120,10 @@ _FULL_CONFIG = (
     (
         "_scaled_dot_product_flash_attention_backward",
         scaled_dot_product_flash_attention_backward,
+    ),
+    (
+        "_scaled_dot_product_fused_attention_overrideable",
+        _scaled_dot_product_fused_attention_overrideable,
     ),
     ("_scaled_grouped_mm", scaled_grouped_mm, lambda: torch_ge("2.8")),
     ("_scaled_mm", scaled_mm, lambda: torch_ge("2.5")),
@@ -218,6 +238,7 @@ _FULL_CONFIG = (
     ("bitwise_and_.Scalar", bitwise_and_scalar_),
     ("bitwise_and_.Tensor", bitwise_and_tensor_),
     ("bitwise_left_shift", bitwise_left_shift),
+    ("bitwise_left_shift_", bitwise_left_shift_),
     ("bitwise_not", bitwise_not),
     ("bitwise_not_", bitwise_not_),
     ("bitwise_or.Scalar", bitwise_or_scalar),
@@ -234,6 +255,7 @@ _FULL_CONFIG = (
     ("bitwise_xor_.Tensor", bitwise_xor_tensor_),
     ("bmm", bmm),
     ("bmm.out", bmm_out),
+    ("broadcast_tensors", broadcast_tensors),
     ("broadcast_to", broadcast_to),
     ("bucketize.Tensor", bucketize),
     ("cat", cat),
@@ -277,6 +299,7 @@ _FULL_CONFIG = (
     ),
     ("copysign", copysign),
     ("copysign.out", copysign_out),
+    ("copysign_.Tensor", copysign_),
     ("cos", cos),
     ("cos_", cos_),
     ("cosh", cosh),
@@ -381,6 +404,7 @@ _FULL_CONFIG = (
     ("full_like", full_like),
     ("gather", gather),
     ("gather_backward", gather_backward),
+    ("gather_block_quantized", gather_block_quantized),
     ("gcd", gcd),
     ("gcd.out", gcd_out),
     ("gcd_", gcd_),
@@ -424,6 +448,7 @@ _FULL_CONFIG = (
     ("index_put_", index_put_),
     ("index_reduce_", index_reduce_),
     ("index_select", index_select),
+    ("index_select_backward", index_select_backward),
     ("is_nonzero", is_nonzero),
     ("isclose", isclose),
     ("isfinite", isfinite),
@@ -459,6 +484,7 @@ _FULL_CONFIG = (
     ("linalg_slogdet", linalg_slogdet),
     ("linalg_vector_norm", vector_norm),
     ("linear", linear),
+    ("linear_backward", linear_backward),
     ("linspace", linspace),
     ("log", log),
     ("log10", log10),
@@ -475,6 +501,8 @@ _FULL_CONFIG = (
     ("logaddexp.out", logaddexp_out),
     ("logaddexp2", logaddexp2),
     ("logaddexp2.out", logaddexp2_out),
+    ("logcumsumexp", logcumsumexp),
+    ("logcumsumexp.out", logcumsumexp_out),
     ("logical_and", logical_and),
     ("logical_and_", logical_and_),
     ("logical_not", logical_not),
@@ -538,6 +566,7 @@ _FULL_CONFIG = (
     ("nanmedian.dim", nanmedian_dim),
     ("nanmedian.dim_values", nanmedian_dim_values),
     ("nanmedian.out", nanmedian_out),
+    ("narrow", narrow),
     ("narrow_copy", narrow_copy),
     ("native_batch_norm", batch_norm),
     ("native_batch_norm_backward", batch_norm_backward),
@@ -554,6 +583,7 @@ _FULL_CONFIG = (
     ("negative", negative),
     ("new_full", new_full),
     ("new_ones", new_ones),
+    ("nextafter", nextafter),
     ("nextafter_", nextafter_),
     ("nll_loss2d_backward", nll_loss2d_backward),
     ("nll_loss2d_forward", nll_loss2d_forward),
@@ -563,6 +593,9 @@ _FULL_CONFIG = (
     ("nll_loss_nd_forward", nll_loss_nd_forward),
     ("nonzero", nonzero),
     ("nonzero_numpy", nonzero_numpy),
+    ("norm", norm),
+    ("norm.Scalar", norm_scalar),
+    ("norm.ScalarOpt_dim", norm_scalaropt_dim),
     ("normal.Tensor_Tensor", normal_tensor_tensor),
     ("normal.Tensor_float", normal_tensor_float),
     ("normal.float_Tensor", normal_float_tensor),
@@ -574,6 +607,7 @@ _FULL_CONFIG = (
     ("ones", ones),
     ("ones_like", ones_like),
     ("pad", pad),
+    ("pdist", pdist),
     ("permute_copy", permute_copy),
     ("pixel_shuffle", pixel_shuffle),
     ("pixel_unshuffle", pixel_unshuffle),
@@ -698,6 +732,7 @@ _FULL_CONFIG = (
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special_chebyshev_polynomial_w", special_chebyshev_polynomial_w),
     ("special_chebyshev_polynomial_w_out", special_chebyshev_polynomial_w_out),
+    ("special_digamma", special_digamma),
     ("special_erfinv", special_erfinv),
     ("special_erfinv.out", special_erfinv_out),
     ("special_erfinv_", special_erfinv_),
@@ -707,6 +742,8 @@ _FULL_CONFIG = (
     ("special_i0e_out", special_i0e_out),
     ("special_i1", special_i1),
     ("special_i1_out", special_i1_out),
+    ("special_log1p", special_log1p),
+    ("special_log1p.out", special_log1p_out),
     ("special_logsumexp", special_logsumexp),
     ("special_log_softmax", special_log_softmax),
     ("special_shifted_chebyshev_polynomial_u", special_shifted_chebyshev_polynomial_u),
@@ -714,6 +751,7 @@ _FULL_CONFIG = (
         "special_shifted_chebyshev_polynomial_u_",
         special_shifted_chebyshev_polynomial_u_,
     ),
+    ("special_xlog1py", special_xlog1py),
     ("split_with_sizes_copy", split_with_sizes_copy),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
@@ -745,6 +783,7 @@ _FULL_CONFIG = (
     ("tile", tile),
     ("topk", topk),
     ("trace", trace),
+    ("transpose.int", transpose),
     ("tril", tril),
     ("tril.out", tril_out),
     ("tril_", tril_),
@@ -757,6 +796,7 @@ _FULL_CONFIG = (
     ("true_divide.out", true_divide_out),
     ("trunc", trunc),
     ("trunc_", trunc_),
+    ("unbind.int", unbind),
     ("unbind_copy", unbind_copy),
     ("unfold_backward", unfold_backward),
     ("unfold_copy", unfold_copy),
