@@ -9015,6 +9015,18 @@ ops:
       - Math
     stages:
       - stable: '2.1'
+  - id: unbind
+    description: Pure layout operation (unbind); returns zero-copy views sharing storage with the input.
+    for:
+      - unbind.int
+    labels:
+      - aten
+      - KernelGen
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: unbind_copy
     description: Removes a tensor dimension and returns a tuple of all slices along a given dimension as copies.
     for:

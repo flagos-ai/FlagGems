@@ -794,6 +794,7 @@ _FULL_CONFIG = (
     ("true_divide.out", true_divide_out),
     ("trunc", trunc),
     ("trunc_", trunc_),
+    ("unbind.int", unbind),
     ("unbind_copy", unbind_copy),
     ("unfold_backward", unfold_backward),
     ("unfold_copy", unfold_copy),
