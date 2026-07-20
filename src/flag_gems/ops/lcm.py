@@ -15,8 +15,12 @@ def _ctz(x):
 
 
 @triton.jit
-def _binary_gcd(ax, ay, normal):
-    """Binary GCD (Stein's algorithm) for unsigned inputs."""
+def _binary_gcd(ax, ay, normal, MAX_ITERS: tl.constexpr):
+    """Binary GCD (Stein's algorithm) for unsigned inputs.
+
+    Uses a fixed number of iterations (MAX_ITERS) based on the bit width
+    of the integer type to avoid unbounded loops on large values.
+    """
     zero_ax = ax == 0
     zero_ay = ay == 0
     res = tl.where(zero_ax, ay, ax)
@@ -26,7 +30,7 @@ def _binary_gcd(ax, ay, normal):
     v = ay
     active = both_nonzero
 
-    while tl.sum(active.to(tl.int32), axis=0) > 0:
+    for _ in tl.static_range(MAX_ITERS):
         v_shifted = tl.where(active, v >> _ctz(tl.where(active, v, 1)), v)
         swap = active & (u > v_shifted)
         small = tl.where(swap, v_shifted, u)
@@ -50,12 +54,19 @@ def lcm_kernel_i32(x_ptr, y_ptr, out_ptr, n_elements, BLOCK: tl.constexpr):
     ax = tl.abs(x).to(tl.int32)
     ay = tl.abs(y).to(tl.int32)
 
-    gcd_val = _binary_gcd(ax, ay, mask)
+    # Stein's algorithm worst case is log2(a) + log2(b) iterations.
+    # For int32 inputs up to 2^31-1, we need up to 62 iterations.
+    gcd_val = _binary_gcd(ax, ay, mask, MAX_ITERS=62)
 
-    # lcm = |x| / gcd * |y| (divide first to avoid overflow)
+    # lcm = |x| / gcd * |y| (divide first to reduce overflow chance)
     # When gcd is 0 (both inputs 0), lcm is 0
+    # Use unsigned arithmetic to match PyTorch's non-negative result semantics
     safe_gcd = tl.where(gcd_val == 0, 1, gcd_val)
-    result = (ax // safe_gcd) * ay
+    ax_u = ax.to(tl.uint32)
+    ay_u = ay.to(tl.uint32)
+    safe_gcd_u = safe_gcd.to(tl.uint32)
+    result_u = (ax_u // safe_gcd_u) * ay_u
+    result = result_u.to(tl.int32)
     result = tl.where(gcd_val == 0, 0, result)
 
     tl.store(out_ptr + offsets, result.to(out_ptr.type.element_ty), mask=mask)
@@ -73,10 +84,16 @@ def lcm_kernel_i64(x_ptr, y_ptr, out_ptr, n_elements, BLOCK: tl.constexpr):
     ax = tl.abs(x).to(tl.int64)
     ay = tl.abs(y).to(tl.int64)
 
-    gcd_val = _binary_gcd(ax, ay, mask)
+    # Stein's algorithm worst case is log2(a) + log2(b) iterations.
+    # For int64 inputs up to 2^63-1, we need up to 126 iterations.
+    gcd_val = _binary_gcd(ax, ay, mask, MAX_ITERS=126)
 
     safe_gcd = tl.where(gcd_val == 0, 1, gcd_val)
-    result = (ax // safe_gcd) * ay
+    ax_u = ax.to(tl.uint64)
+    ay_u = ay.to(tl.uint64)
+    safe_gcd_u = safe_gcd.to(tl.uint64)
+    result_u = (ax_u // safe_gcd_u) * ay_u
+    result = result_u.to(tl.int64)
     result = tl.where(gcd_val == 0, 0, result)
 
     tl.store(out_ptr + offsets, result.to(out_ptr.type.element_ty), mask=mask)
