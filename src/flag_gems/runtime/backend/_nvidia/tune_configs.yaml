@@ -2439,6 +2439,20 @@ rot90:
     num_warps: 16
     num_stages: 1
 
+index_select_backward:
+  - META:
+      BLOCK: 128
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK: 256
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK: 512
+    num_warps: 8
+    num_stages: 1
+
 fused_marlin_moe_mxfp4:
   - gen: true
     param_map:

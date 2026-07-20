@@ -446,6 +446,7 @@ _FULL_CONFIG = (
     ("index_put_", index_put_),
     ("index_reduce_", index_reduce_),
     ("index_select", index_select),
+    ("index_select_backward", index_select_backward),
     ("is_nonzero", is_nonzero),
     ("isclose", isclose),
     ("isfinite", isfinite),
