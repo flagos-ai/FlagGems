@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 from typing import Optional
@@ -11,7 +25,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.type_utils import get_accumulator_dtype
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 Tensor = torch.Tensor
 
 
@@ -556,7 +570,7 @@ class InstanceNorm(torch.autograd.Function):
         eps=1e-05,
         cudnn_enable=False,
     ):
-        logger.debug("GEMS INSTANCENORM FORWARD")
+        logger.debug("GEMS_KUNLUNXIN INSTANCENORM_FORWARD")
         assert len(x.shape) in [
             3,
             4,
@@ -670,9 +684,9 @@ class InstanceNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS INSTANCENORM BACKWARD")
+        logger.debug("GEMS_KUNLUNXIN INSTANCENORM_BACKWARD")
         out_grad = out_grad.contiguous()
-        (x, weight, mean, rstd) = ctx.saved_tensors
+        x, weight, mean, rstd = ctx.saved_tensors
         M = ctx.M
         N = ctx.N
         C = ctx.C

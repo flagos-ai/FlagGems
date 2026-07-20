@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -138,7 +152,7 @@ def weight_norm_except_dim_bwd_kernel(
 
 
 def weight_norm_except_dim(v, g, dim):
-    logger.debug("GEMS_CAMBRICON WEIGHT NORM EXCEPT DIM FORWARD")
+    logger.debug("GEMS_CAMBRICON WEIGHT_NORM_EXCEPT_DIM")
     v = v.contiguous()
     output = torch.empty_like(v)
     norm = torch.empty_like(g, dtype=torch.float32)
@@ -165,7 +179,7 @@ def weight_norm_except_dim(v, g, dim):
 
 
 def weight_norm_except_dim_backward(grad, v, g, norm, dim):
-    logger.debug("GEMS_CAMBRICON NORM BACKWARD")
+    logger.debug("GEMS_CAMBRICON NORM_BACKWARD")
     grad = grad.contiguous()
     v_grad = torch.empty_like(v)
     g_grad = torch.empty_like(g)
@@ -193,7 +207,7 @@ def weight_norm_except_dim_backward(grad, v, g, norm, dim):
 class WeightNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, v, g, dim=0):
-        logger.debug("GEMS_CAMBRICON WEIGHT NORM")
+        logger.debug("GEMS_CAMBRICON WEIGHT_NORM")
         dim = dim % v.ndim
         can_use_fused = dim == 0 or dim == v.ndim - 1
         if can_use_fused:
@@ -207,7 +221,7 @@ class WeightNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad):
-        logger.debug("GEMS_CAMBRICON WEIGHT NORM BACKWARD")
+        logger.debug("GEMS_CAMBRICON WEIGHT_NORM_BACKWARD")
         v, g, norm = ctx.saved_tensors
         dim = ctx.dim
         if ctx.can_use_fused:

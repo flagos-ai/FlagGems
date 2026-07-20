@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from typing import Any, Optional, Tuple
 
 import pytest
@@ -7,16 +21,23 @@ import flag_gems
 from flag_gems.utils.device_info import get_device_capability
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 device = flag_gems.device
 
-M = [1, 40, 164, 512, 3454, 12027, 38594]
-N = [128, 896, 2048, 8192]
+if cfg.QUICK_MODE:
+    M = [512]
+    N = [128]
+    BLOCK_SIZES = [128]
+    SCALE_FMTS = [None]
+else:
+    M = [1, 40, 164, 512, 3454, 12027, 38594]
+    N = [128, 896, 2048, 8192]
+    BLOCK_SIZES = [64, 128]
+    SCALE_FMTS = [None, "ue8m0"]
 
 # Test parameters
 SHAPES = [(m, n) for m in M for n in N]
-BLOCK_SIZES = [64, 128]
-SCALE_FMTS = [None, "ue8m0"]
 
 
 def is_fp8e4nv_supported():

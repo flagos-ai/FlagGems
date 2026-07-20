@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import functools
 import logging
 import math
@@ -377,7 +391,7 @@ def reduce_then_scan_block_scan_kernel_row(
 
 
 def cumprod(inp, dim, *, dtype=None):
-    logger.debug("GEMS CUMPROD")
+    logger.debug("GEMS_KUNLUNXIN CUMPROD")
     out_dtype = _get_output_dtype(inp, dtype)
     if is_boolean_dtype(inp.dtype):
         if is_boolean_dtype(out_dtype):
@@ -398,7 +412,7 @@ def cumprod(inp, dim, *, dtype=None):
 
 
 def cumprod_(inp, dim, *, dtype=None):
-    logger.debug("GEMS CUMPROD_")
+    logger.debug("GEMS_KUNLUNXIN CUMPROD_")
     if dtype is not None and dtype != inp.dtype:
         raise RuntimeError(
             "Bad in-place call: input tensor dtype and output tensor dtype should match"

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import functools
 import logging
 import os
@@ -12,9 +26,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
-logger = logging.getLogger(
-    "flag_gems.runtime.backend._nvidia.hopper.ops.w8a8_block_fp8_matmul"
-)
+logger = logging.getLogger(__name__)
 CACHE_USAGE_THRESHOLD = 0.8
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(
@@ -35,7 +47,7 @@ def get_w8a8_block_fp8_hopper_configs(N: int, K: int) -> Optional[Dict[int, Any]
     if os.path.exists(cfg_file):
         with open(cfg_file) as f:
             logger.info(
-                "Using config from %s for W8A8 block FP8 kernel.",
+                "GEMS_NVIDIA Using config from %s for W8A8 block FP8 kernel.",
                 cfg_file,
             )
             dev_data = yaml.safe_load(f).get(device_name, {})
@@ -58,8 +70,8 @@ def get_w8a8_block_fp8_hopper_configs(N: int, K: int) -> Optional[Dict[int, Any]
             return result
 
     logger.warning(
-        "Using default W8A8 Block FP8 kernel config. Performance might "
-        "be sub-optimal! Config file not found at %s",
+        "GEMS_NVIDIA Using default W8A8 Block FP8 kernel config. Performance might be sub-optimal! "
+        "Config file not found at %s",
         cfg_file,
     )
     return None
@@ -291,7 +303,8 @@ def w8a8_block_fp8_matmul_kernel_splitk(
 
 def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
     logger.debug(
-        "GEMS w8a8_block_fp8_matmul-hopper, [scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "GEMS_NVIDIA W8A8_BLOCK_FP8_MATMUL_HOPPER, [scenario]: general, "
+        "[shape info]: [-, %s, %s, %s](batch, M, N, K), "
         "[A column-major]: %s, [B column-major]: %s",
         M,
         N,

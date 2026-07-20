@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -241,7 +255,7 @@ def nll_loss2d_backward_kernel(
 
 # 1d & 2d tensor
 def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
-    logger.debug("GEMS NLL Loss FWD")
+    logger.debug("GEMS_ENFLAME NLL_LOSS_FWD")
     assert self.ndim <= 2, "Invalid input ndim"
     if target.dtype == torch.int64:
         target = target.to(torch.int32)
@@ -305,7 +319,7 @@ def nll_loss_backward(
     ignore_index=-100,
     total_weight=None,
 ):
-    logger.debug("GEMS NLL Loss BWD")
+    logger.debug("GEMS_ENFLAME NLL_LOSS_BWD")
     if target.dtype == torch.int64:
         target = target.to(torch.int32)
     N = 1 if self.ndim == 1 else self.shape[0]
@@ -336,7 +350,7 @@ def nll_loss_backward(
 
 # 3d+ tensor
 def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100):
-    logger.debug("GEMS NLL Loss2d FWD")
+    logger.debug("GEMS_ENFLAME NLL_LOSS2D_FWD")
     assert self.ndim == 4, "Invalid input ndim"
 
     shape = list(target.shape)
@@ -390,7 +404,7 @@ def nll_loss2d_backward(
     ignore_index=-100,
     total_weight=None,
 ):
-    logger.debug("GEMS NLL Loss2d BWD")
+    logger.debug("GEMS_ENFLAME NLL_LOSS2D_BWD")
     N, C, D1, D2 = self.shape
     D = D1 * D2
     grad_output = grad_output.contiguous()

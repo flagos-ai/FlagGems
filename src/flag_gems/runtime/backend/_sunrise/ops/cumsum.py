@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import functools
 import logging
 import math
@@ -366,12 +380,12 @@ def reduce_then_scan_block_scan_kernel_row(
 
 
 def cumsum(inp, dim=1, *, dtype=None):
-    logger.debug("GEMS CUMSUM")
+    logger.debug("GEMS_SUNRISE CUMSUM")
     return cumsum_wrapper(inp, dim, dtype)
 
 
 def cumsum_out(inp, dim=1, *, dtype=None, out):
-    logger.debug("GEMS CUMSUM_OUT")
+    logger.debug("GEMS_SUNRISE CUMSUM_OUT")
     return cumsum_wrapper(inp, dim, dtype, out)
 
 
@@ -519,7 +533,7 @@ GRID_Y_LIMIT = 65535
 
 
 def normed_cumsum(inp, dim=-1):
-    logger.debug("GEMS NORMED_CUMSUM")
+    logger.debug("GEMS_SUNRISE NORMED_CUMSUM")
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
     dim = dim % inp.ndim
     N = inp.numel()

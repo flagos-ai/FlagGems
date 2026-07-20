@@ -1,0 +1,72 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# FlagGems backends Configuration
+# This file defines environment settings for weekly testing
+name: P800
+vendor: KunLunXin
+
+
+# Runner labels for this backends (self-hosted)
+runner_labels: p800-flaggems-weekly
+
+# Use container or not for this backends
+use_container: true
+
+# Container image for this backends
+container_image: harbor.baai.ac.cn/flaggems/kunlunxin-flaggems-test-p800:20260526
+
+# Container volumes to mount for this backends
+container_volumes:
+  - /etc/localtime:/etc/localtime:ro
+  - /data:/data
+  - /home:/home
+  - /tmp:/tmp
+
+# Container options for this backends
+container_options: >-
+  --privileged
+  --ulimit=stack=67108864
+  --ulimit=memlock=-1
+  --ulimit=nofile=120000
+  --shm-size=256g
+  --group-add video
+  --cap-add=SYS_PTRACE
+  --cap-add=SYS_ADMIN
+  --security-opt seccomp=unconfined
+  --device=/dev/xpu0:/dev/xpu0
+  --device=/dev/xpu1:/dev/xpu1
+  --device=/dev/xpu2:/dev/xpu2
+  --device=/dev/xpu3:/dev/xpu3
+  --device=/dev/xpu4:/dev/xpu4
+  --device=/dev/xpu5:/dev/xpu5
+  --device=/dev/xpu6:/dev/xpu6
+  --device=/dev/xpu7:/dev/xpu7
+  --device=/dev/xpuctrl:/dev/xpuctrl
+  --device=/dev/fuse
+  --workdir=/root
+
+# GPUs to test for this backends
+test_gpus: "0,1,2,3,4,5,6,7"
+
+# Extra environment variables injected only into the "Run weekly tests" step
+test_env:
+  XPU_EVENT_KL3_ENABLE: 1
+  PIP_CACHE_DIR: /root/.cache/pip
+
+# GPU availability check script for this backend
+gpu_check_script: tools/gpu_check_kunlunxin.sh
+
+# Output base directory for this backends
+output_base_dir: /home/flaggems/weekly

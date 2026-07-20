@@ -1,0 +1,70 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# FlagGems backends Configuration
+# This file defines environment settings for weekly testing
+name: 910B
+vendor: Ascend
+
+
+# Runner labels for this backends (self-hosted)
+runner_labels: 910b-flaggems-weekly
+
+# Use container or not for this backends
+use_container: true
+
+# Container image for this backends
+container_image: harbor.baai.ac.cn/flaggems/huawei-flaggems-test-910b-flagtree0.6.0-ascend3.5:202607091608
+
+# Container volumes to mount for this backends
+container_volumes:
+  - /usr/local/Ascend/driver:/usr/local/Ascend/driver
+  - /usr/local/Ascend/add-ons/:/usr/local/Ascend/add-ons/
+  - /usr/local/sbin/:/usr/local/sbin/
+  - /etc/ascend_install.info:/etc/ascend_install.info
+  - /etc/localtime:/etc/localtime:ro
+  - /data:/data
+  - /home:/home
+  - /tmp:/tmp
+
+# Container options for this backends
+container_options: >-
+  --pid=host
+  --ipc=host
+  --privileged
+  --device=/dev/davinci0
+  --device=/dev/davinci1
+  --device=/dev/davinci2
+  --device=/dev/davinci3
+  --device=/dev/davinci4
+  --device=/dev/davinci5
+  --device=/dev/davinci6
+  --device=/dev/davinci7
+  --device=/dev/davinci_manager
+  --device=/dev/devmm_svm
+  --device=/dev/hisi_hdc
+  --workdir=/root
+
+# GPUs to test for this backends
+test_gpus: "0,1,2,3,4,5,6,7"
+
+# Extra environment variables injected only into the "Run weekly tests" step
+test_env:
+  PIP_CACHE_DIR: /root/.cache/pip
+
+# GPU availability check script for this backend
+gpu_check_script: tools/gpu_check_ascend.sh
+
+# Output base directory for this backends
+output_base_dir: /home/flaggems/weekly

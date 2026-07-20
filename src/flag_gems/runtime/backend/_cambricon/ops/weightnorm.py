@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import copy
 import logging
 import math
@@ -12,7 +26,7 @@ from flag_gems.utils import libentry
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 MAX_N = 31744
 
 
@@ -85,9 +99,9 @@ def config_prune_for_first(configs, named_args, **kwargs):
                 max_block_m_without_pipe = (
                     MAX_NRAM_SIZE // 4 // (3 * BLOCK_COL_SIZE + 1)
                 )
-                BLOCK_ROW_SIZE = config.kwargs[
-                    "BLOCK_ROW_SIZE"
-                ] = max_block_m_without_pipe
+                BLOCK_ROW_SIZE = config.kwargs["BLOCK_ROW_SIZE"] = (
+                    max_block_m_without_pipe
+                )
                 num_stages = config.num_stages = 1
                 key = (BLOCK_ROW_SIZE, BLOCK_COL_SIZE, num_warps, num_stages)
                 configs_map.setdefault(key, config)
@@ -303,7 +317,7 @@ def weight_norm_bwd_kernel_first(
 
 
 def weight_norm_interface(v, g, dim=0):
-    logger.debug("GEMS_CAMBRICON WEIGHTNORM FORWARD")
+    logger.debug("GEMS_CAMBRICON WEIGHTNORM_FORWARD")
     v = v.contiguous()
     g = g.contiguous()
     output = torch.empty_like(v)
@@ -327,7 +341,7 @@ def weight_norm_interface(v, g, dim=0):
 
 
 def weight_norm_interface_backward(w_grad, saved_v, saved_g, saved_norms, dim):
-    logger.debug("GEMS_CAMBRICON WEIGHTNORM BACKWARD")
+    logger.debug("GEMS_CAMBRICON WEIGHTNORM_BACKWARD")
     w_grad = w_grad.contiguous()
     saved_v = saved_v.contiguous()
     saved_g = saved_g.contiguous()

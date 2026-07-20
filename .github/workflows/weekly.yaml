@@ -1,0 +1,418 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Weekly full-range test workflow
+#
+# Runs every Monday at 04:00 Beijing time (UTC 20:00 Sunday) against all
+# operator stages on all enabled backends in parallel.
+#
+# Main config: .github/configs/weekly/weekly-test.yaml
+# Per-backend config: .github/configs/weekly/<NAME>.yml
+
+name: weekly
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      vendors:
+        description: 'Comma-separated vendor names to run on (e.g. Ascend,Nvidia). Empty = all enabled vendors.'
+        required: false
+        default: ''
+      ops:
+        description: 'Comma-separated operators to test (e.g. abs,sum,add). Empty = all operator stages.'
+        required: false
+        default: ''
+
+  schedule:
+    # Sunday 00:10 Beijing time = Saturday 16:10 UTC
+    - cron: '10 16 * * 6'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      date: ${{ steps.get-date.outputs.DATE }}
+      matrix_container: ${{ steps.build-matrix.outputs.matrix_container }}
+      matrix_native: ${{ steps.build-matrix.outputs.matrix_native }}
+      api: ${{ steps.build-matrix.outputs.api }}
+      ops: ${{ steps.build-matrix.outputs.ops }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - id: get-date
+        run: echo "DATE=$(date -u '+%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - id: build-matrix
+        shell: python3 {0}
+        env:
+          # Optional workflow_dispatch inputs; empty for scheduled runs.
+          VENDORS_INPUT: ${{ github.event.inputs.vendors }}
+          OPS_INPUT: ${{ github.event.inputs.ops }}
+        run: |
+          import json
+          import os
+          import yaml
+
+          with open('.github/configs/weekly/weekly-test.yaml') as f:
+              main = yaml.safe_load(f)
+
+          # Parse optional vendor filter (case-insensitive). Empty -> all.
+          vendors_filter = {
+              v.strip().lower()
+              for v in os.environ.get('VENDORS_INPUT', '').split(',')
+              if v.strip()
+          }
+
+          container_include = []
+          native_include = []
+          for name, cfg in main['backends'].items():
+              if not cfg.get('enabled'):
+                  continue
+              with open(f'.github/configs/weekly/{name}.yml') as f:
+                  backend = yaml.safe_load(f)
+              if vendors_filter and backend.get('vendor', '').lower() not in vendors_filter:
+                  continue
+              backend['test_env'] = json.dumps(backend.get('test_env') or {})
+              if backend.get('use_container', True):
+                  container_include.append(backend)
+              else:
+                  native_include.append(backend)
+
+          # ops: empty input -> "all" operator stages; otherwise the given ops.
+          ops = os.environ.get('OPS_INPUT', '').strip() or 'all'
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f"matrix_container={json.dumps({'include': container_include})}\n")
+              out.write(f"matrix_native={json.dumps({'include': native_include})}\n")
+              out.write(f"api={main['server']['api']}\n")
+              out.write(f"ops={ops}\n")
+
+  # Backends that run inside a container (use_container: true)
+  test-container:
+    name: test (${{ matrix.name }})
+    needs: prepare
+    if: ${{ fromJSON(needs.prepare.outputs.matrix_container).include[0] != null }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix_container) }}
+    concurrency:
+      group: weekly-test-${{ matrix.name }}
+      cancel-in-progress: true
+    runs-on: ${{ matrix.runner_labels }}
+    # Whole-job timeout, evaluated per vendor. This is the ONLY timeout for the
+    # test run: the "Run weekly tests" step has no step-level timeout, so it is
+    # bounded solely by this value (a step-level timeout can never extend a step
+    # beyond its enclosing job, and omitting it avoids configuring the limit
+    # twice). Ascend (910B) runs the full operator suite in ~15h so it gets 24h.
+    # Self-hosted runners have no hard 6h cap, so these values are honoured.
+    timeout-minutes: 1440
+    container:
+      image: ${{ matrix.container_image }}
+      options: ${{ matrix.container_options }}
+      volumes: ${{ matrix.container_volumes }}
+    env:
+      DATE: ${{ needs.prepare.outputs.date }}
+      OUTPUT_DIR: ${{ matrix.output_base_dir }}/${{ needs.prepare.outputs.date }}/logs_results_${{ needs.prepare.outputs.date }}
+    steps:
+      - id: checkout-attempt-1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        run: sleep 30s
+
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Fix git safe directory
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Copy root profile to GitHub Actions home
+        run: |
+          for f in /root/.bash_profile /root/.profile /root/.bashrc; do
+            [ -f "$f" ] && cp -f "$f" "$HOME/" || true
+          done
+          # .bashrc may have interactive guards ([ -z "$PS1" ] or case $-)
+          # that prevent conda init / backend env setup from running in
+          # non-interactive CI shells. Extract those lines (conda init,
+          # `source .../set_env.sh`, FLAGTREE_BACKEND export, and the
+          # `. /root/.local/bin/env` sourcing) and append to .bash_profile
+          # instead, which is sourced by login shells without any
+          # interactive check.
+          #
+          # huawei: set_env.sh
+          # mthreads: $HOME/.local/bin/env
+          # kunlunxin: conda.sh and conda activate
+          #
+          if [ -f /root/.bashrc ]; then
+            # Pin $HOME -> /root: extracted lines use "$HOME/..." (e.g.
+            # . "$HOME/.local/bin/env"), but the login shell that sources
+            # .bash_profile has $HOME set to the GHA home, not /root.
+            grep -E '(conda\.sh|conda activate|set_env\.sh|\.local/bin/env)' /root/.bashrc \
+              | sed 's#\$HOME\/\.local#/root\/\.local#g' >> "$HOME/.bash_profile" || true
+          fi
+          # GitHub Actions job containers force HOME=/github/home. In the 910B
+          # image, the Ascend/MKI libraries loaded by torch_npu derive their
+          # default work path from HOME; with /github/home they can print
+          # "path string is NULL" to stdout during `import torch`. Huawei's ATB
+          # set_env.sh compares that command's full stdout to "True" for ABI
+          # auto-detection, so the extra text makes it incorrectly select
+          # cxx_abi_0.
+          #
+          # Important: ASCEND_WORK_PATH must be exported before any profile
+          # line sources Ascend/ATB set_env.sh. Keep these lines at the top of
+          # $HOME/.bash_profile, ahead of the set_env.sh lines extracted above.
+          # Also write it to GITHUB_ENV so later GHA steps have it before their
+          # own login shell starts reading system/vendor profiles.
+          if [ "${{ matrix.vendor }}" = "Ascend" ] && [ -f /usr/local/Ascend/nnal/atb/set_env.sh ]; then
+            echo "[Ascend env] Configuring ASCEND_WORK_PATH before sourcing Ascend/ATB profiles"
+            echo "[Ascend env] before rewrite: ASCEND_WORK_PATH=${ASCEND_WORK_PATH:-<unset>}"
+            echo "[Ascend env] before rewrite: ATB_HOME_PATH=${ATB_HOME_PATH:-<unset>}"
+            echo "[Ascend env] before rewrite: PATH=${PATH:-}"
+            echo "[Ascend env] before rewrite: LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
+            echo "[Ascend env] .bash_profile before rewrite:"
+            nl -ba "$HOME/.bash_profile" || true
+            ASCEND_WORK_PATH="${ASCEND_WORK_PATH:-/tmp/ascend_work/${GITHUB_RUN_ID:-manual}}"
+            mkdir -p "$ASCEND_WORK_PATH"
+            [ -n "${GITHUB_ENV:-}" ] && echo "ASCEND_WORK_PATH=$ASCEND_WORK_PATH" >> "$GITHUB_ENV"
+            echo "[Ascend env] exported ASCEND_WORK_PATH=$ASCEND_WORK_PATH"
+            {
+              echo 'export ASCEND_WORK_PATH="${ASCEND_WORK_PATH:-/tmp/ascend_work/${GITHUB_RUN_ID:-manual}}"'
+              echo 'mkdir -p "$ASCEND_WORK_PATH"'
+              cat "$HOME/.bash_profile"
+            } > "$HOME/.bash_profile.tmp"
+            mv "$HOME/.bash_profile.tmp" "$HOME/.bash_profile"
+            echo "[Ascend env] .bash_profile after rewrite:"
+            nl -ba "$HOME/.bash_profile" || true
+            echo "[Ascend env] verifying a fresh login shell after profile source"
+            bash --login -c '
+              set +e
+              echo "[Ascend env] after login source: ASCEND_WORK_PATH=${ASCEND_WORK_PATH:-<unset>}"
+              echo "[Ascend env] after login source: ATB_HOME_PATH=${ATB_HOME_PATH:-<unset>}"
+              echo "[Ascend env] after login source: PATH=${PATH:-}"
+              echo "[Ascend env] after login source: LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
+              python3 -c "import torch; print(torch.compiled_with_cxx11_abi())" >/tmp/ascend_torch_abi_probe.out 2>/tmp/ascend_torch_abi_probe.err
+              probe_rc=$?
+              echo "[Ascend env] torch ABI probe rc=${probe_rc}"
+              python3 -c "from pathlib import Path; print(\"[Ascend env] torch ABI probe stdout repr=\", repr(Path(\"/tmp/ascend_torch_abi_probe.out\").read_text())); print(\"[Ascend env] torch ABI probe stderr repr=\", repr(Path(\"/tmp/ascend_torch_abi_probe.err\").read_text()))"
+            ' || true
+          fi
+
+      - name: Install FlagGems dependencies
+        env: ${{ fromJSON(matrix.test_env) }}
+        shell: bash --login -e -o pipefail {0}
+        run: pip install .
+
+      - name: Check GPU availability
+        shell: bash --login -e -o pipefail {0}
+        run: bash ${{ matrix.gpu_check_script }}
+
+      # Run weekly tests.
+      # OPS is provided by the prepare job: "all" (scheduled runs or an empty
+      # "ops" input) runs every operator stage via --stages all; otherwise it
+      # runs only the selected operators via --ops <list>.
+      - name: Run weekly tests
+        env: ${{ fromJSON(matrix.test_env) }}
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          # run tests with specified GPUs and output directory
+          # Print env for debugging; drop proxy vars (http(s)_proxy/all_proxy,
+          # any case) since they may embed user:password that GitHub Actions
+          # does not auto-mask for values from the container/runner env.
+          printenv | grep -viE '^(https?_proxy|all_proxy)=' || true
+          OPS="${{ needs.prepare.outputs.ops }}"
+          if [ "${OPS}" = "all" ]; then
+            OP_ARGS="--stages all"
+          else
+            OP_ARGS="--ops ${OPS}"
+          fi
+          python3 tools/run_tests.py \
+            --gpus "${{ matrix.test_gpus }}" \
+            ${OP_ARGS} \
+            --dump-output \
+            --output "${OUTPUT_DIR}"
+          # process the test results to generate summary files
+          python3 tools/add_labels.py ${OUTPUT_DIR}
+          python3 tools/psum_text  -o  ${OUTPUT_DIR}/result.csv  ${OUTPUT_DIR}
+          python3 tools/psum_html  -o  ${OUTPUT_DIR}/result.html  ${OUTPUT_DIR}
+
+      - name: Package results
+        run: |
+          ARCHIVE="${{ runner.temp }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
+          tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      # - name: Upload artifact
+      #   uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      #   with:
+      #     name: weekly-${{ matrix.name }}-${{ needs.prepare.outputs.date }}
+      #     path: ${{ env.ARCHIVE }}
+
+      - name: Publish results to op-monitor
+        # Disabled publishing results to op-monitor for 910B/H800 backends due to network restrictions.
+        if: ${{ matrix.name != '910B' && matrix.name != 'H800' }}
+        timeout-minutes: 15
+        continue-on-error: true
+        run: |
+          # Normalize the backend name for special cases (e.g. MTT-S5000 -> "MTT S5000").
+          BACKEND_NAME="${{ matrix.name }}"
+          if [ "$BACKEND_NAME" = "MTT-S5000" ]; then
+            BACKEND_NAME="MTT S5000"
+          fi
+          # Upload the results archive to the op-monitor server.
+          curl -X POST "${{ needs.prepare.outputs.api }}" \
+            -H "X-API-Key: ${{ secrets.OPMON_UPLOAD_KEY }}" \
+            -F "file=@${ARCHIVE}" \
+            -F "library_name=FlagGems" \
+            -F "backend_name=${BACKEND_NAME}" \
+            -F "test_date=${DATE}"
+
+      - name: Send Feishu notification
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          CI_STATUS: ${{ job.status }}
+          PLATFORM: ${{ matrix.name }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
+        run: python3 .github/scripts/notify_feishu.py
+
+  # Backends that run natively on the runner (use_container: false)
+  test-native:
+    name: test (${{ matrix.name }})
+    needs: prepare
+    if: ${{ fromJSON(needs.prepare.outputs.matrix_native).include[0] != null }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix_native) }}
+    concurrency:
+      group: weekly-test-${{ matrix.name }}
+      cancel-in-progress: true
+    runs-on: ${{ matrix.runner_labels }}
+    # See test-container: single per-vendor, job-level timeout (Ascend 24h,
+    # others 18h); the "Run weekly tests" step has no step-level timeout.
+    timeout-minutes: 1080
+    env:
+      DATE: ${{ needs.prepare.outputs.date }}
+      OUTPUT_DIR: ${{ matrix.output_base_dir }}/${{ needs.prepare.outputs.date }}/logs_results_${{ needs.prepare.outputs.date }}
+    steps:
+      - id: checkout-attempt-1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        continue-on-error: true
+      - id: sleep-1
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        run: sleep 30s
+
+      - id: checkout-attempt-2
+        if: steps.checkout-attempt-1.outcome == 'failure'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        continue-on-error: true
+      - id: sleep-2
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        run: sleep 30s
+
+      - id: checkout-attempt-3
+        if: steps.checkout-attempt-2.outcome == 'failure'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Fix git safe directory
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Install FlagGems dependencies
+        run: pip install .
+
+      - name: Check GPU availability
+        run: bash ${{ matrix.gpu_check_script }}
+
+      # Run weekly tests.
+      # OPS is provided by the prepare job: "all" (scheduled runs or an empty
+      # "ops" input) runs every operator stage via --stages all; otherwise it
+      # runs only the selected operators via --ops <list>.
+      - name: Run weekly tests
+        env: ${{ fromJSON(matrix.test_env) }}
+        run: |
+          # remove cache to avoid potential issues with stale files
+          rm -rf ~/.triton/cache && rm -rf ~/.flaggems
+          # run tests with specified GPUs and output directory
+          OPS="${{ needs.prepare.outputs.ops }}"
+          if [ "${OPS}" = "all" ]; then
+            OP_ARGS="--stages all"
+          else
+            OP_ARGS="--ops ${OPS}"
+          fi
+          python3 tools/run_tests.py \
+            --gpus "${{ matrix.test_gpus }}" \
+            ${OP_ARGS} \
+            --dump-output \
+            --output "${OUTPUT_DIR}"
+          # process the test results to generate summary files
+          python3 tools/add_labels.py ${OUTPUT_DIR}
+          python3 tools/psum_text  -o  ${OUTPUT_DIR}/result.csv  ${OUTPUT_DIR}
+          python3 tools/psum_html  -o  ${OUTPUT_DIR}/result.html  ${OUTPUT_DIR}
+
+      - name: Package results
+        run: |
+          ARCHIVE="${{ runner.temp }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
+          tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: weekly-${{ matrix.name }}-${{ needs.prepare.outputs.date }}
+          path: ${{ env.ARCHIVE }}
+
+      # Disabled publishing results to op-monitor for native backends
+      # due to potential network restrictions on self-hosted runners.
+      #
+      # - name: Publish results to op-monitor
+      #   run: |
+      #     curl -X POST "${{ needs.prepare.outputs.api }}" \
+      #       -H "X-API-Key: ${{ secrets.OPMON_UPLOAD_KEY }}" \
+      #       -F "file=@${ARCHIVE}" \
+      #       -F "library_name=FlagGems" \
+      #       -F "backend_name=${{ matrix.name }}" \
+      #       -F "test_date=${DATE}"
+
+      - name: Send Feishu notification
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          CI_STATUS: ${{ job.status }}
+          PLATFORM: ${{ matrix.name }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
+        shell: bash
+        run: python3 .github/scripts/notify_feishu.py

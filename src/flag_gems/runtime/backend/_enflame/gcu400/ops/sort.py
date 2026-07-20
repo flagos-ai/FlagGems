@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -322,7 +336,7 @@ def radix_sort(arr, k_bits=8, descending=False):
         TILE_R = 8
         grid_r = triton.cdiv(num_bins, TILE_R)
         MAX_GRID_DIM_0 = 65535
-        TILE_N = 2048
+        TILE_N = 1024
         grid_n = triton.cdiv(n, TILE_N)
         while grid_n > MAX_GRID_DIM_0:
             TILE_N *= 2
@@ -399,12 +413,12 @@ def sort_kernel(
 
 def sort(inp, dim=-1, descending=False):
     # We only implement stable radix sort here
-    logger.debug("GEMS SORT")
+    logger.debug("GEMS_ENFLAME SORT")
     return sort_stable(inp, stable=False, dim=dim, descending=descending)
 
 
 def sort_stable(inp, *, stable, dim=-1, descending=False):
-    logger.debug("GEMS SORT.STABLE")
+    logger.debug("GEMS_ENFLAME SORT_STABLE")
     # We only implement stable radix sort here
     _ = stable
     sort_elem_cnt = inp.shape[dim]
