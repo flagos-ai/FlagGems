@@ -29,7 +29,14 @@ BuildRequires:  python3-setuptools_scm >= 8
 # Reason: torch: distro version is CPU-only. numpy/pyyaml/sqlalchemy/packaging: distro has them but FlagGems pyproject uses == pins that distro versions do not match; we Require them below without a version constraint instead.
 # See packaging/INSTALL.md (or future flagos-packaging install docs) for the
 # user-side pip install incantation.
-%global __requires_exclude ^python3(\.[0-9]+)?dist\((torch|numpy|pyyaml|sqlalchemy|packaging)\)$
+# Two rpm >= 6 (fc43) pitfalls, both verified empirically:
+#   1. The regex is matched against the full dependency string including
+#      the version part ("python3.14dist(numpy) = 1.26.4"), so the version
+#      tail must be covered — a bare ...\)$ silently filters nothing.
+#   2. %%global eats single backslashes at definition time ("\(" reaches
+#      the regex engine as "("), silently turning literal parens into
+#      groups — use [(] bracket classes instead of backslash escapes.
+%global __requires_exclude ^python3([.][0-9]+)?dist[(](torch|numpy|pyyaml|sqlalchemy|packaging)[)]( .*)?$
 # Hand-written distro deps (versions left open — distro newer is fine):
 Requires:       python3-numpy
 Requires:       python3-pyyaml
