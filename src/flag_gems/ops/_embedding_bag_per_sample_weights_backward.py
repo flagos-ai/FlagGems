@@ -90,11 +90,11 @@ def _embedding_bag_per_sample_weights_backward(
         indices: indices into embedding table of shape (num_samples,)
         offsets: bag boundaries of shape (num_bags + 1,)
         offset2bag: mapping from each sample to its bag of shape (num_samples,)
-        mode: embedding bag mode (0=sum, 1=mean). For per_sample_weights
-            backward, the gradient computation is identical across modes
-            because per_sample_weights only applies to mode=sum.
-        padding_idx: padding index. Gradients for padding_idx are implicitly
-            zero since the corresponding weight row is zeroed out upstream.
+        mode: embedding bag mode (0=sum, 1=mean). Kept for API compatibility;
+            per_sample_weights backward is the same regardless of mode since
+            per_sample_weights only applies in mode=sum.
+        padding_idx: padding index. Gradients at positions where
+            indices == padding_idx are zeroed out.
 
     Returns:
         Gradient w.r.t. per_sample_weights of shape (num_samples,)
@@ -141,5 +141,9 @@ def _embedding_bag_per_sample_weights_backward(
         NUM_BLOCKS=NUM_BLOCKS,
         BLOCK_D=BLOCK_D,
     )
+
+    # Zero out gradients for padding_idx positions
+    if padding_idx >= 0:
+        output[indices == padding_idx] = 0.0
 
     return output.to(grad.dtype)

@@ -22,7 +22,6 @@ def test_embedding_bag_per_sample_weights_backward(
     Batch, num_bags, bag_size, embedding_dim, dtype
 ):
     torch.manual_seed(42)
-    torch.cuda.manual_seed_all(42)
 
     num_samples = Batch * bag_size
     num_embeddings = 64
