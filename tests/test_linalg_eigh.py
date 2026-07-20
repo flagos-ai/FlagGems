@@ -62,7 +62,9 @@ def _check_eigh_decomposition(A, eigenvalues, eigenvectors, atol=1e-3):
 
 @pytest.mark.linalg_eigh
 @pytest.mark.parametrize(
-    "shape", EIG_2X2_SHAPES, ids=[f"gpu_kernel_2x2-{s[0]}x{s[1]}" for s in EIG_2X2_SHAPES]
+    "shape", 
+    EIG_2X2_SHAPES, 
+    ids=[f"gpu_kernel_2x2-{s[0]}x{s[1]}" for s in EIG_2X2_SHAPES],
 )
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_linalg_eigh_2x2_kernel(shape, dtype):
