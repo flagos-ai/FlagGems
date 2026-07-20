@@ -718,6 +718,7 @@ _FULL_CONFIG = (
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special_chebyshev_polynomial_w", special_chebyshev_polynomial_w),
     ("special_chebyshev_polynomial_w_out", special_chebyshev_polynomial_w_out),
+    ("special_digamma", special_digamma),
     ("special_erfinv", special_erfinv),
     ("special_erfinv.out", special_erfinv_out),
     ("special_erfinv_", special_erfinv_),
