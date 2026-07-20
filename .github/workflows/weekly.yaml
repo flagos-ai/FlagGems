@@ -38,8 +38,8 @@ on:
         default: ''
 
   schedule:
-    # Monday 00:10 Beijing time = Sunday 16:10 UTC
-    - cron: '10 16 * * 0'
+    # Sunday 00:10 Beijing time = Saturday 16:10 UTC
+    - cron: '10 16 * * 6'
 
 defaults:
   run:
@@ -118,6 +118,13 @@ jobs:
       group: weekly-test-${{ matrix.name }}
       cancel-in-progress: true
     runs-on: ${{ matrix.runner_labels }}
+    # Whole-job timeout, evaluated per vendor. This is the ONLY timeout for the
+    # test run: the "Run weekly tests" step has no step-level timeout, so it is
+    # bounded solely by this value (a step-level timeout can never extend a step
+    # beyond its enclosing job, and omitting it avoids configuring the limit
+    # twice). Ascend (910B) runs the full operator suite in ~15h so it gets 24h.
+    # Self-hosted runners have no hard 6h cap, so these values are honoured.
+    timeout-minutes: 1440
     container:
       image: ${{ matrix.container_image }}
       options: ${{ matrix.container_options }}
@@ -233,7 +240,6 @@ jobs:
       # "ops" input) runs every operator stage via --stages all; otherwise it
       # runs only the selected operators via --ops <list>.
       - name: Run weekly tests
-        timeout-minutes: 720
         env: ${{ fromJSON(matrix.test_env) }}
         shell: bash --login -e -o pipefail {0}
         run: |
@@ -313,6 +319,9 @@ jobs:
       group: weekly-test-${{ matrix.name }}
       cancel-in-progress: true
     runs-on: ${{ matrix.runner_labels }}
+    # See test-container: single per-vendor, job-level timeout (Ascend 24h,
+    # others 18h); the "Run weekly tests" step has no step-level timeout.
+    timeout-minutes: 1080
     env:
       DATE: ${{ needs.prepare.outputs.date }}
       OUTPUT_DIR: ${{ matrix.output_base_dir }}/${{ needs.prepare.outputs.date }}/logs_results_${{ needs.prepare.outputs.date }}
@@ -350,7 +359,6 @@ jobs:
       # "ops" input) runs every operator stage via --stages all; otherwise it
       # runs only the selected operators via --ops <list>.
       - name: Run weekly tests
-        timeout-minutes: 720
         env: ${{ fromJSON(matrix.test_env) }}
         run: |
           # remove cache to avoid potential issues with stale files
