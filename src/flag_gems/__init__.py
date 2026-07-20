@@ -79,6 +79,7 @@ _FULL_CONFIG = (
     ("_conj", _conj),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_efficient_attention_backward", efficient_attention_backward),
+    ("_embedding_bag_dense_backward", _embedding_bag_dense_backward),
     ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_backward", flash_attention_backward),
     ("_flash_attention_forward", flash_attention_forward),
