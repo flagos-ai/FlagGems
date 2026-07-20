@@ -1,9 +1,16 @@
 # benchmark/test_is_strides_like_format.py
 import pytest
 import torch
-import flag_gems
 
 from . import base, consts
+
+# Check if pandas is available (required for benchmark profiling on Ascend)
+try:
+    import pandas  # noqa: F401
+
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
 
 _FORMAT_MAP = {
     "channels_last": torch.channels_last,
@@ -35,15 +42,14 @@ class IsStridesLikeFormatBenchmark(base.Benchmark):
 
 
 @pytest.mark.is_strides_like_format
+@pytest.mark.skipif(
+    not HAS_PANDAS,
+    reason="pandas not installed, skipping benchmark (Ascend CI environment)",
+)
 def test_benchmark():
     bench = IsStridesLikeFormatBenchmark(
         op_name="is_strides_like_format",
         torch_op=_torch_is_strides_like_format,
         dtypes=consts.FLOAT_DTYPES,
     )
-    try:
-        bench.run()
-    except ModuleNotFoundError as e:
-        if "pandas" in str(e):
-            pytest.skip("pandas not installed, skipping benchmark (Ascend CI environment)")
-        raise
+    bench.run()
