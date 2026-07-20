@@ -8,7 +8,7 @@ too old (triton) for GPU workloads.
 FlagGems requires PyTorch (GPU build) and Triton at runtime:
 
 ```bash
-pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.9.0+cu128
+pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.10.0+cu128
 pip install triton  # or: apt install python3-flagtree-nvidia
 ```
 
