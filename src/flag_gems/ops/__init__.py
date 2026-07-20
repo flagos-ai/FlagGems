@@ -612,7 +612,6 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
-    "special_shifted_chebyshev_polynomial_w",
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "__ilshift__",
@@ -1252,6 +1251,7 @@ __all__ = [
     "special_logsumexp",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",
+    "special_shifted_chebyshev_polynomial_w",
     "special_xlog1py",
     "split_with_sizes_copy",
     "sqrt",
