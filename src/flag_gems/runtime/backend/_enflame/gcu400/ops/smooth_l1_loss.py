@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -11,7 +25,7 @@ device = device.name
 logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
-BLOCK = 4096
+BLOCK = 32768
 
 
 @libentry()
@@ -78,10 +92,13 @@ def _smooth_l1_loss_partial_sum_kernel(
 @libentry()
 @triton.jit(do_not_specialize=["mid_size"])
 def _smooth_l1_loss_sum_kernel(mid, out, mid_size, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    mask = offset < mid_size
-    vals = tl.load(mid + offset, mask=mask, other=0.0).to(tl.float32)
-    acc = tl.sum(vals, axis=0)
+    acc = tl.zeros([], dtype=tl.float32)
+    num_blocks = (mid_size + BLOCK_MID - 1) // BLOCK_MID
+    for i in tl.range(0, num_blocks):
+        offset = i * BLOCK_MID + tl.arange(0, BLOCK_MID)
+        mask = offset < mid_size
+        vals = tl.load(mid + offset, mask=mask, other=0.0).to(tl.float32)
+        acc += tl.sum(vals, axis=0)
     tl.store(out, acc)
 
 
@@ -221,7 +238,7 @@ def _smooth_l1_loss_reduce(input, target, beta, reduction, out=None):
         return out
 
     mid_size = triton.cdiv(n_elements, BLOCK)
-    block_mid = triton.next_power_of_2(mid_size)
+    block_mid = min(triton.next_power_of_2(mid_size), BLOCK)
     mid = torch.empty((mid_size,), device=input.device, dtype=torch.float32)
     result = out
     if result is None:
@@ -257,7 +274,7 @@ def smooth_l1_loss(
     reduction=1,
     beta: float = 1.0,
 ) -> torch.Tensor:
-    logger.debug("GEMS SMOOTH_L1_LOSS GCU400")
+    logger.debug("GEMS_ENFLAME SMOOTH_L1_LOSS")
     reduction = _normalize_reduction(reduction)
     input, target = _check_input(input, target, float(beta))
     if reduction == 0:
@@ -273,7 +290,7 @@ def smooth_l1_loss_out(
     *,
     out: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS SMOOTH_L1_LOSS OUT GCU400")
+    logger.debug("GEMS_ENFLAME SMOOTH_L1_LOSS_OUT")
     reduction = _normalize_reduction(reduction)
     input, target = _check_input(input, target, float(beta))
     if reduction == 0:
@@ -288,7 +305,7 @@ def smooth_l1_loss_backward(
     reduction,
     beta: float,
 ) -> torch.Tensor:
-    logger.debug("GEMS SMOOTH_L1_LOSS BACKWARD GCU400")
+    logger.debug("GEMS_ENFLAME SMOOTH_L1_LOSS_BACKWARD")
     reduction = _normalize_reduction(reduction)
     grad_output, input, target, reduction_elements = _check_backward_input(
         grad_output, input, target, float(beta)

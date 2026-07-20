@@ -1,5 +1,20 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
+from functools import reduce as _reduce
 
 import torch
 import triton
@@ -7,7 +22,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry, libtuner
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
@@ -71,6 +86,75 @@ def heur_block_n(args):
 
 
 @libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.jit
+def prod_dim_kernel_non_inner(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    K,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
+    k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
+
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)[:, None]
+        inp_offset = pid_m * N * K + n_offsets * K + k_offsets
+        mask = (n_offsets < N) & (k_offsets < K)
+        inp = tl.load(input_ptr + inp_offset, mask=mask, other=1.0).to(tl.float32)
+        out = tl.reduce(inp, axis=0, combine_fn=reduce_mul, keep_dims=True)
+        out_offset = pid_m * K + k_offsets
+        tl.store(output_ptr + out_offset, out, mask=k_offsets < K)
+    else:
+        acc = tl.full([TILE_N, TILE_K], value=1.0, dtype=tl.float32)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
+            inp_offsets = pid_m * N * K + n_offsets * K + k_offsets
+            mask = (n_offsets < N) & (k_offsets < K)
+            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=1.0).to(tl.float32)
+            acc *= inp
+        out = tl.reduce(acc, axis=0, combine_fn=reduce_mul, keep_dims=True)
+        out_offset = pid_m * K + k_offsets
+        tl.store(output_ptr + out_offset, out, mask=k_offsets < K)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
+@triton.jit
+def prod_dim_kernel_inner(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = ext.program_id(0)
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)
+        inp_offset = pid_m * N + n_offsets
+        mask = n_offsets < N
+        inp = tl.load(input_ptr + inp_offset, mask=mask, other=1.0).to(tl.float32)
+        out = tl.reduce(inp, axis=0, combine_fn=reduce_mul)
+        tl.store(output_ptr + pid_m, out)
+    else:
+        acc = tl.full([TILE_N], value=1.0, dtype=tl.float32)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            inp_offsets = pid_m * N + n_offsets
+            mask = n_offsets < N
+            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=1.0).to(tl.float32)
+            acc *= inp
+        out = tl.reduce(acc, axis=0, combine_fn=reduce_mul)
+        tl.store(output_ptr + pid_m, out)
+
+
+@libentry()
 @libtuner(
     configs=runtime.get_tuned_config("naive_reduction"),
     key=["M", "N"],
@@ -109,22 +193,43 @@ def prod_kernel(
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS PROD DIM")
 
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    shape = list(inp.shape)
-    dim = dim % inp.ndim
-    inp = dim_compress(inp, dim)
-    N = shape[dim]
-    shape[dim] = 1
-    M = inp.numel() // N
-
+    if not (-inp.ndim <= dim < inp.ndim):
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of "
+            f"[{-inp.ndim}, {inp.ndim - 1}])"
+        )
     if dtype is None:
         dtype = inp.dtype
+
+    shape = list(inp.shape)
+    d = dim % inp.ndim
+    N = inp.shape[d]
+    M = _reduce(lambda x, y: x * y, shape[:d], 1)
+    K = _reduce(lambda x, y: x * y, shape[d + 1 :], 1)
+    shape[d] = 1
     out = torch.empty(shape, dtype=dtype, device=inp.device)
-    if not keepdim:
-        out = torch.squeeze(out, dim)
 
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    if M == 0 or K == 0:
+        # A spectator dimension is empty: the output is a valid empty tensor.
+        if not keepdim:
+            out = torch.squeeze(out, d)
+        return out
+    if N == 0:
+        # The product over an empty dimension is the identity, 1 (unlike max/min
+        # which have no identity). Fill the output rather than launching.
+        out.fill_(1)
+        if not keepdim:
+            out = torch.squeeze(out, d)
+        return out
+
+    inp = inp.contiguous()
     with torch_device_fn.device(inp.device):
-        prod_kernel[grid](inp, out, M, N)
-
+        if K == 1:
+            grid = (M, 1, 1)
+            prod_dim_kernel_inner[grid](out, inp, M, N)
+        else:
+            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+            prod_dim_kernel_non_inner[grid](out, inp, M, N, K)
+    if not keepdim:
+        out = torch.squeeze(out, d)
     return out

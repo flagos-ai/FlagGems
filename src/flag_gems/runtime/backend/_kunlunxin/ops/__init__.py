@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from .abs import abs, abs_
 from .acos import acos
 from .add import add, add_
@@ -8,6 +22,7 @@ from .addmv import addmv, addmv_out
 from .addr import addr
 from .all import all, all_dim, all_dims
 from .amax import amax
+from .aminmax import aminmax
 from .angle import angle
 from .any import any, any_dim, any_dims
 from .apply_repetition_penalties import apply_repetition_penalties
@@ -53,10 +68,12 @@ from .conv2d import conv2d
 from .conv3d import conv3d
 from .conv_depthwise2d import _conv_depthwise2d
 from .copy import copy, copy_
+from .copysign import copysign, copysign_out
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .cummax import cummax
 from .cummin import cummin
+from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
@@ -109,6 +126,7 @@ from .isnan import isnan
 from .kron import kron
 from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
+from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .linspace import linspace
 from .log import log
@@ -119,6 +137,7 @@ from .logical_not import logical_not
 from .logical_or import logical_or
 from .logical_xor import logical_xor
 from .logspace import logspace
+from .logsumexp import logsumexp
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
@@ -137,6 +156,7 @@ from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv, mv_cluster
 from .nan_to_num import nan_to_num
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .nllloss import (
@@ -146,6 +166,7 @@ from .nllloss import (
     nll_loss_forward,
 )
 from .nonzero import nonzero
+from .nonzero_numpy import nonzero_numpy
 from .normal import (
     normal_,
     normal_float_tensor,
@@ -192,6 +213,7 @@ from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
+from .signbit import signbit, signbit_out
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .slice_scatter import slice_scatter
@@ -212,6 +234,7 @@ from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
+from .tril import tril, tril_, tril_out
 from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2
@@ -256,6 +279,7 @@ __all__ = [
     "all_dims",
     "allclose",
     "amax",
+    "aminmax",
     "angle",
     "any",
     "any_dim",
@@ -303,11 +327,14 @@ __all__ = [
     "conv3d",
     "copy",
     "copy_",
+    "copysign",
+    "copysign_out",
     "cos",
     "cos_",
     "count_nonzero",
     "cummax",
     "cummin",
+    "cumprod",
     "cumprod_",
     "cumsum",
     "cumsum_out",
@@ -377,6 +404,9 @@ __all__ = [
     "kron",
     "layer_norm",
     "layer_norm_backward",
+    "leaky_relu",
+    "leaky_relu_",
+    "leaky_relu_out",
     "le",
     "le_scalar",
     "lerp_scalar",
@@ -388,6 +418,7 @@ __all__ = [
     "log_sigmoid",
     "log_softmax",
     "log_softmax_backward",
+    "logsumexp",
     "logical_and",
     "logical_not",
     "logical_or",
@@ -421,6 +452,10 @@ __all__ = [
     "mv",
     "mv_cluster",
     "nan_to_num",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "ne",
     "ne_scalar",
     "neg",
@@ -430,6 +465,7 @@ __all__ = [
     "nll_loss2d_backward",
     "nll_loss2d_forward",
     "nonzero",
+    "nonzero_numpy",
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
@@ -490,6 +526,8 @@ __all__ = [
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
+    "signbit",
+    "signbit_out",
     "silu",
     "silu_",
     "silu_backward",
@@ -524,6 +562,9 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "tril",
+    "tril_",
+    "tril_out",
     "triu",
     "true_divide",
     "true_divide_out",
