@@ -594,7 +594,6 @@ _FULL_CONFIG = (
     ("sort", sort),
     ("sort.stable", sort_stable),
     ("special_sinc", special_sinc),
-    ("special.sinc_", special_sinc_),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
     ("special.gammainc", special_gammainc),

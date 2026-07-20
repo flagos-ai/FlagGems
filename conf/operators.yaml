@@ -6975,6 +6975,14 @@ ops:
       Applies the log of the softmax function along a given dimension.
     for:
       - special.log_softmax
+    labels:
+      - aten
+      - nn.functional
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_shifted_chebyshev_polynomial_u
     description: |
       Computes the shifted Chebyshev polynomial of the second kind U_n^*(x)
@@ -7004,17 +7012,6 @@ ops:
     description: Computes sin(pi * x) / (pi * x) for each element of `input`.
     for:
       - special.sinc
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: special_sinc_
-    description: In-place version of special_sinc().
-    for:
-      - special.sinc_
     labels:
       - aten
       - KernelGen
