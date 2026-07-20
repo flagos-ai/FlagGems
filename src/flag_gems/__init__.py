@@ -479,6 +479,8 @@ _FULL_CONFIG = (
     ("lift.out", lift_out),
     ("lift_fresh_copy", lift_fresh_copy),
     ("linalg_cholesky", linalg_cholesky),
+    ("linalg_cross", linalg_cross),
+    ("linalg_cross.out", linalg_cross_out),
     ("linalg_ldl_factor", ldl_factor),
     ("linalg_slogdet", linalg_slogdet),
     ("linalg_vector_norm", vector_norm),

@@ -54,6 +54,7 @@ from .index_add import index_add, index_add_
 from .index_select import index_select
 from .isin import isin
 from .linspace import linspace
+from .linalg_cross import linalg_cross, linalg_cross_out
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
@@ -152,6 +153,8 @@ __all__ = [
     "index_select",
     "isin",
     "linspace",
+    "linalg_cross",
+    "linalg_cross_out",
     "log_softmax",
     "log_softmax_backward",
     "log_softmax_out",

@@ -4648,6 +4648,17 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: linalg_cross
+    description: Computes the cross product of two 3-dimensional vectors along a specified dimension.
+    for:
+      - linalg_cross
+      - linalg_cross.out
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_eigvals
     description: Computes the eigenvalues of a square matrix.
     for:
