@@ -1,7 +1,21 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
-from . import base, utils
+from . import base
 
 
 @pytest.mark.special_gammainc
@@ -9,25 +23,6 @@ def test_special_gammainc():
     bench = base.BinaryPointwiseBenchmark(
         op_name="special_gammainc",
         torch_op=torch.special.gammainc,
-        # float32 only: gammainc series expansion is numerically unstable in lower precisions
-        dtypes=[torch.float32],
-    )
-    bench.run()
-
-
-def _input_fn_out(shape, dtype, device):
-    x = utils.generate_tensor_input(shape, dtype, device)
-    y = utils.generate_tensor_input(shape, dtype, device)
-    out = torch.empty_like(x)
-    yield x, y, {"out": out}
-
-
-@pytest.mark.special_gammainc_out
-def test_special_gammainc_out():
-    bench = base.GenericBenchmark(
-        op_name="special_gammainc_out",
-        input_fn=_input_fn_out,
-        torch_op=torch.ops.aten.special_gammainc.out,
         # float32 only: gammainc series expansion is numerically unstable in lower precisions
         dtypes=[torch.float32],
     )
