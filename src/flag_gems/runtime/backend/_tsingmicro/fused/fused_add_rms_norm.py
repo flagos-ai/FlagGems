@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -118,6 +132,20 @@ def fused_add_rms_norm_fast_kernel(
         tl.store(mx_ptr[:, None] + cols[None, :], y, mask=mask)
 
 
+def _next_pow2(n):
+    """Smallest power of 2 >= n (n >= 1)."""
+    return 1 << (n - 1).bit_length()
+
+
+def _m_block(M, max_m_block=64):
+    """Power-of-2 M_BLOCK for tl.arange(0, M_BLOCK).
+
+    Rounding up (next_pow2) gives larger tiles and fewer loop iterations;
+    any rows past the actual per-program count are masked by row_mask.
+    """
+    return max(1, _next_pow2(min(triton.cdiv(M, TOTAL_CORE_NUM), max_m_block)))
+
+
 def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     """
     This function performs fused residual addition and RMS normalization **in-place**.
@@ -141,13 +169,13 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     with torch_device_fn.device(x.device):
         if N <= 4096:
             BLOCK_SIZE = triton.next_power_of_2(N)
-            M_BLOCK = min(triton.cdiv(M, TOTAL_CORE_NUM), 64)
+            M_BLOCK = _m_block(M)
             fused_add_rms_norm_fast_kernel[TOTAL_CORE_NUM,](
                 x, residual, weight, eps, x.stride(dim - 1), M, N, BLOCK_SIZE, M_BLOCK
             )
         else:
             BLOCK_SIZE = 4096
-            M_BLOCK = min(triton.cdiv(M, TOTAL_CORE_NUM), 64)
+            M_BLOCK = _m_block(M)
             fused_add_rms_norm_kernel[TOTAL_CORE_NUM,](
                 x, residual, weight, eps, x.stride(dim - 1), M, N, BLOCK_SIZE, M_BLOCK
             )
