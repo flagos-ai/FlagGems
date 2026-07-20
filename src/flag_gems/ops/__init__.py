@@ -515,6 +515,7 @@ from flag_gems.ops.softplus import softplus, softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_airy_ai import special_airy_ai, special_airy_ai_out
+from flag_gems.ops.special_bessel_y1 import special_bessel_y1
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from flag_gems.ops.special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
@@ -1229,6 +1230,7 @@ __all__ = [
     "sort_stable",
     "special_airy_ai",
     "special_airy_ai_out",
+    "special_bessel_y1",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
@@ -1240,6 +1242,7 @@ __all__ = [
     "special_hermite_polynomial_h",
     "special_i0e",
     "special_i0e_out",
+    "special_bessel_y1",
     "special_i1",
     "special_i1_out",
     "special_log_softmax",

@@ -728,6 +728,7 @@ _FULL_CONFIG = (
     ("sort.stable", sort_stable),
     ("special_airy_ai", special_airy_ai),
     ("special_airy_ai.out", special_airy_ai_out),
+    ("special_bessel_y1", special_bessel_y1),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special_chebyshev_polynomial_w", special_chebyshev_polynomial_w),
     ("special_chebyshev_polynomial_w_out", special_chebyshev_polynomial_w_out),
