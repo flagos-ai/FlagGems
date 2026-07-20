@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -769,7 +783,7 @@ def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
 
 
 def tril(input: torch.Tensor, diagonal: int = 0):
-    logger.debug("GEMS TRIL")
+    logger.debug("GEMS_KUNLUNXIN TRIL")
     _check_input(input)
 
     out = _empty_contiguous_like(input)
@@ -777,7 +791,7 @@ def tril(input: torch.Tensor, diagonal: int = 0):
 
 
 def tril_(input: torch.Tensor, diagonal: int = 0):
-    logger.debug("GEMS TRIL_")
+    logger.debug("GEMS_KUNLUNXIN TRIL_")
     _check_input(input)
 
     diagonal = int(diagonal)
@@ -797,7 +811,7 @@ def tril_(input: torch.Tensor, diagonal: int = 0):
 
 
 def tril_out(input: torch.Tensor, diagonal: int = 0, *, out: torch.Tensor = None):
-    logger.debug("GEMS TRIL.OUT")
+    logger.debug("GEMS_KUNLUNXIN TRIL_OUT")
 
     if out is None:
         return tril(input, diagonal)

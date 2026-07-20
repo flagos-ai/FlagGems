@@ -1,0 +1,59 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# FlagGems backends Configuration
+# This file defines environmentsettings for weekly testing
+name: H800
+vendor: Nvidia
+
+
+# Runner labels for this backends (self-hosted)
+runner_labels: h800-flaggems-weekly
+
+# Use container or not for this backends
+use_container: true
+
+# Container image for this backends
+container_image: harbor.baai.ac.cn/flaggems/nvidia-flaggems-test-h800-flagtree0.6.0:202607171136
+
+# Container volumes to mount for this backends
+container_volumes:
+  - /data:/data
+  - /home:/home
+  - /tmp:/tmp
+
+# Container options for this backends
+container_options: >-
+  --uts=host
+  --ipc=host
+  --user 0
+  --security-opt=seccomp=unconfined
+  --privileged
+  --ulimit=stack=67108864
+  --ulimit=memlock=-1
+  --shm-size=32G
+  --gpus all
+
+# GPUs to test for this backends
+test_gpus: "0,1,2,3,4,5,6,7"
+
+# Extra environment variables injected only into the "Run weekly tests" step
+test_env:
+  PIP_CACHE_DIR: /root/.cache/pip
+
+# GPU availability check script for this backend
+gpu_check_script: tools/gpu_check_nvidia.sh
+
+# Output base directory for this backends
+output_base_dir: /home/flaggems/weekly_test
