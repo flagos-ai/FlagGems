@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import concurrent.futures
 import fcntl
 import gc
@@ -14,9 +28,11 @@ import torch
 import yaml
 
 import flag_gems
-from benchmark.base import Benchmark, GenericBenchmark2DOnly
-from benchmark.conftest import Config, emit_record_logger
-from benchmark.consts import (
+
+from . import consts
+from .base import Benchmark, GenericBenchmark2DOnly
+from .conftest import Config, emit_record_logger
+from .consts import (
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
     FLOAT_DTYPES,
@@ -26,8 +42,6 @@ from benchmark.consts import (
     OperationAttribute,
     model_shapes,
 )
-
-from . import consts
 
 try:
     from vllm.model_executor.layers.quantization.utils.fp8_utils import (
