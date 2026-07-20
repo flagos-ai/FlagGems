@@ -1,23 +1,21 @@
 # TODO(round-13): unify with the other Flag* PRs to ubuntu:24.04. Blocked by:
 #   1. PEP 668 (--break-system-packages or venv needed for the wheel-builder
-#      stage's pip installs of scikit-build-core / pybind11 / ninja / torch
-#      whose distro versions on noble are too old).
+#      stage's pip installs, whose distro versions on noble are too old).
 #   2. Initial trial with --break-system-packages still failed inside buildkit
 #      (root cause not yet isolated). Need a follow-up investigation.
 # Until then, keep wheel-builder + deb-assembler on ubuntu:22.04 where the
 # existing pip install pattern works.
-# Two-stage Docker build for FlagGems Phase 1.
-# Single-chain (single-arch x86_64, single-OS Ubuntu 22.04, single-backend nvidia).
+# Two-stage Docker build for FlagGems Phase 1 (pure-Python wheel, noarch).
 
 # ---------- Stage 1: build the wheel ----------
 FROM ubuntu:22.04 AS wheel-builder
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
+# The wheel is pure Python (setuptools backend) — no compiler, cmake or
+# ninja needed at build time.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3 python3-pip python3-dev \
-        build-essential cmake ninja-build git \
-        wget curl ca-certificates \
+        python3 python3-pip ca-certificates \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Build deps mirror pyproject [build-system] requires (authoritative):
@@ -31,8 +29,8 @@ RUN pip3 install --no-cache-dir --upgrade pip && \
         "setuptools-scm>=8" \
         wheel
 
-# Phase 1 (FLAGGEMS_BUILD_C_EXTENSIONS=OFF, pure-Python wheel) does not
-# need libtriton-jit at build time. Phase 2 will reintroduce a
+# Phase 1 (pure-Python wheel; C++ operators live in the separate cpp/
+# tree) does not need libtriton-jit at build time. Phase 2 will add a
 #   COPY packaging/debian/build-helpers/local-deps/*.deb /tmp/deps/
 #   RUN dpkg -i /tmp/deps/*.deb ...
 # step once we move to the FlagOS APT repo or a download-artifact CI step.

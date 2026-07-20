@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Build python3-flag-gems_*.deb (Phase 1: bundled package, pure-Python wheel).
+# Build python3-flag-gems_*.deb (Phase 1: pure-Python wheel).
 #
-# Phase 1 sets FLAGGEMS_BUILD_C_EXTENSIONS=OFF (default in CMakeLists.txt:32),
-# so the wheel does not link against libtriton-jit and no local-deps staging
-# is needed. Phase 2 (C++ extension on) will reintroduce that dependency.
+# The upstream Python wheel is pure Python (setuptools backend); the C++
+# operators live in the separate cpp/ tree and are out of Phase 1 scope,
+# so no libtriton-jit / local-deps staging is needed here. Phase 2
+# (packaging the cpp/ per-vendor extensions) will reintroduce that.
 #
 # Output: ./debian-packages/python3-flag-gems_*.deb
 

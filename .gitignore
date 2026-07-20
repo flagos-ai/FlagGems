@@ -40,3 +40,7 @@ tests/*.json
 
 # Generated benchmark data (lives in gh-pages only)
 docs/benchmark/
+
+# Packaging build outputs (packaging/{debian,rpm} helpers)
+debian-packages/
+rpm-packages/

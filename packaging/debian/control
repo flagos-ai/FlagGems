@@ -3,15 +3,15 @@ Section: python
 Priority: optional
 Maintainer: FlagOS Contributors <contact@flagos.io>
 # Phase 1 (current): the .deb is assembled from a pre-built wheel inside the
-# 2-stage Dockerfile.deb. Stage 1 (wheel-builder) is the only place that needs
-# the heavy build deps (cmake / ninja-build / python3-pybind11 / libtriton-jit-dev);
+# 2-stage Dockerfile.deb. Stage 1 (wheel-builder) builds the pure-Python
+# wheel with the plain setuptools backend (setuptools + setuptools-scm only);
 # Stage 2 (this dpkg-buildpackage step) only unpacks the wheel via pip and
-# wraps it. Listing the Stage-1 deps in Build-Depends here would make
-# dpkg-checkbuilddeps fail because Stage 2 deliberately does not install them.
+# wraps it.
 #
-# Phase 2 (deferred): when we move to a single-stage build that also produces
-# libflaggems + libflaggems-dev, add back: cmake (>= 3.20), ninja-build,
-# python3-pybind11, libtriton-jit-dev.
+# Phase 2 (deferred): packaging the C++ operators from the separate cpp/
+# tree (upstream's per-vendor flag-gems-cpp-* scikit-build-core wheels)
+# will need: cmake (>= 3.20), ninja-build, python3-pybind11,
+# libtriton-jit-dev and a vendor toolchain.
 Build-Depends: debhelper-compat (= 13),
                python3-all,
                python3-pip,
@@ -23,14 +23,14 @@ Homepage: https://github.com/flagos-ai/FlagGems
 Vcs-Browser: https://github.com/flagos-ai/FlagGems
 Vcs-Git: https://github.com/flagos-ai/FlagGems.git
 Rules-Requires-Root: no
-X-Build-Environment: This package is built in a container that provides
- libtriton-jit-dev (from the FlagOS apt repo) and a CUDA-aware PyTorch.
- The build is done once via scikit-build-core; the resulting wheel is
- split into the binary packages below.
+X-Build-Environment: This package is built in a container. The wheel is
+ built once via the setuptools backend (pure Python, no native code) and
+ unpacked into the binary package below.
 
 # ---- Phase 1 binary package ----------------------------------------
-# python3-flag-gems carries everything (Python + bundled liboperators.so)
-# until the cmake-only split (Phase 2) lands.
+# python3-flag-gems ships the pure-Python distribution; the C++ operator
+# runtime lives in the separate cpp/ tree upstream and is deferred to
+# Phase 2.
 
 Package: python3-flag-gems
 Architecture: all
@@ -53,23 +53,24 @@ Description: FlagGems GPU operator library (Python module)
  drop-in replacement for many torch.* operations with custom-tuned
  kernels.
  .
- This package contains the Python bindings, the Triton kernel sources,
- and (for Phase 1 of packaging) the bundled liboperators.so. A future
- release will split the C++ runtime into libflaggems and the headers
- into libflaggems-dev so that downstream C++ consumers can link
- against the operators library without installing the Python module.
+ This package contains the Python module: the Triton kernel sources and
+ Python wrappers, plus the bundled operator test (flaggems_tests) and
+ benchmark (flaggems_benchmark) suites. The optional C++ wrapped
+ operators (upstream's per-vendor flag-gems-cpp-* native wheels, built
+ from the cpp/ tree) are not packaged yet — see Phase 2 below.
 
 # ---- Phase 2 binary packages (DECLARED, not yet built) -------------
-# These stanzas ship the C++ side as standalone packages once the
-# split lands. Until then, debian/rules does NOT produce them — the
-# control file has the names reserved so future PRs are additive.
+# These stanzas ship the C++ side (built from the upstream cpp/ tree)
+# as standalone packages once Phase 2 lands. Until then, debian/rules
+# does NOT produce them — the control file has the names reserved so
+# future PRs are additive.
 #
 # Package: libflaggems
 # Architecture: amd64
 # Depends: ${shlibs:Depends}, ${misc:Depends}, libtriton-jit (>= 0.1.0)
 # Description: FlagGems GPU operator library (runtime)
-#  Standalone C++ runtime (liboperators.so) for hosts that want to use
-#  FlagGems kernels via cmake/C++ rather than Python.
+#  Standalone C++ runtime for hosts that want to use FlagGems kernels
+#  via cmake/C++ rather than Python.
 #
 # Package: libflaggems-dev
 # Architecture: amd64

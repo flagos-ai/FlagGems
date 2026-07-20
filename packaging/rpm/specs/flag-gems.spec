@@ -1,7 +1,8 @@
 %global debug_package %{nil}
 
-# FlagGems Phase 1: pure Python wheel (FLAGGEMS_BUILD_C_EXTENSIONS=OFF).
-# C++ extension split (libflaggems + libflaggems-dev) deferred to Phase 2.
+# FlagGems Phase 1: pure Python wheel (upstream setuptools backend; the
+# C++ operators live in the separate cpp/ tree as per-vendor
+# flag-gems-cpp-* wheels and are deferred to Phase 2).
 
 Name:           python3-flag-gems
 Version:        5.3.0
@@ -46,17 +47,18 @@ FlagGems is an operator library for large language models implemented in
 the Triton language, providing a multi-backend interface for diverse AI
 hardware platforms.
 
-This Phase 1 RPM ships the pure-Python distribution (the wheel produced
-without C++ extensions enabled), matching `pip install flag_gems` default
-behavior. Phase 2 will split the C++ operators runtime into libflaggems
-and headers into libflaggems-dev.
+This Phase 1 RPM ships the pure-Python distribution (upstream's default
+`pip install flag_gems` behavior), including the bundled flaggems_tests
+and flaggems_benchmark suites. Phase 2 will package the C++ operators
+built from the upstream cpp/ tree (per-vendor flag-gems-cpp-* native
+extensions).
 
 %prep
 %autosetup -n flag-gems-%{version}
 
 # The C++ operators runtime lives in the separate cpp/ tree (its own
-# flag-gems-cpp wheel upstream); this Phase 1 rpm builds the pure-Python
-# wheel only, aligning with Phase 1 scope.
+# per-vendor flag-gems-cpp-* wheels upstream); this Phase 1 rpm builds
+# the pure-Python wheel only.
 %build
 # The source tarball carries no .git metadata; pin the scm version.
 export SETUPTOOLS_SCM_PRETEND_VERSION=%{version}
