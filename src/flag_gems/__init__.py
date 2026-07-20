@@ -782,6 +782,7 @@ _FULL_CONFIG = (
     ("tile", tile),
     ("topk", topk),
     ("trace", trace),
+    ("transpose.int", transpose),
     ("tril", tril),
     ("tril.out", tril_out),
     ("tril_", tril_),
