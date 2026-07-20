@@ -59,26 +59,27 @@ def _upsample_nearest_exact3d_kernel(
     oh = (offs_dhw // OW) % OH
     od = offs_dhw // (OW * OH)
 
-    # Compute source indices id, ih, iw using the "exact" nearest formula
-    # id = floor(od * ID / OD), ih = floor(oh * IH / OH), iw = floor(ow * IW / OW)
-    id = tl.zeros([BLOCK_DHW], dtype=tl.int32)
-    ih = tl.zeros([BLOCK_DHW], dtype=tl.int32)
-    iw = tl.zeros([BLOCK_DHW], dtype=tl.int32)
+    # Compute source indices using the "nearest exact" formula from PyTorch:
+    # src_index = min(floor((dst_index + 0.5) * (IN / OUT)), IN - 1)
+    # When scale is given: scale = OUT / IN, so IN / OUT = 1 / scale
+    od_f = od.to(tl.float32)
+    oh_f = oh.to(tl.float32)
+    ow_f = ow.to(tl.float32)
 
     if use_scales:
-        od_f = od.to(tl.float32)
-        oh_f = oh.to(tl.float32)
-        ow_f = ow.to(tl.float32)
-        id_f = tl.floor(od_f / scale_d)
-        ih_f = tl.floor(oh_f / scale_h)
-        iw_f = tl.floor(ow_f / scale_w)
-        id = id_f.to(tl.int32)
-        ih = ih_f.to(tl.int32)
-        iw = iw_f.to(tl.int32)
+        # scale here is OUT/IN, so reciprocal gives IN/OUT
+        id_f = tl.floor((od_f + 0.5) / scale_d)
+        ih_f = tl.floor((oh_f + 0.5) / scale_h)
+        iw_f = tl.floor((ow_f + 0.5) / scale_w)
     else:
-        id = (od * ID) // OD
-        ih = (oh * IH) // OH
-        iw = (ow * IW) // OW
+        # IN/OUT ratio directly
+        id_f = tl.floor((od_f + 0.5) * ID / OD)
+        ih_f = tl.floor((oh_f + 0.5) * IH / OH)
+        iw_f = tl.floor((ow_f + 0.5) * IW / OW)
+
+    id = id_f.to(tl.int32)
+    ih = ih_f.to(tl.int32)
+    iw = iw_f.to(tl.int32)
 
     id = tl.minimum(id, ID - 1)
     ih = tl.minimum(ih, IH - 1)
