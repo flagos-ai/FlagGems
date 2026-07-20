@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops.__lshift__ import __lshift__
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
@@ -5,6 +19,7 @@ from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
 from flag_gems.ops._conj import _conj
+from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range import (
     _functional_sym_constrain_range,
@@ -21,9 +36,13 @@ from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._pdist_backward import _pdist_backward
+from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
+from flag_gems.ops._scaled_dot_product_fused_attention_overrideable import (
+    _scaled_dot_product_fused_attention_overrideable,
+)
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
 from flag_gems.ops._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
@@ -120,6 +139,7 @@ from flag_gems.ops.bitwise_xor import (
     bitwise_xor_tensor_,
 )
 from flag_gems.ops.bmm import bmm, bmm_out
+from flag_gems.ops.broadcast_tensors import broadcast_tensors
 from flag_gems.ops.broadcast_to import broadcast_to
 from flag_gems.ops.bucketize import bucketize
 from flag_gems.ops.cat import cat, cat_out
@@ -267,6 +287,7 @@ from flag_gems.ops.index_copy_ import index_copy, index_copy_
 from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_reduce import index_reduce_
 from flag_gems.ops.index_select import index_select
+from flag_gems.ops.index_select_backward import index_select_backward
 from flag_gems.ops.is_nonzero import is_nonzero
 from flag_gems.ops.isclose import allclose, isclose
 from flag_gems.ops.isfinite import isfinite
@@ -360,7 +381,7 @@ from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.negative import negative
 from flag_gems.ops.new_full import new_full
 from flag_gems.ops.new_ones import new_ones
-from flag_gems.ops.nextafter_ import nextafter_
+from flag_gems.ops.nextafter import nextafter, nextafter_
 from flag_gems.ops.nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward
 from flag_gems.ops.nllloss import (
     nll_loss2d_backward,
@@ -370,6 +391,7 @@ from flag_gems.ops.nllloss import (
 )
 from flag_gems.ops.nonzero import nonzero
 from flag_gems.ops.nonzero_numpy import nonzero_numpy
+from flag_gems.ops.norm import norm, norm_scalar, norm_scalaropt_dim
 from flag_gems.ops.normal import (
     normal_,
     normal_float_tensor,
@@ -381,6 +403,7 @@ from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
 from flag_gems.ops.pad import constant_pad_nd, pad
+from flag_gems.ops.pdist import pdist
 from flag_gems.ops.per_token_group_quant_fp8 import (
     SUPPORTED_FP8_DTYPE,
     per_token_group_quant_fp8,
@@ -498,6 +521,7 @@ from flag_gems.ops.special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
     special_chebyshev_polynomial_w_out,
 )
+from flag_gems.ops.special_digamma import special_digamma
 from flag_gems.ops.special_erfinv import (
     special_erfinv,
     special_erfinv_,
@@ -507,12 +531,14 @@ from flag_gems.ops.special_gammainc import special_gammainc
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
+from flag_gems.ops.special_log1p import special_log1p, special_log1p_out
 from flag_gems.ops.special_log_softmax import special_log_softmax
 from flag_gems.ops.special_logsumexp import special_logsumexp
 from flag_gems.ops.special_shifted_chebyshev_polynomial_u import (
     special_shifted_chebyshev_polynomial_u,
     special_shifted_chebyshev_polynomial_u_,
 )
+from flag_gems.ops.special_xlog1py import special_xlog1py
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
@@ -533,9 +559,11 @@ from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
+from flag_gems.ops.transpose import transpose
 from flag_gems.ops.tril import tril, tril_, tril_out
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.trunc_ import trunc, trunc_
+from flag_gems.ops.unbind import unbind
 from flag_gems.ops.unbind_copy import unbind_copy
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.unfold_copy import unfold_copy
@@ -592,6 +620,7 @@ __all__ = [
     "_cdist_backward",
     "_conj",
     "_conv_depthwise2d",
+    "_embedding_bag_dense_backward",
     "_euclidean_dist",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
@@ -604,9 +633,11 @@ __all__ = [
     "_masked_scale",
     "_nested_view_from_buffer_copy",
     "_pdist_backward",
+    "_prelu_kernel",
     "_prelu_kernel_backward",
     "_resize_output",
     "_safe_softmax",
+    "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_sparse_semi_structured_mm",
@@ -724,6 +755,7 @@ __all__ = [
     "bitwise_xor_tensor_",
     "bmm",
     "bmm_out",
+    "broadcast_tensors",
     "broadcast_to",
     "bucketize",
     "cat",
@@ -911,6 +943,7 @@ __all__ = [
     "index_put_",
     "index_reduce_",
     "index_select",
+    "index_select_backward",
     "is_nonzero",
     "isclose",
     "isfinite",
@@ -1040,6 +1073,7 @@ __all__ = [
     "negative",
     "new_full",
     "new_ones",
+    "nextafter",
     "nextafter_",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
@@ -1049,6 +1083,9 @@ __all__ = [
     "nll_loss_nd_forward",
     "nonzero",
     "nonzero_numpy",
+    "norm",
+    "norm_scalar",
+    "norm_scalaropt_dim",
     "normal_",
     "normal_float_tensor",
     "normal_tensor_float",
@@ -1060,6 +1097,7 @@ __all__ = [
     "ones",
     "ones_like",
     "pad",
+    "pdist",
     "per_token_group_quant_fp8",
     "permute_copy",
     "pixel_shuffle",
@@ -1196,6 +1234,7 @@ __all__ = [
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
+    "special_digamma",
     "special_erfinv",
     "special_erfinv_",
     "special_erfinv_out",
@@ -1206,9 +1245,12 @@ __all__ = [
     "special_i1",
     "special_i1_out",
     "special_log_softmax",
+    "special_log1p",
+    "special_log1p_out",
     "special_logsumexp",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",
+    "special_xlog1py",
     "split_with_sizes_copy",
     "sqrt",
     "sqrt_",
@@ -1241,6 +1283,7 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "transpose",
     "tril",
     "tril_",
     "tril_out",
@@ -1251,6 +1294,7 @@ __all__ = [
     "true_divide_out",
     "trunc",
     "trunc_",
+    "unbind",
     "unbind_copy",
     "unfold_backward",
     "unfold_copy",
