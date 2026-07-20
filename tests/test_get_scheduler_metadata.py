@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -17,12 +31,20 @@ from . import conftest as cfg
 
 device = flag_gems.device
 
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    BATCH_SIZE_LIST = [1, 8]
+    MAX_SEQLEN_K_LIST = [512]
+else:
+    BATCH_SIZE_LIST = [1, 8, 256, 512]
+    MAX_SEQLEN_K_LIST = [512, 2048]
+
 
 @pytest.mark.get_scheduler_metadata
 @pytest.mark.skipif(not HAS_VLLM, reason="vLLM not installed")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Skipping correctness test in CPU mode.")
-@pytest.mark.parametrize("batch_size", [1, 8, 256, 512])
-@pytest.mark.parametrize("max_seqlen_k", [512, 2048])
+@pytest.mark.parametrize("batch_size", BATCH_SIZE_LIST)
+@pytest.mark.parametrize("max_seqlen_k", MAX_SEQLEN_K_LIST)
 @pytest.mark.parametrize("headdim", [64, 128])
 @pytest.mark.parametrize("num_splits_static", [0, 4])
 @pytest.mark.parametrize("seed", [42])

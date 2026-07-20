@@ -1,9 +1,24 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 
 def _init_vllm():
@@ -31,19 +46,28 @@ def _init_vllm():
 
 _vllm_fn, _VLLM_OK = _init_vllm()
 
-_REP_PENALTY_CFG = {
-    "shapes": [
-        (1, 1024),
-        (1, 4096),
-        (1, 8192),
-        (8, 4096),
-        (16, 4096),
-        (32, 1024),
-        (8, 8192),
-    ],
-    "penalties": [1.0, 1.2, 1.5],
-    "device": torch.device("cuda:0"),
-}
+if cfg.QUICK_MODE:
+    _REP_PENALTY_CFG = {
+        "shapes": [
+            (1, 1024),
+        ],
+        "penalties": [1.0, 1.2],
+        "device": torch.device("cuda:0"),
+    }
+else:
+    _REP_PENALTY_CFG = {
+        "shapes": [
+            (1, 1024),
+            (1, 4096),
+            (1, 8192),
+            (8, 4096),
+            (16, 4096),
+            (32, 1024),
+            (8, 8192),
+        ],
+        "penalties": [1.0, 1.2, 1.5],
+        "device": torch.device("cuda:0"),
+    }
 
 
 @pytest.mark.apply_repetition_penalties
