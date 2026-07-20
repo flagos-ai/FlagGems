@@ -539,8 +539,12 @@ from flag_gems.ops.where import (
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
+<<<<<<< HEAD
 
 from .meshgrid import meshgrid
+=======
+from .meshgrid import meshgrid, register_ops as register_meshgrid_ops
+>>>>>>> 459d19e (Add meshgrid operator implementation with tests and benchmarks)
 
 __all__ = [
     "SUPPORTED_FP8_DTYPE",

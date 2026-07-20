@@ -18,7 +18,7 @@ from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
-
+from .ops.meshgrid import meshgrid, register_ops as register_meshgrid_ops
 try:
     from flag_gems._version import version as __version__
 except ImportError:
@@ -918,7 +918,9 @@ class use_gems:
 
         return flag_gems.experimental_ops
 
-
+def register_ops(registry):
+    # ... 现有注册代码
+    register_meshgrid_ops(registry)
 def all_registered_ops():
     return current_work_registrar.get_all_ops()
 
@@ -934,4 +936,5 @@ __all__ = [
     "flagtune",
     "only_enable",
     "use_gems",
+    "meshgrid",
 ]
