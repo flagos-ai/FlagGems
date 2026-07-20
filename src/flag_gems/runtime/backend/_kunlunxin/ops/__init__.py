@@ -62,6 +62,7 @@ from .bmm import bmm, bmm_out
 from .cat import cat
 from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_min, clamp_min_, clamp_tensor, clamp_tensor_
+from .col2im import col2im
 from .contiguous import contiguous
 from .conv1d import conv1d
 from .conv2d import conv2d
@@ -320,6 +321,7 @@ __all__ = [
     "clamp_tensor_",
     "clamp_min",
     "clamp_min_",
+    "col2im",
     "constant_pad_nd",
     "contiguous",
     "conv1d",
