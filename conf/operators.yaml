@@ -6020,6 +6020,18 @@ ops:
       - Tensor
     stages:
       - alpha: '5.3'
+  - id: nonzero_static
+    description: |
+      Returns a fixed-size 2-D int64 tensor containing indices of nonzero elements.
+      Rows beyond the number of nonzero elements are filled with `fill_value`.
+    for:
+      - nonzero_static
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: normal_
     description: Random sampling operator (normal_).
     for:
