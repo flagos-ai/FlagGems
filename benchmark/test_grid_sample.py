@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Performance benchmark for grid_sample operator.
 
@@ -72,38 +86,40 @@ class GridSampleBenchmark(base.Benchmark):
 
     def set_more_shapes(self):
         """Define additional shapes for grid_sample operations."""
+        # Reduced shapes to avoid CI benchmark timeout (original had 10 shapes,
+        # each generating 8-14 mode combos × 3 dtypes = 300+ cases > 600s timeout)
         # Small sizes (4D)
         small_4d_shapes = [
             (1, 3, 32, 32),  # N=1, C=3, H=32, W=32
-            (2, 16, 32, 32),  # N=2, C=16, H=32, W=32
+            # (2, 16, 32, 32),  # commented out to reduce CI timeout
         ]
 
         # Small sizes (5D)
         small_5d_shapes = [
             (1, 3, 8, 8, 8),  # N=1, C=3, D=8, H=8, W=8
-            (2, 4, 8, 8, 8),  # N=2, C=4, D=8, H=8, W=8
+            # (2, 4, 8, 8, 8),  # commented out to reduce CI timeout
         ]
 
         # Medium sizes (4D)
         medium_4d_shapes = [
             (2, 32, 64, 64),  # N=2, C=32, H=64, W=64
-            (4, 64, 64, 64),  # N=4, C=64, H=64, W=64
+            # (4, 64, 64, 64),  # commented out to reduce CI timeout
         ]
 
         # Medium sizes (5D)
         medium_5d_shapes = [
             (2, 8, 16, 16, 16),  # N=2, C=8, D=16, H=16, W=16
-            (2, 16, 16, 16, 16),  # N=2, C=16, D=16, H=16, W=16
+            # (2, 16, 16, 16, 16),  # commented out to reduce CI timeout
         ]
 
-        # Large sizes (4D)
+        # Large sizes (4D) - commented out to reduce CI timeout
         large_4d_shapes = [
-            (4, 128, 128, 128),  # N=4, C=128, H=128, W=128
+            # (4, 128, 128, 128),  # N=4, C=128, H=128, W=128 - too slow
         ]
 
-        # Large sizes (5D)
+        # Large sizes (5D) - commented out to reduce CI timeout
         large_5d_shapes = [
-            (2, 32, 32, 32, 32),  # N=2, C=32, D=32, H=32, W=32
+            # (2, 32, 32, 32, 32),  # N=2, C=32, D=32, H=32, W=32 - too slow
         ]
 
         return (
@@ -149,142 +165,33 @@ class GridSampleBenchmark(base.Benchmark):
                     grid, -0.9, 0.9
                 )  # Keep away from boundaries for main test
 
-            # Test mode combinations (focus on most common/useful cases)
-            # Note: Yield format is (input, grid, {kwargs}) so grid is in args[1] for get_gbps
+            # Reduced mode combinations to avoid CI benchmark timeout.
+            # Original had 11-14 yields per shape; now reduced to 4-5 core cases.
 
-            # 1. Nearest neighbor (fastest, commonly used)
+            # 1. Nearest neighbor - zeros padding
             yield inp, grid, {
                 "mode": "nearest",
                 "padding_mode": "zeros",
                 "align_corners": False,
             }
-            yield inp, grid, {
-                "mode": "nearest",
-                "padding_mode": "border",
-                "align_corners": False,
-            }
-            yield inp, grid, {
-                "mode": "nearest",
-                "padding_mode": "reflection",
-                "align_corners": False,
-            }
 
-            # 2. Bilinear / Trilinear (most common interpolation)
+            # 2. Bilinear - zeros padding (most common)
             yield inp, grid, {
                 "mode": "bilinear",
                 "padding_mode": "zeros",
                 "align_corners": False,
             }
+
+            # 3. Bilinear - border padding
             yield inp, grid, {
                 "mode": "bilinear",
                 "padding_mode": "border",
-                "align_corners": False,
-            }
-            yield inp, grid, {
-                "mode": "bilinear",
-                "padding_mode": "reflection",
-                "align_corners": False,
-            }
-
-            # 3. Bicubic (4D only, higher quality)
-            if not is_5d:
-                yield inp, grid, {
-                    "mode": "bicubic",
-                    "padding_mode": "zeros",
-                    "align_corners": False,
-                }
-                yield inp, grid, {
-                    "mode": "bicubic",
-                    "padding_mode": "border",
-                    "align_corners": False,
-                }
-                yield inp, grid, {
-                    "mode": "bicubic",
-                    "padding_mode": "reflection",
-                    "align_corners": False,
-                }
-
-            # 4. Test with align_corners=True
-            yield inp, grid, {
-                "mode": "nearest",
-                "padding_mode": "zeros",
                 "align_corners": True,
             }
-            yield inp, grid, {
-                "mode": "bilinear",
-                "padding_mode": "zeros",
-                "align_corners": True,
-            }
+
+            # 4. Bicubic (4D only)
             if not is_5d:
                 yield inp, grid, {
-                    "mode": "bicubic",
-                    "padding_mode": "zeros",
-                    "align_corners": True,
-                }
-
-            # 5. Upsampling scenario (2x)
-            if is_5d:
-                D_out, H_out, W_out = D_in * 2, H_in * 2, W_in * 2
-            else:
-                H_out, W_out = H_in * 2, W_in * 2
-
-            if is_5d:
-                grid_upsample = torch.randn(
-                    N, D_out, H_out, W_out, 3, dtype=cur_dtype, device=self.device
-                )
-                grid_upsample = torch.clamp(grid_upsample, -0.9, 0.9)
-                yield inp, grid_upsample, {
-                    "mode": "bilinear",
-                    "padding_mode": "zeros",
-                    "align_corners": False,
-                }
-            else:
-                grid_upsample = torch.randn(
-                    N, H_out, W_out, 2, dtype=cur_dtype, device=self.device
-                )
-                grid_upsample = torch.clamp(grid_upsample, -0.9, 0.9)
-                yield inp, grid_upsample, {
-                    "mode": "bilinear",
-                    "padding_mode": "zeros",
-                    "align_corners": False,
-                }
-                yield inp, grid_upsample, {
-                    "mode": "bicubic",
-                    "padding_mode": "zeros",
-                    "align_corners": False,
-                }
-
-            # 6. Downsampling scenario (2x)
-            if is_5d:
-                D_out, H_out, W_out = (
-                    max(1, D_in // 2),
-                    max(1, H_in // 2),
-                    max(1, W_in // 2),
-                )
-            else:
-                H_out, W_out = max(1, H_in // 2), max(1, W_in // 2)
-
-            if is_5d:
-                grid_downsample = torch.randn(
-                    N, D_out, H_out, W_out, 3, dtype=cur_dtype, device=self.device
-                )
-                grid_downsample = torch.clamp(grid_downsample, -0.9, 0.9)
-                yield inp, grid_downsample, {
-                    "mode": "bilinear",
-                    "padding_mode": "zeros",
-                    "align_corners": False,
-                }
-            else:
-                grid_downsample = torch.randn(
-                    N, H_out, W_out, 2, dtype=cur_dtype, device=self.device
-                )
-                grid_downsample = torch.clamp(grid_downsample, -0.9, 0.9)
-                yield inp, grid_downsample, {
-                    "mode": "bilinear",
-                    "padding_mode": "zeros",
-                    "align_corners": False,
-                }
-                yield inp, grid_downsample, {
                     "mode": "bicubic",
                     "padding_mode": "zeros",
                     "align_corners": False,
