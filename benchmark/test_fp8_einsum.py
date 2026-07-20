@@ -22,9 +22,13 @@ import flag_gems
 
 from . import base
 
-# The Gluon fp8_einsum kernel requires Triton >= 3.6.0.
+# The Gluon fp8_einsum kernel requires Triton >= 3.6.0 and specific TLE features.
+fp8_einsum = None
 if triton.__version__ >= "3.6.0":
-    from flag_gems.runtime.backend._nvidia.hopper.ops.fp8_einsum import fp8_einsum
+    try:
+        from flag_gems.runtime.backend._nvidia.hopper.ops.fp8_einsum import fp8_einsum
+    except (AttributeError, ImportError):
+        pass
 
 DEFAULT_BLOCK_SHAPE = [128, 128]
 
@@ -179,8 +183,10 @@ def _gems_fp8_einsum_wrapper(x_data, x_scale, y_data, y_scale):
 
 @pytest.mark.fp8_einsum
 @pytest.mark.skipif(
-    not (HAS_DEEPGEMM and CUDA_AVAILABLE and TRITON_VERSION_OK),
-    reason="requires DeepGEMM, NVIDIA Hopper architecture and Triton >= 3.6.0",
+    not (
+        HAS_DEEPGEMM and CUDA_AVAILABLE and TRITON_VERSION_OK and fp8_einsum is not None
+    ),
+    reason="requires DeepGEMM, Hopper GPU, Triton >= 3.6.0 with TLE support",
 )
 def test_perf_fp8_einsum_gems_vs_deepgemm():
     """Benchmark FlagGems vs DeepGEMM on block-wise FP8 ``bhr,hdr->bhd`` einsum."""
