@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import warnings
 
 import pytest
@@ -36,7 +50,7 @@ MEDIAN_OPS = ["median", "median_out", "median_dim", "median_dim_values"]
 
 
 def _make_input(shape, dtype):
-    if dtype in utils.ALL_INT_DTYPES or dtype in (torch.int8, torch.uint8):
+    if not dtype.is_floating_point:
         numel = 1
         for size in shape:
             numel *= size
