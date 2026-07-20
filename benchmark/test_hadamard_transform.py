@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
+import os
 import pytest
 import torch
 import torch.nn.functional as F
@@ -35,6 +36,11 @@ _skip_if_join_bug = pytest.mark.skipif(
     reason=f"triton {triton.__version__} has tt.join layout bug (fixed in 3.5.0)",
 )
 
+# HADAMARD_BENCH_OLD_REF=1 -> pre-scipy matrix multiply ref
+# HADAMARD_BENCH_FULL_SHAPES=1 -> include (1024,16384)/(1024,32768)
+_USE_OLD_REF = os.environ.get("HADAMARD_BENCH_OLD_REF", "0") == "1"
+_USE_FULL_SHAPES = os.environ.get("HADAMARD_BENCH_FULL_SHAPES", "0") == "1"
+
 # ============================================================
 # Standard FHT benchmark (hadamard_transform)
 # ============================================================
@@ -44,8 +50,6 @@ _FHT_SHAPES = [
     (1024, 512),
     (1024, 1024),
     (1024, 4096),
-    # (1024, 16384),  # scipy full matrix too slow/large; temporarily commented
-    # (1024, 32768),
     (8192, 256),
     (8192, 512),
     (8192, 1024),
@@ -56,11 +60,36 @@ _FHT_SHAPES = [
     (32768, 1024),
     (32768, 4096),
 ]
+if _USE_FULL_SHAPES:
+    _FHT_SHAPES[4:4] = [
+        (1024, 16384),
+        (1024, 32768),
+    ]
 
 
 def ht_input_fn(shape, dtype, device):
     batch, dim = shape
     yield (torch.randn(batch, dim, dtype=dtype, device=device),)
+
+
+def _hadamard_matrix(n: int, device) -> torch.Tensor:
+    """Pre-scipy benchmark ref: recursively build Sylvester Hadamard matrix."""
+    H = torch.tensor([[1.0]], device=device)
+    while H.shape[0] < n:
+        H = torch.cat(
+            [torch.cat([H, H], dim=1), torch.cat([H, -H], dim=1)],
+            dim=0,
+        )
+    return H
+
+
+def _hadamard_transform_ref_old(x):
+    """Old benchmark baseline: Hadamard matrix multiply (not scipy)."""
+    dim = x.shape[-1]
+    padded = 1 << (dim - 1).bit_length() if dim > 1 else 1
+    H = _hadamard_matrix(padded, x.device).to(x.dtype)
+    x_padded = F.pad(x, (0, padded - dim))
+    return (x_padded @ H.T)[..., :dim]
 
 
 def _hadamard_transform_ref(x, scale=1.0):
@@ -87,7 +116,9 @@ def _hadamard_transform_ref(x, scale=1.0):
 
 
 def torch_ht(x):
-    """Benchmark baseline: same scipy Hadamard ref as correctness tests."""
+    """Benchmark baseline: old matrix ref or scipy ref (see HADAMARD_BENCH_OLD_REF)."""
+    if _USE_OLD_REF:
+        return _hadamard_transform_ref_old(x)
     return _hadamard_transform_ref(x)
 
 
