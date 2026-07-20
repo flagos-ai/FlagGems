@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -172,7 +186,7 @@ def concat_and_cache_mla(
     kv_cache_dtype: str,
     scale: torch.Tensor,
 ) -> None:
-    logger.debug("GEMS CONCAT_AND_CACHE_MLA")
+    logger.debug("GEMS_ENFLAME CONCAT_AND_CACHE_MLA")
     return ConcatAndCacheMla.apply(
         kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
     )
