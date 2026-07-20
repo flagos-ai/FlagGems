@@ -143,7 +143,8 @@ def linalg_eigh(A, UPLO="L"):
 
     else:
         # NOTE: n>2 falls back to CPU, breaking CUDA graph compatibility.
-        # This is a design limitation pending future n>2 kernel implementation.
+        # This is a design limitation pending a future n>2 Triton kernel.
+        # Test/benchmark shapes for this path are tagged `cpu_fallback_*`
         # Convert to CPU, compute, then convert back
         A_cpu = A.cpu()
         eigenvalues_cpu, eigenvectors_cpu = torch.linalg.eigh(A_cpu, UPLO=UPLO)
