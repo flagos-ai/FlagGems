@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -342,8 +356,10 @@ def mha_varlan_fwd(
         # o_batch_stride = out.stride(0) * max_seqlen_q
     else:
         q_batch_stride = 0
-        k_batch_stride = 0
-        v_batch_stride = 0
+        # Paged KV cache may be a per-layer view with a non-compact block
+        # stride, so the kernel must receive the physical block stride.
+        k_batch_stride = k.stride(0)
+        v_batch_stride = v.stride(0)
         o_batch_stride = 0
 
     total_q = q.size(0)
@@ -510,7 +526,7 @@ def mha_varlan_fwd(
             block_size,  # block_size,
         )
 
-        logger.debug("kernel: flash_varlen_fwd")
+        logger.debug("GEMS_TSINGMICRO kernel: flash_varlen_fwd")
         grid = lambda args: (
             triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
             batch_size,
@@ -521,14 +537,15 @@ def mha_varlan_fwd(
 
         # We have to forego parameter autotuning and particularly fix BLOCK_N
         # to avoid breaking a kv block onto multiple cache pages.
+        # BLOCK_M/N are selected dynamically by mha_varlen_heur_block_m/n
+        # based on params.seqlen_q (post-swap for decode = q_groups=8).
         cfg = runtime.get_heuristic_config("mha_varlen_fwd")
         cfg_params = {
             "BLOCK_M": cfg["BLOCK_M"](params),
             "BLOCK_N": cfg["BLOCK_N"](params),
-            "num_warps": cfg["num_warps"](params),
-            "num_stages": cfg["num_stages"](params),
+            "num_warps": cfg["num_warps"](args),
+            "num_stages": cfg["num_stages"](args),
         }
-        # BLOCK_M, BLOCK_N, num_warps, num_stages = 128, 32, 4, 3
         assert (
             block_size % cfg_params["BLOCK_N"] == 0
         ), f"block_size must be divisible by {cfg_params['BLOCK_N']}."
@@ -616,7 +633,7 @@ def mha_fwd(
     q_groups = num_heads // num_heads_k
 
     if seqlenq_ngroups_swapped:
-        logger.debug("q_kg swapped.")
+        logger.debug("GEMS_TSINGMICRO q_kg swapped.")
         q = q.reshape(batch_size, num_heads_k, q_groups, head_size).transpose(1, 2)
         seqlen_q = q_groups
         num_heads = num_heads_k
@@ -740,7 +757,7 @@ def mha_fwd(
                 #     print("blocks_per_split", blocks_per_split)
 
                 if n_splits > 1:
-                    logger.debug("kernel: flash_fwd_splitkv")
+                    logger.debug("GEMS_TSINGMICRO kernel: flash_fwd_splitkv")
                     lse_splits = torch.empty(
                         (n_splits, B, H, Q), dtype=torch.float, device=q_device
                     )
@@ -784,7 +801,7 @@ def mha_fwd(
                     return kernel
 
             # Last option: flash_fwd
-            logger.debug("kernel: flash_fwd")
+            logger.debug("GEMS_TSINGMICRO kernel: flash_fwd")
             grid = lambda args: (
                 triton.cdiv(Q, args["BLOCK_M"]),
                 H * B,
