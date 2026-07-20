@@ -254,6 +254,7 @@ _FULL_CONFIG = (
     ("bitwise_xor_.Tensor", bitwise_xor_tensor_),
     ("bmm", bmm),
     ("bmm.out", bmm_out),
+    ("broadcast_tensors", broadcast_tensors),
     ("broadcast_to", broadcast_to),
     ("bucketize.Tensor", bucketize),
     ("cat", cat),
