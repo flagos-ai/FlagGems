@@ -569,6 +569,14 @@ from flag_gems.ops.where import (
     where_self,
     where_self_out,
 )
+from flag_gems.ops.xlogy import (
+    xlogy,
+    xlogy_out,
+    xlogy_scalar_tensor,
+    xlogy_scalar_tensor_out,
+    xlogy_tensor_scalar,
+    xlogy_tensor_scalar_out,
+)
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
