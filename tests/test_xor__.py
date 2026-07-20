@@ -33,9 +33,9 @@ def test_xor__(shape, dtype):
     ref_inp1 = utils.to_reference(inp1)
     ref_inp2 = utils.to_reference(inp2)
 
-    ref_out = torch.bitwise_xor(ref_inp1, ref_inp2)
+    ref_out = ref_inp1 ^ ref_inp2
     with flag_gems.use_gems():
-        res_out = torch.bitwise_xor(inp1, inp2)
+        res_out = inp1 ^ inp2
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -57,9 +57,9 @@ def test_xor__inplace(shape, dtype):
     ref_inp1 = utils.to_reference(inp1.clone())
     ref_inp2 = utils.to_reference(inp2)
 
-    ref_out = ref_inp1.bitwise_xor_(ref_inp2)
+    ref_out = ref_inp1.__ixor__(ref_inp2)
     with flag_gems.use_gems():
-        res_out = inp1.bitwise_xor_(inp2)
+        res_out = inp1.__ixor__(inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -80,9 +80,9 @@ def test_xor__scalar(shape, dtype):
         inp2 = 0x00FF
     ref_inp1 = utils.to_reference(inp1)
 
-    ref_out = torch.bitwise_xor(ref_inp1, inp2)
+    ref_out = ref_inp1 ^ inp2
     with flag_gems.use_gems():
-        res_out = torch.bitwise_xor(inp1, inp2)
+        res_out = inp1 ^ inp2
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -101,8 +101,8 @@ def test_xor__scalar_inplace(shape, dtype):
         inp2 = 0x00FF
     ref_inp1 = utils.to_reference(inp1.clone())
 
-    ref_out = ref_inp1.bitwise_xor_(inp2)
+    ref_out = ref_inp1.__ixor__(inp2)
     with flag_gems.use_gems():
-        res_out = inp1.bitwise_xor_(inp2)
+        res_out = inp1.__ixor__(inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
