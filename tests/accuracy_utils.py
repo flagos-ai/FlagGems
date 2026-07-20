@@ -138,6 +138,15 @@ STACK_SHAPES = [
     [(16, 256), (16, 256)],
     [(20, 320, 15), (20, 320, 15), (20, 320, 15)],
 ]
+# pdist CUDA kernel only supports float32; Half/BFloat16 raise RuntimeError
+PDIST_SHAPES = [
+    (4, 8),
+    (8, 16),
+    (16, 32),
+    (32, 64),
+    (64, 128),
+    (128, 256),
+]
 CONTIGUOUS_SHAPE_STRIDES_1D = [
     ((1,), (1,)),
     ((1024,), (1,)),
