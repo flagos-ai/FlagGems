@@ -38,8 +38,8 @@ on:
         default: ''
 
   schedule:
-    # Monday 00:10 Beijing time = Sunday 16:10 UTC
-    - cron: '10 16 * * 0'
+    # Every day 22:00 Beijing time = 14:00 UTC
+    - cron: '0 14 * * *'
 
 defaults:
   run:
