@@ -108,6 +108,10 @@ def test_nanmedian_dim():
 
 
 @pytest.mark.nanmedian_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend native nanmedian.dim_values falls back to CPU, so its performance is not comparable.",
+)
 def test_nanmedian_dim_values():
     bench = base.GenericBenchmark(
         input_fn=_dim_values_input_fn,
