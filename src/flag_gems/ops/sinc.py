@@ -28,7 +28,13 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def sinc_func(x):
     px = math.pi * x.to(tl.float32)
-    return tl.where(x == 0.0, 1.0, tl.sin(px) / px)
+    # sin(px) / px is numerically unstable near the removable singularity:
+    # any absolute error in sin(px) is amplified by division by a tiny px.
+    # Evaluate the sinc series in fp32 in that region instead.
+    px2 = px * px
+    near_zero = tl.abs(px) < 1.0e-2
+    series = 1.0 + px2 * (-1.0 / 6.0 + px2 * (1.0 / 120.0 - px2 / 5040.0))
+    return tl.where(near_zero, series, tl.sin(px) / px)
 
 
 def sinc(A):
