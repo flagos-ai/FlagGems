@@ -3,7 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from flag_gems.ops.nonzero_static import nonzero_static
+import flag_gems
 
 from . import base
 
@@ -40,26 +40,12 @@ def _make_input(shape, dtype, nnz_ratio, device):
     return x
 
 
-def _baseline_nonzero_static(x, size: int, fill_value: int = -1):
-    try:
-        return torch.nonzero_static(x, size=size, fill_value=fill_value)
-    except Exception:
-        ndim = x.dim()
-        out = torch.empty((size, ndim), device=x.device, dtype=torch.long)
+def _get_baseline_nonzero_static():
+    if flag_gems.vendor_name == "ascend":
+        from .ascendc_baseline import load_nonzero_static
 
-        if size == 0 or ndim == 0:
-            return out
-
-        nz = torch.nonzero(x, as_tuple=False)
-        copy_len = min(size, nz.shape[0])
-
-        if copy_len > 0:
-            out[:copy_len].copy_(nz[:copy_len])
-
-        if copy_len < size:
-            out[copy_len:].fill_(fill_value)
-
-        return out
+        return load_nonzero_static()
+    return torch.nonzero_static
 
 
 def _input_fn(case, dtype, device):
@@ -88,10 +74,11 @@ class NonzeroStaticBenchmark(base.GenericBenchmark):
 
 @pytest.mark.nonzero_static
 def test_perf_nonzero_static():
+    baseline_nonzero_static = _get_baseline_nonzero_static()
     bench = NonzeroStaticBenchmark(
         op_name="nonzero_static",
-        torch_op=_baseline_nonzero_static,
-        gems_op=nonzero_static,
+        torch_op=baseline_nonzero_static,
+        gems_op=flag_gems.nonzero_static,
         input_fn=_input_fn,
         dtypes=BENCH_DTYPES,
     )

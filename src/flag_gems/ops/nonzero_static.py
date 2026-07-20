@@ -8,6 +8,7 @@ import triton.language as tl
 import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -47,17 +48,22 @@ def _nonzero_static_count_kernel(
     x_ptr,
     counts_ptr,
     numel: tl.constexpr,
+    num_blocks: tl.constexpr,
     IS_COMPLEX: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < numel
+    n_workers = ext.num_programs(0)
+    pid = ext.program_id(0)
+    tasks_per_worker = tl.cdiv(num_blocks, n_workers)
+    for task_index in range(tasks_per_worker):
+        block_id = pid + task_index * n_workers
+        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = (block_id < num_blocks) & (offsets < numel)
 
-    flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX)
+        flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX)
 
-    cnt = tl.sum(flags.to(tl.int32), axis=0)
-    tl.store(counts_ptr + pid, cnt.to(tl.int64))
+        cnt = tl.sum(flags.to(tl.int32), axis=0)
+        tl.store(counts_ptr + block_id, cnt.to(tl.int64), mask=block_id < num_blocks)
 
 
 @libentry()
@@ -68,7 +74,7 @@ def _nonzero_static_fill_kernel(
     fill_value: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = ext.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < total_out
 
@@ -93,7 +99,7 @@ def _nonzero_static_fill_tail_kernel(
     tail_start = valid_rows * ndim + fill_offset
     total_out = size * ndim
 
-    pid = tl.program_id(0)
+    pid = ext.program_id(0)
     offsets = tail_start + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < total_out
 
@@ -228,7 +234,7 @@ def _nonzero_static_write_kernel(
     IS_COMPLEX: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = ext.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < numel
 
@@ -287,6 +293,92 @@ def _nonzero_static_write_kernel(
 
 @libentry()
 @triton.jit
+def _nonzero_static_write_strided_kernel(
+    x_ptr,
+    prefix_ptr,
+    counts_ptr,
+    out_ptr,
+    size: tl.constexpr,
+    numel: tl.constexpr,
+    num_blocks: tl.constexpr,
+    ndim: tl.constexpr,
+    D0: tl.constexpr,
+    D1: tl.constexpr,
+    D2: tl.constexpr,
+    D3: tl.constexpr,
+    fill_value: tl.constexpr,
+    total_out: tl.constexpr,
+    IS_COMPLEX: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    n_workers = ext.num_programs(0)
+    pid = ext.program_id(0)
+    tasks_per_worker = tl.cdiv(num_blocks, n_workers)
+    total_nnz = tl.load(prefix_ptr + num_blocks - 1)
+    valid_rows = tl.minimum(total_nnz, size)
+
+    for task_index in range(tasks_per_worker):
+        block_id = pid + task_index * n_workers
+        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = (block_id < num_blocks) & (offsets < numel)
+
+        block_nnz = tl.load(counts_ptr + block_id, mask=block_id < num_blocks, other=0)
+        prefix = (
+            tl.load(prefix_ptr + block_id, mask=block_id < num_blocks, other=0)
+            - block_nnz
+        )
+
+        if prefix < size:
+            flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX)
+            local_rank = tl.cumsum(flags.to(tl.int32), 0) - 1
+            global_rank = prefix + local_rank.to(tl.int64)
+            write_mask = mask & flags & (global_rank < size)
+            linear = offsets.to(tl.int64)
+
+            if ndim == 1:
+                c0 = linear
+                tl.store(out_ptr + global_rank * ndim, c0, mask=write_mask)
+
+            if ndim == 2:
+                c0 = linear // D1
+                c1 = linear % D1
+                tl.store(out_ptr + global_rank * ndim, c0, mask=write_mask)
+                tl.store(out_ptr + global_rank * ndim + 1, c1, mask=write_mask)
+
+            if ndim == 3:
+                s0 = D1 * D2
+                c0 = linear // s0
+                r0 = linear % s0
+                c1 = r0 // D2
+                c2 = r0 % D2
+                tl.store(out_ptr + global_rank * ndim, c0, mask=write_mask)
+                tl.store(out_ptr + global_rank * ndim + 1, c1, mask=write_mask)
+                tl.store(out_ptr + global_rank * ndim + 2, c2, mask=write_mask)
+
+            if ndim == 4:
+                s0 = D1 * D2 * D3
+                s1 = D2 * D3
+                c0 = linear // s0
+                r0 = linear % s0
+                c1 = r0 // s1
+                r1 = r0 % s1
+                c2 = r1 // D3
+                c3 = r1 % D3
+                tl.store(out_ptr + global_rank * ndim, c0, mask=write_mask)
+                tl.store(out_ptr + global_rank * ndim + 1, c1, mask=write_mask)
+                tl.store(out_ptr + global_rank * ndim + 2, c2, mask=write_mask)
+                tl.store(out_ptr + global_rank * ndim + 3, c3, mask=write_mask)
+
+        tail_offsets = (
+            valid_rows * ndim + block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        )
+        tail_mask = tail_offsets < total_out
+        tail_vals = tl.full((BLOCK_SIZE,), fill_value, tl.int64)
+        tl.store(out_ptr + tail_offsets, tail_vals, mask=tail_mask)
+
+
+@libentry()
+@triton.jit
 def _nonzero_static_write_small_counts_kernel(
     x_ptr,
     counts_ptr,
@@ -305,7 +397,7 @@ def _nonzero_static_write_small_counts_kernel(
     BLOCK_SIZE: tl.constexpr,
     PREFIX_BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = ext.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < numel
 
@@ -315,47 +407,47 @@ def _nonzero_static_write_small_counts_kernel(
     prefix = tl.sum(tl.where(count_offsets < pid, count_vals, 0), axis=0)
     total_nnz = tl.sum(count_vals, axis=0)
 
-    flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX)
+    if prefix < size:
+        flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX)
+        local_rank = tl.cumsum(flags.to(tl.int32), 0) - 1
+        global_rank = prefix + local_rank.to(tl.int64)
 
-    local_rank = tl.cumsum(flags.to(tl.int32), 0) - 1
-    global_rank = prefix + local_rank.to(tl.int64)
+        write_mask = mask & flags & (global_rank < size)
+        linear = offsets.to(tl.int64)
 
-    write_mask = mask & flags & (global_rank < size)
-    linear = offsets.to(tl.int64)
+        if ndim == 1:
+            c0 = linear
+            tl.store(out_ptr + global_rank * ndim, c0, mask=write_mask)
 
-    if ndim == 1:
-        c0 = linear
-        tl.store(out_ptr + global_rank * ndim, c0, mask=write_mask)
+        if ndim == 2:
+            c0 = linear // D1
+            c1 = linear % D1
+            tl.store(out_ptr + global_rank * ndim, c0, mask=write_mask)
+            tl.store(out_ptr + global_rank * ndim + 1, c1, mask=write_mask)
 
-    if ndim == 2:
-        c0 = linear // D1
-        c1 = linear % D1
-        tl.store(out_ptr + global_rank * ndim, c0, mask=write_mask)
-        tl.store(out_ptr + global_rank * ndim + 1, c1, mask=write_mask)
+        if ndim == 3:
+            s0 = D1 * D2
+            c0 = linear // s0
+            r0 = linear % s0
+            c1 = r0 // D2
+            c2 = r0 % D2
+            tl.store(out_ptr + global_rank * ndim, c0, mask=write_mask)
+            tl.store(out_ptr + global_rank * ndim + 1, c1, mask=write_mask)
+            tl.store(out_ptr + global_rank * ndim + 2, c2, mask=write_mask)
 
-    if ndim == 3:
-        s0 = D1 * D2
-        c0 = linear // s0
-        r0 = linear % s0
-        c1 = r0 // D2
-        c2 = r0 % D2
-        tl.store(out_ptr + global_rank * ndim, c0, mask=write_mask)
-        tl.store(out_ptr + global_rank * ndim + 1, c1, mask=write_mask)
-        tl.store(out_ptr + global_rank * ndim + 2, c2, mask=write_mask)
-
-    if ndim == 4:
-        s0 = D1 * D2 * D3
-        s1 = D2 * D3
-        c0 = linear // s0
-        r0 = linear % s0
-        c1 = r0 // s1
-        r1 = r0 % s1
-        c2 = r1 // D3
-        c3 = r1 % D3
-        tl.store(out_ptr + global_rank * ndim, c0, mask=write_mask)
-        tl.store(out_ptr + global_rank * ndim + 1, c1, mask=write_mask)
-        tl.store(out_ptr + global_rank * ndim + 2, c2, mask=write_mask)
-        tl.store(out_ptr + global_rank * ndim + 3, c3, mask=write_mask)
+        if ndim == 4:
+            s0 = D1 * D2 * D3
+            s1 = D2 * D3
+            c0 = linear // s0
+            r0 = linear % s0
+            c1 = r0 // s1
+            r1 = r0 % s1
+            c2 = r1 // D3
+            c3 = r1 % D3
+            tl.store(out_ptr + global_rank * ndim, c0, mask=write_mask)
+            tl.store(out_ptr + global_rank * ndim + 1, c1, mask=write_mask)
+            tl.store(out_ptr + global_rank * ndim + 2, c2, mask=write_mask)
+            tl.store(out_ptr + global_rank * ndim + 3, c3, mask=write_mask)
 
     valid_rows = tl.minimum(total_nnz, size)
     tail_offsets = valid_rows * ndim + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -381,7 +473,7 @@ def _nonzero_static_write_generic_kernel(
     IS_COMPLEX: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = ext.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < numel
 
@@ -407,6 +499,61 @@ def _nonzero_static_write_generic_kernel(
     tail_mask = tail_offsets < total_out
     tail_vals = tl.full((BLOCK_SIZE,), fill_value, tl.int64)
     tl.store(out_ptr + tail_offsets, tail_vals, mask=tail_mask)
+
+
+@libentry()
+@triton.jit
+def _nonzero_static_write_generic_strided_kernel(
+    x_ptr,
+    shape_ptr,
+    prefix_ptr,
+    counts_ptr,
+    out_ptr,
+    size: tl.constexpr,
+    numel: tl.constexpr,
+    num_blocks: tl.constexpr,
+    ndim: tl.constexpr,
+    fill_value: tl.constexpr,
+    total_out: tl.constexpr,
+    IS_COMPLEX: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    n_workers = ext.num_programs(0)
+    pid = ext.program_id(0)
+    tasks_per_worker = tl.cdiv(num_blocks, n_workers)
+    total_nnz = tl.load(prefix_ptr + num_blocks - 1)
+    valid_rows = tl.minimum(total_nnz, size)
+
+    for task_index in range(tasks_per_worker):
+        block_id = pid + task_index * n_workers
+        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = (block_id < num_blocks) & (offsets < numel)
+
+        block_nnz = tl.load(counts_ptr + block_id, mask=block_id < num_blocks, other=0)
+        prefix = (
+            tl.load(prefix_ptr + block_id, mask=block_id < num_blocks, other=0)
+            - block_nnz
+        )
+
+        if prefix < size:
+            flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX)
+            local_rank = tl.cumsum(flags.to(tl.int32), 0) - 1
+            global_rank = prefix + local_rank.to(tl.int64)
+            write_mask = mask & flags & (global_rank < size)
+
+            idx_flat = offsets.to(tl.int64)
+            for dim in range(ndim - 1, -1, -1):
+                dim_size = tl.load(shape_ptr + dim)
+                coord = idx_flat % dim_size
+                idx_flat //= dim_size
+                tl.store(out_ptr + global_rank * ndim + dim, coord, mask=write_mask)
+
+        tail_offsets = (
+            valid_rows * ndim + block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        )
+        tail_mask = tail_offsets < total_out
+        tail_vals = tl.full((BLOCK_SIZE,), fill_value, tl.int64)
+        tl.store(out_ptr + tail_offsets, tail_vals, mask=tail_mask)
 
 
 def _prepare_nonzero_static_out(input, size, out, transpose):
@@ -463,11 +610,23 @@ def _finish_nonzero_static_out(out, work_out, transpose=False):
         return work_out
     if transpose:
         out.copy_(work_out.transpose(0, 1))
+    else:
+        out.copy_(work_out)
     return out
 
 
 def _nonzero_static_impl(
-    input: torch.Tensor, *, size: int, fill_value: int = -1, out: torch.Tensor = None
+    input: torch.Tensor,
+    *,
+    size: int,
+    fill_value: int = -1,
+    out: torch.Tensor = None,
+    cumsum_fn=torch.cumsum,
+    transpose_out=True,
+    block_size=DEFAULT_BLOCK_SIZE,
+    single_block_max_numel=SINGLE_BLOCK_MAX_NUMEL,
+    small_counts_max_blocks=SMALL_COUNTS_MAX_BLOCKS,
+    max_programs=None,
 ):
     size = _check_int_arg(size, "size")
     fill_value = _check_int_arg(fill_value, "fill_value")
@@ -483,14 +642,18 @@ def _nonzero_static_impl(
     if out is None:
         work_out = torch.empty((size, ndim), device=input.device, dtype=torch.int64)
     else:
-        out = _prepare_nonzero_static_out(input, size, out, transpose=True)
+        out = _prepare_nonzero_static_out(input, size, out, transpose=transpose_out)
         work_out = torch.empty((size, ndim), device=input.device, dtype=torch.int64)
 
     if size == 0:
-        return _finish_nonzero_static_out(out, work_out, transpose=out is not None)
+        return _finish_nonzero_static_out(
+            out, work_out, transpose=transpose_out and out is not None
+        )
 
     if ndim == 0:
-        return _finish_nonzero_static_out(out, work_out, transpose=out is not None)
+        return _finish_nonzero_static_out(
+            out, work_out, transpose=transpose_out and out is not None
+        )
 
     is_complex = input.is_complex()
     source = input.contiguous()
@@ -501,7 +664,6 @@ def _nonzero_static_impl(
         x = source
         numel = x.numel()
 
-    block_size = DEFAULT_BLOCK_SIZE
     total_out = size * ndim
 
     if numel == 0:
@@ -513,9 +675,14 @@ def _nonzero_static_impl(
                 fill_value,
                 BLOCK_SIZE=block_size,
             )
-        return _finish_nonzero_static_out(out, work_out, transpose=out is not None)
+        return _finish_nonzero_static_out(
+            out, work_out, transpose=transpose_out and out is not None
+        )
 
     num_blocks = triton.cdiv(numel, block_size)
+    program_count = (
+        num_blocks if max_programs is None else min(num_blocks, max_programs)
+    )
     use_generic_ndim = ndim > 4
 
     if use_generic_ndim:
@@ -524,7 +691,7 @@ def _nonzero_static_impl(
         shape = list(input.shape) + [1] * (4 - ndim)
 
     single_block_elems = max(numel, total_out)
-    if single_block_elems <= SINGLE_BLOCK_MAX_NUMEL:
+    if single_block_elems <= single_block_max_numel:
         single_block_size = 1 << (single_block_elems - 1).bit_length()
         with torch_device_fn.device(input.device):
             if use_generic_ndim:
@@ -556,22 +723,25 @@ def _nonzero_static_impl(
                     IS_COMPLEX=is_complex,
                     BLOCK_SIZE=single_block_size,
                 )
-        return _finish_nonzero_static_out(out, work_out, transpose=out is not None)
+        return _finish_nonzero_static_out(
+            out, work_out, transpose=transpose_out and out is not None
+        )
 
     counts = torch.empty((num_blocks,), device=input.device, dtype=torch.int64)
 
     with torch_device_fn.device(input.device):
-        _nonzero_static_count_kernel[(num_blocks,)](
+        _nonzero_static_count_kernel[(program_count,)](
             x,
             counts,
             numel,
+            num_blocks,
             IS_COMPLEX=is_complex,
             BLOCK_SIZE=block_size,
         )
 
     if (
         not use_generic_ndim
-        and num_blocks <= SMALL_COUNTS_MAX_BLOCKS
+        and num_blocks <= small_counts_max_blocks
         and total_out <= num_blocks * block_size
     ):
         prefix_block_size = 1 << (num_blocks - 1).bit_length()
@@ -594,13 +764,20 @@ def _nonzero_static_impl(
                 BLOCK_SIZE=block_size,
                 PREFIX_BLOCK_SIZE=prefix_block_size,
             )
-        return _finish_nonzero_static_out(out, work_out, transpose=out is not None)
+        return _finish_nonzero_static_out(
+            out, work_out, transpose=transpose_out and out is not None
+        )
 
-    prefix = torch.cumsum(counts, dim=0)
+    prefix = cumsum_fn(counts, dim=0)
 
     with torch_device_fn.device(input.device):
         if use_generic_ndim:
-            _nonzero_static_write_generic_kernel[(num_blocks,)](
+            write_kernel = (
+                _nonzero_static_write_generic_strided_kernel
+                if max_programs is not None
+                else _nonzero_static_write_generic_kernel
+            )
+            write_kernel[(program_count,)](
                 x,
                 shape,
                 prefix,
@@ -616,7 +793,12 @@ def _nonzero_static_impl(
                 BLOCK_SIZE=block_size,
             )
         else:
-            _nonzero_static_write_kernel[(num_blocks,)](
+            write_kernel = (
+                _nonzero_static_write_strided_kernel
+                if max_programs is not None
+                else _nonzero_static_write_kernel
+            )
+            write_kernel[(program_count,)](
                 x,
                 prefix,
                 counts,
@@ -650,7 +832,9 @@ def _nonzero_static_impl(
                 BLOCK_SIZE=block_size,
             )
 
-    return _finish_nonzero_static_out(out, work_out, transpose=out is not None)
+    return _finish_nonzero_static_out(
+        out, work_out, transpose=transpose_out and out is not None
+    )
 
 
 def nonzero_static(input: torch.Tensor, *, size: int, fill_value: int = -1):
