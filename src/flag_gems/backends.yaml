@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # FlagGems Backend Configuration
 #
 # Single source of truth for all vendor/backend dependencies.
@@ -21,6 +35,13 @@
 #
 # "triton:" — vendor-specific Triton packages for this backend
 # "flagtree:" — FlagTree package for this backend (preferred)
+#
+# "env:" — environment variables to export (key: value pairs).
+#   Written into .venv/bin/activate by setup.sh so that
+#   `source .venv/bin/activate` sets up the full environment.
+#
+# "env_source:" — vendor scripts to source (list of paths).
+#   Each script is sourced if it exists.
 
 pypi_base: "https://resource.flagos.net/repository/flagos-pypi-{vendor}/simple"
 mirror: "https://mirrors.aliyun.com/pypi/simple"
@@ -31,6 +52,9 @@ backends:
     cmake_backend: CUDA
     triton: triton==3.6.0
     flagtree: flagtree==0.6.0
+    env:
+      PATH: /usr/local/cuda/bin:$PATH
+      LD_LIBRARY_PATH: /usr/local/cuda/lib64:$LD_LIBRARY_PATH
     deps:
       - torch==2.10.0+cu128
       - torchaudio==2.10.0+cu128
@@ -41,6 +65,9 @@ backends:
     cmake_backend: CUDA
     triton: triton==3.6.0
     flagtree: flagtree==0.6.0
+    env:
+      PATH: /usr/local/cuda/bin:$PATH
+      LD_LIBRARY_PATH: /usr/local/cuda/lib64:$LD_LIBRARY_PATH
     deps:
       - torch==2.11.0+cu130
       - torchaudio==2.11.0+cu130
@@ -51,6 +78,8 @@ backends:
     cmake_backend: NPU
     triton: triton-ascend==3.2.0
     flagtree: flagtree==0.6.0+ascend3.2
+    env_source:
+      - /usr/local/Ascend/cann/set_env.sh
     deps:
       - torch==2.9.0+cpu
       - torch-npu==2.9.0
@@ -58,10 +87,12 @@ backends:
   ascend-cann900:
     python: "3.11"
     cmake_backend: NPU
-    triton:
-      - triton==3.5.0
-      - triton-ascend==3.2.1
+    triton: triton==3.5.0
     flagtree: flagtree==0.6.0+ascend3.5
+    env_source:
+      - /usr/local/Ascend/cann/set_env.sh
+    triton_post_install:
+      - triton_ascend==3.2.1
     deps:
       - torch==2.10.0+cpu
       - torch-npu==2.10.0
@@ -69,6 +100,9 @@ backends:
   cambricon:
     python: "3.10"
     triton: triton==3.2.0+mlu1.7.2
+    env:
+      PATH: /usr/local/neuware/bin:$PATH
+      LD_LIBRARY_PATH: /usr/local/neuware/lib64:$LD_LIBRARY_PATH
     deps:
       - cambricon_dali==0.13.0
       - torch==2.7.1+cpu
@@ -80,6 +114,8 @@ backends:
     cmake_backend: GCU
     triton: triton-gcu==3.6.0+1.0.20260521.cc.1.9.10
     flagtree: flagtree==0.6.0+enflame3.6
+    env:
+      LD_LIBRARY_PATH: /opt/OpenCloudOS/gcc-toolset-14/root/usr/lib64:$LD_LIBRARY_PATH
     deps:
       - pyefml==1.9.10
       - torch==2.10.0+cpu
@@ -92,6 +128,8 @@ backends:
     python: "3.10"
     triton: triton==3.3.0+das.opt1.dtk2604.torch290
     flagtree: flagtree==0.5.1+hcu3.1
+    env_source:
+      - /opt/dtk-26.04/env.sh
     deps:
       - torch==2.9.0+das.opt1.dtk2604
 
@@ -100,6 +138,10 @@ backends:
     cmake_backend: IX
     triton: triton==3.1.0+corex.4.4.0
     # flagtree==0.5.1+iluvatar3.1 — plugin loading bug in venv, disabled for now
+    env:
+      COREX_ROOT: /usr/local/corex
+      PATH: $COREX_ROOT/bin:$PATH
+      LD_LIBRARY_PATH: $COREX_ROOT/lib:$LD_LIBRARY_PATH
     deps:
       - torch==2.7.1+corex.4.4.0
       - torchaudio==2.7.1+corex.4.4.0
@@ -109,6 +151,9 @@ backends:
     python: "3.10"
     triton: triton==3.0.0+a48aedef
     flagtree: flagtree==0.5.1+xpu3.0
+    env:
+      PATH: /usr/local/xpu/bin:$PATH
+      LD_LIBRARY_PATH: /usr/local/xcudart/lib:/usr/local/xpu/lib:/usr/local/cuda/lib64
     deps:
       - apex==0.1
       - benchflow==1.0.0
@@ -125,27 +170,46 @@ backends:
       - torch_xray==2.0.4
       - xformers==0.0.29+1e7a8ec.d20260114
       - xmlir==1.0.0.1
-    post_install:
-      - uninstall: pytest-repeat
 
   metax:
     python: "3.12"
     triton: triton==3.0.0+metax3.7.2.0
     flagtree: flagtree==3.1.0+metax3.7.2.0
+    env:
+      MACA_PATH: /opt/maca
+      LD_LIBRARY_PATH: $MACA_PATH/lib:$MACA_PATH/mxgpu_llvm/lib:$LD_LIBRARY_PATH
     deps:
       - torch==2.8.0+metax3.7.2.0
       - torchaudio==2.4.1+metax3.7.2.0
       - torchvision==0.15.1+metax3.7.2.0
       - flash_attn==2.6.3+metax3.7.2.0torch2.8
 
-  mthreads:
+  mthreads-musa436:
     python: "3.10"
     cmake_backend: MUSA
     triton: triton==3.6.0+git89458660
     flagtree: flagtree==0.6.0+mthreads3.6
+    env:
+      MUSA_HOME: /usr/local/musa
+      PATH: $MUSA_HOME/bin:$PATH
+      LD_LIBRARY_PATH: $VIRTUAL_ENV/lib:$MUSA_HOME/lib:$LD_LIBRARY_PATH
     deps:
       - torch==2.9.0+musa.4.3.6
       - torch_musa==2.9.0
+      - mkl==2024.0.0
+
+  mthreads-musa520:
+    python: "3.10"
+    cmake_backend: MUSA
+    triton: triton==3.6.0
+    flagtree: flagtree==0.6.0+mthreads3.6
+    env:
+      MUSA_HOME: /usr/local/musa
+      PATH: $MUSA_HOME/bin:$PATH
+      LD_LIBRARY_PATH: $VIRTUAL_ENV/lib:$MUSA_HOME/lib:$LD_LIBRARY_PATH
+    deps:
+      - torch==2.9.0+musa5.2.0
+      - torch_musa==2.9.1
       - mkl==2024.0.0
 
   spacemit:
@@ -157,16 +221,20 @@ backends:
   sunrise:
     python: "3.10"
     triton: triton==3.4.0.6+gite4f6d6e4
-    flagtree: flagtree==0.4.0+sunrise3.4
+    # flagtree==0.4.0+sunrise3.4 — requires GLIBC_2.39, unavailable on current system
+    env:
+      LD_LIBRARY_PATH: /usr/local/tangrt/targets/linux-x86_64/lib:$LD_LIBRARY_PATH
     deps:
       - torch==2.11.0+cpu
       - torchaudio==2.11.0+cpu
       - torchvision==0.26.0+cpu
-      - torch-ptpu==0.2.1+gaf2c267.torch2.11
+      - torch-ptpu==0.2.3+torch2.11
 
   thead:
     python: "3.12"
     triton: triton==3.5.0+ppu2.0.0.oe
+    env_source:
+      - /usr/local/PPU_SDK/envsetup.sh
     deps:
       - torch==2.9.0+ppu2.0.0.oe
 
@@ -174,6 +242,17 @@ backends:
     python: "3.10"
     triton: triton==3.3.0+gitfe2a28fa
     flagtree: flagtree==0.5.0.post20260612+git705a4064
+    env:
+      KUIPER_PATH: /usr/local/kuiper
+      TX8_DEPS_ROOT: /usr/local/tx8_deps
+      PATH: /usr/local/kuiper/bin:${PATH}
+      LLVM_SYSPATH: /usr/local/llvm
+      LLVM_BINARY_DIR: ${LLVM_SYSPATH}/bin
+      PYTHONPATH: ${LLVM_SYSPATH}/python_packages/mlir_core
+      LD_LIBRARY_PATH: /usr/local/kuiper/lib:/usr/local/kuiper/tsm8-profiler/lib:${TX8_DEPS_ROOT}/lib:${LD_LIBRARY_PATH}
+      USE_TORCH_XLA: "0"
+      TORCH_COMPILE_DISABLE: "1"
+
     deps:
       - torch==2.7.0+cpu
       - torchvision==0.22.0+cpu
