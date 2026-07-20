@@ -3,9 +3,16 @@ import torch
 
 from . import base
 
-# Shapes for linalg_eigh benchmark (square matrices)
-EIG_BENCHMARK_SHAPES = [
-    (2, 2),
+# Benchmark shapes for linalg_eigh, split by execution path.
+# The operator (src/flag_gems/ops/linalg_eigh.py) has two paths:
+#   - n == 2  -> Triton `_eig_2x2_kernel` (on device, CUDA-graph compatible).
+#   - n > 2   -> `torch.linalg.eigh` CPU fallback (breaks CUDA graph compat.).
+
+# Path A: Triton 2x2 kernel.
+EIG_BENCHMARK_2X2_SHAPES = [(2, 2)]
+
+# Path B: CPU fallback.
+EIG_BENCHMARK_FALLBACK_SHAPES = [
     (3, 3),
     (4, 4),
     (5, 5),
@@ -18,7 +25,7 @@ EIG_BENCHMARK_SHAPES = [
 
 class LinalgEighBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = EIG_BENCHMARK_SHAPES
+        self.shapes = EIG_BENCHMARK_2X2_SHAPES + EIG_BENCHMARK_FALLBACK_SHAPES
 
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:
