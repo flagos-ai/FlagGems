@@ -2284,6 +2284,17 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: diagonal_scatter
+    description: Scatter source values into the diagonal of a tensor with optional offset.
+    for:
+      - diagonal_scatter
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: diff
     description: |
       Computes the n-th forward difference along the given dimension.
@@ -4261,6 +4272,17 @@ ops:
       - stable: '2.2'
       - removed: '3.0'
       - beta: '5.3'
+  - id: irshift
+    description: Triton kernel implementation for __irshift__.
+    for:
+      - __irshift__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: is_all_true
     description: The low-level implementation for checking if all elements in a tensor are True.
     for:
@@ -4622,18 +4644,6 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
-  - id: linalg_ldl_factor
-    description: |
-      Computes the compact LDL factorization of a Hermitian or symmetric matrix.
-    for:
-      - linalg_ldl_factor
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - LinearAlg
-    stages:
-      - alpha: '5.4'
   - id: linalg_cholesky
     description: |-
       Computes the Cholesky decomposition of a symmetric positive-definite matrix A
@@ -4659,6 +4669,30 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_ldl_factor
+    description: |
+      Computes the compact LDL factorization of a Hermitian or symmetric matrix.
+    for:
+      - linalg_ldl_factor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: linalg_ldl_factor_ex
+    description: |
+      Computes the LDL factorization with pivot information for a symmetric or Hermitian matrix.
+    for:
+      - linalg.ldl_factor_ex
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linalg_slogdet
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
@@ -4669,6 +4703,17 @@ ops:
       - KernelGen
     kind:
       - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: linalg_svdvals
+    description: Computes the singular values of a matrix.
+    for:
+      - linalg_svdvals
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
     stages:
       - alpha: '5.4'
   - id: linear
@@ -5913,6 +5958,20 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: nested_view_from_buffer_copy
+    description: |
+      Creates a nested tensor from a flat buffer using component sizes, strides,
+      and offsets, with a Metax backend specialization.
+    for:
+      - _nested_view_from_buffer_copy
+    labels:
+      - aten
+      - KernelGen
+      - Metax
+    kind:
+      - Tensor
     stages:
       - alpha: '5.4'
   - id: new_full
@@ -8236,6 +8295,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_scaled_modified_bessel_k1
+    description: |
+      Computes the scaled modified Bessel function of the first kind
+      of order 1 (scaled K_1(x) = exp(x)*K_1(x)) for each element in the input tensor.
+    for:
+      - special.scaled_modified_bessel_k1
+      - special.scaled_modified_bessel_k1.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_digamma
     description: |
       Computes the digamma function (logarithmic derivative of the gamma function).
@@ -8394,6 +8467,28 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_modified_bessel_k0
+    description: Triton kernel implementation for special_modified_bessel_k0.
+    for:
+      - special_modified_bessel_k0
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_modified_bessel_k0_out
+    description: Triton kernel implementation for special_modified_bessel_k0.out.
+    for:
+      - special_modified_bessel_k0.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_shifted_chebyshev_polynomial_u
     description: |
       Computes the shifted Chebyshev polynomial of the second kind U_n^*(x)
@@ -8414,6 +8509,29 @@ ops:
       - special_shifted_chebyshev_polynomial_u_
     labels:
       - aten
+      - KernelGen
+    kind:
+      - Math
+  - id: special_shifted_chebyshev_polynomial_w
+    kind:
+      - Math
+    labels:
+      - aten
+      - KernelGen
+    description: |
+      Computes the shifted Chebyshev polynomial of the second kind W_n(x).
+    for:
+      - special.shifted_chebyshev_polynomial_w
+    stages:
+      - alpha: '5.4'
+  - id: special_shifted_chebyshev_polynomial_v
+    description: |
+      Computes the shifted Chebyshev polynomial of the third kind V_n^*(x).
+    for:
+      - special_shifted_chebyshev_polynomial_v
+    labels:
+      - aten
+      - pointwise
       - KernelGen
     kind:
       - Math
@@ -8512,6 +8630,17 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: squeeze_copy
+    description: Triton kernel implementation for squeeze_copy.
+    for:
+      - squeeze_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: stack
     description: Concatenates a sequence of tensors along a new dimension.
     for:
@@ -9316,6 +9445,20 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: upsample_nearest_exact3d
+    description: |
+      Increases the depth, height, and width of a 3D tensor using nearest-neighbor interpolation,
+      ensuring the output aligns with library-standard algorithms like PIL.
+    for:
+      - _upsample_nearest_exact3d
+    labels:
+      - aten
+      - NeuralNetwork
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: upsample_trilinear3d
     description: Upsamples the input (NCDHW) using trilinear interpolation.
     for:
@@ -9528,6 +9671,23 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: xor__
+    description: |
+      Computes the bitwise XOR of input tensors or a tensor and a scalar.
+    for:
+      - __xor__
+      - __xor__.Tensor
+      - __xor__.Scalar
+      - __ixor__.Tensor
+      - __ixor__.Scalar
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: zeros
     description: |
       Returns a tensor filled with the scalar value 0, with the shape defined by
