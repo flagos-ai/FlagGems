@@ -3362,6 +3362,30 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: fractional_max_pool2d
+    description: |
+      Applies 2D fractional max pooling over an input signal composed of several input planes.
+    for:
+      - fractional_max_pool2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: fractional_max_pool2d_backward
+    description: |
+      Computes the gradient of fractional_max_pool2d.
+    for:
+      - fractional_max_pool2d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: full
     description: |
       Creates a tensor of size `size` filled with `fill_value`.
@@ -8259,6 +8283,21 @@ ops:
       A variant of `special_airy_ai` with output saved to provided `out`.
     for:
       - special_airy_ai.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_chebyshev_polynomial_u
+    description: |
+      Computes the Chebyshev polynomial of the second kind U_n(x) for each element
+      of the input tensor.
+    for:
+      - special_chebyshev_polynomial_u
+      - special_chebyshev_polynomial_u.n_scalar
     labels:
       - aten
       - pointwise
