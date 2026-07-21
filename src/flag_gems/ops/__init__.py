@@ -253,6 +253,10 @@ from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.fp8_mqa_logits import fp8_mqa_logits
 from flag_gems.ops.fp8_paged_mqa_logits import fp8_paged_mqa_logits
 from flag_gems.ops.frac_ import frac, frac_
+from flag_gems.ops.fractional_max_pool2d import (
+    fractional_max_pool2d,
+    fractional_max_pool2d_backward,
+)
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
@@ -922,6 +926,8 @@ __all__ = [
     "fp8_paged_mqa_logits",
     "frac",
     "frac_",
+    "fractional_max_pool2d",
+    "fractional_max_pool2d_backward",
     "full",
     "full_like",
     "gather",
