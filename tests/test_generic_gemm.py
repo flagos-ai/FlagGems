@@ -24,7 +24,6 @@ else:
     LAYOUTS = ["NN", "TN", "NT"]
     FLOAT_DTYPES = utils.FLOAT_DTYPES
 
-# -- FP8 support guard -------------------------------------------------
 FP8_SUPPORTED = get_device_capability() >= (9, 0)
 FP8_DTYPE = torch.float8_e4m3fn
 FP8_MAX = 448.0
@@ -38,13 +37,11 @@ else:
 
 
 def _torch_gelu(x):
-    """Reference tanh-approximated GELU matching our kernel."""
     inner = 0.7978845608028654 * (x + 0.044715 * x * x * x)
     return 0.5 * x * (1.0 + torch.tanh(inner))
 
 
 def _torch_dgelu(x):
-    """Reference derivative of tanh-approximated GELU."""
     inner = 0.7978845608028654 * (x + 0.044715 * x * x * x)
     tanh_inner = torch.tanh(inner)
     sech2 = 1.0 - tanh_inner * tanh_inner
@@ -52,18 +49,11 @@ def _torch_dgelu(x):
     return 0.5 * (1.0 + tanh_inner) + 0.5 * x * sech2 * inner_grad
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Basic matmul (no bias, no gelu)
-# ═══════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.generic_gemm
 @pytest.mark.parametrize("M, N, K", SHAPES)
 @pytest.mark.parametrize("layout", LAYOUTS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_generic_gemm_matmul(M, N, K, layout, dtype):
-    # Build tensors according to layout.
-    # Default "NN": a=[M,K], b=[K,N] → a @ b = [M,N]
     transa = layout[0] == "T"
     transb = layout[1] == "T"
     a_shape = (K, M) if transa else (M, K)
@@ -89,29 +79,17 @@ def test_generic_gemm_matmul(M, N, K, layout, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Helpers for tests below — default layout "NN": a=[M,K], b=[K,N]
-# ═══════════════════════════════════════════════════════════════════
-
-
 def _make_inputs(M, N, K, dtype):
-    """Return (inp[M,K], weight[K,N]) for default layout="NN"."""
     a = torch.randn((M, K), dtype=dtype, device="cuda")
     b = torch.randn((K, N), dtype=dtype, device="cuda")
     return a, b
 
 
 def _ref_matmul(ref_a, ref_b, ref_bias=None):
-    """Reference: inp @ weight (+ bias)."""
     out = ref_a @ ref_b
     if ref_bias is not None:
         out = out + ref_bias
     return out
-
-
-# ═══════════════════════════════════════════════════════════════════
-# With bias
-# ═══════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.generic_gemm
@@ -135,11 +113,6 @@ def test_generic_gemm_bias(M, N, K, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
-# ═══════════════════════════════════════════════════════════════════
-# With GELU
-# ═══════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.generic_gemm
 @pytest.mark.parametrize("M, N, K", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -159,11 +132,6 @@ def test_generic_gemm_gelu(M, N, K, dtype):
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
     utils.gems_assert_close(pre_gelu, ref_pre_gelu, dtype, reduce_dim=K)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# With bias + GELU
-# ═══════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.generic_gemm
@@ -189,11 +157,6 @@ def test_generic_gemm_bias_gelu(M, N, K, dtype):
     utils.gems_assert_close(pre_gelu, ref_pre_gelu, dtype, reduce_dim=K)
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Accumulate
-# ═══════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.generic_gemm
 @pytest.mark.parametrize("M, N, K", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -207,7 +170,10 @@ def test_generic_gemm_accumulate(M, N, K, dtype):
     ref_out = _ref_matmul(ref_a, ref_b) + ref_c
 
     res_out, bias_grad, pre_gelu, extra = generic_gemm(
-        a, b, accumulate=True, out=c_init.clone(),
+        a,
+        b,
+        accumulate=True,
+        out=c_init.clone(),
     )
 
     assert bias_grad is None
@@ -215,11 +181,6 @@ def test_generic_gemm_accumulate(M, N, K, dtype):
     assert extra is None
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# dGELU (backward)
-# ═══════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.generic_gemm
@@ -236,7 +197,11 @@ def test_generic_gemm_dgelu(M, N, K, dtype):
     ref_out = ref_matmul * _torch_dgelu(ref_gelu_in)
 
     res_out, bias_grad, pre_gelu, extra = generic_gemm(
-        a, b, gelu=True, gelu_in=gelu_in, grad=True,
+        a,
+        b,
+        gelu=True,
+        gelu_in=gelu_in,
+        grad=True,
     )
 
     assert pre_gelu is None
@@ -245,17 +210,11 @@ def test_generic_gemm_dgelu(M, N, K, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Alpha / Beta (scalar)
-# ═══════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.generic_gemm
 @pytest.mark.parametrize("M, N, K", SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_generic_gemm_scalar(M, N, K, scalar, dtype):
-    """alpha scaling only — all SCALARS are fine since alpha is applied in fp32."""
     a, b = _make_inputs(M, N, K, dtype)
 
     ref_a = utils.to_reference(a, upcast=True)
@@ -270,8 +229,6 @@ def test_generic_gemm_scalar(M, N, K, scalar, dtype):
 @pytest.mark.parametrize("M, N, K", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_generic_gemm_alpha_beta(M, N, K, dtype):
-    """alpha + beta combined path — use a moderate scalar because beta pre-scaling
-    happens in the target dtype, not fp32, and extreme scalars lose precision."""
     a, b = _make_inputs(M, N, K, dtype)
     c_init = torch.randn((M, N), dtype=dtype, device="cuda")
     scalar = 0.5
@@ -283,11 +240,6 @@ def test_generic_gemm_alpha_beta(M, N, K, dtype):
 
     res_out, _, _, _ = generic_gemm(a, b, alpha=scalar, beta=scalar, out=c_init.clone())
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# Pre-allocated output / output dtype
-# ═══════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.generic_gemm
@@ -314,7 +266,6 @@ def test_generic_gemm_out(M, N, K, dtype):
 @pytest.mark.generic_gemm
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_generic_gemm_out_dtype(dtype):
-    """out_dtype casts the output to a different type."""
     a, b = _make_inputs(16, 64, 128, dtype)
     out_dtype = torch.float32
 
@@ -326,11 +277,6 @@ def test_generic_gemm_out_dtype(dtype):
 
     assert res_out.dtype == out_dtype
     utils.gems_assert_close(res_out, ref_out, out_dtype, reduce_dim=128)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# dbias (bias gradient)
-# ═══════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.generic_gemm
@@ -354,12 +300,9 @@ def test_generic_gemm_dbias(M, N, K, dtype):
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
     bias_atol = 0.001 if dtype == torch.bfloat16 else 0.0005
-    utils.gems_assert_close(bias_grad, ref_bias_grad, torch.float32, reduce_dim=max(N, 1), atol=bias_atol)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# Input validation
-# ═══════════════════════════════════════════════════════════════════
+    utils.gems_assert_close(
+        bias_grad, ref_bias_grad, torch.float32, reduce_dim=max(N, 1), atol=bias_atol
+    )
 
 
 @pytest.mark.generic_gemm
@@ -367,36 +310,24 @@ def test_generic_gemm_validation():
     a = torch.randn((4, 8), device="cuda")
     b = torch.randn((8, 6), device="cuda")
 
-    # alpha=0
     with pytest.raises(ValueError, match="alpha must be non-zero"):
         generic_gemm(a, b, alpha=0.0)
 
-    # beta with accumulate=False — explicit beta implies accumulate intent
     c, _, _, _ = generic_gemm(a, b, beta=1.0, accumulate=False)
     assert c.shape == (4, 6)
 
-    # non-contiguous output
     out = torch.empty((6, 4), device="cuda").t()
     with pytest.raises(ValueError, match="not contiguous"):
         generic_gemm(a, b, out=out)
 
-    # 3D input
     with pytest.raises(ValueError, match="2D inputs"):
         generic_gemm(a.unsqueeze(0), b)
 
-    # missing gelu_in for grad+gelu
     with pytest.raises(AssertionError, match="gelu_in is required"):
         generic_gemm(a, b, gelu=True, grad=True)
 
 
-# ═══════════════════════════════════════════════════════════════════
-# FP8 helpers
-# ═══════════════════════════════════════════════════════════════════
-
-
 def _per_tensor_quantize(x: torch.Tensor):
-    """Quantize to float8_e4m3fn with per-tensor scaling.
-    Returns (x_fp8, scale) where scale is a float32 scalar tensor."""
     amax = x.abs().max()
     scale = (amax / FP8_MAX).to(torch.float32)
     x_fp8 = (x / scale).clamp(-FP8_MAX, FP8_MAX).to(FP8_DTYPE)
@@ -404,8 +335,6 @@ def _per_tensor_quantize(x: torch.Tensor):
 
 
 def _fp8_ref_matmul(ref_a, ref_b, scale_a, scale_b, ref_bias=None):
-    """Simulate FP8 GEMM in float64: quantize inputs → matmul → restore scales.
-    Matches the kernel's quantize-dot-restore path for accuracy comparison."""
     a_q = (ref_a / scale_a).clamp(-FP8_MAX, FP8_MAX)
     b_q = (ref_b / scale_b).clamp(-FP8_MAX, FP8_MAX)
     out = a_q @ b_q
@@ -415,16 +344,10 @@ def _fp8_ref_matmul(ref_a, ref_b, scale_a, scale_b, ref_bias=None):
     return out
 
 
-# ═══════════════════════════════════════════════════════════════════
-# FP8 matmul (no bias, no gelu)
-# ═══════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.generic_gemm
 @pytest.mark.skipif(not FP8_SUPPORTED, reason="FP8 requires SM>=90")
 @pytest.mark.parametrize("M, N, K", FP8_SHAPES)
 def test_generic_gemm_fp8_matmul(M, N, K):
-    """FP8 inputs → BF16 output, compare against BF16 reference."""
     a = torch.randn((M, K), dtype=torch.bfloat16, device="cuda")
     b = torch.randn((K, N), dtype=torch.bfloat16, device="cuda")
 
@@ -433,32 +356,32 @@ def test_generic_gemm_fp8_matmul(M, N, K):
 
     ref_a = utils.to_reference(a, upcast=True)
     ref_b = utils.to_reference(b, upcast=True)
-    ref_out = _fp8_ref_matmul(ref_a, ref_b,
-                               utils.to_reference(scale_a, upcast=True),
-                               utils.to_reference(scale_b, upcast=True))
+    ref_out = _fp8_ref_matmul(
+        ref_a,
+        ref_b,
+        utils.to_reference(scale_a, upcast=True),
+        utils.to_reference(scale_b, upcast=True),
+    )
 
     res_out, bias_grad, pre_gelu, extra = generic_gemm(
-        a_fp8, b_fp8, layout="NN", scale_a=scale_a, scale_b=scale_b,
+        a_fp8,
+        b_fp8,
+        layout="NN",
+        scale_a=scale_a,
+        scale_b=scale_b,
     )
 
     assert bias_grad is None
     assert pre_gelu is None
     assert extra is None
 
-    utils.gems_assert_close(res_out, ref_out, torch.bfloat16, reduce_dim=K,
-                            atol=0.1)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# FP8 + bias
-# ═══════════════════════════════════════════════════════════════════
+    utils.gems_assert_close(res_out, ref_out, torch.bfloat16, reduce_dim=K, atol=0.1)
 
 
 @pytest.mark.generic_gemm
 @pytest.mark.skipif(not FP8_SUPPORTED, reason="FP8 requires SM>=90")
 @pytest.mark.parametrize("M, N, K", FP8_SHAPES)
 def test_generic_gemm_fp8_bias(M, N, K):
-    """FP8 inputs + bias → BF16 output."""
     a = torch.randn((M, K), dtype=torch.bfloat16, device="cuda")
     b = torch.randn((K, N), dtype=torch.bfloat16, device="cuda")
     bias = torch.randn((N,), dtype=torch.bfloat16, device="cuda")
@@ -469,33 +392,34 @@ def test_generic_gemm_fp8_bias(M, N, K):
     ref_a = utils.to_reference(a, upcast=True)
     ref_b = utils.to_reference(b, upcast=True)
     ref_bias = utils.to_reference(bias, upcast=True)
-    ref_out = _fp8_ref_matmul(ref_a, ref_b,
-                               utils.to_reference(scale_a, upcast=True),
-                               utils.to_reference(scale_b, upcast=True),
-                               ref_bias)
+    ref_out = _fp8_ref_matmul(
+        ref_a,
+        ref_b,
+        utils.to_reference(scale_a, upcast=True),
+        utils.to_reference(scale_b, upcast=True),
+        ref_bias,
+    )
 
     res_out, bias_grad, pre_gelu, extra = generic_gemm(
-        a_fp8, b_fp8, layout="NN", scale_a=scale_a, scale_b=scale_b, bias=bias,
+        a_fp8,
+        b_fp8,
+        layout="NN",
+        scale_a=scale_a,
+        scale_b=scale_b,
+        bias=bias,
     )
 
     assert bias_grad is None
     assert pre_gelu is None
     assert extra is None
 
-    utils.gems_assert_close(res_out, ref_out, torch.bfloat16, reduce_dim=K,
-                            atol=0.1)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# FP8 + GELU
-# ═══════════════════════════════════════════════════════════════════
+    utils.gems_assert_close(res_out, ref_out, torch.bfloat16, reduce_dim=K, atol=0.1)
 
 
 @pytest.mark.generic_gemm
 @pytest.mark.skipif(not FP8_SUPPORTED, reason="FP8 requires SM>=90")
 @pytest.mark.parametrize("M, N, K", FP8_SHAPES)
 def test_generic_gemm_fp8_gelu(M, N, K):
-    """FP8 inputs + GELU → BF16 output."""
     a = torch.randn((M, K), dtype=torch.bfloat16, device="cuda")
     b = torch.randn((K, N), dtype=torch.bfloat16, device="cuda")
 
@@ -504,35 +428,37 @@ def test_generic_gemm_fp8_gelu(M, N, K):
 
     ref_a = utils.to_reference(a, upcast=True)
     ref_b = utils.to_reference(b, upcast=True)
-    ref_pre_gelu = _fp8_ref_matmul(ref_a, ref_b,
-                                    utils.to_reference(scale_a, upcast=True),
-                                    utils.to_reference(scale_b, upcast=True))
+    ref_pre_gelu = _fp8_ref_matmul(
+        ref_a,
+        ref_b,
+        utils.to_reference(scale_a, upcast=True),
+        utils.to_reference(scale_b, upcast=True),
+    )
     ref_out = _torch_gelu(ref_pre_gelu)
 
     res_out, bias_grad, pre_gelu, extra = generic_gemm(
-        a_fp8, b_fp8, layout="NN", scale_a=scale_a, scale_b=scale_b, gelu=True,
+        a_fp8,
+        b_fp8,
+        layout="NN",
+        scale_a=scale_a,
+        scale_b=scale_b,
+        gelu=True,
     )
 
     assert bias_grad is None
     assert extra is None
     assert pre_gelu is not None
 
-    utils.gems_assert_close(res_out, ref_out, torch.bfloat16, reduce_dim=K,
-                            atol=0.1)
-    utils.gems_assert_close(pre_gelu, ref_pre_gelu, torch.bfloat16, reduce_dim=K,
-                            atol=0.1)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# FP8 output
-# ═══════════════════════════════════════════════════════════════════
+    utils.gems_assert_close(res_out, ref_out, torch.bfloat16, reduce_dim=K, atol=0.1)
+    utils.gems_assert_close(
+        pre_gelu, ref_pre_gelu, torch.bfloat16, reduce_dim=K, atol=0.1
+    )
 
 
 @pytest.mark.generic_gemm
 @pytest.mark.skipif(not FP8_SUPPORTED, reason="FP8 requires SM>=90")
 @pytest.mark.parametrize("M, N, K", FP8_SHAPES)
 def test_generic_gemm_fp8_output(M, N, K):
-    """FP8 inputs → FP8 output."""
     a = torch.randn((M, K), dtype=torch.bfloat16, device="cuda")
     b = torch.randn((K, N), dtype=torch.bfloat16, device="cuda")
 
@@ -540,7 +466,12 @@ def test_generic_gemm_fp8_output(M, N, K):
     b_fp8, scale_b = _per_tensor_quantize(b)
 
     res_out, bias_grad, pre_gelu, extra = generic_gemm(
-        a_fp8, b_fp8, layout="NN", scale_a=scale_a, scale_b=scale_b, fp8_output=True,
+        a_fp8,
+        b_fp8,
+        layout="NN",
+        scale_a=scale_a,
+        scale_b=scale_b,
+        fp8_output=True,
     )
 
     assert bias_grad is None

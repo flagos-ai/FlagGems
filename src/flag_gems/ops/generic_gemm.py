@@ -21,28 +21,17 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-# Per-module FP8 quantization cache. Keyed by tensor data_ptr so that the same
-# tensor object (e.g. inference weight, or repeated do_bench calls with the same
-# inputs) reuses the cached (fp8_tensor, scale) pair instead of re-running the
-# abs().max() reduction kernel.  weakref callbacks clean up entries when the
-# source tensor is garbage-collected.
 _fp8_quant_cache = {}
 _FP8_MAX: float = 448.0
 
 
 def _cached_per_tensor_quantize(x: torch.Tensor) -> "tuple[torch.Tensor, torch.Tensor]":
-    """Quantize with per-tensor scaling, caching by data_ptr.
-
-    First call on a given tensor: absmax → scale → clamp → cast → cache.
-    Subsequent calls on the same (*data*, not value) tensor: cache hit.
-    """
     key = x.data_ptr()
     cached = _fp8_quant_cache.get(key)
     if cached is None:
         amax = x.abs().max()
         scale = (amax / _FP8_MAX).to(torch.float32)
         x_fp8 = (x / scale).clamp(-_FP8_MAX, _FP8_MAX).to(torch.float8_e4m3fn)
-        # Store a weak reference so the cache doesn't keep the tensor alive.
         _fp8_quant_cache[key] = (x_fp8, scale)
         _set_cache_finalizer(key, x)
     else:
@@ -55,13 +44,12 @@ def _cleanup_cache_entry(key):
 
 
 def _set_cache_finalizer(key, src_tensor):
-    """Register a weakref callback that cleans up the cache when src_tensor dies."""
     try:
         _wref = weakref.ref(  # noqa: F841
             src_tensor, lambda _ref, k=key: _cleanup_cache_entry(k)
         )
     except TypeError:
-        pass  # some tensors don't support weakref (e.g. views with custom storage)
+        pass
 
 
 MM_CONFIGS = [
@@ -112,9 +100,6 @@ MM_CONFIGS = [
     ),
 ]
 
-# FP8 MMA instruction is m16n32k32 (vs FP16's m16n8k16). Same tile size yields 8x fewer
-# MMA instructions → low ILP → poor latency hiding. Compensate with larger BLOCK_K (≥128),
-# wider BLOCK_N (up to 256), and always 8 warps. Adapted from triton tutorial 03-matrix-multiplication.
 FP8_MM_CONFIGS = [
     triton.Config(
         {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 128}, num_stages=3, num_warps=8
@@ -140,7 +125,6 @@ FP8_MM_CONFIGS = [
     triton.Config(
         {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 128}, num_stages=4, num_warps=8
     ),
-    # BLOCK_K=256 for large-K shapes (e.g. K=7168), maximizing ILP
     triton.Config(
         {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 256}, num_stages=3, num_warps=8
     ),
@@ -163,7 +147,6 @@ def _prev_multiple_of(a, b):
 
 @triton.jit
 def _gelu(x):
-    """tanh-approximated GELU: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))."""
     inner = 0.7978845608028654 * (x + 0.044715 * x * x * x)
     y = 2.0 * inner
     sigmoid = tl.where(
@@ -177,7 +160,6 @@ def _gelu(x):
 
 @triton.jit
 def _dgelu(x):
-    """Derivative of tanh-approximated GELU."""
     inner = 0.7978845608028654 * (x + 0.044715 * x * x * x)
     y = 2.0 * inner
     sigmoid = tl.where(
@@ -334,41 +316,6 @@ def generic_gemm(
     scale_b: torch.Tensor = None,
     fp8_output: bool = False,
 ) -> tuple:
-    """Triton drop-in for TE's general_gemm.  Only supports 2D inputs (batch already flattened).
-
-    Input shapes follow torch.mm convention:
-        a: [M, K]
-        b: [K, N]
-        output: [M, N]
-
-    layout controls transposition of each operand (first char = a, second = b):
-        "NN" (default): a @ b
-        "NT": a @ b^T   (b stored as [N, K])
-        "TN": a^T @ b   (a stored as [K, M])
-        "TT": a^T @ b^T
-
-    Args:
-        a: input matrix [M, K] or [K, M] depending on transa.
-        b: weight matrix [K, N] or [N, K] depending on transb.
-        bias: 1-D tensor of size N (broadcast across rows).
-        bias_type: dtype for bias storage. Defaults to bias's own dtype,
-            or bfloat16 for FP8 inputs. Controls the precision of the
-            bias addition in the epilogue.
-        gelu: apply tanh-approximated GELU after matmul+bias.
-        gelu_in: pre-gelu output [M, N]; required when grad=True and gelu=True.
-        alpha: scalar multiplier for (A@B).
-        beta: scalar for accumulate — D = alpha*(A@B) + beta*D.
-        accumulate: shorthand for beta=1.
-        out: pre-allocated output [M, N].
-        out_dtype: cast output to this dtype.
-        grad: if True, compute dbias by summing output over M dimension.
-        scale_a: per-tensor scale for A (float32 scalar). Enables FP8 input path.
-        scale_b: per-tensor scale for B (float32 scalar). Enables FP8 input path.
-        fp8_output: if True, store output and pre-gelu as float8_e4m3fn.
-
-    Returns:
-        Tuple of 4: (output, bias_grad, pre_gelu_out, None).
-    """
     logger.debug("GEMS GENERIC_GEMM")
 
     if a.dim() != 2 or b.dim() != 2:
@@ -407,17 +354,12 @@ def generic_gemm(
             scale_b.numel() == 1 and scale_b.dtype == torch.float32
         ), "scale_b must be a float32 scalar tensor"
 
-    # bias_type: cast bias to the specified dtype.
-    # When FP8 inputs are used, a wider bias type (e.g. bfloat16)
-    # preserves more precision than FP8 in the epilogue addition.
-    # TE defaults bias_type to bfloat16 for low-precision inputs.
     if bias_type is not None:
         if bias is not None:
             bias = bias.to(bias_type)
     elif has_fp8_input and bias is not None and bias.dtype != torch.bfloat16:
         bias = bias.to(torch.bfloat16)
-    # Effective bias dtype for pre_gelu_out allocation:
-    # user-specified bias_type > bias's actual dtype > bfloat16 (FP8) / a.dtype
+
     if bias_type is not None:
         _bias_dtype = bias_type
     elif bias is not None:
@@ -449,7 +391,6 @@ def generic_gemm(
     if alpha == 0.0:
         raise ValueError("alpha must be non-zero for GEMM")
 
-    # Beta: fuse into kernel instead of pre-scaling the output tensor
     if beta is not None:
         _beta = float(beta)
         _accumulate = _beta != 0.0
@@ -490,7 +431,6 @@ def generic_gemm(
     has_bias = (bias is not None) and (not grad)
     has_gelu = gelu and (not grad)
 
-    # FP8 scale pointers: use a as dummy when not FP8 input
     _scale_a_ptr = scale_a if has_fp8_input else a
     _scale_b_ptr = scale_b if has_fp8_input else a
 
