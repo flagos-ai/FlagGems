@@ -9273,6 +9273,12 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: unsqueeze_copy
+    description: |
+      Returns a copy of the input tensor with a dimension of size 1
+      inserted at the specified position.
+    for:
+      - unsqueeze_copy
   - id: unsafe_masked_index_put_accumulate
     description: |
       Reads values and indices tensors, performs masked scatter accumulation on
