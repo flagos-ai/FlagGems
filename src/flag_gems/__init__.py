@@ -65,6 +65,7 @@ _FULL_CONFIG = (
     ("__ilshift__.Tensor", __ilshift__),
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
+    ("__irshift__.Tensor", __irshift__),
     ("__lshift__", __lshift__),
     ("__or__.Scalar", bitwise_or_scalar),
     ("__or__.Tensor", bitwise_or_tensor),
