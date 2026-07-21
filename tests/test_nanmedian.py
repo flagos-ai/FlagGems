@@ -125,6 +125,27 @@ def test_nanmedian_large_flat(dtype):
     _assert_nanmedian_values(res, ref, dtype)
 
 
+@pytest.mark.nanmedian
+@pytest.mark.nanmedian_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon",
+    reason="Hygon Triton limits a single block tensor to 1048576 elements",
+)
+def test_nanmedian_hygon_flat_above_block_limit():
+    inp = _make_input((16, 131072), torch.float16)
+    ref_inp = utils.to_reference(inp)
+    ref = torch.nanmedian(ref_inp)
+    out = torch.empty((), dtype=inp.dtype, device=inp.device)
+
+    with flag_gems.use_gems():
+        res = torch.nanmedian(inp)
+        out_res = torch.ops.aten.nanmedian.out(inp, out=out)
+
+    _assert_nanmedian_values(res, ref, inp.dtype)
+    assert out_res is out
+    _assert_nanmedian_values(out, ref, inp.dtype)
+
+
 @pytest.mark.nanmedian_dim
 @pytest.mark.parametrize(
     ("shape", "dim"),
