@@ -13,6 +13,19 @@
 # limitations under the License.
 
 ops:
+  - id: Paged_Attention
+    description: |
+      Computes attention over paged key and value caches for variable-length
+      inference requests using block tables to gather cached tokens.
+    for:
+      - Paged_Attention
+    labels:
+      - fused
+      - KernelGen
+    kind:
+      - Attention
+    stages:
+      - alpha: '5.4'
   - id: abs
     description: |
       Computes the absolute value of each element in `input`.
