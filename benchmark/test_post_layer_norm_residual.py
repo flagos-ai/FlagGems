@@ -92,7 +92,9 @@ def test_post_layer_norm_residual():
 
 
 @pytest.mark.post_layer_norm_residual
-def test_post_layer_norm_residual_training():
+def test_post_layer_norm_residual_training(monkeypatch):
+    if flag_gems.vendor_name == "mthreads":
+        monkeypatch.setenv("DISABLE_LLVM_OPT", "1")
     bench = PostLayerNormResidualTrainingBenchmark(
         op_name="post_layer_norm_residual_training",
         torch_op=torch_training_op,
