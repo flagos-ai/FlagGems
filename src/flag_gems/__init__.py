@@ -324,6 +324,7 @@ _FULL_CONFIG = (
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
     ("diagonal_copy", diagonal_copy),
+    ("diagonal_scatter", diagonal_scatter),
     ("diff", diff),
     ("digamma", digamma),
     ("digamma_", digamma_),
