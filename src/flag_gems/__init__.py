@@ -760,6 +760,7 @@ _FULL_CONFIG = (
     ("square", square),
     ("square.out", square_out),
     ("square_", square_),
+    ("squeeze_copy", squeeze_copy),
     ("stack", stack),
     ("std.correction", std),
     ("sub.Tensor", sub),
