@@ -13,7 +13,15 @@
 # limitations under the License.
 
 from flag_gems.ops.__ilshift__ import __ilshift__
+from flag_gems.ops.__irshift__ import __irshift__
 from flag_gems.ops.__lshift__ import __lshift__
+from flag_gems.ops.__xor__ import (  # noqa: F401
+    xor,
+    xor_,
+    xor_scalar,
+    xor_scalar_,
+    xor_scalar_tensor,
+)
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
@@ -34,6 +42,7 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._masked_scale import _masked_scale
+from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
@@ -57,6 +66,7 @@ from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops._upsample_nearest_exact2d_backward import (
     _upsample_nearest_exact2d_backward,
 )
+from flag_gems.ops._upsample_nearest_exact3d import _upsample_nearest_exact3d
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
@@ -186,6 +196,7 @@ from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
 from flag_gems.ops.diagonal_copy import diagonal_copy
+from flag_gems.ops.diagonal_scatter import diagonal_scatter
 from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma, digamma_
 from flag_gems.ops.div import (
@@ -297,6 +308,7 @@ from flag_gems.ops.isneginf import isneginf, isneginf_out
 from flag_gems.ops.kron import kron
 from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
+from flag_gems.ops.ldl_factor_ex import ldl_factor_ex
 from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
@@ -307,6 +319,7 @@ from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
+from flag_gems.ops.linalg_svdvals import linalg_svdvals
 from flag_gems.ops.linear import linear
 from flag_gems.ops.linear_backward import linear_backward
 from flag_gems.ops.linspace import linspace
@@ -533,14 +546,29 @@ from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.special_log1p import special_log1p, special_log1p_out
 from flag_gems.ops.special_log_softmax import special_log_softmax
 from flag_gems.ops.special_logsumexp import special_logsumexp
+from flag_gems.ops.special_modified_bessel_k0 import (
+    special_modified_bessel_k0,
+    special_modified_bessel_k0_out,
+)
+from flag_gems.ops.special_scaled_modified_bessel_k1 import (
+    special_scaled_modified_bessel_k1,
+    special_scaled_modified_bessel_k1_out,
+)
 from flag_gems.ops.special_shifted_chebyshev_polynomial_u import (
     special_shifted_chebyshev_polynomial_u,
     special_shifted_chebyshev_polynomial_u_,
+)
+from flag_gems.ops.special_shifted_chebyshev_polynomial_v import (
+    special_shifted_chebyshev_polynomial_v,
+)
+from flag_gems.ops.special_shifted_chebyshev_polynomial_w import (
+    special_shifted_chebyshev_polynomial_w,
 )
 from flag_gems.ops.special_xlog1py import special_xlog1py
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
+from flag_gems.ops.squeeze_copy import squeeze_copy
 from flag_gems.ops.stack import stack
 from flag_gems.ops.std import std
 from flag_gems.ops.sub import sub, sub_
@@ -612,6 +640,7 @@ __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "__ilshift__",
+    "__irshift__",
     "__lshift__",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
@@ -630,6 +659,7 @@ __all__ = [
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
     "_masked_scale",
+    "_nested_view_from_buffer_copy",
     "_pdist_backward",
     "_prelu_kernel",
     "_prelu_kernel_backward",
@@ -650,6 +680,7 @@ __all__ = [
     "_upsample_bilinear2d_aa",
     "_upsample_nearest_exact1d",
     "_upsample_nearest_exact2d_backward",
+    "_upsample_nearest_exact3d",
     "abs",
     "abs_",
     "absolute",
@@ -814,6 +845,7 @@ __all__ = [
     "diag_embed",
     "diagonal_backward",
     "diagonal_copy",
+    "diagonal_scatter",
     "diff",
     "digamma",
     "digamma_",
@@ -955,6 +987,7 @@ __all__ = [
     "layer_norm",
     "layer_norm_backward",
     "ldl_factor",
+    "ldl_factor_ex",
     "le",
     "le_scalar",
     "leaky_relu",
@@ -974,6 +1007,7 @@ __all__ = [
     "lift_out",
     "linalg_cholesky",
     "linalg_slogdet",
+    "linalg_svdvals",
     "linear",
     "linear_backward",
     "linspace",
@@ -1166,6 +1200,7 @@ __all__ = [
     "rsqrt_",
     "rsub_scalar",
     "rsub_tensor",
+    "scalar_tensor",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
@@ -1224,7 +1259,6 @@ __all__ = [
     "softplus_backward",
     "softshrink",
     "softshrink_out",
-    "scalar_tensor",
     "sort",
     "sort_stable",
     "special_airy_ai",
@@ -1246,8 +1280,14 @@ __all__ = [
     "special_log1p",
     "special_log1p_out",
     "special_logsumexp",
+    "special_modified_bessel_k0",
+    "special_modified_bessel_k0_out",
+    "special_scaled_modified_bessel_k1",
+    "special_scaled_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",
+    "special_shifted_chebyshev_polynomial_v",
+    "special_shifted_chebyshev_polynomial_w",
     "special_xlog1py",
     "split_with_sizes_copy",
     "sqrt",
@@ -1255,6 +1295,7 @@ __all__ = [
     "square",
     "square_",
     "square_out",
+    "squeeze_copy",
     "stack",
     "std",
     "sub",
@@ -1321,6 +1362,11 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "xor",
+    "xor_",
+    "xor_scalar",
+    "xor_scalar_",
+    "xor_scalar_tensor",
     "zero",
     "zero_",
     "zero_out",
