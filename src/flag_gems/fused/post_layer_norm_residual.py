@@ -209,63 +209,83 @@ def _validate_inputs(input, residual, normalized_shape, weight, bias):
             raise ValueError(f"{name} must be on the same device as input")
 
 
+def _post_layer_norm_residual_forward(
+    input, residual, normalized_shape, weight, bias, eps, save_stats
+):
+    N = math.prod(normalized_shape)
+    M = input.numel() // N
+    output = torch.empty_like(input)
+
+    if save_stats:
+        # Backward reductions consume FP32 statistics for every normalized row.
+        mean = torch.empty(M, dtype=torch.float32, device=input.device)
+        rstd = torch.empty_like(mean)
+    else:
+        # The constexpr guard removes the stores; a valid tensor avoids two
+        # otherwise unnecessary allocations on the inference path.
+        mean = output
+        rstd = output
+
+    with torch_device_fn.device(input.device):
+        if N <= 4096:
+            tile_n = triton.next_power_of_2(N)
+            if N <= 128:
+                tile_m = triton.cdiv(1024, tile_n)
+            else:
+                tile_m = max(1, min(8, 4096 // tile_n))
+            grid = (triton.cdiv(M, tile_m), 1, 1)
+            post_layer_norm_residual_one_pass_kernel[grid](
+                input,
+                residual,
+                output,
+                weight,
+                bias,
+                mean,
+                rstd,
+                M,
+                N,
+                eps,
+                TILE_M=tile_m,
+                TILE_N=tile_n,
+                SAVE_STATS=save_stats,
+            )
+        else:
+            post_layer_norm_residual_loop_kernel[(M, 1, 1)](
+                input,
+                residual,
+                output,
+                weight,
+                bias,
+                mean,
+                rstd,
+                M,
+                N,
+                eps,
+                SAVE_STATS=save_stats,
+            )
+
+    return output, mean, rstd, M, N
+
+
 class PostLayerNormResidual(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, residual, normalized_shape, weight, bias, eps):
-        N = math.prod(normalized_shape)
-        M = input.numel() // N
-        output = torch.empty_like(input)
-
         needs_layer_norm_grad = (
             input.requires_grad
             or (weight is not None and weight.requires_grad)
             or (bias is not None and bias.requires_grad)
         )
-        stats_size = M if needs_layer_norm_grad else 1
-        # Keep the saved statistics in FP32 so low-precision backward does not
-        # lose information before the reduction kernels consume them.
-        mean = torch.empty(stats_size, dtype=torch.float32, device=input.device)
-        rstd = torch.empty_like(mean)
+        output, mean, rstd, M, N = _post_layer_norm_residual_forward(
+            input,
+            residual,
+            normalized_shape,
+            weight,
+            bias,
+            eps,
+            save_stats=needs_layer_norm_grad,
+        )
 
-        with torch_device_fn.device(input.device):
-            if N <= 4096:
-                tile_n = triton.next_power_of_2(N)
-                if N <= 128:
-                    tile_m = triton.cdiv(1024, tile_n)
-                else:
-                    tile_m = max(1, min(8, 4096 // tile_n))
-                grid = (triton.cdiv(M, tile_m), 1, 1)
-                post_layer_norm_residual_one_pass_kernel[grid](
-                    input,
-                    residual,
-                    output,
-                    weight,
-                    bias,
-                    mean,
-                    rstd,
-                    M,
-                    N,
-                    eps,
-                    TILE_M=tile_m,
-                    TILE_N=tile_n,
-                    SAVE_STATS=needs_layer_norm_grad,
-                )
-            else:
-                post_layer_norm_residual_loop_kernel[(M, 1, 1)](
-                    input,
-                    residual,
-                    output,
-                    weight,
-                    bias,
-                    mean,
-                    rstd,
-                    M,
-                    N,
-                    eps,
-                    SAVE_STATS=needs_layer_norm_grad,
-                )
-
-        if input.requires_grad or residual.requires_grad or needs_layer_norm_grad:
+        if needs_layer_norm_grad:
             weight_saved = input.new_empty(0) if weight is None else weight
             bias_saved = input.new_empty(0) if bias is None else bias
             ctx.save_for_backward(input, weight_saved, bias_saved, mean, rstd)
@@ -335,6 +355,22 @@ def post_layer_norm_residual(
 
     weight = weight.contiguous()
     bias = bias.contiguous()
+
+    needs_autograd = torch.is_grad_enabled() and any(
+        tensor.requires_grad for tensor in (input, residual, weight, bias)
+    )
+    if not needs_autograd:
+        output, _, _, _, _ = _post_layer_norm_residual_forward(
+            input,
+            residual,
+            normalized_shape,
+            weight,
+            bias,
+            eps,
+            save_stats=False,
+        )
+        return output
+
     return PostLayerNormResidual.apply(
         input, residual, normalized_shape, weight, bias, eps
     )
