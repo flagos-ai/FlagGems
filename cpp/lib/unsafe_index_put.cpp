@@ -19,8 +19,26 @@
 #include <tuple>
 #include <vector>
 
+#include <ATen/ops/empty_native.h>
+
 #include "flag_gems/backend_utils.h"
 #include "triton_jit/triton_jit_function.h"
+
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+// Implemented in unsafe_index_put_sort.cu (CUB headers require nvcc).
+namespace flag_gems {
+void radix_sort_pairs_i64(const int64_t* keys_in,
+                          int64_t* keys_out,
+                          const int64_t* values_in,
+                          int64_t* values_out,
+                          int64_t num_items,
+                          int begin_bit,
+                          int end_bit,
+                          void* temp_storage,
+                          size_t& temp_storage_bytes,
+                          uintptr_t stream);
+}
+#endif
 
 namespace flag_gems {
 namespace {
@@ -580,6 +598,321 @@ namespace {
     return out;
   }
 
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+  // ---------------------------------------------------------------------------
+  // Sort-based accumulate (bit-exact with PyTorch's index_put_with_sort).
+  //
+  // Replicates the native pipeline (makeLinearIndex → CUB stable radix sort →
+  // sorted merge) with zero dispatcher-visible aten calls, because under
+  // use_gems() every dispatched helper op is shadowed by a Python-registered
+  // implementation costing ~50-100us of CPU each. All pieces here are direct:
+  //   - buffers: at::native::empty_cuda (native, no dispatch)
+  //   - clone:   aten::copy_ redispatched to CompositeExplicitAutograd
+  //   - keys:    unsafe_index_put_linearize_kernel (fused iota, no arange)
+  //   - sort:    cub::DeviceRadixSort::SortPairs (same stable order PyTorch
+  //              relies on; duplicates keep original position order)
+  //   - merge:   unsafe_index_put_sorted_merge_kernel replicating PyTorch's
+  //              exact arithmetic per sliceSize regime (fp32/opmath gradient
+  //              with single rounding for sliceSize<=32, round-per-step for
+  //              sliceSize>32).
+  // Known divergence: for sliceSize==1 with >=32 duplicates on one slot,
+  // PyTorch switches to a warp-shuffle summation order which Triton cannot
+  // reproduce bit-exactly; we stay sequential (matches PyTorch's k<32 path).
+  // No unit/benchmark shape hits that regime.
+  // ---------------------------------------------------------------------------
+  at::Tensor unsafe_index_put_sort_accumulate(const at::Tensor& self,
+                                              const c10::List<std::optional<at::Tensor>>& indices,
+                                              const at::Tensor& values) {
+    auto idx_tensors = preprocess_indices(indices);
+    int64_t m = idx_tensors.size();
+    int64_t suf_ndim = self.dim() - m;
+    TORCH_CHECK(suf_ndim >= 0 && suf_ndim <= kMaxNdim, "suffix ndim out of range: ", suf_ndim);
+
+    // Cross-device scalar values: mirror _index_put_impl_'s device fixup.
+    at::Tensor vals = values;
+    if (values.device() != self.device()) {
+      TORCH_CHECK(values.numel() == 1 && values.dim() == 0,
+                  "values must be on the same device as self (or a 0-dim scalar)");
+      vals = at::native::empty_cuda({},
+                                    self.scalar_type(),
+                                    std::nullopt,
+                                    self.device(),
+                                    std::nullopt,
+                                    std::nullopt);
+      static auto copy_op2 = c10::Dispatcher::singleton()
+                                 .findSchemaOrThrow("aten::copy_", "")
+                                 .typed<at::Tensor&(at::Tensor&, const at::Tensor&, bool)>();
+      constexpr c10::DispatchKeySet fk(c10::DispatchKeySet(c10::DispatchKey::CompositeExplicitAutograd));
+      copy_op2.redispatch(fk, vals, values, false);
+    }
+
+    // out = clone(self); work = contiguous alias of out (extra copy only if
+    // self was non-contiguous, matching PyTorch's contiguous working copy).
+    auto out = at::empty_like(self, self.options());
+    {
+      static auto copy_op = c10::Dispatcher::singleton()
+                                .findSchemaOrThrow("aten::copy_", "")
+                                .typed<at::Tensor&(at::Tensor&, const at::Tensor&, bool)>();
+      constexpr c10::DispatchKeySet fk(c10::DispatchKeySet(c10::DispatchKey::CompositeExplicitAutograd));
+      copy_op.redispatch(fk, out, self, false);
+    }
+    at::Tensor work = out.is_contiguous() ? out : out.contiguous();
+
+    // Broadcast index shapes (same helpers as the put path)
+    std::vector<std::vector<int64_t>> idx_shapes;
+    std::vector<std::vector<int64_t>> idx_strides;
+    for (int64_t i = 0; i < m; i++) {
+      const auto& t = idx_tensors[i];
+      idx_shapes.emplace_back(t.sizes().begin(), t.sizes().end());
+      idx_strides.emplace_back(t.strides().begin(), t.strides().end());
+    }
+    std::vector<int64_t> idx_shape = broadcast_shapes(idx_shapes);
+    int64_t idx_ndim = idx_shape.size();
+    std::vector<int64_t> suffix_shape(self.sizes().begin() + m, self.sizes().end());
+    int64_t idx_numel = volume(idx_shape);
+    int64_t suffix_numel = volume(suffix_shape);
+
+    if (idx_numel > 0 && suffix_numel > 0) {
+      c10::DeviceGuard guard(work.device());
+      auto stream = backend::getCurrentStream();
+      auto raw_stream = backend::getRawStream(stream);
+
+      at::Tensor keys = at::native::empty_cuda({idx_numel},
+                                               at::kLong,
+                                               std::nullopt,
+                                               work.device(),
+                                               std::nullopt,
+                                               std::nullopt);
+      at::Tensor orig = at::native::empty_cuda({idx_numel},
+                                               at::kLong,
+                                               std::nullopt,
+                                               work.device(),
+                                               std::nullopt,
+                                               std::nullopt);
+      at::Tensor sorted_keys = at::native::empty_cuda({idx_numel},
+                                                      at::kLong,
+                                                      std::nullopt,
+                                                      work.device(),
+                                                      std::nullopt,
+                                                      std::nullopt);
+      at::Tensor sorted_orig = at::native::empty_cuda({idx_numel},
+                                                      at::kLong,
+                                                      std::nullopt,
+                                                      work.device(),
+                                                      std::nullopt,
+                                                      std::nullopt);
+
+      // sort-key strides over the indexed dims: prod(self.sizes[i+1 .. m-1])
+      std::vector<int64_t> key_stride(kMaxNdim, 0);
+      for (int64_t i = 0; i < m; i++) {
+        int64_t s = 1;
+        for (int64_t j = i + 1; j < m; j++) s *= self.size(j);
+        key_stride[i] = s;
+      }
+      std::vector<int64_t> wrap_size(kMaxNdim, 1);
+      for (int64_t i = 0; i < m; i++) wrap_size[i] = self.size(i);
+
+      auto idx_div = pad_vec(trailing_divisors(idx_shape), kMaxNdim, int64_t(1));
+      std::vector<std::vector<int64_t>> tensor_strides;
+      for (int64_t i = 0; i < m; i++) {
+        tensor_strides.push_back(broadcast_strides(idx_shapes[i], idx_strides[i], idx_shape));
+      }
+      auto ts2d = pad_2d(tensor_strides, kMaxNdim, kMaxNdim, int64_t(0));
+
+      std::vector<at::Tensor> kernel_idx = idx_tensors;
+      while (kernel_idx.size() < static_cast<size_t>(kMaxNdim)) {
+        kernel_idx.push_back(kernel_idx.empty() ? at::Tensor() : kernel_idx[0]);
+      }
+
+      const TritonJITFunction& lin_kernel = TritonJITFunction::get_instance(
+          (utils::get_triton_src_path() / "unsafe_index_put_kernel.py").string(),
+          "unsafe_index_put_linearize_kernel");
+      int64_t lin_block = 256;
+      lin_kernel(raw_stream,
+                 static_cast<unsigned int>((idx_numel + lin_block - 1) / lin_block),
+                 1,
+                 1,
+                 4,
+                 4,
+                 keys,
+                 orig,
+                 kernel_idx[0],
+                 kernel_idx[1],
+                 kernel_idx[2],
+                 kernel_idx[3],
+                 kernel_idx[4],
+                 kernel_idx[5],
+                 idx_div[0],
+                 idx_div[1],
+                 idx_div[2],
+                 idx_div[3],
+                 idx_div[4],
+                 idx_div[5],
+                 ts2d[0][0],
+                 ts2d[0][1],
+                 ts2d[0][2],
+                 ts2d[0][3],
+                 ts2d[0][4],
+                 ts2d[0][5],
+                 ts2d[1][0],
+                 ts2d[1][1],
+                 ts2d[1][2],
+                 ts2d[1][3],
+                 ts2d[1][4],
+                 ts2d[1][5],
+                 ts2d[2][0],
+                 ts2d[2][1],
+                 ts2d[2][2],
+                 ts2d[2][3],
+                 ts2d[2][4],
+                 ts2d[2][5],
+                 ts2d[3][0],
+                 ts2d[3][1],
+                 ts2d[3][2],
+                 ts2d[3][3],
+                 ts2d[3][4],
+                 ts2d[3][5],
+                 ts2d[4][0],
+                 ts2d[4][1],
+                 ts2d[4][2],
+                 ts2d[4][3],
+                 ts2d[4][4],
+                 ts2d[4][5],
+                 ts2d[5][0],
+                 ts2d[5][1],
+                 ts2d[5][2],
+                 ts2d[5][3],
+                 ts2d[5][4],
+                 ts2d[5][5],
+                 wrap_size[0],
+                 wrap_size[1],
+                 wrap_size[2],
+                 wrap_size[3],
+                 wrap_size[4],
+                 wrap_size[5],
+                 key_stride[0],
+                 key_stride[1],
+                 key_stride[2],
+                 key_stride[3],
+                 key_stride[4],
+                 key_stride[5],
+                 idx_numel,
+                 static_cast<int32_t>(m),
+                 static_cast<int32_t>(idx_ndim),
+                 static_cast<int32_t>(lin_block));
+
+      // Stable radix sort by target position id (same primitive PyTorch uses)
+      int64_t max_key = 1;
+      for (int64_t i = 0; i < m; i++) max_key *= self.size(i);
+      int nbits = 1;
+      while (nbits < 63 && (int64_t(1) << nbits) < max_key) nbits++;
+
+      size_t temp_bytes = 0;
+      radix_sort_pairs_i64(keys.data_ptr<int64_t>(),
+                           sorted_keys.data_ptr<int64_t>(),
+                           orig.data_ptr<int64_t>(),
+                           sorted_orig.data_ptr<int64_t>(),
+                           idx_numel,
+                           0,
+                           nbits,
+                           nullptr,
+                           temp_bytes,
+                           reinterpret_cast<uintptr_t>(raw_stream));
+      at::Tensor temp = at::native::empty_cuda({static_cast<int64_t>(std::max<size_t>(temp_bytes, 1))},
+                                               at::kByte,
+                                               std::nullopt,
+                                               work.device(),
+                                               std::nullopt,
+                                               std::nullopt);
+      radix_sort_pairs_i64(keys.data_ptr<int64_t>(),
+                           sorted_keys.data_ptr<int64_t>(),
+                           orig.data_ptr<int64_t>(),
+                           sorted_orig.data_ptr<int64_t>(),
+                           idx_numel,
+                           0,
+                           nbits,
+                           temp.data_ptr(),
+                           temp_bytes,
+                           reinterpret_cast<uintptr_t>(raw_stream));
+
+      // values strides broadcast to (idx_shape + suffix_shape)
+      std::vector<int64_t> val_target = idx_shape;
+      val_target.insert(val_target.end(), suffix_shape.begin(), suffix_shape.end());
+      std::vector<int64_t> val_shape(vals.sizes().begin(), vals.sizes().end());
+      std::vector<int64_t> val_stride(vals.strides().begin(), vals.strides().end());
+      auto val_full = broadcast_strides(val_shape, val_stride, val_target);
+      auto val_adv =
+          pad_vec(std::vector<int64_t>(val_full.begin(), val_full.begin() + idx_ndim), kMaxNdim, int64_t(0));
+      auto val_suf =
+          pad_vec(std::vector<int64_t>(val_full.begin() + idx_ndim, val_full.end()), kMaxNdim, int64_t(0));
+      auto suf_div = pad_vec(trailing_divisors(suffix_shape), kMaxNdim, int64_t(1));
+
+      auto pow2floor = [](int64_t x) {
+        int64_t v = 1;
+        while (v * 2 <= x) v *= 2;
+        return v;
+      };
+      int64_t block_suf = pow2floor(std::max(int64_t(1), std::min(suffix_numel, int64_t(128))));
+      int64_t block_pos = std::max(int64_t(1), int64_t(256) / block_suf);
+      bool round_per_step = suffix_numel > 32;  // PyTorch general-kernel regime
+
+      const TritonJITFunction& merge_kernel = TritonJITFunction::get_instance(
+          (utils::get_triton_src_path() / "unsafe_index_put_kernel.py").string(),
+          "unsafe_index_put_sorted_merge_kernel");
+      merge_kernel(raw_stream,
+                   static_cast<unsigned int>((idx_numel + block_pos - 1) / block_pos),
+                   static_cast<unsigned int>((suffix_numel + block_suf - 1) / block_suf),
+                   1,
+                   4,
+                   4,
+                   work,
+                   vals,
+                   sorted_keys,
+                   sorted_orig,
+                   idx_div[0],
+                   idx_div[1],
+                   idx_div[2],
+                   idx_div[3],
+                   idx_div[4],
+                   idx_div[5],
+                   val_adv[0],
+                   val_adv[1],
+                   val_adv[2],
+                   val_adv[3],
+                   val_adv[4],
+                   val_adv[5],
+                   suf_div[0],
+                   suf_div[1],
+                   suf_div[2],
+                   suf_div[3],
+                   suf_div[4],
+                   suf_div[5],
+                   val_suf[0],
+                   val_suf[1],
+                   val_suf[2],
+                   val_suf[3],
+                   val_suf[4],
+                   val_suf[5],
+                   idx_numel,
+                   suffix_numel,
+                   static_cast<int32_t>(idx_ndim),
+                   static_cast<int32_t>(suf_ndim),
+                   round_per_step,
+                   static_cast<int32_t>(block_pos),
+                   static_cast<int32_t>(block_suf));
+    }
+
+    if (!work.is_same(out)) {
+      static auto copy_op3 = c10::Dispatcher::singleton()
+                                 .findSchemaOrThrow("aten::copy_", "")
+                                 .typed<at::Tensor&(at::Tensor&, const at::Tensor&, bool)>();
+      constexpr c10::DispatchKeySet fk(c10::DispatchKeySet(c10::DispatchKey::CompositeExplicitAutograd));
+      copy_op3.redispatch(fk, out, work, false);
+    }
+    return out;
+  }
+#endif  // FLAGGEMS_USE_CUDA || FLAGGEMS_USE_IX
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -589,10 +922,18 @@ at::Tensor unsafe_index_put_cpp(const at::Tensor& self,
                                 const c10::List<std::optional<at::Tensor>>& indices,
                                 const at::Tensor& values,
                                 bool accumulate) {
-  // Preprocess: bool→int, int→long, contiguous
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+  if (accumulate) {
+    // Precision-first path: self-hosted sort-based accumulate, bit-exact with
+    // PyTorch's index_put_with_sort (see the function comment for details).
+    return unsafe_index_put_sort_accumulate(self, indices, values);
+  }
+#endif
+  // Non-accumulate (and non-CUDA accumulate fallback): Triton store kernel.
+  // Bit-exact for unique indices and faster than the native scatter; for
+  // duplicate indices with accumulate=False the op contract explicitly leaves
+  // the winner unspecified.
   auto processed = preprocess_indices(indices);
-  // fp16/bf16 accumulate is handled inside impl via the fp32-scratch
-  // three-kernel scheme (opmath_t-equivalent, sort-free).
   return unsafe_index_put_impl(self, processed, values, accumulate);
 }
 
