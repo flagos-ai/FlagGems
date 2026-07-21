@@ -14,6 +14,7 @@
 
 from .abs import abs, abs_
 from .acos import acos
+from .adaptive_avg_pool2d import adaptive_avg_pool2d
 from .add import add, add_
 from .addcdiv import addcdiv
 from .addcmul import addcmul
