@@ -15,7 +15,7 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-EPSILON = 1e-20
+EPSILON = tl.constexpr(1e-20)
 
 
 @libentry()
