@@ -1,3 +1,4 @@
+
 import pytest
 import torch
 
@@ -5,7 +6,7 @@ from flag_gems.ops.meshgrid import meshgrid
 
 
 def get_available_device():
-    """自动检测可用设备"""
+    """Automatically detect available device"""
     if torch.cuda.is_available():
         return "cuda"
     try:
@@ -22,7 +23,7 @@ DEVICE = get_available_device()
 
 
 def test_meshgrid_correctness():
-    """全面正确性测试"""
+    """Comprehensive correctness test"""
     sizes = [1, 2, 3, 4, 5, 10, 100]
 
     for size in sizes:
@@ -45,7 +46,7 @@ def test_meshgrid_correctness():
 
 
 def test_meshgrid_xy_single_element():
-    """专门测试xy模式下的单元素情况"""
+    """Test single element case specifically for xy mode"""
     test_cases = [
         (torch.tensor([1.0]), torch.tensor([2.0])),
         (torch.tensor([-1.0]), torch.tensor([3.14])),
@@ -65,7 +66,7 @@ def test_meshgrid_xy_single_element():
 
 
 def test_meshgrid_xy_mode():
-    """测试xy模式的各种情况"""
+    """Test various cases for xy mode"""
     x = torch.tensor([1, 2, 3], device=DEVICE)
     y = torch.tensor([4, 5], device=DEVICE)
 
@@ -86,7 +87,7 @@ def test_meshgrid_xy_mode():
 
 
 def test_meshgrid_3d():
-    """3D测试"""
+    """Test 3D grid"""
     x = torch.randn(4, device=DEVICE)
     y = torch.randn(5, device=DEVICE)
     z = torch.randn(6, device=DEVICE)
@@ -100,7 +101,7 @@ def test_meshgrid_3d():
 
 
 def test_meshgrid_4d():
-    """4D测试"""
+    """Test 4D grid"""
     tensors = [torch.randn(3, device=DEVICE) for _ in range(4)]
 
     for indexing in ["ij", "xy"]:
@@ -112,7 +113,7 @@ def test_meshgrid_4d():
 
 
 def test_meshgrid_different_dtypes():
-    """不同数据类型测试"""
+    """Test different data types"""
     dtypes = [torch.float32, torch.float64, torch.int32, torch.int64]
 
     for dtype in dtypes:
@@ -132,7 +133,7 @@ def test_meshgrid_different_dtypes():
 
 
 def test_meshgrid_edge_cases():
-    """边界情况测试"""
+    """Test edge cases"""
     x = torch.randn(2, device=DEVICE)
     y = torch.randn(5, device=DEVICE)
     z = torch.randn(3, device=DEVICE)
@@ -156,29 +157,28 @@ def test_meshgrid_edge_cases():
 
 
 def test_meshgrid_error_handling():
-    """错误处理测试"""
-    # 测试空列表
+    """Test error handling"""
+    # Test empty list
     with pytest.raises(ValueError, match="tensors must be a non-empty list or tuple"):
         meshgrid([])
 
-    # 测试无效的 indexing 参数
+    # Test invalid indexing parameter
     x = torch.randn(2, device=DEVICE)
     with pytest.raises(ValueError, match="indexing must be 'ij' or 'xy'"):
         meshgrid([x], indexing="invalid")
 
-    # 测试超过4维
+    # Test exceeding 4 dimensions
     tensors = [torch.randn(2, device=DEVICE) for _ in range(5)]
     with pytest.raises(
         NotImplementedError, match="Currently only supports up to 4 dimensions"
     ):
         meshgrid(tensors)
 
-    # 测试非1D张量
+    # Test non-1D tensor
     x = torch.randn(2, 3, device=DEVICE)
     with pytest.raises(ValueError, match="must be 1D"):
         meshgrid([x])
 
-    # 测试非张量输入
+    # Test non-tensor input
     with pytest.raises(TypeError, match="must be a torch.Tensor"):
         meshgrid([1, 2, 3])
-
