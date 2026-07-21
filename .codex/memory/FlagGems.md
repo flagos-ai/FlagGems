@@ -1,6 +1,6 @@
 # FlagGems 持久项目记忆
 
-> 最后核验：2026-07-20 UTC；工作区：`/workspace/FlagGems`。本文件是项目内持久上下文，不是事实数据库。每次会话先读本文，再用当前 Git 状态、代码和机器环境核验易变信息。
+> 最后核验：2026-07-21 UTC；工作区：`/workspace/FlagGems`。本文件是项目内持久上下文，不是事实数据库。每次会话先读本文，再用当前 Git 状态、代码和机器环境核验易变信息。
 
 ## 1. 新会话恢复约定
 
@@ -125,6 +125,13 @@ python -m pytest -m "<op_mark>" -sv --ref=cpu
 - `git reflog` 显示 21:29 执行 `rebase (start): checkout upstream/master` 后直接完成到 `0237c11f0`，因为分支没有可 replay 的独有提交。此前 sinc 修改只存在工作区，未 commit；切换到 `master` 前的 stash `stash@{2026-07-20 21:24:06}` 仅包含 `tests/test_apply_repetition_penalties.py`，不包含 sinc 修改，后续 reset 导致 sinc 工作区改动丢失。
 - 当前已恢复 `/workspace/FlagGems/src/flag_gems/ops/sinc.py` 的近零泰勒分段修复；`python -m pytest tests/test_sinc.py -q --ref=cpu` 结果为 `36 passed`。当前修复仍是未提交工作区改动，未 commit/push。
 - 正确交付方式：先保护/处理当前无关的 `tests/test_apply_repetition_penalties.py` 修改，在 `klx/sinc-fix` 上只 stage `src/flag_gems/ops/sinc.py`，创建 sinc 专用 commit，再正常执行 `git push -u origin klx/sinc-fix`（远端当前正好位于该 commit 的父提交，可 fast-forward，不需要 force）；然后以 `flagos-ai/FlagGems:master` 为 base、`llaboon/FlagGems:klx/sinc-fix` 为 compare 创建 PR。
+
+### 2026-07-21 sinc code-style 与交付复核
+
+- 当前 `klx/sinc-fix` 与 `origin/klx/sinc-fix` 指向 `712ec3004`（`fix sinc`）。该 commit 除 sinc 外还包含 `.codex/memory/FlagGems.md`、`AGENTS.md` 和 `tests/test_apply_repetition_penalties.py`，不符合单算子 PR 的最小提交范围；后续整理历史时必须保护用户文件并只保留目标实现。
+- `pre-commit run --files src/flag_gems/ops/sinc.py` 已通过 `end-of-file-fixer`、`trailing-whitespace`、flake8、isort、black 和 black-jupyter；YAML/clang-format 对该文件跳过。
+- 首次执行 CI 等价的 `pre-commit run --all-files` 时，仅 `end-of-file-fixer` 修改了 `AGENTS.md` 的文件末尾换行，其余 hooks 通过。该修改属于本地 agent 文件，不应自动混入 sinc 提交；必须再次运行全量检查确认 clean。
+- 持久交付规则：算子测试通过不等于可提交。commit 前至少对全部目标文件运行 `pre-commit run --files <files...>` 并在 hook 改写后重跑；PR 前可行时运行 `pre-commit run --all-files` 以匹配 `.github/workflows/linter.yml`。同时检查 `git diff --cached --name-only` 和 staged diff，禁止用 `git add .` 把无关工作区内容带入算子 commit。
 
 ### 2026-07-20 acos 修复
 
