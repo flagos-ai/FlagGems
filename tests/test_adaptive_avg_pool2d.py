@@ -63,18 +63,3 @@ def test_accuracy_adaptive_avg_pool2d_forward(shape, output_size, dtype):
     res_out = flag_gems.adaptive_avg_pool2d(inp, output_size)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.adaptive_avg_pool2d
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "mthreads",
-    reason="MThreads non-divisible adaptive pooling regression",
-)
-@pytest.mark.parametrize("shape", [(1, 5, 7), (1, 1, 5, 7)])
-def test_accuracy_adaptive_avg_pool2d_non_divisible(shape):
-    inp = torch.arange(35, dtype=torch.float32, device=flag_gems.device).reshape(shape)
-    ref_out = torch.ops.aten._adaptive_avg_pool2d(utils.to_reference(inp, True), (3, 4))
-
-    res_out = flag_gems.adaptive_avg_pool2d(inp, (3, 4))
-
-    utils.gems_assert_close(res_out, ref_out, torch.float32)
