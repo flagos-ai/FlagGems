@@ -8380,6 +8380,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_modified_bessel_i1
+    description: Modified Bessel function of the first kind of order 1.
+    for:
+      - special_modified_bessel_i1
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_shifted_chebyshev_polynomial_u
     description: |
       Computes the shifted Chebyshev polynomial of the second kind U_n^*(x)
