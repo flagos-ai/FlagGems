@@ -246,7 +246,10 @@ class PostLayerNormResidual(torch.autograd.Function):
         with torch_device_fn.device(input.device):
             if N <= 4096:
                 tile_n = triton.next_power_of_2(N)
-                tile_m = triton.cdiv(1024, tile_n) if N <= 128 else 1
+                if N <= 128:
+                    tile_m = triton.cdiv(1024, tile_n)
+                else:
+                    tile_m = max(1, min(8, 4096 // tile_n))
                 grid = (triton.cdiv(M, tile_m), 1, 1)
                 post_layer_norm_residual_one_pass_kernel[grid](
                     input,
