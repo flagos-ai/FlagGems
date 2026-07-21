@@ -4659,6 +4659,18 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_matrix_power
+    description: |
+      Computes the n-th power of a square matrix using binary exponentiation.
+    for:
+      - linalg_matrix_power
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_slogdet
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
