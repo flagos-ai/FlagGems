@@ -238,7 +238,9 @@ class PostLayerNormResidual(torch.autograd.Function):
             or (bias is not None and bias.requires_grad)
         )
         stats_size = M if needs_layer_norm_grad else 1
-        mean = torch.empty(stats_size, dtype=input.dtype, device=input.device)
+        # Keep the saved statistics in FP32 so low-precision backward does not
+        # lose information before the reduction kernels consume them.
+        mean = torch.empty(stats_size, dtype=torch.float32, device=input.device)
         rstd = torch.empty_like(mean)
 
         with torch_device_fn.device(input.device):
@@ -290,9 +292,42 @@ class PostLayerNormResidual(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        raise NotImplementedError(
-            "post_layer_norm_residual backward is not implemented"
+        need_input, need_residual, _, need_weight, need_bias, _ = ctx.needs_input_grad
+        output_mask = [need_input, need_weight, need_bias]
+        if not any(output_mask):
+            return None, grad_output if need_residual else None, None, None, None, None
+
+        input, weight_saved, bias_saved, mean, rstd = ctx.saved_tensors
+        weight = weight_saved if ctx.has_weight else None
+        bias = bias_saved if ctx.has_bias else None
+
+        input_2d = input.reshape(ctx.M, ctx.N)
+        grad_2d = grad_output.contiguous().reshape(ctx.M, ctx.N)
+        weight_1d = None if weight is None else weight.reshape(ctx.N)
+        bias_1d = None if bias is None else bias.reshape(ctx.N)
+
+        # Resolve the public function at runtime so vendor rebinds remain active.
+        from flag_gems import layer_norm_backward
+
+        grad_input, grad_weight, grad_bias = layer_norm_backward(
+            grad_2d,
+            input_2d,
+            (ctx.N,),
+            mean,
+            rstd,
+            weight_1d,
+            bias_1d,
+            output_mask,
         )
+
+        if grad_input is not None:
+            grad_input = grad_input.reshape(ctx.input_shape)
+        if grad_weight is not None:
+            grad_weight = grad_weight.reshape(ctx.normalized_shape)
+        if grad_bias is not None:
+            grad_bias = grad_bias.reshape(ctx.normalized_shape)
+        grad_residual = grad_output if need_residual else None
+        return grad_input, grad_residual, None, grad_weight, grad_bias, None
 
 
 def post_layer_norm_residual(
