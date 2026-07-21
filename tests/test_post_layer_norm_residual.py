@@ -19,7 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 CORE_CASES = [
     ((64, 128), (128,)),
     ((256, 512), (512,)),
@@ -41,9 +40,7 @@ def _make_affine(normalized_shape, dtype, mode):
     weight = None
     bias = None
     if mode in ("both", "weight"):
-        weight = torch.randn(
-            normalized_shape, dtype=dtype, device=flag_gems.device
-        )
+        weight = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
     if mode in ("both", "bias"):
         bias = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
     return weight, bias

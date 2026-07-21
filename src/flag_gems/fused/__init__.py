@@ -89,6 +89,7 @@ from flag_gems.fused.moe_sum import moe_sum
 from flag_gems.fused.mrope import mrope
 from flag_gems.fused.outer import outer
 from flag_gems.fused.pack_seq import pack_seq_triton
+from flag_gems.fused.post_layer_norm_residual import post_layer_norm_residual
 from flag_gems.fused.reglu import dreglu, reglu
 from flag_gems.fused.reshape_and_cache import reshape_and_cache
 from flag_gems.fused.reshape_and_cache_flash import reshape_and_cache_flash
@@ -173,6 +174,7 @@ __all__ = [
     "outer",
     "outplace_fused_experts",
     "pack_seq_triton",
+    "post_layer_norm_residual",
     "reglu",
     "reshape_and_cache",
     "reshape_and_cache_flash",
