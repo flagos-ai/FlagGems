@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Apply Qwen3-equivalent TLE patches to HF Llama models (e.g. MiniCPM5-0.9B).
 
 Llama interfaces are nearly identical to Qwen3 for the three op-density patches:
@@ -8,6 +22,7 @@ Llama interfaces are nearly identical to Qwen3 for the three op-density patches:
 This file reuses the kernels from patch_qwen3_* and just retargets Llama's
 modeling module.
 """
+
 import logging
 
 from flag_gems.runtime.backend._arm.fused.patch_qwen3_layer_norm import (

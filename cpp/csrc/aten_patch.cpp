@@ -1,0 +1,84 @@
+// Copyright 2026 FlagOS Contributors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "aten_patch.h"
+#include <pybind11/pybind11.h>
+#include "flag_gems/operators.h"
+#include "torch/python.h"
+
+std::vector<std::string> registered_ops;
+
+std::vector<std::string> get_registered_ops() {
+  return registered_ops;
+}
+
+// TODO: use pytorch's argparse utilities to generate CPython bindings,
+// since it is more efficient than bindings provided by torch library,
+// since it is in a boxed fashion
+PYBIND11_MODULE(aten_patch, m) {
+  m.def("get_registered_ops", &get_registered_ops);
+}
+
+// NOTE: The custom operator registration below uses TORCH_LIBRARY_IMPL,
+// which executes immediately at module import time.
+// As a result, it is not currently possible to register ops conditionally,
+// e.g., based on a user-defined disabled op list.
+// If per-operator control is desired in the future,
+// this part should be refactored to delay registration until `init()`
+// or use a dynamic dispatch approach.
+//
+// Contributions are welcome to improve this behavior!
+namespace flag_gems {
+
+// Define dispatch key based on backend
+// CUDA, IX and MACA use CUDA dispatch key (IX/MACA are CUDA-compatible)
+// NPU, MUSA and GCU use PrivateUse1 dispatch key
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX) || defined(FLAGGEMS_USE_HCU) || \
+    defined(FLAGGEMS_USE_MACA)
+#define FLAGGEMS_DISPATCH_KEY CUDA
+#elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_GCU)
+#define FLAGGEMS_DISPATCH_KEY PrivateUse1
+#else
+#error \
+    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, FLAGGEMS_USE_GCU, FLAGGEMS_USE_HCU, FLAGGEMS_USE_MACA"
+#endif
+
+TORCH_LIBRARY_IMPL(aten, FLAGGEMS_DISPATCH_KEY, m) {
+  // REGISTER_AND_LOG("addmm", addmm);
+  // REGISTER_AND_LOG("addmm.out", addmm_out);
+  // REGISTER_AND_LOG("bmm", bmm);
+  // REGISTER_AND_LOG("mm", mm_tensor);
+  // REGISTER_AND_LOG("mm.out", mm_out_tensor);
+#ifdef FLAGGEMS_POINTWISE_DYNAMIC
+  // REGISTER_AND_LOG("add.Tensor", add_tensor);
+  // REGISTER_AND_LOG("add_.Tensor", add_tensor_inplace);
+  // REGISTER_AND_LOG("add.Scalar", add_scalar);
+  // REGISTER_AND_LOG("add_.Scalar", add_scalar_inplace);
+  // // fill
+  // REGISTER_AND_LOG("fill.Scalar", fill_scalar);
+  // REGISTER_AND_LOG("fill_.Scalar", fill_scalar_);
+  // REGISTER_AND_LOG("fill.Tensor", fill_tensor);
+  // REGISTER_AND_LOG("fill_.Tensor", fill_tensor_);
+#endif
+  // REGISTER_AND_LOG("max.dim_max", max_dim_max);
+  // REGISTER_AND_LOG("max.dim", max_dim);
+  // REGISTER_AND_LOG("max", max);
+  // REGISTER_AND_LOG("sum", sum);
+  // REGISTER_AND_LOG("zeros", zeros);
+  REGISTER_AND_LOG("_to_copy", to_copy);
+  REGISTER_AND_LOG("copy_", copy_);
+  REGISTER_AND_LOG("nonzero", nonzero);
+}
+
+}  // namespace flag_gems
