@@ -1,9 +1,16 @@
-"""generic_gemm — triton drop-in replacement for TransformerEngine's general_gemm.
-
-The matmul core (Group-M tiling, L2-swizzle, mask-free main loop with tail peeling)
-is adapted from FlagGems ops/mm.py and ops/addmm.py.
-Epilogue fusion (bias, GELU, dGELU) and the generic_gemm wrapper are original additions.
-"""
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import logging
 import weakref
@@ -50,45 +57,102 @@ def _cleanup_cache_entry(key):
 def _set_cache_finalizer(key, src_tensor):
     """Register a weakref callback that cleans up the cache when src_tensor dies."""
     try:
-        wref = weakref.ref(src_tensor, lambda _ref, k=key: _cleanup_cache_entry(k))
+        _wref = weakref.ref(  # noqa: F841
+            src_tensor, lambda _ref, k=key: _cleanup_cache_entry(k)
+        )
     except TypeError:
         pass  # some tensors don't support weakref (e.g. views with custom storage)
 
+
 MM_CONFIGS = [
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 64}, num_stages=5, num_warps=4),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 64}, num_stages=3, num_warps=4),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 128}, num_stages=4, num_warps=8),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 128}, num_stages=4, num_warps=8),
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 32}, num_stages=5, num_warps=8),
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 32}, num_stages=5, num_warps=8),
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64}, num_stages=3, num_warps=8),
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64}, num_stages=4, num_warps=4),
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 64}, num_stages=5, num_warps=4),
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 128}, num_stages=4, num_warps=8),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 128}, num_stages=4, num_warps=8),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64}, num_stages=5, num_warps=4),
-    triton.Config({"BLOCK_M": 32, "BLOCK_N": 64, "BLOCK_K": 128}, num_stages=4, num_warps=8),
-    triton.Config({"BLOCK_M": 32, "BLOCK_N": 128, "BLOCK_K": 64}, num_stages=5, num_warps=4),
-    triton.Config({"BLOCK_M": 32, "BLOCK_N": 128, "BLOCK_K": 128}, num_stages=4, num_warps=8),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 64}, num_stages=5, num_warps=4
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 64}, num_stages=3, num_warps=4
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 128}, num_stages=4, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 128}, num_stages=4, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 32}, num_stages=5, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 32}, num_stages=5, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64}, num_stages=3, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64}, num_stages=4, num_warps=4
+    ),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 64}, num_stages=5, num_warps=4
+    ),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 128}, num_stages=4, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 128}, num_stages=4, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64}, num_stages=5, num_warps=4
+    ),
+    triton.Config(
+        {"BLOCK_M": 32, "BLOCK_N": 64, "BLOCK_K": 128}, num_stages=4, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 32, "BLOCK_N": 128, "BLOCK_K": 64}, num_stages=5, num_warps=4
+    ),
+    triton.Config(
+        {"BLOCK_M": 32, "BLOCK_N": 128, "BLOCK_K": 128}, num_stages=4, num_warps=8
+    ),
 ]
 
 # FP8 MMA instruction is m16n32k32 (vs FP16's m16n8k16). Same tile size yields 8x fewer
 # MMA instructions → low ILP → poor latency hiding. Compensate with larger BLOCK_K (≥128),
 # wider BLOCK_N (up to 256), and always 8 warps. Adapted from triton tutorial 03-matrix-multiplication.
 FP8_MM_CONFIGS = [
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 128}, num_stages=3, num_warps=8),
-    triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 128}, num_stages=3, num_warps=8),
-    triton.Config({"BLOCK_M": 256, "BLOCK_N": 64, "BLOCK_K": 128}, num_stages=4, num_warps=8),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 128}, num_stages=4, num_warps=8),
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128}, num_stages=4, num_warps=8),
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 128}, num_stages=4, num_warps=8),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 128}, num_stages=4, num_warps=8),
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 128}, num_stages=4, num_warps=8),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 128}, num_stages=3, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 128}, num_stages=3, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 256, "BLOCK_N": 64, "BLOCK_K": 128}, num_stages=4, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 128}, num_stages=4, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128}, num_stages=4, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 128}, num_stages=4, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 128}, num_stages=4, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 128}, num_stages=4, num_warps=8
+    ),
     # BLOCK_K=256 for large-K shapes (e.g. K=7168), maximizing ILP
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 256}, num_stages=3, num_warps=8),
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 256}, num_stages=3, num_warps=8),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 256}, num_stages=3, num_warps=8),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 256}, num_stages=3, num_warps=8),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 256}, num_stages=3, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 256}, num_stages=3, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 256}, num_stages=3, num_warps=8
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 256}, num_stages=3, num_warps=8
+    ),
 ]
 
 
@@ -133,19 +197,36 @@ def _dgelu(x):
 )
 @triton.jit
 def mm_kernel_epilogue(
-    A, B, C, M, N, K,
-    stride_am, stride_ak, stride_bk, stride_bn, stride_cm, stride_cn,
-    BIAS, PRE_GELU,
-    stride_bias, stride_pg_m, stride_pg_n,
-    ALPHA, BETA,
-    SCALE_A, SCALE_B,
+    A,
+    B,
+    C,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BIAS,
+    PRE_GELU,
+    stride_bias,
+    stride_pg_m,
+    stride_pg_n,
+    ALPHA,
+    BETA,
+    SCALE_A,
+    SCALE_B,
     HAS_BIAS: tl.constexpr,
     HAS_GELU: tl.constexpr,
     ACCUMULATE: tl.constexpr,
     HAS_DGELU: tl.constexpr,
     HAS_FP8_INPUT: tl.constexpr,
     HAS_FP8_OUTPUT: tl.constexpr,
-    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr = 8,
 ):
     pid = tl.program_id(0).to(tl.int64)
@@ -173,8 +254,16 @@ def mm_kernel_epilogue(
 
     rk = (prev_multiple + tl.arange(0, BLOCK_K)).to(tl.int64)
     mask_k = rk < K
-    a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak), mask=mask_k[None, :], other=0.0)
-    b = tl.load(B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn), mask=mask_k[:, None], other=0.0)
+    a = tl.load(
+        A + (ram[:, None] * stride_am + rk[None, :] * stride_ak),
+        mask=mask_k[None, :],
+        other=0.0,
+    )
+    b = tl.load(
+        B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn),
+        mask=mask_k[:, None],
+        other=0.0,
+    )
     acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     acc = acc * ALPHA
@@ -187,17 +276,25 @@ def mm_kernel_epilogue(
     out_mask = (rm_out < M)[:, None] & (rn_out < N)[None, :]
 
     if ACCUMULATE:
-        old = tl.load(C + (rm_out[:, None] * stride_cm + rn_out[None, :] * stride_cn),
-                      mask=out_mask, other=0.0).to(tl.float32)
+        old = tl.load(
+            C + (rm_out[:, None] * stride_cm + rn_out[None, :] * stride_cn),
+            mask=out_mask,
+            other=0.0,
+        ).to(tl.float32)
         acc = acc + BETA * old
 
     if HAS_BIAS:
-        b = tl.load(BIAS + rn_out * stride_bias, mask=rn_out < N, other=0.0).to(tl.float32)
+        b = tl.load(BIAS + rn_out * stride_bias, mask=rn_out < N, other=0.0).to(
+            tl.float32
+        )
         acc = acc + b[None, :]
 
     if HAS_DGELU:
-        gelu_in = tl.load(PRE_GELU + (rm_out[:, None] * stride_pg_m + rn_out[None, :] * stride_pg_n),
-                          mask=out_mask, other=0.0).to(tl.float32)
+        gelu_in = tl.load(
+            PRE_GELU + (rm_out[:, None] * stride_pg_m + rn_out[None, :] * stride_pg_n),
+            mask=out_mask,
+            other=0.0,
+        ).to(tl.float32)
         dgelu = _dgelu(gelu_in)
         acc = acc * dgelu
 
@@ -208,7 +305,9 @@ def mm_kernel_epilogue(
         acc_out = acc.to(C.dtype.element_ty)
 
     if HAS_GELU:
-        pg_ptr = PRE_GELU + (rm_out[:, None] * stride_pg_m + rn_out[None, :] * stride_pg_n)
+        pg_ptr = PRE_GELU + (
+            rm_out[:, None] * stride_pg_m + rn_out[None, :] * stride_pg_n
+        )
         tl.store(pg_ptr, acc_out, mask=out_mask)
         acc_out = _gelu(acc.to(tl.float32)).to(C.dtype.element_ty)
 
@@ -301,10 +400,12 @@ def generic_gemm(
 
     has_fp8_input = (scale_a is not None) and (scale_b is not None)
     if has_fp8_input:
-        assert scale_a.numel() == 1 and scale_a.dtype == torch.float32, \
-            "scale_a must be a float32 scalar tensor"
-        assert scale_b.numel() == 1 and scale_b.dtype == torch.float32, \
-            "scale_b must be a float32 scalar tensor"
+        assert (
+            scale_a.numel() == 1 and scale_a.dtype == torch.float32
+        ), "scale_a must be a float32 scalar tensor"
+        assert (
+            scale_b.numel() == 1 and scale_b.dtype == torch.float32
+        ), "scale_b must be a float32 scalar tensor"
 
     # bias_type: cast bias to the specified dtype.
     # When FP8 inputs are used, a wider bias type (e.g. bfloat16)
@@ -351,15 +452,13 @@ def generic_gemm(
     # Beta: fuse into kernel instead of pre-scaling the output tensor
     if beta is not None:
         _beta = float(beta)
-        _accumulate = (_beta != 0.0)
+        _accumulate = _beta != 0.0
     else:
         _beta = 1.0
         _accumulate = accumulate
 
     if grad and gelu:
-        assert gelu_in is not None, (
-            "gelu_in is required when grad=True and gelu=True"
-        )
+        assert gelu_in is not None, "gelu_in is required when grad=True and gelu=True"
 
     _compute_dbias = (bias is not None) and grad
 
@@ -371,7 +470,11 @@ def generic_gemm(
         _gelu_in_stride_m = gelu_in.stride(0)
         _gelu_in_stride_n = gelu_in.stride(1)
     elif gelu and not grad:
-        pre_gelu_dtype = torch.float8_e4m3fn if fp8_output else (_bias_dtype if has_fp8_input else a.dtype)
+        pre_gelu_dtype = (
+            torch.float8_e4m3fn
+            if fp8_output
+            else (_bias_dtype if has_fp8_input else a.dtype)
+        )
         pre_gelu_out = torch.empty((M, N), device=a.device, dtype=pre_gelu_dtype)
         _gelu_in_ptr = pre_gelu_out
         _gelu_in_stride_m = pre_gelu_out.stride(0)
@@ -395,16 +498,33 @@ def generic_gemm(
         return (triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),)
 
     mm_kernel_epilogue[grid_fn](
-        a, b, c, M, N, K,
-        stride_am, stride_ak, stride_bk, stride_bn,
-        c.stride(0), c.stride(1),
-        bias_ptr, _gelu_in_ptr,
-        bias_stride, _gelu_in_stride_m, _gelu_in_stride_n,
-        float(alpha), _beta,
-        _scale_a_ptr, _scale_b_ptr,
-        has_bias, has_gelu, _accumulate,
+        a,
+        b,
+        c,
+        M,
+        N,
+        K,
+        stride_am,
+        stride_ak,
+        stride_bk,
+        stride_bn,
+        c.stride(0),
+        c.stride(1),
+        bias_ptr,
+        _gelu_in_ptr,
+        bias_stride,
+        _gelu_in_stride_m,
+        _gelu_in_stride_n,
+        float(alpha),
+        _beta,
+        _scale_a_ptr,
+        _scale_b_ptr,
+        has_bias,
+        has_gelu,
+        _accumulate,
         _has_dgelu,
-        has_fp8_input, fp8_output,
+        has_fp8_input,
+        fp8_output,
     )
 
     bias_grad_out = c.float().sum(dim=0) if _compute_dbias else None
