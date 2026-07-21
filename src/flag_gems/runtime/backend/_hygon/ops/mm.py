@@ -32,6 +32,20 @@ def prev_multiple_of(a, b):
     return tl.cdiv(a, b) * b - b
 
 
+_FP64_MM_CONFIGS = [
+    triton.Config(
+        {
+            "BLOCK_M": 16,
+            "BLOCK_N": 16,
+            "BLOCK_K": 8,
+            "GROUP_M": 4,
+        },
+        num_stages=1,
+        num_warps=4,
+    )
+]
+
+
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mm"),
@@ -56,7 +70,6 @@ def mm_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
-    IS_FP64: tl.constexpr = False,
 ):
     pid = ext.program_id(0)
 
@@ -89,39 +102,23 @@ def mm_kernel(
     # prev_k_mult = prev_multiple_of(K, BLOCK_K)
     prev_k_mult = tl.cdiv(K, BLOCK_K) * BLOCK_K - BLOCK_K
 
-    # accumulator
-    if IS_FP64:
-        accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
-    else:
-        accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
     # --------------------------
     # main K loop
     # --------------------------
     for start_k in range(0, prev_k_mult, BLOCK_K):
         rk = start_k + offs_k
-
-        if IS_FP64:
-            for k in tl.static_range(0, BLOCK_K):
-                cur_k = start_k + k
-                a_k = tl.load(a_ptr + offs_am_cont * stride_am + cur_k * stride_ak).to(
-                    tl.float64
-                )
-                b_k = tl.load(b_ptr + cur_k * stride_bk + offs_bn_cont * stride_bn).to(
-                    tl.float64
-                )
-                accumulator += a_k[:, None] * b_k[None, :]
-        else:
-            a = tl.load(
-                a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak)
-            )
-            b = tl.load(
-                b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn)
-            )
-            if a.dtype != b.dtype:
-                a = a.to(c_ptr.dtype.element_ty)
-                b = b.to(c_ptr.dtype.element_ty)
-            accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+        a = tl.load(
+            a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak)
+        )
+        b = tl.load(
+            b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn)
+        )
+        if a.dtype != b.dtype:
+            a = a.to(c_ptr.dtype.element_ty)
+            b = b.to(c_ptr.dtype.element_ty)
+        accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     # --------------------------
     # loop peel
@@ -129,36 +126,20 @@ def mm_kernel(
     rk = prev_k_mult + offs_k
     mask_k = rk < K
 
-    if IS_FP64:
-        for k in tl.static_range(0, BLOCK_K):
-            cur_k = prev_k_mult + k
-            mask = cur_k < K
-            a_k = tl.load(
-                a_ptr + offs_am_cont * stride_am + cur_k * stride_ak,
-                mask=mask,
-                other=0.0,
-            ).to(tl.float64)
-            b_k = tl.load(
-                b_ptr + cur_k * stride_bk + offs_bn_cont * stride_bn,
-                mask=mask,
-                other=0.0,
-            ).to(tl.float64)
-            accumulator += a_k[:, None] * b_k[None, :]
-    else:
-        a = tl.load(
-            a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak),
-            mask=mask_k[None, :],
-            other=0.0,
-        )
-        b = tl.load(
-            b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn),
-            mask=mask_k[:, None],
-            other=0.0,
-        )
-        if a.dtype != b.dtype:
-            a = a.to(c_ptr.dtype.element_ty)
-            b = b.to(c_ptr.dtype.element_ty)
-        accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+    a = tl.load(
+        a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak),
+        mask=mask_k[None, :],
+        other=0.0,
+    )
+    b = tl.load(
+        b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn),
+        mask=mask_k[:, None],
+        other=0.0,
+    )
+    if a.dtype != b.dtype:
+        a = a.to(c_ptr.dtype.element_ty)
+        b = b.to(c_ptr.dtype.element_ty)
+    accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     # cast to output dtype
     accumulator = accumulator.to(c_ptr.dtype.element_ty)
@@ -173,6 +154,82 @@ def mm_kernel(
     c_ptr = c_ptr + (offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn)
     mask_store = (offs_cm < M)[:, None] & (offs_cn < N)[None, :]
 
+    tl.store(c_ptr, accumulator, mask=mask_store)
+
+
+@libentry()
+@libtuner(
+    configs=_FP64_MM_CONFIGS,
+    key=["M", "N", "K"],
+    strategy=["log", "log", "log"],
+)
+@triton.jit
+def mm_kernel_fp64(
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    num_pid_m = tl.cdiv(M, BLOCK_M)
+    num_pid_n = tl.cdiv(N, BLOCK_N)
+
+    num_pid_in_group = GROUP_M * num_pid_n
+    group_id = pid // num_pid_in_group
+    group_size_m = min(num_pid_m - group_id * GROUP_M, GROUP_M)
+    pid_m = group_id * GROUP_M + (pid % group_size_m)
+    pid_n = (pid % num_pid_in_group) // group_size_m
+
+    offs_am = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_bn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_am_cont = tl.max_contiguous(tl.multiple_of(offs_am % M, BLOCK_M), BLOCK_M)
+    offs_bn_cont = tl.max_contiguous(tl.multiple_of(offs_bn % N, BLOCK_N), BLOCK_N)
+
+    prev_k_mult = tl.cdiv(K, BLOCK_K) * BLOCK_K - BLOCK_K
+    accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
+
+    for start_k in range(0, prev_k_mult, BLOCK_K):
+        for k in tl.static_range(0, BLOCK_K):
+            cur_k = start_k + k
+            a_k = tl.load(a_ptr + offs_am_cont * stride_am + cur_k * stride_ak).to(
+                tl.float64
+            )
+            b_k = tl.load(b_ptr + cur_k * stride_bk + offs_bn_cont * stride_bn).to(
+                tl.float64
+            )
+            accumulator += a_k[:, None] * b_k[None, :]
+
+    for k in tl.static_range(0, BLOCK_K):
+        cur_k = prev_k_mult + k
+        mask = cur_k < K
+        a_k = tl.load(
+            a_ptr + offs_am_cont * stride_am + cur_k * stride_ak,
+            mask=mask,
+            other=0.0,
+        ).to(tl.float64)
+        b_k = tl.load(
+            b_ptr + cur_k * stride_bk + offs_bn_cont * stride_bn,
+            mask=mask,
+            other=0.0,
+        ).to(tl.float64)
+        accumulator += a_k[:, None] * b_k[None, :]
+
+    offs_cm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_cn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    c_ptr = c_ptr + (offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn)
+    mask_store = (offs_cm < M)[:, None] & (offs_cn < N)[None, :]
     tl.store(c_ptr, accumulator, mask=mask_store)
 
 
@@ -193,6 +250,31 @@ def get_higher_dtype(a, b):
             return a
 
 
+def _launch_mm(a, b, c, M, N, K):
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+    )
+    kernel_args = (
+        a,
+        b,
+        c,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        c.stride(0),
+        c.stride(1),
+    )
+    with torch_device_fn.device(a.device):
+        if a.dtype == torch.float64:
+            mm_kernel_fp64[grid](*kernel_args)
+        else:
+            mm_kernel[grid](*kernel_args, GROUP_M=8)
+
+
 def mm(a, b):
     logger.debug("GEMS_HYGON MM")
     device = a.device
@@ -208,27 +290,7 @@ def mm(a, b):
     # allocates output
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
-    # launch kernel
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
-    with torch_device_fn.device(a.device):
-        mm_kernel[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            GROUP_M=8,
-            IS_FP64=a.dtype == torch.float64,
-        )
+    _launch_mm(a, b, c, M, N, K)
     return c
 
 
@@ -245,25 +307,5 @@ def mm_out(a, b, *, out):
     _, N = b.shape
     # allocates output
     c = out
-    # launch kernel
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
-    with torch_device_fn.device(a.device):
-        mm_kernel[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            GROUP_M=8,
-            IS_FP64=a.dtype == torch.float64,
-        )
+    _launch_mm(a, b, c, M, N, K)
     return c

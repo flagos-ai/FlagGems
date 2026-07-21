@@ -35,11 +35,19 @@ else:
         (15, 160, 1024),
         (495, 5333, 71),
     ]
-    FLOAT_DTYPES = (
-        utils.ALL_FLOAT_DTYPES
-        if flag_gems.vendor_name == "hygon"
-        else utils.FLOAT_DTYPES
-    )
+    FLOAT_DTYPES = utils.FLOAT_DTYPES
+
+
+HYGON_FP64_MNK_SHAPES = (
+    [(1, 1, 1)]
+    if QUICK_MODE
+    else [
+        (1, 1, 1),
+        (16, 16, 16),
+        (15, 17, 9),
+        (32, 24, 33),
+    ]
+)
 
 
 MK_SHAPES = (
@@ -79,6 +87,52 @@ def test_mm(M, N, K, dtype, b_column_major):
         res_out = torch.mm(mat1, mat2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon",
+    reason="Hygon-specific FP64 matrix multiplication coverage.",
+)
+@pytest.mark.parametrize("M, N, K", HYGON_FP64_MNK_SHAPES)
+@pytest.mark.parametrize("b_column_major", [True, False])
+def test_mm_hygon_fp64(M, N, K, b_column_major):
+    dtype = torch.float64
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    if b_column_major:
+        mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    else:
+        mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    ref_mat1 = utils.to_reference(mat1, True)
+    ref_mat2 = utils.to_reference(mat2, True)
+
+    ref_out = torch.mm(ref_mat1, ref_mat2)
+    with flag_gems.use_gems():
+        res_out = torch.mm(mat1, mat2)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon",
+    reason="Hygon-specific FP64 mm.out coverage.",
+)
+@pytest.mark.parametrize("M, N, K", HYGON_FP64_MNK_SHAPES[-2:])
+def test_mm_out_hygon_fp64(M, N, K):
+    dtype = torch.float64
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    out = torch.empty((M, N), dtype=dtype, device=flag_gems.device)
+    ref_mat1 = utils.to_reference(mat1, True)
+    ref_mat2 = utils.to_reference(mat2, True)
+    ref_out = torch.empty((M, N), dtype=dtype, device=ref_mat1.device)
+
+    torch.mm(ref_mat1, ref_mat2, out=ref_out)
+    with flag_gems.use_gems():
+        torch.mm(mat1, mat2, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.mm
