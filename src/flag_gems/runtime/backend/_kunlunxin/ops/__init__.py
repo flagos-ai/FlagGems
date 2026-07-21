@@ -216,6 +216,7 @@ from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .signbit import signbit, signbit_out
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
+from .sinc import sinc, sinc_
 from .slice_scatter import slice_scatter
 from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 from .softmax import softmax, softmax_backward
@@ -533,6 +534,8 @@ __all__ = [
     "silu_backward",
     "sin",
     "sin_",
+    "sinc",
+    "sinc_",
     "slice_scatter",
     "softmax",
     "softmax_backward",
