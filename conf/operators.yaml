@@ -4463,6 +4463,30 @@ ops:
       - Reduction
     stages:
       - stable: '3.0'
+  - id: lcm
+    description: Compute the element-wise least common multiple of input tensors.
+    for:
+      - lcm
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Pointwise
+    stages:
+      - alpha: '5.4'
+  - id: lcm_
+    description: Compute the element-wise least common multiple of input tensors, storing result in-place.
+    for:
+      - lcm_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Pointwise
+    stages:
+      - alpha: '5.4'
   - id: le
     description: Computes that `input` is less than or equal to `other` element-wise.
     for:
@@ -8554,6 +8578,17 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_sinc
+    description: Computes sin(pi * x) / (pi * x) for each element of `input`.
+    for:
+      - special.sinc
+    labels:
+      - aten
       - KernelGen
     kind:
       - Math
