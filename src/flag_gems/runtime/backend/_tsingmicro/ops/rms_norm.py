@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -10,6 +24,19 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
+
+TRITON_MAX_TENSOR_NUMEL = 1048576
+
+
+def _prune_rmsnorm_fwd_configs(configs, nargs, **kwargs):
+    """Filter out configs where 2D block (ROWS_PER_PROGRAM x BLOCK_N) exceeds max tensor numel."""
+    N = nargs["N"]
+    block_n = triton.next_power_of_2(N)
+    return [
+        c
+        for c in configs
+        if c.kwargs["ROWS_PER_PROGRAM"] * block_n <= TRITON_MAX_TENSOR_NUMEL
+    ]
 
 
 @libentry()
@@ -245,6 +272,7 @@ def _get_row_block_size(N, max_rows=256, bytes_per_elem=12):
 @libentry()
 @libtuner(
     configs=[
+        triton.Config({"ROWS_PER_PROGRAM": 1}),
         triton.Config({"ROWS_PER_PROGRAM": 4}),
         triton.Config({"ROWS_PER_PROGRAM": 8}),
         triton.Config({"ROWS_PER_PROGRAM": 16}),
@@ -254,8 +282,10 @@ def _get_row_block_size(N, max_rows=256, bytes_per_elem=12):
         # triton.Config({"ROWS_PER_PROGRAM": 256}),
     ],
     key=["N"],
+    prune_configs_by={"early_config_prune": _prune_rmsnorm_fwd_configs},
 )
-@triton.jit
+@triton.heuristics(values={"BLOCK_N": lambda META: triton.next_power_of_2(META["N"])})
+@triton.jit(do_not_specialize=["eps"])
 def rmsnorm_fwd_kernel_multirow(
     out_ptr,
     inv_rms_ptr,
@@ -304,7 +334,7 @@ def rmsnorm_fwd_kernel_multirow(
 
 
 def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
-    logger.debug("GEMS_TSINGMICRO RMS_NORM")
+    logger.debug("GEMS_TSINGMICRO RMS_NORM_FORWARD")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
@@ -318,7 +348,6 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
 
     inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
     grid = lambda meta: (triton.cdiv(M, meta["ROWS_PER_PROGRAM"]),)
-    block_n_size = triton.next_power_of_2(N)
 
     rmsnorm_fwd_kernel_multirow[grid](
         out,
@@ -329,7 +358,6 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
         N,
         M,
         eps,
-        BLOCK_N=block_n_size,
     )
     return out, inv_rms
 
