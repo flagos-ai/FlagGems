@@ -185,6 +185,30 @@ def softmax_heur_tile_m(args):
     return max(1, 1024 // args["TILE_N"])
 
 
+def layer_norm_heur_fused_min_elements(_args):
+    return 1024 * 1024
+
+
+def layer_norm_heur_fused_max_resident_n(_args):
+    return 512
+
+
+def layer_norm_heur_fused_tile_elements(_args):
+    return 4096
+
+
+def layer_norm_heur_fused_max_block_m(_args):
+    return 256
+
+
+def layer_norm_heur_fused_direct_lowp_atomic(_args):
+    return False
+
+
+def layer_norm_heur_fused_program_waves(_args):
+    return 1
+
+
 def uniform_heur_block(args):
     if args["N"] <= 512:
         return 512
@@ -303,6 +327,14 @@ HEURISTICS_CONFIGS = {
     "softmax_backward_inner": {
         "TILE_M": softmax_heur_tile_m,
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
+    },
+    "layer_norm_backward_fused": {
+        "MIN_ELEMENTS": layer_norm_heur_fused_min_elements,
+        "MAX_RESIDENT_N": layer_norm_heur_fused_max_resident_n,
+        "TILE_ELEMENTS": layer_norm_heur_fused_tile_elements,
+        "MAX_BLOCK_M": layer_norm_heur_fused_max_block_m,
+        "PROGRAM_WAVES": layer_norm_heur_fused_program_waves,
+        "DIRECT_LOWP_ATOMIC": layer_norm_heur_fused_direct_lowp_atomic,
     },
     "uniform": {
         "BLOCK": uniform_heur_block,

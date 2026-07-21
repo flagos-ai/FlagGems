@@ -297,6 +297,15 @@ NormBenchmark:
     - [20, 6, 65536] # from perf
   shape_desc: "N, C, *"
 
+LayerNormBackwardLargeMBenchmark:
+  shapes:
+    - [[64, 16, 64, 16], [16]]
+    - [[128, 16, 16, 32], [32]]
+    - [[32768, 128], [128]]
+    - [[32768, 256], [256]]
+    - [[32768, 257], [257]]
+  shape_desc: "input_shape, normalized_shape"
+
 TensorSelectBenchmark:
   shapes:
     - [64, 64]
