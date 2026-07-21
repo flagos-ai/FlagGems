@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Grid sample operator implementation for FlagGems.
 
@@ -4713,7 +4727,7 @@ def grid_sample(
             else:  # reflection
                 kernel = grid_sample_2d_bicubic_reflection_kernel
         else:  # unsupported mode
-            logger.info(f"grid_sample mode '{mode}' not supported")
+            logger.info(f"GEMS_ENFLAME grid_sample mode '{mode}' not supported")
             raise NotImplementedError
 
         # Launch kernel with appropriate grid size
@@ -4978,7 +4992,9 @@ def grid_sample(
                 else:  # reflection
                     kernel = grid_sample_3d_trilinear_reflection_kernel
         else:  # unsupported mode for 5D
-            logger.info(f"grid_sample mode '{mode}' not supported for 5D input")
+            logger.info(
+                f"GEMS_ENFLAME grid_sample mode '{mode}' not supported for 5D input"
+            )
             raise NotImplementedError("Unsupported mode for 5D input")
 
         # Launch kernel with appropriate grid size
