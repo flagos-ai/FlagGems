@@ -229,6 +229,7 @@ def te_rmsnorm_fwd(
             )
         else:
             # Use loop kernel for large N
+            TILE_N = 1024
             rmsnorm_fwd_loop_kernel[(M,)](
                 out,
                 rsigma,
@@ -237,6 +238,7 @@ def te_rmsnorm_fwd(
                 N,
                 eps,
                 zero_centered_gamma,
+                TILE_N=TILE_N,
             )
 
     # Restore original shape for output
