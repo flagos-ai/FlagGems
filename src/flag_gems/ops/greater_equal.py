@@ -17,6 +17,7 @@
 overloads reuse the existing ge.py implementation directly via alias registration
 in flag_gems/__init__.py. This file only provides the inplace wrapper
 greater_equal_ since ge.py does not have an inplace variant."""
+
 import logging
 
 from flag_gems.ops.ge import ge_func
