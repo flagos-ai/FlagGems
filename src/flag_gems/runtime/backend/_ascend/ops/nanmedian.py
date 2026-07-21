@@ -44,65 +44,134 @@ _ASCEND_INTEGER_DTYPES = (
     torch.int64,
 )
 _ASCEND_SELECT_DTYPES = _ASCEND_FLOAT_SELECT_DTYPES + _ASCEND_INTEGER_DTYPES
+_ASCEND_SMALL_INTEGER_SORT_DTYPES = _ASCEND_INTEGER_DTYPES
 _ASCEND_HISTOGRAM_BINS = 256
 _ASCEND_MULTI_HISTOGRAM_MIN_N = 8192
 _ASCEND_FLAT_SEARCH_FANOUT = 16
 _ASCEND_FLAT_SEARCH_FANOUT_BITS = 4
-# The CANN 9.0 stack paired with PyTorch 2.10 miscompiles masked tl.sort.
-_ASCEND_TRITON_SMALL_SORT_SUPPORTED = version.parse(
-    torch.__version__.split("+", 1)[0]
-) < version.parse("2.10")
+_ASCEND_TOPK_FUSED_MAX_N = 4096
+_ASCEND_TOPK_SHORT_N = 128
+_TORCH_VERSION = version.parse(torch.__version__.split("+", 1)[0])
+_TRITON_VERSION = version.parse(triton.__version__.split("+", 1)[0])
+_ASCEND_910B2C = torch.npu.get_device_name().startswith("Ascend910B2C")
+_ASCEND_CANN85_TOPK_SUPPORTED = (
+    _ASCEND_910B2C
+    and _TORCH_VERSION.release[:2] == (2, 9)
+    and _TRITON_VERSION.release[:2] == (3, 2)
+)
+_ASCEND_CANN9_TOPK_SUPPORTED = (
+    _ASCEND_910B2C
+    and _TORCH_VERSION.release[:2] == (2, 10)
+    and _TRITON_VERSION.release[:2] == (3, 5)
+)
 
 
 @libentry()
 @triton.jit
-def nanmedian_ascend_float_flat_sort_kernel(
-    inp,
-    out,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    offsets = tl.arange(0, BLOCK_N)
-    mask = offsets < N
-    vals = tl.load(inp + offsets, mask=mask, other=float("inf"))
-    valid = mask & (vals == vals)
-    valid_count = tl.sum(valid.to(tl.int32), axis=0)
-    ordered = tl.sort(tl.where(valid, vals, float("inf")), descending=False)
-    has_valid = valid_count != 0
-    rank = tl.where(has_valid, (valid_count - 1) // 2, 0)
-    result = tl.sum(tl.where(offsets == rank, ordered, tl.zeros_like(ordered)), axis=0)
-    result = tl.where(has_valid, result, float("nan"))
-    tl.store(out, result)
+def nanmedian_ascend_store_zero_kernel(out):
+    tl.store(out, 0)
 
 
 @libentry()
 @triton.jit
-def nanmedian_ascend_float_small_dim_sort_kernel(
+def nanmedian_ascend_float_count_kernel(
     inp,
-    out_values,
-    out_indices,
+    valid_counts,
     M: tl.constexpr,
     N: tl.constexpr,
     BLOCK_N: tl.constexpr,
     ROWS_PER_PROGRAM: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = tl.program_id(0)
+    offsets = tl.arange(0, BLOCK_N)
+
+    for row_offset in tl.range(0, ROWS_PER_PROGRAM):
+        row = pid * ROWS_PER_PROGRAM + row_offset
+        row_mask = row < M
+        count = tl.full((), 0, dtype=tl.int32)
+
+        for col_start in tl.range(0, N, BLOCK_N, loop_unroll_factor=1):
+            cols = col_start + offsets
+            mask = row_mask & (cols < N)
+            values = tl.load(
+                inp + row * N + cols,
+                mask=mask,
+                other=float("nan"),
+            )
+            count += tl.sum((mask & (values == values)).to(tl.int32), axis=0)
+
+        tl.store(valid_counts + row, count, mask=row_mask)
+
+
+@libentry()
+@triton.jit
+def nanmedian_ascend_float_topk_gather_kernel(
+    top_values,
+    top_indices,
+    valid_counts,
+    out_values,
+    out_indices,
+    M: tl.constexpr,
+    K: tl.constexpr,
+    ROWS_PER_PROGRAM: tl.constexpr,
+):
+    pid = tl.program_id(0)
+
+    for row_offset in tl.range(0, ROWS_PER_PROGRAM):
+        row = pid * ROWS_PER_PROGRAM + row_offset
+        row_mask = row < M
+        count = tl.load(valid_counts + row, mask=row_mask, other=0)
+        has_valid = row_mask & (count > 0)
+        rank = tl.where(has_valid, (count - 1) // 2, 0)
+        value = tl.load(
+            top_values + row * K + rank,
+            mask=has_valid,
+            other=float("nan"),
+        )
+        index = tl.load(top_indices + row * K + rank, mask=has_valid, other=0)
+        tl.store(
+            out_values + row,
+            tl.where(has_valid, value, float("nan")),
+            mask=row_mask,
+        )
+        tl.store(
+            out_indices + row,
+            tl.where(has_valid, index, 0),
+            mask=row_mask,
+        )
+
+
+@libentry()
+@triton.jit
+def nanmedian_ascend_float_fused_topk_gather_kernel(
+    inp,
+    top_values,
+    top_indices,
+    out_values,
+    out_indices,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    ROWS_PER_PROGRAM: tl.constexpr,
+):
+    pid = tl.program_id(0)
     offsets = tl.arange(0, BLOCK_N)
 
     for row_offset in tl.range(0, ROWS_PER_PROGRAM):
         row = pid * ROWS_PER_PROGRAM + row_offset
         mask = (row < M) & (offsets < N)
-        vals = tl.load(inp + row * N + offsets, mask=mask, other=float("inf"))
-        valid = mask & (vals == vals)
-        valid_count = tl.sum(valid.to(tl.int32), axis=0)
-        ordered = tl.sort(tl.where(valid, vals, float("inf")), descending=False)
-        has_valid = valid_count != 0
+        values = tl.load(inp + row * N + offsets, mask=mask, other=float("nan"))
+        valid_count = tl.sum((mask & (values == values)).to(tl.int32), axis=0)
+        has_valid = (row < M) & (valid_count > 0)
         rank = tl.where(has_valid, (valid_count - 1) // 2, 0)
-        result = tl.sum(
-            tl.where(offsets == rank, ordered, tl.zeros_like(ordered)), axis=0
+        result = tl.load(
+            top_values + row * K + rank,
+            mask=has_valid,
+            other=float("nan"),
         )
+        result_idx = tl.load(top_indices + row * K + rank, mask=has_valid, other=0)
         result = tl.where(has_valid, result, float("nan"))
-        result_idx = tl.argmax((valid & (vals == result)).to(tl.int32), axis=0)
         result_idx = tl.where(has_valid, result_idx, 0)
         tl.store(out_values + row, result, mask=row < M)
         tl.store(out_indices + row, result_idx, mask=row < M)
@@ -236,20 +305,73 @@ def _nanmedian_float_sort_select(inp, M, N, values, indices):
         )
 
 
-def _nanmedian_float_small_sort_select(inp, M, N, values, indices):
-    block_n = triton.next_power_of_2(N)
-    grid = min(M, CORE_NUM)
-    rows_per_program = triton.cdiv(M, grid)
+def _nanmedian_float_topk_supported(N):
+    return _ASCEND_CANN9_TOPK_SUPPORTED or (
+        _ASCEND_CANN85_TOPK_SUPPORTED and N <= _ASCEND_TOPK_FUSED_MAX_N
+    )
+
+
+def _nanmedian_float_topk_select(inp, M, N, values, indices):
+    rows = inp.reshape(M, N)
+    k = (N + 1) // 2
+
+    if _ASCEND_CANN9_TOPK_SUPPORTED and N > _ASCEND_TOPK_SHORT_N:
+        grid = min(M, CORE_NUM)
+        rows_per_program = triton.cdiv(M, grid)
+        valid_counts = torch.empty_strided(
+            (M,), (1,), dtype=torch.int32, device=inp.device
+        )
+        with torch_device_fn.device(inp.device):
+            nanmedian_ascend_float_count_kernel[(grid,)](
+                rows,
+                valid_counts,
+                M,
+                N,
+                1024,
+                rows_per_program,
+                num_warps=1,
+                num_stages=1,
+            )
+        top_values, top_indices = torch.topk(
+            rows, k, dim=-1, largest=False, sorted=True
+        )
+        with torch_device_fn.device(inp.device):
+            nanmedian_ascend_float_topk_gather_kernel[(grid,)](
+                top_values,
+                top_indices,
+                valid_counts,
+                values,
+                indices,
+                M,
+                k,
+                rows_per_program,
+                num_warps=1,
+                num_stages=1,
+            )
+        return
+
+    top_values, top_indices = torch.topk(rows, k, dim=-1, largest=False, sorted=True)
+    if _ASCEND_CANN85_TOPK_SUPPORTED:
+        grid = M
+        rows_per_program = 1
+        num_warps = 4
+    else:
+        grid = min(M, CORE_NUM)
+        rows_per_program = triton.cdiv(M, grid)
+        num_warps = 1
     with torch_device_fn.device(inp.device):
-        nanmedian_ascend_float_small_dim_sort_kernel[(grid,)](
-            inp,
+        nanmedian_ascend_float_fused_topk_gather_kernel[(grid,)](
+            rows,
+            top_values,
+            top_indices,
             values,
             indices,
             M,
             N,
-            block_n,
+            k,
+            triton.next_power_of_2(N),
             rows_per_program,
-            num_warps=4,
+            num_warps=num_warps,
             num_stages=1,
         )
 
@@ -274,19 +396,15 @@ def _nanmedian_float_flat_sort(inp, out=None):
     return values
 
 
-def _nanmedian_float_flat_triton_sort(inp, out=None):
+def _nanmedian_float_flat_topk(inp, out=None):
     flat = inp.reshape(-1)
-    values = inp.new_empty(()) if out is None else out
-    block_n = triton.next_power_of_2(flat.numel())
-    with torch_device_fn.device(inp.device):
-        nanmedian_ascend_float_flat_sort_kernel[(1,)](
-            flat,
-            values,
-            flat.numel(),
-            block_n,
-            num_warps=4,
-            num_stages=1,
-        )
+    values = (
+        torch.empty_strided((), (), dtype=inp.dtype, device=inp.device)
+        if out is None
+        else out
+    )
+    indices = torch.empty_strided((), (), dtype=torch.long, device=inp.device)
+    _nanmedian_float_topk_select(flat, 1, flat.numel(), values, indices)
     return values
 
 
@@ -428,7 +546,11 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
     if (
         inp.numel() == 0
         or inp.dtype not in _ASCEND_SELECT_DTYPES
-        or (N <= MAX_BLOCK_N and inp.dtype not in _ASCEND_FLOAT_SELECT_DTYPES)
+        or (
+            N <= MAX_BLOCK_N
+            and inp.dtype not in _ASCEND_FLOAT_SELECT_DTYPES
+            and inp.dtype not in _ASCEND_SMALL_INTEGER_SORT_DTYPES
+        )
     ):
         return _generic_nanmedian_dim_impl(inp, dim, keepdim, out=out)
 
@@ -461,10 +583,12 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
     )
 
     if inp.dtype in _ASCEND_FLOAT_SELECT_DTYPES:
-        if N <= MAX_BLOCK_N and _ASCEND_TRITON_SMALL_SORT_SUPPORTED:
-            _nanmedian_float_small_sort_select(inp, M, N, flat_values, flat_indices)
+        if _nanmedian_float_topk_supported(N):
+            _nanmedian_float_topk_select(inp, M, N, flat_values, flat_indices)
         else:
             _nanmedian_float_sort_select(inp, M, N, flat_values, flat_indices)
+    elif N <= MAX_BLOCK_N and inp.dtype in _ASCEND_SMALL_INTEGER_SORT_DTYPES:
+        _nanmedian_integer_sort_select(inp, M, N, flat_values, flat_indices)
     elif inp.dtype in _ASCEND_HISTOGRAM_SELECT_DTYPES and N <= LONG_RADIX_REDUCTION_N:
         _nanmedian_histogram_select(inp, M, N, flat_values, flat_indices)
     elif (
@@ -488,6 +612,15 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
 
 def _nanmedian_flat_impl(inp, out=None):
     if inp.numel() == 0:
+        if not torch.is_floating_point(inp):
+            result = inp.new_empty(()) if out is None else out
+            with torch_device_fn.device(inp.device):
+                nanmedian_ascend_store_zero_kernel[(1,)](
+                    result,
+                    num_warps=1,
+                    num_stages=1,
+                )
+            return result
         result = _empty_flat_value(inp)
         if out is not None:
             out.copy_(result)
@@ -502,8 +635,8 @@ def _nanmedian_flat_impl(inp, out=None):
         return scalar.clone()
 
     if inp.dtype in _ASCEND_FLOAT_SELECT_DTYPES:
-        if inp.numel() <= MAX_BLOCK_N and _ASCEND_TRITON_SMALL_SORT_SUPPORTED:
-            return _nanmedian_float_flat_triton_sort(inp, out=out)
+        if _nanmedian_float_topk_supported(inp.numel()):
+            return _nanmedian_float_flat_topk(inp, out=out)
         return _nanmedian_float_flat_sort(inp, out=out)
 
     flat = inp.reshape(-1)
