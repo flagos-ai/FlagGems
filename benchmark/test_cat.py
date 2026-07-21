@@ -49,7 +49,6 @@ class CatBenchmark(base.Benchmark):
         return more_shapes_2d + more_shapes_3d
 
 
-@pytest.mark.skip("Benchmark test fails: issue #2673")
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )

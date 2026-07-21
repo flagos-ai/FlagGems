@@ -2284,6 +2284,17 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: diagonal_scatter
+    description: Scatter source values into the diagonal of a tensor with optional offset.
+    for:
+      - diagonal_scatter
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: diff
     description: |
       Computes the n-th forward difference along the given dimension.
@@ -4261,6 +4272,17 @@ ops:
       - stable: '2.2'
       - removed: '3.0'
       - beta: '5.3'
+  - id: irshift
+    description: Triton kernel implementation for __irshift__.
+    for:
+      - __irshift__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: is_all_true
     description: The low-level implementation for checking if all elements in a tensor are True.
     for:
@@ -4669,6 +4691,17 @@ ops:
       - KernelGen
     kind:
       - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: linalg_svdvals
+    description: Computes the singular values of a matrix.
+    for:
+      - linalg_svdvals
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
     stages:
       - alpha: '5.4'
   - id: linear
@@ -5913,6 +5946,20 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: nested_view_from_buffer_copy
+    description: |
+      Creates a nested tensor from a flat buffer using component sizes, strides,
+      and offsets, with a Metax backend specialization.
+    for:
+      - _nested_view_from_buffer_copy
+    labels:
+      - aten
+      - KernelGen
+      - Metax
+    kind:
+      - Tensor
     stages:
       - alpha: '5.4'
   - id: new_full
@@ -8393,6 +8440,28 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_modified_bessel_k0
+    description: Triton kernel implementation for special_modified_bessel_k0.
+    for:
+      - special_modified_bessel_k0
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_modified_bessel_k0_out
+    description: Triton kernel implementation for special_modified_bessel_k0.out.
+    for:
+      - special_modified_bessel_k0.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_shifted_chebyshev_polynomial_u
     description: |
       Computes the shifted Chebyshev polynomial of the second kind U_n^*(x)
@@ -8416,6 +8485,16 @@ ops:
       - KernelGen
     kind:
       - Math
+  - id: special_shifted_chebyshev_polynomial_w
+    kind:
+      - Math
+    labels:
+      - aten
+      - KernelGen
+    description: |
+      Computes the shifted Chebyshev polynomial of the second kind W_n(x).
+    for:
+      - special.shifted_chebyshev_polynomial_w
     stages:
       - alpha: '5.4'
   - id: special_xlog1py
@@ -8511,6 +8590,17 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: squeeze_copy
+    description: Triton kernel implementation for squeeze_copy.
+    for:
+      - squeeze_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: stack
     description: Concatenates a sequence of tensors along a new dimension.
     for:
