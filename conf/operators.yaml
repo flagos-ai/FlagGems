@@ -4644,30 +4644,6 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
-  - id: linalg_ldl_factor
-    description: |
-      Computes the compact LDL factorization of a Hermitian or symmetric matrix.
-    for:
-      - linalg_ldl_factor
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - LinearAlg
-    stages:
-      - alpha: '5.4'
-  - id: linalg_ldl_factor_ex
-    description: |
-      Computes the LDL factorization with pivot information for a symmetric or Hermitian matrix.
-    for:
-      - linalg.ldl_factor_ex
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: linalg_cholesky
     description: |-
       Computes the Cholesky decomposition of a symmetric positive-definite matrix A
@@ -4686,6 +4662,30 @@ ops:
     description: Computes the eigenvalues of a square matrix.
     for:
       - _linalg_eigvals
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_ldl_factor
+    description: |
+      Computes the compact LDL factorization of a Hermitian or symmetric matrix.
+    for:
+      - linalg_ldl_factor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: linalg_ldl_factor_ex
+    description: |
+      Computes the LDL factorization with pivot information for a symmetric or Hermitian matrix.
+    for:
+      - linalg.ldl_factor_ex
     labels:
       - aten
       - KernelGen
