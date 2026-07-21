@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from flag_gems.ops.__ilshift__ import __ilshift__
+from flag_gems.ops.__irshift__ import __irshift__
 from flag_gems.ops.__lshift__ import __lshift__
 from flag_gems.ops.__xor__ import (  # noqa: F401
     xor,
@@ -193,6 +194,7 @@ from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
 from flag_gems.ops.diagonal_copy import diagonal_copy
+from flag_gems.ops.diagonal_scatter import diagonal_scatter
 from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma, digamma_
 from flag_gems.ops.div import (
@@ -540,14 +542,22 @@ from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.special_log1p import special_log1p, special_log1p_out
 from flag_gems.ops.special_log_softmax import special_log_softmax
 from flag_gems.ops.special_logsumexp import special_logsumexp
+from flag_gems.ops.special_modified_bessel_k0 import (
+    special_modified_bessel_k0,
+    special_modified_bessel_k0_out,
+)
 from flag_gems.ops.special_shifted_chebyshev_polynomial_u import (
     special_shifted_chebyshev_polynomial_u,
     special_shifted_chebyshev_polynomial_u_,
+)
+from flag_gems.ops.special_shifted_chebyshev_polynomial_w import (
+    special_shifted_chebyshev_polynomial_w,
 )
 from flag_gems.ops.special_xlog1py import special_xlog1py
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
+from flag_gems.ops.squeeze_copy import squeeze_copy
 from flag_gems.ops.stack import stack
 from flag_gems.ops.std import std
 from flag_gems.ops.sub import sub, sub_
@@ -619,6 +629,7 @@ __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
     "__ilshift__",
+    "__irshift__",
     "__lshift__",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
@@ -821,6 +832,7 @@ __all__ = [
     "diag_embed",
     "diagonal_backward",
     "diagonal_copy",
+    "diagonal_scatter",
     "diff",
     "digamma",
     "digamma_",
@@ -1253,8 +1265,11 @@ __all__ = [
     "special_log1p",
     "special_log1p_out",
     "special_logsumexp",
+    "special_modified_bessel_k0",
+    "special_modified_bessel_k0_out",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",
+    "special_shifted_chebyshev_polynomial_w",
     "special_xlog1py",
     "split_with_sizes_copy",
     "sqrt",
@@ -1262,6 +1277,7 @@ __all__ = [
     "square",
     "square_",
     "square_out",
+    "squeeze_copy",
     "stack",
     "std",
     "sub",
