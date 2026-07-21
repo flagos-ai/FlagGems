@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -216,7 +230,7 @@ def _complex_true_divide(A, B):
 
 
 def true_divide(A, B):
-    logger.debug("GEMS TRUE_DIVIDE")
+    logger.debug("GEMS_SUNRISE TRUE_DIVIDE")
     A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
         A, complex
     )
@@ -239,7 +253,7 @@ def true_divide(A, B):
 
 
 def true_divide_out(A, B, out):
-    logger.debug("GEMS TRUE_DIVIDE OUT")
+    logger.debug("GEMS_SUNRISE TRUE_DIVIDE_OUT")
     # [sunrise fix]
     A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
         A, complex
@@ -265,7 +279,7 @@ def true_divide_out(A, B, out):
 
 
 def true_divide_(A, B):
-    logger.debug("GEMS TRUE_DIVIDE_")
+    logger.debug("GEMS_SUNRISE TRUE_DIVIDE_")
     # [sunrise fix]
     A_is_complex = isinstance(A, torch.Tensor) and A.is_complex()
     B_is_complex = (isinstance(B, torch.Tensor) and B.is_complex()) or isinstance(
@@ -322,7 +336,7 @@ def trunc_div_int_func_scalar_tensor(x, y):
 
 
 def trunc_divide(A, B):
-    logger.debug("GEMS TRUNC_DIVIDE")
+    logger.debug("GEMS_SUNRISE TRUNC_DIVIDE")
     # Integer types: use dedicated int kernels (Triton // is C-style truncation)
     if isinstance(A, torch.Tensor) and not A.is_floating_point():
         if isinstance(B, torch.Tensor):
@@ -343,7 +357,7 @@ def trunc_divide(A, B):
 
 
 def trunc_divide_(A, B):
-    logger.debug("GEMS TRUNC_DIVIDE_")
+    logger.debug("GEMS_SUNRISE TRUNC_DIVIDE_")
     # Integer types: use dedicated int kernels (Triton // is C-style truncation)
     if not A.is_floating_point():
         if isinstance(B, torch.Tensor):
@@ -472,7 +486,7 @@ def floor_div_func_scalar_tensor(x, y):
 
 
 def floor_divide(A, B):
-    logger.debug("GEMS FLOOR_DIVIDE")
+    logger.debug("GEMS_SUNRISE FLOOR_DIVIDE")
     if isinstance(A, torch.Tensor) and not A.is_floating_point():
         if isinstance(B, torch.Tensor):
             return floor_div_int_func(A, B)
@@ -491,7 +505,7 @@ def floor_divide(A, B):
 
 
 def floor_divide_(A, B):
-    logger.debug("GEMS FLOOR_DIVIDE_")
+    logger.debug("GEMS_SUNRISE FLOOR_DIVIDE_")
     if not A.is_floating_point():
         if isinstance(B, torch.Tensor):
             return floor_div_int_func(A, B, out0=A)
@@ -503,7 +517,7 @@ def floor_divide_(A, B):
 
 
 def div_mode(A, B, rounding_mode=None):
-    logger.debug("GEMS DIV_MODE")
+    logger.debug("GEMS_SUNRISE DIV_MODE")
     if rounding_mode is None:
         return true_divide(A, B)
     elif rounding_mode == "trunc":
@@ -516,7 +530,7 @@ def div_mode(A, B, rounding_mode=None):
 
 
 def div_mode_(A, B, rounding_mode=None):
-    logger.debug("GEMS DIV_MODE_")
+    logger.debug("GEMS_SUNRISE DIV_MODE_")
     if rounding_mode is None:
         return true_divide_(A, B)
     elif rounding_mode == "trunc":
@@ -613,7 +627,7 @@ def _tensor_scalar_remainder_device_path(tensor, value):
 
 
 def remainder(A, B):
-    logger.debug("GEMS REMAINDER")
+    logger.debug("GEMS_SUNRISE REMAINDER")
     # Sunrise/PTPU's integer remainder kernel may reuse its tensor operands as
     # scratch buffers even for the non-inplace API. Protect both inputs so
     # follow-up ops observe the original values of `A` and `B`.
@@ -645,7 +659,7 @@ def remainder(A, B):
 
 
 def remainder_(A, B):
-    logger.debug("GEMS REMAINDER_")
+    logger.debug("GEMS_SUNRISE REMAINDER_")
     if isinstance(B, torch.Tensor) and B.ndim > 0:
         return rem_tt(A, B.clone(), out0=A)
     else:

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 from functools import reduce
@@ -62,7 +76,7 @@ def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def mean(inp, *, dtype=None):
-    logger.debug("GEMS MEAN")
+    logger.debug("GEMS_SUNRISE MEAN")
     inp = inp.contiguous()
     M = inp.numel()
     if dtype is None:
@@ -278,7 +292,7 @@ def mean_dim_kernel(
 
 
 def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
-    logger.debug("GEMS MEAN_DIM")
+    logger.debug("GEMS_SUNRISE MEAN_DIM")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
@@ -379,6 +393,6 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
 
 
 def mean_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS MEAN_DIM (wrapper)")
+    logger.debug("GEMS_SUNRISE MEAN_DIM")
 
     return mean_dim_comm(inp, dim, keepdim, dtype=dtype)
