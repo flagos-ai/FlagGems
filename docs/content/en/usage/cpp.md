@@ -3,6 +3,23 @@ title: Using C++ Wrapped Operators
 weight: 90
 ---
 
+<!--
+ Copyright 2026 FlagOS Contributors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ -->
+
+
 # Using C++-Based Operators for Optimal Performance
 
 Another advanced optimization path with *FlagGems* is the use of *C++ wrapped operators*
@@ -32,11 +49,11 @@ In this stack:
 - `libtriton_jit` handles JIT specialization, kernel caching, and backend-specific
   launches (currently supporting **NVIDIA (CUDA)**, **Moore Threads (MUSA)**,
   **Huawei Ascend (NPU)** and **Iluvatar CoreX (IX)**).
-- FlagGems's C++ wrappers (under `lib/`, e.g. `rms_norm.cpp`, `mm.cpp`) implement
+- FlagGems's C++ wrappers (under `cpp/lib/`, e.g. `rms_norm.cpp`, `mm.cpp`) implement
   tensor metadata handling, shape/type promotion, and argument preparation in C++,
   then invoke the Triton kernels through `libtriton_jit::TritonJITFunction`.
 - On top of the wrappers, *FlagGems* ships two Python-facing extension modules
-  (`src/flag_gems/csrc/cstub.cpp` and `src/flag_gems/csrc/aten_patch.cpp`)
+  (`cpp/csrc/cstub.cpp` and `cpp/csrc/aten_patch.cpp`)
   and one installable C++ library target (`FlagGems::operators`), which together
   expose the wrappers through four different invocation paths (see
   [§3. Ways to invoke C++ operators](#3-ways-to-invoke-c-operators)).
@@ -71,28 +88,48 @@ To make the C++ wrapper **fully effective** you need both of the following:
 
 1. **At build/install time: enable the C++ extension and build in Release mode**
 
-   Install from source with at least `-DFLAGGEMS_BUILD_C_EXTENSIONS=ON` and
-   `-DCMAKE_BUILD_TYPE=Release` (the latter ensures both FlagGems itself
-   and the `libtriton_jit` subproject built alongside it are compiled with
-   platform-targeted optimizations; without it the wrapper will be noticeably
-   slower):
+   **Preferred — build from source with `setup.sh`:**
 
    ```shell
+   ENABLE_CPP=1 ./setup.sh nvidia-cuda128
+   ```
+
+   This reads the backend configuration from `backends.yaml`, sets the appropriate
+   CMake arguments, injects the vendor name into `cpp/pyproject.toml`, and builds
+   the C++ extension from the `cpp/` subdirectory.
+
+   **Alternative — install a prebuilt wheel (if available for your vendor):**
+
+   ```shell
+   pip install "flag-gems[cpp-cuda]"
+   ```
+
+   This pulls a prebuilt `flag-gems-cpp-cuda` wheel from the flagOS PyPI index.
+   Replace `cpp-cuda` with your vendor extension: `cpp-musa`, `cpp-npu`,
+   `cpp-gcu`, or `cpp-ix`.
+
+   **Manual — build from the `cpp/` subdirectory:**
+
+   The C++ sources and CMake build system live in `cpp/`. Build with at least
+   `-DFLAGGEMS_BUILD_C_EXTENSIONS=ON` and `-DCMAKE_BUILD_TYPE=Release`:
+
+   ```shell
+   tools/set_cpp_vendor.sh cuda
    CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DCMAKE_BUILD_TYPE=Release" \
-   pip install -v -e .
+   uv pip install --no-build-isolation ./cpp
    ```
 
    > [!NOTE]
-   > If the command above fails, try adding `--no-build-isolation` so
-   > that pip reuses the PyTorch already installed in your environment
-   > and the build dependencies from `requirements_<backend>.txt`.
+   > The C++ extension must target a specific vendor (`-DFLAGGEMS_BACKEND=<...>`).
+   > `tools/set_cpp_vendor.sh` injects the vendor name into `cpp/pyproject.toml`
+   > so the built wheel has the correct package name.
 
    Other useful options:
 
    - `-DFLAGGEMS_BACKEND=<CUDA|IX|MUSA|NPU>`: select the target backend (default `CUDA`);
    - `-DFLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP=ON`: build the pointwise-dynamic
      operators (`add`, `div`, `fill`);
-   - `-DFLAGGEMS_BUILD_CTESTS=ON`: build the `ctests/` GTest suite
+   - `-DFLAGGEMS_BUILD_CTESTS=ON`: build the `cpp/ctests/` GTest suite
      (the only way to verify the native C++ API in §3.4);
    - `-DFLAGGEMS_USE_EXTERNAL_TRITON_JIT=ON -DTritonJIT_ROOT=<path>`:
      build against an externally installed `libtriton_jit`.
@@ -183,7 +220,7 @@ case and has a different level of dispatcher overhead.
 
 All C++ wrappers are registered as PyTorch *custom ops* under the
 `flag_gems` namespace via `TORCH_LIBRARY(flag_gems, m)` in
-`src/flag_gems/csrc/cstub.cpp`. You can call them explicitly from Python,
+`cpp/csrc/cstub.cpp`. You can call them explicitly from Python,
 bypassing any patching logic or Python-side fall back paths:
 
 ```python
@@ -196,7 +233,7 @@ out    = torch.ops.flag_gems.mm(a, b)
 For a subset of operators, *FlagGems* additionally registers the C++
 implementations directly under the **`aten::` namespace** using
 `TORCH_LIBRARY_IMPL(aten, <dispatch_key>, m)` in
-`src/flag_gems/csrc/aten_patch.cpp`. The dispatch key is chosen by backend:
+`cpp/csrc/aten_patch.cpp`. The dispatch key is chosen by backend:
 
 - `CUDA` for NVIDIA CUDA and Iluvatar CoreX (IX);
 - `PrivateUse1` for Huawei Ascend (NPU) and Moore Threads (MUSA).
@@ -215,7 +252,7 @@ lowest-friction way to accelerate an existing model.
 ### 3.3 Via the `c_operators` pybind module (direct, dispatcher-free)
 
 The same C++ wrappers are also exported through a `PYBIND11_MODULE(c_operators, …)`
-in `src/flag_gems/csrc/cstub.cpp`:
+in `cpp/csrc/cstub.cpp`:
 
 ```python
 from flag_gems import c_operators
@@ -243,7 +280,7 @@ at::Tensor c = flag_gems::mm_tensor(a, b);
 at::Tensor y = flag_gems::rms_norm(x, weight, eps);
 ```
 
-This is exactly what the in-tree GTest suite under `ctests/` uses (e.g.
+This is exactly what the in-tree GTest suite under `cpp/ctests/` uses (e.g.
 `ctests/test_triton_mm.cpp`), and it is the right path when embedding
 FlagGems into a non-Python C++ application or when writing C++ unit tests.
 

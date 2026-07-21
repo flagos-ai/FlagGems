@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -58,25 +72,13 @@ device_ = device
 logger = logging.getLogger(__name__)
 
 
-# @triton.heuristics(runtime.get_heuristic_config("randn"))
-configs = [
-    triton.Config({"BLOCK": 256}, num_warps=8, num_stages=2),
-    triton.Config({"BLOCK": 512}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK": 512}, num_warps=8, num_stages=3),
-    triton.Config({"BLOCK": 1024}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK": 1024}, num_warps=8, num_stages=3),
-    triton.Config({"BLOCK": 1024}, num_warps=8, num_stages=4),
-]
-
-
-@triton.autotune(configs=configs, key=["N"])
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def randn_kernel(
     out_ptr,
     N,
     philox_seed,
     philox_offset,
-    BLOCK: tl.constexpr,
+    BLOCK: tl.constexpr = 512,
 ):
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)

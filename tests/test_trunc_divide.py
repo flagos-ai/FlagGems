@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import random
 
@@ -24,6 +38,9 @@ def test_trunc_div(shape, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
+
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3796: not working")
 
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
@@ -61,10 +78,13 @@ def test_trunc_divide_(shape, dtype):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #3796: not working")
+
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     upcast = True
-    if flag_gems.vendor_name in ("cambricon", "kunlunxin", "iluvatar"):
+    if flag_gems.vendor_name in ("cambricon", "kunlunxin", "iluvatar", "tsingmicro"):
         upcast = False
     ref_inp1 = utils.to_reference(inp1, upcast)
     ref_inp2 = utils.to_reference(inp2, upcast)

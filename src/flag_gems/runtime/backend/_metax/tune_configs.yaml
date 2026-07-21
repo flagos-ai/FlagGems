@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 attention:
 - gen: true
   param_map:
@@ -718,18 +732,16 @@ weight_bias_backward:
 - gen: true
   param_map:
     META:
-      BLOCK_ROW_SIZE: 512
+      BLOCK_ROW_SIZE: 1
       BLOCK_COL_SIZE: block_c
     num_warps: warps
   warps:
   - 4
-  - 8
-  - 16
   block_c:
-  - 1
-  - 2
-  - 4
-  - 8
+  - 256
+  - 512
+  - 1024
+  - 2048
 masked_select:
 - gen: true
   param_map:
@@ -1366,3 +1378,38 @@ polar:
   - 1
   - 2
   - 4
+diff_1d:
+- gen: true
+  param_map:
+    META:
+      BLOCK_DIFF: block_diff
+    num_warps: warps
+  warps:
+  - 4
+  - 8
+  - 16
+  block_diff:
+  - 16
+  - 256
+  - 1024
+diff:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_DIFF: block_diff
+    num_warps: warps
+  warps:
+  - 4
+  - 8
+  - 16
+  block_m:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 32
+  block_diff:
+  - 16
+  - 256
+  - 1024
