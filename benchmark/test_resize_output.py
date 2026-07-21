@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -48,7 +62,7 @@ def test_resize_output():
     # This is because the operator is not available in PyTorch for CUDA backend
 
     # Create a wrapper that uses the same implementation as gems (for fair comparison)
-    from flag_gems.ops._resize_output import _resize_output as gems_resize_output
+    from flag_gems import _resize_output as gems_resize_output
 
     def dummy_torch_op(inp, size, device):
         # Use the same implementation as GEMS for baseline
