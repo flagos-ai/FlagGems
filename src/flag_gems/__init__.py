@@ -104,6 +104,7 @@ _FULL_CONFIG = (
     ("_log_softmax_backward_data", log_softmax_backward),
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
     ("_masked_scale", _masked_scale),
+    ("_nested_view_from_buffer_copy", _nested_view_from_buffer_copy),
     ("_pdist_backward", _pdist_backward),
     ("_prelu_kernel", _prelu_kernel),
     ("_prelu_kernel_backward", _prelu_kernel_backward),
