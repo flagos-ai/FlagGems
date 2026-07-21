@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 from typing import Optional
 
@@ -9,7 +23,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -202,7 +216,7 @@ def apply_rotary_pos_emb(
         q_embed: (*, q_heads, head_dim)
         k_embed: (*, k_heads, head_dim)
     """
-    logger.debug("GEMS ROTARY_POS_EMBEDDING")
+    logger.debug("GEMS_KUNLUNXIN ROTARY_POS_EMBEDDING")
     assert (
         k.shape[-1] == q.shape[-1]
     ), f"q and k must have the same last dimension, got {q.shape} and {k.shape}"

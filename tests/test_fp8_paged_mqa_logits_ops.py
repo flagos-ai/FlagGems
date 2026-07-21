@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 
 import pytest
@@ -22,7 +36,16 @@ except ImportError:
 
 import flag_gems
 
+from . import conftest as cfg
 from .accuracy_utils import gems_assert_close, to_reference
+
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    BATCH_NEXTN_SHAPES = [(4, 1)]
+    HEADS_INDEXDIM_SHAPES = [(32, 128)]
+else:
+    BATCH_NEXTN_SHAPES = [(4, 1), (2, 2)]
+    HEADS_INDEXDIM_SHAPES = [(32, 128)]
 
 
 def kv_cache_cast_to_fp8(x: torch.Tensor) -> torch.Tensor:
@@ -183,8 +206,8 @@ def test_accuracy_fp8_paged_mqa_logits(clean_logits: bool):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA only")
 @pytest.mark.skipif(not DEEPGEMM_AVAILABLE, reason="DeepGEMM not available")
 @pytest.mark.skipif(not SM90_AVAILABLE, reason="SM90 and SM100 only")
-@pytest.mark.parametrize("batch_size, next_n", [(4, 1), (2, 2)])
-@pytest.mark.parametrize("heads, index_dim", [(32, 128)])
+@pytest.mark.parametrize("batch_size, next_n", BATCH_NEXTN_SHAPES)
+@pytest.mark.parametrize("heads, index_dim", HEADS_INDEXDIM_SHAPES)
 def test_accuracy_fp8_paged_mqa_logits_param(batch_size, next_n, heads, index_dim):
     torch.manual_seed(0)
     random.seed(0)

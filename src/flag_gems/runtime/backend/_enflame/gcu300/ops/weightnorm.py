@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -199,7 +213,7 @@ def weight_norm_bwd_kernel_first(
 
 
 def weight_norm_interface(v, g, dim=0):
-    logger.debug("GEMS WEIGHT NORM INTERFACE FORWARD")
+    logger.debug("GEMS_ENFLAME WEIGHT_NORM_INTERFACE")
     v = v.contiguous()
     g = g.contiguous()
     output = torch.empty_like(v)
@@ -224,7 +238,7 @@ def weight_norm_interface(v, g, dim=0):
 
 
 def weight_norm_interface_backward(w_grad, saved_v, saved_g, saved_norms, dim):
-    logger.debug("GEMS WEIGHT NORM INTERFACE BACKWARD")
+    logger.debug("GEMS_ENFLAME WEIGHT_NORM_INTERFACE_BACKWARD")
     w_grad = w_grad.contiguous()
     saved_v = saved_v.contiguous()
     saved_g = saved_g.contiguous()

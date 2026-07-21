@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import concurrent.futures
 import fcntl
 import gc
@@ -14,9 +28,11 @@ import torch
 import yaml
 
 import flag_gems
-from benchmark.base import Benchmark, GenericBenchmark2DOnly
-from benchmark.conftest import Config, emit_record_logger
-from benchmark.consts import (
+
+from . import consts
+from .base import Benchmark, GenericBenchmark2DOnly
+from .conftest import Config, emit_record_logger
+from .consts import (
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
     FLOAT_DTYPES,
@@ -26,8 +42,6 @@ from benchmark.consts import (
     OperationAttribute,
     model_shapes,
 )
-
-from . import consts
 
 try:
     from vllm.model_executor.layers.quantization.utils.fp8_utils import (
@@ -68,6 +82,19 @@ PARALLEL_RESULT_FILE_ENV = "FLAGGEMS_BENCH_RESULT_FILE"
 torch_device_object = flag_gems.runtime.backend.gen_torch_device_object()
 DEEPGEMM_N_MULTIPLE = 64
 DEEPGEMM_K_MULTIPLE = 128
+
+MUL_DEFAULT_SHAPES = [
+    ("broadcast", (1, 1), (1, 2048)),
+    ("broadcast", (32, 1), (32, 2048)),
+    ("broadcast", (128, 1), (128, 2048)),
+    ("broadcast", (496, 1), (496, 2048)),
+    ("broadcast", (512, 1), (512, 2048)),
+    ("broadcast", (4108, 1), (4108, 2048)),
+    ("broadcast", (16384, 1), (16384, 2048)),
+    ("broadcast", (1048576, 1), (1, 32)),
+    ("scalar", (32,)),
+    ("scalar", (512, 2048)),
+]
 
 
 # ============================================================================
@@ -462,6 +489,54 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
 # ============================================================================
 
 
+def _normalize_mul_dims(dims, field_name):
+    if not isinstance(dims, (list, tuple)):
+        raise ValueError(f"mul {field_name} must be a list or tuple of dimensions.")
+    if not dims:
+        raise ValueError(f"mul {field_name} must contain at least one dimension.")
+    if any(
+        isinstance(dim, bool) or not isinstance(dim, int) or dim <= 0 for dim in dims
+    ):
+        raise ValueError(f"mul {field_name} dimensions must be positive integers.")
+    return tuple(dims)
+
+
+def _normalize_mul_shape(shape):
+    if not isinstance(shape, (list, tuple)) or not shape:
+        raise ValueError("mul shape must be a non-empty list or tuple.")
+
+    kind = shape[0]
+    if kind == "broadcast":
+        if len(shape) != 3:
+            raise ValueError(
+                "mul broadcast shape expects ('broadcast', lhs_shape, rhs_shape)."
+            )
+        lhs_shape = _normalize_mul_dims(shape[1], "lhs_shape")
+        rhs_shape = _normalize_mul_dims(shape[2], "rhs_shape")
+        try:
+            torch.broadcast_shapes(lhs_shape, rhs_shape)
+        except RuntimeError as error:
+            raise ValueError(
+                f"mul shapes {lhs_shape} and {rhs_shape} cannot be broadcast."
+            ) from error
+        return kind, lhs_shape, rhs_shape
+
+    if kind in {"same", "scalar"}:
+        if len(shape) != 2:
+            raise ValueError(f"mul {kind} shape expects ('{kind}', tensor_shape).")
+        return kind, _normalize_mul_dims(shape[1], "tensor_shape")
+
+    raise ValueError("mul shape kind must be 'broadcast', 'same', or 'scalar'.")
+
+
+def _estimate_mul_shape_cost(shape):
+    normalized_shape = _normalize_mul_shape(shape)
+    kind, lhs_shape = normalized_shape[:2]
+    if kind == "broadcast":
+        return math.prod(torch.broadcast_shapes(lhs_shape, normalized_shape[2]))
+    return math.prod(lhs_shape)
+
+
 def _parallel_device_is_available():
     if hasattr(torch_device_object, "is_available"):
         return torch_device_object.is_available()
@@ -644,6 +719,9 @@ class ParallelBenchmarkMixin:
         fixed_overhead = self._get_tuning_fixed_overhead()
 
         def estimate_shape_cost(shape):
+            if self.op_name == "mul":
+                return _estimate_mul_shape_cost(shape) + fixed_overhead
+
             if self.op_name == "sparse_attention":
                 if len(shape) != 6:
                     return 1 + fixed_overhead
@@ -951,6 +1029,56 @@ class ParallelVdotBenchmark(ParallelBenchmarkMixin, VdotBenchmark):
 
 class ParallelAddrBenchmark(ParallelBenchmarkMixin, AddrBenchmark):
     pass
+
+
+class ParallelMulBenchmark(ParallelBenchmarkMixin, Benchmark):
+    SHAPE_CONFIG_KEYS = ("mul",)
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+    DEFAULT_DTYPES = FLOAT_DTYPES
+    DEFAULT_SHAPES = MUL_DEFAULT_SHAPES
+    DEFAULT_SHAPE_DESC = "kind, lhs_shape, rhs_shape"
+    DEFAULT_SHAPE_FILES = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
+
+    def set_more_shapes(self):
+        return []
+
+    def set_shapes(self, shape_file_path=None):
+        shape_file_path = shape_file_path or self.DEFAULT_SHAPE_FILES
+        self.shapes = self.DEFAULT_SHAPES[:]
+        self.shape_desc = self.DEFAULT_SHAPE_DESC
+
+        if not os.path.isfile(shape_file_path):
+            raise FileNotFoundError(f"Shape file '{shape_file_path}' does not exist.")
+
+        with open(shape_file_path, "r", encoding="utf-8") as shape_file:
+            yaml_config = yaml.safe_load(shape_file) or {}
+
+        for shape_key in self.SHAPE_CONFIG_KEYS + (self.op_name,):
+            if shape_key in yaml_config:
+                self.shapes = yaml_config[shape_key].get("shapes", self.DEFAULT_SHAPES)
+                self.shape_desc = yaml_config[shape_key].get(
+                    "shape_desc", self.DEFAULT_SHAPE_DESC
+                )
+                break
+
+        self.shapes = [_normalize_mul_shape(shape) for shape in self.shapes]
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            kind, lhs_shape = shape[:2]
+            lhs = torch.randn(lhs_shape, dtype=cur_dtype, device=self.device)
+            if kind == "broadcast":
+                rhs = torch.randn(shape[2], dtype=cur_dtype, device=self.device)
+            elif kind == "same":
+                rhs = torch.randn(lhs_shape, dtype=cur_dtype, device=self.device)
+            else:
+                rhs = 0.5
+            yield lhs, rhs
+
+    def get_tflops(self, op, *args, **kwargs):
+        return torch.broadcast_shapes(
+            getattr(args[0], "shape", ()), getattr(args[1], "shape", ())
+        ).numel()
 
 
 class ParallelRouterGemmBenchmark(ParallelBenchmarkMixin, RouterGemmBenchmark):
@@ -1359,6 +1487,17 @@ def test_perf_sparse_attention():
         torch_op=sparse_attention_mthreads_baseline,
     )
     bench.set_gems(flag_gems.sparse_attn_triton)
+    bench.run()
+
+
+@pytest.mark.mul
+def test_perf_mul():
+    bench = ParallelMulBenchmark(
+        op_name="mul",
+        torch_op=torch.mul,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.mul)
     bench.run()
 
 
