@@ -253,6 +253,10 @@ from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.fp8_mqa_logits import fp8_mqa_logits
 from flag_gems.ops.fp8_paged_mqa_logits import fp8_paged_mqa_logits
 from flag_gems.ops.frac_ import frac, frac_
+from flag_gems.ops.fractional_max_pool2d import (
+    fractional_max_pool2d,
+    fractional_max_pool2d_backward,
+)
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
@@ -529,6 +533,7 @@ from flag_gems.ops.softplus import softplus, softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_airy_ai import special_airy_ai, special_airy_ai_out
+from flag_gems.ops.special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from flag_gems.ops.special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
@@ -922,6 +927,8 @@ __all__ = [
     "fp8_paged_mqa_logits",
     "frac",
     "frac_",
+    "fractional_max_pool2d",
+    "fractional_max_pool2d_backward",
     "full",
     "full_like",
     "gather",
@@ -1271,6 +1278,7 @@ __all__ = [
     "sort_stable",
     "special_airy_ai",
     "special_airy_ai_out",
+    "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
