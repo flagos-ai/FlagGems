@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
@@ -54,6 +56,84 @@ def _reference(input, residual, normalized_shape, weight, bias, eps):
         utils.to_reference(bias, True),
         eps,
     ) + utils.to_reference(residual, True)
+
+
+def _make_grad_tensors(shape, normalized_shape, dtype, affine_mode="both"):
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    residual = torch.randn_like(input, requires_grad=True)
+    weight, bias = _make_affine(normalized_shape, dtype, affine_mode)
+    if weight is not None:
+        weight.requires_grad_(True)
+    if bias is not None:
+        bias.requires_grad_(True)
+    grad_output = torch.randn_like(input)
+
+    ref_input = utils.to_reference(input.detach().clone(), True).requires_grad_(True)
+    ref_residual = utils.to_reference(residual.detach().clone(), True).requires_grad_(
+        True
+    )
+    ref_weight = (
+        utils.to_reference(weight.detach().clone(), True).requires_grad_(True)
+        if weight is not None
+        else None
+    )
+    ref_bias = (
+        utils.to_reference(bias.detach().clone(), True).requires_grad_(True)
+        if bias is not None
+        else None
+    )
+    ref_grad_output = utils.to_reference(grad_output, True)
+    return (
+        input,
+        residual,
+        weight,
+        bias,
+        grad_output,
+        ref_input,
+        ref_residual,
+        ref_weight,
+        ref_bias,
+        ref_grad_output,
+    )
+
+
+def _assert_backward_close(
+    shape,
+    normalized_shape,
+    dtype,
+    affine_mode="both",
+):
+    (
+        input,
+        residual,
+        weight,
+        bias,
+        grad_output,
+        ref_input,
+        ref_residual,
+        ref_weight,
+        ref_bias,
+        ref_grad_output,
+    ) = _make_grad_tensors(shape, normalized_shape, dtype, affine_mode)
+
+    expected = (
+        torch.layer_norm(ref_input, normalized_shape, ref_weight, ref_bias, 1e-5)
+        + ref_residual
+    )
+    actual = flag_gems.post_layer_norm_residual(
+        input, residual, normalized_shape, weight, bias, 1e-5
+    )
+
+    expected.backward(ref_grad_output)
+    actual.backward(grad_output)
+
+    M = math.prod(shape) // math.prod(normalized_shape)
+    utils.gems_assert_close(input.grad, ref_input.grad, dtype)
+    utils.gems_assert_close(residual.grad, ref_residual.grad, dtype)
+    if weight is not None:
+        utils.gems_assert_close(weight.grad, ref_weight.grad, dtype, reduce_dim=M)
+    if bias is not None:
+        utils.gems_assert_close(bias.grad, ref_bias.grad, dtype, reduce_dim=M)
 
 
 @pytest.mark.post_layer_norm_residual
@@ -161,3 +241,39 @@ def test_post_layer_norm_residual_validates_normalized_shape():
 
     with pytest.raises(ValueError, match="normalized_shape"):
         flag_gems.post_layer_norm_residual(input, residual, (4,))
+
+
+@pytest.mark.post_layer_norm_residual
+@pytest.mark.parametrize("shape,normalized_shape", CORE_CASES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_post_layer_norm_residual_backward(shape, normalized_shape, dtype):
+    _assert_backward_close(shape, normalized_shape, dtype)
+
+
+@pytest.mark.post_layer_norm_residual
+@pytest.mark.parametrize("shape,normalized_shape", BOUNDARY_CASES)
+@pytest.mark.parametrize("affine_mode", AFFINE_MODES)
+def test_post_layer_norm_residual_backward_optional_affine(
+    shape, normalized_shape, affine_mode
+):
+    _assert_backward_close(
+        shape, normalized_shape, torch.float32, affine_mode=affine_mode
+    )
+
+
+@pytest.mark.post_layer_norm_residual
+def test_post_layer_norm_residual_backward_large_normalized_shape():
+    _assert_backward_close((2, 4097), (4097,), torch.float32)
+
+
+@pytest.mark.post_layer_norm_residual
+def test_post_layer_norm_residual_backward_residual_only():
+    shape = (16, 64)
+    input = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+    residual = torch.randn_like(input, requires_grad=True)
+    grad_output = torch.randn_like(input)
+
+    output = flag_gems.post_layer_norm_residual(input, residual, (64,))
+    (grad_residual,) = torch.autograd.grad(output, residual, grad_output)
+
+    utils.gems_assert_close(grad_residual, grad_output, torch.float32)
