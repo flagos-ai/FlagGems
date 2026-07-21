@@ -3576,6 +3576,21 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: gather_and_maybe_dequant_cache
+    description: |
+      Gathers tokens from paged KV cache into contiguous buffer with optional FP8 dequantization for MLA attention.
+    for:
+      - gather_and_maybe_dequant_cache
+    labels:
+      - fused
+      - KernelGen
+      - thead
+      - Attention
+      - DeepSeekV4
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: gather_backward
     description: The backward version of `gather()`.
     for:
