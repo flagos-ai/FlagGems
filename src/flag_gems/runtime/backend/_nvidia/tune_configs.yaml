@@ -2439,6 +2439,46 @@ rot90:
     num_warps: 16
     num_stages: 1
 
+fractional_max_pool2d_forward:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_H: block_h
+        BLOCK_W: block_w
+      num_stages: stages
+      num_warps: warps
+    block_h: [8, 16, 32]
+    block_w: [8, 16, 32]
+    stages: [2, 3, 4]
+    warps: [2, 4, 8]
+
+fractional_max_pool2d_backward:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_H: block_h
+        BLOCK_W: block_w
+      num_stages: stages
+      num_warps: warps
+    block_h: [8, 16, 32]
+    block_w: [8, 16, 32]
+    stages: [2, 3, 4]
+    warps: [2, 4, 8]
+
+index_select_backward:
+  - META:
+      BLOCK: 128
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK: 256
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK: 512
+    num_warps: 8
+    num_stages: 1
+
 fused_marlin_moe_mxfp4:
   - gen: true
     param_map:
