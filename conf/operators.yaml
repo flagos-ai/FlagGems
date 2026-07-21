@@ -8291,6 +8291,21 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_chebyshev_polynomial_u
+    description: |
+      Computes the Chebyshev polynomial of the second kind U_n(x) for each element
+      of the input tensor.
+    for:
+      - special_chebyshev_polynomial_u
+      - special_chebyshev_polynomial_u.n_scalar
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_chebyshev_polynomial_v
     description: |
       Triton kernel implementation for special_chebyshev_polynomial_v.
