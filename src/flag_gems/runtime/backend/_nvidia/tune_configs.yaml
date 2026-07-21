@@ -936,6 +936,15 @@ cross_entropy_loss:
       BLOCK_C: 1024
       BLOCK_D: 16
     num_warps: 4
+complex:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: blocks
+    blocks:
+      - 1024
+      - 2048
+      - 4096
 masked_fill:
   - gen: true
     param_map:
