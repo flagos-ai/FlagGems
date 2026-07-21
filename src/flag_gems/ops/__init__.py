@@ -542,6 +542,9 @@ from flag_gems.ops.special_shifted_chebyshev_polynomial_u import (
     special_shifted_chebyshev_polynomial_u,
     special_shifted_chebyshev_polynomial_u_,
 )
+from flag_gems.ops.special_shifted_chebyshev_polynomial_w import (
+    special_shifted_chebyshev_polynomial_w,
+)
 from flag_gems.ops.special_xlog1py import special_xlog1py
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
@@ -1257,6 +1260,7 @@ __all__ = [
     "special_modified_bessel_k0_out",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",
+    "special_shifted_chebyshev_polynomial_w",
     "special_xlog1py",
     "split_with_sizes_copy",
     "sqrt",
