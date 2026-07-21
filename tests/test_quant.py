@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # SPDX-License-Identifier: Apache-2.0
 import random
 
@@ -6,18 +20,25 @@ import torch
 
 import flag_gems
 
+from . import conftest as cfg
 from .accuracy_utils import gems_assert_close, to_reference
 
 device = flag_gems.device
 
 COPYING_DIRECTION = [("cuda", "cpu"), ("cuda", "cuda"), ("cpu", "cuda")]
-DTYPES = [torch.half, torch.bfloat16, torch.float]
+if cfg.QUICK_MODE:
+    DTYPES = [torch.float]
+    HEAD_SIZES = [64]
+    BLOCK_SIZES = [16]
+    CACHE_LAYOUTS = ["NHD"]
+else:
+    DTYPES = [torch.half, torch.bfloat16, torch.float]
+    HEAD_SIZES = [64, 80, 120, 256]
+    BLOCK_SIZES = [8, 16, 32]
+    CACHE_LAYOUTS = ["NHD", "HND"]
 NUM_TOKENS = [42]  # Arbitrary values for testing
 NUM_LAYERS = [1]  # Arbitrary values for testing
 NUM_HEADS = [8]  # Arbitrary values for testing
-HEAD_SIZES = [64, 80, 120, 256]
-BLOCK_SIZES = [8, 16, 32]
-CACHE_LAYOUTS = ["NHD", "HND"]
 
 # Parameters for MLA tests.
 KV_LORA_RANKS = [512]
@@ -28,7 +49,7 @@ NUM_BLOCKS_MLA = [8]
 
 # Arbitrary values for testing
 # don't make it too large. e.g. [1024, 36000] will OOM
-NUM_BLOCKS = [1024, 10000]
+NUM_BLOCKS = [1024] if cfg.QUICK_MODE else [1024, 10000]
 
 NUM_MAPPINGS = [256]  # Arbitrary values for testing
 SEEDS = [0]
@@ -82,9 +103,11 @@ def convert_fp8(
 @pytest.mark.parametrize("seed", SEEDS)
 @pytest.mark.parametrize(
     "device",
-    [flag_gems.device]
-    if flag_gems.vendor_name in ["mthreads", "sunrise"]
-    else CUDA_DEVICES,
+    (
+        [flag_gems.device]
+        if flag_gems.vendor_name in ["mthreads", "sunrise"]
+        else CUDA_DEVICES
+    ),
 )
 @pytest.mark.parametrize("kv_cache_dtype", KV_CACHE_DTYPE)
 @torch.inference_mode()

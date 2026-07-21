@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -68,7 +82,7 @@ def gelu_backward_tanh(x, dy):
 class Gelu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A, approximate):
-        logger.debug("GEMS GELU FORWARD")
+        logger.debug("GEMS_HYGON GELU")
         if approximate == "tanh":
             out = gelu_tanh(A)
         else:
@@ -79,7 +93,7 @@ class Gelu(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS GELU BACKWARD")
+        logger.debug("GEMS_HYGON GELU_BACKWARD")
         (inp,) = ctx.saved_tensors
         approximate = ctx.approximate
         if approximate == "tanh":
@@ -96,7 +110,7 @@ def gelu(A, *, approximate="none"):
 class InplaceGelu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A, approximate):
-        logger.debug("GEMS GELU_ FORWARD")
+        logger.debug("GEMS_HYGON GELU_FORWARD_")
         ctx.save_for_backward(A.clone())
         ctx.mark_dirty(A)
         ctx.approximate = approximate
@@ -109,7 +123,7 @@ class InplaceGelu(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS GELU_ BACKWARD")
+        logger.debug("GEMS_HYGON GELU_BACKWARD_")
         (inp,) = ctx.saved_tensors
         approximate = ctx.approximate
         if approximate == "tanh":

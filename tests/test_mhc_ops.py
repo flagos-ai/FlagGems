@@ -1,9 +1,24 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Accuracy tests for mHC (Manifold Constrained Hyper-Connection) operators.
 
 Tests both mhc_post and mhc_pre against PyTorch reference implementations,
 and optionally compares with TileLang implementations.
 """
+
 from itertools import product
 
 import pytest
@@ -31,6 +46,8 @@ from flag_gems.fused.mhc.mhc_bwd import mhc_bwd, mhc_bwd_ref, sinkhorn_forward
 from flag_gems.fused.mhc.mhc_post import mhc_post, mhc_post_ref
 from flag_gems.fused.mhc.mhc_pre import mhc_pre, mhc_pre_ref
 
+from . import conftest as cfg
+
 
 def generate_mhc_post_data(
     n: int, h: int, hc_mult: int = 4, device: str = flag_gems.device
@@ -47,13 +64,22 @@ def generate_mhc_post_data(
     )
 
 
-MHC_POST_CONFIGS = list(
-    product(
-        [4096],  # n (num_tokens)
-        [1280, 2560, 7168],  # h (hidden_size)
-        [2, 4],  # hc_mult
+if cfg.QUICK_MODE:
+    MHC_POST_CONFIGS = list(
+        product(
+            [4096],  # n (num_tokens)
+            [1280],  # h (hidden_size)
+            [4],  # hc_mult
+        )
     )
-)
+else:
+    MHC_POST_CONFIGS = list(
+        product(
+            [4096],  # n (num_tokens)
+            [1280, 2560, 7168],  # h (hidden_size)
+            [2, 4],  # hc_mult
+        )
+    )
 
 
 @pytest.mark.mhc_post
@@ -85,16 +111,22 @@ def generate_mhc_split_sinkhorn_data(
     return dict(mixes=mixes, hc_scale=hc_scale, hc_base=hc_base, hc_mult=hc_mult)
 
 
-MHC_SPLIT_SINKHORN_CONFIGS = [
-    (8, 16, 4),
-    (32, 64, 4),
-    (128, 128, 4),
-    (256, 256, 4),
-    (8, 16, 2),
-    (32, 64, 2),
-    (128, 128, 2),
-    (256, 256, 2),
-]
+if cfg.QUICK_MODE:
+    MHC_SPLIT_SINKHORN_CONFIGS = [
+        (8, 16, 4),
+        (128, 128, 2),
+    ]
+else:
+    MHC_SPLIT_SINKHORN_CONFIGS = [
+        (8, 16, 4),
+        (32, 64, 4),
+        (128, 128, 4),
+        (256, 256, 4),
+        (8, 16, 2),
+        (32, 64, 2),
+        (128, 128, 2),
+        (256, 256, 2),
+    ]
 
 
 @pytest.mark.hc_split_sinkhorn_forward
@@ -114,13 +146,22 @@ def test_mhc_split_sinkhorn(batch, seqlen, hc_mult):
     torch.testing.assert_close(comb_triton, comb_dv, rtol=1e-4, atol=1e-4)
 
 
-MHC_PRE_CONFIGS = list(
-    product(
-        [512, 1024, 2048, 8192],  # n
-        [1280, 2560, 4096],  # hidden_size
-        [2, 4],  # hc_mult
+if cfg.QUICK_MODE:
+    MHC_PRE_CONFIGS = list(
+        product(
+            [512, 2048],  # n
+            [1280, 4096],  # hidden_size
+            [4],  # hc_mult
+        )
     )
-)
+else:
+    MHC_PRE_CONFIGS = list(
+        product(
+            [512, 1024, 2048, 8192],  # n
+            [1280, 2560, 4096],  # hidden_size
+            [2, 4],  # hc_mult
+        )
+    )
 
 
 def generate_mhc_pre_data(
@@ -183,13 +224,22 @@ def test_mhc_pre_vs_ref(n, hidden_size, hc_mult):
     torch.testing.assert_close(li_triton.cpu(), li_ref, rtol=1e-2, atol=1e-2)
 
 
-MHC_BWD_CONFIGS = list(
-    product(
-        [256, 1024, 4096, 65536],  # seqlen
-        [4],  # n_stream (optimized kernel only supports n_stream=4)
-        [20],  # sinkhorn_iters
+if cfg.QUICK_MODE:
+    MHC_BWD_CONFIGS = list(
+        product(
+            [256, 4096],  # seqlen
+            [4],  # n_stream
+            [20],  # sinkhorn_iters
+        )
     )
-)
+else:
+    MHC_BWD_CONFIGS = list(
+        product(
+            [256, 1024, 4096, 65536],  # seqlen
+            [4],  # n_stream (optimized kernel only supports n_stream=4)
+            [20],  # sinkhorn_iters
+        )
+    )
 
 
 def generate_mhc_bwd_data(
@@ -229,24 +279,31 @@ def test_mhc_bwd_vs_ref(seqlen, n_stream, sinkhorn_iters):
     torch.testing.assert_close(out_triton.cpu(), out_ref, rtol=1e-4, atol=1e-4)
 
 
-MHC_HC_HEAD_FUSED_CONFIGS = [
-    (1, 1280, 4),
-    (4, 2560, 4),
-    (16, 4096, 4),
-    (64, 7168, 4),
-    (256, 1280, 2),
-    (256, 1280, 4),
-    (512, 1280, 2),
-    (512, 1280, 4),
-    (512, 2560, 2),
-    (512, 2560, 4),
-    (1024, 2560, 2),
-    (1024, 2560, 4),
-    (2048, 4096, 2),
-    (2048, 4096, 4),
-    (4096, 1280, 2),
-    (4096, 1280, 4),
-]
+if cfg.QUICK_MODE:
+    MHC_HC_HEAD_FUSED_CONFIGS = [
+        (1, 1280, 4),
+        (16, 4096, 4),
+        (512, 2560, 4),
+    ]
+else:
+    MHC_HC_HEAD_FUSED_CONFIGS = [
+        (1, 1280, 4),
+        (4, 2560, 4),
+        (16, 4096, 4),
+        (64, 7168, 4),
+        (256, 1280, 2),
+        (256, 1280, 4),
+        (512, 1280, 2),
+        (512, 1280, 4),
+        (512, 2560, 2),
+        (512, 2560, 4),
+        (1024, 2560, 2),
+        (1024, 2560, 4),
+        (2048, 4096, 2),
+        (2048, 4096, 4),
+        (4096, 1280, 2),
+        (4096, 1280, 4),
+    ]
 
 
 def generate_hc_head_fused_data(
