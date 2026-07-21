@@ -34,6 +34,37 @@ class NormBenchmark(base.GenericBenchmark):
         ]
 
 
+class LayerNormBackwardLargeMBenchmark(base.Benchmark):
+    DEFAULT_SHAPES = [
+        ((64, 16, 64, 16), (16,)),
+        ((128, 16, 16, 32), (32,)),
+        ((32768, 128), (128,)),
+        ((32768, 256), (256,)),
+        ((32768, 257), (257,)),
+    ]
+    DEFAULT_SHAPE_DESC = "input_shape, normalized_shape"
+
+    def get_input_iter(self, dtype):
+        for shape, normalized_shape in self.shapes:
+            grad_out = torch.randn(shape, dtype=dtype, device=self.device)
+            inp = torch.randn(shape, dtype=dtype, device=self.device)
+            weight = torch.randn(normalized_shape, dtype=dtype, device=self.device)
+            bias = torch.randn(normalized_shape, dtype=dtype, device=self.device)
+            _, mean, rstd = torch.ops.aten.native_layer_norm(
+                inp, normalized_shape, weight, bias, 1e-5
+            )
+            yield (
+                grad_out,
+                inp,
+                normalized_shape,
+                mean,
+                rstd,
+                weight,
+                bias,
+                [True, True, True],
+            )
+
+
 def input_fn(shape, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device)
     layer_shape = shape[1:]
@@ -71,6 +102,16 @@ def test_layer_norm_backward():
     bench = NormBenchmark(
         op_name="layer_norm_backward",
         input_fn=input_fn_backward,
+        torch_op=torch.ops.aten.native_layer_norm_backward,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.layer_norm_backward
+def test_layer_norm_backward_large_m():
+    bench = LayerNormBackwardLargeMBenchmark(
+        op_name="layer_norm_backward_large_m",
         torch_op=torch.ops.aten.native_layer_norm_backward,
         dtypes=consts.FLOAT_DTYPES,
     )

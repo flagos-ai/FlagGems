@@ -297,6 +297,40 @@ def softmax_heur_tile_m(args):
     return max(1, 1024 // args["TILE_N"])
 
 
+def layer_norm_heur_resident_dx_min_rows(_args):
+    return 32768
+
+
+def layer_norm_heur_resident_dx_max_n(_args):
+    return 512
+
+
+def layer_norm_heur_resident_dx_tile_elements(_args):
+    return 512
+
+
+def layer_norm_heur_resident_dx_program_waves(_args):
+    return 8
+
+
+def layer_norm_heur_resident_dx_full_row_grid(args):
+    return args["TILE_N"] >= 256
+
+
+def layer_norm_heur_affine_rows_per_program(_args):
+    return 256
+
+
+def layer_norm_heur_affine_block_col_size(args):
+    if args["N"] <= 16 or (args["IS_LOW_PRECISION"] and args["N"] <= 32):
+        return 16
+    return 32
+
+
+def layer_norm_heur_affine_min_row_groups(_args):
+    return 64
+
+
 def uniform_heur_block(args):
     if args["N"] <= 512:
         return 512
@@ -452,6 +486,18 @@ HEURISTICS_CONFIGS = {
     "index_add": {
         "BLOCK_M": index_add_heur_block_m,
         "BLOCK_N": index_add_heur_block_n,
+    },
+    "layer_norm_backward_resident_dx": {
+        "MIN_ROWS": layer_norm_heur_resident_dx_min_rows,
+        "MAX_RESIDENT_N": layer_norm_heur_resident_dx_max_n,
+        "TILE_ELEMENTS": layer_norm_heur_resident_dx_tile_elements,
+        "PROGRAM_WAVES": layer_norm_heur_resident_dx_program_waves,
+        "FULL_ROW_GRID": layer_norm_heur_resident_dx_full_row_grid,
+    },
+    "layer_norm_weight_bias_backward": {
+        "ROWS_PER_PROGRAM": layer_norm_heur_affine_rows_per_program,
+        "BLOCK_COL_SIZE": layer_norm_heur_affine_block_col_size,
+        "MIN_ROW_GROUPS": layer_norm_heur_affine_min_row_groups,
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
