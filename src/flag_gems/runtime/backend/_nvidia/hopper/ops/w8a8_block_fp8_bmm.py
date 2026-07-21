@@ -27,7 +27,7 @@ if has_triton_tle(3, 6, 0):
     try:
         import triton.experimental.tle.language as tle
 
-        HAS_TLE_W8A8_BLOCK_FP8_BMM = True
+        HAS_TLE_W8A8_BLOCK_FP8_BMM = hasattr(tle.gpu, "alloc_barriers")
     except ImportError:
         tle = None
         HAS_TLE_W8A8_BLOCK_FP8_BMM = False
@@ -268,136 +268,138 @@ def _tle_w8a8_block_fp8_bmm_load_partition(
             )
 
 
-@libentry()
-@libtuner(
-    configs=_get_tle_w8a8_block_fp8_bmm_configs(),
-    key=["B", "M_aligned", "N", "K"],
-    strategy=["default", "align32", "align32", "align32"],
-    policy=_TLEW8A8BlockFP8BMMTuner,
-    flagtune_op_name="w8a8_block_fp8_bmm",
-    flagtune_expand_op_name="w8a8_block_fp8_bmm",
-)
-@triton.jit
-def w8a8_block_fp8_bmm_kernel(
-    x_desc,
-    y_desc,
-    xs_ptr,
-    z_ptr,
-    ys_ptr,
-    xs_sB: tl.constexpr,
-    xs_sM: tl.constexpr,
-    xs_sKb: tl.constexpr,
-    z_sB: tl.constexpr,
-    z_sM: tl.constexpr,
-    z_sN: tl.constexpr,
-    B: tl.constexpr,
-    M: tl.constexpr,
-    M_aligned: tl.constexpr,
-    N: tl.constexpr,
-    K: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    TILE_ORDER: tl.constexpr,
-    SWAP_AB: tl.constexpr,
-    X_ELEM_BYTES: tl.constexpr,
-    Y_ELEM_BYTES: tl.constexpr,
-    num_warps: tl.constexpr,
-    num_stages: tl.constexpr,
-    num_sms: tl.constexpr,
-):
-    _ = num_warps
-    x_smem = tle.gpu.alloc(
-        [num_stages, 1, BLOCK_M, BLOCK_K],
-        dtype=x_desc.dtype,
-        layout=None,
-        scope=tle.gpu.smem,
-    )
-    y_smem = tle.gpu.alloc(
-        [num_stages, BLOCK_N, BLOCK_K],
-        dtype=y_desc.dtype,
-        layout=None,
-        scope=tle.gpu.smem,
-    )
-    empty_x = tle.gpu.alloc_barriers(
-        num_barriers=num_stages, arrive_count=1, init=tle.gpu.READY
-    )
-    empty_y = tle.gpu.alloc_barriers(
-        num_barriers=num_stages, arrive_count=1, init=tle.gpu.READY
-    )
-    full_x = tle.gpu.alloc_barriers(
-        num_barriers=num_stages,
-        arrive_count=1,
-        expect_bytes=BLOCK_M * BLOCK_K * X_ELEM_BYTES,
-    )
-    full_y = tle.gpu.alloc_barriers(
-        num_barriers=num_stages,
-        arrive_count=1,
-        expect_bytes=BLOCK_N * BLOCK_K * Y_ELEM_BYTES,
-    )
+if HAS_TLE_W8A8_BLOCK_FP8_BMM:
 
-    tle.gpu.warp_specialize(
-        [
-            (
-                _tle_w8a8_block_fp8_bmm_compute_partition,
-                (
-                    x_smem,
-                    y_smem,
-                    empty_x,
-                    empty_y,
-                    full_x,
-                    full_y,
-                    xs_ptr,
-                    z_ptr,
-                    ys_ptr,
-                    xs_sB,
-                    xs_sM,
-                    xs_sKb,
-                    z_sB,
-                    z_sM,
-                    z_sN,
-                    B,
-                    M,
-                    M_aligned,
-                    N,
-                    K,
-                    BLOCK_M,
-                    BLOCK_N,
-                    BLOCK_K,
-                    TILE_ORDER,
-                    SWAP_AB,
-                    num_stages,
-                    num_sms,
-                ),
-            ),
-            (
-                _tle_w8a8_block_fp8_bmm_load_partition,
-                (
-                    x_desc,
-                    y_desc,
-                    x_smem,
-                    y_smem,
-                    empty_x,
-                    empty_y,
-                    full_x,
-                    full_y,
-                    B,
-                    M,
-                    M_aligned,
-                    N,
-                    K,
-                    BLOCK_M,
-                    BLOCK_N,
-                    BLOCK_K,
-                    TILE_ORDER,
-                    num_stages,
-                    num_sms,
-                ),
-            ),
-        ],
-        [1],
-        [24],
+    @libentry()
+    @libtuner(
+        configs=_get_tle_w8a8_block_fp8_bmm_configs(),
+        key=["B", "M_aligned", "N", "K"],
+        strategy=["default", "align32", "align32", "align32"],
+        policy=_TLEW8A8BlockFP8BMMTuner,
+        flagtune_op_name="w8a8_block_fp8_bmm",
+        flagtune_expand_op_name="w8a8_block_fp8_bmm",
     )
+    @triton.jit
+    def w8a8_block_fp8_bmm_kernel(
+        x_desc,
+        y_desc,
+        xs_ptr,
+        z_ptr,
+        ys_ptr,
+        xs_sB: tl.constexpr,
+        xs_sM: tl.constexpr,
+        xs_sKb: tl.constexpr,
+        z_sB: tl.constexpr,
+        z_sM: tl.constexpr,
+        z_sN: tl.constexpr,
+        B: tl.constexpr,
+        M: tl.constexpr,
+        M_aligned: tl.constexpr,
+        N: tl.constexpr,
+        K: tl.constexpr,
+        BLOCK_M: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+        BLOCK_K: tl.constexpr,
+        TILE_ORDER: tl.constexpr,
+        SWAP_AB: tl.constexpr,
+        X_ELEM_BYTES: tl.constexpr,
+        Y_ELEM_BYTES: tl.constexpr,
+        num_warps: tl.constexpr,
+        num_stages: tl.constexpr,
+        num_sms: tl.constexpr,
+    ):
+        _ = num_warps
+        x_smem = tle.gpu.alloc(
+            [num_stages, 1, BLOCK_M, BLOCK_K],
+            dtype=x_desc.dtype,
+            layout=None,
+            scope=tle.gpu.smem,
+        )
+        y_smem = tle.gpu.alloc(
+            [num_stages, BLOCK_N, BLOCK_K],
+            dtype=y_desc.dtype,
+            layout=None,
+            scope=tle.gpu.smem,
+        )
+        empty_x = tle.gpu.alloc_barriers(
+            num_barriers=num_stages, arrive_count=1, init=tle.gpu.READY
+        )
+        empty_y = tle.gpu.alloc_barriers(
+            num_barriers=num_stages, arrive_count=1, init=tle.gpu.READY
+        )
+        full_x = tle.gpu.alloc_barriers(
+            num_barriers=num_stages,
+            arrive_count=1,
+            expect_bytes=BLOCK_M * BLOCK_K * X_ELEM_BYTES,
+        )
+        full_y = tle.gpu.alloc_barriers(
+            num_barriers=num_stages,
+            arrive_count=1,
+            expect_bytes=BLOCK_N * BLOCK_K * Y_ELEM_BYTES,
+        )
+
+        tle.gpu.warp_specialize(
+            [
+                (
+                    _tle_w8a8_block_fp8_bmm_compute_partition,
+                    (
+                        x_smem,
+                        y_smem,
+                        empty_x,
+                        empty_y,
+                        full_x,
+                        full_y,
+                        xs_ptr,
+                        z_ptr,
+                        ys_ptr,
+                        xs_sB,
+                        xs_sM,
+                        xs_sKb,
+                        z_sB,
+                        z_sM,
+                        z_sN,
+                        B,
+                        M,
+                        M_aligned,
+                        N,
+                        K,
+                        BLOCK_M,
+                        BLOCK_N,
+                        BLOCK_K,
+                        TILE_ORDER,
+                        SWAP_AB,
+                        num_stages,
+                        num_sms,
+                    ),
+                ),
+                (
+                    _tle_w8a8_block_fp8_bmm_load_partition,
+                    (
+                        x_desc,
+                        y_desc,
+                        x_smem,
+                        y_smem,
+                        empty_x,
+                        empty_y,
+                        full_x,
+                        full_y,
+                        B,
+                        M,
+                        M_aligned,
+                        N,
+                        K,
+                        BLOCK_M,
+                        BLOCK_N,
+                        BLOCK_K,
+                        TILE_ORDER,
+                        num_stages,
+                        num_sms,
+                    ),
+                ),
+            ],
+            [1],
+            [24],
+        )
 
 
 @libentry()
