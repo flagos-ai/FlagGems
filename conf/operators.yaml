@@ -2284,6 +2284,17 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: diagonal_scatter
+    description: Scatter source values into the diagonal of a tensor with optional offset.
+    for:
+      - diagonal_scatter
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: diff
     description: |
       Computes the n-th forward difference along the given dimension.
@@ -4682,6 +4693,17 @@ ops:
       - LinearAlg
     stages:
       - alpha: '5.4'
+  - id: linalg_svdvals
+    description: Computes the singular values of a matrix.
+    for:
+      - linalg_svdvals
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linear
     description: |
       Applies a linear transformation to the incoming data: y = x @ W^T + b.
@@ -5924,6 +5946,20 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: nested_view_from_buffer_copy
+    description: |
+      Creates a nested tensor from a flat buffer using component sizes, strides,
+      and offsets, with a Metax backend specialization.
+    for:
+      - _nested_view_from_buffer_copy
+    labels:
+      - aten
+      - KernelGen
+      - Metax
+    kind:
+      - Tensor
     stages:
       - alpha: '5.4'
   - id: new_full
@@ -8436,6 +8472,16 @@ ops:
       - KernelGen
     kind:
       - Math
+  - id: special_shifted_chebyshev_polynomial_w
+    kind:
+      - Math
+    labels:
+      - aten
+      - KernelGen
+    description: |
+      Computes the shifted Chebyshev polynomial of the second kind W_n(x).
+    for:
+      - special.shifted_chebyshev_polynomial_w
     stages:
       - alpha: '5.4'
   - id: special_xlog1py
