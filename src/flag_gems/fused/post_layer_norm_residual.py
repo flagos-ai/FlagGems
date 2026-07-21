@@ -61,17 +61,13 @@ def post_layer_norm_residual_one_pass_kernel(
     rstd = tl.math.rsqrt(variance + eps)
 
     if SAVE_STATS:
-        tl.store(mean_ptr + row_offsets, mean, mask=row_mask)
-        tl.store(rstd_ptr + row_offsets, rstd, mask=row_mask)
+        stats_offsets = row_offsets[:, None]
+        stats_mask = row_mask[:, None]
+        tl.store(mean_ptr + stats_offsets, mean[:, None], mask=stats_mask)
+        tl.store(rstd_ptr + stats_offsets, rstd[:, None], mask=stats_mask)
 
-    if weight_ptr is None:
-        weight = 1.0
-    else:
-        weight = tl.load(weight_ptr + col_offsets, mask=col_mask, other=0.0)
-    if bias_ptr is None:
-        bias = 0.0
-    else:
-        bias = tl.load(bias_ptr + col_offsets, mask=col_mask, other=0.0)
+    weight = tl.load(weight_ptr + col_offsets, mask=col_mask, other=0.0)
+    bias = tl.load(bias_ptr + col_offsets, mask=col_mask, other=0.0)
     residual = tl.load(residual_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
 
     output = centered * rstd[:, None] * weight + bias + residual
@@ -154,14 +150,8 @@ def post_layer_norm_residual_loop_kernel(
             other=0.0,
             eviction_policy="evict_first",
         ).to(tl.float32)
-        if weight_ptr is None:
-            weight = 1.0
-        else:
-            weight = tl.load(weight_ptr + col_offsets, mask=mask, other=0.0)
-        if bias_ptr is None:
-            bias = 0.0
-        else:
-            bias = tl.load(bias_ptr + col_offsets, mask=mask, other=0.0)
+        weight = tl.load(weight_ptr + col_offsets, mask=mask, other=0.0)
+        bias = tl.load(bias_ptr + col_offsets, mask=mask, other=0.0)
         output = weight * (input - mean) * rstd + bias + residual
         tl.store(output_ptr + pid * N + col_offsets, output, mask=mask)
 
@@ -173,14 +163,8 @@ def post_layer_norm_residual_loop_kernel(
         residual = tl.load(
             residual_ptr + pid * N + col_offsets, eviction_policy="evict_first"
         ).to(tl.float32)
-        if weight_ptr is None:
-            weight = 1.0
-        else:
-            weight = tl.load(weight_ptr + col_offsets)
-        if bias_ptr is None:
-            bias = 0.0
-        else:
-            bias = tl.load(bias_ptr + col_offsets)
+        weight = tl.load(weight_ptr + col_offsets)
+        bias = tl.load(bias_ptr + col_offsets)
         output = weight * (input - mean) * rstd + bias + residual
         tl.store(output_ptr + pid * N + col_offsets, output)
 
@@ -339,11 +323,18 @@ def post_layer_norm_residual(
     normalized_shape = _normalize_shape(normalized_shape)
     _validate_inputs(input, residual, normalized_shape, weight, bias)
 
-    if input.numel() == 0 or not input.is_contiguous() or not residual.is_contiguous():
+    # Inputs without a full affine pair or dense layout use the composed path.
+    if (
+        input.numel() == 0
+        or weight is None
+        or bias is None
+        or not input.is_contiguous()
+        or not residual.is_contiguous()
+    ):
         return torch.layer_norm(input, normalized_shape, weight, bias, eps) + residual
 
-    weight = None if weight is None else weight.contiguous()
-    bias = None if bias is None else bias.contiguous()
+    weight = weight.contiguous()
+    bias = bias.contiguous()
     return PostLayerNormResidual.apply(
         input, residual, normalized_shape, weight, bias, eps
     )
