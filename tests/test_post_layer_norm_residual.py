@@ -38,6 +38,12 @@ BOUNDARY_CASES = [
 AFFINE_MODES = ("both", "weight", "bias", "none")
 
 
+def _configure_backward_test_env(monkeypatch):
+    if flag_gems.vendor_name == "mthreads":
+        # Keep compatibility with the older LLVM stack used by this backend.
+        monkeypatch.setenv("DISABLE_LLVM_OPT", "1")
+
+
 def _make_affine(normalized_shape, dtype, mode):
     weight = None
     bias = None
@@ -173,10 +179,10 @@ def test_post_layer_norm_residual_optional_affine(
 
 
 @pytest.mark.post_layer_norm_residual
-def test_post_layer_norm_residual_large_normalized_shape():
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_post_layer_norm_residual_large_normalized_shape(dtype):
     shape = (2, 4097)
     normalized_shape = (4097,)
-    dtype = torch.float32
     input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     residual = torch.randn_like(input)
     weight, bias = _make_affine(normalized_shape, dtype, "both")
@@ -246,7 +252,8 @@ def test_post_layer_norm_residual_validates_normalized_shape():
 @pytest.mark.post_layer_norm_residual
 @pytest.mark.parametrize("shape,normalized_shape", CORE_CASES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_post_layer_norm_residual_backward(shape, normalized_shape, dtype):
+def test_post_layer_norm_residual_backward(monkeypatch, shape, normalized_shape, dtype):
+    _configure_backward_test_env(monkeypatch)
     _assert_backward_close(shape, normalized_shape, dtype)
 
 
@@ -254,26 +261,33 @@ def test_post_layer_norm_residual_backward(shape, normalized_shape, dtype):
 @pytest.mark.parametrize("shape,normalized_shape", BOUNDARY_CASES)
 @pytest.mark.parametrize("affine_mode", AFFINE_MODES)
 def test_post_layer_norm_residual_backward_optional_affine(
-    shape, normalized_shape, affine_mode
+    monkeypatch, shape, normalized_shape, affine_mode
 ):
+    _configure_backward_test_env(monkeypatch)
     _assert_backward_close(
         shape, normalized_shape, torch.float32, affine_mode=affine_mode
     )
 
 
 @pytest.mark.post_layer_norm_residual
-def test_post_layer_norm_residual_backward_large_normalized_shape():
-    _assert_backward_close((2, 4097), (4097,), torch.float32)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_post_layer_norm_residual_backward_large_normalized_shape(monkeypatch, dtype):
+    _configure_backward_test_env(monkeypatch)
+    _assert_backward_close((2, 4097), (4097,), dtype)
 
 
 @pytest.mark.post_layer_norm_residual
-def test_post_layer_norm_residual_backward_residual_only():
+def test_post_layer_norm_residual_backward_residual_only(monkeypatch):
+    _configure_backward_test_env(monkeypatch)
     shape = (16, 64)
     input = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     residual = torch.randn_like(input, requires_grad=True)
+    weight, bias = _make_affine((64,), torch.float32, "both")
     grad_output = torch.randn_like(input)
 
-    output = flag_gems.post_layer_norm_residual(input, residual, (64,))
+    output = flag_gems.post_layer_norm_residual(
+        input, residual, (64,), weight, bias, 1e-5
+    )
     (grad_residual,) = torch.autograd.grad(output, residual, grad_output)
 
     utils.gems_assert_close(grad_residual, grad_output, torch.float32)
