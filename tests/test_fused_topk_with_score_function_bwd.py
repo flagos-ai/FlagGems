@@ -8,6 +8,8 @@ from flag_gems.fused.fused_topk_with_score_function_bwd import (
     fused_topk_with_score_function_bwd,
 )
 
+pytestmark = pytest.mark.fused_topk_with_score_function_bwd
+
 
 def _sigmoid(x):
     return 1.0 / (1.0 + torch.exp(-x))

@@ -73,13 +73,10 @@ class FusedTopkWithScoreFunctionBwdBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "num_tokens, num_experts, topk"
 
     def __init__(self, score_function, use_pre_softmax=True):
-        score_names = {0: "sigmoid", 1: "softmax", 2: "sqrtsoftplus"}
         self.score_function = score_function
         self.use_pre_softmax = use_pre_softmax
         super().__init__(
-            op_name=(
-                "fused_topk_with_score_function_bwd_" f"{score_names[score_function]}"
-            ),
+            op_name="fused_topk_with_score_function_bwd",
             torch_op=_torch_fused_topk_with_score_function_bwd,
             gems_op=fused_topk_with_score_function_bwd,
             dtypes=[torch.float16, torch.bfloat16, torch.float32],
