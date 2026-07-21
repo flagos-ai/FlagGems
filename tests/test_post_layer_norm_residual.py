@@ -159,6 +159,27 @@ def test_post_layer_norm_residual_forward(shape, normalized_shape, dtype):
 
 
 @pytest.mark.post_layer_norm_residual
+def test_post_layer_norm_residual_no_grad_with_grad_inputs():
+    shape = (64, 128)
+    normalized_shape = (128,)
+    dtype = torch.float32
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    residual = torch.randn_like(input, requires_grad=True)
+    weight, bias = _make_affine(normalized_shape, dtype, "both")
+    weight.requires_grad_(True)
+    bias.requires_grad_(True)
+
+    expected = _reference(input, residual, normalized_shape, weight, bias, 1e-5)
+    with torch.no_grad():
+        actual = flag_gems.post_layer_norm_residual(
+            input, residual, normalized_shape, weight, bias, 1e-5
+        )
+
+    assert not actual.requires_grad
+    utils.gems_assert_close(actual, expected, dtype)
+
+
+@pytest.mark.post_layer_norm_residual
 @pytest.mark.parametrize("shape,normalized_shape", BOUNDARY_CASES)
 @pytest.mark.parametrize("affine_mode", AFFINE_MODES)
 @pytest.mark.parametrize("eps", (1e-5, 1e-6))
