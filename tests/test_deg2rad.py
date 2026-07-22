@@ -41,6 +41,20 @@ def test_deg2rad_(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
+    ref_data_ptr = ref_inp.data_ptr()
+    ref_out = torch.deg2rad_(ref_inp)
+
+    assert ref_out is ref_inp
+    assert ref_inp.data_ptr() == ref_data_ptr
+
+    act_inp = inp.clone()
+    act_data_ptr = act_inp.data_ptr()
+
+    with flag_gems.use_gems():
+        res_out = torch.deg2rad_(act_inp)
+
+    assert res_out is act_inp
+    assert act_inp.data_ptr() == act_data_ptr
     ref_inp.deg2rad_()
     with flag_gems.use_gems():
         inp.deg2rad_()

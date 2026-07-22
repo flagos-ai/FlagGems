@@ -30,8 +30,9 @@ def test_deg2rad():
 def test_deg2rad_():
     bench = base.UnaryPointwiseBenchmark(
         op_name="deg2rad_",
-        torch_op=lambda x: x.deg2rad_(),
+        torch_op=torch.deg2rad_,
         dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
     )
     bench.run()
 

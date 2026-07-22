@@ -82,3 +82,31 @@ def deg2rad_out(x: torch.Tensor, out: torch.Tensor):
         _launch(x_contig.view(-1), out_contig.view(-1))
         out.copy_(out_contig)
     return out
+
+def deg2rad_(A):
+    logger.debug("GEMS DEG2RAD_")
+    if not isinstance(A, torch.Tensor):
+        raise TypeError("deg2rad_ input must be a torch.Tensor")
+
+    if not A.is_cuda:
+        raise AssertionError("deg2rad_ expects CUDA tensors")
+
+    if A.is_complex():
+        raise NotImplementedError(
+            "Complex tensors are not supported in this Triton implementation"
+        )
+
+    n_elements = A.numel()
+    if n_elements == 0:
+        return A
+
+    # Fallback to PyTorch for non-floating or non-contiguous tensors
+    if (not A.is_floating_point()) or (not A.is_contiguous()):
+        factor = math.pi / 180.0
+        A.mul_(factor)
+        return A
+
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    scale = math.pi / 180.0
+    deg2rad_kernel[grid](A.view(-1), n_elements, scale, BLOCK_SIZE=1024)
+    return A
