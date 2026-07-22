@@ -1366,3 +1366,53 @@ argmin_split_k:
         - 4
         - 8
         - 16
+
+index_adjacent:
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 64
+  - META:
+      BLOCK_SIZE0: 128
+      BLOCK_SIZE1: 1
+  - META:
+      BLOCK_SIZE0: 8
+      BLOCK_SIZE1: 128
+  - META:
+      BLOCK_SIZE0: 16
+      BLOCK_SIZE1: 128
+  - META:
+      BLOCK_SIZE0: 8
+      BLOCK_SIZE1: 256
+  - META:
+      BLOCK_SIZE0: 16
+      BLOCK_SIZE1: 256
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 128
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 192
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 256
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 320
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 384
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 448
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 512
+  - META:
+      BLOCK_SIZE0: 1
+      BLOCK_SIZE1: 1024
+  - META:
+      BLOCK_SIZE0: 2
+      BLOCK_SIZE1: 1024
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 1024
