@@ -22,20 +22,52 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 _fp8_quant_cache = {}
+_amax_buf_cache = {}
 _FP8_MAX: float = 448.0
+_FP8_QUANT_BLOCK: int = 1024
+
+
+@triton.jit
+def _amax_reduce_kernel(x_ptr, amax_out_ptr, N, BLOCK_N: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_N + tl.arange(0, BLOCK_N)
+    mask = offsets < N
+    vals = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    local_max = tl.max(tl.abs(vals))
+    tl.atomic_max(amax_out_ptr, local_max)
+
+
+@triton.jit
+def _fp8_quant_kernel(x_ptr, x_fp8_ptr, scale_ptr, N, BLOCK_N: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_N + tl.arange(0, BLOCK_N)
+    mask = offsets < N
+    vals = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    scale = tl.load(scale_ptr)
+    q = tl.clamp(vals / scale, -448.0, 448.0)
+    tl.store(x_fp8_ptr + offsets, q.to(tl.float8e4nv), mask=mask)
 
 
 def _cached_per_tensor_quantize(x: torch.Tensor) -> "tuple[torch.Tensor, torch.Tensor]":
     key = x.data_ptr()
     cached = _fp8_quant_cache.get(key)
-    if cached is None:
-        amax = x.abs().max()
-        scale = (amax / _FP8_MAX).to(torch.float32)
-        x_fp8 = (x / scale).clamp(-_FP8_MAX, _FP8_MAX).to(torch.float8_e4m3fn)
-        _fp8_quant_cache[key] = (x_fp8, scale)
-        _set_cache_finalizer(key, x)
-    else:
+    if cached is not None:
         x_fp8, scale = cached
+        if x_fp8.shape == x.shape:
+            return x_fp8, scale
+    N = x.numel()
+    grid = (triton.cdiv(N, _FP8_QUANT_BLOCK),)
+    device_key = x.device.index
+    amax_buf = _amax_buf_cache.get(device_key)
+    if amax_buf is None:
+        amax_buf = torch.zeros(1, dtype=torch.float32, device=x.device)
+        _amax_buf_cache[device_key] = amax_buf
+    else:
+        amax_buf.fill_(0)
+    _amax_reduce_kernel[grid](x, amax_buf, N, BLOCK_N=_FP8_QUANT_BLOCK)
+    scale = amax_buf / _FP8_MAX
+    x_fp8 = torch.empty(x.shape, dtype=torch.float8_e4m3fn, device=x.device)
+    _fp8_quant_kernel[grid](x, x_fp8, scale, N, BLOCK_N=_FP8_QUANT_BLOCK)
+    _fp8_quant_cache[key] = (x_fp8, scale)
+    _set_cache_finalizer(key, x)
     return x_fp8, scale
 
 
