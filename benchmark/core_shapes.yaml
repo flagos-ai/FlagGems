@@ -661,6 +661,15 @@ ReshapeAndCacheFlashBenchmark:
     - [42, 8, 64, 8, 1024]
     - [42, 8, 80, 16, 10000]
 
+FractionalMaxPool2dBenchmark:
+  shapes:
+    - [4, 3, 224, 224]
+    - [16, 64, 56, 56]
+    - [32, 128, 28, 28]
+    - [64, 256, 14, 14]
+    - [128, 512, 7, 7]
+  shape_desc: "N, C, H, W"
+
 pixel_shuffle:
   shapes:
     - [1, 4, 2, 3, 2]
