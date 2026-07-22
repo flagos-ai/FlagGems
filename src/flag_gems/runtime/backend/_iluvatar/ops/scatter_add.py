@@ -69,7 +69,7 @@ def scatter_add_(x, dim, index, src):
 
 
 def scatter_add_0_impl(inp, dim, index, src):
-    from flag_gems.ops.scatter_add_ import scatter_add_0 as scatter_add_0_general
+    from flag_gems.ops.scatter_add import scatter_add_0 as scatter_add_0_general
 
     return scatter_add_0_general(inp, dim, index, src)
 
