@@ -253,6 +253,10 @@ from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.fp8_mqa_logits import fp8_mqa_logits
 from flag_gems.ops.fp8_paged_mqa_logits import fp8_paged_mqa_logits
 from flag_gems.ops.frac_ import frac, frac_
+from flag_gems.ops.fractional_max_pool2d import (
+    fractional_max_pool2d,
+    fractional_max_pool2d_backward,
+)
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
@@ -308,6 +312,7 @@ from flag_gems.ops.isneginf import isneginf, isneginf_out
 from flag_gems.ops.kron import kron
 from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
+from flag_gems.ops.lcm import lcm, lcm_
 from flag_gems.ops.ldl_factor_ex import ldl_factor_ex
 from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
@@ -528,6 +533,7 @@ from flag_gems.ops.softplus import softplus, softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_airy_ai import special_airy_ai, special_airy_ai_out
+from flag_gems.ops.special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from flag_gems.ops.special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
@@ -551,6 +557,10 @@ from flag_gems.ops.special_modified_bessel_k0 import (
     special_modified_bessel_k0,
     special_modified_bessel_k0_out,
 )
+from flag_gems.ops.special_modified_bessel_k1 import (
+    special_modified_bessel_k1,
+    special_modified_bessel_k1_out,
+)
 from flag_gems.ops.special_scaled_modified_bessel_k1 import (
     special_scaled_modified_bessel_k1,
     special_scaled_modified_bessel_k1_out,
@@ -565,6 +575,7 @@ from flag_gems.ops.special_shifted_chebyshev_polynomial_v import (
 from flag_gems.ops.special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
+from flag_gems.ops.special_sinc import special_sinc
 from flag_gems.ops.special_xlog1py import special_xlog1py
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
@@ -917,6 +928,8 @@ __all__ = [
     "fp8_paged_mqa_logits",
     "frac",
     "frac_",
+    "fractional_max_pool2d",
+    "fractional_max_pool2d_backward",
     "full",
     "full_like",
     "gather",
@@ -987,6 +1000,8 @@ __all__ = [
     "kthvalue",
     "layer_norm",
     "layer_norm_backward",
+    "lcm",
+    "lcm_",
     "ldl_factor",
     "ldl_factor_ex",
     "le",
@@ -1264,6 +1279,7 @@ __all__ = [
     "sort_stable",
     "special_airy_ai",
     "special_airy_ai_out",
+    "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
@@ -1284,12 +1300,15 @@ __all__ = [
     "special_logsumexp",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
+    "special_modified_bessel_k1",
+    "special_modified_bessel_k1_out",
     "special_scaled_modified_bessel_k1",
     "special_scaled_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",
     "special_shifted_chebyshev_polynomial_v",
     "special_shifted_chebyshev_polynomial_w",
+    "special_sinc",
     "special_xlog1py",
     "split_with_sizes_copy",
     "sqrt",

@@ -24,6 +24,10 @@ from .mm import mm, mm_out
 from .repeat import repeat
 from .scatter_add import scatter_add_
 from .special_hermite_polynomial_he import hermite_polynomial_he
+from .special_modified_bessel_k1 import (
+    special_modified_bessel_k1,
+    special_modified_bessel_k1_out,
+)
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
@@ -44,6 +48,8 @@ __all__ = [
     "matmul_int8",
     "repeat",
     "scatter_add_",
+    "special_modified_bessel_k1",
+    "special_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_w",
     "tile",
     "var",
