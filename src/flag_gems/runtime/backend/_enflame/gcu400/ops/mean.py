@@ -56,6 +56,8 @@ def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def mean(inp, *, dtype=None):
+    if not inp.is_contiguous():
+        inp = inp.contiguous()
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -391,6 +393,8 @@ def _largest_divisor_le(n, limit):
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
+    if not x.is_contiguous():
+        x = x.contiguous()
     if dtype is None:
         dtype = x.dtype
     if dim is None:

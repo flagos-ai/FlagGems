@@ -53,6 +53,8 @@ def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def mean(inp, *, dtype=None):
+    if not inp.is_contiguous():
+        inp = inp.contiguous()
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -226,6 +228,8 @@ def mean_kernel_dim_mid(
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
+    if not x.is_contiguous():
+        x = x.contiguous()
     return_dtype = x.dtype
     if x.dtype == torch.int64:
         x.dtype = torch.int32
