@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 attention:
 - gen: true
   param_map:
@@ -772,3 +786,125 @@ index_put:
   - 1024
   - 2048
   - 4096
+
+index_adjacent_ascend:
+- META:
+    BLOCK_M: 32
+    BLOCK_S: 1
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 16
+    BLOCK_S: 1
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 32
+    BLOCK_S: 2
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 16
+    BLOCK_S: 2
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 32
+    BLOCK_S: 4
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 16
+    BLOCK_S: 4
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 32
+    BLOCK_S: 8
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 16
+    BLOCK_S: 8
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 32
+    BLOCK_S: 16
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 16
+    BLOCK_S: 16
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 32
+    BLOCK_S: 32
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 16
+    BLOCK_S: 32
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 4
+    BLOCK_S: 64
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 16
+    BLOCK_S: 128
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 8
+    BLOCK_S: 128
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 32
+    BLOCK_S: 128
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 8
+    BLOCK_S: 512
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 16
+    BLOCK_S: 256
+    LAYOUT: 0
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 32
+    BLOCK_S: 8192
+    LAYOUT: 1
+    SUFFIX_TILES_PER_PROGRAM: 1
+- META:
+    BLOCK_M: 32
+    BLOCK_S: 8192
+    LAYOUT: 1
+    SUFFIX_TILES_PER_PROGRAM: 2
+- META:
+    BLOCK_M: 32
+    BLOCK_S: 8192
+    LAYOUT: 1
+    SUFFIX_TILES_PER_PROGRAM: 4
+- META:
+    BLOCK_M: 32
+    BLOCK_S: 8192
+    LAYOUT: 1
+    SUFFIX_TILES_PER_PROGRAM: 8
+- META:
+    BLOCK_M: 32
+    BLOCK_S: 8192
+    LAYOUT: 1
+    SUFFIX_TILES_PER_PROGRAM: 16
+- META:
+    BLOCK_M: 32
+    BLOCK_S: 8192
+    LAYOUT: 1
+    SUFFIX_TILES_PER_PROGRAM: 32
