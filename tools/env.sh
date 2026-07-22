@@ -61,6 +61,14 @@ case $BACKEND in
   kunlunxin)
     export LD_LIBRARY_PATH=/xcudart/lib:/usr/local/cuda/lib64
     export XPU_EVENT_KL3_ENABLE=1
+    export TRITON_XPU_ARCH=3
+    export ENABLE_ALL_OP=1
+    export PYTHONWARNINGS="ignore::UserWarning"
+    export TORCHINDUCTOR_UNIQUE_KERNEL_NAMES=1
+    export XMLIR_ENABLE_MOCK_TORCH_COMPILE=0
+    export TORCHINDUCTOR_COMPILE_THREADS=1
+    export GEMS_VENDOR=kunlunxin
+    export FLAGTREE_BACKEND=xpu
     ;;
   metax)
     export MACA_PATH=${MACA_PATH:-/opt/maca}
