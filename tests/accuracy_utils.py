@@ -235,6 +235,8 @@ def to_cpu(res, ref):
 
 def gems_assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
     res = to_cpu(res, ref)
+    print("res:", res)
+    print("ref:", ref)
     flag_gems.testing.assert_close(
         res, ref, dtype, equal_nan=equal_nan, reduce_dim=reduce_dim, atol=atol
     )
@@ -242,6 +244,8 @@ def gems_assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4)
 
 def gems_assert_equal(res, ref, equal_nan=False):
     res = to_cpu(res, ref)
+    print("res:", res)
+    print("ref:", ref)
     flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
 
 

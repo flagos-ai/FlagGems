@@ -18,6 +18,8 @@ def test_bernoulli_(shape, dtype):
     with flag_gems.use_gems():
         x.bernoulli_(p)
 
+    print("res:", x)
+
     # Check that all values are 0 or 1
     assert ((x == 0) | (x == 1)).all()
 
@@ -34,6 +36,8 @@ def test_bernoulli_various_p(shape, dtype, p):
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         x.bernoulli_(p)
+
+    print("res:", x)
 
     # Check that all values are 0 or 1
     assert ((x == 0) | (x == 1)).all()
@@ -56,6 +60,8 @@ def test_bernoulli(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         res_out = torch.bernoulli(inp)
+
+    print("res:", res_out)
 
     # Check that all values are 0 or 1
     assert ((res_out == 0) | (res_out == 1)).all()
