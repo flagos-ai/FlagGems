@@ -2717,6 +2717,28 @@ ops:
       - Science
     stages:
       - stable: '2.2'
+  - id: erfc
+    description: Computes the complementary error function element-wise using a Triton kernel.
+    for:
+      - erfc
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: erfc_
+    description: The in-place version of `erfc()`.
+    for:
+      - erfc_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: erfinv
     description: Computes the inverse error function of `input`.
     for:
