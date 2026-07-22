@@ -5166,6 +5166,7 @@ ops:
       Rows beyond the number of nonzero elements are filled with `fill_value`.
     for:
       - nonzero_static
+      - nonzero_static.out
     labels:
       - aten
     kind:

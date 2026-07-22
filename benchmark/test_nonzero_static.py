@@ -27,6 +27,7 @@ BENCH_CASES = [
 
 
 def _make_input(shape, dtype, nnz_ratio, device):
+    torch.manual_seed(0)
     mask = torch.rand(shape, device=device) < nnz_ratio
 
     if dtype == torch.bool:
