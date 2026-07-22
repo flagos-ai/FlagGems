@@ -68,12 +68,12 @@ def adaptive_avg_pool2d_kernel(
 
     # Adaptive pooling: compute adaptive windows
     # i_start = floor(i * in_h / out_h)
-    # i_end = floor((i + 1) * in_h / out_h)
+    # i_end = ceil((i + 1) * in_h / out_h)
     h_start = h_out_offsets[:, None] * in_h // out_h
-    h_end = ((h_out_offsets[:, None] + 1) * in_h) // out_h
+    h_end = ((h_out_offsets[:, None] + 1) * in_h + out_h - 1) // out_h
 
     w_start = w_out_offsets[None, :] * in_w // out_w
-    w_end = ((w_out_offsets[None, :] + 1) * in_w) // out_w
+    w_end = ((w_out_offsets[None, :] + 1) * in_w + out_w - 1) // out_w
 
     # For the last element, extend to the end of input
     h_end = tl.where(h_out_offsets[:, None] == out_h - 1, in_h, h_end)
@@ -92,8 +92,8 @@ def adaptive_avg_pool2d_kernel(
     input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
 
     # Find the maximum window size
-    max_win_h = (in_h + out_h - 1) // out_h
-    max_win_w = (in_w + out_w - 1) // out_w
+    max_win_h = (in_h + out_h - 1) // out_h + 1
+    max_win_w = (in_w + out_w - 1) // out_w + 1
 
     # Loop over all possible positions in the max window
     for kh in range(64):
