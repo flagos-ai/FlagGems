@@ -1,3 +1,4 @@
+from ._make_dep_token import _make_dep_token
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from .addmm import addmm
 from .amax import amax
@@ -40,6 +41,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_make_dep_token",
     "_nested_view_from_buffer_copy",
     "_unique2",
     "addmm",

@@ -40,6 +40,7 @@ from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
+from flag_gems.ops._make_dep_token import _make_dep_token
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
@@ -671,6 +672,7 @@ __all__ = [
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
+    "_make_dep_token",
     "_masked_scale",
     "_nested_view_from_buffer_copy",
     "_pdist_backward",
