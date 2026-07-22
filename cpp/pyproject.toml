@@ -24,7 +24,7 @@ build-backend = "scikit_build_core.build"
 # The vendor suffix is injected at build time (see tools/set_cpp_vendor.sh and
 # setup.sh): __VENDOR__ is replaced with cuda / musa / npu / gcu / ix so that
 # each backend produces its own distribution, e.g. flag-gems-cpp-cuda.
-name = "flag-gems-cpp-__VENDOR__"
+name = "flag-gems-cpp-cuda"
 
 dynamic = ["version"]
 

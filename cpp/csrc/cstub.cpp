@@ -20,6 +20,20 @@
 
 namespace py = pybind11;
 
+// Helper function to wrap unsafe_index_put_cpp for pybind11.
+// A standalone function is needed (instead of a lambda) because pybind11 3.0.x
+// cannot deduce the signature of a lambda with std::vector<std::optional<...>> parameters.
+at::Tensor unsafe_index_put_pybind(const at::Tensor& self,
+                                   const std::vector<std::optional<at::Tensor>>& indices,
+                                   const at::Tensor& values,
+                                   bool accumulate) {
+  c10::List<std::optional<at::Tensor>> indices_list;
+  for (auto& idx : indices) {
+    indices_list.push_back(idx);
+  }
+  return flag_gems::unsafe_index_put_cpp(self, indices_list, values, accumulate);
+}
+
 // TODO: use pytorch's argparse utilities to generate CPython bindings, since it is more efficient than
 // bindings provided by torch library, since it is in a boxed fashion
 PYBIND11_MODULE(c_operators, m) {
@@ -137,6 +151,12 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("flash_attn_varlen_func", &flag_gems::flash_attn_varlen_func);
   m.def("rwkv_mm_sparsity", &flag_gems::rwkv_mm_sparsity);
   m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
+  m.def("unsafe_index_put",
+        &unsafe_index_put_pybind,
+        py::arg("self"),
+        py::arg("indices"),
+        py::arg("values"),
+        py::arg("accumulate"));
   m.def("copy_", &flag_gems::copy_);
   m.def("to_copy", &flag_gems::to_copy);
   m.def("fp8_matmul",

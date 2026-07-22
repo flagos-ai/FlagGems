@@ -38,8 +38,10 @@ std::filesystem::path get_triton_src_path() {
     if (std::filesystem::exists(installed_script_path)) {
       return installed_script_path;
     } else {
+      // Source-tree fallback: this file is <repo>/cpp/lib/utils.cpp, and the
+      // kernels live in <repo>/triton_src (three levels up, not two).
       std::filesystem::path source_script_path =
-          std::filesystem::path(__FILE__).parent_path().parent_path() / "triton_src";
+          std::filesystem::path(__FILE__).parent_path().parent_path().parent_path() / "triton_src";
       return source_script_path;
     }
   }();

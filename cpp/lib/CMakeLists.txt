@@ -41,6 +41,8 @@ add_library(operators
             rwkv_mm_sparsity.cpp
             rwkv_ka_fusion.cpp
             copy.cpp
+            unsafe_index_put.cpp
+            unsafe_index_put_sort.cu
             accuracy_utils.cpp
             fp8_matmul.cpp
             fp8_matmul_direct.cpp)
@@ -48,6 +50,16 @@ add_library(operators
 if (TRITON_GE_3P5)
   target_compile_definitions(operators PRIVATE TRITON_GE_3P5)
 endif()
+
+# DispatchStub.h (pulled in via ATen/native/TensorAdvancedIndexing.h for the
+# index_put_with_sort_stub call in unsafe_index_put.cpp) emits get_call_ptr()
+# invocations whose arity depends on these CPU-capability macros. Prebuilt
+# PyTorch wheels are compiled with both defined (the exported symbol takes
+# DEFAULT+AVX512+AVX2 pointers), so we must define them identically or the
+# link fails with an undefined reference to the 2-arg get_call_ptr.
+target_compile_definitions(operators PRIVATE
+  HAVE_AVX512_CPU_DEFINITION
+  HAVE_AVX2_CPU_DEFINITION)
 
 target_include_directories(operators
   PUBLIC
@@ -60,6 +72,10 @@ if(FLAGGEMS_BACKEND STREQUAL "CUDA" OR FLAGGEMS_BACKEND STREQUAL "IX")
       PUBLIC Torch::Torch
       PRIVATE TritonJIT::triton_jit
       PRIVATE CUDA::cudart CUDA::cuda_driver)
+    # CUDA 13 moved CUB/Thrust headers under <toolkit>/include/cccl.
+    if(EXISTS "${CUDAToolkit_INCLUDE_DIRS}/cccl")
+      target_include_directories(operators PRIVATE "${CUDAToolkit_INCLUDE_DIRS}/cccl")
+    endif()
 elseif(FLAGGEMS_BACKEND STREQUAL "NPU")
     target_link_npu_libraries(operators)
     target_link_libraries(operators

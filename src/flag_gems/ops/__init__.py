@@ -56,6 +56,7 @@ from flag_gems.ops._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
     _thnn_fused_lstm_cell_backward_impl,
 )
+from flag_gems.ops._unsafe_index_put import _unsafe_index_put
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._unsafe_masked_index_put_accumulate import (
     _unsafe_masked_index_put_accumulate,
@@ -683,6 +684,7 @@ __all__ = [
     "_thnn_fused_lstm_cell",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
+    "_unsafe_index_put",
     "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
     "_unsafe_view",

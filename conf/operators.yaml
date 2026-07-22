@@ -9358,6 +9358,21 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: unsafe_index_put
+    description: |
+      Functional advanced indexing scatter: returns a new tensor with `values`
+      put at the positions given by `indices`; with accumulate=True, sums into
+      the existing values. The accumulate path replicates PyTorch's sort-based
+      kernel bit-exactly on CUDA.
+    for:
+      - _unsafe_index_put
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: unsafe_masked_index
     description: Gathers elements from self at given indices where mask is True, filling unmasked positions with a scalar value.
     for:
