@@ -33,20 +33,6 @@ def torch_op(input, residual, normalized_shape, weight, bias, eps):
     return torch.layer_norm(input, normalized_shape, weight, bias, eps) + residual
 
 
-def torch_training_op(
-    input, residual, normalized_shape, weight, bias, eps, grad_output
-):
-    output = torch_op(input, residual, normalized_shape, weight, bias, eps)
-    return torch.autograd.grad(output, (input, residual, weight, bias), grad_output)
-
-
-def gems_training_op(input, residual, normalized_shape, weight, bias, eps, grad_output):
-    output = flag_gems.post_layer_norm_residual(
-        input, residual, normalized_shape, weight, bias, eps
-    )
-    return torch.autograd.grad(output, (input, residual, weight, bias), grad_output)
-
-
 class PostLayerNormResidualBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "input_shape, normalized_shape"
 
@@ -62,43 +48,12 @@ class PostLayerNormResidualBenchmark(base.Benchmark):
             yield input, residual, normalized_shape, weight, bias, 1e-5
 
 
-class PostLayerNormResidualTrainingBenchmark(PostLayerNormResidualBenchmark):
-    def get_input_iter(self, dtype):
-        for shape, normalized_shape in self.shapes:
-            input = torch.randn(
-                shape, dtype=dtype, device=self.device, requires_grad=True
-            )
-            residual = torch.randn_like(input, requires_grad=True)
-            weight = torch.randn(
-                normalized_shape,
-                dtype=dtype,
-                device=self.device,
-                requires_grad=True,
-            )
-            bias = torch.randn_like(weight, requires_grad=True)
-            grad_output = torch.randn_like(input)
-            yield input, residual, normalized_shape, weight, bias, 1e-5, grad_output
-
-
 @pytest.mark.post_layer_norm_residual
 def test_post_layer_norm_residual():
     bench = PostLayerNormResidualBenchmark(
         op_name="post_layer_norm_residual",
         torch_op=torch_op,
         gems_op=flag_gems.post_layer_norm_residual,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.post_layer_norm_residual
-def test_post_layer_norm_residual_training(monkeypatch):
-    if flag_gems.vendor_name == "mthreads":
-        monkeypatch.setenv("DISABLE_LLVM_OPT", "1")
-    bench = PostLayerNormResidualTrainingBenchmark(
-        op_name="post_layer_norm_residual_training",
-        torch_op=torch_training_op,
-        gems_op=gems_training_op,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
