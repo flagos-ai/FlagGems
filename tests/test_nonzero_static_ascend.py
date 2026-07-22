@@ -61,7 +61,7 @@ def assert_matches(shape, dtype, nnz_ratio, size, fill_value):
     )
     assert actual.dtype == torch.int64
     assert tuple(actual.shape) == (size, len(shape))
-    utils.gems_assert_equal(actual, expected)
+    utils.gems_assert_equal(actual.cpu(), expected)
 
 
 @pytest.mark.nonzero_static
@@ -84,7 +84,7 @@ def test_nonzero_static_ascend_non_contiguous():
     actual = flag_gems.nonzero_static(
         x_cpu.to(flag_gems.device), size=128, fill_value=7
     )
-    utils.gems_assert_equal(actual, expected)
+    utils.gems_assert_equal(actual.cpu(), expected)
 
 
 @pytest.mark.nonzero_static
@@ -95,7 +95,7 @@ def test_nonzero_static_ascend_registered():
     expected = torch.nonzero_static(utils.to_reference(x_cpu), size=16, fill_value=-1)
     with flag_gems.use_gems(include=["nonzero_static"]):
         actual = torch.nonzero_static(x_npu, size=16, fill_value=-1)
-    utils.gems_assert_equal(actual, expected)
+    utils.gems_assert_equal(actual.cpu(), expected)
 
 
 @pytest.mark.nonzero_static
@@ -109,7 +109,7 @@ def test_nonzero_static_ascend_out():
         actual = torch.nonzero_static(x_npu, size=16, fill_value=7, out=out)
     assert actual is out
     assert tuple(actual.shape) == (16, 2)
-    utils.gems_assert_equal(actual, expected)
+    utils.gems_assert_equal(actual.cpu(), expected)
 
 
 @pytest.mark.nonzero_static
@@ -118,7 +118,7 @@ def test_nonzero_static_ascend_sparse_group_fallback():
     x_cpu[[1, 2, 3, 40, 41, 2050]] = 1
     expected = torch.nonzero_static(utils.to_reference(x_cpu), size=4, fill_value=-1)
     actual = flag_gems.nonzero_static(x_cpu.to(flag_gems.device), size=4, fill_value=-1)
-    utils.gems_assert_equal(actual, expected)
+    utils.gems_assert_equal(actual.cpu(), expected)
 
 
 @pytest.mark.nonzero_static
@@ -132,4 +132,4 @@ def test_nonzero_static_ascend_bfloat16_special_values():
     actual = flag_gems.nonzero_static(
         x_cpu.to(flag_gems.device), size=128, fill_value=-1
     )
-    utils.gems_assert_equal(actual, expected)
+    utils.gems_assert_equal(actual.cpu(), expected)
