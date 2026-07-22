@@ -23,6 +23,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+_ONE_PASS_HEURISTICS = runtime.get_heuristic_config("post_layer_norm_residual")
+
 
 @triton.jit
 def _prev_multiple_of(a, b):
@@ -228,11 +230,9 @@ def _post_layer_norm_residual_forward(
 
     with torch_device_fn.device(input.device):
         if N <= 4096:
-            tile_n = triton.next_power_of_2(N)
-            if N <= 128:
-                tile_m = triton.cdiv(1024, tile_n)
-            else:
-                tile_m = max(1, min(8, 4096 // tile_n))
+            heuristic_args = {"M": M, "N": N}
+            tile_m = _ONE_PASS_HEURISTICS["TILE_M"](heuristic_args)
+            tile_n = _ONE_PASS_HEURISTICS["TILE_N"](heuristic_args)
             grid = (triton.cdiv(M, tile_m), 1, 1)
             post_layer_norm_residual_one_pass_kernel[grid](
                 input,
