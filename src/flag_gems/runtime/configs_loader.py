@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import copy
 import inspect
 import os
@@ -304,7 +318,7 @@ class TunedConfigLoader(object):
                 if block * tpp <= 1024
             ]
 
-        if op_name == "w8a8_block_fp8_general":
+        if op_name in ("w8a8_block_fp8_general", "w8a8_block_fp8_bmm_general"):
             return [
                 triton.Config(
                     {
@@ -362,7 +376,7 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "w8a8_block_fp8_general_splitk":
+        if op_name in ("w8a8_block_fp8_general_splitk", "w8a8_block_fp8_bmm_splitk"):
             return [
                 triton.Config(
                     {
@@ -520,6 +534,18 @@ class TunedConfigLoader(object):
             "w8a8_block_fp8_bmm": self._build_single_expand_spec(
                 "w8a8_block_fp8_bmm",
                 expand_yaml_path=self._get_expand_config_path("w8a8_block_fp8_bmm"),
+            ),
+            "w8a8_block_fp8_bmm_general": self._build_single_expand_spec(
+                "w8a8_block_fp8_bmm_general",
+                expand_yaml_path=self._get_expand_config_path(
+                    "w8a8_block_fp8_bmm_general"
+                ),
+            ),
+            "w8a8_block_fp8_bmm_splitk": self._build_single_expand_spec(
+                "w8a8_block_fp8_bmm_splitk",
+                expand_yaml_path=self._get_expand_config_path(
+                    "w8a8_block_fp8_bmm_splitk"
+                ),
             ),
             "mm_splitk": self._build_single_expand_spec("mm_splitk"),
             "sparse_attention": self._build_single_expand_spec("sparse_attention"),
