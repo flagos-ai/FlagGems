@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 attention:
   - gen: true
     param_map:
@@ -1133,6 +1147,26 @@ cross_entropy_loss_sum_and_scale:
       - 256
       - 1024
 conj_physical:
+  - META:
+      BLOCK_SIZE: 64
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 128
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 8
+
+_conj:
   - META:
       BLOCK_SIZE: 64
     num_warps: 8
@@ -2405,25 +2439,141 @@ rot90:
     num_warps: 16
     num_stages: 1
 
+fractional_max_pool2d_forward:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_H: block_h
+        BLOCK_W: block_w
+      num_stages: stages
+      num_warps: warps
+    block_h: [8, 16, 32]
+    block_w: [8, 16, 32]
+    stages: [2, 3, 4]
+    warps: [2, 4, 8]
+
+fractional_max_pool2d_backward:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_H: block_h
+        BLOCK_W: block_w
+      num_stages: stages
+      num_warps: warps
+    block_h: [8, 16, 32]
+    block_w: [8, 16, 32]
+    stages: [2, 3, 4]
+    warps: [2, 4, 8]
+
+index_select_backward:
+  - META:
+      BLOCK: 128
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK: 256
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK: 512
+    num_warps: 8
+    num_stages: 1
+
 fused_marlin_moe_mxfp4:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE_N: block_size_n
+        GROUP_SIZE_M: 1
+      num_stages: stages
+      num_warps: warps
+      maxnreg: 255
+    block_size_n: [16, 32, 64]
+    stages: [4, 5, 6]
+    warps: [2, 4]
+  - META: {BLOCK_SIZE_N: 32, GROUP_SIZE_M: 1}
+    num_warps: 2
+    num_stages: 4
+    maxnreg: 96
+  - META: {BLOCK_SIZE_N: 32, GROUP_SIZE_M: 1}
+    num_warps: 2
+    num_stages: 5
+    maxnreg: 96
+  - META: {BLOCK_SIZE_N: 64, GROUP_SIZE_M: 1}
+    num_warps: 2
+    num_stages: 4
+    maxnreg: 96
+  - META: {BLOCK_SIZE_N: 32, GROUP_SIZE_M: 1}
+    num_warps: 2
+    num_stages: 4
+    maxnreg: 64
+  - META: {BLOCK_SIZE_N: 32, GROUP_SIZE_M: 1}
+    num_warps: 2
+    num_stages: 5
+    maxnreg: 64
+  - META: {BLOCK_SIZE_N: 64, GROUP_SIZE_M: 1}
+    num_warps: 2
+    num_stages: 4
+    maxnreg: 64
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE_N: block_size_n
+        GROUP_SIZE_M: group_size_m
+      num_stages: stages
+      num_warps: warps
+      maxnreg: 255
+    block_size_n: [128, 256]
+    group_size_m: [1, 4]
+    stages: [2, 3, 4]
+    warps: [4, 8]
+
+fused_marlin_moe_mxfp4_gemm_silu:
+  - META: {BLOCK_SIZE_N: 32, GROUP_SIZE_M: 1}
+    num_warps: 2
+    num_stages: 4
+    maxnreg: 255
+  - META: {BLOCK_SIZE_N: 32, GROUP_SIZE_M: 1}
+    num_warps: 2
+    num_stages: 4
+    maxnreg: 96
+  - META: {BLOCK_SIZE_N: 32, GROUP_SIZE_M: 1}
+    num_warps: 2
+    num_stages: 4
+    maxnreg: 64
+  - META: {BLOCK_SIZE_N: 32, GROUP_SIZE_M: 1}
+    num_warps: 2
+    num_stages: 5
+    maxnreg: 255
+  - META: {BLOCK_SIZE_N: 32, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 4
+    maxnreg: 255
   - META: {BLOCK_SIZE_N: 64, GROUP_SIZE_M: 1}
     num_warps: 4
     num_stages: 3
+    maxnreg: 255
   - META: {BLOCK_SIZE_N: 64, GROUP_SIZE_M: 1}
     num_warps: 4
     num_stages: 4
+    maxnreg: 255
   - META: {BLOCK_SIZE_N: 128, GROUP_SIZE_M: 1}
     num_warps: 4
     num_stages: 3
+    maxnreg: 255
   - META: {BLOCK_SIZE_N: 128, GROUP_SIZE_M: 1}
     num_warps: 4
     num_stages: 4
-  - META: {BLOCK_SIZE_N: 256, GROUP_SIZE_M: 1}
-    num_warps: 4
-    num_stages: 3
-  - META: {BLOCK_SIZE_N: 256, GROUP_SIZE_M: 1}
+    maxnreg: 255
+  - META: {BLOCK_SIZE_N: 128, GROUP_SIZE_M: 4}
     num_warps: 4
     num_stages: 4
+    maxnreg: 255
+  - META: {BLOCK_SIZE_N: 256, GROUP_SIZE_M: 4}
+    num_warps: 8
+    num_stages: 3
+    maxnreg: 255
+
 w8a8_block_fp8_bmm:
   - gen: true
     param_map:
@@ -2578,3 +2728,112 @@ compute_global_topk_indices_and_lens:
       TPP: 1
     num_warps: 4
     num_stages: 3
+
+w8a8_block_fp8_bmm_general:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        GROUP_M: group_m
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 16
+      - 32
+      - 64
+    block_n:
+      - 32
+      - 64
+    block_k:
+      - 128
+    group_m:
+      - 1
+      - 4
+      - 8
+    warps:
+      - 4
+    stages:
+      - 3
+
+w8a8_block_fp8_bmm_splitk:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        SPLIT_K: split_k
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 16
+      - 64
+    block_n:
+      - 32
+      - 64
+    block_k:
+      - 128
+    split_k:
+      - 4
+      - 8
+      - 16
+      - 32
+    warps:
+      - 4
+    stages:
+      - 3
+
+index_adjacent:
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 64
+  - META:
+      BLOCK_SIZE0: 8
+      BLOCK_SIZE1: 1
+  - META:
+      BLOCK_SIZE0: 16
+      BLOCK_SIZE1: 1
+  - META:
+      BLOCK_SIZE0: 32
+      BLOCK_SIZE1: 1
+  - META:
+      BLOCK_SIZE0: 64
+      BLOCK_SIZE1: 1
+  - META:
+      BLOCK_SIZE0: 128
+      BLOCK_SIZE1: 1
+  - META:
+      BLOCK_SIZE0: 8
+      BLOCK_SIZE1: 128
+  - META:
+      BLOCK_SIZE0: 16
+      BLOCK_SIZE1: 128
+  - META:
+      BLOCK_SIZE0: 8
+      BLOCK_SIZE1: 256
+  - META:
+      BLOCK_SIZE0: 16
+      BLOCK_SIZE1: 256
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 128
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 192
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 256
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 320
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 384
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 448
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 512

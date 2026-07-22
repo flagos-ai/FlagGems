@@ -1,7 +1,25 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 import flag_gems
+from flag_gems.fused.moe_align_block_size import (
+    moe_align_block_size_singleton,
+    moe_align_block_size_small_grouped,
+)
 
 from . import accuracy_utils as utils
 
@@ -78,18 +96,18 @@ def torch_moe_align_block_size(
         num_expert_tokens = expert_tokens.shape[0]
 
         if num_expert_tokens > 0:
-            in_sorted_token_ids[
-                current_pos : current_pos + num_expert_tokens
-            ] = expert_tokens
+            in_sorted_token_ids[current_pos : current_pos + num_expert_tokens] = (
+                expert_tokens
+            )
 
             expert_blocks_needed = expert_padded_counts[expert_id] // block_size
 
             expert_id_new = expert_id
             if expert_map is not None:
                 expert_id_new = expert_map[expert_id]
-            expert_ids[
-                current_block : current_block + expert_blocks_needed
-            ] = expert_id_new
+            expert_ids[current_block : current_block + expert_blocks_needed] = (
+                expert_id_new
+            )
 
             current_pos += expert_padded_counts[expert_id]
             current_block += expert_blocks_needed
@@ -315,3 +333,47 @@ def test_accuracy_moe_align_block_size_triton(num_experts, block_size, topk_ids_
     utils.gems_assert_close(
         num_tokens_post_pad, utils.to_reference(num_tokens_post_pad_ref), dtype=dtype
     )
+
+
+@pytest.mark.moe_align_block_size
+@pytest.mark.parametrize("fast_path", ["singleton", "small_grouped"])
+def test_accuracy_moe_align_block_size_fast_paths(fast_path):
+    device = flag_gems.device
+    block_size = 8
+    num_experts = 8
+
+    if fast_path == "singleton":
+        topk_ids = torch.tensor([[1, 3]], dtype=torch.int32, device=device)
+        actual = moe_align_block_size_singleton(topk_ids, block_size)
+    else:
+        topk_ids = torch.tensor(
+            [[0, 1], [1, 2], [2, 3], [3, 0]],
+            dtype=torch.int32,
+            device=device,
+        )
+        actual = moe_align_block_size_small_grouped(topk_ids, num_experts, block_size)
+
+    max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
+    expected = (
+        torch.empty(max_num_tokens_padded, dtype=torch.int32, device=device),
+        torch.empty(
+            max_num_tokens_padded // block_size,
+            dtype=torch.int32,
+            device=device,
+        ),
+        torch.empty(1, dtype=torch.int32, device=device),
+    )
+    torch_moe_align_block_size(
+        topk_ids,
+        num_experts,
+        block_size,
+        expected[0],
+        expected[1],
+        expected[2],
+    )
+
+    num_tokens = actual[2].item()
+    num_blocks = num_tokens // block_size
+    torch.testing.assert_close(actual[0][:num_tokens], expected[0][:num_tokens])
+    torch.testing.assert_close(actual[1][:num_blocks], expected[1][:num_blocks])
+    torch.testing.assert_close(actual[2], expected[2])

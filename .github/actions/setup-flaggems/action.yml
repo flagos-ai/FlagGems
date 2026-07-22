@@ -1,9 +1,23 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 name: "Setup FlagGems"
 description: "Run setup.sh for a vendor and optionally check GPU availability"
 
 inputs:
-  vendor:
-    description: "FlagGems backend name (e.g. nvidia-cuda133, mthreads, ascend-cann900)"
+  backend:
+    description: "FlagGems backend label (e.g. nvidia-cuda133, mthreads-musa520, ascend-cann900)"
     required: true
   gpu_check_script:
     description: "Path to GPU check script (leave empty to skip)"
@@ -15,10 +29,10 @@ runs:
   steps:
     - name: Setup FlagGems
       shell: bash
-      run: ./setup.sh ${{ inputs.vendor }}
+      run: ./setup.sh ${{ inputs.backend }}
 
     - name: Install vllm (nvidia only)
-      if: startsWith(inputs.vendor, 'nvidia')
+      if: startsWith(inputs.backend, 'nvidia')
       shell: bash
       env:
         VLLM_VERSION: "0.21.0"

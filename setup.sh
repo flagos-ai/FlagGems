@@ -1,4 +1,19 @@
 #!/bin/bash
+
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 set -euo pipefail
 
 RED='\033[0;31m'
@@ -45,24 +60,23 @@ UV_VERSION="0.11.22"
 UV_MIRROR="https://resource.flagos.net/repository/flagos-filestore/utils"
 
 printf "Checking uv ..."
+export PATH="${HOME}/.local/bin:$PATH"
 if command -v uv &>/dev/null; then
   printf " $(uv --version)"
   ok
 else
   printf " not found, installing ...\n"
-  export HOME=$(eval echo ~"$(whoami)")
   ARCH=$(uname -m)
   mkdir -p "$HOME/.local/bin"
   curl -sSf "${UV_MIRROR}/uv-${ARCH}-${UV_VERSION}-linux-gnu.tar.gz" \
     | tar xz -C "$HOME/.local/bin" 2>/dev/null \
     || { curl -LsSf https://astral.sh/uv/install.sh | sh; }
-  export PATH="$HOME/.local/bin:$PATH"
-  # Persist PATH for subsequent GitHub Actions steps
-  [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   command -v uv &>/dev/null || { printf "uv installation"; fail; }
   printf "Installed $(uv --version)"
   ok
 fi
+# Persist PATH for subsequent GitHub Actions steps
+[ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
 # ── Install Python via uv ────────────────────────────────────
 printf "Installing Python ${PYTHON_VERSION} ..."
@@ -116,26 +130,23 @@ if isinstance(tr, list):
     tr = ' '.join(tr)
 print(f'TRITON_PKGS=\"{tr}\"')
 
-post_install = []
-post_uninstall = []
-for item in b.get('post_install', []):
-    if isinstance(item, dict) and 'uninstall' in item:
-        post_uninstall.append(item['uninstall'])
-    else:
-        post_install.append(item)
-print(f'POST_INSTALL=\"{\" \".join(post_install)}\"')
-print(f'POST_UNINSTALL=\"{\" \".join(post_uninstall)}\"')
+triton_post = []
+for item in b.get('triton_post_install', []):
+    if isinstance(item, str):
+        triton_post.append(item)
+print(f'TRITON_POST_INSTALL=\"{\" \".join(triton_post)}\"')
 ")
 
 # ── C++ extensions ───────────────────────────────────────────
 # Set ENABLE_CPP=1 to build C++ wrapped operators.
 # Default: OFF (C++ extensions require vendor SDK and toolchain).
+# The main package is pure Python; when ENABLE_CPP=1 the native extension is
+# built and installed separately from the cpp/ subdirectory (see below).
 if [ "${ENABLE_CPP:-0}" = "1" ]; then
   if [ -z "${CMAKE_BACKEND}" ]; then
     echo "Error: ENABLE_CPP=1 but backend '${BACKEND}' does not support C++ extensions"
     exit 1
   fi
-  export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=${CMAKE_BACKEND}"
   printf "C++ extensions: ON (${CMAKE_BACKEND})"
   ok
 else
@@ -159,9 +170,25 @@ uv pip install --no-build-isolation ".[${BACKEND}]" \
   || fail
 ok
 
+# ── Install C++ wrapped operators (optional) ─────────────────
+# The native extension is a separate distribution (flag-gems-cpp-<vendor>) that
+# installs its .so files into the flag_gems/ namespace. Build it from cpp/ with
+# the vendor name injected into cpp/pyproject.toml.
+if [ "${ENABLE_CPP:-0}" = "1" ]; then
+  vendor_lc="$(echo "${CMAKE_BACKEND}" | tr '[:upper:]' '[:lower:]')"
+  tools/set_cpp_vendor.sh "${vendor_lc}" || fail
+  printf "Installing FlagGems C++ extensions [${CMAKE_BACKEND}] ..."
+  CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=${CMAKE_BACKEND}" \
+    uv pip install --no-build-isolation ./cpp \
+    --default-index "${FLAGOS_PYPI}" \
+    --index "${MIRROR}" \
+    || fail
+  ok
+fi
+
 # ── Compiler selection ───────────────────────────────────────
 # COMPILER controls which Triton-compatible compiler to use:
-#   COMPILER=flagtree → use FlagTree (default when available)
+#   COMPILER=flagtree → use FlagTree (error if unavailable)
 #   COMPILER=triton   → use vendor Triton
 #   unset             → auto: FlagTree if available, otherwise Triton
 COMPILER="${COMPILER:-}"
@@ -170,28 +197,19 @@ if [ -z "${COMPILER}" ]; then
   if [ -n "${FLAGTREE_PKGS}" ]; then
     COMPILER=flagtree
   else
+    printf "WARNING: FlagTree is not available for ${BACKEND}, falling back to Triton.\n"
     COMPILER=triton
   fi
 fi
 
 if [ "${COMPILER}" = "flagtree" ]; then
   if [ -n "${FLAGTREE_PKGS}" ]; then
-    # FlagTree installs into site-packages/triton, so any existing
-    # triton-prefixed packages must be removed first.
-    TRITON_INSTALLED=$(uv pip list 2>/dev/null | awk '{print $1}' | grep -i '^triton' || true)
-    if [ -n "${TRITON_INSTALLED}" ]; then
-      printf "Replacing Triton with FlagTree ..."
-      # echo "${TRITON_INSTALLED}" | xargs uv pip uninstall -q 2>/dev/null || true
-      uv pip uninstall "${TRITON_INSTALLED}"
-      ok
-    fi
     printf "Installing FlagTree ..."
-    uv pip uninstall ${FLAGTREE_PKGS}
     uv pip install -q ${FLAGTREE_PKGS} --default-index "${FLAGOS_PYPI}" || fail
     ok
   else
-    printf "FlagTree not available for ${BACKEND}, using Triton\n"
-    COMPILER=triton
+    echo "Error: COMPILER=flagtree but FlagTree is not available for '${BACKEND}'."
+    exit 1
   fi
 fi
 
@@ -199,6 +217,9 @@ if [ "${COMPILER}" = "triton" ] && [ -n "${TRITON_PKGS}" ]; then
   printf "Installing Triton ..."
   uv pip install -q ${TRITON_PKGS} --default-index "${FLAGOS_PYPI}" || fail
   ok
+elif [ "${COMPILER}" = "triton" ] && [ -z "${TRITON_PKGS}" ]; then
+  echo "Error: COMPILER=triton but no triton packages configured for '${BACKEND}'"
+  exit 1
 fi
 
 if [ "${COMPILER}" != "flagtree" ] && [ "${COMPILER}" != "triton" ]; then
@@ -206,19 +227,11 @@ if [ "${COMPILER}" != "flagtree" ] && [ "${COMPILER}" != "triton" ]; then
   exit 1
 fi
 
-# ── Vendor-specific post-install ──────────────────────────────
-if [ -n "${POST_INSTALL}" ]; then
-  for pkg in ${POST_INSTALL}; do
-    printf "Post-install: ${pkg} ..."
-    uv pip install -q "${pkg}" --default-index "${FLAGOS_PYPI}" || fail
-    ok
-  done
-fi
-
-if [ -n "${POST_UNINSTALL}" ]; then
-  for pkg in ${POST_UNINSTALL}; do
-    printf "Post-uninstall: ${pkg} ..."
-    uv pip uninstall -q "${pkg}" 2>/dev/null || true
+# ── Triton-specific post-install ──────────────────────────────
+if [ -n "${TRITON_POST_INSTALL}" ] && [ "${COMPILER}" = "triton" ]; then
+  for pkg in ${TRITON_POST_INSTALL}; do
+    printf "Triton post-install: ${pkg} ..."
+    uv pip install -q "${pkg}" --default-index "${FLAGOS_PYPI}" --index "${MIRROR}" || fail
     ok
   done
 fi
@@ -245,7 +258,7 @@ for k, v in b.get('env', {}).items():
     lines.append(f'export {k}={v}')
 
 for script in b.get('env_source', []):
-    lines.append(f'[ -f {script} ] && source {script}')
+    lines.append(f'[ -f {script} ] && source {script} || true')
 
 lines.append('# --- end FlagGems environment ---')
 
