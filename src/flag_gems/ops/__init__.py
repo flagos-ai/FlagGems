@@ -303,6 +303,7 @@ from flag_gems.ops.index_reduce import index_reduce_
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.index_select_backward import index_select_backward
 from flag_gems.ops.is_nonzero import is_nonzero
+from flag_gems.ops.is_strides_like_format import is_strides_like_format
 from flag_gems.ops.isclose import allclose, isclose
 from flag_gems.ops.isfinite import isfinite
 from flag_gems.ops.isin import isin
@@ -988,6 +989,7 @@ __all__ = [
     "index_select",
     "index_select_backward",
     "is_nonzero",
+    "is_strides_like_format",
     "isclose",
     "isfinite",
     "isin",
