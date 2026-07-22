@@ -58,7 +58,7 @@ ASCEND_FLAT_SORT_DTYPES = (
     torch.int16,
     torch.int32,
 )
-IS_NVIDIA_BACKEND = runtime_device.vendor_name == "nvidia"
+USE_RADIX_SELECT = runtime_device.vendor_name in ("nvidia", "iluvatar")
 
 
 def _triton_version_at_least(major, minor):
@@ -778,7 +778,9 @@ def flat_radix_find_index_kernel(
 
         desired = tl.load(state + 0).to(utype)
         keys = _to_order_key(vals, valid)
-        local_idx = tl.min(tl.where(valid & (keys == desired), offsets, N), axis=0)
+        local_idx = tl.min(tl.where(valid & (keys == desired), offsets, N), axis=0).to(
+            tl.int32
+        )
         tl.atomic_min(result_idx, local_idx, sem="relaxed")
 
 
@@ -1036,11 +1038,11 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
 
     inp = dim_compress(inp, dim)
     is_cuda = inp.is_cuda
-    is_nvidia = IS_NVIDIA_BACKEND
+    use_radix_select = USE_RADIX_SELECT
     is_ascend = inp.device.type == "npu"
     in_radix_range = MAX_BLOCK_N < N <= LONG_RADIX_REDUCTION_N
     use_cuda_histogram = (
-        is_nvidia
+        use_radix_select
         and is_cuda
         and CUDA_SUPPORTS_MASKED_HISTOGRAM
         and N > MAX_BLOCK_N
@@ -1061,7 +1063,12 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
         and in_radix_range
     )
 
-    if is_nvidia and is_cuda and inp.dtype in RADIX_SELECT_DTYPES and in_radix_range:
+    if (
+        use_radix_select
+        and is_cuda
+        and inp.dtype in RADIX_SELECT_DTYPES
+        and in_radix_range
+    ):
         flat_values = values.reshape(M)
         flat_indices = indices.reshape(M)
         block_n = _radix_block_n(inp, N)
@@ -1259,7 +1266,7 @@ def _nanmedian_cuda_flat_radix_select(inp, out=None):
         out = torch.empty((), dtype=flat.dtype, device=flat.device)
     valid_count = torch.empty((), dtype=torch.int64, device=flat.device)
     state = torch.empty((3,), dtype=torch.int64, device=flat.device)
-    result_idx = torch.empty((), dtype=torch.int64, device=flat.device)
+    result_idx = torch.empty((), dtype=torch.int32, device=flat.device)
     block_n = min(triton.next_power_of_2(n), FLAT_RADIX_BLOCK_N)
     grid = (triton.cdiv(n, block_n),)
     nbits = flat.element_size() * 8
@@ -1337,7 +1344,7 @@ def _nanmedian_flat_impl(inp, out=None):
         return result
 
     if (
-        IS_NVIDIA_BACKEND
+        USE_RADIX_SELECT
         and inp.is_cuda
         and inp.dtype in RADIX_SELECT_DTYPES
         and LONG_RADIX_REDUCTION_N < n <= INT32_MAX
