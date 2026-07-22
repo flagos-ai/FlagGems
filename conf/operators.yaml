@@ -9086,6 +9086,18 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: persistent_topk
+    description: |
+      Triton persistent top-K for DeepSeek V4 sparse attention inference.
+      Workspace-cached ternary search algorithm selecting top-k indices from logits rows.
+    for:
+      - None
+    labels:
+      - fused
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.3'
   - id: top_k_per_row_prefill
     description: |
       Triton top-K per row for DeepSeek V4 sparse attention prefill phase.
