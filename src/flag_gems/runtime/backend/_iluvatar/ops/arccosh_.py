@@ -21,5 +21,5 @@ def arccosh_func(x):
 
 
 def arccosh_(A):
-    logger.debug("ILUVATAR GEMS arccosh_")
+    logger.debug("ILUVATAR GEMS ARCCOSH_")
     return arccosh_func(A, out0=A)
