@@ -1,16 +1,37 @@
-[build-system]
-# The cmake and ninja packages are not supposed to be listed in build-system.requires.
-# The version expectation is "cmake>=3.20,<4.0", "ninja==1.13.0".
-# They must be installed separately for `--no-build-isolation` to work.
-requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3"]
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-build-backend = "scikit_build_core.build"
+[build-system]
+# setuptools is capped below 77: from 77.0 onward it adopts PEP 639 and emits
+# `License-File`, which bumps the wheel to Metadata-Version 2.4. Some package
+# indexes (e.g. Nexus) reject 2.4; <77 keeps the pure-Python wheel at 2.2.
+#
+# setuptools-scm is capped below 10: the 10.x line added an egg_info
+# file-finder integration (setuptools_scm/_integration/egg_info.py) that reads
+# `ignore_egg_info_in_manifest`, an attribute only present on newer setuptools.
+# Combined with the setuptools<77 pin above, `pip install .` then fails during
+# "Getting requirements to build wheel" with
+# `AttributeError: ignore_egg_info_in_manifest`. 9.x has no such integration.
+requires = ["setuptools>=64.0,<77", "setuptools-scm>=8,<10"]
+
+build-backend = "setuptools.build_meta"
 
 [project]
 
 name = "flag_gems"
 
-version = "5.4.0dev"
+dynamic = ["version"]
 
 description = "FlagGems is a function library written in Triton language."
 
@@ -55,13 +76,11 @@ dependencies = [
 ascend-cann850 = [
     "torch==2.9.0+cpu",
     "torch-npu==2.9.0",
-    "flagtree==0.6.0+ascend3.2",
 ]
 
 ascend-cann900 = [
     "torch==2.10.0+cpu",
     "torch-npu==2.10.0",
-    "flagtree==0.6.0+ascend3.5",
 ]
 
 cambricon = [
@@ -69,7 +88,6 @@ cambricon = [
     "torch==2.7.1+cpu",
     "torch-mlu==1.29.2+torch2.7.1",
     "torch-mlu-ops==1.8.0+torch2.7.1",
-    "triton==3.2.0+mlu1.7.2",
 ]
 
 enflame = [
@@ -78,22 +96,17 @@ enflame = [
     "torchaudio==2.10.0+cpu",
     "torchvision==0.25.0+cpu",
     "torch-gcu==2.10.0+3.7.20260408",
-    "triton-gcu==3.6.0+1.0.20260521.cc.1.9.10",
     "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323",
-    "flagtree==0.6.0+enflame3.6",
 ]
 
 hygon = [
     "torch==2.9.0+das.opt1.dtk2604",
-    "flagtree==0.5.1+hcu3.1",
 ]
 
 iluvatar = [
     "torch==2.7.1+corex.4.4.0",
     "torchaudio==2.7.1+corex.4.4.0",
     "torchvision==0.22.1+corex.4.4.0",
-    "triton==3.1.0+corex.4.4.0",
-    # "flagtree==0.5.1+iluvatar3.1"
 ]
 
 kunlunxin = [
@@ -112,59 +125,52 @@ kunlunxin = [
     "torch_xray==2.0.4",
     "xformers==0.0.29+1e7a8ec.d20260114",
     "xmlir==1.0.0.1",
-    # Triton cannot be installed with torch
-    # because torch requires triton==3.5.0
-    # "triton==3.0.0+a48aedef",
 ]
 
 metax = [
     "torch==2.8.0+metax3.7.2.0",
     "torchaudio==2.4.1+metax3.7.2.0",
     "torchvision==0.15.1+metax3.7.2.0",
-    "flagtree==3.1.0+metax3.7.2.0",
     "flash_attn==2.6.3+metax3.7.2.0torch2.8",
-    # "triton==3.0.0+metax3.7.2.0",
 ]
 
-mthreads = [
+mthreads-musa436 = [
     "torch==2.9.0+musa.4.3.6",
     "torch_musa==2.9.0",
-    "triton==3.6.0+git89458660",
     "mkl==2024.0.0",
-    # "flagtree==0.5.1+mthreads3.6",
+]
+
+mthreads-musa520 = [
+    "torch==2.9.1+musa5.2.0",
+    "torch_musa==2.9.1",
+    "mkl==2024.0.0",
 ]
 
 nvidia-cuda128 = [
     "torch==2.10.0+cu128",
     "torchaudio==2.10.0+cu128",
     "torchvision==0.25.0+cu128",
-    "flagtree==0.6.0",
 ]
 
 nvidia-cuda133 = [
     "torch==2.11.0+cu130",
     "torchaudio==2.11.0+cu130",
     "torchvision==0.26.0+cu130",
-    "flagtree==0.6.0",
 ]
 
 spacemit = [
     "torch==2.8.0+spacemit.0",
-    "triton==3.6.0+spacemit.a5",
 ]
 
 sunrise = [
     "torch==2.11.0+cpu",
     "torchaudio==2.11.0+cpu",
     "torchvision==0.26.0+cpu",
-    "torch-ptpu==0.2.1+gaf2c267.torch2.11",
-    "triton==3.4.0.6+gite4f6d6e4",
-    # "flagtree-0.4.0+sunrise3.4"
+    "torch-ptpu==0.2.3+torch2.11",
 ]
 
 thead = [
     "torch==2.9.0+ppu2.0.0.oe",
-    "triton==3.5.0+ppu2.0.0.oe",
 ]
 
 
@@ -174,17 +180,14 @@ tsingmicro = [
     "torchaudio==2.7.0+cpu",
     "torch_txda==0.1.0+20260615.37ba6bbd",
     "txops==0.1.0+20260508.60287151",
-    "flagtree==0.5.0.post20260612+git705a4064",
-    # "flagtree==0.5.0+tsingmicro3.3",
-    # "triton==3.3.0+git2e9c1195",
 ]
 
 # Test packages
 test = [
     "distro==1.9.0",
     "coverage==7.13.5",
-    "gitpython==3.1.50",
     "openpyxl==3.1.5",
+    "pandas==2.3.3",
     "pytest==9.0.3",
     "pytest-md-report==0.8.0",
     "scipy>=1.15.3",
@@ -195,6 +198,15 @@ example = [
     "transformers>=4.40.2",
 ]
 
+# C++ wrapped operators, distributed as per-vendor native extension packages.
+# `pip install flag-gems[cpp-cuda]` pulls in the matching native wheel, which
+# drops its .so files into the flag_gems/ namespace.
+cpp-cuda = ["flag-gems-cpp-cuda"]
+cpp-musa = ["flag-gems-cpp-musa"]
+cpp-npu = ["flag-gems-cpp-npu"]
+cpp-gcu = ["flag-gems-cpp-gcu"]
+cpp-ix = ["flag-gems-cpp-ix"]
+
 [project.urls]
 
 Repository = "https://github.com/flagos-ai/FlagGems"
@@ -204,21 +216,18 @@ Documentation = "https://flagos-ai.github.io/FlagGems"
 [project.scripts]
 flaggems-setup = "flag_gems._setup:main"
 
-[tool.setuptools.packages.find]
-
-where = ["src"]
+# Package discovery (including shipping the tests/ and benchmark/ suites under
+# collision-safe names) is defined in setup.py, so it is intentionally omitted
+# here — declaring `packages` in both places is an error.
 
 [tool.setuptools.package-data]
 
 "flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
 
-[tool.scikit-build]
-
-build.verbose = true
-logging.level = "INFO"
-wheel.install-dir = "flag_gems"
-build-dir = "build/{cache_tag}"
+[tool.setuptools_scm]
+write_to = "src/flag_gems/_version.py"
+version_scheme = "no-guess-dev"
 
 [tool.uv]
 
