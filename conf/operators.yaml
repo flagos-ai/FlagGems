@@ -8949,6 +8949,33 @@ ops:
       - Math
     stages:
       - stable: '3.0'
+  - id: te_rmsnorm_bwd
+    description: |
+      RMSNorm backward pass aligned with TransformerEngine's rmsnorm_bwd signature.
+      Computes gradients dx (w.r.t. input) and dgamma (w.r.t. weight).
+    for:
+      - te_rmsnorm_bwd
+    labels:
+      - fused
+      - Normalization
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: te_rmsnorm_fwd
+    description: |
+      RMSNorm forward pass aligned with TransformerEngine's rmsnorm_fwd signature.
+      Supports zero_centered_gamma, pre-allocated output tensor, and output dtype conversion.
+      Returns (output, None, rsigma).
+    for:
+      - te_rmsnorm_fwd
+    labels:
+      - fused
+      - Normalization
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: tensor_split
     description: |
       Splits a tensor into multiple sub-tensors along a given dimension,
