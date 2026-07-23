@@ -58,24 +58,30 @@ def amax_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, amax_val)
 
 
-def heur_m_block_size(args):
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
-
-
-def heur_n_block_size(args):
-    import builtins
-
-    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+# Row-reduce tile bounds for the along-dim path.
+#
+# BLOCK_M keeps the well-tuned cluster-count heuristic next_pow2(cdiv(M,12)) as
+# the default: it adapts to M (tiny M -> exact small tile, no masked row block --
+# a masked partial row block miscompiles bf16 on this XPU) and is what every
+# small/degenerate shape that dominates the two-level speedup average was tuned
+# for, so it is left untouched. The ONLY change is a clamp for the small-M +
+# very-huge-N regime below.
+_BLOCK_N_MAX = 8192
+# Small M + very huge N (e.g. [1024, 1048576]) leaves only a few row-programs
+# (M=1024 -> grid=8) which under-fills the 12 clusters; clamp BLOCK_M *down* to 8
+# to expose more row-parallelism (isolation, reduce-INSIDE: [1024,1048576] bf16
+# 34.97 -> 24.59ms, fp32 26.26 -> 19.11ms, ALL dtypes win). The threshold is set
+# above 65536 because at N=65536 the clamp is a wash / slight loss for fp32
+# (reduce-INSIDE bm8 2.55 vs bm128 1.94ms); only N>=~1M is a clear win. Clamp
+# DOWN only (min), so tiny M keeps its exact BLOCK_M and never gains a masked row
+# block.
+_SMALL_M = 4096
+_HUGE_N = 262144
+_SMALL_BLOCK_M = 8
 
 
 @libentry()
 # @triton.autotune(configs=runtime.get_tuned_config("amax"), key=["M", "N"])
-@triton.heuristics(
-    values={
-        "BLOCK_M": heur_m_block_size,
-        "BLOCK_N": heur_n_block_size,
-    },
-)
 @triton.jit
 def amax_kernel(
     inp,
@@ -92,7 +98,16 @@ def amax_kernel(
     out = out + rows
     row_mask = rows < M
 
-    _all = tl.full([BLOCK_M, BLOCK_N], value=-float("inf"), dtype=tl.float32)
+    # Keep only a [BLOCK_M, 1] running accumulator and reduce each [BLOCK_M,
+    # BLOCK_N] block along N *inside* the loop (reduce-INSIDE). This is the ONLY
+    # form that is numerically correct on this XPU: the reduce-OUTSIDE variant
+    # (persist a [BLOCK_M, BLOCK_N] tile, tl.max once after the loop) miscompiles
+    # for bf16 when full blocks are followed by a masked tail (verified: it fails
+    # tests/test_amax.py bf16 with a 0.0625 mismatch, while this form passes). The
+    # tiny [BLOCK_M, 1] live state also keeps the loop from materializing a giant
+    # 2D tile. The old code's UNBOUNDED BLOCK_M = next_pow2(cdiv(M,12)) heuristic
+    # is replaced by a bounded, grid-utilization-aware choice in the launcher.
+    acc = tl.full([BLOCK_M, 1], value=-float("inf"), dtype=tl.float32)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
@@ -100,9 +115,9 @@ def amax_kernel(
 
         a = tl.load(inp + cols, mask, other=-float("inf")).to(tl.float32)
         a = tl.where(mask, a, -float("inf"))
-        _all = tl.maximum(_all, a)
-    all = tl.max(_all, axis=1)[:, None]
-    tl.store(out, all, row_mask)
+        blk = tl.max(a, axis=1)[:, None]
+        acc = tl.maximum(acc, blk)
+    tl.store(out, acc, row_mask)
 
 
 def amax(inp, dim=None, keepdim=False):
@@ -147,9 +162,18 @@ def amax(inp, dim=None, keepdim=False):
 
         out = torch.empty(shape, dtype=dtype, device=inp.device)
 
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+        block_n = min(triton.next_power_of_2(N), _BLOCK_N_MAX)
+        # Default: the well-tuned cluster-count heuristic (unchanged from before).
+        # tiny M -> exact small tile (no masked row block, which miscompiles bf16).
+        block_m = triton.next_power_of_2(triton.cdiv(M, 12))
+        # Small M + very huge N under-fills the clusters -> clamp DOWN to 8 to
+        # expose more row-parallelism. Clamp only (min), never raising block_m for
+        # tiny M, so no shape gains a masked row block vs the default.
+        if M <= _SMALL_M and N >= _HUGE_N:
+            block_m = min(block_m, _SMALL_BLOCK_M)
+        grid = (triton.cdiv(M, block_m),)
         with torch_device_fn.device(inp.device):
-            amax_kernel[grid](inp, out, M, N, buffer_size_limit=2048)
+            amax_kernel[grid](inp, out, M, N, block_m, block_n, buffer_size_limit=2048)
         if not keepdim:
             out = out.squeeze(dim=dim)
         return out

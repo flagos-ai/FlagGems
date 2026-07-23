@@ -1094,6 +1094,18 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: binary_cross_entropy_with_logits
+    description: Compute the binary cross entropy loss with logits.
+    for:
+      - binary_cross_entropy_with_logits
+    labels:
+      - nn.functional
+      - KernelGen
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: bincount
     description: Count the frequency of each value in an array of non-negative integers.
     for:
@@ -2060,6 +2072,17 @@ ops:
     stages:
       - stable: '2.0'
       - removed: '3.0'
+  - id: cudnn_batch_norm_backward
+    description: Triton kernel implementation for cudnn_batch_norm_backward.
+    for:
+      - cudnn_batch_norm_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cudnn_convolution
     description: |
       A wrapper for cuDNN convolution backend.
@@ -4109,6 +4132,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: igammac_
+    description: |
+      In-place version of igammac. Computes the regularized upper incomplete gamma function complement.
+    for:
+      - igammac_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: ilshift
     description: Computes the in-place bitwise left shift of `self` by `other` bits.
     for:
@@ -8434,6 +8470,28 @@ ops:
       Computes the regularized lower incomplete gamma function P(a, x) element-wise.
     for:
       - special.gammainc
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_gammaln
+    description: Computes the logarithm of the absolute value of the Gamma function on input.
+    for:
+      - special.gammaln
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_gammaln_out
+    description: Out-of-place variant of special_gammaln that writes the result to the out tensor.
+    for:
+      - special.gammaln.out
     labels:
       - aten
       - KernelGen
