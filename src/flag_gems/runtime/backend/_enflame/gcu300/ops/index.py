@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import logging
 import os
@@ -292,9 +306,11 @@ def index(inp, indices):
         raise ValueError("at least one index must be provided")
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
 
@@ -432,7 +448,7 @@ def index(inp, indices):
 
     # Step 7: Handle empty tensor case
     if inp.numel() == 0:
-        return out
+        return out.contiguous()
 
     # Step 8: Extract only tensor indices for kernel
     tensor_indices = [idx for idx in indices if idx is not None]
@@ -453,5 +469,8 @@ def index(inp, indices):
         post_dims = list(range(index_rank + first_tensor_dim, out.ndim))
         new_order = pre_dims + broadcast_dims + post_dims
         out = out.permute(new_order)
+        result = torch.empty(out.shape, dtype=out.dtype, device=out.device)
+        result.copy_(out)
+        out = result
 
-    return out
+    return out.view(out.shape)

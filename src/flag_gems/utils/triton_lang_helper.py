@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 
 import triton
@@ -76,10 +90,18 @@ def _fallback_erfinv(x):
     return tl.where(x >= 0.0, y, -y)
 
 
+@triton.jit
+def _fallback_floor(x):
+    trunc = x.to(tl.int32).to(x.dtype)
+    needs_adjust = (x < 0.0) & (x != trunc)
+    return tl.where(needs_adjust, trunc - 1.0, trunc)
+
+
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
     "tanh": _fallback_tanh,
     "erfinv": _fallback_erfinv,
+    "floor": _fallback_floor,
 }
 
 
@@ -115,11 +137,13 @@ tl_extra_shim = _patch_missing_symbols(
         "fast_tanh",
         "finitef",
         "fmod",
+        "floor",
         "gelu_none",
         "gelu_tanh",
         "isfinited",
         "isinf",
         "isnan",
+        "lgamma",
         "log",
         "pow",
         "rint",

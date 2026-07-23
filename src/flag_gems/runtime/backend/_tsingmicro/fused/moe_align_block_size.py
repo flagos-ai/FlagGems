@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 from typing import Optional
 
@@ -47,7 +61,7 @@ def moe_align_block_size_stage1_tle(
 
     offsets_expert = pid * block_size_expert + tl.arange(0, block_size_expert)
     mask_expert = offsets_expert < numel_expert_ids
-    tl.store(expert_ids_ptr + offsets_expert, 0, mask=mask_expert)
+    tl.store(expert_ids_ptr + offsets_expert, -1, mask=mask_expert)
 
     start_idx = pid * tokens_per_thread
     off_c = (pid + 1) * num_experts
@@ -102,7 +116,7 @@ def moe_align_block_size_stage1(
 
     offsets_expert = pid * block_size_expert + tl.arange(0, block_size_expert)
     mask_expert = offsets_expert < numel_expert_ids
-    tl.store(expert_ids_ptr + offsets_expert, 0, mask=mask_expert)
+    tl.store(expert_ids_ptr + offsets_expert, -1, mask=mask_expert)
 
     start_idx = pid * tokens_per_thread
 
@@ -199,6 +213,7 @@ def moe_align_block_size_stage4(
         token_cnt = tl.load(tokens_cnts_ptr + off_t + expert_id)
         rank_post_pad = token_cnt + tl.load(cumsum_ptr + expert_id)
         tl.store(sorted_token_ids_ptr + rank_post_pad, i)
+        tl.debug_barrier()  # 解决随机bug
         tl.store(tokens_cnts_ptr + off_t + expert_id, token_cnt + 1)
 
 
