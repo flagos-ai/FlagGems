@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 addmm:
   - config:
     param_map:
@@ -157,6 +171,7 @@ fused_marlin_moe_mxfp4:
         GROUP_SIZE_M: group_size_m
       num_stages: stages
       num_warps: warps
+      maxnreg: maxnreg
     block_size_n:
       - 64
       - 128
@@ -175,6 +190,45 @@ fused_marlin_moe_mxfp4:
       - 2
       - 4
       - 8
+    maxnreg:
+      - 64
+      - 96
+      - 255
+  - strategy:
+      N: align32
+      K: align32
+      EM_BUCKET: align32
+      BLOCK_SIZE_M: align32
+      SWAP_AB: default
+fused_marlin_moe_mxfp4_gemm_silu:
+  - config:
+    param_map:
+      META:
+        BLOCK_SIZE_N: block_size_n
+        GROUP_SIZE_M: group_size_m
+      num_stages: stages
+      num_warps: warps
+      maxnreg: maxnreg
+    block_size_n:
+      - 32
+      - 64
+      - 128
+      - 256
+    group_size_m:
+      - 1
+      - 4
+    stages:
+      - 3
+      - 4
+      - 5
+    warps:
+      - 2
+      - 4
+      - 8
+    maxnreg:
+      - 64
+      - 96
+      - 255
   - strategy:
       N: align32
       K: align32
@@ -203,3 +257,152 @@ w8a8_block_fp8_bmm:
       M_aligned: align32
       N: align32
       K: align32
+compute_global_topk_indices_and_lens:
+  - config:
+    param_map:
+      META:
+        BLOCK: block
+        TPP: tpp
+      num_stages: stages
+      num_warps: warps
+    block:
+      - 16
+      - 32
+      - 64
+      - 128
+      - 256
+      - 512
+      - 1024
+    tpp:
+      - 1
+      - 2
+      - 4
+      - 8
+    stages:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+    warps:
+      - 1
+      - 2
+      - 4
+      - 8
+      - 16
+      - 32
+  - strategy:
+      topk: log
+      num_tokens: log
+mul:
+  - config:
+    param_map:
+      META:
+        BLOCK_SIZE: block_size
+      num_stages: stages
+      num_warps: warps
+    block_size:
+      - 128
+      - 256
+      - 512
+      - 1024
+      - 2048
+      - 4096
+      - 8192
+    stages:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+    warps:
+      - 1
+      - 2
+      - 4
+      - 8
+      - 16
+  - strategy:
+      n_elements: align32
+      n_cols: default
+      dtype: default
+w8a8_block_fp8_bmm_general:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        GROUP_M: group_m
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 16
+      - 64
+    block_n:
+      - 16
+      - 32
+      - 64
+    block_k:
+      - 128
+    group_m:
+      - 1
+      - 2
+      - 4
+      - 8
+    stages:
+      - 3
+      - 4
+      - 5
+      - 6
+    warps:
+      - 4
+  - strategy:
+      B: default
+      M: align32
+      N: align32
+      K: align32
+      stride_xm: align32
+      stride_yk: align32
+w8a8_block_fp8_bmm_splitk:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        SPLIT_K: split_k
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 8
+      - 16
+      - 64
+    block_n:
+      - 32
+      - 64
+    block_k:
+      - 128
+    split_k:
+      - 2
+      - 4
+      - 8
+      - 16
+      - 32
+    stages:
+      - 2
+      - 3
+      - 4
+    warps:
+      - 4
+      - 8
+  - strategy:
+      B: default
+      M: align32
+      N: align32
+      K: align32
+      stride_xm: align32
+      stride_yk: align32
