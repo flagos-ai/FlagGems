@@ -5701,6 +5701,17 @@ ops:
       - Math
     stages:
       - stable: '2.1'
+  - id: miopen_batch_norm_backward
+    description: Triton kernel implementation for miopen_batch_norm_backward.
+    for:
+      - miopen_batch_norm_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: mish
     description: Applies the Mish activation function element-wise.
     for:
