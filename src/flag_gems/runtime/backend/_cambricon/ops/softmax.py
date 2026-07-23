@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import copy
 import logging
 import math
@@ -13,7 +27,7 @@ from flag_gems.utils import libentry, libtuner
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 from .zeros import zero_
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 MAX_N = 16384
 
 
@@ -773,7 +787,7 @@ def softmax(self, dim, half_to_float=False):
 
     with torch_device_fn.device(self.device):
         if K > 1:
-            logger.debug("GEMS_CAMBRICON SOFTMAX USE NON INNER")
+            logger.debug("GEMS_CAMBRICON SOFTMAX")
             grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
             softmax_kernel_non_inner[grid](
                 out,
@@ -783,7 +797,7 @@ def softmax(self, dim, half_to_float=False):
                 K,
             )
         else:
-            logger.debug("GEMS_CAMBRICON SOFTMAX USE INNER")
+            logger.debug("GEMS_CAMBRICON SOFTMAX")
             if M > TOTAL_CORE_NUM or N < 1024 * 8 * 8:
                 softmax_kernel_inner[TOTAL_CORE_NUM, 1, 1](
                     out,
@@ -840,7 +854,7 @@ def softmax(self, dim, half_to_float=False):
 
 
 def softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS_CAMBRICON SOFTMAX VJP")
+    logger.debug("GEMS_CAMBRICON SOFTMAX_VJP")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
@@ -855,7 +869,7 @@ def softmax_backward(grad_output, output, dim, input_dtype):
 
     with torch_device_fn.device(in_grad.device):
         if K > 1:
-            logger.debug("GEMS_CAMBRICON SOFTMAX VJP USE NON INNER")
+            logger.debug("GEMS_CAMBRICON SOFTMAX_VJP_USE_NON_INNER")
             grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
             softmax_backward_kernel_non_inner[grid](
                 output,
@@ -866,7 +880,7 @@ def softmax_backward(grad_output, output, dim, input_dtype):
                 K,
             )
         else:
-            logger.debug("GEMS_CAMBRICON SOFTMAX VJP USE INNER")
+            logger.debug("GEMS_CAMBRICON SOFTMAX_VJP_USE_INNER")
             softmax_backward_kernel_inner[TOTAL_CORE_NUM, 1, 1](
                 output,
                 grad_output,
