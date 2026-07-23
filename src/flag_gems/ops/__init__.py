@@ -547,6 +547,7 @@ from flag_gems.ops.special_erfinv import (
     special_erfinv_,
     special_erfinv_out,
 )
+from flag_gems.ops.special_expit import special_expit
 from flag_gems.ops.special_gammainc import special_gammainc
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
@@ -1292,6 +1293,7 @@ __all__ = [
     "special_erfinv",
     "special_erfinv_",
     "special_erfinv_out",
+    "special_expit",
     "special_gammainc",
     "special_hermite_polynomial_h",
     "special_i0e",
