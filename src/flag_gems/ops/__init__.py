@@ -542,6 +542,7 @@ from flag_gems.ops.special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w_out,
 )
 from flag_gems.ops.special_digamma import special_digamma
+from flag_gems.ops.special_erfc import erfc, erfc_, special_erfc
 from flag_gems.ops.special_erfinv import (
     special_erfinv,
     special_erfinv_,
@@ -881,6 +882,8 @@ __all__ = [
     "equal",
     "erf",
     "erf_",
+    "erfc",
+    "erfc_",
     "erfinv",
     "erfinv_",
     "exp",
@@ -1289,6 +1292,7 @@ __all__ = [
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
     "special_digamma",
+    "special_erfc",
     "special_erfinv",
     "special_erfinv_",
     "special_erfinv_out",
