@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from .abs import abs, abs_
 from .acos import acos
 from .add import add, add_
@@ -59,6 +73,7 @@ from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .cummax import cummax
 from .cummin import cummin
+from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
@@ -141,6 +156,7 @@ from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv, mv_cluster
 from .nan_to_num import nan_to_num
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .nllloss import (
@@ -318,6 +334,7 @@ __all__ = [
     "count_nonzero",
     "cummax",
     "cummin",
+    "cumprod",
     "cumprod_",
     "cumsum",
     "cumsum_out",
@@ -435,6 +452,10 @@ __all__ = [
     "mv",
     "mv_cluster",
     "nan_to_num",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "ne",
     "ne_scalar",
     "neg",

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 from collections import namedtuple
@@ -12,6 +26,8 @@ from flag_gems import runtime
 # from ..runtime import torch_device_fn
 # from ..utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
+
+logger = logging.getLogger(__name__)
 
 
 # @libentry()
@@ -116,7 +132,7 @@ def min_kernel(
 
 
 def min(inp):
-    logging.debug("GEMS MIN")
+    logger.debug("GEMS_ARM MIN")
     M = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
@@ -132,7 +148,7 @@ def min(inp):
 
 
 def min_dim(inp, dim=None, keepdim=False):
-    logging.debug("GEMS MIN DIM")
+    logger.debug("GEMS_ARM MIN_DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     dim = dim % inp.ndim
     inp_np = inp.detach().cpu().numpy()

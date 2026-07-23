@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -7,7 +21,7 @@ import triton.language as tl
 # from flag_gems import runtime
 from flag_gems.utils import dim_compress
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -122,7 +136,7 @@ def std(x, dim=None, *, correction=None, keepdim=False):
     input_ndim = x.ndim
 
     if dim is None:
-        logger.debug("GEMS_KUNLUNXIN STD (Global Simple Map-Reduce Path)")
+        logger.debug("GEMS_KUNLUNXIN STD")
         N = x.numel()
         if N == 0 or N - effective_correction <= 0:
             return torch.full([], float("nan"), device=x.device, dtype=x.dtype)
@@ -149,7 +163,7 @@ def std(x, dim=None, *, correction=None, keepdim=False):
 
     else:
         logger.warning(
-            f"GEMS std: Using compatible but non-optimal path for dim={dim} (dim_compress)."
+            f"GEMS_KUNLUNXIN std: Using compatible but non-optimal path for dim={dim} (dim_compress)."
         )
 
         if isinstance(dim, int):
