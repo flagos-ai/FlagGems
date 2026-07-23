@@ -4705,6 +4705,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_ldl_solve
+    description: Triton kernel implementation for linalg_ldl_solve.
+    for:
+      - linalg_ldl_solve
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_cholesky
     description: |-
       Computes the Cholesky decomposition of a symmetric positive-definite matrix A
