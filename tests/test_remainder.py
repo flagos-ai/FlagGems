@@ -1,10 +1,23 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import conftest as cfg
 
 
 def replace_zeros(inp):
@@ -31,9 +44,8 @@ def test_remainder(shape, dtype):
         device="cpu",
     ).to(flag_gems.device)
 
-    if cfg.TO_CPU:
-        inp1 = replace_zeros(inp1)
-        inp2 = replace_zeros(inp2)
+    inp1 = replace_zeros(inp1)
+    inp2 = replace_zeros(inp2)
 
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
@@ -67,9 +79,8 @@ def test_remainder_(shape, dtype):
     inp2 = torch.randint(
         torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
     ).to(flag_gems.device)
-    if cfg.TO_CPU:
-        inp1 = replace_zeros(inp1.clone())
-        inp2 = replace_zeros(inp2)
+    inp1 = replace_zeros(inp1.clone())
+    inp2 = replace_zeros(inp2)
     ref_inp1 = utils.to_reference(inp1.clone(), False)
     ref_inp2 = utils.to_reference(inp2, False)
 
@@ -127,7 +138,7 @@ def test_remainder_scalar_(shape, dtype):
         .item()
     )
 
-    if cfg.TO_CPU and scalar == 0:
+    if scalar == 0:
         scalar = 1
 
     ref_inp = utils.to_reference(inp.clone(), False)
@@ -151,8 +162,7 @@ def test_remainder_scalar_tensor(shape, dtype):
         device="cpu",
     ).to(flag_gems.device)
 
-    if cfg.TO_CPU:
-        inp = replace_zeros(inp)
+    inp = replace_zeros(inp)
 
     ref_inp = utils.to_reference(inp, False)
 
