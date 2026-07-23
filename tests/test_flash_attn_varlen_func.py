@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from typing import List, Optional, Tuple
 
 import pytest
@@ -147,6 +161,7 @@ def ref_paged_attn(
 
 
 @pytest.mark.flash_attn_varlen_func
+@pytest.mark.flash_attn_varlen_opt_func
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2815: Not supported")
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2816: Not working")
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (5, 18), (129, 463)]])
@@ -319,7 +334,6 @@ def test_flash_attn_varlen_func(
 
 
 @pytest.mark.flash_attn_varlen_func
-@pytest.mark.flash_attn_varlen_func_noncontig
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2815: Not supported")
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2816: Not working")
 @pytest.mark.parametrize("dtype", NONCONTIG_DTYPES)

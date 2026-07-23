@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import os
 from dataclasses import dataclass
@@ -62,6 +76,20 @@ def _cs(strings: Iterable[str]) -> str:
 def _broadcast_vec(i, ndim):
     axes = [":" if j == i else "None" for j in range(ndim)]
     return f"[{_cs(axes)}]"
+
+
+def _tensor_inputs_all_complex(schema: "FunctionSchema") -> bool:
+    saw_typed_tensor = False
+    for i in range(schema.num_inputs()):
+        if not schema.is_tensor(i):
+            continue
+        input_dtype = schema.input_type(i)
+        if input_dtype is None:
+            return False
+        saw_typed_tensor = True
+        if input_dtype not in (torch.complex64, torch.complex128):
+            return False
+    return saw_typed_tensor
 
 
 class FunctionSchema:
@@ -835,18 +863,7 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
-            # Check if all input dtypes are complex; halve tile size if so
-            all_complex = True
-            for i in range(self.fx.num_inputs()):
-                if self.fx.is_tensor(i):
-                    input_dtype = self.fx.input_type(i)
-                    if input_dtype is None or input_dtype not in (
-                        torch.complex64,
-                        torch.complex128,
-                    ):
-                        all_complex = False
-                        break
-            if all_complex:
+            if _tensor_inputs_all_complex(self.fx):
                 max_tile_size = max_tile_size // 2
             major, _ = get_device_capability()
             if self.name.find("fill_scalar") != -1 and major >= 9:
@@ -884,18 +901,7 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
-            # Check if all input dtypes are complex; halve tile size if so
-            all_complex = True
-            for i in range(self.fx.num_inputs()):
-                if self.fx.is_tensor(i):
-                    input_dtype = self.fx.input_type(i)
-                    if input_dtype is None or input_dtype not in (
-                        torch.complex64,
-                        torch.complex128,
-                    ):
-                        all_complex = False
-                        break
-            if all_complex:
+            if _tensor_inputs_all_complex(self.fx):
                 max_tile_size = max_tile_size // 2
             major, _ = get_device_capability()
             if self.name.find("fill_scalar") != -1 and major >= 9:
