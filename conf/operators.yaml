@@ -8407,6 +8407,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_erfcx
+    description: |
+      Computes the scaled complementary error function for each element of input.
+    for:
+      - special.erfcx
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_erfinv
     description: |
       Computes the inverse error function element-wise.
