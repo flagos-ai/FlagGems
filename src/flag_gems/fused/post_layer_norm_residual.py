@@ -270,6 +270,7 @@ def _post_layer_norm_residual_forward(
 class PostLayerNormResidual(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, residual, normalized_shape, weight, bias, eps):
+        # A residual-only gradient does not need LayerNorm statistics.
         needs_layer_norm_grad = (
             input.requires_grad
             or (weight is not None and weight.requires_grad)
@@ -308,6 +309,7 @@ class PostLayerNormResidual(torch.autograd.Function):
         weight = weight_saved if ctx.has_weight else None
         bias = bias_saved if ctx.has_bias else None
 
+        # Flatten the normalized suffix to match the public LayerNorm backward API.
         input_2d = input.reshape(ctx.M, ctx.N)
         grad_2d = grad_output.contiguous().reshape(ctx.M, ctx.N)
         weight_1d = None if weight is None else weight.reshape(ctx.N)
@@ -333,6 +335,7 @@ class PostLayerNormResidual(torch.autograd.Function):
             grad_weight = grad_weight.reshape(ctx.normalized_shape)
         if grad_bias is not None:
             grad_bias = grad_bias.reshape(ctx.normalized_shape)
+        # The residual branch is an identity, so it needs no additional kernel.
         grad_residual = grad_output if need_residual else None
         return grad_input, grad_residual, None, grad_weight, grad_bias, None
 
