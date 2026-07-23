@@ -243,6 +243,12 @@ from flag_gems.ops.flash_attention_backward import (
     scaled_dot_product_flash_attention_backward,
 )
 from flag_gems.ops.flip import flip
+from flag_gems.ops.float_power_ import (
+    float_power_tensor_scalar,
+    float_power_tensor_scalar_,
+    float_power_tensor_tensor,
+    float_power_tensor_tensor_,
+)
 from flag_gems.ops.floor import floor, floor_out
 from flag_gems.ops.floor_ import floor_
 from flag_gems.ops.fmax import fmax, fmax_out
@@ -911,6 +917,10 @@ __all__ = [
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flip",
+    "float_power_tensor_scalar",
+    "float_power_tensor_scalar_",
+    "float_power_tensor_tensor",
+    "float_power_tensor_tensor_",
     "floor",
     "floor_",
     "floor_divide",

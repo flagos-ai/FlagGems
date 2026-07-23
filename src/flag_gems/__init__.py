@@ -390,6 +390,8 @@ _FULL_CONFIG = (
     ("fill_.Tensor", fill_tensor_),
     ("fix", fix),
     ("flip", flip),
+    ("float_power_.Scalar", float_power_tensor_scalar_),
+    ("float_power_.Tensor", float_power_tensor_tensor_),
     ("floor", floor),
     ("floor.out", floor_out),
     ("floor_", floor_),
