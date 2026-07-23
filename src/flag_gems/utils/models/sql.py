@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from hashlib import md5
 from itertools import chain
 from typing import (
@@ -29,8 +43,7 @@ _SQLALCHEMY_2 = hasattr(sqlalchemy.orm, "DeclarativeBase")
 
 if _SQLALCHEMY_2:
 
-    class Base(sqlalchemy.orm.DeclarativeBase):
-        ...
+    class Base(sqlalchemy.orm.DeclarativeBase): ...
 
 else:
     Base = sqlalchemy.orm.declarative_base()
@@ -148,9 +161,9 @@ class SQLPersistantModel(PersistantModel):
     def get_config(
         self, name: str, keys: Sequence[Union[bool, int, float, str]]
     ) -> Optional[triton.Config]:
-        key_dict: Dict[
-            str, Union[bool, int, float, str]
-        ] = SQLPersistantModel.get_key_dict(keys)
+        key_dict: Dict[str, Union[bool, int, float, str]] = (
+            SQLPersistantModel.get_key_dict(keys)
+        )
         ConfigCls: Optional[Type[Base]] = self.get_sql_model(name, key_dict)
         if ConfigCls is None:
             return None
@@ -207,12 +220,12 @@ class SQLPersistantModel(PersistantModel):
         config: Union[triton.Config, Dict[str, Union[bool, int, float, str]]],
     ) -> None:
         if isinstance(config, triton.Config):
-            config: Dict[
-                str, Union[bool, int, float, str]
-            ] = SQLPersistantModel.get_config_dict(config)
-        key_dict: Dict[
-            str, Union[bool, int, float, str]
-        ] = SQLPersistantModel.get_key_dict(keys)
+            config: Dict[str, Union[bool, int, float, str]] = (
+                SQLPersistantModel.get_config_dict(config)
+            )
+        key_dict: Dict[str, Union[bool, int, float, str]] = (
+            SQLPersistantModel.get_key_dict(keys)
+        )
         ConfigCls: Optional[Type[Base]] = self.get_sql_model(
             name,
             {k: type(v) for k, v in key_dict.items()},
@@ -233,13 +246,13 @@ class SQLPersistantModel(PersistantModel):
         config: Union[triton.Config, Dict[str, Union[bool, int, float, str]]],
         benchmark: Tuple[float, float, float],
     ) -> None:
-        key_dict: Dict[
-            str, Union[bool, int, float, str]
-        ] = SQLPersistantModel.get_key_dict(keys)
+        key_dict: Dict[str, Union[bool, int, float, str]] = (
+            SQLPersistantModel.get_key_dict(keys)
+        )
         if isinstance(config, triton.Config):
-            config: Dict[
-                str, Union[bool, int, float, str]
-            ] = SQLPersistantModel.get_config_dict(config)
+            config: Dict[str, Union[bool, int, float, str]] = (
+                SQLPersistantModel.get_config_dict(config)
+            )
         p50, p20, p80 = benchmark
         benchmark: Dict[str, float] = {"p50": p50, "p20": p20, "p80": p80}
         BenchmarkCls: Optional[Type[Base]] = self.get_sql_model(

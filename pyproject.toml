@@ -1,10 +1,31 @@
-[build-system]
-# The cmake and ninja packages are not supposed to be listed in build-system.requires.
-# The version expectation is "cmake>=3.20,<4.0", "ninja==1.13.0".
-# They must be installed separately for `--no-build-isolation` to work.
-requires = ["setuptools>=64.0,<80.0", "scikit-build-core==0.12.2", "pybind11==3.0.3", "setuptools-scm>=8"]
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-build-backend = "scikit_build_core.build"
+[build-system]
+# setuptools is capped below 77: from 77.0 onward it adopts PEP 639 and emits
+# `License-File`, which bumps the wheel to Metadata-Version 2.4. Some package
+# indexes (e.g. Nexus) reject 2.4; <77 keeps the pure-Python wheel at 2.2.
+#
+# setuptools-scm is capped below 10: the 10.x line added an egg_info
+# file-finder integration (setuptools_scm/_integration/egg_info.py) that reads
+# `ignore_egg_info_in_manifest`, an attribute only present on newer setuptools.
+# Combined with the setuptools<77 pin above, `pip install .` then fails during
+# "Getting requirements to build wheel" with
+# `AttributeError: ignore_egg_info_in_manifest`. 9.x has no such integration.
+requires = ["setuptools>=64.0,<77", "setuptools-scm>=8,<10"]
+
+build-backend = "setuptools.build_meta"
 
 [project]
 
@@ -166,6 +187,7 @@ test = [
     "distro==1.9.0",
     "coverage==7.13.5",
     "openpyxl==3.1.5",
+    "pandas==2.3.3",
     "pytest==9.0.3",
     "pytest-md-report==0.8.0",
     "scipy>=1.15.3",
@@ -176,6 +198,15 @@ example = [
     "transformers>=4.40.2",
 ]
 
+# C++ wrapped operators, distributed as per-vendor native extension packages.
+# `pip install flag-gems[cpp-cuda]` pulls in the matching native wheel, which
+# drops its .so files into the flag_gems/ namespace.
+cpp-cuda = ["flag-gems-cpp-cuda"]
+cpp-musa = ["flag-gems-cpp-musa"]
+cpp-npu = ["flag-gems-cpp-npu"]
+cpp-gcu = ["flag-gems-cpp-gcu"]
+cpp-ix = ["flag-gems-cpp-ix"]
+
 [project.urls]
 
 Repository = "https://github.com/flagos-ai/FlagGems"
@@ -185,22 +216,14 @@ Documentation = "https://flagos-ai.github.io/FlagGems"
 [project.scripts]
 flaggems-setup = "flag_gems._setup:main"
 
-[tool.setuptools.packages.find]
-
-where = ["src"]
+# Package discovery (including shipping the tests/ and benchmark/ suites under
+# collision-safe names) is defined in setup.py, so it is intentionally omitted
+# here — declaring `packages` in both places is an error.
 
 [tool.setuptools.package-data]
 
 "flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
-
-[tool.scikit-build]
-
-build.verbose = true
-logging.level = "INFO"
-wheel.install-dir = "flag_gems"
-build-dir = "build/{cache_tag}"
-metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
 
 [tool.setuptools_scm]
 write_to = "src/flag_gems/_version.py"
