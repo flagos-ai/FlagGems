@@ -1,0 +1,155 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import random
+
+import pytest
+import torch
+
+import flag_gems
+
+if flag_gems.vendor_name == "sunrise":
+    QUICK_MODE = True  # "--ref cpu" too slow for big shape.
+else:
+    from .conftest import QUICK_MODE
+
+random.seed(42)
+
+FUSED_MOE_CONFIGS = [
+    # (num_tokens, num_experts, hidden_size, intermediate_size, topk)
+    (1, 8, 128, 256, 2),
+    (4, 8, 128, 256, 2),
+    (8, 4, 64, 128, 2),
+    (16, 8, 256, 512, 2),
+    (32, 8, 128, 256, 4),
+]
+
+if not QUICK_MODE:
+    FUSED_MOE_CONFIGS += [
+        (64, 8, 256, 512, 2),
+        (128, 16, 128, 256, 4),
+        (4, 16, 512, 1024, 2),
+        # Mixtral-like shapes
+        (1, 8, 4096, 14336, 2),
+        (16, 8, 4096, 14336, 2),
+        (64, 8, 4096, 14336, 2),
+        # DeepSeek-V3-like shapes (TP=8 shard)
+        (1, 256, 7168, 2048, 8),
+        (16, 256, 7168, 2048, 8),
+        (64, 256, 7168, 2048, 8),
+    ]
+
+
+def torch_fused_moe_reference(
+    hidden_states: torch.Tensor,
+    w1: torch.Tensor,
+    w2: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+) -> torch.Tensor:
+    """Pure PyTorch reference implementation of fused MoE."""
+    M, K = hidden_states.shape
+    topk = topk_ids.shape[1]
+    output = torch.zeros(M, K, device=hidden_states.device, dtype=hidden_states.dtype)
+
+    for m in range(M):
+        for j in range(topk):
+            e = topk_ids[m, j].item()
+            weight = topk_weights[m, j]
+            z = hidden_states[m].to(torch.float32) @ w1[e].T.to(torch.float32)
+            D = z.shape[-1] // 2
+            gate = z[:D]
+            up = z[D:]
+            s = (gate * torch.sigmoid(gate)) * up
+            r = s @ w2[e].T.to(torch.float32)
+            output[m] += (weight.to(torch.float32) * r).to(output.dtype)
+
+    return output
+
+
+def _make_inputs(config, dtype):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1 = torch.randn(
+        num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
+    ) * (1.0 / hidden_size**0.5)
+    w2 = torch.randn(
+        num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
+    ) * (1.0 / intermediate_size**0.5)
+
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+    topk_weights = topk_weights.to(dtype)
+
+    return hidden_states, w1, w2, topk_weights, topk_ids
+
+
+def _synchronize():
+    if flag_gems.vendor_name == "ascend":
+        torch.npu.synchronize()
+    elif flag_gems.vendor_name == "sunrise":
+        torch.ptpu.synchronize()
+    else:
+        torch.cuda.synchronize()
+
+
+@pytest.mark.outplace_fused_experts
+@pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_outplace_fused_experts_accuracy(config, dtype):
+    """Test outplace_fused_experts returns correct results."""
+    hidden_states, w1, w2, topk_weights, topk_ids = _make_inputs(config, dtype)
+
+    ref = torch_fused_moe_reference(hidden_states, w1, w2, topk_weights, topk_ids)
+
+    result = flag_gems.outplace_fused_experts(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+    )
+
+    _synchronize()
+
+    rtol = 1e-1
+    atol = max(1e-2, ref.abs().max().item() * 1e-5)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.outplace_fused_experts
+@pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_outplace_fused_experts_does_not_modify_input(config, dtype):
+    """Test outplace_fused_experts leaves hidden_states unchanged."""
+    hidden_states, w1, w2, topk_weights, topk_ids = _make_inputs(config, dtype)
+    original_hidden_states = hidden_states.clone()
+
+    result = flag_gems.outplace_fused_experts(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+    )
+
+    _synchronize()
+
+    assert result.data_ptr() != hidden_states.data_ptr()
+    torch.testing.assert_close(hidden_states, original_hidden_states, rtol=0, atol=0)
