@@ -8551,6 +8551,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_logsumexp
+    description: |
+      Computes the natural logarithm of the sum of exponentials of each row
+      of the input tensor in the given dimension `dim`.
+    for:
+      - special.logsumexp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: special_modified_bessel_k0
     description: Triton kernel implementation for special_modified_bessel_k0.
     for:
@@ -8666,17 +8679,27 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: special_logsumexp
-    description: |
-      Computes the natural logarithm of the sum of exponentials of each row
-      of the input tensor in the given dimension `dim`.
+  - id: special_xlogy
+    description: >
+      Computes x * log(y). Returns 0 if x == 0.
     for:
-      - special.logsumexp
+      - special.xlogy
     labels:
       - aten
       - KernelGen
     kind:
-      - Reduction
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_xlogy_
+    description: The in-place version of `special_xlogy()`.
+    for:
+      - special.xlogy_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
     stages:
       - alpha: '5.4'
   - id: split_with_sizes_copy

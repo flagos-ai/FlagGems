@@ -578,6 +578,7 @@ from flag_gems.ops.special_shifted_chebyshev_polynomial_w import (
 )
 from flag_gems.ops.special_sinc import special_sinc
 from flag_gems.ops.special_xlog1py import special_xlog1py
+from flag_gems.ops.special_xlogy import special_xlogy, special_xlogy_
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
@@ -1314,6 +1315,8 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_w",
     "special_sinc",
     "special_xlog1py",
+    "special_xlogy",
+    "special_xlogy_",
     "split_with_sizes_copy",
     "sqrt",
     "sqrt_",
