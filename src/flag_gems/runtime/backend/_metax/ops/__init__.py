@@ -19,6 +19,7 @@ from .log_softmax import log_softmax, log_softmax_backward
 from .masked_fill import masked_fill, masked_fill_
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
+from .max_unpool3d import max_unpool3d
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .nonzero import nonzero
@@ -61,15 +62,16 @@ __all__ = [
     "isin",
     "layer_norm",
     "layer_norm_backward",
+    "linalg_svdvals",
     "log_softmax",
     "log_softmax_backward",
-    "linalg_svdvals",
-    "matmul_bf16",
-    "matmul_int8",
     "masked_fill",
     "masked_fill_",
-    "min_dim",
+    "matmul_bf16",
+    "matmul_int8",
+    "max_unpool3d",
     "min",
+    "min_dim",
     "mm",
     "mm_out",
     "nonzero",
