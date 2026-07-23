@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 from functools import partial
@@ -43,6 +57,7 @@ def _attn_fwd_inner(
     fp8_v: tl.constexpr,
     HAS_ATTN_MASK: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
+    HEAD_DIM_ACTUAL: tl.constexpr,
 ):
     # range of values handled by this stage
     if STAGE == 1:
@@ -59,15 +74,23 @@ def _attn_fwd_inner(
         mask_block_ptr += lo * stride_attn_mask_kv_seqlen
 
     LOG2E = 1.44269504  # log2(e) constant
+    # mask for non-power-of-2 head dims: shape [HEAD_DIM]
+    hd_mask = tl.arange(0, HEAD_DIM) < HEAD_DIM_ACTUAL
 
     # loop over key, value and update accumulator
     for start_n in range(lo, hi, BLOCK_N):
         kv_load_mask = (start_n + offs_n) < KV_CTX
         # start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
-        key = tl.load(K_block_ptr, mask=kv_load_mask[None, :], other=0.0)
+        # K shape: [HEAD_DIM, BLOCK_N] — mask both head and kv-seq axes
+        key = tl.load(
+            K_block_ptr, mask=hd_mask[:, None] & kv_load_mask[None, :], other=0.0
+        )
         if PRE_LOAD_V:
-            value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
+            # V shape: [BLOCK_N, HEAD_DIM] — mask both axes
+            value = tl.load(
+                V_block_ptr, mask=kv_load_mask[:, None] & hd_mask[None, :], other=0.0
+            )
 
         qk = tl.dot(query, key, allow_tf32=False)
         # incase not divisible.
@@ -109,7 +132,9 @@ def _attn_fwd_inner(
         acc = acc * alpha[:, None]
         # update acc
         if not PRE_LOAD_V:
-            value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
+            value = tl.load(
+                V_block_ptr, mask=kv_load_mask[:, None] & hd_mask[None, :], other=0.0
+            )
         if fp8_v:
             p = p.to(tl.float8e5)
         else:
@@ -184,6 +209,7 @@ def _attn_fwd(
     Q_CTX,
     KV_CTX,
     HEAD_DIM: tl.constexpr,
+    HEAD_DIM_ACTUAL: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     STAGE: tl.constexpr,
@@ -261,8 +287,12 @@ def _attn_fwd(
     # load scales
     qk_scale = sm_scale
     # qk_scale *= 1.44269504  # 1/log(2)
+    # mask for non-power-of-2 head dims
+    hd_mask = offs_headsize < HEAD_DIM_ACTUAL
     # load query: it will stay in SRAM throughout
-    query = tl.load(Q_block_ptr, mask=q_load_mask[:, None], other=0.0)
+    query = tl.load(
+        Q_block_ptr, mask=q_load_mask[:, None] & hd_mask[None, :], other=0.0
+    )
     # stage 1: off-band
     # For causal = True, STAGE = 3 and _attn_fwd_inner gets 1 as its STAGE
     # For causal = False, STAGE = 1, and _attn_fwd_inner gets 3 as its STAGE
@@ -291,6 +321,7 @@ def _attn_fwd(
             V.dtype.element_ty == tl.float8e5,
             HAS_ATTN_MASK,
             PRE_LOAD_V,
+            HEAD_DIM_ACTUAL,
         )
     # stage 2: on-band
     if STAGE & 2:
@@ -320,33 +351,56 @@ def _attn_fwd(
             V.dtype.element_ty == tl.float8e5,
             HAS_ATTN_MASK,
             PRE_LOAD_V,
+            HEAD_DIM_ACTUAL,
         )
     # epilogue
     m_i += tl.math.log2(l_i)
     acc = acc / l_i[:, None]
     m_ptrs = M + off_hz * Q_CTX + offs_m
     tl.store(m_ptrs, m_i, mask=q_load_mask)
-    tl.store(O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None])
+    tl.store(
+        O_block_ptr,
+        acc.to(Out.type.element_ty),
+        mask=q_load_mask[:, None] & hd_mask[None, :],
+    )
 
 
 @triton.jit
 def _attn_bwd_preprocess(
-    O, DO, Delta, Z, H, Q_CTX, BLOCK_M: tl.constexpr, D_HEAD: tl.constexpr
+    O,
+    DO,
+    Delta,
+    Z,
+    H,
+    Q_CTX,
+    BLOCK_M: tl.constexpr,
+    D_HEAD: tl.constexpr,
+    D_HEAD_ACTUAL: tl.constexpr,
 ):
     off_m = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
     mask = off_m < Q_CTX
 
     off_hz = tl.program_id(1)
     off_n = tl.arange(0, D_HEAD)
+    # D_HEAD_ACTUAL is the real (unpadded) head size; use it for pointer
+    # arithmetic so we stride correctly through contiguous tensors.
+    # D_HEAD is the next power-of-2 block size used only for tl.arange.
+    hd_mask = off_n < D_HEAD_ACTUAL
     # load
     o = tl.load(
-        O + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
-        mask=mask[:, None],
+        O
+        + off_hz * D_HEAD_ACTUAL * Q_CTX
+        + off_m[:, None] * D_HEAD_ACTUAL
+        + off_n[None, :],
+        mask=mask[:, None] & hd_mask[None, :],
         other=0.0,
     )
     do = tl.load(
-        DO + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
-        mask=mask[:, None],
+        DO
+        + off_hz * D_HEAD_ACTUAL * Q_CTX
+        + off_m[:, None] * D_HEAD_ACTUAL
+        + off_n[None, :],
+        mask=mask[:, None] & hd_mask[None, :],
         other=0.0,
     ).to(tl.float32)
     delta = tl.sum(o * do, axis=1)
@@ -380,6 +434,7 @@ def _attn_bwd_dkdv(
     start_m,
     num_steps,  #
     MASK: tl.constexpr,
+    BLOCK_DMODEL_ACTUAL: tl.constexpr,
 ):
     # BLOCK_M1: 32
     # BLOCK_N1: 128
@@ -387,6 +442,7 @@ def _attn_bwd_dkdv(
     offs_n_mask = offs_n < KV_CTX  # (BLOCK_N1, )
 
     offs_k = tl.arange(0, BLOCK_DMODEL)  # (BLOCK_DMODEL, )
+    hd_mask = offs_k < BLOCK_DMODEL_ACTUAL  # head dim mask
 
     # BLOCK_N1 must be a multiple of BLOCK_M1, otherwise the code wouldn't work.
     tl.static_assert(BLOCK_N1 % BLOCK_M1 == 0)
@@ -404,7 +460,7 @@ def _attn_bwd_dkdv(
         )  # (BLOCK_M1, BLOCK_DMODEL)
 
         qT = tl.load(
-            qT_ptrs, mask=offs_m_mask[None, :], other=0.0
+            qT_ptrs, mask=hd_mask[:, None] & offs_m_mask[None, :], other=0.0
         )  # (BLOCK_DMODEL, BLOCK_M1)
 
         # Load m before computing qk to reduce pipeline stall.
@@ -426,7 +482,7 @@ def _attn_bwd_dkdv(
         pT = tl.where(mask, pT, 0.0)  # (BLOCK_N1, BLOCK_M1)
 
         do = tl.load(
-            do_ptrs, mask=offs_m_mask[:, None], other=0.0
+            do_ptrs, mask=offs_m_mask[:, None] & hd_mask[None, :], other=0.0
         )  # (BLOCK_M1, BLOCK_DMODEL)
 
         # Compute dV.
@@ -476,11 +532,13 @@ def _attn_bwd_dq(
     start_n,
     num_steps,  #
     MASK: tl.constexpr,
+    BLOCK_DMODEL_ACTUAL: tl.constexpr,
 ):
     offs_m = start_m + tl.arange(0, BLOCK_M2)
     offs_m_mask = offs_m < Q_CTX
 
     offs_k = tl.arange(0, BLOCK_DMODEL)
+    hd_mask = offs_k < BLOCK_DMODEL_ACTUAL  # head dim mask
     # D (= delta) is pre-divided by ds_scale.
     Di = tl.load(D + offs_m, mask=offs_m_mask, other=0.0)
     # BLOCK_M2 must be a multiple of BLOCK_N2, otherwise the code wouldn't work.
@@ -494,8 +552,8 @@ def _attn_bwd_dq(
         kT_ptrs = K + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
         vT_ptrs = V + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
 
-        kT = tl.load(kT_ptrs, mask=offs_n_mask[None, :], other=0.0)
-        vT = tl.load(vT_ptrs, mask=offs_n_mask[None, :], other=0.0)
+        kT = tl.load(kT_ptrs, mask=hd_mask[:, None] & offs_n_mask[None, :], other=0.0)
+        vT = tl.load(vT_ptrs, mask=hd_mask[:, None] & offs_n_mask[None, :], other=0.0)
         qk = tl.dot(query, kT)
         p = tl.math.exp2(qk - m)
         mask = (offs_m < Q_CTX)[:, None] & (offs_n < KV_CTX)[None, :]
@@ -558,6 +616,7 @@ def _attn_bwd(
     BLOCK_N2: tl.constexpr,  #
     BLK_SLICE_FACTOR: tl.constexpr,  #
     BLOCK_DMODEL: tl.constexpr,
+    BLOCK_DMODEL_ACTUAL: tl.constexpr,
     IS_CAUSAL: tl.constexpr = True,
 ):
     LN2: tl.constexpr = 0.6931471824645996  # = ln(2)
@@ -586,6 +645,7 @@ def _attn_bwd(
 
     # load scales
     offs_k = tl.arange(0, BLOCK_DMODEL)
+    hd_mask = offs_k < BLOCK_DMODEL_ACTUAL  # head dim mask
 
     # dK/dV: only execute when this pid covers a valid KV block
     start_n = pid * BLOCK_N1
@@ -598,12 +658,12 @@ def _attn_bwd(
         offs_n_mask = offs_n < KV_CTX
         key = tl.load(
             K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
-            mask=offs_n_mask[:, None],
+            mask=offs_n_mask[:, None] & hd_mask[None, :],
             other=0.0,
         )
         value = tl.load(
             V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
-            mask=offs_n_mask[:, None],
+            mask=offs_n_mask[:, None] & hd_mask[None, :],
             other=0.0,
         )
 
@@ -641,6 +701,7 @@ def _attn_bwd(
                     start_m,
                     num_steps,  #
                     MASK=True,  #
+                    BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,
                 )
                 start_m += num_steps * MASK_BLOCK_M1
             # else: start_n >= Q_CTX, no Q rows can attend to this KV block
@@ -673,15 +734,16 @@ def _attn_bwd(
                 start_m,
                 num_steps,  #
                 MASK=False,  #
+                BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,
             )
 
         dv_ptrs = DV + offs_n[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
-        tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
+        tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None] & hd_mask[None, :])
 
         # Write back dK.
         dk *= sm_scale
         dk_ptrs = DK + offs_n[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
-        tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
+        tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None] & hd_mask[None, :])
 
     # dQ: only execute when this pid covers a valid Q block
     start_m = pid * BLOCK_M2
@@ -690,13 +752,13 @@ def _attn_bwd(
         offs_m_mask = offs_m < Q_CTX
         query = tl.load(
             Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
-            mask=offs_m_mask[:, None],
+            mask=offs_m_mask[:, None] & hd_mask[None, :],
             other=0.0,
         )
         dq = tl.zeros([BLOCK_M2, BLOCK_DMODEL], dtype=tl.float32)
         do = tl.load(
             DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
-            mask=offs_m_mask[:, None],
+            mask=offs_m_mask[:, None] & hd_mask[None, :],
             other=0.0,
         )
         m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
@@ -733,6 +795,7 @@ def _attn_bwd(
                     diag_n,
                     num_steps,  #
                     MASK=True,  #
+                    BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,
                 )
 
             # Unmasked phase: KV columns [0, diag_n), all fully visible.
@@ -762,12 +825,13 @@ def _attn_bwd(
                 0,
                 stage2_num_steps,  #
                 MASK=False,  #
+                BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,
             )
 
         # Write back dQ.
         dq_ptrs = DQ + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
         dq *= LN2
-        tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None])
+        tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None] & hd_mask[None, :])
 
 
 def scaled_dot_product_attention_forward(
@@ -786,7 +850,6 @@ def scaled_dot_product_attention_forward(
     # when v is in float8_e5m2 it is transposed.
     HEAD_DIM_V = value.shape[-1]
     assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
-    assert HEAD_DIM_K in {16, 32, 64, 128, 256}
     assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
 
     o = torch.empty_like(query, dtype=value.dtype)
@@ -797,6 +860,13 @@ def scaled_dot_product_attention_forward(
         sm_scale = 1.0 / (HEAD_DIM_K**0.5)
     else:
         sm_scale = scale
+
+    # Triton kernels require HEAD_DIM (constexpr block size) to be a power of 2.
+    # We pass HEAD_DIM = next_power_of_2(HEAD_DIM_K) as the SRAM block size and
+    # HEAD_DIM_ACTUAL = HEAD_DIM_K as the real dimension, then mask inside the kernel.
+    # No tensor padding needed.
+    HEAD_DIM_ACTUAL = HEAD_DIM_K
+    HEAD_DIM_K = triton.next_power_of_2(HEAD_DIM_K)
 
     q_head_num = query.shape[1]
     kv_head_num = key.shape[1]
@@ -868,6 +938,7 @@ def scaled_dot_product_attention_forward(
             query.shape[2],  #
             key.shape[2],  #
             HEAD_DIM_K,  #
+            HEAD_DIM_ACTUAL=HEAD_DIM_ACTUAL,  #
             STAGE=stage,  #
             HAS_ATTN_MASK=HAS_ATTN_MASK,  #
         )
@@ -893,9 +964,9 @@ def scaled_dot_product_attention_backward(
     # when v is in float8_e5m2 it is transposed.
     HEAD_DIM_V = value.shape[-1]
     assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
-    assert HEAD_DIM_K in {16, 32, 64, 128, 256}
     assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
 
+    # sm_scale is based on the original head dim
     if scale is None:
         sm_scale = 1.0 / (HEAD_DIM_K**0.5)
     else:
@@ -911,7 +982,11 @@ def scaled_dot_product_attention_backward(
     assert query.stride() == o.stride() == do.stride()
     assert key.stride() == value.stride()
 
-    BLOCK_DMODEL = HEAD_DIM_K
+    # Triton kernels require BLOCK_DMODEL to be a power of 2.
+    # Pass BLOCK_DMODEL = next_power_of_2(HEAD_DIM_K) as the SRAM block size and
+    # BLOCK_DMODEL_ACTUAL = HEAD_DIM_K as the real dimension, masking inside kernels.
+    BLOCK_DMODEL_ACTUAL = HEAD_DIM_K
+    BLOCK_DMODEL = triton.next_power_of_2(HEAD_DIM_K)
     BATCH, Q_HEAD, Q_CTX = query.shape[:3]
     _, KV_HEAD, KV_CTX = key.shape[:3]
     group_head = Q_HEAD // KV_HEAD
@@ -937,13 +1012,13 @@ def scaled_dot_product_attention_backward(
     # NOTE that dk & dv always have the same number of heads as q
     dq = torch.empty_like(query).contiguous()
     dk = torch.empty(
-        (BATCH, Q_HEAD, KV_CTX, HEAD_DIM_K),
+        (BATCH, Q_HEAD, KV_CTX, BLOCK_DMODEL_ACTUAL),
         device=key.device,
         dtype=key.dtype,
         memory_format=torch.contiguous_format,
     )
     dv = torch.empty(
-        (BATCH, Q_HEAD, KV_CTX, HEAD_DIM_V),
+        (BATCH, Q_HEAD, KV_CTX, BLOCK_DMODEL_ACTUAL),
         device=value.device,
         dtype=value.dtype,
         memory_format=torch.contiguous_format,
@@ -958,6 +1033,7 @@ def scaled_dot_product_attention_backward(
         Q_CTX,  #
         BLOCK_M=PRE_BLOCK,
         D_HEAD=BLOCK_DMODEL,  #
+        D_HEAD_ACTUAL=BLOCK_DMODEL_ACTUAL,  #
     )
 
     grid = lambda meta: (
@@ -1006,12 +1082,17 @@ def scaled_dot_product_attention_backward(
         # BLOCK_N2=BLOCK_N2,  #
         BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  #
         BLOCK_DMODEL=BLOCK_DMODEL,  #
+        BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,  #
         IS_CAUSAL=is_causal,  #
     )
 
     if group_head > 1:
-        dk = dk.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_K)
-        dv = dv.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_V)
+        dk = dk.reshape(
+            BATCH, Q_HEAD // group_head, group_head, KV_CTX, BLOCK_DMODEL_ACTUAL
+        )
+        dv = dv.reshape(
+            BATCH, Q_HEAD // group_head, group_head, KV_CTX, BLOCK_DMODEL_ACTUAL
+        )
         dk = dk.sum(dim=2)
         dv = dv.sum(dim=2)
 

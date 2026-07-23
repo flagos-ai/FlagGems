@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -63,16 +77,25 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
 
     # Sampling without replacement
     if (not with_replacement) or n_samples == 1:
-        # In case of with_replacement, sampling is approximated by selecing
-        # the top k indices over sorted probabilities with an exponential pertubation
-        # s = argmax( p / q ) where q ~ Exp(1)
-        q = torch.empty_like(prob).exponential_(1.0)
-        s = torch.div(prob, q, out=q)
+        # Gumbel-max trick: s = argmax( p / q ) where q ~ Exp(1)
+        # IMPORTANT: Both prob and q must be computed in float32 to avoid:
+        #   1. fp16/bf16 overflow when small q values cause prob/q -> inf
+        #   2. Multiple inf values making topk return duplicate indices
+        prob_f32 = prob.float()
+        prob_f32.clamp_(min=1e-12)  # avoid 0/q=0 ties for zero-prob categories
+        q = torch.empty(
+            prob.shape, dtype=torch.float32, device=prob.device
+        ).exponential_(1.0)
+        q.clamp_(min=1e-20)  # prevent division overflow
+        s = prob_f32 / q
         if n_samples == 1:
             return torch.argmax(s, dim=-1, keepdim=True).to(torch.int64)
         else:
-            vals, indices = torch.topk(s, n_samples, dim=-1)
-            return indices.to(torch.int64)
+            # Use sort instead of topk to avoid potential duplicates from
+            # FlagGems' topk kernel (which uses approximate sorting that can
+            # produce duplicate indices for very close float32 values).
+            _, indices = torch.sort(s, dim=-1, descending=True, stable=True)
+            return indices[..., :n_samples].to(torch.int64)
 
     cum_prob = normed_cumsum(prob, dim=-1)
 
