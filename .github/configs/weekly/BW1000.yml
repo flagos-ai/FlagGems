@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # FlagGems backends Configuration
 # This file defines environment settings for weekly testing
 name: BW1000
@@ -11,7 +25,7 @@ runner_labels: bw1000-flaggems-weekly
 use_container: true
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flaggems/hygon-flaggems-test-bw1000:20260701
+container_image: harbor.baai.ac.cn/flaggems/hygon-flaggems-test-bw1000-flagtree3.6:202607071012
 
 # Container volumes to mount for this backends
 container_volumes:
