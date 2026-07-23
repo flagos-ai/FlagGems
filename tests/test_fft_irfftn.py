@@ -33,7 +33,7 @@ def test_fft_irfftn(shape, dtype):
 
     # Our implementation
     with flag_gems.use_gems():
-        res_out = flag_gems.fft_irfftn(inp_complex, s=shape)
+        res_out = torch.fft.irfftn(inp_complex, s=shape)
 
     # Output is always float32, compare with float32 tolerance
     utils.gems_assert_close(res_out, ref_out, torch.float32, atol=1e-3)
