@@ -52,19 +52,23 @@ def softmax_kernel_inner(
 ):
     pid_m = ext.program_id(0)
     if ONE_TILE_PER_CTA:
+        # Pre-offset the base pointers so the inner `ptr + n_offsets` access is a
+        # scalar-base + stride-1 arange that OffsetAnalysis proves contiguous
+        # (block DMA). The old inline `pid_m * N + n_offsets` addressing blocked
+        # the analysis -> discrete scalar gather (~1-3 GB/s, e.g. [4096,4096] took
+        # ~37ms). Pre-offsetting drops it to ~1.1ms (~35x).
+        input_ptr += pid_m * N
+        output_ptr += pid_m * N
         n_offsets = tl.arange(0, TILE_N)
-        offset = pid_m * N + n_offsets
-        input_ptrs = input_ptr + offset
         mask = n_offsets < N
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(
+        inp = tl.load(input_ptr + n_offsets, mask=mask, other=-float("inf")).to(
             output_ptr.dtype.element_ty
         )
         m = tl.max(inp, 0)
         e = tl.exp(inp - m)
         z = tl.sum(e, 0)
         out = e / z
-        output_ptrs = output_ptr + offset
-        tl.store(output_ptrs, out, mask=mask)
+        tl.store(output_ptr + n_offsets, out, mask=mask)
     else:
         m = tl.full([TILE_N], value=float("-inf"), dtype=tl.float32)
         z = tl.full([TILE_N], value=0.0, dtype=tl.float32)
@@ -94,39 +98,34 @@ def softmax_kernel_inner(
         z = tl.sum(z * tl.exp(m - m_reduced), 0)
         m = m_reduced
 
+        # Normalize pass. Iterate ASCENDING so each `input_ptr + n_offsets` load
+        # and `output_ptr + n_offsets` store is a scalar-base + stride-1 arange
+        # (block DMA). The old code walked the tiles DESCENDING
+        # (`previous_multiple - start_n`) as a cache-locality trick, but on this
+        # XPU the backward walk defeats OffsetAnalysis/prefetch -> discrete access
+        # (~1-3 GB/s: [1024,65536] took ~154ms). Ascending drops it to ~4ms (~35x).
         previous_multiple = prev_multiple_of(N, TILE_N)
-        # specialize the first iteration
-        for start_n in range(0, TILE_N, TILE_N):
-            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
-            mask = n_offsets < N
-            inp = tl.load(
-                input_ptr + n_offsets,
-                mask=mask,
-                other=-float("inf"),
-                eviction_policy="evict_first",
-            )
-            o = tl.exp(inp - m) / z
-            tl.store(output_ptr + n_offsets, o, mask=mask)
-        for start_n in range(TILE_N, N, TILE_N):
-            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
-            inp = tl.load(input_ptr + n_offsets, eviction_policy="evict_first")
+        for start_n in range(0, previous_multiple, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            inp = tl.load(input_ptr + n_offsets)
             o = tl.exp(inp - m) / z
             tl.store(output_ptr + n_offsets, o)
+        for start_n in range(previous_multiple, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            mask = n_offsets < N
+            inp = tl.load(input_ptr + n_offsets, mask=mask, other=-float("inf"))
+            o = tl.exp(inp - m) / z
+            tl.store(output_ptr + n_offsets, o, mask=mask)
 
 
 # ------------------------  backward -------------------------------
 
 
-def softmax_backward_kernel_inner_heur_tile_m(args):
-    return triton.cdiv(args["M"], 12)  # cluster_num
-    # return triton.next_power_of_2(triton.cdiv(args["M"], 12))
-
-
 def softmax_backward_kernel_inner_heru_tile_n(args):
-    import builtins
-
-    return builtins.min(args["N"], 4096)
-    # return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+    N = args["N"]
+    if N <= 32768:
+        return triton.next_power_of_2(N)
+    return 4096
 
 
 def softmax_backward_kernel_inner_heur_one_tile_per_cta(args):
@@ -134,16 +133,8 @@ def softmax_backward_kernel_inner_heur_one_tile_per_cta(args):
 
 
 @libentry()
-# @triton.autotune(
-#     configs=runtime.get_tuned_config("softmax_inner"),
-#     key=["M", "N"],
-# )
-# @triton.heuristics(
-#     values=runtime.get_heuristic_config("softmax_backward_inner"),
-# )
 @triton.heuristics(
     values={
-        "TILE_M": softmax_backward_kernel_inner_heur_tile_m,
         "TILE_N": softmax_backward_kernel_inner_heru_tile_n,
         "ONE_TILE_PER_CTA": softmax_backward_kernel_inner_heur_one_tile_per_cta,
     },
@@ -155,49 +146,66 @@ def softmax_backward_kernel_inner(
     in_grad_ptr,
     M,
     N,
-    TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
+    # One program per row (grid=(M,)), mirroring the forward. Pre-offset the base
+    # pointers so the inner `ptr + n_offsets` access is a scalar-base + stride-1
+    # arange that OffsetAnalysis proves contiguous (block DMA). The old impl used a
+    # fixed grid=(12,) with a [TILE_M, TILE_N] tile whose `m_offsets[:,None]*N +
+    # n_offsets` addressing blocked the analysis -> discrete scalar gather
+    # (~1-3 GB/s: [4096,4096] took ~38ms). It also computed in float64 (2x traffic,
+    # unnecessary). float32 accumulation matches the forward and the generic backend.
     pid_m = ext.program_id(0)
-    m_offsets = pid_m * TILE_M + tl.arange(0, TILE_M)
+    out_ptr += pid_m * N
+    out_grad_ptr += pid_m * N
+    in_grad_ptr += pid_m * N
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
-        offsets = m_offsets[:, None] * N + n_offsets
-        mask = (m_offsets[:, None] < M) & (n_offsets < N)
-        out_tile = tl.load(out_ptr + offsets, mask=mask).to(tl.float64)
-        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float64)
-        scale = tl.sum(out_tile * out_grad_tile, 1)
-        in_grad_tile = out_tile * (out_grad_tile - scale[:, None])
-        tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
+        mask = n_offsets < N
+        out_tile = tl.load(out_ptr + n_offsets, mask=mask, other=0.0).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + n_offsets, mask=mask, other=0.0).to(
+            tl.float32
+        )
+        scale = tl.sum(out_tile * out_grad_tile, 0)
+        in_grad_tile = out_tile * (out_grad_tile - scale)
+        tl.store(in_grad_ptr + n_offsets, in_grad_tile, mask=mask)
     else:
-        scale = tl.zeros([TILE_M, TILE_N], dtype=tl.float64)
-
-        n_offsets = tl.arange(0, TILE_N)
-        offsets = m_offsets[:, None] * N + n_offsets
-        for _ in range(0, N, TILE_N):
-            mask = (m_offsets[:, None] < M) & (n_offsets < N)
-            out_tile = tl.load(
-                out_ptr + offsets, mask=mask, eviction_policy="evict_last"
-            ).to(tl.float64)
-            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float64)
+        # Pass 1: accumulate scale = sum(out * out_grad) over the row. Iterate
+        # ASCENDING so each load is a scalar-base + stride-1 arange (block DMA).
+        scale = tl.zeros([TILE_N], dtype=tl.float32)
+        previous_multiple = prev_multiple_of(N, TILE_N)
+        for start_n in range(0, previous_multiple, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            out_tile = tl.load(out_ptr + n_offsets).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + n_offsets).to(tl.float32)
             scale += out_tile * out_grad_tile
-            n_offsets += TILE_N
-            offsets += TILE_N
-        scale = tl.sum(scale, 1)  # (TILE_M,)
-
-        n_offsets = tl.arange(0, TILE_N)
-        offsets = m_offsets[:, None] * N + n_offsets
-        for _ in range(0, N, TILE_N):
-            mask = (m_offsets[:, None] < M) & (n_offsets < N)
-            out_tile = tl.load(
-                out_ptr + offsets, mask=mask, eviction_policy="evict_first"
+        for start_n in range(previous_multiple, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            mask = n_offsets < N
+            out_tile = tl.load(out_ptr + n_offsets, mask=mask, other=0.0).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + n_offsets, mask=mask, other=0.0).to(
+                tl.float32
             )
-            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float64)
-            in_grad_tile = out_tile * (out_grad_tile - scale[:, None]).to(tl.float64)
-            tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
-            n_offsets += TILE_N
-            offsets += TILE_N
+            scale += out_tile * out_grad_tile
+        scale = tl.sum(scale, 0)  # scalar
+
+        # Pass 2: write in_grad = out * (out_grad - scale), ASCENDING.
+        for start_n in range(0, previous_multiple, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            out_tile = tl.load(out_ptr + n_offsets).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + n_offsets).to(tl.float32)
+            in_grad_tile = out_tile * (out_grad_tile - scale)
+            tl.store(in_grad_ptr + n_offsets, in_grad_tile)
+        for start_n in range(previous_multiple, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            mask = n_offsets < N
+            out_tile = tl.load(out_ptr + n_offsets, mask=mask, other=0.0).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + n_offsets, mask=mask, other=0.0).to(
+                tl.float32
+            )
+            in_grad_tile = out_tile * (out_grad_tile - scale)
+            tl.store(in_grad_ptr + n_offsets, in_grad_tile, mask=mask)
 
 
 def softmax(self, dim, half_to_float=False):
@@ -222,29 +230,28 @@ def softmax(self, dim, half_to_float=False):
         dtype = torch.float32
     else:
         dtype = self.dtype
-    out = torch.empty_like(self, dtype=dtype)
     K = self.numel() // M // N  # post_dim
 
     with torch_device_fn.device(self.device):
         if K > 1:
-            # grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
-            # 重新排列输入数据为 [M, K, N]
-            inp_view = self.view(M, N, K).transpose(1, 2).contiguous()
-            # 合并 M 和 K 维为 M' = M * K
-            inp_reshaped = inp_view.view(M * K, N)
-            if out.ndim == 3:
-                m, n, k = out.shape
-            elif out.ndim == 2:
-                m, n = out.shape
-            origin_dim = out.ndim
+            origin_dim = self.ndim
+            if origin_dim == 3:
+                m, n, k = self.shape
+            else:  # 2D, dim == 0 -> M == 1
+                n, k = self.shape
+                m = 1
+            # Rearrange [M, N, K] -> [M, K, N] so the reduced dim N is innermost
+            # (the only fast axis on this XPU). Allocate the output tile directly
+            # instead of `empty_like(self).view(...).transpose(...).contiguous()`,
+            # which used to copy an uninitialized [M,K,N] buffer (a wasted
+            # transpose-copy on top of the input transpose).
+            inp_reshaped = (
+                self.view(M, N, K).transpose(1, 2).contiguous().view(M * K, N)
+            )
+            out_reshaped = torch.empty((M * K, N), dtype=dtype, device=self.device)
 
-            # 分配输出的视图
-            out_view = out.view(M, N, K).transpose(1, 2).contiguous()
-            out_reshaped = out_view.view(M * K, N)
+            grid = lambda meta: (M * K, 1, 1)  # noqa: E731
 
-            grid = lambda meta: (M * K, 1, 1)
-
-            # 调用 Triton 前向内核
             softmax_kernel_inner[grid](
                 out_reshaped,
                 inp_reshaped,
@@ -254,8 +261,7 @@ def softmax(self, dim, half_to_float=False):
                 is_use_mask_zero=True,
             )
 
-            # 将输出恢复到原始布局
-            # out_view.copy_(out_reshaped.view(M, K, N).transpose(1, 2))
+            # Restore original layout (returns a transposed view, no copy).
             if M == 1 and origin_dim == 2:
                 out = out_reshaped.view(K, N).transpose(0, 1)
             elif M == 1 and origin_dim == 3:
@@ -263,6 +269,7 @@ def softmax(self, dim, half_to_float=False):
             else:
                 out = out_reshaped.view(m, k, n).transpose(1, 2)
         else:
+            out = torch.empty_like(self, dtype=dtype)
             grid = (M, 1, 1)
             softmax_kernel_inner[grid](
                 out,
@@ -270,7 +277,6 @@ def softmax(self, dim, half_to_float=False):
                 M,
                 N,
                 buffer_size_limit=2048,
-                isCloseVectorization=True,
                 is_use_mask_zero=True,
             )
     return out
@@ -288,7 +294,7 @@ def softmax_backward(grad_output, output, dim, input_dtype):
 
     grad_output = grad_output.contiguous()
     output = output.contiguous()
-    in_grad = torch.empty_like(output, dtype=torch.float64)
+    in_grad = torch.empty_like(output, dtype=torch.float32)
     K = output.numel() // M // N
 
     with torch_device_fn.device(in_grad.device):
@@ -304,7 +310,7 @@ def softmax_backward(grad_output, output, dim, input_dtype):
             in_grad_view = in_grad.view(M, N, K).transpose(1, 2).contiguous()
             in_grad_reshaped = in_grad_view.view(M * K, N)
 
-            grid = lambda meta: (12, 1, 1)
+            grid = lambda meta: (M * K, 1, 1)  # noqa: E731
 
             # 调用 Triton 反向内核
             softmax_backward_kernel_inner[grid](
@@ -314,7 +320,6 @@ def softmax_backward(grad_output, output, dim, input_dtype):
                 M * K,
                 N,
                 buffer_size_limit=2048,
-                isCloseUnrollControl=True,
             )
             # 将输入梯度恢复到原始布局
             # in_grad_view.copy_(in_grad_reshaped.view(M, K, N).transpose(1, 2))
@@ -330,7 +335,7 @@ def softmax_backward(grad_output, output, dim, input_dtype):
             else:
                 in_grad = in_grad_reshaped.view(m, k, n).transpose(1, 2)
         else:
-            grid = lambda meta: (12, 1, 1)
+            grid = lambda meta: (M, 1, 1)  # noqa: E731
 
             softmax_backward_kernel_inner[grid](
                 output,
@@ -339,6 +344,5 @@ def softmax_backward(grad_output, output, dim, input_dtype):
                 M,
                 N,
                 buffer_size_limit=2048,
-                isCloseUnrollControl=True,
             )
     return in_grad.to(input_dtype)

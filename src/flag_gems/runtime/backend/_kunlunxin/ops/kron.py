@@ -74,86 +74,79 @@ def calculate_indices(batch_idx, shape_a, shape_b):
     return a_idx, b_idx
 
 
+# --- Per-output-row div/mod kernel (XPU rewrite) --------------------------------
+# The original kernel tiled the output as a 2D [BLOCK_M, BLOCK_N] grid and read A/B
+# with  a_row = offs_m // M2 ,  b_col = offs_n % N2  etc. Two problems on XPU:
+#   1) BLOCK_M = next_pow2(cdiv(M,12)) is UNBOUNDED -> M=4096 gives BLOCK_M=512 and a
+#      giant [512,4096] all-int64 tile: grid collapses to ~8 programs (768 cores idle)
+#      and the int64 div/mod offset math blows the MLIR up (2.9M-line IR dump) ->
+#      ~0.06 GB/s catastrophe ([64,64] kron [64,64] -> 540ms, speedup 0.000).
+#   2) The all-int64 2D-tile offset math is huge.
+#
+# Rewrite: one program owns ONE output ROW (row = i1*M2 + i2) and writes the whole
+# row as a stride-1 CONTIGUOUS run. Within a row, C[row, col] where col = j1*N2 + j2
+# equals A[i1, j1] * B[i2, j2]; so j1 = col // N2, j2 = col % N2 recover the A/B
+# columns for each output column. Thus:
+#   * store  = c_base + col, col = arange(0, BLOCK_N)   -> stride-1 block DMA (fast).
+#   * A/B reads use the div/mod (col//N2, col%N2) -> discrete gather (slower), but on
+#     XPU a discrete READ is ~1.5x cheaper than a discrete write, so putting the
+#     div/mod on the read side and keeping the WRITE contiguous is the right trade.
+# The row is looped in BLOCK_N chunks so N of any size works. N is a constexpr so the
+# store index `row*N + col` is a compile-time-strided contiguous run.
+#
+# WHY NOT the 2D outer-product ([BLOCK_N1,N2] = A-row-slice (x) B-row): it is contiguous
+# on BOTH sides in theory, but on this XPU the 2D store `c_off = row*N + j1[:,None]*N2 +
+# n2[None,:]` SILENTLY MISCOMPILES (columns get duplicated/transposed; verified WRONG for
+# (2,2)x(2,2) .. (8,16)x(2,3)). A 1-D per-(row,j1) [N2] store is correct only when N2 is
+# large (N2=64 ok, N2=2/3/5 wrong -- small contiguous writes coalesce incorrectly). Only
+# the full-row 1-D contiguous store below is correct for ALL shapes.
+#
+# BATCHING: the kernel handles ONE (A,B)->C matrix per launch (no in-kernel batch
+# indirection). An earlier version loaded the per-batch A/B indices from a `map`
+# tensor inside the kernel (`a_batch_idx = tl.load(map_ptr + ...)`) and used that
+# loaded scalar as an address multiplier -> on XPU that data-dependent scalar gather
+# FAULTS (KL_XID_KERNEL_EXCEPTION, err 66250/721). So batching is done on the host
+# instead: kron() loops the output batches and launches this kernel once per batch
+# on host-sliced contiguous 2D views. batch_size is 1 for all 2D inputs (the whole
+# benchmark), so the loop is a no-op there; only genuinely batched (>=3D) inputs pay
+# the extra launches, and those tensors are small.
+BLOCK_N_CAP = 8192
+
+
 def heur_block_n(args):
     import builtins
 
-    return builtins.min(args["N"], 8192)
+    return builtins.min(triton.next_power_of_2(args["N"]), BLOCK_N_CAP)
 
 
-def heur_block_m(args):
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
-
-
-# @triton.autotune(configs=runtime.get_tuned_config("kron"), key=["M", "N"])
-@triton.heuristics(
-    {
-        "BLOCK_M": heur_block_m,
-        "BLOCK_N": heur_block_n,
-    }
-)
+@triton.heuristics({"BLOCK_N": heur_block_n})
 @triton.jit
 def kron_kernel(
     a_ptr,
     b_ptr,
     c_ptr,
-    map_ptr,
-    batch_size: tl.int64,
-    M: tl.int64,
-    N: tl.int64,
-    M1: tl.int64,
-    M2: tl.int64,
-    N1: tl.int64,
-    N2: tl.int64,
-    a_stride_0: tl.int64,
-    a_stride_1: tl.int64,
-    b_stride_0: tl.int64,
-    b_stride_1: tl.int64,
-    c_stride_0: tl.int64,
-    c_stride_1: tl.int64,
-    a_batch_stride: tl.int64,
-    b_batch_stride: tl.int64,
-    c_batch_stride: tl.int64,
-    BLOCK_M: tl.constexpr,
+    M,
+    N1,
+    M2,
+    N2,
+    N: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid = ext.program_id(0)
-    num_blocks_n = tl.cdiv(N, BLOCK_N)
-    num_blocks_m = tl.cdiv(M, BLOCK_M)
-    num_blocks_per_batch = num_blocks_m * num_blocks_n
-
-    batch_id = pid // num_blocks_per_batch
-    local_pid = pid % num_blocks_per_batch
-    block_m = local_pid // num_blocks_n
-    block_n = local_pid % num_blocks_n
-
-    offs_m = block_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = block_n * BLOCK_N + tl.arange(0, BLOCK_N)
-
-    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N) & (batch_id < batch_size)
-
-    offset = batch_id * 2
-    is_valid = batch_id < batch_size
-    a_batch_idx = tl.load(map_ptr + offset, mask=is_valid)
-    b_batch_idx = tl.load(map_ptr + offset + 1, mask=is_valid)
-
-    a_row = offs_m[:, None] // M2
-    a_col = offs_n[None, :] // N2
-    b_row = offs_m[:, None] % M2
-    b_col = offs_n[None, :] % N2
-
-    a_idx = a_batch_idx * a_batch_stride + a_row * a_stride_0 + a_col * a_stride_1
-    b_idx = b_batch_idx * b_batch_stride + b_row * b_stride_0 + b_col * b_stride_1
-
-    a = tl.load(a_ptr + a_idx, mask=mask)
-    b = tl.load(b_ptr + b_idx, mask=mask)
-    c = a * b
-
-    c_idx = (
-        batch_id * c_batch_stride
-        + offs_m[:, None] * c_stride_0
-        + offs_n[None, :] * c_stride_1
-    )
-    tl.store(c_ptr + c_idx, c, mask=mask)
+    row = ext.program_id(0)
+    i1 = row // M2
+    i2 = row % M2
+    a_base = i1 * N1
+    b_base = i2 * N2
+    c_base = row * N
+    for off in range(0, N, BLOCK_N):
+        col = off + tl.arange(0, BLOCK_N)
+        mask = col < N
+        j1 = col // N2
+        j2 = col % N2
+        a = tl.load(a_ptr + a_base + j1, mask=mask, other=0.0).to(tl.float32)
+        b = tl.load(b_ptr + b_base + j2, mask=mask, other=0.0).to(tl.float32)
+        out = (a * b).to(c_ptr.dtype.element_ty)
+        tl.store(c_ptr + c_base + col, out, mask=mask)
 
 
 def kron(A, B):
@@ -189,44 +182,26 @@ def kron(A, B):
     if not B_view.is_contiguous():
         B_view = B_view.contiguous()
 
-    batch_indices = torch.empty(batch_size * 2, device=A.device, dtype=torch.int64)
-    for i in range(batch_size):
-        a_idx, b_idx = calculate_indices(i, A_prepared.shape, B_prepared.shape)
-        batch_indices[i * 2] = a_idx
-        batch_indices[i * 2 + 1] = b_idx
-
-    a_batch_stride = M1 * N1
-    b_batch_stride = M2 * N2
-    c_batch_stride = M * N
     with torch_device_fn.device(A.device):
-        grid = lambda meta: (
-            batch_size
-            * triton.cdiv(M, meta["BLOCK_M"])
-            * triton.cdiv(N, meta["BLOCK_N"]),
-        )
+        # One program owns ONE output row and writes it as a contiguous run.
+        # grid = M. Batching is on the host: launch the kernel once per output batch
+        # on host-sliced contiguous 2D views (batch_size is 1 for all 2D inputs). This
+        # avoids the in-kernel data-dependent scalar gather that faults on XPU (see
+        # header note).
+        grid = (M,)
 
-        kron_kernel[grid](
-            A_view,
-            B_view,
-            C_reshaped,
-            batch_indices,
-            batch_size,
-            M,
-            N,
-            M1,
-            M2,
-            N1,
-            N2,
-            A_view.stride(1),
-            A_view.stride(2),
-            B_view.stride(1),
-            B_view.stride(2),
-            C_reshaped.stride(1),
-            C_reshaped.stride(2),
-            a_batch_stride,
-            b_batch_stride,
-            c_batch_stride,
-        )
+        for bt in range(batch_size):
+            a_idx, b_idx = calculate_indices(bt, A_prepared.shape, B_prepared.shape)
+            kron_kernel[grid](
+                A_view[a_idx],
+                B_view[b_idx],
+                C_reshaped[bt],
+                M,
+                N1,
+                M2,
+                N2,
+                N,
+            )
 
     if A.dim() <= 1 and B.dim() <= 1:
         return C.reshape(-1)
