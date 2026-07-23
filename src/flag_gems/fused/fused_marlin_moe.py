@@ -424,12 +424,17 @@ def _cached_pack_scale_e8m0_fold(s, compute_dtype, cached: bool) -> torch.Tensor
 
 
 def mxfp4_pack(
-    w1, w2, w1_scale, w2_scale, compute_dtype, *, cached=True, block_size_k=128,
+    w1,
+    w2,
+    w1_scale,
+    w2_scale,
+    compute_dtype,
+    *,
+    cached=True,
+    block_size_k=128,
     fold_scale=False,
 ):
-    scale_pack = (
-        _cached_pack_scale_e8m0_fold if fold_scale else _cached_pack_scale_e8m0
-    )
+    scale_pack = _cached_pack_scale_e8m0_fold if fold_scale else _cached_pack_scale_e8m0
     return (
         _cached_pack_w(w1, block_size_k, cached=cached),
         _cached_pack_w(w2, block_size_k, cached=cached),
