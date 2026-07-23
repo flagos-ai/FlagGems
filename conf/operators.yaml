@@ -4109,6 +4109,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: igammac_
+    description: |
+      In-place version of igammac. Computes the regularized upper incomplete gamma function complement.
+    for:
+      - igammac_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: ilshift
     description: Computes the in-place bitwise left shift of `self` by `other` bits.
     for:
